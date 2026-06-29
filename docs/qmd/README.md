@@ -108,7 +108,7 @@ qmd multi-get "#abc123, #def456"    # Multiple docids
 | `INTELLIGENCE_LAYER.md` | Orchestration, routing, conversation state |
 | `MEMORY_SYSTEM.md` | FTS5 search, semantic embeddings, categories |
 | `CANVAS_SYSTEM.md` | Visual artifacts, pins, gallery |
-| `TOOL_MANAGEMENT.md` | 75+ tools, enable/disable, roadmap |
+| `TOOL_MANAGEMENT.md` | Tool catalog, profiles, enable/disable, roadmap |
 | `WORKFLOW_ORCHESTRATION.md` | Deterministic multi-tool workflows |
 | `INSTALL_GUIDE.md` | Installation and setup guide |
 | `JARVIS_WEB_UI.md` | Web interface, routes, WebSocket |

@@ -1,7 +1,7 @@
 # Stash System Design
 
-> **Status**: ✅ Implemented (v2.14)  
-> **Purpose**: Generic artifact storage layer for the Jarvis ecosystem  
+> **Status**: ✅ Implemented (v2.14)
+> **Purpose**: Generic artifact storage layer for the Jarvis ecosystem
 > **Updated**: 2026-04-17 - Documented Jarvis Web **stash viewer** (`/stash/view/...`)
 
 ---
@@ -36,8 +36,8 @@ Each tool has no standard way to:
 
 **Stash** is a **generic, structured artifact storage layer** for the entire Jarvis ecosystem.
 
-> **Key Principle**: Stash is **storage-first**. Document composition (`stash.compose`) is 
-> one consumer of stash, not its core purpose. Any tool that produces or consumes files 
+> **Key Principle**: Stash is **storage-first**. Document composition (`stash.compose`) is
+> one consumer of stash, not its core purpose. Any tool that produces or consumes files
 > should use stash as the standard artifact layer.
 
 ### Characteristics
@@ -120,7 +120,7 @@ data/stash/
 **Important**: `file_id` and `name` are separate concepts:
 
 - `file_id`: Internal unique identifier (can be UUID or sanitized name)
-- `name`: Human-readable display name  
+- `name`: Human-readable display name
 - `stored_name`: Actual filename on disk (sanitized)
 
 For v1, `file_id == stored_name` is acceptable, but the schema supports decoupling later.
@@ -332,7 +332,7 @@ Example in printer tool:
 }
 // OR
 {
-  "action": "print", 
+  "action": "print",
   "space_id": "space_...",
   "file_id": "schedule.pdf"
 }
@@ -422,7 +422,7 @@ List files in a space.
       },
       {
         "file_id": "schedule.txt",
-        "name": "schedule.txt", 
+        "name": "schedule.txt",
         "mime_type": "text/plain",
         "size_bytes": 4321,
         "created_at": "2025-12-11T12:35:45Z"
@@ -760,11 +760,11 @@ def is_blocked_ip(ip_str: str) -> bool:
 def validate_url_with_dns(url: str) -> bool:
     """Validate URL including DNS resolution to prevent SSRF."""
     parsed = urlparse(url)
-    
+
     # Check scheme
     if parsed.scheme not in ALLOWED_SCHEMES:
         raise SecurityError(f"Scheme {parsed.scheme} not allowed")
-    
+
     # Resolve hostname to IP and check
     hostname = parsed.hostname
     try:
@@ -773,16 +773,16 @@ def validate_url_with_dns(url: str) -> bool:
             raise SecurityError(f"Host {hostname} resolves to blocked IP {ip}")
     except socket.gaierror:
         raise SecurityError(f"Cannot resolve hostname {hostname}")
-    
+
     return True
 
 def safe_download(url: str, max_size: int = MAX_FILE_SIZE) -> bytes:
     """Download with redirect handling, size limit, and content-type check."""
-    
+
     # Disable auto-redirects, handle manually
     session = requests.Session()
     response = session.get(url, stream=True, timeout=30, allow_redirects=False)
-    
+
     redirects = 0
     while response.is_redirect and redirects < MAX_REDIRECTS:
         redirect_url = response.headers.get('Location')
@@ -790,27 +790,27 @@ def safe_download(url: str, max_size: int = MAX_FILE_SIZE) -> bytes:
         validate_url_with_dns(redirect_url)
         response = session.get(redirect_url, stream=True, timeout=30, allow_redirects=False)
         redirects += 1
-    
+
     if response.is_redirect:
         raise SecurityError(f"Too many redirects (>{MAX_REDIRECTS})")
-    
+
     # Check content-type
     content_type = response.headers.get('Content-Type', '').split(';')[0]
     if content_type not in ALLOWED_MIME_TYPES:
         raise SecurityError(f"Content-Type {content_type} not allowed")
-    
+
     # Check content-length
     content_length = int(response.headers.get('Content-Length', 0))
     if content_length > max_size:
         raise SecurityError(f"File too large: {content_length} bytes")
-    
+
     # Stream download with size check
     data = b''
     for chunk in response.iter_content(chunk_size=8192):
         data += chunk
         if len(data) > max_size:
             raise SecurityError(f"File exceeded max size during download")
-    
+
     return data
 ```
 
@@ -824,12 +824,12 @@ import magic  # python-magic library
 def validate_file_content(data: bytes, claimed_mime: str) -> bool:
     """Validate actual file content matches claimed type."""
     detected = magic.from_buffer(data, mime=True)
-    
+
     # If Content-Type was missing/generic, but magic detects unsupported type → reject
     if claimed_mime in ['application/octet-stream', '']:
         if detected not in ALLOWED_MIME_TYPES:
             raise SecurityError(f"Detected unsupported type: {detected}")
-    
+
     # Allow some flexibility (jpeg vs jpg)
     if detected != claimed_mime:
         safe_mismatches = {
@@ -838,7 +838,7 @@ def validate_file_content(data: bytes, claimed_mime: str) -> bool:
         }
         if (detected, claimed_mime) not in safe_mismatches:
             raise SecurityError(f"Content mismatch: claimed {claimed_mime}, detected {detected}")
-    
+
     return True
 ```
 
@@ -864,17 +864,17 @@ def sanitize_filename(name: str) -> str:
     """Sanitize filename to prevent path traversal."""
     # Remove path separators
     name = os.path.basename(name)
-    
+
     # Remove dangerous characters
     name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', name)
-    
+
     # Limit length
     name = name[:200]
-    
+
     # Ensure not empty
     if not name or name in ['.', '..']:
         name = 'unnamed_file'
-    
+
     return name
 ```
 
@@ -894,7 +894,7 @@ def check_space_quota(space_path: str, new_file_size: int) -> bool:
     )
     if space_size + new_file_size > MAX_SPACE_SIZE:
         raise QuotaError(f"Space quota exceeded")
-    
+
     # Check total stash size
     stash_dir = os.path.dirname(space_path)
     total_size = sum(
@@ -904,7 +904,7 @@ def check_space_quota(space_path: str, new_file_size: int) -> bool:
     )
     if total_size + new_file_size > MAX_TOTAL_STASH:
         raise QuotaError(f"Total stash quota exceeded")
-    
+
     return True
 ```
 
@@ -959,14 +959,14 @@ printer.print(stash_ref="stash://space_.../f_abc123")
 ### 5.4 Resolver Helper
 
 ```python
-# In lib/stash_resolver.py (shared by all tools)
+# In lib/stash_helper.py (shared stash path helper)
 
 def resolve_file_path(args: dict) -> str:
     """Resolve file path from args (direct path or stash reference)."""
     # Option 1: Direct path
     if args.get('file_path'):
         return args['file_path']
-    
+
     # Option 2: Stash URI
     if args.get('stash_ref'):
         # Parse stash://space_id/file_id
@@ -975,11 +975,11 @@ def resolve_file_path(args: dict) -> str:
             parts = ref[8:].split('/', 1)
             space_id, file_id = parts[0], parts[1]
             return f"data/stash/{space_id}/{file_id}"
-    
+
     # Option 3: Explicit space_id + file_id
     if args.get('space_id') and args.get('file_id'):
         return f"data/stash/{args['space_id']}/{args['file_id']}"
-    
+
     raise ValueError("Provide file_path, stash_ref, or space_id+file_id")
 ```
 
@@ -997,10 +997,10 @@ Stash is not just a tool API—it's Jarvis's **internal artifact system**.
 | **Orchestrator** | Save intermediate results between multi-turn tasks |
 
 **Implementation note:**
-> Internal services can write to stash directly using the same directory convention 
+> Internal services can write to stash directly using the same directory convention
 > and `meta.json` schema. The tool API is a public façade over that.
 
-### 5.6 Memory + Stash Architecture 
+### 5.6 Memory + Stash Architecture
 
 **Key Insight**: Stash is the **workshop**, Memory is the **index**.
 
@@ -1035,7 +1035,7 @@ Every tool that creates artifacts should:
 def save_image(image_data, prompt, space):
     # 1. Save to stash
     stash_ref = save_to_stash(image_data, space)
-    
+
     # 2. Create memory entry (survives stash TTL)
     memory_key = f"stash_image_{space.space_id}"
     memory_value = f"Generated image: {prompt}. STASH: {stash_ref}. File: {filename}"
@@ -1083,7 +1083,7 @@ else:
 | `send_email` | ✅ Resolves | N/A | ✅ |
 | `canvas` | N/A | ✅ Already | N/A |
 
-### 5.7 The `stash.remember` Bridge 
+### 5.7 The `stash.remember` Bridge
 
 **Problem**: Stash artifacts are temporary (7-day TTL), but users want to persist important findings.
 
@@ -1162,7 +1162,7 @@ This metadata enables:
 - **Graceful degradation**: If stash expires, memory still has content
 - **Auditing**: Track which tools created which artifacts
 
-### 5.8 Inter-Tool Calling Pattern 
+### 5.8 Inter-Tool Calling Pattern
 
 Some tools need to call other tools internally. This is done via subprocess.
 
@@ -1189,16 +1189,16 @@ def call_tool(tool_name: str, args: dict = None, timeout: int = 60) -> dict:
     tool_path = find_tool(tool_name)
     if not tool_path:
         return {"ok": False, "error": f"Tool {tool_name} not found"}
-    
+
     project_root = os.path.join(os.path.dirname(__file__), '..')
     input_data = json.dumps(args or {})
-    
+
     result = subprocess.run(
         ["python3", tool_path, input_data],
         capture_output=True, text=True,
         timeout=timeout, cwd=project_root
     )
-    
+
     if result.returncode == 0 and result.stdout:
         return json.loads(result.stdout)
     return {"ok": False, "error": result.stderr}
@@ -1245,7 +1245,7 @@ See also: [TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md) for full pattern docu
 5. stash.save(space_id, kind="text", name="schedule.txt", text="...")
    → file_id: "schedule.txt"
 
-6. stash.compose(space_id, files=["bulldog.jpg", "schedule.txt"], 
+6. stash.compose(space_id, files=["bulldog.jpg", "schedule.txt"],
                  output="schedule.pdf", template="simple_poster")
    → file_id: "schedule.pdf"
 
@@ -1286,7 +1286,7 @@ See also: [TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md) for full pattern docu
 
 ### Phase 5: Polish
 - [ ] Add session-implicit space tracking
-- [ ] Add Memory DB integration for cross-session ( local and cloud and way to safely sync , use with existing sync scripts that start up on services and or api? or manually? 
+- [ ] Add Memory DB integration for cross-session ( local and cloud and way to safely sync , use with existing sync scripts that start up on services and or api? or manually?
 - [ ] Add quota management UI/commands
 - [ ] Documentation and examples
 
@@ -1450,13 +1450,12 @@ See: `docs/api/STASH.md` for full API documentation.
 ## 12. Related Docs
 
 - [Memory System](MEMORY_SYSTEM.md) - Long-term fact storage
-- [Canvas System](CANVAS_SYSTEM.md) - Human-facing research notes  
+- [Canvas System](CANVAS_SYSTEM.md) - Human-facing research notes
 - [Tool Calling System](TOOL_CALLING_SYSTEM.md) - Inter-tool calling patterns ⭐ ENHANCED
 - [Stash API](api/STASH.md) - FastAPI documentation
 - [Canvas API](api/CANVAS.md) - FastAPI documentation
-- **PDF Read Tool** (`skills/pdf_read.py`) - PDF extraction, used by `stash.remember` 
+- **PDF Read Tool** (`skills/pdf_read.py`) - PDF extraction, used by `stash.remember`
 
 ---
 
 *Last updated: 2026-02-09*
-

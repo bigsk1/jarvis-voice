@@ -8,8 +8,8 @@ Metadata is now being added to all new memories in the `knowledge_base` table!
 
 ## Current State
 
-**Total memories:** 36  
-**With metadata:** 34 (94.4%)  
+**Total memories:** 36
+**With metadata:** 34 (94.4%)
 **Without metadata (NULL):** 2 (5.6%)
 
 The 2 without metadata are old entries created before metadata support was added.
@@ -93,26 +93,26 @@ The 2 without metadata are old entries created before metadata support was added
 
 ### Find Intel from Specific File
 ```sql
-SELECT * FROM knowledge_base 
+SELECT * FROM knowledge_base
 WHERE json_extract(metadata, '$.source_file') = 'network.md';
 ```
 
 ### Find Recently Ingested Data
 ```sql
-SELECT * FROM knowledge_base 
+SELECT * FROM knowledge_base
 WHERE json_extract(metadata, '$.ingested_at') > datetime('now', '-7 days');
 ```
 
 ### Find User Preferences
 ```sql
-SELECT * FROM knowledge_base 
-WHERE category = 'preference' 
+SELECT * FROM knowledge_base
+WHERE category = 'preference'
   AND json_extract(metadata, '$.created_by') = 'user_conversation';
 ```
 
 ### Check File Freshness
 ```sql
-SELECT 
+SELECT
   json_extract(metadata, '$.source_file') as file,
   json_extract(metadata, '$.ingested_at') as last_ingest,
   COUNT(*) as fact_count
@@ -170,6 +170,5 @@ conn.close()
 
 ---
 
-*Last Updated: 2025-11-14*  
-*Related: [archive/DATABASE_DEEP_DIVE.md](archive/DATABASE_DEEP_DIVE.md), METADATA_SYSTEM.md*
-
+*Last Updated: 2025-11-14*
+*Related: [DATABASE_DEEP_DIVE.md](DATABASE_DEEP_DIVE.md), [METADATA_SYSTEM.md](../METADATA_SYSTEM.md)*

@@ -57,13 +57,13 @@ Edit `docker-compose.yml`:
 environment:
   # Update with YOUR Jarvis server's Tailscale IP
   JARVIS_API: "http://100.101.102.103:8880/api/alerts"
-  
+
   # Containers to monitor (comma-separated)
   MONITOR_CONTAINERS: "kokoro-tts,comfyui,ollama"
-  
+
   # URLs to monitor (comma-separated)
   MONITOR_URLS: "http://localhost:8188/health,http://localhost:11434/health"
-  
+
   # Source name (shows in Jarvis alerts)
   SOURCE_NAME: "proxmox-gpu-vm"
 ```
@@ -71,13 +71,13 @@ environment:
 ### 4. Start
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 ### 5. Check Logs
 
 ```bash
-docker-compose logs -f
+docker compose logs -f
 ```
 
 ---
@@ -137,7 +137,7 @@ MONITOR_URLS: "http://localhost:8000/health,http://localhost:3000/api/health,htt
 
 View logs in real-time:
 ```bash
-docker-compose logs -f
+docker compose logs -f
 ```
 
 Example output:
@@ -166,29 +166,29 @@ Monitoring URLs: http://localhost:8188/health, http://localhost:11434/health
 
 ### Start
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Stop
 ```bash
-docker-compose down
+docker compose down
 ```
 
 ### Restart
 ```bash
-docker-compose restart
+docker compose restart
 ```
 
 ### Update
 ```bash
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 ```
 
 ### View Status
 ```bash
-docker-compose ps
+docker compose ps
 ```
 
 ---
@@ -231,7 +231,7 @@ volumes:
 **Cause**: Can't access Docker socket
 
 **Fix**:
-1. Check Docker socket is mounted: `docker-compose config | grep docker.sock`
+1. Check Docker socket is mounted: `docker compose config | grep docker.sock`
 2. Check permissions: `ls -la /var/run/docker.sock`
 3. Add user to docker group: `sudo usermod -aG docker $USER`
 
@@ -242,7 +242,7 @@ volumes:
 **Fix**:
 1. List running containers: `docker ps --format "{{.Names}}"`
 2. Update MONITOR_CONTAINERS with exact names
-3. Restart agent: `docker-compose restart`
+3. Restart agent: `docker compose restart`
 
 ---
 
@@ -256,12 +256,12 @@ Deploy multiple agents for different services:
 # Web services monitor
 cd ~/jarvis-monitor-web
 # Configure for web containers
-docker-compose up -d
+docker compose up -d
 
 # AI services monitor
 cd ~/jarvis-monitor-ai
 # Configure for AI containers
-docker-compose up -d
+docker compose up -d
 ```
 
 Each sends alerts with different SOURCE_NAME.

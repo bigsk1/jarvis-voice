@@ -181,7 +181,7 @@ nano config/local.env
 **What you usually need to change in `cloud.env`:**
 ```bash
 # ===== LLM Provider (pick ONE) =====
-LLM_PROVIDER="xai"  # Options: "xai", "anthropic", "openai"
+LLM_PROVIDER="xai"  # Options: "xai", "anthropic", "openai", "ollama"
 
 # API Key for your chosen provider
 XAI_API_KEY=your-xai-key
@@ -193,6 +193,11 @@ XAI_MODEL="grok-4.3"              # recommended default
 # XAI_MODEL="grok-build-0.1"      # alternative: coding / build-heavy workloads
 # or ANTHROPIC_MODEL="claude-sonnet-4-5-20250929"
 # or OPENAI_MODEL="gpt-4o"
+
+# Or Ollama Cloud through a signed-in Ollama daemon:
+# LLM_PROVIDER="ollama"
+# OLLAMA_BASE_URL="http://your-ollama-host:11434"
+# OLLAMA_CLOUD_MODEL="minimax-m3:cloud"  # must be *:cloud or *-cloud
 
 # ===== Speech-to-Text (STT) =====
 STT_PROVIDER="openai"  # Options: "openai", "local" (uses faster-whisper)
@@ -235,6 +240,11 @@ OUT_DEV="plughw:CARD=Device,DEV=0"
 > - audio device values (`IN_DEV`, `OUT_DEV`)
 >
 > The example file already contains many smaller settings that are tuned to work well together, so leaving the rest alone is usually the best path.
+>
+> `JARVIS_MODE` and `LLM_PROVIDER` are separate. Cloud mode selects
+> `config/cloud.env` and cloud databases; it does not prohibit Ollama Cloud.
+> Local mode normally uses `OLLAMA_MODEL` with a locally hosted daemon. See
+> [ollama/README.md](ollama/README.md) for the supported combinations.
 
 ---
 
@@ -386,7 +396,7 @@ source ~/.zshrc    # for zsh
 
 **Test aliases:**
 ```bash
-say hello 
+say hello
 ```
 
 **Available aliases after setup:**
@@ -474,7 +484,7 @@ $HOME/
 | `config/cloud.env` | API keys, LLM/TTS providers, audio devices |
 | `config/local.env` | Ollama settings for local mode |
 | `config/ssh.json` | SSH hosts for remote command execution |
-| `config/web_config.json` | Web UI settings |
+| `jarvis-web/config/web_config.json` | Web UI settings (created locally; gitignored) |
 | `jarvis-intel/user_profile.md` | Profile Card (copy from `user_profile.md.example` on first install) |
 
 ### Profile Card (first install)
@@ -1251,10 +1261,10 @@ crontab -e
 
 ## Version Information
 
-**Last Updated:** 2026-05-25  
-**Jarvis Version:** v2.50.2 
-**Tested On:** Ubuntu 24.04 LTS  
-**Python Version:** 3.12+  
+**Last Updated:** 2026-06-29
+**Verified against Jarvis:** v2.53.0 (2026-06-29)
+**Tested On:** Ubuntu 24.04 LTS
+**Python Version:** 3.12+
 **Package Manager:** uv (recommended) or pip
 
 ---

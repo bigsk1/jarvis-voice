@@ -2,6 +2,12 @@
 
 > **Purpose**: Provide real-time voice updates during long-running tasks to keep the user informed without requiring terminal access.
 
+> **Status: implemented.** The first sections preserve the original design;
+> use [Current Implementation Status](#current-implementation-status) and the
+> current env examples in `config/cloud.env.example` / `config/local.env.example`
+> for operational configuration. The implemented default interval is 18
+> seconds in those examples, not every older value shown in the design history.
+
 ---
 
 ## Table of Contents
@@ -153,14 +159,14 @@ Static phrases are cached to `~/.cache/jarvis/status-tts/` (cloud) or `~/.cache/
 class StatusUpdater:
     """
     Manages voice status updates during long-running tasks.
-    
+
     Features:
     - Rate limiting (min interval between updates)
     - Priority system (errors bypass rate limit)
     - Collision detection (don't overlap with final output)
     - Background TTS (non-blocking)
     """
-    
+
     def __init__(self):
         self.enabled = get_config_value('STATUS_UPDATES_ENABLED', 'false').lower() == 'true'
         self.interval = get_int('STATUS_UPDATE_INTERVAL', 20)
@@ -169,22 +175,22 @@ class StatusUpdater:
         self.task_complete = False  # Flag to prevent overlap
         self.error_count = 0        # Track consecutive errors
         self._lock = threading.Lock()
-    
+
     def update(self, message: str, priority: str = 'normal', context: dict = None):
         """
         Queue a status update.
-        
+
         Args:
             message: The status message (will be adapted to style)
             priority: 'normal', 'high' (errors), or 'final' (task complete)
             context: Optional dict with tool_name, turn_number, etc.
         """
         pass
-    
+
     def mark_complete(self):
         """Signal that task is done - suppress further updates."""
         pass
-    
+
     def reset(self):
         """Reset for new task."""
         pass
@@ -263,7 +269,7 @@ if previous_tool_failed and selecting_different_tool:
 
 **Location**: OpenCode execution and waiting
 
-**Current State**: 
+**Current State**:
 - 360 second timeout for complex builds
 - Blocking `requests.post()` call to OpenCode API
 - Already has stderr message: "⏳ OpenCode is building..."
@@ -277,7 +283,7 @@ if previous_tool_failed and selecting_different_tool:
 
 def main():
     # ... setup ...
-    
+
     # Create status callback for long tasks
     if status_updates_enabled() and is_complex:
         status_thread = threading.Thread(
@@ -286,10 +292,10 @@ def main():
             daemon=True
         )
         status_thread.start()
-    
+
     # Execute (blocking)
     result = client.execute_task(task=task, ...)
-    
+
     # Stop status updates
     stop_status_updates()
 
@@ -297,28 +303,28 @@ def status_update_loop(session_id: str, task: str):
     """Background thread that emits status updates during OpenCode execution."""
     interval = get_int('STATUS_UPDATE_INTERVAL', 20)
     style = get_config_value('JARVIS_RESPONSE_STYLE', 'casual')
-    
+
     messages_casual = [
         "OpenCode is working on it",
         "Still building, making progress",
         "Almost there, finishing up",
     ]
-    
+
     messages_detailed = [
         "OpenCode is setting up your project",
         "Installing dependencies and configuring",
         "Writing code and running tests",
         "Finalizing build",
     ]
-    
+
     messages = messages_casual if style == 'casual' else messages_detailed
     idx = 0
-    
+
     while not should_stop():
         time.sleep(interval)
         if should_stop():
             break
-        
+
         # Get actual session status if available
         try:
             session = client.get_session(session_id)
@@ -327,7 +333,7 @@ def status_update_loop(session_id: str, task: str):
                 continue
         except:
             pass
-        
+
         # Speak progress message
         msg = messages[min(idx, len(messages)-1)]
         speak_status(msg)
@@ -349,7 +355,7 @@ def get_opencode_status(session_id: str) -> str:
         # Extract meaningful status from session data
         status = session.get('status', 'working')
         last_message = session.get('messages', [{}])[-1]
-        
+
         # Check for tool calls, errors, etc.
         if last_message.get('type') == 'tool_call':
             tool = last_message.get('tool', {}).get('name', 'working')
@@ -493,12 +499,12 @@ def _speak(self, message: str, blocking: bool = False):
     script_name = 'say-status-local.sh' if self.mode == 'local' else 'say-status.sh'
     script = os.path.join(self.project_root, 'bin', script_name)
     blocking_arg = 'true' if blocking else 'false'
-    subprocess.Popen([script, message, blocking_arg], 
-                     stdout=subprocess.DEVNULL, 
+    subprocess.Popen([script, message, blocking_arg],
+                     stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL)
 ```
 
-**Why**: 
+**Why**:
 - Reuses existing TTS infrastructure and env vars
 - Same voice personality across all responses
 - Supports both cloud (OpenAI) and local (Piper/espeak) modes
@@ -530,16 +536,16 @@ class StatusUpdater:
     def __init__(self):
         self.recent_errors = []  # Track last 5 error messages
         self.error_cooldown = 30  # Don't repeat same error within 30s
-    
+
     def _should_speak_error(self, error_msg: str) -> bool:
         """Check if this error should be spoken (not a repeat)."""
         error_key = self._normalize_error(error_msg)
-        
+
         # Check if same error spoken recently
         for prev_error, timestamp in self.recent_errors:
             if prev_error == error_key and time.time() - timestamp < self.error_cooldown:
                 return False  # Skip - already spoken
-        
+
         # Add to recent errors
         self.recent_errors.append((error_key, time.time()))
         self.recent_errors = self.recent_errors[-5:]  # Keep last 5
@@ -561,7 +567,7 @@ def update(self, message, priority='normal', context=None):
     with self._lock:
         if self.task_complete:
             return  # Task done, don't speak
-        
+
         # Check if we're too close to expected completion
         if context and context.get('estimated_remaining', 999) < 5:
             return  # Too close to end, skip update
@@ -718,7 +724,7 @@ export STATUS_UPDATE_INTERVAL=10
 | `orchestrator/orchestrator_v2.py` | Init/cleanup status updater | 1 |
 | `skills/opencode.py` | Poll logs, emit summaries | 3 |
 | `jarvis` / `jarvis-local` | Collision detection | 4 |
-| `lib/tts.py` (or existing) | Background TTS playback | 4 |
+| `bin/say-status.sh`, `bin/say-status-local.sh` | Background status TTS playback | 4 |
 
 ---
 
@@ -750,7 +756,7 @@ export STATUS_UPDATE_INTERVAL=10
     "sass_level": 2,          // 0=professional, 1=light, 2=sassy
     "encouragement": true
   },
-  
+
   "categories": {
     "task_start": {
       "standard": [
@@ -765,7 +771,7 @@ export STATUS_UPDATE_INTERVAL=10
         "Ooh, this looks fun"
       ]
     },
-    
+
     "progress": {
       "standard": [
         "Still working on it",
@@ -784,7 +790,7 @@ export STATUS_UPDATE_INTERVAL=10
         "Smooth sailing"
       ]
     },
-    
+
     "searching": {
       "standard": [
         "Searching the web",
@@ -797,7 +803,7 @@ export STATUS_UPDATE_INTERVAL=10
         "Asking the hive mind"
       ]
     },
-    
+
     "building": {
       "standard": [
         "Building your project",
@@ -816,7 +822,7 @@ export STATUS_UPDATE_INTERVAL=10
         "Assembling digital Legos"
       ]
     },
-    
+
     "error_retry": {
       "standard": [
         "Hit a snag, trying again",
@@ -829,7 +835,7 @@ export STATUS_UPDATE_INTERVAL=10
         "Okay, let's try that again"
       ]
     },
-    
+
     "near_complete": {
       "standard": [
         "Almost there",
@@ -842,7 +848,7 @@ export STATUS_UPDATE_INTERVAL=10
         "Putting the cherry on top"
       ]
     },
-    
+
     "long_wait": {
       "standard": [
         "Still working, shouldn't be long",
@@ -856,7 +862,7 @@ export STATUS_UPDATE_INTERVAL=10
       ]
     }
   },
-  
+
   "tool_specific": {
     "_description": "Override messages for specific tools. Falls back to categories if not defined.",
     "opencode": {
@@ -884,25 +890,25 @@ from pathlib import Path
 
 class StatusPhrases:
     """Dynamic phrase selection for status updates."""
-    
+
     def __init__(self, config_path: str = None):
         if config_path is None:
             config_path = Path(__file__).parent.parent / 'config' / 'status_phrases.json'
-        
+
         self.config = self._load_config(config_path)
         self.settings = self.config.get('settings', {})
         self.categories = self.config.get('categories', {})
         self.tool_specific = self.config.get('tool_specific', {})
-    
+
     def get_phrase(self, category: str, tool_name: str = None, style: str = 'casual') -> str:
         """
         Get a random phrase for the given category.
-        
+
         Args:
             category: 'task_start', 'progress', 'searching', 'building', etc.
             tool_name: Optional tool name for tool-specific overrides
             style: 'casual' or 'detailed'
-        
+
         Returns:
             Random phrase from appropriate pool
         """
@@ -913,28 +919,28 @@ class StatusPhrases:
             key = self._category_to_key(category)
             if key in tool_phrases:
                 return random.choice(tool_phrases[key])
-        
+
         # Fall back to category
         if category not in self.categories:
             return "Working on it"  # Ultimate fallback
-        
+
         cat = self.categories[category]
-        
+
         # Build pool based on settings and style
         pool = list(cat.get('standard', []))
-        
+
         if style == 'detailed' and 'detailed' in cat:
             pool = list(cat['detailed'])  # Replace with detailed
-        
+
         if self.settings.get('humor_enabled') and 'humor' in cat:
             # Add humor phrases with lower weight
             pool.extend(cat['humor'])
-        
+
         if self.settings.get('encouragement') and 'encouragement' in cat:
             pool.extend(cat['encouragement'])
-        
+
         return random.choice(pool) if pool else "Working on it"
-    
+
     def _category_to_key(self, category: str) -> str:
         """Map category to tool-specific key."""
         mapping = {
@@ -946,7 +952,7 @@ class StatusPhrases:
             'near_complete': 'progress'
         }
         return mapping.get(category, 'progress')
-    
+
     def _load_config(self, path: Path) -> dict:
         """Load config, return defaults if missing."""
         try:
@@ -954,7 +960,7 @@ class StatusPhrases:
                 return json.load(f)
         except FileNotFoundError:
             return self._default_config()
-    
+
     def _default_config(self) -> dict:
         """Minimal default if config file missing."""
         return {
@@ -1101,30 +1107,30 @@ STATUS_LLM_MAX_TOKENS=30
 
 class StatusSummarizer:
     """Generate dynamic status summaries using small LLM."""
-    
+
     def __init__(self):
         self.enabled = get_config_value('STATUS_LLM_ENABLED', 'false').lower() == 'true'
         self.provider = get_config_value('STATUS_LLM_PROVIDER', 'openai')
         self.model = get_config_value('STATUS_LLM_MODEL', 'gpt-4o-mini')
         self.max_tokens = get_int('STATUS_LLM_MAX_TOKENS', 30)
-        
+
         # Initialize client based on provider
         self._init_client()
-    
+
     def summarize(self, context: str, tool_name: str = None) -> str:
         """
         Generate a 5-8 word status summary.
-        
+
         Args:
             context: Tool output, logs, or current state
             tool_name: Optional tool name for context
-        
+
         Returns:
             Short summary string for TTS
         """
         if not self.enabled:
             return None  # Caller should use fallback phrases
-        
+
         prompt = f'''Summarize this tool progress in exactly 5-8 words for voice output.
 Be conversational and natural. No technical jargon.
 
@@ -1133,13 +1139,13 @@ Current state:
 {context[:500]}
 
 Summary (5-8 words):'''
-        
+
         try:
             response = self._call_llm(prompt)
             return response.strip().strip('"').strip("'")
         except Exception as e:
             return None  # Use fallback
-    
+
     def _call_llm(self, prompt: str) -> str:
         """Call LLM based on provider."""
         if self.provider == 'openai':
@@ -1172,22 +1178,22 @@ With ~500 token input + ~30 token output per summary:
 def _opencode_status_loop(self, session_id: str):
     """Poll OpenCode session and generate dynamic summaries."""
     summarizer = StatusSummarizer()
-    
+
     while not self._stop_background.is_set():
         time.sleep(self.interval)
-        
+
         # Get latest session state
         session = self._get_opencode_session(session_id)
         if not session:
             continue
-        
+
         # Extract recent activity
         messages = session.get('messages', [])[-3:]
         context = self._format_messages(messages)
-        
+
         # Try LLM summary first
         summary = summarizer.summarize(context, tool_name='opencode')
-        
+
         if summary:
             self._speak(summary)
         else:
@@ -1288,7 +1294,7 @@ STATUS_LLM_MODEL=gpt-4o-mini     # Small/fast model
 STATUS_LLM_ENABLED=false + STATUS_UPDATES_ENABLED=true
   → Uses static phrases from status_phrases.json
 
-STATUS_LLM_ENABLED=true + STATUS_UPDATES_ENABLED=true  
+STATUS_LLM_ENABLED=true + STATUS_UPDATES_ENABLED=true
   → LLM generates natural summaries from tool context
   → Falls back to static phrases if LLM fails
 

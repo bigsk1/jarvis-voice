@@ -67,11 +67,13 @@ Ref: https://docs.x.ai/developers/model-capabilities/images/generation
 
 Determined by `config_loader.py` with this priority:
 
-1. `JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER` env var (set by web UI modal per-request)
+1. `JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER` in a child tool environment (exported from the Web UI's request-local config scope)
 2. `IMAGE_TOOL_PROVIDER` in `config/cloud.env` or `config/local.env`
 3. Fallback: `gemini`
 
-The `JARVIS_OVERRIDE_` mechanism lets the web UI override the default provider for a single request without changing the global config. Set in `chat.py` before spawning the orchestrator subprocess.
+The Web UI keeps the provider in a request-local config scope and exports the
+`JARVIS_OVERRIDE_` form only to child tools. This preserves a single request's
+choice without mutating the long-lived Web process environment.
 
 ## Image-to-image editing
 

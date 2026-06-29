@@ -121,6 +121,10 @@ curl -X POST http://localhost:8880/api/workflows/crypto_market_report/execute \
 }
 ```
 
+`mode` is strictly validated as `cloud` or `local`. Invalid values return
+`422 Unprocessable Entity`, and the workflow executes inside the selected
+mode's request-local config scope.
+
 **Response Fields:**
 
 | Field | Type | Description |

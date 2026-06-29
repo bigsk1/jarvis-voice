@@ -1,5 +1,10 @@
 # Fixes Log - Jarvis Proactive Assistant
 
+> **Historical fix log.** This records earlier implementation changes and is
+> not a current setup or troubleshooting guide. Use [API_OVERVIEW.md](API_OVERVIEW.md)
+> and [TEST_API.md](TEST_API.md) for live commands. This file is an archive
+> candidate retained temporarily for traceability.
+
 ## ✅ manage_intel Subfolder Creation Breaks Ingestion (Latest - Nov 19, 2025)
 
 **Issue**: When creating intel files, the LLM would sometimes create subdirectories (e.g., `bitcoin/price-note.md`), but `ingest_intel` only scans the root level of `jarvis-intel/`, so these files were never ingested into the knowledge base.
@@ -12,13 +17,13 @@ User: "Save Bitcoin price to intel"
 → bitcoin/price-note.md NOT ingested (in subfolder) ❌
 ```
 
-**Root Cause**: 
+**Root Cause**:
 - `manage_intel.py`'s `validate_path()` allowed subdirectories
 - `ingest_intel.py` only scans `jarvis-intel/*.md` and `jarvis-intel/*.txt` (no recursion)
 - Database `source` column stores `intel/FILENAME`, not `intel/FOLDER/FILENAME`
 - System breaks when files are in subfolders
 
-**Fix**: 
+**Fix**:
 Modified `manage_intel.py` to **reject paths with subdirectories**:
 
 ```python
@@ -40,7 +45,7 @@ if '/' in path or '\\' in path:
 **Updated Tool Description**:
 Added to `manage_intel.tool.json`:
 ```
-IMPORTANT: jarvis-intel/ is FLAT - use simple filenames like 
+IMPORTANT: jarvis-intel/ is FLAT - use simple filenames like
 'bitcoin-price-2025-11-19.md', NOT subdirectories like 'bitcoin/price.md'
 ```
 
@@ -48,7 +53,7 @@ IMPORTANT: jarvis-intel/ is FLAT - use simple filenames like
 - `~/jarvis-voice/skills/manage_intel.py` (added subdirectory check in `validate_path()`)
 - `~/jarvis-voice/skills/manage_intel.tool.json` (updated description)
 
-**Result**: 
+**Result**:
 - ✅ LLM will now use flat filenames: `bitcoin-price-2025-11-19.md`
 - ✅ All intel files ingested correctly
 - ✅ Clear error if subfolder path attempted: "Subdirectories not allowed"
@@ -73,13 +78,13 @@ echo '{"action": "create", "path": "bitcoin-price-2025-11-19.md", "content": "te
 
 **Issue**: In multi-turn conversations, the LLM would call the same tool (like `ingest_intel`) multiple times in a row, wasting time and API calls. Example: `ingest_intel` was called 3 times consecutively, each taking 15 seconds.
 
-**Root Cause**: 
+**Root Cause**:
 - Multi-turn loop continues after each successful tool execution
 - LLM router doesn't recognize when a task is COMPLETE after certain tools
 - No programmatic detection of duplicate/redundant tool calls
 - System prompt didn't explicitly warn against repeating the same tool
 
-**Fix**: 
+**Fix**:
 Two-layer solution:
 
 **1. Router Prompt Update** (`orchestrator/router_v2.py`):
@@ -100,7 +105,7 @@ CRITICAL - AVOID REDUNDANT TOOL CALLS:
 - `~/jarvis-voice/orchestrator/router_v2.py` (added redundancy warning)
 - `~/jarvis-voice/orchestrator/orchestrator_v2.py` (added duplicate detection logic)
 
-**Result**: 
+**Result**:
 - ✅ No more duplicate tool calls
 - ✅ `ingest_intel` runs once, then switches to Q&A
 - ✅ Multi-turn loops complete faster
@@ -131,7 +136,7 @@ Total: 15 seconds, no waste!
 
 **Issue**: When using `manage_intel` with `auto_ingest: true`, the tool would timeout after 15 seconds with "Tool manage_intel timed out. Error: Timeout", even though the file was created successfully.
 
-**Root Cause**: 
+**Root Cause**:
 - Orchestrator gives `manage_intel` only **15 seconds** timeout (cloud mode default)
 - `manage_intel` calls `ingest_intel` subprocess with **30 seconds** timeout
 - `ingest_intel` can take up to **60 seconds** for large datasets (embedding generation is slow)
@@ -144,7 +149,7 @@ Orchestrator: manage_intel timeout = 15s ❌ (too short)
         └─> ingest_intel: needs up to 60s for embeddings
 ```
 
-**Fix**: 
+**Fix**:
 Added `manage_intel` to the list of tools with extended timeout in `orchestrator/executor.py`:
 
 ```python
@@ -155,7 +160,7 @@ elif tool_name == "manage_intel":
 **Files Changed**:
 - `~/jarvis-voice/orchestrator/executor.py` (lines 121-122)
 
-**Result**: 
+**Result**:
 - ✅ `manage_intel` with `auto_ingest: true` now completes successfully
 - ✅ File creation + ingestion works in one operation
 - ✅ No more timeout errors for Bitcoin price notes or other intel files
@@ -173,12 +178,12 @@ echo '{"action": "create", "path": "test.md", "content": "Test content", "auto_i
 
 **Issue**: User asked "What was the last conversation we had?" and Jarvis failed with "I need a search query. Error: Missing query parameter. I tried 2 time(s)."
 
-**Root Cause**: 
+**Root Cause**:
 - Router incorrectly chose `search_conversations` (requires query parameter) instead of `get_recent_conversations` (chronological, no query needed)
 - Tool descriptions didn't clearly distinguish TEMPORAL queries (last/recent) from TOPIC queries (search for X)
 - Router prompt had an example that inadvertently taught the wrong behavior
 
-**Fix**: 
+**Fix**:
 Updated three files to clarify tool selection:
 
 **1. Tool Descriptions:**
@@ -203,7 +208,7 @@ Updated three files to clarify tool selection:
 - `~/jarvis-voice/skills/search_conversations.tool.json`
 - `~/jarvis-voice/orchestrator/router_v2.py` (lines 168-175)
 
-**Result**: 
+**Result**:
 - ✅ "What was my last question?" now calls `get_recent_conversations`
 - ✅ "What did I just ask?" calls `get_recent_conversations`
 - ✅ "Did I mention Bitcoin?" correctly calls `search_conversations(query="Bitcoin")`
@@ -217,13 +222,13 @@ Updated three files to clarify tool selection:
 
 **Issue**: When user asked "When is my next reminder?", Jarvis said "no upcoming reminders", but "List my pending reminders" worked correctly. The LLM wasn't recognizing that natural language reminder/alert queries should call their specific tools.
 
-**Root Cause**: 
+**Root Cause**:
 - Router system prompt focused heavily on memory tools (search_memory, semantic_recall)
 - No explicit guidance that reminder/alert queries require their specific tools
 - LLM tried to answer from conversation context instead of querying current state
 - Tool descriptions didn't emphasize "ALWAYS use this tool for ANY reminder-related query"
 
-**Fix**: 
+**Fix**:
 Added explicit routing rules in three places:
 
 **1. Router System Prompt** (`orchestrator/router_v2.py`):
@@ -249,7 +254,7 @@ For questions about REMINDERS, ALERTS, or SERVICE STATUS → ALWAYS call the spe
 - `~/jarvis-voice/skills/list_reminders.tool.json` (strengthened description)
 - `~/jarvis-voice/skills/list_alerts.tool.json` (strengthened description)
 
-**Result**: 
+**Result**:
 - ✅ "When is my next reminder?" now correctly calls `list_reminders`
 - ✅ "Do I have any reminders?" calls `list_reminders`
 - ✅ "Any alerts?" calls `list_alerts`
@@ -257,7 +262,7 @@ For questions about REMINDERS, ALERTS, or SERVICE STATUS → ALWAYS call the spe
 - ✅ LLM now understands these queries need LIVE STATE, not memory
 - ✅ More intelligent routing for natural language variations
 
-**Philosophy**: 
+**Philosophy**:
 A smart AI assistant should map user intent to available tools, not require exact phrasing. The router should be flexible enough to understand that "when is my next reminder?" clearly needs the `list_reminders` tool, even if the user didn't say "list reminders" explicitly.
 
 **Testing**:
@@ -276,18 +281,18 @@ A smart AI assistant should map user intent to available tools, not require exac
 
 **Issue**: Creating reminders with word numbers like "in one hour" or "in thirty minutes" failed with error: `Could not parse time from: one hour`
 
-**Root Cause**: 
+**Root Cause**:
 - The time parser regex only matched numeric digits (`\d+`)
 - Word numbers like "one", "two", "thirty" weren't converted to numeric values
 - User saying "remind me in one hour" would fail
 
-**Fix**: 
+**Fix**:
 Added `normalize_time_words()` function to convert word numbers to digits before parsing:
 
 ```python
 def normalize_time_words(text: str) -> str:
     """Convert word numbers in time expressions to digits.
-    
+
     Examples:
     - "in one hour" -> "in 1 hour"
     - "in thirty minutes" -> "in 30 minutes"
@@ -304,7 +309,7 @@ def normalize_time_words(text: str) -> str:
 - `~/jarvis-voice/skills/create_reminder.py` (added `word_to_number()` and `normalize_time_words()` functions)
 - `~/jarvis-voice/skills/create_reminder.tool.json` (updated description to mention recurring reminders)
 
-**Result**: 
+**Result**:
 - ✅ "Remind me in one hour" now works
 - ✅ "Remind me in thirty minutes" now works
 - ✅ "Remind me in two days" now works
@@ -326,12 +331,12 @@ echo '{"title": "test", "when": "in thirty minutes"}' | python3 skills/create_re
 
 **Issue**: When running `./bin/jarvis-api --local` or `./bin/jarvis-services --local`, the database sync script was not being executed, causing reminders and alerts to not be synced between cloud and local databases.
 
-**Root Cause**: 
+**Root Cause**:
 - `jarvis-api` and `jarvis-services` scripts only ran migration (`migrate-proactive-db.py`) to create tables
 - They never called `sync-memory-db.py` to actually sync data between cloud and local databases
 - This meant reminders/alerts created in cloud mode wouldn't appear in local mode, and vice versa
 
-**Fix**: 
+**Fix**:
 Added database sync logic to both startup scripts:
 
 ```bash
@@ -357,7 +362,7 @@ fi
 - `~/jarvis-voice/bin/jarvis-api` (added lines 62-77)
 - `~/jarvis-voice/bin/jarvis-services` (added lines 161-176)
 
-**Result**: 
+**Result**:
 - ✅ Running `./bin/jarvis-api --local` now syncs cloud → local automatically
 - ✅ Running `./bin/jarvis-api` (cloud mode) syncs local → cloud if local DB exists
 - ✅ Same behavior for `./bin/jarvis-services`
@@ -403,15 +408,15 @@ fi
 
 # Update Docker agent (on remote server)
 cd ~/jarvis-monitor
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 
 # Clear stuck alerts
 curl -X POST http://localhost:8880/api/alerts/acknowledge-all
 ```
 
-**See**: `docs/api/CONTAINER_AUTO_RESOLVE_FIX.md` for full details.
+See [REMOTE_MONITORING.md](REMOTE_MONITORING.md) for current deployment guidance.
 
 ---
 
@@ -442,12 +447,12 @@ curl -X POST http://localhost:8880/api/alerts/acknowledge-all
 
 # Update Docker agent (on remote server)
 cd ~/jarvis-monitor
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 ```
 
-**See**: `docs/api/MONITORING_AGENT_FIXES.md` for full details.
+See [REMOTE_MONITORING.md](REMOTE_MONITORING.md) for current monitoring-agent guidance.
 
 ---
 
@@ -455,7 +460,7 @@ docker-compose up -d
 
 **Issue**: The `long_form` column in `knowledge_base` table was not being created consistently
 
-**Fix**: 
+**Fix**:
 1. Added `long_form TEXT` column to `lib/memory_db.py` schema definition
 2. Updated `bin/sync-memory-db.py` to include `long_form` in sync operations
 
@@ -501,9 +506,9 @@ curl http://localhost:8880/api/status | jq '.mode, .database'
 
 # On remote monitoring servers
 cd ~/jarvis-monitor
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 ```
 
 ### Clear Stuck Alerts
@@ -519,8 +524,4 @@ curl -X POST http://localhost:8880/api/alerts/acknowledge-all
 
 ## Detailed Documentation
 
-- **[Container Auto-Resolve Fix](CONTAINER_AUTO_RESOLVE_FIX.md)** - Complete explanation
-- **[Monitoring Agent Fixes](MONITORING_AGENT_FIXES.md)** - Agent improvements
 - **[Remote Monitoring Guide](REMOTE_MONITORING.md)** - Setup guide
-- **[Integration Summary](INTEGRATION_SUMMARY.md)** - FAQs answered
-

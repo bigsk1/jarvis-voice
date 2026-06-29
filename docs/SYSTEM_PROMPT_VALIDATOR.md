@@ -58,7 +58,7 @@ Find all potential issues in the system prompt:
 
 Output categorizes findings by severity:
 - **CRITICAL** - Will cause failures or wrong behavior
-- **WARNING** - May cause suboptimal behavior  
+- **WARNING** - May cause suboptimal behavior
 - **INFO** - Minor improvements
 
 ### Debug Specific Behavior
@@ -216,6 +216,6 @@ The validator typically catches:
 ## Related Files
 
 - `orchestrator/router_v2.py` - System prompt definition
-- `lib/tool_registry.py` - Tool loading and definitions
+- `lib/tool_schema.py` - Tool registry, loading, and definitions
 - `config/cloud.env` - Ghost tools configuration
 - `logs/validate-system-prompt/` - Validation history

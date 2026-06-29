@@ -1,7 +1,7 @@
 # Workflow Orchestration System
 
-> **Status**: ✅ Implemented  
-> **Purpose**: Structured multi-tool workflow execution without hardcoded Python logic  
+> **Status**: ✅ Implemented
+> **Purpose**: Structured multi-tool workflow execution without hardcoded Python logic
 > **Last Updated**: February 4, 2026
 
 ---
@@ -109,15 +109,15 @@ Create a new file in `data/workflows/` (e.g., `my_workflow.json`):
   "description": "Description shown in WebUI",
   "enabled": true,
   "version": "1.0",
-  
+
   "triggers": {
     "explicit": ["/mycommand"]
   },
-  
+
   "variables": {
     "topic": {"from": "query", "extract": "main_subject"}
   },
-  
+
   "steps": [
     {
       "step": 1,
@@ -135,7 +135,7 @@ Create a new file in `data/workflows/` (e.g., `my_workflow.json`):
       "required": true
     }
   ],
-  
+
   "success_speech": "Workflow complete!",
   "abort_speech": "Workflow failed."
 }
@@ -232,7 +232,7 @@ Restart WebUI, then type `/mycommand topic` in chat. The workflow appears in `/`
 - `url` = `https://bigsk1.com`
 - `topic` = `bigsk1.com`
 
-### Variable Transforms 
+### Variable Transforms
 
 Derive variables from other variables using `transform`:
 
@@ -345,23 +345,23 @@ This workflow demonstrates all key patterns:
   "description": "Fetch a URL, save to stash, and create a canvas summary.",
   "enabled": true,
   "version": "1.0",
-  
+
   "triggers": {
     "explicit": ["/archive"]
   },
-  
+
   "variables": {
     "url": {"from": "query", "extract": "url"},
     "topic": {"from": "query", "extract": "main_subject"}
   },
-  
+
   "tool_defaults": {
     "crawl_url": {
       "stealth": true,
       "wait_for_js": true
     }
   },
-  
+
   "steps": [
     {
       "step": 1,
@@ -421,7 +421,7 @@ This workflow demonstrates all key patterns:
       "description": "Create canvas summary"
     }
   ],
-  
+
   "success_speech": "Article archived. I saved it to stash, added the key points to memory, and created a canvas summary.",
   "abort_speech": "I couldn't archive that page. It may be paywalled or have access restrictions."
 }
@@ -540,20 +540,20 @@ For data-gathering steps (search, crawl, fetch), the LLM must validate output qu
   "step": 3,
   "tool": "crawl_url",
   "for_each": "${search_results.urls}",
-  
+
   "validation": {
     "type": "llm",
     "prompt": "Does this content contain useful information about ${topic}? Not just navigation, paywall, or error messages?",
     "min_content_length": 200,
     "reject_patterns": ["subscribe to continue", "enable javascript", "captcha", "access denied"]
   },
-  
+
   "retry": {
     "max_attempts": 3,
     "strategy": "next_url",
     "fallback_tools": ["mcp_fetch_fetch", "screenshot_url"]
   },
-  
+
   "on_all_fail": "skip",
   "required_success_count": 2
 }
@@ -572,11 +572,11 @@ For data-gathering steps (search, crawl, fetch), the LLM must validate output qu
 ```python
 def quick_content_check(content: str) -> bool:
     """Fast validation before LLM check."""
-    
+
     # Too short = garbage
     if len(content.strip()) < 200:
         return False
-    
+
     # Known garbage patterns
     garbage_patterns = [
         "subscribe to continue",
@@ -591,13 +591,13 @@ def quick_content_check(content: str) -> bool:
     content_lower = content.lower()
     if any(p in content_lower for p in garbage_patterns):
         return False
-    
+
     # Mostly links/nav (high link-to-text ratio)
     link_count = content.count("](")  # Markdown links
     word_count = len(content.split())
     if word_count > 0 and link_count / word_count > 0.3:
         return False  # Probably nav/menu
-    
+
     return True
 ```
 
@@ -699,7 +699,7 @@ Workflows support an `enabled` flag for easy toggling without deletion:
   "name": "Deep Research (Conservative)"
 },
 {
-  "id": "deep_research_v2", 
+  "id": "deep_research_v2",
   "enabled": true,
   "name": "Deep Research (Aggressive)"
 }
@@ -800,7 +800,7 @@ Tools like `crawl_url` have many parameters (stealth, wait_for_js, css_selector,
       "exclude_tags": ["nav", "footer", "aside"]
     }
   },
-  
+
   "steps": [
     {
       "step": 3,
@@ -817,7 +817,7 @@ Tools like `crawl_url` have many parameters (stealth, wait_for_js, css_selector,
 **Resolution for this step:**
 ```
 stealth: true          ← from tool_defaults
-wait_for_js: true      ← from tool_defaults  
+wait_for_js: true      ← from tool_defaults
 exclude_tags: [...]    ← from tool_defaults
 css_selector: ".main-content"  ← from step params (override)
 url: "https://..."     ← from for_each variable
@@ -876,17 +876,17 @@ Create `data/workflows/` folder with JSON workflow definitions:
   "description": "Comprehensive research with stash artifacts, memory, and canvas output",
   "enabled": true,
   "version": "1.0",
-  
+
   "triggers": {
     "patterns": ["research about", "deep dive on", "comprehensive analysis of"],
     "keywords": ["research", "investigate", "deep dive"],
     "explicit": ["/research"]
   },
-  
+
   "variables": {
     "topic": {"from": "query", "extract": "main subject"}
   },
-  
+
   "tool_defaults": {
     "crawl_url": {
       "stealth": true,
@@ -897,7 +897,7 @@ Create `data/workflows/` folder with JSON workflow definitions:
       "tags": ["research", "auto"]
     }
   },
-  
+
   "steps": [
     {
       "step": 1,
@@ -974,15 +974,15 @@ Create `data/workflows/` folder with JSON workflow definitions:
       "required": true
     }
   ],
-  
+
   "llm_controls": [
     "url_selection",
-    "memory_content", 
+    "memory_content",
     "canvas_synthesis"
   ],
-  
+
   "fallback_prompt": "deep_research.md",
-  
+
   "success_speech": "Research complete. Canvas created with ${articles.length} sources.",
   "partial_speech": "Research partially complete. Some sources couldn't be retrieved."
 }
@@ -1003,7 +1003,7 @@ Extend existing command format with tool sequencing:
   "description": "Deep research workflow",
   "icon": "🔬",
   "instruction": "Follow the tool_chain sequence for comprehensive research.",
-  
+
   "tool_chain": [
     {"tool": "stash", "action": "open_space", "note": "Create research bucket"},
     {"tool": "brave_search", "note": "Find sources"},
@@ -1012,7 +1012,7 @@ Extend existing command format with tool sequencing:
     {"tool": "remember", "optional": true, "note": "Save key findings"},
     {"tool": "canvas", "note": "Create synthesis"}
   ],
-  
+
   "chain_mode": "guided",
   "force_tool": null,
   "exclude_tools": [],
@@ -1123,7 +1123,7 @@ Scenario: Research workflow v1 works, intelligence learns it
 You modify to v2: stash → search → crawl → pdf_read → canvas
 
     Intelligence still has v1 pattern with high confidence!
-    LLM sees: "For research, use stash→search→crawl→canvas" 
+    LLM sees: "For research, use stash→search→crawl→canvas"
     LLM ignores your new pdf_read step because learned pattern disagrees
 ```
 
@@ -1226,7 +1226,7 @@ Build the full system (no shortcuts):
 
 ```
 FREEFORM (current):
-  LLM sees: 75+ tools, RAG results, insights, history, system prompt
+  LLM sees: selected Tool RAG schemas, insights, history, system prompt
   LLM decides: Which tool to call
   Problem: Too many competing signals
 
@@ -1240,7 +1240,7 @@ PIPELINE (proposed):
 
 Intelligence layer can still:
 - ✅ **Record** workflow executions and success rate
-- ✅ **Suggest** new workflow candidates from repeated patterns  
+- ✅ **Suggest** new workflow candidates from repeated patterns
 - ❌ **NOT influence** active workflow execution (no learned bias)
 
 ### Implementation Priority
@@ -1273,15 +1273,15 @@ Named output  → ${space_id}, ${articles}
 Step 1: stash.open_space
   Input:  labels=["research", "quantum computing"]
   Output: space_id="space_20260121_abc123"
-  
+
 Step 2: brave_search
   Input:  query="quantum computing breakthroughs 2026"
   Output: search_results={urls: [...], snippets: [...]}
-  
+
 Step 3: crawl_url (for_each)
   Input:  url=${search_results.urls[0]}
   Output: articles[0]={content: "...", title: "..."}
-  
+
 Step 4: stash.save (for_each)
   Input:  space_id=${space_id}, content=${articles[0].content}
   Output: file_ref="space_20260121_abc123/article_1.txt"
@@ -1381,42 +1381,42 @@ data/
 ```python
 class WorkflowLoader:
     """Load and match workflow definitions."""
-    
+
     def __init__(self, workflows_dir: str):
         self.workflows_dir = Path(workflows_dir)
         self.workflows = {}
         self._load_workflows()
-    
+
     def _load_workflows(self):
         """Load all enabled workflow JSON files."""
         for path in self.workflows_dir.glob("*.json"):
             workflow = json.load(path.open())
             if workflow.get("enabled", True):  # Default enabled
                 self.workflows[workflow["id"]] = workflow
-    
+
     def match(self, query: str) -> Optional[Dict]:
         """Match query against workflow triggers."""
         query_lower = query.lower()
         for workflow in self.workflows.values():
             triggers = workflow.get("triggers", {})
-            
+
             # Check explicit commands (e.g., "/research")
             for explicit in triggers.get("explicit", []):
                 if query_lower.startswith(explicit):
                     return workflow
-            
+
             # Check patterns (e.g., "research about")
             for pattern in triggers.get("patterns", []):
                 if pattern.lower() in query_lower:
                     return workflow
-            
+
             # Check keywords
             keywords = triggers.get("keywords", [])
             if keywords and all(kw.lower() in query_lower for kw in keywords[:2]):
                 return workflow
-        
+
         return None
-    
+
     def reload(self):
         """Hot-reload workflows (for development)."""
         self.workflows = {}
@@ -1428,17 +1428,17 @@ class WorkflowLoader:
 ```python
 class PipelineExecutor:
     """Execute workflow pipelines step-by-step."""
-    
+
     def __init__(self, mode: str, executor: ToolExecutor, provider):
         self.mode = mode
         self.executor = executor  # Reuse existing ToolExecutor
         self.provider = provider  # LLM for parameter filling
-    
-    def execute(self, workflow: Dict, query: str, 
+
+    def execute(self, workflow: Dict, query: str,
                 status_callback=None) -> Dict[str, Any]:
         """
         Execute a workflow pipeline.
-        
+
         Returns same format as Orchestrator.process() for compatibility.
         """
         variables = {"query": query, "topic": self._extract_topic(query)}
@@ -1446,30 +1446,30 @@ class PipelineExecutor:
         steps = workflow.get("steps", [])
         results = []
         tools_used = []
-        
+
         for step in steps:
             step_num = step.get("step", len(results) + 1)
             tool_name = step["tool"]
-            
+
             # Status update
             if status_callback:
                 status_callback(f"Step {step_num}: {tool_name}")
-            
+
             # Resolve parameters (layered: step > tool_defaults > llm)
             params = self._resolve_params(
                 step, tool_defaults.get(tool_name, {}), variables
             )
-            
+
             # Handle for_each loops
             if "for_each" in step:
                 items = self._resolve_variable(step["for_each"], variables)
                 step_results = []
                 success_count = 0
-                
+
                 for item in items:
                     item_params = {**params, **self._item_to_params(item, step)}
                     result = self.executor.execute(tool_name, item_params)
-                    
+
                     # Validate result
                     if self._validate_result(result, step, variables):
                         step_results.append(result)
@@ -1477,30 +1477,30 @@ class PipelineExecutor:
                     elif step.get("retry"):
                         # Retry logic
                         pass
-                
+
                 # Check required_success_count
                 required = step.get("required_success_count", 1)
                 if success_count < required:
                     if step.get("on_all_fail") == "abort_with_message":
                         return self._abort_response(workflow, step, results)
-                
+
                 variables[step.get("output_var", f"step{step_num}")] = step_results
             else:
                 # Single execution
                 result = self.executor.execute(tool_name, params)
-                
+
                 if not result.get("ok") and step.get("required", True):
                     # Required step failed
                     if step.get("on_all_fail") == "abort_with_message":
                         return self._abort_response(workflow, step, results)
-                
+
                 # Store output
                 if step.get("output_var"):
                     variables[step["output_var"]] = result.get("data", {})
-            
+
             results.append({"step": step_num, "tool": tool_name, "result": result})
             tools_used.append(tool_name)
-        
+
         # Build final response
         return {
             "ok": True,
@@ -1508,51 +1508,51 @@ class PipelineExecutor:
             "data": {"workflow_id": workflow["id"], "results": results},
             "tools_used": tools_used
         }
-    
+
     def _resolve_params(self, step, tool_defaults, variables) -> Dict:
         """Resolve parameters: step > tool_defaults > llm_fills."""
         params = {**tool_defaults}  # Start with defaults
-        
+
         # Override with step params
         for key, value in step.get("params", {}).items():
             if isinstance(value, str) and value.startswith("${"):
                 params[key] = self._resolve_variable(value, variables)
             else:
                 params[key] = value
-        
+
         # LLM fills remaining (if llm_hints provided)
         if step.get("llm_hints"):
             llm_params = self._llm_fill_params(step, variables)
             for key, value in llm_params.items():
                 if key not in params:  # Don't override explicit params
                     params[key] = value
-        
+
         return params
-    
+
     def _validate_result(self, result, step, variables) -> bool:
         """Validate step result using configured validation."""
         if not step.get("validation"):
             return result.get("ok", False)
-        
+
         validation = step["validation"]
         content = result.get("data", {}).get("content", "")
-        
+
         # Heuristic checks
         if validation.get("type") in ["heuristic", "hybrid"]:
             heuristic = validation.get("heuristic", validation)
-            
+
             if len(content) < heuristic.get("min_length", 0):
                 return False
-            
+
             for pattern in heuristic.get("reject_patterns", []):
                 if pattern.lower() in content.lower():
                     return False
-        
+
         # LLM validation
         if validation.get("type") in ["llm", "hybrid"] and validation.get("llm_prompt"):
             # Call LLM to validate
             pass
-        
+
         return True
 ```
 
@@ -1566,7 +1566,7 @@ from pipeline_executor import PipelineExecutor
 class Orchestrator:
     def __init__(self, mode='cloud', ...):
         # ... existing init ...
-        
+
         # NEW: Initialize workflow system
         workflows_dir = self.project_root / "data" / "workflows"
         if workflows_dir.exists():
@@ -1577,21 +1577,21 @@ class Orchestrator:
         else:
             self.workflow_loader = None
             self.pipeline_executor = None
-    
+
     def process(self, transcript: str, ...) -> Dict[str, Any]:
         # ... existing setup code ...
-        
+
         # NEW: Check for workflow match BEFORE freeform loop
         if self.workflow_loader:
             workflow = self.workflow_loader.match(transcript)
             if workflow:
                 # Execute via pipeline (bypasses freeform routing)
                 return self.pipeline_executor.execute(
-                    workflow, 
+                    workflow,
                     transcript,
                     status_callback=self.status_updater.update
                 )
-        
+
         # ... existing freeform loop (unchanged) ...
 ```
 
@@ -1730,18 +1730,18 @@ crawl_url → stash.save → stash.remember → canvas
 1. **Branching**: How to handle conditional paths (if/else based on content)?
    - Option A: LLM decides at branch points
    - Option B: Explicit conditions in workflow JSON
-   
+
 2. **User Override**: Can user interrupt mid-workflow?
    - "Stop researching, I found what I need"
    - "Skip the canvas, just tell me the summary"
-   
+
 3. **Nested Workflows**: Can one workflow call another?
    - E.g., "research" workflow calls "web_archive" sub-workflow
-   
+
 4. **Cost/Time Budgets**: Should workflows have limits?
    - Max LLM calls for validation
    - Max execution time before abort
-   
+
 5. **Parallel Steps**: Can independent steps run concurrently?
    - E.g., crawl 3 URLs simultaneously
 
@@ -1753,7 +1753,7 @@ crawl_url → stash.save → stash.remember → canvas
 - [TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md) - How tools are invoked
 - [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md) - Learning from experiences
 - [STASH_SYSTEM.md](STASH_SYSTEM.md) - Artifact storage for workflows
-- [phone/MULTI_TOOL_WORKFLOWS.md](phone/MULTI_TOOL_WORKFLOWS.md) - Phone call workflow examples
+- [tools/phone/MULTI_TOOL_WORKFLOWS.md](tools/phone/MULTI_TOOL_WORKFLOWS.md) - Phone call workflow examples
 
 ---
 
@@ -1782,7 +1782,7 @@ crawl_url → stash.save → stash.remember → canvas
 - [x] Step-defined `extract` rules support
 - [x] Nested path resolution for variables (e.g., `${article.url}`)
 - [x] URL extraction from query (handles bare domains like `bigsk1.com`)
-- [x] **Variable transforms** - Derive variables from others (e.g., `domain` from URL) 
+- [x] **Variable transforms** - Derive variables from others (e.g., `domain` from URL)
 
 ### Phase 3: WebUI Integration ✅ COMPLETE
 - [x] Import WorkflowLoader and PipelineExecutor in `orchestrator_v2.py`
@@ -1809,7 +1809,7 @@ crawl_url → stash.save → stash.remember → canvas
 - [ ] Add more workflow recipes - ssh_tool have ideas for creating and fully controlling remote vps2, start to finish app on vps2.. x amount of steps stop summarize, continue X amount of steps stop summarize, need way to pause during workflow for summary and not rerun workflow from start. (15 tool calls limit via .env can increase or lower as needed)
 - [ ] Add workflow execution logging to intelligence layer
 - [ ] Document in main README
-- [ ] Create a workflow builder - like we have a tool builder, ./bin/workflow_builder --cloud "create a multi tool workflow for getting current bitcoin and tesla prices and create an investment strategy based on public data put on canvas"
+- [ ] Create a workflow builder (proposed command: `bin/workflow-builder`) similar to the existing tool builder
 
 ---
 

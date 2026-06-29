@@ -72,6 +72,11 @@ Full-featured query endpoint with all options.
 
 Unknown JSON fields are not part of the query contract. Image bytes/base64 should not be sent here; use an image URL/file/stash ref in `query`, or use the Web UI upload flow.
 
+`mode` is strictly validated. Any value other than `"cloud"` or `"local"`
+returns FastAPI's `422 Unprocessable Entity` response; Jarvis does not guess or
+fall back to the process startup mode. Each request executes inside its own
+mode-specific config scope.
+
 **Response:**
 ```json
 {
@@ -118,7 +123,7 @@ GET version for easy testing in browser or simple webhooks.
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `q` | string | - | Your question (URL encoded) |
-| `mode` | string | "cloud" | LLM mode |
+| `mode` | string | "cloud" | Exactly `cloud` or `local` |
 
 **Example:**
 ```bash

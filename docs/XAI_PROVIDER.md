@@ -125,7 +125,7 @@ Unlike Anthropic (requires explicit `cache_control`), xAI caching is **automatic
 - Structured outputs
 - Works perfectly with Jarvis's tool registry
 
-### 5. **Built-in Server-Side Tools (Agent Tools API)** 
+### 5. **Built-in Server-Side Tools (Agent Tools API)**
 
 Enable Grok's native tools via `XAI_SEARCH=true`:
 
@@ -202,7 +202,7 @@ Response uses:
 
 ### 6. **Image Generation**
 
-- see [video/README.md](video/README.md)
+- see [tools/video/README.md](tools/video/README.md)
 
 ### 7. **Video Generation** ✅ NEW
 
@@ -250,11 +250,11 @@ XAI_VIDEO_MODEL="grok-imagine-video"
 
 **Requirements**: xai-sdk >= 1.6.1 (video support added in 1.6.0)
 
-**Alternative**: Gemini Veo 3.1 is also supported with native audio, higher resolution (up to 4k), but limited duration (4/6/8s). See [Video Generation Docs](video/README.md) for comparison.
+**Alternative**: Gemini Veo 3.1 is also supported with native audio, higher resolution (up to 4k), but limited duration (4/6/8s). See [Video Generation Docs](tools/video/README.md) for comparison.
 
 **Storage**: Videos saved to `data/generated_videos/` and indexed in stash.
 
-See [Video Generation Docs](video/README.md) for full details.
+See [Video Generation Docs](tools/video/README.md) for full details.
 
 ---
 
@@ -583,7 +583,7 @@ Assuming 90% cache hit rate after first query:
    # Change from:
    LLM_PROVIDER="anthropic"
    ANTHROPIC_MODEL="claude-sonnet-4-5-20250929"
-   
+
    # To:
    LLM_PROVIDER="xai"
    XAI_MODEL="grok-4.3"
@@ -609,7 +609,7 @@ Assuming 90% cache hit rate after first query:
    # Change from:
    LLM_PROVIDER="openai"
    OPENAI_MODEL="gpt-5.1-chat-latest"
-   
+
    # To:
    LLM_PROVIDER="xai"
    XAI_MODEL="grok-4.3"
@@ -799,14 +799,14 @@ Completion guard, feedback, intelligence, logs, web conversation history should 
 
 xAI Grok is a strong cloud provider for Jarvis:
 
-✅ **1M-2M context window options**  
-✅ **Competitive pricing**  
-✅ **Automatic caching** (90% discount)  
-✅ **Configurable reasoning on Grok 4.3**  
-✅ **Native function calling**  
-✅ **Built-in live search** (XAI_SEARCH=true)   
+✅ **1M-2M context window options**
+✅ **Competitive pricing**
+✅ **Automatic caching** (90% discount)
+✅ **Configurable reasoning on Grok 4.3**
+✅ **Native function calling**
+✅ **Built-in live search** (XAI_SEARCH=true)
 ✅ **Native TTS with optional expressive speech tags**
-✅ **Drop-in replacement** (no code changes)  
+✅ **Drop-in replacement** (no code changes)
 
 **Monthly Savings**: $60-80 vs Claude, $25-35 vs GPT (for typical usage)
 

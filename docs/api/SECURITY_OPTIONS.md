@@ -165,7 +165,7 @@ ingress:
   - hostname: jarvis-api.yourdomain.com
     path: /api/*
     service: http://localhost:8880
-  
+
   # Block everything else
   - service: http_status:404
 ```
@@ -230,22 +230,22 @@ sudo certbot certonly --standalone -d jarvis.yourdomain.com
 server {
     listen 443 ssl;
     server_name jarvis.yourdomain.com;
-    
+
     ssl_certificate /etc/letsencrypt/live/jarvis.yourdomain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/jarvis.yourdomain.com/privkey.pem;
-    
+
     # Only allow /api/* endpoints
     location /api/ {
         proxy_pass http://localhost:8880;
-        
+
         # Rate limiting
         limit_req zone=api_limit burst=10;
-        
+
         # IP whitelist (optional)
         allow 1.2.3.4;  # Your remote server IP
         deny all;
     }
-    
+
     # Block everything else
     location / {
         return 404;
@@ -360,6 +360,10 @@ async def create_alert(...):
 
 ### 4. Request Size Limits
 
+The following is an optional hardening example, not the current `api/server.py`
+default. Jarvis currently serves its OpenAPI schema at `/openapi.json` and its
+custom Swagger UI at `/docs` and `/docs/dark`.
+
 ```python
 # api/server.py
 app = FastAPI(
@@ -446,4 +450,3 @@ curl http://[TAILSCALE_IP]:8880/api/health
 5. WAF/firewall
 
 **Best practice:** Use a private network (Tailscale/WireGuard) and skip all the complexity! 🎯
-

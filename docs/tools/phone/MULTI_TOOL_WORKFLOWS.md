@@ -5,7 +5,7 @@ The real power of Jarvis is chaining multiple tools together to accomplish compl
 ## The Vision
 
 ```
-"Hey Jarvis, call john as Samantha and ask about the flight tomorrow, 
+"Hey Jarvis, call john as Samantha and ask about the flight tomorrow,
 then create a reminder with the flight info"
 ```
 
@@ -36,12 +36,12 @@ Jarvis Flow:
 ### 🎬 Movie Plans → Group Coordination
 
 ```
-You: "Call Andrew and Boss, ask if they want to see Gladiator II tonight, 
+You: "Call Andrew and Boss, ask if they want to see Gladiator II tonight,
       then book the 9pm showing if they agree"
 
 Jarvis Flow:
 1. phone_call → Call Andrew, ask about movie
-2. phone_call → Call Boss, ask about movie  
+2. phone_call → Call Boss, ask about movie
 3. [Results saved to Memory]
 4. If both agree:
    - send_email → Send confirmation to both
@@ -98,11 +98,11 @@ The orchestrator can call multiple tools in sequence:
 # Turn 1: Make the call
 phone_call(recipient="john", task="Get flight details", persona="female")
 
-# Turn 2: Create reminder from results  
+# Turn 2: Create reminder from results
 create_reminder(message="Pick up john - Flight arrives 3:45pm PDX", time="3:15pm tomorrow")
 
 # Turn 3: Confirm to user
-"Done! I called john - his flight UA123 arrives at 3:45pm tomorrow. 
+"Done! I called john - his flight UA123 arrives at 3:45pm tomorrow.
  I've set a reminder for 3:15pm to pick him up."
 ```
 
@@ -139,7 +139,7 @@ Jarvis: [updates reminder] "Updated! I'll remind you at 2:45pm"
 ### Smart Follow-ups
 After a call completes, Jarvis could suggest next actions:
 ```
-Jarvis: "Call complete. john's flight is at 3:45pm. 
+Jarvis: "Call complete. john's flight is at 3:45pm.
         Would you like me to set a reminder to pick him up?"
 ```
 
@@ -166,13 +166,13 @@ Jarvis: [initiates 3-way call or sequential calls with summary]
 ### Voicemail Follow-up
 ```
 [john doesn't answer, voicemail detected]
-Jarvis: "john didn't answer. Want me to send a text instead, 
+Jarvis: "john didn't answer. Want me to send a text instead,
         or try again in 30 minutes?"
 ```
 
 ### Call Chains → Call Back with Results
 ```
-You: "Call Andrew about the movie, then call Boss to see if he's in, 
+You: "Call Andrew about the movie, then call Boss to see if he's in,
       then call me back with the results"
 
 Jarvis Flow:
@@ -180,7 +180,7 @@ Jarvis Flow:
    → Andrew: "Yeah, 9pm works"
 2. phone_call → Boss: "Andrew's in for 9pm, you?"
    → Boss: "I'm in, let's do it"
-3. phone_call → YOU: "Hey Boss, both Andrew and Boss confirmed 
+3. phone_call → YOU: "Hey Boss, both Andrew and Boss confirmed
    for Gladiator II at 9pm. Should I set a reminder?"
 ```
 
@@ -209,12 +209,11 @@ For call chains to work smoothly:
 ## Related Docs
 
 - [Phone Calls Setup](PHONE_CALLS.md) - Basic phone tool configuration
-- [Reminders](../REMINDERS.md) - Reminder system with Google Calendar sync
-- [Memory System](../MEMORY_SYSTEM.md) - How Jarvis remembers things
-- [Canvas](../CANVAS.md) - Persistent note storage
+- [Reminders](../../api/REMINDER_SYSTEM.md) - Reminder system with Google Calendar sync
+- [Memory System](../../MEMORY_SYSTEM.md) - How Jarvis remembers things
+- [Canvas](../../CANVAS_SYSTEM.md) - Persistent note storage
 
 ---
 
-*This is the vision: Jarvis as a true AI assistant that can handle complex, 
+*This is the vision: Jarvis as a true AI assistant that can handle complex,
 multi-step real-world tasks through natural conversation.*
-

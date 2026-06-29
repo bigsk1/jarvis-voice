@@ -1,6 +1,6 @@
 # Jarvis Web UI
 
-> **Status**: MVP Complete (v2.12)  
+> **Status**: Implemented and actively maintained
 > **Last Updated**: April 21, 2026
 
 ---
@@ -19,8 +19,8 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 
 **This is NOT a replacement** - it's a new interface alongside:
 - Terminal (`orchestrator_v2.py`) - Dev/testing
-- Voice loop (`jarvis`) - Hands-free interaction  
-- TUI (`bin/tui`) - Terminal UI
+- Voice loop (`jarvis`) - Hands-free interaction
+- Dashboard TUI (`bin/jarvis-dashboard`) - Terminal control surface
 - **Web UI (`jarvis-web`)** - Full-featured chat interface ✅
 
 ![jarvis-web](images/jarvis-web.jpg)
@@ -290,7 +290,7 @@ Repo root (shared with core Jarvis — outside jarvis-web/):
 | GET | `/api/tools/<name>` | Get tool details |
 | GET | `/api/settings` | Get settings for UI |
 | PUT | `/api/settings/web` | Update web overrides |
-| POST | `/api/settings/reset` | Reset to cloud.env defaults |
+| POST | `/api/settings/reset` | Reset the explicitly selected mode to its env defaults (`{"mode":"cloud"}` or `{"mode":"local"}`) |
 | GET | `/api/settings/blocked-tools` | Get blocked tools list |
 | PUT | `/api/settings/blocked-tools` | Update blocked tools |
 | GET | `/api/conversations` | List saved conversations |
@@ -470,19 +470,27 @@ socket.on('feedback:complete', {
 
 > **Note**: Settings are per-mode! Cloud and local have separate overrides. Thresholds are read-only from the active .env file.
 
-### JARVIS_OVERRIDE_ Mechanism (How Provider Overrides Actually Work)
+### Request Scopes and `JARVIS_OVERRIDE_` Child Exports
 
-Web UI settings for image/video providers use a `JARVIS_OVERRIDE_` prefix to survive tool subprocess config loading.
+Web UI settings for image/video providers live in a request-local config scope.
+When Jarvis launches a child tool, the scoped values are exported to that
+child with a `JARVIS_OVERRIDE_` prefix so the tool can safely reload its env
+file without losing the request choice.
 
 **The Problem:**
-Tool scripts (e.g., `generate_image.py`) call `load_config()` in their `main()`, which re-reads `cloud.env` and overwrites `os.environ` — blowing away any override we set before launching the subprocess.
+Child tool scripts (for example `generate_image.py`) call `load_config()` in
+their own process. An ordinary unprefixed provider value would be replaced by
+the selected env file during that reload, so scoped values need an
+authoritative child-export form.
 
 **The Solution:**
 ```
-chat.py sets:     JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER=gemini
-                  JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER=gemini
+chat.py scope:    IMAGE_TOOL_PROVIDER=gemini
+                  VIDEO_TOOL_PROVIDER=gemini
         ↓
-executor.py:      os.environ.copy() → subprocess inherits both vars
+executor.py:      export_config_environment() builds child-only env
+                  JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER=gemini
+                  JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER=gemini
         ↓
 tool main():      load_config() → skips IMAGE_TOOL_PROVIDER because
                   JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER exists
@@ -492,8 +500,8 @@ tool reads:       get_config_value('IMAGE_TOOL_PROVIDER')
 ```
 
 **Key Files:**
-- `lib/config_loader.py` — `load_config()` skips keys with active overrides; `get_config_value()` checks `JARVIS_OVERRIDE_{key}` first
-- `jarvis-web/server/sockets/chat.py` — Sets/clears `JARVIS_OVERRIDE_*` env vars per chat request based on `web_config.json`
+- `lib/config_loader.py` — owns request-local `config_scope()` and exports scoped values as `JARVIS_OVERRIDE_{key}` only for child processes
+- `jarvis-web/server/sockets/chat.py` — builds per-request override values from `web_config.json` without mutating the Web process environment
 
 **Supported Overrides:**
 
@@ -503,8 +511,8 @@ tool reads:       get_config_value('IMAGE_TOOL_PROVIDER')
 | Video Provider | `VIDEO_TOOL_PROVIDER` | `JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER` | xai, gemini |
 
 **Adding New Overrides:**
-1. Add the `JARVIS_OVERRIDE_{KEY}` set/clear logic to `chat.py`
-2. `get_config_value()` will automatically check the override prefix — no tool changes needed
+1. Add the setting-to-config-key mapping to the scoped override builder in `chat.py`.
+2. Read it through `get_config_value()` in-process; child tools receive the exported `JARVIS_OVERRIDE_{KEY}` automatically.
 
 ### Blocked Tools
 
@@ -552,10 +560,8 @@ curl -X PUT http://localhost:5001/api/settings/blocked-tools \
 # From project root
 ./bin/jarvis-web
 
-# Or directly
-cd jarvis-voice
-source ~/jarvis-venv/bin/activate
-python jarvis-web/bin/jarvis-web
+# The launcher also accepts an explicit startup mode
+./bin/jarvis-web local
 ```
 
 ### Access
@@ -638,7 +644,7 @@ TTS provider is determined by the current mode's `.env` file:
 def text_to_speech():
     mode = request.json.get('mode')  # Client sends current mode
     load_jarvis_config(mode)
-    
+
     provider = get_jarvis_setting('TTS_PROVIDER')
     if provider == 'kokoro':
         # Local Kokoro: call KOKORO_TTS_URL directly (OpenAI-compatible)
@@ -716,7 +722,7 @@ STT provider is determined by the current mode's `.env` file:
 def speech_to_text():
     mode = request.form.get('mode')
     load_jarvis_config(mode)
-    
+
     provider = get_jarvis_setting('STT_PROVIDER')
     if provider == 'faster-whisper':
         # Local: use stt-local.py script
@@ -1097,9 +1103,9 @@ LLM enhances with Jarvis context:
   - Native search capabilities
   - Best practices
        ↓
-Returns: "What's the latest Bitcoin news and price action? 
-         Include the current price, significant price movements 
-         in the last 24 hours, and the top 3-5 major news 
+Returns: "What's the latest Bitcoin news and price action?
+         Include the current price, significant price movements
+         in the last 24 hours, and the top 3-5 major news
          headlines. Summarize key analyst predictions."
        ↓
 Replaces input field text
@@ -1356,13 +1362,13 @@ Random feedback can also be sampled by the orchestrator when `FEEDBACK_RANDOM_EN
 - [x] Browser notifications - Notifications API integration
 - [x] Notification panel - View/acknowledge alerts & reminders
 - [x] Local audio fix - Now serves from audio/local/tts too
-- [x] **Audio playback controls** - Speaker button with pause/resume/stop 
-- [x] **Progress animation** - Visual pulse during playback 
-- [x] **Smart auto-hide** - 10s after audio ends, instant on new message 
-- [x] **ElevenLabs music generation** - `generate_music` tool with stash integration 
-- [x] **Music playback in web UI** - Generated music plays inline 
-- [x] **@prompts system** - Context-first injection for LLM guidance 
-- [x] **deep_memory_search tool** - Multi-source search across all data 
+- [x] **Audio playback controls** - Speaker button with pause/resume/stop
+- [x] **Progress animation** - Visual pulse during playback
+- [x] **Smart auto-hide** - 10s after audio ends, instant on new message
+- [x] **ElevenLabs music generation** - `generate_music` tool with stash integration
+- [x] **Music playback in web UI** - Generated music plays inline
+- [x] **@prompts system** - Context-first injection for LLM guidance
+- [x] **deep_memory_search tool** - Multi-source search across all data
 - [x] **Image upload** - Drag-drop/paste/click, auto-resize to 1024px
 - [x] **Mode-aware vision** - Cloud=Grok/Claude, Local=llava
 - [x] **Expand details button** - Show full LLM response, tool results
@@ -1373,36 +1379,36 @@ Random feedback can also be sampled by the orchestrator when `FEEDBACK_RANDOM_EN
 - [x] **analyze_image tool** - Analyze URLs, files, stash refs with SSRF protection
 - [x] **generate_image memory fix** - Now saves source + metadata for semantic recall
 - [x] **Safe URL downloads** - Uses stash_helper's safe_download + sanitize_filename
-- [x] **Slash commands** - `/canvas`, `/search`, `/recall`, `/detailed`, etc. 
-- [x] **@prompts system** - `@research`, `@quick`, `@compare`, etc. 
+- [x] **Slash commands** - `/canvas`, `/search`, `/recall`, `/detailed`, etc.
+- [x] **@prompts system** - `@research`, `@quick`, `@compare`, etc.
 - [x] **#tool hints** - Soft per-request tool preferences with chips, full autocomplete, and ambient suggestions
 - [x] **Command autocomplete** - Type `/`, `@`, or standalone `#` for suggestions
-- [x] **✨ Enhance with AI** - Transform rough input into optimal prompts 
-- [x] **Tool exclusion** - Commands can exclude tools to force native search 
+- [x] **✨ Enhance with AI** - Transform rough input into optimal prompts
+- [x] **Tool exclusion** - Commands can exclude tools to force native search
 - [x] **Canvas command** - `/canvas` researches + saves to Canvas viewer
-- [x] **Conversation quick filter** - Filter by title in sidebar 
-- [x] **Deep search modal** - Search all message content with highlighted snippets 
-- [x] **Export conversations** - JSON and Markdown formats 
+- [x] **Conversation quick filter** - Filter by title in sidebar
+- [x] **Deep search modal** - Search all message content with highlighted snippets
+- [x] **Export conversations** - JSON and Markdown formats
 - [x] **Import conversations** - Restore from JSON files
-- [x] **Server Logs Panel** - Real-time streaming at bottom of UI 
-- [x] **LLM + Tool logs** - Parsed, color-coded, expandable details 
-- [x] **Log source toggles** - Enable/disable LLM, Tools, OpenCode, Feedback 
-- [x] **Resizable log panel** - Drag to resize, state persisted in localStorage 
+- [x] **Server Logs Panel** - Real-time streaming at bottom of UI
+- [x] **LLM + Tool logs** - Parsed, color-coded, expandable details
+- [x] **Log source toggles** - Enable/disable LLM, Tools, OpenCode, Feedback
+- [x] **Resizable log panel** - Drag to resize, state persisted in localStorage
 - [x] **`/logs` browser** - Read-only log explorer with folder search, YAML-style JSONL rendering, markdown viewing, and mobile drill-down
-- [x] **Manual Feedback Analysis** - 📊 button + `--feedback` inline trigger 
-- [x] **Feedback Card** - Purple tool card with rating, summary, issues, tool ratings 
-- [x] **Feedback Toast** - 6-second notification with rating summary 
-- [x] **Always-log manual feedback** - Manual triggers always saved to logs 
-- [x] **🔄 File Conversion button** - Convert images/video/audio between formats 
-- [x] **Conversion modal** - Format selector with preview and descriptions 
-- [x] **Stash upload endpoint** - `/api/stash/upload` for direct stash uploads 
-- [x] **Inline converted media** - Images/video/audio display with ⬇️ Download button 
-- [x] **SVG/BMP/ICO/FLAC support** - Extended stash MIME types 
-- [x] **Advanced convert options** - Resize, quality, bitrate, FPS, etc. in collapsible panel 
-- [x] **Video provider dropdown** - Switch video generation between xAI Grok and Google Gemini Veo or Openai Sora on-the-fly 
-- [x] **Image provider xAI option** - Added xAI Grok as image provider alongside Gemini and OpenAI 
-- [x] **JARVIS_OVERRIDE_ mechanism** - Provider overrides survive tool subprocess `load_config()` via prefixed env vars 
-- [x] **Image gallery provider badges** - Shows xAI/Gemini/OpenAI badges on generated images in Canvas gallery 
+- [x] **Manual Feedback Analysis** - 📊 button + `--feedback` inline trigger
+- [x] **Feedback Card** - Purple tool card with rating, summary, issues, tool ratings
+- [x] **Feedback Toast** - 6-second notification with rating summary
+- [x] **Always-log manual feedback** - Manual triggers always saved to logs
+- [x] **🔄 File Conversion button** - Convert images/video/audio between formats
+- [x] **Conversion modal** - Format selector with preview and descriptions
+- [x] **Stash upload endpoint** - `/api/stash/upload` for direct stash uploads
+- [x] **Inline converted media** - Images/video/audio display with ⬇️ Download button
+- [x] **SVG/BMP/ICO/FLAC support** - Extended stash MIME types
+- [x] **Advanced convert options** - Resize, quality, bitrate, FPS, etc. in collapsible panel
+- [x] **Video provider dropdown** - Switch video generation between xAI Grok and Google Gemini Veo or Openai Sora on-the-fly
+- [x] **Image provider xAI option** - Added xAI Grok as image provider alongside Gemini and OpenAI
+- [x] **JARVIS_OVERRIDE_ mechanism** - Provider overrides survive tool subprocess `load_config()` via prefixed env vars
+- [x] **Image gallery provider badges** - Shows xAI/Gemini/OpenAI badges on generated images in Canvas gallery
 
 ---
 
@@ -1508,8 +1514,8 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 - **Auto-listen after response**: Automatically start recording after TTS finishes
 
 ### Proactive Integration
-- ✅ **Alert notifications**: Browser notification when alert triggers (DONE) -doesnt work! 
-- ✅ **Reminder popup**: Browser notification when reminder fires (DONE) - doesnt work! 
+- ✅ **Alert notifications**: Browser notification when alert triggers (DONE) -doesnt work!
+- ✅ **Reminder popup**: Browser notification when reminder fires (DONE) - doesnt work!
 - **Follow-up prompts**: "Your task is ready, want to review?"
 - **Health status**: Show API/services health in header
 
@@ -1552,7 +1558,7 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 
 ### What's Shared (Same Code Path)
 - `orchestrator/orchestrator_v2.py` - Core processing
-- `orchestrator/router_v2.py` - LLM routing  
+- `orchestrator/router_v2.py` - LLM routing
 - `lib/tool_schema.py` - Tool RAG
 - `lib/memory_db.py` - Memory/semantic search
 - `lib/intelligence.py` - Self-learning insights
@@ -1566,29 +1572,29 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 
 ---
 
-*Created: December 2025*  
-*MVP Complete: December 17, 2025*  
-*v1.1: Settings improvements, dynamic LLM switching - December 17, 2025*  
-*v1.2: Mode-aware TTS, per-mode settings, clean mode switching - December 17, 2025*  
-*v1.3: Push-to-talk STT with mode-aware providers (OpenAI/faster-whisper) - December 17, 2025*  
-*v1.4: Proactive notifications (alerts/reminders from jarvis-api) - December 17, 2025*  
-*v1.5: Image upload with vision analysis, expand details, config loading fixes - December 17, 2025*  
-*v1.6: Auto-stash uploads, analyze_image tool, SSRF-protected downloads - December 18, 2025*  
-*v1.7: Slash commands, @prompts, ✨ Enhance with AI, Canvas command - December 19, 2025*  
-*v1.8: Conversation search, export (JSON/Markdown), import - December 19, 2025*  
-*v1.9: Server Logs Panel - Real-time LLM + Tool streaming - December 19, 2025*  
-*v2.0: Audio playback controls, ElevenLabs music generation, deep_memory_search tool - December 31, 2025*  
-*v2.1: Manual Feedback Analysis - 📊 toggle, --feedback inline, feedback cards - January 23, 2026*  
-*v2.2: 🔄 File Conversion - convert button, format modal, inline media display with download - February 5, 2026*  
-*v2.3: Provider switching - Video provider dropdown, xAI image option, JARVIS_OVERRIDE_ mechanism, gallery provider badges - February 6, 2026*  
-*v2.4: OpenAI Sora - Third video provider with native audio, image-to-video, remix support - February 9, 2026*  
-*v2.5: AI Config response-style overrides - Per-mode `JARVIS_RESPONSE_STYLE`, `JARVIS_QA_WORD_LIMIT`, and `JARVIS_MULTI_TURN_WORD_LIMIT` with live prompt/runtime alignment - March 29, 2026*  
-*v2.6: Completion Guard - inline completion card, one-pass manual repair loop, tool-aware exclusions, repair tickets, and export metadata - March 30, 2026*  
-*v2.7: Completion Guard auto mode - background evaluator, threshold override, persisted accept state, and intelligence-layer outcome tracking - March 30, 2026*  
-*v2.8: Completion Guard learning model - repair cancel support, structured learning on the original experience, and corrected-path reflection context - March 30, 2026*  
-*v2.9: Completion Guard tighten-only path, visible repair delta-gating, evaluator/provider split, and provider-error formatter fallback - April 2, 2026*  
-*v2.10: Completion Guard eval provider/model overrides, cloud/local Ollama model separation in AI Config, and Ollama cloud auto-eval JSON compatibility fixes - April 3, 2026*  
-*v2.11: Duplicate-tool recovery status, explicit large-result truncation metadata, and retry-state-preserving tool-card behavior - April 10, 2026*  
+*Created: December 2025*
+*MVP Complete: December 17, 2025*
+*v1.1: Settings improvements, dynamic LLM switching - December 17, 2025*
+*v1.2: Mode-aware TTS, per-mode settings, clean mode switching - December 17, 2025*
+*v1.3: Push-to-talk STT with mode-aware providers (OpenAI/faster-whisper) - December 17, 2025*
+*v1.4: Proactive notifications (alerts/reminders from jarvis-api) - December 17, 2025*
+*v1.5: Image upload with vision analysis, expand details, config loading fixes - December 17, 2025*
+*v1.6: Auto-stash uploads, analyze_image tool, SSRF-protected downloads - December 18, 2025*
+*v1.7: Slash commands, @prompts, ✨ Enhance with AI, Canvas command - December 19, 2025*
+*v1.8: Conversation search, export (JSON/Markdown), import - December 19, 2025*
+*v1.9: Server Logs Panel - Real-time LLM + Tool streaming - December 19, 2025*
+*v2.0: Audio playback controls, ElevenLabs music generation, deep_memory_search tool - December 31, 2025*
+*v2.1: Manual Feedback Analysis - 📊 toggle, --feedback inline, feedback cards - January 23, 2026*
+*v2.2: 🔄 File Conversion - convert button, format modal, inline media display with download - February 5, 2026*
+*v2.3: Provider switching - Video provider dropdown, xAI image option, JARVIS_OVERRIDE_ mechanism, gallery provider badges - February 6, 2026*
+*v2.4: OpenAI Sora - Third video provider with native audio, image-to-video, remix support - February 9, 2026*
+*v2.5: AI Config response-style overrides - Per-mode `JARVIS_RESPONSE_STYLE`, `JARVIS_QA_WORD_LIMIT`, and `JARVIS_MULTI_TURN_WORD_LIMIT` with live prompt/runtime alignment - March 29, 2026*
+*v2.6: Completion Guard - inline completion card, one-pass manual repair loop, tool-aware exclusions, repair tickets, and export metadata - March 30, 2026*
+*v2.7: Completion Guard auto mode - background evaluator, threshold override, persisted accept state, and intelligence-layer outcome tracking - March 30, 2026*
+*v2.8: Completion Guard learning model - repair cancel support, structured learning on the original experience, and corrected-path reflection context - March 30, 2026*
+*v2.9: Completion Guard tighten-only path, visible repair delta-gating, evaluator/provider split, and provider-error formatter fallback - April 2, 2026*
+*v2.10: Completion Guard eval provider/model overrides, cloud/local Ollama model separation in AI Config, and Ollama cloud auto-eval JSON compatibility fixes - April 3, 2026*
+*v2.11: Duplicate-tool recovery status, explicit large-result truncation metadata, and retry-state-preserving tool-card behavior - April 10, 2026*
 *v2.12: Dedicated `/logs` browser with auth protection, folder search, YAML-style JSONL rendering, markdown viewing, and mobile drill-down - April 12, 2026*
 *v2.13: Completion Guard manual countdown, expired/superseded neutral settlement, and random-feedback coordination docs - April 17, 2026*
 *v2.14: `#tool` hints for soft per-request tool preference, full enabled-tool autocomplete, server validation, and ✨ Enhance preservation - April 20, 2026*

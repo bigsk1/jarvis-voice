@@ -116,12 +116,12 @@ def _discover_tools(self):
     for tool_file in self.skills_dir.glob("*.tool.json"):
         with open(tool_file, 'r') as f:
             tool_config = json.load(f)
-        
+
         # Check if tool is enabled (defaults to True)
         if not tool_config.get('enabled', True):
             print(f"⊝ Skipping {tool_config.get('name')} (disabled)")
             continue
-        
+
         schema = ToolSchema.from_json_file(str(tool_file))
         self.tools[schema.name] = schema
 ```
@@ -136,10 +136,10 @@ def _discover_tools(self):
 
 ### No Hardcoded Dependencies
 
-✅ No tool names in code (dynamically discovered)  
-✅ No broken imports if tool disabled  
-✅ System prompts mention tools as examples only  
-✅ Safe to add/remove tools anytime  
+✅ No tool names in code (dynamically discovered)
+✅ No broken imports if tool disabled
+✅ System prompts mention tools as examples only
+✅ Safe to add/remove tools anytime
 
 ## Token Count Impact
 
@@ -325,7 +325,7 @@ Automatically disable unused tools after 7 days:
 
 ## Tool Roadmap & Brainstorm
 
-### Current Coverage (75+ Tools)
+### Current Coverage (78 Tool Manifests)
 
 #### Local Tools by Category
 
@@ -345,7 +345,12 @@ Automatically disable unused tools after 7 days:
 | **Auto-Tools** | docker_control, network_tools, system_monitor, text_summarizer, status_recap, generate_password | 6 |
 | **Utility** | calculator | 1 |
 
-**Total: 75+ tools** (~68 main + ~9 auto-tools in `skills/auto-tools/`)
+**Total at last verification: 78 `*.tool.json` manifests.** Profile overlays and
+per-mode availability can reduce the active set. Recount with:
+
+```bash
+find skills -name '*.tool.json' | wc -l
+```
 
 #### MCP Servers (4 configured)
 
@@ -425,7 +430,7 @@ touch skills/weather.py skills/weather.tool.json
 ./bin/manage-tools.py template weather
 ```
 
-**Pros:** Fast, no network latency, full control  
+**Pros:** Fast, no network latency, full control
 **Cons:** Must implement yourself, maintain code
 
 #### Option 2: MCP Server (Docker/npx)
@@ -446,12 +451,12 @@ Best for: Complex tools, community-maintained
 
 **Available MCP Servers:**
 - `@modelcontextprotocol/server-github` - GitHub integration
-- `@modelcontextprotocol/server-slack` - Slack integration  
+- `@modelcontextprotocol/server-slack` - Slack integration
 - `@modelcontextprotocol/server-google-maps` - Maps/directions
 - `@modelcontextprotocol/server-puppeteer` - Browser automation
 - See: https://github.com/modelcontextprotocol/servers
 
-**Pros:** Pre-built, tested, community support  
+**Pros:** Pre-built, tested, community support
 **Cons:** Docker/npx overhead, external dependency
 
 #### Option 3: n8n Workflow
@@ -556,7 +561,7 @@ entries = [{'title': e.title, 'link': e.link} for e in feed.entries[:10]]
 # GitHub (issues, PRs, repos)
 npx -y @modelcontextprotocol/server-github
 
-# Slack (messages, channels)  
+# Slack (messages, channels)
 npx -y @modelcontextprotocol/server-slack
 
 # Google Maps (directions, places)
@@ -566,7 +571,7 @@ npx -y @modelcontextprotocol/server-google-maps
 
 ---
 
-## Playwright MCP Server (Browser Automation) 
+## Playwright MCP Server (Browser Automation)
 
 [Playwright MCP Server](https://github.com/microsoft/playwright-mcp)
 

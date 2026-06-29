@@ -87,11 +87,10 @@ Examples:
 - `config/mcp-servers.json` - MCP server configuration
 - `lib/tool_schema.py` - Tool discovery and parsing (see `get_mcp_info()`)
 - `lib/mcp_client.py` - MCP client implementation
-- `docs/MCP_REGRESSION_FIX.md` - Recent regression analysis
+- `docs/mcp/MCP_REGRESSION_FIX.md` - Recent regression analysis
 
 ### References
 
 - Original issue: Testing showed local models confused by hyphenated names
 - Architecture decision: Enforce snake_case for local model compatibility
 - Implementation: `get_mcp_info()` dynamically handles any snake_case name with underscores
-

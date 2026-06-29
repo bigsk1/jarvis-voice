@@ -1,6 +1,6 @@
 # Documentation Status
 
-Last updated: 2026-05-25
+Last updated: 2026-06-29
 
 This file tracks doc health and maintenance. For the live index, see [README.md](README.md).
 
@@ -8,7 +8,10 @@ This file tracks doc health and maintenance. For the live index, see [README.md]
 
 ## Current state
 
-**Indexed docs:** 181 markdown files under `docs/` (via QMD `jarvis-docs` collection; includes personal dirs on disk if present).
+**Tracked docs:** 168 Markdown files under `docs/`: 145 active-tree docs and
+23 files under `docs/archive/`. The QMD collection can also include ignored
+personal directories present on a particular machine, so its count is not the
+tracked-repository count.
 
 **Excluded from QMD index (optional / local-only on disk):**
 
@@ -60,13 +63,57 @@ QMD does not respect `.gitignore`. After `qmd update`, verify private dirs were 
 
 ---
 
-## Known stale areas (Pass 5+)
+## Pass 5 completed (2026-06-29)
+
+- Documented mode as a config/data boundary separate from provider choice.
+- Updated README, quick start, install, workflow, Tool Calling, Docker, and
+  Windows/macOS guidance for Ollama local models vs cloud-tagged Ollama Cloud.
+- Documented strict `cloud` / `local` API validation, task-local scheduled-task
+  execution scopes, truthful run provider/model metadata, and mode-explicit Web
+  settings reset.
+- Removed active-tree broken relative links and repaired the self-contained
+  Crawl4AI snapshot's references to pages that were never vendored.
+- Replaced removed commands (`prompt-history`, `jarvis-maintenance`,
+  `rebuild-fts-index.py`, `start-opencode`, and others) with current entrypoints
+  or explicit proposed-command labels.
+- Updated current version references to v2.53.0 and current tool-manifest count
+  to 78 where an exact count is useful.
+- Marked unimplemented OAuth material and superseded implementation plans so
+  design text cannot be mistaken for live setup instructions.
+
+Safe validation performed without touching databases, logs, audio, or runtime
+stores: relative-link scan, referenced-command/path scan, mode/provider wording
+scan, Compose config rendering, shell/Python syntax checks, and the project test
+collection boundary.
+
+## Archive candidates
+
+These files are now clearly labelled but should move to `docs/archive/` in a
+dedicated cleanup commit if preserving their history remains useful:
+
+| File | Reason |
+|------|--------|
+| `api/FIXES_LOG.md` | One-time API fix log; live commands are elsewhere |
+| `service/FIXES.md` | November 2025 fix log with obsolete mode/manual-patch details |
+| `OAuth/README.md` | Unimplemented provider-auth research proposal |
+| `XAI_NATIVE_CONTINUATION_PLAN.md` | Implemented design record; live guide is `XAI_PROVIDER.md` |
+| `OPENAI_RESPONSES_ADAPTER_PLAN.md` | Implemented design record; live guide is `OPENAI_PROVIDER.md` |
+| `STATUS_UPDATES_DESIGN.md` | Implemented design history; operational values live in env examples |
+| `SEQUENTIAL_THINKING_ARCHITECTURE.md` | Explicit unimplemented future design |
+| `docker/DOCKER_PLANNING.md` | Original design record; live guide is `docker/README.md` |
+
+Roadmaps such as `FUTURE_ENHANCEMENTS.md`, `ADVANCED_AI_TECHNIQUES.md`,
+`JARVIS_PLAYGROUND.md`, `Psychological-Profile-Ideas.md`, and
+`swarm/BRAINSTORM.md` remain in the active tree because they are intentionally
+future-facing rather than superseded operational guides.
+
+## Remaining maintenance areas
 
 | Area | Action |
 |------|--------|
-| Remaining phase/milestone docs in active tree | Archive if historical only |
-| Per-tool READMEs under `docs/tools/` | Spot-check vs `skills/*.tool.json` |
-| Install guide service list | Verify against `bin/start` and systemd units |
+| Third-party snapshots | Refresh intentionally when their pinned version changes; do not silently present them as current upstream docs |
+| Exact model pricing/context claims | Re-check provider references before each release because these values drift independently of Jarvis |
+| Per-tool examples | Re-check when the corresponding `skills/*.tool.json` contract changes |
 
 ---
 
@@ -88,7 +135,7 @@ Archived docs may stay QMD-indexed for search but appear in README only with `(h
 2. After `qmd update`, verify private dirs not re-indexed if you exclude them
 3. Run `qmd embed` when adding new public docs
 4. Phase/milestone write-ups → `archive/` with header pointing to live guide
-5. Tool count: `find skills -name '*.tool.json' | wc -l` (~77)
+5. Tool count: `find skills -name '*.tool.json' | wc -l` (78 on 2026-06-29)
 6. Models: `lib/model_catalog.py` (cloud), `local.env.example` (local)
 
 ---

@@ -159,7 +159,7 @@ Before enabling any remote MCP server, audit it:
 ./bin/test-mcp --discover | grep dangerous_keywords
 ```
 
-See: `docs/MCP_SECURITY_AUDIT.md`
+See: `docs/mcp/MCP_SECURITY_AUDIT.md`
 
 ## Environment Variable Substitution
 
@@ -212,5 +212,4 @@ Accept: application/json, text/event-stream
 
 - [MCP Specification](https://spec.modelcontextprotocol.io/)
 - [MCP for Beginners - HTTP Streaming](https://github.com/microsoft/mcp-for-beginners/blob/main/03-GettingStarted/06-http-streaming/README.md)
-- `docs/MCP_QUICKSTART.md` - General MCP setup guide
-
+- `docs/mcp/MCP_QUICKSTART.md` - General MCP setup guide

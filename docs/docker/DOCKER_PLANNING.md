@@ -186,7 +186,11 @@ extra_hosts:
   - "host.docker.internal:host-gateway"
 ```
 
-Cloud mode ignores Ollama for the main LLM but still benefits from **both memory DBs** being initialized (see below).
+Cloud mode may use xAI, Anthropic, OpenAI, or **Ollama Cloud**. When
+`LLM_PROVIDER=ollama` in `config/cloud.env`, use a signed-in daemon reachable
+from the container and set a cloud-tagged `OLLAMA_CLOUD_MODEL`. Normal local
+Ollama models remain the supported default for local mode. See
+[../ollama/README.md](../ollama/README.md).
 
 ---
 
@@ -201,16 +205,23 @@ data/jarvis_memory_local.db  → local mode (Ollama embeddings)
 
 Startup sync keeps them aligned when you switch modes. See [DUAL_DATABASE_SYSTEM.md](../DUAL_DATABASE_SYSTEM.md).
 
-**Docker implication:** On first boot, run **both** tool and memory sync paths even if you only plan to use cloud (or only local):
+**Docker implication:** sync only the modes you intend to use. Compose defaults
+`JARVIS_SYNC_MODES` to the selected `JARVIS_MODE`; set it to `"cloud local"`
+when both databases should be prepared:
 
 ```bash
 ./bin/sync-tools.py cloud
 ./bin/sync-tools.py local
 ```
 
-The API and `jarvis-services` entrypoints already perform much of this on startup when run natively; the Docker entrypoint should do the same **once** before serving traffic. You may only *use* one mode day-to-day, but both DBs should exist so mode switches and cross-sync do not surprise you.
+The Docker entrypoint performs the selected sync once before serving traffic.
+A one-mode installation needs only its selected env file and database. Prepare
+both configs/DBs only when you intend to switch modes or synchronize both.
 
-Treat **cloud.env and local.env as a pair** — mount both, seed both from examples on first run, set `JARVIS_TOOL_PROFILE` in whichever file matches your active mode (or set the same profile in both).
+Compose mounts the full `config/` directory read-only but validates only the
+file selected by root `.env` `JARVIS_MODE`. The Docker tool profile comes from
+root `.env` `JARVIS_DOCKER_TOOL_PROFILE` and is injected as an authoritative
+runtime override.
 
 **Docker venv note:** `sync-tools.py` refuses to run outside the expected Jarvis virtual environment so bad fallback embeddings are not written by accident. In the image, set:
 
@@ -538,7 +549,7 @@ services:
     # Do not use ./bin/jarvis-services unchanged as PID 1: it daemonizes with nohup
     # and exits. Use a Docker foreground wrapper, split each daemon into its own
     # service, or run a supervisor.
-    command: ["./bin/docker-services"]
+    command: ["services"]  # handled by docker/entrypoint.sh
     user: "${JARVIS_DOCKER_UID:-1000}:${JARVIS_DOCKER_GID:-1000}"
     networks: [jarvis-net]
     depends_on: [jarvis-api]

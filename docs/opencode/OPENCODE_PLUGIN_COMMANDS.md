@@ -23,7 +23,7 @@ curl -s http://localhost:4096/config | jq '.plugin'
 
 ### Method 3: Check if OpenCode is Running
 ```bash
-systemctl status opencode-jarvis.service
+sudo systemctl status opencode-jarvis.service
 ```
 
 ---
@@ -37,7 +37,7 @@ When you add/modify/remove plugins:
 sudo systemctl restart opencode-jarvis.service
 
 # Check status
-systemctl status opencode-jarvis.service
+sudo systemctl status opencode-jarvis.service
 
 # Verify plugin loaded
 curl -s http://localhost:4096/config | jq -r '.plugin[]'
@@ -71,7 +71,7 @@ tail -20 ~/jarvis-voice/logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 tail -f ~/jarvis-voice/logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ```
 
-**Note**: Plugin `console.log()` messages go to systemd journal, not JSONL logs.  
+**Note**: Plugin `console.log()` messages go to systemd journal, not JSONL logs.
 JSONL logs are for OpenCode's internal events (session_start, message_sent, etc).
 
 ---
@@ -151,7 +151,7 @@ sudo systemctl restart opencode-jarvis.service
 
 Plugins load alphabetically by filename:
 - `00-*` = Safety/protection (load first)
-- `10-*` = Core functionality  
+- `10-*` = Core functionality
 - `20-*` = Enhancements
 - `99-*` = Debug/development
 
@@ -209,7 +209,7 @@ curl -s http://localhost:4096/config | jq '.plugin'
 **4. Restart service**:
 ```bash
 sudo systemctl restart opencode-jarvis.service
-systemctl status opencode-jarvis.service
+sudo systemctl status opencode-jarvis.service
 ```
 
 ### Plugin Seems Inactive?
@@ -233,10 +233,10 @@ Should get blocking error from plugin. If operation proceeds, plugin isn't worki
 
 ## 📊 Current Status
 
-**Plugin**: `00-workspace-protection.js`  
-**Status**: ✅ Loaded and active  
-**Service**: `opencode-jarvis.service` (systemd)  
-**Port**: 4096  
+**Plugin**: `00-workspace-protection.js`
+**Status**: ✅ Loaded and active
+**Service**: `opencode-jarvis.service` (systemd)
+**Port**: 4096
 **Config Endpoint**: `http://localhost:4096/config`
 
 **Verify**:
@@ -246,6 +246,5 @@ curl -s http://localhost:4096/config | jq -r '.plugin[]'
 
 ---
 
-**Last Updated**: November 15, 2025  
+**Last Updated**: November 15, 2025
 **Branch**: `opencode-plugins`
-

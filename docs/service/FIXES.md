@@ -1,5 +1,12 @@
 # Fixes Applied
 
+> **Historical fix log (November 2025).** Commands, mode variables, and manual
+> patch suggestions below describe the state at that time and are not the
+> current operator guide. Use [README.md](README.md),
+> [../EMBEDDING_HEALTH_CHECKS.md](../EMBEDDING_HEALTH_CHECKS.md), and
+> [../DUAL_DATABASE_SYSTEM.md](../DUAL_DATABASE_SYSTEM.md) for current behavior.
+> This file is an archive candidate retained temporarily for traceability.
+
 ## ✅ Monitoring Agent Fixes (Latest - Nov 18, 2025)
 
 **Issues**:
@@ -31,12 +38,12 @@ pkill -f "self_healing_daemon"
 
 # Update Docker agent (on remote server):
 cd ~/jarvis-monitor
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 ```
 
-**See**: `docs/api/MONITORING_AGENT_FIXES.md` for full details.
+See `docs/api/REMOTE_MONITORING.md` for the current remote-agent guide.
 
 ---
 
@@ -49,7 +56,7 @@ docker-compose up -d
 
 **Also**: The sync script wasn't syncing the `long_form` column between databases.
 
-**Fix**: 
+**Fix**:
 1. Added `long_form TEXT` column to `lib/memory_db.py` schema definition
 2. Updated `bin/sync-memory-db.py` to include `long_form` in sync operations
 
@@ -187,4 +194,3 @@ Want me to add this?
 
 **Optional:**
 - Auto-sync on API startup (can add if you want)
-

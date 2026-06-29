@@ -1,8 +1,8 @@
 # Status Recap Tool
 
-> **Version:** 1.4  
-> **Created:** January 2026  
-> **Type:** Auto-generated Tool (enhanced)  
+> **Version:** 1.4
+> **Created:** January 2026
+> **Type:** Auto-generated Tool (enhanced)
 > **Location:** `skills/auto-tools/status_recap.py`
 
 A comprehensive status briefing tool that aggregates data from multiple Jarvis subsystems into a unified report.
@@ -164,7 +164,7 @@ The `stock_symbols` parameter accepts:
 
 Concise summary for voice output:
 ```
-"Good morning. It's 72°F and partly cloudy. Bitcoin $95,000 (+3.2%), Solana $145 (+1.5%). 
+"Good morning. It's 72°F and partly cloudy. Bitcoin $95,000 (+3.2%), Solana $145 (+1.5%).
 TSLA $438.57 (-0.9%), Gold $4,608 (-0.3%). No alerts. 2 upcoming reminders. Full details on canvas."
 ```
 
@@ -500,7 +500,7 @@ change = d.get('change_24h_percent', 0)
 
 **Cause:** LLM not triggering native search.
 
-**Solution:** 
+**Solution:**
 1. Ensure `ANTHROPIC_SEARCH=true` or `XAI_SEARCH=true` in `cloud.env`
 2. Orchestrator must detect `news_requested: true` and add hint
 3. Check `orchestrator_v2.py` for the injection logic
@@ -535,10 +535,10 @@ ls -la data/canvas/
 
 ## Related Documentation
 
-- [Canvas System](../CANVAS_SYSTEM.md) - Canvas integration
-- [Stash System](../STASH_SYSTEM.md) - Stash storage
-- [Tool Builder](../TOOL_BUILDER.md) - Auto-generating tools
-- [@status_recap Prompt](../../jarvis-web/data/prompts/status_recap.md) - Web UI prompt
+- [Canvas System](../../CANVAS_SYSTEM.md) - Canvas integration
+- [Stash System](../../STASH_SYSTEM.md) - Stash storage
+- [Tool Builder](../../TOOL_BUILDER.md) - Auto-generating tools
+- [@status_recap Prompt](../../../jarvis-web/data/prompts/status_recap.md) - Web UI prompt
 
 ---
 

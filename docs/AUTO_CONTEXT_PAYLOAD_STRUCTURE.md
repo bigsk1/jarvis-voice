@@ -40,7 +40,7 @@ This document shows **exactly** what gets sent to the LLM when auto-context is e
 ┌─────────────────────────────────────────────────────────┐
 │ 6. LLM Processes:                                       │
 │    - System Prompt (with auto-context instructions)    │
-│    - Tool Definitions (all 75+ tools)                   │
+│    - Tool Definitions (selected Tool RAG set)           │
 │    - Enhanced Transcript (with context)                 │
 └─────────────────────────────────────────────────────────┘
                         ↓
@@ -234,7 +234,7 @@ When the LLM receives this, it sees:
    - **Auto-context instructions** (NEW!)
    - Voice output formatting rules
 
-2. **Tool Definitions** (75+ tools):
+2. **Tool Definitions** (selected Tool RAG set):
    - JSON schema for each tool
    - When to use each tool
    - Parameter requirements
@@ -276,7 +276,7 @@ def process(self, transcript: str, ...):
         enhanced_transcript = self._build_conversation_context(transcript)
     else:
         enhanced_transcript = transcript
-    
+
     # Route with enhanced transcript
     route = self.router.route(enhanced_transcript)
     ...
@@ -325,7 +325,7 @@ AUTO_CONTEXT_MINUTES=10
 
 **What Gets Sent:**
 1. ✅ System prompt (with auto-context instructions)
-2. ✅ Tool definitions (75+ tools)
+2. ✅ Tool definitions (selected Tool RAG set)
 3. ✅ **Enhanced transcript** with:
    - Last 3 conversations (configurable)
    - User queries and Jarvis responses

@@ -117,11 +117,6 @@ EFFICIENCY RULES:
 
 ---
 
-
-```
-
----
-
 ## Testing Checklist (Before Marking Complete)
 
 - [ ] Ask: "What are the top 3 movies in Hillsboro?"
@@ -139,5 +134,4 @@ EFFICIENCY RULES:
   - Should not just say "complexity limit reached"
 
 ---
-
 

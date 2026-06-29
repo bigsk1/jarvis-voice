@@ -66,7 +66,7 @@ docs/
 ✅ Background services (3 daemons)
 ✅ Docker monitoring agent (remote servers)
 ✅ URL-based auto-resolve (web services)
-✅ Agent-based auto-resolve (containers, services) 
+✅ Agent-based auto-resolve (containers, services)
 ✅ TTS notifications with specific item names
 ✅ Voice commands ("clear all alerts")
 ✅ 10+ ready-to-use code examples
@@ -191,7 +191,7 @@ curl -X POST http://localhost:8880/api/alerts \
 ```bash
 # On remote server
 cd ~/jarvis-monitor
-docker-compose up -d
+docker compose up -d
 ```
 
 ---

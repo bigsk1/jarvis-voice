@@ -266,8 +266,8 @@ Jarvis can also manage files via the `manage_intel` tool:
 ### Search Memory
 
 ```bash
-./bin/jarvis-memory search "ollama"
-./bin/jarvis-memory search "192.168"
+./bin/memory search "ollama"
+./bin/memory search "192.168"
 ```
 
 ### Check Ingested Files

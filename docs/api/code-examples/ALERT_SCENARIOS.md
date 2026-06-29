@@ -35,7 +35,7 @@ Comprehensive examples for different alerting scenarios with Jarvis.
 **Deploy**:
 ```bash
 cd ~/jarvis-monitor
-docker-compose up -d
+docker compose up -d
 ```
 
 **Best for**:
@@ -307,17 +307,17 @@ from flask import Flask, request, jsonify
 @app.route('/webhook', methods=['POST'])
 def handle_webhook():
     data = request.json
-    
+
     # Extract info
     event_type = data.get('type')
-    
+
     # Send to Jarvis
     requests.post(JARVIS_API, json={
         "title": f"Event: {event_type}",
         "source": "my-service",
         "severity": "medium"
     })
-    
+
     return jsonify({"ok": True})
 ```
 

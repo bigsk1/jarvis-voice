@@ -268,7 +268,7 @@ Browse all generated videos at `http://localhost:8890/video-gallery`:
 
 ## API Endpoints
 
-See [API Documentation](../api/GENERATED_VIDEOS.md) for full endpoint reference.
+See [API Documentation](../../api/GENERATED_VIDEOS.md) for full endpoint reference.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|

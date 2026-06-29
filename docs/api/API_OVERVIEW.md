@@ -523,7 +523,7 @@ POST /api/intelligence/reflect?batch_size=5
 # Processes pending reflections and creates insights
 
 # Evaluate a query against learned insights
-POST /api/intelligence/evaluate
+GET /api/intelligence/evaluate
 Body: {"query": "What's the Bitcoin price?"}
 # Returns: relevant insights and tool biases
 

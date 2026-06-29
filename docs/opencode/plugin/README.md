@@ -9,7 +9,7 @@ This directory contains OpenCode plugins that enforce safety and enhance capabil
 ## Installed Plugins
 
 ### 🛡️ `00-workspace-protection.js`
-**Status**: ✅ Active  
+**Status**: ✅ Active
 **Purpose**: Enforce strict workspace boundaries for OpenCode
 
 **Safety Rules**:
@@ -58,8 +58,8 @@ Plugins are loaded alphabetically. Use prefixes to control order:
 To verify the workspace protection plugin is working:
 
 ```bash
-# Start OpenCode server
-cd ~/jarvis-voice && ./bin/start-opencode
+# Start the service installed by bin/install-opencode-service.sh
+sudo systemctl start opencode-jarvis.service
 
 # Test via Jarvis (should be blocked)
 ./jarvis-local
@@ -130,18 +130,18 @@ Create a new `.js` file in this directory:
 
 export const MyPlugin = async ({ project, client, $, directory, worktree }) => {
   console.log("🔌 My Plugin loaded");
-  
+
   return {
     // Hook into tool execution
     "tool.execute.before": async (input, output) => {
       // Validate or modify tool calls
     },
-    
+
     // Hook into events
     "event": async ({ event }) => {
       // React to session events
     },
-    
+
     // Add custom tools
     "tool": {
       my_custom_tool: {
@@ -165,7 +165,7 @@ See: https://opencode.ai/docs/plugins/
 **Plugin not loading?**
 - Check OpenCode logs: `tail -f ~/jarvis-voice/logs/opencode/opencode-*.jsonl`
 - Verify syntax: `node --check ~/.config/opencode/plugin/00-workspace-protection.js`
-- Restart OpenCode server: `pkill -f opencode && ./bin/start-opencode`
+- Restart OpenCode server: `sudo systemctl restart opencode-jarvis.service`
 
 **Plugin blocking valid operations?**
 - Check the error message for specific reason
@@ -180,7 +180,7 @@ See: https://opencode.ai/docs/plugins/
 
 ## Future Plugins (Ideas)
 
-See: `~/jarvis-voice/docs/OPENCODE_PLUGIN_IDEAS.md`
+See: `~/jarvis-voice/docs/opencode/OPENCODE_PLUGIN_IDEAS.md`
 
 Candidates:
 - Docker sandbox for safe code execution
@@ -193,7 +193,6 @@ Candidates:
 
 ---
 
-**Last Updated**: November 15, 2025  
-**Maintainer**: Jarvis Dev Team  
+**Last Updated**: November 15, 2025
+**Maintainer**: Jarvis Dev Team
 **Architecture**: Jarvis (boss) → OpenCode (specialist) → Plugins (guardrails)
-

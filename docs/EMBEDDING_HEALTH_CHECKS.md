@@ -189,7 +189,7 @@ Embedding Model: text-embedding-3-small
 Knowledge Base:
   Checked: 64 memories
   Issues: 64
-  
+
     ✗ Memory #1 (Agent Modes info...): 1536D (expected 768D)
     ✗ Memory #2 (Servers - Mini-AI...): 1536D (expected 768D)
     ... and 62 more
@@ -197,10 +197,10 @@ Knowledge Base:
 🔧 Recommended Actions:
   1. Config issue: Current embedding model generates wrong dimensions
      Check config/local.env for correct LLM_PROVIDER and embedding model
-  
+
   2. Memory embeddings are wrong - regenerate them:
      ./bin/sync-memory-db.py --from cloud --to local
-  
+
   3. Tool embeddings are wrong - regenerate them:
      ./bin/sync-tools.py local
 
@@ -212,11 +212,11 @@ Knowledge Base:
 Both `jarvis-services` and `jarvis-api` now run automatic health checks:
 
 ```bash
-./bin/jarvis-services cloud  # Auto-checks cloud embeddings
-./bin/jarvis-services local  # Auto-checks local embeddings
+./bin/jarvis-services          # Auto-checks cloud embeddings
+./bin/jarvis-services --local  # Auto-checks local embeddings
 
-./bin/jarvis-api cloud       # Auto-checks cloud embeddings  
-./bin/jarvis-api local       # Auto-checks local embeddings
+./bin/jarvis-api          # Auto-checks cloud embeddings
+./bin/jarvis-api --local  # Auto-checks local embeddings
 ```
 
 **Startup sequence:**
@@ -265,7 +265,7 @@ export LLM_PROVIDER="ollama"
 # Local mode with wrong embeddings
 ./bin/sync-memory-db.py --from cloud --to local
 
-# Cloud mode with wrong embeddings  
+# Cloud mode with wrong embeddings
 ./bin/sync-memory-db.py --from local --to cloud
 
 # Verify fix
@@ -415,7 +415,7 @@ In that case:
 
 ### Q: How often should I run health checks?
 
-**A**: 
+**A**:
 - **Startup**: Automatic (via `jarvis-services`/`jarvis-api`)
 - **After config changes**: Manual
 - **After database operations**: Manual

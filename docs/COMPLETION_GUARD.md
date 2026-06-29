@@ -384,7 +384,7 @@ Auto-eval JSON returned + parsed
                - tool_path_delta / evidence_delta / answer_similarity
                → repaired vs tighten_only (second assistant message or not)
 ```
-              
+
 ## Evaluator Provider Notes
 
 Completion Guard auto evaluation can run on a different provider/model than the main response model.
@@ -588,18 +588,15 @@ Recommended initial rollout:
 - start with `manual`
 - then add `auto` only after the repair logic is stable
 
-## Proposed Config
+## Current Configuration
 
 Environment variables:
 
 ```bash
 JARVIS_COMPLETION_GUARD_ENABLED=false
 JARVIS_COMPLETION_GUARD_MODE=manual
-JARVIS_COMPLETION_GUARD_MAX_REPAIRS=1
 JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD=0.70
-JARVIS_COMPLETION_GUARD_REQUIRE_USER_CONFIRM=true
 JARVIS_COMPLETION_GUARD_TICKET_ON_FAIL=true
-JARVIS_COMPLETION_GUARD_TICKET_DIR=logs/completion-guard
 JARVIS_COMPLETION_GUARD_SHOW_UI_PROMPT=true
 JARVIS_COMPLETION_GUARD_MANUAL_TTL_SECONDS=600
 JARVIS_COMPLETION_GUARD_INCLUDE_QA=true
@@ -609,20 +606,21 @@ JARVIS_COMPLETION_GUARD_EVAL_PROVIDER=
 JARVIS_COMPLETION_GUARD_EVAL_MODEL=
 ```
 
-Web UI should support per-mode override like other AI Config settings.
+Jarvis Web supports per-mode overrides for these settings. Repair remains
+bounded to one pass in code; there is no `MAX_REPAIRS` environment setting.
+Ticket storage is owned by the Web conversation/debug flow rather than a
+configurable `TICKET_DIR` variable.
 
 ### Web Config Schema
 
-Recommended `web_config.json` shape:
+Current `web_config.json` shape:
 
 ```json
 {
   "cloud": {
     "completion_guard_enabled": true,
     "completion_guard_mode": "manual",
-    "completion_guard_max_repairs": 1,
     "completion_guard_auto_threshold": 0.7,
-    "completion_guard_require_user_confirm": true,
     "completion_guard_ticket_on_fail": true,
     "completion_guard_show_ui_prompt": true,
     "completion_guard_include_qa": true,
@@ -637,19 +635,17 @@ Recommended `web_config.json` shape:
 }
 ```
 
-Recommended UI location:
+UI location:
 
 - Jarvis Web
 - Settings
 - AI Config tab
 
-Recommended controls:
+Available controls:
 
 - Enable Completion Guard
 - Mode: Off / Manual / Auto
-- Max Repairs
 - Auto Threshold
-- Require User Confirm
 - Create Ticket On Failure
 - Show UI Prompt
 - Include QA Responses

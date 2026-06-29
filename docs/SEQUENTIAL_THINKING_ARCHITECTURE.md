@@ -1,8 +1,8 @@
 # Sequential Thinking Architecture - Design Document
 
-> **Status**: **Planning / design reference** — not implemented as described below  
-> **Verified**: 2026-05-25 against `orchestrator/`, `lib/intelligence.py`, `config/mcp-servers.json`  
-> **Goal**: Enhance Jarvis's routing intelligence with conditional thinking steps for better tool selection and self-correction  
+> **Status**: **Planning / design reference** — not implemented as described below
+> **Verified**: 2026-05-25 against `orchestrator/`, `lib/intelligence.py`, `config/mcp-servers.json`
+> **Goal**: Enhance Jarvis's routing intelligence with conditional thinking steps for better tool selection and self-correction
 > **Philosophy**: "When in doubt, think. When wrong, learn."
 
 ---
@@ -35,7 +35,7 @@ This document describes a **future architecture** for conditional multi-step rea
 
 ### Recommended reading order
 
-1. [JARVIS_WORKFLOW.md](JARVIS_WORKFLOW.md) — actual request pipeline (v2.50.x)
+1. [JARVIS_WORKFLOW.md](JARVIS_WORKFLOW.md) — current request pipeline
 2. [EXTENDED_THINKING.md](EXTENDED_THINKING.md) — thinking mode that works today
 3. [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md) — learning after the fact
 4. **This file** — historical design for conditional sequential thinking
@@ -101,8 +101,8 @@ Execute Tool
 Return Result
 ```
 
-**Latency**: ~800ms  
-**Success Rate**: ~85% (estimated)  
+**Latency**: ~800ms
+**Success Rate**: ~85% (estimated)
 **Self-Correction**: None
 
 ---
@@ -133,8 +133,8 @@ Return Result                       Return Result
 Log (success, no thinking)          Log (success, thinking used)
 ```
 
-**Fast Path Latency**: ~800ms (unchanged)  
-**Thinking Path Latency**: ~1.8s (+1s for thinking)  
+**Fast Path Latency**: ~800ms (unchanged)
+**Thinking Path Latency**: ~1.8s (+1s for thinking)
 **Expected Success Rate**: ~95%
 
 ---
@@ -171,8 +171,8 @@ Log (success, no retry)         ↓
                             Log (success after retry, thinking used)
 ```
 
-**First Attempt**: ~800ms  
-**Retry with Thinking**: +1.8s (only if first fails)  
+**First Attempt**: ~800ms
+**Retry with Thinking**: +1.8s (only if first fails)
 **Expected Success Rate**: ~95% (85% first try + 10% recovered)
 
 ---
@@ -201,7 +201,7 @@ Return Result               ↓
                         Return Result
 ```
 
-**Advantage**: Proactive correction before failure  
+**Advantage**: Proactive correction before failure
 **Challenge**: Need confidence scoring in router
 
 ---
@@ -246,15 +246,15 @@ Return Result               ↓
 ```python
 def execute_with_recovery(user_query, mode='cloud'):
     """Execute tool with automatic retry on failure."""
-    
+
     # First attempt (normal flow)
     tool_result = route_and_execute(user_query, mode)
-    
+
     # Check for failure indicators
     if is_failure(tool_result):
         # Log the failure
         log_failure(user_query, tool_result)
-        
+
         # Engage thinking step
         thinking_context = analyze_failure(
             query=user_query,
@@ -262,19 +262,19 @@ def execute_with_recovery(user_query, mode='cloud'):
             error=tool_result.error,
             available_tools=get_all_tools()
         )
-        
+
         # Retry with thinking context
         corrected_result = route_and_execute(
-            user_query, 
+            user_query,
             mode,
             context=thinking_context
         )
-        
+
         # Log the correction
         log_correction(user_query, tool_result, corrected_result)
-        
+
         return corrected_result
-    
+
     return tool_result
 
 def is_failure(result):
@@ -287,28 +287,28 @@ def is_failure(result):
 
 def analyze_failure(query, failed_tool, error, available_tools):
     """Use LLM to reason about what went wrong."""
-    
+
     thinking_prompt = f"""
     The user asked: "{query}"
-    
+
     We tried tool: {failed_tool}
     Result: {error or "No results / empty response"}
-    
+
     Available tools:
     {format_tools(available_tools)}
-    
+
     Think step-by-step:
     1. What was the user's TRUE intent?
     2. Why did {failed_tool} fail or return nothing?
     3. Which tool should we have used instead?
     4. What arguments should we pass?
-    
+
     Provide your reasoning.
     """
-    
+
     # Call LLM for reasoning
     reasoning = llm_provider.think(thinking_prompt)
-    
+
     return reasoning
 ```
 
@@ -352,23 +352,23 @@ Learning:
 ```python
 def execute_with_confidence_check(user_query, mode='cloud'):
     """Route with confidence scoring."""
-    
+
     # Get tool selection WITH confidence score
     selection = router.route_with_confidence(user_query, mode)
-    
+
     tool = selection.tool
     confidence = selection.confidence
     reasoning = selection.reasoning  # Why this tool was chosen
-    
+
     # High confidence → fast path
     if confidence >= 0.8:
         log_confidence(user_query, tool, confidence, "high")
         return execute_tool(tool)
-    
+
     # Low confidence → engage thinking
     else:
         log_confidence(user_query, tool, confidence, "low")
-        
+
         # Think about tool selection
         thinking_context = deep_analyze_intent(
             query=user_query,
@@ -377,40 +377,40 @@ def execute_with_confidence_check(user_query, mode='cloud'):
             confidence=confidence,
             available_tools=get_all_tools()
         )
-        
+
         # Re-route with thinking context
         corrected_selection = router.route_with_context(
-            user_query, 
+            user_query,
             mode,
             thinking_context
         )
-        
+
         log_correction_proactive(user_query, tool, corrected_selection.tool)
-        
+
         return execute_tool(corrected_selection.tool)
 
 def deep_analyze_intent(query, initial_tool, initial_reasoning, confidence, available_tools):
     """Deep reasoning when confidence is low."""
-    
+
     thinking_prompt = f"""
     User query: "{query}"
-    
+
     Initial tool selection: {initial_tool}
     Initial reasoning: {initial_reasoning}
     Confidence: {confidence:.2f} (LOW - need verification)
-    
+
     Available tools:
     {format_tools(available_tools)}
-    
+
     Think carefully:
     1. What is the user REALLY asking for?
     2. Is {initial_tool} the BEST choice?
     3. What other tools might be better?
     4. What's your confidence in each option?
-    
+
     Provide detailed reasoning and final recommendation.
     """
-    
+
     return llm_provider.think(thinking_prompt)
 ```
 
@@ -455,11 +455,11 @@ def get_semantic_confidence(query, tool_description):
 ```python
 def execute_with_mcp_thinking(user_query, mode='cloud'):
     """Use external MCP thinking service for deep reasoning."""
-    
+
     # Check if query needs deep thinking
     if not requires_deep_thinking(user_query):
         return execute_normal(user_query, mode)
-    
+
     # Call MCP thinking service
     thinking_result = mcp_thinking_service.analyze(
         query=user_query,
@@ -467,7 +467,7 @@ def execute_with_mcp_thinking(user_query, mode='cloud'):
         context=get_conversation_history(),
         mode="sequential_reasoning"
     )
-    
+
     """
     MCP Thinking Service returns:
     {
@@ -486,13 +486,13 @@ def execute_with_mcp_thinking(user_query, mode='cloud'):
         "confidence": 0.92
     }
     """
-    
+
     # Execute the planned sequence
     results = []
     for step in thinking_result.recommended_sequence:
         result = execute_tool(step.tool, step.args)
         results.append(result)
-        
+
         # If any step fails, re-think
         if not result.ok:
             recovery = mcp_thinking_service.recover(
@@ -501,7 +501,7 @@ def execute_with_mcp_thinking(user_query, mode='cloud'):
                 completed_steps=results
             )
             # Continue with recovery plan...
-    
+
     return aggregate_results(results)
 ```
 
@@ -539,39 +539,39 @@ Update routing intelligence
 ```sql
 CREATE TABLE thinking_outcomes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    
+
     -- Query info
     query_text TEXT NOT NULL,
     query_embedding BLOB,
     query_category TEXT,  -- e.g., "reminder_query", "alert_query"
-    
+
     -- First attempt
     first_tool TEXT,
     first_confidence REAL,
     first_success BOOLEAN,
     first_error TEXT,
-    
+
     -- Thinking step (if used)
     thinking_used BOOLEAN DEFAULT 0,
     thinking_reasoning TEXT,
     thinking_duration_ms INTEGER,
-    
+
     -- Correction (if made)
     correction_made BOOLEAN DEFAULT 0,
     corrected_tool TEXT,
     correction_reasoning TEXT,
-    
+
     -- Final outcome
     final_success BOOLEAN,
     final_tool TEXT,
     final_result_quality TEXT,  -- "excellent", "good", "poor"
-    
+
     -- Metadata
     timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
     mode TEXT,  -- "cloud" or "local"
     llm_provider TEXT,
     llm_model TEXT,
-    
+
     -- Learning signals
     user_feedback TEXT,  -- User explicitly corrected us?
     retry_count INTEGER DEFAULT 0
@@ -590,7 +590,7 @@ CREATE INDEX idx_thinking_used ON thinking_outcomes(thinking_used);
 
 ```sql
 -- Compare success rates: with thinking vs. without
-SELECT 
+SELECT
     thinking_used,
     COUNT(*) as total_queries,
     SUM(CASE WHEN final_success = 1 THEN 1 ELSE 0 END) as successes,
@@ -608,19 +608,19 @@ GROUP BY thinking_used;
 
 ```sql
 -- Find categories where thinking significantly improves success
-SELECT 
+SELECT
     query_category,
     COUNT(*) as total,
     -- Success rate without thinking
-    ROUND(100.0 * SUM(CASE WHEN thinking_used = 0 AND final_success = 1 THEN 1 ELSE 0 END) / 
+    ROUND(100.0 * SUM(CASE WHEN thinking_used = 0 AND final_success = 1 THEN 1 ELSE 0 END) /
           SUM(CASE WHEN thinking_used = 0 THEN 1 ELSE 0 END), 2) as success_no_thinking,
     -- Success rate with thinking
-    ROUND(100.0 * SUM(CASE WHEN thinking_used = 1 AND final_success = 1 THEN 1 ELSE 0 END) / 
+    ROUND(100.0 * SUM(CASE WHEN thinking_used = 1 AND final_success = 1 THEN 1 ELSE 0 END) /
           SUM(CASE WHEN thinking_used = 1 THEN 1 ELSE 0 END), 2) as success_with_thinking,
     -- Improvement
-    ROUND(100.0 * SUM(CASE WHEN thinking_used = 1 AND final_success = 1 THEN 1 ELSE 0 END) / 
+    ROUND(100.0 * SUM(CASE WHEN thinking_used = 1 AND final_success = 1 THEN 1 ELSE 0 END) /
           SUM(CASE WHEN thinking_used = 1 THEN 1 ELSE 0 END) -
-          100.0 * SUM(CASE WHEN thinking_used = 0 AND final_success = 1 THEN 1 ELSE 0 END) / 
+          100.0 * SUM(CASE WHEN thinking_used = 0 AND final_success = 1 THEN 1 ELSE 0 END) /
           SUM(CASE WHEN thinking_used = 0 THEN 1 ELSE 0 END), 2) as improvement
 FROM thinking_outcomes
 GROUP BY query_category
@@ -638,7 +638,7 @@ ORDER BY improvement DESC;
 
 ```sql
 -- What corrections did thinking enable?
-SELECT 
+SELECT
     first_tool,
     corrected_tool,
     COUNT(*) as correction_count,
@@ -672,7 +672,7 @@ if correction_count > 20 and success_rate > 0.9:
 
 ```sql
 -- Find query patterns that ALWAYS succeed without thinking
-SELECT 
+SELECT
     query_category,
     first_tool,
     COUNT(*) as attempts,
@@ -709,45 +709,45 @@ if success_rate > 95 and attempts > 50:
 ```python
 class ThinkingLearningAgent:
     """Automatically learn from thinking outcomes and improve routing."""
-    
+
     def __init__(self, outcomes_db_path):
         self.db = sqlite3.connect(outcomes_db_path)
         self.insights = []
-    
+
     def run_daily_learning(self):
         """Run learning analysis daily to improve routing."""
-        
+
         # 1. Identify categories that need thinking
         categories_need_thinking = self.find_categories_improved_by_thinking()
-        
+
         # 2. Identify correction patterns
         correction_patterns = self.find_common_corrections()
-        
+
         # 3. Identify fast path candidates
         fast_path_patterns = self.find_fast_path_candidates()
-        
+
         # 4. Generate routing improvements
         improvements = self.generate_routing_improvements(
             categories_need_thinking,
             correction_patterns,
             fast_path_patterns
         )
-        
+
         # 5. Update router configuration
         self.apply_improvements(improvements)
-        
+
         # 6. Log insights
         self.log_learning_report(improvements)
-    
+
     def find_categories_improved_by_thinking(self):
         """Find query categories where thinking helps significantly."""
         query = """
-        SELECT 
+        SELECT
             query_category,
             -- ... (Query 2 from above)
         """
         results = self.db.execute(query).fetchall()
-        
+
         # Filter for significant improvement (>20% better with thinking)
         return [
             {
@@ -757,14 +757,14 @@ class ThinkingLearningAgent:
             }
             for row in results if row[3] > 20
         ]
-    
+
     def find_common_corrections(self):
         """Find common tool corrections that thinking enables."""
         query = """
         -- Query 3 from above
         """
         results = self.db.execute(query).fetchall()
-        
+
         return [
             {
                 'wrong_tool': row[0],
@@ -775,14 +775,14 @@ class ThinkingLearningAgent:
             }
             for row in results if row[2] > 20
         ]
-    
+
     def find_fast_path_candidates(self):
         """Find patterns that always succeed without thinking."""
         query = """
         -- Query 4 from above
         """
         results = self.db.execute(query).fetchall()
-        
+
         return [
             {
                 'category': row[0],
@@ -792,17 +792,17 @@ class ThinkingLearningAgent:
             }
             for row in results if row[4] > 95
         ]
-    
-    def generate_routing_improvements(self, categories_need_thinking, 
+
+    def generate_routing_improvements(self, categories_need_thinking,
                                       correction_patterns, fast_path_patterns):
         """Generate concrete routing config updates."""
-        
+
         improvements = {
             'thinking_triggers': [],
             'routing_hints': [],
             'fast_path_cache': []
         }
-        
+
         # Add thinking triggers for categories that benefit
         for cat in categories_need_thinking:
             improvements['thinking_triggers'].append({
@@ -810,7 +810,7 @@ class ThinkingLearningAgent:
                 'confidence_threshold': 0.7,  # Lower threshold = more thinking
                 'reason': f"Improves success by {cat['improvement']:.0f}%"
             })
-        
+
         # Add routing hints from corrections
         for correction in correction_patterns:
             improvements['routing_hints'].append({
@@ -820,7 +820,7 @@ class ThinkingLearningAgent:
                 'strength': 'high' if correction['frequency'] > 50 else 'medium',
                 'reason': f"Learned from {correction['frequency']} corrections"
             })
-        
+
         # Add fast path cache for reliable patterns
         for pattern in fast_path_patterns:
             improvements['fast_path_cache'].append({
@@ -830,18 +830,18 @@ class ThinkingLearningAgent:
                 'skip_thinking': True,
                 'reason': f"{pattern['success_rate']:.1f}% success rate"
             })
-        
+
         return improvements
-    
+
     def apply_improvements(self, improvements):
         """Update routing configuration based on learned insights."""
-        
+
         # Update routing config file
         config_path = Path(__file__).parent.parent / "config" / "routing_intelligence.json"
-        
+
         with open(config_path, 'r') as f:
             config = json.load(f)
-        
+
         # Merge improvements
         config['thinking_triggers'].extend(improvements['thinking_triggers'])
         config['routing_hints'].extend(improvements['routing_hints'])
@@ -849,14 +849,14 @@ class ThinkingLearningAgent:
             p['category']: {'tool': p['tool'], 'confidence': p['confidence_override']}
             for p in improvements['fast_path_cache']
         })
-        
+
         # Deduplicate
         config = self.deduplicate_config(config)
-        
+
         # Write back
         with open(config_path, 'w') as f:
             json.dump(config, f, indent=2)
-        
+
         print(f"✅ Applied {len(improvements['thinking_triggers'])} thinking triggers")
         print(f"✅ Applied {len(improvements['routing_hints'])} routing hints")
         print(f"✅ Applied {len(improvements['fast_path_cache'])} fast path patterns")
@@ -871,13 +871,13 @@ class ThinkingLearningAgent:
 ```python
 def score_thinking_outcome(query, first_result, final_result, thinking_used):
     """Score the quality of thinking outcome (0-100)."""
-    
+
     score = 0
-    
+
     # Base: Did we get the right answer?
     if final_result.ok and final_result.data:
         score += 50  # Success baseline
-    
+
     # Efficiency: Did we need thinking, or waste time thinking?
     if thinking_used:
         if not first_result.ok and final_result.ok:
@@ -887,18 +887,18 @@ def score_thinking_outcome(query, first_result, final_result, thinking_used):
     else:
         if first_result.ok:
             score += 20  # Fast path worked (efficient)
-    
+
     # Speed bonus
     if not thinking_used and final_result.ok:
         score += 10  # Fast AND correct
-    
+
     # User satisfaction (if available)
     if has_user_feedback(query):
         if user_was_satisfied(query):
             score += 20
         else:
             score -= 20
-    
+
     return max(0, min(100, score))
 
 # Example outcomes:
@@ -932,7 +932,7 @@ def score_thinking_outcome(query, first_result, final_result, thinking_used):
 
 ```sql
 -- Daily success rate
-SELECT 
+SELECT
     DATE(timestamp) as date,
     COUNT(*) as total_queries,
     SUM(CASE WHEN final_success = 1 THEN 1 ELSE 0 END) as successes,
@@ -943,7 +943,7 @@ ORDER BY date DESC
 LIMIT 30;
 
 -- Thinking efficiency (should stay 10-20%)
-SELECT 
+SELECT
     DATE(timestamp) as date,
     ROUND(100.0 * SUM(CASE WHEN thinking_used = 1 THEN 1 ELSE 0 END) / COUNT(*), 2) as thinking_percentage
 FROM thinking_outcomes
@@ -952,7 +952,7 @@ ORDER BY date DESC
 LIMIT 30;
 
 -- Tool selection accuracy
-SELECT 
+SELECT
     first_tool,
     COUNT(*) as attempts,
     SUM(CASE WHEN first_success = 1 THEN 1 ELSE 0 END) as direct_successes,
@@ -1051,12 +1051,12 @@ ORDER BY attempts DESC;
 ```
 1. Router picks: search_memory
    Reasoning: "Query has 'reminder' keyword"
-   
+
 2. Execute search_memory(query="reminder")
    Result: "No memories found"
-   
+
 3. Response to user: "I don't have any reminders stored"
-   
+
 ❌ WRONG ANSWER (reminder exists in proactive system)
 ```
 
@@ -1064,30 +1064,30 @@ ORDER BY attempts DESC;
 ```
 1. Router picks: search_memory
    Reasoning: "Query has 'reminder' keyword"
-   
+
 2. Execute search_memory(query="reminder")
    Result: "No memories found"
-   
+
 3. is_failure() → TRUE (no results)
-   
+
 4. Thinking step engages:
    Prompt: "User asked 'When is my next reminder?'
             Tool search_memory returned no results.
             Available tools: [list_reminders, search_memory, semantic_recall, ...]
-            
+
             Think: What went wrong?"
-   
+
    Reasoning:
    "- User asking about TEMPORAL STATE (when/next)
     - search_memory looks in PAST stored knowledge
     - For CURRENT reminder status, need list_reminders
     - This is a LIVE STATE query, not memory retrieval"
-   
+
 5. Retry: list_reminders()
    Result: "You have 1 reminder in 30 minutes: Check truck registration"
-   
+
 6. Response to user: "You have one reminder in 30 minutes"
-   
+
 ✅ CORRECT ANSWER (recovered via thinking)
 
 7. Log learning:
@@ -1118,45 +1118,45 @@ After 20+ similar corrections, agent learns:
 **Flow WITH Confidence-Based Thinking** (Phase 3):
 ```
 1. Router analyzes (with confidence scoring):
-   
+
    Possible tools:
    - list_alerts (external service alerts) - 40%
    - query_service_logs (Jarvis's own services) - 35%
    - execute_bash (systemctl status) - 15%
    - search_memory (past status info) - 10%
-   
+
    Best guess: list_alerts (40% confidence)
-   
+
 2. Confidence check: 40% < 70% threshold
    → LOW CONFIDENCE → Engage thinking
-   
+
 3. Thinking step:
    Prompt: "User asked 'What's the status of my services?'
             Ambiguous - multiple interpretations:
-            
+
             A) External services (Coolify, Docker) → list_alerts
             B) Jarvis background services → query_service_logs
             C) System services → execute_bash
-            
+
             Context: User is asking about health/status.
             Recent conversation: [user recently set up Docker monitoring]
-            
+
             Think: Which interpretation is most likely?"
-   
+
    Reasoning:
    "- User recently configured Docker monitoring
     - 'Services' in plural suggests external systems
     - If asking about Jarvis's own services, would say 'your services'
     - Most likely: External services monitored via Docker agent
     → Use list_alerts"
-   
+
 4. Corrected selection: list_alerts (95% confidence)
-   
+
 5. Execute list_alerts()
    Result: "All services running. Kokoro-CPU: up, ComfyUI: up"
-   
+
 6. Response to user: "All services running"
-   
+
 ✅ CORRECT (prevented wrong tool via thinking)
 
 7. Log learning:
@@ -1186,17 +1186,17 @@ After 20+ similar corrections, agent learns:
 ```
 1. Router detects: Complex multi-step query
    Trigger: Multiple verbs (build, test, remind)
-   
+
 2. Engage MCP thinking service:
-   
+
    Prompt: "User wants: Build Flask API + Test it + Set reminder
             Available tools: opencode, api_call, create_reminder, execute_bash, ...
-            
+
             Create a sequential plan."
-   
+
    MCP Reasoning:
    "This requires 3 distinct steps in sequence:
-   
+
     Step 1: Build the Flask API
       Tool: opencode
       Args: {
@@ -1205,13 +1205,13 @@ After 20+ similar corrections, agent learns:
         requirements: 'Flask, requests'
       }
       Wait for: Project location, port
-   
+
     Step 2: Test the API
       Tool: api_call
       Args: Will depend on URL from Step 1
       Method: GET /weather
       Wait for: Response status
-   
+
     Step 3: Create deployment reminder
       Tool: create_reminder
       Args: {
@@ -1219,23 +1219,23 @@ After 20+ similar corrections, agent learns:
         when: 'tomorrow at 2pm'
       }
       Include: Project location from Step 1 in description
-   
+
     Dependencies:
     - Step 2 depends on Step 1 (need URL)
     - Step 3 depends on Step 1 (need project location)
     "
-   
+
 3. Execute Step 1: opencode
    Result: {
      "project_path": "~/jarvis-workspace/projects/weather-api",
      "port": 5000,
      "status": "running"
    }
-   
+
 4. Execute Step 2: api_call
    URL: http://localhost:5000/weather
    Result: {"status": 200, "response": "Weather data"}
-   
+
 5. Execute Step 3: create_reminder
    Args: {
      "title": "Deploy weather API",
@@ -1243,10 +1243,10 @@ After 20+ similar corrections, agent learns:
      "when": "tomorrow at 2pm"
    }
    Result: "Reminder set"
-   
+
 6. Aggregate response:
    "Built weather API on port 5000, tested successfully, and set reminder for tomorrow at 2pm"
-   
+
 ✅ COMPLEX TASK COMPLETED
 
 7. Log learning:
@@ -1275,7 +1275,7 @@ After 20+ similar corrections, agent learns:
 **Flow WITH Fast Path Cache** (After Learning):
 ```
 1. Query categorization: "time_query"
-   
+
 2. Check fast path cache:
    {
      "time_query": {
@@ -1284,17 +1284,17 @@ After 20+ similar corrections, agent learns:
        "skip_thinking": true
      }
    }
-   
+
 3. Cache hit! Fast path:
    - Skip router (already know tool)
    - Skip confidence check
    - Skip thinking
    - Execute directly: get_time()
-   
+
 4. Result: "It's 7:45 PM on Tuesday, November 18th"
-   
+
 5. Response to user: "It's 7:45 PM"
-   
+
 ✅ INSTANT (no LLM routing needed)
 
 Latency: ~100ms (vs ~800ms normal, ~1800ms with thinking)
@@ -1322,7 +1322,7 @@ Latency: ~100ms (vs ~800ms normal, ~1800ms with thinking)
 {
   "version": "1.2.0",
   "last_updated": "2025-11-18T19:00:00Z",
-  
+
   "thinking_triggers": [
     {
       "category": "ambiguous_temporal",
@@ -1340,7 +1340,7 @@ Latency: ~100ms (vs ~800ms normal, ~1800ms with thinking)
       "reason": "Often ambiguous (alerts vs services vs system)"
     }
   ],
-  
+
   "routing_hints": [
     {
       "categories": ["reminder_query", "temporal_query"],
@@ -1363,7 +1363,7 @@ Latency: ~100ms (vs ~800ms normal, ~1800ms with thinking)
       "reason": "Best for Jarvis's own services"
     }
   ],
-  
+
   "fast_path_cache": {
     "time_query": {
       "tool": "get_time",
@@ -1384,7 +1384,7 @@ Latency: ~100ms (vs ~800ms normal, ~1800ms with thinking)
       "attempts": 421
     }
   },
-  
+
   "learning_stats": {
     "total_queries_analyzed": 10000,
     "improvements_applied": 23,
@@ -1420,7 +1420,7 @@ grep '"thinking_triggered"' logs/thinking/*.jsonl | wc -l
 
 # Success rates
 sqlite3 data/thinking_outcomes.db "
-  SELECT 
+  SELECT
     thinking_used,
     COUNT(*) as total,
     SUM(final_success) as successes,
@@ -1431,7 +1431,7 @@ sqlite3 data/thinking_outcomes.db "
 
 # Recent corrections
 sqlite3 data/thinking_outcomes.db "
-  SELECT 
+  SELECT
     query_text,
     first_tool,
     corrected_tool,
@@ -1496,4 +1496,3 @@ sqlite3 data/thinking_outcomes.db "
 - **Phase 4** (Weeks 7+): MCP thinking
 
 **This is the path to a truly intelligent assistant.** 🧠
-

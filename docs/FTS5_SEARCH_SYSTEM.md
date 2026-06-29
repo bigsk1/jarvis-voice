@@ -18,12 +18,12 @@ Jarvis uses SQLite FTS5 (Full-Text Search) for intelligent memory search with BM
 ### 2. Levenshtein Fuzzy Matching
 **Implementation**: Two-phase fuzzy matching in `acknowledge_reminders`
 
-**Phase 1**: SQL LIKE (fast, gets obvious matches)  
+**Phase 1**: SQL LIKE (fast, gets obvious matches)
 **Phase 2**: Levenshtein distance (handles typos up to 3 characters)
 
 **Examples:**
 - "checkbbok" → matches "checkbook"
-- "diner" → matches "dinner" 
+- "diner" → matches "dinner"
 - "wensday" → matches "wednesday"
 
 ---
@@ -48,7 +48,7 @@ Jarvis uses SQLite FTS5 (Full-Text Search) for intelligent memory search with BM
    - Added examples of phrase search and boolean operators
 
 ### Migration & Testing
-4. **`bin/rebuild-fts-index.py`** (NEW)
+4. **`bin/rebuild-fts-index`**
    - Migrates existing databases to FTS5
    - Works with both cloud and local DBs
    - Automatic error recovery
@@ -119,7 +119,7 @@ python3 skills/search_memory.py '{"query": "test", "limit": 5}'
 
 # Rebuild FTS5 index (if needed)
 source ~/jarvis-venv/bin/activate
-./bin/rebuild-fts-index.py
+./bin/rebuild-fts-index
 ```
 
 ---
@@ -146,7 +146,7 @@ END;
 
 -- Update
 CREATE TRIGGER kb_fts_update AFTER UPDATE ON knowledge_base BEGIN
-    UPDATE knowledge_base_fts SET 
+    UPDATE knowledge_base_fts SET
         category = new.category,
         key = new.key,
         value = new.value,
@@ -201,15 +201,15 @@ def levenshtein_distance(s1: str, s2: str) -> int:
 ## 🔄 Backward Compatibility
 
 ### Maintained
-✅ All existing tools work unchanged  
-✅ `recall()` still works (legacy, slower)  
-✅ `semantic_recall()` unchanged (still best for natural language)  
-✅ Database sync still works  
-✅ Auto-context system unaffected  
+✅ All existing tools work unchanged
+✅ `recall()` still works (legacy, slower)
+✅ `semantic_recall()` unchanged (still best for natural language)
+✅ Database sync still works
+✅ Auto-context system unaffected
 
 ### Deprecated (but not removed)
-⚠️ `recall()` - Use `search_memory()` instead  
-⚠️ Direct SQL LIKE queries - Use FTS5 where possible  
+⚠️ `recall()` - Use `search_memory()` instead
+⚠️ Direct SQL LIKE queries - Use FTS5 where possible
 
 ---
 
@@ -232,18 +232,17 @@ def levenshtein_distance(s1: str, s2: str) -> int:
 
 ## 📝 Summary
 
-✅ **FTS5 Full-Text Search** - Industry-standard search with BM25 ranking  
-✅ **Levenshtein Fuzzy Matching** - Typo-tolerant reminder cancellation  
-✅ **10-100x Performance Boost** - Faster and more accurate searches  
-✅ **Zero Breaking Changes** - Everything still works  
-✅ **Zero Context Window Cost** - No new tools exposed to LLM  
-✅ **Dual DB Compatible** - Works with cloud and local modes  
-✅ **Fully Tested** - All integration tests passing  
+✅ **FTS5 Full-Text Search** - Industry-standard search with BM25 ranking
+✅ **Levenshtein Fuzzy Matching** - Typo-tolerant reminder cancellation
+✅ **10-100x Performance Boost** - Faster and more accurate searches
+✅ **Zero Breaking Changes** - Everything still works
+✅ **Zero Context Window Cost** - No new tools exposed to LLM
+✅ **Dual DB Compatible** - Works with cloud and local modes
+✅ **Fully Tested** - All integration tests passing
 
 **This upgrade makes Jarvis significantly smarter at finding relevant information without any downside.**
 
 ---
 
-**Last Updated**: 2025-11-21  
+**Last Updated**: 2025-11-21
 **Status**: ✅ Production Ready
-

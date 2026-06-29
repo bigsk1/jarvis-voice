@@ -68,6 +68,21 @@ model execution class is deliberately separate from data mode. The supported
 default is nevertheless a non-cloud `OLLAMA_MODEL`, which keeps inference,
 databases, and embeddings local.
 
+## Mode-related configuration reference
+
+| Variable | Valid values / default | Applies to | Notes |
+|---|---|---|---|
+| `JARVIS_MODE` | `cloud` or `local`; defaults to `cloud` at startup | Launchers, Docker, background services | Selects env/data boundaries; never inferred from `LLM_PROVIDER` |
+| `LLM_PROVIDER` | `xai`, `anthropic`, `openai`, or `ollama` | Selected mode config | Chooses chat backend; does not select mode |
+| `OLLAMA_MODEL` | Ollama model name | Normally local mode | Required for the primary local Ollama path; local auxiliary calls retain a compatibility fallback |
+| `OLLAMA_CLOUD_MODEL` | Recognized `*:cloud` or `*-cloud` name | Cloud mode with `LLM_PROVIDER=ollama` | A normal local tag is rejected |
+| `OLLAMA_BASE_URL` | One URL or comma-separated URLs | Both configs | Cloud tries only explicit hosts; local retains localhost as a final compatibility fallback |
+| `EMBEDDING_PROVIDER` | Commonly `openai` in cloud, `ollama` in local | Memory, Tool RAG, Intelligence | Independent of the chat provider; keep DB dimensions aligned with the selected data mode |
+| `JARVIS_SYNC_MODES` | Space-separated `cloud` / `local`; defaults to `JARVIS_MODE` in Docker | First-boot Docker tool sync | Does not change the running stack's mode |
+
+Do not set both model variables expecting automatic mode switching. The active
+mode chooses which model variable is resolved.
+
 Check the configured host without making an inference request:
 
 ```bash
@@ -108,6 +123,37 @@ are reported as unknown rather than signed in.
 
 Direct `https://ollama.com/api` access using `OLLAMA_API_KEY` is not implemented.
 It is a separate topology and is never selected as an automatic fallback.
+
+## Migrating from the older local-only Ollama setup
+
+Existing local installations can keep `LLM_PROVIDER=ollama`, `OLLAMA_MODEL`,
+and their local `OLLAMA_BASE_URL` in `config/local.env`; no rename is required.
+
+To add Ollama Cloud without disturbing local mode:
+
+1. Put `LLM_PROVIDER=ollama`, the signed-in daemon URL, and a cloud-tagged
+   `OLLAMA_CLOUD_MODEL` in `config/cloud.env`.
+2. Leave the normal GPU-backed `OLLAMA_MODEL` in `config/local.env`.
+3. Start cloud and local modes explicitly; do not use provider values to imply
+   the mode.
+4. Recreate Docker containers after changing root `.env` `JARVIS_MODE`.
+
+A legacy cloud config that placed an already cloud-tagged value in
+`OLLAMA_MODEL` remains compatible, but moving it to `OLLAMA_CLOUD_MODEL` makes
+the boundary explicit and is the supported configuration going forward.
+
+## Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| `OLLAMA_CLOUD_MODEL must be a cloud-tagged Ollama model` | Use a recognized `*:cloud` or `*-cloud` tag; do not put a normal local GPU model in the cloud variable |
+| `No cloud Ollama model configured` | Add `OLLAMA_CLOUD_MODEL` to `config/cloud.env`; `OLLAMA_MODEL` is only a compatibility fallback when it is already cloud-tagged |
+| `No local Ollama model configured` | Add `OLLAMA_MODEL` to `config/local.env` and confirm it appears in `/api/tags` |
+| `No Ollama base URLs configured` or connection failures | Check `OLLAMA_BASE_URL`, daemon reachability, and firewall/listen settings |
+| Docker cannot reach host Ollama | Use `host.docker.internal`, not container-local `localhost` |
+| Cloud host is reachable but inference fails | Run `ollama signin` as the daemon user, verify `/api/me`, and confirm the cloud model is available to that account |
+| UI, API, or scheduled task uses the wrong DB/provider | Check startup `JARVIS_MODE`, request/task `mode`, and the matching env file separately |
+| Expected logs are missing | Native: inspect the relevant tmux session and `logs/llm-calls-YYYY-MM-DD.jsonl`; Docker: use `docker compose logs jarvis-web jarvis-api jarvis-services` |
 
 ## Testing the configured host
 
@@ -182,10 +228,17 @@ Completion Guard, local/cloud tabs, and child tools can overlap in time.
 
 ## Operational checks
 
-Run the focused regression suites:
+Run the full project suite (optional examples under `docs/` are excluded by
+the project pytest configuration):
 
 ```bash
-source /home/boss/jarvis-venv/bin/activate
+source ~/jarvis-venv/bin/activate
+pytest -q
+```
+
+For a faster provider-focused pass:
+
+```bash
 pytest -q \
   tests/test_scoped_config.py \
   tests/test_ollama_cloud_primary.py \
@@ -219,5 +272,6 @@ Local Ollama should report:
 - local DB paths and 768-dimensional embeddings;
 - local `num_ctx` behavior and `$0` local usage.
 
-The detailed architecture and acceptance matrix are retained in
-`docs/personal/ollama-cloud-primary-provider-plan.md`.
+For implementation details, inspect `lib/ollama_utils.py`,
+`lib/config_loader.py`, and the focused tests listed above. Private planning
+notes under `docs/personal/` are intentionally not part of the public guide.

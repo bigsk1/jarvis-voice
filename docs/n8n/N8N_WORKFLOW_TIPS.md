@@ -94,5 +94,4 @@ GET /api/v1/executions/{id}
 ---
 
 **Last Updated:** 2025-11-23  
-**n8n Version:** 1.120.4
-
+**n8n Version Snapshot:** 1.120.4 — examples may need adjustment on newer n8n releases

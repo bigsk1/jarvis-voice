@@ -9,24 +9,25 @@
 - **[QUICKSTART.md](QUICKSTART.md)** - Quick setup guide
 - **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)** - 🆕 **Complete installation guide** (clone to `~/jarvis-voice`, run `./install.sh`, then configure keys/audio) ⭐ CRITICAL
 - **[docker/README.md](docker/README.md)** - 🐳 **Docker guide** — run Web UIs + API in containers (commands, `.env`, hybrid mode)
-- **[docker/DOCKER_PLANNING.md](docker/DOCKER_PLANNING.md)** - Docker design notes (networking, auth matrix, MCP, planning)
+- **[docker/DOCKER_PLANNING.md](docker/DOCKER_PLANNING.md)** - Original Docker design record; use `docker/README.md` for operations
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (`grok-4.3` recommended default; also `grok-build-0.1`, native search/TTS, in-flight continuation) ⭐ RECOMMENDED
 - **[OPENAI_PROVIDER.md](OPENAI_PROVIDER.md)** - 🆕 **OpenAI provider** (Chat Completions default, optional Responses API routing, hosted tools, in-flight continuation)
+- **[ollama/README.md](ollama/README.md)** - **Ollama local + Ollama Cloud guide** (`OLLAMA_MODEL` vs `OLLAMA_CLOUD_MODEL`, signed-in daemon, Docker addressing, troubleshooting)
 
 ### Main Features
-- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface v2.10** (Completion Guard eval overrides, Ollama cloud judge fixes, tightened auto-repair behavior, server logs) ⭐ ENHANCED
-- **[../jarvis-memory/README.md](../jarvis-memory/README.md)** - 🧠 **Memory Browser UI** (view/search/edit memories, intel files, conversations) 
+- **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface** (mode-scoped settings, Completion Guard, multi-image vision, server logs) ⭐ ENHANCED
+- **[../jarvis-memory/README.md](../jarvis-memory/README.md)** - 🧠 **Memory Browser UI** (view/search/edit memories, intel files, conversations)
 - **[api/API_OVERVIEW.md](api/API_OVERVIEW.md)** - 🔌 **Comprehensive FastAPI** (Memory, Query, Stash, Canvas, Conversations, Intelligence, Intel, Voice) ⭐ ENHANCED
-- **[api/VOICES.md](api/VOICES.md)** - 🔊 **Voice API** (TTS playback with multi-agent voice identity support) 
+- **[api/VOICES.md](api/VOICES.md)** - 🔊 **Voice API** (TTS playback with multi-agent voice identity support)
 - **[MEMORY_SYSTEM.md](MEMORY_SYSTEM.md)** - Memory database with semantic search + auto-injection
-- **[tools/phone/PHONE_CALLS.md](tools/phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts) 
-- **[tools/spotify/SPOTIFY.md](tools/spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device) 
+- **[tools/phone/PHONE_CALLS.md](tools/phone/PHONE_CALLS.md)** - 📞 **AI Phone Calls** (outbound calls via Vapi.ai, personas, transcripts)
+- **[tools/spotify/SPOTIFY.md](tools/spotify/SPOTIFY.md)** - 🎵 **Spotify Control** (play, pause, skip, queue, search, multi-device)
 - **[STASH_SYSTEM.md](STASH_SYSTEM.md)** - 📦 **Artifact storage** (multi-step workflows, URL downloads, **Memory+Stash architecture**, **stash.remember with PDF/LLM summarization** ⭐ ENHANCED)
 - **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - 🧠 **Self-learning system** (tool traces, feedback metadata, Completion Guard outcomes, positive/negative constraints) ⭐ ENHANCED
 - **[CANVAS_SYSTEM.md](CANVAS_SYSTEM.md)** - 🎨 **Visual knowledge viewer** (rich content display, research results)
-- **[api/IMAGES.md](api/IMAGES.md)** - 🖼️ **Cloudflare CDN Upload** (permanent image hosting, multi-agent sharing, metadata tracking)  
+- **[api/IMAGES.md](api/IMAGES.md)** - 🖼️ **Cloudflare CDN Upload** (permanent image hosting, multi-agent sharing, metadata tracking)
 - **[FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md)** - 📝 **LLM self-critique** (feedback grading, improvement suggestions, intelligence outcome updates)
 - **[COMPLETION_GUARD.md](COMPLETION_GUARD.md)** - 🛡️ **Completion Guard** (same-runtime repair loop, completion check, escalation tickets) 🆕
 - **[tools/scheduled-tasks/scheduled-tasks.md](tools/scheduled-tasks/scheduled-tasks.md)** - ⏱️ **Scheduled Tasks** (implemented foundation for recurring queries, workflows, parser, API, and runner) 🆕
@@ -41,7 +42,7 @@
 - **[tools/status-tool/README.md](tools/status-tool/README.md)** - 📊 **Status Recap Tool v1.4** (weather, crypto, stocks/futures, alerts, reminders, system health, canvas + stash)
 - **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** - 🛒 **SerpApi Search Tool** (Amazon + engine-based SerpApi queries)
 
-### Document Processing 
+### Document Processing
 - **PDF Read Tool** (`skills/pdf_read.py`) - 📄 **PDF reading and manipulation**
   - Extract text from PDFs (with page ranges)
   - Extract embedded images to stash
@@ -54,7 +55,7 @@
 - **[tools/ssh/README.md](tools/ssh/README.md)** - 🔐 **SSH Remote Tool** (execute commands on remote hosts, apt management, multi-command)
 - **[tools/docker-tool/README.md](tools/docker-tool/README.md)** - 🐳 **Docker Control** (containers, compose, images, networks, volumes, exec, prune)
 - **[DEEP_MEMORY_SEARCH.md](DEEP_MEMORY_SEARCH.md)** - 🔍 **Deep Memory Search** (unified search across all data sources)
-- **[qmd/README.md](qmd/README.md)** - 📚 **Internal Knowledge Search** (Q&A about Jarvis capabilities via QMD semantic search) 
+- **[qmd/README.md](qmd/README.md)** - 📚 **Internal Knowledge Search** (Q&A about Jarvis capabilities via QMD semantic search)
 
 ### Monitoring & Observability ⭐ ENHANCED
 - **[../monitoring/README.md](../monitoring/README.md)** - Grafana + Prometheus + Loki stack
@@ -70,7 +71,7 @@
 - **Maintenance Jobs** - Decay, anomaly detection, meta-cognition via API or CLI
 
 ### Web Crawling & Scraping
-- **[crawl4ai/README.md](crawl4ai/README.md)** - 🕷️ **Crawl4AI Integration** 
+- **[crawl4ai/README.md](crawl4ai/README.md)** - 🕷️ **Crawl4AI Integration**
   - `crawl_url` - Extract markdown from any webpage (stealth mode, JS wait)
   - `screenshot_url` - Full-page capture + vision AI analysis
   - Bypasses anti-bot measures via screenshot + vision
@@ -87,13 +88,13 @@
 ## 🚀 Quick Start
 
 ```bash
-# Cloud mode (xAI/Anthropic/OpenAI) - Recommended: xAI Grok
+# Cloud mode (xAI/Anthropic/OpenAI or Ollama Cloud)
 ./jarvis
 
 # Local mode (Ollama)
 ./jarvis-local
 
-# Command Dashboard TUI (all commands in one place!) 
+# Command Dashboard TUI (all commands in one place!)
 ./bin/jarvis-dashboard   # Or: jarvis-d (if alias set)
 
 # Run tests
@@ -143,7 +144,7 @@
 | **WORKFLOW_ORCHESTRATION.md** | 🔄 **Workflow system** - Deterministic multi-tool pipelines ⭐ IMPLEMENTED |
 | **[../data/workflows/AGENTS.md](../data/workflows/AGENTS.md)** | 📖 **Workflow building guide** - Tool outputs, extract rules, testing |
 | **TOOL_RAG_STRATEGY.md** | Tool RAG system - Dynamic tool retrieval, ghost tools, `tool_search` discovery, and compact query tuning |
-| **TOOL_RAG_IMPLEMENTATION_SUMMARY.md** | Tool RAG implementation details  |
+| **[archive/TOOL_RAG_IMPLEMENTATION_SUMMARY.md](archive/TOOL_RAG_IMPLEMENTATION_SUMMARY.md)** | Historical Tool RAG implementation record |
 | **[archive/TOOL_RAG_TROUBLESHOOTING.md](archive/TOOL_RAG_TROUBLESHOOTING.md)** | Tool RAG debugging guide (historical)  |
 | **[archive/TEST_SCRIPT_TOOL_RAG_FIX.md](archive/TEST_SCRIPT_TOOL_RAG_FIX.md)** | Test script integration fixes (historical)  |
 | **TOOL_CALLING_SYSTEM.md** | Tool orchestration and routing |
@@ -218,7 +219,7 @@
 | **TOOL_BUILDER.md** | 🔧 **Dynamic Tool Creation** - Autonomous tool building with safety checks  |
 | **JARVIS_PLAYGROUND.md** | 🎮 **Playground Design** - Self-play, Docker, VM workspace, Carvis twin  |
 | **Psychological-Profile-Ideas.md** | **Phase 2 Roadmap** - User modeling, style reflection, behavioral intelligence ⭐ FUTURE |
-| **STATUS_UPDATES_DESIGN.md** | **Voice progress updates** - Real-time feedback during tasks |
+| **STATUS_UPDATES_DESIGN.md** | **Voice progress updates** - Implemented design history; current values are in env examples |
 | **SYNC_ARCHITECTURE.md** | Memory, tool, and intelligence sync systems |
 
 ### Developer Tools
@@ -249,12 +250,15 @@
 | **[DOCS_STATUS.md](DOCS_STATUS.md)** | Documentation health and maintenance checklist |
 | **archive/** | Historical docs, changelogs, and phase milestones |
 | **[archive/thinking/](archive/thinking/)** | Thinking-mode branch notes (see `EXTENDED_THINKING.md`) |
+| **XAI_NATIVE_CONTINUATION_PLAN.md** | Implemented historical design; live guide: `XAI_PROVIDER.md` |
+| **OPENAI_RESPONSES_ADAPTER_PLAN.md** | Implemented historical design; live guide: `OPENAI_PROVIDER.md` |
+| **OAuth/README.md** | Unimplemented provider OAuth research; not a setup guide |
 
 ## 🔧 Configuration
 
 **Main config files:**
-- `config/cloud.env` - Cloud mode (OpenAI, Anthropic)
-- `config/local.env` - Local mode (Ollama)
+- `config/cloud.env` - Cloud data/config mode; supports xAI, Anthropic, OpenAI, or cloud-tagged Ollama models
+- `config/local.env` - Local data/config mode; normally uses a locally hosted Ollama model
 - `~/.config/opencode/opencode.json` - OpenCode config
 
 **Key environment variables:**
@@ -304,7 +308,7 @@ YOU (hear result)
 ./orchestrator/orchestrator_v2.py cloud "what time is it?"
 
 # OpenCode
-systemctl status opencode-jarvis.service
+sudo systemctl status opencode-jarvis.service
 curl http://localhost:4096/health
 
 # Logs
@@ -504,7 +508,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - **JSONL viewer**: Dotted keys are nestified and rendered as YAML-style cards with modal expansion
   - **Markdown/log viewing**: Markdown renders cleanly, logs lazy-load, and mobile uses folder → file → viewer drill-down
   - See: `docs/JARVIS_WEB_UI.md`
-  
+
 **2026-04-10:**
 - ✅ **Duplicate-tool recovery + transcript follow-up hardening**
   - Exact duplicate tool calls no longer immediately end the request. Jarvis now blocks the repeated call, injects a duplicate-guard note into the next routing turn, and gives the model bounded recovery turns before falling back to duplicate-prevention synthesis.
@@ -616,7 +620,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Profiles are validated against an explicit allowlist before use
   - External callers can opt into the same normalization behavior used internally by alerts and workflows
   - Adding a new profile now requires updating the shared allowlist in `lib/tts_normalizer.py`
-  
+
 **2026-04-03:**
 - ✅ **Completion Guard: AI Config evaluator overrides**
   - Added per-mode Web UI overrides for `Completion Guard: Eval Provider` and `Completion Guard: Eval Model`
@@ -799,7 +803,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **cleanup-all Updates** - Web uploads (30-day retention), disk usage summary for missing paths
 
 **2026-02-11:**
-- ✅ **Jarvis Intel System** 
+- ✅ **Jarvis Intel System**
   - Added new documentation for the Jarvis Intel System
 **2026-02-10:**
 - ✅ **Video Follow-up Context** - LLM now gets previous video results for smarter follow-ups
@@ -843,7 +847,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Previously only handled HTTP URLs, now uses `_resolve_image_source()` like other providers
 
 **2026-02-06:**
-- ✅ **Image-to-Image Editing** - Edit existing images with all 3 providers 
+- ✅ **Image-to-Image Editing** - Edit existing images with all 3 providers
   - Upload an image in Web UI → select "Image to Image" → describe changes
   - **xAI**: Uses `/v1/images/edits` endpoint with `image: { url: "data:..." }` (separate from generation)
   - **Gemini**: Includes image as `inline_data` in contents array alongside text prompt
@@ -865,7 +869,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Bottom margin prevents bar from touching desktop taskbar
 
 **2026-02-05:**
-- ✅ **Internal Knowledge Search** - Q&A about Jarvis capabilities without executing tools 
+- ✅ **Internal Knowledge Search** - Q&A about Jarvis capabilities without executing tools
   - `search_docs` tool - Semantic search over 153 indexed docs using QMD
   - Answers questions like "What video sizes can I generate?" without calling generate_video
   - Uses vsearch (meaning-based) with 35% min score threshold
@@ -887,7 +891,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: `docs/qmd/README.md`
 
 **2026-02-04:**
-- ✅ **Server-Side Tools Logging** - Track xAI/Anthropic native tool usage 
+- ✅ **Server-Side Tools Logging** - Track xAI/Anthropic native tool usage
   - New dedicated log folder: `logs/server-side-tools/`
   - Tracks `web_search`, `x_search`, `code_execution` usage with counts
   - Auto-logged from LLM calls and workflow executions
@@ -904,7 +908,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Helps debug auth issues across web UIs
 
 **2026-02-02:**
-- ✅ **xAI Image Generation** - Fast & cheap image generation 
+- ✅ **xAI Image Generation** - Fast & cheap image generation
   - Added `xai` provider to `generate_image` tool (grok-imagine-image model)
   - Batch generation: `n` parameter (1-10 images) for variations
   - All batch images saved to same stash space with individual refs
@@ -912,12 +916,12 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Set `IMAGE_TOOL_PROVIDER=xai` or use `provider: "xai"` per-request
   - Note: Quality parameter not supported by xAI (no 1K/2K/4K)
   - See: [`docs/api/GENERATED_IMAGES.md`](api/GENERATED_IMAGES.md)
-- ✅ **Real-time Progress Events** - See tool execution as it happens 
+- ✅ **Real-time Progress Events** - See tool execution as it happens
   - WebUI shows "Using weather...", "Using brave_search..." during processing
   - Tool cards appear with status (pending → complete with duration)
   - Toggle in Settings → UI → Progress Events
   - Duplicate tool calls tracked separately (e.g., `search_0`, `search_1`)
-- ✅ **Stop Button** - Graceful processing cancellation 
+- ✅ **Stop Button** - Graceful processing cancellation
   - Red stop button (⏹) appears during processing
   - Cancels between turns, returns partial results
   - "Stopped after 2 tool(s). Results so far: ..."
@@ -932,14 +936,14 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Configurable via `JARVIS_MULTI_TURN_WORD_LIMIT` (default baseline 75)
 
 **2026-02-01:**
-- ✅ **Video Gallery UI** - Browse generated videos in jarvis-canvas 
+- ✅ **Video Gallery UI** - Browse generated videos in jarvis-canvas
   - Grid view with hover preview and provider badges (xAI/Gemini)
   - Lightbox viewer with video controls below video
   - Search, sort by date/name/size/duration
   - Download and delete functionality
   - Access via `/video-gallery` or "🎬 Videos" link in Canvas header
   - See: [`docs/CANVAS_SYSTEM.md`](CANVAS_SYSTEM.md)
-- ✅ **Video Catalog System** - Persistent metadata for generated videos 
+- ✅ **Video Catalog System** - Persistent metadata for generated videos
   - `video_catalog.json` stores provider, aspect ratio, tags per video
   - Auto-syncs with stash metadata, survives stash TTL cleanup
   - Shared between `jarvis-api` (8880) and `jarvis-canvas` (8890)
@@ -973,7 +977,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ⬆️ **xai-sdk 1.6.1** - Required for video generation (1.6.0+)
 
 **2026-01-30:**
-- ✅ **Optional API Authentication** - Bearer token auth for Jarvis API 
+- ✅ **Optional API Authentication** - Bearer token auth for Jarvis API
   - Toggle via `JARVIS_API_AUTH=true/false` in cloud.env/local.env
   - `JARVIS_API_KEY` environment variable for the secret key
   - Localhost (127.0.0.1, ::1) always whitelisted - no auth needed
@@ -989,7 +993,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Example UFW rules for quick setup
 
 **2026-01-28:**
-- ✅ **Generated Images API** - Full management of local generated images 
+- ✅ **Generated Images API** - Full management of local generated images
   - `GET /api/generated-images` - List/search images with pagination
   - `GET /api/generated-images/{name}` - Download image file
   - `GET /api/generated-images/{name}/base64` - Get as base64
@@ -999,13 +1003,13 @@ tail -f logs/tools/tool-calls-*.jsonl
   - `GET /api/generated-images/cdn-catalog` - List all uploaded images with URLs
   - CDN catalog (`cdn_catalog.json`) tracks uploaded images for instant URL retrieval
   - See: [`docs/api/GENERATED_IMAGES.md`](api/GENERATED_IMAGES.md)
-- ✅ **Image Gallery UI** - Browse generated images in jarvis-canvas 
+- ✅ **Image Gallery UI** - Browse generated images in jarvis-canvas
   - New "🖼️ Gallery" link in Canvas header → `/gallery`
   - Grid view with thumbnails, search, sort by date/name/size
   - Lightbox for full-size viewing with keyboard navigation
   - Download, Get CDN URL (🔗), and Delete buttons
   - Responsive design for mobile/tablet
-- ✅ **Canvas Pin → Stash Pin Sync** - Image preservation 
+- ✅ **Canvas Pin → Stash Pin Sync** - Image preservation
   - When pinning a canvas page, automatically pins referenced stash spaces
   - Prevents images from breaking when stash TTL expires
   - Stash `is_expired` property fix for correct pinned space handling
@@ -1016,12 +1020,12 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Self-healing daemon now monitors systemd services and sibling daemons
   - PID + cmdline verification prevents false positives from PID reuse
   - Graceful degradation on transient failures
-- ✅ **API Request Logging** - Track all API traffic 
+- ✅ **API Request Logging** - Track all API traffic
   - `logs/api/access-YYYY-MM-DD.jsonl` and `errors-YYYY-MM-DD.jsonl`
   - Configurable loopback filtering (internal vs external traffic)
   - `jq` commands for live tailing, filtering, performance analysis
   - See: [`docs/api/LOGGING.md`](api/LOGGING.md)
-- ✅ **Log Management** - Automated cleanup 
+- ✅ **Log Management** - Automated cleanup
   - `bin/cleanup-logs` - Clean logs older than 60 days
   - `bin/cleanup-audio` - Clean audio files older than 30 days
   - `bin/cleanup-all` - Master script (logs, audio, images, stash)
@@ -1041,14 +1045,14 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: [`docs/api/IMAGES.md`](api/IMAGES.md)
 
 **2026-01-26:**
-- ✅ **Samantha Multi-Agent Integration** - Secondary AI assistant on VPS2 
+- ✅ **Samantha Multi-Agent Integration** - Secondary AI assistant on VPS2
   - `samantha` tool for real-time chat via OpenAI-compatible API
   - Samantha can POST back to Jarvis API (intel, canvas, alerts, voice)
   - Priority levels: urgent, normal, background
   - Configurable timeout (30-300s) for quick vs complex tasks
   - Fire-and-forget webhook option for Discord/Telegram posting
   - See: [`skills/samantha.tool.json`](../skills/samantha.tool.json), [`docs/api/VOICES.md`](api/VOICES.md)
-- ✅ **Voice API Multi-Agent Support** - Per-request TTS provider/voice override 
+- ✅ **Voice API Multi-Agent Support** - Per-request TTS provider/voice override
   - `/api/voice/speak` now accepts `tts_provider` and `voice` parameters
   - Enables different agents to speak with distinct voices
   - Jarvis uses ElevenLabs, Samantha uses Qwen3-TTS "Samantha" voice
@@ -1067,7 +1071,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Useful for CLI testing without wake word
 
 **2026-01-25:**
-- ✅ **File Conversion Tool** - Local media conversion with ImageMagick, FFmpeg, and Potrace 
+- ✅ **File Conversion Tool** - Local media conversion with ImageMagick, FFmpeg, and Potrace
   - Converts images (JPG, PNG, WebP, GIF, BMP, TIFF, ICO), video (MP4, WebM, MOV, AVI, MKV), audio (MP3, WAV, FLAC, OGG, AAC)
   - Raster to vector (PNG/JPG → SVG) using Potrace tracing
   - Extract audio from video (MP4 → MP3/WAV)
@@ -1077,7 +1081,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - **Inline results** - Converted media displays with ⬇️ Download button
   - All processing local (no API costs), output saved to stash
   - See: `docs/tools/convert-file-tool/README.md`, `skills/convert_file.py`
-- ✅ **Intel API** - Programmatic access to jarvis-intel knowledge files 
+- ✅ **Intel API** - Programmatic access to jarvis-intel knowledge files
   - CRUD operations for intel files (create, read, update, delete)
   - `GET /api/intel/stats` - Folder statistics (total files, facts, size)
   - `GET /api/intel` - List all files with ingestion stats
@@ -1087,7 +1091,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - `POST /api/intel/ingest` - Manual ingestion (sync or async mode)
   - See: [`docs/api/INTEL.md`](api/INTEL.md)
 - ✅ **URL Ingest Workflow** - `/url_ingest <url>` to crawl, summarize, and ingest URLs to memory
-- ✅ **System Prompt Validator** - LLM-powered debugging tool for prompt engineering 
+- ✅ **System Prompt Validator** - LLM-powered debugging tool for prompt engineering
   - `./bin/validate-system-prompt --tools` - Comprehensive prompt audit
   - `--issue` flag for targeted debugging: `--issue "Jarvis called canvas before search"`
   - Root cause analysis: traces exact rules that caused unexpected behavior
@@ -1105,7 +1109,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **OpenAI API Fix** - max_completion_tokens for gpt-5.x/o1/o3 models
 
 **2026-01-24:**
-- ✅ **Feedback Tab in Intelligence Dashboard** - View all feedback logs in a friendly UI 
+- ✅ **Feedback Tab in Intelligence Dashboard** - View all feedback logs in a friendly UI
   - 📊 New "Feedback" tab at http://localhost:5003
   - Filter by rating (All, Issues 1-3, Good 4-5) and time range (7, 30, 90 days)
   - Stats bar shows average rating, total count, and issue rate percentage
@@ -1120,7 +1124,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: `jarvis-intelligence/README.md`
 
 **2026-01-23:**
-- ✅ **Manual Feedback in WebUI** - Trigger LLM-as-QA feedback from the web interface 
+- ✅ **Manual Feedback in WebUI** - Trigger LLM-as-QA feedback from the web interface
   - 📊 Toggle button enables feedback for all messages
   - `--feedback` inline flag for per-message trigger
   - Purple feedback card shows rating (1-5), summary, issues, tool ratings
@@ -1129,9 +1133,9 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Manual feedback ALWAYS logged (overrides rating < 5 filter)
   - WebSocket events: `feedback:start`, `feedback:complete`
   - See: `docs/JARVIS_WEB_UI.md`, `docs/FEEDBACK_SYSTEM.md`
-- ✅ **Token/Cost Tracking in WebUI** - Real-time token usage and cost display 
+- ✅ **Token/Cost Tracking in WebUI** - Real-time token usage and cost display
   - Floating counter shows cumulative tokens + estimated USD cost
-  - Context-aware: correct window for xAI (2M), Anthropic (200K), OpenAI (128K/400K)
+  - Context-aware: uses the selected model's window from `lib/model_catalog.py` (for example Grok 4.3 1M, curated Grok 4.20 2M, and GPT-5.4 Nano 400K)
   - Warning states at 50%/80% context usage with provider tooltip
   - Persists across conversation switches (saved with messages)
 - ✅ **Workflow Token Tracking** - Pipeline executor now tracks LLM usage
@@ -1189,7 +1193,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Dashboard API Commands** - 27 API commands (was 6) for testing all endpoints
 
 **2026-01-15:**
-- ✅ **Stock Price Tool** - Stock, futures, and commodity prices via yfinance 
+- ✅ **Stock Price Tool** - Stock, futures, and commodity prices via yfinance
   - Supports tickers (TSLA, AAPL) and company names (Tesla, Apple)
   - Futures: GC=F (gold), SI=F (silver), CL=F (oil), NG=F (natural gas)
   - Forex pairs: EURUSD=X, USDJPY=X, etc.
@@ -1230,7 +1234,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Prompt System Enhancements** - Context-first injection, new prompts (email, daily, music)
 
 **2025-12-21:**
-- ✅ **Intelligence Dashboard** - Visual dashboard for self-learning system 
+- ✅ **Intelligence Dashboard** - Visual dashboard for self-learning system
   - **Experience sorting**: Date, Turns (complexity), Tool Count
   - **Experience filtering**: Success/Failed, Tool Count (none/single/multi), Specific Tool dropdown
   - **Insight sorting**: Times Applied, Times Helpful, Has Preferred/Avoided Tools, Confidence, Recently Updated
@@ -1242,7 +1246,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - **Mobile responsive** at ≤730px: hamburger menu, slide-out sidebar
   - Launch: `./bin/jarvis-intelligence` (localhost:5003)
   - See: `jarvis-intelligence/README.md`
-- ✅ **Memory Browser UI** - Web interface for memory management 
+- ✅ **Memory Browser UI** - Web interface for memory management
   - **View/search/edit/delete** memories from `knowledge_base`
   - **FTS5 search** for fast keyword lookups (no LLM required)
   - **Intel file manager**: create, edit, upload, delete, ingest `.md`/`.txt` files
@@ -1292,7 +1296,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: `docs/JARVIS_WEB_UI.md`
 
 **2025-12-16:**
-- ✅ **Google Gemini Image Generation** - AI image generation with Gemini 3 Pro 
+- ✅ **Google Gemini Image Generation** - AI image generation with Gemini 3 Pro
   - "Generate an infographic about bitcoin history"
   - "Create a cute robot dog" → saves to stash + memory
   - Supports: aspect ratios, styles, negative prompts
@@ -1317,7 +1321,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Multi-tool: "Generate an image and email it to Andrew"
 
 **2025-12-15:**
-- ✅ **AI Phone Calls via Vapi.ai** - Outbound AI phone calls on your behalf 
+- ✅ **AI Phone Calls via Vapi.ai** - Outbound AI phone calls on your behalf
   - Multiple personas (Jarvis, James/professional, Jay/casual, Samantha/female)
   - Custom Vapi dashboard assistants with variable injection (`{{owner}}`, `{{task}}`)
   - Voicemail detection (hangup, leave message, or disabled)
@@ -1325,7 +1329,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Auto-save transcripts to Canvas and memory
   - Contact management (save phone numbers by name)
   - See: `docs/tools/phone/PHONE_CALLS.md`
-- ✅ **Spotify Integration** - Full music playback control 
+- ✅ **Spotify Integration** - Full music playback control
   - Play playlists, albums, artists, songs by voice
   - Searches your library first, then public Spotify
   - Multi-device support (Fire TV, Echo, phone, desktop)
@@ -1349,24 +1353,24 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Consistent pattern: {PROVIDER}_MODEL across all providers
 
 **2025-12-11:**
-- ✅ **Stash System** - Artifact storage for multi-step workflows 
+- ✅ **Stash System** - Artifact storage for multi-step workflows
   - Temporary file/image/data storage across tool calls
   - URL downloads with SSRF protection (blocks private IPs)
   - Content-type validation, file size limits, quota management
   - Workflow pattern: `stash.save()` → `pdf_create()` → `printer.print()`
   - See: `docs/STASH_SYSTEM.md`
-- ✅ **PDF Create Tool** - Generate PDF documents 
+- ✅ **PDF Create Tool** - Generate PDF documents
   - Create PDFs from text, images, or stash files
   - Basic markdown header support (# ## ###)
   - Image centering and scaling
   - Saves back to stash for printing/emailing
   - See: `skills/pdf_create.py`
-- ✅ **Printer Tool** - Print from stash, files, or text 
+- ✅ **Printer Tool** - Print from stash, files, or text
   - CUPS integration for network printers
   - Color/grayscale, compact mode, quality settings
   - Print from file paths, stash refs, or Canvas pages
   - See: `skills/printer.py`
-- ✅ **Speaker Volume Tool** - Control system audio 
+- ✅ **Speaker Volume Tool** - Control system audio
   - Get/set/adjust speaker volume via amixer
   - Uses OUT_DEV from cloud.env/local.env
   - See: `skills/speaker_volume.py`
@@ -1376,7 +1380,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - opencode, pdf_create, stash descriptions updated
 
 **2025-12-06:**
-- ✅ **Network Tools** - Comprehensive network diagnostics 
+- ✅ **Network Tools** - Comprehensive network diagnostics
   - Ping with full statistics (min/avg/max latency, packet loss)
   - DNS lookup and resolution
   - Port connectivity checks with latency measurement
@@ -1384,7 +1388,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Traceroute (cross-platform: Linux/Windows/Mac)
   - Internet connectivity testing
   - See: `skills/auto-tools/network_tools.py`
-- ✅ **System Monitor** - Real-time system resource monitoring 
+- ✅ **System Monitor** - Real-time system resource monitoring
   - CPU usage (total + per-core percentages)
   - Memory stats (RAM + swap with GB conversions)
   - Disk usage for all mount points
@@ -1392,7 +1396,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Network I/O statistics (bytes sent/received, errors, drops)
   - System uptime with boot time
   - See: `skills/auto-tools/system_monitor.py`
-- ✅ **Text Summarizer** - Text processing and analysis 
+- ✅ **Text Summarizer** - Text processing and analysis
   - Extractive summarization (sentence ranking)
   - Keyword extraction with stopword filtering
   - Word/character/sentence/paragraph counting
@@ -1435,7 +1439,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Grafana Dashboard Updates** - Mode dropdown for feedback/evolution
   - Toggle between cloud/local data in dashboards
   - All logs now include `mode` field for filtering
-- ✅ **Canvas System** - Visual knowledge viewer for rich content 
+- ✅ **Canvas System** - Visual knowledge viewer for rich content
   - Beautiful dark-themed web UI at localhost:8890
   - Jarvis saves research results, comparisons, code snippets
   - Markdown rendering with syntax highlighting
@@ -1444,14 +1448,14 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Live reload when new content added
   - Launch: `./bin/jarvis-canvas`
   - See: `docs/CANVAS_SYSTEM.md`
-- ✅ **Calculator Tool** - Advanced math, statistics, unit conversions 
+- ✅ **Calculator Tool** - Advanced math, statistics, unit conversions
   - Arithmetic, percentages (15% of 200)
   - Statistics (mean, median, stdev, variance)
   - Unit conversions (5 miles to km, 100°F to °C, 500 GB to TB)
   - Trigonometry, logarithms, factorials
   - Constants (pi, e, tau)
   - See: `skills/calculator.py`
-- ✅ **Feedback System** - LLM self-critique and grading 
+- ✅ **Feedback System** - LLM self-critique and grading
   - `--feedback` flag on orchestrator for per-query feedback
   - `./bin/jarvis-feedback` standalone script (run, batch, summary, issues)
   - Cross-LLM grading (FEEDBACK_PROVIDER/FEEDBACK_MODEL)
@@ -1467,7 +1471,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Fixed SQL queries and log paths
 
 **2025-11-29:**
-- ✅ **Command Dashboard TUI** - Interactive terminal UI for all Jarvis commands 
+- ✅ **Command Dashboard TUI** - Interactive terminal UI for all Jarvis commands
   - 60+ commands organized by category (Core, API, Memory, Intelligence, Tools, Logs, etc.)
   - Search/filter commands with `/` key
   - Tab-based navigation by category
@@ -1591,7 +1595,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Vector-based semantic search with configurable similarity threshold
   - "Ghost tools" pattern for always-available core functionality
   - Optimized for local models (smaller context windows)
-  - See: `docs/TOOL_RAG_STRATEGY.md`, `docs/TOOL_RAG_IMPLEMENTATION_SUMMARY.md`
+  - See: `docs/TOOL_RAG_STRATEGY.md`, `docs/archive/TOOL_RAG_IMPLEMENTATION_SUMMARY.md` (historical)
 - ✅ **Enhanced error propagation** - LLM now receives full error details from failed tools for self-healing
 - ✅ **Test script Tool RAG integration** - All test scripts auto-sync tool embeddings after DB cleanup
 - ✅ **Tool RAG debugging utilities** - `debug-tool-rag.py` for comprehensive retrieval analysis
@@ -1667,6 +1671,6 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ---
 
-**Last Updated:** 2026-06-24
+**Last Updated:** 2026-06-29
 **Latest:** `create_social_clip` (MoneyPrinterTurbo B-roll), multi-image Web UI vision, modular stash video playback, and modular inline media display improvements
 **Need help?** Check the relevant doc above or run the integration tests to verify your setup.

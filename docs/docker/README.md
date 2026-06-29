@@ -157,6 +157,23 @@ startup mode and reports it as `startup_mode` from its health/status endpoint.
 
 Use `JARVIS_SYNC_MODES="cloud local"` only if you want both tool databases synced on first bring-up while running one mode day-to-day.
 
+### Ollama: local models vs Ollama Cloud
+
+Ollama does not select Jarvis mode. The root `.env` value `JARVIS_MODE`
+selects the config/database boundary; `LLM_PROVIDER=ollama` in that selected
+config chooses Ollama as the chat backend.
+
+| Docker mode | Config | Model variable | Ollama host |
+|---|---|---|---|
+| `local` | `config/local.env` | `OLLAMA_MODEL` (normal local model) | Host/LAN daemon, commonly `http://host.docker.internal:11434` |
+| `cloud` | `config/cloud.env` | `OLLAMA_CLOUD_MODEL` (`*:cloud` or `*-cloud`) | Reachable daemon signed in with `ollama signin` |
+
+Do not use `localhost:11434` for an Ollama daemon running on the Docker host;
+inside a Jarvis container, localhost is the container. Cloud mode uses only the
+hosts explicitly listed in `OLLAMA_BASE_URL` and does not silently append a
+localhost fallback. See [Ollama in Jarvis](../ollama/README.md) for setup and
+diagnostics.
+
 ### Tool profile
 
 Compose uses `JARVIS_DOCKER_TOOL_PROFILE=docker` by default. The profile file **`skills/profiles/docker.json`** is git-tracked and baked into the image as a safe baseline for current container limitations.
@@ -245,6 +262,19 @@ docker compose up -d --build --force-recreate jarvis-web
 ---
 
 ## Native install vs Docker
+
+### Reminder and alert speech
+
+Docker sets `JARVIS_DEPLOYMENT=docker`. Jarvis Web forwards proactive reminder
+and alert events to browser TTS only in that deployment mode, because the
+container normally cannot play through the host speaker. Keep the Web tab open,
+enable its audio control, and interact with the tab once if the browser blocks
+autoplay.
+
+Native installs keep the existing background-daemon → host-speaker path and do
+not repeat proactive speech in the browser. This avoids double audio in hybrid
+setups. See [MAC-WINDOWS.md](MAC-WINDOWS.md#proactive-speech-reminders-and-alerts)
+for browser caveats and safe test requests.
 
 **Before starting Docker**, stop native Jarvis:
 

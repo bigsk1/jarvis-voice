@@ -85,7 +85,7 @@ Added comprehensive documentation to `get_mcp_info()`:
 - `lib/tool_schema.py` - Fixed `get_mcp_info()` with comprehensive docs
 - `tests/integration/test-all-tools.sh` - Updated to use correct tool name
 - `tests/integration/test-all-tools-local.sh` - Updated to use correct tool name
-- `docs/MCP_REGRESSION_FIX.md` - This document
+- `docs/mcp/MCP_REGRESSION_FIX.md` - This document
 
 ## Key Takeaways
 
@@ -119,4 +119,3 @@ The dynamic matching against `self.mcp_clients.keys()` is the ONLY way to suppor
 - See `lib/tool_schema.py` line ~350 for implementation
 - See `tests/test_mcp_docker_integration.sh` for integration tests
 - See `config/mcp-servers.json` for server configuration
-

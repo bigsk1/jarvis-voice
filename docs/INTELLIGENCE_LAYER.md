@@ -1,8 +1,8 @@
 # Jarvis Intelligence Layer
 
-**Status**: Active / Phase 1.5 Complete + 2026 operational bridges  
-**Created**: 2025-11-27  
-**Updated**: 2026-05-25 (Pass 4: correction learning, Profile Card, dashboard port 5003, schema, API table, debris cleanup)  
+**Status**: Active / Phase 1.5 Complete + 2026 operational bridges
+**Created**: 2025-11-27
+**Updated**: 2026-05-25 (Pass 4: correction learning, Profile Card, dashboard port 5003, schema, API table, debris cleanup)
 **Location**: `lib/intelligence.py`, `lib/intelligence_hooks.py`, `jarvis-intelligence/` (dashboard)
 
 ## Overview
@@ -573,9 +573,12 @@ data/jarvis_intelligence.db
 data/jarvis_intelligence_local.db
 ```
 
-**Why separate?** Embeddings use different models:
-- Cloud: OpenAI embeddings (1536 dimensions)
-- Local: Ollama/nomic embeddings (768 dimensions)
+**Why separate?** Data mode owns the database and expected embedding space:
+- Cloud default: OpenAI embeddings (1536 dimensions)
+- Local default: Ollama/nomic embeddings (768 dimensions)
+
+This is independent of chat-provider selection. Cloud mode can use Ollama Cloud
+for chat while retaining the cloud Intelligence DB and OpenAI embeddings.
 
 ### Database Recreation
 
@@ -598,8 +601,8 @@ rm data/jarvis_intelligence.db
 
 | Mode | Works? | Notes |
 |------|--------|-------|
-| Cloud (OpenAI/Anthropic/xAI) | ✅ Yes | Uses cloud embeddings |
-| Local (Ollama) | ✅ Yes | Uses local embeddings |
+| Cloud (OpenAI/Anthropic/xAI/Ollama Cloud) | ✅ Yes | Uses cloud DB/embedding config |
+| Local (normally local Ollama) | ✅ Yes | Uses local DB/embedding config |
 | Switching modes | ✅ Yes | Separate databases |
 
 ### Tools & MCP Servers ✅
@@ -947,13 +950,13 @@ curl http://localhost:8880/api/intelligence/meta-knowledge
 
    b. If newest activity > 7 days ago:
       confidence *= DECAY_RATE  (default 0.95 = 5% decay)
-   
+
    c. If consecutive_failures > 0:
       confidence *= 0.9 ^ consecutive_failures
-   
+
    d. If helpful_ratio > 80%:
       confidence *= 1.02  (2% boost)
-   
+
    e. If confidence < 0.15:
       DELETE insight (pruned)
 
@@ -980,7 +983,7 @@ There are TWO separate mechanisms that can boost insight confidence:
 if was_helpful:
     new_confidence = min(1.0, old_confidence + 0.05)  # +5% flat
 
-# Maintenance boost (in run_decay_job)  
+# Maintenance boost (in run_decay_job)
 # Only during maintenance, AFTER time-decay applied
 if times_applied > 3 and success_rate > 80%:
     new_confidence = min(1.0, new_confidence * 1.02)  # ×1.02
@@ -999,10 +1002,10 @@ if times_applied > 3 and success_rate > 80%:
 
 2. For each experience:
    z_score = (turns - avg_turns) / std_dev
-   
+
    If z_score > ANOMALY_THRESHOLD:
      FLAG as "high_turns" anomaly
-   
+
    If turns > 3 AND success = false:
      FLAG as "failed_multi_turn" anomaly
 ```
@@ -1296,7 +1299,7 @@ The scripts automatically use the correct embedding provider based on the mode p
 ```bash
 # 1. Edit in SQLite (or SQLite Pro)
 sqlite3 data/jarvis_intelligence.db "
-UPDATE insights SET 
+UPDATE insights SET
     description = 'Use execute_bash for private network checks (192.168.x, localhost)',
     preferred_tools = '{\"execute_bash\": 0.9}'
 WHERE id = 42;
@@ -1510,33 +1513,33 @@ sum by (event) (count_over_time({job="jarvis", log_type="intelligence"} | json [
 
 **Tool bias evolution**:
 ```logql
-{job="jarvis", log_type="intelligence"} 
-| json 
-| event="insights_applied" 
+{job="jarvis", log_type="intelligence"}
+| json
+| event="insights_applied"
 | line_format "{{.tool_biases}}"
 ```
 
 **Failed insights** (insights that hurt more than help):
 ```logql
-{job="jarvis", log_type="intelligence"} 
-| json 
-| event="insight_updated" 
+{job="jarvis", log_type="intelligence"}
+| json
+| event="insight_updated"
 | new_confidence < old_confidence
 ```
 
 **Content quality issues** (tool returned data but answer was wrong):
 ```logql
-{job="jarvis", log_type="intelligence"} 
-| json 
-| event="reflection_response" 
+{job="jarvis", log_type="intelligence"}
+| json
+| event="reflection_response"
 | response_matched_tool_data=false
 ```
 
 **Learning quality alerts**:
 ```logql
-{job="jarvis", log_type="intelligence"} 
-| json 
-| event="meta_cognition" 
+{job="jarvis", log_type="intelligence"}
+| json
+| event="meta_cognition"
 | meta_type="learning_quality"
 ```
 
@@ -1545,12 +1548,12 @@ sum by (event) (count_over_time({job="jarvis", log_type="intelligence"} | json [
 Restart promtail to pick up new log config:
 ```bash
 cd ~/jarvis-voice/monitoring
-docker-compose restart promtail
+docker compose restart promtail
 ```
 
 Verify promtail sees the logs:
 ```bash
-docker-compose logs promtail | grep intelligence
+docker compose logs promtail | grep intelligence
 ```
 
 ### Local Log Inspection
@@ -1680,7 +1683,7 @@ Example: User asks "What movies are playing?"
   Turn 1: brave_search → gets showtimes ← THIS was the answer!
   Turn 2: mcp_fetch → tries to get more details → fails
   Turn 3: brave_search → different query → partial results
-  
+
 Current behavior: Scores Turn 3's tool highest
 Reality: Turn 1 had the answer
 ```
@@ -1732,7 +1735,7 @@ Day 56:  Decay runs → 0.73 × 0.95² = 0.66
 
 **Why it happens**: The decay formula `confidence *= DECAY_RATE^(days/7)` is based on time since newest activity, not success rate. New reflection merges and evidence rows refresh activity, so a newly reinforced older insight should not decay just because its original `created_at` is old. The maintenance boost (1.02×) cannot outpace the decay (0.9025×) for insights that are both rarely used and not recently reinforced.
 
-**Current design philosophy**: 
+**Current design philosophy**:
 - Frequently used + helpful = valuable → stays high
 - Rarely used = probably not important → fades away
 - This works for common patterns but punishes niche/specialized insights
@@ -1863,7 +1866,7 @@ Dashboard filters expose CG facets on the Experiences tab. See [COMPLETION_GUARD
 
 ### Phase 1 (Complete) ✅
 - [x] Negative constraints (what NOT to do)
-- [x] Fact vs Procedural classification  
+- [x] Fact vs Procedural classification
 - [x] Generalizability filtering
 - [x] Decay tracking fields
 - [x] Schema migration for existing DBs
@@ -1955,7 +1958,7 @@ Jarvis knows: User means "Ollama server status" because:
   - User frequently asks about Ollama
   - "the thing" in server context = status check
   - User's jarvis-intel mentions Ollama server
-  
+
 User says: "Give me the rundown"
 Jarvis knows: User wants verbose mode because:
   - User is catching up after being away
@@ -1971,12 +1974,12 @@ Jarvis knows: User wants verbose mode because:
    - Default: concise (under 20 words)
    - "Give me details" → switch to verbose
    - "Quick" → extra concise, just facts
-   
+
    ## Shortcuts
    - "the server" → Ollama at localhost
    - "the usual" → Bitcoin + Ethereum prices
    - "morning routine" → weather + reminders + calendar
-   
+
    ## Tool Preferences
    - Server checks: prefer execute_bash with curl
    - Prices: always use crypto_price tool
@@ -1990,10 +1993,10 @@ Jarvis knows: User wants verbose mode because:
 
 3. **Test Scenarios for Auto-Tuning**:
    ```bash
-   ./bin/test-intelligence-scenarios.py --tune
-   # Runs standard scenarios
-   # Measures: correct tool %, turns needed, user satisfaction
-   # Suggests parameter adjustments
+   pytest -q tests/test_intelligence_mode_cache.py \
+     tests/test_intelligence_server_side_tools.py
+   # Runs deterministic Intelligence mode and learning-signal regressions.
+   # There is no automatic --tune command in the current implementation.
    ```
 
 ### Why This Matters

@@ -1,6 +1,6 @@
 # Jarvis API - Documentation
 
-> **Version**: 2.0 | **Updated**: January 2026
+> **Verified against Jarvis**: v2.53.0 | **Updated**: June 2026
 
 Comprehensive REST API for Jarvis Voice Assistant - includes proactive webhooks, memory management, query interface, and system monitoring.
 
@@ -65,8 +65,8 @@ GET  /api/conversations/search?q=weather   # Search history
 
 # Stash
 GET  /api/stash               # List stash spaces
-GET  /api/stash/{id}/files    # List files in space
-GET  /api/stash/{id}/files/{file_id}/content  # Download file
+GET  /api/stash/space/{space_id}  # Get a space and its files
+GET  /api/stash/space/{space_id}/file/{file_id}/download  # Download file
 
 # Canvas
 GET  /api/canvas              # List canvas pages
@@ -98,7 +98,7 @@ GET  /api/generated-images/health       # Status check
 | `/api/intelligence/reflections/{id}` | DELETE | Cancel specific reflection |
 | `/api/intelligence/reflections` | DELETE | Cancel all pending reflections |
 | `/api/intelligence/evaluate` | GET | Meta-cognition evaluation |
-| `/api/intelligence/maintenance` | POST | Run maintenance jobs |
+| `/api/intelligence/maintenance/all` | POST | Run all maintenance jobs |
 
 See **[../INTELLIGENCE_LAYER.md](../INTELLIGENCE_LAYER.md)** for full documentation.
 
@@ -106,7 +106,7 @@ See **[../INTELLIGENCE_LAYER.md](../INTELLIGENCE_LAYER.md)** for full documentat
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/webhook/alert` | POST | Receive external alerts |
+| `/api/alerts` | POST | Receive external alerts |
 | `/api/alerts` | GET | List active alerts |
 | `/api/alerts/{id}` | DELETE | Dismiss alert |
 | `/api/reminders` | GET | List reminders |

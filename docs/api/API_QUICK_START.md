@@ -295,7 +295,7 @@ GET /api/intelligence/logs/recent?limit=50
 POST /api/intelligence/reflect?batch_size=5
 
 # Evaluate query against learned insights
-POST /api/intelligence/evaluate
+GET /api/intelligence/evaluate
 Body: {"query": "What's the Bitcoin price?"}
 ```
 
@@ -534,4 +534,3 @@ curl http://localhost:8880/api/intelligence/stats | jq
 
 **Status**: Production Ready ✅  
 **Last Updated**: Nov 27, 2025
-

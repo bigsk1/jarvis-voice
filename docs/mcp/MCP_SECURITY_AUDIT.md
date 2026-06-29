@@ -361,6 +361,5 @@ Immediately disable and investigate if you see:
 
 - Main README: `~/jarvis-voice/README.md`
 - Config Guide: `~/jarvis-voice/config/README.md`
-- MCP Quickstart: `~/jarvis-voice/docs/MCP_QUICKSTART.md`
+- MCP Quickstart: `~/jarvis-voice/docs/mcp/MCP_QUICKSTART.md`
 - Test Script: `~/jarvis-voice/bin/test-mcp`
-

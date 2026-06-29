@@ -8,26 +8,26 @@ Understanding how Jarvis handles conversation state between interactions is crit
 
 ## TL;DR - Quick Answers
 
-**Q: Does Jarvis remember context between wake word cycles?**  
+**Q: Does Jarvis remember context between wake word cycles?**
 **A: YES (now)** - Auto-context automatically loads recent conversations when enabled.
 
-**Q: So every time I say "Hey Jarvis", it knows what I just asked?**  
+**Q: So every time I say "Hey Jarvis", it knows what I just asked?**
 **A: Yes (if within time window):**
 - `AUTO_CONTEXT_ENABLED=true` (default) - loads recent conversations automatically
 - `AUTO_CONTEXT_WINDOW=3` - how many recent conversations to include
 - `AUTO_CONTEXT_MINUTES=10` - only include conversations from last N minutes
 
-**Q: How does the WebUI handle context?**  
+**Q: How does the WebUI handle context?**
 **A:** WebUI maintains conversation history client-side and passes it directly to the orchestrator via `conversation_history` parameter - different from terminal auto-context.
 
-**Q: Isn't that inefficient? It has to re-send the system prompt and all tools every time?**  
+**Q: Isn't that inefficient? It has to re-send the system prompt and all tools every time?**
 **A: Usually no. Prompt caching and provider-specific continuation reduce the pain:**
 - ✅ **Prompt caching** (Anthropic, OpenAI, xAI when cache hits apply) - system/tool prompts can be discounted
 - ✅ **Auto-context** provides conversation continuity from Jarvis' own saved state
 - ✅ **xAI in-flight continuation** can avoid resending the same Jarvis tool result during one multi-tool request
 - ✅ **OpenAI Responses in-flight continuation** can do the same for OpenAI when explicitly enabled
 
-**Q: What about OpenAI's Responses API with `store=True` and `previous_response_id`?**  
+**Q: What about OpenAI's Responses API with `store=True` and `previous_response_id`?**
 **A:** OpenAI Responses is now wired as an optional routing backend, including in-flight `previous_response_id` continuation for one active Jarvis client-tool loop. It is not used as persistent Web UI conversation memory. Saved Web UI follow-ups still use Jarvis local context and follow-up extraction.
 
 ---
@@ -96,24 +96,24 @@ Understanding how Jarvis handles conversation state between interactions is crit
       "content": "<FULL SYSTEM PROMPT>"  # ~2500 tokens
     },
     {
-      "role": "user", 
+      "role": "user",
       "content": """
         === RECENT CONVERSATION HISTORY ===
         Last 3 conversation(s) in past 10 minutes
-        
+
         [1] User: What's the price of bitcoin?
             Jarvis: Bitcoin is $103,664
-        
+
         [2] User: And ethereum?
             Jarvis: Ethereum is $3,200
-        
+
         === CURRENT REQUEST ===
         What about solana?
       """  # Auto-context prepended to current question
     }
   ],
   "tools": [
-    # ALL tool definitions (75+ tools, ~5000+ tokens)
+    # Full tool catalog (78 manifests at last verification; profile filters apply)
     {"name": "get_time", "description": "...", "parameters": {...}},
     {"name": "crypto_price", "description": "...", "parameters": {...}},
     # ... 50+ more tools ...
@@ -166,11 +166,11 @@ tools_used = []            # Tools used THIS cycle
 for turn_num in range(max_turns):
     # Build context from previous turns (in THIS cycle)
     turn_input = self._build_turn_context(transcript, conversation_context)
-    
+
     # Route & execute
     route = self.router.route(turn_input)
     result = self.executor.execute(tool_name, arguments)
-    
+
     # Add to THIS cycle's context
     conversation_context.append({
         "turn": turn_num,
@@ -381,7 +381,7 @@ Jarvis: [Calls search_memory with "tetris"]
 
 **Anthropic Prompt Caching:**
 ```
-Request 1 (00:00): 
+Request 1 (00:00):
   System prompt: 2500 tokens → Cache miss, store for 5 min
   Tools: 5000 tokens → Cache miss, store for 5 min
   User query: 50 tokens

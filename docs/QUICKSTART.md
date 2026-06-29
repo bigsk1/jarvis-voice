@@ -13,13 +13,18 @@ chmod +x install.sh
 
 For the full walkthrough (keys, audio, systemd), see [INSTALL_GUIDE.md](INSTALL_GUIDE.md).
 
-### 2. Add Your API Key (Cloud Mode)
+### 2. Configure a Cloud Provider
 
 ```bash
 nano config/cloud.env
 ```
 
-Set at least one cloud provider key (e.g. `XAI_API_KEY`, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY`). See [../config/README.md](../config/README.md).
+Choose one provider in `config/cloud.env`:
+
+- `xai`, `openai`, or `anthropic`: configure that provider's API key and model.
+- `ollama`: configure a reachable, signed-in Ollama daemon and a cloud-tagged `OLLAMA_CLOUD_MODEL` such as `minimax-m3:cloud`.
+
+Cloud mode does not silently fall back to localhost. See [ollama/README.md](ollama/README.md) and [../config/README.md](../config/README.md).
 
 ### 3. Run Jarvis
 
@@ -48,7 +53,7 @@ For more details:
 # Activate venv first
 source ~/jarvis-venv/bin/activate
 
-# Cloud mode (xAI / OpenAI / Anthropic)
+# Cloud mode (xAI / OpenAI / Anthropic / Ollama Cloud)
 ./jarvis
 
 # Local mode (Ollama)
@@ -81,13 +86,13 @@ tmux ls                           # List all
 
 ## Common Issues
 
-**"No input device"**  
+**"No input device"**
 → Check: `arecord -l` and update `IN_DEV` in config
 
-**"Transcription failed"**  
+**"Transcription failed"**
 → Check your API key in `config/cloud.env`
 
-**Not detecting wake word**  
+**Not detecting wake word**
 → Lower `TRIGGER_THRESHOLD` in config (try 0.15)
 
 ---

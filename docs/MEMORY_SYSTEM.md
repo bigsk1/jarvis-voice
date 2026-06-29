@@ -150,7 +150,7 @@ Removes memories that are no longer needed or incorrect.
 ```bash
 cd ~/jarvis-voice
 source ~/jarvis-venv/bin/activate
-./bin/rebuild-fts-index.py  # Both cloud and local DBs
+./bin/rebuild-fts-index  # Both cloud and local DBs
 ```
 
 This populates the full-text search index for existing memories.
@@ -278,11 +278,11 @@ JARVIS_RESPONSE_STYLE="detailed"
 
 Memories are converted to vector embeddings for semantic search:
 
-**Cloud Mode:**
-- Uses OpenAI `text-embedding-3-small`
+**Cloud Mode (default):**
+- Uses OpenAI `text-embedding-3-small` independently of the chat provider
 - 1536 dimensions
 
-**Local Mode:**
+**Local Mode (default):**
 - Uses Ollama `nomic-embed-text`
 - 768 dimensions
 
@@ -296,10 +296,10 @@ Memory system is configured in:
 
 **Key Settings:**
 ```bash
-# Embedding provider (auto-detected from LLM_PROVIDER)
+# Embedding provider (explicit; independent of LLM_PROVIDER)
 EMBEDDING_PROVIDER="openai"  # or "ollama"
 
-# Ollama embedding model (local only)
+# Ollama embedding model (used when EMBEDDING_PROVIDER=ollama)
 OLLAMA_EMBEDDING_MODEL="nomic-embed-text"
 
 # Auto-memory injection (inject relevant memories before each LLM call)

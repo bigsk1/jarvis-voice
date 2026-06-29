@@ -209,11 +209,11 @@ def send_alert(title, description, severity, auto_resolve_url=None):
         "severity": severity,
         "source": SOURCE_NAME,
     }
-    
+
     if auto_resolve_url:
         payload["auto_resolve_url"] = auto_resolve_url
         payload["auto_resolve_check_interval"] = 300
-    
+
     try:
         response = requests.post(JARVIS_API, json=payload, timeout=10)
         return response.json()
@@ -246,7 +246,7 @@ def main():
     print(f"   Containers: {MONITOR_CONTAINERS}")
     print(f"   URLs: {MONITOR_URLS}")
     print()
-    
+
     # Initialize Docker client
     docker_client = None
     if MONITOR_CONTAINERS and MONITOR_CONTAINERS[0]:
@@ -254,18 +254,18 @@ def main():
             docker_client = docker.from_env()
         except:
             print("⚠️  Docker not available")
-    
+
     last_status = {}
-    
+
     while True:
         # Check URLs
         for url in MONITOR_URLS:
             if not url:
                 continue
-                
+
             is_up = check_url(url)
             prev = last_status.get(url)
-            
+
             if prev and not is_up:
                 print(f"❌ {url} is DOWN")
                 send_alert(
@@ -276,18 +276,18 @@ def main():
                 )
             elif prev == False and is_up:
                 print(f"✅ {url} is back UP")
-            
+
             last_status[url] = is_up
-        
+
         # Check Docker containers
         if docker_client:
             for container_name in MONITOR_CONTAINERS:
                 if not container_name:
                     continue
-                    
+
                 is_running = check_container(docker_client, container_name)
                 prev = last_status.get(container_name)
-                
+
                 if prev and not is_running:
                     print(f"❌ Container {container_name} stopped")
                     send_alert(
@@ -297,9 +297,9 @@ def main():
                     )
                 elif prev == False and is_running:
                     print(f"✅ Container {container_name} started")
-                
+
                 last_status[container_name] = is_running
-        
+
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
@@ -321,23 +321,23 @@ services:
     environment:
       # Jarvis API endpoint (use Tailscale IP)
       JARVIS_API: "http://100.101.102.103:8880/api/alerts"
-      
+
       # Check interval (seconds)
       CHECK_INTERVAL: "60"
-      
+
       # Docker containers to monitor (comma-separated)
       MONITOR_CONTAINERS: "kokoro-tts,comfyui,ollama"
-      
+
       # URLs to monitor (comma-separated)
       MONITOR_URLS: "http://localhost:8188/health,http://localhost:11434/health"
-      
+
       # Source name for alerts
       SOURCE_NAME: "proxmox-gpu-vm"
-    
+
     volumes:
       # Mount Docker socket to monitor containers
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    
+
     networks:
       - monitoring
 
@@ -358,10 +358,10 @@ cd ~/jarvis-monitor
 # 3. Update JARVIS_API in docker-compose.yml with your Tailscale IP
 
 # 4. Start monitor
-docker-compose up -d
+docker compose up -d
 
 # 5. View logs
-docker-compose logs -f
+docker compose logs -f
 ```
 
 ---
@@ -404,7 +404,7 @@ nano docker-compose.yml
 **3. Start monitoring:**
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 **4. Test:**

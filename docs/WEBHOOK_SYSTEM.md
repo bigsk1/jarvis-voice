@@ -43,8 +43,7 @@ Jarvis uses a **modular webhook registry** for triggering external services and 
 
 | File | Purpose | Git Status |
 |------|---------|------------|
-| `config/webhook_registry.json` | Active webhook definitions (URLs, auth, rate limits) | ❌ Gitignored (your data) |
-| `config/webhook_registry.json.example` | Template with examples | ✅ Committed |
+| `config/webhook_registry.json` | Active webhook definitions (URLs, auth, rate limits); create from the schema/examples below | ❌ Gitignored (your data) |
 | `config/contacts.json` | Email contact list (name → email mapping) | ❌ Gitignored (your data) |
 | `config/contacts.json.example` | Template with examples | ✅ Committed |
 
@@ -129,7 +128,7 @@ Both are gitignored and auto-created on first use.
 {
   "_description": "Registry of named webhooks Jarvis can trigger",
   "_usage": "Use webhook name instead of URL in send_webhook tool",
-  
+
   "webhooks": {
     "webhook_name": {
       "url": "http://localhost:5678/webhook/endpoint",
@@ -818,6 +817,5 @@ rm data/.webhook_rate_limit data/.email_rate_limit
 
 ---
 
-**Last Updated:** 2025-11-25  
+**Last Updated:** 2025-11-25
 **Version:** 1.0
-

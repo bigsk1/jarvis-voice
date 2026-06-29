@@ -109,27 +109,27 @@ def process(self, transcript: str) -> Dict[str, Any]:
     conversation_context = []
     tools_used = []
     accumulated_data = {}
-    
+
     for turn_num in range(max_turns):
         # Build context for this turn
         if turn_num == 0:
             turn_input = transcript
         else:
             turn_input = self._build_turn_context(transcript, conversation_context)
-        
+
         # Route and execute
         route = self.router.route(turn_input)
-        
+
         if route["intent"] == "tool":
             # Execute tool, add to context, continue
             result = self.executor.execute(...)
             conversation_context.append({"tool": ..., "result": ...})
             continue
-        
+
         elif route["intent"] == "qa":
             # Task complete - return summary
             return {"speech": ..., "tools_used": tools_used, ...}
-    
+
     # Max turns reached
     return {"speech": "Complexity limit reached", ...}
 ```
@@ -151,7 +151,7 @@ You can now call MULTIPLE tools in sequence! After each tool executes:
 
 EXAMPLES:
 User: "Send webhook to X and save the URL"
-→ Turn 1: Call 'send_webhook' 
+→ Turn 1: Call 'send_webhook'
 → Turn 2: Call 'remember' to save the URL
 → Turn 3: Q&A response "Done! Webhook sent and URL saved."
 ```
@@ -164,18 +164,18 @@ The `_build_turn_context()` method formats previous tool results for the LLM:
 def _build_turn_context(self, original_query: str, conversation_context: list) -> str:
     context_parts = [f"Original user request: {original_query}\n"]
     context_parts.append("Tools executed so far:")
-    
+
     for i, ctx in enumerate(conversation_context, 1):
         tool_name = ctx["tool"]
         result_summary = self._build_llm_result_context_preview(tool_name, ctx["result"])
         context_parts.append(f"\n{i}. {tool_name}")
         context_parts.append("   Result Meta: ok=..., result_truncated=..., result_chars_shown=..., result_chars_total=...")
         context_parts.append("   Result or Result Preview: valid JSON shown to the LLM")
-    
+
     context_parts.append("\n\nDetermine if you need to:")
     context_parts.append("1. Call another tool to complete the request")
     context_parts.append("2. Respond directly (task complete)")
-    
+
     return "\n".join(context_parts)
 ```
 
@@ -318,10 +318,10 @@ Current: 300 chars per tool result (adjustable)
 
 ## Related Documentation
 
-- [Tool System](TOOL_SYSTEM.md) - How tools work
-- [Router](ROUTER.md) - LLM-based routing logic
+- [Tool Calling System](TOOL_CALLING_SYSTEM.md) - How tools work
+- [Jarvis Workflow](JARVIS_WORKFLOW.md) - LLM routing and request flow
 - [Memory System](MEMORY_SYSTEM.md) - Persistent knowledge
-- [OpenCode Integration](OPENCODE.md) - Complex task agent
+- [OpenCode Integration](opencode/OPENCODE.md) - Complex task agent
 
 ---
 

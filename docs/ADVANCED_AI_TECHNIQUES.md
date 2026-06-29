@@ -463,35 +463,35 @@ Use accumulated feedback data to automatically improve system prompts and tool d
 -- New table: prompt_versions
 CREATE TABLE prompt_versions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    
+
     -- What this prompt is for
     component TEXT NOT NULL,           -- 'system_prompt', 'tool:search_memory', 'tool:execute_bash'
     component_type TEXT NOT NULL,      -- 'system', 'tool_description', 'tool_schema'
-    
+
     -- Version tracking
     version INTEGER NOT NULL,
     content TEXT NOT NULL,             -- The actual prompt/description text
-    
+
     -- Lineage
     parent_version_id INTEGER,         -- Which version this evolved from
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_by TEXT,                   -- 'human', 'auto_evolution', 'rollback'
-    
+
     -- Performance metrics
     times_used INTEGER DEFAULT 0,
     total_rating_sum REAL DEFAULT 0,
     avg_rating REAL GENERATED ALWAYS AS (
         CASE WHEN times_used > 0 THEN total_rating_sum / times_used ELSE NULL END
     ) STORED,
-    
+
     -- Status
     is_active BOOLEAN DEFAULT FALSE,
     is_archived BOOLEAN DEFAULT FALSE,
-    
+
     -- Audit trail
     trigger_feedback_ids TEXT,         -- JSON array of feedback IDs that triggered this
     change_summary TEXT,               -- LLM-generated summary of what changed
-    
+
     FOREIGN KEY (parent_version_id) REFERENCES prompt_versions(id)
 );
 
@@ -741,7 +741,7 @@ jarvis-dashboard → 🧬 Evolution → Evolution Logs
 # Starting A/B test (need 20 interactions)
 
 # View prompt history
-./bin/prompt-history tool:search_memory
+./bin/evolve-prompts history tool:search_memory
 
 # Output:
 # Version 1 (human, 2025-11-01) - Original
@@ -839,7 +839,7 @@ Better, more accurate tool created!
 ```
 skills/
 ├── *.py                      # Human-created tools
-├── *.tool.json              
+├── *.tool.json
 ├── auto-tools/               # Auto-generated tools
 │   ├── text_case_converter.py
 │   ├── text_case_converter.tool.json
@@ -913,14 +913,14 @@ PARALLELIZATION_PATTERNS = [
         "strategy": "parallel_research",
         "max_workers": 3
     },
-    
+
     # Pattern: "Do A and also do B"
     {
         "trigger": r".+ and (also )?(do|check|find|get) .+",
         "strategy": "parallel_independent",
         "max_workers": 2
     },
-    
+
     # Pattern: "What are the top N ..."
     {
         "trigger": r"(top|best|compare) \d+ .+",
@@ -1003,7 +1003,7 @@ class SubTask:
     max_turns: int = 2
     timeout: int = 60
 
-@dataclass  
+@dataclass
 class SubTaskResult:
     task_id: str
     success: bool
@@ -1017,53 +1017,53 @@ class SubagentPool:
         self.max_workers = max_workers
         self.results = {}
         self.lock = threading.Lock()
-    
+
     def execute_parallel(self, tasks: List[SubTask]) -> List[SubTaskResult]:
         """Execute independent tasks in parallel, then dependent tasks."""
-        
+
         # Separate independent and dependent tasks
         independent = [t for t in tasks if not t.depends_on]
         dependent = [t for t in tasks if t.depends_on]
-        
+
         # Phase 1: Parallel execution of independent tasks
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {
                 executor.submit(self._run_subtask, task): task
                 for task in independent
             }
-            
+
             for future in as_completed(futures):
                 task = futures[future]
                 result = future.result()
                 with self.lock:
                     self.results[task.id] = result
-        
+
         # Phase 2: Sequential execution of dependent tasks
         for task in dependent:
             # Wait for dependencies (already complete from phase 1)
             dep_results = [self.results[dep_id] for dep_id in task.depends_on]
-            
+
             # Inject dependency results into task context
             task.context = {"previous_results": dep_results}
-            
+
             result = self._run_subtask(task)
             self.results[task.id] = result
-        
+
         return list(self.results.values())
-    
+
     def _run_subtask(self, task: SubTask) -> SubTaskResult:
         """Run a single subtask with limited tools and turns."""
         from orchestrator_v2 import Orchestrator
-        
+
         # Create mini-orchestrator with restricted tools
         orch = Orchestrator(
             mode=self.mode,
             allowed_tools=task.allowed_tools,
             max_turns=task.max_turns
         )
-        
+
         result = orch.process(task.query)
-        
+
         return SubTaskResult(
             task_id=task.id,
             success=result.get("ok", False),
@@ -1100,7 +1100,7 @@ Output JSON:
       "depends_on": []  // empty = independent
     },
     {
-      "id": "task_2", 
+      "id": "task_2",
       "query": "...",
       "tools": ["..."],
       "depends_on": ["task_1"]  // runs after task_1
@@ -1197,19 +1197,19 @@ MUTATION_STRATEGIES = {
         # Mutations: "Tell me the current time", "What's the time now?", "Time?"
         "prompt": "Rephrase this query 3 different ways: {query}"
     },
-    
+
     "expand": {
         # Original: "Weather"
         # Mutations: "What's the weather today?", "Weather forecast for my location"
         "prompt": "Expand this brief query into a complete question: {query}"
     },
-    
+
     "complicate": {
         # Original: "Check Bitcoin price"
         # Mutations: "Check Bitcoin and Ethereum prices, compare them"
         "prompt": "Make this query more complex (add related sub-tasks): {query}"
     },
-    
+
     "adversarial": {
         # Original: "Remember my VPN is 192.168.1.1"
         # Mutations: "Don't remember anything", "Forget everything about VPN"
@@ -1263,15 +1263,15 @@ Every prompt change is versioned. If performance degrades, automatically rollbac
 DEGRADATION_THRESHOLDS = {
     # If recent performance drops more than X% from historical average
     "pct_drop_trigger": 20,  # 20% drop triggers alert
-    
+
     # Minimum samples before comparing
     "min_recent_samples": 10,
     "min_historical_samples": 50,
-    
+
     # Time windows
     "recent_window_hours": 24,
     "historical_window_days": 30,
-    
+
     # Auto-rollback vs alert-only
     "auto_rollback_threshold": 30,  # 30%+ drop = auto rollback
     "alert_only_threshold": 20,     # 20-30% = alert, manual decision
@@ -1319,7 +1319,7 @@ data/
 
 ```bash
 # View version history with performance
-./bin/prompt-history system_prompt --with-stats
+./bin/evolve-prompts history system_prompt
 
 # Output:
 # Version 1 (2025-11-01) avg: 7.2 samples: 150 [ARCHIVED]
@@ -1367,21 +1367,21 @@ SAFETY_CONFIG = {
     "max_evolutions_per_day": 3,
     "max_auto_tools_per_week": 2,
     "max_rollbacks_per_day": 5,
-    
+
     # Human approval required for
     "require_approval": [
         "system_prompt_changes",      # Core behavior changes
         "dangerous_tool_creation",    # Tools with filesystem/network
         "bulk_rollback",              # Rolling back multiple components
     ],
-    
+
     # Auto-disable triggers
     "auto_disable_tool_if": {
         "error_rate_above": 0.5,      # 50%+ errors
         "avg_rating_below": 4.0,      # Very low ratings
         "consecutive_failures": 5,    # 5 failures in a row
     },
-    
+
     # Sandbox settings
     "sandbox_new_tools_for": "24h",   # New tools sandboxed for 24h
     "sandbox_new_prompts_for": "12h", # New prompts A/B tested for 12h
@@ -1410,7 +1410,7 @@ Every autonomous action is logged:
   },
   "verification": {
     "syntax_check": "passed",
-    "semantic_check": "passed", 
+    "semantic_check": "passed",
     "test_queries": ["passed", "passed", "passed"]
   },
   "status": "deployed_to_ab_test",
@@ -1528,7 +1528,7 @@ What's Missing:
 
 ## Phase 8: Swarm Mode (Research Parallelism)
 
-> **Status:** Brainstorming  
+> **Status:** Brainstorming
 > **Full Design:** [docs/swarm/BRAINSTORM.md](swarm/BRAINSTORM.md)
 
 ### Concept
@@ -1683,7 +1683,7 @@ MAINTENANCE_CHECKS = [
     {
         "name": "memory_health",
         "query": """
-            SELECT 
+            SELECT
                 COUNT(*) as total,
                 SUM(CASE WHEN created_at < date('now', '-90 days') THEN 1 ELSE 0 END) as stale,
                 SUM(CASE WHEN importance < 3 THEN 1 ELSE 0 END) as low_importance
@@ -1723,7 +1723,7 @@ MAINTENANCE_CHECKS = [
 
 ```bash
 # Manual run (dry mode)
-./bin/jarvis-maintenance --mode cloud --dry-run
+./bin/run-intelligence-maintenance.py --mode cloud --dry-run
 
 # Output:
 # 🔍 Observing system state...
@@ -1744,7 +1744,7 @@ MAINTENANCE_CHECKS = [
 # Run with --execute to perform actions
 
 # Cron (every 6 hours)
-0 */6 * * * cd ~/jarvis-voice && ./bin/jarvis-maintenance --mode cloud --execute >> logs/maintenance.log 2>&1
+0 */6 * * * cd ~/jarvis-voice && ./bin/run-intelligence-maintenance.py --mode cloud >> logs/maintenance.log 2>&1
 ```
 
 ---
@@ -1826,6 +1826,6 @@ Output what the user NEEDS to know, not everything you CAN fetch.
 
 ---
 
-**Document Version:** 2.0  
-**Last Updated:** 2026-02-02  
+**Document Version:** 2.0
+**Last Updated:** 2026-02-02
 **Status:** Phases 3, 4, 7 built but underutilized. Phases 8-10 brainstorming.

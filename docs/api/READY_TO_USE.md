@@ -45,10 +45,10 @@ curl -X POST http://localhost:8880/api/alerts \
 | Doc | Purpose |
 |-----|---------|
 | **`TEST_API.md`** | Testing guide with examples |
-| **[archive/service/PHASE_1_COMPLETE.md](archive/service/PHASE_1_COMPLETE.md)** | Phase 1 milestone (historical) |
-| **`docs/API_QUICK_START.md`** | API endpoints and integration examples |
-| **`docs/API_MODE_SELECTION.md`** | Cloud vs local mode |
-| **`docs/service/PROACTIVE_ASSISTANT_SYSTEM.md`** | Full architecture (5 phases) |
+| **[Phase 1 milestone](../archive/service/PHASE_1_COMPLETE.md)** | Historical implementation record |
+| **[API_QUICK_START.md](API_QUICK_START.md)** | API endpoints and integration examples |
+| **[QUERY.md](QUERY.md)** | Per-request cloud/local mode selection |
+| **[Proactive Assistant System](../service/PROACTIVE_ASSISTANT_SYSTEM.md)** | Full architecture |
 
 ---
 
@@ -220,4 +220,3 @@ Let me know when ready - Phase 1 works great on its own! 🚀
 - **Examples**: `docs/api/API_QUICK_START.md`
 - **Architecture**: `docs/service/PROACTIVE_ASSISTANT_SYSTEM.md`
 - **Modes**: `docs/api/API_OVERVIEW.md` (cloud vs local)
-

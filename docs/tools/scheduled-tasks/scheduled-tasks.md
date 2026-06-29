@@ -33,6 +33,10 @@ What works now:
 - durable `scheduled_tasks` and `scheduled_task_runs` tables
 - API routes for scheduled-task CRUD and run history
 - runner service scaffold that executes due `query` and `workflow` tasks
+- each task runs inside its own immutable cloud/local config scope, even when
+  the long-lived runner itself started in the other mode
+- run history records the provider and provider-specific model resolved from
+  the task's mode rather than the runner process environment
 - sync support for scheduled-task tables across cloud/local memory DBs
 - Jarvis Memory UI tab for:
   - list / inspect
@@ -62,7 +66,7 @@ What works now:
 
 What is still next:
 
-- stronger execution metadata in intelligence/reflection
+- richer scheduled-task evidence in intelligence/reflection
 - production-hardening around retries and overlap policy
 - optional chaining / dependency policies between tasks
 
@@ -608,6 +612,10 @@ That means these examples should work from the Jarvis host without needing an `A
 - `http://localhost:8880/api/scheduled-tasks`
 
 ### Curl examples
+
+Task create/update requests accept only `"cloud"` or `"local"` for `mode`.
+Typos are rejected with `422 Unprocessable Entity` rather than being stored for
+the runner to fail later.
 
 Create a recurring workflow task:
 

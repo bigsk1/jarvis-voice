@@ -44,7 +44,7 @@ embedding = get_embedding(text)  # Uses target mode's embedding model
 embedding_blob = json.dumps(embedding).encode('utf-8')
 
 # Insert/update with new embedding
-cursor.execute("INSERT OR REPLACE INTO knowledge_base (..., embedding) VALUES (..., ?)", 
+cursor.execute("INSERT OR REPLACE INTO knowledge_base (..., embedding) VALUES (..., ?)",
                (..., embedding_blob))
 ```
 
@@ -120,7 +120,7 @@ Tool definitions are **mode-specific** metadata, not user data:
 - Tool descriptions are fixed (don't change based on user activity)
 - Tool embeddings need regenerating when tools are added/modified
 
-**Memory sync** is about user data (memories, conversations).  
+**Memory sync** is about user data (memories, conversations).
 **Tool sync** is about system capabilities (available tools).
 
 ### How it Works
@@ -375,7 +375,7 @@ Validates that embeddings in the database match the expected dimensions for the 
 **Workflow:**
 ```bash
 # 1. Currently using cloud mode, has data
-./jarvis  
+./jarvis
 
 # 2. Switch to local mode
 ./jarvis-local
@@ -466,7 +466,7 @@ If errors occurred, memories may have wrong embeddings.
 
 ### Q: Health check passes, but semantic search still fails?
 
-**A**: 
+**A**:
 1. Check if search query is too specific (adjust `SEMANTIC_SIMILARITY_THRESHOLD`)
 2. Verify memories actually exist: `sqlite3 data/jarvis_memory_local.db "SELECT COUNT(*) FROM knowledge_base"`
 3. Check if embeddings exist: `SELECT COUNT(*) FROM knowledge_base WHERE embedding IS NOT NULL`
@@ -625,7 +625,7 @@ Synchronizes active `prompt_versions` between cloud and local memory databases s
    ```bash
    # About to switch from local to cloud
    ./bin/sync-intelligence-db.py cloud
-   ./bin/jarvis  # Start cloud mode with all learnings
+   ./jarvis  # Start cloud mode with all learnings
    ```
 
 3. **Fresh local setup**: Populate from cloud learnings
@@ -698,7 +698,7 @@ Use `check-intelligence-health.py` to validate:
                              │
                              ▼
               ┌──────────────────────────────────┐
-              │  4. INTELLIGENCE LAYER INIT      │  
+              │  4. INTELLIGENCE LAYER INIT      │
               │  (automatic on first use)        │
               │                                  │
               │  • Creates intelligence.db       │
@@ -738,7 +738,7 @@ Note: Intelligence sync is MANUAL (run when switching modes)
 - `docs/EMBEDDING_HEALTH_CHECKS.md` - Detailed health check guide
 - `docs/DUAL_DATABASE_SYSTEM.md` - Why we have separate databases
 - `docs/TOOL_RAG_STRATEGY.md` - How tool sync enables Tool RAG
-- `docs/INTELLIGENCE_LAYER.md` - Self-learning system details 
+- `docs/INTELLIGENCE_LAYER.md` - Self-learning system details
 - `docs/TESTING.md` - Test script patterns with sync
 
 ---

@@ -1,8 +1,15 @@
 # OAuth Authentication for LLM Providers
 
-> **Status**: Research & Planning  
-> **Priority**: Medium (cost savings potential)  
+> **Status**: Research & Planning
+> **Priority**: Medium (cost savings potential)
 > **Last Updated**: February 2026
+
+> [!WARNING]
+> This is an unimplemented research note, not a setup guide. Current Jarvis
+> provider code does not read `ANTHROPIC_OAUTH_TOKEN`, Claude Code credentials,
+> or Gemini CLI credentials for LLM requests. Use the API-key variables in
+> `config/cloud.env.example`. Do not add the proposed tokens below expecting
+> Jarvis to use subscription billing.
 
 ---
 
@@ -33,8 +40,8 @@ OAuth Flow:
 
 | Provider | OAuth Available | Subscription Includes API | Notes |
 |----------|-----------------|---------------------------|-------|
-| **Anthropic** | ✅ YES | Claude Pro/Max includes usage | `claude setup-token` generates OAuth token |
-| **Google** | ✅ YES | Google AI Pro/Ultra includes usage | Gemini CLI `gemini auth login` uses subscription |
+| **Anthropic** | Research only | Not integrated with Jarvis | Proposed Claude Code token path below is not implemented |
+| **Google** | Research only | Not integrated with Jarvis | Gemini CLI credentials are not read by Jarvis |
 | **OpenAI** | ⚠️ Apps SDK | Business/Enterprise only | "Sign in with ChatGPT" for MCP apps |
 | **xAI** | ❌ NO | Grok Premium ≠ API access | API keys only, no OAuth for subscriptions |
 
@@ -79,18 +86,18 @@ Use **OAuth for main LLM** (biggest cost saver) + **API keys for specialized fea
 ```python
 def get_auth_for_task(provider: str, task: str) -> dict:
     """Get appropriate auth based on task type."""
-    
+
     if task in ['chat', 'completion', 'tool_use', 'agent']:
         # Try OAuth first for main LLM tasks
         oauth = get_oauth_token(provider)
         if oauth:
             return {'type': 'oauth', 'token': oauth}
-    
+
     # Image/video/embeddings - use API key
     if task in ['image_generation', 'video_generation', 'embeddings']:
         api_key = get_api_key(provider)
         return {'type': 'api_key', 'token': api_key}
-    
+
     # Default fallback
     return {'type': 'api_key', 'token': get_api_key(provider)}
 ```
@@ -234,7 +241,7 @@ def get_gemini_auth():
     oauth_creds = Path.home() / '.config' / 'gemini' / 'credentials.json'
     if oauth_creds.exists():
         return {'type': 'oauth', 'billing': 'subscription'}
-    
+
     # 2. Fall back to API key
     api_key = get_config_value('GOOGLE_GEMINI_API_KEY')
     if api_key:
@@ -337,7 +344,7 @@ ANTHROPIC_OAUTH_TOKEN=sk-ant-oat01-...
 ```python
 def get_anthropic_auth():
     """Get Anthropic authentication, preferring OAuth over API key."""
-    
+
     # 1. Check OAuth token first (subscription-based)
     oauth_token = get_config_value('ANTHROPIC_OAUTH_TOKEN')
     if oauth_token and oauth_token.startswith('sk-ant-oat'):
@@ -346,7 +353,7 @@ def get_anthropic_auth():
             'token': oauth_token,
             'billing': 'subscription'
         }
-    
+
     # 2. Fall back to API key (pay-per-token)
     api_key = get_config_value('ANTHROPIC_API_KEY')
     if api_key:
@@ -355,7 +362,7 @@ def get_anthropic_auth():
             'token': api_key,
             'billing': 'api'
         }
-    
+
     return None
 ```
 
@@ -386,40 +393,40 @@ def main():
     print("This will connect Jarvis to your Claude Pro/Max subscription.")
     print("Usage will count against your subscription quota, NOT API billing.")
     print()
-    
+
     # Check for existing token
     existing = get_config_value('ANTHROPIC_OAUTH_TOKEN')
     if existing and existing.startswith('sk-ant-oat'):
         print(f"✅ OAuth token already configured: {existing[:20]}...")
         print("   To re-authenticate, delete ANTHROPIC_OAUTH_TOKEN from config")
         return
-    
+
     print("📋 Instructions:")
     print("   1. Browser will open to Claude login")
     print("   2. Log in with your Claude Pro/Max account")
     print("   3. Authorize Jarvis")
     print("   4. Copy the redirect URL and paste below")
     print()
-    
+
     # For localhost without HTTPS, use manual code entry
     # (Same approach as Spotify OAuth)
-    
+
     auth_params = {
         'client_id': 'jarvis-voice-assistant',  # Would need to register
         'redirect_uri': 'http://127.0.0.1:8889/callback',
         'response_type': 'code',
         'scope': 'model:read model:write'
     }
-    
+
     full_url = f"{AUTH_URL}?{'&'.join(f'{k}={v}' for k,v in auth_params.items())}"
-    
+
     print(f"Opening: {full_url[:50]}...")
     webbrowser.open(full_url)
-    
+
     print()
     print("After authorizing, paste the redirect URL here:")
     redirect_url = input("URL: ").strip()
-    
+
     # Extract code from URL
     # ... token exchange logic ...
 ```
@@ -486,7 +493,7 @@ def call_anthropic(prompt):
         response = client.messages.create(...)
     except AuthenticationError as e:
         if 'invalid_token' in str(e):
-            print("OAuth token invalid. Run: ./bin/anthropic-auth")
+            print("OAuth token invalid. Re-authentication helper is not implemented")
             # Fall back to API key if available
             return call_with_api_key(prompt)
         raise
@@ -508,7 +515,7 @@ Claude Code uses Anthropic's first-party OAuth. For Jarvis, we'd need:
 ### Alternative: Use Claude Code's Token
 
 Since `claude setup-token` already works, we could:
-1. Have users run `claude setup-token` 
+1. Have users run `claude setup-token`
 2. Copy the generated token to Jarvis config
 3. Use it directly (both are just Bearer tokens)
 
@@ -547,23 +554,23 @@ Instead of implementing full OAuth flows, Jarvis can:
 ```python
 def get_provider_auth(provider: str):
     """Get auth, preferring OAuth tokens from provider CLIs."""
-    
+
     if provider == 'anthropic':
         # Check for Claude Code OAuth token
         oauth_token = os.environ.get('CLAUDE_CODE_OAUTH_TOKEN')
         if not oauth_token:
             # Check common locations
             oauth_token = read_token_file('~/.claude/oauth_token')
-        
+
         if oauth_token and oauth_token.startswith('sk-ant-oat'):
             return {'type': 'oauth', 'token': oauth_token}
-    
+
     elif provider == 'google':
         # Check for Gemini CLI credentials
         creds_path = Path.home() / '.config' / 'gemini' / 'credentials.json'
         if creds_path.exists():
             return {'type': 'oauth', 'credentials': creds_path}
-    
+
     # Fall back to API key
     api_key = get_config_value(f'{provider.upper()}_API_KEY')
     return {'type': 'api_key', 'token': api_key} if api_key else None
@@ -584,7 +591,7 @@ npm install -g @anthropic-ai/claude-code
 claude setup-token
 # Token automatically available for Jarvis
 
-# For Google (AI Pro/Ultra subscribers)  
+# For Google (AI Pro/Ultra subscribers)
 npm install -g @google/gemini-cli
 gemini auth login
 # Credentials saved for Jarvis to use
@@ -696,7 +703,7 @@ Add OAuth section to Settings → API Keys tab:
 | `bin/spotify-auth` | Reference implementation for OAuth CLI flow |
 | `skills/spotify.py` | How Spotify OAuth tokens are used |
 | `data/.spotify_cache` | Token storage format |
-| `lib/llm_providers.py` | Where provider auth would be modified |
+| `lib/llm_provider.py` | Where provider auth would need to be implemented |
 | `config/cloud.env` | Where tokens/keys are stored |
 
 ---
@@ -721,9 +728,12 @@ Add OAuth section to Settings → API Keys tab:
 | **OpenAI** | Apps SDK | Business/Enterprise only | ⚠️ Not for consumers |
 | **xAI** | None | N/A | ❌ API keys only |
 
-### Quick Start (Easiest Path)
+### Proposed Setup (Not Implemented)
 
-**For Anthropic users:**
+The commands below were retained as design input only. They do not configure
+the current Jarvis provider implementation.
+
+**Anthropic concept:**
 ```bash
 # 1. Install Claude Code CLI
 npm install -g @anthropic-ai/claude-code

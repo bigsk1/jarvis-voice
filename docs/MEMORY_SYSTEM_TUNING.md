@@ -335,5 +335,4 @@ For complex decision-making (like grey area auto-save), Claude Sonnet 4.5 suppor
 - "What importance?"
 - "Is this personal data or public info?"
 
-See implementation notes in [Extended Thinking section](#extended-thinking-implementation) below.
-
+See the [Advanced: Extended Thinking Mode](#advanced-extended-thinking-mode) section below.

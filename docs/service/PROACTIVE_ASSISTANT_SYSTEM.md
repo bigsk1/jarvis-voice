@@ -54,27 +54,27 @@ External Event → API Endpoint → Jarvis Evaluates → Takes Action → Notifi
 graph TB
     External[External Systems] --> API[Jarvis API Server<br/>FastAPI on port 8880]
     API --> Router[Event Router]
-    
+
     Router --> Alerts[Alert Manager]
     Router --> Reminders[Reminder Manager]
     Router --> Intel[Intel Manager]
     Router --> Custom[Custom Handlers]
-    
+
     Alerts --> DB[(State Database)]
     Reminders --> DB
     Intel --> DB
     Custom --> DB
-    
+
     DB --> Evaluator[Smart Evaluator<br/>LLM-based decisions]
-    
+
     Evaluator --> Actions[Action Executor]
     Actions --> TTS[Text-to-Speech<br/>Proactive notification]
     Actions --> Tools[Jarvis Tools<br/>manage_intel, etc.]
     Actions --> SelfCheck[Self-Healing<br/>Verify & cancel]
-    
+
     DB --> FollowUp[Follow-Up System<br/>Periodic checks]
     FollowUp --> Evaluator
-    
+
     style API fill:#4a90e2
     style DB fill:#e74c3c
     style Evaluator fill:#f39c12
@@ -111,15 +111,15 @@ sequenceDiagram
     participant J as Jarvis Brain
     participant TTS as Text-to-Speech
     participant User as You
-    
+
     UK->>API: POST /alerts (server down)
     API->>DB: Create alert (id=123, status=pending)
     API->>J: Evaluate urgency (HIGH)
     J->>TTS: "Boss, your web server is down!"
     TTS-->>User: 🔊 Audio alert
-    
+
     Note over API: Wait 5 minutes
-    
+
     API->>API: Self-check: curl server
     alt Server is back
         API->>DB: Update alert (status=auto_resolved)
@@ -128,7 +128,7 @@ sequenceDiagram
         API->>DB: Update alert (escalate=true)
         API->>TTS: "Server still down after 5 minutes"
     end
-    
+
     User->>API: "Clear all pending alerts"
     API->>DB: Update all alerts (status=acknowledged)
 ```
@@ -166,22 +166,22 @@ sequenceDiagram
     participant Intel as Intel Manager
     participant DB as State DB
     participant Cal as Calendar System
-    
+
     User->>J: "Docker v29 issue in Coolify, check in 1 week"
     J->>Intel: Create intel file (coolify-docker-issue.md)
     J->>J: Run ingest_intel tool
     J->>DB: Create reminder (trigger: +7 days)
     J->>Cal: Schedule webhook for 2025-11-24
     J-->>User: "Saved to intel, reminder set"
-    
+
     Note over Cal: 7 days later
-    
+
     Cal->>J: POST /reminders/trigger (id=456)
     J->>DB: Load reminder details
     J->>J: Evaluate: Is this still relevant?
     J->>User: 🔊 "Boss just want you to know about your reminder to check Docker v29 in Coolify"
     J->>DB: Update (status=spoken, spoken_at=...)
-    
+
     User->>J: "Checked, all good ( Jarvis is context aware of what was just sent to user)"
     J->>Intel: Update intel file coolify-docker-issue.md (status=resolved) ( Jarvis must be aware of the file name to update it)
     J->>J: Run ingest_intel tool ( md5 hash updated db so no duplicates)
@@ -222,7 +222,7 @@ FOLLOW_UP_SCHEDULE = {
     "medium": [30, 60, 120],
     "low": [60, 180, 360]
 }
-# so if longer than follow up system then default is to have jarvis create a new file in jarvis-intel and set reminder??  
+# so if longer than follow up system then default is to have jarvis create a new file in jarvis-intel and set reminder??
 ```
 
 ---
@@ -360,35 +360,35 @@ Body: {
 ```sql
 CREATE TABLE alerts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    
+
     -- Core fields
     title TEXT NOT NULL,
     description TEXT,
     severity TEXT CHECK(severity IN ('low', 'medium', 'high', 'critical')) DEFAULT 'medium',
     source TEXT NOT NULL,  -- uptime_kuma, custom, manual, etc.
-    
+
     -- Status tracking
     status TEXT CHECK(status IN ('pending', 'acknowledged', 'auto_resolved', 'canceled')) DEFAULT 'pending',
     created_at TEXT NOT NULL,
     updated_at TEXT,
     acknowledged_at TEXT,
     resolved_at TEXT,
-    
+
     -- Notification tracking
     spoken BOOLEAN DEFAULT 0,
     spoken_at TEXT,
     follow_up_count INTEGER DEFAULT 0,
     last_follow_up TEXT,
-    
+
     -- Self-healing
     auto_resolve_url TEXT,
     auto_resolve_check_interval INTEGER DEFAULT 300,  -- seconds
     last_check_at TEXT,
-    
+
     -- Metadata
     metadata TEXT,  -- JSON blob for extensibility
     related_intel_file TEXT,
-    
+
     -- Sync tracking
     synced_to_other_db BOOLEAN DEFAULT 0,
     sync_timestamp TEXT
@@ -404,32 +404,32 @@ CREATE INDEX idx_alerts_source ON alerts(source);
 ```sql
 CREATE TABLE reminders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    
+
     -- Core fields
     title TEXT NOT NULL,
     description TEXT,
     trigger_time TEXT NOT NULL,  -- ISO 8601 format
-    
+
     -- Status tracking
     status TEXT CHECK(status IN ('scheduled', 'triggered', 'acknowledged', 'canceled', 'expired')) DEFAULT 'scheduled',
     created_at TEXT NOT NULL,
     triggered_at TEXT,
     acknowledged_at TEXT,
-    
+
     -- Notification tracking
     spoken BOOLEAN DEFAULT 0,
     spoken_at TEXT,
-    
+
     -- Integration
     related_intel_file TEXT,
     callback_url TEXT,  -- Webhook to call when reminder triggers
-    
+
     -- Recurrence (future)
     recurrence_rule TEXT,  -- Cron-like syntax
-    
+
     -- Metadata
     metadata TEXT,
-    
+
     -- Sync tracking
     synced_to_other_db BOOLEAN DEFAULT 0,
     sync_timestamp TEXT
@@ -531,7 +531,7 @@ jarvis-voice/
 ├── docs/
 │   ├── PROACTIVE_ASSISTANT_SYSTEM.md  # This document
 │   ├── API_REFERENCE.md           # NEW: API documentation
-│   ├── ALERT_SYSTEM.md            # NEW: Alert system guide
+│   ├── api/API_OVERVIEW.md        # Current alert/API guide
 │   └── ... (existing docs)
 │
 └── tests/
@@ -731,14 +731,14 @@ async def receive_backup_event(event: BackupEvent):
 **Example**: Weekly health report
 
 ```python
-# services/custom_follow_ups.py
+# Example future module: services/custom_follow_ups.py (not currently shipped)
 def weekly_health_report():
     """Run every Monday at 9am"""
     alerts = get_alerts(status="pending")
     reminders = get_reminders(status="scheduled")
-    
+
     report = f"Boss, weekly summary: {len(alerts)} pending alerts, {len(reminders)} upcoming reminders."
-    
+
     speak(report, priority="low")
 ```
 
@@ -877,15 +877,15 @@ curl -X POST http://localhost:8880/api/backups \
 
 This system transforms Jarvis from a **reactive assistant** into a **proactive event-driven agent** that:
 
-✅ Receives events from external systems  
-✅ Intelligently decides how to respond  
-✅ Proactively notifies you when needed  
-✅ Manages state (alerts, reminders, tasks)  
-✅ Self-heals (checks if issues resolved)  
-✅ Follows up until acknowledged  
-✅ Syncs state between cloud/local modes  
-✅ Extensible for new event types  
-✅ Secure and sandboxed  
+✅ Receives events from external systems
+✅ Intelligently decides how to respond
+✅ Proactively notifies you when needed
+✅ Manages state (alerts, reminders, tasks)
+✅ Self-heals (checks if issues resolved)
+✅ Follows up until acknowledged
+✅ Syncs state between cloud/local modes
+✅ Extensible for new event types
+✅ Secure and sandboxed
 
 **Next Step**: Choose implementation phase (recommend Phase 1 + 2 first).
 
@@ -904,4 +904,3 @@ Immediate (Phase 1):
 ---
 
 **Ready to start building?** Let me know which phase to begin with!
-

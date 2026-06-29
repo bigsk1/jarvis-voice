@@ -255,11 +255,9 @@ List workflow executions with filtering.
 
 ## Important Notes
 
-- **Database Coverage**: All nodes, AI tools, and triggers, 87% documentation coverage
-- **Template Library**: 2,709+ workflow templates with real-world examples
-- **Performance**: Most discovery operations are instant (<10ms), validation is fast (<100ms)
+- **Snapshot metrics**: Coverage, template counts, and timing vary with the installed n8n MCP/version; inspect the live server instead of relying on an old fixed count
 - **API Requirements**: Workflow management tools require N8N_API_URL configuration
-- **Version Compatibility**: Tested with latest n8n version - check compatibility for older versions
+- **Version Compatibility**: Verify against your installed n8n release; node schemas and validation rules change over time
 
 ## Authentication
 

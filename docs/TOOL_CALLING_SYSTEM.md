@@ -38,7 +38,7 @@ XAI_MODEL="grok-4.3"
 # Test a tool directly
 echo '{}' | ./skills/time.sh
 
-# Test via orchestrator  
+# Test via orchestrator
 ./orchestrator/orchestrator_v2.py cloud "What time is it?"
 
 # Test with voice
@@ -115,7 +115,8 @@ Tool availability is selected just before the router LLM call by Tool RAG. Local
 |----------|-------------|-------|------|---------|
 | **Anthropic Claude** | ✅ Native | Fast | Medium | Cloud |
 | **OpenAI GPT** | ✅ Native | Fast | Low | Cloud |
-| **Ollama (Local)** | ⚠️ Structured prompts | Slower | Free | Local |
+| **Ollama (local model)** | ⚠️ Structured prompts | Model-dependent | Free | Local |
+| **Ollama Cloud** | ⚠️ Structured prompts | Network-dependent | Subscription/unknown | Cloud via signed-in daemon |
 | **xAI Grok 4.3** | ✅ Native | Medium | Low | Cloud |
 
 **Recommendation:** Use xAI Grok 4.3 for agentic tool calling accuracy.
@@ -124,7 +125,7 @@ Tool availability is selected just before the router LLM call by Tool RAG. Local
 
 ### 1. Create Tool Script
 
-`skills/my_automation.py`:
+Example file `skills/my_automation.py` (create it first):
 ```python
 #!/usr/bin/env python3
 import sys, json, requests
@@ -330,16 +331,16 @@ Tool permissions are defined in the tool schema file and not fully implemented y
 lib/
   tool_schema.py       - Universal tool schemas
   llm_provider.py      - Provider abstraction (Anthropic/OpenAI/Ollama)
-  
+
 orchestrator/
   router_v2.py         - LLM-based intelligent routing
   executor.py          - Tool execution with permissions
   orchestrator_v2.py   - Main coordinator
-  
+
 skills/
   *.tool.json          - Tool schemas
   *.py / *.sh          - Tool implementations
-  
+
 bin/
   wake-jarvis.py               - Wake word loop (cloud)
   wake-jarvis-local.py         - Wake word loop (local)
@@ -387,6 +388,20 @@ OLLAMA_MODEL="llama3.1:latest"
 
 Then use `jarvis-local` instead of `jarvis`.
 
+### To Ollama Cloud
+
+`config/cloud.env`:
+
+```bash
+LLM_PROVIDER="ollama"
+OLLAMA_BASE_URL="http://your-signed-in-ollama-host:11434"
+OLLAMA_CLOUD_MODEL="minimax-m3:cloud"
+```
+
+Use normal cloud startup (`./jarvis`). Jarvis requires a recognized `*:cloud`
+or `*-cloud` model tag in cloud mode and does not append localhost to the cloud
+host list. See [ollama/README.md](ollama/README.md).
+
 ## Troubleshooting
 
 **"Tool not found"**
@@ -408,7 +423,7 @@ Then use `jarvis-local` instead of `jarvis`.
 ## Documentation
 
 - 📖 **TOOL_SYSTEM_SUMMARY.md** - Complete architecture overview
-- 📖 **TEST_TOOL_SYSTEM.md** - Comprehensive testing guide
+- 📖 **TESTING.md** - Comprehensive testing guide
 - 📖 **orchestrator/README.md** - Orchestrator details
 - 📖 **skills/README.md** - Tool creation guide
 
@@ -445,22 +460,22 @@ def call_tool(tool_name: str, args: dict = None, timeout: int = 60) -> dict:
         tool_path = find_tool(tool_name)
         if not tool_path:
             return {"ok": False, "error": f"Tool {tool_name} not found"}
-        
+
         # Get project root for proper module resolution
         project_root = os.path.join(os.path.dirname(__file__), '..')
-        
+
         input_data = json.dumps(args or {})
         cmd = ["python3", tool_path, input_data]
-        
+
         # Run from project root so tools can find their lib imports
         result = subprocess.run(
-            cmd, 
-            capture_output=True, 
-            text=True, 
-            timeout=timeout, 
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
             cwd=project_root
         )
-        
+
         if result.returncode == 0 and result.stdout:
             return json.loads(result.stdout)
         return {"ok": False, "error": result.stderr or f"Tool {tool_name} failed"}
@@ -479,7 +494,7 @@ def extract_pdf_text(file_path: str) -> str:
         'action': 'extract_text',
         'file_path': file_path
     })
-    
+
     if result.get('ok') and result.get('data', {}).get('text'):
         return result['data']['text']
     return None
@@ -514,7 +529,7 @@ def extract_pdf_text(file_path: str) -> str:
 ## Support
 
 - Check logs in `audio/cloud/logs/` or `audio/local/logs/`
-- Test tools individually: `echo '{}' | ./skills/tool.py`
+- Test tools individually: `echo '{}' | ./skills/<tool-name>.py`
 - Test orchestrator: `./orchestrator/orchestrator_v2.py cloud "command"`
 - Read testing guide: `TESTING.md`
 

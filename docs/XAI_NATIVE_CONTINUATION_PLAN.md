@@ -2,6 +2,13 @@
 
 Last updated: 2026-05-03
 
+> **Status: implemented; retained as a historical design record.** The
+> structural continuation path now lives in
+> `orchestrator/orchestrator_v2.py` (`ProviderRouteInput`,
+> `_build_xai_structural_route_input`) and is documented for operators in
+> [XAI_PROVIDER.md](XAI_PROVIDER.md). Statements below labelled "current" or
+> "remaining gap" describe the May 3 planning snapshot, not the live code.
+
 This plan describes how to wire xAI `store_messages=True`, `previous_response_id`, and structural client-side tool results into Jarvis for real, without replacing Jarvis' existing intelligence, logging, feedback, completion guard, auto-context, Tool RAG, or memory systems.
 
 The goal is narrow: make Grok see the immediate in-flight tool loop as native linked state:
@@ -33,7 +40,7 @@ Key doc points to preserve in the implementation:
 - Billing can still include the full conversation history, but prompt caching may reduce cost and latency. Do not treat continuation as "free tokens"; measure `cached_prompt_text_tokens`, total prompt tokens, cost, and latency.
 - Stored `response.id` continuation is time-limited. xAI stores server-side conversation state for about 30 days from the original request that created the response id; after that, `previous_response_id` can fail and Jarvis must fall back to locally reconstructed context.
 
-## Current State
+## May 3 Planning Snapshot (Superseded)
 
 The current implementation already has the safe half of the work:
 
@@ -47,11 +54,15 @@ The current implementation already has the safe half of the work:
 - `orchestrator_v2.py` promotes `xai_previous_response_id` only after a Jarvis client-side tool succeeds.
 - Duplicate guard and failed tool paths do not advance the xAI continuation handle.
 
-The remaining gap:
+The gap at the time, now implemented:
 
-- Jarvis still sends most prior tool results back to the router as text through `_build_turn_context(...)`.
-- The provider can accept structural `role="tool"` messages, but the main orchestrator does not yet build xAI-native continuation turns from canonical tool state.
-- Tool RAG retrieval, provider message construction, and turn-context construction are still coupled around one text string.
+- Jarvis previously sent most prior tool results back to the router as text through `_build_turn_context(...)`.
+- The provider could accept structural `role="tool"` messages, but the main orchestrator did not yet build xAI-native continuation turns from canonical tool state.
+- Tool RAG retrieval, provider message construction, and turn-context construction were still coupled around one text string.
+
+The live implementation now separates retrieval text from provider messages
+with `ProviderRouteInput` and constructs structural continuation turns in
+`_build_xai_structural_route_input()`.
 
 ## Non-Goals
 

@@ -1,7 +1,7 @@
 # OpenCode API Reference
 
-**OpenCode Server:** http://localhost:4096  
-**Documentation:** http://localhost:4096/doc  
+**OpenCode Server:** http://localhost:4096
+**Documentation:** http://localhost:4096/doc
 **Interactive UI:** http://localhost:4096/openapi
 
 ---
@@ -70,7 +70,7 @@ Jarvis currently uses a **minimal subset** of the OpenCode API:
   "role": "assistant",
   "content": [
     {
-      "type": "text", 
+      "type": "text",
       "text": "I've built the Flask app..."
     }
   ],
@@ -300,7 +300,7 @@ Jarvis currently uses a **minimal subset** of the OpenCode API:
       }
     },
     {
-      "name": "plan", 
+      "name": "plan",
       "description": "Read-only analysis agent",
       "permissions": {
         "fileEdit": "ask",
@@ -465,7 +465,7 @@ Every response includes usage stats:
 
 **Jarvis uses only:**
 - Session creation
-- Task execution  
+- Task execution
 - Response parsing
 
 **Doesn't use:**
@@ -489,7 +489,7 @@ Every response includes usage stats:
 2. **Add new tool or extend opencode tool:**
    - Option A: New tool `opencode_sessions.py`
    - Option B: Add parameters to existing `opencode` tool
-   
+
 3. **Update router system prompt:**
    - Teach Jarvis when to use new capabilities
 
@@ -529,7 +529,7 @@ http://localhost:4096/openapi
 - [OpenCode Integration](OPENCODE.md) - Overview
 - [OpenCode Phase 2 Complete (historical)](../archive/opencode/OPENCODE_PHASE2_COMPLETE.md)
 - [OpenCode Memory Strategy](OPENCODE_MEMORY_STRATEGY.md) - Context injection
-- [Multi-Turn Orchestration](MULTI_TURN_ORCHESTRATION.md) - How Jarvis chains tools
+- [Multi-Turn Orchestration](../MULTI_TURN_ORCHESTRATION.md) - How Jarvis chains tools
 
 ---
 
@@ -556,4 +556,3 @@ http://localhost:4096/openapi
 ---
 
 **Next Step:** Review endpoints, identify which (if any) would streamline your workflow with Jarvis! 🚀
-

@@ -5,14 +5,14 @@ This directory contains configuration files for Jarvis Voice Assistant.
 ## Quick Start
 
 1. **Choose your mode:**
-   - **Cloud mode**: xAI, Anthropic, or OpenAI APIs (requires API keys; best overall capability)
+   - **Cloud mode**: xAI, Anthropic, OpenAI, or cloud-tagged Ollama models through a signed-in daemon
    - **Local mode**: Ollama on your GPU (offline-capable; no cloud LLM keys required)
 
 2. **Copy the example file:**
    ```bash
    # For cloud mode:
    cp cloud.env.example cloud.env
-   
+
    # For local mode:
    cp local.env.example local.env
    ```
@@ -30,7 +30,7 @@ This directory contains configuration files for Jarvis Voice Assistant.
    # Cloud mode
    ./jarvis  # voice mode
    ./orchestrator/orchestrator_v2.py cloud "What time is it?"  # CLI
-   
+
    # Local mode
    ./jarvis-local  # voice mode
    ./orchestrator/orchestrator_v2.py local "What time is it?"  # CLI
@@ -44,7 +44,7 @@ This directory contains configuration files for Jarvis Voice Assistant.
 5. **(Optional) Configure MCP servers:**
    - MCP servers add tools such as web search, HTTP fetch, and other integrations.
    - Edit `config/mcp-servers.json` to enable or disable servers.
-   - See [MCP Server Configuration](#mcp-server-configuration), [Tool RAG implementation summary](../docs/TOOL_RAG_IMPLEMENTATION_SUMMARY.md), and [MCP remote transport](../docs/MCP_REMOTE_TRANSPORT.md).
+   - See [MCP Server Configuration](#mcp-server-configuration), [Tool RAG implementation summary](../docs/archive/TOOL_RAG_IMPLEMENTATION_SUMMARY.md) (historical), and [MCP remote transport](../docs/mcp/MCP_REMOTE_TRANSPORT.md).
    - After changing MCP servers or tools, re-sync the tools database: `./bin/sync-tools.py cloud` or `./bin/sync-tools.py local`.
 
 ## Configuration Files
@@ -77,12 +77,13 @@ request/browser data or LLM mode selectors after startup.
 
 ### `cloud.env` (Cloud Mode)
 
-- **LLM providers**: xAI (Grok), Anthropic (Claude), or OpenAI (GPT) via `LLM_PROVIDER`
+- **LLM providers**: xAI, Anthropic, OpenAI, or Ollama Cloud via `LLM_PROVIDER`
 - **Also configures**: cloud TTS/STT, image/video APIs, embeddings, and optional paid services
 - **Best for**: production use, complex tool calling, providers with large context windows
 - **OpenCode**: can use the same cloud providers (Anthropic or OpenAI recommended for coding tasks)
 
-See also: [xAI provider guide](../docs/XAI_PROVIDER.md)
+See also: [xAI provider guide](../docs/XAI_PROVIDER.md) and
+[Ollama local/cloud guide](../docs/ollama/README.md).
 
 ### `local.env` (Local Mode)
 
@@ -131,6 +132,10 @@ XAI_MODEL="grok-build-0.1"
 # LLM_PROVIDER="openai"
 # OPENAI_MODEL="gpt-5.4-mini"
 
+# LLM_PROVIDER="ollama"
+# OLLAMA_BASE_URL="http://your-signed-in-ollama-host:11434"
+# OLLAMA_CLOUD_MODEL="minimax-m3:cloud"
+
 # Local mode
 LLM_PROVIDER="ollama"
 OLLAMA_MODEL="gemma4"
@@ -177,7 +182,7 @@ For networks that require an HTTP(S) proxy for outbound API calls and downloads,
 ### "OpenCode server not reachable"
 ```bash
 # Start OpenCode
-systemctl --user start opencode
+sudo systemctl start opencode-jarvis.service
 
 ```
 
@@ -206,14 +211,14 @@ OPENCODE_BASE_URL="http://localhost:4096"
 ```
 
 `OLLAMA_BASE_URL` also accepts a comma-separated fallback list like
-`"http://192.168.70.226:11434,http://192.168.1.68:11434"`. Jarvis will still
-try `http://localhost:11434` last if it is not already included.
+`"http://192.168.70.226:11434,http://192.168.1.68:11434"`. Local mode retains
+`http://localhost:11434` as a final compatibility fallback. Cloud mode tries
+only explicitly listed hosts, so add localhost yourself only when intentional.
 
 ### GPU Optimization
 ```bash
 # Adjust for your VRAM (16GB example)
-OLLAMA_CONTEXT_LENGTH=12888
-MAX_CONTEXT_TOKENS=12888
+OLLAMA_CONTEXT_WINDOW=12888
 ```
 
 ### Ollama Embeddings
@@ -415,7 +420,7 @@ Use the `test-mcp` script to safely discover what tools an MCP server exposes:
 - Parameters like: `command`, `code`, `script`, `filepath`, `directory`
 - Descriptions mentioning: "executes", "runs code", "accesses filesystem"
 
-**📖 For detailed security audit guide, see:** [`docs/MCP_SECURITY_AUDIT.md`](../docs/MCP_SECURITY_AUDIT.md)
+**📖 For detailed security audit guide, see:** [`docs/mcp/MCP_SECURITY_AUDIT.md`](../docs/mcp/MCP_SECURITY_AUDIT.md)
 
 ### Troubleshooting
 
@@ -475,6 +480,7 @@ echo $BRAVE_API_KEY  # Should show your API key
 - **xAI**: `grok-4.3`, `grok-build-0.1` (see `cloud.env.example` and [xAI provider](../docs/XAI_PROVIDER.md))
 - **Anthropic**: `claude-sonnet-4-6` and related Claude models
 - **OpenAI**: `gpt-5.4-mini`, `gpt-5.4-nano`, and related GPT models
+- **Ollama Cloud**: a cloud-tagged `OLLAMA_CLOUD_MODEL` (`*:cloud` or `*-cloud`) through a signed-in Ollama daemon
 
 Curated metadata for the Web UI and cost helpers lives in `lib/model_catalog.py`.
 
@@ -509,6 +515,6 @@ Curated metadata for the Web UI and cost helpers lives in `lib/model_catalog.py`
 - [Main README](../README.md)
 - [Install guide](../docs/INSTALL_GUIDE.md)
 - [xAI provider](../docs/XAI_PROVIDER.md)
-- [MCP security audit](../docs/MCP_SECURITY_AUDIT.md)
+- [MCP security audit](../docs/mcp/MCP_SECURITY_AUDIT.md)
 - [MCP quickstart](../docs/mcp/MCP_QUICKSTART.md)
 - [Documentation index](../docs/README.md)

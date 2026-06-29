@@ -1,8 +1,8 @@
 # Jarvis Metadata System
 
-**Status:** Active (evolving)  
-**Implemented:** 2025-11-14  
-**Updated:** 2026-03-30 (conversation linking, Completion Guard exports)  
+**Status:** Active (evolving)
+**Implemented:** 2025-11-14
+**Updated:** 2026-03-30 (conversation linking, Completion Guard exports)
 **Purpose:** Track model usage, performance, and costs across conversations and memories
 
 ---
@@ -180,22 +180,15 @@ print(format_cost_summary(cost_info))
 # "1500 tokens ($0.0105)"
 ```
 
-### Pricing (as of Nov 2025)
+### Pricing metadata
 
-**OpenAI:**
-- GPT-5.1: $1.25/$10.00 per 1M tokens (input/output)
-- GPT-5 mini: $0.25/$2.00 per 1M tokens
-- GPT-5 nano: $0.05/$0.40 per 1M tokens
-- GPT-4.1: $3.00/$12.00 per 1M tokens
-- GPT-4.1 mini: $0.80/$3.20 per 1M tokens
+Jarvis' curated model IDs, context windows, and estimation rates live in
+`lib/model_catalog.py`. Do not copy an old pricing table into operational
+configuration: provider prices change independently of Jarvis releases.
 
-**Anthropic:**
-- Sonnet 4.5: $3.00/$15.00 per 1M tokens (≤200K context)
-- Haiku 4.5: $1.00/$5.00 per 1M tokens
-- Sonnet 4: $3.00/$15.00 per 1M tokens
-- Opus 4.1: $15.00/$75.00 per 1M tokens
-
-*Note: Sonnet 4.5 has tiered pricing - prices increase for prompts >200K tokens*
+Ollama local inference reports `$0` model API cost. Ollama Cloud retains token
+usage but records compute/subscription cost as unknown because the daemon does
+not expose a per-request dollar amount.
 
 ---
 
@@ -204,7 +197,7 @@ print(format_cost_summary(cost_info))
 ### Total Spending (Cloud)
 ```bash
 sqlite3 data/jarvis_memory.db <<EOF
-SELECT 
+SELECT
   json_extract(metadata, '$.provider') as provider,
   json_extract(metadata, '$.model') as model,
   COUNT(*) as conversations,
@@ -220,7 +213,7 @@ EOF
 ### Average Response Time
 ```bash
 sqlite3 data/jarvis_memory.db <<EOF
-SELECT 
+SELECT
   json_extract(metadata, '$.mode') as mode,
   AVG(CAST(json_extract(metadata, '$.execution_time_ms') AS REAL)) as avg_time_ms,
   MIN(CAST(json_extract(metadata, '$.execution_time_ms') AS REAL)) as min_time_ms,
@@ -234,7 +227,7 @@ EOF
 ### Token Usage by Tool
 ```bash
 sqlite3 data/jarvis_memory.db <<EOF
-SELECT 
+SELECT
   json_extract(tools_used, '$[0]') as first_tool,
   COUNT(*) as uses,
   AVG(CAST(json_extract(metadata, '$.total_tokens') AS REAL)) as avg_tokens,
@@ -251,7 +244,7 @@ EOF
 ### Most Expensive Conversations
 ```bash
 sqlite3 data/jarvis_memory.db <<EOF
-SELECT 
+SELECT
   user_query,
   json_extract(metadata, '$.total_tokens') as tokens,
   json_extract(metadata, '$.cost_usd') as cost,
@@ -386,9 +379,9 @@ print(correct_tool_call(raw))
 
 # Check metadata in database
 sqlite3 data/jarvis_memory.db "
-SELECT metadata FROM conversations 
-WHERE metadata IS NOT NULL 
-ORDER BY id DESC 
+SELECT metadata FROM conversations
+WHERE metadata IS NOT NULL
+ORDER BY id DESC
 LIMIT 1;
 "
 ```
@@ -414,6 +407,5 @@ LIMIT 1;
 
 ---
 
-*Last Updated: 2026-03-30*  
+*Last Updated: 2026-03-30*
 *Related Docs: COMPLETION_GUARD.md, [archive/DATABASE_DEEP_DIVE.md](archive/DATABASE_DEEP_DIVE.md), MEMORY_SYSTEM.md*
-

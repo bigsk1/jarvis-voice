@@ -181,7 +181,7 @@ docker ps --filter "ancestor=mcp/fetch" -q | xargs -r docker stop
 
 | Server | Docker Image | Tools |
 |--------|--------------|-------|
-| `brave_search` | `mcp/brave-search` | Web, local, news, image, video search |
+| `brave_search` | `mcp/brave-search` | Web, local, image, and video search (`brave_news_search` is disabled in the tracked config) |
 | `fetch` | `mcp/fetch` | URL content extraction |
 
 ### Disabled (Available)
@@ -251,5 +251,5 @@ docker ps --filter "ancestor=mcp/fetch" -q | xargs -r docker stop
 
 ---
 
-*Last updated: December 2025 (v2.19 - Singleton pattern, crash recovery)*
-
+*Last verified: June 29, 2026 against `config/mcp-servers.json`,
+`lib/mcp_client.py`, and `lib/tool_schema.py`.*

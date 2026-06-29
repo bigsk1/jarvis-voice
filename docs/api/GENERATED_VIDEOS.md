@@ -494,6 +494,6 @@ Videos are indexed in memory with:
 
 ## See Also
 
-- [Video Generation Guide](../video/README.md)
+- [Video Generation Guide](../tools/video/README.md)
 - [xAI Provider Docs](../XAI_PROVIDER.md)
 - [Generated Images API](GENERATED_IMAGES.md)

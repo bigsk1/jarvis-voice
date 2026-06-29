@@ -14,7 +14,7 @@ curl -fsSL https://opencode.ai/install | bash
 
 ```bash
 # Check OpenCode is running
-systemctl status opencode-jarvis.service
+sudo systemctl status opencode-jarvis.service
 
 # Use via Jarvis
 ./jarvis
@@ -327,7 +327,7 @@ That means:
 
 ```bash
 # 1. Server running?
-systemctl status opencode-jarvis.service
+sudo systemctl status opencode-jarvis.service
 
 # 2. Can reach API?
 curl http://localhost:4096/health

@@ -24,38 +24,38 @@ This document provides a comprehensive overview of Jarvis's internal workflow, f
 graph TB
     User[👤 User Query] --> Voice[🎤 Voice Input / CLI]
     Voice --> Orchestrator[🎯 Orchestrator v2]
-    
+
     Orchestrator --> Config[⚙️ Load Config]
     Config --> Cloud{Mode?}
     Cloud -->|cloud| CloudDB[(jarvis_memory.db)]
     Cloud -->|local| LocalDB[(jarvis_memory_local.db)]
-    
+
     Orchestrator --> AutoSync[🔄 Auto-Sync Memory]
     AutoSync --> Router[🧭 Router v2]
-    
+
     Router --> Thinking{Thinking Enabled?}
     Thinking -->|Yes| ShowThinking[🧠 Display Reasoning]
     Thinking -->|No| SkipThinking[⏩ Skip Display]
     ShowThinking --> Intent
     SkipThinking --> Intent
-    
+
     Intent{Intent?}
     Intent -->|Tool Call| Executor[⚡ Executor]
     Intent -->|Q&A| Formatter[💬 Response Formatter]
-    
+
     Executor --> Tools[🛠️ Tool Registry]
     Tools --> MCPServers[🔌 MCP Servers]
     Tools --> LocalTools[📦 Local Skills]
-    
+
     Executor --> Result[✅ Tool Result]
     Result --> MultiTurn{More Tools?}
     MultiTurn -->|Yes| Router
     MultiTurn -->|No| Final[📊 Final Response]
-    
+
     Formatter --> Final
     Final --> TTS[🔊 Text-to-Speech]
     TTS --> User
-    
+
     style Orchestrator fill:#4a90e2
     style Router fill:#f39c12
     style Executor fill:#27ae60
@@ -82,29 +82,29 @@ sequenceDiagram
     participant M as Memory DB
     participant Tool as Tool Script
     participant F as Formatter
-    
+
     U->>O: "What time is it and what's my favorite food?"
     O->>C: Load config (cloud/local mode)
     C-->>O: Config loaded
     O->>S: Auto-sync memories between DBs
     S-->>O: Sync complete
-    
+
     O->>R: Route query with full context
     R->>T: Check if thinking enabled
     alt Thinking Enabled
         T->>R: Extract & log reasoning
         R-->>O: 🧠 Display thinking
     end
-    
+
     R->>M: Search memory first (MEMORY-FIRST rule)
     M-->>R: "favorite_food: sushi"
-    
+
     R-->>O: Intent: tool_call (get_time)
     O->>E: Execute tool: get_time
     E->>Tool: Run skills/time.sh
     Tool-->>E: {"time": "14:30", "date": "2025-11-16"}
     E-->>O: Tool result
-    
+
     O->>R: Continue with tool result (multi-turn)
     R-->>O: Intent: qa (enough info to answer)
     O->>F: Format final response
@@ -124,29 +124,29 @@ Jarvis follows a **MEMORY-FIRST RULE**: Always check memory before making assump
 graph TB
     Query[User Query] --> Analyze[Analyze Query]
     Analyze --> NeedInfo{Need stored information?}
-    
+
     NeedInfo -->|No| DirectTool[Execute Tool Directly]
     NeedInfo -->|Yes| SearchType{Query Type?}
-    
+
     SearchType -->|"1-3 keywords"| KeywordSearch[🔍 search_memory]
     SearchType -->|"Natural language"| SemanticSearch[🤖 semantic_recall]
     SearchType -->|"Past conversations"| ConversationSearch[💬 search_conversations]
-    
+
     KeywordSearch --> MemDB[(Memory Database)]
     SemanticSearch --> EmbedModel[Embedding Model]
     ConversationSearch --> MemDB
-    
+
     EmbedModel --> VectorSearch[Vector Similarity Search]
     VectorSearch --> MemDB
-    
+
     MemDB --> Found{Found?}
     Found -->|Yes| UseMemory[Use Stored Data]
     Found -->|No| UseOtherTool[Call Other Tools]
-    
+
     UseMemory --> Response[Build Response]
     UseOtherTool --> Response
     DirectTool --> Response
-    
+
     style KeywordSearch fill:#3498db
     style SemanticSearch fill:#9b59b6
     style ConversationSearch fill:#e74c3c
@@ -180,58 +180,58 @@ Jarvis uses **Tool RAG** (Retrieval Augmented Generation for Tools) to dynamical
 ```mermaid
 graph TB
     Start[User Query] --> Router[🧭 Router LLM]
-    
+
     Router --> Thinking{Thinking Mode?}
     Thinking -->|Enabled| LogReason[📝 Log Reasoning Process]
     Thinking -->|Disabled| SkipLog[⏭️ Skip Logging]
-    
+
     LogReason --> Analyze
     SkipLog --> Analyze
-    
+
     Analyze[Analyze Intent] --> CheckMem[Apply MEMORY-FIRST Rule]
-    
+
     CheckMem --> ToolRAG[🔍 Tool RAG System]
-    
+
     ToolRAG --> VectorSearch[Vector Similarity Search]
     VectorSearch --> ToolDB[(tool_definitions table)]
-    
+
     ToolDB --> TopK[Retrieve Top-K Tools]
     TopK --> GhostTools[+ Always Include Ghost Tools]
-    
+
     GhostTools --> Mode{Mode?}
     Mode -->|Local| Limit5[5 tools max]
     Mode -->|Cloud| Limit15[15 tools max]
-    
+
     Limit5 --> ToolList[Available Tools List]
     Limit15 --> ToolList
-    
+
     ToolList --> Decision{Decision Type}
-    
+
     Decision -->|"Simple task"| SingleTool[🛠️ Single Tool Call]
     Decision -->|"Complex task"| MultiTool[⚙️ Multi-Tool Chain]
     Decision -->|"Info request"| QA[💬 Q&A Response]
     Decision -->|"Save data"| AutoSave[💾 Auto-Save Memory]
-    
+
     SingleTool --> Execute[Execute Tool]
     MultiTool --> Execute
     AutoSave --> Execute
-    
+
     Execute --> Validate[Validate Result]
     Validate --> Success{Success?}
-    
+
     Success -->|Yes| CheckNext{More tools needed?}
     Success -->|No| Retry{Retry count < 3?}
-    
+
     Retry -->|Yes| Execute
     Retry -->|No| Error[❌ Return Error with Full Details]
-    
+
     CheckNext -->|Yes| Router
     CheckNext -->|No| Format[Format Response]
-    
+
     QA --> Format
     Error --> Format
     Format --> Done[✅ Done]
-    
+
     style Router fill:#f39c12
     style Thinking fill:#9b59b6
     style ToolRAG fill:#e67e22
@@ -359,31 +359,31 @@ Writes `logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl` with `signal_source`, `similari
 ```mermaid
 graph TB
     Query[User Query: What is Bitcoin price?] --> Embed[Generate Query Embedding]
-    
+
     Embed --> DB[(tool_definitions Table)]
     DB --> AllTools[32+ Tool Embeddings]
-    
+
     AllTools --> Similarity[Calculate Cosine Similarity]
     Similarity --> Scores[Similarity Scores]
-    
+
     Scores --> Threshold{Pass Threshold?}
     Threshold -->|Yes| Retrieved[Retrieved Tools]
     Threshold -->|No| Filtered[Filtered Out]
-    
+
     Retrieved --> TopK[Select Top-K]
     TopK --> Mode{Mode?}
-    
+
     Mode -->|Local| K5[K=5]
     Mode -->|Cloud| K15[K=15]
-    
+
     K5 --> AddGhost[+ Ghost Tools]
     K15 --> AddGhost
-    
+
     AddGhost --> Final[Final Tool List]
-    
+
     Final --> LLM[Send to LLM]
     LLM --> Decision[LLM Selects crypto_price]
-    
+
     style Embed fill:#9b59b6
     style Similarity fill:#e67e22
     style TopK fill:#f39c12
@@ -408,10 +408,10 @@ graph TB
 
 | Aspect | Traditional (Pre-RAG) | Tool RAG (Current) |
 |--------|----------------------|-------------------|
-| **Tools Loaded** | All 75+ tools every query | 5-15 relevant tools |
+| **Tools Loaded** | Full 78-manifest catalog every query | 5-15 relevant tools |
 | **Context Size** | ~15K tokens | ~3K tokens (80% reduction) |
 | **Scalability** | Limited (context window fills) | Unlimited (100+ tools possible) |
-| **Local Models** | Struggles with 75+ tools | Thrives with 5-9 tools |
+| **Local Models** | Struggles with the full tool catalog | Thrives with 5-9 tools |
 | **Selection Accuracy** | Good | Excellent (pre-filtered) |
 | **Cost** | High (more tokens) | Low (fewer tokens) |
 
@@ -422,7 +422,7 @@ Tools that are ALWAYS available, regardless of the query. These ensure core func
 
 **Default Configurable Ghost Tools:**
 - `search_memory` - FTS5 keyword search
-- `semantic_recall` - AI embedding search  
+- `semantic_recall` - AI embedding search
 - `remember` - Save new memories
 - `check_tool_logs` - Debug failed tool calls
 - `get_recent_conversations` - Context from past interactions
@@ -454,10 +454,10 @@ graph LR
     LoadSchema --> GenEmbed[Generate Embedding]
     GenEmbed --> SaveDB[Save to tool_definitions]
     SaveDB --> Ready[Tool RAG Ready]
-    
+
     Ready --> Query[User Query]
     Query --> Retrieve[Retrieve Tool]
-    
+
     style AddTool fill:#3498db
     style GenEmbed fill:#9b59b6
     style Ready fill:#27ae60
@@ -477,7 +477,7 @@ graph LR
 
 ---
 
-## Request Pipeline (v2.50.x — Detailed)
+## Current Request Pipeline (Detailed)
 
 This section documents the **actual** orchestrator path in `orchestrator/orchestrator_v2.py`, `router_v2.py`, `context_assembler.py`, and `response_formatter.py`. Use it when debugging routing, turn limits, or provider continuation.
 
@@ -509,7 +509,7 @@ Before the first router call, context is assembled in this order:
 | Step | Module | What it injects |
 |------|--------|-----------------|
 | 1 | `ContextAssembler.build_conversation_context()` | Recent wake-word / web session turns |
-| 2 | Auto-memory (`lib/memory_hooks`) | FTS5 + semantic hits for the query |
+| 2 | Auto-memory (`Orchestrator._get_memory_context()` in `orchestrator/orchestrator_v2.py`) | FTS5 + semantic hits for the query |
 | 3 | `lib/intelligence_hooks.py` | Top matching insights (preferred/avoided tools, negative constraints) |
 | 4 | `lib/user_profile.py` | **Profile Card** — stable user prefs from memory DB `user_model` table |
 | 5 | Tool RAG | Embeddings + ghost tools + `tool_search` discovery |
@@ -646,32 +646,32 @@ sequenceDiagram
     participant O as Orchestrator
     participant R as Router
     participant E as Executor
-    
+
     U->>O: "Search DuckDuckGo for Jarvis AI and tell me about it"
-    
+
     Note over O: Turn 1: Initial analysis
     O->>R: Analyze query
     R-->>O: Intent: tool_call (mcp_duckduckgo_search)
     O->>E: Execute mcp_duckduckgo_search
     E-->>O: Search results (raw data)
-    
+
     Note over O: Turn 2: Process results
     O->>R: Continue with search results
     R-->>O: Intent: tool_call (mcp_fetch_fetch)
     O->>E: Fetch page content from top result
     E-->>O: Page content
-    
+
     Note over O: Turn 3: Summarize
     O->>R: Continue with page content
     R-->>O: Intent: qa (summarize findings)
     O-->>U: "Jarvis AI is an open-source voice assistant..."
-    
+
     Note over O: Auto-save decision
     O->>R: Should we save this?
     R-->>O: No (ephemeral info, not personal)
 ```
 
-**Max turns**: Default **15** (`MAX_TOOL_TURNS`; cloud example 12, local example 8)  
+**Max turns**: Default **15** (`MAX_TOOL_TURNS`; cloud example 12, local example 8)
 **Max retries**: **1** per failed tool (`orchestrator_v2.py`)
 
 ---
@@ -683,22 +683,22 @@ sequenceDiagram
 ```mermaid
 graph LR
     Start[Start Jarvis] --> Mode{Mode?}
-    
+
     Mode -->|cloud| CloudConfig[Load config/cloud.env]
     Mode -->|local| LocalConfig[Load config/local.env]
-    
+
     CloudConfig --> CloudLLM[LLM: xAI/Anthropic/OpenAI]
     LocalConfig --> LocalLLM[LLM: Ollama]
-    
+
     CloudLLM --> CloudDB[(jarvis_memory.db)]
     LocalLLM --> LocalDB[(jarvis_memory_local.db)]
-    
+
     CloudDB --> CloudTools[Cloud Tools]
     LocalDB --> LocalTools[Local Tools]
-    
+
     CloudTools --> Execute[Execute Tasks]
     LocalTools --> Execute
-    
+
     style CloudConfig fill:#3498db
     style LocalConfig fill:#16a085
     style CloudDB fill:#5dade2
@@ -718,7 +718,8 @@ graph LR
 | `LLM_PROVIDER` | Which LLM to use | `xai`, `anthropic`, `openai`, `ollama` |
 | `XAI_MODEL` | xAI Grok model | `grok-4.3` ⭐ (default); `grok-build-0.1` for coding-heavy |
 | `ANTHROPIC_MODEL` | Cloud model selection | `claude-sonnet-4-5-20250929` |
-| `OLLAMA_MODEL` | Local model selection | `qwen3.5:latest` ⭐, `qwen3-coder`, `gemma4`, `deepseek-r1` |
+| `OLLAMA_MODEL` | Ollama model used in local mode | `qwen3.5:latest` ⭐, `qwen3-coder`, `gemma4`, `deepseek-r1` |
+| `OLLAMA_CLOUD_MODEL` | Cloud-tagged Ollama model used in cloud mode | `minimax-m3:cloud`, `gpt-oss:120b-cloud` |
 | `JARVIS_DEBUG_THINKING` | Show LLM reasoning | `true`, `false` |
 | `SEMANTIC_SIMILARITY_THRESHOLD` | Memory search sensitivity | `0.40` (default), `0.30-0.50` range |
 | `JARVIS_RESPONSE_STYLE` | Output formatting | `casual`, `detailed`, `auto` |
@@ -729,20 +730,20 @@ graph LR
 ```mermaid
 graph TB
     ToolResult[Tool Returns Data] --> Style{JARVIS_RESPONSE_STYLE}
-    
+
     Style -->|casual| LLM[Format with LLM]
     Style -->|detailed| Raw[Use raw output]
     Style -->|auto| Smart{Smart Decision}
-    
+
     Smart -->|Search results| LLM
     Smart -->|Other tools| Raw
-    
+
     LLM --> Voice[Voice-friendly output]
     Raw --> Data[Raw data output]
-    
+
     Voice --> User[👤 User]
     Data --> User
-    
+
     style LLM fill:#9b59b6
     style Raw fill:#e74c3c
 ```
@@ -771,7 +772,7 @@ graph LR
     E --> Result[Tool Result]
     Result --> Format[Format Response]
     Format --> User[👤 User]
-    
+
     style Think fill:#9b59b6
     style Result fill:#27ae60
 ```
@@ -789,9 +790,9 @@ graph LR
 **With Thinking Enabled:**
 ```
 🧠 LLM Thinking:
-   Okay, the user is asking "What time is it?" 
-   I need to check the current time. The available tools include 
-   get_time, which returns date and time. The parameters for 
+   Okay, the user is asking "What time is it?"
+   I need to check the current time. The available tools include
+   get_time, which returns date and time. The parameters for
    get_time are empty, so I just need to call that tool.
 
 🗣️ Speech Output: It's 2:30 PM on November 16th, 2025.
@@ -809,14 +810,14 @@ sequenceDiagram
     participant R as Router
     participant M as Memory
     participant T as Thinking
-    
+
     U->>R: "What's my favorite food?"
     R->>T: Analyze query
     T-->>R: Natural language → semantic_recall
     R->>M: semantic_recall(query="favorite food")
     M-->>R: Found: "favorite_food: sushi" (similarity: 0.87)
     R-->>U: "You love sushi!"
-    
+
     Note over R: No tool calls needed - Memory answered directly
 ```
 
@@ -840,21 +841,21 @@ sequenceDiagram
     participant R as Router
     participant MCP as MCP DuckDuckGo
     participant Mem as Memory DB
-    
+
     U->>O: "Search for Python tutorials and remember I'm learning Python"
-    
+
     Note over O: Turn 1: Search
     O->>R: Analyze query
     R-->>O: Intent: tool_call (mcp_duckduckgo_search)
     O->>MCP: search(query="Python tutorials")
     MCP-->>O: Search results
-    
+
     Note over O: Turn 2: Save memory
     O->>R: Continue (save learning preference)
     R-->>O: Intent: tool_call (remember)
     O->>Mem: remember(key="learning_language", value="Python")
     Mem-->>O: Saved
-    
+
     Note over O: Turn 3: Respond
     O->>R: Finalize response
     R-->>O: Intent: qa
@@ -881,10 +882,10 @@ sequenceDiagram
 graph TB
     Query["Fetch content from example.com"] --> Router[Router]
     Router --> MCPCheck{MCP Tools Available?}
-    
+
     MCPCheck -->|Yes| MCPRegistry[Load mcp_fetch_fetch]
     MCPCheck -->|No| Error[❌ Tool not available]
-    
+
     MCPRegistry --> Execute[Execute Tool]
     Execute --> MCPServer[🔌 MCP Fetch Server]
     MCPServer --> HTTP[HTTP Request]
@@ -892,7 +893,7 @@ graph TB
     Content --> Parse[Parse Response]
     Parse --> Format[Format Output]
     Format --> User[👤 User]
-    
+
     style MCPServer fill:#f39c12
     style Execute fill:#27ae60
 ```
@@ -916,18 +917,18 @@ sequenceDiagram
     participant OC as OpenCode Agent
     participant WS as Workspace
     participant Mem as Memory
-    
+
     U->>J: "Build a Flask API for managing todos"
     J->>J: Recognize complex coding task
     J->>OC: Delegate to OpenCode
-    
+
     Note over OC: Multi-step autonomous work
     OC->>WS: Create project structure
     OC->>WS: Write Flask app.py
     OC->>WS: Create requirements.txt
     OC->>WS: Write tests
     OC->>WS: Run and verify
-    
+
     OC-->>J: Task complete (port 8091)
     J->>Mem: Auto-save project location
     Mem-->>J: Saved
@@ -956,27 +957,27 @@ Running on http://localhost:8091
 
 ```
 🧠 LLM Thinking:
-   The user is asking about Bitcoin investment. This is a complex 
+   The user is asking about Bitcoin investment. This is a complex
    financial question. Let me consider:
-   
+
    1. Do I have stored preferences about their risk tolerance?
       → Check memory first (MEMORY-FIRST rule)
       → No memories found about investment preferences
-   
+
    2. Should I provide financial advice?
       → Financial advice requires disclaimers
       → I should be cautious and informative
-   
+
    3. Tool selection:
       → crypto_price to get current BTC price
       → Then provide balanced information, not advice
-   
+
    4. Auto-save decision:
       → This is a one-time query, not persistent info
       → Don't save unless they express ongoing interest
 
-🗣️ Speech Output: Bitcoin is currently at $95,822. However, I can't 
-provide investment advice. Consider your risk tolerance and consult 
+🗣️ Speech Output: Bitcoin is currently at $95,822. However, I can't
+provide investment advice. Consider your risk tolerance and consult
 a financial advisor for personalized guidance.
 ```
 
@@ -1027,7 +1028,8 @@ a financial advisor for personalized guidance.
 - `LLM_PROVIDER` - Main LLM (`xai`, `anthropic`, `openai`, `ollama`)
 - `XAI_MODEL` - xAI Grok model (`grok-4.3` recommended; see `XAI_PROVIDER.md` for `grok-build-0.1` and alternatives)
 - `ANTHROPIC_MODEL` - Claude model
-- `OLLAMA_MODEL` - Local model (`qwen3.5:latest` in `local.env.example`)
+- `OLLAMA_MODEL` - Local-mode Ollama model (`qwen3.5:latest` in `local.env.example`)
+- `OLLAMA_CLOUD_MODEL` - Cloud-mode Ollama model; must use a recognized `*:cloud` or `*-cloud` tag
 
 ---
 
@@ -1049,20 +1051,24 @@ a financial advisor for personalized guidance.
 
 ## Performance Characteristics
 
-### Cloud Mode (xAI/Anthropic/OpenAI)
+### Cloud Mode (xAI/Anthropic/OpenAI/Ollama Cloud)
 
-- **Speed**: ⚡⚡⚡ Very fast (1-3 seconds)
-- **Cost**: 💰 Pay per token (~$0.01-0.10 per query)
+- **Speed**: Provider, model, network, and tool dependent
+- **Cost**: Provider/model dependent; Ollama Cloud subscription compute is recorded as unknown rather than `$0`
   - **xAI Grok 4.3**: $1.25 input / $2.50 output per 1M tokens ⭐
   - **Claude**: $3.00 input / $15.00 output per 1M tokens
-  - **GPT-4o**: $2.50 input / $10.00 output per 1M tokens
+  - **GPT-5.4 Nano**: $0.20 input / $1.25 output per 1M tokens
 - **Capabilities**: Extended thinking, prompt caching, native tool calling, reasoning models
-- **Context Window**: 
-  - **xAI Grok**: 2M tokens (10x larger!) ⭐ RECOMMENDED
+- **Context Window**:
+  - **xAI Grok 4.3**: 1M tokens; curated Grok 4.20 models: 2M
   - **Claude Sonnet 4.5**: 200K tokens
-  - **GPT-4o**: 128K tokens
+  - **GPT-5.4 Nano**: 400K tokens
 
-### Local Mode (Ollama)
+`lib/model_catalog.py` is the source of truth for Jarvis' curated cloud model
+metadata. Provider pricing can change independently; verify it before making
+budget decisions.
+
+### Local Mode (normally local Ollama)
 
 - **Speed**: ⚡ Moderate (3-10 seconds, model-dependent)
 - **Cost**: 💰 Free (runs locally)
@@ -1076,27 +1082,26 @@ a financial advisor for personalized guidance.
 
 Jarvis is a **multi-modal, memory-aware, tool-orchestrating voice assistant** with the following key capabilities:
 
-✅ **Tool RAG System** - Dynamic tool retrieval scales to 100+ tools without context flooding  
-✅ **Memory-First Strategy** - Always checks stored info before asking  
-✅ **Hybrid Search System** - FTS5 full-text search + AI embeddings for comprehensive results  
-✅ **Intelligent Tool Selection** - LLM-based routing with 75+ skills  
-✅ **Pre-router stack** - Auto-context, memory, intelligence insights, Profile Card  
-✅ **Duplicate tool guard** - Exact-arg blocking, single-call caps, freshness rules  
-✅ **Provider continuation** - xAI `previous_response_id`, OpenAI Responses routing  
-✅ **Multi-Turn Orchestration** - Chains tools to complete complex tasks  
-✅ **MCP Server Integration** - Extensible via Model Context Protocol  
-✅ **Dual-Database System** - Cloud/local modes with auto-sync  
-✅ **Auto-Context System** - Short-term conversation memory across wake word cycles  
-✅ **Thinking Mode** - Transparent LLM reasoning for debugging  
-✅ **OpenCode Integration** - Autonomous coding for complex tasks  
-✅ **Configurable Behavior** - Fine-tune via `.env` and CLI flags  
+✅ **Tool RAG System** - Dynamic tool retrieval scales to 100+ tools without context flooding
+✅ **Memory-First Strategy** - Always checks stored info before asking
+✅ **Hybrid Search System** - FTS5 full-text search + AI embeddings for comprehensive results
+✅ **Intelligent Tool Selection** - LLM-based routing across 78 registered tool manifests
+✅ **Pre-router stack** - Auto-context, memory, intelligence insights, Profile Card
+✅ **Duplicate tool guard** - Exact-arg blocking, single-call caps, freshness rules
+✅ **Provider continuation** - xAI `previous_response_id`, OpenAI Responses routing
+✅ **Multi-Turn Orchestration** - Chains tools to complete complex tasks
+✅ **MCP Server Integration** - Extensible via Model Context Protocol
+✅ **Dual-Database System** - Cloud/local modes with auto-sync
+✅ **Auto-Context System** - Short-term conversation memory across wake word cycles
+✅ **Thinking Mode** - Transparent LLM reasoning for debugging
+✅ **OpenCode Integration** - Autonomous coding for complex tasks
+✅ **Configurable Behavior** - Fine-tune via `.env` and CLI flags
 
 ---
 
 ## Next Steps
 
 - **For Users**: See [QUICKSTART.md](QUICKSTART.md) to get started
-- **For Developers**: See [AGENTS.md](../AGENTS.md) for coding guidelines
 - **For Search System**: See [FTS5_SEARCH_SYSTEM.md](FTS5_SEARCH_SYSTEM.md) for FTS5 details
 - **For Memory Tuning**: See [SEMANTIC_THRESHOLD_TUNING.md](SEMANTIC_THRESHOLD_TUNING.md)
 - **For Auto-Context**: See [AUTO_CONTEXT_SYSTEM.md](AUTO_CONTEXT_SYSTEM.md)
@@ -1107,5 +1112,5 @@ Jarvis is a **multi-modal, memory-aware, tool-orchestrating voice assistant** wi
 
 ---
 
-**Last Updated**: 2026-05-25  
-**Version**: 2.50.x (Tool RAG, xAI native continuation, OpenAI Responses routing, Profile Card)
+**Last Verified**: 2026-06-29
+**Version**: 2.53.0 (mode-safe providers, Tool RAG, native continuation, Profile Card)

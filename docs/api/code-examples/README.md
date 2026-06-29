@@ -29,7 +29,6 @@ Send alerts to Jarvis from any application or service using webhooks.
 - **[Python](python/)** - Flask, FastAPI, standalone scripts
 - **[Node.js](nodejs/)** - Express, standalone scripts
 - **[Bash](bash/)** - Cron jobs, system monitoring
-- **[Go](go/)** - Lightweight monitoring agents
 - **[Docker](docker/)** - Containerized monitoring agents
 
 ---
@@ -156,4 +155,3 @@ External service pushes webhooks through secure tunnel.
 - **Full API Docs**: [API_QUICK_START.md](../API_QUICK_START.md)
 - **Remote Monitoring**: [REMOTE_MONITORING.md](../REMOTE_MONITORING.md)
 - **Security**: [SECURITY_OPTIONS.md](../SECURITY_OPTIONS.md)
-

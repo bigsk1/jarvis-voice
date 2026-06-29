@@ -290,6 +290,12 @@ JARVIS_MODE=cloud
 
 Set this in root `.env`, then configure the matching provider values in `config/cloud.env`.
 
+Cloud mode can also use Ollama Cloud. Point `OLLAMA_BASE_URL` at a signed-in
+daemon reachable from Docker Desktop (normally
+`http://host.docker.internal:11434`) and set `OLLAMA_CLOUD_MODEL` to a
+recognized `*:cloud` or `*-cloud` model. Do not put a normal local Ollama model
+in `OLLAMA_CLOUD_MODEL`.
+
 Only the selected env file is required. A cloud-only setup may omit
 `config/local.env`; a local-only setup may omit `config/cloud.env`.
 

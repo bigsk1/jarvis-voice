@@ -30,8 +30,8 @@ Deterministic workflows are Jarvis's reliable automation path. Instead of asking
 >
 > The base installer handles the core Jarvis setup only: system deps, `uv`, the `~/jarvis-venv` environment, config seeding, and project setup. Optional extras like OpenCode and n8n come later and are not required for a normal install.
 >
-> Full walkthrough: [Install Guide](docs/INSTALL_GUIDE.md)  
-> Config details: [config/README.md](config/README.md)  
+> Full walkthrough: [Install Guide](docs/INSTALL_GUIDE.md)
+> Config details: [config/README.md](config/README.md)
 > Web UI guide: [docs/JARVIS_WEB_UI.md](docs/JARVIS_WEB_UI.md)
 >
 > **macOS and Windows:** The experimental Docker Desktop path runs the Web UIs without a native Ubuntu or Python installation. See [Mac and Windows Docker Installation](docs/docker/MAC-WINDOWS.md) for Terminal, PowerShell, and Command Prompt steps, limitations, and troubleshooting.
@@ -51,9 +51,9 @@ Deterministic workflows are Jarvis's reliable automation path. Instead of asking
   - **Music generation**: ElevenLabs music plays inline in chat
   - **Server Logs Panel**: Real-time LLM + Tool log streaming (simpler than Grafana!)
   - **`/logs` Log Viewer**: Read-only browser for `.jsonl`, `.log`, and `.md` logs with folder drill-down, search, lazy loading, and YAML-style JSONL rendering
-  - **Workflow commands**: `/archive`, `/research`, `/note`, `/health` - deterministic multi-tool pipelines 
-  - **Workflow hover tooltips**: Hover over `/` suggestions to see steps and descriptions 
-  - **Prompt hover tooltips**: Hover over `@` suggestions to see key points 
+  - **Workflow commands**: `/archive`, `/research`, `/note`, `/health` - deterministic multi-tool pipelines
+  - **Workflow hover tooltips**: Hover over `/` suggestions to see steps and descriptions
+  - **Prompt hover tooltips**: Hover over `@` suggestions to see key points
   - **@prompts**: `@research`, `@quick`, `@compare`, `@generate_music`, `@email`, `@daily`
   - **Context-first injection**: Prompts inject BEFORE user message for better LLM context
   - **Tool Hints**: Start typing to get tool suggestions as you type or use #tool_name to add a tool to the request
@@ -211,9 +211,10 @@ Deterministic workflows are Jarvis's reliable automation path. Instead of asking
 - **Tool Management**: Enable/disable tools per mode to optimize context window
 
 ### Dual Mode Operation
-- **Cloud Mode**: **xAI Grok** (`grok-4.3` default, 1M context), Anthropic Claude, OpenAI GPT
+- **Cloud Mode**: **xAI Grok** (`grok-4.3` default), Anthropic Claude, OpenAI GPT, or Ollama Cloud (`*:cloud` / `*-cloud` models through a signed-in Ollama daemon)
   - OpenAI can use Chat Completions by default or opt into Responses API routing for tool-capable turns with `OPENAI_API_MODE=responses` + `OPENAI_RESPONSES_TOOLS=true`
 - **Local Mode**: Ollama (qwen3-coder, mistral-nemo) + faster-whisper + Kokoro/Qwen3-TTS (free, offline)
+- **Mode is not provider selection**: `JARVIS_MODE` chooses config/data boundaries; `LLM_PROVIDER` chooses the chat backend. See [`docs/ollama/README.md`](docs/ollama/README.md).
 - **Model Prompt Overrides**: Small provider/model-specific YAML prompt overlays in `config/models/`
   - Lets you patch stable model quirks without changing the global prompts for every provider
   - Supports exact model folders plus deterministic aliases for dated model names and runtime suffixes like `:latest` and `:cloud`
@@ -383,7 +384,7 @@ See full guide: [`docs/AUTO_MODE_EXPLAINED.md`](docs/AUTO_MODE_EXPLAINED.md)
 
 **Quick Overview:**
 ```
-User Query → Router (LLM analyzes) → Memory Check → Tool Selection → 
+User Query → Router (LLM analyzes) → Memory Check → Tool Selection →
 Execute Tool(s) → Multi-Turn if Needed → Format Response → User
 ```
 
@@ -528,21 +529,27 @@ This will:
 Copy and edit the example configs:
 
 ```bash
-# For cloud mode (xAI/Anthropic/OpenAI)
+# For cloud mode (xAI/Anthropic/OpenAI or Ollama Cloud)
 cp config/cloud.env.example config/cloud.env
-nano config/cloud.env  # Add your API keys
+nano config/cloud.env  # Configure the chosen provider and credentials/daemon
 
 # Recommended cloud provider: xAI Grok
 # LLM_PROVIDER="xai"
 # XAI_API_KEY="xai-..."  # Get from https://console.x.ai
 # XAI_MODEL="grok-4.3"  # 1M context, configurable reasoning effort
 
+# Ollama Cloud alternative (requires a signed-in Ollama daemon):
+# LLM_PROVIDER="ollama"
+# OLLAMA_BASE_URL="http://your-ollama-host:11434"
+# OLLAMA_CLOUD_MODEL="minimax-m3:cloud"
+
 # For local mode (Ollama)
 cp config/local.env.example config/local.env
 nano config/local.env  # Adjust Ollama endpoint
 ```
 
-See [`config/README.md`](config/README.md) and [`docs/XAI_PROVIDER.md`](docs/XAI_PROVIDER.md) for detailed configuration options.
+See [`config/README.md`](config/README.md), [`docs/XAI_PROVIDER.md`](docs/XAI_PROVIDER.md),
+and [`docs/ollama/README.md`](docs/ollama/README.md) for detailed configuration options.
 
 ### 3. Install Dependencies
 
@@ -585,7 +592,7 @@ The safe Docker tool profile is enabled by default. Hybrid users can select the 
 ```bash
 source ~/jarvis-venv/bin/activate
 
-# Cloud mode (Anthropic Claude)
+# Cloud mode (provider comes from config/cloud.env)
 ./jarvis
 
 # Local mode (Ollama)
@@ -1118,12 +1125,12 @@ Jarvis uses separate databases for cloud and local modes:
 
 
 **Cloud Mode** - `data/jarvis_memory.db`:
-- Uses OpenAI embeddings (1536 dimensions)
-- Optimized for Claude/GPT
+- Uses OpenAI embeddings (1536 dimensions) by default
+- Shared by cloud-mode chat providers, including Ollama Cloud
 
 **Local Mode** - `data/jarvis_memory_local.db`:
-- Uses nomic-embed-text (768 dimensions)
-- Optimized for Ollama models
+- Uses Ollama/nomic embeddings (768 dimensions) by default
+- Separate from chat-provider selection
 
 **Auto-Sync**: On startup, newer memories are synced between databases with re-embedded vectors for the target mode's model. See [`docs/DUAL_DATABASE_SYSTEM.md`](docs/DUAL_DATABASE_SYSTEM.md).
 
@@ -1143,7 +1150,7 @@ Every conversation logs:
 View costs:
 ```bash
 sqlite3 data/jarvis_memory.db "
-SELECT 
+SELECT
   date(timestamp) as date,
   SUM(json_extract(metadata, '$.cost_usd')) as total_cost,
   COUNT(*) as conversations
@@ -1171,13 +1178,13 @@ LIMIT 7;"
 - [`docs/api/`](docs/api/) - **Proactive API** documentation (webhooks, alerts, monitoring)
 - [`docs/api/API_OVERVIEW.md`](docs/api/API_OVERVIEW.md) - **FastAPI** (Memory, Query, Workflows, Stash, Canvas, Intel, Images, Conversations) ⭐ ENHANCED
 - [`docs/api/INTEL.md`](docs/api/INTEL.md) - **Intel API** (CRUD for jarvis-intel files, ingestion, stats)
-- [`docs/api/IMAGES.md`](docs/api/IMAGES.md) - **Images API** (Cloudflare CDN upload, multi-agent image sharing) 
-- [`docs/api/WORKFLOWS.md`](docs/api/WORKFLOWS.md) - **Workflows API** (list, execute, history) 
+- [`docs/api/IMAGES.md`](docs/api/IMAGES.md) - **Images API** (Cloudflare CDN upload, multi-agent image sharing)
+- [`docs/api/WORKFLOWS.md`](docs/api/WORKFLOWS.md) - **Workflows API** (list, execute, history)
 - [`docs/service/`](docs/service/) - **Background Services** documentation (daemons, auto-resolve)
 - [`docs/tools/scheduled-tasks/scheduled-tasks.md`](docs/tools/scheduled-tasks/scheduled-tasks.md) - **Scheduled Tasks** (scheduler, parser, API, runner, Memory UI)
 - **[Jarvis Monitor](https://github.com/bigsk1/jarvis-monitor)** - Docker agent for remote health checks
 
-**Workflow Orchestration:** 
+**Workflow Orchestration:**
 - [`docs/WORKFLOW_ORCHESTRATION.md`](docs/WORKFLOW_ORCHESTRATION.md) - **Full workflow system** (pipelines, variables, validation)
 - [`docs/api/WORKFLOWS.md`](docs/api/WORKFLOWS.md) - **Workflows API** (programmatic execution)
 - [`data/workflows/AGENTS.md`](data/workflows/AGENTS.md) - Workflow building guide
@@ -1205,7 +1212,6 @@ LIMIT 7;"
 - [`docs/SEMANTIC_THRESHOLD_TUNING.md`](docs/SEMANTIC_THRESHOLD_TUNING.md) - How to tune similarity threshold
 - [`docs/MEMORY_SYSTEM.md`](docs/MEMORY_SYSTEM.md) - Memory & knowledge base overview
 - [`docs/MEMORY_SYSTEM_TUNING.md`](docs/MEMORY_SYSTEM_TUNING.md) - Memory system optimization
-- [`docs/MEMORY_INTELLIGENCE_FIXES.md`](docs/MEMORY_INTELLIGENCE_FIXES.md) - Auto-save improvements
 
 **Tool Management:**
 - [`docs/TOOL_MANAGEMENT.md`](docs/TOOL_MANAGEMENT.md) - Enable/disable tools, create profiles
@@ -1241,20 +1247,20 @@ LIMIT 7;"
    #!/usr/bin/env python3
    import sys
    import json
-   
+
    def main():
        args = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
-       
+
        # Your logic here
        result = do_something(args)
-       
+
        # Return JSON
        print(json.dumps({
            "ok": True,
            "speech": "Task completed",
            "data": result
        }))
-   
+
    if __name__ == "__main__":
        main()
    ```
@@ -1338,7 +1344,7 @@ The tool will be auto-discovered!
 
 **"OpenCode server not reachable"**
 ```bash
-systemctl --user start opencode
+sudo systemctl start opencode-jarvis.service
 # or
 cd ~/opencode && npm start
 ```
@@ -1355,7 +1361,7 @@ ollama pull gemma4
 ollama pull nomic-embed-text
 ```
 
-**"Permission denied on skills/tool.py"**
+**"Permission denied" when running a tool script**
 ```bash
 chmod +x skills/*.py
 ```
@@ -1490,7 +1496,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Added proper `DAILY` rescheduling support in `services/reminder_scheduler.py` so daily reminders now repeat correctly
 
 **Completed (February 2026):**
-- ✅ **ElevenLabs v3 TTS** - Upgraded to latest TTS model 
+- ✅ **ElevenLabs v3 TTS** - Upgraded to latest TTS model
   - 68% error reduction for numbers, scores, times, symbols
   - Configurable voice settings via `ELEVENLABS_TTS_STABILITY`, `_SIMILARITY_BOOST`
   - v3 requires stability 0.0/0.5/1.0; v2 settings preserved for fallback
@@ -1538,14 +1544,14 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Clarified memory fallback and native search behavior
 
 **Completed (January 2026):**
-- ✅ **Optional API Authentication** - Bearer token auth for Jarvis API 
+- ✅ **Optional API Authentication** - Bearer token auth for Jarvis API
   - Toggle via `JARVIS_API_AUTH=true/false` in cloud.env/local.env
   - Localhost always whitelisted, public paths always accessible
   - API keys never logged, remote services (jarvis-monitor, unifi-protect-webhook) updated
   - See: [`docs/SECURITY_HARDENING.md`](docs/SECURITY_HARDENING.md)
 - ✅ **Docker Monitoring Fixes** - `host.docker.internal` for container-to-host connectivity
 - ✅ **UFW Firewall Documentation** - Essential ports added to INSTALL_GUIDE.md
-- ✅ **Generated Images API** - Full management of local generated images 
+- ✅ **Generated Images API** - Full management of local generated images
   - List, search, download, delete, generate images via API
   - `upload_to_cdn` parameter for one-step generate + CDN upload
   - CDN catalog caches URLs for instant retrieval (no re-uploads)
@@ -1868,5 +1874,10 @@ Source Available — free for personal use, modification, and non-commercial red
 
 
 **Current Version:** v2.53.0 (June 2026)
-**Status:** Production Ready ✅  
-**Latest Features:** v2.51.0 adds `create_social_clip` (MoneyPrinterTurbo B-roll social videos), multi-image Web UI vision, OpenCode service/auth/workspace hardening, the experimental local Docker Web stack, hybrid Docker/native tool-profile workflow, internal container routing/auth, foreground daemon supervision, and Docker operations documentation — alongside cross-turn correction learning, Profile Card injection, memory-type filtering, memory sync health tooling, and xAI `grok-build-0.1` catalog support.
+**Status:** Production Ready ✅
+**Latest Features:** v2.53.0 adds mode-safe Ollama Cloud as a primary provider,
+request-local cloud/local config isolation, separate per-mode Intelligence
+ownership, strict API mode validation, mode-aware scheduled-task execution,
+and Docker/browser reminder audio without changing native speaker behavior.
+Earlier v2.51-v2.52 additions include multi-image Web vision, OpenCode
+hardening, the Docker Web stack, correction learning, and Profile Card injection.

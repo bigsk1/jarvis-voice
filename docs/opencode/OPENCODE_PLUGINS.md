@@ -1,6 +1,6 @@
 # OpenCode Plugins Integration
 
-> **Plugin Location**: `~/.config/opencode/plugin/` (global, applies to all OpenCode sessions)  
+> **Plugin Location**: `~/.config/opencode/plugin/` (global, applies to all OpenCode sessions)
 > **Source Files**: `docs/opencode/plugin/` (in this repo)
 
 OpenCode plugins extend OpenCode's capabilities and enforce safety boundaries when Jarvis delegates tasks to it.
@@ -62,7 +62,7 @@ User: "Jarvis, create a Flask API"
 ## 🛡️ Installed Plugins
 
 ### 1. Workspace Protection (`00-workspace-protection.js`)
-**Status**: ✅ Active  
+**Status**: ✅ Active
 **Purpose**: Enforce strict workspace boundaries
 
 **Protection Rules**:
@@ -83,7 +83,7 @@ OpenCode: Attempts to edit ~/jarvis-voice/orchestrator/orchestrator_v2.py
 ❌ BLOCKED: Cannot access Jarvis codebase
    Path: ~/jarvis-voice/orchestrator/orchestrator_v2.py
    Reason: ~/jarvis-voice is protected (read-only from workspace only)
-   
+
    If you need to understand Jarvis APIs, ask Jarvis to provide the information.
 ```
 
@@ -179,8 +179,7 @@ mv ~/.config/opencode/plugin/00-workspace-protection.js.disabled \
 
 **Note**: Restart OpenCode server after enabling/disabling plugins:
 ```bash
-pkill -f opencode
-./bin/start-opencode
+sudo systemctl restart opencode-jarvis.service
 ```
 
 ---
@@ -188,7 +187,7 @@ pkill -f opencode
 ## 📚 Plugin Development
 
 For adding new plugins, see:
-- **Ideas & Planning**: `docs/OPENCODE_PLUGIN_IDEAS.md` (comprehensive list)
+- **Ideas & Planning**: `docs/opencode/OPENCODE_PLUGIN_IDEAS.md` (comprehensive list)
 - **OpenCode Docs**: https://opencode.ai/docs/plugins/
 - **Plugin Examples**: `~/.config/opencode/plugin/README.md`
 
@@ -221,8 +220,7 @@ node --check ~/.config/opencode/plugin/00-workspace-protection.js
 
 **4. Restart OpenCode**:
 ```bash
-pkill -f opencode
-./bin/start-opencode
+sudo systemctl restart opencode-jarvis.service
 sleep 2
 curl http://localhost:4096/health
 ```
@@ -243,7 +241,7 @@ curl http://localhost:4096/health
 
 ## 🎯 Future Enhancements
 
-See `docs/OPENCODE_PLUGIN_IDEAS.md` for detailed proposals.
+See `docs/opencode/OPENCODE_PLUGIN_IDEAS.md` for detailed proposals.
 
 **Candidates** (not implemented yet):
 - Docker sandbox for safe code execution
@@ -262,8 +260,8 @@ See `docs/OPENCODE_PLUGIN_IDEAS.md` for detailed proposals.
 This plugin infrastructure was added in branch: `opencode-plugins`
 
 **Files in Jarvis Repo**:
-- `docs/OPENCODE_PLUGINS.md` (this file)
-- `docs/OPENCODE_PLUGIN_IDEAS.md` (comprehensive ideas list)
+- `docs/opencode/OPENCODE_PLUGINS.md` (this file)
+- `docs/opencode/OPENCODE_PLUGIN_IDEAS.md` (comprehensive ideas list)
 
 **Files Outside Jarvis Repo** (global OpenCode config):
 - `~/.config/opencode/plugin/00-workspace-protection.js`
@@ -273,10 +271,10 @@ This plugin infrastructure was added in branch: `opencode-plugins`
 
 ## 🔗 Related Documentation
 
-- `docs/OPENCODE.md` - OpenCode integration overview
-- `docs/OPENCODE_API_REFERENCE.md` - API endpoints and usage
-- `docs/OPENCODE_AGENTS.md` - Multi-agent coordination
-- `docs/OPENCODE_PLUGIN_IDEAS.md` - Future plugin ideas
+- `docs/opencode/OPENCODE.md` - OpenCode integration overview
+- `docs/opencode/OPENCODE_API_REFERENCE.md` - API endpoints and usage
+- `docs/opencode/OPENCODE_AGENTS.md` - Multi-agent coordination
+- `docs/opencode/OPENCODE_PLUGIN_IDEAS.md` - Future plugin ideas
 - `skills/opencode.py` - Jarvis's OpenCode tool implementation
 
 ---
