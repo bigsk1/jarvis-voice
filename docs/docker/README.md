@@ -45,14 +45,35 @@ cp docker.env.example .env
 printf "JARVIS_DOCKER_UID=%s\nJARVIS_DOCKER_GID=%s\n" "$(id -u)" "$(id -g)" >> .env
 ```
 
+`docker-compose.yml` defines seven services. Four start with the default command; three more need the **`extras`** profile.
+
+| Service | Default `up` | `--profile extras` | Role |
+|---------|:------------:|:------------------:|------|
+| `jarvis-api` | yes | yes | FastAPI, webhooks, workflows (`:8880`, localhost bind) |
+| `jarvis-web` | yes | yes | Main chat UI (`:5001`) |
+| `jarvis-canvas` | yes | yes | Canvas viewer (`:8890`) |
+| `jarvis-services` | yes | yes | Background daemons — reminders, follow-up, scheduled tasks, self-healing |
+| `jarvis-memory` | — | yes | Memory browser UI (`:5002`) |
+| `jarvis-intelligence` | — | yes | Intelligence dashboard (`:5003`) |
+| `jarvis-docs` | — | yes | Docs reader (`:5004`) |
+
 ```bash
-# Edit config/cloud.env (or local.env) with provider credentials, then build
+# Edit config/cloud.env (or local.env) with provider credentials, and edit .env with mode, tool profile, and UID/GID, then build
 docker compose build
+
+# Core stack: API, Web UI, Canvas, background daemons
 docker compose up -d
 ```
 
 ```bash
-# Optional UIs: memory, intelligence, docs
+# Optional but recommended: also start Memory, Intelligence, and Docs UIs
+# (re-run after the core stack is already up — no rebuild needed)
+docker compose --profile extras up -d
+```
+
+Or bring everything up in one step:
+
+```bash
 docker compose --profile extras up -d
 ```
 

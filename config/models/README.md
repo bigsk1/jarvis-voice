@@ -15,7 +15,10 @@ config/models/<provider>/<model>/prompt_overrides.yaml
 Examples:
 - `config/models/openai/gpt-5.4-nano/prompt_overrides.yaml`
 - `config/models/ollama/qwen3/prompt_overrides.yaml`
+- `config/models/ollama/minimax-m3/prompt_overrides.yaml` (matches runtime `minimax-m3:cloud`; suppresses spoken meta lead-ins during TTS condensation)
 - `config/models/xai/grok-4.20-reasoning/prompt_overrides.yaml`
+
+Ollama Cloud model IDs use a `:cloud` tag (for example `minimax-m3:cloud`). Prefer a **base folder name without the tag** (`minimax-m3/`, not `minimax-m3:cloud/`) — especially on Windows, where `:` is invalid in paths. Jarvis tries the exact runtime ID first, then falls back to the stripped alias automatically.
 
 Notes:
 - The extension is `.yaml` (not `.yml`) in this project.

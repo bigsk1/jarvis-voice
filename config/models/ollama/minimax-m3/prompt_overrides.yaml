@@ -1,0 +1,10 @@
+enabled: true
+description: "MiniMax M3 cloud — skip TTS meta lead-ins during voice condensation"
+applies_to_modes:
+  - cloud
+
+# Applies to QA/synthesis condensing (auto + casual). Output goes straight to TTS.
+qa_append: |
+  If auto or casual response style then your condensed answer will be read aloud by text-to-speech. Output ONLY the summary itself.
+  Do NOT add meta lead-ins such as "Here is the condensed voice-friendly summary:", "Voice-friendly summary:", or "Summary:".
+  Do NOT explain that you are condensing, summarizing, or formatting for speech. Start directly with the answer content.

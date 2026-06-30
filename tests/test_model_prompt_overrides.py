@@ -33,6 +33,35 @@ class ModelPromptOverrideTests(unittest.TestCase):
             ],
         )
 
+    def test_ollama_cloud_model_falls_back_to_base_folder(self):
+        candidates = get_model_override_candidates("minimax-m3:cloud")
+        self.assertEqual(candidates, ["minimax-m3:cloud", "minimax-m3"])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            override_dir = root / "ollama" / "minimax-m3"
+            override_dir.mkdir(parents=True)
+            (override_dir / "prompt_overrides.yaml").write_text(
+                (
+                    "enabled: true\n"
+                    "applies_to_modes: [cloud]\n"
+                    "qa_append: |\n"
+                    "  Do NOT add meta lead-ins such as Here is the condensed voice-friendly summary.\n"
+                ),
+                encoding="utf-8",
+            )
+
+            override = load_model_prompt_override(
+                provider="ollama",
+                model="minimax-m3:cloud",
+                mode="cloud",
+                config_root=root,
+            )
+
+            self.assertTrue(override.enabled)
+            self.assertEqual(override.matched_model, "minimax-m3")
+            self.assertIn("Do NOT add meta lead-ins", override.get("qa_append"))
+
     def test_loads_normalized_alias_when_exact_file_missing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

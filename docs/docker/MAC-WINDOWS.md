@@ -355,6 +355,123 @@ Bind mounts include the read-only `config/` directory,
 Root `.env` is read by Compose for interpolation; it is not mounted into a
 container.
 
+### Config change cheat sheet
+
+Editing `config/cloud.env` or `config/local.env` updates the bind mount on disk
+immediately, but **running containers keep old values** until recreated. Python
+services call `load_config()` at startup. Tool subprocesses re-read the file on
+each run, so some tool-only settings can look updated before you restart — do not
+rely on that for LLM, auth, or UI behavior.
+
+**Web UI settings** live in `jarvis-web/config/web_config.json` and often apply
+without a container restart. This cheat sheet is for **`cloud.env` / `local.env`**
+and other bind-mounted config.
+
+Use the same Compose file set that started your stack. MCP commands below include
+`-f docker-compose.yml -f docker-compose.mcp.yml`.
+
+| You changed | Recreate |
+|-------------|----------|
+| LLM keys, `LLM_PROVIDER`, models, embeddings, `OLLAMA_*` | `jarvis-web`, `jarvis-api`, `jarvis-services` |
+| `CANVAS_PUBLIC_URL`, `CANVAS_INTERNAL_URL` | `jarvis-web`, `jarvis-canvas` |
+| `WEBUI_PASSWORD` / JWT auth | all Web UIs (see below) |
+| `config/mcp-servers.json` | `jarvis-web` only (MCP stack) |
+| Root `.env` (`JARVIS_MODE`, ports, UID/GID, tool profile) | full stack |
+
+#### LLM / provider / API keys
+
+Standard stack:
+
+```bash
+docker compose --profile extras up -d --force-recreate jarvis-web jarvis-api jarvis-services
+```
+
+MCP stack:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile extras up -d --force-recreate jarvis-web jarvis-api jarvis-services
+```
+
+#### Canvas public or internal URL
+
+Standard stack:
+
+```bash
+docker compose --profile extras up -d --force-recreate jarvis-web jarvis-canvas
+```
+
+MCP stack:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile extras up -d --force-recreate jarvis-web jarvis-canvas
+```
+
+#### Web UI password / auth
+
+Standard stack:
+
+```bash
+docker compose --profile extras up -d --force-recreate jarvis-web jarvis-canvas jarvis-memory jarvis-intelligence jarvis-docs
+```
+
+MCP stack:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile extras up -d --force-recreate jarvis-web jarvis-canvas jarvis-memory jarvis-intelligence jarvis-docs
+```
+
+#### MCP server list (`config/mcp-servers.json`)
+
+MCP stack only — then rerun Tool RAG sync on `jarvis-web`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile extras up -d --force-recreate jarvis-web
+```
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml exec -T jarvis-web rm -f data/.docker_tool_profile_synced
+```
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml up -d --force-recreate jarvis-web
+```
+
+Standard stack (no Docker-socket MCP — HTTP/SSE MCP servers only):
+
+```bash
+docker compose --profile extras up -d --force-recreate jarvis-web
+```
+
+#### Root `.env` (Compose settings)
+
+Standard stack:
+
+```bash
+docker compose --profile extras up -d --force-recreate
+```
+
+MCP stack:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile extras up -d --force-recreate
+```
+
+#### When in doubt (config only — no rebuild)
+
+Recreates every service and re-reads env files. `./data` and `./logs` are unchanged.
+
+Standard stack:
+
+```bash
+docker compose --profile extras up -d --force-recreate
+```
+
+MCP stack:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile extras up -d --force-recreate
+```
+
 Before pulling, inspect what GitHub will change. The commands below assume the
 tracked branch is `origin/main`, as it is after the normal clone instructions:
 
@@ -385,6 +502,13 @@ docker compose build --pull --no-cache
 docker compose --profile extras up -d --force-recreate
 ```
 
+If the update adds or changes tools, refresh Tool RAG after the stack is up:
+
+```bash
+docker compose exec jarvis-api python bin/sync-tools.py cloud --force
+docker compose exec jarvis-api python bin/sync-tools.py local --force
+```
+
 ### Clean rebuild: MCP stack
 
 Use both Compose files on **every** command when the stack uses the MCP Docker
@@ -401,27 +525,19 @@ Running only `docker compose build --pull` rebuilds the base
 `jarvis-voice:local` image and can leave an older MCP Web UI running. Adding the
 override files only to `up` does not rebuild that MCP image.
 
-After a frontend update, use **Ctrl+Shift+R** or **Ctrl+F5** on Windows, or
-**Cmd+Shift+R** on macOS. If behavior still looks stale, enable **Disable Cache**
-in browser DevTools while reloading. The Network panel should show request URLs
-and payloads that match the newly pulled code.
-
-If the update adds or changes tools, refresh Tool RAG after the stack is up:
-
-```bash
-# Standard stack
-docker compose exec jarvis-api python bin/sync-tools.py cloud --force
-docker compose exec jarvis-api python bin/sync-tools.py local --force
-```
-
-For the MCP stack, do not run tool sync in `jarvis-api`; that base image has no
-Docker CLI or socket. Remove the shared sync marker and recreate `jarvis-web`
-so discovery runs before the Web process starts in the MCP-capable container:
+If the update adds or changes tools or MCP server config, refresh Tool RAG
+through **`jarvis-web`**, not `jarvis-api` (the API container has no Docker CLI
+or socket for MCP sidecars):
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.mcp.yml exec -T jarvis-web rm -f data/.docker_tool_profile_synced
 docker compose -f docker-compose.yml -f docker-compose.mcp.yml up -d --force-recreate jarvis-web
 ```
+
+After a frontend update, use **Ctrl+Shift+R** or **Ctrl+F5** on Windows, or
+**Cmd+Shift+R** on macOS. If behavior still looks stale, enable **Disable Cache**
+in browser DevTools while reloading. The Network panel should show request URLs
+and payloads that match the newly pulled code.
 
 Back up `data/` and your live configuration files before major upgrades. Never commit `config/cloud.env`, `config/local.env`, root `.env`, `jarvis-web/config/web_config.json`, or database files.
 
@@ -566,8 +682,8 @@ If **Tool Definitions** shows `Checked: 0 tools` or errors, local Tool RAG was n
 docker compose exec jarvis-api python bin/sync-tools.py local --force
 ```
 
-If this is an MCP stack, use the marker-removal and `jarvis-web` recreate
-commands in [Updating Jarvis](#updating-jarvis) instead; `jarvis-api` cannot
+If this is an MCP stack, use the tool-sync steps under
+[Clean rebuild: MCP stack](#clean-rebuild-mcp-stack) instead; `jarvis-api` cannot
 launch MCP sidecars.
 
 Then switch Web UI back to **local** mode and retry the request.
