@@ -34,14 +34,24 @@ Host-only tools (Spotify, phone, printer, OpenCode, etc.) are disabled by the tr
 ```bash
 cd ~/jarvis-voice
 
-# One-time: compose settings (ports, UID, mode) — no API keys here
+# One-time host prep (gitignored paths — Compose will not create the settings file)
+cp config/cloud.env.example config/cloud.env
+# cp config/local.env.example config/local.env   # local/Ollama mode instead
+mkdir -p audio jarvis-web/data/uploads
+cp -n jarvis-web/config/web_config.json.example jarvis-web/config/web_config.json
+
+# Compose settings (ports, UID, mode) — no API keys here
 cp docker.env.example .env
 printf "JARVIS_DOCKER_UID=%s\nJARVIS_DOCKER_GID=%s\n" "$(id -u)" "$(id -g)" >> .env
+```
 
-# Build and start core stack
+```bash
+# Edit config/cloud.env (or local.env) with provider credentials, then build
 docker compose build
 docker compose up -d
+```
 
+```bash
 # Optional UIs: memory, intelligence, docs
 docker compose --profile extras up -d
 ```
@@ -112,8 +122,6 @@ run discovery through the MCP-capable `jarvis-web` startup path instead of
 docker compose -f docker-compose.yml -f docker-compose.mcp.yml exec -T jarvis-web rm -f data/.docker_tool_profile_synced
 docker compose -f docker-compose.yml -f docker-compose.mcp.yml up -d --force-recreate jarvis-web
 ```
-
-Compose uses `--force-recreate`; there is no `--force-restart` flag.
 
 ---
 
@@ -382,6 +390,16 @@ The prompt may display `I have no name!@<container-id>`. Compose runs the contai
 ---
 
 ## Troubleshooting
+
+**`web_config.json` bind source does not exist**
+
+Compose refuses to start `jarvis-web` until the host file exists (`create_host_path: false` on that bind). Copy the example before the first `docker compose up`:
+
+```bash
+cp -n jarvis-web/config/web_config.json.example jarvis-web/config/web_config.json
+```
+
+If an older bring-up created `jarvis-web/config/web_config.json` as a **directory**, stop the stack, remove that directory, copy the example file above, then rerun `docker compose up -d`. A directory mount lets the Web UI start but Settings saves fail with HTTP 500.
 
 **Permission denied on startup (`jarvis-web/data/uploads`)**
 

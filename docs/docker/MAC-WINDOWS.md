@@ -500,8 +500,10 @@ If `docker version` inside `jarvis-web` fails with permission denied, the GID ma
 ### A configuration path became a directory
 
 The base stack mounts the existing `config/` directory and no longer creates
-missing env paths as directories. The Web settings file is still a direct bind
-mount. If its source became a directory, stop the stack, remove the directory,
+missing env paths as directories. The Web settings bind uses
+`create_host_path: false`, so a missing `web_config.json` fails at
+`docker compose up` instead of silently becoming a directory. If an **older**
+bring-up left a directory at that path, stop the stack, remove the directory,
 and copy the example before retrying:
 
 - `jarvis-web/config/web_config.json.example` to `jarvis-web/config/web_config.json`

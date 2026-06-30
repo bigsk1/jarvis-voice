@@ -268,12 +268,20 @@ Mount the live config directory so you can **edit keys and URLs without rebuildi
 ```yaml
 volumes:
   - ./config:/app/config:ro
-  - ./jarvis-web/config/web_config.json:/app/jarvis-web/config/web_config.json:rw
+  - type: bind
+    source: ./jarvis-web/config/web_config.json
+    target: /app/jarvis-web/config/web_config.json
+    bind:
+      create_host_path: false
   - ./data:/app/data
   - ./logs:/app/logs
   - ./audio:/app/audio
   - ./jarvis-web/data/uploads:/app/jarvis-web/data/uploads
 ```
+
+Copy `jarvis-web/config/web_config.json.example` to `jarvis-web/config/web_config.json`
+before the first `docker compose up`. Without the file, Compose fails fast instead of
+Docker silently creating a directory at the bind source (which breaks Settings saves).
 
 **Why bind-mount the config directory?**
 
@@ -537,7 +545,11 @@ services:
       CANVAS_INTERNAL_URL: "http://jarvis-canvas:8890"
     volumes:
       - ./config:/app/config:ro
-      - ./jarvis-web/config/web_config.json:/app/jarvis-web/config/web_config.json:rw
+      - type: bind
+        source: ./jarvis-web/config/web_config.json
+        target: /app/jarvis-web/config/web_config.json
+        bind:
+          create_host_path: false
       - ./skills/profiles/docker.json:/app/skills/profiles/docker.json:ro
       - ./data:/app/data
       - ./logs:/app/logs

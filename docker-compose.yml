@@ -57,7 +57,11 @@ services:
       - "${JARVIS_WEB_PORT:-5001}:5001"
     volumes:
       - ./config:/app/config:ro
-      - ./jarvis-web/config/web_config.json:/app/jarvis-web/config/web_config.json:rw
+      - type: bind
+        source: ./jarvis-web/config/web_config.json
+        target: /app/jarvis-web/config/web_config.json
+        bind:
+          create_host_path: false
       - ./data:/app/data
       - ./logs:/app/logs
       - ./audio:/app/audio
