@@ -22,6 +22,17 @@ The `jarvis-dashboard` TUI is the terminal control center: one place to launch c
 
 Deterministic workflows are Jarvis's reliable automation path. Instead of asking an LLM to improvise every step, a workflow defines the exact tools, order, retries, timeouts, validation, and output handling. That makes repeated jobs predictable, inspectable, and easier to debug.
 
+## Prerequisites
+
+Bare minimum to try Jarvis in the **browser** (Web UI chat — no local mic or speakers required):
+
+| Path | Native (Ubuntu 24.04+, Python 3.12+) | Windows / macOS |
+|------|----------------------------------------|-----------------|
+| **Cloud** | `OPENAI_API_KEY` in `config/cloud.env` | [Docker](docs/docker/MAC-WINDOWS.md) + `OPENAI_API_KEY` |
+| **Local** | [Ollama](docs/ollama/README.md) + a local TTS server (default in example: Kokoro — see `config/local.env.example`) | [Docker](docs/docker/MAC-WINDOWS.md) + Ollama on the host/LAN + Kokoro or Qwen3-TTS |
+
+Native `./install.sh` also sets up wake word and host TTS playback — that path assumes a working mic and speakers. Use the Web UI first if you only want chat in the browser.
+
 > **Quick start**
 > 1. Clone the repo so it ends up at **`$HOME/jarvis-voice`**
 > 2. Run **`./install.sh`** on Ubuntu 24.04+ with Python 3.12+
