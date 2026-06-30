@@ -1873,7 +1873,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.53.0 (June 2026)
+**Current Version:** v2.53.1 (June 2026)
 **Status:** Production Ready ✅
 **Latest Features:** v2.53.0 adds mode-safe Ollama Cloud as a primary provider,
 request-local cloud/local config isolation, separate per-mode Intelligence
