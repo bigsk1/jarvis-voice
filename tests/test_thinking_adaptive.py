@@ -19,12 +19,21 @@ class AdaptiveThinkingTests(unittest.TestCase):
         config = get_thinking_config("anthropic", "claude-opus-4-8")
         self.assertEqual(config["thinking"]["type"], "adaptive")
         self.assertEqual(config["output_config"]["effort"], "xhigh")
-        self.assertEqual(config["max_tokens"], 64000)
+        self.assertEqual(config["max_tokens"], 16384)
 
     def test_opus_4_7_uses_adaptive_thinking(self):
         self.assertTrue(uses_adaptive_thinking("anthropic", "claude-opus-4-7"))
         config = get_thinking_config("anthropic", "opus-4.7")
         self.assertEqual(config["thinking"]["type"], "adaptive")
+
+    def test_sonnet_5_uses_adaptive_thinking(self):
+        self.assertTrue(uses_adaptive_thinking("anthropic", "claude-sonnet-5"))
+        self.assertTrue(uses_adaptive_thinking("anthropic", "sonnet-5"))
+        self.assertTrue(is_thinking_supported("anthropic", "claude-sonnet-5"))
+        config = get_thinking_config("anthropic", "claude-sonnet-5")
+        self.assertEqual(config["thinking"]["type"], "adaptive")
+        self.assertEqual(config["output_config"]["effort"], "xhigh")
+        self.assertEqual(config["max_tokens"], 16384)
 
     def test_sonnet_4_5_still_uses_budget_tokens(self):
         self.assertFalse(uses_adaptive_thinking("anthropic", "claude-sonnet-4-5-20250929"))

@@ -74,12 +74,12 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
     ],
     "anthropic": [
         {
-            "id": "claude-sonnet-4-5-20250929",
-            "name": "Claude Sonnet 4.5 (Default)",
-            "context_tokens": 200_000,
+            "id": "claude-sonnet-5",
+            "name": "Claude Sonnet 5 (Default)",
+            "context_tokens": 1_000_000,
             "default": True,
-            "pricing": {"input": 3.00, "output": 15.00},
-            "aliases": ["claude-4-5", "sonnet-4.5"],
+            "pricing": {"input": 3.00, "output": 15.00, "cached": 0.30},
+            "aliases": ["sonnet-5"],
         },
         {
             "id": "claude-sonnet-4-6",
@@ -87,6 +87,13 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "context_tokens": 1_000_000,
             "pricing": {"input": 3.00, "output": 15.00, "cached": 0.30},
             "aliases": ["sonnet-4.6", "sonnet-4", "claude-sonnet-4-20250514"],
+        },
+        {
+            "id": "claude-sonnet-4-5-20250929",
+            "name": "Claude Sonnet 4.5",
+            "context_tokens": 200_000,
+            "pricing": {"input": 3.00, "output": 15.00},
+            "aliases": ["claude-4-5", "sonnet-4.5"],
         },
         {
             "id": "claude-opus-4-8",
@@ -305,7 +312,7 @@ def get_default_model_id(provider: str) -> str:
     return entries[0]["id"]
 
 
-def get_provider_fallback_model(provider: str, *, local_default: str = "qwen3.5:latest") -> str:
+def get_provider_fallback_model(provider: str, *, local_default: str = "gemma4") -> str:
     """Return a stable fallback model id when env/config does not specify one."""
     if provider == "ollama":
         return local_default

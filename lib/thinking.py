@@ -12,6 +12,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Non-streaming Anthropic SDK rejects max_tokens above ~16K (long-request guard).
+ANTHROPIC_ADAPTIVE_MAX_TOKENS = 16384
+
 
 # Models that support extended thinking
 # TODO: tie in with logic from model_catalog.py? we can add reasoning models to the catalog and then use that to determine if a model supports thinking
@@ -21,6 +24,8 @@ THINKING_MODELS = {
         "claude-opus-4-7",
         "claude-sonnet-4-6",
         "claude-sonnet-4-5-20250929",
+        "claude-sonnet-5",
+        "sonnet-5",
         "sonnet-4.6",
         "sonnet-4.5",
         "opus-4.8",
@@ -83,13 +88,20 @@ def should_enable_thinking() -> bool:
 
 def uses_adaptive_thinking(provider: str, model: str) -> bool:
     """
-    Opus 4.7+ rejects manual extended thinking (budget_tokens) and requires adaptive thinking.
+    Opus 4.7+ and Sonnet 5 rejects manual extended thinking (budget_tokens) and requires adaptive thinking.
     See: https://platform.claude.com/docs/en/about-claude/models/migration-guide
     """
     if provider != "anthropic":
         return False
     normalized = model.lower().replace("_", "-")
-    adaptive_markers = ("claude-opus-4-7", "claude-opus-4-8", "opus-4.7", "opus-4.8")
+    adaptive_markers = (
+        "claude-opus-4-7",
+        "claude-opus-4-8",
+        "opus-4.7",
+        "opus-4.8",
+        "claude-sonnet-5",
+        "sonnet-5",
+    )
     return any(marker in normalized for marker in adaptive_markers)
 
 
@@ -113,7 +125,7 @@ def get_thinking_config(provider: str, model: str) -> dict[str, Any] | None:
             return {
                 "thinking": {"type": "adaptive", "display": "summarized"},
                 "output_config": {"effort": effort},
-                "max_tokens": 64000,
+                "max_tokens": ANTHROPIC_ADAPTIVE_MAX_TOKENS,
             }
         return {
             "thinking": {"type": "enabled", "budget_tokens": 2000},

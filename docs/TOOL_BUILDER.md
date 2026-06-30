@@ -380,7 +380,7 @@ TOOL_BUILDER_MODEL=grok-4.3
 
 # Or use Anthropic
 TOOL_BUILDER_PROVIDER=anthropic
-TOOL_BUILDER_MODEL=claude-sonnet-4-6
+TOOL_BUILDER_MODEL=claude-sonnet-5
 
 # Falls back to FEEDBACK_PROVIDER, then LLM_PROVIDER
 ```

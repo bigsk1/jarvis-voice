@@ -258,7 +258,7 @@ def get_vapi_model_config(system_prompt: str) -> dict:
     # Provider-specific defaults
     provider_defaults = {
         'xai': get_provider_fallback_model('xai'),
-        'anthropic': 'claude-sonnet-4-6',
+        'anthropic': 'claude-sonnet-5',
         'openai': 'gpt-4o',
         'groq': 'llama-3.1-70b-versatile',
         'together': 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
