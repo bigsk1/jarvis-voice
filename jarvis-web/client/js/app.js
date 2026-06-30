@@ -2072,6 +2072,7 @@ class JarvisApp {
   _startNewChat() {
     this.socket.conversationId = null;
     this.chat.clearChat();
+    this.chat.refreshContextWindow();
     this._updateActiveConversation(null);
     this._updateConvIdBadge(null);
     Utils.toast('Started new chat', 'info');
@@ -2548,7 +2549,7 @@ class JarvisApp {
   /**
    * Display a loaded conversation in the chat
    */
-  _displayLoadedConversation(conversation) {
+  async _displayLoadedConversation(conversation) {
     if (!conversation) return;
     
     // Update socket's conversation ID
@@ -2564,6 +2565,9 @@ class JarvisApp {
     let cumulativeCost = 0;
     let cumulativeUnknownCost = false;
     let cumulativeInputEstimated = false;
+    let cumulativeCache = { read: 0, creation: 0, savingsUsd: 0 };
+    let tokenProvider = conversation.llm_provider || null;
+    let tokenModel = conversation.llm_model || null;
     
     // Add each message
     for (const msg of conversation.messages || []) {
@@ -2589,6 +2593,11 @@ class JarvisApp {
           cumulativeTokens.output += usage.output_tokens || 0;
           cumulativeTokens.total += usage.total_tokens || (usage.input_tokens || 0) + (usage.output_tokens || 0);
           cumulativeCost += typeof usage.cost_usd === 'number' ? usage.cost_usd : 0;
+          cumulativeCache.read += usage.cache_read_tokens || 0;
+          cumulativeCache.creation += usage.cache_creation_tokens || 0;
+          if (typeof usage.cache_savings_usd === 'number') {
+            cumulativeCache.savingsUsd += usage.cache_savings_usd;
+          }
           if (usage.has_unknown_cost === true || usage.cost_known === false
               || usage.billing_mode === 'ollama_cloud_subscription') {
             cumulativeUnknownCost = true;
@@ -2596,13 +2605,25 @@ class JarvisApp {
           if (usage.input_estimated === true) {
             cumulativeInputEstimated = true;
           }
+          if (!tokenProvider && usage.provider) tokenProvider = usage.provider;
+          if (!tokenModel && usage.model) tokenModel = usage.model;
         }
       }
     }
     
     // Restore token counter state if we have historical data
     if (cumulativeTokens.total > 0) {
-      this.chat.restoreTokenCounter(cumulativeTokens, cumulativeCost, cumulativeUnknownCost, cumulativeInputEstimated);
+      await this.chat.restoreTokenCounter(
+        cumulativeTokens,
+        cumulativeCost,
+        cumulativeUnknownCost,
+        cumulativeInputEstimated,
+        {
+          provider: tokenProvider,
+          model: tokenModel,
+          cache: cumulativeCache,
+        }
+      );
     }
     
     // Update history UI

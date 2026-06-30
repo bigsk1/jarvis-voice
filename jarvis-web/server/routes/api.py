@@ -1137,6 +1137,10 @@ def import_conversation():
         conv['archived'] = bool(conversation_data.get('archived', False))
         conv['pinned_at'] = conversation_data.get('pinned_at') if conv['pinned'] else None
         conv['archived_at'] = conversation_data.get('archived_at') if conv['archived'] else None
+        if conversation_data.get('llm_provider'):
+            conv['llm_provider'] = conversation_data['llm_provider']
+        if conversation_data.get('llm_model'):
+            conv['llm_model'] = conversation_data['llm_model']
         
         # Save updated conversation
         conv_file = store.conversations_dir / f"{new_conv['id']}.json"

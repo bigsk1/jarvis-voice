@@ -266,6 +266,34 @@ class ConversationStore:
         self._save_index()
         return self._normalize_summary(updated_summary)
 
+    def update_llm_metadata(
+        self,
+        conv_id: str,
+        *,
+        provider: str | None = None,
+        model: str | None = None,
+    ) -> bool:
+        """Persist the provider/model used for this conversation (for token UI restore)."""
+        conversation = self.get_conversation(conv_id)
+        if not conversation:
+            return False
+
+        changed = False
+        if provider and conversation.get('llm_provider') != provider:
+            conversation['llm_provider'] = provider
+            changed = True
+        if model and conversation.get('llm_model') != model:
+            conversation['llm_model'] = model
+            changed = True
+        if not changed:
+            return True
+
+        conversation['updated_at'] = datetime.now().isoformat()
+        conv_file = self.conversations_dir / f'{conv_id}.json'
+        with open(conv_file, 'w') as f:
+            json.dump(conversation, f, indent=2)
+        return True
+
     def update_message_data_by_web_message_id(self, conv_id: str, web_message_id: str, patch: dict) -> bool:
         """Merge message data into an assistant message identified by its live web message id."""
         conversation = self.get_conversation(conv_id)

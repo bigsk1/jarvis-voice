@@ -27,6 +27,7 @@ from config_loader import DEFAULT_JARVIS_QA_WORD_LIMIT, DEFAULT_JARVIS_MULTI_TUR
 
 from model_prompt_overrides import apply_prompt_override_sections, load_model_prompt_override
 from model_catalog import get_provider_fallback_model
+from ..services.usage_metadata import enrich_usage_metadata
 from ..services.completion_guard import CompletionGuardPolicy
 from ..services.followup_extractor import (
     extract_followup_data,
@@ -1545,8 +1546,13 @@ Previous structured data:
             save_data = (result.get('data') or {}).copy() if isinstance(result.get('data'), dict) else {'result': result.get('data')}
             if result.get('raw_llm_response'):
                 save_data['raw_llm_response'] = result['raw_llm_response']
-            if result.get('usage'):
-                save_data['usage'] = result['usage']
+            repair_usage = enrich_usage_metadata(
+                result.get('usage'),
+                record.get('provider'),
+                record.get('model'),
+            )
+            if repair_usage:
+                save_data['usage'] = repair_usage
             save_data['_web_message_id'] = repair_message_id
             save_data['_completion_guard'] = {
                 'status': 'repair_response',
@@ -1644,7 +1650,7 @@ Previous structured data:
                     'ok': result.get('ok', True),
                     'cancelled': False,
                     'duration_ms': int((time.time() - start_time) * 1000),
-                    'usage': result.get('usage', {}),
+                    'usage': repair_usage or {},
                     'audio_url': audio_url,
                     'server_side_tools': result.get('server_side_tools', {}),
                     'completion_guard': {
@@ -1660,7 +1666,7 @@ Previous structured data:
                 'speech': prepared_speech,
                 'raw_llm_response': result.get('raw_llm_response', ''),
                 'data': save_data,
-                'usage': result.get('usage', {}),
+                'usage': repair_usage or {},
                 'server_side_tools': result.get('server_side_tools', {}),
                 'experience_id': record.get('experience_id'),
                 'intelligence_context': record.get('intelligence_context', '')
@@ -3379,6 +3385,11 @@ Previous structured data:
                         }, room=delivery_room)
             
             # Save assistant response to conversation
+            response_usage = enrich_usage_metadata(
+                result.get('usage'),
+                effective_provider,
+                effective_model,
+            )
             try:
                 from ..services.conversation_store import get_conversation_store
                 store = get_conversation_store()
@@ -3422,8 +3433,8 @@ Previous structured data:
                 if result.get('experience_id'):
                     save_data['experience_id'] = result['experience_id']
                 # Include token usage for tracking
-                if result.get('usage'):
-                    save_data['usage'] = result['usage']
+                if response_usage:
+                    save_data['usage'] = response_usage
                 if result.get('tool_trace'):
                     save_data['_tool_trace'] = result['tool_trace']
                 # Include error details for failed tool calls (enables follow-up debugging)
@@ -3458,6 +3469,11 @@ Previous structured data:
                     response_text,
                     data=save_data,
                     tools_used=tools_used
+                )
+                store.update_llm_metadata(
+                    conversation_id,
+                    provider=effective_provider,
+                    model=effective_model,
                 )
             except Exception as save_err:
                 print(f"[CHAT] Failed to save response: {save_err}")
@@ -3531,7 +3547,7 @@ Previous structured data:
                 'raw_llm_response': raw_response,
                 'tools_used': tools_used,
                 'data': response_data,
-                'usage': result.get('usage', {}),
+                'usage': response_usage or {},
                 'server_side_tools': result.get('server_side_tools', {}),
                 'completion_guard': completion_guard_config,
                 'is_workflow': bool(is_workflow),
@@ -3553,7 +3569,7 @@ Previous structured data:
                 'ok': result.get('ok', True),
                 'cancelled': was_cancelled,  # True if user stopped processing
                 'duration_ms': duration_ms,
-                'usage': result.get('usage', {}),
+                'usage': response_usage or {},
                 'audio_url': audio_url,
                 'server_side_tools': result.get('server_side_tools', {}),  # xAI/Anthropic native tools
                 'completion_guard': {

@@ -447,7 +447,12 @@ body {
   z-index: 10;
   transition: opacity 0.2s ease;
   pointer-events: auto;
-  cursor: default;
+  cursor: help;
+}
+
+.token-counter .token-count,
+.token-counter .token-cost {
+  pointer-events: none;
 }
 
 .token-counter:hover {

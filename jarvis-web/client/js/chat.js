@@ -408,12 +408,16 @@ class ChatUI {
     this.tokenCostEl = document.getElementById('tokenCost');
     this.cumulativeTokens = { input: 0, output: 0, total: 0 };
     this.cumulativeCost = 0;
+    this.cumulativeCache = { read: 0, creation: 0, savingsUsd: 0 };
     // Ollama Cloud is subscription/compute-metered: cost is unknown, not $0.
     this.cumulativeUnknownCost = false;
     // Set when input tokens were approximated (provider omitted prompt_eval_count).
     this.cumulativeInputEstimated = false;
     this.contextWindow = 2000000;  // Default to xAI's 2M, updated from server
     this.llmProvider = 'xai';      // Default, updated from server
+    // When viewing a loaded conversation, lock stats to that thread's provider/model.
+    this.tokenStatsLocked = false;
+    this.tokenStatsMeta = { provider: null, model: null, contextWindow: null };
     this.systemConfig = {};
     
     this._setupEventListeners();
@@ -475,7 +479,7 @@ class ChatUI {
           // Catalog default is grok-4.3 with 1M context; selected models can override this.
           this.contextWindow = 1000000;
         } else if (provider === 'anthropic') {
-          this.contextWindow = 200000;
+          this.contextWindow = 1000000;
         } else if (provider === 'openai') {
           this.contextWindow = 128000;
         } else if (provider === 'ollama') {
@@ -519,6 +523,13 @@ class ChatUI {
         await this._refreshSystemConfig(currentMode);
         
         this.llmProvider = provider;  // Store for display
+        if (!this.tokenStatsLocked) {
+          this.tokenStatsMeta = {
+            provider,
+            model: modelId || null,
+            contextWindow: Number.isFinite(this.contextWindow) ? this.contextWindow : null,
+          };
+        }
         const contextLabel = Number.isFinite(this.contextWindow)
           ? `${this.contextWindow.toLocaleString()} tokens`
           : 'managed/unknown';
@@ -5097,35 +5108,43 @@ class ChatUI {
 
   /**
    * Update token counter display
-   * @param {Object} usage - {input_tokens, output_tokens, total_tokens, cost_usd}
+   * @param {Object} usage - {input_tokens, output_tokens, total_tokens, cost_usd, cache_read_tokens, ...}
    */
   _updateTokenCounter(usage) {
-    if (!this.tokenCounterEl) return;
-    
-    // Accumulate tokens
+    if (!this.tokenCounterEl || !usage) return;
+
+    this._accumulateUsage(usage);
+    if (usage.provider && !this.tokenStatsLocked) {
+      this.tokenStatsMeta.provider = usage.provider;
+      if (usage.model) this.tokenStatsMeta.model = usage.model;
+    }
+
+    this._renderTokenCount();
+    this._renderCostLabel();
+    this.tokenCounterEl.style.display = 'flex';
+    this._renderTokenTooltip();
+  }
+
+  _accumulateUsage(usage) {
     const inputTokens = usage.input_tokens || 0;
     const outputTokens = usage.output_tokens || 0;
     const totalTokens = usage.total_tokens || (inputTokens + outputTokens);
     const cost = typeof usage.cost_usd === 'number' ? usage.cost_usd : 0;
-    // Subscription/compute-metered providers (Ollama Cloud) report no dollar cost.
     const unknownCost = usage.has_unknown_cost === true
       || usage.cost_known === false
       || usage.billing_mode === 'ollama_cloud_subscription';
-    
+
     this.cumulativeTokens.input += inputTokens;
     this.cumulativeTokens.output += outputTokens;
     this.cumulativeTokens.total += totalTokens;
     this.cumulativeCost += cost;
+    this.cumulativeCache.read += usage.cache_read_tokens || 0;
+    this.cumulativeCache.creation += usage.cache_creation_tokens || 0;
+    if (typeof usage.cache_savings_usd === 'number') {
+      this.cumulativeCache.savingsUsd += usage.cache_savings_usd;
+    }
     if (unknownCost) this.cumulativeUnknownCost = true;
     if (usage.input_estimated === true) this.cumulativeInputEstimated = true;
-
-    this._renderTokenCount();
-    this._renderCostLabel();
-    
-    // Show the counter
-    this.tokenCounterEl.style.display = 'flex';
-    
-    this._renderContextUsageState();
   }
 
   /**
@@ -5137,9 +5156,6 @@ class ChatUI {
     const tokenStr = this.cumulativeTokens.total.toLocaleString();
     const prefix = this.cumulativeInputEstimated ? '~' : '';
     this.tokenCountEl.textContent = `${prefix}${tokenStr} tokens`;
-    this.tokenCountEl.title = this.cumulativeInputEstimated
-      ? 'Input tokens estimated — Ollama Cloud did not report exact prompt token counts'
-      : '';
   }
 
   /**
@@ -5152,36 +5168,75 @@ class ChatUI {
       this.tokenCostEl.textContent = this.cumulativeCost < 0.01
         ? `$${this.cumulativeCost.toFixed(4)}`
         : `$${this.cumulativeCost.toFixed(2)}`;
-      this.tokenCostEl.title = 'Estimated metered cost';
     } else if (this.cumulativeUnknownCost) {
       this.tokenCostEl.textContent = 'subscription';
-      this.tokenCostEl.title = 'Ollama Cloud is subscription/compute-metered — no per-token dollar cost';
     } else {
       this.tokenCostEl.textContent = '';
-      this.tokenCostEl.title = '';
     }
   }
 
-  _renderContextUsageState() {
+  _formatProviderLabel() {
+    const provider = this.tokenStatsMeta.provider || this.llmProvider;
+    const model = this.tokenStatsMeta.model;
+    if (!provider) return '';
+    const providerLabel = provider.toUpperCase();
+    return model ? `${providerLabel} / ${model}` : providerLabel;
+  }
+
+  _renderTokenTooltip() {
     if (!this.tokenCounterEl) return;
-    this.tokenCounterEl.classList.remove('warning', 'danger');
 
-    const providerInfo = this.llmProvider ? ` (${this.llmProvider.toUpperCase()})` : '';
-    if (!Number.isFinite(this.contextWindow) || this.contextWindow <= 0) {
-      this.tokenCounterEl.title = `Managed cloud context window not reported${providerInfo}`;
-      return;
+    const lines = [];
+    lines.push(
+      `Input: ${this.cumulativeTokens.input.toLocaleString()} | Output: ${this.cumulativeTokens.output.toLocaleString()}`
+    );
+
+    if (this.cumulativeCache.read > 0) {
+      lines.push(`Cache read: ${this.cumulativeCache.read.toLocaleString()} tokens`);
+    }
+    if (this.cumulativeCache.creation > 0) {
+      lines.push(`Cache write: ${this.cumulativeCache.creation.toLocaleString()} tokens`);
+    }
+    if (this.cumulativeCache.savingsUsd > 0) {
+      lines.push(`Cache savings: $${this.cumulativeCache.savingsUsd.toFixed(4)}`);
+    }
+    if (this.cumulativeInputEstimated) {
+      lines.push('Input tokens estimated — provider omitted exact prompt counts');
+    }
+    if (this.cumulativeUnknownCost) {
+      lines.push('Cost unknown — subscription/compute-metered provider');
+    } else if (this.cumulativeCost > 0) {
+      lines.push(`Estimated cost: $${this.cumulativeCost.toFixed(4)}`);
     }
 
-    const usagePercent = (this.cumulativeTokens.total / this.contextWindow) * 100;
-    if (usagePercent > 80) {
-      this.tokenCounterEl.classList.add('danger');
-      this.tokenCounterEl.title = `⚠️ ${usagePercent.toFixed(0)}% of ${this.contextWindow.toLocaleString()} context used${providerInfo}`;
-    } else if (usagePercent > 50) {
-      this.tokenCounterEl.classList.add('warning');
-      this.tokenCounterEl.title = `${usagePercent.toFixed(0)}% of ${this.contextWindow.toLocaleString()} context used${providerInfo}`;
+    const contextWindow = this.tokenStatsMeta.contextWindow ?? this.contextWindow;
+    const providerLabel = this._formatProviderLabel();
+    if (Number.isFinite(contextWindow) && contextWindow > 0) {
+      const usagePercent = (this.cumulativeTokens.total / contextWindow) * 100;
+      this.tokenCounterEl.classList.remove('warning', 'danger');
+      if (usagePercent > 80) {
+        this.tokenCounterEl.classList.add('danger');
+        lines.push(`⚠️ ${usagePercent.toFixed(0)}% of ${contextWindow.toLocaleString()} context used`);
+      } else if (usagePercent > 50) {
+        this.tokenCounterEl.classList.add('warning');
+        lines.push(`${usagePercent.toFixed(0)}% of ${contextWindow.toLocaleString()} context used`);
+      } else {
+        lines.push(`${usagePercent.toFixed(1)}% of ${contextWindow.toLocaleString()} context used`);
+      }
     } else {
-      this.tokenCounterEl.title = `${usagePercent.toFixed(1)}% of ${this.contextWindow.toLocaleString()} token context${providerInfo}`;
+      this.tokenCounterEl.classList.remove('warning', 'danger');
+      lines.push('Context window size not reported for this model');
     }
+
+    if (providerLabel) {
+      lines.push(`Provider: ${providerLabel}`);
+    }
+
+    this.tokenCounterEl.title = lines.join('\n');
+  }
+
+  _renderContextUsageState() {
+    this._renderTokenTooltip();
   }
 
   /**
@@ -5190,12 +5245,16 @@ class ChatUI {
   _resetTokenCounter() {
     this.cumulativeTokens = { input: 0, output: 0, total: 0 };
     this.cumulativeCost = 0;
+    this.cumulativeCache = { read: 0, creation: 0, savingsUsd: 0 };
     this.cumulativeUnknownCost = false;
     this.cumulativeInputEstimated = false;
+    this.tokenStatsLocked = false;
+    this.tokenStatsMeta = { provider: null, model: null, contextWindow: null };
     
     if (this.tokenCounterEl) {
       this.tokenCounterEl.style.display = 'none';
       this.tokenCounterEl.classList.remove('warning', 'danger');
+      this.tokenCounterEl.title = '';
     }
     if (this.tokenCountEl) {
       this.tokenCountEl.textContent = '0 tokens';
@@ -5205,30 +5264,84 @@ class ChatUI {
     }
   }
 
+  async _resolveContextWindowForProviderModel(provider, modelId, mode = null) {
+    const parseContextString = (value) => {
+      if (!value) return null;
+      if (typeof value === 'number') return value;
+      const raw = String(value).trim().toUpperCase();
+      const match = raw.match(/^(\d+(?:\.\d+)?)([KM]?)$/);
+      if (!match) return null;
+      const amount = parseFloat(match[1]);
+      const suffix = match[2];
+      if (suffix === 'M') return Math.round(amount * 1_000_000);
+      if (suffix === 'K') return Math.round(amount * 1_000);
+      return Math.round(amount);
+    };
+
+    try {
+      const requestedMode = mode || this.socket?.mode || 'cloud';
+      const res = await fetch(`/api/settings?mode=${encodeURIComponent(requestedMode)}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const settings = data.settings || {};
+      const providerModels =
+        settings.provider_models?.[provider]
+        || settings.llm?.model?.options
+        || [];
+      const selectedModel = providerModels.find((entry) => entry.id === modelId);
+      const selectedContext = parseContextString(selectedModel?.context);
+      if (selectedContext) return selectedContext;
+
+      if (provider === 'xai') return 1_000_000;
+      if (provider === 'anthropic') return 1_000_000;
+      if (provider === 'openai') return 128_000;
+      if (provider === 'ollama' && modelId) {
+        const ctxRes = await fetch(`/api/ollama/model-context?mode=${requestedMode}&model=${encodeURIComponent(modelId)}`);
+        if (ctxRes.ok) {
+          const ctxData = await ctxRes.json();
+          if (ctxData.context_length) return parseInt(ctxData.context_length, 10);
+        }
+      }
+    } catch (err) {
+      console.warn('[Chat] Could not resolve context window for conversation:', err);
+    }
+    return null;
+  }
+
   /**
    * Restore token counter from historical data (when loading a conversation)
    * @param {Object} tokens - {input, output, total}
    * @param {number} cost - cumulative cost in USD
    * @param {boolean} unknownCost - true for subscription/compute-metered providers
    * @param {boolean} inputEstimated - true when input tokens were approximated
+   * @param {Object} meta - optional {provider, model, contextWindow, cache}
    */
-  restoreTokenCounter(tokens, cost, unknownCost = false, inputEstimated = false) {
+  async restoreTokenCounter(tokens, cost, unknownCost = false, inputEstimated = false, meta = null) {
     if (!this.tokenCounterEl) return;
     
-    // Set cumulative values
     this.cumulativeTokens = { ...tokens };
     this.cumulativeCost = cost || 0;
+    this.cumulativeCache = {
+      read: meta?.cache?.read || 0,
+      creation: meta?.cache?.creation || 0,
+      savingsUsd: meta?.cache?.savingsUsd || 0,
+    };
     this.cumulativeUnknownCost = unknownCost === true;
     this.cumulativeInputEstimated = inputEstimated === true;
-    
+    this.tokenStatsLocked = true;
+
+    const provider = meta?.provider || null;
+    const model = meta?.model || null;
+    let contextWindow = meta?.contextWindow || null;
+    if (!contextWindow && provider) {
+      contextWindow = await this._resolveContextWindowForProviderModel(provider, model);
+    }
+    this.tokenStatsMeta = { provider, model, contextWindow };
+
     this._renderTokenCount();
-    
     this._renderCostLabel();
-    
-    // Show the counter
     this.tokenCounterEl.style.display = 'flex';
-    
-    this._renderContextUsageState();
+    this._renderTokenTooltip();
   }
 
   /**
