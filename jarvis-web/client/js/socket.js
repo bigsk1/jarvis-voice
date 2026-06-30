@@ -169,7 +169,7 @@ class JarvisSocket {
    * Send a chat message (with optional image, prompt metadata, and text file)
    * @param {string} message - The message text
    * @param {Object} imageData - Optional image payload {action, settings, images: [{url, filename}]}
-   * @param {Object} promptMeta - Optional prompt metadata {system_instruction, prompt_name, tool_hints}
+   * @param {Object} promptMeta - Optional prompt metadata {system_instruction, prompt_name, tool_hints, request_kind}
    * @param {boolean} requestFeedback - Whether to request feedback analysis after response
    * @param {Object} fileContext - Optional text file data {name, content, size, type}
    */
@@ -209,6 +209,9 @@ class JarvisSocket {
       }
       if (Array.isArray(promptMeta.tool_hints) && promptMeta.tool_hints.length > 0) {
         payload.tool_hints = promptMeta.tool_hints;
+      }
+      if (promptMeta.request_kind === 'canvas_export') {
+        payload.request_kind = promptMeta.request_kind;
       }
     }
     

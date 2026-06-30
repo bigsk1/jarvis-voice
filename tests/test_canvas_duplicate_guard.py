@@ -74,6 +74,96 @@ class CanvasDuplicateGuardTests(unittest.TestCase):
     def test_opencode_is_single_call_capped(self):
         self.assertIn("opencode", SINGLE_CALL_TOOLS)
 
+    def test_canvas_is_not_single_call_capped(self):
+        self.assertNotIn("canvas", SINGLE_CALL_TOOLS)
+
+    def test_canvas_success_cap_allows_retry_after_failure(self):
+        orchestrator = Orchestrator.__new__(Orchestrator)
+        blocked, reason = orchestrator._is_canvas_success_cap(
+            {"action": "create", "title": "Retry", "content": "# Fixed"},
+            [
+                {
+                    "tool": "canvas",
+                    "result": {"ok": False, "error": "content required"},
+                }
+            ],
+            "canvas_export",
+        )
+        self.assertFalse(blocked)
+        self.assertEqual(reason, "")
+
+    def test_canvas_export_blocks_after_one_success(self):
+        orchestrator = Orchestrator.__new__(Orchestrator)
+        blocked, reason = orchestrator._is_canvas_success_cap(
+            {"action": "update", "page_id": "page_20260630_083942", "content": "# More"},
+            [
+                {
+                    "tool": "canvas",
+                    "result": {
+                        "ok": True,
+                        "data": {"page_id": "page_20260630_083942", "title": "Export"},
+                    },
+                }
+            ],
+            "canvas_export",
+        )
+        self.assertTrue(blocked)
+        self.assertIn("export", reason)
+
+    def test_canvas_export_allows_write_after_successful_read(self):
+        orchestrator = Orchestrator.__new__(Orchestrator)
+        blocked, reason = orchestrator._is_canvas_success_cap(
+            {"action": "create", "title": "Export", "content": "# Complete"},
+            [
+                {
+                    "tool": "canvas",
+                    "arguments": {"action": "read", "page_id": "page_123"},
+                    "result": {
+                        "ok": True,
+                        "data": {"page_id": "page_123", "title": "Research"},
+                    },
+                }
+            ],
+            "canvas_export",
+        )
+        self.assertFalse(blocked)
+        self.assertEqual(reason, "")
+
+    def test_canvas_non_export_workflows_are_not_globally_capped(self):
+        orchestrator = Orchestrator.__new__(Orchestrator)
+        blocked, reason = orchestrator._is_canvas_success_cap(
+            {"action": "create", "title": "Another page", "content": "# Duplicate"},
+            [
+                {
+                    "tool": "canvas",
+                    "arguments": {"action": "create", "title": "First"},
+                    "result": {
+                        "ok": True,
+                        "data": {"page_id": "page_123", "title": "Research"},
+                    },
+                },
+                {
+                    "tool": "canvas",
+                    "arguments": {"action": "update", "page_id": "page_123"},
+                    "result": {
+                        "ok": True,
+                        "data": {"page_id": "page_123", "title": "Research"},
+                    },
+                }
+            ],
+            "",
+        )
+        self.assertFalse(blocked)
+        self.assertEqual(reason, "")
+
+    def test_canvas_tool_hint_only_forces_create_for_export(self):
+        generic = ChatHandler._format_tool_hint_context(["canvas"])
+        export = ChatHandler._format_tool_hint_context(["canvas"], "canvas_export")
+
+        self.assertNotIn("action=create", generic)
+        self.assertIn("action that matches", generic)
+        self.assertIn("action=create", export)
+
     def test_completion_guard_avoids_artifact_loop_when_user_complains_about_tool_churn(self):
         handler = ChatHandler.__new__(ChatHandler)
         record = {

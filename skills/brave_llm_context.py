@@ -96,6 +96,51 @@ def trim_text(value: Any, limit: int = 900) -> str:
     return text[: limit - 3].rstrip() + "..."
 
 
+SOURCE_METADATA_FIELDS = ("title", "hostname", "age", "site_name", "favicon")
+
+
+def compact_source_metadata(sources: Any) -> dict[str, Any]:
+    """Keep citation-friendly source metadata; drop bulky thumbnail objects."""
+    if not isinstance(sources, dict):
+        return {}
+
+    compact: dict[str, Any] = {}
+    for url, meta in sources.items():
+        if not isinstance(meta, dict):
+            continue
+        entry = {
+            key: meta[key]
+            for key in SOURCE_METADATA_FIELDS
+            if meta.get(key) not in (None, "", [])
+        }
+        if entry:
+            compact[str(url)] = entry
+    return compact
+
+
+def enrich_items_with_sources(
+    items: list[dict[str, Any]],
+    sources: dict[str, Any],
+) -> list[dict[str, Any]]:
+    enriched: list[dict[str, Any]] = []
+    for item in items:
+        copy = dict(item)
+        url = str(copy.get("url") or "").strip()
+        meta = sources.get(url) if url else None
+        if isinstance(meta, dict):
+            if meta.get("site_name"):
+                copy["site_name"] = meta["site_name"]
+            if meta.get("hostname"):
+                copy["hostname"] = meta["hostname"]
+            age = meta.get("age")
+            if isinstance(age, list) and age:
+                copy["age"] = str(age[0])
+            elif isinstance(age, str) and age.strip():
+                copy["age"] = age.strip()
+        enriched.append(copy)
+    return enriched
+
+
 def normalize_url_items(items: Any, *, max_sources: int = 8, max_snippets_per_source: int = 3) -> list[dict[str, Any]]:
     if not isinstance(items, list):
         return []
@@ -138,10 +183,15 @@ def build_speech(query: str, generic: list[dict[str, Any]], poi: Any, map_items:
 
     for index, item in enumerate(combined[:6], start=1):
         title = trim_text(item.get("title") or item.get("url") or f"Source {index}", 160)
+        site_name = trim_text(item.get("site_name") or "", 80)
         url = item.get("url") or ""
-        lines.append(f"\n{index}. {title}")
+        label = f"{title} ({site_name})" if site_name and site_name.lower() not in title.lower() else title
+        lines.append(f"\n{index}. {label}")
         if url:
             lines.append(f"   {url}")
+        age = item.get("age")
+        if age:
+            lines.append(f"   Age: {trim_text(age, 120)}")
         for snippet in (item.get("snippets") or [])[:2]:
             lines.append(f"   - {trim_text(snippet, 500)}")
 
@@ -180,6 +230,9 @@ def main() -> int:
         "maximum_number_of_snippets_per_url": as_int(input_data.get("maximum_number_of_snippets_per_url"), 10, 1, 100),
         "context_threshold_mode": str(input_data.get("context_threshold_mode") or "balanced").strip(),
     }
+
+    enable_source_metadata = as_bool_or_none(input_data.get("enable_source_metadata"))
+    body["enable_source_metadata"] = True if enable_source_metadata is None else enable_source_metadata
 
     add_if_present(body, "freshness", freshness)
     add_if_present(body, "goggles", normalize_goggles(input_data.get("goggles")))
@@ -241,8 +294,16 @@ def main() -> int:
     if not isinstance(grounding, dict):
         grounding = {}
 
-    generic = normalize_url_items(grounding.get("generic"), max_sources=8)
-    map_items = normalize_url_items(grounding.get("map"), max_sources=5, max_snippets_per_source=2)
+    source_metadata = compact_source_metadata(payload.get("sources") if isinstance(payload, dict) else {})
+
+    generic = enrich_items_with_sources(
+        normalize_url_items(grounding.get("generic"), max_sources=8),
+        source_metadata,
+    )
+    map_items = enrich_items_with_sources(
+        normalize_url_items(grounding.get("map"), max_sources=5, max_snippets_per_source=2),
+        source_metadata,
+    )
     poi = grounding.get("poi")
     compact_poi = None
     if isinstance(poi, dict):
@@ -256,10 +317,9 @@ def main() -> int:
                 if str(snippet or "").strip()
             ],
         }
-
-    source_metadata = payload.get("sources") if isinstance(payload, dict) else {}
-    if not isinstance(source_metadata, dict):
-        source_metadata = {}
+        enriched_poi = enrich_items_with_sources([compact_poi], source_metadata)
+        if enriched_poi:
+            compact_poi = enriched_poi[0]
 
     data: dict[str, Any] = {
         "query": query,

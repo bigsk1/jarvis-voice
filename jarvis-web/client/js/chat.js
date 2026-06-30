@@ -3638,12 +3638,13 @@ class ChatUI {
       return;
     }
 
-    const excerpt = this._normalizeDisplayText(responseText).slice(0, 180);
+    const excerpt = this._buildCanvasExportExcerpt(responseText);
     const prompt = [
       'Create a new Canvas page from the selected Jarvis response and its relevant supporting results in this conversation.',
+      'Use exactly one canvas call with action=create. Include all useful source links from the prior turn.',
       'Preserve useful source links and any image, video, audio, or stash references so Canvas can render the original media.',
       'Use a descriptive title and organize the result as readable Markdown.',
-      excerpt ? `The selected response begins: "${excerpt}${excerpt.length >= 180 ? '…' : ''}"` : ''
+      excerpt ? `The selected response begins: "${excerpt}"` : ''
     ].filter(Boolean).join(' ');
 
     if (window.jarvisApp?.stopAudioPlayback) {
@@ -3665,7 +3666,7 @@ class ChatUI {
     window.jarvisSocket.sendMessage(
       prompt,
       null,
-      { tool_hints: ['canvas'] },
+      { tool_hints: ['canvas'], request_kind: 'canvas_export' },
       false,
       null
     );
@@ -3826,6 +3827,19 @@ class ChatUI {
       .replace(/[*_`#>]+/g, '')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  _buildCanvasExportExcerpt(text, maxChars = 800) {
+    const normalized = this._normalizeDisplayText(text);
+    if (normalized.length <= maxChars) return normalized;
+
+    let excerpt = normalized.slice(0, maxChars).trimEnd();
+    if (normalized.charAt(maxChars) !== ' ') {
+      const boundary = excerpt.lastIndexOf(' ');
+      excerpt = boundary > 0 ? excerpt.slice(0, boundary).trimEnd() : '';
+    }
+
+    return `${excerpt}... [truncated]`;
   }
 
   _inferVideoMimeType(urlOrPath = '', filename = '', declaredMime = '') {

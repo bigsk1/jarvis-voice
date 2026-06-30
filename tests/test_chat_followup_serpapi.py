@@ -453,6 +453,8 @@ def test_extract_followup_data_preserves_brave_llm_context_sources():
                         "title": "Regal Movies On TV Showtimes",
                         "url": "https://www.cinemaclock.com/movie-theaters/regal-movies-on-tv",
                         "snippets": ["Current showtimes for Regal Movies On TV."],
+                        "site_name": "Cinema Clock",
+                        "age": "2 days ago",
                     }
                 ],
                 "poi": {
@@ -460,6 +462,12 @@ def test_extract_followup_data_preserves_brave_llm_context_sources():
                     "url": "https://regmovies.com/theatres/regal-movies-on-tv-0855",
                     "snippets": ["1234 Example Blvd, Portland OR."],
                 },
+            },
+            "sources": {
+                "https://regmovies.com/theatres/regal-movies-on-tv-0855": {
+                    "site_name": "Regal",
+                    "age": ["2 days ago", "2026-06-28"],
+                }
             },
         }
     }
@@ -470,7 +478,11 @@ def test_extract_followup_data_preserves_brave_llm_context_sources():
     assert brave["query"] == "Regal Portland showtimes"
     assert brave["sources_count"] == 2
     assert brave["sources"][0]["title"] == "Regal Movies On TV Showtimes"
+    assert brave["sources"][0]["site_name"] == "Cinema Clock"
+    assert brave["sources"][0]["age"] == "2 days ago"
     assert brave["sources"][1]["url"] == "https://regmovies.com/theatres/regal-movies-on-tv-0855"
+    assert brave["sources"][1]["site_name"] == "Regal"
+    assert brave["sources"][1]["age"] == "2 days ago"
 
 
 def test_compute_effective_evidence_tool_turn():

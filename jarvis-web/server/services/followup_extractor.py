@@ -773,8 +773,10 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
 
         if key == 'brave_llm_context':
             grounding = value.get('grounding') if isinstance(value.get('grounding'), dict) else {}
+            sources_meta = value.get('sources') if isinstance(value.get('sources'), dict) else {}
             sources = []
             seen_urls: set[str] = set()
+            source_limit = max(max_candidates, 8)
 
             def add_source(item):
                 if not isinstance(item, dict):
@@ -792,6 +794,21 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                     record['title'] = title
                 if url:
                     record['url'] = url
+                if item.get('site_name'):
+                    record['site_name'] = item['site_name']
+                elif url:
+                    meta = sources_meta.get(url)
+                    if isinstance(meta, dict) and meta.get('site_name'):
+                        record['site_name'] = meta['site_name']
+                age = item.get('age')
+                if not age and url:
+                    meta = sources_meta.get(url)
+                    if isinstance(meta, dict):
+                        age = meta.get('age')
+                if isinstance(age, list) and age:
+                    record['age'] = str(age[0])[:120]
+                elif isinstance(age, str) and age.strip():
+                    record['age'] = age.strip()[:120]
                 snippets = item.get('snippets')
                 if isinstance(snippets, list) and snippets:
                     record['snippet'] = str(snippets[0])[:500]
@@ -799,14 +816,14 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
 
             for item in grounding.get('generic') or []:
                 add_source(item)
-                if len(sources) >= max_candidates:
+                if len(sources) >= source_limit:
                     break
-            if len(sources) < max_candidates:
+            if len(sources) < source_limit:
                 add_source(grounding.get('poi'))
-            if len(sources) < max_candidates:
+            if len(sources) < source_limit:
                 for item in grounding.get('map') or []:
                     add_source(item)
-                    if len(sources) >= max_candidates:
+                    if len(sources) >= source_limit:
                         break
             if sources:
                 extracted['sources_count'] = len(sources)

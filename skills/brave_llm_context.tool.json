@@ -64,6 +64,10 @@
         "type": "boolean",
         "description": "Force local recall. Usually omit and provide location headers only for local queries."
       },
+      "enable_source_metadata": {
+        "type": "boolean",
+        "description": "Request site_name, hostname, age, and favicon URL enrichment in sources metadata. Default: true. Thumbnails are omitted from Jarvis responses."
+      },
       "loc_city": {
         "type": "string",
         "description": "Optional location city header for local/near-me queries."

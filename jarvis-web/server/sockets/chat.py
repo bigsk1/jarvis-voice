@@ -187,8 +187,25 @@ class ChatHandler:
         return hints
 
     @staticmethod
-    def _format_tool_hint_context(tool_hints: list[str]) -> str:
+    def _format_tool_hint_context(tool_hints: list[str], request_kind: str = '') -> str:
         names = ', '.join(tool_hints)
+        if request_kind == 'canvas_export' and tool_hints == ['canvas']:
+            return (
+                "[CONTEXT - Tool preference for this request]\n\n"
+                f"Selected tool hints: {names}.\n"
+                "Use one canvas tool call with action=create. Build the full page from the prior assistant "
+                "turn plus structured tool_results (especially source links/snippets). Do not call canvas "
+                "again after a successful create; reply with the page link instead.\n\n"
+                "[END CONTEXT]"
+            )
+        if tool_hints == ['canvas']:
+            return (
+                "[CONTEXT - Tool preference for this request]\n\n"
+                f"Selected tool hints: {names}.\n"
+                "Use the canvas action that matches the user's request: create, update, read, list, open, "
+                "or delete. Do not default to creating a page unless the user asked to create or save content.\n\n"
+                "[END CONTEXT]"
+            )
         return (
             "[CONTEXT - Tool preference for this request]\n\n"
             f"Selected tool hints: {names}.\n"
@@ -1879,7 +1896,12 @@ Previous structured data:
             prompt_meta = {
                 'system_instruction': data.get('system_instruction'),
                 'prompt_name': data.get('prompt_name'),
-                'tool_hints': self._sanitize_tool_hints(data.get('tool_hints'))
+                'tool_hints': self._sanitize_tool_hints(data.get('tool_hints')),
+                'request_kind': (
+                    'canvas_export'
+                    if data.get('request_kind') == 'canvas_export'
+                    else ''
+                ),
             }
             
             from vision_multimodal import max_vision_images, normalize_web_image_payload
@@ -1959,6 +1981,8 @@ Previous structured data:
                 user_msg_data['prompt'] = prompt_meta['prompt_name']
             if prompt_meta.get('tool_hints'):
                 user_msg_data['tool_hints'] = prompt_meta['tool_hints']
+            if prompt_meta.get('request_kind'):
+                user_msg_data['request_kind'] = prompt_meta['request_kind']
             store.add_message(conversation_id, 'user', message, data=user_msg_data if user_msg_data else None)
             
             # Update session
@@ -3231,7 +3255,12 @@ Previous structured data:
                 )
             if tool_hints:
                 print(f"[CHAT] Prepending tool hints: {tool_hints}")
-                context_blocks.append(self._format_tool_hint_context(tool_hints))
+                context_blocks.append(
+                    self._format_tool_hint_context(
+                        tool_hints,
+                        request_kind=prompt_meta.get('request_kind', ''),
+                    )
+                )
             if context_blocks:
                 enhanced_message = "\n\n".join(context_blocks) + f"\n\nUser's request: {message}"
             
@@ -3254,6 +3283,7 @@ Previous structured data:
                     excluded_tools=blocked_tools,
                     tool_overrides=tool_overrides if tool_overrides else None,
                     vision_pre_analyzed=vision_pre_analyzed,
+                    request_kind=prompt_meta.get('request_kind', ''),
                 )
             
             # Clean up cancellation flag

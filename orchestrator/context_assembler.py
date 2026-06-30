@@ -20,6 +20,16 @@ from typing import Any, Callable
 class ContextAssembler:
     """Build prompt/context strings while keeping the main orchestrator slimmer."""
 
+    _CANVAS_ARTIFACT_QUERY_TERMS = (
+        "send to canvas",
+        "save to canvas",
+        "create a canvas page",
+        "create a new canvas page",
+        "put it on canvas",
+        "from the selected jarvis response",
+        "selected jarvis response",
+    )
+
     _PREVIEW_LONG_STRING_KEYS = frozenset(
         {
             "content",
@@ -77,6 +87,11 @@ class ContextAssembler:
         self._get_memory_db = get_memory_db_fn
         self._now_utc = now_utc_fn
         self._parse_utc_timestamp = parse_utc_timestamp_fn
+
+    @classmethod
+    def _query_wants_canvas_artifact(cls, text: str) -> bool:
+        lowered = (text or "").lower()
+        return any(term in lowered for term in cls._CANVAS_ARTIFACT_QUERY_TERMS)
 
     def excerpt_for_synthesis(self, text: str, max_chars: int = 8000) -> str:
         """Keep enough of long text artifacts for fallback synthesis without flooding the prompt."""
@@ -237,7 +252,7 @@ class ContextAssembler:
             tool_results = message.get("tool_results", {})
 
             cap = latest_assistant_content_cap if idx == last_assistant_idx else default_content_cap
-            if role == "assistant" and tool_results:
+            if role == "assistant" and tool_results and not self._query_wants_canvas_artifact(current_query):
                 # Keep the display prose as a compact reminder only.
                 cap = min(cap, 1200)
             if len(content) > cap:

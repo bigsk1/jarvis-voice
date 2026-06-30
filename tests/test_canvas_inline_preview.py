@@ -8,6 +8,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CHAT_JS = PROJECT_ROOT / "jarvis-web" / "client" / "js" / "chat.js"
+SOCKET_JS = PROJECT_ROOT / "jarvis-web" / "client" / "js" / "socket.js"
 MAIN_CSS = PROJECT_ROOT / "jarvis-web" / "client" / "css" / "main.css"
 
 
@@ -79,3 +80,37 @@ def test_canvas_preview_hydrates_stash_image_and_text_excerpt():
     assert "_canvasPreviewExcerpt" in chat_js
     assert ".canvas-preview-thumbnail" in css
     assert "aspect-ratio: 3 / 4" in css
+
+
+def test_send_to_canvas_marks_explicit_export_request():
+    chat_js = CHAT_JS.read_text()
+    socket_js = SOCKET_JS.read_text()
+
+    assert "{ tool_hints: ['canvas'], request_kind: 'canvas_export' }" in chat_js
+    assert "payload.request_kind = promptMeta.request_kind" in socket_js
+
+
+def test_send_to_canvas_excerpt_uses_canonical_truncation_marker_and_drops_partial_url():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(CHAT_JS))}, 'utf8');
+const start = source.indexOf('  _normalizeDisplayText(');
+const end = source.indexOf('  _inferVideoMimeType(', start);
+const classSource = `class ExcerptHarness {{\n${{source.slice(start, end)}}\n}}; ExcerptHarness;`;
+const sandbox = {{}};
+vm.createContext(sandbox);
+const ExcerptHarness = vm.runInContext(classSource, sandbox);
+const harness = new ExcerptHarness();
+
+const prefix = 'SpaceX coverage ' + 'detail '.repeat(110);
+const longResponse = prefix + 'https://example.com/a-very-long-source-url-that-must-not-be-cut';
+const excerpt = harness._buildCanvasExportExcerpt(longResponse, 800);
+if (!excerpt.endsWith('... [truncated]')) process.exit(2);
+if (excerpt.includes('https://example.com/')) process.exit(3);
+
+const exact = 'x'.repeat(800);
+if (harness._buildCanvasExportExcerpt(exact, 800) !== exact) process.exit(4);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)

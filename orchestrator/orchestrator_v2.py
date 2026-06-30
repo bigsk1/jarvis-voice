@@ -39,15 +39,15 @@ from pipeline_executor import PipelineExecutor
 
 SINGLE_CALL_TOOLS = frozenset({
     # Expensive/side-effecting tools that should complete once per user request.
-    # If the model asks for another pass, duplicate_guard should recover from
-    # the existing result instead of spending another long-running tool call.
+    # Cap is based on prior *attempts* in this request (see tool_call_counts below).
+    # Failed first attempts still block a second try for these tools — intentional
+    # for side-effecting generators; canvas uses separate success-aware caps instead.
     "generate_video",
     "generate_image",
     "generate_music",
     "send_email",
     "opencode",
 })
-
 
 def _sanitize_error_for_speech(error) -> str:
     """
@@ -836,6 +836,47 @@ class Orchestrator:
         ]
         return any(term in text for term in refresh_terms)
 
+    @staticmethod
+    def _successful_canvas_write_calls(conversation_context: list) -> list[dict]:
+        successful: list[dict] = []
+        for ctx in conversation_context:
+            if ctx.get("tool") != "canvas":
+                continue
+            arguments = ctx.get("arguments") if isinstance(ctx.get("arguments"), dict) else {}
+            action = str(arguments.get("action") or "create").strip().lower()
+            if action not in {"create", "update"}:
+                continue
+            result = ctx.get("result") if isinstance(ctx.get("result"), dict) else {}
+            if result.get("ok"):
+                successful.append(ctx)
+        return successful
+
+    def _is_canvas_success_cap(
+        self,
+        arguments: dict,
+        conversation_context: list,
+        request_kind: str,
+    ) -> tuple[bool, str]:
+        """
+        Export-only, success-aware Canvas write cap.
+
+        Send-to-Canvas exports may perform one successful create/update. Failed
+        writes and read/list/open calls do not count, so the model can inspect or
+        self-correct before the write. Normal Canvas workflows are not capped.
+        """
+        if request_kind != "canvas_export":
+            return False, ""
+
+        action = str(arguments.get("action") or "create").strip().lower()
+        if action not in {"create", "update"}:
+            return False, ""
+
+        successful = self._successful_canvas_write_calls(conversation_context)
+        if successful:
+            return True, "canvas page already written for this export request"
+
+        return False, ""
+
     def _is_fresh_same_target_recall(
         self,
         transcript: str,
@@ -1007,6 +1048,7 @@ Mode: {self.mode}
                 conversation_history: list = None, excluded_tools: list = None,
                 tool_overrides: dict[str, dict] | None = None,
                 vision_pre_analyzed: bool = False,
+                request_kind: str = '',
                 _retry_state: dict[str, Any] | None = None) -> dict[str, Any]:
         """
         Process user transcript and execute tools or respond.
@@ -1028,6 +1070,8 @@ Mode: {self.mode}
             vision_pre_analyzed: When True (web upload analyze flow), skip provider-native
                            server-side tools for this request because vision text is already
                            injected. No-op for providers without native tools (Ollama, etc.).
+            request_kind: Optional recognized request type. The Web UI uses
+                           ``canvas_export`` for its Send-to-Canvas action.
             _retry_state: Internal only. Carries in-flight orchestrator state across
                          recursive tool-failure retries so UI events and accumulated
                          results stay consistent within one user request.
@@ -1530,20 +1574,24 @@ Mode: {self.mode}
                 is_fresh_same_target_recall = self._is_fresh_same_target_recall(
                     transcript, tool_name, arguments, conversation_context
                 )
-                
+                is_canvas_capped, canvas_cap_reason = (
+                    self._is_canvas_success_cap(arguments, conversation_context, request_kind)
+                    if tool_name == "canvas"
+                    else (False, "")
+                )
+
                 # @TOOL_CONFIG: single-call cap — expensive tools limited to
-                # one successful call per request.
-                # These are slow/costly/side-effecting, and the LLM can loop
-                # when it wants verification or a longer summary.
-                # NOTE: failures don't hit this — they go through recursive retry with fresh counts
+                # one attempt per request (including failed attempts).
                 is_over_cap = (
                     tool_name in SINGLE_CALL_TOOLS
                     and tool_call_counts.get(tool_name, 0) >= 1
                 )
-                
-                if is_exact_duplicate or is_over_cap or is_fresh_same_target_recall:
+
+                if is_exact_duplicate or is_over_cap or is_fresh_same_target_recall or is_canvas_capped:
                     if is_exact_duplicate:
                         reason = "exact duplicate"
+                    elif is_canvas_capped:
+                        reason = canvas_cap_reason
                     elif is_over_cap:
                         reason = f"{tool_name} already called (max 1)"
                     else:
@@ -1879,6 +1927,7 @@ Mode: {self.mode}
                             excluded_tools=excluded_tools,
                             tool_overrides=tool_overrides,
                             vision_pre_analyzed=vision_pre_analyzed_active,
+                            request_kind=request_kind,
                             _retry_state={
                                 "vision_pre_analyzed": vision_pre_analyzed_active,
                                 "conversation_context": conversation_context,
