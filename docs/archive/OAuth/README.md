@@ -123,7 +123,7 @@ def get_auth_for_task(provider: str, task: str) -> dict:
 Anthropic provides `claude setup-token` command that:
 1. Opens browser to `claude.ai/oauth/authorize`
 2. You log in with your Claude Pro/Max account
-3. Generates an OAuth token: `sk-ant-oat01-...`
+3. Generates an OAuth token (format: `<your-claude-oauth-token>`)
 4. Token valid for **1 year**
 5. Usage counts against your subscription quota
 
@@ -131,8 +131,11 @@ Anthropic provides `claude setup-token` command that:
 
 | Type | Format | Source |
 |------|--------|--------|
-| API Key | `sk-ant-api03-...` | Console (pay-per-token) |
-| OAuth Token | `sk-ant-oat01-...` | CLI OAuth (subscription) |
+| API Key | `<your-anthropic-api-key>` | Console (pay-per-token) |
+| OAuth Token | `<your-claude-oauth-token>` | CLI OAuth (subscription) |
+
+Doc placeholders above are intentionally non-key-shaped (no `sk-ant-…` samples) to
+avoid secret scanners; real tokens use provider-specific prefixes at runtime.
 
 ### Current Implementation (Claude Code)
 
@@ -144,7 +147,7 @@ npm install -g @anthropic-ai/claude-code
 claude setup-token
 
 # Token saved to environment
-export CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
+export CLAUDE_CODE_OAUTH_TOKEN=<your-claude-oauth-token>
 ```
 
 ### What Claude Code OAuth Supports
@@ -221,7 +224,7 @@ gemini auth login
 | Method | Command | Billing |
 |--------|---------|---------|
 | **Login with Google** | `gemini auth login` | Subscription (if Pro/Ultra) |
-| **API Key** | `export GEMINI_API_KEY=...` | Pay-per-token |
+| **API Key** | `export GEMINI_API_KEY=<your-gemini-api-key>` | Pay-per-token |
 | **Vertex AI ADC** | `gcloud auth application-default login` | GCP billing |
 
 ### Subscription Tiers
@@ -333,10 +336,10 @@ OpenAI may expand "Sign in with ChatGPT" to Plus subscribers. The Apps SDK infra
 
 ```bash
 # In cloud.env - API key (fallback)
-ANTHROPIC_API_KEY=sk-ant-api03-...
+ANTHROPIC_API_KEY=<your-anthropic-api-key>
 
 # OAuth token (if set, takes priority)
-ANTHROPIC_OAUTH_TOKEN=sk-ant-oat01-...
+ANTHROPIC_OAUTH_TOKEN=<your-claude-oauth-token>
 ```
 
 #### Provider Selection Logic
@@ -524,7 +527,7 @@ Since `claude setup-token` already works, we could:
 claude setup-token
 
 # Copy token to Jarvis
-echo "ANTHROPIC_OAUTH_TOKEN=sk-ant-oat01-..." >> config/cloud.env
+echo "ANTHROPIC_OAUTH_TOKEN=<your-claude-oauth-token>" >> config/cloud.env
 ```
 
 ---
@@ -611,15 +614,15 @@ Add OAuth section to Settings → API Keys tab:
 ├─────────────────────────────────────────────────┤
 │  Anthropic                                       │
 │  ┌───────────────────────────────────────────┐  │
-│  │ ○ API Key     sk-ant-api03-****           │  │
-│  │ ● OAuth       sk-ant-oat01-**** ✓ Active  │  │
+│  │ ○ API Key     <anthropic-api-key>         │  │
+│  │ ● OAuth       <claude-oauth-token> ✓ Active  │  │
 │  │               [Disconnect] [Refresh]       │  │
 │  │               Billing: Subscription        │  │
 │  └───────────────────────────────────────────┘  │
 │                                                  │
 │  xAI                                             │
 │  ┌───────────────────────────────────────────┐  │
-│  │ ● API Key     xai-**** ✓ Active           │  │
+│  │ ● API Key     <xai-api-key> ✓ Active      │  │
 │  │   (OAuth not available for xAI)           │  │
 │  └───────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────┘

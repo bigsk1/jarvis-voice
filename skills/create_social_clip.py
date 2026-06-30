@@ -22,7 +22,6 @@ import requests
 sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 from config_loader import get_config_value, load_config
 
-DEFAULT_API_URL = "http://192.168.70.226:8080"
 DEFAULT_VOICE = "en-CA-LiamNeural-Male"
 DEFAULT_LANGUAGE = "en-US"
 
@@ -44,7 +43,12 @@ def get_max_wait_sec() -> int:
 
 
 def get_api_base() -> str:
-    base = (get_config_value("MONEYPRINTER_API_URL") or DEFAULT_API_URL).rstrip("/")
+    base = (get_config_value("MONEYPRINTER_API_URL") or "").strip().rstrip("/")
+    if not base:
+        raise ValueError(
+            "MONEYPRINTER_API_URL is not set — add it to config/cloud.env or config/local.env "
+            '(e.g. MONEYPRINTER_API_URL="http://192.168.x.xx:8080")'
+        )
     return base
 
 
