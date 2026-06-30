@@ -221,6 +221,77 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertTrue(success)
         self.assertIsNone(web_config["local"]["llm_model"])
 
+    def test_numeric_override_false_when_web_value_matches_env(self):
+        from server.services import settings_manager as settings_module
+        from server.services.settings_manager import SettingsManager
+
+        web_config = {
+            "cloud": {
+                "qa_word_limit": 200,
+                "multi_turn_word_limit": 250,
+                "completion_guard_auto_threshold": 0.89,
+            },
+            "audio": {},
+            "ui": {},
+            "conversation": {},
+            "tools": {},
+        }
+        env = {
+            "JARVIS_QA_WORD_LIMIT": "200",
+            "JARVIS_MULTI_TURN_WORD_LIMIT": "250",
+            "JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD": "0.89",
+        }
+
+        def get_setting(key, default=""):
+            return env.get(key, default)
+
+        settings = SettingsManager("cloud")
+        with (
+            patch.object(settings, "_ensure_jarvis_config"),
+            patch.object(settings_module, "load_web_config", return_value=web_config),
+            patch.object(settings_module, "get_jarvis_setting", side_effect=get_setting),
+            patch.object(settings, "_get_provider_models", return_value={}),
+        ):
+            result = settings.get_settings_for_ui()
+
+        self.assertFalse(result["response"]["qa_word_limit"]["is_override"])
+        self.assertFalse(result["response"]["multi_turn_word_limit"]["is_override"])
+        self.assertFalse(result["completion_guard"]["auto_threshold"]["is_override"])
+        self.assertEqual(result["response"]["qa_word_limit"]["value"], 200)
+        self.assertEqual(result["completion_guard"]["auto_threshold"]["value"], 0.89)
+
+    def test_save_clears_numeric_override_when_matching_env(self):
+        from server.services import settings_manager as settings_module
+        from server.services.settings_manager import SettingsManager
+
+        web_config = {"cloud": {"qa_word_limit": 150}}
+        env = {
+            "JARVIS_QA_WORD_LIMIT": "200",
+            "JARVIS_MULTI_TURN_WORD_LIMIT": "250",
+            "JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD": "0.89",
+        }
+
+        def get_setting(key, default=""):
+            return env.get(key, default)
+
+        settings = SettingsManager("cloud")
+        with (
+            patch.object(settings, "_ensure_jarvis_config"),
+            patch.object(settings_module, "load_web_config", return_value=web_config),
+            patch.object(settings_module, "get_jarvis_setting", side_effect=get_setting),
+            patch.object(settings_module, "save_web_config", return_value=True),
+        ):
+            success = settings.save_web_overrides({
+                "qa_word_limit": 200,
+                "multi_turn_word_limit": 250,
+                "completion_guard_auto_threshold": 0.89,
+            })
+
+        self.assertTrue(success)
+        self.assertIsNone(web_config["cloud"]["qa_word_limit"])
+        self.assertIsNone(web_config["cloud"]["multi_turn_word_limit"])
+        self.assertIsNone(web_config["cloud"]["completion_guard_auto_threshold"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1366,27 +1366,19 @@ class JarvisApp {
           responseStyleDefault.textContent = `⚡ override: ${s.response.style.value}`;
         }
 
-        // Populate QA Word Limit
-        const qaWordLimitInput = document.getElementById('setting-qa-word-limit');
-        qaWordLimitInput.value = s.response?.qa_word_limit?.is_override ? s.response.qa_word_limit.value : '';
-        qaWordLimitInput.placeholder = `${s.response?.qa_word_limit?.default || 75}`;
-        const qaWordLimitDefault = document.getElementById('qa-word-limit-default');
-        qaWordLimitDefault.textContent = `(${envFile}: ${s.response?.qa_word_limit?.default || 75})`;
-        qaWordLimitDefault.className = s.response?.qa_word_limit?.is_override ? 'setting-default setting-override' : 'setting-default';
-        if (s.response?.qa_word_limit?.is_override) {
-          qaWordLimitDefault.textContent = `⚡ override: ${s.response.qa_word_limit.value}`;
-        }
-
-        // Populate Multi-Turn Word Limit
-        const multiTurnWordLimitInput = document.getElementById('setting-multi-turn-word-limit');
-        multiTurnWordLimitInput.value = s.response?.multi_turn_word_limit?.is_override ? s.response.multi_turn_word_limit.value : '';
-        multiTurnWordLimitInput.placeholder = `${s.response?.multi_turn_word_limit?.default || 50}`;
-        const multiTurnWordLimitDefault = document.getElementById('multi-turn-word-limit-default');
-        multiTurnWordLimitDefault.textContent = `(${envFile}: ${s.response?.multi_turn_word_limit?.default || 50})`;
-        multiTurnWordLimitDefault.className = s.response?.multi_turn_word_limit?.is_override ? 'setting-default setting-override' : 'setting-default';
-        if (s.response?.multi_turn_word_limit?.is_override) {
-          multiTurnWordLimitDefault.textContent = `⚡ override: ${s.response.multi_turn_word_limit.value}`;
-        }
+        // Populate QA / multi-turn word limits and Completion Guard threshold
+        this._populateNumericEnvSetting(
+          'setting-qa-word-limit',
+          'qa-word-limit-default',
+          s.response?.qa_word_limit,
+          envFile,
+        );
+        this._populateNumericEnvSetting(
+          'setting-multi-turn-word-limit',
+          'multi-turn-word-limit-default',
+          s.response?.multi_turn_word_limit,
+          envFile,
+        );
 
         // Populate Completion Guard settings
         const completionGuardEnabledInput = document.getElementById('setting-completion-guard-enabled');
@@ -1409,17 +1401,12 @@ class JarvisApp {
           completionGuardModeDefault.textContent = `⚡ override: ${s.completion_guard.mode.value}`;
         }
 
-        const completionGuardAutoThresholdInput = document.getElementById('setting-completion-guard-auto-threshold');
-        completionGuardAutoThresholdInput.value = s.completion_guard?.auto_threshold?.is_override
-          ? s.completion_guard.auto_threshold.value
-          : '';
-        completionGuardAutoThresholdInput.placeholder = `${s.completion_guard?.auto_threshold?.default ?? 0.7}`;
-        const completionGuardAutoThresholdDefault = document.getElementById('completion-guard-auto-threshold-default');
-        completionGuardAutoThresholdDefault.textContent = `(${envFile}: ${s.completion_guard?.auto_threshold?.default ?? 0.7})`;
-        completionGuardAutoThresholdDefault.className = s.completion_guard?.auto_threshold?.is_override ? 'setting-default setting-override' : 'setting-default';
-        if (s.completion_guard?.auto_threshold?.is_override) {
-          completionGuardAutoThresholdDefault.textContent = `⚡ override: ${s.completion_guard.auto_threshold.value}`;
-        }
+        this._populateNumericEnvSetting(
+          'setting-completion-guard-auto-threshold',
+          'completion-guard-auto-threshold-default',
+          s.completion_guard?.auto_threshold,
+          envFile,
+        );
 
         this._configureCompletionGuardEvalProviderSelect();
         const completionGuardEvalProviderInput = document.getElementById('setting-completion-guard-eval-provider');
@@ -2030,6 +2017,27 @@ class JarvisApp {
     });
     if (isLocal && !select.value) {
       select.value = '';
+    }
+  }
+
+  _populateNumericEnvSetting(inputId, defaultId, field, envFile) {
+    const input = document.getElementById(inputId);
+    const defaultEl = document.getElementById(defaultId);
+    if (!input || !defaultEl || !field) return;
+
+    const envDefault = field.default;
+    const displayDefault = envDefault ?? (inputId.includes('threshold') ? 0.7 : 75);
+
+    if (field.is_override) {
+      input.value = field.value;
+      input.placeholder = `${displayDefault}`;
+      defaultEl.textContent = `⚡ override: ${field.value} · (${envFile}: ${displayDefault})`;
+      defaultEl.className = 'setting-default setting-override';
+    } else {
+      input.value = '';
+      input.placeholder = `${displayDefault}`;
+      defaultEl.textContent = `(${envFile}: ${displayDefault})`;
+      defaultEl.className = 'setting-default';
     }
   }
 

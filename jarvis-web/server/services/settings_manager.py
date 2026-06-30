@@ -106,6 +106,8 @@ COMPLETION_GUARD_MODE_OPTIONS = {
 
 class SettingsManager:
     """Manages settings for the web UI with override support"""
+
+    _FLOAT_OVERRIDE_EPSILON = 1e-6
     
     # Settings safe to expose to the UI (no API keys)
     SAFE_JARVIS_SETTINGS = [
@@ -132,6 +134,53 @@ class SettingsManager:
     def _ensure_jarvis_config(self):
         """Resolve Jarvis config for this operation's request/startup scope."""
         load_jarvis_config(self.mode)
+
+    @staticmethod
+    def _floats_equal(left: float, right: float) -> bool:
+        return abs(float(left) - float(right)) < SettingsManager._FLOAT_OVERRIDE_EPSILON
+
+    @classmethod
+    def _is_web_int_override(cls, web_value, env_default) -> bool:
+        if web_value is None:
+            return False
+        return int(web_value) != int(env_default)
+
+    @classmethod
+    def _is_web_float_override(cls, web_value, env_default) -> bool:
+        if web_value is None:
+            return False
+        return not cls._floats_equal(web_value, env_default)
+
+    @classmethod
+    def _normalize_web_int_override(cls, value, env_default):
+        if value in (None, ''):
+            return None
+        parsed = int(value)
+        if parsed == int(env_default):
+            return None
+        return parsed
+
+    @classmethod
+    def _normalize_web_float_override(cls, value, env_default):
+        if value in (None, ''):
+            return None
+        parsed = float(value)
+        if cls._floats_equal(parsed, env_default):
+            return None
+        return parsed
+
+    def _get_env_numeric_defaults(self) -> dict[str, int | float]:
+        return {
+            'qa_word_limit': int(
+                get_jarvis_setting('JARVIS_QA_WORD_LIMIT', str(DEFAULT_JARVIS_QA_WORD_LIMIT))
+            ),
+            'multi_turn_word_limit': int(
+                get_jarvis_setting('JARVIS_MULTI_TURN_WORD_LIMIT', str(DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT))
+            ),
+            'completion_guard_auto_threshold': float(
+                get_jarvis_setting('JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD', '0.70')
+            ),
+        }
 
     def _get_model_options_with_current(self, provider: str, current_model: str | None) -> list[dict[str, str]]:
         """Return curated provider options plus any active custom model."""
@@ -398,12 +447,15 @@ class SettingsManager:
                 'qa_word_limit': {
                     'value': effective_qa_word_limit,
                     'default': env_qa_word_limit,
-                    'is_override': web_qa_word_limit is not None
+                    'is_override': self._is_web_int_override(web_qa_word_limit, env_qa_word_limit),
                 },
                 'multi_turn_word_limit': {
                     'value': effective_multi_turn_word_limit,
                     'default': env_multi_turn_word_limit,
-                    'is_override': web_multi_turn_word_limit is not None
+                    'is_override': self._is_web_int_override(
+                        web_multi_turn_word_limit,
+                        env_multi_turn_word_limit,
+                    ),
                 }
             },
 
@@ -442,7 +494,10 @@ class SettingsManager:
                 'auto_threshold': {
                     'value': effective_completion_guard_auto_threshold,
                     'default': env_completion_guard_auto_threshold,
-                    'is_override': web_completion_guard_auto_threshold is not None
+                    'is_override': self._is_web_float_override(
+                        web_completion_guard_auto_threshold,
+                        env_completion_guard_auto_threshold,
+                    ),
                 },
                 'eval_provider': {
                     'value': effective_completion_guard_eval_provider,
@@ -657,13 +712,19 @@ class SettingsManager:
         if 'response_style' in overrides:
             mode_config['response_style'] = overrides['response_style'] or None
 
+        env_numeric_defaults = self._get_env_numeric_defaults()
+
         if 'qa_word_limit' in overrides:
-            value = overrides['qa_word_limit']
-            mode_config['qa_word_limit'] = int(value) if value not in (None, '') else None
+            mode_config['qa_word_limit'] = self._normalize_web_int_override(
+                overrides['qa_word_limit'],
+                env_numeric_defaults['qa_word_limit'],
+            )
 
         if 'multi_turn_word_limit' in overrides:
-            value = overrides['multi_turn_word_limit']
-            mode_config['multi_turn_word_limit'] = int(value) if value not in (None, '') else None
+            mode_config['multi_turn_word_limit'] = self._normalize_web_int_override(
+                overrides['multi_turn_word_limit'],
+                env_numeric_defaults['multi_turn_word_limit'],
+            )
 
         if 'completion_guard_enabled' in overrides:
             value = overrides['completion_guard_enabled']
@@ -689,8 +750,10 @@ class SettingsManager:
             mode_config['completion_guard_include_tool_tasks'] = bool(value) if value is not None else None
 
         if 'completion_guard_auto_threshold' in overrides:
-            value = overrides['completion_guard_auto_threshold']
-            mode_config['completion_guard_auto_threshold'] = float(value) if value not in (None, '') else None
+            mode_config['completion_guard_auto_threshold'] = self._normalize_web_float_override(
+                overrides['completion_guard_auto_threshold'],
+                env_numeric_defaults['completion_guard_auto_threshold'],
+            )
 
         if 'completion_guard_eval_provider' in overrides:
             value = overrides['completion_guard_eval_provider'] or None
