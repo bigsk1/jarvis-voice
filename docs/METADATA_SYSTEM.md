@@ -25,7 +25,7 @@ Every conversation logged to the database now includes metadata:
 {
   "mode": "cloud",
   "provider": "anthropic",
-  "model": "claude-sonnet-4-20250514",
+  "model": "claude-sonnet-5",
   "execution_time_ms": 2341.5,
   "tool_count": 2,
   "input_tokens": 1250,
@@ -162,7 +162,7 @@ from cost_estimator import estimate_cost, format_cost_summary
 # Estimate cost
 cost_info = estimate_cost(
     provider="anthropic",
-    model="claude-sonnet-4-20250514",
+    model="claude-sonnet-5",
     input_tokens=1000,
     output_tokens=500
 )
@@ -348,7 +348,7 @@ Edit `lib/cost_estimator.py`:
 ```python
 PRICING = {
     "anthropic": {
-        "claude-sonnet-4-20250514": {
+        "claude-sonnet-5": {
             "input": 3.00,   # USD per 1M tokens
             "output": 15.00
         }
@@ -366,7 +366,7 @@ cd ~/jarvis-voice
 source ~/jarvis-venv/bin/activate
 python3 -c "
 from lib.cost_estimator import estimate_cost, format_cost_summary
-cost = estimate_cost('anthropic', 'claude-sonnet-4-20250514', 1000, 500)
+cost = estimate_cost('anthropic', 'claude-sonnet-5', 1000, 500)
 print(format_cost_summary(cost))
 "
 

@@ -79,8 +79,8 @@ cat > "$OPencode_CONFIG" << EOF
         "apiKey": "{env:ANTHROPIC_API_KEY}"
       },
       "models": {
-        "claude-sonnet-4-20250514": {
-          "name": "Claude Sonnet 4"
+        "claude-sonnet-5": {
+          "name": "Claude Sonnet 5"
         },
         "claude-sonnet-4-5-20250929": {
           "name": "Claude Sonnet 4.5"
@@ -102,7 +102,7 @@ echo "   (This is the global config used by both server and TUI)"
 echo ""
 echo "📝 Configuration:"
 echo "   - Ollama provider: $OLLAMA_URL"
-echo "   - Default provider: anthropic (claude-sonnet-4-20250514)"
+echo "   - Default provider: anthropic (claude-sonnet-5)"
 echo ""
 echo "💡 To use Ollama in local mode, Jarvis will automatically select it."
 echo "   For cloud mode, OpenCode will use Anthropic Claude by default."

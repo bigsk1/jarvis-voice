@@ -394,7 +394,7 @@ XAI_MODEL="grok-4.3"
 ```bash
 LLM_PROVIDER="anthropic"
 ANTHROPIC_API_KEY="sk-..."
-ANTHROPIC_MODEL="claude-sonnet-4-20250514"
+ANTHROPIC_MODEL="claude-sonnet-5"
 ```
 
 ### To OpenAI

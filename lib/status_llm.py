@@ -2,7 +2,7 @@
 """
 Jarvis Status LLM - Dynamic status summaries using small/fast LLMs.
 
-Uses cheap models (gpt-4o-mini, grok-2, qwen2.5:1.5b) to generate
+Uses cheap models (gpt-4o-mini, grok-4.3, qwen2.5:1.5b) to generate
 natural status updates from tool output/logs.
 
 Falls back to static phrases if LLM unavailable or fails.

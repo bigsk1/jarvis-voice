@@ -210,7 +210,7 @@ cat logs/thinking/$(date +%Y-%m-%d)_decisions.jsonl | jq 'select(.decision.tool 
 
 ### Anthropic (Native Extended Thinking)
 ✅ `claude-sonnet-4-5-20250929` (recommended)
-✅ `claude-sonnet-4-20250514`
+✅ `claude-sonnet-5`
 ✅ `sonnet-4.5`
 ✅ `sonnet-4`
 

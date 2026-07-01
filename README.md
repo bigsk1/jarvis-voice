@@ -1115,7 +1115,7 @@ OpenCode is an autonomous coding agent that can build entire projects.
 
 ```bash
 # In cloud.env or local.env
-OPENCODE_MODEL="claude-sonnet-4-20250514"  # Or qwen2.5-coder:32b
+OPENCODE_MODEL="claude-sonnet-5"  # Or qwen2.5-coder:32b
 OPENCODE_PROVIDER="anthropic"              # Or ollama
 OPENCODE_BASE_URL="http://localhost:4096"
 ```

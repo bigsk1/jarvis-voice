@@ -153,7 +153,7 @@ Every conversation now logs:
 {
   "mode": "cloud",
   "provider": "anthropic",
-  "model": "claude-sonnet-4-20250514",
+  "model": "claude-sonnet-5",
   "input_tokens": 14675,
   "output_tokens": 210,
   "cost_usd": 0.047175,

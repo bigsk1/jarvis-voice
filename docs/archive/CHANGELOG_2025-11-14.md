@@ -210,7 +210,7 @@ All features tested and verified:
 ```bash
 # Cost estimation
 python3 -c "from lib.cost_estimator import estimate_cost, format_cost_summary; \
-cost = estimate_cost('anthropic', 'claude-sonnet-4-20250514', 1000, 500); \
+cost = estimate_cost('anthropic', 'claude-sonnet-5', 1000, 500); \
 print(format_cost_summary(cost))"
 # Output: 1500 tokens ($0.01)
 
@@ -329,7 +329,7 @@ Edit `lib/cost_estimator.py`:
 ```python
 PRICING = {
     "anthropic": {
-        "claude-sonnet-4-20250514": {
+        "claude-sonnet-5": {
             "input": 3.00,   # Update this
             "output": 15.00  # And this
         }

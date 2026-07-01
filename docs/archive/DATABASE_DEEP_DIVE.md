@@ -299,7 +299,7 @@ cursor.execute("""
 ### For `conversations.metadata`:
 ```json
 {
-  "model": "claude-sonnet-4-20250514",
+  "model": "claude-sonnet-5",
   "provider": "anthropic",
   "response_time_ms": 1234,
   "tokens_used": 450,
