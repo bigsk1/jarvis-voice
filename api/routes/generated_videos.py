@@ -25,6 +25,7 @@ sys.path.insert(0, str(PROJECT_ROOT / 'lib'))
 sys.path.insert(0, str(PROJECT_ROOT / 'skills'))
 
 from config_loader import load_config, get_config_value
+from model_catalog import get_media_model_env_key, resolve_media_model
 
 # Load config
 load_config()
@@ -352,12 +353,12 @@ async def generated_videos_health():
     
     # Check configured provider and model
     provider = get_config_value("VIDEO_TOOL_PROVIDER", "xai")
-    if provider == "openai":
-        model = get_config_value("OPENAI_VIDEO_MODEL", "sora-2")
-    elif provider == "gemini":
-        model = get_config_value("GEMINI_VIDEO_MODEL", "veo-3.1-generate-preview")
-    else:
-        model = get_config_value("XAI_VIDEO_MODEL", "grok-imagine-video")
+    model_key = get_media_model_env_key("video", provider)
+    model = resolve_media_model(
+        "video",
+        provider,
+        get_config_value(model_key, "") if model_key else "",
+    )
     
     return {
         "ok": True,

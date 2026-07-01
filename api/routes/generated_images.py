@@ -34,6 +34,7 @@ sys.path.insert(0, str(PROJECT_ROOT / 'lib'))
 sys.path.insert(0, str(PROJECT_ROOT / 'skills'))
 
 from config_loader import load_config, get_config_value
+from model_catalog import get_media_model_env_key, resolve_media_model
 
 # Load config
 load_config()
@@ -259,6 +260,12 @@ async def generated_images_health():
     
     # Check configured provider
     provider = get_config_value("IMAGE_TOOL_PROVIDER", "gemini")
+    model_key = get_media_model_env_key("image", provider)
+    model = resolve_media_model(
+        "image",
+        provider,
+        get_config_value(model_key, "") if model_key else "",
+    )
     
     return {
         "ok": True,
@@ -267,7 +274,8 @@ async def generated_images_health():
         "image_count": len(images),
         "total_size": total_size,
         "total_size_human": format_size(total_size),
-        "configured_provider": provider
+        "configured_provider": provider,
+        "configured_model": model,
     }
 
 

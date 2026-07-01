@@ -15,6 +15,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
 from lib.model_catalog import (
+    get_default_media_model_id,
+    get_media_model_env_key,
+    get_media_model_pricing,
+    get_media_provider_options,
     get_default_model_id,
     get_model_context_label,
     get_model_context_window,
@@ -23,10 +27,61 @@ from lib.model_catalog import (
     get_model_supports_xai_reasoning_effort,
     get_provider_fallback_model,
     get_provider_model_options,
+    resolve_media_model,
 )
 
 
 class ModelCatalogTests(unittest.TestCase):
+    def test_media_defaults_are_centralized(self):
+        self.assertEqual(get_default_media_model_id("image", "gemini"), "gemini-3.1-flash-image")
+        self.assertEqual(get_default_media_model_id("image", "openai"), "gpt-image-2")
+        self.assertEqual(get_default_media_model_id("image", "xai"), "grok-imagine-image")
+        self.assertEqual(get_default_media_model_id("video", "gemini"), "veo-3.1-fast-generate-preview")
+        self.assertEqual(get_default_media_model_id("video", "openai"), "sora-2")
+        self.assertEqual(get_default_media_model_id("video", "xai"), "grok-imagine-video")
+
+    def test_media_env_keys_and_ui_provider_metadata_come_from_catalog(self):
+        self.assertEqual(get_media_model_env_key("image", "gemini"), "GEMINI_IMAGE_MODEL")
+        self.assertEqual(get_media_model_env_key("video", "openai"), "OPENAI_VIDEO_MODEL")
+        self.assertEqual(get_media_provider_options("image")["gemini"]["model"], "gemini-3.1-flash-image")
+        self.assertEqual(get_media_provider_options("video")["xai"]["model"], "grok-imagine-video")
+        self.assertEqual(
+            get_media_provider_options("video")["gemini"]["resolutions"],
+            ["720p", "1080p", "4k"],
+        )
+
+    def test_media_provider_options_follow_explicit_model_pin_capabilities(self):
+        options = get_media_provider_options(
+            "video",
+            {"openai": "sora-2-pro", "xai": "grok-imagine-video-1.5"},
+        )
+        self.assertEqual(options["openai"]["model"], "sora-2-pro")
+        self.assertEqual(options["openai"]["resolutions"], ["720p", "1080p"])
+        self.assertEqual(options["xai"]["resolutions"], ["1080p", "720p", "480p"])
+
+    def test_media_resolution_defaults_empty_values_and_preserves_unknown_pins(self):
+        self.assertEqual(resolve_media_model("image", "openai"), "gpt-image-2")
+        self.assertEqual(resolve_media_model("image", "openai", ""), "gpt-image-2")
+        self.assertEqual(resolve_media_model("image", "openai", "future-image-model"), "future-image-model")
+
+    def test_retired_media_models_resolve_to_replacements(self):
+        with self.assertLogs("lib.model_catalog", level="WARNING") as captured:
+            model = resolve_media_model("image", "gemini", "gemini-3.1-flash-image-preview")
+        self.assertEqual(model, "gemini-3.1-flash-image")
+        self.assertTrue(any("Replacing retired image model" in line for line in captured.output))
+        self.assertEqual(
+            resolve_media_model("video", "gemini", "veo-3.0-fast-generate-001"),
+            "veo-3.1-fast-generate-preview",
+        )
+
+    def test_media_pricing_preserves_provider_specific_units(self):
+        gemini_image = get_media_model_pricing("image", "gemini", "gemini-3.1-flash-image")
+        self.assertEqual(gemini_image["unit"], "image")
+        self.assertEqual(gemini_image["usd_by_size"]["4K"], 0.151)
+        xai_video = get_media_model_pricing("video", "xai", "grok-imagine-video")
+        self.assertEqual(xai_video["unit"], "second")
+        self.assertEqual(xai_video["usd_by_resolution"]["720p"], 0.07)
+
     def test_openai_options_are_newest_first(self):
         models = [entry["id"] for entry in get_provider_model_options("openai")]
         self.assertEqual(models[:5], ["gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-5.2-chat-latest"])

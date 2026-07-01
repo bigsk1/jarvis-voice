@@ -1290,7 +1290,7 @@ requires-dist = [
     { name = "flatbuffers", specifier = "==25.2.10" },
     { name = "fpdf2", specifier = ">=2.8.0" },
     { name = "fsspec", specifier = "==2025.9.0" },
-    { name = "google-genai", specifier = ">=1.0.0" },
+    { name = "google-genai", specifier = ">=2.10.0" },
     { name = "hf-xet", specifier = "==1.1.10" },
     { name = "huggingface-hub", specifier = "==0.35.0" },
     { name = "humanfriendly", specifier = "==10.0" },

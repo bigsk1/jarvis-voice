@@ -328,6 +328,22 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-07-01:**
+- ✅ **Shared image/video model catalog**
+  - Image and video defaults, capabilities, retired-model replacements, and provider-specific pricing metadata now live beside chat models in `lib/model_catalog.py`.
+  - Provider model env variables are optional pins: unset values follow curated catalog defaults, while explicit new/custom IDs remain usable before the catalog is updated.
+  - CLI, wake-word tools, generated-media API health routes, and Web UI provider metadata now resolve through the same catalog.
+- ✅ **Gemini image SDK migration**
+  - Replaced the hand-built Gemini image REST request with `google.genai.Client`, typed `GenerateContentConfig`/`ImageConfig`, SDK error handling, image editing, grounding, expanded aspect ratios, and 1K/2K/4K output support.
+  - Raised the shared `google-genai` minimum to `2.10.0` and replaced retired Gemini image defaults with `gemini-3.1-flash-image`.
+- ✅ **Catalog-driven attachment video resolutions**
+  - Image-to-video resolution choices now follow the effective provider model loaded from the active cloud/local env.
+  - Gemini's default Veo model exposes 720p, 1080p, and 4K; optional pins such as Sora Pro or Grok Imagine Video 1.5 expose their own supported resolutions.
+- ✅ **Dependency-upgrade compatibility and environment fixes**
+  - Gemini video duration is now sent as an integer so Veo respects supported 4/6/8-second selection instead of always defaulting to 8 seconds.
+  - Migrated deprecated Pydantic `class Config` schema examples to `ConfigDict`, updated the UV lock/install flow to use `~/jarvis-venv`, and corrected dashboard memory-sync commands for explicit `--from/--to` mode arguments.
+  - Docker retains its requirements-based install while also receiving the package-layout metadata needed for reproducible project builds.
+
 **2026-06-27 (v2.53.1):**
 - ✅ **Cloud/local startup mode plumbing**
   - Added one canonical `JARVIS_MODE` resolver with cloud as the backward-compatible default and strict validation for explicit local startup.
@@ -768,7 +784,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **git_release_notes Tool** - Generate release notes from GitHub URLs
   - Analyzes releases, commit/PR/issue breakdown, risk flags
   - Optional stash and canvas output
-- ✅ **Gemini Image Model** - `gemini-3.1-flash-image-preview` for image generation
+- ✅ **Gemini Image Model** - `gemini-3.1-flash-image` for image generation
 - ✅ **xAI Image Model** - Removed deprecated model
 
 **2026-02-24:**

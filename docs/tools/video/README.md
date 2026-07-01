@@ -27,24 +27,25 @@ curl -X POST http://localhost:8880/api/generated-videos/generate \
 
 | Provider | Model | Duration | Audio | Resolution | Cost/sec | Status |
 |----------|-------|----------|-------|------------|----------|--------|
-| xAI | `grok-imagine-video` | 1-15s | ❌ | 720p, 480p | $0.05 | ✅ Active |
+| xAI | `grok-imagine-video` | 1-15s | ❌ | 720p, 480p | $0.05-0.07 | ✅ Active |
 | OpenAI | `sora-2` / `sora-2-pro` | 4/8/12s | ✅ Native | 720p, 1080p | $0.10-0.50 | ✅ Active |
-| Gemini | `veo-3.1-generate-preview` | 4/6/8s | ✅ Native | 720p-4k | $0.15+ | ✅ Active |
+| Gemini | `veo-3.1-fast-generate-preview` | 4/6/8s | ✅ Native | 720p-4k | $0.10-0.30 | ✅ Active |
 
 Configure in `config/cloud.env`:
 ```bash
 # Choose default provider
 VIDEO_TOOL_PROVIDER="xai"  # or "openai" or "gemini"
 
-# xAI configuration
-XAI_VIDEO_MODEL="grok-imagine-video"
-
-# OpenAI configuration (sora-2-pro for higher resolution)
-OPENAI_VIDEO_MODEL="sora-2"
-
-# Gemini configuration
-GEMINI_VIDEO_MODEL="veo-3.1-generate-preview"  # or veo-3.1-fast-generate-preview
+# Optional model pins. Leave unset to follow the curated defaults in
+# lib/model_catalog.py and receive future default/retirement updates there.
+# XAI_VIDEO_MODEL="grok-imagine-video"
+# OPENAI_VIDEO_MODEL="sora-2-pro"  # higher resolution
+# GEMINI_VIDEO_MODEL="veo-3.1-generate-preview"  # standard instead of fast
 ```
+
+The catalog also stores provider-specific pricing metadata for future cost
+estimation and UI display. The current attachment UI continues to show its
+existing generic estimate.
 
 ## Provider Comparison
 
@@ -57,7 +58,7 @@ GEMINI_VIDEO_MODEL="veo-3.1-generate-preview"  # or veo-3.1-fast-generate-previe
 | **Video Editing** | ✅ Style only | ✅ Yes (remix) | ❌ No |
 | **Negative Prompt** | ❌ No | ❌ No | ✅ Yes |
 | **Image-to-Video** | ✅ Yes | ✅ Yes | ✅ Yes |
-| **Cost/second** | $0.05 | $0.10-0.50 | $0.15+ |
+| **Cost/second** | $0.05-0.07 | $0.10-0.50 | $0.10-0.60 |
 | **Playground View** | ❌ No | ✅ Yes | ❌ No |
 
 ## Parameters

@@ -12,6 +12,9 @@ from model_catalog import (
     get_catalog_providers,
     get_default_model_id,
     get_model_context_label,
+    get_media_catalog_providers,
+    get_media_model_env_key,
+    get_media_provider_options,
     get_provider_catalog,
     get_provider_model_options,
 )
@@ -68,17 +71,6 @@ def fetch_ollama_models(base_url: str = None, mode: str = None) -> list:
         default_model = get_jarvis_setting('OLLAMA_MODEL', 'qwen3')
     fallback_context = 'cloud' if is_ollama_cloud_model(default_model) else 'local'
     return [{'id': default_model, 'name': f'{default_model} (default)', 'context': fallback_context}]
-
-IMAGE_PROVIDERS = {
-    'xai': {'name': 'xAI Grok', 'model': 'grok-imagine-image'},
-    'gemini': {'name': 'Google Gemini', 'model': 'gemini-3.1-flash-image-preview'},
-    'openai': {'name': 'OpenAI GPT Image', 'model': 'gpt-image-2'}
-}
-
-VIDEO_PROVIDERS = {
-    'xai': {'name': 'xAI Grok', 'model': 'grok-imagine-video'},
-    'gemini': {'name': 'Google Gemini Veo', 'model': 'veo-3.1'}
-}
 
 TTS_PROVIDERS = {
     'kokoro': {'name': 'Kokoro', 'description': 'Fast, local Kokoro TTS server'},
@@ -197,6 +189,15 @@ class SettingsManager:
             *options,
         ]
 
+    @staticmethod
+    def _get_effective_media_providers(media_type: str) -> dict[str, dict[str, Any]]:
+        """Resolve mode-loaded optional media model pins into UI capabilities."""
+        configured_models = {}
+        for provider in get_media_catalog_providers(media_type):
+            env_key = get_media_model_env_key(media_type, provider)
+            configured_models[provider] = get_jarvis_setting(env_key, '') if env_key else ''
+        return get_media_provider_options(media_type, configured_models)
+
     def _get_llm_provider_options(self) -> list[str]:
         """Return provider choices that make sense for the current mode."""
         if self.mode == 'local':
@@ -294,6 +295,8 @@ class SettingsManager:
         # Get per-mode web overrides (null = use env default)
         mode_overrides = web_config.get(self.mode, {})
         llm_provider_options = self._get_llm_provider_options()
+        image_providers = self._get_effective_media_providers('image')
+        video_providers = self._get_effective_media_providers('video')
         web_provider = mode_overrides.get('llm_provider')
         provider_invalid = False
         if web_provider not in (None, *llm_provider_options):
@@ -412,7 +415,7 @@ class SettingsManager:
                     'value': effective_image,
                     'default': env_image_provider,
                     'is_override': web_image is not None,
-                    'options': list(IMAGE_PROVIDERS.keys())
+                    'options': list(image_providers.keys())
                 }
             },
             
@@ -422,7 +425,7 @@ class SettingsManager:
                     'value': effective_video,
                     'default': env_video_provider,
                     'is_override': web_video is not None,
-                    'options': list(VIDEO_PROVIDERS.keys())
+                    'options': list(video_providers.keys())
                 }
             },
 
@@ -545,8 +548,8 @@ class SettingsManager:
             
             # Available models reference (with dynamic Ollama)
             'provider_models': self._get_provider_models(),
-            'image_providers': IMAGE_PROVIDERS,
-            'video_providers': VIDEO_PROVIDERS,
+            'image_providers': image_providers,
+            'video_providers': video_providers,
             'tts_providers': TTS_PROVIDERS,
             'response_style_options': RESPONSE_STYLE_OPTIONS,
             

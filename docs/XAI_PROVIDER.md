@@ -221,7 +221,8 @@ curl -X POST http://localhost:8880/api/generated-videos/generate \
 **Configuration** (config/cloud.env):
 ```bash
 VIDEO_TOOL_PROVIDER="xai"
-XAI_VIDEO_MODEL="grok-imagine-video"
+# Optional pin; leave unset to follow the xAI video default in lib/model_catalog.py.
+# XAI_VIDEO_MODEL="grok-imagine-video"
 ```
 
 **xAI Grok Video Parameters**:

@@ -12,7 +12,7 @@ Features:
   - Saves to stash for use with email, printer, canvas, pdf_create, etc.
 
 Providers:
-  - gemini: Google Gemini 3 Pro Image Preview (grounding support)
+  - gemini: Google Gemini 3.1 Flash Image (grounding support)
   - openai: OpenAI GPT Image (best text rendering, highest quality)
   - xai: xAI Grok Imagine Image (fast, cheap, good quality)
 
@@ -30,13 +30,11 @@ from datetime import datetime
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
+from model_catalog import get_media_model_env_key, resolve_media_model
 
 # =============================================================================
 # Provider: Google Gemini
 # =============================================================================
-GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
-DEFAULT_GEMINI_MODEL = "gemini-2.0-flash-preview-image-generation"
-
 # Gemini aspect ratios (alias names + literal ratio strings from tool schema)
 GEMINI_ASPECT_RATIOS = {
     "square": "1:1",
@@ -61,8 +59,6 @@ GEMINI_ASPECT_RATIOS = {
 # Provider: OpenAI
 # =============================================================================
 OPENAI_API_BASE = "https://api.openai.com/v1/images/generations"
-DEFAULT_OPENAI_MODEL = "gpt-image-2"  # State of the art (Apr 2026)
-
 # OpenAI size mappings (aspect ratio -> pixel dimensions)
 OPENAI_SIZES = {
     "square": "1024x1024",
@@ -173,8 +169,6 @@ def _resolve_openai_size(model_name: str, aspect_ratio: str, quality: str) -> st
 # =============================================================================
 XAI_API_BASE = "https://api.x.ai/v1/images/generations"
 XAI_EDIT_API = "https://api.x.ai/v1/images/edits"
-DEFAULT_XAI_IMAGE_MODEL = "grok-imagine-image"
-
 # xAI aspect ratios (supports common ratios)
 XAI_ASPECT_RATIOS = {
     "square": "1:1",
@@ -205,6 +199,12 @@ IMAGE_SIZES = ["1K", "2K", "4K"]
 
 # OpenAI edit endpoint (separate from generations)
 OPENAI_EDIT_API = "https://api.openai.com/v1/images/edits"
+
+
+def _resolve_configured_image_model(provider: str) -> str:
+    env_key = get_media_model_env_key("image", provider)
+    configured = get_config_value(env_key, "") if env_key else ""
+    return resolve_media_model("image", provider, configured)
 
 
 # =============================================================================
@@ -296,7 +296,7 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
         raise ValueError("XAI_API_KEY not configured. Add it to config/cloud.env")
     
     # Get model from env or use default
-    model_name = get_config_value('XAI_IMAGE_MODEL', DEFAULT_XAI_IMAGE_MODEL)
+    model_name = _resolve_configured_image_model("xai")
     
     # Build the prompt
     full_prompt = prompt
@@ -433,7 +433,7 @@ def generate_image_gemini(prompt: str, aspect_ratio: str = "square", image_size:
         raise ValueError("GEMINI_API_KEY not configured. Add it to config/cloud.env")
     
     # Get model from env or use default
-    model_name = get_config_value('GEMINI_IMAGE_MODEL', DEFAULT_GEMINI_MODEL)
+    model_name = _resolve_configured_image_model("gemini")
     
     # Build the prompt
     full_prompt = prompt
@@ -451,111 +451,86 @@ def generate_image_gemini(prompt: str, aspect_ratio: str = "square", image_size:
     # Validate image size
     size = image_size.upper() if image_size.upper() in IMAGE_SIZES else "2K"
     
-    # Build request URL
-    url = f"{GEMINI_API_BASE}/{model_name}:generateContent?key={api_key}"
-    
-    headers = {
-        "Content-Type": "application/json"
-    }
-    
-    # Build content parts
+    try:
+        from google import genai
+        from google.genai import errors, types
+    except ImportError as exc:
+        raise ValueError("google-genai>=2.10.0 is required for Gemini image generation") from exc
+
+    # Build typed SDK content parts. Keep the existing shared resolver because
+    # OpenAI and xAI use the same stash/path/URL/data-URI input contract.
     parts = []
-    
-    # Add reference image for editing (image-to-image)
-    # Gemini accepts inline_data in the parts array alongside the text prompt
     if reference_image:
         img_b64, img_mime = _resolve_image_to_base64(reference_image)
-        parts.append({
-            "inline_data": {
-                "mime_type": img_mime,
-                "data": img_b64
-            }
-        })
-        parts.append({"text": f"Edit this image: {full_prompt}"})
-        print(f"[generate_image] Gemini image editing mode - reference image resolved", file=sys.stderr)
+        parts.append(types.Part.from_bytes(data=base64.b64decode(img_b64), mime_type=img_mime))
+        parts.append(types.Part.from_text(text=f"Edit this image: {full_prompt}"))
+        print("[generate_image] Gemini image editing mode - reference image resolved", file=sys.stderr)
     else:
-        parts.append({"text": f"Generate an image: {full_prompt}"})
-    
-    # Build payload with Gemini format
-    payload = {
-        "contents": [
-            {
-                "parts": parts
-            }
-        ],
-        "generationConfig": {
-            "responseModalities": ["TEXT", "IMAGE"]
-        }
+        parts.append(types.Part.from_text(text=f"Generate an image: {full_prompt}"))
+
+    timeout_seconds = 300 if use_grounding else 180
+    config_kwargs = {
+        "response_modalities": ["TEXT", "IMAGE"],
+        "image_config": types.ImageConfig(aspect_ratio=ar, image_size=size),
+        "http_options": types.HttpOptions(timeout=timeout_seconds * 1000),
     }
-    
-    # Add Google Search grounding if requested (for real-time data)
     if use_grounding:
-        payload["tools"] = [{"googleSearch": {}}]
-    
-    # Add image config for aspect ratio and size
-    # Note: imageConfig may not be supported on all models
-    if model_name.startswith("gemini-3"):
-        payload["generationConfig"]["imageConfig"] = {
-            "aspectRatio": ar,
-            "imageSize": size
-        }
-    
-    # Make request (Gemini 3 with grounding can take 3-5 minutes)
-    timeout = 300 if use_grounding else 180
-    response = requests.post(
-        url,
-        headers=headers,
-        json=payload,
-        timeout=timeout
-    )
-    
-    if response.status_code != 200:
-        error_msg = response.text
-        try:
-            error_data = response.json()
-            error_msg = error_data.get('error', {}).get('message', response.text)
-        except:
-            pass
-        raise Exception(f"Gemini API error ({response.status_code}): {error_msg}")
-    
-    result = response.json()
-    
-    # Extract image from response
-    candidates = result.get('candidates', [])
+        config_kwargs["tools"] = [types.Tool(google_search=types.GoogleSearch())]
+
+    try:
+        with genai.Client(api_key=api_key) as client:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=types.Content(role="user", parts=parts),
+                config=types.GenerateContentConfig(**config_kwargs),
+            )
+    except errors.APIError as exc:
+        raise Exception(f"Gemini API error ({exc.code}): {exc.message or str(exc)}") from exc
+
+    candidates = response.candidates or []
     if not candidates:
         raise Exception("No image generated - empty response from Gemini")
-    
-    parts = candidates[0].get('content', {}).get('parts', [])
-    
-    image_data = None
+
+    candidate = candidates[0]
+    response_parts = candidate.content.parts if candidate.content and candidate.content.parts else []
+    image_bytes = None
+    image_mime = "image/png"
     text_response = None
     grounding_metadata = None
-    
-    for part in parts:
-        if 'inlineData' in part:
-            image_data = part['inlineData']
-        elif 'text' in part:
-            text_response = part['text']
-    
-    # Check for grounding metadata
-    grounding_meta = candidates[0].get('groundingMetadata')
+
+    for part in response_parts:
+        if part.inline_data and part.inline_data.data:
+            image_bytes = part.inline_data.data
+            image_mime = part.inline_data.mime_type or image_mime
+        elif part.text:
+            text_response = part.text
+
+    grounding_meta = candidate.grounding_metadata
     if grounding_meta:
+        sources = []
+        for chunk in grounding_meta.grounding_chunks or []:
+            if chunk.web:
+                sources.append({"title": chunk.web.title, "uri": chunk.web.uri})
+            elif chunk.image:
+                sources.append({
+                    "title": chunk.image.title,
+                    "uri": chunk.image.source_uri,
+                    "image_uri": chunk.image.image_uri,
+                })
         grounding_metadata = {
-            "search_queries": grounding_meta.get('webSearchQueries', []),
-            "sources": [
-                {"title": s.get('web', {}).get('title'), "uri": s.get('web', {}).get('uri')}
-                for s in grounding_meta.get('groundingChunks', [])
-            ]
+            "search_queries": grounding_meta.web_search_queries or [],
+            "image_search_queries": grounding_meta.image_search_queries or [],
+            "sources": sources,
         }
-    
-    if not image_data:
+
+    if not image_bytes:
         if text_response:
             raise Exception(f"No image generated. Gemini says: {text_response}")
         raise Exception("No image data in response")
-    
+
     return {
-        "image_base64": image_data.get('data'),
-        "mime_type": image_data.get('mimeType', 'image/png'),
+        "image_base64": base64.b64encode(image_bytes).decode("ascii"),
+        "mime_type": image_mime,
         "prompt": prompt,
         "full_prompt": full_prompt,
         "model": model_name,
@@ -595,7 +570,7 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
         raise ValueError("OPENAI_API_KEY not configured. Add it to config/cloud.env")
     
     # Get model from env or use default
-    model_name = get_config_value('OPENAI_IMAGE_MODEL', DEFAULT_OPENAI_MODEL)
+    model_name = _resolve_configured_image_model("openai")
     
     # Build the prompt
     full_prompt = prompt

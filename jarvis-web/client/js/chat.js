@@ -1687,6 +1687,11 @@ class ChatUI {
     if (imageProviderSelect) {
       imageProviderSelect.addEventListener('change', () => this._updateImageProviderOptions());
     }
+
+    const videoProviderSelect = document.getElementById('imgActionVideoProvider');
+    if (videoProviderSelect) {
+      videoProviderSelect.addEventListener('change', () => this._updateVideoProviderOptions());
+    }
     
     console.log('[Chat] Image action modal ready');
   }
@@ -1815,6 +1820,39 @@ class ChatUI {
         : `${openaiModel} does not support transparent backgrounds`;
     }
   }
+
+  /**
+   * Populate video resolutions from the effective model in the shared catalog.
+   */
+  _updateVideoProviderOptions() {
+    const provider = document.getElementById('imgActionVideoProvider')?.value || 'xai';
+    const select = document.getElementById('imgActionVideoResolution');
+    const resolutions = window.jarvisApp?._settingsData?.video_providers?.[provider]?.resolutions;
+    if (!select || !Array.isArray(resolutions) || resolutions.length === 0) return;
+
+    const previous = select.value;
+    select.innerHTML = '';
+    resolutions.forEach((resolution) => {
+      const option = document.createElement('option');
+      option.value = resolution;
+      const normalized = String(resolution).toLowerCase();
+      const label = normalized === '4k'
+        ? '4K (Ultra HD)'
+        : normalized === '1080p'
+          ? '1080p (Full HD)'
+          : normalized === '720p'
+            ? '720p (HD)'
+            : normalized === '480p'
+              ? '480p (SD)'
+              : resolution;
+      option.textContent = label;
+      select.appendChild(option);
+    });
+
+    select.value = resolutions.includes(previous)
+      ? previous
+      : (resolutions.includes('720p') ? '720p' : resolutions[0]);
+  }
   
   /**
    * Effective image/video provider from AI config (env + web override), for modal defaults.
@@ -1849,7 +1887,10 @@ class ChatUI {
     if (videoProvider) videoProvider.value = this._getEffectiveVideoProvider();
     if (videoRatio) videoRatio.value = '16:9';
     if (videoDuration) videoDuration.value = '5';
-    if (videoResolution) videoResolution.value = '720p';
+    this._updateVideoProviderOptions();
+    if (videoResolution && [...videoResolution.options].some(option => option.value === '720p')) {
+      videoResolution.value = '720p';
+    }
     
     // Image options
     const imageProvider = document.getElementById('imgActionImageProvider');

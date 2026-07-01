@@ -29,12 +29,11 @@ from datetime import datetime
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
+from model_catalog import get_media_model_env_key, resolve_media_model
 
 # =============================================================================
 # Provider: xAI Grok Video
 # =============================================================================
-DEFAULT_XAI_VIDEO_MODEL = "grok-imagine-video"
-
 # xAI supported aspect ratios
 XAI_ASPECT_RATIOS = ["16:9", "4:3", "1:1", "9:16", "3:4", "3:2", "2:3"]
 
@@ -48,8 +47,6 @@ XAI_MAX_DURATION = 15
 # =============================================================================
 # Provider: Google Gemini Veo
 # =============================================================================
-DEFAULT_GEMINI_VIDEO_MODEL = "veo-3.1-generate-preview"
-
 # Gemini supported aspect ratios (only 2 options)
 GEMINI_ASPECT_RATIOS = ["16:9", "9:16"]
 
@@ -62,8 +59,6 @@ GEMINI_DURATIONS = [4, 6, 8]  # seconds
 # =============================================================================
 # Provider: OpenAI Sora
 # =============================================================================
-DEFAULT_OPENAI_VIDEO_MODEL = "sora-2"
-
 # Sora supported sizes (width x height format)
 # Maps to aspect ratios: 720x1280 = 9:16, 1280x720 = 16:9, etc.
 OPENAI_SIZES = {
@@ -81,6 +76,12 @@ OPENAI_DURATIONS = [4, 8, 12]  # seconds
 # =============================================================================
 MIN_DURATION = 1
 MAX_DURATION = 15
+
+
+def _resolve_configured_video_model(provider: str) -> str:
+    env_key = get_media_model_env_key("video", provider)
+    configured = get_config_value(env_key, "") if env_key else ""
+    return resolve_media_model("video", provider, configured)
 
 
 def _resolve_video_source(video_source: str) -> str | None:
@@ -248,7 +249,7 @@ def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9
         raise ValueError("XAI_API_KEY not configured. Add it to config/cloud.env")
     
     # Get model from env or use default
-    model_name = get_config_value('XAI_VIDEO_MODEL', DEFAULT_XAI_VIDEO_MODEL)
+    model_name = _resolve_configured_video_model("xai")
     
     # Validate duration
     duration = max(MIN_DURATION, min(MAX_DURATION, duration))
@@ -361,7 +362,7 @@ def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "1
         raise ValueError("GEMINI_API_KEY not configured. Add it to config/cloud.env")
     
     # Get model from env or use default
-    model_name = get_config_value('GEMINI_VIDEO_MODEL', DEFAULT_GEMINI_VIDEO_MODEL)
+    model_name = _resolve_configured_video_model("gemini")
     
     # Validate and map duration to nearest supported value
     if duration <= 5:
@@ -538,7 +539,7 @@ def generate_video_openai(prompt: str, duration: int = 8, aspect_ratio: str = "1
         raise ValueError("OPENAI_API_KEY not configured. Add it to config/cloud.env")
     
     # Get model from env or use default
-    model_name = get_config_value('OPENAI_VIDEO_MODEL', DEFAULT_OPENAI_VIDEO_MODEL)
+    model_name = _resolve_configured_video_model("openai")
     
     # Validate and map duration to nearest supported value
     if duration <= 6:

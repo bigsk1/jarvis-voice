@@ -17,17 +17,17 @@ Image generation and editing tool for Jarvis. Supports text-to-image and image-t
 
 ### Gemini (default)
 
-- Model: `gemini-2.0-flash-preview-image-generation` (configurable via `GEMINI_IMAGE_MODEL`)
+- Catalog default: `gemini-3.1-flash-image` (optional pin: `GEMINI_IMAGE_MODEL`)
 - Aspect ratios: 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, 3:2, 4:5, 5:4
 - Resolution/size: 1K, 2K, 4K
 - Google Search grounding for real-time data (weather, stocks, current events)
 - Can accept `context_data` from other Jarvis tools
-- Generation API: `POST /v1beta/models/{model}:generateContent` with `responseModalities: ["TEXT", "IMAGE"]`
-- Editing: same endpoint -- include the reference image as `inline_data` in `contents[].parts[]` alongside the text prompt. Supports up to 14 reference images per request.
+- Generation API: `google.genai.Client.models.generate_content()` with typed `GenerateContentConfig` and `ImageConfig`
+- Editing: same SDK call with the reference image as a typed content part alongside the text prompt. Current Jarvis tool contract accepts one reference image.
 
 ### OpenAI
 
-- Model: `gpt-image-2` (configurable via `OPENAI_IMAGE_MODEL`)
+- Catalog default: `gpt-image-2` (optional pin: `OPENAI_IMAGE_MODEL`)
 - Best text rendering and instruction following
 - Sizes: legacy models use 1024x1024, 1536x1024, 1024x1536; `gpt-image-2` supports flexible 1K/2K/4K dimensions up to 3840px on the long edge
 - Quality: low, medium, high (mapped from 1K/2K/4K)
@@ -38,7 +38,7 @@ Image generation and editing tool for Jarvis. Supports text-to-image and image-t
 
 ### xAI
 
-- Model: `grok-imagine-image` (configurable via `XAI_IMAGE_MODEL`)
+- Catalog default: `grok-imagine-image` (optional pin: `XAI_IMAGE_MODEL`)
 - Fast and cheap
 - Batch generation: 1-10 images per request (text-to-image only)
 - Aspect ratios: 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, 3:2, 19.5:9, 9:19.5. The `wide` alias maps to 16:9 because xAI rejects 21:9.
@@ -74,6 +74,19 @@ Determined by `config_loader.py` with this priority:
 The Web UI keeps the provider in a request-local config scope and exports the
 `JARVIS_OVERRIDE_` form only to child tools. This preserves a single request's
 choice without mutating the long-lived Web process environment.
+
+## Model selection and pricing metadata
+
+Image and video model defaults live in `lib/model_catalog.py`, alongside their
+capabilities, known retired-model replacements, and provider-specific pricing.
+The provider model env variables are optional pins: leave them unset to follow
+the catalog default, or set one when an installation intentionally needs a
+different or newly released model. Unknown explicit model IDs are preserved so
+new provider releases remain usable before the catalog is updated.
+
+The attachment UI does not expose a model selector. Its current generic cost
+estimate is unchanged; the catalog pricing is available for a later UI cost
+estimator without duplicating model data in the client.
 
 ## Image-to-image editing
 

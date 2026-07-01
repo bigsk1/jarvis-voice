@@ -63,6 +63,12 @@ class _FakeVisionResponse:
 
 
 class XAIMediaPayloadTests(unittest.TestCase):
+    def test_commented_out_video_model_env_uses_catalog_default(self):
+        with patch.object(generate_video, "get_config_value", side_effect=lambda _key, default=None: default):
+            model = generate_video._resolve_configured_video_model("xai")
+
+        self.assertEqual(model, "grok-imagine-video")
+
     def test_image_generation_uses_media_payload_only(self):
         captured = {}
 

@@ -230,7 +230,7 @@ curl -X POST http://localhost:8880/api/generated-images/generate \
   "data": {
     "prompt": "A cute robot dog playing in a sunny park",
     "provider": "gemini",
-    "model": "gemini-3-pro-image-preview",
+    "model": "gemini-3-pro-image",
     "aspect_ratio": "landscape",
     "dimensions": "1536x1024",
     "saved": {
@@ -434,7 +434,8 @@ curl http://localhost:8880/api/generated-images/health
   "image_count": 42,
   "total_size": 156789012,
   "total_size_human": "149.5 MB",
-  "configured_provider": "gemini"
+  "configured_provider": "gemini",
+  "configured_model": "gemini-3.1-flash-image"
 }
 ```
 
@@ -448,14 +449,11 @@ The default provider is set in `config/cloud.env`:
 # Provider: gemini (default), openai, or xai
 IMAGE_TOOL_PROVIDER="gemini"
 
-# Gemini model
-GEMINI_IMAGE_MODEL="gemini-3-pro-image-preview"
-
-# OpenAI model (if using openai provider)
-OPENAI_IMAGE_MODEL="gpt-image-2"
-
-# xAI model (if using xai provider)
-# XAI_IMAGE_MODEL="grok-imagine-image"  # default
+# Optional model pins. Leave unset to follow the curated defaults in
+# lib/model_catalog.py and receive future default/retirement updates there.
+# GEMINI_IMAGE_MODEL="gemini-3-pro-image"
+# OPENAI_IMAGE_MODEL="gpt-image-2"
+# XAI_IMAGE_MODEL="grok-imagine-image"
 ```
 
 You can override the provider per-request using the `provider` parameter.
@@ -464,7 +462,7 @@ You can override the provider per-request using the `provider` parameter.
 
 | Feature | Gemini | OpenAI | xAI |
 |---------|--------|--------|-----|
-| Model | gemini-2.0-flash-preview | gpt-image-2 | grok-imagine-image |
+| Catalog default | gemini-3.1-flash-image | gpt-image-2 | grok-imagine-image |
 | Image-to-image editing | ✅ | ✅ | ✅ |
 | Grounding (real-time data) | ✅ | ❌ | ❌ |
 | Text rendering | Good | Best | Good |
