@@ -58,16 +58,6 @@ Examples:
     except JarvisModeError as exc:
         parser.error(str(exc))
     
-    # Check if eventlet is available
-    try:
-        import eventlet
-        eventlet.monkey_patch()
-    except ImportError:
-        print("Warning: eventlet not installed. Installing...")
-        os.system(f'{sys.executable} -m pip install eventlet')
-        import eventlet
-        eventlet.monkey_patch()
-    
     # Import and run the app
     try:
         from server.app import run_server

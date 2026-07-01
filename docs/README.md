@@ -347,6 +347,9 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Self-play now uses a fail-closed reviewed read-only tool allowlist; persistent mutations, artifact generation, external actions, dangerous tools, and newly discovered unreviewed tools are excluded.
   - Orchestrator children receive the selected mode through the shared environment exporter, and self-play skips automatic cloud↔local Memory synchronization while retaining its intended selected-mode learning and feedback records.
   - Updated the implemented CLI and safety documentation to replace the obsolete mocked-sandbox and `--iterations` examples.
+- ✅ **Web video posters and clean Socket.IO shutdown**
+  - Generated videos in Web chat now use cached ffmpeg first-frame posters, matching the reliable thumbnails already shown by the Canvas video gallery in native and Docker installs.
+  - Replaced deprecated eventlet monkey-patching with Flask-SocketIO threading plus `simple-websocket`, eliminating gRPC/subprocess greenlet-finalization tracebacks during Ctrl-C or tmux shutdown while preserving native WebSocket transport.
 
 **2026-06-27 (v2.53.2):**
 - ✅ **Cloud/local startup mode plumbing**

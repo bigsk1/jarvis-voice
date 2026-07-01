@@ -7,7 +7,7 @@ import json
 import functools
 from datetime import datetime
 from pathlib import Path
-from flask import Blueprint, jsonify, request, send_from_directory, abort
+from flask import Blueprint, jsonify, request, send_file, send_from_directory, abort
 from ..services.log_explorer import get_log_explorer, LogExplorerError
 from ..services.tool_discovery import get_tool_service
 from ..services.settings_manager import (
@@ -1782,6 +1782,50 @@ def serve_video(filename):
         abort(404)
     
     return send_from_directory(str(VIDEOS_PATH), filename)
+
+
+@api_bp.route('/videos/<filename>/thumbnail', methods=['GET'])
+def serve_video_thumbnail(filename):
+    """Serve a cached first-frame poster for generated chat videos."""
+    import subprocess
+
+    if '..' in filename or '/' in filename:
+        abort(404)
+
+    allowed_extensions = {'.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v'}
+    if Path(filename).suffix.lower() not in allowed_extensions:
+        abort(404)
+
+    video_path = VIDEOS_PATH / filename
+    if not video_path.is_file():
+        abort(404)
+
+    thumbnail_dir = VIDEOS_PATH / '.thumbnails'
+    thumbnail_dir.mkdir(parents=True, exist_ok=True)
+    thumbnail_path = thumbnail_dir / f'{Path(filename).stem}.jpg'
+
+    if (
+        not thumbnail_path.is_file()
+        or thumbnail_path.stat().st_mtime < video_path.stat().st_mtime
+    ):
+        result = subprocess.run(
+            [
+                'ffmpeg', '-y',
+                '-i', str(video_path),
+                '-vframes', '1',
+                '-vf', 'scale=480:-1',
+                '-q:v', '3',
+                str(thumbnail_path),
+            ],
+            capture_output=True,
+            timeout=10,
+        )
+        if result.returncode != 0 or not thumbnail_path.is_file():
+            error = result.stderr.decode(errors='replace')[:200] if result.stderr else 'unknown ffmpeg error'
+            print(f'[VIDEO] Failed to generate thumbnail for {filename}: {error}', file=sys.stderr)
+            abort(500, 'Failed to generate video thumbnail')
+
+    return send_file(thumbnail_path, mimetype='image/jpeg')
 
 
 @api_bp.route('/stash/<space_id>/<file_id>', methods=['GET'])

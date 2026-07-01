@@ -3218,13 +3218,16 @@ class ChatUI {
       const durationStr = videoDuration ? `${videoDuration}s` : '';
       const audioStr = videoHasAudio ? ' 🔊' : '';
       const providerStr = videoProvider ? ` (${videoProvider})` : '';
+      const videoPosterUrl = videoUrl.startsWith('/api/videos/')
+        ? `${videoUrl}/thumbnail`
+        : '';
       videoHtml = `
         <div class="message-video">
           <div class="video-header">
             <span class="video-icon">🎬</span>
             <span class="video-title">${Utils.escapeHtml(videoTitle)}</span>
           </div>
-          <video controls preload="metadata" class="video-player">
+          <video controls preload="metadata" class="video-player"${videoPosterUrl ? ` poster="${videoPosterUrl}"` : ''}>
             <source src="${videoUrl}"${videoMimeType ? ` type="${videoMimeType}"` : ''}>
             Your browser does not support video playback.
           </video>

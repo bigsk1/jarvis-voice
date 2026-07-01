@@ -221,7 +221,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 
 ```
 jarvis-web/
-├── server/                         # Flask + SocketIO (eventlet)
+├── server/                         # Flask + SocketIO (threading + WebSocket)
 │   ├── app.py                      # App entry; serves /, /logs, /login, /stash/view/...
 │   ├── config.py                   # Loads cloud.env / local.env + web_config
 │   ├── routes/

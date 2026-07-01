@@ -372,7 +372,7 @@ class ChatHandler:
 
     def _start_blocking_task(self, target, *args, name: str | None = None) -> threading.Thread:
         """
-        Run long blocking work in a real thread instead of an Eventlet greenlet.
+        Run long blocking work in a dedicated OS thread.
 
         Some provider SDK paths, especially xAI's Agent Tools flow, can block long
         enough to starve Socket.IO heartbeats when they run inside Eventlet's

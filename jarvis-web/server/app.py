@@ -5,17 +5,6 @@ Flask + SocketIO server for the web chat interface
 import sys
 from pathlib import Path
 
-# When launched directly via `python -m server.app` (from the jarvis-web tree
-# with the module path set up), apply the Eventlet monkey patch here too. The
-# normal `bin/jarvis-web` launcher already does this before import, but direct
-# module execution bypassed that path.
-if __name__ == '__main__':
-    try:
-        import eventlet
-        eventlet.monkey_patch()
-    except ImportError:
-        pass
-
 from flask import Flask, send_from_directory
 from flask_socketio import SocketIO
 from flask_cors import CORS
@@ -57,7 +46,10 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode='eventlet',
+    # Threading + simple-websocket avoids monkey-patching gRPC, subprocess,
+    # and Python locks. Eventlet is deprecated and can emit greenlet
+    # finalization errors while shutting down active SDK channels.
+    async_mode='threading',
     # Grok/xAI SDK calls can block for a while on tool-heavy requests. Give the
     # browser more heartbeat headroom so a slow model turn does not look like a
     # dead socket immediately.
@@ -226,7 +218,16 @@ def run_server(host: str = None, port: int = None, mode: str = 'cloud', debug: b
 ╚═══════════════════════════════════════════════════════════════╝
 """)
     
-    socketio.run(app, host=host, port=port, debug=debug)
+    socketio.run(
+        app,
+        host=host,
+        port=port,
+        debug=debug,
+        # Jarvis Web is intentionally a local/LAN application. Flask-SocketIO
+        # requires this acknowledgement when its threading development server
+        # is used outside debug mode.
+        allow_unsafe_werkzeug=True,
+    )
 
 
 if __name__ == '__main__':

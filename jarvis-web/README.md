@@ -93,7 +93,7 @@ pip install -r requirements.txt
 
 ```
 jarvis-web/
-├── server/                    # Flask + SocketIO (eventlet async)
+├── server/                    # Flask + SocketIO (threading + WebSocket)
 │   ├── app.py                # App factory, `/`, `/logs`, `/login`, `/stash/view/...`
 │   ├── config.py             # Configuration loader
 │   ├── routes/
