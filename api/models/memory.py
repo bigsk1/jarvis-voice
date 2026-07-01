@@ -1,6 +1,6 @@
 """Memory API models"""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Any
 from enum import Enum
 
@@ -27,8 +27,7 @@ class MemoryCreate(BaseModel):
     metadata: dict[str, Any] | None = Field(None, description="Additional metadata (tags, expiration, etc.)")
     generate_embedding: bool = Field(True, description="Generate vector embedding for semantic search")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(json_schema_extra={
             "example": {
                 "category": "technical",
                 "key": "jarvis_api_port",
@@ -37,7 +36,7 @@ class MemoryCreate(BaseModel):
                 "source": "user",
                 "metadata": {"tags": ["api", "config"]}
             }
-        }
+        })
 
 
 class MemoryUpdate(BaseModel):
@@ -45,13 +44,12 @@ class MemoryUpdate(BaseModel):
     value: str | None = Field(None, description="New value")
     importance: int | None = Field(None, ge=1, le=10, description="New importance level")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(json_schema_extra={
             "example": {
                 "value": "Jarvis API runs on port 8880 with Swagger docs at /docs",
                 "importance": 8
             }
-        }
+        })
 
 
 class Memory(BaseModel):
@@ -92,11 +90,10 @@ class SemanticSearchRequest(BaseModel):
     limit: int = Field(5, ge=1, le=50, description="Maximum results")
     similarity_threshold: float = Field(0.3, ge=0.0, le=1.0, description="Minimum similarity score (0-1)")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(json_schema_extra={
             "example": {
                 "query": "Where is the Flask API project located?",
                 "limit": 5,
                 "similarity_threshold": 0.35
             }
-        }
+        })

@@ -1,6 +1,6 @@
 """Intel API models - CRUD operations for jarvis-intel/ files"""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class IntelFile(BaseModel):
@@ -11,8 +11,7 @@ class IntelFile(BaseModel):
     ingested: bool = False
     fact_count: int | None = None
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(json_schema_extra={
             "example": {
                 "filename": "network-config.md",
                 "size_bytes": 1234,
@@ -20,7 +19,7 @@ class IntelFile(BaseModel):
                 "ingested": True,
                 "fact_count": 15
             }
-        }
+        })
 
 
 class IntelCreate(BaseModel):
@@ -29,14 +28,13 @@ class IntelCreate(BaseModel):
     content: str = Field(..., description="File content (markdown or plain text)")
     auto_ingest: bool = Field(False, description="If true, trigger ingestion after creating")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(json_schema_extra={
             "example": {
                 "filename": "xai-collections.md",
                 "content": "# xAI Collections API\n\n## Key Concepts\n- Collection: Group of files with embeddings\n- File: Single uploaded document\n\n## Important Facts\n- Max file size: 100MB\n- Max files: 100,000",
                 "auto_ingest": True
             }
-        }
+        })
 
 
 class IntelUpdate(BaseModel):

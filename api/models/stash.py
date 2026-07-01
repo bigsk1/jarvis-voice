@@ -1,6 +1,6 @@
 """Stash API models"""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class StashFile(BaseModel):
@@ -15,8 +15,7 @@ class StashFile(BaseModel):
     tool_origin: str | None = None
     created_at: str
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(json_schema_extra={
             "example": {
                 "file_id": "f_5d190ce797c6",
                 "name": "generated_image.jpg",
@@ -27,7 +26,7 @@ class StashFile(BaseModel):
                 "tool_origin": "generate_image",
                 "created_at": "2026-01-18T00:54:00.291003Z"
             }
-        }
+        })
 
 
 class StashSpace(BaseModel):

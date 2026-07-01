@@ -167,6 +167,14 @@ def test_tui_exposes_full_local_start_with_stoppable_control_session():
     assert '"jarvis-start-all-local"' in start_script
 
 
+def test_tui_uses_current_memory_sync_cli_and_omits_legacy_full_tool_tests():
+    dashboard = (ROOT / "bin" / "jarvis-dashboard").read_text()
+    assert "./bin/sync-memory-db.py --from cloud --to local" in dashboard
+    assert "./bin/sync-memory-db.py --from local --to cloud" in dashboard
+    assert "test-all-tools.sh" not in dashboard
+    assert "test-all-tools-local.sh" not in dashboard
+
+
 def _docker_checkout(tmp_path: Path, *, with_local_config: bool = True) -> tuple[Path, dict[str, str], Path]:
     checkout = tmp_path / "docker-checkout"
     _copy_mode_resolver(checkout)

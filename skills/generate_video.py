@@ -398,14 +398,11 @@ def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "1
         config_kwargs = {
             "aspect_ratio": aspect_ratio,
             "resolution": resolution,
+            "duration_seconds": gemini_duration,
         }
         
         if negative_prompt:
             config_kwargs["negative_prompt"] = negative_prompt
-        
-        # Note: duration_seconds is a string in Gemini API
-        # Only add if supported (check API version)
-        # config_kwargs["duration_seconds"] = str(gemini_duration)
         
         config = types.GenerateVideosConfig(**config_kwargs)
         

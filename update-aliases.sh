@@ -78,25 +78,25 @@ cat >> "$RCFILE" << 'EOF'
 # ============================================================================
 
 # Cloud mode (uses cloud APIs: Anthropic, xAI, OpenAI, etc.)
-alias jarvis="source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/wake-jarvis.py"
+alias jarvis="export JARVIS_VENV=$HOME/jarvis-venv UV_PROJECT_ENVIRONMENT=$HOME/jarvis-venv && source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/wake-jarvis.py"
 alias say="$HOME/jarvis-voice/bin/say.sh"
 alias question="$HOME/jarvis-voice/bin/question.sh"
 alias question-mic="$HOME/jarvis-voice/bin/question-mic.sh"
 
 # Local mode (uses Ollama for LLM, local Whisper for STT)
-alias jarvis-local="source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/wake-jarvis-local.py"
+alias jarvis-local="export JARVIS_VENV=$HOME/jarvis-venv UV_PROJECT_ENVIRONMENT=$HOME/jarvis-venv && source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/wake-jarvis-local.py"
 alias say-local="$HOME/jarvis-voice/bin/say-local.sh"
 alias question-local="$HOME/jarvis-voice/bin/question-local.sh"
 alias question-mic-local="$HOME/jarvis-voice/bin/question-mic-local.sh"
 
 # Tools
-alias jarvis-d="source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/jarvis-dashboard"
-alias jarvis-web="source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/start web"
-alias jarvis-api="source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/start api"
+alias jarvis-d="export JARVIS_VENV=$HOME/jarvis-venv UV_PROJECT_ENVIRONMENT=$HOME/jarvis-venv && source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/jarvis-dashboard"
+alias jarvis-web="export JARVIS_VENV=$HOME/jarvis-venv UV_PROJECT_ENVIRONMENT=$HOME/jarvis-venv && source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/start web"
+alias jarvis-api="export JARVIS_VENV=$HOME/jarvis-venv UV_PROJECT_ENVIRONMENT=$HOME/jarvis-venv && source $HOME/jarvis-venv/bin/activate && cd $HOME/jarvis-voice && ./bin/start api"
 
 # Quick shortcuts
 alias jarvis-cd="cd $HOME/jarvis-voice"
-alias jarvis-env="source $HOME/jarvis-venv/bin/activate"
+alias jarvis-env="export JARVIS_VENV=$HOME/jarvis-venv UV_PROJECT_ENVIRONMENT=$HOME/jarvis-venv && source $HOME/jarvis-venv/bin/activate"
 alias jarvis-logs="tail -f $HOME/jarvis-voice/logs/*.log"
 EOF
 

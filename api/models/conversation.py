@@ -1,6 +1,6 @@
 """Conversation API models"""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class Conversation(BaseModel):
@@ -14,8 +14,7 @@ class Conversation(BaseModel):
     success: bool = True
     metadata: dict | None = None
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(json_schema_extra={
             "example": {
                 "id": 858,
                 "timestamp": "2026-01-18 02:00:16",
@@ -26,7 +25,7 @@ class Conversation(BaseModel):
                 "success": True,
                 "metadata": None
             }
-        }
+        })
 
 
 class ConversationResponse(BaseModel):

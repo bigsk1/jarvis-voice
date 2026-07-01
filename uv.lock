@@ -1201,7 +1201,7 @@ wheels = [
 [[package]]
 name = "jarvis-voice"
 version = "2.53.1"
-source = { editable = "." }
+source = { virtual = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "av" },

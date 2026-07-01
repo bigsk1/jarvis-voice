@@ -1,6 +1,6 @@
 """Workflow API models"""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Any, Literal
 
 
@@ -15,8 +15,7 @@ class WorkflowInfo(BaseModel):
     version: str | None = Field(None, description="Workflow version")
     tools_used: list[str] = Field(default_factory=list, description="Tools used by this workflow")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(json_schema_extra={
             "example": {
                 "id": "crypto_market_report",
                 "name": "Crypto Market Report Workflow",
@@ -27,7 +26,7 @@ class WorkflowInfo(BaseModel):
                 "version": "1.1",
                 "tools_used": ["crypto_price", "mcp_brave_search_brave_web_search", "canvas", "send_email"]
             }
-        }
+        })
 
 
 class WorkflowExecuteRequest(BaseModel):
@@ -35,13 +34,12 @@ class WorkflowExecuteRequest(BaseModel):
     query: str | None = Field(None, description="Optional query/parameters (e.g., 'ethereum xrp' for /crypto)")
     mode: Literal["cloud", "local"] = Field("cloud", description="LLM mode: 'cloud' or 'local'")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(json_schema_extra={
             "example": {
                 "query": "ethereum solana",
                 "mode": "cloud"
             }
-        }
+        })
 
 
 class WorkflowExecuteResponse(BaseModel):
@@ -57,8 +55,7 @@ class WorkflowExecuteResponse(BaseModel):
     server_side_tools: dict[str, int] | None = Field(None, description="LLM provider native tools used (xAI web_search, x_search, etc.)")
     error: str | None = None
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(json_schema_extra={
             "example": {
                 "ok": True,
                 "workflow_id": "crypto_market_report",
@@ -69,7 +66,7 @@ class WorkflowExecuteResponse(BaseModel):
                 "data": {"coin1_price": "89651", "coin1_change": "2.05"},
                 "server_side_tools": {"SERVER_SIDE_TOOL_X_SEARCH": 2, "SERVER_SIDE_TOOL_WEB_SEARCH": 1}
             }
-        }
+        })
 
 
 class WorkflowExecution(BaseModel):
@@ -84,8 +81,7 @@ class WorkflowExecution(BaseModel):
     tools_used: list[str] = Field(default_factory=list)
     duration_ms: float = 0
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(json_schema_extra={
             "example": {
                 "timestamp": "2026-01-22T10:25:42.235173",
                 "workflow_id": "crypto_market_report",
@@ -97,7 +93,7 @@ class WorkflowExecution(BaseModel):
                 "tools_used": ["crypto_price", "canvas", "send_email"],
                 "duration_ms": 56353.52
             }
-        }
+        })
 
 
 class WorkflowListResponse(BaseModel):

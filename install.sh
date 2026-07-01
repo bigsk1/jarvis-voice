@@ -94,8 +94,22 @@ create_venv_and_sync() {
     echo "Using existing virtual environment: $VENV"
   fi
 
+  # Keep ordinary `uv run` / `uv sync` commands on Jarvis's shared venv.
+  # uv otherwise ignores VIRTUAL_ENV for project commands and creates .venv.
+  if ! grep -q "UV_PROJECT_ENVIRONMENT=.*VIRTUAL_ENV" "${VENV}/bin/activate"; then
+    cat >> "${VENV}/bin/activate" <<'EOF'
+
+# Jarvis uses one shared environment outside the repository. Tell uv project
+# commands to use it instead of creating jarvis-voice/.venv.
+export JARVIS_VENV="$VIRTUAL_ENV"
+export UV_PROJECT_ENVIRONMENT="$VIRTUAL_ENV"
+EOF
+  fi
+
   # shellcheck source=/dev/null
   source "${VENV}/bin/activate"
+  export JARVIS_VENV="$VENV"
+  export UV_PROJECT_ENVIRONMENT="$VENV"
 
   cd "$REPO_ROOT"
   if [[ -f uv.lock ]]; then
@@ -139,6 +153,8 @@ run_project_setup() {
   cd "$REPO_ROOT"
   # shellcheck source=/dev/null
   source "${VENV}/bin/activate"
+  export JARVIS_VENV="$VENV"
+  export UV_PROJECT_ENVIRONMENT="$VENV"
 
   if [[ -x ./setup.sh ]]; then
     echo "Running ./setup.sh ..."
@@ -159,6 +175,8 @@ run_verify_env() {
   cd "$REPO_ROOT"
   # shellcheck source=/dev/null
   source "${VENV}/bin/activate"
+  export JARVIS_VENV="$VENV"
+  export UV_PROJECT_ENVIRONMENT="$VENV"
 
   if [[ -x ./verify-env.sh ]]; then
     echo "Running ./verify-env.sh ..."
@@ -179,6 +197,8 @@ collect_audio_hints() {
 rich_summary() {
   # shellcheck source=/dev/null
   source "${VENV}/bin/activate"
+  export JARVIS_VENV="$VENV"
+  export UV_PROJECT_ENVIRONMENT="$VENV"
   export JARVIS_INSTALL_ROOT="$REPO_ROOT"
   python3 <<'PY'
 import os

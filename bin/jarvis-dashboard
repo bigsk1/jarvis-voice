@@ -164,8 +164,6 @@ COMMANDS: List[Command] = [
     Command("API Docs (Workflows)", "echo '🌐 Swagger UI: http://localhost:8880/docs/dark#/workflows' && echo '📖 Docs: docs/api/WORKFLOWS.md'", "Workflows API documentation", "🔄 Workflows"),
     
     # === 🧪 TESTING ===
-    Command("Test All (Cloud)", "./test-all-tools.sh", "All tool tests - cloud", "🧪 Testing"),
-    Command("Test All (Local)", "./test-all-tools-local.sh", "All tool tests - local", "🧪 Testing"),
     Command("Test Memory Tools", "./tests/integration/test-memory-tools.sh", "Memory tool selection", "🧪 Testing"),
     Command("Test Intelligence", "python3 tests/integration/test_intelligence_integration.py", "Intelligence layer", "🧪 Testing"),
     Command("Compare Models", "./tests/integration/compare-models.sh local gemma4 qwen3.5:latest", "Compare two models", "🧪 Testing"),
@@ -176,8 +174,8 @@ COMMANDS: List[Command] = [
     # === 💾 MEMORY ===
     Command("Memory List", "./bin/memory list", "List all memories", "💾 Memory"),
     Command("Memory Search", "./bin/memory search", "Search memories", "💾 Memory"),
-    Command("Sync Cloud→Local", "./bin/sync-memory-db.py local", "Sync to local DB", "💾 Memory"),
-    Command("Sync Local→Cloud", "./bin/sync-memory-db.py cloud", "Sync to cloud DB", "💾 Memory"),
+    Command("Sync Cloud→Local", "./bin/sync-memory-db.py --from cloud --to local", "Sync to local DB", "💾 Memory"),
+    Command("Sync Local→Cloud", "./bin/sync-memory-db.py --from local --to cloud", "Sync to cloud DB", "💾 Memory"),
     Command("Rebuild FTS Index", "./bin/rebuild-fts-index", "Rebuild search index", "💾 Memory"),
     Command("Memory Stats", "sqlite3 data/jarvis_memory.db \"SELECT category, COUNT(*) as count FROM knowledge_base GROUP BY category ORDER BY count DESC;\"", "Memory by category", "💾 Memory"),
     Command("Re-embed Memory", "echo '📝 To re-embed a memory after editing:' && echo '   ./bin/re-embed-memory <id>' && echo '   ./bin/re-embed-memory <id> local' && echo '' && echo 'Example: ./bin/re-embed-memory 42'", "Re-embed after edit", "💾 Memory"),

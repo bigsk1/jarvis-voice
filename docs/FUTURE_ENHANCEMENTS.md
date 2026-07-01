@@ -95,6 +95,39 @@ Jarvis: "From the Portland restaurants, here are the Italian options..."
 - Include in LLM context
 - Expire after idle timeout
 
+### 4) Gemini Image: Migrate REST → google-genai SDK
+**Priority:** Low (nice-to-have)
+
+Gemini video generation already uses `google.genai.Client`; image generation still hand-builds JSON against `generativelanguage.googleapis.com`. After the google-genai 2.x upgrade, the SDK exposes `GenerateContentConfig(image_config=ImageConfig(...))` with cleaner 4K/aspect-ratio handling and shared error/retry behavior.
+
+**Why low priority:** Gemini image/video is the most expensive provider option in Jarvis (xAI/OpenAI are cheaper defaults). It is good to keep working and maintained, but not a daily-driver path for most installs.
+
+**Potential implementation:**
+- Refactor `skills/generate_image.py` Gemini path to match the video tool’s SDK pattern
+- Drop manual payload assembly and response parsing
+- Keep env-driven model selection (`GEMINI_IMAGE_MODEL`) unchanged
+
+### 5) Anthropic SDK Consolidation (Stray Raw HTTP)
+**Priority:** Low / housekeeping
+
+Main chat/tool path in `lib/llm_provider.py` already uses the Anthropic SDK (thinking, caching, native web search). A few stragglers still POST to `api.anthropic.com` directly:
+- `skills/analyze_image.py`
+- `skills/stash.py`
+- `jarvis-web/server/sockets/chat.py` (one path)
+
+**Goal:** One SDK path for auth headers, error handling, and future SDK features (e.g. `service_tier` for latency-sensitive voice/status calls).
+
+**Not urgent:** Current raw HTTP paths work; this is maintainability, not a user-facing feature.
+
+### 6) Lift FastAPI `<0.137` Cap (Post prometheus-instrumentator 8.x)
+**Priority:** Low / infra
+
+`pyproject.toml` and `requirements.txt` cap FastAPI below 0.137 because prometheus-fastapi-instrumentator had issues with FastAPI `_IncludedRouter` ([#370](https://github.com/trallnag/prometheus-fastapi-instrumentator/issues/370)). After the dependency refresh, the stack runs fastapi 0.136.3 + prometheus-fastapi-instrumentator 8.0.2 with metrics and routing working in smoke tests.
+
+**Goal:** Verify `/metrics` and instrumentator behavior with all included routers, then remove the `<0.137` cap if stable.
+
+**Files:** `pyproject.toml`, `requirements.txt`, `docs/docker/README.md`
+
 ---
 
 ## ⭐ State-of-the-Art Assistant Upgrades (Worth Doing Early)

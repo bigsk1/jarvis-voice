@@ -18,6 +18,7 @@ x-jarvis-common: &jarvis-common
     JARVIS_SYNC_MODES: "${JARVIS_SYNC_MODES:-}"
     JARVIS_VENV: /opt/venv
     VIRTUAL_ENV: /opt/venv
+    UV_PROJECT_ENVIRONMENT: /opt/venv
     # Use "default" for hybrid native CLI/wake-word access, then block
     # container-incompatible tools in Web UI Settings.
     JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE: "${JARVIS_DOCKER_TOOL_PROFILE:-docker}"

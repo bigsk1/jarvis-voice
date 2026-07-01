@@ -135,6 +135,8 @@ uv venv ~/jarvis-venv
 
 # Activate it
 source ~/jarvis-venv/bin/activate
+export JARVIS_VENV="$HOME/jarvis-venv"
+export UV_PROJECT_ENVIRONMENT="$JARVIS_VENV"
 
 # Install all packages from lockfile (exact versions)
 cd ~/jarvis-voice

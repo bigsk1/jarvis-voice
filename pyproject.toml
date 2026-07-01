@@ -77,9 +77,11 @@ dev = [
     "pytest>=9.0.0",
 ]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[tool.uv]
+# Jarvis is an application repository, not an importable Python package.
+# Install only its dependencies; do not ask uv/Hatch to build an editable
+# `jarvis_voice` package that does not exist.
+package = false
 
 [tool.pyright]
 # Tell pyright/basedpyright where to find local modules
