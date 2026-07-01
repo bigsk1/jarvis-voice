@@ -23,30 +23,45 @@ Guiding principles:
 
 ## 🔨 In Progress / Near Term
 
-### 1) Verbal Confirmation Loop (Dangerous Ops)
-**Priority:** High
+### 1) Exact-Call Approval and Preflight Policies (Optional)
+**Priority:** Deferred / narrow high-risk use only
 
-Currently tools with `auto_approve: false` execute with a console warning.
+Currently tools with `auto_approve: false` execute with a console warning. The permission check does not pause or wait, so it adds effectively no runtime latency.
 
-**Goal:** Voice-based approval for dangerous operations.
+**Why keep the metadata:** It documents side effects and provides one central policy hook shared by Web UI, CLI, and wake-word paths. A future implementation could use that hook for interactive confirmation or for non-user-facing validation and auditing.
+
+**Design constraint:** Never ask the user to approve a vague intent and then let the model generate new arguments. Prepare the complete call first, show the material target/arguments, bind approval to a normalized call hash, and execute that exact call once with a short expiration.
 
 ```
 You: "Delete all my files"
-Jarvis: "This will execute a bash command. Do you approve?"
+Jarvis: "Prepared execute_bash call targeting /specific/path with rm .... Approve this exact call?"
 You: "Yes, I approve"
-Jarvis: "Okay, executing... Done."
+Jarvis: "Executing the approved call without regenerating arguments."
 ```
 
-**Implementation:**
-- Detect confirmation requirement
-- Speak warning
-- Record user response
-- Check for approval phrases
-- Execute or cancel
+**Possible surface adapters:**
+- Web UI: Yes/No controls showing tool, target, and material arguments
+- CLI: terminal confirmation prompt
+- Wake word: spoken summary and voice approval
 
-**Files to modify:**
-- `orchestrator/executor.py` - Add confirmation flow
-- `bin/confirm.sh` - Record and transcribe approval
+All adapters should call a centralized orchestrator policy rather than implement separate approval semantics.
+
+**Good candidates:** phone calls, outbound email/webhooks, SSH mutations, destructive Docker/system commands, and bulk deletion.
+
+**Usually better alternatives:**
+- Argument and target validation
+- Allowlists and scoped credentials
+- Dry-run/preview behavior
+- Expected match counts and file/version hashes
+- One-shot mutation tokens
+- Structured audit logs
+
+These deterministic safeguards often prevent incorrect actions more effectively than confirmation. `manage_intel replace`, for example, rejects ambiguous matches and stale file hashes without asking the user to reason about an underspecified prompt.
+
+**Potential implementation areas:**
+- `orchestrator/executor.py` — centralized preflight and exact-call approval lifecycle
+- Web/CLI/wake adapters — presentation and response capture only
+- Tool schemas — action-level risk metadata if coarse tool-level permissions become insufficient
 
 ### 2) Tool Set Hygiene (Reduce Confusion / Loops) - INSIGHTS HELP THIS IN GUIDING THE LLM TO USE THE CORRECT TOOLS
 **Priority:** High

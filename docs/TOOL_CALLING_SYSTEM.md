@@ -306,7 +306,7 @@ Control which tools are loaded to reduce token count and improve performance:
 
 ## Permission System
 
-Tool permissions are defined in the tool schema file and not fully implemented yet. FUTURE TODO:
+Tool permissions are defined in each tool schema. The current implementation is warning-only: it classifies a call and prints a permission warning, but it does not pause, ask the user, or wait for approval. After the warning, the prepared call executes immediately.
 
 ```json
 {
@@ -315,15 +315,44 @@ Tool permissions are defined in the tool schema file and not fully implemented y
     "bash": false,         // Executes shell commands
     "network": true,       // Makes HTTP requests
     "filesystem": false,   // Reads/writes files
-    "auto_approve": false  // Skip announcement
+    "auto_approve": false  // Show the current warning; future policy hook
   }
 }
 ```
 
-**Levels:**
-- ✅ **Auto-approved** (`auto_approve: true`) - Safe tools, executes silently
-- ⚠️ **Announced** (`network/filesystem/bash`) - Announces before executing
-- 🚨 **Dangerous** (`dangerous: true`) - Shows warning + announces
+**Current behavior:**
+- ✅ **Auto-approved** (`auto_approve: true`) — skips the permission warning.
+- ⚠️ **Announced** (`auto_approve: false` plus network/filesystem/bash/dangerous metadata) — prints a warning and proceeds without delay.
+- There is currently no interactive approval state and no distinction between read-only and mutating actions within one tool.
+
+The metadata still has value even without prompts: it documents side effects, supports audits and policy checks, and leaves a common integration point for Web UI, CLI, and wake-word entry paths. Keep `auto_approve: false` on tools with meaningful external or destructive actions unless silently bypassing a future policy is intentional.
+
+### If Interactive Approval Is Added
+
+Approval must bind to an already prepared, exact call—not a general description that allows the model to regenerate different arguments afterward. A valid approval record should include:
+
+- Tool name and normalized arguments
+- Concrete target or recipient
+- Hash/signature of the approved call
+- One-shot use and short expiration
+- Execution of the same call without another model-generated argument pass
+
+The orchestrator should own this boundary. Surface-specific adapters can then present it appropriately: a Web UI Yes/No button, a CLI prompt, or wake-word voice confirmation. This avoids three independent permission systems with different safety behavior.
+
+Interactive approval is most useful for a narrow group of irreversible or external actions such as phone calls, email/webhook sending, SSH mutations, destructive Docker/system commands, and bulk deletion. It is probably unnecessary for ordinary reads, searches, calculations, or well-guarded local edits.
+
+### Prefer Deterministic Preflight When Possible
+
+Many operations are safer with tool-specific validation than with a generic confirmation prompt. The same permission hook can run non-interactive preflight policies such as:
+
+- Target allowlists and argument validation
+- Dry-run or preview modes
+- Expected match/count checks
+- File/version hashes that reject stale mutations
+- Scoped credentials and action-specific permissions
+- Structured audit records
+
+For example, `manage_intel replace` protects edits with an expected replacement count and optional file hash. Those checks prevent ambiguous or stale writes more reliably than asking the user to approve a vague “edit intel” prompt.
 
 ## Architecture Files
 
@@ -522,9 +551,9 @@ def extract_pdf_text(file_path: str) -> str:
 
 1. **Add your tools** - Home automation, webhooks, API integrations
 2. **Test voice commands** - Start jarvis and try different commands
-3. **Customize permissions** - Adjust auto-approval for your tools
+3. **Keep permission metadata accurate** - Document side effects even while enforcement remains warning-only
 4. **Build workflows** - Chain multiple tools together
-5. **Add confirmation loops** - For critical operations
+5. **Consider narrow approval adapters** - Only for exact, prepared high-risk calls
 
 ## Support
 
