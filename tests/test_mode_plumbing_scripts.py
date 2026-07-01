@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -147,6 +148,15 @@ def test_start_fails_when_api_never_reports_requested_mode(tmp_path):
     log = tmux_log.read_text()
     assert "new-session -d -s jarvis-api" in log
     assert "new-session -d -s jarvis-services" not in log
+    error_logs = list((checkout / "logs" / "api").glob("errors-*.jsonl"))
+    assert len(error_logs) == 1
+    error_entry = json.loads(error_logs[0].read_text().strip())
+    assert error_entry["event"] == "service_health_timeout"
+    assert error_entry["service"] == "jarvis-startup"
+    assert error_entry["startup_mode"] == "local"
+    assert error_entry["session"] == "jarvis-api"
+    assert error_entry["timeout_seconds"] == 2
+    assert error_entry["status"] == 504
 
 
 def test_tui_exposes_full_local_start_with_stoppable_control_session():

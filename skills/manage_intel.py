@@ -2,10 +2,10 @@
 """
 Tool Name: manage_intel
 Sandboxed CRUD operations for jarvis-intel/ directory.
-Allows Jarvis to programmatically create, read, update, and delete intel files.
+Allows Jarvis to programmatically create, read, search, update, replace, and delete intel files.
 
 Input: {
-    "action": "create|read|update|delete|list",
+    "action": "create|read|search|update|replace|append|delete|list",
     "path": "flat filename in jarvis-intel/file.md",
     "content": "file content",
     "auto_ingest": true  # Auto-run ingest_intel after changes
@@ -16,6 +16,7 @@ Output: { "ok": bool, "speech": str, "data": dict }
 import sys
 import os
 import json
+import hashlib
 from pathlib import Path
 from typing import Any
 import subprocess
@@ -149,6 +150,114 @@ def read_intel_file(intel_dir: Path, path: str) -> dict[str, Any]:
         "content": content,
         "size_bytes": len(content),
         "modified": file_path.stat().st_mtime
+    }
+
+
+def search_intel_file(
+    intel_dir: Path,
+    path: str,
+    query: str,
+    context_lines: int = 5,
+    max_matches: int = 20,
+) -> dict[str, Any]:
+    """Find literal text and return bounded, line-numbered surrounding context."""
+    file_path = validate_path(path, intel_dir)
+    if not file_path.exists():
+        raise ValueError(f"File not found: {path}")
+    if not query:
+        raise ValueError("'query' must be non-empty for search")
+
+    context_lines = max(0, min(int(context_lines), 100))
+    max_matches = max(1, min(int(max_matches), 100))
+    content = file_path.read_text(encoding='utf-8')
+    lines = content.splitlines()
+    matches = []
+    cursor = 0
+    total_matches = 0
+
+    while True:
+        offset = content.find(query, cursor)
+        if offset < 0:
+            break
+        total_matches += 1
+        if len(matches) < max_matches:
+            match_start_line = content.count('\n', 0, offset) + 1
+            match_end_line = content.count('\n', 0, offset + len(query)) + 1
+            start_line = max(1, match_start_line - context_lines)
+            end_line = min(len(lines), match_end_line + context_lines)
+            excerpt_lines = lines[start_line - 1:end_line]
+            matches.append({
+                "match_start_line": match_start_line,
+                "match_end_line": match_end_line,
+                "context_start_line": start_line,
+                "context_end_line": end_line,
+                "content": "\n".join(excerpt_lines),
+                "line_numbered_content": "\n".join(
+                    f"{line_no}: {line}"
+                    for line_no, line in enumerate(excerpt_lines, start=start_line)
+                ),
+            })
+        cursor = offset + max(1, len(query))
+
+    return {
+        "file": str(file_path.relative_to(intel_dir)),
+        "query": query,
+        "matches": matches,
+        "match_count": total_matches,
+        "matches_returned": len(matches),
+        "matches_truncated": total_matches > len(matches),
+        "size_bytes": len(content),
+        "line_count": len(lines),
+        "file_sha256": hashlib.sha256(content.encode('utf-8')).hexdigest(),
+    }
+
+
+def replace_intel_content(
+    intel_dir: Path,
+    path: str,
+    old_content: str,
+    new_content: str = "",
+    expected_replacements: int = 1,
+    expected_file_sha256: str | None = None,
+) -> dict[str, Any]:
+    """Replace exact literal content, refusing ambiguous or stale edits."""
+    file_path = validate_path(path, intel_dir)
+    if not file_path.exists():
+        raise ValueError(f"File not found: {path}")
+    if not old_content:
+        raise ValueError("'old_content' must be non-empty for replace")
+
+    expected_replacements = int(expected_replacements)
+    if expected_replacements < 1:
+        raise ValueError("'expected_replacements' must be at least 1")
+
+    existing = file_path.read_text(encoding='utf-8')
+    before_sha256 = hashlib.sha256(existing.encode('utf-8')).hexdigest()
+    if expected_file_sha256 and expected_file_sha256 != before_sha256:
+        raise ValueError(
+            "File changed after it was inspected; search/read again before replacing content"
+        )
+
+    actual_replacements = existing.count(old_content)
+    if actual_replacements != expected_replacements:
+        raise ValueError(
+            f"Expected {expected_replacements} exact match(es), found {actual_replacements}; "
+            "no changes were made"
+        )
+
+    updated = existing.replace(old_content, new_content)
+    file_path.write_text(updated, encoding='utf-8')
+    after_sha256 = hashlib.sha256(updated.encode('utf-8')).hexdigest()
+    return {
+        "file": str(file_path.relative_to(intel_dir)),
+        "updated": True,
+        "replacements": actual_replacements,
+        "removed": new_content == "",
+        "size_bytes_before": len(existing),
+        "size_bytes_after": len(updated),
+        "bytes_changed": len(updated) - len(existing),
+        "file_sha256_before": before_sha256,
+        "file_sha256_after": after_sha256,
     }
 
 
@@ -404,7 +513,7 @@ def main():
         if not action:
             raise ValueError("'action' parameter required")
         
-        if action not in ['create', 'read', 'update', 'append', 'delete', 'list']:
+        if action not in ['create', 'read', 'search', 'update', 'replace', 'append', 'delete', 'list']:
             raise ValueError(f"Invalid action: {action}")
         
         # Get project paths (resolve to handle symlinks and .. in path)
@@ -436,6 +545,24 @@ def main():
             
             result_data = read_intel_file(intel_dir, path)
             speech = f"Read {result_data['size_bytes']} bytes from {result_data['file']}"
+
+        elif action == 'search':
+            path = args.get('path')
+            query = args.get('query')
+            if not path or not query:
+                raise ValueError("'path' and non-empty 'query' required for search")
+
+            result_data = search_intel_file(
+                intel_dir,
+                path,
+                query,
+                context_lines=args.get('context_lines', 5),
+                max_matches=args.get('max_matches', 20),
+            )
+            speech = (
+                f"Found {result_data['match_count']} exact match"
+                f"{'es' if result_data['match_count'] != 1 else ''} in {result_data['file']}"
+            )
         
         elif action == 'update':
             path = args.get('path')
@@ -454,6 +581,26 @@ def main():
             
             result_data = append_intel_file(intel_dir, path, content)
             speech = f"Appended to intel file: {result_data['file']}"
+
+        elif action == 'replace':
+            path = args.get('path')
+            old_content = args.get('old_content')
+            if not path or not old_content:
+                raise ValueError("'path' and non-empty 'old_content' required for replace")
+
+            result_data = replace_intel_content(
+                intel_dir,
+                path,
+                old_content,
+                args.get('new_content', ''),
+                expected_replacements=args.get('expected_replacements', 1),
+                expected_file_sha256=args.get('expected_file_sha256'),
+            )
+            verb = "Removed" if result_data['removed'] else "Replaced"
+            speech = (
+                f"{verb} {result_data['replacements']} exact content block"
+                f"{'s' if result_data['replacements'] != 1 else ''} in {result_data['file']}"
+            )
         
         elif action == 'delete':
             path = args.get('path')
@@ -474,7 +621,7 @@ def main():
                     speech += "s"
         
         # Auto-ingest if requested and action modifies files
-        if args.get('auto_ingest', False) and action in ['create', 'update', 'append', 'delete']:
+        if args.get('auto_ingest', False) and action in ['create', 'update', 'replace', 'append', 'delete']:
             current_mode = _mode_for_db_path(getattr(db, "db_path", ""))
             ingest_result = auto_ingest(project_root, current_mode)
             result_data['ingest'] = ingest_result

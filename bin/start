@@ -140,6 +140,49 @@ error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
+log_api_startup_error() {
+    local service_name=$1
+    local timeout_seconds=$2
+    local message=$3
+
+    JARVIS_START_ERROR_SERVICE="$service_name" \
+    JARVIS_START_ERROR_TIMEOUT="$timeout_seconds" \
+    JARVIS_START_ERROR_MESSAGE="$message" \
+    JARVIS_START_ERROR_MODE="$MODE" \
+    JARVIS_START_ERROR_SESSION="${SESSIONS[$service_name]:-unknown}" \
+    JARVIS_START_ERROR_ROOT="$PROJECT_ROOT" \
+    python3 - <<'PY' 2>/dev/null || true
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+
+service = os.environ["JARVIS_START_ERROR_SERVICE"]
+timeout_seconds = int(os.environ["JARVIS_START_ERROR_TIMEOUT"])
+log_dir = Path(os.environ["JARVIS_START_ERROR_ROOT"]) / "logs" / "api"
+log_dir.mkdir(parents=True, exist_ok=True)
+log_file = log_dir / f"errors-{datetime.now().strftime('%Y-%m-%d')}.jsonl"
+entry = {
+    "timestamp": datetime.now().isoformat(),
+    "service": "jarvis-startup",
+    "event": "service_health_timeout",
+    "method": "START",
+    "path": f"/startup/{service}",
+    "query": None,
+    "status": 504,
+    "duration_ms": timeout_seconds * 1000,
+    "client_ip": "localhost",
+    "request_body": None,
+    "error": os.environ["JARVIS_START_ERROR_MESSAGE"],
+    "startup_mode": os.environ["JARVIS_START_ERROR_MODE"],
+    "session": os.environ["JARVIS_START_ERROR_SESSION"],
+    "timeout_seconds": timeout_seconds,
+}
+with log_file.open("a", encoding="utf-8") as handle:
+    handle.write(json.dumps(entry) + "\n")
+PY
+}
+
 is_session_running() {
     tmux has-session -t "$1" 2>/dev/null
 }
@@ -199,7 +242,7 @@ wait_for_health() {
     local name=$1
     local port=${PORTS[$name]}
     local endpoint=${HEALTH_ENDPOINTS[$name]}
-    local max_wait=${JARVIS_START_HEALTH_TIMEOUT_SECONDS:-60}
+    local max_wait=${JARVIS_START_HEALTH_TIMEOUT_SECONDS:-300}
     local waited=0
     
     if [ -z "$port" ]; then
@@ -219,7 +262,9 @@ wait_for_health() {
     done
     
     echo ""
-    error "$name did not become ready in $MODE mode within ${max_wait}s"
+    local timeout_message="$name did not become ready in $MODE mode within ${max_wait}s"
+    error "$timeout_message"
+    log_api_startup_error "$name" "$max_wait" "$timeout_message"
     return 1
 }
 

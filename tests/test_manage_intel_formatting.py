@@ -18,7 +18,13 @@ sys.path.insert(0, str(PROJECT_ROOT / "skills"))
 
 from intel_content import normalize_intel_content
 from ingest_intel import extract_facts_from_content
-from manage_intel import append_intel_file, auto_ingest, format_ingest_summary
+from manage_intel import (
+    append_intel_file,
+    auto_ingest,
+    format_ingest_summary,
+    replace_intel_content,
+    search_intel_file,
+)
 
 
 def _fake_export_environment(mode):
@@ -86,6 +92,87 @@ class TestIntelContentNormalization(unittest.TestCase):
             content = target.read_text(encoding="utf-8")
             self.assertIn("[2026-05-01 00:44 PDT]\n## 2026-05-01", content)
             self.assertIn("- Observation: structure preserved", content)
+
+    def test_search_returns_tail_context_line_numbers_and_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel_dir = Path(tmpdir)
+            target = intel_dir / "garden.md"
+            target.write_text(
+                "# Garden\n\n## Original\nKeep this.\n\n## Duplicate\nRemove this.\n",
+                encoding="utf-8",
+            )
+
+            result = search_intel_file(
+                intel_dir,
+                "garden.md",
+                "## Duplicate",
+                context_lines=2,
+            )
+
+            self.assertEqual(result["match_count"], 1)
+            self.assertEqual(result["matches"][0]["match_start_line"], 6)
+            self.assertIn("6: ## Duplicate", result["matches"][0]["line_numbered_content"])
+            self.assertIn("Remove this.", result["matches"][0]["content"])
+            self.assertEqual(len(result["file_sha256"]), 64)
+
+    def test_replace_removes_one_exact_block_with_matching_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel_dir = Path(tmpdir)
+            target = intel_dir / "garden.md"
+            duplicate = "\n## Duplicate\nRemove this.\n"
+            target.write_text("# Garden\n" + duplicate + "\n## Keep\nKeep this.\n", encoding="utf-8")
+            search = search_intel_file(intel_dir, "garden.md", "## Duplicate")
+
+            result = replace_intel_content(
+                intel_dir,
+                "garden.md",
+                duplicate,
+                "",
+                expected_replacements=1,
+                expected_file_sha256=search["file_sha256"],
+            )
+
+            self.assertTrue(result["removed"])
+            self.assertEqual(result["replacements"], 1)
+            self.assertNotIn("Duplicate", target.read_text(encoding="utf-8"))
+            self.assertIn("## Keep", target.read_text(encoding="utf-8"))
+
+    def test_replace_refuses_ambiguous_match_without_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel_dir = Path(tmpdir)
+            target = intel_dir / "garden.md"
+            original = "duplicate\nkeep\nduplicate\n"
+            target.write_text(original, encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "Expected 1 exact match.*found 2"):
+                replace_intel_content(
+                    intel_dir,
+                    "garden.md",
+                    "duplicate\n",
+                    "",
+                    expected_replacements=1,
+                )
+
+            self.assertEqual(target.read_text(encoding="utf-8"), original)
+
+    def test_replace_refuses_stale_file_hash_without_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel_dir = Path(tmpdir)
+            target = intel_dir / "garden.md"
+            target.write_text("old block\n", encoding="utf-8")
+            search = search_intel_file(intel_dir, "garden.md", "old block")
+            target.write_text("new prefix\nold block\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "File changed after it was inspected"):
+                replace_intel_content(
+                    intel_dir,
+                    "garden.md",
+                    "old block\n",
+                    "",
+                    expected_file_sha256=search["file_sha256"],
+                )
+
+            self.assertEqual(target.read_text(encoding="utf-8"), "new prefix\nold block\n")
 
     def test_format_ingest_summary_mentions_both_dbs(self) -> None:
         summary = format_ingest_summary({

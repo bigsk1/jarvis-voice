@@ -115,11 +115,20 @@ Better pattern:
 | Tool | What it does |
 |------|-------------|
 | `ingest_intel` | Scan folder and ingest all changed files into memory |
-| `manage_intel` | CRUD + append for intel files. Actions: create, read, update, append, delete, list |
+| `manage_intel` | Safe file and content management. Actions: create, read, search, update, replace, append, delete, list |
 
 The `manage_intel` tool is the only way Jarvis can write to this folder. OpenCode cannot access it.
 
 **append** is the preferred action for Jarvis self-learning. It adds content to the end of a file with an automatic timestamp, without touching existing content.
+
+Append only adds content. It must not be used for removal, cleanup, deduplication, or correction. For those requests, Jarvis should:
+
+1. Use `search` to locate the exact text with line context and capture the file SHA-256.
+2. Use `replace` with the exact `old_content`, expected match count, and SHA-256 returned by search.
+3. Set `new_content` to an empty string to remove the block, or provide corrected replacement text.
+4. Set `auto_ingest=true` so facts derived from the old file are removed and rebuilt.
+
+`replace` refuses to write if the exact match count differs from `expected_replacements` or the file changed after search. Use `update` only when intentionally replacing the entire document; `delete` removes the entire file, not an entry within it.
 
 ## Commands
 

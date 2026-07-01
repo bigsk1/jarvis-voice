@@ -412,6 +412,7 @@ class ContextAssembler:
         context_parts = [f"Original user request: {original_query}\n"]
         context_parts.append("Tools executed so far:")
         context_parts.append("Context note: some large tool payloads are intentionally truncated for context efficiency.")
+        context_parts.append("Argument truncation is display-only: the complete arguments were sent to the tool. If a mutation result says ok=true, treat that completed mutation as authoritative and do not recreate it because omitted argument content is not visible.")
         context_parts.append("If ok=true, the tool completed successfully even when only a preview is shown.")
         context_parts.append("Do not repeat the same tool just to recover omitted tail content; answer from the available result or choose a different tool if genuinely needed.")
         now = datetime.now(self.timezone)
@@ -454,11 +455,17 @@ class ContextAssembler:
             context_parts.append(f"\n{i}. Tool result #{i}: {tool_name}")
             arguments = ctx.get("arguments", {}) if isinstance(ctx, dict) else {}
             if arguments:
-                args_preview = self.truncate_preview_text(
-                    json.dumps(self.build_preview_value(arguments, parent_key="arguments"), default=str, separators=(",", ":")),
-                    1200,
+                args_preview, args_chars_total, args_chars_shown, args_truncated = (
+                    self.build_arguments_context_preview(arguments, max_chars=1200)
                 )
                 context_parts.append(f"   Arguments: {args_preview}")
+                context_parts.append(
+                    "   Arguments Meta: "
+                    f"arguments_truncated={str(args_truncated).lower()}, "
+                    f"arguments_chars_shown={args_chars_shown}, "
+                    f"arguments_chars_total={args_chars_total}. "
+                    "The complete arguments were sent to the tool; this preview does not indicate partial execution."
+                )
             provider_ids = []
             if meta.get("xai_response_id"):
                 provider_ids.append(f"xai_response_id={meta['xai_response_id']}")
@@ -549,16 +556,17 @@ class ContextAssembler:
         result_summary, result_chars_total, result_chars_shown, result_truncated = (
             self.build_llm_result_context_preview(tool_name, result)
         )
-        args_preview = self.truncate_preview_text(
-            json.dumps(
-                self.build_preview_value(arguments or {}, parent_key="arguments"),
-                default=str,
-                separators=(",", ":"),
-            ),
-            max(120, min(1200, max_chars // 4)),
+        args_preview, args_chars_total, args_chars_shown, args_truncated = (
+            self.build_arguments_context_preview(
+                arguments or {},
+                max_chars=max(120, min(1200, max_chars // 4)),
+            )
         )
         metadata = {
             "ok": bool(result.get("ok", True)) if isinstance(result, dict) else False,
+            "arguments_truncated": args_truncated,
+            "arguments_chars_shown": args_chars_shown,
+            "arguments_chars_total": args_chars_total,
             "result_truncated": result_truncated,
             "result_chars_shown": result_chars_shown,
             "result_chars_total": result_chars_total,
@@ -570,6 +578,13 @@ class ContextAssembler:
             "Jarvis tool result",
             f"Tool: {tool_name}" + (f" (call_id: {tool_call_id})" if tool_call_id else ""),
             f"Arguments: {args_preview}",
+            (
+                "Arguments Meta: "
+                f"arguments_truncated={str(metadata['arguments_truncated']).lower()}, "
+                f"arguments_chars_shown={metadata['arguments_chars_shown']}, "
+                f"arguments_chars_total={metadata['arguments_chars_total']}. "
+                "The complete arguments were sent to the tool; this preview does not indicate partial execution."
+            ),
             f"Status: {'ok' if metadata['ok'] else 'error'}",
         ]
         if duration_ms is not None:
@@ -641,6 +656,21 @@ class ContextAssembler:
         metadata["result_truncated"] = True
         metadata["result_chars_shown"] = len(rendered)
         return prefix + rendered, metadata
+
+    def build_arguments_context_preview(
+        self,
+        arguments: dict[str, Any],
+        *,
+        max_chars: int,
+    ) -> tuple[str, int, int, bool]:
+        """Build an argument preview with explicit, machine-readable truncation state."""
+        full_value = json.loads(json.dumps(arguments or {}, default=str))
+        preview_value = self.build_preview_value(full_value, parent_key="arguments")
+        full_text = json.dumps(full_value, default=str, separators=(",", ":"))
+        preview_text = json.dumps(preview_value, default=str, separators=(",", ":"))
+        bounded_preview = self.truncate_preview_text(preview_text, max_chars)
+        truncated = preview_value != full_value or bounded_preview != preview_text
+        return bounded_preview, len(full_text), len(bounded_preview), truncated
 
     def tool_context_max_chars(self, tool_name: str) -> int:
         lowered = (tool_name or "").lower()

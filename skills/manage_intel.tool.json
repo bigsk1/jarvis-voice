@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "manage_intel",
-  "description": "SAVE TO INTEL FOLDER: Create, read, update, append, delete, or list files in jarvis-intel/ directory. This is the ONLY tool that can write to jarvis-intel/ - OpenCode CANNOT access this folder. Use when user says 'save to intel', 'add to my intel', 'save to my knowledge base', or 'create intel file'. IMPORTANT: write retrieval-friendly markdown so ingest_intel can extract facts later. Prefer real headings, dated sections, bullets, and 'Key: Value' lines. For existing files, read first when needed and preserve the file's established structure instead of inventing a new format. For logs/timelines/season trackers, append new dated sections under the existing pattern. For inventories/reference files, keep a stable top index or summary section and then append details below it. SELF-LEARNING: When you discover a critical tool limitation, provider quirk, or recurring failure pattern, use action=append with path=jarvis-learned-lessons.md to save the lesson for future sessions. Format: '- **Topic**: Lesson learned'. Always set auto_ingest=true after create/update/append/delete unless the user explicitly does not want memory updated. Sandboxed to jarvis-intel/ only (FLAT - no subdirs).",
+  "description": "SAVE TO INTEL FOLDER: Create, read, search, update, replace, append, delete, or list files in jarvis-intel/ directory. This is the ONLY tool that can write to jarvis-intel/ - OpenCode CANNOT access this folder. Use when user says 'save to intel', 'add to my intel', 'save to my knowledge base', or 'create intel file'. IMPORTANT: append can only add content and NEVER satisfies remove, cleanup, deduplicate, correct, or replace requests. For content removal or correction, search for the exact block and then use replace; set new_content to an empty string to remove it. Use expected_replacements and expected_file_sha256 so ambiguous or stale edits fail safely. Use update only when intentionally replacing the full document. Write retrieval-friendly markdown so ingest_intel can extract facts later. Prefer real headings, dated sections, bullets, and 'Key: Value' lines. For existing files, read or search first and preserve the established structure. For logs/timelines/season trackers, append only when the user is adding a new dated observation. SELF-LEARNING: When you discover a critical tool limitation, provider quirk, or recurring failure pattern, use action=append with path=jarvis-learned-lessons.md to save the lesson for future sessions. Format: '- **Topic**: Lesson learned'. Always set auto_ingest=true after create/update/replace/append/delete unless the user explicitly does not want memory updated. Sandboxed to jarvis-intel/ only (FLAT - no subdirs).",
   "complementary_tools": [
     "ingest_intel"
   ],
@@ -14,12 +14,14 @@
         "enum": [
           "create",
           "read",
+          "search",
           "update",
+          "replace",
           "append",
           "delete",
           "list"
         ],
-        "description": "Action to perform: create (new file), read (get content), update (replace full content), append (add to end of file - SAFE, cannot overwrite), delete (remove file + memories), list (show all files). Prefer append for logs, lessons, dated observations, and other growing files. Prefer update when restructuring or replacing the full document."
+        "description": "Action to perform: create (new file), read (get full content), search (find literal text with line context), update (replace full document), replace (replace/remove exact literal content), append (add only), delete (remove entire file + memories), list. CRITICAL: never use append for remove, cleanup, deduplicate, correct, or replace requests. Use search then replace; an empty new_content removes the exact old_content block."
       },
       "path": {
         "type": "string",
@@ -29,13 +31,49 @@
         "type": "string",
         "description": "File content (markdown or plain text). Prefer real newlines, headers, bullets, dated sections, and Key: Value lines for best ingestion and later memory retrieval. Preserve the file's existing structure when updating or appending. Required for create, update, and append actions."
       },
+      "query": {
+        "type": "string",
+        "description": "Exact literal text to locate with action=search. Returns line-numbered surrounding context, match count, and file_sha256."
+      },
+      "context_lines": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100,
+        "default": 5,
+        "description": "Number of surrounding lines returned before and after each search match. Increase when locating a complete block for replacement."
+      },
+      "max_matches": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 20,
+        "description": "Maximum search matches returned with context. match_count still reports the full total."
+      },
+      "old_content": {
+        "type": "string",
+        "description": "Exact literal content to replace. Required and non-empty for action=replace. Copy it exactly from search/read results."
+      },
+      "new_content": {
+        "type": "string",
+        "description": "Replacement text for action=replace. Use an empty string to remove old_content."
+      },
+      "expected_replacements": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 1,
+        "description": "Required exact match count. The tool refuses to write when the actual count differs."
+      },
+      "expected_file_sha256": {
+        "type": "string",
+        "description": "Optional file_sha256 returned by search. The tool refuses a stale edit if the file changed after inspection."
+      },
       "pattern": {
         "type": "string",
         "description": "File name pattern for list action (e.g., '*server*'). Defaults to '*' (all files)."
       },
       "auto_ingest": {
         "type": "boolean",
-        "description": "If true, automatically run ingest_intel after create, update, append, or delete so memory stays in sync. Recommended: true unless the user explicitly wants file-only changes."
+        "description": "If true, automatically run ingest_intel after create, update, replace, append, or delete so memory stays in sync. Recommended: true unless the user explicitly wants file-only changes."
       }
     },
     "required": [

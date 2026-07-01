@@ -181,17 +181,26 @@ Scans `jarvis-intel/` and ingests all changed files into memory.
 
 ### `manage_intel`
 
-CRUD + append for intel files. Only tool that can write to `jarvis-intel/`.
+Safe file and content management for intel files. It is the only tool that can write to `jarvis-intel/`.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `action` | string | `create`, `read`, `update`, `append`, `delete`, `list` |
+| `action` | string | `create`, `read`, `search`, `update`, `replace`, `append`, `delete`, `list` |
 | `path` | string | Relative filename (flat, no subdirs). e.g., `servers.md` |
 | `content` | string | File content (required for create/update/append) |
 | `pattern` | string | File name glob for list action (default: `*`) |
+| `query` | string | Exact literal text to locate with search |
+| `context_lines` | integer | Surrounding lines returned for each search match (0–100) |
+| `max_matches` | integer | Maximum contextual matches returned by search (1–100) |
+| `old_content` | string | Exact non-empty content to replace or remove |
+| `new_content` | string | Replacement content; empty removes `old_content` |
+| `expected_replacements` | integer | Exact match count required before replacement (default: 1) |
+| `expected_file_sha256` | string | Optional SHA-256 from search; rejects edits if the file changed |
 | `auto_ingest` | boolean | Run ingest_intel after changes (recommended: true) |
 
 **`append`** is the preferred action for Jarvis self-learning. It adds content to the end of a file with an automatic timestamp prefix `[YYYY-MM-DD HH:MM]`, without touching existing content. Jarvis cannot accidentally overwrite knowledge with append.
+
+`append` can never satisfy a remove, cleanup, deduplicate, correct, or replace request. Use `search` followed by guarded `replace` for content-level edits. `update` replaces the complete document, while `delete` removes the complete file and its facts.
 
 ---
 
@@ -228,6 +237,18 @@ Guard rails:
 
 ## Updating and Deleting Intel
 
+### Search and Replace Content Safely
+
+For removing a duplicate entry or correcting part of a growing file:
+
+1. Call `manage_intel` with `action=search`, an exact `query`, and enough `context_lines` to identify the complete block.
+2. Copy the exact block into `old_content`.
+3. Call `action=replace` with `expected_replacements` and the `file_sha256` returned by search as `expected_file_sha256`.
+4. Use an empty `new_content` to remove the block, or provide corrected text.
+5. Set `auto_ingest=true` to rebuild facts in the current and existing sibling mode databases.
+
+The replace operation makes no changes if the exact match count is unexpected or the file hash is stale. Search/read again rather than weakening those safeguards.
+
 ### Edit and Re-Ingest
 
 ```bash
@@ -255,6 +276,7 @@ Jarvis can also manage files via the `manage_intel` tool:
 ```
 "Create an intel file called coolify-setup with my server details"
 "Update the network intel file with the new IP"
+"Remove the duplicate June observation from my garden intel file"
 "Delete the old servers intel file"
 "List my intel files"
 ```
@@ -379,9 +401,9 @@ md5sum jarvis-intel/*.md jarvis-intel/*.txt 2>/dev/null
 | `jarvis-intel/jarvis-learned-lessons.md` | Jarvis self-learned lessons (git-tracked) |
 | `skills/ingest_intel.py` | Ingestion tool implementation |
 | `skills/ingest_intel.tool.json` | Ingestion tool schema |
-| `skills/manage_intel.py` | CRUD + append tool implementation |
+| `skills/manage_intel.py` | Safe file CRUD, literal search, exact replacement, and append implementation |
 | `skills/manage_intel.tool.json` | Manage tool schema |
 
 ---
 
-**Last Updated**: 2026-05-01
+**Last Updated**: 2026-06-30

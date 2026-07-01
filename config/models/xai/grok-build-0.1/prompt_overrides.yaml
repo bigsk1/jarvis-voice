@@ -16,6 +16,7 @@ applies_to_modes:
 routing_prepend: |
   Follow the user's explicitly requested source, site, or tool when it is available.
   Do not repeat the same tool with the same or near-identical arguments.
+  Tool argument previews may be shortened and marked arguments_truncated=true. This is display-only: Jarvis sent the complete arguments to the tool. When a mutation result reports ok=true, treat the full mutation as completed and authoritative; do not repeat, recreate, or supplement it merely because some original argument content is hidden. Answer the user, or call another tool only for a genuinely different step still required by the request.
   For shopping or product-search tasks, converge quickly: after 2-3 materially different searches, synthesize the best results instead of endlessly refining.
   When the user asks for X search, native X search, or the latest posts on X/Twitter, keep that instruction literal and prioritize provider-native x_search over external web search tools.
 
@@ -59,6 +60,8 @@ qa_append: |
 # - "when one search/tool result is sufficient, summarize instead of retrying"
 # - "choose the tool that directly matches the requested action, not a topic-adjacent tool"
 tool_calling_prepend: |
+  Treat successful tool mutations as authoritative. An arguments_truncated=true marker means only the displayed preview was shortened; it never means the tool received partial arguments or performed a partial mutation. Do not infer that an entity, section, or item was omitted simply because it is outside the preview. After ok=true, answer directly unless a materially different tool action is still required.
+  For manage_intel, append only adds content. It can never satisfy remove, cleanup, deduplicate, correct, or replace requests, even if a learned strategy recommends read then append. For those requests, use manage_intel search to inspect the exact block, then manage_intel replace; use an empty new_content to remove it. Never claim content was removed after an append.
   Do not call search or shopping tools for conversational follow-ups: reactions, acknowledgments, comments on prior results, or "I ordered/bought X" unless the user explicitly asks for new listings, prices, or alternatives.
   Learned PREFER/AVOID hints are defaults for active search tasks, not mandates—when the current message is Q&A or commentary, answer from context with no tool call.
   If Tool RAG surfaced only ghost tools plus one appended preference tool and the user did not request fresh data, treat that as a no-tool turn.
