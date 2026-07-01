@@ -328,7 +328,7 @@ def run_self_play_session(
 
 ```bash
 # Run self-play session
-./bin/jarvis-self-play --queries 50 --mode cloud
+~/jarvis-venv/bin/python ./bin/jarvis-self-play --queries 50 --mode cloud
 
 # Output:
 # Self-Play Session Started
@@ -352,10 +352,10 @@ def run_self_play_session(
 #     └── Tool gaps found: 2
 
 # View results
-./bin/jarvis-self-play results --session latest
+~/jarvis-venv/bin/python ./bin/jarvis-self-play results --session latest --mode cloud
 
 # Schedule nightly (cron)
-# 0 3 * * * ~/jarvis-voice/bin/jarvis-self-play --queries 100 --mode cloud
+# 0 3 * * * /home/USER/jarvis-venv/bin/python /home/USER/jarvis-voice/bin/jarvis-self-play --queries 100 --mode cloud
 ```
 
 ---
@@ -752,4 +752,3 @@ Jarvis Canvas (existing)
 
 **Document Version:** 1.0  
 **Author:** Planning Session 2025-12-02
-

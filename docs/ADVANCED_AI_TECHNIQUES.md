@@ -1124,7 +1124,15 @@ Output JSON:
 
 ### Concept
 
-Jarvis simulates queries overnight, rates its own responses, and discovers better routing strategies without human interaction.
+Jarvis generates read-only queries, executes them through the real orchestrator,
+collects evaluator feedback, and records tool-gap evidence without requiring a
+human to author every test case.
+
+This is a live learning harness, not a mocked sandbox. It can incur provider and
+search API costs, and it intentionally writes selected-mode conversation,
+Intelligence experience, feedback, and prompt-usage records. External actions,
+artifact creation, persistent user-data mutations, and cross-mode Memory sync
+are blocked during self-play.
 
 ### Flow Diagram
 
@@ -1136,20 +1144,20 @@ Jarvis simulates queries overnight, rates its own responses, and discovers bette
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
 │  │                    QUERY GENERATION                                   │   │
 │  │                                                                       │   │
-│  │  Source 1: Past conversations (sample successful ones)               │   │
-│  │  Source 2: Mutation of past queries (paraphrase, expand)             │   │
-│  │  Source 3: Edge cases from feedback (low-rated interactions)         │   │
+│  │  Source: category prompts + reviewed read-only examples              │   │
+│  │  Categories include information, live data, research, productivity,  │   │
+│  │  media lookup, and system status                                     │   │
 │  │                                                                       │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │         │                                                                   │
 │         ▼                                                                   │
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                    SANDBOXED EXECUTION                                │   │
+│  │                    GUARDED LIVE EXECUTION                             │   │
 │  │                                                                       │   │
-│  │  - No real external calls (mocked responses)                         │   │
-│  │  - No memory writes (dry run mode)                                   │   │
-│  │  - Full routing logic exercised                                      │   │
-│  │  - Tool selection recorded                                           │   │
+│  │  - Real provider/tool routing for meaningful results                 │   │
+│  │  - Fail-closed allowlist; new tools start excluded                   │   │
+│  │  - No action/artifact tools or cross-mode Memory sync                │   │
+│  │  - Selected-mode learning and feedback records are retained          │   │
 │  │                                                                       │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │         │                                                                   │
@@ -1157,96 +1165,81 @@ Jarvis simulates queries overnight, rates its own responses, and discovers bette
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
 │  │                    SELF-EVALUATION                                    │   │
 │  │                                                                       │   │
-│  │  Evaluator LLM (FEEDBACK_MODEL) scores:                              │   │
-│  │  - Tool selection appropriateness (1-10)                             │   │
-│  │  - Response quality (1-10)                                           │   │
-│  │  - Efficiency (turns used vs optimal)                                │   │
+│  │  Evaluator LLM (FEEDBACK_PROVIDER / FEEDBACK_MODEL) scores:          │   │
+│  │  - Overall response quality (1-5)                                    │   │
+│  │  - Per-tool quality (1-5)                                            │   │
+│  │  - Issues, strengths, and improvement suggestions                    │   │
 │  │                                                                       │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │         │                                                                   │
 │         ▼                                                                   │
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                    STRATEGY EXPLORATION                               │   │
+│  │                    GAP ANALYSIS                                       │   │
 │  │                                                                       │   │
-│  │  For low-scoring interactions:                                       │   │
-│  │  1. Generate alternative tool combinations                           │   │
-│  │  2. Re-run with alternatives                                         │   │
-│  │  3. Compare scores                                                   │   │
-│  │  4. If alternative wins → record as new insight                      │   │
+│  │  - Aggregate ratings and failures                                    │   │
+│  │  - Detect categories repeatedly falling back to Brave search         │   │
+│  │  - Save JSONL results and a complete session summary                 │   │
 │  │                                                                       │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │         │                                                                   │
 │         ▼                                                                   │
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                    INSIGHT GENERATION                                 │   │
+│  │                    LEARNING EVIDENCE                                  │   │
 │  │                                                                       │   │
-│  │  New insight: "For queries like X, prefer tool Y over Z"             │   │
-│  │  Stored in intelligence layer with self-play origin                  │   │
+│  │  - Normal selected-mode Intelligence experiences are recorded        │   │
+│  │  - Feedback updates experience outcomes and prompt usage             │   │
+│  │  - Session summaries support later human/evolution analysis          │   │
 │  │                                                                       │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Query Mutation Examples
+### Safety Model
 
-```python
-MUTATION_STRATEGIES = {
-    "paraphrase": {
-        # Original: "What time is it?"
-        # Mutations: "Tell me the current time", "What's the time now?", "Time?"
-        "prompt": "Rephrase this query 3 different ways: {query}"
-    },
-
-    "expand": {
-        # Original: "Weather"
-        # Mutations: "What's the weather today?", "Weather forecast for my location"
-        "prompt": "Expand this brief query into a complete question: {query}"
-    },
-
-    "complicate": {
-        # Original: "Check Bitcoin price"
-        # Mutations: "Check Bitcoin and Ethereum prices, compare them"
-        "prompt": "Make this query more complex (add related sub-tasks): {query}"
-    },
-
-    "adversarial": {
-        # Original: "Remember my VPN is 192.168.1.1"
-        # Mutations: "Don't remember anything", "Forget everything about VPN"
-        "prompt": "Create an edge case or adversarial version of: {query}"
-    }
-}
-```
+- Reviewed read-only tools are allowlisted in `lib/self_play.py`.
+- New registry tools and tools marked `permissions.dangerous` are excluded by
+  default. Registry initialization failure aborts the session instead of
+  running fail-open.
+- `SELF_PLAY_EXCLUDED_TOOLS` can add site-specific blocks.
+- `SELF_PLAY_ALLOWED_TOOLS` can opt in an additional reviewed read-only tool;
+  it cannot override the built-in denylist or a dangerous permission.
+- Generated queries are also filtered for action-oriented language, but that
+  heuristic is defense-in-depth rather than the primary safety boundary.
+- Each orchestrator child receives `export_config_environment(mode)`, keeping
+  local and cloud configuration isolated.
 
 ### CLI Usage
 
 ```bash
-# Run self-play session (e.g., overnight cron job)
-./bin/jarvis-self-play --iterations 100 --mode cloud
+# Start with a small reviewed session
+~/jarvis-venv/bin/python ./bin/jarvis-self-play --queries 5 --mode local --categories information
+
+# Run a larger cloud session
+~/jarvis-venv/bin/python ./bin/jarvis-self-play --queries 100 --mode cloud
+
+# Skip evaluator feedback (query execution still records normal learning data)
+~/jarvis-venv/bin/python ./bin/jarvis-self-play --queries 10 --mode local --no-feedback
 
 # Output:
 # Self-Play Session Started
 # ├── Generating queries...
-# │   ├── 50 from conversation history  ( not good if recending emails and alerts and remindered need to modify this )
-# │   ├── 30 mutations
-# │   └── 20 edge cases
-# ├── Executing in sandbox...
+# │   └── Read-only category prompts
+# ├── Executing with guarded live tools...
 # │   ├── 100/100 complete
-# │   ├── Avg score: 7.2
+# │   ├── Avg score: 4.2
 # │   └── Low scorers: 15
-# ├── Exploring alternatives for low scorers...
-# │   ├── 8 improved with alternative strategy
-# │   └── 7 no better alternative found
-# └── Generated 8 new insights
+# └── Tool gaps found: 2
 #
-# Session complete. Log: logs/self-play/2025-12-01.jsonl
+# Session complete. Log: logs/self-play/session-YYYYMMDD_HHMMSS.json
 
-# View self-play insights
-./bin/jarvis-self-play insights --days 7
+# List and inspect sessions
+~/jarvis-venv/bin/python ./bin/jarvis-self-play list --mode cloud
+~/jarvis-venv/bin/python ./bin/jarvis-self-play results --session latest --mode cloud
 
 # Schedule nightly runs
 # Add to crontab:
-# 0 3 * * * ~/jarvis-voice/bin/jarvis-self-play --iterations 50 --mode cloud
+# 0 3 * * * /home/USER/jarvis-venv/bin/python /home/USER/jarvis-voice/bin/jarvis-self-play --queries 50 --mode cloud
 ```
 
 ---
@@ -1452,7 +1445,7 @@ Each phase builds on the previous, with safety guardrails ensuring stability.
 | **7** | Versioned Rollback | ✅ Built, Untested | Included in Phase 3 |
 | **4** | Dynamic Tool Creation | ✅ **IMPLEMENTED** | `lib/tool_builder.py`, `bin/build-tool`, Ouroboros research 🐍 |
 | **5** | Parallel Subagents | 📋 Planned | See Phase 8 below |
-| **6** | Self-Play Optimization | 📋 Planned | - |
+| **6** | Self-Play Optimization | ✅ Implemented, guarded live execution | `lib/self_play.py`, `bin/jarvis-self-play` |
 | **8** | Swarm Mode | 📋 Brainstorming | `docs/swarm/BRAINSTORM.md` |
 | **9** | Autonomous Maintenance | 📋 Brainstorming | See below |
 | **10** | Proactive Briefing Agent | 📋 Brainstorming | See below |

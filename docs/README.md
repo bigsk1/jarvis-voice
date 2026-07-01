@@ -343,6 +343,10 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Gemini video duration is now sent as an integer so Veo respects supported 4/6/8-second selection instead of always defaulting to 8 seconds.
   - Migrated deprecated Pydantic `class Config` schema examples to `ConfigDict`, updated the UV lock/install flow to use `~/jarvis-venv`, and corrected dashboard memory-sync commands for explicit `--from/--to` mode arguments.
   - Docker retains its requirements-based install while also receiving the package-layout metadata needed for reproducible project builds.
+- ✅ **Self-play safety and mode-isolation hardening**
+  - Self-play now uses a fail-closed reviewed read-only tool allowlist; persistent mutations, artifact generation, external actions, dangerous tools, and newly discovered unreviewed tools are excluded.
+  - Orchestrator children receive the selected mode through the shared environment exporter, and self-play skips automatic cloud↔local Memory synchronization while retaining its intended selected-mode learning and feedback records.
+  - Updated the implemented CLI and safety documentation to replace the obsolete mocked-sandbox and `--iterations` examples.
 
 **2026-06-27 (v2.53.2):**
 - ✅ **Cloud/local startup mode plumbing**

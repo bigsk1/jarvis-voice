@@ -145,11 +145,11 @@ COMMANDS: List[Command] = [
     Command("UniFi Webhook Logs", "journalctl -u unifi-protect-webhook -n 30 --no-pager 2>/dev/null || echo 'No logs or needs sudo'", "Recent webhook logs", "🔧 Services"),
     
     # === 🔄 WORKFLOWS ===
-    Command("📦 Archive URL", './orchestrator/orchestrator_v2.py cloud "/archive https://example.com"', "Archive webpage to stash + Canvas", "🔄 Workflows"),
-    Command("🔍 Deep Research", './orchestrator/orchestrator_v2.py cloud "/research AI trends 2026"', "Multi-source research with Brave + crawling", "🔄 Workflows"),
-    Command("📝 Quick Note", './orchestrator/orchestrator_v2.py cloud "/note Remember to check server logs"', "Save note to memory + Canvas", "🔄 Workflows"),
-    Command("🏥 Server Health", './orchestrator/orchestrator_v2.py cloud "/health vps2"', "SSH health check (default: vps2)", "🔄 Workflows"),
-    Command("📊 Crypto Report", './orchestrator/orchestrator_v2.py cloud "/crypto"', "BTC/SOL prices, news, email to Boss", "🔄 Workflows"),
+    # Command("📦 Archive URL", './orchestrator/orchestrator_v2.py cloud "/archive https://example.com"', "Archive webpage to stash + Canvas", "🔄 Workflows"),
+    # Command("🔍 Deep Research", './orchestrator/orchestrator_v2.py cloud "/research AI trends 2026"', "Multi-source research with Brave + crawling", "🔄 Workflows"),
+    # Command("📝 Quick Note", './orchestrator/orchestrator_v2.py cloud "/note Remember to check server logs"', "Save note to memory + Canvas", "🔄 Workflows"),
+    # Command("🏥 Server Health", './orchestrator/orchestrator_v2.py cloud "/health vps2"', "SSH health check (default: vps2)", "🔄 Workflows"),
+    # Command("📊 Crypto Report", './orchestrator/orchestrator_v2.py cloud "/crypto"', "BTC/SOL prices, news, email to Boss", "🔄 Workflows"),
     Command("List Workflows", "ls -la data/workflows/*.json 2>/dev/null | awk '{print $NF}' | xargs -I{} basename {} .json", "Show available workflow files", "🔄 Workflows"),
     Command("View Archive Workflow", "cat data/workflows/web_archive.json | jq '.name, .description, .steps[].tool'", "Web archive workflow details", "🔄 Workflows"),
     Command("View Research Workflow", "cat data/workflows/deep_research.json | jq '.name, .description, .steps[].tool'", "Deep research workflow details", "🔄 Workflows"),
@@ -235,11 +235,11 @@ COMMANDS: List[Command] = [
     Command("Tool Builder Logs", "cat logs/tool-builder/tool-builder-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -10 | jq -c '{event,tool_name,status}'", "Tool creation logs", "🛠️ Tools"),
     
     # === 🎮 SELF-PLAY ===
-    Command("Self-Play (5 queries)", "./bin/jarvis-self-play --queries 5 --mode cloud", "Quick self-play session", "🎮 Self-Play"),
-    Command("Self-Play (20 queries)", "./bin/jarvis-self-play --queries 20 --mode cloud", "Standard self-play session", "🎮 Self-Play"),
-    Command("Self-Play (Local)", "./bin/jarvis-self-play --queries 10 --mode local", "Local mode self-play", "🎮 Self-Play"),
-    Command("List Sessions", "./bin/jarvis-self-play list", "Recent self-play sessions", "🎮 Self-Play"),
-    Command("Latest Results", "./bin/jarvis-self-play results --session latest", "View latest session", "🎮 Self-Play"),
+    Command("Self-Play Cloud (5)", "./bin/jarvis-self-play --queries 5 --mode cloud", "Quick guarded live session", "🎮 Self-Play"),
+    Command("Self-Play Cloud (20)", "./bin/jarvis-self-play --queries 20 --mode cloud", "Standard guarded live session", "🎮 Self-Play"),
+    Command("Self-Play Local (10)", "./bin/jarvis-self-play --queries 10 --mode local", "Guarded local-model session", "🎮 Self-Play"),
+    Command("List Sessions", "./bin/jarvis-self-play list", "Recent sessions from both modes", "🎮 Self-Play"),
+    Command("Latest Results", "./bin/jarvis-self-play results --session latest", "Latest session from either mode", "🎮 Self-Play"),
     Command("Self-Play Logs", "cat logs/self-play/self-play-$(date +%Y-%m-%d).jsonl 2>/dev/null | tail -10 | jq -c '{query: .query[:40], category, ok}'", "Today's self-play queries", "🎮 Self-Play"),
     
     # === 🔊 STATUS UPDATES ===

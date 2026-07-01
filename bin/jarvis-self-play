@@ -153,7 +153,7 @@ def list_sessions(args):
     """List recent sessions."""
     from self_play import SelfPlayEngine
     
-    engine = SelfPlayEngine(mode=args.mode)
+    engine = SelfPlayEngine.session_reader(mode=args.mode)
     sessions = engine.list_sessions(limit=args.limit)
     
     if not sessions:
@@ -177,7 +177,7 @@ def show_results(args):
     from self_play import SelfPlayEngine
     import json
     
-    engine = SelfPlayEngine(mode=args.mode)
+    engine = SelfPlayEngine.session_reader(mode=args.mode)
     
     if args.session == "latest":
         data = engine.get_latest_session()
@@ -272,4 +272,3 @@ Examples:
 
 if __name__ == "__main__":
     sys.exit(main())
-

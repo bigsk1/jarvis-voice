@@ -277,13 +277,16 @@ class Orchestrator:
         self._model_override = model_override
         load_config(mode)
         
-        # Auto-sync memory database from other mode if needed
-        try:
-            from auto_sync_memory import auto_sync_on_startup
-            auto_sync_on_startup(mode, verbose=False)
-        except Exception:
-            # Non-critical - continue if sync fails
-            pass
+        # Self-play intentionally writes learning data only to its selected
+        # mode. Do not let an unattended test run cross-sync the other mode's
+        # Memory database during orchestrator startup.
+        if os.environ.get("JARVIS_SELF_PLAY", "").strip().lower() != "true":
+            try:
+                from auto_sync_memory import auto_sync_on_startup
+                auto_sync_on_startup(mode, verbose=False)
+            except Exception:
+                # Non-critical - continue if sync fails
+                pass
         
         # Get shared tool registry singleton (includes MCP discovery)
         # This prevents duplicate MCP containers across multiple Orchestrator instances

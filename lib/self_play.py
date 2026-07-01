@@ -21,27 +21,98 @@ from dataclasses import dataclass, asdict
 
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
-from config_loader import load_config, get_config_value
+from config_loader import config_scope, export_config_environment, get_config_value
 from llm_provider import create_provider
 from model_catalog import get_provider_fallback_model
 
 # Tools that are too side-effectful or operationally powerful for unattended self-play.
 DEFAULT_EXCLUDED_TOOLS = [
+    "acknowledge_alerts",
+    "acknowledge_reminders",
+    "api_call",
     "opencode",
+    "docker_control",
+    "execute_bash",
+    "ssh_remote",
     "phone_call",
     "send_email",
     "send_webhook",
+    "create_alert",
     "create_reminder",
     "schedule_task",
     "canvas",
+    "convert_file",
     "printer",
     "pdf_create",
+    "pdf_read",
     "generate_image",
     "generate_video",
     "generate_music",
+    "create_social_clip",
     "manage_intel",
+    "ingest_intel",
+    "remember",
+    "update_memory",
+    "forget",
+    "memory_deduper",
+    "price_alert",
     "spotify",
+    "speaker_volume",
+    "stash",
+    "upload_cloudflare",
+    "qr_code_generator",
+    "screenshot_url",
+    "status_recap",
+    "youtube_transcript",
+    "youtube_video",
+    "git_release_notes",
+    "evolution_test",
+    "network_tools",
 ]
+
+# Self-play is fail-closed: only reviewed read-only tools are eligible. New
+# tools discovered by the registry are excluded until added here deliberately.
+DEFAULT_ALLOWED_TOOLS = {
+    "analyze_image",
+    "bookmark_search",
+    "brave_llm_context",
+    "calculator",
+    "check_opencode_sessions",
+    "check_tool_logs",
+    "crawl_url",
+    "crypto_chart",
+    "crypto_price",
+    "deep_memory_search",
+    "get_recent_conversations",
+    "get_time",
+    "list_alerts",
+    "list_reminders",
+    "query_service_logs",
+    "recall",
+    "search_conversations",
+    "search_docs",
+    "search_memory",
+    "semantic_recall",
+    "serpapi_ebay_product",
+    "serpapi_ebay_search",
+    "serpapi_home_depot",
+    "serpapi_hotel_search",
+    "serpapi_maps_search",
+    "serpapi_search",
+    "serpapi_yelp_search",
+    "serpapi_youtube",
+    "serpapi_youtube_search",
+    "stock_price",
+    "supa_crawl_knowledge",
+    "system_monitor",
+    "tool_search",
+    "weather",
+}
+
+DEFAULT_ALLOWED_TOOL_PREFIXES = (
+    "mcp_brave_search_",
+    "mcp_fetch_",
+)
 
 # Queries should stay read-mostly even if the app supports rich actions.
 UNSAFE_QUERY_PREFIXES = (
@@ -225,11 +296,22 @@ class SelfPlayEngine:
     
     def __init__(self, mode: str = "cloud"):
         self.mode = mode
-        load_config(mode)
         self.project_root = Path(__file__).parent.parent
         self.logs_dir = self.project_root / "logs" / "self-play"
         self.logs_dir.mkdir(parents=True, exist_ok=True)
-        self.excluded_tools = self._get_excluded_tools()
+        with config_scope(mode):
+            self.excluded_tools = self._get_excluded_tools()
+
+    @classmethod
+    def session_reader(cls, mode: str = "cloud") -> "SelfPlayEngine":
+        """Create a log-only instance without loading provider/tool execution state."""
+        engine = cls.__new__(cls)
+        engine.mode = mode
+        engine.project_root = Path(__file__).parent.parent
+        engine.logs_dir = engine.project_root / "logs" / "self-play"
+        engine.logs_dir.mkdir(parents=True, exist_ok=True)
+        engine.excluded_tools = []
+        return engine
 
     def _get_excluded_tools(self) -> list[str]:
         """Get the default self-play tool denylist plus any dangerous tools."""
@@ -239,6 +321,13 @@ class SelfPlayEngine:
         if extra_excluded:
             excluded.update(t.strip() for t in extra_excluded.split(",") if t.strip())
 
+        extra_allowed = {
+            name.strip()
+            for name in get_config_value("SELF_PLAY_ALLOWED_TOOLS", "").split(",")
+            if name.strip()
+        }
+        allowed = DEFAULT_ALLOWED_TOOLS | extra_allowed
+
         try:
             from tool_schema import ToolRegistry
 
@@ -246,11 +335,14 @@ class SelfPlayEngine:
             registry = ToolRegistry(str(self.project_root / "skills"), mcp_config)
             for tool_name in registry.list_tools():
                 tool = registry.get_tool(tool_name)
-                if tool and tool.permissions.get("dangerous", False):
+                explicitly_safe = tool_name in allowed or tool_name.startswith(DEFAULT_ALLOWED_TOOL_PREFIXES)
+                dangerous = bool(tool and tool.permissions.get("dangerous", False))
+                if dangerous or not explicitly_safe:
                     excluded.add(tool_name)
-        except Exception:
-            # Best effort only - self-play should still run even if registry init fails here.
-            pass
+        except Exception as exc:
+            raise RuntimeError(
+                "Self-play safety registry failed to initialize; refusing to run fail-open"
+            ) from exc
 
         return sorted(excluded)
 
@@ -285,6 +377,11 @@ class SelfPlayEngine:
             "write code",
         ]
         return not any(fragment in q for fragment in blocked_fragments)
+
+    def _generate_query_text(self, provider, prompt: str) -> str:
+        """Run generation inside the selected mode's immutable config scope."""
+        with config_scope(self.mode):
+            return provider.chat(message=prompt, max_tokens=1000)
         
     def generate_queries(self, num_queries: int, categories: list[str] | None = None) -> list[dict[str, str]]:
         """
@@ -361,10 +458,7 @@ Rules:
 Generate {count} queries:"""
 
             try:
-                response = provider.chat(
-                    message=prompt,
-                    max_tokens=1000,
-                )
+                response = self._generate_query_text(provider, prompt)
                 
                 # Parse response - one query per line
                 lines = response.strip().split("\n")
@@ -433,7 +527,7 @@ Generate {count} queries:"""
         
         try:
             # Run orchestrator with --json flag
-            env = os.environ.copy()
+            env = export_config_environment(self.mode)
             env["JARVIS_SELF_PLAY"] = "true"  # Flag for tracking
             env["JARVIS_SELF_PLAY_EXCLUDED_TOOLS"] = ",".join(self.excluded_tools)
             if silent:
@@ -635,28 +729,28 @@ Generate {count} queries:"""
     
     def _create_provider(self):
         """Create LLM provider for query generation."""
-        provider_type = get_config_value("LLM_PROVIDER", "anthropic")
-        
-        if provider_type == "ollama":
-            from ollama_utils import resolve_ollama_model
-            return create_provider(
-                "ollama",
-                model=resolve_ollama_model(getattr(self, "mode", None)),
-                base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),
-            )
-        elif provider_type == "xai":
-            return create_provider(
-                "xai",
-                api_key=get_config_value("XAI_API_KEY"),
-                model=get_config_value("XAI_MODEL", get_provider_fallback_model("xai")),
-            )
-        elif provider_type == "anthropic":
-            return create_provider(
-                "anthropic",
-                api_key=get_config_value("ANTHROPIC_API_KEY"),
-                model=get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic")),
-            )
-        else:
+        with config_scope(self.mode):
+            provider_type = get_config_value("LLM_PROVIDER", "anthropic")
+
+            if provider_type == "ollama":
+                from ollama_utils import resolve_ollama_model
+                return create_provider(
+                    "ollama",
+                    model=resolve_ollama_model(self.mode),
+                    base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),
+                )
+            if provider_type == "xai":
+                return create_provider(
+                    "xai",
+                    api_key=get_config_value("XAI_API_KEY"),
+                    model=get_config_value("XAI_MODEL", get_provider_fallback_model("xai")),
+                )
+            if provider_type == "anthropic":
+                return create_provider(
+                    "anthropic",
+                    api_key=get_config_value("ANTHROPIC_API_KEY"),
+                    model=get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic")),
+                )
             return create_provider(
                 "openai",
                 api_key=get_config_value("OPENAI_API_KEY"),
