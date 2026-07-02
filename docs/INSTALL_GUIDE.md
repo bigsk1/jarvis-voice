@@ -382,7 +382,7 @@ If you want n8n workflows, Docker-based automations, or Google Calendar sync, us
 
 ## Step 9: Setup Aliases
 
-Add convenient shell aliases (auto-detects bash or zsh):
+Install convenient Bash/Zsh commands. The updater adds one managed source block to the selected RC file; the command definitions remain in the tracked `.jarvis-aliases` file so future pulls update them automatically.
 
 ```bash
 cd ~/jarvis-voice
@@ -390,10 +390,23 @@ cd ~/jarvis-voice
 # Run alias setup script (detects .bashrc or .zshrc automatically)
 ./update-aliases.sh
 
-# Reload your shell config
-source ~/.bashrc   # for bash
-# or
-source ~/.zshrc    # for zsh
+# Reload using the exact command printed by the updater
+source ~/.bashrc   # Bash
+source ~/.zshrc    # Zsh
+```
+
+If you launched Zsh from Bash without making it your login shell, select it explicitly:
+
+```bash
+./update-aliases.sh --shell zsh
+source ~/.zshrc
+```
+
+Advanced overrides:
+
+```bash
+./update-aliases.sh --shell bash
+./update-aliases.sh --rc-file ~/.config/zsh/custom.zsh
 ```
 
 **Test aliases:**
@@ -406,11 +419,21 @@ say hello
 |-------|---------|
 | `jarvis` | Start wake word listener (cloud mode) |
 | `jarvis-local` | Start wake word listener (local mode) |
+| `jarvis-cli` | Full cloud orchestrator from text, without voice output |
+| `jarvis-local-cli` | Full local orchestrator from text, without voice output |
+| `jarvis-cli-json` / `jarvis-local-cli-json` | Corresponding CLI with JSON output |
 | `jarvis-d` | Open TUI dashboard |
-| `jarvis-web` | Start web UI |
-| `jarvis-api` | Start API server |
+| `jarvis-start` / `jarvis-start-local` | Start the complete cloud/local service stack |
+| `jarvis-stop` | Stop all Jarvis tmux sessions |
+| `jarvis-status` | Show status for every managed session |
+| `jarvis-web` / `jarvis-web-local` | Start cloud/local Web UI |
+| `jarvis-api` / `jarvis-api-local` | Start cloud/local API server |
 | `jarvis-cd` | cd to jarvis-voice directory |
 | `jarvis-env` | Activate Python venv |
+| `jarvis-logs` | Open the current tool-log viewer |
+| `jarvis-help` | List every installed Jarvis shell command |
+
+The older `question*` aliases remain available for their direct speech/question flows. Use `jarvis-cli` or `jarvis-local-cli` when you want the current provider-aware Jarvis orchestrator, tool routing, memory, and mode isolation.
 
 ---
 

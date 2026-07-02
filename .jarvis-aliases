@@ -1,0 +1,110 @@
+# Jarvis shell commands for Bash and Zsh.
+# Install the managed source block with: ./update-aliases.sh
+# shellcheck shell=bash
+# shellcheck disable=SC1091
+
+export JARVIS_ROOT="${JARVIS_ROOT:-$HOME/jarvis-voice}"
+export JARVIS_VENV="${JARVIS_VENV:-$HOME/jarvis-venv}"
+export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-$JARVIS_VENV}"
+
+# Remove aliases from older Jarvis setup blocks before defining current functions.
+unalias jarvis jarvis-local jarvis-cli jarvis-local-cli 2>/dev/null || true
+unalias jarvis-cli-json jarvis-local-cli-json jarvis-d 2>/dev/null || true
+unalias jarvis-start jarvis-start-local jarvis-stop jarvis-status 2>/dev/null || true
+unalias jarvis-web jarvis-web-local jarvis-api jarvis-api-local 2>/dev/null || true
+unalias jarvis-cd jarvis-env jarvis-logs jarvis-help 2>/dev/null || true
+
+_jarvis_run() (
+    if [[ ! -f "$JARVIS_VENV/bin/activate" ]]; then
+        echo "Jarvis environment not found: $JARVIS_VENV" >&2
+        return 1
+    fi
+    if [[ ! -d "$JARVIS_ROOT" ]]; then
+        echo "Jarvis checkout not found: $JARVIS_ROOT" >&2
+        return 1
+    fi
+    source "$JARVIS_VENV/bin/activate" || return 1
+    cd "$JARVIS_ROOT" || return 1
+    "$@"
+)
+
+# Wake-word listeners.
+jarvis() { _jarvis_run ./bin/wake-jarvis.py "$@"; }
+jarvis-local() { _jarvis_run ./bin/wake-jarvis-local.py "$@"; }
+
+# Full Jarvis CLI routing without microphone or speaker output.
+jarvis-cli() { _jarvis_run "$JARVIS_VENV/bin/python" ./orchestrator/orchestrator_v2.py cloud "$@"; }
+jarvis-local-cli() { _jarvis_run "$JARVIS_VENV/bin/python" ./orchestrator/orchestrator_v2.py local "$@"; }
+jarvis-cli-json() { jarvis-cli --json "$@"; }
+jarvis-local-cli-json() { jarvis-local-cli --json "$@"; }
+
+# Dashboard and service lifecycle.
+jarvis-d() { _jarvis_run ./bin/jarvis-dashboard "$@"; }
+jarvis-start() { _jarvis_run ./bin/start "$@"; }
+jarvis-start-local() { _jarvis_run ./bin/start --local "$@"; }
+jarvis-stop() { _jarvis_run ./bin/start --stop; }
+jarvis-status() { _jarvis_run ./bin/start --list; }
+
+# Individual Web/API services.
+jarvis-web() { _jarvis_run ./bin/start web; }
+jarvis-web-local() { _jarvis_run ./bin/start --local web; }
+jarvis-api() { _jarvis_run ./bin/start api; }
+jarvis-api-local() { _jarvis_run ./bin/start --local api; }
+
+# Direct speech/question helpers retained for compatibility.
+alias say='"$JARVIS_ROOT/bin/say.sh"'
+alias say-local='"$JARVIS_ROOT/bin/say-local.sh"'
+alias question='"$JARVIS_ROOT/bin/question.sh"'
+alias question-local='"$JARVIS_ROOT/bin/question-local.sh"'
+alias question-mic='"$JARVIS_ROOT/bin/question-mic.sh"'
+alias question-mic-local='"$JARVIS_ROOT/bin/question-mic-local.sh"'
+
+# Current-shell helpers intentionally do not use a subshell.
+jarvis-cd() { cd "$JARVIS_ROOT" || return 1; }
+jarvis-env() {
+    if [[ ! -f "$JARVIS_VENV/bin/activate" ]]; then
+        echo "Jarvis environment not found: $JARVIS_VENV" >&2
+        return 1
+    fi
+    source "$JARVIS_VENV/bin/activate"
+}
+jarvis-logs() { _jarvis_run ./bin/tool-logs "$@"; }
+
+jarvis-help() {
+    cat <<'EOF'
+Jarvis commands
+
+Core
+  jarvis                         Cloud wake-word listener
+  jarvis-local                   Local wake-word listener
+  jarvis-cli <request>           Cloud text-only orchestrator
+  jarvis-local-cli <request>     Local text-only orchestrator
+  jarvis-cli-json <request>      Cloud orchestrator JSON output
+  jarvis-local-cli-json <request> Local orchestrator JSON output
+  jarvis-d                       Open the terminal dashboard
+
+Services
+  jarvis-start                   Start the complete cloud stack
+  jarvis-start-local             Start the complete local stack
+  jarvis-stop                    Stop all managed tmux sessions
+  jarvis-status                  Show every managed session status
+  jarvis-web                     Start cloud Web UI
+  jarvis-web-local               Start local Web UI
+  jarvis-api                     Start cloud API
+  jarvis-api-local               Start local API
+
+Speech and direct question helpers
+  say <text> / say-local <text>
+  question <text> / question-local <text>
+  question-mic / question-mic-local
+
+Shell helpers
+  jarvis-cd                      Change to the Jarvis checkout
+  jarvis-env                     Activate the external Jarvis environment
+  jarvis-logs                    Open the tool-log viewer
+  jarvis-help                    Show this command list
+
+Tip: append --help to the underlying command when supported, for example:
+  jarvis-start --help
+EOF
+}

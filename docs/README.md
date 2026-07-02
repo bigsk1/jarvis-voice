@@ -335,6 +335,9 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-07-01:**
+- ✅ **Managed Bash/Zsh Jarvis commands**
+  - Replaced the stale copied `.bashrc` alias block with one tracked Bash/Zsh command file and an idempotent managed RC source block; current launcher names and external `~/jarvis-venv`/uv routing now have one source of truth.
+  - Added text-only cloud/local CLI helpers plus cloud/local stack, Web, API, stop-all, and all-session-status commands. Shell selection supports auto-detection, `--shell bash|zsh`, and `--rc-file` for custom setups.
 - ✅ **Integration test safety cleanup**
   - Reviewed every legacy script under `tests/integration/`; removed 13 obsolete, redundant, or state-mutating harnesses that rewrote env files, rotated active databases, depended on retired model/tool names, or made ungated paid calls.
   - Removed the retired Memory Tools, Intelligence, and Compare Models commands from the dashboard; retained provider-thinking and OpenCode integration entry points with deterministic defaults and explicit `--health`/`--live` boundaries.

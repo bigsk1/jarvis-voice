@@ -244,7 +244,7 @@ Venv: `{venv}`
    `source {venv}/bin/activate && cd {root} && ./bin/sync-tools.py cloud && ./bin/sync-tools.py local`
 5. **Smoke test**:  
    `./orchestrator/orchestrator_v2.py cloud "what time is it"`
-6. **Aliases (optional)**: `./update-aliases.sh` then `source ~/.bashrc`
+6. **Shell commands (optional)**: Run `./update-aliases.sh`, then use the exact `source` command it prints for Bash or Zsh.
 7. **Run stack**: `./bin/start` (see `docs/INSTALL_GUIDE.md`)
 
 ### Optional (skipped by design)
