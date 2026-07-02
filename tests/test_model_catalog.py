@@ -97,7 +97,17 @@ class ModelCatalogTests(unittest.TestCase):
 
     def test_openai_options_are_newest_first(self):
         models = [entry["id"] for entry in get_provider_model_options("openai")]
-        self.assertEqual(models[:5], ["gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-5.2-chat-latest"])
+        self.assertEqual(models[:6], ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-5.2-chat-latest"])
+
+    def test_gpt_5_5_resolves_with_pricing(self):
+        self.assertEqual(get_model_context_window("openai", "gpt-5.5"), 1_050_000)
+        self.assertEqual(get_model_context_window("openai", "gpt-5.5-2026-04-23"), 1_050_000)
+        self.assertEqual(get_model_context_label("openai", "gpt-5.5"), "1.05M")
+        pricing = get_model_pricing("openai", "gpt-5.5")
+        self.assertIsNotNone(pricing)
+        self.assertEqual(pricing["input"], 5.00)
+        self.assertEqual(pricing["cached"], 0.50)
+        self.assertEqual(pricing["output"], 30.00)
 
     def test_xai_options_match_current_catalog(self):
         models = [entry["id"] for entry in get_provider_model_options("xai")]

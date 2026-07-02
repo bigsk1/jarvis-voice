@@ -333,6 +333,14 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
     ],
     "openai": [
         {
+            "id": "gpt-5.5",
+            "name": "GPT-5.5",
+            "context_tokens": 1_050_000,
+            "max_output_tokens": 128_000,
+            "pricing": {"input": 5.00, "output": 30.00, "cached": 0.50},
+            "aliases": ["gpt-5.5-2026-04-23"],
+        },
+        {
             "id": "gpt-5.4",
             "name": "GPT-5.4",
             "context_tokens": 1_050_000,
