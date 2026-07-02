@@ -452,18 +452,27 @@ function navigateImage(direction) {
 // ============ Video Generation Modal ============
 
 function openVideoModalByIndex(index) {
-    const img = filteredImages[index];
-    if (img) openVideoModal(img.name);
-}
-
-function openVideoModalFromLightbox() {
-    if (currentImage) {
-        closeLightbox();
-        openVideoModal(currentImage);
+    if (index >= 0 && index < filteredImages.length) {
+        const name = filteredImages[index].name;
+        if (name) openVideoModal(name);
     }
 }
 
+function openVideoModalFromLightbox() {
+    const filename = currentImage || document.getElementById('lightboxFilename')?.textContent?.trim();
+    if (!filename || filename === 'null' || filename === 'undefined') {
+        showToast('Cannot convert: no image selected', 'error');
+        return;
+    }
+    closeLightbox();
+    openVideoModal(filename);
+}
+
 function openVideoModal(filename) {
+    if (!filename || filename === 'null' || filename === 'undefined') {
+        showToast('Cannot convert: no image selected', 'error');
+        return;
+    }
     videoModalImage = filename;
     document.getElementById('videoModalPreview').src = `/api/gallery/images/${encodeURIComponent(filename)}`;
     document.getElementById('videoPrompt').value = '';
@@ -563,7 +572,10 @@ function updateVideoOptions() {
 }
 
 async function generateVideo() {
-    if (!videoModalImage) return;
+    if (!videoModalImage || videoModalImage === 'null' || videoModalImage === 'undefined') {
+        showToast('Cannot generate video: no image selected', 'error');
+        return;
+    }
     
     const prompt = document.getElementById('videoPrompt').value.trim();
     if (!prompt) {
