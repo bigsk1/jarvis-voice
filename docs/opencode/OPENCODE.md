@@ -23,8 +23,11 @@ sudo systemctl status opencode-jarvis.service
 # View logs
 ./bin/opencode-logs --verbose
 
-# Test integration
+# Deterministic client/tool tests (no server/provider calls)
 ./tests/integration/test-opencode-integration.sh
+
+# Read-only configured server/auth health check
+./tests/integration/test-opencode-integration.sh --health cloud
 ```
 
 ---
@@ -338,8 +341,8 @@ curl http://localhost:4096/health
 # 4. Check tool execution
 grep '"tool": "opencode"' logs/tools/*.jsonl | tail -1 | jq .
 
-# 5. Run integration test
-./tests/integration/test-opencode-integration.sh
+# 5. Run configured server/auth health check
+./tests/integration/test-opencode-integration.sh --health cloud
 ```
 
 **Common fixes:**
@@ -453,7 +456,7 @@ That supervision loop is not fully implemented yet, but the current workspace-is
 - `config/local.env` - Jarvis local mode config
 
 ### Tests
-- `tests/integration/test-opencode-integration.sh` - Full integration test
+- `tests/integration/test-opencode-integration.sh` - Mocked coverage by default; `--health` is read-only and `--live` creates one real plan-mode session
 
 ---
 
@@ -549,7 +552,7 @@ cat ~/.config/opencode/opencode.json
 
 # Testing
 ./tests/integration/test-opencode-integration.sh
-curl http://localhost:4096/health
+./tests/integration/test-opencode-integration.sh --health cloud
 
 # Workspace
 ls -la ~/jarvis-workspace/

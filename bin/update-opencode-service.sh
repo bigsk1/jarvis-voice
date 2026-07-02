@@ -48,7 +48,7 @@ if sudo systemctl is-active --quiet opencode-jarvis.service; then
         echo "⚠️  API keys may not be visible via config endpoint (this is normal)"
     fi
     echo ""
-    echo "🧪 Test with: ./tests/integration/test-opencode-integration.sh"
+    echo "🧪 Test with: ./tests/integration/test-opencode-integration.sh --health cloud"
 else
     echo "❌ Service failed to restart. Check logs:"
     echo "   sudo journalctl -u opencode-jarvis.service -n 50"

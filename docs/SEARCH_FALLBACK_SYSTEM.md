@@ -298,13 +298,16 @@ print(f"Semantic results: {len(results)}")  # Should fall back to FTS5
 db.close()
 ```
 
-### Integration Tests
+### Regression Tests
 
 ```bash
-# Test search methods
-./tests/integration/test-memory-tools.sh
+# Deterministic memory/search coverage
+~/jarvis-venv/bin/python -m pytest -q \
+  tests/test_auto_memory_similarity.py \
+  tests/test_chat_followup_memory.py \
+  tests/test_memory_db_update_sync.py
 
-# Test with various queries
+# Optional manual checks against your existing data
 ./orchestrator/orchestrator_v2.py local "find Mini-AI server"
 ./orchestrator/orchestrator_v2.py cloud "what food do I like?"
 ```

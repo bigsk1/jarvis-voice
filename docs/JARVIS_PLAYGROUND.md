@@ -165,7 +165,7 @@ Mini PC (voice + main orchestration)
 
 ### Difference from Existing Tests
 
-| Aspect | `test-all-tools.sh` | Self-Play |
+| Aspect | Deterministic pytest | Self-Play |
 |--------|---------------------|-----------|
 | **Queries** | Predefined, static | Novel, LLM-generated |
 | **Purpose** | Verify functionality | Find gaps, trigger evolution |

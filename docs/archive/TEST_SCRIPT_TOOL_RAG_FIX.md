@@ -1,5 +1,7 @@
 # Test Script Tool RAG Integration Fix
 
+> **Archived historical note:** The database-resetting shell scripts described below were removed in July 2026. They mutated active databases and were replaced by temporary-database pytest coverage and read-only Tool RAG diagnostics. See `docs/TESTING.md`.
+
 **Date**: 2025-11-22  
 **Issue**: Test scripts that clean/recreate databases need to sync tool definitions for Tool RAG to work  
 **Status**: ✅ FIXED
@@ -186,4 +188,3 @@ rm data/jarvis_memory.db
 3. **CI/CD integration** - Automated tests should always sync before running
 
 **Status**: Not critical - current solution works well and is explicit about requirements.
-

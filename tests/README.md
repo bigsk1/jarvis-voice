@@ -1,155 +1,100 @@
-# Tests Directory
+# Jarvis Tests
 
-Organized test suite for Jarvis Voice Assistant.
+Jarvis primarily uses deterministic pytest coverage. Tests should use temporary databases, mocked provider responses, and request-local configuration rather than backing up, deleting, or restoring a user's active databases.
 
-## Structure
+## Python environment
 
-```
-tests/
-├── integration/          # End-to-end integration tests
-│   ├── test-all-tools.sh              # Comprehensive cloud mode tests (MOVED TO ROOT)
-│   ├── test-all-tools-local.sh        # Comprehensive local mode tests (MOVED TO ROOT)
-│   ├── test-memory-tools.sh           # Memory tool selection tests (NEW)
-│   ├── test-memory-real-world.sh      # Complex memory scenarios (NEW)
-│   ├── compare-models.sh              # Model comparison framework (NEW)
-│   ├── test-opencode-safe.sh          # Safe OpenCode connection tests
-│   ├── test-opencode-integration.sh   # Full OpenCode integration flow test
-│   └── logs/                          # Test results and AI analysis
-├── unit/                # Unit tests (Python)
-│   └── (future unit tests)
-└── e2e/                 # Full voice pipeline tests
-    └── (future e2e tests)
-```
+Use the external Jarvis environment. The repository intentionally does not use a project-level `.venv`.
 
-**Note**: The main tool test scripts (`test-all-tools.sh`, `test-all-tools-local.sh`) are now in the project root for convenience.
-
-## Running Tests
-
-### Integration Tests
+Run focused modules in a fresh pytest process:
 
 ```bash
-# All tools (cloud/local)
-./test-all-tools.sh        # Cloud mode comprehensive tests
-./test-all-tools-local.sh  # Local mode comprehensive tests
-
-# Memory system tests
-./tests/integration/test-memory-tools.sh        # Principle-based tool selection
-./tests/integration/test-memory-real-world.sh   # Complex real-world scenarios
-
-# Model comparison (creates database backups!)
-./tests/integration/compare-models.sh local qwen3-vl qwen2.5:7b
-./tests/integration/compare-models.sh cloud claude-sonnet-4-5 gpt-4o
-
-# OpenCode tests
-./tests/integration/test-opencode-safe.sh         # Safe connection test
-./tests/integration/test-opencode-integration.sh  # Full integration test
+~/jarvis-venv/bin/python -m pytest -q \
+  tests/test_docs_integrity.py \
+  tests/test_mode_plumbing_scripts.py
 ```
 
-**Important**: The `compare-models.sh` script backs up your database before running tests. Restore from `data/*.db.backup_*` if needed.
+Set `JARVIS_VENV` when the environment lives somewhere else.
 
-### Quick Test
+Do not currently use an unqualified `pytest` command as the release signal. Jarvis Web, Memory, Intelligence, and Canvas still contain generic top-level package names such as `server` and `services`; collecting every application test in one Python process can resolve a later test against an earlier application's imported package. Run the relevant application/topic group in a fresh process until those package namespaces are consolidated.
+
+## Focused checks
 
 ```bash
-# Single tool test
-./orchestrator/orchestrator_v2.py cloud "What time is it?"
+# Model catalogs and provider audits
+~/jarvis-venv/bin/python -m pytest -q \
+  tests/test_model_catalog.py \
+  tests/test_anthropic_model_audit.py \
+  tests/test_xai_model_audit.py \
+  tests/test_openai_model_audit.py
 
-# Test OpenCode connection
-./tests/integration/test-opencode-safe.sh
+# Memory and mode isolation
+~/jarvis-venv/bin/python -m pytest -q \
+  tests/test_memory_db_update_sync.py \
+  tests/test_memory_sync_health.py \
+  tests/test_mode_plumbing_scripts.py
+
+# Tool RAG
+~/jarvis-venv/bin/python -m pytest -q \
+  tests/test_tool_rag_signals.py \
+  tests/test_tool_rag_typo_hints.py
+
+# Intelligence
+~/jarvis-venv/bin/python -m pytest -q \
+  tests/test_intelligence_maintenance.py \
+  tests/test_intelligence_provenance.py \
+  tests/test_intelligence_redaction.py \
+  tests/test_intelligence_server_side_tools.py
 ```
 
-## Test Safety Levels
+## Maintained integration scripts
 
-### 🟢 Safe Tests
-- **test-opencode-safe.sh**: Basic connection and config validation
-- **test-opencode-integration.sh**: Full flow test with simple tasks (math, greeting)
-- **No file operations**
-- **No workspace modifications**
+Only two shell integration entry points remain. Their default behavior is deterministic and does not call paid provider APIs.
 
-### 🟡 Medium Risk Tests (future)
-- File listing (read-only)
-- Simple file reads
-- **Isolated to test workspace**
+| Script | Default | Explicit external checks |
+|---|---|---|
+| `tests/integration/test-thinking-mode.sh` | Catalog and mocked provider tests | `--live cloud`, `--live local`, or `--live all` |
+| `tests/integration/test-opencode-integration.sh` | Mocked OpenCode client/tool tests | `--health cloud\|local` or `--live cloud\|local` |
 
-### 🔴 High Risk Tests (future)
-- File creation/modification
-- Git operations
-- System commands
-- **Requires explicit confirmation**
+Examples:
 
-## OpenCode Workspace Behavior
-
-**Important:** OpenCode operates within its configured workspace directory (`~/jarvis-workspace` by default).
-
-### Workspace Isolation
-- OpenCode **does NOT** access files outside its workspace by default
-- The workspace is separate from Jarvis codebase (`~/jarvis-voice`)
-- Each OpenCode session can have its own working directory
-
-### Workspace Structure
-```
-~/jarvis-workspace/
-├── projects/          # Long-term projects
-│   ├── websites/
-│   ├── scripts/
-│   └── experiments/
-├── temp/              # Temporary builds (auto-cleanup)
-└── deployments/       # Ready artifacts
-```
-
-### Safety Notes
-- OpenCode **cannot** modify Jarvis codebase files
-- OpenCode **can** create/modify files in workspace
-- Always test file operations in isolated directories first
-- Use `temp/` directory for experimental tests
-
-## Model Comparison Framework
-
-The `compare-models.sh` script allows you to test and compare different LLM models side-by-side:
-
-### Features
-- ✅ **Self-contained**: Populates its own test data (6 memories)
-- ✅ **Automatic backups**: Backs up database before testing
-- ✅ **Fair comparison**: Both models tested on identical data
-- ✅ **AI analysis**: Uses Claude to analyze results
-- ✅ **Comprehensive metrics**: Speed, accuracy, tool selection
-
-### Usage
 ```bash
-./tests/integration/compare-models.sh <mode> <model1> <model2>
+./tests/integration/test-thinking-mode.sh
+./tests/integration/test-opencode-integration.sh
 
-# Examples:
-./tests/integration/compare-models.sh local qwen3-vl qwen2.5:7b
-./tests/integration/compare-models.sh cloud claude-sonnet-4-5 gpt-4o
+# Read-only OpenCode server check using cloud.env URL/auth
+./tests/integration/test-opencode-integration.sh --health cloud
+
+# Explicit paid/stateful checks
+./tests/integration/test-thinking-mode.sh --live cloud
+./tests/integration/test-opencode-integration.sh --live cloud
 ```
 
-### Output
-- Markdown report: `tests/integration/logs/comparison_<mode>_<timestamp>.md`
-- Individual test logs: `tests/integration/logs/m1_test*.log`, `m2_test*.log`
-- AI analysis: Insights from Claude Sonnet 4.5
-- Database backup: `data/jarvis_memory_*.db.backup_<timestamp>`
+OpenCode `--live` creates a session. Thinking `--live` makes real LLM requests and writes normal conversation/thinking logs. Neither option is run implicitly.
 
-### Test Methodology
-1. **Clean database** (backup created)
-2. **Populate test data** (6 memories using Model 1)
-3. **Test Model 1** (6 recall queries)
-4. **Test Model 2** (same 6 queries)
-5. **Generate comparison** (side-by-side table)
-6. **AI analysis** (Claude analyzes results)
+## Manual diagnostics
 
-## Adding New Tests
+These are diagnostics rather than pass/fail integration suites:
 
-1. **Safe tests** → `tests/integration/`
-2. **Unit tests** → `tests/unit/`
-3. **E2E tests** → `tests/e2e/`
-4. Mark executable: `chmod +x tests/path/to/test.sh`
-5. Use `--json` flag for clean output parsing
-6. Include error handling and clear pass/fail messages
+```bash
+# Inspect Tool RAG retrieval for one query without asking the routing LLM to execute it
+./bin/debug-tool-rag.py cloud "What is the current Bitcoin price?"
 
-## Test Results Location
+# Inspect similarity rankings against the current tool index
+~/jarvis-venv/bin/python tests/test_tool_similarity.py --mode cloud
 
-All test results are saved to `tests/integration/logs/`:
-- `comparison_*.md` - Model comparison reports
-- `m1_test*.log`, `m2_test*.log` - Individual test logs
-- `setup*.log` - Database population logs
-- `analysis_response.log` - AI analysis output
+# Check mode-specific embedding/index health
+./bin/check-embeddings-health.py --both --json
+```
 
+Diagnostics can read or initialize mode-specific databases and may call the configured embedding provider. They do not delete and restore active databases.
+
+## Safety rules for new tests
+
+- Put deterministic regression coverage in pytest.
+- Use `tmp_path`, temporary SQLite files, mocks, and `config_scope()` overrides.
+- Never rewrite `config/cloud.env` or `config/local.env` to select a test model.
+- Never delete, rename, back up, or restore active databases from a test.
+- Gate paid APIs, external services, workspace writes, and persistent sessions behind an explicit `--live` or similarly clear flag.
+- Invoke Python through `${JARVIS_VENV:-$HOME/jarvis-venv}/bin/python`.
+- State external side effects and costs in the script's usage text.

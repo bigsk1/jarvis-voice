@@ -1321,27 +1321,23 @@ The tool will be auto-discovered!
 ### Testing
 
 ```bash
-# Test all tools (cloud)
-./test-all-tools.sh
+# Deterministic core smoke group (no paid provider calls)
+~/jarvis-venv/bin/python -m pytest -q \
+  tests/test_docs_integrity.py tests/test_mode_plumbing_scripts.py
 
-# Test all tools (local)
-./test-all-tools-local.sh
+# Maintained integration wrappers are also no-cost by default
+./tests/integration/test-thinking-mode.sh
+./tests/integration/test-opencode-integration.sh
 
-# Test memory system (principle-based)
-./tests/integration/test-memory-tools.sh
-
-# Test real-world complex scenarios
-./tests/integration/test-memory-real-world.sh
-
-# Compare two models side-by-side (creates backups!)
-./tests/integration/compare-models.sh local gemma4 qwen3:14b
-./tests/integration/compare-models.sh cloud claude-sonnet-4-7 gpt-5.4-mini
+# Explicit live checks (provider cost/logs or OpenCode sessions may apply)
+./tests/integration/test-thinking-mode.sh --live cloud
+./tests/integration/test-opencode-integration.sh --health cloud
 
 # Test specific tool
 ./orchestrator/orchestrator_v2.py cloud "remember test fact"
 ```
 
-**Note**: The model comparison script backs up your database before testing. Results are saved to `tests/integration/logs/` with AI-generated analysis.
+See [`docs/TESTING.md`](docs/TESTING.md) for focused suites and the live-test safety boundary. Tests do not rotate or restore active databases.
 
 
 ---
@@ -1398,8 +1394,8 @@ cp data/jarvis_memory_local.db data/jarvis_memory_local.db.backup
 ./bin/sync-evolution-db.py local                # Sync cloud prompt versions → local
 ./bin/sync-evolution-db.py local --update-files # Also refresh local tool description files
 
-# Restore from backup (after compare-models.sh tests)
-mv data/jarvis_memory_local.db.backup-compare-models data/jarvis_memory_local.db
+# Verify mode-specific databases and embeddings without replacing them
+./bin/check-embeddings-health.py --both --json
 ```
 
 ### Logs

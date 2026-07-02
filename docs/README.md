@@ -96,11 +96,13 @@
 # Command Dashboard TUI (all commands in one place!)
 ./bin/jarvis-dashboard   # Or: jarvis-d (if alias set)
 
-# Run tests
-./test-all-tools.sh
-./test-all-tools-local.sh
-./tests/integration/test-memory-tools.sh
-./tests/integration/compare-models.sh local qwen3.5:latest qwen2.5:7b
+# Run deterministic core smoke tests
+~/jarvis-venv/bin/python -m pytest -q \
+  tests/test_docs_integrity.py tests/test_mode_plumbing_scripts.py
+
+# Maintained integration wrappers (no external calls by default)
+./tests/integration/test-thinking-mode.sh
+./tests/integration/test-opencode-integration.sh
 ```
 
 ## 🛠️ Key Features
@@ -289,14 +291,18 @@ YOU (hear result)
 ## 🧪 Testing
 
 ```bash
-# Test all tools (cloud)
-./tests/integration/test-all-tools.sh
+# Deterministic core smoke group
+~/jarvis-venv/bin/python -m pytest -q \
+  tests/test_docs_integrity.py tests/test_mode_plumbing_scripts.py
 
-# Test all tools (local)
-./tests/integration/test-all-tools-local.sh
+# Provider thinking integration (mocked by default)
+./tests/integration/test-thinking-mode.sh
 
-# Test OpenCode
+# OpenCode client/tool integration (mocked by default)
 ./tests/integration/test-opencode-integration.sh
+
+# Read-only live OpenCode health check
+./tests/integration/test-opencode-integration.sh --health cloud
 
 # Check logs
 ./bin/tool-logs
@@ -329,6 +335,10 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-07-01:**
+- ✅ **Integration test safety cleanup**
+  - Reviewed every legacy script under `tests/integration/`; removed 13 obsolete, redundant, or state-mutating harnesses that rewrote env files, rotated active databases, depended on retired model/tool names, or made ungated paid calls.
+  - Removed the retired Memory Tools, Intelligence, and Compare Models commands from the dashboard; retained provider-thinking and OpenCode integration entry points with deterministic defaults and explicit `--health`/`--live` boundaries.
+  - Refreshed active testing documentation to point at focused fresh-process pytest coverage and read-only diagnostics; cross-app `server`/`services` namespace collisions remain test-collection isolation debt rather than a runtime blocker.
 - ✅ **Catalog-backed Anthropic thinking**
   - Removed the stale model-name allowlist from `lib/thinking.py`; Anthropic thinking type, aliases, and valid effort levels now come from the audited shared model catalog, including Claude Fable 5.
   - `--debug-thinking` remains opt-in and process-local, Web UI provider reasoning remains off by default, and OpenAI/xAI/Ollama keep their provider-native reasoning controls rather than sharing misleading legacy `o1`/`o3-mini` rules.

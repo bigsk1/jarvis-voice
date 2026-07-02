@@ -307,28 +307,15 @@ export LLM_PROVIDER="ollama"
 
 ## Integration with Test Scripts
 
-Test scripts that reset databases should call health check:
+After an intentional fresh test database is created in an isolated temporary path, initialize and inspect that temporary database explicitly. Automated tests must not reset active mode databases.
 
 ```bash
 #!/bin/bash
-# After database reset
-rm -f data/jarvis_memory_local.db
-
-# Initialize orchestrator (creates tables)
-./orchestrator/orchestrator_v2.py local "test query"
-
-# Sync tools (generates embeddings; add --force to re-embed every tool)
-./bin/sync-tools.py local
-
-# Health check
-./bin/check-embeddings-health.py local || exit 1
+# Inspect existing mode databases without replacing them
+./bin/check-embeddings-health.py --both --json
 ```
 
-**Updated test scripts:**
-- ✅ `tests/integration/test-memory-tools.sh`
-- ✅ `tests/integration/test-memory-real-world.sh`
-- ✅ `tests/integration/compare-models.sh`
-- ✅ `tests/test-db-schema.sh`
+Deterministic database tests use temporary SQLite paths and mocked embedding providers. Use focused modules such as `tests/test_memory_db_update_sync.py` and `tests/test_memory_sync_health.py`.
 
 See: `docs/TESTING.md` for details.
 

@@ -108,7 +108,7 @@ class OpenCodeClientTests(unittest.TestCase):
             client = OpenCodeClient(base_url="http://opencode.test")
 
         self.assertEqual(client.default_provider_id, "anthropic")
-        self.assertEqual(client.default_model_id, "claude-sonnet-4-5-20250929")
+        self.assertEqual(client.default_model_id, "claude-sonnet-5")
 
     def test_execute_task_accepts_session_id_response_key(self):
         client = self._make_client()

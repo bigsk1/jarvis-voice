@@ -385,7 +385,7 @@ grep -iE "error|exception|traceback" logs/services/*-$(date +%F).log logs/*.log 
 | `logs/evolution/*` | Prompt evolution events and suggestions |
 | `logs/tool-builder/*` | Dynamic tool builder and research traces |
 | `logs/validate-system-prompt/*` | Prompt validation reports |
-| `logs/test/*`, `logs/burn-test/*` | Test harness output |
+| `logs/burn-test/*` | Explicit burn-test harness output |
 
 ---
 

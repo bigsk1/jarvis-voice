@@ -712,8 +712,11 @@ config/
 logs/intelligence/
 ├── intelligence-YYYY-MM-DD.jsonl  # Daily intelligence logs
 
-tests/integration/
-├── test_intelligence_integration.py  # Integration tests
+tests/
+├── test_intelligence_maintenance.py
+├── test_intelligence_provenance.py
+├── test_intelligence_redaction.py
+└── test_intelligence_server_side_tools.py
 ```
 
 ---

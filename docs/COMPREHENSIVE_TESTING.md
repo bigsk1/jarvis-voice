@@ -279,9 +279,9 @@ AI can automatically fix common issues:
 
 | Test Suite | Purpose | When to Use |
 |------------|---------|-------------|
-| `test-all-tools.sh` | Quick tool verification | During development |
-| `test-all-tools-local.sh` | Local mode tools | Local LLM testing |
-| `tests/integration/test-memory-*.sh` | Memory system deep dive | Memory feature work |
+| Focused pytest modules | Deterministic regression coverage | During development |
+| Full pytest suite | Cross-feature regression coverage | Before merge |
+| Maintained integration wrappers | Explicit provider/service verification | When that path changed |
 | **`comprehensive_test.py`** | **Full system validation** | **Before merge, after major changes** |
 
 ## Running After Merge
@@ -330,4 +330,3 @@ git pull
 ✅ CI/CD ready (JSON output, exit codes)  
 
 **Run before every merge. Sleep well knowing nothing broke.** 🎯
-

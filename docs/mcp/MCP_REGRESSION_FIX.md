@@ -62,10 +62,11 @@ Added comprehensive documentation to `get_mcp_info()`:
    # ✅ Returns OpenAI results
    ```
 
-2. **Automated test**: Test suite passes
+2. **Automated test**: Focused MCP tests pass
    ```bash
-   ./tests/integration/test-all-tools.sh
-   # ✅ 9/10 tests pass (Brave search working)
+   ~/jarvis-venv/bin/python -m pytest -q \
+     tests/test_mcp_discovery_graceful.py \
+     tests/test_mcp_env_substitution.py
    ```
 
 3. **MCP integration test**:
@@ -83,8 +84,6 @@ Added comprehensive documentation to `get_mcp_info()`:
 ## Files Changed
 
 - `lib/tool_schema.py` - Fixed `get_mcp_info()` with comprehensive docs
-- `tests/integration/test-all-tools.sh` - Updated to use correct tool name
-- `tests/integration/test-all-tools-local.sh` - Updated to use correct tool name
 - `docs/mcp/MCP_REGRESSION_FIX.md` - This document
 
 ## Key Takeaways

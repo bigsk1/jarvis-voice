@@ -862,14 +862,15 @@ curl -X POST http://localhost:8880/api/reminders \
 curl http://localhost:8880/api/reminders | jq
 ```
 
-### Step 7: Test All Tools
+### Step 7: Run Deterministic Tests
 
 ```bash
-# Run comprehensive test suite
-./test-all-tools.sh
+# No provider calls or active-database replacement
+~/jarvis-venv/bin/python -m pytest -q \
+  tests/test_docs_integrity.py tests/test_mode_plumbing_scripts.py
 
-# Should see most/all tests pass
-# Note: Some may fail if external services unavailable
+# Optional read-only OpenCode health check
+./tests/integration/test-opencode-integration.sh --health cloud
 ```
 
 ---

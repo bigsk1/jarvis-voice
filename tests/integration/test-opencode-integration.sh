@@ -1,150 +1,114 @@
-#!/bin/bash
-# OpenCode Integration Test - Full Flow Verification
-# Tests that Jarvis can successfully use OpenCode tool and get responses
+#!/usr/bin/env bash
+# Validate Jarvis's OpenCode integration without mutating the workspace by default.
+#
+#   ./tests/integration/test-opencode-integration.sh
+#       Focused mocked/unit coverage only; no server or provider calls.
+#
+#   ./tests/integration/test-opencode-integration.sh --health cloud
+#       Read-only health check using the selected mode's URL and authentication.
+#
+#   ./tests/integration/test-opencode-integration.sh --live cloud
+#       Health check plus one real plan-mode OpenCode request. This creates an
+#       OpenCode session and can incur provider cost, but does not request files.
 
-set -euo pipefail
+set -uo pipefail
 
-# Change to project root (two levels up from tests/integration/)
-cd "$(dirname "$0")/../.."
-source ~/jarvis-venv/bin/activate
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+JARVIS_VENV=${JARVIS_VENV:-"$HOME/jarvis-venv"}
+PYTHON="$JARVIS_VENV/bin/python"
 
-# Colors
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+usage() {
+    cat <<'EOF'
+Usage: ./tests/integration/test-opencode-integration.sh [--health|--live cloud|local]
 
-PASSED=0
-FAILED=0
+No arguments: run deterministic OpenCode unit tests only.
+--health: read-only check of the configured OpenCode server.
+--live: health check plus one real plan-mode request (creates a session/cost).
+EOF
+}
 
-echo "========================================="
-echo "  OpenCode Integration Test"
-echo "  Testing Jarvis → OpenCode → Response"
-echo "========================================="
-echo ""
-
-# Test 1: OpenCode Server Health
-echo -e "${BLUE}Test 1: OpenCode Server Health Check${NC}"
-if curl -s http://localhost:4096/config > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ OpenCode server is running${NC}"
-    PASSED=$((PASSED + 1))
-else
-    echo -e "${RED}❌ OpenCode server is not accessible${NC}"
-    echo "   Start it with: sudo systemctl start opencode-jarvis.service"
-    FAILED=$((FAILED + 1))
-    exit 1
-fi
-
-# Test 2: Config Validation
-echo -e "\n${BLUE}Test 2: OpenCode Config Validation${NC}"
-config_response=$(curl -s http://localhost:4096/config)
-if echo "$config_response" | jq -e '.name == "ConfigInvalidError"' > /dev/null 2>&1; then
-    echo -e "${RED}❌ Config has errors:${NC}"
-    echo "$config_response" | jq '.data.issues'
-    FAILED=$((FAILED + 1))
-    exit 1
-else
-    echo -e "${GREEN}✅ Config is valid${NC}"
-    PASSED=$((PASSED + 1))
-fi
-
-# Test 3: OpenCode Tool Registration
-echo -e "\n${BLUE}Test 3: OpenCode Tool Registration${NC}"
-# Check if OPENCODE_ENABLED is true
-if grep -q 'OPENCODE_ENABLED=true' config/cloud.env 2>/dev/null || grep -q 'OPENCODE_ENABLED=true' config/local.env 2>/dev/null; then
-    echo -e "${GREEN}✅ OpenCode is enabled in config${NC}"
-    PASSED=$((PASSED + 1))
-else
-    echo -e "${YELLOW}⚠️  OpenCode may be disabled (OPENCODE_ENABLED=false)${NC}"
-    echo "   Check config/cloud.env or config/local.env"
-fi
-
-# Test 4: Simple Math Problem (very simple for OpenCode)
-echo -e "\n${BLUE}Test 4: Simple OpenCode Task - Math Problem${NC}"
-echo "Query: Use OpenCode to solve: What is 15 multiplied by 7?"
-
-# Capture output and extract JSON (handle verbose output before JSON)
-raw_output=$(./orchestrator/orchestrator_v2.py cloud "Use OpenCode to solve: What is 15 multiplied by 7?" --json 2>&1 || echo '{"ok": false, "error": "Failed"}')
-# Extract JSON (last line that starts with {)
-result=$(echo "$raw_output" | grep -E '^\{' | tail -1 || echo '{"ok": false, "error": "Failed to parse JSON"}')
-
-ok=$(echo "$result" | jq -r '.ok // false' 2>/dev/null || echo "false")
-speech=$(echo "$result" | jq -r '.speech // ""' 2>/dev/null || echo "")
-error=$(echo "$result" | jq -r '.error // ""' 2>/dev/null || echo "")
-
-if [ "$ok" == "true" ]; then
-    # Check if response contains the answer (105) or mentions OpenCode
-    if echo "$speech" | grep -qiE "(105|opencode|multiplied)" || [ -n "$speech" ]; then
-        echo -e "${GREEN}✅ PASSED${NC}"
-        echo "Response: ${speech:0:200}..."
-        PASSED=$((PASSED + 1))
-    else
-        echo -e "${RED}❌ FAILED - Unexpected response${NC}"
-        echo "Response: ${speech:0:200}"
-        FAILED=$((FAILED + 1))
+require_runtime() {
+    if [[ ! -x "$PYTHON" ]]; then
+        echo "ERROR: Jarvis Python not found at $PYTHON" >&2
+        echo "Set JARVIS_VENV to the external Jarvis virtual environment." >&2
+        exit 2
     fi
-else
-    echo -e "${RED}❌ FAILED${NC}"
-    echo "Error: ${error:-$speech}"
-    echo "Full result: $result"
-    FAILED=$((FAILED + 1))
-fi
+}
 
-# Test 5: Simple Greeting (even simpler)
-echo -e "\n${BLUE}Test 5: Simple OpenCode Task - Greeting${NC}"
-echo "Query: Use OpenCode to say hello and tell me what you can do"
+run_static_checks() {
+    "$PYTHON" -m pytest -q \
+        "$ROOT_DIR/tests/test_opencode_client.py" \
+        "$ROOT_DIR/tests/test_opencode_tool.py" \
+        "$ROOT_DIR/tests/test_check_opencode_sessions.py" \
+        "$ROOT_DIR/tests/test_status_updater_opencode_auth.py"
+}
 
-# Capture output and extract JSON (handle verbose output before JSON)
-raw_output=$(./orchestrator/orchestrator_v2.py cloud "Use OpenCode to say hello and tell me what you can do" --json 2>&1 || echo '{"ok": false, "error": "Failed"}')
-# Extract JSON (last line that starts with {)
-result=$(echo "$raw_output" | grep -E '^\{' | tail -1 || echo '{"ok": false, "error": "Failed to parse JSON"}')
+run_health_check() {
+    local mode=$1
+    "$PYTHON" - "$ROOT_DIR" "$mode" <<'PY'
+import json
+import sys
 
-ok=$(echo "$result" | jq -r '.ok // false' 2>/dev/null || echo "false")
-speech=$(echo "$result" | jq -r '.speech // ""' 2>/dev/null || echo "")
+root, mode = sys.argv[1:]
+sys.path.insert(0, f"{root}/lib")
 
-if [ "$ok" == "true" ] && [ -n "$speech" ]; then
-    echo -e "${GREEN}✅ PASSED${NC}"
-    echo "Response: ${speech:0:200}..."
-    PASSED=$((PASSED + 1))
-else
-    echo -e "${RED}❌ FAILED${NC}"
-    echo "Response: ${speech:0:200}"
-    echo "Full result: $result"
-    FAILED=$((FAILED + 1))
-fi
+from config_loader import config_scope, get_config_value
+from opencode_client import OpenCodeClient
 
-# Test 6: Verify Session Created
-echo -e "\n${BLUE}Test 6: OpenCode Session Creation${NC}"
-sessions=$(curl -s http://localhost:4096/session 2>/dev/null || echo "[]")
-session_count=$(echo "$sessions" | jq 'length' 2>/dev/null || echo "0")
+with config_scope(mode):
+    enabled = str(get_config_value("OPENCODE_ENABLED", "false")).lower() == "true"
+    client = OpenCodeClient()
+    health = client.health_check()
+    health["configured_enabled"] = enabled
+    health["mode"] = mode
+    health["base_url"] = client.base_url
 
-if [ "$session_count" -gt 0 ]; then
-    echo -e "${GREEN}✅ OpenCode sessions exist ($session_count session(s))${NC}"
-    PASSED=$((PASSED + 1))
-else
-    echo -e "${YELLOW}⚠️  No OpenCode sessions found (may be normal if sessions were cleaned up)${NC}"
-fi
+print(json.dumps(health, indent=2, sort_keys=True))
+raise SystemExit(0 if health.get("healthy") else 1)
+PY
+}
 
-# Summary
-echo ""
-echo "========================================="
-echo "  Test Results"
-echo "========================================="
-echo -e "Total Tests: $((PASSED + FAILED))"
-echo -e "${GREEN}Passed: $PASSED${NC}"
-echo -e "${RED}Failed: $FAILED${NC}"
+run_live_check() {
+    local mode=$1
+    local payload result
+    if ! command -v jq >/dev/null; then
+        echo "ERROR: jq is required for live OpenCode result validation." >&2
+        return 2
+    fi
+    payload='{"task":"In plan mode, reply with exactly: OpenCode integration OK. Do not create or modify files.","task_type":"test","agent_mode":"plan"}'
 
-if [ $FAILED -eq 0 ]; then
-    echo -e "\n${GREEN}🎉 All OpenCode integration tests passed!${NC}"
-    echo ""
-    echo "✅ OpenCode server is running"
-    echo "✅ Config is valid"
-    echo "✅ Jarvis can use OpenCode tool"
-    echo "✅ OpenCode responds correctly"
-    exit 0
-else
-    echo -e "\n${RED}⚠️  Some tests failed. Check output above.${NC}"
-    exit 1
-fi
+    echo "Running one live plan-mode OpenCode request; this creates a session and may incur cost."
+    if ! result=$(JARVIS_MODE="$mode" "$PYTHON" "$ROOT_DIR/skills/opencode.py" "$payload"); then
+        echo "$result"
+        return 1
+    fi
+    echo "$result" | jq '.'
+    jq -e '.ok == true and (.data.session_id | type == "string" and length > 0)' \
+        >/dev/null <<<"$result"
+}
 
+main() {
+    require_runtime
+    cd "$ROOT_DIR" || exit 2
+
+    if [[ $# -eq 0 ]]; then
+        run_static_checks
+        return
+    fi
+    if [[ $# -ne 2 || ("$1" != "--health" && "$1" != "--live") ]]; then
+        usage >&2
+        exit 2
+    fi
+    if [[ "$2" != "cloud" && "$2" != "local" ]]; then
+        usage >&2
+        exit 2
+    fi
+
+    run_static_checks || exit 1
+    run_health_check "$2" || exit 1
+    if [[ "$1" == "--live" ]]; then
+        run_live_check "$2"
+    fi
+}
+
+main "$@"

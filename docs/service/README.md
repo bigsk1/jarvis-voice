@@ -350,7 +350,7 @@ generate_image tool
 The cleanup script preserves:
 - `logs/*.pid` - PID files for running daemons
 - `logs/baseline-*.json` - Token baseline reference data
-- `logs/test/` - Test logs (manually managed)
+- `logs/burn-test/` - Explicit burn-test harness logs (manually managed)
 
 ---
 
