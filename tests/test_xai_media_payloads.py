@@ -16,8 +16,8 @@ sys.path.insert(0, str(PROJECT_ROOT / "skills"))
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
 import generate_image
-import analyze_image
 import generate_video
+import vision_provider
 
 
 CHAT_ONLY_KEYS = {
@@ -147,12 +147,18 @@ class XAIMediaPayloadTests(unittest.TestCase):
                 "XAI_PROMPT_CACHE_KEY": "conv_vision_should_not_leak",
             },
             clear=True,
-        ), patch.object(analyze_image, "get_config_value", side_effect=fake_config), patch.object(
-            analyze_image.requests,
+        ), patch.object(vision_provider, "get_config_value", side_effect=fake_config), patch.object(
+            vision_provider.requests,
             "post",
             side_effect=fake_post,
         ):
-            result = analyze_image._vision_xai("fake-image-base64", "what is in this image?")
+            result = vision_provider.analyze_images(
+                ["fake-image-base64"],
+                "what is in this image?",
+                mode="cloud",
+                provider="xai",
+                model="grok-4.3",
+            )
 
         self.assertEqual(result, "vision ok")
         self.assertEqual(captured["url"], "https://api.x.ai/v1/chat/completions")
@@ -161,7 +167,7 @@ class XAIMediaPayloadTests(unittest.TestCase):
             {"model", "messages", "max_tokens"},
         )
         self.assertEqual(captured["payload"]["model"], "grok-4.3")
-        self.assertEqual(captured["payload"]["max_tokens"], 1000)
+        self.assertEqual(captured["payload"]["max_tokens"], 2048)
         self.assertFalse(CACHE_AND_REASONING_KEYS.intersection(captured["payload"]))
         self.assertNotIn("x-grok-conv-id", captured["headers"])
 

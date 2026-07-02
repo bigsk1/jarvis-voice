@@ -250,6 +250,30 @@ A single command that checks:
 - TTS health (provider + API key)
 - MCP server health + discovered tools
 
+### 10) Per-Provider Media Model Pickers (Web AI Config)
+**Priority:** Medium
+
+**Problem:** Web Settings → AI config exposes image/video **provider** and **resolution**, but not the underlying model for that provider. For Gemini video this is especially limiting: switching between Veo (`veo-3.1-fast-generate-preview`, up to 4K) and Omni Flash (`gemini-omni-flash-preview`, 720p, Interactions API) still requires pinning `GEMINI_VIDEO_MODEL` in `cloud.env` / `local.env`. The same gap exists for other providers — e.g. OpenAI `sora-2` vs `sora-2-pro`, xAI Grok Imagine variants — where catalog metadata already knows the options but the UI does not expose them.
+
+**Goal:** Let users pick any curated image or video model for the **currently selected provider** on the fly in Web AI config, without editing env files or restarting services.
+
+**Desired UX:**
+- When user selects a video provider (e.g. Gemini), show a **model** dropdown populated from `MEDIA_MODEL_CATALOG` for that provider
+- When user selects an image provider, same pattern (e.g. `gpt-image-2`, `gemini-3.1-flash-image`, `grok-imagine-image`)
+- Changing model refreshes dependent options (resolutions, duration limits, capabilities) from catalog metadata — same behavior as today’s provider-level resolution refresh, but driven by the chosen model pin
+- Persist per-mode overrides in web config (alongside existing `image_provider` / `video_provider`), with env vars as fallback defaults
+
+**Implementation notes:**
+- Source of truth for options: `lib/model_catalog.py` (`get_media_model_catalog`, `get_media_provider_options`)
+- Settings surface: `jarvis-web/server/services/settings_manager.py` + client settings UI
+- Runtime resolution: map web override → effective model (mirror `GEMINI_VIDEO_MODEL`, `OPENAI_VIDEO_MODEL`, etc.) in tool dispatch and media modal
+- Env keys remain optional pins for headless/voice paths; web override wins when set
+
+**Acceptance criteria:**
+- Switch Gemini video Veo ↔ Omni from Settings without touching env
+- Resolution/duration UI clamps correctly per selected model (Omni 720p only; Veo 4K when supported)
+- Image and video model pickers work independently per mode (cloud/local)
+
 ---
 
 ## 📊 Implementation Priority
@@ -267,6 +291,7 @@ A single command that checks:
 - Profiles / tool packs (not multi-user)
 - Background jobs + notifications (stash-first artifacts)
 - Observability improvements (trace + budgets + “why” summaries)
+- Per-provider media model pickers in Web AI config (Gemini Veo/Omni, Sora variants, etc.)
 
 **Low Priority (Future):**
 - Smart home integration (optional)
@@ -525,5 +550,5 @@ Want to implement something? Here's how:
 
 ---
 
-**Last Updated:** May 21, 2026  
-**Version:** 2.7 (Phases 1–3 core shipped: correction apply, Profile Card, memory type auto-inject + backfill)
+**Last Updated:** July 1, 2026  
+**Version:** 2.8 (Added media model picker roadmap item for Web AI config)

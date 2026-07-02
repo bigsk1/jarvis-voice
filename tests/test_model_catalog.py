@@ -18,6 +18,7 @@ from lib.model_catalog import (
     get_default_media_model_id,
     get_media_model_env_key,
     get_media_model_pricing,
+    get_media_model_metadata,
     get_media_provider_options,
     get_default_model_id,
     get_model_context_label,
@@ -53,11 +54,21 @@ class ModelCatalogTests(unittest.TestCase):
     def test_media_provider_options_follow_explicit_model_pin_capabilities(self):
         options = get_media_provider_options(
             "video",
-            {"openai": "sora-2-pro", "xai": "grok-imagine-video-1.5"},
+            {
+                "openai": "sora-2-pro",
+                "xai": "grok-imagine-video-1.5",
+                "gemini": "gemini-omni-flash-preview",
+            },
         )
         self.assertEqual(options["openai"]["model"], "sora-2-pro")
         self.assertEqual(options["openai"]["resolutions"], ["720p", "1080p"])
         self.assertEqual(options["xai"]["resolutions"], ["1080p", "720p", "480p"])
+        self.assertEqual(options["gemini"]["model"], "gemini-omni-flash-preview")
+        self.assertEqual(options["gemini"]["resolutions"], ["720p"])
+        self.assertEqual(
+            get_media_model_metadata("video", "gemini", "gemini-omni-flash-preview")["api"],
+            "interactions",
+        )
 
     def test_media_resolution_defaults_empty_values_and_preserves_unknown_pins(self):
         self.assertEqual(resolve_media_model("image", "openai"), "gpt-image-2")
@@ -81,6 +92,8 @@ class ModelCatalogTests(unittest.TestCase):
         xai_video = get_media_model_pricing("video", "xai", "grok-imagine-video")
         self.assertEqual(xai_video["unit"], "second")
         self.assertEqual(xai_video["usd_by_resolution"]["720p"], 0.07)
+        omni_video = get_media_model_pricing("video", "gemini", "gemini-omni-flash-preview")
+        self.assertEqual(omni_video["usd_by_resolution"]["720p"], 0.10)
 
     def test_openai_options_are_newest_first(self):
         models = [entry["id"] for entry in get_provider_model_options("openai")]
@@ -246,10 +259,10 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertTrue(any("Unknown provider requested for model metadata" in line for line in captured.output))
 
     def test_ollama_fallback_default_can_be_overridden(self):
-        self.assertEqual(get_provider_fallback_model("ollama"), "qwen3.5:latest")
+        self.assertEqual(get_provider_fallback_model("ollama"), "gemma4")
         self.assertEqual(
-            get_provider_fallback_model("ollama", local_default="qwen3:latest"),
-            "qwen3:latest",
+            get_provider_fallback_model("ollama", local_default="gemma4"),
+            "gemma4",
         )
 
 

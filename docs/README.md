@@ -13,7 +13,7 @@
 - **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (`grok-4.3` recommended default; also `grok-build-0.1`, native search/TTS, in-flight continuation) ⭐ RECOMMENDED
 - **[OPENAI_PROVIDER.md](OPENAI_PROVIDER.md)** - 🆕 **OpenAI provider** (Chat Completions default, optional Responses API routing, hosted tools, in-flight continuation)
-- **[ollama/README.md](ollama/README.md)** - **Ollama local + Ollama Cloud guide** (`OLLAMA_MODEL` vs `OLLAMA_CLOUD_MODEL`, signed-in daemon, Docker addressing, troubleshooting)
+- **[ollama/README.md](ollama/README.md)** - **Ollama local + Ollama Cloud guide** (`OLLAMA_MODEL` vs `OLLAMA_CLOUD_MODEL`, vision uses cloud model in cloud mode / `OLLAMA_VISION_MODEL` in local mode, signed-in daemon, Docker addressing, troubleshooting)
 
 ### Main Features
 - **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface** (mode-scoped settings, Completion Guard, multi-image vision, server logs) ⭐ ENHANCED
@@ -329,6 +329,14 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-07-01:**
+- ✅ **Gemini Omni Flash video support**
+  - Added `gemini-omni-flash-preview` as an opt-in catalog model using the Interactions API for 3-10 second 720p text-to-video and image-to-video with native audio.
+  - Veo 3.1 Fast remains the default; catalog metadata now selects the correct Gemini API backend and keeps Web attachment resolution choices aligned with the pinned model.
+  - Generator failures now stop after the single authorized attempt and preserve the provider's error, preventing duplicate-recovery synthesis or silent provider switching from claiming blocked media is still being generated.
+  - Gemini SDK bytes now flow directly into the final save path instead of creating gallery-visible `gemini_temp` intermediates; failed or interrupted processing therefore leaves no placeholder video behind.
+  - Web image-to-video now passes the user's instruction verbatim; because this path intentionally skips preliminary vision analysis, the routing LLM can no longer invent unsupported subjects or scene details while expanding the prompt.
+  - LLM Enhance is now multimodal when an image is attached, grounding rewrites in visible evidence; shared vision dispatch also routes cloud-mode Ollama through `OLLAMA_CLOUD_MODEL` instead of incorrectly falling through to xAI.
+  - `analyze_image`, Web upload analysis, and multimodal Enhance now share one provider implementation. If the selected Enhance model rejects image input, the UI warns that it used a conservative text-only rewrite instead of returning a generic server error.
 - ✅ **Shared image/video model catalog**
   - Image and video defaults, capabilities, retired-model replacements, and provider-specific pricing metadata now live beside chat models in `lib/model_catalog.py`.
   - Provider model env variables are optional pins: unset values follow curated catalog defaults, while explicit new/custom IDs remain usable before the catalog is updated.

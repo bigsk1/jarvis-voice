@@ -2367,6 +2367,7 @@ def get_prompt(name):
 
 
 @api_bp.route('/enhance-prompt', methods=['POST'])
+@_scoped_request_config
 def enhance_prompt():
     """
     ✨ AI-powered prompt enhancement
@@ -2376,21 +2377,98 @@ def enhance_prompt():
     
     data = request.get_json() or {}
     user_input = data.get('input', '').strip()
+    attached_image = data.get('image') if isinstance(data.get('image'), dict) else None
+    image_action = str(data.get('image_action') or '').strip().lower()
     
     if not user_input:
         return jsonify({'ok': False, 'error': 'No input provided'}), 400
     
     # Get current mode
-    current_mode = get_web_setting('defaults.mode', 'cloud')
+    current_mode = str(data.get('mode') or get_web_setting('defaults.mode', 'cloud')).strip().lower()
     
     try:
         # Load LLM provider
         sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
         from config_loader import load_config, get_config_value
         from llm_provider import create_provider
+        from ..config import load_web_config
         
         load_config(mode=current_mode)
         
+        mode_config = load_web_config().get(current_mode, {})
+        provider_type = str(
+            mode_config.get('llm_provider')
+            or get_config_value('LLM_PROVIDER', 'xai' if current_mode == 'cloud' else 'ollama')
+        ).strip().lower()
+        provider_model = mode_config.get('llm_model')
+        vision_warning = None
+
+        # Vision-grounded enhancement for an attached image. Resolve only the
+        # server-owned upload filename; never fetch an arbitrary client URL.
+        if attached_image:
+            import base64
+            from vision_provider import analyze_images
+
+            filename = str(attached_image.get('filename') or '').strip()
+            if not filename:
+                image_url = str(attached_image.get('url') or '').split('?', 1)[0]
+                filename = image_url.rsplit('/', 1)[-1]
+            uploads_root = (WEB_DATA_PATH / 'uploads').resolve()
+            upload_path = (uploads_root / filename).resolve()
+            if (
+                not filename
+                or filename != Path(filename).name
+                or not upload_path.is_relative_to(uploads_root)
+                or not upload_path.is_file()
+            ):
+                return jsonify({'ok': False, 'error': 'Attached upload could not be resolved'}), 400
+
+            action_label = {
+                'video': 'image-to-video generation',
+                'image': 'image editing',
+                'analyze': 'image analysis',
+            }.get(image_action, 'an image task')
+            grounded_prompt = f"""Inspect the attached image and rewrite the user's instruction as a concise, production-ready prompt for {action_label}.
+
+Rules:
+- Preserve the user's exact intent and requested action.
+- Use only visual facts clearly supported by the image.
+- Do not invent subjects, people, identities, character counts, objects, locations, or actions.
+- Do not guess a real person, brand, franchise, or copyrighted character unless the user explicitly named it.
+- For image-to-video, add only useful motion, camera, timing, and audio details that fit the visible scene.
+- For image editing, describe only the requested change and necessary visible context.
+- Return only the enhanced prompt text, with no explanation or quotation marks.
+
+User instruction: {user_input}"""
+            try:
+                enhanced = analyze_images(
+                    [base64.b64encode(upload_path.read_bytes()).decode('ascii')],
+                    grounded_prompt,
+                    mode=current_mode,
+                    provider=provider_type,
+                    model=provider_model,
+                ).strip()
+                if not enhanced:
+                    raise RuntimeError('Vision provider returned no text')
+                return jsonify({
+                    'ok': True,
+                    'original': user_input,
+                    'enhanced': enhanced,
+                    'mode': current_mode,
+                    'provider': provider_type,
+                    'vision_grounded': True,
+                })
+            except Exception as vision_error:
+                print(
+                    f"[ENHANCE] Vision unavailable for {provider_type}/{provider_model or 'default'}: "
+                    f"{vision_error}",
+                    file=sys.stderr,
+                )
+                vision_warning = (
+                    "The selected model could not inspect the attached image, so Enhance used text only. "
+                    "Visual details were not inferred."
+                )
+
         # Get tool summaries for context (only enabled, non-blocked tools)
         tool_service = get_tool_service()
         tools = tool_service.get_tools_summary()
@@ -2408,6 +2486,8 @@ def enhance_prompt():
         system_prompt = f"""You are a prompt enhancement assistant for Jarvis, an AI voice assistant.
 
 Your job is to take a rough, casual user input and transform it into an optimal, detailed prompt that will get the best results from Jarvis.
+
+{f'''IMPORTANT: An attached image was present, but vision was unavailable. Enhance only the user's text. Preserve references such as "the person" or "the background" exactly and do not invent any visual details.''' if vision_warning else ''}
 
 ## Jarvis Capabilities
 - **Native Web Search**: Jarvis has built-in web search that provides comprehensive, real-time information. This is BETTER than external search tools.
@@ -2443,33 +2523,31 @@ Enhanced: "Find a compatible Amazon pole-mount option for the Ambient Weather WS
 
 Now enhance the following input. Return ONLY the enhanced prompt text, nothing else."""
 
-        # Create provider based on mode
-        provider_type = get_config_value('LLM_PROVIDER', 'xai')
-        
+        # Create provider based on effective per-mode Web settings.
         if provider_type == 'ollama':
             from ollama_utils import resolve_ollama_model
             provider = create_provider(
                 'ollama',
-                model=resolve_ollama_model(),
+                model=resolve_ollama_model(current_mode, model_override=provider_model),
                 base_url=get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
             )
         elif provider_type == 'xai':
             provider = create_provider(
                 'xai',
                 api_key=get_config_value('XAI_API_KEY'),
-                model=get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
+                model=provider_model or get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
             )
         elif provider_type == 'anthropic':
             provider = create_provider(
                 'anthropic',
                 api_key=get_config_value('ANTHROPIC_API_KEY'),
-                model=get_config_value('ANTHROPIC_MODEL', get_provider_fallback_model('anthropic'))
+                model=provider_model or get_config_value('ANTHROPIC_MODEL', get_provider_fallback_model('anthropic'))
             )
         else:
             provider = create_provider(
                 'openai',
                 api_key=get_config_value('OPENAI_API_KEY'),
-                model=get_config_value('OPENAI_MODEL', get_provider_fallback_model('openai'))
+                model=provider_model or get_config_value('OPENAI_MODEL', get_provider_fallback_model('openai'))
             )
         
         # Call LLM to enhance
@@ -2495,7 +2573,10 @@ Now enhance the following input. Return ONLY the enhanced prompt text, nothing e
             'ok': True,
             'original': user_input,
             'enhanced': enhanced,
-            'mode': current_mode
+            'mode': current_mode,
+            'provider': provider_type,
+            'vision_grounded': False,
+            'vision_warning': vision_warning,
         })
         
     except Exception as e:

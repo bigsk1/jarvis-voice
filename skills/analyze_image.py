@@ -13,7 +13,6 @@ Returns vision model analysis of the image content.
 import sys
 import json
 import base64
-import requests
 import io
 from pathlib import Path
 from datetime import datetime
@@ -22,8 +21,6 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
 from paths import get_local_file_tool_allowed_dirs
-from model_catalog import get_provider_fallback_model
-from ollama_utils import get_ollama_base_urls, request_ollama
 
 MAX_VISION_IMAGE_DIMENSION = 1568
 MAX_VISION_IMAGE_BYTES = 4 * 1024 * 1024
@@ -476,199 +473,30 @@ def _sanitize_vision_prompt(question: str) -> str:
 
 
 def _analyze_with_vision(images_base64: list[str], question: str, mode: str) -> str | None:
-    """Perform vision analysis using configured model."""
-    
-    # SECURITY: Sanitize the question prompt
+    """Perform vision analysis through the shared mode-aware dispatcher."""
     question = _sanitize_vision_prompt(question)
-    
     if not images_base64:
         return None
+    from vision_provider import analyze_images
 
-    if mode == 'local':
-        return _vision_ollama(images_base64, question)
-    else:
-        return _vision_cloud(images_base64, question)
-
-
-def _vision_ollama(images_base64: list[str], question: str) -> str | None:
-    """Use Ollama vision model (llava, etc)."""
-    from vision_multimodal import build_ollama_prompt
+    provider = 'ollama' if mode == 'local' else get_config_value('LLM_PROVIDER', 'xai')
+    model = None
+    if mode == 'cloud' and provider != 'ollama':
+        model = get_config_value('VISION_MODEL', '') or None
     try:
-        base_urls = get_ollama_base_urls()
-        model = get_config_value('OLLAMA_VISION_MODEL', 'llava:latest')
-        
-        _debug(f"[ANALYZE_IMAGE] Using Ollama vision: {model}, count={len(images_base64)}")
-        
-        response, _ = request_ollama(
-            "post",
-            "/api/generate",
-            base_urls=base_urls,
-            json={
-                "model": model,
-                "prompt": build_ollama_prompt(question, len(images_base64)),
-                "images": images_base64,
-                "stream": False
-            },
-            timeout=120
+        _debug(
+            f"[ANALYZE_IMAGE] Shared vision dispatch: mode={mode}, "
+            f"provider={provider}, count={len(images_base64)}"
         )
-        
-        if response.status_code == 200:
-            return response.json().get('response', '')
-        else:
-            _debug(f"[ANALYZE_IMAGE] Ollama error: {response.status_code}")
-            return None
-    except Exception as e:
-        _debug(f"[ANALYZE_IMAGE] Ollama vision failed: {e}")
-        return None
-
-
-def _vision_cloud(images_base64: list[str], question: str) -> str | None:
-    """Use cloud vision model (xAI Grok, Anthropic Claude, OpenAI GPT-4V)."""
-    provider = get_config_value('LLM_PROVIDER', 'xai')
-    vision_model = get_config_value('VISION_MODEL', '')
-    
-    _debug(f"[ANALYZE_IMAGE] Using cloud vision: {provider}, count={len(images_base64)}")
-    
-    if provider == 'xai':
-        return _vision_xai(images_base64, question, vision_model)
-    elif provider == 'anthropic':
-        return _vision_anthropic(images_base64, question, vision_model)
-    elif provider == 'openai':
-        return _vision_openai(images_base64, question, vision_model)
-    else:
-        # Default to xAI
-        return _vision_xai(images_base64, question, vision_model)
-
-def _vision_detail() -> str:
-    detail = get_config_value('VISION_DETAIL', 'high').lower()
-    return detail if detail in ('low', 'high') else 'high'
-
-
-def _openai_vision_detail(model: str | None) -> str:
-    """Return an OpenAI-supported image detail value for the selected model."""
-    from vision_multimodal import openai_vision_detail
-
-    return openai_vision_detail(
-        model,
-        get_config_value('VISION_DETAIL', 'high'),
-        log_fn=lambda msg: _debug(f"[ANALYZE_IMAGE] {msg}"),
-    )
-
-
-def _vision_xai(images_base64: list[str], question: str, model: str = None) -> str | None:
-    """Use xAI Grok for vision."""
-    from vision_multimodal import build_openai_style_content
-    try:
-        api_key = get_config_value('XAI_API_KEY', '')
-        if not api_key:
-            _debug("[ANALYZE_IMAGE] XAI_API_KEY not configured")
-            return None
-        
-        model = model or get_config_value('VISION_MODEL') or get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
-        detail = _vision_detail()
-        
-        response = requests.post(
-            "https://api.x.ai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": model,
-                "messages": [{
-                    "role": "user",
-                    "content": build_openai_style_content(images_base64, question, detail)
-                }],
-                "max_tokens": 1000
-            },
-            timeout=120
+        return analyze_images(
+            images_base64,
+            question,
+            mode=mode,
+            provider=provider,
+            model=model,
         )
-        
-        if response.status_code == 200:
-            return response.json()['choices'][0]['message']['content']
-        else:
-            _debug(f"[ANALYZE_IMAGE] xAI error: {response.status_code} - {response.text[:200]}")
-            return None
     except Exception as e:
-        _debug(f"[ANALYZE_IMAGE] xAI vision failed: {e}")
-        return None
-
-
-def _vision_anthropic(images_base64: list[str], question: str, model: str = None) -> str | None:
-    """Use Anthropic Claude for vision."""
-    from vision_multimodal import build_anthropic_content
-    try:
-        api_key = get_config_value('ANTHROPIC_API_KEY', '')
-        if not api_key:
-            _debug("[ANALYZE_IMAGE] ANTHROPIC_API_KEY not configured")
-            return None
-        
-        model = model or get_config_value('ANTHROPIC_MODEL', get_provider_fallback_model('anthropic'))
-        
-        response = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": model,
-                "max_tokens": 1000,
-                "messages": [{
-                    "role": "user",
-                    "content": build_anthropic_content(images_base64, question)
-                }]
-            },
-            timeout=120
-        )
-        
-        if response.status_code == 200:
-            return response.json()['content'][0]['text']
-        else:
-            _debug(f"[ANALYZE_IMAGE] Anthropic error: {response.status_code}")
-            return None
-    except Exception as e:
-        _debug(f"[ANALYZE_IMAGE] Anthropic vision failed: {e}")
-        return None
-
-
-def _vision_openai(images_base64: list[str], question: str, model: str = None) -> str | None:
-    """Use OpenAI GPT-4V for vision."""
-    from vision_multimodal import build_openai_style_content
-    try:
-        api_key = get_config_value('OPENAI_API_KEY', '')
-        if not api_key:
-            _debug("[ANALYZE_IMAGE] OPENAI_API_KEY not configured")
-            return None
-        
-        model = model or get_config_value('OPENAI_MODEL', get_provider_fallback_model('openai'))
-        detail = _openai_vision_detail(model)
-        
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": model,
-                "messages": [{
-                    "role": "user",
-                    "content": build_openai_style_content(images_base64, question, detail)
-                }],
-                "max_tokens": 1000
-            },
-            timeout=120
-        )
-        
-        if response.status_code == 200:
-            return response.json()['choices'][0]['message']['content']
-        else:
-            _debug(f"[ANALYZE_IMAGE] OpenAI error: {response.status_code}")
-            return None
-    except Exception as e:
-        _debug(f"[ANALYZE_IMAGE] OpenAI vision failed: {e}")
+        _debug(f"[ANALYZE_IMAGE] Vision failed: {e}")
         return None
 
 

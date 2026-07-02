@@ -818,12 +818,19 @@ class ChatUI {
     this.enhanceBtn.title = 'Enhancing...';
     
     try {
+      const imagePayload = this._getImageAttachmentPayload();
+      const activeMode = window.jarvisSocket?.mode || 'cloud';
       const response = await fetch('/api/enhance-prompt', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ input: inputToEnhance })
+        body: JSON.stringify({
+          input: inputToEnhance,
+          mode: activeMode,
+          image_action: imagePayload?.action || null,
+          image: imagePayload?.images?.[0] || null
+        })
       });
       
       const data = await response.json();
@@ -838,7 +845,11 @@ class ChatUI {
         this._updateAmbientToolSuggestions();
         
         // Show success feedback
-        Utils.toast('✨ Prompt enhanced!', 'success', 2000);
+        if (data.vision_warning) {
+          Utils.toast(`⚠️ ${data.vision_warning}`, 'warning', 5000);
+        } else {
+          Utils.toast(data.vision_grounded ? '✨ Prompt enhanced with image context!' : '✨ Prompt enhanced!', 'success', 2000);
+        }
         
         // Focus and move cursor to end
         this.inputField.focus();

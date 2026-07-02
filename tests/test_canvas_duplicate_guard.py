@@ -31,7 +31,12 @@ from server_package_utils import load_server_package
 
 load_server_package("jarvis_web_test_server", PROJECT_ROOT / "jarvis-web" / "server")
 
-from orchestrator.orchestrator_v2 import Orchestrator, SINGLE_CALL_TOOLS
+from orchestrator.orchestrator_v2 import (
+    Orchestrator,
+    SINGLE_CALL_TOOLS,
+    _format_terminal_tool_failure,
+    _sanitize_error_for_speech,
+)
 from jarvis_web_test_server.sockets.chat import ChatHandler
 
 
@@ -46,6 +51,11 @@ class _DuplicateProvider:
     def chat(self, context, system_prompt=None):
         self.context = context
         return "The transcript says Opus 4.7 is presented as a strong coding and multimodal upgrade, with pricing discussed as expensive relative to cheaper models."
+
+
+class _UnexpectedSynthesisProvider:
+    def chat(self, context, system_prompt=None):
+        raise AssertionError("failed tool results must not be sent through success synthesis")
 
 
 class _FakeRouter:
@@ -73,6 +83,11 @@ class _SummaryExecutor:
 class CanvasDuplicateGuardTests(unittest.TestCase):
     def test_opencode_is_single_call_capped(self):
         self.assertIn("opencode", SINGLE_CALL_TOOLS)
+
+    def test_media_generators_are_single_attempt_tools(self):
+        self.assertIn("generate_video", SINGLE_CALL_TOOLS)
+        self.assertIn("generate_image", SINGLE_CALL_TOOLS)
+        self.assertIn("generate_music", SINGLE_CALL_TOOLS)
 
     def test_canvas_is_not_single_call_capped(self):
         self.assertNotIn("canvas", SINGLE_CALL_TOOLS)
@@ -262,6 +277,49 @@ class CanvasDuplicateGuardTests(unittest.TestCase):
         self.assertNotIn("Blocked duplicate tool call", result)
         self.assertIn("Opus 4.7", result)
         self.assertIn("content_excerpt", provider.context)
+
+    def test_guardrail_failure_is_truthful_and_does_not_claim_generation(self):
+        error = (
+            "Error code: 400 - Input blocked: You cannot generate a response "
+            "due to Google's guardrails related to third-party content."
+        )
+
+        speech = _format_terminal_tool_failure(
+            "generate_video",
+            error,
+            {"provider": "gemini"},
+        )
+
+        self.assertIn("Gemini blocked", speech)
+        self.assertIn("No video was generated", speech)
+        self.assertIn("manually select another video provider", speech)
+        self.assertNotIn("being generated", speech)
+        self.assertIn("third-party-content guardrails", _sanitize_error_for_speech(error))
+
+    def test_duplicate_synthesis_returns_authoritative_failed_tool_result(self):
+        orchestrator = Orchestrator.__new__(Orchestrator)
+        orchestrator.router = types.SimpleNamespace(provider=_UnexpectedSynthesisProvider())
+        error = "Input blocked due to Google's guardrails related to third-party content."
+
+        result = orchestrator._synthesize_duplicate_prevented_response(
+            user_query="have the character wave and smile",
+            tools_used=[],
+            accumulated_data={},
+            conversation_context=[
+                {
+                    "tool": "generate_video",
+                    "arguments": {"provider": "gemini"},
+                    "result": {"ok": False, "error": error, "speech": f"Failed: {error}"},
+                },
+                {
+                    "tool": "duplicate_guard",
+                    "result": {"ok": False, "error": "generate_video already called"},
+                },
+            ],
+        )
+
+        self.assertIn("Gemini blocked", result)
+        self.assertIn("No video was generated", result)
 
     def test_turn_context_hints_text_summarizer_for_truncated_stash_text(self):
         orchestrator = Orchestrator.__new__(Orchestrator)

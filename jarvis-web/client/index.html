@@ -439,7 +439,7 @@
                 <option value="">Use env default</option>
                 <option value="xai">xAI Grok ($0.05/s)</option>
                 <option value="openai">OpenAI Sora ($0.10/s)</option>
-                <option value="gemini">Google Gemini Veo ($0.15/s)</option>
+                <option value="gemini">Google Gemini ($0.10+/s)</option>
               </select>
             </div>
             <div class="setting-group">
@@ -917,7 +917,7 @@
               <select class="setting-input" id="imgActionVideoProvider">
                 <option value="xai">xAI Grok ($0.05/s, 1-15s)</option>
                 <option value="openai">OpenAI Sora ($0.10/s, 4-12s, audio)</option>
-                <option value="gemini">Gemini Veo ($0.15/s, 4-8s, audio)</option>
+                <option value="gemini">Google Gemini (model-dependent, audio)</option>
               </select>
             </div>
             <div class="setting-group">
@@ -935,7 +935,7 @@
             <div class="setting-group">
               <label class="setting-label">Duration (seconds)</label>
               <input type="number" class="setting-input" id="imgActionVideoDuration" min="1" max="15" value="5" placeholder="1-15">
-              <span class="setting-desc">xAI: 1-15s, OpenAI: 4/8/12s, Gemini: 4/6/8s</span>
+              <span class="setting-desc">xAI: 1-15s, OpenAI: 4/8/12s, Gemini: model-dependent</span>
             </div>
             <div class="setting-group">
               <label class="setting-label">Resolution</label>

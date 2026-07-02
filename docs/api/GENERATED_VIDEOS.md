@@ -196,7 +196,7 @@ curl -X DELETE http://localhost:8880/api/generated-videos/video_a_cat_playing_20
 POST /api/generated-videos/generate
 ```
 
-Generate a new AI video using xAI Grok, OpenAI Sora, or Google Gemini Veo.
+Generate a new AI video using xAI Grok, OpenAI Sora, or Google Gemini (Veo by default, Omni Flash when pinned).
 
 **Request Body**:
 
@@ -215,16 +215,16 @@ Generate a new AI video using xAI Grok, OpenAI Sora, or Google Gemini Veo.
 
 **Provider Comparison**:
 
-| Feature | xAI Grok | OpenAI Sora | Gemini Veo |
+| Feature | xAI Grok | OpenAI Sora | Google Gemini |
 |---------|----------|-------------|------------|
-| Duration | 1-15s (any) | 4, 8, or 12s | 4, 6, or 8s |
+| Duration | 1-15s (any) | 4, 8, or 12s | Veo: 4/6/8s; Omni: 3-10s |
 | Aspect Ratios | 7 options | 2 options | 2 options |
-| Resolution | 720p, 480p | 720p, 1080p | 720p-4k |
+| Resolution | 720p, 480p | 720p, 1080p | Veo: 720p-4k; Omni: 720p |
 | Native Audio | ❌ | ✅ | ✅ |
 | Image-to-Video | ✅ | ✅ | ✅ |
-| Video Editing | ✅ | ✅ (remix) | ❌ |
-| Negative Prompt | ❌ | ❌ | ✅ |
-| Cost/second | $0.05 | $0.10-0.50 | $0.15+ |
+| Video Editing | ✅ | ✅ (remix) | Omni API supports it; Jarvis follow-ups planned |
+| Negative Prompt | ❌ | ❌ | Veo: native; Omni: prompt guidance |
+| Cost/second | $0.05+ | $0.10-0.50 | $0.10+ |
 
 **Duration Options**:
 
@@ -232,7 +232,8 @@ Generate a new AI video using xAI Grok, OpenAI Sora, or Google Gemini Veo.
 |----------|-------|-------|
 | xAI | 1-15 seconds | Any integer value |
 | OpenAI | 4, 8, or 12 seconds | Discrete values only |
-| Gemini | 4, 6, or 8 seconds | Rounded to nearest |
+| Gemini Veo | 4, 6, or 8 seconds | Rounded to nearest |
+| Gemini Omni Flash | 3-10 seconds | Clamped to range |
 
 **Aspect Ratio Options**:
 
@@ -252,8 +253,8 @@ Generate a new AI video using xAI Grok, OpenAI Sora, or Google Gemini Veo.
 |-------|-----|--------|--------|-------|
 | `720p` | ✅ | ✅ | ✅ | HD (default) |
 | `480p` | ✅ | ➡️ 720p | ➡️ 720p | SD |
-| `1080p` | ❌ | ✅ (pro) | ✅ | Full HD |
-| `4k` | ❌ | ❌ | ✅ | Ultra HD (8s only) |
+| `1080p` | ❌ | ✅ (pro) | ✅ Veo | Full HD |
+| `4k` | ❌ | ❌ | ✅ Veo | Ultra HD (Veo 8s only) |
 
 **Response**:
 ```json
@@ -379,7 +380,7 @@ curl -X POST http://localhost:8880/api/generated-videos/generate \
 - xAI video editing requires a public http(s) URL (use `source_url` from `/info`, not `stash_ref`)
 - OpenAI and Gemini videos include native audio (dialogue, sound effects)
 - OpenAI 1080p requires sora-2-pro model ($0.30-0.50/s)
-- Gemini 1080p/4k requires 8-second duration
+- Gemini Veo 1080p/4k requires 8-second duration; Omni Flash is 720p only
 - OpenAI videos also viewable at platform.openai.com/playground/videos
 
 ---

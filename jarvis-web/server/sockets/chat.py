@@ -123,7 +123,6 @@ class ChatHandler:
         'create_alert',
         'opencode',
     }
-    
     def __init__(self, socketio):
         self.socketio = socketio
         self.sessions = {}  # session_id -> {mode, conversation_id, ...}
@@ -2970,6 +2969,7 @@ Previous structured data:
                 if image_action == 'video':
                     # IMAGE TO VIDEO: Skip vision, stash image, force params via overrides
                     print(f"[CHAT] Image-to-video mode - skipping vision analysis")
+                    user_video_prompt = message.strip()
                     self.socketio.emit('chat:status', {
                         'message_id': message_id,
                         'conversation_id': conversation_id,
@@ -2991,6 +2991,10 @@ Previous structured data:
                     video_provider = image_settings.get('provider', 'xai')
                     
                     tool_overrides['generate_video'] = {
+                        # No vision analysis runs in this branch, so the routing LLM
+                        # has no evidence for expanding the scene. Preserve the user's
+                        # instruction exactly and let the video model see it with the image.
+                        'prompt': user_video_prompt,
                         'image_url': stash_ref,
                         'aspect_ratio': aspect_ratio,
                         'duration': int(duration),
@@ -3007,9 +3011,11 @@ Previous structured data:
                         f"These parameters are USER-CONTROLLED and will override whatever you pass. "
                         f"Do NOT worry if the tool result shows different values than what you sent - "
                         f"that is expected and correct. The user's chosen settings take priority.\n"
-                        f"Your job: craft a detailed, creative prompt from the user's instructions below. "
+                        f"The exact user instruction is applied automatically as the prompt override. "
+                        f"Do not expand it or invent subjects, identities, counts, or scene details. "
+                        f"Your only job is to route one generate_video tool call. "
                         f"Do NOT retry if the result looks successful.]\n\n"
-                        f"User's video instructions: {message}"
+                        f"User's video instructions: {user_video_prompt}"
                     )
                     print(f"[CHAT] Image-to-video - forced overrides: {aspect_ratio}, {duration}s, {resolution}, provider={video_provider}")
                     
@@ -3898,7 +3904,6 @@ Mode: {mode}
             import traceback
             traceback.print_exc()
             return None
-    
     def _local_tts(self, text: str, output_dir: Path, timestamp: str, tts_url: str) -> Path:
         """Generate TTS using local/Kokoro API (OpenAI-compatible)"""
         import requests
@@ -4313,7 +4318,6 @@ Mode: {mode}
             import traceback
             traceback.print_exc()
             return None
-
     @staticmethod
     def _stash_image_batch_tags(batch_id: str, batch_index: int, batch_total: int) -> list[str]:
         """Return searchable tags/labels for one image in a multi-image upload batch."""
@@ -4392,7 +4396,8 @@ Mode: {mode}
         Process one or more images with a vision model.
         Returns the vision model's description/analysis.
         """
-        from ..config import load_jarvis_config
+        from ..config import get_jarvis_setting, load_jarvis_config, load_web_config
+        from vision_provider import analyze_images
 
         if not images_base64:
             return None
@@ -4401,258 +4406,26 @@ Mode: {mode}
         load_jarvis_config(mode)
         
         try:
+            mode_config = load_web_config().get(mode, {})
             if mode == 'local':
-                return self._vision_ollama(images_base64, prompt)
+                provider = 'ollama'
+                model = None  # Local vision uses OLLAMA_VISION_MODEL.
             else:
-                return self._vision_cloud(images_base64, prompt, mode)
+                provider = (
+                    mode_config.get('llm_provider')
+                    or get_jarvis_setting('LLM_PROVIDER', 'xai')
+                )
+                model = mode_config.get('llm_model')
+            print(f"[VISION] Shared dispatch: mode={mode}, provider={provider}, model={model or '(default)'}")
+            return analyze_images(
+                images_base64,
+                prompt,
+                mode=mode,
+                provider=provider,
+                model=model,
+            )
         except Exception as e:
             print(f"[VISION] Error: {e}")
             import traceback
             traceback.print_exc()
             return None
-    
-    def _vision_ollama(self, images_base64: list[str], prompt: str) -> str:
-        """Use Ollama vision model (llava, llama3.2-vision, etc.)"""
-        from ..config import get_jarvis_setting
-        from ollama_utils import get_ollama_base_urls, get_primary_ollama_base_url, request_ollama
-        from vision_multimodal import build_ollama_prompt
-        
-        try:
-            base_url = get_primary_ollama_base_url()
-            base_urls = get_ollama_base_urls()
-            vision_model = get_jarvis_setting('OLLAMA_VISION_MODEL', 'llava:latest')
-            
-            print(f"[VISION] Using Ollama: {vision_model} at {base_url}")
-            print(f"[VISION] Image count: {len(images_base64)}")
-            
-            payload = {
-                "model": vision_model,
-                "prompt": build_ollama_prompt(prompt, len(images_base64)),
-                "images": images_base64,
-                "stream": False
-            }
-            
-            print(f"[VISION] Sending request to Ollama...")
-            response, used_base_url = request_ollama(
-                "post",
-                "/api/generate",
-                base_urls=base_urls,
-                json=payload,
-                timeout=120  # Vision can be slow
-            )
-            base_url = used_base_url
-            print(f"[VISION] Got response: {response.status_code}")
-            
-            if response.status_code == 200:
-                result = response.json()
-                resp_text = result.get('response', '')
-                print(f"[VISION] Ollama response length: {len(resp_text)}")
-                return resp_text
-            else:
-                print(f"[VISION] Ollama error: {response.status_code} - {response.text[:200]}")
-                return None
-        except Exception as e:
-            print(f"[VISION] Ollama exception: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
-    
-    def _vision_cloud(self, images_base64: list[str], prompt: str, mode: str) -> str:
-        """Use cloud provider's vision model (Anthropic, xAI, OpenAI)"""
-        from ..config import get_jarvis_setting
-        
-        provider = get_jarvis_setting('LLM_PROVIDER', 'xai')
-        vision_model = get_jarvis_setting('VISION_MODEL', '')  # Empty = use main model
-        
-        print(f"[VISION] Using cloud provider: {provider}, image count: {len(images_base64)}")
-        
-        if provider == 'anthropic':
-            return self._vision_anthropic(images_base64, prompt, vision_model)
-        elif provider == 'xai':
-            return self._vision_xai(images_base64, prompt, vision_model)
-        elif provider == 'openai':
-            return self._vision_openai(images_base64, prompt, vision_model)
-        else:
-            print(f"[VISION] Unknown provider: {provider}, trying xAI format")
-            return self._vision_xai(images_base64, prompt, vision_model)
-    
-    def _vision_anthropic(self, images_base64: list[str], prompt: str, model: str = None) -> str:
-        """Use Anthropic Claude for vision. No detail parameter - Claude API does not support high/low."""
-        import requests
-        from ..config import get_jarvis_setting
-        from vision_multimodal import build_anthropic_content
-        
-        api_key = get_jarvis_setting('ANTHROPIC_API_KEY', '')
-        if not api_key:
-            print("[VISION] ANTHROPIC_API_KEY not configured")
-            return None
-        
-        # VISION_MODEL may be xAI-specific (grok-*); use only if it looks like Claude
-        vision_model = model or get_jarvis_setting('VISION_MODEL', '')
-        if vision_model and str(vision_model).lower().startswith('claude-'):
-            model = vision_model
-        else:
-            model = get_jarvis_setting('ANTHROPIC_MODEL', get_provider_fallback_model('anthropic'))
-        print(f"[VISION] Anthropic model: {model}")
-        
-        payload = {
-            "model": model,
-            "max_tokens": 1024,
-            "messages": [{
-                "role": "user",
-                "content": build_anthropic_content(images_base64, prompt)
-            }]
-        }
-        
-        response = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            json=payload,
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json"
-            },
-            timeout=60
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            content = result.get('content', [])
-            if content and content[0].get('type') == 'text':
-                return content[0].get('text', '')
-        else:
-            print(f"[VISION] Anthropic error: {response.status_code} - {response.text[:200]}")
-        return None
-    
-    def _vision_xai(self, images_base64: list[str], prompt: str, model: str = None) -> str:
-        """Use xAI Grok for vision (grok-4.3 or newer)"""
-        import requests
-        from ..config import get_jarvis_setting
-        from vision_multimodal import build_openai_style_content
-        
-        api_key = get_jarvis_setting('XAI_API_KEY', '')
-        if not api_key:
-            print("[VISION] XAI_API_KEY not configured")
-            return None
-        
-        # Use VISION_MODEL if set, otherwise fall back to XAI_MODEL or grok-4
-        model = model or get_jarvis_setting('VISION_MODEL') or get_jarvis_setting('XAI_MODEL', get_provider_fallback_model('xai'))
-        print(f"[VISION] xAI model: {model}")
-        
-        # xAI uses OpenAI-compatible format with detail parameter (high = better accuracy)
-        detail = get_jarvis_setting('VISION_DETAIL', 'high').lower()
-        if detail not in ('low', 'high'):
-            detail = 'high'
-        payload = {
-            "model": model,
-            "messages": [{
-                "role": "user",
-                "content": build_openai_style_content(images_base64, prompt, detail)
-            }],
-            "max_tokens": 2048
-        }
-        
-        response = requests.post(
-            "https://api.x.ai/v1/chat/completions",
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            },
-            timeout=120  # Vision can be slower
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            choices = result.get('choices', [])
-            if choices:
-                return choices[0].get('message', {}).get('content', '')
-        else:
-            print(f"[VISION] xAI error: {response.status_code} - {response.text[:500]}")
-        return None
-    
-    def _vision_openai(self, images_base64: list[str], prompt: str, model: str = None) -> str:
-        """Use OpenAI multimodal models for vision."""
-        import requests
-        from ..config import get_jarvis_setting
-        from vision_multimodal import build_openai_style_content
-        
-        api_key = get_jarvis_setting('OPENAI_API_KEY', '')
-        if not api_key:
-            print("[VISION] OPENAI_API_KEY not configured")
-            return None
-        
-        # VISION_MODEL is global and may be configured for another provider.
-        # When it is blank or provider-specific elsewhere, use the active
-        # OpenAI chat model so image analysis tracks the selected LLM.
-        requested_model = (model or get_jarvis_setting('VISION_MODEL', '') or '').strip()
-        if requested_model and self._looks_like_openai_model(requested_model):
-            model = requested_model
-        else:
-            if requested_model:
-                print(f"[VISION] Ignoring non-OpenAI VISION_MODEL for OpenAI vision: {requested_model}")
-            model = (
-                get_jarvis_setting('OPENAI_MODEL', '')
-                or get_provider_fallback_model('openai')
-                or 'gpt-4o'
-            )
-        print(f"[VISION] OpenAI model: {model}")
-
-        detail = self._openai_vision_detail(model, get_jarvis_setting('VISION_DETAIL', 'high'))
-        
-        payload = {
-            "model": model,
-            "messages": [{
-                "role": "user",
-                "content": build_openai_style_content(images_base64, prompt, detail)
-            }]
-        }
-        if self._openai_model_uses_max_completion_tokens(model):
-            payload["max_completion_tokens"] = 1024
-        else:
-            payload["max_tokens"] = 1024
-        
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            },
-            timeout=60
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            choices = result.get('choices', [])
-            if choices:
-                return choices[0].get('message', {}).get('content', '')
-        else:
-            print(f"[VISION] OpenAI error: {response.status_code} - {response.text[:200]}")
-        return None
-
-    @staticmethod
-    def _looks_like_openai_model(model: str | None) -> bool:
-        """Return true for OpenAI text/vision model ids, false for xAI/Claude/Gemini ids."""
-        lowered = str(model or '').strip().lower()
-        return lowered.startswith(('gpt-', 'o1', 'o3', 'o4'))
-
-    @staticmethod
-    def _openai_model_uses_max_completion_tokens(model: str | None) -> bool:
-        """Newer OpenAI chat/reasoning models reject legacy max_tokens."""
-        lowered = str(model or '').strip().lower()
-        return lowered.startswith(('gpt-5', 'o1', 'o3', 'o4'))
-
-    @staticmethod
-    def _openai_model_supports_original_detail(model: str | None) -> bool:
-        """OpenAI original-detail image inputs are only documented for full GPT-5.4+ models."""
-        from vision_multimodal import openai_model_supports_original_detail
-
-        return openai_model_supports_original_detail(model)
-
-    @classmethod
-    def _openai_vision_detail(cls, model: str | None, configured_detail: str | None) -> str:
-        """Return an OpenAI-supported image detail value for the selected model."""
-        from vision_multimodal import openai_vision_detail
-
-        return openai_vision_detail(model, configured_detail, log_fn=lambda msg: print(f"[VISION] {msg}"))

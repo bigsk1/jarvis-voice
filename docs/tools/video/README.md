@@ -1,6 +1,6 @@
 # Video Generation
 
-Generate AI videos using xAI Grok, OpenAI Sora, or Google Gemini Veo directly from Jarvis.
+Generate AI videos using xAI Grok, OpenAI Sora, or Google Gemini directly from Jarvis.
 
 ## Overview
 
@@ -30,6 +30,7 @@ curl -X POST http://localhost:8880/api/generated-videos/generate \
 | xAI | `grok-imagine-video` | 1-15s | ❌ | 720p, 480p | $0.05-0.07 | ✅ Active |
 | OpenAI | `sora-2` / `sora-2-pro` | 4/8/12s | ✅ Native | 720p, 1080p | $0.10-0.50 | ✅ Active |
 | Gemini | `veo-3.1-fast-generate-preview` | 4/6/8s | ✅ Native | 720p-4k | $0.10-0.30 | ✅ Active |
+| Gemini | `gemini-omni-flash-preview` | 3-10s | ✅ Native | 720p | $0.10 | ⚠️ Preview, opt-in |
 
 Configure in `config/cloud.env`:
 ```bash
@@ -41,6 +42,7 @@ VIDEO_TOOL_PROVIDER="xai"  # or "openai" or "gemini"
 # XAI_VIDEO_MODEL="grok-imagine-video"
 # OPENAI_VIDEO_MODEL="sora-2-pro"  # higher resolution
 # GEMINI_VIDEO_MODEL="veo-3.1-generate-preview"  # standard instead of fast
+# GEMINI_VIDEO_MODEL="gemini-omni-flash-preview"  # Interactions API, 720p
 ```
 
 The catalog also stores provider-specific pricing metadata for future cost
@@ -49,14 +51,14 @@ existing generic estimate.
 
 ## Provider Comparison
 
-| Feature | xAI Grok | OpenAI Sora | Gemini Veo |
+| Feature | xAI Grok | OpenAI Sora | Google Gemini |
 |---------|----------|-------------|------------|
-| **Duration Range** | 1-15s (any) | 4, 8, or 12s | 4, 6, or 8s |
+| **Duration Range** | 1-15s (any) | 4, 8, or 12s | Veo: 4/6/8s; Omni: 3-10s |
 | **Aspect Ratios** | 7 options | 2 options | 2 options |
-| **Resolution** | 720p, 480p | 720p, 1080p | 720p-4k |
+| **Resolution** | 720p, 480p | 720p, 1080p | Veo: 720p-4k; Omni: 720p |
 | **Native Audio** | ❌ No | ✅ Yes | ✅ Yes |
-| **Video Editing** | ✅ Style only | ✅ Yes (remix) | ❌ No |
-| **Negative Prompt** | ❌ No | ❌ No | ✅ Yes |
+| **Video Editing** | ✅ Style only | ✅ Yes (remix) | Veo: ❌; Omni: planned |
+| **Negative Prompt** | ❌ No | ❌ No | Veo: native; Omni: prompt guidance |
 | **Image-to-Video** | ✅ Yes | ✅ Yes | ✅ Yes |
 | **Cost/second** | $0.05-0.07 | $0.10-0.50 | $0.10-0.60 |
 | **Playground View** | ❌ No | ✅ Yes | ❌ No |
@@ -70,9 +72,10 @@ Video length in seconds.
 |----------|-------|-------|
 | xAI | 1-15 seconds | Any integer value |
 | OpenAI | 4, 8, or 12 seconds | Rounded to nearest |
-| Gemini | 4, 6, or 8 seconds | Rounded to nearest |
+| Gemini Veo | 4, 6, or 8 seconds | Rounded to nearest |
+| Gemini Omni Flash | 3-10 seconds | Clamped to range |
 
-**Note**: Longer videos take more time to generate and cost more. Gemini 1080p/4k requires 8s duration. OpenAI 12s is the longest single clip option.
+**Note**: Longer videos take more time to generate and cost more. Gemini Veo 1080p/4k requires 8s duration; Omni Flash always outputs 720p. OpenAI 12s is the longest single clip option.
 
 ### Aspect Ratio
 Video shape/orientation.
@@ -94,8 +97,8 @@ Video quality.
 |-------|-----|--------|--------|-------|
 | `720p` | ✅ | ✅ | ✅ | HD (default) |
 | `480p` | ✅ | ➡️ 720p | ➡️ 720p | SD |
-| `1080p` | ❌ | ✅ (pro) | ✅ | Full HD |
-| `4k` | ❌ | ❌ | ✅ | Ultra HD (Gemini 8s only) |
+| `1080p` | ❌ | ✅ (pro) | ✅ Veo | Full HD |
+| `4k` | ❌ | ❌ | ✅ Veo | Ultra HD (Veo 8s only) |
 
 **Note**: OpenAI 1080p requires `sora-2-pro` model ($0.30-0.50/sec).
 
@@ -303,13 +306,13 @@ See [API Documentation](../../api/GENERATED_VIDEOS.md) for full endpoint referen
 - Sufficient OpenAI API credits
 
 **For Gemini:**
-- google-genai >= 1.0.0
+- google-genai >= 2.10.0
 - `GEMINI_API_KEY` configured in cloud.env
 - Sufficient Gemini API credits
 
 Install all:
 ```bash
-pip install xai-sdk>=1.6.1 openai>=1.0.0 google-genai>=1.0.0
+pip install xai-sdk>=1.6.1 openai>=1.0.0 google-genai>=2.10.0
 ```
 
 ## Costs
@@ -322,9 +325,9 @@ Video generation costs vary by provider, duration, and resolution:
 | OpenAI | sora-2 (720p) | $0.10 | Standard quality |
 | OpenAI | sora-2-pro (720p) | $0.30 | Higher quality |
 | OpenAI | sora-2-pro (1080p) | $0.50 | Full HD |
-| Gemini | veo-3.1-fast | $0.15 | Fast generation |
-| Gemini | veo-3.1 (720p) | ~$0.20 | Full model |
-| Gemini | veo-3.1 (4k) | Higher | Ultra HD |
+| Gemini | veo-3.1-fast (720p) | $0.10 | Catalog default |
+| Gemini | veo-3.1-fast (1080p/4k) | $0.12/$0.30 | Higher resolution |
+| Gemini | gemini-omni-flash-preview | $0.10 | Opt-in, 720p only |
 
 **Links:**
 - xAI: [console.x.ai](https://console.x.ai)

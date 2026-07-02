@@ -68,6 +68,46 @@ model execution class is deliberately separate from data mode. The supported
 default is nevertheless a non-cloud `OLLAMA_MODEL`, which keeps inference,
 databases, and embeddings local.
 
+## Vision and image analysis
+
+Jarvis routes all image understanding through one shared module:
+`lib/vision_provider.py`. That includes:
+
+- Web chat image uploads (SocketIO vision pass before routing)
+- Web **Enhance** when an image is attached
+- The `analyze_image` tool (voice, CLI, orchestrator)
+
+When `LLM_PROVIDER=ollama`, vision model selection follows **Jarvis mode**, not
+the chat/text model variable name alone:
+
+| Jarvis mode | Ollama vision model | Config variable |
+|---|---|---|
+| `cloud` | The active **cloud** Ollama model | `OLLAMA_CLOUD_MODEL` (or the Web Settings per-mode `llm_model` override when set) |
+| `local` | A dedicated **local** vision model | `OLLAMA_VISION_MODEL` (falls back to `OLLAMA_MODEL` if unset) |
+
+**Cloud mode:** multimodal cloud models such as `minimax-m3:cloud` or
+`qwen3.5:cloud` are used for vision. Jarvis does **not** use
+`OLLAMA_VISION_MODEL` in cloud mode — that variable is for local GPU vision
+only.
+
+**Local mode:** set `OLLAMA_VISION_MODEL` to a vision-capable model installed on
+your Ollama host (for example `llava:latest`, `llama3.2-vision:latest`, or
+`gemma4`). This can differ from `OLLAMA_MODEL` when your main chat model is
+text-only or you want a smaller vision model.
+
+Ollama vision requests use the documented `/api/generate` payload with a base64
+`images` array. Jarvis does not use a separate vision endpoint.
+
+When cloud/local Web Settings pick a non-Ollama provider (xAI, Anthropic,
+OpenAI), vision uses that provider's chat/vision API instead. The
+`VISION_MODEL` env pin in `cloud.env` applies to the `analyze_image` tool path
+for those providers; Web chat and Enhance prefer the per-mode Web `llm_model`
+override when present.
+
+If **Enhance** is run with an attached image but the selected model rejects
+image input, Jarvis falls back to conservative text-only enhancement, returns
+`vision_grounded: false`, and shows a short UI warning instead of HTTP 500.
+
 ## Mode-related configuration reference
 
 | Variable | Valid values / default | Applies to | Notes |
@@ -75,7 +115,8 @@ databases, and embeddings local.
 | `JARVIS_MODE` | `cloud` or `local`; defaults to `cloud` at startup | Launchers, Docker, background services | Selects env/data boundaries; never inferred from `LLM_PROVIDER` |
 | `LLM_PROVIDER` | `xai`, `anthropic`, `openai`, or `ollama` | Selected mode config | Chooses chat backend; does not select mode |
 | `OLLAMA_MODEL` | Ollama model name | Normally local mode | Required for the primary local Ollama path; local auxiliary calls retain a compatibility fallback |
-| `OLLAMA_CLOUD_MODEL` | Recognized `*:cloud` or `*-cloud` name | Cloud mode with `LLM_PROVIDER=ollama` | A normal local tag is rejected |
+| `OLLAMA_CLOUD_MODEL` | Recognized `*:cloud` or `*-cloud` name | Cloud mode with `LLM_PROVIDER=ollama` | A normal local tag is rejected; also used for Ollama vision in cloud mode |
+| `OLLAMA_VISION_MODEL` | Ollama model name | Local mode with `LLM_PROVIDER=ollama` | Vision/image analysis only; not used in cloud mode (see Vision section above) |
 | `OLLAMA_BASE_URL` | One URL or comma-separated URLs | Both configs | Cloud tries only explicit hosts; local retains localhost as a final compatibility fallback |
 | `EMBEDDING_PROVIDER` | Commonly `openai` in cloud, `ollama` in local | Memory, Tool RAG, Intelligence | Independent of the chat provider; keep DB dimensions aligned with the selected data mode |
 | `JARVIS_SYNC_MODES` | Space-separated `cloud` / `local`; defaults to `JARVIS_MODE` in Docker | First-boot Docker tool sync | Does not change the running stack's mode |

@@ -357,12 +357,13 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
             ],
         },
         "gemini": {
-            "name": "Google Gemini Veo",
+            "name": "Google Gemini",
             "models": [
                 {
                     "id": "veo-3.1-fast-generate-preview",
                     "name": "Veo 3.1 Fast",
                     "default": True,
+                    "api": "generate_videos",
                     "replaces": ["veo-3.0-fast-generate-001"],
                     "capabilities": ["text_to_video", "image_to_video", "audio", "4K"],
                     "resolutions": ["720p", "1080p", "4k"],
@@ -374,6 +375,7 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
                 {
                     "id": "veo-3.1-generate-preview",
                     "name": "Veo 3.1 Standard",
+                    "api": "generate_videos",
                     "replaces": ["veo-3.0-generate-001"],
                     "capabilities": ["text_to_video", "image_to_video", "audio", "4K"],
                     "resolutions": ["720p", "1080p", "4k"],
@@ -385,11 +387,32 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
                 {
                     "id": "veo-3.1-lite-generate-preview",
                     "name": "Veo 3.1 Lite",
+                    "api": "generate_videos",
                     "capabilities": ["text_to_video", "image_to_video", "audio"],
                     "resolutions": ["720p", "1080p"],
                     "pricing": {
                         "unit": "second",
                         "usd_by_resolution": {"720p": 0.05, "1080p": 0.08},
+                    },
+                },
+                {
+                    "id": "gemini-omni-flash-preview",
+                    "name": "Gemini Omni Flash (Preview)",
+                    "api": "interactions",
+                    "capabilities": [
+                        "text_to_video",
+                        "image_to_video",
+                        "reference_to_video",
+                        "video_editing",
+                        "conversational_editing",
+                        "audio",
+                    ],
+                    "resolutions": ["720p"],
+                    "aspect_ratios": ["16:9", "9:16"],
+                    "duration_seconds": {"min": 3, "max": 10},
+                    "pricing": {
+                        "unit": "second",
+                        "usd_by_resolution": {"720p": 0.10},
                     },
                 },
             ],

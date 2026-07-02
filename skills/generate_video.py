@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """
 Video Generation Tool for Jarvis
-Supports multiple providers: xAI Grok Video (default), Gemini Veo, OpenAI Sora
+Supports multiple providers: xAI Grok Video (default), Google Gemini, OpenAI Sora
 
 Features:
   - xAI Grok: Text-to-video, image-to-video, video editing (1-15 seconds)
-  - Gemini Veo: Text-to-video, image-to-video with native audio (4-8 seconds, up to 4K)
+  - Gemini Veo: Text/image-to-video with native audio (4-8 seconds, up to 4K)
+  - Gemini Omni Flash: Text/image-to-video with native audio (3-10 seconds, 720p)
   - OpenAI Sora: Text-to-video, image-to-video with audio (4-12 seconds, remix support)
   - Multiple aspect ratios and resolutions
   - Saves to stash for use with other tools
 
 Providers:
   - xai: xAI Grok Imagine Video (default) - More duration options, cheapest
-  - gemini: Google Veo 3.1 - Native audio, higher resolution options
+  - gemini: Google Veo 3.1 (default) or Omni Flash (opt-in model pin)
   - openai: OpenAI Sora 2 - Native audio, remix support, visible in OpenAI Playground
 
 Configure via VIDEO_TOOL_PROVIDER in cloud.env (default: xai)
@@ -29,7 +30,7 @@ from datetime import datetime
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
-from model_catalog import get_media_model_env_key, resolve_media_model
+from model_catalog import get_media_model_env_key, get_media_model_metadata, resolve_media_model
 
 # =============================================================================
 # Provider: xAI Grok Video
@@ -55,6 +56,10 @@ GEMINI_RESOLUTIONS = ["720p", "1080p", "4k"]
 
 # Gemini duration options (discrete values, not a range)
 GEMINI_DURATIONS = [4, 6, 8]  # seconds
+
+# Gemini Omni Flash duration range (Interactions API)
+GEMINI_OMNI_MIN_DURATION = 3
+GEMINI_OMNI_MAX_DURATION = 10
 
 # =============================================================================
 # Provider: OpenAI Sora
@@ -339,19 +344,140 @@ def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9
         raise Exception(f"xAI Video generation failed: {str(e)}")
 
 
+def _load_gemini_image_bytes(image_url: str) -> tuple[bytes, str] | None:
+    """Resolve a local/stash/remote image into bytes for Gemini video APIs."""
+    import mimetypes
+
+    resolved_path = _resolve_image_source(image_url)
+    if resolved_path and Path(resolved_path).exists():
+        image_bytes = Path(resolved_path).read_bytes()
+        mime_type, _ = mimetypes.guess_type(resolved_path)
+        print(f"[GEMINI VIDEO] Using local image: {resolved_path}", file=sys.stderr)
+        return image_bytes, mime_type or "image/png"
+
+    if image_url.startswith(("http://", "https://")):
+        response = requests.get(image_url, timeout=30)
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "image/png").split(";", 1)[0]
+        return response.content, content_type
+
+    return None
+
+
+def _download_gemini_omni_video(client, video_output) -> bytes:
+    """Return Omni output bytes, polling Files API when URI delivery is used."""
+    if getattr(video_output, "data", None):
+        return base64.b64decode(video_output.data)
+
+    uri = getattr(video_output, "uri", None)
+    if not uri:
+        raise Exception("Gemini Omni returned no video data or URI")
+
+    if "/files/" in uri:
+        file_id = uri.split("/files/", 1)[1].split(":", 1)[0].split("?", 1)[0]
+    elif uri.startswith("files/"):
+        file_id = uri.split("/", 1)[1].split(":", 1)[0].split("?", 1)[0]
+    else:
+        raise Exception(f"Gemini Omni returned an unrecognized video URI: {uri}")
+
+    for _ in range(120):  # Up to 10 minutes at 5-second intervals.
+        file_info = client.files.get(name=f"files/{file_id}")
+        state = getattr(file_info, "state", "")
+        state_name = getattr(state, "name", str(state)).upper()
+        if state_name.endswith("ACTIVE"):
+            return client.files.download(file=uri)
+        if state_name.endswith("FAILED"):
+            raise Exception("Gemini Omni video processing failed")
+        time.sleep(5)
+
+    raise Exception("Gemini Omni video processing timed out after 10 minutes")
+
+
+def _generate_video_gemini_omni(client, model_name: str, prompt: str, duration: int,
+                                 aspect_ratio: str, image_url: str | None,
+                                 negative_prompt: str | None) -> dict:
+    """Generate text/image-to-video with Gemini Omni through Interactions API."""
+    try:
+        omni_duration = round(float(duration))
+    except (TypeError, ValueError):
+        omni_duration = 5
+    omni_duration = max(GEMINI_OMNI_MIN_DURATION, min(GEMINI_OMNI_MAX_DURATION, omni_duration))
+
+    if aspect_ratio not in GEMINI_ASPECT_RATIOS:
+        aspect_ratio = "9:16" if aspect_ratio in ["9:16", "3:4", "2:3"] else "16:9"
+
+    effective_prompt = prompt
+    if negative_prompt:
+        effective_prompt = f"{prompt}\nDo not include: {negative_prompt}"
+
+    interaction_input = effective_prompt
+    task = "text_to_video"
+    if image_url:
+        try:
+            loaded_image = _load_gemini_image_bytes(image_url)
+        except Exception as exc:
+            print(f"Warning: Could not load image: {exc}", file=sys.stderr)
+            loaded_image = None
+        if loaded_image:
+            image_bytes, mime_type = loaded_image
+            interaction_input = [
+                {
+                    "type": "image",
+                    "data": base64.b64encode(image_bytes).decode("ascii"),
+                    "mime_type": mime_type,
+                },
+                {"type": "text", "text": effective_prompt},
+            ]
+            task = "image_to_video"
+        else:
+            print(f"Warning: Could not resolve image source: {image_url}", file=sys.stderr)
+
+    interaction = client.interactions.create(
+        model=model_name,
+        input=interaction_input,
+        response_format={
+            "type": "video",
+            "delivery": "uri",
+            "aspect_ratio": aspect_ratio,
+            "duration": f"{omni_duration}s",
+        },
+        generation_config={"video_config": {"task": task}},
+    )
+
+    if getattr(interaction, "status", "completed") == "failed":
+        raise Exception("Gemini Omni interaction failed")
+    video_output = getattr(interaction, "output_video", None)
+    if not video_output:
+        raise Exception("No video generated - empty Gemini Omni response")
+
+    return {
+        "video_url": getattr(video_output, "uri", None),
+        "video_bytes": _download_gemini_omni_video(client, video_output),
+        "duration": omni_duration,
+        "prompt": prompt,
+        "model": model_name,
+        "provider": "gemini",
+        "aspect_ratio": aspect_ratio,
+        "resolution": "720p",
+        "from_image": task == "image_to_video",
+        "has_audio": True,
+        "interaction_id": getattr(interaction, "id", None),
+    }
+
+
 def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "16:9",
                           resolution: str = "720p", image_url: str = None,
                           negative_prompt: str = None) -> dict:
     """
-    Generate a video using Google Gemini Veo 3.1.
+    Generate a video using the configured Google Gemini video model.
     
     Args:
         prompt: What to generate (supports audio cues in quotes for dialogue)
-        duration: Video duration - must be 4, 6, or 8 seconds
+        duration: Veo maps to 4/6/8 seconds; Omni clamps to 3-10 seconds
         aspect_ratio: 16:9 (landscape) or 9:16 (portrait)
-        resolution: 720p, 1080p, or 4k (1080p/4k only supports 8s)
+        resolution: Veo supports 720p-4k; Omni uses 720p
         image_url: Optional image URL for image-to-video
-        negative_prompt: What to avoid in the video
+        negative_prompt: What to avoid (native on Veo, prompt guidance on Omni)
     
     Returns:
         dict with video_url, duration, model info
@@ -364,6 +490,22 @@ def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "1
     # Get model from env or use default
     model_name = _resolve_configured_video_model("gemini")
     
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError:
+        raise ValueError("google-genai not installed. Run: pip install google-genai")
+
+    client = genai.Client(api_key=api_key)
+    model_metadata = get_media_model_metadata("video", "gemini", model_name) or {}
+    if model_metadata.get("api") == "interactions":
+        try:
+            return _generate_video_gemini_omni(
+                client, model_name, prompt, duration, aspect_ratio, image_url, negative_prompt
+            )
+        except Exception as e:
+            raise Exception(f"Gemini Video generation failed: {str(e)}")
+
     # Validate and map duration to nearest supported value
     if duration <= 5:
         gemini_duration = 4
@@ -389,12 +531,6 @@ def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "1
         gemini_duration = 8
     
     try:
-        from google import genai
-        from google.genai import types
-        
-        # Create client with API key
-        client = genai.Client(api_key=api_key)
-        
         # Build config for video generation
         config_kwargs = {
             "aspect_ratio": aspect_ratio,
@@ -486,19 +622,14 @@ def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "1
         video = generated_video.video
         video_url = getattr(video, 'uri', None) or getattr(video, 'url', None)
         
-        # If we have video bytes directly, save to temp and return path
+        # Return SDK bytes directly. The main save path writes the final named
+        # artifact, so creating an intermediate .mp4 here only exposes partial
+        # files to the Canvas gallery if later processing or a test stops early.
         video_bytes = getattr(video, 'video_bytes', None)
-        if video_bytes and not video_url:
-            # Save bytes to temp file and return local path
-            temp_dir = Path(__file__).parent.parent / 'data' / 'generated_videos'
-            temp_dir.mkdir(exist_ok=True)
-            temp_file = temp_dir / f"gemini_temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
-            temp_file.write_bytes(video_bytes)
-            video_url = f"file://{temp_file}"
         
         return {
             "video_url": video_url,
-            "video_bytes": video_bytes,  # May have raw bytes
+            "video_bytes": video_bytes,
             "duration": gemini_duration,
             "prompt": prompt,
             "model": model_name,
@@ -509,8 +640,6 @@ def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "1
             "has_audio": True  # Veo 3+ generates native audio
         }
         
-    except ImportError:
-        raise ValueError("google-genai not installed. Run: pip install google-genai")
     except Exception as e:
         raise Exception(f"Gemini Video generation failed: {str(e)}")
 
@@ -1001,6 +1130,8 @@ def main():
                 "video_url": result.get('video_url')  # Original URL (may expire)
             }
         }
+        if result.get("interaction_id"):
+            response["data"]["interaction_id"] = result["interaction_id"]
         
         # Add mode indicators and source references
         if result.get('from_image'):

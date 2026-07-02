@@ -65,6 +65,11 @@ def _sanitize_error_for_speech(error) -> str:
         return "an unknown error occurred"
     
     error_lower = error.lower()
+
+    if "third-party content" in error_lower:
+        return "the provider blocked the request under its third-party-content guardrails"
+    if "input blocked" in error_lower or "guardrail" in error_lower:
+        return "the provider blocked the request under its safety guardrails"
     
     # Map common errors to friendly messages
     if "400" in error or "bad request" in error_lower:
@@ -119,6 +124,48 @@ def _sanitize_error_for_speech(error) -> str:
         return "there was a technical error"
     
     return sanitized
+
+
+def _format_terminal_tool_failure(
+    tool_name: str,
+    error: Any,
+    arguments: dict[str, Any] | None = None,
+) -> str:
+    """Build truthful user-facing speech for a non-retryable tool failure."""
+    error_text = str(error or "Unknown error")
+    error_lower = error_text.lower()
+    arguments = arguments or {}
+    provider = str(arguments.get("provider") or "the selected provider").strip().lower()
+    provider_label = {
+        "gemini": "Gemini",
+        "xai": "xAI",
+        "openai": "OpenAI",
+    }.get(provider, "The selected provider")
+    artifact = {
+        "generate_video": "video",
+        "generate_image": "image",
+        "generate_music": "audio",
+    }.get(tool_name, "output")
+
+    if "third-party content" in error_lower:
+        guidance = (
+            "Try a different source image or manually select another video provider."
+            if tool_name == "generate_video"
+            else "Try different source material or manually select another provider."
+        )
+        return (
+            f"{provider_label} blocked this request under its third-party-content guardrails. "
+            f"No {artifact} was generated. {guidance}"
+        )
+    if "input blocked" in error_lower or "guardrail" in error_lower:
+        return (
+            f"{provider_label} blocked this request under its safety guardrails. "
+            "No output was generated. Try different source material or revise the request."
+        )
+
+    friendly_error = _sanitize_error_for_speech(error_text).rstrip(".")
+    display_name = tool_name.replace("_", " ").strip().capitalize() or "Tool"
+    return f"{display_name} failed because {friendly_error}."
 
 
 WEB_UPLOAD_VISION_ANALYSIS_PREFIX = "[User uploaded an image. Vision analysis:"
@@ -1661,17 +1708,29 @@ Mode: {self.mode}
                         transcript, tools_used, accumulated_data, conversation_context
                     )
 
-                    self._log_conversation(transcript, final_speech, tools_used, success=True)
+                    completed_any_tool = bool(tools_used)
+
+                    self._log_conversation(
+                        transcript,
+                        final_speech,
+                        tools_used,
+                        success=completed_any_tool,
+                    )
 
                     # Mark status updates complete
                     self.status_updater.mark_complete()
 
                     return {
                         "speech": final_speech,
-                        "ok": True,
+                        "ok": completed_any_tool,
                         "tools_used": tools_used,
                         "data": accumulated_data,
                         "duplicate_prevented": True,
+                        **(
+                            {}
+                            if completed_any_tool
+                            else {"error": "No tool completed before duplicate prevention stopped the request."}
+                        ),
                         "usage": total_usage if self._has_usage_data(total_usage) else None,
                         "server_side_tools": total_usage.get("server_side_tools", {})
                     }
@@ -1886,11 +1945,52 @@ Mode: {self.mode}
                     
                     # Status update on error
                     is_server_error = '500' in str(error) or 'Internal Server Error' in str(error)
-                    self.status_updater.update_error(
-                        error_type='server' if is_server_error else 'retry',
-                        error_message=error,
-                        is_server_error=is_server_error
-                    )
+                    is_single_call_failure = tool_name in SINGLE_CALL_TOOLS
+                    if not is_single_call_failure:
+                        self.status_updater.update_error(
+                            error_type='server' if is_server_error else 'retry',
+                            error_message=error,
+                            is_server_error=is_server_error
+                        )
+
+                    # Preserve failed executions as authoritative context. Retry and
+                    # duplicate-recovery paths must never infer success from an absent
+                    # result merely because failed tools are excluded from tools_used.
+                    failed_at = datetime.now(self.timezone)
+                    conversation_context.append({
+                        "tool": tool_name,
+                        "arguments": arguments,
+                        "result": result,
+                        "speech": speech,
+                        "meta": {
+                            "executed_at_iso": failed_at.isoformat(),
+                            "executed_at_local": failed_at.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                            "freshness": "failed_tool_call",
+                            "ttl_seconds": None,
+                            "source": "tool_failure",
+                            "authoritative_live": False,
+                        },
+                    })
+
+                    # Expensive or side-effecting tools are intentionally limited to
+                    # one attempt. Do not invite an LLM retry that the single-call cap
+                    # will reject, and never switch a user-selected provider silently.
+                    if is_single_call_failure:
+                        final_speech = _format_terminal_tool_failure(tool_name, error, arguments)
+                        attempted_tools = list(dict.fromkeys([*tools_used, tool_name]))
+                        self._log_conversation(transcript, final_speech, attempted_tools, success=False)
+                        self.status_updater.mark_complete()
+                        return {
+                            "speech": final_speech,
+                            "ok": False,
+                            "error": error,
+                            "tool_name": tool_name,
+                            "tool_args": arguments,
+                            "tools_used": attempted_tools,
+                            "tool_trace": tool_trace,
+                            "retries": retry_count,
+                            "terminal_failure": True,
+                        }
                     
                     # Emit progress: retrying
                     if retry_count < self.max_retries:
@@ -2312,6 +2412,17 @@ Mode: {self.mode}
             # If we already have clear tool speech, prefer it over re-synthesis.
             # This avoids hallucinated contradictions when duplicate prevention triggers.
             if conversation_context:
+                for failed_ctx in reversed(conversation_context):
+                    if not isinstance(failed_ctx, dict) or failed_ctx.get("tool") == "duplicate_guard":
+                        continue
+                    failed_result = failed_ctx.get("result", {})
+                    if isinstance(failed_result, dict) and failed_result.get("ok") is False:
+                        return _format_terminal_tool_failure(
+                            failed_ctx.get("tool", "tool"),
+                            failed_result.get("error") or failed_result.get("speech"),
+                            failed_ctx.get("arguments"),
+                        )
+
                 last_ctx = {}
                 last_result = {}
                 last_tool = ""
