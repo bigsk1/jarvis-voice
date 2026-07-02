@@ -87,6 +87,35 @@ body {
     cursor: pointer;
 }
 
+.refresh-btn {
+    min-width: 108px;
+    justify-content: center;
+}
+
+.refresh-btn:disabled {
+    cursor: default;
+    opacity: 0.85;
+}
+
+.refresh-btn-icon {
+    display: inline-block;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.refresh-btn.is-refreshing .refresh-btn-icon {
+    animation: refresh-spin 0.8s linear infinite;
+}
+
+@keyframes refresh-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 /* Gallery grid */
 .gallery {
     display: grid;

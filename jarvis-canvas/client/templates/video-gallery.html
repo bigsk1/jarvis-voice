@@ -45,7 +45,10 @@
                 <option value="duration-desc">Longest First</option>
                 <option value="duration-asc">Shortest First</option>
             </select>
-            <button class="btn btn-secondary" onclick="refreshGallery()">🔄 Refresh</button>
+            <button type="button" class="btn btn-secondary refresh-btn" id="refreshBtn" onclick="refreshGallery()">
+                <span class="refresh-btn-icon" aria-hidden="true">↻</span>
+                <span class="refresh-btn-label">Refresh</span>
+            </button>
         </div>
 
         <div class="video-gallery" id="videoGallery"></div>

@@ -5,6 +5,7 @@
 let videos = [];
 let filteredVideos = [];
 let currentVideo = null;
+let refreshInProgress = false;
 
 async function fetchVideos() {
     try {
@@ -351,8 +352,26 @@ function deleteFromLightbox() {
     }
 }
 
-function refreshGallery() {
-    fetchVideos();
+function setRefreshLoading(isLoading) {
+    const btn = document.getElementById('refreshBtn');
+    if (!btn) return;
+    btn.classList.toggle('is-refreshing', isLoading);
+    btn.disabled = isLoading;
+    btn.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+    const label = btn.querySelector('.refresh-btn-label');
+    if (label) label.textContent = isLoading ? 'Refreshing…' : 'Refresh';
+}
+
+async function refreshGallery() {
+    if (refreshInProgress) return;
+    refreshInProgress = true;
+    setRefreshLoading(true);
+    try {
+        await fetchVideos();
+    } finally {
+        refreshInProgress = false;
+        setRefreshLoading(false);
+    }
 }
 
 function showToast(message, type = 'success') {
