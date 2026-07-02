@@ -110,6 +110,15 @@ When adding a new curated cloud chat model:
 2. Include display name, context window, pricing, aliases if needed, and mark `default: true` only if it should become the curated fallback
 3. Update docs/examples only if you want the new model surfaced in human-facing guidance
 
+For Anthropic, audit the curated catalog against the Models API before and after an update:
+
+```bash
+./bin/audit-anthropic-models.py --mode cloud
+./bin/audit-anthropic-models.py --mode cloud --json
+```
+
+The selected mode controls which env file supplies `ANTHROPIC_API_KEY`; use `--mode local` when the key exists only in `config/local.env`. The audit is read-only and never rewrites the catalog. It checks model availability, canonical IDs, input/output token limits, and the complete capabilities object. Anthropic's Models API does not return pricing, so catalog prices retain a manual verification date, source URL, and optional validity deadline; stale or expired verification is reported as a warning.
+
 When removing an old curated cloud chat model:
 1. Remove it from `lib/model_catalog.py`
 2. Clean up docs/examples that still mention it

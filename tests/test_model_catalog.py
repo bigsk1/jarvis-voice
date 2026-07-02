@@ -173,10 +173,12 @@ class ModelCatalogTests(unittest.TestCase):
         metadata = get_model_metadata("anthropic", "sonnet-5")
         self.assertIsNotNone(metadata)
         self.assertEqual(metadata["id"], "claude-sonnet-5")
+        self.assertEqual(metadata["max_output_tokens"], 128_000)
+        self.assertTrue(metadata["capabilities"]["image_input"]["supported"])
         pricing = get_model_pricing("anthropic", "claude-sonnet-5")
-        self.assertEqual(pricing["input"], 3.00)
-        self.assertEqual(pricing["output"], 15.00)
-        self.assertEqual(pricing["cached"], 0.30)
+        self.assertEqual(pricing["input"], 2.00)
+        self.assertEqual(pricing["output"], 10.00)
+        self.assertEqual(pricing["cached"], 0.20)
 
     def test_anthropic_sonnet_4_6_resolves_with_pricing_and_context(self):
         self.assertEqual(get_model_context_window("anthropic", "claude-sonnet-4-6"), 1_000_000)
@@ -192,8 +194,21 @@ class ModelCatalogTests(unittest.TestCase):
     def test_anthropic_options_include_sonnet_5_first(self):
         models = [entry["id"] for entry in get_provider_model_options("anthropic")]
         self.assertEqual(models[0], "claude-sonnet-5")
+        self.assertIn("claude-fable-5", models)
         self.assertIn("claude-sonnet-4-6", models)
         self.assertLess(models.index("claude-sonnet-4-6"), models.index("claude-opus-4-8"))
+
+    def test_anthropic_fable_5_resolves_with_pricing_and_context(self):
+        self.assertEqual(get_model_context_window("anthropic", "claude-fable-5"), 1_000_000)
+        self.assertEqual(get_model_context_label("anthropic", "claude-fable-5"), "1M")
+        metadata = get_model_metadata("anthropic", "fable-5")
+        self.assertIsNotNone(metadata)
+        self.assertEqual(metadata["id"], "claude-fable-5")
+        self.assertEqual(metadata["max_output_tokens"], 128_000)
+        pricing = get_model_pricing("anthropic", "claude-fable-5")
+        self.assertEqual(pricing["input"], 10.00)
+        self.assertEqual(pricing["output"], 50.00)
+        self.assertEqual(pricing["cached"], 1.00)
 
     def test_retired_anthropic_models_resolve_to_replacements(self):
         sonnet = get_model_metadata("anthropic", "claude-sonnet-4-20250514")
@@ -233,10 +248,10 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(get_default_model_id("xai"), "grok-4.3")
         self.assertEqual(get_default_model_id("anthropic"), "claude-sonnet-5")
 
-    def test_exact_id_beats_alias_when_names_overlap(self):
+    def test_legacy_claude_4_5_alias_resolves_to_sonnet(self):
         metadata = get_model_metadata("anthropic", "claude-4-5")
         self.assertIsNotNone(metadata)
-        self.assertEqual(metadata["id"], "claude-4-5")
+        self.assertEqual(metadata["id"], "claude-sonnet-4-5-20250929")
 
     def test_latest_suffix_falls_back_to_family_match(self):
         metadata = get_model_metadata("xai", "grok-4.3-latest")

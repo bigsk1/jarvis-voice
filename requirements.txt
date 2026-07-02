@@ -1,5 +1,5 @@
 # LLM Providers for tool calling
-anthropic>=0.40.0
+anthropic>=0.115.0
 # For OpenAI and xAI (Grok) API support
 openai>=2.24.0
 # xAI SDK for Agent Tools API (web_search, x_search)

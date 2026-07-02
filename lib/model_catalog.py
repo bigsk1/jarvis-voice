@@ -24,6 +24,89 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+ANTHROPIC_MODELS_SOURCE = "https://platform.claude.com/docs/en/api/models/list"
+ANTHROPIC_PRICING_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing"
+ANTHROPIC_PRICING_VERIFIED = "2026-07-01"
+ANTHROPIC_MODEL_AUDIT_IGNORES = {
+    "claude-opus-4-1-20250805": "Deprecated by Anthropic; intentionally excluded from Jarvis options.",
+}
+
+_ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH = {
+    "batch": {"supported": True},
+    "citations": {"supported": True},
+    "code_execution": {"supported": True},
+    "context_management": {
+        "clear_thinking_20251015": {"supported": True},
+        "clear_tool_uses_20250919": {"supported": True},
+        "compact_20260112": {"supported": True},
+        "supported": True,
+    },
+    "effort": {
+        "high": {"supported": True},
+        "low": {"supported": True},
+        "max": {"supported": True},
+        "medium": {"supported": True},
+        "supported": True,
+        "xhigh": {"supported": True},
+    },
+    "image_input": {"supported": True},
+    "pdf_input": {"supported": True},
+    "structured_outputs": {"supported": True},
+    "thinking": {
+        "supported": True,
+        "types": {"adaptive": {"supported": True}, "enabled": {"supported": False}},
+    },
+}
+
+_ANTHROPIC_CAPABILITIES_ADAPTIVE_AND_ENABLED = {
+    **_ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH,
+    "effort": {
+        **_ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH["effort"],
+        "xhigh": {"supported": False},
+    },
+    "thinking": {
+        "supported": True,
+        "types": {"adaptive": {"supported": True}, "enabled": {"supported": True}},
+    },
+}
+
+_ANTHROPIC_CAPABILITIES_ENABLED = {
+    **_ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH,
+    "context_management": {
+        **_ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH["context_management"],
+        "compact_20260112": {"supported": False},
+    },
+    "effort": {
+        "high": {"supported": False},
+        "low": {"supported": False},
+        "max": {"supported": False},
+        "medium": {"supported": False},
+        "supported": False,
+        "xhigh": {"supported": False},
+    },
+    "thinking": {
+        "supported": True,
+        "types": {"adaptive": {"supported": False}, "enabled": {"supported": True}},
+    },
+}
+
+_ANTHROPIC_CAPABILITIES_ENABLED_WITH_EFFORT = {
+    **_ANTHROPIC_CAPABILITIES_ENABLED,
+    "effort": {
+        "high": {"supported": True},
+        "low": {"supported": True},
+        "max": {"supported": False},
+        "medium": {"supported": True},
+        "supported": True,
+        "xhigh": {"supported": False},
+    },
+}
+
+_ANTHROPIC_CAPABILITIES_ENABLED_NO_CODE = {
+    **_ANTHROPIC_CAPABILITIES_ENABLED,
+    "code_execution": {"supported": False},
+}
+
 
 def _context_label(tokens: int) -> str:
     """Format a context window for display."""
@@ -81,57 +164,102 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "id": "claude-sonnet-5",
             "name": "Claude Sonnet 5 (Default)",
             "context_tokens": 1_000_000,
+            "max_output_tokens": 128_000,
+            "capabilities": _ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH,
             "default": True,
-            "pricing": {"input": 3.00, "output": 15.00, "cached": 0.30},
+            "pricing": {"input": 2.00, "output": 10.00, "cached": 0.20},
+            "pricing_verified": ANTHROPIC_PRICING_VERIFIED,
+            "pricing_valid_until": "2026-08-31",
+            "pricing_source": ANTHROPIC_PRICING_SOURCE,
             "aliases": ["sonnet-5"],
+        },
+        {
+            "id": "claude-fable-5",
+            "name": "Claude Fable 5",
+            "context_tokens": 1_000_000,
+            "max_output_tokens": 128_000,
+            "capabilities": _ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH,
+            "pricing": {"input": 10.00, "output": 50.00, "cached": 1.00},
+            "pricing_verified": ANTHROPIC_PRICING_VERIFIED,
+            "pricing_source": ANTHROPIC_PRICING_SOURCE,
+            "aliases": ["fable-5"],
         },
         {
             "id": "claude-sonnet-4-6",
             "name": "Claude Sonnet 4.6",
             "context_tokens": 1_000_000,
+            "max_output_tokens": 128_000,
+            "capabilities": _ANTHROPIC_CAPABILITIES_ADAPTIVE_AND_ENABLED,
             "pricing": {"input": 3.00, "output": 15.00, "cached": 0.30},
+            "pricing_verified": ANTHROPIC_PRICING_VERIFIED,
+            "pricing_source": ANTHROPIC_PRICING_SOURCE,
             "aliases": ["sonnet-4.6", "sonnet-4", "claude-sonnet-4-20250514"],
         },
         {
             "id": "claude-sonnet-4-5-20250929",
             "name": "Claude Sonnet 4.5",
-            "context_tokens": 200_000,
-            "pricing": {"input": 3.00, "output": 15.00},
+            "context_tokens": 1_000_000,
+            "max_output_tokens": 64_000,
+            "capabilities": _ANTHROPIC_CAPABILITIES_ENABLED,
+            "pricing": {"input": 3.00, "output": 15.00, "cached": 0.30},
+            "pricing_verified": ANTHROPIC_PRICING_VERIFIED,
+            "pricing_source": ANTHROPIC_PRICING_SOURCE,
             "aliases": ["claude-4-5", "sonnet-4.5"],
+        },
+        {
+            "id": "claude-haiku-4-5-20251001",
+            "name": "Claude Haiku 4.5",
+            "context_tokens": 200_000,
+            "max_output_tokens": 64_000,
+            "capabilities": _ANTHROPIC_CAPABILITIES_ENABLED_NO_CODE,
+            "pricing": {"input": 1.00, "output": 5.00, "cached": 0.10},
+            "pricing_verified": ANTHROPIC_PRICING_VERIFIED,
+            "pricing_source": ANTHROPIC_PRICING_SOURCE,
+            "aliases": ["claude-haiku-4-5", "haiku-4.5"],
         },
         {
             "id": "claude-opus-4-8",
             "name": "Claude Opus 4.8",
             "context_tokens": 1_000_000,
+            "max_output_tokens": 128_000,
+            "capabilities": _ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH,
             "pricing": {"input": 5.00, "output": 25.00, "cached": 0.50},
+            "pricing_verified": ANTHROPIC_PRICING_VERIFIED,
+            "pricing_source": ANTHROPIC_PRICING_SOURCE,
             "aliases": ["opus-4.8", "opus-4", "claude-opus-4-20250514", "claude-4-opus"],
         },
         {
             "id": "claude-opus-4-7",
             "name": "Claude Opus 4.7",
             "context_tokens": 1_000_000,
+            "max_output_tokens": 128_000,
+            "capabilities": _ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH,
             "pricing": {"input": 5.00, "output": 25.00, "cached": 0.50},
+            "pricing_verified": ANTHROPIC_PRICING_VERIFIED,
+            "pricing_source": ANTHROPIC_PRICING_SOURCE,
             "aliases": ["opus-4.7"],
         },
         {
             "id": "claude-opus-4-6",
             "name": "Claude Opus 4.6",
             "context_tokens": 1_000_000,
+            "max_output_tokens": 128_000,
+            "capabilities": _ANTHROPIC_CAPABILITIES_ADAPTIVE_AND_ENABLED,
             "pricing": {"input": 5.00, "output": 25.00, "cached": 0.50},
+            "pricing_verified": ANTHROPIC_PRICING_VERIFIED,
+            "pricing_source": ANTHROPIC_PRICING_SOURCE,
             "aliases": ["opus-4.6"],
         },
         {
-            "id": "claude-opus-4-5",
+            "id": "claude-opus-4-5-20251101",
             "name": "Claude Opus 4.5",
             "context_tokens": 200_000,
+            "max_output_tokens": 64_000,
+            "capabilities": _ANTHROPIC_CAPABILITIES_ENABLED_WITH_EFFORT,
             "pricing": {"input": 5.00, "output": 25.00, "cached": 0.50},
-            "aliases": ["opus-4.5"],
-        },
-        {
-            "id": "claude-4-5",
-            "name": "Claude 4.5",
-            "context_tokens": 200_000,
-            "pricing": {"input": 3.00, "output": 15.00},
+            "pricing_verified": ANTHROPIC_PRICING_VERIFIED,
+            "pricing_source": ANTHROPIC_PRICING_SOURCE,
+            "aliases": ["claude-opus-4-5", "opus-4.5"],
         },
     ],
     "openai": [

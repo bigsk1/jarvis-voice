@@ -1183,7 +1183,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", specifier = ">=0.40.0" },
+    { name = "anthropic", specifier = ">=0.115.0" },
     { name = "av", specifier = "==15.1.0" },
     { name = "certifi", specifier = "==2025.8.3" },
     { name = "cffi", specifier = "==2.0.0" },

@@ -329,6 +329,11 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-07-01:**
+- ✅ **Anthropic model-catalog drift audit**
+  - Added `claude-fable-5` and Claude Haiku 4.5 as opt-in models while keeping Claude Sonnet 5 as the default; canonical API IDs, input/output limits, capabilities, and current pricing now live in the shared catalog.
+  - `./bin/audit-anthropic-models.py --mode cloud` compares Jarvis against the live Anthropic Models API; `--json` provides complete machine-readable output for maintenance by an LLM or CI job.
+  - The audit treats token/capability mismatches and unreviewed API models as drift, preserves account-specific availability as a warning, and tracks pricing verification separately because the Models API does not return prices.
+  - Raised the Anthropic SDK minimum to `0.115.0`, corrected Sonnet 4.5 to its live 1M input/64K output limits, and recorded Sonnet 5's introductory pricing expiry so it cannot silently remain stale after August 31, 2026.
 - ✅ **Gemini Omni Flash video support**
   - Added `gemini-omni-flash-preview` as an opt-in catalog model using the Interactions API for 3-10 second 720p text-to-video and image-to-video with native audio.
   - Veo 3.1 Fast remains the default; catalog metadata now selects the correct Gemini API backend and keeps Web attachment resolution choices aligned with the pinned model.
