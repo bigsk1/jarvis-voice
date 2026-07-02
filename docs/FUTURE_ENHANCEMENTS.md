@@ -116,6 +116,40 @@ Main chat/tool path in `lib/llm_provider.py` already uses the Anthropic SDK (thi
 
 **Files:** `pyproject.toml`, `requirements.txt`, `docs/docker/README.md`
 
+### 6) Replace Werkzeug for Jarvis Web Socket.IO Serving
+**Priority:** Low / runtime hardening
+
+Jarvis Web currently uses Flask-SocketIO in `threading` mode with `simple-websocket`, served through Werkzeug via `socketio.run(..., allow_unsafe_werkzeug=True)`. This applies to both native and Docker launches.
+
+Closing or replacing a healthy WebSocket connection can produce a false HTTP 500 and traceback:
+
+```text
+AssertionError: write() before start_response
+```
+
+The client connection itself works, the server receives the normal Socket.IO disconnect, and subsequent health/API requests remain successful. Cross-UI navigation or opening Jarvis Web in another tab merely makes the teardown easier to notice. A minimal Flask-SocketIO reproduction shows that this is not caused by Jarvis routing, authentication, Canvas, or Docker networking.
+
+**Verified direction:** A single Gunicorn `gthread` worker with multiple threads and `simple-websocket` handled repeated WebSocket connect/disconnect cycles without the false 500. Returning to Eventlet is not desirable because its monkey-patching previously interfered with gRPC, subprocess, Python locks, and clean greenlet shutdown.
+
+**Advantages of Gunicorn:**
+- Removes the known Werkzeug development-server limitation and warning
+- Clean WebSocket teardown and less misleading error logging
+- Better production lifecycle, signal handling, timeouts, and worker supervision
+- More appropriate long-term server for the Docker deployment
+
+**Migration risks / checks:**
+- Start with exactly one worker; multiple Socket.IO workers require sticky sessions and a shared message queue
+- Preserve request-local cloud/local mode loading before the app accepts traffic
+- Preserve Web UI auth, shared-secret loading, upload paths, background tasks, and Socket.IO event registration
+- Verify long-running LLM/tool requests against Gunicorn worker/thread timeouts
+- Keep stdout/stderr logging, Docker health checks, graceful shutdown, and native tmux behavior intact
+- Decide whether Gunicorn becomes the shared native-and-Docker default or remains Docker-only; runtime parity is preferable but requires installation/documentation updates
+- Add `gunicorn` consistently to `pyproject.toml`, `requirements.txt`, and the uv lock rather than relying on an unpinned Docker-only install
+
+**Not urgent:** The current traceback is noisy but non-breaking. Until this is implemented and tested, it can be ignored when it occurs immediately after a normal `[WS] Client disconnected` event and health checks continue returning 200.
+
+**Likely files:** `jarvis-web/server/app.py`, `bin/jarvis-web`, `docker/entrypoint.sh`, `Dockerfile`, dependency manifests, Web runtime tests, and Docker/native deployment docs.
+
 ---
 
 ## ⭐ State-of-the-Art Assistant Upgrades (Worth Doing Early)

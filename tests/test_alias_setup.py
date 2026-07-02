@@ -109,6 +109,7 @@ def test_canonical_commands_use_current_launchers_and_external_venv():
         "jarvis-stop()",
         "jarvis-status()",
         "jarvis-web-local()",
+        "jarvis-web-stop()",
         "jarvis-api-local()",
         "jarvis-help()",
     ):
@@ -128,6 +129,7 @@ def test_jarvis_help_lists_operator_commands():
         "jarvis-stop",
         "jarvis-status",
         "jarvis-web-local",
+        "jarvis-web-stop",
         "jarvis-api-local",
         "jarvis-cli-json",
     ):
@@ -171,4 +173,28 @@ jarvis-api-local
         "--local web",
         "api",
         "--local api",
+    ]
+
+
+def test_web_stop_shortcut_stops_only_web_tmux_session(tmp_path: Path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    log = tmp_path / "tmux.log"
+    tmux = fake_bin / "tmux"
+    tmux.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$TMUX_LOG"\n')
+    tmux.chmod(0o755)
+
+    env = os.environ.copy()
+    env.update({"PATH": f"{fake_bin}:{env['PATH']}", "TMUX_LOG": str(log)})
+    result = subprocess.run(
+        ["bash", "-c", f"source {ALIASES!s}; jarvis-web-stop"],
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert log.read_text().splitlines() == [
+        "has-session -t jarvis-web",
+        "kill-session -t jarvis-web",
     ]

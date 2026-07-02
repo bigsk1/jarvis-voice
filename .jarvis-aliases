@@ -11,7 +11,7 @@ export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-$JARVIS_VENV}"
 unalias jarvis jarvis-local jarvis-cli jarvis-local-cli 2>/dev/null || true
 unalias jarvis-cli-json jarvis-local-cli-json jarvis-d 2>/dev/null || true
 unalias jarvis-start jarvis-start-local jarvis-stop jarvis-status 2>/dev/null || true
-unalias jarvis-web jarvis-web-local jarvis-api jarvis-api-local 2>/dev/null || true
+unalias jarvis-web jarvis-web-local jarvis-web-stop jarvis-api jarvis-api-local 2>/dev/null || true
 unalias jarvis-cd jarvis-env jarvis-logs jarvis-help 2>/dev/null || true
 
 _jarvis_run() (
@@ -48,6 +48,17 @@ jarvis-status() { _jarvis_run ./bin/start --list; }
 # Individual Web/API services.
 jarvis-web() { _jarvis_run ./bin/start web; }
 jarvis-web-local() { _jarvis_run ./bin/start --local web; }
+jarvis-web-stop() {
+    if ! command -v tmux >/dev/null 2>&1; then
+        echo "tmux is required to stop the Jarvis Web UI" >&2
+        return 1
+    fi
+    if ! tmux has-session -t jarvis-web 2>/dev/null; then
+        echo "Jarvis Web UI is not running"
+        return 0
+    fi
+    tmux kill-session -t jarvis-web && echo "Stopped Jarvis Web UI"
+}
 jarvis-api() { _jarvis_run ./bin/start api; }
 jarvis-api-local() { _jarvis_run ./bin/start --local api; }
 
@@ -90,6 +101,7 @@ Services
   jarvis-status                  Show every managed session status
   jarvis-web                     Start cloud Web UI
   jarvis-web-local               Start local Web UI
+  jarvis-web-stop                Stop the Web UI tmux session
   jarvis-api                     Start cloud API
   jarvis-api-local               Start local API
 

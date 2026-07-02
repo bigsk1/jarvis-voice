@@ -427,6 +427,7 @@ say hello
 | `jarvis-stop` | Stop all Jarvis tmux sessions |
 | `jarvis-status` | Show status for every managed session |
 | `jarvis-web` / `jarvis-web-local` | Start cloud/local Web UI |
+| `jarvis-web-stop` | Stop only the Web UI tmux session |
 | `jarvis-api` / `jarvis-api-local` | Start cloud/local API server |
 | `jarvis-cd` | cd to jarvis-voice directory |
 | `jarvis-env` | Activate Python venv |

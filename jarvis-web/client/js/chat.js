@@ -393,6 +393,7 @@ class ChatUI {
     this.attachedImages = [];  // [{ url, filename }]
     this.imageAttachmentAction = 'analyze';
     this.imageAttachmentSettings = {};
+    this.pendingVisionRetryPayload = null;
     
     // Autocomplete state
     this.autocompleteEl = null;
@@ -1468,6 +1469,7 @@ class ChatUI {
     socket.on('response', (data) => {
       this.hideThinking();
       this.clearStatus();  // Clear any status messages
+      this.pendingVisionRetryPayload = null;
       this.addAssistantMessage(data.text, data.tools_used, data);
       this.currentMessageId = null;
       this.isProcessing = false;
@@ -1503,6 +1505,20 @@ class ChatUI {
       this.hideThinking();
       this.clearStatus();
       this.addErrorMessage(data.error);
+      if (
+        ['vision_model_unsupported', 'vision_analysis_failed'].includes(data.error_code)
+        && this.pendingVisionRetryPayload
+      ) {
+        const retryPayload = this.pendingVisionRetryPayload;
+        this.pendingVisionRetryPayload = null;
+        if (!this._hasAttachedImages()) {
+          this.attachedImages = retryPayload.images.map(({ url, filename }) => ({ url, filename }));
+          this.imageAttachmentAction = 'analyze';
+          this.imageAttachmentSettings = {};
+          this._renderImagePreviews();
+          Utils.toast('Image restored — switch to a vision-capable model and resend', 'info', 5000);
+        }
+      }
       this.currentMessageId = null;
       this.isProcessing = false;
       this.updateSendButton();
@@ -2735,10 +2751,13 @@ class ChatUI {
   /**
    * Clear attached images
    */
-  clearAttachedImage() {
+  clearAttachedImage(options = {}) {
     this.attachedImages = [];
     this.imageAttachmentAction = 'analyze';
     this.imageAttachmentSettings = {};
+    if (!options.preserveVisionRetry) {
+      this.pendingVisionRetryPayload = null;
+    }
     this._renderImagePreviews();
   }
 
@@ -2814,6 +2833,13 @@ class ChatUI {
     this.isProcessing = true;
     this.updateSendButton();
     this.pendingTools = {};
+    this.pendingVisionRetryPayload = imagePayload?.action === 'analyze'
+      ? {
+          action: 'analyze',
+          settings: {},
+          images: imagePayload.images.map(({ url, filename }) => ({ url, filename }))
+        }
+      : null;
     
     // Pass parsed data to socket (workflows are handled by orchestrator via /trigger)
     window.jarvisSocket.sendMessage(parsed.message, imagePayload, {
@@ -2823,7 +2849,7 @@ class ChatUI {
     }, requestFeedback, this.attachedFile);
     
     // Clear attachments after sending
-    this.clearAttachedImage();
+    this.clearAttachedImage({ preserveVisionRetry: true });
     this.clearAttachedFile();
   }
 

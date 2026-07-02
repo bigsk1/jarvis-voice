@@ -3090,11 +3090,37 @@ Previous structured data:
                     }, room=delivery_room)
                     
                     images_base64 = [img['base64'] for img in image_items if img.get('base64')]
-                    vision_result = self._process_vision(
-                        images_base64,
-                        message, 
-                        mode
-                    )
+                    try:
+                        vision_result = self._process_vision(
+                            images_base64,
+                            message,
+                            mode
+                        )
+                    except Exception as exc:
+                        from vision_provider import VisionCapabilityError
+
+                        print(f"[VISION] Explicit image analysis stopped: {exc}")
+                        if isinstance(exc, VisionCapabilityError):
+                            error_message = (
+                                f"{exc} The uploaded image is ready to retry without uploading it again."
+                            )
+                            error_code = 'vision_model_unsupported'
+                        else:
+                            error_message = (
+                                "The selected vision provider could not analyze the uploaded image. "
+                                "Try again or select another vision-capable provider. The uploaded "
+                                "image is ready to retry without uploading it again."
+                            )
+                            error_code = 'vision_analysis_failed'
+                        self.socketio.emit('chat:error', {
+                            'message_id': message_id,
+                            'conversation_id': conversation_id,
+                            'error': error_message,
+                            'error_code': error_code,
+                            'retryable': True,
+                            'timestamp': time.time(),
+                        }, room=delivery_room)
+                        return
                     
                     if vision_result:
                         stash_refs = []
@@ -4405,27 +4431,21 @@ Mode: {mode}
         # Load mode-specific config
         load_jarvis_config(mode)
         
-        try:
-            mode_config = load_web_config().get(mode, {})
-            if mode == 'local':
-                provider = 'ollama'
-                model = None  # Local vision uses OLLAMA_VISION_MODEL.
-            else:
-                provider = (
-                    mode_config.get('llm_provider')
-                    or get_jarvis_setting('LLM_PROVIDER', 'xai')
-                )
-                model = mode_config.get('llm_model')
-            print(f"[VISION] Shared dispatch: mode={mode}, provider={provider}, model={model or '(default)'}")
-            return analyze_images(
-                images_base64,
-                prompt,
-                mode=mode,
-                provider=provider,
-                model=model,
+        mode_config = load_web_config().get(mode, {})
+        if mode == 'local':
+            provider = 'ollama'
+            model = None  # Local vision uses OLLAMA_VISION_MODEL.
+        else:
+            provider = (
+                mode_config.get('llm_provider')
+                or get_jarvis_setting('LLM_PROVIDER', 'xai')
             )
-        except Exception as e:
-            print(f"[VISION] Error: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
+            model = mode_config.get('llm_model')
+        print(f"[VISION] Shared dispatch: mode={mode}, provider={provider}, model={model or '(default)'}")
+        return analyze_images(
+            images_base64,
+            prompt,
+            mode=mode,
+            provider=provider,
+            model=model,
+        )

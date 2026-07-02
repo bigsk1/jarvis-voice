@@ -96,7 +96,13 @@ your Ollama host (for example `llava:latest`, `llama3.2-vision:latest`, or
 text-only or you want a smaller vision model.
 
 Ollama vision requests use the documented `/api/generate` payload with a base64
-`images` array. Jarvis does not use a separate vision endpoint.
+`images` array. Jarvis does not use a separate vision endpoint. Before explicit
+image analysis, it checks `/api/show` when available. If the active model does
+not declare the `vision` capability, Web chat reports that the model is
+text-only and stops the turn instead of silently passing the question to normal
+text chat. The Web UI restores the uploaded image to the composer so the user
+can switch to a vision-capable model or provider and resend without uploading
+it again.
 
 When cloud/local Web Settings pick a non-Ollama provider (xAI, Anthropic,
 OpenAI), vision uses that provider's chat/vision API instead. The

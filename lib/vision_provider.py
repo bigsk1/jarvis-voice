@@ -28,9 +28,89 @@ class VisionProviderError(RuntimeError):
     """Raised when the selected vision provider cannot complete a request."""
 
 
-def _response_error(provider: str, response: requests.Response) -> VisionProviderError:
-    detail = (response.text or "")[:500]
+class VisionCapabilityError(VisionProviderError):
+    """Raised when the selected model explicitly does not accept image input."""
+
+    def __init__(self, provider: str, model: str, detail: str = "") -> None:
+        self.provider = provider
+        self.model = model
+        self.detail = detail
+        super().__init__(
+            f"The selected {provider} model '{model}' does not support image input. "
+            "Choose a vision-capable model or another provider, then resend the image."
+        )
+
+
+_IMAGE_UNSUPPORTED_MARKERS = (
+    "does not support image",
+    "doesn't support image",
+    "image input is not supported",
+    "image inputs are not supported",
+    "images are not supported",
+    "vision is not supported",
+    "does not support vision",
+    "doesn't support vision",
+    "does not support multimodal",
+    "only supports text",
+    "text-only model",
+)
+
+
+def _response_detail(response: requests.Response) -> str:
+    """Extract a useful provider error without assuming one JSON shape."""
+    try:
+        payload = response.json()
+    except Exception:
+        payload = None
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict):
+            detail = error.get("message") or error.get("detail") or error.get("type")
+            if detail:
+                return str(detail)[:500]
+        elif error:
+            return str(error)[:500]
+        for key in ("message", "detail"):
+            if payload.get(key):
+                return str(payload[key])[:500]
+    return (response.text or "")[:500]
+
+
+def _response_error(
+    provider: str,
+    response: requests.Response,
+    *,
+    model: str | None = None,
+) -> VisionProviderError:
+    detail = _response_detail(response)
+    normalized = detail.lower()
+    if model and any(marker in normalized for marker in _IMAGE_UNSUPPORTED_MARKERS):
+        return VisionCapabilityError(provider, model, detail)
     return VisionProviderError(f"{provider} vision failed ({response.status_code}): {detail}")
+
+
+def _ollama_vision_capability(model: str, base_urls: list[str]) -> bool | None:
+    """Return Ollama's declared vision support, or None when it cannot be determined."""
+    try:
+        response, _ = request_ollama(
+            "post",
+            "/api/show",
+            base_urls=base_urls,
+            json={"model": model, "verbose": False},
+            timeout=15,
+        )
+    except Exception:
+        return None
+    if response.status_code != 200:
+        return None
+    try:
+        payload = response.json()
+    except Exception:
+        return None
+    capabilities = payload.get("capabilities") if isinstance(payload, dict) else None
+    if not isinstance(capabilities, list):
+        return None
+    return "vision" in {str(capability).strip().lower() for capability in capabilities}
 
 
 def _ollama_vision(images_base64: list[str], prompt: str, mode: str, model: str | None) -> str:
@@ -44,10 +124,14 @@ def _ollama_vision(images_base64: list[str], prompt: str, mode: str, model: str 
             or resolve_ollama_model("local")
         )
 
+    base_urls = get_ollama_base_urls()
+    if _ollama_vision_capability(vision_model, base_urls) is False:
+        raise VisionCapabilityError("Ollama", vision_model)
+
     response, _ = request_ollama(
         "post",
         "/api/generate",
-        base_urls=get_ollama_base_urls(),
+        base_urls=base_urls,
         json={
             "model": vision_model,
             "prompt": build_ollama_prompt(prompt, len(images_base64)),
@@ -57,7 +141,7 @@ def _ollama_vision(images_base64: list[str], prompt: str, mode: str, model: str 
         timeout=120,
     )
     if response.status_code != 200:
-        raise _response_error("Ollama", response)
+        raise _response_error("Ollama", response, model=vision_model)
     text = (response.json().get("response") or "").strip()
     if not text:
         raise VisionProviderError("Ollama vision returned an empty response")
@@ -86,7 +170,7 @@ def _anthropic_vision(images_base64: list[str], prompt: str, model: str | None) 
         timeout=120,
     )
     if response.status_code != 200:
-        raise _response_error("Anthropic", response)
+        raise _response_error("Anthropic", response, model=selected_model)
     content = response.json().get("content") or []
     text = content[0].get("text", "").strip() if content else ""
     if not text:
@@ -138,7 +222,11 @@ def _openai_compatible_vision(
         timeout=120,
     )
     if response.status_code != 200:
-        raise _response_error("xAI" if is_xai else "OpenAI", response)
+        raise _response_error(
+            "xAI" if is_xai else "OpenAI",
+            response,
+            model=selected_model,
+        )
     choices = response.json().get("choices") or []
     text = choices[0].get("message", {}).get("content", "").strip() if choices else ""
     if not text:
