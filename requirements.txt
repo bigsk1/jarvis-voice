@@ -3,7 +3,7 @@ anthropic>=0.115.0
 # For OpenAI and xAI (Grok) API support
 openai>=2.24.0
 # xAI SDK for Agent Tools API (web_search, x_search)
-xai-sdk>=1.12.2  # Video generation requires 1.6.0+
+xai-sdk>=1.17.0  # Video generation requires 1.6.0+
 # Google GenAI for Gemini image and Veo video generation
 google-genai>=2.10.0
 
