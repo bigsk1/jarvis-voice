@@ -12,6 +12,7 @@ from model_catalog import (
     get_catalog_providers,
     get_default_model_id,
     get_model_context_label,
+    get_model_metadata,
     get_media_catalog_providers,
     get_media_model_env_key,
     get_media_provider_options,
@@ -182,6 +183,20 @@ class SettingsManager:
 
         if any(option.get('id') == current_model for option in options):
             return options
+
+        metadata = get_model_metadata(provider, current_model)
+        if metadata:
+            canonical_id = metadata['id']
+            return [
+                {
+                    **option,
+                    'id': current_model,
+                    'name': f"{option['name']} (configured alias)",
+                }
+                if option.get('id') == canonical_id
+                else option
+                for option in options
+            ]
 
         context = get_model_context_label(provider, current_model) or 'custom'
         return [

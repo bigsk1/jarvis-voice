@@ -103,13 +103,18 @@ class ModelCatalogTests(unittest.TestCase):
         models = [entry["id"] for entry in get_provider_model_options("xai")]
         self.assertEqual(
             models[:4],
-            ["grok-4.3", "grok-build-0.1", "grok-4.20-reasoning", "grok-4.20-non-reasoning-latest"],
+            [
+                "grok-4.3",
+                "grok-build-0.1",
+                "grok-4.20-0309-reasoning",
+                "grok-4.20-0309-non-reasoning",
+            ],
         )
         self.assertNotIn("grok-4-fast", models)
         self.assertNotIn("grok-4-1-fast-reasoning-latest", models)
         self.assertNotIn("grok-4-1-fast-non-reasoning-latest", models)
-        self.assertEqual(get_model_context_label("xai", "grok-4.20-reasoning"), "2M")
-        self.assertEqual(get_model_context_window("xai", "grok-4.20-reasoning"), 2_000_000)
+        self.assertEqual(get_model_context_label("xai", "grok-4.20-reasoning"), "1M")
+        self.assertEqual(get_model_context_window("xai", "grok-4.20-reasoning"), 1_000_000)
 
     def test_retired_xai_models_are_not_curated(self):
         models = [entry["id"] for entry in get_provider_model_options("xai")]
@@ -120,14 +125,16 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertIsNone(metadata)
 
     def test_grok_4_20_variant_resolves_with_pricing(self):
-        self.assertEqual(get_model_context_window("xai", "grok-4.20-reasoning"), 2_000_000)
-        self.assertEqual(get_model_context_window("xai", "grok-4-20-reasoning-latest"), 2_000_000)
-        self.assertEqual(get_model_context_window("xai", "grok-4.20-non-reasoning-latest"), 2_000_000)
-        self.assertEqual(get_model_context_window("xai", "grok-4-20-non-reasoning"), 2_000_000)
+        self.assertEqual(get_model_context_window("xai", "grok-4.20-reasoning"), 1_000_000)
+        self.assertEqual(get_model_context_window("xai", "grok-4.20-0309-reasoning"), 1_000_000)
+        self.assertEqual(get_model_context_window("xai", "grok-4.20-non-reasoning-latest"), 1_000_000)
+        self.assertEqual(get_model_context_window("xai", "grok-4.20-0309-non-reasoning"), 1_000_000)
         pricing = get_model_pricing("xai", "grok-4.20-reasoning")
         self.assertIsNotNone(pricing)
-        self.assertEqual(pricing["input"], 2.00)
+        self.assertEqual(pricing["input"], 1.25)
+        self.assertEqual(pricing["output"], 2.50)
         self.assertEqual(pricing["cached"], 0.20)
+        self.assertEqual(pricing["long_context"]["threshold"], 200_000)
 
     def test_grok_4_3_variant_resolves_with_pricing(self):
         self.assertEqual(get_model_context_window("xai", "grok-4.3"), 1_000_000)

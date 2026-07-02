@@ -201,6 +201,23 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertEqual(result["llm"]["model"]["value"], "gemma4:12b")
         self.assertFalse(result["llm"]["model"]["is_override"])
 
+    def test_catalog_alias_replaces_canonical_option_without_custom_duplicate(self):
+        from server.services.settings_manager import SettingsManager
+
+        settings = SettingsManager("cloud")
+        options = settings._get_model_options_with_current(
+            "xai", "grok-4.20-non-reasoning-latest"
+        )
+
+        matching = [
+            option
+            for option in options
+            if "Grok 4.20 Non-Reasoning" in option["name"]
+        ]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["id"], "grok-4.20-non-reasoning-latest")
+        self.assertIn("configured alias", matching[0]["name"])
+
     def test_save_rejects_cross_mode_ollama_model(self):
         from server.services import settings_manager as settings_module
         from server.services.settings_manager import SettingsManager

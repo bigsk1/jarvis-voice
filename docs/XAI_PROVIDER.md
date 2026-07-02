@@ -52,8 +52,8 @@ xAI's Grok models offer the **best value proposition** for Jarvis:
 ├─────────────────────────────────────────────────────────────────┤
 │ xAI grok-4.3                       $1.25    $2.50    1M    🏆  │
 │ xAI grok-build-0.1                 $1.00    $2.00    256K       │
-│ xAI grok-4.20 non-reasoning        $2.00    $6.00    2M        │
-│ xAI grok-4.20 reasoning            $2.00    $6.00    2M        │
+│ xAI grok-4.20 non-reasoning        $1.25    $2.50    1M        │
+│ xAI grok-4.20 reasoning            $1.25    $2.50    1M        │
 │                                                                 │
 │ Anthropic Claude Sonnet 4.5        $3.00    $15.00   200K      │
 │ OpenAI GPT-5.1                     $1.25    $10.00   128K      │
@@ -367,8 +367,8 @@ XAI_TTS_STYLE_TAGS_ENABLED=true
 
 # Alternative models:
 # XAI_MODEL="grok-build-0.1"                  # Coding / build-heavy workloads (256K)
-# XAI_MODEL="grok-4.20-non-reasoning-latest"  # Lower-latency non-reasoning
-# XAI_MODEL="grok-4.20-reasoning"             # Automatic reasoning, no effort knob
+# XAI_MODEL="grok-4.20-0309-non-reasoning"  # Lower-latency non-reasoning
+# XAI_MODEL="grok-4.20-0309-reasoning"      # Automatic reasoning, no effort knob
 ```
 
 `XAI_SERVER_SIDE_MAX_TOOL_TURNS` caps xAI's internal server-side agent loop for a single `chat.sample()` call and is also used as Jarvis's total native-search budget for the user request unless `XAI_SERVER_SIDE_MAX_SEARCHES_PER_REQUEST` is set. This prevents native web/X search calls from multiplying across many Jarvis router turns while still allowing xAI to spend the budget adaptively on the synthesis turn that needs it.
@@ -398,10 +398,10 @@ The provider supports OpenAI-style `assistant.tool_calls` plus `role="tool"` mes
 |-------|---------|----------|-----------|
 | `grok-4.3` | 1M | **Default — agentic reasoning/tool use** | ✅ Yes, configurable `low`/`medium`/`high` |
 | `grok-build-0.1` | 256K | **Coding / build-heavy workloads** | ❌ No (`XAI_REASONING_EFFORT` not sent) |
-| `grok-4.20-non-reasoning-latest` | 2M | Lower-latency non-reasoning | ❌ No |
-| `grok-4.20-reasoning` | 2M | Automatic reasoning | ✅ Yes, automatic |
+| `grok-4.20-0309-non-reasoning` | 1M | Lower-latency non-reasoning; prior `*-latest` ID remains an alias | ❌ No |
+| `grok-4.20-0309-reasoning` | 1M | Automatic reasoning; prior non-dated ID remains an alias | ✅ Yes, automatic |
 
-**Recommendation**: Use **`grok-4.3`** with `XAI_REASONING_EFFORT=low` for most Jarvis tool-routing. Use **`grok-build-0.1`** when you want a coding-tuned Grok model at lower per-token cost. Use **`grok-4.20-non-reasoning-latest`** when you want the lower-latency non-reasoning path with 2M context.
+**Recommendation**: Use **`grok-4.3`** with `XAI_REASONING_EFFORT=low` for most Jarvis tool-routing. Use **`grok-build-0.1`** when you want a coding-tuned Grok model at lower per-token cost. Use **`grok-4.20-0309-non-reasoning`** when you want the lower-latency non-reasoning path. All current xAI language models switch to their higher API pricing tier when a prompt reaches 200K tokens.
 
 Curated models, pricing, and Web UI labels come from **`lib/model_catalog.py`**. Your active `XAI_MODEL` in `config/cloud.env` can differ from the example default — pick any supported Grok ID.
 
@@ -500,7 +500,7 @@ Grok 4.3 performs extended internal thinking before responding, and its depth ca
 - Tool selection for ambiguous queries
 - Agentic tool chains where instruction following matters
 
-❌ **Skip reasoning** (`grok-4.20-non-reasoning-latest`):
+❌ **Skip reasoning** (`grok-4.20-0309-non-reasoning`):
 - Simple facts ("What time is it?")
 - Quick lookups
 - When speed > quality (though difference is minimal)
@@ -650,7 +650,7 @@ Jarvis's `LLMProvider` abstraction means **zero code changes** needed. Just upda
 
 ### Q: Should I use reasoning or non-reasoning models?
 
-**A**: Use `grok-4.3` for reasoning-heavy or agentic tool work. Set `XAI_REASONING_EFFORT=low` when latency matters, or `medium`/`high` for harder reasoning. Use `grok-4.20-non-reasoning-latest` for simpler, lower-latency work.
+**A**: Use `grok-4.3` for reasoning-heavy or agentic tool work. Set `XAI_REASONING_EFFORT=low` when latency matters, or `medium`/`high` for harder reasoning. Use `grok-4.20-0309-non-reasoning` for simpler, lower-latency work.
 
 ### Q: What about rate limits?
 
@@ -673,9 +673,9 @@ LLM_PROVIDER="openai"     # Fallback to GPT
 
 ## Best Practices
 
-1. **Use the right xAI model for the workload** - `grok-4.3` for reasoning/tool use, `grok-4.20-non-reasoning-latest` for faster simple work
+1. **Use the right xAI model for the workload** - `grok-4.3` for reasoning/tool use, `grok-4.20-0309-non-reasoning` for faster simple work
 2. **Monitor cache hit rates** in usage stats (should be 90%+)
-3. **Keep system prompt + tools under 1M tokens** (`grok-4.3` has 1M context; `grok-4.20-*` offers 2M when needed)
+3. **Keep system prompt + tools well under the 1M context limit** and remember that current xAI language models enter their higher pricing tier at 200K prompt tokens
 4. **Test fallback providers** (Claude/GPT) in case xAI has issues
 5. **Track monthly costs** vs previous provider; cached-input usage can materially change the effective price
 

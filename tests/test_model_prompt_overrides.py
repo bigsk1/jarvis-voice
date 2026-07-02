@@ -62,6 +62,14 @@ class ModelPromptOverrideTests(unittest.TestCase):
             self.assertEqual(override.matched_model, "minimax-m3")
             self.assertIn("Do NOT add meta lead-ins", override.get("qa_append"))
 
+    def test_xai_canonical_release_id_falls_back_to_stable_family(self):
+        candidates = get_model_override_candidates("grok-4.20-0309-non-reasoning")
+
+        self.assertEqual(
+            candidates,
+            ["grok-4.20-0309-non-reasoning", "grok-4.20-non-reasoning"],
+        )
+
     def test_loads_normalized_alias_when_exact_file_missing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

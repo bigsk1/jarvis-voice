@@ -108,11 +108,9 @@ def estimate_cost(provider: str, model: str, input_tokens: int, output_tokens: i
         Dict with token counts and cost estimates
     
     Notes:
-        - Pricing as of November 2025
-        - Sonnet 4.5 uses base tier pricing (≤200K tokens)
-        - For prompts >200K tokens, actual costs may be higher
-        - xAI pricing comes from the shared model catalog when available.
-        - xAI chat pricing comes from the shared model catalog when available
+        - Curated models use the shared catalog; legacy fallbacks retain older estimates.
+        - Catalog-defined long-context tiers are selected from the input token count.
+        - xAI chat pricing is audited against the live xAI model APIs.
     """
     if provider not in PRICING:
         return {
@@ -138,14 +136,19 @@ def estimate_cost(provider: str, model: str, input_tokens: int, output_tokens: i
     note = None
     
     if model_pricing:
-        input_cost = (input_tokens / 1_000_000) * model_pricing["input"]
-        output_cost = (output_tokens / 1_000_000) * model_pricing["output"]
+        effective_pricing = model_pricing
+        long_context = model_pricing.get("long_context")
+        if long_context and input_tokens >= int(long_context["threshold"]):
+            effective_pricing = long_context
+            note = f"Using long-context pricing for prompts at or above {long_context['threshold']:,} tokens"
+        input_cost = (input_tokens / 1_000_000) * effective_pricing["input"]
+        output_cost = (output_tokens / 1_000_000) * effective_pricing["output"]
         cost = round(input_cost + output_cost, 6)
         
         # Note if using Sonnet 4.5 with large context
         if "sonnet-4.5" in model_normalized or "sonnet-4-5" in model_normalized:
             if input_tokens > 200_000:
-                note = "Using base tier pricing; actual cost may be higher for >200K token prompts"
+                note = note or "Using base tier pricing; actual cost may be higher for >200K token prompts"
     else:
         note = f"Unknown model: {model}"
     
@@ -250,7 +253,7 @@ def estimate_cache_cost(provider: str, model: str, cache_creation_tokens: int = 
             savings = regular_cost - cache_read_cost
             result["cache_savings_usd"] = round(savings, 6)
         elif provider == "xai":
-            # xAI has 90% discount on cached tokens (automatic caching!)
+            # xAI automatic cache pricing for the default Grok 4.3 model.
             cache_read_cost = (cache_read_tokens / 1_000_000) * cache_prices["cache_read"]
             regular_cost = (cache_read_tokens / 1_000_000) * cache_prices["cache_write_base"]
             savings = regular_cost - cache_read_cost

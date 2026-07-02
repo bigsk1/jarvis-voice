@@ -78,6 +78,16 @@ def _strip_date_suffix(model_name: str) -> str:
     return re.sub(r"-\d{4}-\d{2}-\d{2}$", "", model_name)
 
 
+def _strip_xai_release_suffix(model_name: str) -> str:
+    """Map canonical Grok release IDs to their stable prompt-override family."""
+    return re.sub(
+        r"-(\d{4})-(reasoning|non-reasoning)$",
+        r"-\2",
+        model_name,
+        flags=re.IGNORECASE,
+    )
+
+
 def get_model_override_candidates(model_name: str) -> list[str]:
     """
     Return ordered candidate names for override lookup.
@@ -93,7 +103,7 @@ def get_model_override_candidates(model_name: str) -> list[str]:
 
     ordered = [model_name]
     worklist = [model_name]
-    transforms = (_strip_runtime_suffix, _strip_date_suffix)
+    transforms = (_strip_runtime_suffix, _strip_date_suffix, _strip_xai_release_suffix)
 
     while worklist:
         current = worklist.pop(0)

@@ -24,6 +24,13 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+XAI_MODELS_SOURCE = "https://docs.x.ai/developers/rest-api-reference/inference/models"
+XAI_MODEL_AUDIT_IGNORES = {
+    "grok-4.20-multi-agent-0309": (
+        "Multi-agent execution is intentionally excluded until Jarvis has a reviewed integration path."
+    ),
+}
+
 ANTHROPIC_MODELS_SOURCE = "https://platform.claude.com/docs/en/api/models/list"
 ANTHROPIC_PRICING_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing"
 ANTHROPIC_PRICING_VERIFIED = "2026-07-01"
@@ -126,37 +133,95 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "id": "grok-4.3",
             "name": "Grok 4.3 (Default)",
             "context_tokens": 1_000_000,
+            "input_modalities": ["text", "image"],
+            "output_modalities": ["text"],
             "default": True,
-            "pricing": {"input": 1.25, "output": 2.50, "cached": 0.20},
+            "pricing": {
+                "input": 1.25,
+                "output": 2.50,
+                "cached": 0.20,
+                "image_input": 1.25,
+                "search": 0.0,
+                "long_context": {
+                    "threshold": 200_000,
+                    "input": 2.50,
+                    "output": 5.00,
+                    "cached": 0.40,
+                },
+            },
             "reasoning_effort": True,
-            "aliases": ["grok-4.3-latest"],
+            "aliases": ["grok-4.3-latest", "grok-latest"],
         },
         {
             "id": "grok-build-0.1",
             "name": "Grok Build 0.1 (Coding)",
             "context_tokens": 256_000,
-            "pricing": {"input": 1.00, "output": 2.00},
+            "input_modalities": ["text", "image"],
+            "output_modalities": ["text"],
+            "pricing": {
+                "input": 1.00,
+                "output": 2.00,
+                "cached": 0.20,
+                "image_input": 1.00,
+                "search": 0.0,
+                "long_context": {
+                    "threshold": 200_000,
+                    "input": 2.00,
+                    "output": 4.00,
+                    "cached": 0.40,
+                },
+            },
             "reasoning_effort": False,
-            "aliases": ["grok-build-0.1-latest"],
+            "aliases": ["grok-code-fast-1", "grok-code-fast", "grok-code-fast-1-0825"],
         },
         {
-            "id": "grok-4.20-reasoning",
+            "id": "grok-4.20-0309-reasoning",
             "name": "Grok 4.20 Reasoning",
-            "context_tokens": 2_000_000,
-            "pricing": {"input": 2.00, "output": 6.00, "cached": 0.20},
+            "context_tokens": 1_000_000,
+            "input_modalities": ["text", "image"],
+            "output_modalities": ["text"],
+            "pricing": {
+                "input": 1.25,
+                "output": 2.50,
+                "cached": 0.20,
+                "image_input": 1.25,
+                "search": 0.0,
+                "long_context": {
+                    "threshold": 200_000,
+                    "input": 2.50,
+                    "output": 5.00,
+                    "cached": 0.40,
+                },
+            },
             "reasoning_effort": False,
             "aliases": [
                 "grok-4.20-reasoning-latest",
-                "grok-4-20-reasoning",
-                "grok-4-20-reasoning-latest",
+                "grok-4.20",
+                "grok-4.20-reasoning",
+                "grok-4.20-0309",
             ],
         },
         {
-            "id": "grok-4.20-non-reasoning-latest",
+            "id": "grok-4.20-0309-non-reasoning",
             "name": "Grok 4.20 Non-Reasoning",
-            "context_tokens": 2_000_000,
-            "pricing": {"input": 2.00, "output": 6.00, "cached": 0.20},
-            "aliases": ["grok-4.20-non-reasoning", "grok-4-20-non-reasoning"],
+            "context_tokens": 1_000_000,
+            "input_modalities": ["text", "image"],
+            "output_modalities": ["text"],
+            "pricing": {
+                "input": 1.25,
+                "output": 2.50,
+                "cached": 0.20,
+                "image_input": 1.25,
+                "search": 0.0,
+                "long_context": {
+                    "threshold": 200_000,
+                    "input": 2.50,
+                    "output": 5.00,
+                    "cached": 0.40,
+                },
+            },
+            "reasoning_effort": False,
+            "aliases": ["grok-4.20-non-reasoning", "grok-4.20-non-reasoning-latest"],
         },
     ],
     "anthropic": [
@@ -770,7 +835,7 @@ def get_model_context_label(provider: str, model: str | None) -> str | None:
     return _context_label(tokens) if tokens else None
 
 
-def get_model_pricing(provider: str, model: str | None) -> dict[str, float] | None:
+def get_model_pricing(provider: str, model: str | None) -> dict[str, Any] | None:
     metadata = get_model_metadata(provider, model)
     pricing = metadata.get("pricing") if metadata else None
     return dict(pricing) if pricing else None

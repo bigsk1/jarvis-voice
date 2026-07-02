@@ -119,6 +119,15 @@ For Anthropic, audit the curated catalog against the Models API before and after
 
 The selected mode controls which env file supplies `ANTHROPIC_API_KEY`; use `--mode local` when the key exists only in `config/local.env`. The audit is read-only and never rewrites the catalog. It checks model availability, canonical IDs, input/output token limits, and the complete capabilities object. Anthropic's Models API does not return pricing, so catalog prices retain a manual verification date, source URL, and optional validity deadline; stale or expired verification is reported as a warning.
 
+xAI has a parallel read-only audit that merges its basic and rich language-model endpoints:
+
+```bash
+./bin/audit-xai-models.py --mode cloud
+./bin/audit-xai-models.py --mode cloud --json
+```
+
+This validates canonical IDs, accepted aliases, context windows, input/output modalities, standard pricing, and long-context pricing tiers. xAI's API does not expose every marketing-level capability (for example, configurable reasoning), so those flags remain curated in `lib/model_catalog.py`. Models intentionally unsuitable for the current Jarvis integration are listed explicitly by the audit instead of being silently ignored.
+
 When removing an old curated cloud chat model:
 1. Remove it from `lib/model_catalog.py`
 2. Clean up docs/examples that still mention it

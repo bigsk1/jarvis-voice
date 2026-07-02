@@ -329,6 +329,11 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-07-01:**
+- ✅ **xAI model-catalog drift audit**
+  - Added `./bin/audit-xai-models.py --mode cloud` plus `--json` output to compare Jarvis with xAI's live `/v1/models` and `/v1/language-models` responses.
+  - Canonical IDs, aliases, context windows, text/image modalities, standard token prices, and the higher pricing tier at 200K tokens are now validated directly from xAI's API.
+  - Corrected both Grok 4.20 variants to their canonical `0309` IDs, 1M context, and current pricing while preserving the previous model names as supported aliases; existing env pins remain valid and display as configured aliases instead of duplicate custom models.
+  - Cost estimation now applies xAI's long-context tier when a prompt reaches its API-reported threshold. The Grok 4.20 multi-agent model remains explicitly excluded until Jarvis has a reviewed integration path.
 - ✅ **Anthropic model-catalog drift audit**
   - Added `claude-fable-5` and Claude Haiku 4.5 as opt-in models while keeping Claude Sonnet 5 as the default; canonical API IDs, input/output limits, capabilities, and current pricing now live in the shared catalog.
   - `./bin/audit-anthropic-models.py --mode cloud` compares Jarvis against the live Anthropic Models API; `--json` provides complete machine-readable output for maintenance by an LLM or CI job.
