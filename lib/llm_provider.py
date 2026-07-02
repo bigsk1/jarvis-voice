@@ -615,8 +615,15 @@ class AnthropicProvider(LLMProvider):
                 output_tokens = response.usage.output_tokens
                 
                 # Get cache metrics (if available)
-                cache_creation_tokens = getattr(response.usage, 'cache_creation_input_tokens', 0)
-                cache_read_tokens = getattr(response.usage, 'cache_read_input_tokens', 0)
+                cache_creation_tokens = getattr(response.usage, 'cache_creation_input_tokens', 0) or 0
+                cache_read_tokens = getattr(response.usage, 'cache_read_input_tokens', 0) or 0
+                cache_creation = getattr(response.usage, 'cache_creation', None)
+                cache_creation_5m_tokens = (
+                    getattr(cache_creation, 'ephemeral_5m_input_tokens', 0) or 0
+                )
+                cache_creation_1h_tokens = (
+                    getattr(cache_creation, 'ephemeral_1h_input_tokens', 0) or 0
+                )
                 
                 # Calculate regular cost (input + output tokens)
                 usage_info = estimate_cost(
@@ -631,11 +638,22 @@ class AnthropicProvider(LLMProvider):
                     provider="anthropic",
                     model=self.model,
                     cache_creation_tokens=cache_creation_tokens,
-                    cache_read_tokens=cache_read_tokens
+                    cache_read_tokens=cache_read_tokens,
+                    cache_creation_5m_tokens=cache_creation_5m_tokens,
+                    cache_creation_1h_tokens=cache_creation_1h_tokens,
                 )
                 
                 # Merge cache info into usage_info
                 usage_info.update(cache_info)
+                usage_info["base_cost_usd"] = usage_info["cost_usd"]
+                if isinstance(usage_info["base_cost_usd"], (int, float)):
+                    usage_info["cost_usd"] = round(
+                        usage_info["base_cost_usd"] + cache_info["cache_cost_usd"],
+                        6,
+                    )
+                else:
+                    usage_info["cost_usd"] = None
+                    usage_info["cost_known"] = False
 
                 # Anthropic reports cache tokens separately from input_tokens/output_tokens.
                 # Include them in total_tokens so UI/log totals match provider dashboards.

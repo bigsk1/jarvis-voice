@@ -13,7 +13,7 @@ A modern, feature-rich web interface for Jarvis with real-time streaming, voice 
 - **Export/Import** - Export to JSON or Markdown, import previous conversations
 - **Auto-title Generation** - Conversations are auto-titled based on content
 - **Completion Guard** - Per-turn card to confirm tasks completed correctly (manual feedback), optional auto-evaluation path, bounded repair, follow-up ticket flow; streamed via WebSocket (`completion_guard:*`)
-- **Token usage** - Footer hint with cumulative tokens and estimated cost when the model returns usage (hover for context-percent tooltip on long threads)
+- **Token usage** - Footer hint with cumulative tokens and estimated cost when the model returns usage; hover shows input/output, cache-write/read tokens and costs, savings from cache hits, provider/model provenance, and context percentage
 
 ### 🎤 Voice I/O
 - **Speech-to-Text (STT)** - Browser microphone recording

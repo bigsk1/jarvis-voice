@@ -2565,7 +2565,13 @@ class JarvisApp {
     let cumulativeCost = 0;
     let cumulativeUnknownCost = false;
     let cumulativeInputEstimated = false;
-    let cumulativeCache = { read: 0, creation: 0, savingsUsd: 0 };
+    let cumulativeCache = {
+      read: 0,
+      creation: 0,
+      writeCostUsd: 0,
+      readCostUsd: 0,
+      savingsUsd: 0,
+    };
     let tokenProvider = conversation.llm_provider || null;
     let tokenModel = conversation.llm_model || null;
     
@@ -2595,6 +2601,8 @@ class JarvisApp {
           cumulativeCost += typeof usage.cost_usd === 'number' ? usage.cost_usd : 0;
           cumulativeCache.read += usage.cache_read_tokens || 0;
           cumulativeCache.creation += usage.cache_creation_tokens || 0;
+          cumulativeCache.writeCostUsd += usage.cache_write_cost_usd || 0;
+          cumulativeCache.readCostUsd += usage.cache_read_cost_usd || 0;
           if (typeof usage.cache_savings_usd === 'number') {
             cumulativeCache.savingsUsd += usage.cache_savings_usd;
           }

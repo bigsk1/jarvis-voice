@@ -37,6 +37,43 @@ class AnthropicBlockHandlingTests(unittest.TestCase):
             "First paragraph.\n\nSecond paragraph.",
         )
 
+    def test_fable_usage_total_includes_model_aware_cache_creation_cost(self):
+        provider = AnthropicProvider.__new__(AnthropicProvider)
+        provider.model = "claude-fable-5"
+        provider.enable_search = False
+        provider.client = SimpleNamespace(
+            messages=SimpleNamespace(
+                create=lambda **_: SimpleNamespace(
+                    usage=SimpleNamespace(
+                        input_tokens=660,
+                        output_tokens=76,
+                        cache_creation_input_tokens=24_473,
+                        cache_read_input_tokens=0,
+                        cache_creation=SimpleNamespace(
+                            ephemeral_5m_input_tokens=24_473,
+                            ephemeral_1h_input_tokens=0,
+                        ),
+                        server_tool_use=None,
+                    ),
+                    content=[SimpleNamespace(type="text", text="Hello")],
+                )
+            )
+        )
+
+        text, tool_call, usage, thinking = provider.chat_with_tools(
+            [{"role": "user", "content": "hello"}],
+            [],
+        )
+
+        self.assertEqual(text, "Hello")
+        self.assertIsNone(tool_call)
+        self.assertIsNone(thinking)
+        self.assertEqual(usage["total_tokens"], 25_209)
+        self.assertEqual(usage["base_cost_usd"], 0.0104)
+        self.assertEqual(usage["cache_write_cost_usd"], 0.305913)
+        self.assertEqual(usage["cost_usd"], 0.316313)
+        self.assertEqual(usage["cache_savings_usd"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

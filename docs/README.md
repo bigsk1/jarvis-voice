@@ -329,6 +329,10 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-07-01:**
+- ✅ **Model-aware Anthropic cache cost tracking**
+  - Anthropic cache creation and cache reads are now billed from the selected model's catalog pricing instead of a hardcoded Sonnet fallback; Fable, Opus, Sonnet, and Haiku therefore report their own rates.
+  - First requests show cache-write cost with no claimed savings, while follow-ups separately show cache-read cost and actual savings. SDK-reported 5-minute and 1-hour cache-write token classes use Anthropic's respective 1.25x and 2x input multipliers.
+  - The Web token hover now includes cache-write/read tokens and their dollar costs, and the displayed total includes normal input, cache activity, and output instead of materially understating provider charges.
 - ✅ **xAI model-catalog drift audit**
   - Added `./bin/audit-xai-models.py --mode cloud` plus `--json` output to compare Jarvis with xAI's live `/v1/models` and `/v1/language-models` responses.
   - Canonical IDs, aliases, context windows, text/image modalities, standard token prices, and the higher pricing tier at 200K tokens are now validated directly from xAI's API.

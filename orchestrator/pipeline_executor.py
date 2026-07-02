@@ -54,6 +54,12 @@ class PipelineExecutor:
             "cost_usd": 0.0,
             "has_unknown_cost": False,
             "cost_known": True,
+            "cache_creation_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_cost_usd": 0.0,
+            "cache_read_cost_usd": 0.0,
+            "cache_cost_usd": 0.0,
+            "cache_savings_usd": 0.0,
         }
     
     def _chat_with_usage(self, message: str, system_prompt: str = None, max_tokens: int = 1024) -> str:
@@ -88,6 +94,17 @@ class PipelineExecutor:
                 ):
                     self._total_usage["has_unknown_cost"] = True
                     self._total_usage["cost_known"] = False
+                for key in (
+                    "cache_creation_tokens",
+                    "cache_read_tokens",
+                    "cache_write_cost_usd",
+                    "cache_read_cost_usd",
+                    "cache_cost_usd",
+                    "cache_savings_usd",
+                ):
+                    value = usage_info.get(key)
+                    if isinstance(value, (int, float)):
+                        self._total_usage[key] += value
                 
                 # Track server-side tools (xAI web_search, x_search, Anthropic web search)
                 if usage_info.get("server_side_tools"):
@@ -183,6 +200,12 @@ class PipelineExecutor:
             "cost_usd": 0.0,
             "has_unknown_cost": False,
             "cost_known": True,
+            "cache_creation_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_cost_usd": 0.0,
+            "cache_read_cost_usd": 0.0,
+            "cache_cost_usd": 0.0,
+            "cache_savings_usd": 0.0,
         }
         
         # Track server-side tool usage from LLM providers (xAI web_search, x_search, etc.)

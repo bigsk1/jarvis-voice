@@ -158,6 +158,42 @@ class LLMLoggerProvenanceTests(unittest.TestCase):
             self.assertNotIn("openai_responses_previous_id_used", entry)
             self.assertNotIn("openai_server_side_tool_calls", entry)
 
+    def test_anthropic_cache_cost_breakdown_is_flattened_for_auditing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logger = LLMLogger(log_dir=tmpdir)
+            logger.log_llm_call(
+                provider="anthropic",
+                model="claude-fable-5",
+                prompt_type="routing",
+                messages=[],
+                response_text="hello",
+                tool_call=None,
+                usage_info={
+                    "input_tokens": 660,
+                    "output_tokens": 76,
+                    "total_tokens": 25_209,
+                    "cost_usd": 0.316313,
+                    "cache_creation_tokens": 24_473,
+                    "cache_creation_5m_tokens": 24_473,
+                    "cache_creation_1h_tokens": 0,
+                    "cache_read_tokens": 0,
+                    "cache_write_cost_usd": 0.305913,
+                    "cache_read_cost_usd": 0.0,
+                    "cache_cost_usd": 0.305913,
+                },
+                thinking=None,
+                duration_ms=12.5,
+                mode="cloud",
+                user_query="hello",
+                error=None,
+            )
+
+            entry = json.loads(logger.log_file.read_text().strip())
+            self.assertEqual(entry["cache_creation_tokens"], 24_473)
+            self.assertEqual(entry["cache_creation_5m_tokens"], 24_473)
+            self.assertEqual(entry["cache_write_cost_usd"], 0.305913)
+            self.assertEqual(entry["cost_usd"], 0.316313)
+
 
 if __name__ == "__main__":
     unittest.main()

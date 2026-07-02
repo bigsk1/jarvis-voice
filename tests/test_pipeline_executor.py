@@ -47,6 +47,27 @@ class UnknownCostProvider:
         return "unexpected fallback"
 
 
+class CachedCostProvider:
+    def chat_with_tools(self, **_kwargs):
+        return (
+            "cached response",
+            None,
+            {
+                "input_tokens": 10,
+                "output_tokens": 2,
+                "total_tokens": 1_012,
+                "cost_usd": 0.02,
+                "cache_creation_tokens": 1_000,
+                "cache_read_tokens": 0,
+                "cache_write_cost_usd": 0.0125,
+                "cache_read_cost_usd": 0.0,
+                "cache_cost_usd": 0.0125,
+                "cache_savings_usd": 0.0,
+            },
+            None,
+        )
+
+
 class PipelineExecutorResolutionTests(unittest.TestCase):
     def setUp(self):
         self.executor = PipelineExecutor(
@@ -158,6 +179,20 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
         self.assertEqual(executor._total_usage["cost_usd"], 0.0)
         self.assertTrue(executor._total_usage["has_unknown_cost"])
         self.assertFalse(executor._total_usage["cost_known"])
+
+    def test_cache_cost_breakdown_survives_workflow_aggregation(self):
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(execute=lambda *args, **kwargs: {}),
+            provider=CachedCostProvider(),
+        )
+
+        result = executor._chat_with_usage("probe")
+
+        self.assertEqual(result, "cached response")
+        self.assertEqual(executor._total_usage["cost_usd"], 0.02)
+        self.assertEqual(executor._total_usage["cache_creation_tokens"], 1_000)
+        self.assertEqual(executor._total_usage["cache_write_cost_usd"], 0.0125)
 
 
 if __name__ == "__main__":

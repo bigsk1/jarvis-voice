@@ -34,6 +34,8 @@ XAI_MODEL_AUDIT_IGNORES = {
 ANTHROPIC_MODELS_SOURCE = "https://platform.claude.com/docs/en/api/models/list"
 ANTHROPIC_PRICING_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing"
 ANTHROPIC_PRICING_VERIFIED = "2026-07-01"
+ANTHROPIC_CACHE_WRITE_5M_MULTIPLIER = 1.25
+ANTHROPIC_CACHE_WRITE_1H_MULTIPLIER = 2.0
 ANTHROPIC_MODEL_AUDIT_IGNORES = {
     "claude-opus-4-1-20250805": "Deprecated by Anthropic; intentionally excluded from Jarvis options.",
 }

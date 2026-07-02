@@ -1325,7 +1325,12 @@ Mode: {self.mode}
             # because the provider (e.g. Ollama Cloud) omitted prompt_eval_count.
             "input_estimated": False,
             "cache_creation_tokens": 0,
+            "cache_creation_5m_tokens": 0,
+            "cache_creation_1h_tokens": 0,
             "cache_read_tokens": 0,
+            "cache_write_cost_usd": 0.0,
+            "cache_read_cost_usd": 0.0,
+            "cache_cost_usd": 0.0,
             "cache_savings_usd": 0.0,
             "server_side_tools": {}  # Track xAI native search usage
         }
@@ -1566,8 +1571,18 @@ Mode: {self.mode}
                 # Accumulate cache metrics
                 if usage.get("cache_creation_tokens"):
                     total_usage["cache_creation_tokens"] += usage["cache_creation_tokens"]
+                if usage.get("cache_creation_5m_tokens"):
+                    total_usage["cache_creation_5m_tokens"] += usage["cache_creation_5m_tokens"]
+                if usage.get("cache_creation_1h_tokens"):
+                    total_usage["cache_creation_1h_tokens"] += usage["cache_creation_1h_tokens"]
                 if usage.get("cache_read_tokens"):
                     total_usage["cache_read_tokens"] += usage["cache_read_tokens"]
+                if usage.get("cache_write_cost_usd"):
+                    total_usage["cache_write_cost_usd"] += usage["cache_write_cost_usd"]
+                if usage.get("cache_read_cost_usd"):
+                    total_usage["cache_read_cost_usd"] += usage["cache_read_cost_usd"]
+                if usage.get("cache_cost_usd"):
+                    total_usage["cache_cost_usd"] += usage["cache_cost_usd"]
                 if usage.get("cache_savings_usd"):
                     total_usage["cache_savings_usd"] += usage["cache_savings_usd"]
                 # Accumulate xAI server-side tools usage
@@ -3850,11 +3865,13 @@ Mode: {mode}
             
             if cache_read > 0:
                 print(f"   💾 Cache READ: {cache_read:,} tokens (90% cheaper!)")
+                print(f"   💵 Cache read cost: ${usage.get('cache_read_cost_usd', 0):.4f}")
                 savings = usage.get('cache_savings_usd', 0)
                 if savings > 0:
                     print(f"   ✅ Saved: ${savings:.4f}")
-            elif cache_write > 0:
+            if cache_write > 0:
                 print(f"   💾 Cache WRITE: {cache_write:,} tokens (first request)")
+                print(f"   💵 Cache write cost: ${usage.get('cache_write_cost_usd', 0):.4f}")
             
             print(f"   💵 Total Cost: ${usage.get('cost_usd', 0):.4f}")
         

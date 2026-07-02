@@ -408,12 +408,18 @@ class ChatUI {
     this.tokenCostEl = document.getElementById('tokenCost');
     this.cumulativeTokens = { input: 0, output: 0, total: 0 };
     this.cumulativeCost = 0;
-    this.cumulativeCache = { read: 0, creation: 0, savingsUsd: 0 };
+    this.cumulativeCache = {
+      read: 0,
+      creation: 0,
+      writeCostUsd: 0,
+      readCostUsd: 0,
+      savingsUsd: 0,
+    };
     // Ollama Cloud is subscription/compute-metered: cost is unknown, not $0.
     this.cumulativeUnknownCost = false;
     // Set when input tokens were approximated (provider omitted prompt_eval_count).
     this.cumulativeInputEstimated = false;
-    this.contextWindow = 2000000;  // Default to xAI's 2M, updated from server
+    this.contextWindow = 1000000;  // Conservative cloud fallback; updated from server/model catalog
     this.llmProvider = 'xai';      // Default, updated from server
     // When viewing a loaded conversation, lock stats to that thread's provider/model.
     this.tokenStatsLocked = false;
@@ -5195,6 +5201,8 @@ class ChatUI {
     this.cumulativeCost += cost;
     this.cumulativeCache.read += usage.cache_read_tokens || 0;
     this.cumulativeCache.creation += usage.cache_creation_tokens || 0;
+    this.cumulativeCache.writeCostUsd += usage.cache_write_cost_usd || 0;
+    this.cumulativeCache.readCostUsd += usage.cache_read_cost_usd || 0;
     if (typeof usage.cache_savings_usd === 'number') {
       this.cumulativeCache.savingsUsd += usage.cache_savings_usd;
     }
@@ -5247,10 +5255,20 @@ class ChatUI {
     );
 
     if (this.cumulativeCache.read > 0) {
-      lines.push(`Cache read: ${this.cumulativeCache.read.toLocaleString()} tokens`);
+      const readCost = this.cumulativeCache.readCostUsd > 0
+        ? ` ($${this.cumulativeCache.readCostUsd.toFixed(4)})`
+        : '';
+      lines.push(
+        `Cache read: ${this.cumulativeCache.read.toLocaleString()} tokens${readCost}`
+      );
     }
     if (this.cumulativeCache.creation > 0) {
-      lines.push(`Cache write: ${this.cumulativeCache.creation.toLocaleString()} tokens`);
+      const writeCost = this.cumulativeCache.writeCostUsd > 0
+        ? ` ($${this.cumulativeCache.writeCostUsd.toFixed(4)})`
+        : '';
+      lines.push(
+        `Cache write: ${this.cumulativeCache.creation.toLocaleString()} tokens${writeCost}`
+      );
     }
     if (this.cumulativeCache.savingsUsd > 0) {
       lines.push(`Cache savings: $${this.cumulativeCache.savingsUsd.toFixed(4)}`);
@@ -5300,7 +5318,13 @@ class ChatUI {
   _resetTokenCounter() {
     this.cumulativeTokens = { input: 0, output: 0, total: 0 };
     this.cumulativeCost = 0;
-    this.cumulativeCache = { read: 0, creation: 0, savingsUsd: 0 };
+    this.cumulativeCache = {
+      read: 0,
+      creation: 0,
+      writeCostUsd: 0,
+      readCostUsd: 0,
+      savingsUsd: 0,
+    };
     this.cumulativeUnknownCost = false;
     this.cumulativeInputEstimated = false;
     this.tokenStatsLocked = false;
@@ -5379,6 +5403,8 @@ class ChatUI {
     this.cumulativeCache = {
       read: meta?.cache?.read || 0,
       creation: meta?.cache?.creation || 0,
+      writeCostUsd: meta?.cache?.writeCostUsd || 0,
+      readCostUsd: meta?.cache?.readCostUsd || 0,
       savingsUsd: meta?.cache?.savingsUsd || 0,
     };
     this.cumulativeUnknownCost = unknownCost === true;
