@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""
-Thinking Module - Extended reasoning support for LLMs
-Supports multiple providers: Anthropic, OpenAI, Ollama
-"""
+"""Opt-in provider thinking configuration, extraction, display, and logging."""
 import os
 import json
 import logging
@@ -10,41 +7,28 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from model_catalog import get_model_metadata
+
 logger = logging.getLogger(__name__)
 
 # Non-streaming Anthropic SDK rejects max_tokens above ~16K (long-request guard).
 ANTHROPIC_ADAPTIVE_MAX_TOKENS = 16384
 
 
-# Models that support extended thinking
-# TODO: tie in with logic from model_catalog.py? we can add reasoning models to the catalog and then use that to determine if a model supports thinking
-THINKING_MODELS = {
-    "anthropic": [
-        "claude-opus-4-8",
-        "claude-opus-4-7",
-        "claude-sonnet-4-6",
-        "claude-sonnet-4-5-20250929",
-        "claude-sonnet-5",
-        "sonnet-5",
-        "sonnet-4.6",
-        "sonnet-4.5",
-        "opus-4.8",
-        "opus-4.7",
-    ],
-    "openai": [
-        "o1",
-        "o1-preview",
-        "o1-mini",
-        "o3-mini"  # Reasoning models
-    ],
-    "ollama": [
-        "qwen2.5-coder:32b-instruct-q4_K_M",  # Some Qwen models support thinking
-        "qwen3.5:latest",  # Qwen3.5 reasoning model
-        "qwen3.6",
-        "deepseek-r1",  # DeepSeek reasoning model
-        "qwq"  # QwQ thinking model
-    ]
-}
+def _anthropic_thinking_capabilities(model: str) -> dict[str, Any]:
+    """Return audited Anthropic thinking metadata from the shared catalog."""
+    metadata = get_model_metadata("anthropic", model)
+    if not metadata:
+        return {}
+    capabilities = metadata.get("capabilities", {})
+    thinking = capabilities.get("thinking", {})
+    return thinking if isinstance(thinking, dict) else {}
+
+
+def _anthropic_thinking_type_supported(model: str, thinking_type: str) -> bool:
+    types = _anthropic_thinking_capabilities(model).get("types", {})
+    type_capabilities = types.get(thinking_type, {}) if isinstance(types, dict) else {}
+    return bool(type_capabilities.get("supported"))
 
 
 def is_thinking_supported(provider: str, model: str) -> bool:
@@ -58,19 +42,19 @@ def is_thinking_supported(provider: str, model: str) -> bool:
     Returns:
         True if thinking is supported, False otherwise
     """
-    if provider not in THINKING_MODELS:
+    # Anthropic is the only provider whose optional visible-thinking request is
+    # configured here. OpenAI/xAI reasoning controls and Ollama's native `think`
+    # flag are owned by their provider implementations in llm_provider.py.
+    if provider.lower() != "anthropic":
         return False
-    
-    # Check exact match
-    if model in THINKING_MODELS[provider]:
-        return True
-    
-    # Check partial match (for versioned models)
-    for supported_model in THINKING_MODELS[provider]:
-        if supported_model in model or model in supported_model:
-            return True
-    
-    return False
+    capabilities = _anthropic_thinking_capabilities(model)
+    return bool(
+        capabilities.get("supported")
+        and (
+            _anthropic_thinking_type_supported(model, "adaptive")
+            or _anthropic_thinking_type_supported(model, "enabled")
+        )
+    )
 
 
 def should_enable_thinking() -> bool:
@@ -87,22 +71,40 @@ def should_enable_thinking() -> bool:
 
 
 def uses_adaptive_thinking(provider: str, model: str) -> bool:
-    """
-    Opus 4.7+ and Sonnet 5 rejects manual extended thinking (budget_tokens) and requires adaptive thinking.
-    See: https://platform.claude.com/docs/en/about-claude/models/migration-guide
-    """
-    if provider != "anthropic":
+    """Return whether the catalog says this Anthropic model supports adaptive thinking."""
+    if provider.lower() != "anthropic":
         return False
-    normalized = model.lower().replace("_", "-")
-    adaptive_markers = (
-        "claude-opus-4-7",
-        "claude-opus-4-8",
-        "opus-4.7",
-        "opus-4.8",
-        "claude-sonnet-5",
-        "sonnet-5",
-    )
-    return any(marker in normalized for marker in adaptive_markers)
+    return _anthropic_thinking_type_supported(model, "adaptive")
+
+
+def _anthropic_effort(model: str) -> str | None:
+    """Resolve and validate adaptive-thinking effort for an Anthropic model."""
+    metadata = get_model_metadata("anthropic", model) or {}
+    effort_capabilities = metadata.get("capabilities", {}).get("effort", {})
+    if not effort_capabilities.get("supported"):
+        return None
+
+    supported = {
+        level
+        for level in ("low", "medium", "high", "max", "xhigh")
+        if effort_capabilities.get(level, {}).get("supported")
+    }
+    if not supported:
+        return None
+
+    requested = os.getenv("ANTHROPIC_EFFORT", "").strip().lower()
+    if requested and requested in supported:
+        return requested
+    if requested:
+        logger.warning(
+            "Ignoring unsupported ANTHROPIC_EFFORT=%r for %s; supported values: %s",
+            requested,
+            model,
+            ", ".join(sorted(supported)),
+        )
+
+    # Prefer the strongest audited level when no valid override is present.
+    return next(level for level in ("xhigh", "max", "high", "medium", "low") if level in supported)
 
 
 def get_thinking_config(provider: str, model: str) -> dict[str, Any] | None:
@@ -119,30 +121,22 @@ def get_thinking_config(provider: str, model: str) -> dict[str, Any] | None:
     if not is_thinking_supported(provider, model):
         return None
     
-    if provider == "anthropic":
+    if provider.lower() == "anthropic":
         if uses_adaptive_thinking(provider, model):
-            effort = os.getenv("ANTHROPIC_EFFORT", "xhigh").lower()
-            return {
+            config = {
                 "thinking": {"type": "adaptive", "display": "summarized"},
-                "output_config": {"effort": effort},
                 "max_tokens": ANTHROPIC_ADAPTIVE_MAX_TOKENS,
             }
-        return {
-            "thinking": {"type": "enabled", "budget_tokens": 2000},
-            "max_tokens": 8000,
-        }
-    elif provider == "openai":
-        # OpenAI o1 models think automatically, no special config needed
-        return {
-            "type": "automatic"
-        }
-    elif provider == "ollama":
-        # Ollama thinking models may need special prompting
-        return {
-            "type": "prompted",
-            "system_addition": "\n\nThink step-by-step before responding."
-        }
-    
+            effort = _anthropic_effort(model)
+            if effort:
+                config["output_config"] = {"effort": effort}
+            return config
+        if _anthropic_thinking_type_supported(model, "enabled"):
+            return {
+                "thinking": {"type": "enabled", "budget_tokens": 2000},
+                "max_tokens": 8000,
+            }
+
     return None
 
 
@@ -171,13 +165,6 @@ def extract_thinking(response: Any, provider: str) -> str | None:
             # Fallback: Check if thinking is a direct attribute (older API format)
             if hasattr(response, 'thinking') and response.thinking:
                 return response.thinking[0].text
-        
-        elif provider == "openai":
-            # OpenAI o1 models include thinking in response ( o1 is very old now and not going to use, gpt-5 and gpt-5.1 are latest and support reasoning)
-            if hasattr(response, 'choices') and len(response.choices) > 0:
-                choice = response.choices[0]
-                if hasattr(choice, 'reasoning_content'):
-                    return choice.reasoning_content
         
         elif provider == "ollama":
             # Ollama has TWO formats for thinking:
@@ -368,7 +355,4 @@ if __name__ == "__main__":
     # Test thinking support detection
     print("Testing thinking support detection:")
     print(f"Anthropic Sonnet 4.5: {is_thinking_supported('anthropic', 'claude-sonnet-4-5-20250929')}")
-    print(f"OpenAI o1: {is_thinking_supported('openai', 'o1')}")
-    print(f"Ollama qwen3-vl: {is_thinking_supported('ollama', 'qwen3-vl')}")
-    print(f"Ollama qwq: {is_thinking_supported('ollama', 'qwq')}")
-
+    print(f"Anthropic Fable 5: {is_thinking_supported('anthropic', 'claude-fable-5')}")

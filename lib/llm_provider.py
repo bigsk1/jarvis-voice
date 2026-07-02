@@ -574,18 +574,17 @@ class AnthropicProvider(LLMProvider):
             
             # Enable extended thinking for supported models
             if enable_thinking:
-                from thinking import is_thinking_supported, get_thinking_config
-                if is_thinking_supported("anthropic", self.model):
-                    thinking_config = get_thinking_config("anthropic", self.model)
-                    if thinking_config:
-                        api_params["thinking"] = thinking_config["thinking"]
-                        if thinking_config.get("output_config"):
-                            api_params["output_config"] = thinking_config["output_config"]
-                        api_params["max_tokens"] = thinking_config.get("max_tokens", base_max_tokens)
+                from thinking import get_thinking_config
+                thinking_config = get_thinking_config("anthropic", self.model)
+                if thinking_config:
+                    api_params["thinking"] = thinking_config["thinking"]
+                    if thinking_config.get("output_config"):
+                        api_params["output_config"] = thinking_config["output_config"]
+                    api_params["max_tokens"] = thinking_config.get("max_tokens", base_max_tokens)
 
-                        if os.environ.get('JARVIS_DEBUG'):
-                            print(f"DEBUG: Thinking enabled! Config: {thinking_config}", file=sys.stderr)
-                            print(f"DEBUG: max_tokens set to: {api_params['max_tokens']}", file=sys.stderr)
+                    if os.environ.get('JARVIS_DEBUG'):
+                        print(f"DEBUG: Thinking enabled! Config: {thinking_config}", file=sys.stderr)
+                        print(f"DEBUG: max_tokens set to: {api_params['max_tokens']}", file=sys.stderr)
             
             response = self.client.messages.create(**api_params)
             

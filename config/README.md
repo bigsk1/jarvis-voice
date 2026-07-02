@@ -128,6 +128,16 @@ xAI has a parallel read-only audit that merges its basic and rich language-model
 
 This validates canonical IDs, accepted aliases, context windows, input/output modalities, standard pricing, and long-context pricing tiers. xAI's API does not expose every marketing-level capability (for example, configurable reasoning), so those flags remain curated in `lib/model_catalog.py`. Models intentionally unsuitable for the current Jarvis integration are listed explicitly by the audit instead of being silently ignored.
 
+OpenAI's Models API has a narrower identity-and-availability schema:
+
+```bash
+./bin/audit-openai-models.py --mode cloud
+./bin/audit-openai-models.py --mode cloud --json
+./bin/audit-openai-models.py --mode cloud --show-all
+```
+
+The audit verifies that curated IDs or aliases are available to the selected API key and conservatively flags only newer general-purpose GPT families for review. Specialized image, audio, realtime, embedding, moderation, Sora, search, Codex, and legacy models remain visible in JSON/`--show-all` output without being misclassified as missing chat options. OpenAI's endpoint does not return context limits, capabilities, modalities, or pricing, so those fields remain manually curated and must be verified against their dedicated official documentation before adding a surfaced model.
+
 When removing an old curated cloud chat model:
 1. Remove it from `lib/model_catalog.py`
 2. Clean up docs/examples that still mention it

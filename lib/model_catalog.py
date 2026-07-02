@@ -24,6 +24,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+OPENAI_MODELS_SOURCE = "https://platform.openai.com/docs/api-reference/models/list"
+
 XAI_MODELS_SOURCE = "https://docs.x.ai/developers/rest-api-reference/inference/models"
 XAI_MODEL_AUDIT_IGNORES = {
     "grok-4.20-multi-agent-0309": (

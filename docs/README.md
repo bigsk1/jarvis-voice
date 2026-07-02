@@ -329,6 +329,14 @@ tail -f logs/tools/tool-calls-*.jsonl
 ## 📝 Change Log
 
 **2026-07-01:**
+- ✅ **Catalog-backed Anthropic thinking**
+  - Removed the stale model-name allowlist from `lib/thinking.py`; Anthropic thinking type, aliases, and valid effort levels now come from the audited shared model catalog, including Claude Fable 5.
+  - `--debug-thinking` remains opt-in and process-local, Web UI provider reasoning remains off by default, and OpenAI/xAI/Ollama keep their provider-native reasoning controls rather than sharing misleading legacy `o1`/`o3-mini` rules.
+- ✅ **OpenAI model-catalog availability audit**
+  - Added `./bin/audit-openai-models.py --mode cloud`, machine-readable `--json`, and human `--show-all` output backed by the official OpenAI Models API.
+  - The audit checks every curated ID/alias against the active account and detects newer general-purpose GPT families while filtering specialized image, audio, realtime, embedding, moderation, Sora, search, Codex, and legacy inventory from actionable chat-catalog drift.
+  - OpenAI's endpoint exposes identity, creation time, ownership, and account availability only; context limits, capabilities, modalities, and pricing remain explicitly curated instead of being inferred from incomplete API data.
+  - The first live audit found all 15 existing Jarvis options available and surfaced `gpt-5.5` plus its dated snapshot for manual metadata/pricing review; it was not automatically added or made default.
 - ✅ **Model-aware Anthropic cache cost tracking**
   - Anthropic cache creation and cache reads are now billed from the selected model's catalog pricing instead of a hardcoded Sonnet fallback; Fable, Opus, Sonnet, and Haiku therefore report their own rates.
   - First requests show cache-write cost with no claimed savings, while follow-ups separately show cache-read cost and actual savings. SDK-reported 5-minute and 1-hour cache-write token classes use Anthropic's respective 1.25x and 2x input multipliers.

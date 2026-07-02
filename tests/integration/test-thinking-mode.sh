@@ -1,180 +1,206 @@
-#!/bin/bash
-# Comprehensive Thinking Mode Tests
-# Tests all scenarios: cloud/local, with/without thinking, various models
+#!/usr/bin/env bash
+# Validate Jarvis's opt-in provider thinking integration.
+#
+# Default behavior is deterministic and does not call provider APIs:
+#   ./tests/integration/test-thinking-mode.sh
+#
+# Live behavior is explicit because it incurs provider cost and writes normal
+# conversation/thinking logs:
+#   ./tests/integration/test-thinking-mode.sh --live cloud
+#   ./tests/integration/test-thinking-mode.sh --live local
+#   ./tests/integration/test-thinking-mode.sh --live all
 
-set -e
+set -uo pipefail
+
+ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+JARVIS_VENV=${JARVIS_VENV:-"$HOME/jarvis-venv"}
+PYTHON="$JARVIS_VENV/bin/python"
+ORCHESTRATOR="$ROOT_DIR/orchestrator/orchestrator_v2.py"
 
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║     THINKING MODE COMPREHENSIVE TEST SUITE                ║${NC}"
-echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo ""
-
-# Track results
 TOTAL=0
 PASSED=0
 FAILED=0
 
-run_test() {
-    local name="$1"
-    local mode="$2"
-    local query="$3"
-    local thinking_flag="$4"
-    local expect_thinking="$5"
-    
+usage() {
+    cat <<'EOF'
+Usage: ./tests/integration/test-thinking-mode.sh [--live cloud|local|all]
+
+Without --live, runs focused unit/catalog tests only (no API calls).
+Live mode makes two real LLM requests per selected mode and may incur cost.
+EOF
+}
+
+record_pass() {
+    PASSED=$((PASSED + 1))
+    printf '%bPASS%b %s\n' "$GREEN" "$NC" "$1"
+}
+
+record_fail() {
+    FAILED=$((FAILED + 1))
+    printf '%bFAIL%b %s\n' "$RED" "$NC" "$1"
+}
+
+run_check() {
+    local name=$1
+    shift
     TOTAL=$((TOTAL + 1))
-    echo -e "\n${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${CYAN}Test $TOTAL: $name${NC}"
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "Mode: $mode | Query: \"$query\""
-    echo -e "Thinking flag: $thinking_flag | Expect thinking: $expect_thinking"
-    echo ""
-    
-    # Build command
-    cmd="./orchestrator/orchestrator_v2.py $mode \"$query\""
-    if [ "$thinking_flag" = "true" ]; then
-        cmd="$cmd --debug-thinking"
-    fi
-    
-    echo -e "${CYAN}Running: $cmd${NC}"
-    echo ""
-    
-    # Run and capture output
-    if output=$($cmd 2>&1); then
-        # Check if thinking was displayed
-        if echo "$output" | grep -q "🧠 LLM Thinking:"; then
-            thinking_found="true"
-        else
-            thinking_found="false"
-        fi
-        
-        # Validate expectations
-        if [ "$expect_thinking" = "$thinking_found" ]; then
-            echo -e "${GREEN}✅ PASS${NC}"
-            PASSED=$((PASSED + 1))
-        else
-            echo -e "${RED}❌ FAIL - Expected thinking=$expect_thinking, got=$thinking_found${NC}"
-            FAILED=$((FAILED + 1))
-        fi
-        
-        # Show abbreviated output
-        echo ""
-        echo -e "${CYAN}Output preview:${NC}"
-        echo "$output" | head -20
-        echo "..."
-        echo "$output" | tail -10
+    if "$@"; then
+        record_pass "$name"
     else
-        echo -e "${RED}❌ FAIL - Command failed${NC}"
-        echo "$output"
-        FAILED=$((FAILED + 1))
+        record_fail "$name"
     fi
 }
 
-echo -e "${YELLOW}═══════════════════════════════════════════════════════════════${NC}"
-echo -e "${CYAN}  SECTION 1: Cloud Mode Tests (Anthropic Sonnet 4.5)${NC}"
-echo -e "${YELLOW}═══════════════════════════════════════════════════════════════${NC}"
+require_runtime() {
+    if [[ ! -x "$PYTHON" ]]; then
+        printf '%bERROR:%b Jarvis Python not found at %s\n' "$RED" "$NC" "$PYTHON" >&2
+        printf 'Set JARVIS_VENV to the external Jarvis virtual environment.\n' >&2
+        exit 2
+    fi
+    if [[ ! -x "$ORCHESTRATOR" ]]; then
+        printf '%bERROR:%b orchestrator is not executable: %s\n' "$RED" "$NC" "$ORCHESTRATOR" >&2
+        exit 2
+    fi
+}
 
-run_test \
-    "Cloud WITHOUT thinking flag (should not show thinking)" \
-    "cloud" \
-    "What time is it?" \
-    "false" \
-    "false"
+run_static_checks() {
+    printf '%bThinking configuration checks (no provider API calls)%b\n' "$CYAN" "$NC"
+    run_check \
+        "catalog-backed thinking and provider request tests" \
+        "$PYTHON" -m pytest -q \
+        "$ROOT_DIR/tests/test_thinking_adaptive.py" \
+        "$ROOT_DIR/tests/test_llm_provider_anthropic_blocks.py" \
+        "$ROOT_DIR/tests/test_model_catalog.py"
+}
 
-run_test \
-    "Cloud WITH thinking flag (should show thinking)" \
-    "cloud" \
-    "Should I save the Bitcoin price?" \
-    "true" \
-    "true"
+read_mode_info() {
+    local mode=$1
+    "$PYTHON" - "$ROOT_DIR" "$mode" <<'PY'
+import sys
 
-run_test \
-    "Cloud WITH thinking - Grey area decision" \
-    "cloud" \
-    "I'm really excited about the new Predator movie and don't want to miss it. Search for when it comes out." \
-    "true" \
-    "true"
+root, mode = sys.argv[1:]
+sys.path.insert(0, f"{root}/lib")
 
-echo ""
-echo -e "${YELLOW}═══════════════════════════════════════════════════════════════${NC}"
-echo -e "${CYAN}  SECTION 2: Local Mode Tests (Check current model)${NC}"
-echo -e "${YELLOW}═══════════════════════════════════════════════════════════════${NC}"
+from config_loader import config_scope, get_config_value
+from thinking import is_thinking_supported
 
-# Check which local model is active
-LOCAL_MODEL=$(grep "^OLLAMA_MODEL=" config/local.env | cut -d'=' -f2 | tr -d '"')
-echo -e "${CYAN}Current local model: $LOCAL_MODEL${NC}"
-echo ""
+with config_scope(mode):
+    provider = str(get_config_value("LLM_PROVIDER", "ollama" if mode == "local" else "xai")).lower()
+    model_key = {
+        "anthropic": "ANTHROPIC_MODEL",
+        "openai": "OPENAI_MODEL",
+        "xai": "XAI_MODEL",
+        "ollama": "OLLAMA_MODEL" if mode == "local" else "OLLAMA_CLOUD_MODEL",
+    }.get(provider, "")
+    model = str(get_config_value(model_key, "")) if model_key else ""
 
-if [[ "$LOCAL_MODEL" == *"deepseek-r1"* ]]; then
-    echo -e "${GREEN}DeepSeek R1 detected - should support thinking${NC}"
-    EXPECT_LOCAL_THINKING="true"
-else
-    echo -e "${YELLOW}Non-thinking model detected - should gracefully skip${NC}"
-    EXPECT_LOCAL_THINKING="false"
-fi
-echo ""
+if provider == "anthropic":
+    expectation = "true" if is_thinking_supported(provider, model) else "false"
+elif provider in {"openai", "xai"}:
+    # These providers reason internally but Jarvis does not normally receive
+    # displayable raw reasoning text.
+    expectation = "false"
+else:
+    # Ollama's native `think` support and returned field are model/runtime specific.
+    expectation = "optional"
 
-run_test \
-    "Local WITHOUT thinking flag" \
-    "local" \
-    "What time is it?" \
-    "false" \
-    "false"
+print(f"{provider}\t{model}\t{expectation}")
+PY
+}
 
-run_test \
-    "Local WITH thinking flag" \
-    "local" \
-    "What is the current time in Tokyo?" \
-    "true" \
-    "$EXPECT_LOCAL_THINKING"
+run_live_request() {
+    local mode=$1
+    local debug_thinking=$2
+    local expected_display=$3
+    local label=$4
+    local -a command=("$PYTHON" "$ORCHESTRATOR" "$mode" "Reply with exactly OK.")
+    local output
 
-echo ""
-echo -e "${YELLOW}═══════════════════════════════════════════════════════════════${NC}"
-echo -e "${CYAN}  SECTION 3: Thinking Logs Verification${NC}"
-echo -e "${YELLOW}═══════════════════════════════════════════════════════════════${NC}"
+    if [[ "$debug_thinking" == "true" ]]; then
+        command+=("--debug-thinking")
+    fi
 
-TODAY=$(date +%Y-%m-%d)
-LOG_FILE="logs/thinking/${TODAY}_decisions.jsonl"
+    TOTAL=$((TOTAL + 1))
+    printf '\n%b%s%b\n' "$YELLOW" "$label" "$NC"
+    printf 'Running:'
+    printf ' %q' "${command[@]}"
+    printf '\n'
 
-if [ -f "$LOG_FILE" ]; then
-    ENTRY_COUNT=$(wc -l < "$LOG_FILE")
-    echo -e "${GREEN}✅ Thinking log exists: $LOG_FILE${NC}"
-    echo -e "${CYAN}   Entries: $ENTRY_COUNT${NC}"
-    echo ""
-    echo -e "${CYAN}Latest entry:${NC}"
-    tail -1 "$LOG_FILE" | jq '.' 2>/dev/null || tail -1 "$LOG_FILE"
-else
-    echo -e "${YELLOW}⚠️  No thinking logs found (expected if thinking not enabled)${NC}"
-fi
+    if ! output=$(JARVIS_DEBUG_THINKING=false "${command[@]}" 2>&1); then
+        printf '%s\n' "$output"
+        record_fail "$label (request failed)"
+        return
+    fi
 
-echo ""
-echo -e "${YELLOW}═══════════════════════════════════════════════════════════════${NC}"
-echo -e "${CYAN}  TEST SUMMARY${NC}"
-echo -e "${YELLOW}═══════════════════════════════════════════════════════════════${NC}"
-echo ""
-echo -e "Total tests:  $TOTAL"
-echo -e "${GREEN}Passed:       $PASSED${NC}"
-if [ $FAILED -gt 0 ]; then
-    echo -e "${RED}Failed:       $FAILED${NC}"
-else
-    echo -e "Failed:       $FAILED"
-fi
-echo ""
+    local found=false
+    if grep -q "LLM Thinking:" <<<"$output"; then
+        found=true
+    fi
 
-if [ $FAILED -eq 0 ]; then
-    echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║              ALL TESTS PASSED! 🎉                          ║${NC}"
-    echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
-    exit 0
-else
-    echo -e "${RED}╔════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${RED}║              SOME TESTS FAILED                             ║${NC}"
-    echo -e "${RED}╚════════════════════════════════════════════════════════════╝${NC}"
-    exit 1
-fi
+    if [[ "$expected_display" == "optional" ]]; then
+        record_pass "$label (displayed thinking: $found; model-dependent)"
+    elif [[ "$found" == "$expected_display" ]]; then
+        record_pass "$label (displayed thinking: $found)"
+    else
+        printf '%s\n' "$output"
+        record_fail "$label (expected display=$expected_display, got $found)"
+    fi
+}
 
+run_live_mode() {
+    local mode=$1
+    local provider model expected
+
+    IFS=$'\t' read -r provider model expected < <(read_mode_info "$mode")
+    printf '\n%bLive %s mode: provider=%s model=%s%b\n' \
+        "$CYAN" "$mode" "$provider" "${model:-<provider default>}" "$NC"
+
+    run_live_request "$mode" false false "$mode without --debug-thinking"
+    run_live_request "$mode" true "$expected" "$mode with --debug-thinking"
+}
+
+print_summary() {
+    printf '\n%bSummary%b: %d passed, %d failed, %d total\n' \
+        "$CYAN" "$NC" "$PASSED" "$FAILED" "$TOTAL"
+    [[ "$FAILED" -eq 0 ]]
+}
+
+main() {
+    require_runtime
+    cd "$ROOT_DIR" || exit 2
+
+    if [[ $# -eq 0 ]]; then
+        run_static_checks
+        print_summary
+        return
+    fi
+
+    if [[ $# -ne 2 || "$1" != "--live" ]]; then
+        usage >&2
+        exit 2
+    fi
+
+    run_static_checks
+    case "$2" in
+        cloud|local)
+            run_live_mode "$2"
+            ;;
+        all)
+            run_live_mode cloud
+            run_live_mode local
+            ;;
+        *)
+            usage >&2
+            exit 2
+            ;;
+    esac
+    print_summary
+}
+
+main "$@"
