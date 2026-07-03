@@ -10,8 +10,11 @@ This directory contains configuration files for Jarvis Voice Assistant.
 
 2. **Copy the example file:**
    ```bash
-   # For cloud mode:
+   # For cloud mode (full multi-provider template):
    cp cloud.env.example cloud.env
+
+   # For cloud mode with OpenAI only (minimal — one API key):
+   cp cloud.openai.env.example cloud.env
 
    # For local mode:
    cp local.env.example local.env
@@ -53,13 +56,15 @@ Copy the template for each mode you intend to run (both live filenames are
 gitignored, but a one-mode-only install needs only its selected file):
 
 ```bash
-cp cloud.env.example cloud.env    # cloud mode
+cp cloud.env.example cloud.env    # cloud mode (all providers)
+cp cloud.openai.env.example cloud.env   # cloud mode, OpenAI-only minimum
 cp local.env.example local.env    # local mode
 ```
 
 | File | Role |
 |------|------|
 | `cloud.env.example` / `local.env.example` | Committed templates — safe to browse in git |
+| `cloud.openai.env.example` | Minimal OpenAI-only cloud template (one required secret; other tools gate automatically) |
 | `cloud.env` / `local.env` | Your machine-specific settings and secrets (not committed) |
 | `mcp-servers.json` | Jarvis MCP server definitions (committed; no secrets in git) |
 
@@ -84,6 +89,25 @@ request/browser data or LLM mode selectors after startup.
 
 See also: [xAI provider guide](../docs/XAI_PROVIDER.md) and
 [Ollama local/cloud guide](../docs/ollama/README.md).
+
+### `cloud.openai.env.example` (OpenAI-only minimum)
+
+Trimmed cloud template for users with **one OpenAI API key**. Cloud mode still
+requires OpenAI for embeddings even if chat used another provider elsewhere —
+this file keeps chat, STT, TTS, embeddings, image/video tools, and Responses
+routing on OpenAI.
+
+```bash
+cp cloud.openai.env.example cloud.env
+# Set OPENAI_API_KEY, then:
+./bin/sync-tools.py cloud
+./bin/manage-tools.py --mode cloud list
+```
+
+Tools that need other API keys, OAuth caches, webhooks, or self-hosted URLs
+(SerpApi, Brave, Spotify, Crawl4AI, email webhooks, etc.) stay **unavailable**
+automatically via manifest `availability` blocks — no manual disable list.
+See `docs/FUTURE_ENHANCEMENTS.md` section 9 and `skills/README.md`.
 
 ### `local.env` (Local Mode)
 
