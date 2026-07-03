@@ -7,13 +7,15 @@ Tools declare optional hard configuration requirements in their manifest
 key. This module evaluates those requirements against the active config scope
 (cloud.env / local.env via config_loader) WITHOUT ever reading or exposing
 secret values — only presence/non-blankness is checked, and results contain
-requirement NAMES only.
+requirement names or safe config-file paths only.
 
 Manifest schema (all keys optional; no "availability" block = always available):
 
   "availability": {
     "all_of_env": ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"],
     "any_of_env": ["BRAVE_API_KEY", "BRAVE_SEARCH_API_KEY"],
+    "config_files": ["data/.spotify_cache"],
+    "webhook_registry": ["send_email"],
     "provider_setting": "IMAGE_TOOL_PROVIDER",
     "provider_default": "gemini",
     "provider_requirements": {
@@ -27,6 +29,11 @@ Manifest schema (all keys optional; no "availability" block = always available):
 Semantics:
   - all_of_env: every named key must be present and non-blank
   - any_of_env: at least one named key must be present and non-blank
+  - config_files: every project-relative (or absolute/~) path must be a
+    non-empty regular file; contents are never read
+  - webhook_registry: each named entry in config/webhook_registry.json must
+    exist, not be explicitly disabled, and have a non-blank URL after ${ENV_VAR}
+    substitution (values never logged)
   - provider_requirements: the tool is available when at least ONE provider's
     requirements are met. The result carries selected/configured provider
     detail so callers (e.g. media tool preflight) can produce clear errors
@@ -40,10 +47,14 @@ precedence.
 """
 from __future__ import annotations
 
+import json
+import os
+import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal
 
-from config_loader import get_config_value
+from config_loader import get_config_value, get_project_root
 
 AvailabilityStatus = Literal["available", "unavailable", "unknown"]
 
@@ -102,6 +113,95 @@ def _validate_env_names(names: Any) -> list[str] | None:
     return out
 
 
+def _validate_config_files(paths: Any) -> list[str] | None:
+    """Return clean manifest paths, or None when the shape is invalid."""
+    if not isinstance(paths, list) or not paths:
+        return None
+    out: list[str] = []
+    for path in paths:
+        if not isinstance(path, str) or not path.strip():
+            return None
+        out.append(path.strip())
+    return out
+
+
+def is_config_file_ready(path_value: str) -> bool:
+    """Check file presence without opening or exposing its contents."""
+    path = Path(path_value).expanduser()
+    if not path.is_absolute():
+        path = get_project_root() / path
+    try:
+        return path.is_file() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _validate_webhook_registry(names: Any) -> list[str] | None:
+    """Return clean webhook entry names, or None when the shape is invalid."""
+    if not isinstance(names, list) or not names:
+        return None
+    out: list[str] = []
+    for name in names:
+        if not isinstance(name, str) or not name.strip():
+            return None
+        out.append(name.strip())
+    return out
+
+
+def _resolve_registry_url(raw: str) -> str:
+    """Expand ${ENV_VAR} placeholders in a webhook URL (never logged).
+
+    Matches send_webhook.substitute_env_vars: missing vars keep ${NAME} so
+    partially-resolved URLs are treated as not configured.
+    """
+    if not raw:
+        return ""
+
+    def repl(match: re.Match[str]) -> str:
+        key = match.group(1)
+        val = get_config_value(key, "")
+        if val is None or str(val).strip() == "":
+            val = os.environ.get(key, "")
+        if val is None or str(val).strip() == "":
+            return match.group(0)
+        return str(val).strip()
+
+    resolved = re.sub(r"\$\{([^}]+)\}", repl, str(raw)).strip()
+    if not resolved or "${" in resolved:
+        return ""
+    return resolved
+
+
+def _check_webhook_registry_entries(entry_names: list[str]) -> list[str]:
+    """Return missing webhook requirement labels (no secret values)."""
+    registry_rel = "config/webhook_registry.json"
+    if not is_config_file_ready(registry_rel):
+        return [f"file: {registry_rel}"]
+
+    registry_path = get_project_root() / registry_rel
+    try:
+        data = json.loads(registry_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return [f"file: {registry_rel} (invalid)"]
+
+    webhooks = data.get("webhooks", {})
+    if not isinstance(webhooks, dict):
+        return ["webhook_registry: invalid webhooks section"]
+
+    missing: list[str] = []
+    for name in entry_names:
+        entry = webhooks.get(name)
+        if not isinstance(entry, dict):
+            missing.append(f"webhook: {name}")
+            continue
+        if entry.get("enabled") is False:
+            missing.append(f"webhook: {name} (disabled)")
+            continue
+        if not _resolve_registry_url(str(entry.get("url", "") or "")):
+            missing.append(f"webhook: {name} (url not configured)")
+    return missing
+
+
 def _malformed(setup_hint: str | None = None) -> AvailabilityResult:
     return AvailabilityResult(
         status="unavailable",
@@ -122,11 +222,14 @@ def check_availability_block(block: Any) -> AvailabilityResult:
         setup_hint = None
 
     known_keys = {
-        "all_of_env", "any_of_env",
+        "all_of_env", "any_of_env", "config_files", "webhook_registry",
         "provider_setting", "provider_default", "provider_requirements",
         "setup_hint",
     }
-    requirement_keys = {"all_of_env", "any_of_env", "provider_requirements"}
+    requirement_keys = {
+        "all_of_env", "any_of_env", "config_files", "webhook_registry",
+        "provider_requirements",
+    }
     present = set(block.keys())
     if not (present & requirement_keys):
         # setup_hint-only or unknown-only blocks: nothing enforceable.
@@ -152,6 +255,22 @@ def check_availability_block(block: Any) -> AvailabilityResult:
             return _malformed(setup_hint)
         if not any(is_env_configured(name) for name in names):
             missing.append(f"any of: {', '.join(names)}")
+
+    config_files = block.get("config_files")
+    if config_files is not None:
+        paths = _validate_config_files(config_files)
+        if paths is None:
+            return _malformed(setup_hint)
+        missing.extend(
+            f"file: {path}" for path in paths if not is_config_file_ready(path)
+        )
+
+    webhook_registry = block.get("webhook_registry")
+    if webhook_registry is not None:
+        names = _validate_webhook_registry(webhook_registry)
+        if names is None:
+            return _malformed(setup_hint)
+        missing.extend(_check_webhook_registry_entries(names))
 
     result = AvailabilityResult(
         status="available",

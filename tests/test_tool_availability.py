@@ -22,6 +22,7 @@ from tool_availability import (  # noqa: E402
     check_availability_block,
     check_tool_availability,
     describe_missing,
+    is_config_file_ready,
     is_env_configured,
     media_provider_preflight,
 )
@@ -46,6 +47,15 @@ class EnvVarCleanupMixin:
 
 
 class TestAvailabilityEvaluator(EnvVarCleanupMixin, unittest.TestCase):
+    def test_spotify_manifest_requires_credentials_and_oauth_cache(self):
+        manifest = json.loads((ROOT / "skills" / "spotify.tool.json").read_text())
+        availability = manifest["availability"]
+        self.assertEqual(
+            availability["all_of_env"],
+            ["SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET"],
+        )
+        self.assertEqual(availability["config_files"], ["data/.spotify_cache"])
+
     def test_no_block_is_available(self):
         self.assertEqual(check_availability_block(None).status, "available")
         self.assertEqual(check_tool_availability({"name": "x"}).status, "available")
@@ -82,6 +92,104 @@ class TestAvailabilityEvaluator(EnvVarCleanupMixin, unittest.TestCase):
         self.assertEqual(bad.status, "unavailable")
         self.assertIn("any of", bad.missing[0])
 
+    def test_config_files_require_nonempty_project_relative_files(self):
+        import tool_availability
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_file = root / "data" / "oauth-cache.json"
+            config_file.parent.mkdir()
+            block = {"config_files": ["data/oauth-cache.json"]}
+            with patch.object(tool_availability, "get_project_root", return_value=root):
+                missing = check_availability_block(block)
+                self.assertEqual(missing.status, "unavailable")
+                self.assertEqual(missing.missing, ["file: data/oauth-cache.json"])
+
+                config_file.write_text("")
+                self.assertFalse(is_config_file_ready("data/oauth-cache.json"))
+                self.assertEqual(check_availability_block(block).status, "unavailable")
+
+                config_file.write_text('{"access_token":"test-only"}')
+                self.assertTrue(is_config_file_ready("data/oauth-cache.json"))
+                self.assertEqual(check_availability_block(block).status, "available")
+
+    def test_config_files_combine_with_env_requirements(self):
+        import tool_availability
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            token = root / "token.json"
+            token.write_text("test-token")
+            block = {
+                "all_of_env": ["ZZTEST_FILE_BACKED_KEY"],
+                "config_files": ["token.json"],
+            }
+            with patch.object(tool_availability, "get_project_root", return_value=root):
+                self.assertEqual(check_availability_block(block).status, "unavailable")
+                self.set_env("ZZTEST_FILE_BACKED_KEY", "configured")
+                self.assertEqual(check_availability_block(block).status, "available")
+
+    def test_webhook_registry_requires_enabled_entry_with_resolved_url(self):
+        import tool_availability
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_dir = root / "config"
+            config_dir.mkdir()
+            registry = config_dir / "webhook_registry.json"
+            block = {"webhook_registry": ["send_email"]}
+            with patch.object(tool_availability, "get_project_root", return_value=root):
+                self.assertEqual(check_availability_block(block).status, "unavailable")
+                self.assertEqual(check_availability_block(block).missing, ["file: config/webhook_registry.json"])
+
+                registry.write_text(json.dumps({"webhooks": {}}))
+                result = check_availability_block(block)
+                self.assertEqual(result.status, "unavailable")
+                self.assertEqual(result.missing, ["webhook: send_email"])
+
+                registry.write_text(json.dumps({
+                    "webhooks": {
+                        "send_email": {
+                            "url": "${ZZTEST_N8N_URL}/webhook/jarvis-email",
+                            "enabled": False,
+                        }
+                    }
+                }))
+                result = check_availability_block(block)
+                self.assertEqual(result.missing, ["webhook: send_email (disabled)"])
+
+                registry.write_text(json.dumps({
+                    "webhooks": {
+                        "send_email": {
+                            "url": "${ZZTEST_N8N_URL}/webhook/jarvis-email",
+                        }
+                    }
+                }))
+                self.set_env("ZZTEST_N8N_URL", "http://localhost:5678")
+                result = check_availability_block(block)
+                self.assertEqual(result.status, "available")
+
+                registry.write_text(json.dumps({
+                    "webhooks": {"send_email": {"url": "${ZZTEST_MISSING_N8N}/hook"}}
+                }))
+                os.environ.pop("ZZTEST_MISSING_N8N", None)
+                result = check_availability_block(block)
+                self.assertEqual(result.missing, ["webhook: send_email (url not configured)"])
+
+    def test_static_config_gated_tool_manifests(self):
+        manifests = {
+            "ssh_remote": {"config_files": ["config/ssh.json"]},
+            "send_email": {"webhook_registry": ["send_email"]},
+            "crawl_url": {"all_of_env": ["CRAWL4AI_URL"]},
+            "screenshot_url": {"all_of_env": ["CRAWL4AI_URL"]},
+            "create_social_clip": {"all_of_env": ["MONEYPRINTER_API_URL"]},
+        }
+        for name, expected_keys in manifests.items():
+            manifest = json.loads((ROOT / "skills" / f"{name}.tool.json").read_text())
+            availability = manifest["availability"]
+            for key, value in expected_keys.items():
+                self.assertEqual(availability[key], value, msg=name)
+
     def test_provider_requirements_one_configured(self):
         self.set_env("ZZTEST_PROV1_KEY", "k")
         self.set_env("ZZTEST_PROVIDER_SETTING", "prov2")
@@ -117,6 +225,11 @@ class TestAvailabilityEvaluator(EnvVarCleanupMixin, unittest.TestCase):
             {"all_of_env": []},
             {"all_of_env": [123]},
             {"any_of_env": {}},
+            {"config_files": "token.json"},
+            {"config_files": []},
+            {"config_files": [123]},
+            {"webhook_registry": "send_email"},
+            {"webhook_registry": []},
             {"provider_requirements": []},
             {"provider_requirements": {"p": "nope"}},
             {"allof_env": ["TYPO_KEY"]},  # unknown-only keys: fail closed

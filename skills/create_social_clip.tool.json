@@ -73,5 +73,9 @@
     "network": true,
     "filesystem": true,
     "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": ["MONEYPRINTER_API_URL"],
+    "setup_hint": "Set MONEYPRINTER_API_URL in the active mode env file to your MoneyPrinterTurbo server base URL."
   }
 }

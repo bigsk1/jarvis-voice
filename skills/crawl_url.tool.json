@@ -120,5 +120,9 @@
     "network": true,
     "filesystem": false,
     "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": ["CRAWL4AI_URL"],
+    "setup_hint": "Set CRAWL4AI_URL in the active mode env file. CRAWL4AI_USER, CRAWL4AI_PASS, and CRAWL4AI_API_KEY are optional."
   }
 }

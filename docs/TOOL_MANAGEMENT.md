@@ -26,7 +26,36 @@ Jarvis now supports enabling/disabling tools dynamically, similar to MCP servers
 
 # Enable all tools
 ./bin/manage-tools.py enable-all
+
+# Inspect credential availability for a specific mode (cloud vs local env)
+./bin/manage-tools.py --mode cloud list
+./bin/manage-tools.py --mode local list -v
 ```
+
+## Enabled vs available
+
+Two independent gates control whether a tool reaches the LLM:
+
+| State | Meaning |
+|-------|---------|
+| **Enabled** | Manifest `"enabled": true` and not disabled by `JARVIS_TOOL_PROFILE` |
+| **Available** | Hard requirements in the manifest `availability` block are satisfied in the active mode |
+
+A tool can be enabled in git but **unavailable** (missing API key, OAuth cache,
+`config/ssh.json`, webhook registry entry, etc.). Unavailable tools are skipped
+at registry load — they do not appear in Tool RAG or the LLM tool list. Adding
+the missing configuration and restarting (or running `./bin/sync-tools.py <mode>`)
+restores them without editing the manifest.
+
+Inspect with `./bin/manage-tools.py --mode <mode> list` (🔒 unavailable) or
+`./bin/sync-tools.py <mode>` (prints excluded tools at startup). See
+`skills/README.md` → **Availability** and `docs/FUTURE_ENHANCEMENTS.md`
+section 9 for the full schema.
+
+**Note:** `availability` metadata is **not** sent to the LLM and does **not**
+change `embedding_input_hash`; only name, description, and parameter schema
+affect Tool RAG embeddings. Sync still disables stale DB rows when a previously
+synced tool becomes unavailable.
 
 ## How It Works
 
@@ -110,29 +139,25 @@ Ollama models have limited context windows. Disable unnecessary tools:
 
 ### Code Changes
 
-**1. `lib/tool_schema.py`** - Added enable/disable check:
+**1. `lib/tool_schema.py`** — Discovery applies three gates in order:
+profile resolution → credential availability → `ToolSchema` load:
+
 ```python
-def _discover_tools(self):
-    for tool_file in self.skills_dir.glob("*.tool.json"):
-        with open(tool_file, 'r') as f:
-            tool_config = json.load(f)
+availability = check_tool_availability(tool_config)
+if not availability.available:
+    self.unavailable_tools[name] = availability
+    continue
 
-        # Check if tool is enabled (defaults to True)
-        if not tool_config.get('enabled', True):
-            print(f"⊝ Skipping {tool_config.get('name')} (disabled)")
-            continue
-
-        schema = ToolSchema.from_json_file(str(tool_file))
-        self.tools[schema.name] = schema
+schema = ToolSchema.from_json_file(str(tool_file))
+self.tools[schema.name] = schema
 ```
 
-**2. `bin/manage-tools.py`** - New management utility:
-- List tools and status
-- Enable/disable individual tools
-- Bulk operations
-- Color-coded output
+**2. `bin/manage-tools.py`** — Management utility:
+- List tools with effective enabled **and** available status
+- `--mode cloud|local` to evaluate availability against that mode's env file
+- Enable/disable individual tools, profiles, bulk operations
 
-**3. All `skills/*.tool.json`** - Added `enabled: true` field
+**3. All `skills/*.tool.json`** — Optional `enabled` and `availability` fields
 
 ### No Hardcoded Dependencies
 

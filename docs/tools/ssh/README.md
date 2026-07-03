@@ -6,6 +6,12 @@ Execute commands on remote hosts via SSH with secure credential management and a
 
 The `ssh_remote` tool allows Jarvis to connect to remote servers, execute commands, manage packages, and perform administrative tasks—all without leaving orphaned SSH sessions.
 
+**Runtime gate:** the tool registers only when `config/ssh.json` exists and is
+non-empty (copy from `config/ssh.json.example`). SSH key paths inside the file
+are resolved at execution time and are not part of the availability check.
+Inspect with `./bin/manage-tools.py --mode <mode> list` if the tool shows as 🔒
+unavailable.
+
 ## Features
 
 - **Secure credential storage**: SSH keys in filesystem, sudo passwords in `.env` files

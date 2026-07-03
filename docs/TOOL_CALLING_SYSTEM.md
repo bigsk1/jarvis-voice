@@ -107,7 +107,11 @@ Text-to-Speech (OpenAI TTS / Kokoro)
 You hear: "Webhook sent successfully to your server. Status 200."
 ```
 
-Tool availability is selected just before the router LLM call by Tool RAG. Local mode retrieves top 5 semantic tools and cloud mode retrieves top 15, then ghost tools and exact positive tool signals are merged in. `tool_search` is also always available as a mandatory ghost tool, so the model can discover enabled tools when the current shortlist is not enough. For live debugging of which tools were made available, enable `TOOL_RAG_TRACE_ENABLED=true` and inspect `logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl`; see `docs/TOOL_RAG_STRATEGY.md`.
+Tool availability is selected just before the router LLM call by Tool RAG. Local mode retrieves top 5 semantic tools and cloud mode retrieves top 15, then ghost tools and exact positive tool signals are merged in. `tool_search` is also always available as a mandatory ghost tool, so the model can discover enabled tools when the current shortlist is not enough.
+
+**Credential-aware registration** runs earlier, at registry load: tools whose manifest `availability` requirements are unmet in the active mode never enter the registry or Tool RAG (even if `"enabled": true` in git). Profile overlays cannot force-enable a tool with missing hard requirements. The `availability` block itself is not sent to the LLM — only name, description, and parameters from `to_openai_format()`. See `skills/README.md` → **Availability** and `docs/TOOL_MANAGEMENT.md` → **Enabled vs available**.
+
+For live debugging of which tools were made available, enable `TOOL_RAG_TRACE_ENABLED=true` and inspect `logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl`; see `docs/TOOL_RAG_STRATEGY.md`.
 
 ## Provider Comparison
 

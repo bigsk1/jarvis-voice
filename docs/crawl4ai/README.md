@@ -76,6 +76,10 @@ CRAWL4AI_PASS=your-password
 CRAWL4AI_API_KEY=your-api-key
 ```
 
+**Runtime gate:** `crawl_url` and `screenshot_url` register only when
+`CRAWL4AI_URL` is set and non-blank in the active mode env file. Auth vars
+(`CRAWL4AI_USER`, `CRAWL4AI_PASS`, `CRAWL4AI_API_KEY`) are optional.
+
 ---
 
 ## API Endpoints Reference

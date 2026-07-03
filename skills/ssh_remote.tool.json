@@ -56,5 +56,9 @@
   "test_input": {
     "action": "list_hosts"
   },
-  "expected_output_contains": ["ok", "hosts"]
+  "expected_output_contains": ["ok", "hosts"],
+  "availability": {
+    "config_files": ["config/ssh.json"],
+    "setup_hint": "Copy config/ssh.json.example to config/ssh.json and configure host aliases. SSH key paths inside the file are resolved at runtime."
+  }
 }

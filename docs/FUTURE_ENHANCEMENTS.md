@@ -543,7 +543,8 @@ See also: `skills/README.md` (manifest authoring), `docs/TOOL_BUILDER.md`
 
 **Tools (runtime)**
 - Shared evaluator: `lib/tool_availability.py` (`all_of_env`, `any_of_env`,
-  `provider_requirements`, `setup_hint`; malformed blocks fail closed per tool)
+  `config_files`, `webhook_registry`, `provider_requirements`, `setup_hint`;
+  malformed blocks fail closed per tool)
 - Strict tools carry `availability` blocks in `skills/*.tool.json` (and
   auto-tools); Tool Builder always emits them for new tools
 - `ToolRegistry` filters unavailable tools **after** profile resolution; diagnostics
@@ -618,11 +619,25 @@ editing tracked manifest files.
 ```
 
 - `all_of_env` / `any_of_env`: presence and non-blank only (no placeholder heuristics)
+- `config_files`: non-empty file at the listed path (contents not read)
+- `webhook_registry`: named entries in `config/webhook_registry.json` must exist,
+  not be disabled, and have a resolvable URL
 - `provider_requirements`: tool available when **at least one** provider's keys are
   configured; media preflight errors on the **selected** provider without switching
 - Inventory rule: only unambiguous hard requirements affect registration; optional
-  keys (weather, CoinGecko) and action-dependent tools (phone) were left without
-  strict blocks in the first release
+  keys (weather, CoinGecko), action-dependent tools (phone_call), direct-URL
+  webhooks (`send_webhook`), and stash vision providers stay ungated
+
+**Static-config gated tools (2026-07 follow-up):**
+- `ssh_remote` — `config/ssh.json` (host aliases; key paths inside are dynamic)
+- `send_email` — enabled `send_email` webhook entry with resolved URL
+- `crawl_url`, `screenshot_url` — `CRAWL4AI_URL` (auth env vars optional)
+- `create_social_clip` — `MONEYPRINTER_API_URL`
+- `spotify` — env credentials + `data/.spotify_cache` (prior release)
+
+**Intentionally not globally gated:** `send_webhook` (direct URL works without
+registry), `phone_call` (contacts/status without Vapi; only placing calls needs
+Vapi), GitHub/CoinGecko/weather/Supa-Crawl optional keys, stash vision providers.
 
 Registry construction is static and fast — no network health checks at startup.
 
@@ -633,12 +648,13 @@ These were scoped out of the first release. The core feature above is complete.
 | Follow-up | Would add | What exists today |
 |---|---|---|
 | **TTS / Completion-Guard live health** | Probe backends actually work (Kokoro server up, Qwen3-TTS reachable, ElevenLabs account valid) | Static API-key checks for providers that need keys; local engines (`kokoro`, `qwen3-tts`) marked available without a server probe; Ollama Cloud uses live sign-in status |
-| **`config_files` requirements** | Manifest rules for OAuth/token files on disk (Spotify, etc.) | Env-var requirements only — no file-path gating |
 | **Placeholder-value detection** | Reject values like `your-api-key-here` / `changeme` | Present and non-blank counts as configured (avoids false positives on valid unusual keys) |
 | **MCP duplicate detection hardening** | Tool Builder checks the live MCP registry, not manifest filenames | Separate from runtime availability; manifest scan only |
 
-Suggested order if revisited: live TTS health → `config_files` → conservative
-placeholder patterns → MCP duplicate hardening.
+Suggested order if revisited: live TTS health → conservative placeholder
+patterns → MCP duplicate hardening. Static `config_files` / `webhook_registry`
+requirements shipped for file-backed tools (Spotify OAuth, `ssh_remote`,
+`send_email`) plus env gates for Crawl4AI and MoneyPrinterTurbo.
 
 #### Key files
 

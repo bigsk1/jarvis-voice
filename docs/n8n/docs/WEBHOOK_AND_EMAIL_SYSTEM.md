@@ -9,6 +9,12 @@ Jarvis uses a modular webhook registry system for triggering n8n workflows and e
 - **Rate limiting** - Prevents duplicate sends
 - **Extensibility** - Add new webhooks without code changes
 
+**Runtime gate:** the `send_email` tool registers only when
+`config/webhook_registry.json` contains an enabled `send_email` entry with a
+resolvable URL (`${N8N_LOCAL_API_URL}/...` or a direct URL). `contacts.json`
+is optional when sending to a direct email address. `send_webhook` is not gated
+the same way — it accepts direct URLs without the registry.
+
 ## Architecture
 
 ```

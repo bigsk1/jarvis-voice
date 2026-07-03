@@ -115,7 +115,9 @@ Some behavior is more honestly verified through the real surface:
 - Docker startup and mounted data/config behavior;
 - wake-word, microphone, speaker, and TTS paths;
 - tmux shutdown and service lifecycle;
-- provider safeguards, model retirement fallbacks, and external MCP availability.
+- provider safeguards, model retirement fallbacks, and external MCP availability;
+- tool credential availability: `./bin/manage-tools.py --mode cloud list` and
+  `tests/test_tool_availability.py`, `tests/test_web_provider_availability.py`.
 
 Record the mode, provider/model, command or UI action, and relevant log file when reporting a live failure.
 

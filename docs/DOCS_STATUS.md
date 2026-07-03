@@ -1,6 +1,6 @@
 # Documentation Status
 
-Last updated: 2026-06-29
+Last updated: 2026-07-02
 
 This file tracks doc health and maintenance. For the live index, see [README.md](README.md).
 
@@ -85,6 +85,18 @@ Safe validation performed without touching databases, logs, audio, or runtime
 stores: relative-link scan, referenced-command/path scan, mode/provider wording
 scan, Compose config rendering, shell/Python syntax checks, and the project test
 collection boundary.
+
+## Pass 7 completed (2026-07-02)
+
+- Documented **credential-aware tool availability** (section 9 in
+  `FUTURE_ENHANCEMENTS.md`): evaluator schema, static-config gates, intentionally
+  ungated tools, sync hash vs availability separation.
+- Updated `TOOL_MANAGEMENT.md` (enabled vs available, `--mode`, current registry
+  flow), `SYNC_ARCHITECTURE.md` (pre-sync filtering, hash scope),
+  `TOOL_CALLING_SYSTEM.md`, `skills/README.md` (config_files / webhook_registry).
+- Added 2026-07-02 changelog entry in `docs/README.md`; tool-specific notes in
+  `docs/tools/ssh/README.md`, `docs/crawl4ai/README.md`,
+  `docs/n8n/docs/WEBHOOK_AND_EMAIL_SYSTEM.md`.
 
 ## Pass 6 completed (2026-06-29)
 

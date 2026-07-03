@@ -36,7 +36,7 @@
 - **[opencode/OPENCODE.md](opencode/OPENCODE.md)** - Autonomous coding agent
 - **[TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md)** - Tool orchestration system + **inter-tool calling patterns** + `tool_search` discovery flow ⭐ ENHANCED
 - **[WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md)** - 🔄 **Multi-tool workflow system** (deterministic pipelines, variable extraction, WebUI integration) ⭐ IMPLEMENTED
-- **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Enable/disable tools in each `*.tool.json`
+- **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Enable/disable tools; enabled vs credential **available** status (`--mode`)
 - **[../skills/README.md](../skills/README.md)** - **Tool profile overlays** (`JARVIS_TOOL_PROFILE`, `skills/profiles/<name>.json`, `bin/manage-tools.py profile …`); git tracks `default.json` and `skills/profiles/examples/*.json` (copy to `profiles/<name>.json` for use). After changing profile: restart services, then `./bin/sync-tools.py local` or `cloud`
 - **[tools/status-tool/README.md](tools/status-tool/README.md)** - 📊 **Status Recap Tool v1.4** (weather, crypto, stocks/futures, alerts, reminders, system health, canvas + stash)
 - **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** - 🛒 **SerpApi Search Tool** (Amazon + engine-based SerpApi queries)
@@ -149,7 +149,7 @@
 | **[archive/TOOL_RAG_TROUBLESHOOTING.md](archive/TOOL_RAG_TROUBLESHOOTING.md)** | Tool RAG debugging guide (historical)  |
 | **[archive/TEST_SCRIPT_TOOL_RAG_FIX.md](archive/TEST_SCRIPT_TOOL_RAG_FIX.md)** | Test script integration fixes (historical)  |
 | **TOOL_CALLING_SYSTEM.md** | Tool orchestration and routing |
-| **TOOL_MANAGEMENT.md** | Enable/disable tools in each `*.tool.json` |
+| **TOOL_MANAGEMENT.md** | Enable/disable tools; enabled vs credential **available** (`--mode`) |
 | **[../skills/README.md](../skills/README.md)** (section *Tool profiles*) | Optional overlay JSON per profile; `JARVIS_TOOL_PROFILE`; `bin/manage-tools.py profile`; re-sync tools DB after changes |
 | **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** | SerpApi search tool guide (setup, params, examples, troubleshooting) |
 | **MULTI_TURN_ORCHESTRATION.md** | Multi-turn tool chaining |
@@ -333,6 +333,14 @@ tail -f logs/tools/tool-calls-*.jsonl
 4. Update documentation
 
 ## 📝 Change Log
+
+**2026-07-02:**
+- ✅ **Credential-aware tool and provider availability**
+  - Tools with hard requirements declare an optional `availability` block in `skills/*.tool.json` (`all_of_env`, `config_files`, `webhook_registry`, `provider_requirements`); `lib/tool_availability.py` gates registration at runtime — metadata is not sent to the LLM.
+  - `./bin/manage-tools.py --mode <mode> list` shows 🔒 unavailable tools; `./bin/sync-tools.py <mode>` prints excluded tools and disables stale Tool RAG rows.
+  - Web UI `provider_availability` annotates unconfigured LLM/image/video/TTS/completion-guard providers; saves validate before mutation.
+  - Static-config gates: `ssh_remote` (`config/ssh.json`), `send_email` (webhook registry), `crawl_url`/`screenshot_url` (`CRAWL4AI_URL`), `create_social_clip` (`MONEYPRINTER_API_URL`), plus prior API-key tools.
+  - See: [`FUTURE_ENHANCEMENTS.md`](FUTURE_ENHANCEMENTS.md) section 9, [`../skills/README.md`](../skills/README.md) → Availability, [`TOOL_MANAGEMENT.md`](TOOL_MANAGEMENT.md), [`SYNC_ARCHITECTURE.md`](SYNC_ARCHITECTURE.md)
 
 **2026-07-01:**
 - ✅ **Managed Bash/Zsh Jarvis commands**

@@ -50,6 +50,15 @@
     "network": true,
     "filesystem": false,
     "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "SPOTIFY_CLIENT_ID",
+      "SPOTIFY_CLIENT_SECRET"
+    ],
+    "config_files": [
+      "data/.spotify_cache"
+    ],
+    "setup_hint": "Set Spotify credentials in the active mode env file, then run ./bin/spotify-auth to create data/.spotify_cache."
   }
 }
-

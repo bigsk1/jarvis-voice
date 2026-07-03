@@ -108,10 +108,24 @@ This means a clean local rebuild can usually be repopulated with:
 Populates the `tool_definitions` table with all available tool schemas and their embeddings, enabling **Tool RAG** (dynamic tool retrieval).
 
 ### What it Syncs
-- ✅ Tool names, descriptions, and JSON schemas
+- ✅ Tool names, descriptions, and JSON schemas (OpenAI function format)
 - ✅ Tool embeddings (for semantic search)
-- ✅ Enabled/disabled status
+- ✅ Enabled/disabled status in the DB (`enabled=0` for tools no longer in the registry)
 - ✅ MCP tool definitions (dynamically discovered)
+- ❌ Manifest `availability` metadata (evaluated at registry load only; not stored in `schema_json` or embeddings)
+
+### Credential-aware filtering (before sync)
+
+`ToolRegistry` evaluates each manifest's optional `availability` block against the
+active mode **before** tools enter the sync loop. Tools with missing env keys,
+config files, or webhook registry entries are listed as unavailable and their
+existing DB rows are disabled by the stale-tools pass — they are not embedded
+or upserted on that run.
+
+Adding the missing configuration and re-running sync re-enables them without
+manifest edits. This is separate from `embedding_input_hash`: availability-only
+manifest changes do not change the hash (name + description + parameter schema
+only). See `docs/TOOL_MANAGEMENT.md` → **Enabled vs available**.
 
 ### Why This is Separate from Memory Sync
 

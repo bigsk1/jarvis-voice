@@ -64,6 +64,10 @@ Both are gitignored and auto-created on first use.
 
 **Purpose:** User-friendly email tool with contact name resolution.
 
+**Runtime gate:** registers only when `config/webhook_registry.json` has an
+enabled `send_email` entry with a resolvable URL. `contacts.json` is optional
+for direct email addresses. See `docs/n8n/docs/WEBHOOK_AND_EMAIL_SYSTEM.md`.
+
 **Voice Commands:**
 - "Send an email to Andrew about the meeting"
 - "Email mom and say happy birthday"

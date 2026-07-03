@@ -4,6 +4,18 @@ Control Spotify playback with voice commands. Jarvis can play music, search, con
 
 ## Quick Start
 
+Spotify is registered as an available Jarvis tool only when both
+`SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` are set in the active mode env
+file and `data/.spotify_cache` exists. Complete OAuth setup with:
+
+```bash
+./bin/spotify-auth
+```
+
+Restart Jarvis or run `./bin/sync-tools.py <mode>` afterward. Missing credentials
+or an absent token cache show Spotify as needing configuration instead of allowing
+a tool call that is guaranteed to fail.
+
 Just talk naturally! Jarvis understands context:
 
 ```
