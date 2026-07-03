@@ -10,6 +10,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, send_file, send_from_directory, abort
 from ..services.log_explorer import get_log_explorer, LogExplorerError
 from ..services.tool_discovery import get_tool_service
+from ..services.usage_metadata import format_usage_markdown
 from ..services.settings_manager import (
     CLOUD_TTS_PROVIDER_OPTIONS,
     LOCAL_TTS_PROVIDER_OPTIONS,
@@ -1095,6 +1096,11 @@ def export_conversation(conv_id):
             lines.append("")
             lines.append(content)
             lines.append("")
+
+            usage_lines = format_usage_markdown((msg.get('data') or {}).get('usage'))
+            if usage_lines:
+                lines.extend(usage_lines)
+                lines.append("")
             
             # Include tool info if present
             tools = msg.get('tools_used', [])

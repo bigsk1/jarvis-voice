@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "jarvis-web" / "server"))
 
-from services.usage_metadata import enrich_usage_metadata
+from services.usage_metadata import enrich_usage_metadata, format_usage_markdown
 from services.conversation_store import ConversationStore
 
 
@@ -22,9 +22,11 @@ class EnrichUsageMetadataTests(unittest.TestCase):
             {"input_tokens": 10, "provider": "xai"},
             provider="anthropic",
             model="claude-sonnet-5",
+            mode="cloud",
         )
         self.assertEqual(usage["provider"], "xai")
         self.assertEqual(usage["model"], "claude-sonnet-5")
+        self.assertEqual(usage["mode"], "cloud")
 
     def test_fills_missing_provider_model(self):
         usage = enrich_usage_metadata(
@@ -38,6 +40,22 @@ class EnrichUsageMetadataTests(unittest.TestCase):
 
     def test_returns_none_for_empty_usage(self):
         self.assertIsNone(enrich_usage_metadata(None, provider="xai", model="grok-4.3"))
+
+    def test_markdown_describes_per_response_identity_and_usage(self):
+        lines = format_usage_markdown({
+            "provider": "ollama",
+            "model": "deepseek-v4-pro",
+            "mode": "cloud",
+            "input_tokens": 27_088,
+            "output_tokens": 83,
+            "model_calls": 2,
+            "peak_context_tokens": 13_842,
+        })
+
+        self.assertEqual(lines[0], "**LLM:** ollama / deepseek-v4-pro (cloud)")
+        self.assertIn("processed 27,088 input / 83 output", lines[1])
+        self.assertIn("2 model calls", lines[1])
+        self.assertIn("peak context 13,842 tokens", lines[1])
 
 
 class ConversationStoreLlmMetadataTests(unittest.TestCase):
@@ -70,6 +88,9 @@ class ImportConversationMetadataTests(unittest.TestCase):
                         "total_tokens": 120,
                         "provider": "anthropic",
                         "model": "claude-sonnet-5",
+                        "mode": "cloud",
+                        "model_calls": 2,
+                        "peak_context_tokens": 3_400,
                         "cache_read_tokens": 5000,
                     }
                 },
@@ -103,6 +124,9 @@ class ImportConversationMetadataTests(unittest.TestCase):
             usage = loaded["messages"][0]["data"]["usage"]
             self.assertEqual(usage["cache_read_tokens"], 5000)
             self.assertEqual(usage["provider"], "anthropic")
+            self.assertEqual(usage["mode"], "cloud")
+            self.assertEqual(usage["model_calls"], 2)
+            self.assertEqual(usage["peak_context_tokens"], 3_400)
 
 
 if __name__ == "__main__":

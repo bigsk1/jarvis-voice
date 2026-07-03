@@ -17,6 +17,7 @@ if str(SKILLS_PATH) not in sys.path:
     sys.path.insert(0, str(SKILLS_PATH))
 
 from manage_intel import auto_ingest, format_ingest_summary
+from intel_content import normalize_intel_document_eof
 
 
 @intel_bp.route('/files', methods=['GET'])
@@ -99,6 +100,7 @@ def update_file(filename: str):
     
     data = request.get_json() or {}
     content = data.get('content', '')
+    content, _ = normalize_intel_document_eof(content)
     
     try:
         # Create intel folder if it doesn't exist
@@ -122,6 +124,7 @@ def create_file():
     
     filename = data.get('filename', '').strip()
     content = data.get('content', '')
+    content, _ = normalize_intel_document_eof(content)
     
     if not filename:
         return jsonify({'ok': False, 'error': 'Filename is required'}), 400

@@ -1549,6 +1549,7 @@ Previous structured data:
                 result.get('usage'),
                 record.get('provider'),
                 record.get('model'),
+                mode,
             )
             if repair_usage:
                 save_data['usage'] = repair_usage
@@ -3421,6 +3422,7 @@ Previous structured data:
                 result.get('usage'),
                 effective_provider,
                 effective_model,
+                mode,
             )
             try:
                 from ..services.conversation_store import get_conversation_store

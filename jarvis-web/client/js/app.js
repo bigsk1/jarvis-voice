@@ -2652,6 +2652,10 @@ class JarvisApp {
     let cumulativeCost = 0;
     let cumulativeUnknownCost = false;
     let cumulativeInputEstimated = false;
+    let cumulativeModelCalls = 0;
+    let modelCallsComplete = true;
+    let currentContextTokens = 0;
+    let currentContextEstimated = false;
     let cumulativeCache = {
       read: 0,
       creation: 0,
@@ -2661,6 +2665,8 @@ class JarvisApp {
     };
     let tokenProvider = conversation.llm_provider || null;
     let tokenModel = conversation.llm_model || null;
+    let tokenMode = null;
+    let tokenBillingMode = null;
     
     // Add each message
     for (const msg of conversation.messages || []) {
@@ -2700,8 +2706,23 @@ class JarvisApp {
           if (usage.input_estimated === true) {
             cumulativeInputEstimated = true;
           }
-          if (!tokenProvider && usage.provider) tokenProvider = usage.provider;
-          if (!tokenModel && usage.model) tokenModel = usage.model;
+          if (Number.isFinite(usage.model_calls)) {
+            cumulativeModelCalls += usage.model_calls;
+          } else {
+            modelCallsComplete = false;
+          }
+          if (Number.isFinite(usage.peak_context_tokens)) {
+            currentContextTokens = usage.peak_context_tokens;
+            currentContextEstimated = false;
+          } else {
+            currentContextTokens = usage.total_tokens
+              || (usage.input_tokens || 0) + (usage.output_tokens || 0);
+            currentContextEstimated = true;
+          }
+          if (usage.provider) tokenProvider = usage.provider;
+          if (usage.model) tokenModel = usage.model;
+          if (usage.mode) tokenMode = usage.mode;
+          tokenBillingMode = usage.billing_mode || null;
         }
       }
     }
@@ -2716,6 +2737,12 @@ class JarvisApp {
         {
           provider: tokenProvider,
           model: tokenModel,
+          mode: tokenMode,
+          billingMode: tokenBillingMode,
+          modelCalls: cumulativeModelCalls,
+          modelCallsComplete,
+          currentContextTokens,
+          currentContextEstimated,
           cache: cumulativeCache,
         }
       );

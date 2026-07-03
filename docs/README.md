@@ -402,7 +402,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Generated videos in Web chat now use cached ffmpeg first-frame posters, matching the reliable thumbnails already shown by the Canvas video gallery in native and Docker installs.
   - Replaced deprecated eventlet monkey-patching with Flask-SocketIO threading plus `simple-websocket`, eliminating gRPC/subprocess greenlet-finalization tracebacks during Ctrl-C or tmux shutdown while preserving native WebSocket transport.
 
-**2026-06-27 (v2.53.3):**
+**2026-06-27 (v2.53.4):**
 - ✅ **Cloud/local startup mode plumbing**
   - Added one canonical `JARVIS_MODE` resolver with cloud as the backward-compatible default and strict validation for explicit local startup.
   - `./bin/start --local` starts the full local-env stack; the TUI exposes **Start All Services (Local)** and **Start UI Only (Local)** without changing existing cloud actions.
@@ -441,7 +441,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: [`opencode/OPENCODE.md`](opencode/OPENCODE.md), [`opencode/OPENCODE_PLUGINS.md`](opencode/OPENCODE_PLUGINS.md), [`FUTURE_ENHANCEMENTS.md`](FUTURE_ENHANCEMENTS.md)
 
 **2026-06-22:**
-- ✅ **Experimental Docker Web stack (v2.53.3)**
+- ✅ **Experimental Docker Web stack (v2.53.4)**
   - Added root `Dockerfile` and `docker-compose.yml` for the Web UI, API, Canvas, Memory, Intelligence, Docs, and background services using the existing host `data/`, config, logs, and audio bind mounts.
   - Added Docker service DNS/internal API routing with optional Bearer auth, a foreground daemon supervisor, Compose restart policies, crash-safe init locking, and native-watchdog separation.
   - Added the tracked `skills/profiles/docker.json` baseline plus configurable `JARVIS_DOCKER_TOOL_PROFILE`; hybrid installs can use `default` Tool RAG while blocking container-incompatible tools only in Web UI Settings.
@@ -450,7 +450,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: [`docs/docker/README.md`](docker/README.md), [`docs/archive/docker/DOCKER_PLANNING.md`](archive/docker/DOCKER_PLANNING.md)
 
 **2026-05-21:**
-- ✅ **Cross-turn correction learning (v2.53.3)**
+- ✅ **Cross-turn correction learning (v2.53.4)**
   - `USER_CORRECTION_LEARNING_MODE=shadow|apply` — shadow records correction candidates without changing routing; apply downgrades the linked prior experience and can append deduped lessons to `jarvis-learned-lessons.md`.
   - Web UI and wake-word paths pass `experience_id` so turn-2 corrections can reach the prior turn's experience record.
   - Topic-pivot guard skips new questions that look like corrections without an explicit correction cue.
@@ -475,7 +475,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: [`docs/XAI_PROVIDER.md`](XAI_PROVIDER.md)
 
 **2026-05-10:**
-- ✅ **OpenAI Responses API routing support (v2.53.3)**
+- ✅ **OpenAI Responses API routing support (v2.53.4)**
   - OpenAI tool-capable router turns can now use `/v1/responses` when `OPENAI_API_MODE=responses` and `OPENAI_RESPONSES_TOOLS=true` are enabled.
   - Optional in-flight continuation supports `previous_response_id` + `function_call_output` for Jarvis client tool loops without making saved Web UI follow-ups depend on provider-side state.
   - Responses tools are converted through a dedicated adapter with non-strict function schemas, usage/cost parsing, cached-input/reasoning token reporting, diagnostics, and safe Chat Completions fallback boundaries.

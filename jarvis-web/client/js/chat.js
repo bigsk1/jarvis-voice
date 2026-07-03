@@ -408,6 +408,10 @@ class ChatUI {
     this.tokenCountEl = document.getElementById('tokenCount');
     this.tokenCostEl = document.getElementById('tokenCost');
     this.cumulativeTokens = { input: 0, output: 0, total: 0 };
+    this.cumulativeModelCalls = 0;
+    this.modelCallCountComplete = true;
+    this.currentContextTokens = 0;
+    this.currentContextEstimated = false;
     this.cumulativeCost = 0;
     this.cumulativeCache = {
       read: 0,
@@ -424,7 +428,13 @@ class ChatUI {
     this.llmProvider = 'xai';      // Default, updated from server
     // When viewing a loaded conversation, lock stats to that thread's provider/model.
     this.tokenStatsLocked = false;
-    this.tokenStatsMeta = { provider: null, model: null, contextWindow: null };
+    this.tokenStatsMeta = {
+      provider: null,
+      model: null,
+      mode: null,
+      billingMode: null,
+      contextWindow: null,
+    };
     this.systemConfig = {};
     
     this._setupEventListeners();
@@ -534,6 +544,8 @@ class ChatUI {
           this.tokenStatsMeta = {
             provider,
             model: modelId || null,
+            mode: currentMode,
+            billingMode: null,
             contextWindow: Number.isFinite(this.contextWindow) ? this.contextWindow : null,
           };
         }
@@ -5226,19 +5238,42 @@ class ChatUI {
    * Update token counter display
    * @param {Object} usage - {input_tokens, output_tokens, total_tokens, cost_usd, cache_read_tokens, ...}
    */
-  _updateTokenCounter(usage) {
+  async _updateTokenCounter(usage) {
     if (!this.tokenCounterEl || !usage) return;
 
     this._accumulateUsage(usage);
-    if (usage.provider && !this.tokenStatsLocked) {
+    if (usage.provider) {
+      const identityChanged = usage.provider !== this.tokenStatsMeta.provider
+        || (usage.model && usage.model !== this.tokenStatsMeta.model)
+        || (usage.mode && usage.mode !== this.tokenStatsMeta.mode);
+      this.tokenStatsLocked = false;
       this.tokenStatsMeta.provider = usage.provider;
       if (usage.model) this.tokenStatsMeta.model = usage.model;
+      if (usage.mode) this.tokenStatsMeta.mode = usage.mode;
+      this.tokenStatsMeta.billingMode = usage.billing_mode || null;
+      if (identityChanged) {
+        this.tokenStatsMeta.contextWindow = null;
+      }
     }
 
     this._renderTokenCount();
     this._renderCostLabel();
     this.tokenCounterEl.style.display = 'flex';
     this._renderTokenTooltip();
+
+    if (usage.provider && !this.tokenStatsMeta.contextWindow) {
+      const identityKey = `${usage.provider}:${usage.model || ''}:${usage.mode || ''}`;
+      const resolved = await this._resolveContextWindowForProviderModel(
+        usage.provider,
+        usage.model || null,
+        usage.mode || null
+      );
+      const currentIdentityKey = `${this.tokenStatsMeta.provider || ''}:${this.tokenStatsMeta.model || ''}:${this.tokenStatsMeta.mode || ''}`;
+      if (resolved && identityKey === currentIdentityKey) {
+        this.tokenStatsMeta.contextWindow = resolved;
+        this._renderTokenTooltip();
+      }
+    }
   }
 
   _accumulateUsage(usage) {
@@ -5253,6 +5288,20 @@ class ChatUI {
     this.cumulativeTokens.input += inputTokens;
     this.cumulativeTokens.output += outputTokens;
     this.cumulativeTokens.total += totalTokens;
+    if (Number.isFinite(usage.model_calls)) {
+      this.cumulativeModelCalls += usage.model_calls;
+    } else {
+      this.modelCallCountComplete = false;
+    }
+    if (Number.isFinite(usage.peak_context_tokens)) {
+      this.currentContextTokens = usage.peak_context_tokens;
+      this.currentContextEstimated = false;
+    } else {
+      // Older saved responses only have an aggregate total. It is the best
+      // available approximation, but may span multiple model calls.
+      this.currentContextTokens = totalTokens;
+      this.currentContextEstimated = true;
+    }
     this.cumulativeCost += cost;
     this.cumulativeCache.read += usage.cache_read_tokens || 0;
     this.cumulativeCache.creation += usage.cache_creation_tokens || 0;
@@ -5306,8 +5355,38 @@ class ChatUI {
 
     const lines = [];
     lines.push(
-      `Input: ${this.cumulativeTokens.input.toLocaleString()} | Output: ${this.cumulativeTokens.output.toLocaleString()}`
+      `Chat processed: ${this.cumulativeTokens.input.toLocaleString()} input | ${this.cumulativeTokens.output.toLocaleString()} output`
     );
+    if (this.modelCallCountComplete) {
+      lines.push(`Model calls: ${this.cumulativeModelCalls.toLocaleString()}`);
+    } else if (this.cumulativeModelCalls > 0) {
+      lines.push(`Model calls: at least ${this.cumulativeModelCalls.toLocaleString()} (older history unavailable)`);
+    } else {
+      lines.push('Model calls: unavailable for older history');
+    }
+
+    const contextWindow = this.tokenStatsMeta.provider
+      ? this.tokenStatsMeta.contextWindow
+      : this.contextWindow;
+    const providerLabel = this._formatProviderLabel();
+    if (Number.isFinite(contextWindow) && contextWindow > 0) {
+      const usagePercent = (this.currentContextTokens / contextWindow) * 100;
+      const estimatePrefix = this.currentContextEstimated ? '~' : '';
+      const contextLine = `Current context: ${estimatePrefix}${this.currentContextTokens.toLocaleString()} / ${contextWindow.toLocaleString()} (${usagePercent.toFixed(1)}%)`;
+      this.tokenCounterEl.classList.remove('warning', 'danger');
+      if (usagePercent > 80) {
+        this.tokenCounterEl.classList.add('danger');
+        lines.push(`⚠️ ${contextLine}`);
+      } else if (usagePercent > 50) {
+        this.tokenCounterEl.classList.add('warning');
+        lines.push(contextLine);
+      } else {
+        lines.push(contextLine);
+      }
+    } else {
+      this.tokenCounterEl.classList.remove('warning', 'danger');
+      lines.push('Context window size not reported for this model');
+    }
 
     if (this.cumulativeCache.read > 0) {
       const readCost = this.cumulativeCache.readCostUsd > 0
@@ -5336,28 +5415,15 @@ class ChatUI {
     } else if (this.cumulativeCost > 0) {
       lines.push(`Estimated cost: $${this.cumulativeCost.toFixed(4)}`);
     }
-
-    const contextWindow = this.tokenStatsMeta.contextWindow ?? this.contextWindow;
-    const providerLabel = this._formatProviderLabel();
-    if (Number.isFinite(contextWindow) && contextWindow > 0) {
-      const usagePercent = (this.cumulativeTokens.total / contextWindow) * 100;
-      this.tokenCounterEl.classList.remove('warning', 'danger');
-      if (usagePercent > 80) {
-        this.tokenCounterEl.classList.add('danger');
-        lines.push(`⚠️ ${usagePercent.toFixed(0)}% of ${contextWindow.toLocaleString()} context used`);
-      } else if (usagePercent > 50) {
-        this.tokenCounterEl.classList.add('warning');
-        lines.push(`${usagePercent.toFixed(0)}% of ${contextWindow.toLocaleString()} context used`);
-      } else {
-        lines.push(`${usagePercent.toFixed(1)}% of ${contextWindow.toLocaleString()} context used`);
-      }
-    } else {
-      this.tokenCounterEl.classList.remove('warning', 'danger');
-      lines.push('Context window size not reported for this model');
+    if (this.tokenStatsMeta.billingMode === 'ollama_cloud_subscription') {
+      lines.push('Account quota: unavailable via API');
     }
 
     if (providerLabel) {
       lines.push(`Provider: ${providerLabel}`);
+    }
+    if (this.tokenStatsMeta.mode) {
+      lines.push(`Mode: ${this.tokenStatsMeta.mode}`);
     }
 
     this.tokenCounterEl.title = lines.join('\n');
@@ -5372,6 +5438,10 @@ class ChatUI {
    */
   _resetTokenCounter() {
     this.cumulativeTokens = { input: 0, output: 0, total: 0 };
+    this.cumulativeModelCalls = 0;
+    this.modelCallCountComplete = true;
+    this.currentContextTokens = 0;
+    this.currentContextEstimated = false;
     this.cumulativeCost = 0;
     this.cumulativeCache = {
       read: 0,
@@ -5383,7 +5453,13 @@ class ChatUI {
     this.cumulativeUnknownCost = false;
     this.cumulativeInputEstimated = false;
     this.tokenStatsLocked = false;
-    this.tokenStatsMeta = { provider: null, model: null, contextWindow: null };
+    this.tokenStatsMeta = {
+      provider: null,
+      model: null,
+      mode: null,
+      billingMode: null,
+      contextWindow: null,
+    };
     
     if (this.tokenCounterEl) {
       this.tokenCounterEl.style.display = 'none';
@@ -5448,12 +5524,16 @@ class ChatUI {
    * @param {number} cost - cumulative cost in USD
    * @param {boolean} unknownCost - true for subscription/compute-metered providers
    * @param {boolean} inputEstimated - true when input tokens were approximated
-   * @param {Object} meta - optional {provider, model, contextWindow, cache}
+   * @param {Object} meta - optional provider/model/mode, context and cache metadata
    */
   async restoreTokenCounter(tokens, cost, unknownCost = false, inputEstimated = false, meta = null) {
     if (!this.tokenCounterEl) return;
     
     this.cumulativeTokens = { ...tokens };
+    this.cumulativeModelCalls = meta?.modelCalls || 0;
+    this.modelCallCountComplete = meta?.modelCallsComplete !== false;
+    this.currentContextTokens = meta?.currentContextTokens || 0;
+    this.currentContextEstimated = meta?.currentContextEstimated === true;
     this.cumulativeCost = cost || 0;
     this.cumulativeCache = {
       read: meta?.cache?.read || 0,
@@ -5468,11 +5548,13 @@ class ChatUI {
 
     const provider = meta?.provider || null;
     const model = meta?.model || null;
+    const mode = meta?.mode || null;
+    const billingMode = meta?.billingMode || null;
     let contextWindow = meta?.contextWindow || null;
     if (!contextWindow && provider) {
-      contextWindow = await this._resolveContextWindowForProviderModel(provider, model);
+      contextWindow = await this._resolveContextWindowForProviderModel(provider, model, mode);
     }
-    this.tokenStatsMeta = { provider, model, contextWindow };
+    this.tokenStatsMeta = { provider, model, mode, billingMode, contextWindow };
 
     this._renderTokenCount();
     this._renderCostLabel();

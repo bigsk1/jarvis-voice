@@ -16,7 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 sys.path.insert(0, str(PROJECT_ROOT / "skills"))
 
-from intel_content import normalize_intel_content
+from intel_content import normalize_intel_content, normalize_intel_document_eof
 from ingest_intel import extract_facts_from_content
 from manage_intel import (
     append_intel_file,
@@ -35,6 +35,26 @@ def _fake_export_environment(mode):
 
 
 class TestIntelContentNormalization(unittest.TestCase):
+    def test_document_eof_collapses_trailing_blank_lines_only(self) -> None:
+        content = "# Lessons\n\nFirst paragraph.\n\nSecond paragraph.\n\n\n"
+
+        normalized, changed = normalize_intel_document_eof(content)
+
+        self.assertTrue(changed)
+        self.assertEqual(normalized, "# Lessons\n\nFirst paragraph.\n\nSecond paragraph.\n")
+
+    def test_document_eof_adds_missing_final_newline(self) -> None:
+        normalized, changed = normalize_intel_document_eof("# Lessons")
+
+        self.assertTrue(changed)
+        self.assertEqual(normalized, "# Lessons\n")
+
+    def test_document_eof_preserves_empty_file(self) -> None:
+        normalized, changed = normalize_intel_document_eof("")
+
+        self.assertFalse(changed)
+        self.assertEqual(normalized, "")
+
     def test_normalizes_escaped_multiline_markdown(self) -> None:
         content = (
             "# Supa Crawl Knowledge\\n\\n"

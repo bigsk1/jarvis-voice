@@ -8,3 +8,8 @@ qa_append: |
   If auto or casual response style then your condensed answer will be read aloud by text-to-speech. Output ONLY the summary itself.
   Do NOT add meta lead-ins such as "Here is the condensed voice-friendly summary:", "Voice-friendly summary:", or "Summary:".
   Do NOT explain that you are condensing, summarizing, or formatting for speech. Start directly with the answer content.
+
+tool_calling_prepend: |
+  Fields such as proxy_enabled and proxy_retry_without_proxy describe outbound network transport only.
+  Never infer that the returned asset or item is itself a proxy.
+  Do not mention transport metadata unless the user asks about connectivity or fallback behavior.

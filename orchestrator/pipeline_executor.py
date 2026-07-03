@@ -51,6 +51,8 @@ class PipelineExecutor:
             "input_tokens": 0,
             "output_tokens": 0,
             "total_tokens": 0,
+            "model_calls": 0,
+            "peak_context_tokens": 0,
             "cost_usd": 0.0,
             "has_unknown_cost": False,
             "cost_known": True,
@@ -81,6 +83,16 @@ class PipelineExecutor:
             
             # Accumulate usage
             if usage_info:
+                call_tokens = usage_info.get("total_tokens")
+                if not isinstance(call_tokens, (int, float)):
+                    call_tokens = (
+                        (usage_info.get("input_tokens") or 0)
+                        + (usage_info.get("output_tokens") or 0)
+                    )
+                self._total_usage["model_calls"] += 1
+                self._total_usage["peak_context_tokens"] = max(
+                    self._total_usage["peak_context_tokens"], call_tokens
+                )
                 self._total_usage["input_tokens"] += usage_info.get("input_tokens", 0)
                 self._total_usage["output_tokens"] += usage_info.get("output_tokens", 0)
                 self._total_usage["total_tokens"] += usage_info.get("total_tokens", 0)
@@ -197,6 +209,8 @@ class PipelineExecutor:
             "input_tokens": 0,
             "output_tokens": 0,
             "total_tokens": 0,
+            "model_calls": 0,
+            "peak_context_tokens": 0,
             "cost_usd": 0.0,
             "has_unknown_cost": False,
             "cost_known": True,

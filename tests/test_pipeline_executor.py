@@ -68,6 +68,17 @@ class CachedCostProvider:
         )
 
 
+class SequencedUsageProvider:
+    def __init__(self):
+        self.usages = iter((
+            {"input_tokens": 100, "output_tokens": 10, "total_tokens": 110, "cost_usd": 0.01},
+            {"input_tokens": 240, "output_tokens": 20, "total_tokens": 260, "cost_usd": 0.02},
+        ))
+
+    def chat_with_tools(self, **_kwargs):
+        return "response", None, next(self.usages), None
+
+
 class PipelineExecutorResolutionTests(unittest.TestCase):
     def setUp(self):
         self.executor = PipelineExecutor(
@@ -179,6 +190,8 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
         self.assertEqual(executor._total_usage["cost_usd"], 0.0)
         self.assertTrue(executor._total_usage["has_unknown_cost"])
         self.assertFalse(executor._total_usage["cost_known"])
+        self.assertEqual(executor._total_usage["model_calls"], 1)
+        self.assertEqual(executor._total_usage["peak_context_tokens"], 5)
 
     def test_cache_cost_breakdown_survives_workflow_aggregation(self):
         executor = PipelineExecutor(
@@ -193,6 +206,22 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
         self.assertEqual(executor._total_usage["cost_usd"], 0.02)
         self.assertEqual(executor._total_usage["cache_creation_tokens"], 1_000)
         self.assertEqual(executor._total_usage["cache_write_cost_usd"], 0.0125)
+        self.assertEqual(executor._total_usage["model_calls"], 1)
+        self.assertEqual(executor._total_usage["peak_context_tokens"], 1_012)
+
+    def test_usage_tracks_calls_and_largest_single_call_context(self):
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(execute=lambda *args, **kwargs: {}),
+            provider=SequencedUsageProvider(),
+        )
+
+        executor._chat_with_usage("first")
+        executor._chat_with_usage("second")
+
+        self.assertEqual(executor._total_usage["total_tokens"], 370)
+        self.assertEqual(executor._total_usage["model_calls"], 2)
+        self.assertEqual(executor._total_usage["peak_context_tokens"], 260)
 
 
 if __name__ == "__main__":

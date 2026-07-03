@@ -43,6 +43,21 @@ def normalize_intel_content(content: str) -> tuple[str, bool]:
     return normalized, changed
 
 
+def normalize_intel_document_eof(content: str) -> tuple[str, bool]:
+    """Canonicalize an edited intel document to exactly one newline at EOF.
+
+    Textareas make a trailing blank line difficult to distinguish or remove by
+    sight. Preserve all internal spacing, but prevent UI saves from accumulating
+    extra blank lines at the end of tracked intel files.
+    """
+    normalized, changed = normalize_intel_content(content)
+    if not normalized:
+        return normalized, changed
+
+    canonical = normalized.rstrip(" \t\n") + "\n"
+    return canonical, changed or canonical != content
+
+
 def _looks_like_json_string_literal(content: str) -> bool:
     return len(content) >= 2 and content[0] == '"' and content[-1] == '"'
 

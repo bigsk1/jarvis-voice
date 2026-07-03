@@ -1316,6 +1316,10 @@ Mode: {self.mode}
             "input_tokens": 0,
             "output_tokens": 0,
             "total_tokens": 0,
+            # Calls and peak logical context are per user turn. Unlike total_tokens,
+            # peak_context_tokens does not double-count repeated prompt history.
+            "model_calls": 0,
+            "peak_context_tokens": 0,
             "cost_usd": 0.0,
             # has_unknown_cost is set when any turn used subscription/compute-metered
             # billing (e.g. Ollama Cloud) where per-token dollar cost is unknown.
@@ -1553,6 +1557,16 @@ Mode: {self.mode}
             # Accumulate usage info if available
             if route.get("usage_info"):
                 usage = route["usage_info"]
+                call_tokens = usage.get("total_tokens")
+                if not isinstance(call_tokens, (int, float)):
+                    call_tokens = (
+                        (usage.get("input_tokens") or 0)
+                        + (usage.get("output_tokens") or 0)
+                    )
+                total_usage["model_calls"] = total_usage.get("model_calls", 0) + 1
+                total_usage["peak_context_tokens"] = max(
+                    total_usage.get("peak_context_tokens", 0), call_tokens
+                )
                 if usage.get("input_tokens"):
                     total_usage["input_tokens"] += usage["input_tokens"]
                 if usage.get("output_tokens"):
