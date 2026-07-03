@@ -144,8 +144,7 @@ The client connection itself works, the server receives the normal Socket.IO dis
 - Preserve Web UI auth, shared-secret loading, upload paths, background tasks, and Socket.IO event registration
 - Verify long-running LLM/tool requests against Gunicorn worker/thread timeouts
 - Keep stdout/stderr logging, Docker health checks, graceful shutdown, and native tmux behavior intact
-- Decide whether Gunicorn becomes the shared native-and-Docker default or remains Docker-only; runtime parity is preferable but requires installation/documentation updates
-- Add `gunicorn` consistently to `pyproject.toml`, `requirements.txt`, and the uv lock rather than relying on an unpinned Docker-only install
+- Add `gunicorn` consistently to `pyproject.toml`, `requirements.txt`, and the uv lock
 
 **Not urgent:** The current traceback is noisy but non-breaking. Until this is implemented and tested, it can be ignored when it occurs immediately after a normal `[WS] Client disconnected` event and health checks continue returning 200.
 
