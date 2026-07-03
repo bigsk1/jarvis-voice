@@ -7,7 +7,9 @@ import sys
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from mcp_client import MCPClient
+import config_loader
+from config_loader import config_scope
+from mcp_client import MCPClient, MCPManager
 
 
 def test_env_substitution():
@@ -100,6 +102,84 @@ def test_env_substitution():
     print(f"   • Only explicit vars passed? ✅ YES")
 
 
+def test_stdio_env_and_args_follow_request_config_scope(monkeypatch):
+    """MCP stdio substitution must not retain the startup mode's value."""
+    key = "ZZ_MCP_SCOPED_KEY"
+    unrelated = "ZZ_MCP_UNRELATED_SECRET"
+    monkeypatch.setenv(key, "stale-startup-value")
+    monkeypatch.setenv(unrelated, "must-not-leak")
+
+    client = MCPClient(
+        name="scoped",
+        command="echo",
+        args=["--token", f"${{{key}}}"],
+        env={"DECLARED_TOKEN": f"${{{key}}}"},
+    )
+
+    with config_scope("cloud", overrides={key: "cloud-value"}):
+        assert client._build_env_with_substitution() == {
+            "DECLARED_TOKEN": "cloud-value"
+        }
+        assert client._expand_args() == ["--token", "cloud-value"]
+
+    with config_scope("local", overrides={key: "local-value"}):
+        child_env = client._build_env_with_substitution()
+        assert child_env == {"DECLARED_TOKEN": "local-value"}
+        assert unrelated not in child_env
+        assert client._expand_args() == ["--token", "local-value"]
+
+
+def test_stdio_env_uses_selected_mode_env_file(tmp_path, monkeypatch):
+    """A declared placeholder resolves from cloud.env or local.env by mode."""
+    key = "ZZ_MCP_MODE_FILE_KEY"
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "cloud.env").write_text(f"{key}=cloud-file-value\n")
+    (config_dir / "local.env").write_text(f"{key}=local-file-value\n")
+    monkeypatch.setattr(config_loader, "get_project_root", lambda: tmp_path)
+    monkeypatch.setenv(key, "stale-startup-value")
+
+    client = MCPClient("mode-file", "echo", [], {"TOKEN": f"${{{key}}}"})
+    with config_scope("cloud"):
+        assert client._build_env_with_substitution() == {
+            "TOKEN": "cloud-file-value"
+        }
+    with config_scope("local"):
+        assert client._build_env_with_substitution() == {
+            "TOKEN": "local-file-value"
+        }
+
+
+def test_remote_headers_follow_request_config_scope(tmp_path, monkeypatch):
+    """HTTP/SSE headers use the same scoped, explicit-placeholder resolver."""
+    key = "ZZ_MCP_REMOTE_SCOPED_KEY"
+    monkeypatch.setenv(key, "stale-startup-value")
+    config_path = tmp_path / "mcp-servers.json"
+    config_path.write_text(
+        "{\n"
+        '  "mcpServers": {\n'
+        '    "remote": {\n'
+        '      "type": "http",\n'
+        '      "url": "https://example.invalid/mcp",\n'
+        f'      "headers": {{"Authorization": "Bearer ${{{key}}}"}}\n'
+        "    }\n"
+        "  }\n"
+        "}\n"
+    )
+
+    with config_scope("cloud", overrides={key: "cloud-header"}):
+        cloud_manager = MCPManager(str(config_path))
+        assert cloud_manager.servers["remote"].headers == {
+            "Authorization": "Bearer cloud-header"
+        }
+
+    with config_scope("local", overrides={key: "local-header"}):
+        local_manager = MCPManager(str(config_path))
+        assert local_manager.servers["remote"].headers == {
+            "Authorization": "Bearer local-header"
+        }
+
+
 if __name__ == "__main__":
     try:
         test_env_substitution()
@@ -111,4 +191,3 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         sys.exit(1)
-

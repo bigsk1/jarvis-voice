@@ -17,6 +17,21 @@ import requests
 from typing import Any, Union
 from threading import Lock, Thread, Event
 
+from config_loader import get_config_value
+
+
+def _resolve_config_placeholder(var_name: str) -> str:
+    """Resolve one explicitly referenced MCP variable from the active mode.
+
+    ``get_config_value`` honors request-local ``config_scope`` values before
+    the startup process environment. Keeping resolution behind this helper
+    preserves the MCP allowlist: callers still inspect only placeholders that
+    were explicitly declared in mcp-servers.json.
+    """
+    missing = f"${{{var_name}}}"
+    value = get_config_value(var_name, None)
+    return missing if value is None else str(value)
+
 
 class MCPClient:
     """Client for communicating with MCP servers."""
@@ -205,7 +220,7 @@ class MCPClient:
     
     def _expand_args(self) -> list[str]:
         """
-        Expand ${VAR_NAME} syntax in args from environment variables.
+        Expand ${VAR_NAME} syntax in args from the active mode configuration.
         
         This allows mcp-servers.json to use variables like:
             "--proxy-server", "${LOCAL_PROXY}"
@@ -215,7 +230,7 @@ class MCPClient:
         """
         def replace_var(match):
             var_name = match.group(1)
-            return os.environ.get(var_name, f"${{{var_name}}}")
+            return _resolve_config_placeholder(var_name)
         
         expanded = []
         for arg in self.args:
@@ -229,9 +244,8 @@ class MCPClient:
         """
         Build environment dict with variable substitution.
         
-        Supports ${VAR_NAME} syntax to reference variables from:
-        1. Parent environment (os.environ)
-        2. Cloud/local .env files (already loaded into os.environ)
+        Supports ${VAR_NAME} syntax using the active cloud/local config scope,
+        falling back to the startup process environment outside a scope.
         
         SECURITY: Only passes explicitly listed variables, not entire os.environ.
         
@@ -246,10 +260,10 @@ class MCPClient:
         
         for key, value in self.env.items():
             if isinstance(value, str):
-                # Substitute ${VAR_NAME} with actual value from environment
+                # Resolve only the explicitly referenced variable.
                 def replace_var(match):
                     var_name = match.group(1)
-                    return os.environ.get(var_name, f"${{{var_name}}}")  # Keep ${} if not found
+                    return _resolve_config_placeholder(var_name)
                 
                 substituted_value = re.sub(r'\$\{([^}]+)\}', replace_var, value)
                 result[key] = substituted_value
@@ -1204,7 +1218,7 @@ class MCPManager:
             Input:  {"Authorization": "Bearer ${MY_API_KEY}"}
             Output: {"Authorization": "Bearer actual-key-value"}
             
-            Only MY_API_KEY is read from os.environ, nothing else.
+            Only MY_API_KEY is resolved from the active mode, nothing else.
         
         Args:
             data: Dict with potential ${VAR} placeholders
@@ -1217,7 +1231,7 @@ class MCPManager:
             if isinstance(value, str):
                 def replace_var(match):
                     var_name = match.group(1)
-                    return os.environ.get(var_name, f"${{{var_name}}}")
+                    return _resolve_config_placeholder(var_name)
                 
                 result[key] = re.sub(r'\$\{([^}]+)\}', replace_var, value)
             else:
@@ -1241,4 +1255,3 @@ class MCPManager:
         """Stop all MCP servers."""
         for server in self.servers.values():
             server.stop()
-

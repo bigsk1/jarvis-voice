@@ -366,7 +366,8 @@ OPENAI_API_KEY="sk-proj-abc123..."
 ```
 
 **How It Works:**
-- `${VAR_NAME}` is replaced with the value from your `.env` file at runtime
+- `${VAR_NAME}` is replaced with the value from the active mode's `.env` file
+  at runtime, including request-local Web UI cloud/local scopes
 - Only explicitly listed variables are passed to the MCP server
 - The MCP server **does not** have access to other secrets (like `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.)
 
