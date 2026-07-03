@@ -321,6 +321,44 @@ class IntelligenceProvenanceTests(unittest.TestCase):
 
         self.assertIn("Required sequence: youtube_transcript → youtube_video", prompt)
 
+    def test_reflection_judges_memory_by_incremental_value_for_preanalyzed_uploads(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel = self._make_intel(tmpdir)
+            query = (
+                "[User uploaded an image. Vision analysis: A hand-drawn house sketch.] "
+                "Image stashed at: stash://space_test/file_test\n\n"
+                "User's message: What is this?"
+            )
+            exp_id = asyncio.run(
+                intel.record_experience(
+                    query=query,
+                    tools_used=["search_memory"],
+                    outcome={"success": True, "turns": 1},
+                    context={
+                        "available_tools": ["search_memory", "semantic_recall"],
+                        "tool_results": (
+                            "search_memory returned the same stash://space_test/file_test "
+                            "and description: A hand-drawn house sketch."
+                        ),
+                    },
+                )
+            )
+            captured = {}
+
+            async def capture_prompt(prompt, use_sequential_thinking=True, experience_id=None):
+                captured["prompt"] = prompt
+                return None
+
+            intel._think_deeply = capture_prompt
+            asyncio.run(intel.reflect_on_experience(exp_id))
+
+            prompt = captured["prompt"]
+            self.assertIn("Treat that attached analysis as evidence gathered BEFORE routing", prompt)
+            self.assertIn("it added no unique information", prompt)
+            self.assertIn("Memory can still be valuable", prompt)
+            self.assertIn("Judge the incremental evidence", prompt)
+            intel.close()
+
     def test_suppressed_native_search_preference_does_not_merge_into_old_search_tool_bias(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             intel = self._make_intel(tmpdir)

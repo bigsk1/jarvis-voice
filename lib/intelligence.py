@@ -1136,6 +1136,18 @@ CRITICAL EVALUATION:
 14. If response style is auto/casual and the user asks for multi-item or multi-field details, consider whether an available artifact tool (canvas/stash) should have been used for the full structured output while the spoken response stayed brief. Only recommend artifact tools that appear in Artifact Tools Available.
 15. If multiple tools were useful, do not force a rigid workflow. Use preferred_tool_sequence only as an observed/advisory sequence, and set sequence_required true only when the order is essential for correctness.
 16. Separate primary intent from content topic. Example: "email this YouTube video" is primarily an email/send action, not a transcript-analysis request.
+17. A Web upload query may already contain a completed vision result inside
+    "[User uploaded an image. Vision analysis: ...]" (or the multi-image equivalent).
+    Treat that attached analysis as evidence gathered BEFORE routing, not as raw user text
+    that still requires a lookup.
+18. For those pre-analyzed uploads, compare memory tool results against the attached vision
+    evidence. If search_memory/semantic_recall only returns the newly stored artifact, the
+    same stash reference, or an equivalent description, it added no unique information:
+    first_tool_optimal must be false and no positive memory-tool preference should be learned.
+19. Memory can still be valuable for a pre-analyzed upload when it contributes distinct,
+    relevant prior knowledge (for example, the user's earlier notes about a hand sketch,
+    provenance, related projects, previous uploads, or an explicit comparison/history request).
+    Judge the incremental evidence; do not create a blanket rule to avoid memory for images.
 
 TOOL CATEGORIES (for understanding what tools do):
 - **MEMORY TOOLS** (check stored knowledge): search_memory, recall, semantic_recall, get_recent_conversations, search_conversations
@@ -1149,6 +1161,8 @@ TOOL CATEGORIES (for understanding what tools do):
 
 SYSTEM RULES THE LLM SHOULD HAVE FOLLOWED:
 - **MEMORY-FIRST RULE**: For questions about user's info, servers, configs, preferences → SHOULD check memory FIRST
+- Memory-first does not require re-fetching the current upload's vision description when that
+  description is already attached. Search memory only when it may add distinct stored context.
 - If query mentions a server IP/service → memory might have stored health check commands with CORRECT details
 - If query asks about "my X" or personal info → memory likely has stored preferences
 - Using ACTION TOOLS before MEMORY TOOLS violates system rules for personal/stored data queries
@@ -1174,6 +1188,8 @@ TOOL ARGUMENT RECOVERY (important for smaller/local models):
 
 RESULT-BASED EVALUATION (most important):
 - 1 tool used + good result = likely optimal first choice
+- Exception: a memory tool that merely echoes evidence already attached to the query is
+  redundant even if the final answer is correct; a direct answer was the optimal path
 - Multiple tools + had to retry = first tool probably suboptimal
 - Action tool first + connection failed = should have checked memory
 - Memory empty + action succeeded = action was correct fallback

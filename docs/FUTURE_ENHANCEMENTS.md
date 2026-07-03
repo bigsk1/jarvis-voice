@@ -521,55 +521,64 @@ Bookmarks + URL ingest + intel files → one searchable personal corpus with ded
 On-demand or scheduled: short voice summary + full canvas detail (services, alerts, weather, crypto/stocks, stale reminders). Good workflow candidate — mostly glue.
 
 ### 8) Routing Evals + Regression Suite
-**Priority:** Medium  
+**Priority:** Medium
 **Status:** Listed above (section C) — not built
 
 ~50 curated prompts with expected tool/no-tool behavior; CI-friendly runner for cloud + local. Prevents silent regressions as tool count and providers change.
 
 ### 9) Credential-Aware Tool and Provider Availability
 **Priority:** Medium
-**Status:** Implemented (2026-07) — `lib/tool_availability.py` evaluator; manifests
-declare `availability` blocks (strict tools + media multi-provider); ToolRegistry
-filters unavailable tools after profile resolution and records diagnostics in
-`registry.unavailable_tools`; `sync-tools.py` prints unavailable diagnostics;
-`manage-tools.py --mode` shows availability; Web UI keeps unavailable tools
-visible as "needs config" (blocks stale Tool RAG resurrection), annotates and
-disables unconfigured providers, and rejects newly selected unavailable
-providers with HTTP 400 before mutation; `generate_image`/`generate_video`
-preflight the selected provider and list configured alternatives; Tool Builder
-always emits availability blocks, runs static-only checks for `pending_api_key`
-builds, and gates approval on availability + full verification in the report's
-build mode. Tests: `tests/test_tool_availability.py`,
-`tests/test_tool_builder.py`, `tests/test_web_provider_availability.py`.
-Deferred: TTS/Completion-Guard live health checks, `config_files` requirements,
-placeholder-value detection, MCP duplicate detection hardening.
+**Status:** Implemented (2026-07)
 
-#### Verified current behavior
+Tools and Web UI providers are gated on **credential presence** in the active mode
+(`config/cloud.env` or `config/local.env`). Missing or blank hard requirements
+prevent registration with the LLM; the UI annotates unconfigured providers and
+blocks newly selecting them. Secret **values** are never read into logs, API
+responses, or the UI — only requirement names and configured/missing status.
 
-- The tracked `default` tool profile has no overrides. A tool with
-  `"enabled": true` is registered even when its required credentials are absent.
-- Tool sync treats every tool in the effective registry as enabled and disables
-  only tools missing from that registry. It does not currently inspect API keys.
-- Most affected tools fail safely when invoked, but they still consume routing
-  space and can waste a tool turn before reporting that configuration is missing.
-- Cloud Web AI settings list xAI, Anthropic, OpenAI, and Ollama Cloud independently
-  of credential state. Image/video provider choices are also catalog-driven rather
-  than credential-filtered. The separate API-key panel reports missing keys, but
-  selection is still allowed.
-- Local mode intentionally limits the primary LLM to Ollama. Cloud image/video
-  providers can still be used in local mode when their keys are configured in
-  `local.env`.
-- Ollama Cloud is not configured with an env API key; availability depends on the
-  configured Ollama host being signed in and exposing cloud models.
+See also: `skills/README.md` (manifest authoring), `docs/TOOL_BUILDER.md`
+(approval lifecycle), `docs/JARVIS_WEB_UI.md` (provider dropdown behavior).
 
-#### Decision
+#### What shipped
 
-Do **not** rewrite tracked `skills/*.tool.json` files from `enabled: true` to
-`false`, and do not require users to manually edit them after adding a key. That
-would create dirty worktrees, pull conflicts, stale disablement, and incorrect
-cross-mode behavior.
+**Tools (runtime)**
+- Shared evaluator: `lib/tool_availability.py` (`all_of_env`, `any_of_env`,
+  `provider_requirements`, `setup_hint`; malformed blocks fail closed per tool)
+- Strict tools carry `availability` blocks in `skills/*.tool.json` (and
+  auto-tools); Tool Builder always emits them for new tools
+- `ToolRegistry` filters unavailable tools **after** profile resolution; diagnostics
+  in `registry.unavailable_tools` (names only, never values)
+- `./bin/sync-tools.py <mode>` prints excluded tools and disables stale DB rows;
+  `./bin/manage-tools.py --mode <mode> list` shows 🔒 unavailable status
+- `generate_image` / `generate_video` preflight the **selected** provider and
+  list configured alternatives — no silent provider switching
+- Web tool discovery keeps unavailable manifest tools in the map as
+  `enabled=false / available=false` so stale Tool RAG rows cannot resurrect them
 
-Instead, calculate availability at runtime:
+**Web UI (providers)**
+- Settings payload includes `provider_availability` per domain (LLM, image, video,
+  TTS, completion guard)
+- Dropdowns annotate and disable unconfigured providers; Ollama Cloud merges the
+  live `/api/ollama/cloud-status` sign-in check
+- Saving a **newly selected** unavailable provider returns HTTP 400 with
+  `{field, provider, reason}` before any mutation (including mode); unrelated
+  settings still save
+- API Keys panel names the **active mode's** env file, not always `cloud.env`
+
+**Tool Builder**
+- Spec `required_env_vars` → manifest `availability` block (even when keys already
+  exist on the build machine)
+- `pending_api_key` builds: static-only verification (`ast.parse`, `py_compile`,
+  `find_spec` — no code execution); files kept in `skills/pending/`
+- Approval: availability gate in the report's build mode, then full verification,
+  then move; mode-correct `./bin/sync-tools.py <mode>` hint
+
+**Tests:** `tests/test_tool_availability.py`, `tests/test_tool_builder.py`,
+`tests/test_web_provider_availability.py`
+
+#### How availability is computed
+
+Manifests stay `"enabled": true` in git. Availability is calculated at runtime:
 
 ```text
 effective tool = enabled by manifest/profile
@@ -577,159 +586,69 @@ effective tool = enabled by manifest/profile
                  AND required configuration is present
 ```
 
-Keep three states distinct:
+Three states (do not conflate):
 
 | State | Meaning | Source |
 |---|---|---|
-| **Enabled** | The user/profile permits the tool | Manifest + `JARVIS_TOOL_PROFILE` |
-| **Available** | Required static configuration exists in the active mode | Env/config/file requirements |
-| **Healthy** | Optional live dependency check succeeds | Manual Tool Doctor probe |
+| **Enabled** | User/profile permits the tool | Manifest + `JARVIS_TOOL_PROFILE` |
+| **Available** | Required static configuration exists in the active mode | Env requirements (see below) |
+| **Healthy** | Optional live dependency check succeeds | Not built — see deferred |
 
-A profile may enable or disable user intent, but it must not make a tool with an
-unmet hard requirement callable. Adding the missing configuration and restarting
-or re-syncing must automatically restore the tool.
+A profile override cannot bypass a missing hard requirement. Adding the key and
+restarting or re-running `./bin/sync-tools.py <mode>` restores the tool without
+editing tracked manifest files.
 
-#### Declarative requirement metadata
-
-Add an optional manifest section interpreted by a shared availability module:
+**Manifest `availability` block** (optional; omit = always available):
 
 ```json
 {
-  "enabled": true,
-  "name": "upload_cloudflare",
   "availability": {
     "all_of_env": ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"],
-    "setup_hint": "Configure Cloudflare Images credentials in the active mode env file."
-  }
-}
-```
-
-Supported requirement types should initially include:
-
-- `all_of_env`: every named value must be present and non-blank
-- `any_of_env`: at least one named value must be present
-- `config_files`: required local configuration/OAuth files
-- `provider_requirements`: provider-specific requirements for multi-provider tools
-- `setup_hint`: safe user-facing remediation text that never exposes secret values
-
-Example multi-provider shape:
-
-```json
-{
-  "availability": {
+    "any_of_env": ["BRAVE_API_KEY", "BRAVE_SEARCH_API_KEY"],
     "provider_setting": "IMAGE_TOOL_PROVIDER",
+    "provider_default": "gemini",
     "provider_requirements": {
       "gemini": {"all_of_env": ["GEMINI_API_KEY"]},
       "openai": {"all_of_env": ["OPENAI_API_KEY"]},
       "xai": {"all_of_env": ["XAI_API_KEY"]}
-    }
+    },
+    "setup_hint": "Set the key in the active mode env file."
   }
 }
 ```
 
-The overall media tool can remain available when at least one provider is
-configured. A request selecting an unavailable provider must receive a clear
-error listing configured alternatives; Jarvis must not silently switch providers
-because that changes cost, policy, and output behavior.
+- `all_of_env` / `any_of_env`: presence and non-blank only (no placeholder heuristics)
+- `provider_requirements`: tool available when **at least one** provider's keys are
+  configured; media preflight errors on the **selected** provider without switching
+- Inventory rule: only unambiguous hard requirements affect registration; optional
+  keys (weather, CoinGecko) and action-dependent tools (phone) were left without
+  strict blocks in the first release
 
-#### Classification before enforcement
+Registry construction is static and fast — no network health checks at startup.
 
-Inventory tools before adding strict requirements. Merely finding `API_KEY` in a
-Python file is not enough:
+#### Deferred follow-ups (optional; not required for merge)
 
-- **Strict single-provider:** Brave LLM Context, music generation
-- **Strict all-of:** Cloudflare Images token + account ID
-- **Multi-provider:** image/video generation
-- **Optional key/fallback:** weather, CoinGecko, public GitHub access
-- **Action-dependent:** phone contacts/status versus placing a call
-- **Non-key setup:** Spotify OAuth, email webhook registry, Crawl4AI/OpenCode URLs,
-  printers, SSH hosts, MCP servers
+These were scoped out of the first release. The core feature above is complete.
 
-Only unambiguous hard requirements should affect registration in the first
-release. Optional keys and live service failures belong in diagnostics, not
-startup filtering.
+| Follow-up | Would add | What exists today |
+|---|---|---|
+| **TTS / Completion-Guard live health** | Probe backends actually work (Kokoro server up, Qwen3-TTS reachable, ElevenLabs account valid) | Static API-key checks for providers that need keys; local engines (`kokoro`, `qwen3-tts`) marked available without a server probe; Ollama Cloud uses live sign-in status |
+| **`config_files` requirements** | Manifest rules for OAuth/token files on disk (Spotify, etc.) | Env-var requirements only — no file-path gating |
+| **Placeholder-value detection** | Reject values like `your-api-key-here` / `changeme` | Present and non-blank counts as configured (avoids false positives on valid unusual keys) |
+| **MCP duplicate detection hardening** | Tool Builder checks the live MCP registry, not manifest filenames | Separate from runtime availability; manifest scan only |
 
-#### Runtime integration
+Suggested order if revisited: live TTS health → `config_files` → conservative
+placeholder patterns → MCP duplicate hardening.
 
-Create one shared evaluator (for example `lib/tool_availability.py`) and use it in:
+#### Key files
 
-1. `lib/tool_schema.py` / `ToolRegistry` after mode config and profile resolution
-2. `bin/sync-tools.py`, so unavailable tools are disabled in the correct cloud or
-   local Tool RAG database and automatically re-enabled after configuration
-3. `jarvis-web/server/services/tool_discovery.py`, so Web tool lists agree with
-   orchestrator routing
-4. `bin/manage-tools.py`, showing enabled/available state and the missing
-   requirement names
-5. The future Tool Doctor command for optional live probes
-
-Do not perform network health checks while constructing the registry. Startup
-availability should be deterministic and fast; health is a separate manual check.
-
-#### Web provider UX
-
-Keep the catalog as the source of truth and keep unavailable providers visible for
-discoverability, but annotate and disable selection:
-
-```text
-OpenAI       Available
-Anthropic    API key not configured
-xAI          API key not configured
-Ollama Cloud Host not signed in
-```
-
-Requirements:
-
-- Credential status is evaluated from the active mode (`cloud.env` or `local.env`)
-- The browser receives booleans/reasons only, never secret values
-- A currently selected provider that becomes unavailable remains visible with a
-  warning, but cannot be saved or used until corrected
-- Model catalog entries may remain browsable even when their provider is unavailable
-- Image/video provider pickers use the same availability metadata
-- Ollama Cloud uses the existing signed-in/cloud-model status rather than looking
-  for a nonexistent API key
-- Correct the API-key panel note so it names the active mode env file, not always
-  `cloud.env`
-
-#### Implementation phases
-
-1. **Inventory and contract** — classify every tracked tool and add tests for the
-   requirement schema without changing runtime behavior.
-2. **Static tool availability** — implement the shared evaluator, registry/Web
-   filtering, Tool RAG sync behavior, and actionable logs.
-3. **Provider availability UX** — add availability metadata to settings responses
-   and disable/annotate unavailable LLM and media providers.
-4. **Tool Doctor integration** — report configured versus healthy dependencies,
-   with live checks run only when explicitly requested.
-5. **Documentation and installer output** — summarize unavailable optional features
-   after setup and explain exactly where to add configuration.
-
-#### Acceptance criteria
-
-- Missing, commented, or blank hard requirements prevent the tool from reaching
-  the LLM tool registry or enabled Tool RAG rows
-- Adding the requirement and restarting/re-syncing restores the tool without
-  editing tracked files
-- Cloud and local availability are isolated to their respective env/config scopes
-- Profile overrides cannot bypass missing hard requirements
-- Optional-key tools with working fallbacks remain available
-- Multi-provider tools remain usable when at least one provider is configured and
-  never silently switch away from a user-selected unavailable provider
-- Native, Docker, Web, CLI, wake-word, and API surfaces resolve the same effective
-  tool availability
-- Provider dropdowns clearly distinguish available and unconfigured choices
-- No secret values are returned in logs, API responses, or UI status
-
-#### Likely files
-
-- `lib/tool_availability.py` (new shared evaluator)
-- `lib/tool_schema.py`, `lib/tool_profiles.py`
+- `lib/tool_availability.py` — shared evaluator
+- `lib/tool_schema.py` — registry filter + `unavailable_tools`
 - `bin/sync-tools.py`, `bin/manage-tools.py`
-- `jarvis-web/server/services/tool_discovery.py`
-- `jarvis-web/server/services/settings_manager.py`
-- `jarvis-web/client/js/app.js`, `jarvis-web/client/index.html`
-- Selected `skills/*.tool.json` manifests
-- `config/cloud.env.example`, `config/local.env.example`
-- Focused availability, profile, sync, and Web settings regression tests
+- `jarvis-web/server/services/tool_discovery.py`, `settings_manager.py`
+- `jarvis-web/server/routes/api.py`, `jarvis-web/client/js/app.js`, `chat.js`
+- `lib/tool_builder.py`, `bin/build-tool`
+- Selected `skills/*.tool.json` manifests with `availability` blocks
 
 ---
 
