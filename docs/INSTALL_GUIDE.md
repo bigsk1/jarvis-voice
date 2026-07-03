@@ -206,7 +206,8 @@ XAI_MODEL="grok-4.3"              # recommended default
 # Or Ollama Cloud through a signed-in Ollama daemon:
 # LLM_PROVIDER="ollama"
 # OLLAMA_BASE_URL="http://your-ollama-host:11434"
-# OLLAMA_CLOUD_MODEL="minimax-m3:cloud"  # must be *:cloud or *-cloud
+# OLLAMA_CLOUD_MODEL="minimax-m3:cloud"  # daemon path requires a cloud tag
+# Alternatively set OLLAMA_API_KEY and use an ID from https://ollama.com/api/tags.
 
 # ===== Speech-to-Text (STT) =====
 STT_PROVIDER="openai"  # Options: "openai", "local" (uses faster-whisper)

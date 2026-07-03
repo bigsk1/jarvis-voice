@@ -11,7 +11,14 @@ import requests
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
-from ollama_utils import get_ollama_base_urls, parse_ollama_base_urls, request_ollama  # noqa: E402
+from ollama_utils import (  # noqa: E402
+    OLLAMA_CLOUD_DIRECT_URL,
+    get_ollama_base_urls,
+    get_ollama_request_urls,
+    ollama_uses_direct_cloud_api,
+    parse_ollama_base_urls,
+    request_ollama,
+)
 
 
 class _FakeResponse:
@@ -178,6 +185,83 @@ class OllamaUtilsTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertEqual(used_base_url, "http://primary:11434")
+
+    @patch.dict("os.environ", {"OLLAMA_API_KEY": "test-cloud-key"}, clear=False)
+    def test_cloud_access_with_api_key_uses_ollama_com_only(self):
+        from config_loader import config_scope
+        import config_loader
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / "config"
+            cfg.mkdir()
+            (cfg / "cloud.env").write_text('OLLAMA_API_KEY="test-cloud-key"\n')
+            (cfg / "local.env").write_text("")
+            orig_root = config_loader.get_project_root
+            config_loader.get_project_root = lambda: Path(tmp)
+            try:
+                with config_scope("cloud"):
+                    self.assertTrue(ollama_uses_direct_cloud_api())
+                    self.assertEqual(
+                        get_ollama_request_urls(cloud_access=True),
+                        [OLLAMA_CLOUD_DIRECT_URL],
+                    )
+                with config_scope("local"):
+                    self.assertFalse(ollama_uses_direct_cloud_api())
+                    self.assertNotEqual(
+                        get_ollama_request_urls(cloud_access=True)[0],
+                        OLLAMA_CLOUD_DIRECT_URL,
+                    )
+            finally:
+                config_loader.get_project_root = orig_root
+
+    @patch("requests.request")
+    @patch.dict("os.environ", {"OLLAMA_API_KEY": "test-cloud-key"}, clear=False)
+    def test_request_ollama_cloud_access_sends_bearer_to_ollama_com(self, mock_request):
+        from config_loader import config_scope
+        import config_loader
+        import tempfile
+        from pathlib import Path
+
+        mock_request.return_value = _FakeResponse(200, {"models": []})
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / "config"
+            cfg.mkdir()
+            (cfg / "cloud.env").write_text(
+                'OLLAMA_API_KEY="test-cloud-key"\nOLLAMA_BASE_URL="http://localhost:11434"\n'
+            )
+            (cfg / "local.env").write_text("")
+            orig_root = config_loader.get_project_root
+            config_loader.get_project_root = lambda: Path(tmp)
+            try:
+                with config_scope("cloud"):
+                    request_ollama("get", "/api/tags", cloud_access=True, timeout=5)
+            finally:
+                config_loader.get_project_root = orig_root
+
+        self.assertEqual(
+            mock_request.call_args.kwargs["headers"]["Authorization"],
+            "Bearer test-cloud-key",
+        )
+        self.assertEqual(
+            mock_request.call_args.args[1],
+            f"{OLLAMA_CLOUD_DIRECT_URL}/api/tags",
+        )
+
+    @patch("requests.request")
+    @patch.dict("os.environ", {"OLLAMA_API_KEY": "test-cloud-key"}, clear=False)
+    def test_request_ollama_never_sends_cloud_key_to_daemon(self, mock_request):
+        mock_request.return_value = _FakeResponse(200, {"models": []})
+
+        request_ollama(
+            "get",
+            "/api/tags",
+            base_url="http://daemon:11434",
+            timeout=5,
+        )
+
+        self.assertIsNone(mock_request.call_args.kwargs["headers"])
 
 
 if __name__ == "__main__":

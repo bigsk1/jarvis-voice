@@ -89,6 +89,13 @@ class SettingsAvailabilityTests(unittest.TestCase):
             availability = manager.get_provider_availability()
         self.assertEqual(availability["llm"]["ollama"]["status"], "available")
 
+    def test_ollama_cloud_api_key_uses_nonblank_presence_gate(self):
+        for value, expected in [('', 'unknown'), ('   ', 'unknown'), ('configured', 'available')]:
+            manager, patches = self._manager("cloud", {"OLLAMA_API_KEY": value})
+            with patches[0], patches[1]:
+                entry = manager._provider_availability_entry("ollama")
+            self.assertEqual(entry["status"], expected)
+
     def test_settings_payload_includes_provider_availability(self):
         manager, patches = self._manager("cloud", {"LLM_PROVIDER": "openai", "OPENAI_API_KEY": "k"})
         web_config = {"cloud": {}, "audio": {}, "ui": {}, "conversation": {}, "tools": {}}

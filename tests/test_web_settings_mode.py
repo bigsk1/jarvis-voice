@@ -169,6 +169,90 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertEqual(result["completion_guard"]["eval_model"]["value"], "minimax-m3:cloud")
         self.assertEqual(result["completion_guard"]["eval_model"]["default"], "minimax-m3:cloud")
 
+    def test_direct_ollama_discovery_keeps_canonical_cloud_ids(self):
+        from server.services import settings_manager as settings_module
+
+        response = MagicMock(status_code=200)
+        response.json.return_value = {
+            "models": [
+                {"name": "qwen3.5:397b", "size": 0},
+                {"name": "minimax-m3", "size": 0},
+            ]
+        }
+        env = {
+            "OLLAMA_API_KEY": "configured",
+            "OLLAMA_CLOUD_MODEL": "minimax-m3",
+        }
+        with (
+            patch.object(settings_module, "get_jarvis_setting", side_effect=lambda key, default="": env.get(key, default)),
+            patch.object(settings_module, "request_ollama", return_value=(response, "https://ollama.com")) as request_ollama,
+        ):
+            models = settings_module.fetch_ollama_models(
+                "http://daemon:11434",
+                mode="cloud",
+            )
+
+        self.assertEqual([model["id"] for model in models], ["minimax-m3", "qwen3.5:397b"])
+        self.assertIn("env default", models[0]["name"])
+        self.assertTrue(all(model["context"] == "cloud" for model in models))
+        self.assertIsNone(request_ollama.call_args.kwargs["base_url"])
+        self.assertTrue(request_ollama.call_args.kwargs["cloud_access"])
+
+    def test_direct_ollama_discovery_pins_selected_alias_before_env_default(self):
+        from server.services import settings_manager as settings_module
+
+        response = MagicMock(status_code=200)
+        response.json.return_value = {
+            "models": [
+                {"name": "minimax-m3", "modified_at": "2026-06-01T00:00:00Z", "size": 0},
+                {"name": "glm-5.2", "modified_at": "2026-06-16T00:00:00Z", "size": 0},
+            ]
+        }
+        env = {
+            "OLLAMA_API_KEY": "configured",
+            "OLLAMA_CLOUD_MODEL": "minimax-m3:cloud",
+        }
+        with (
+            patch.object(settings_module, "get_jarvis_setting", side_effect=lambda key, default="": env.get(key, default)),
+            patch.object(settings_module, "request_ollama", return_value=(response, "https://ollama.com")),
+        ):
+            models = settings_module.fetch_ollama_models(
+                mode="cloud",
+                selected_models=["glm-5.2:cloud"],
+            )
+
+        self.assertEqual(
+            [model["id"] for model in models],
+            ["glm-5.2:cloud", "minimax-m3:cloud", "glm-5.2", "minimax-m3"],
+        )
+        self.assertIn("selected", models[0]["name"])
+        self.assertIn("env default", models[1]["name"])
+
+    def test_local_ollama_discovery_cloud_cards_require_opt_in(self):
+        from server.services import settings_manager as settings_module
+
+        response = MagicMock(status_code=200)
+        response.json.return_value = {
+            "models": [
+                {"name": "gemma4", "size": 1024**3},
+                {"name": "minimax-m3:cloud", "size": 0},
+            ]
+        }
+
+        def discover(flag):
+            env = {"ALLOW_OLLAMA_CLOUD": flag, "OLLAMA_MODEL": "gemma4"}
+            with (
+                patch.object(settings_module, "get_jarvis_setting", side_effect=lambda key, default="": env.get(key, default)),
+                patch.object(settings_module, "request_ollama", return_value=(response, "http://daemon:11434")),
+            ):
+                return settings_module.fetch_ollama_models("http://daemon:11434", mode="local")
+
+        self.assertEqual([model["id"] for model in discover("false")], ["gemma4"])
+        self.assertEqual(
+            [model["id"] for model in discover("true")],
+            ["gemma4", "minimax-m3:cloud"],
+        )
+
     def test_stale_cloud_catalog_model_is_ignored_for_local_ollama(self):
         from server.services import settings_manager as settings_module
         from server.services.settings_manager import SettingsManager
@@ -237,6 +321,31 @@ class WebSettingsModeTests(unittest.TestCase):
 
         self.assertTrue(success)
         self.assertIsNone(web_config["local"]["llm_model"])
+
+    def test_save_allows_local_cloud_model_when_opted_in(self):
+        from server.services import settings_manager as settings_module
+        from server.services.settings_manager import SettingsManager
+
+        web_config = {"local": {}}
+        env = {
+            "LLM_PROVIDER": "ollama",
+            "ALLOW_OLLAMA_CLOUD": "true",
+            "OLLAMA_MODEL": "gemma4",
+        }
+        settings = SettingsManager("local")
+        with (
+            patch.object(settings, "_ensure_jarvis_config"),
+            patch.object(settings_module, "load_web_config", return_value=web_config),
+            patch.object(settings_module, "get_jarvis_setting", side_effect=lambda key, default="": env.get(key, default)),
+            patch.object(settings_module, "save_web_config", return_value=True),
+        ):
+            success = settings.save_web_overrides({
+                "llm_provider": "ollama",
+                "llm_model": "minimax-m3:cloud",
+            })
+
+        self.assertTrue(success)
+        self.assertEqual(web_config["local"]["llm_model"], "minimax-m3:cloud")
 
     def test_numeric_override_false_when_web_value_matches_env(self):
         from server.services import settings_manager as settings_module

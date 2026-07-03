@@ -31,7 +31,7 @@ def test_cloud_ollama_vision_uses_cloud_model_and_images_payload():
     with patch.object(
         vision_provider, "resolve_ollama_model", return_value="minimax-m3:cloud"
     ) as resolve_model, patch.object(
-        vision_provider, "get_ollama_base_urls", return_value=["http://ollama-host:11434"]
+        vision_provider, "get_ollama_request_urls", return_value=["http://ollama-host:11434"]
     ), patch.object(
         vision_provider, "request_ollama", return_value=(_Response(), "http://ollama-host:11434")
     ) as request_ollama:
@@ -52,10 +52,12 @@ def test_cloud_ollama_vision_uses_cloud_model_and_images_payload():
 
 def test_cloud_ollama_vision_honors_web_model_override():
     with patch.object(
-        vision_provider, "get_ollama_base_urls", return_value=["http://ollama-host:11434"]
+        vision_provider, "get_ollama_request_urls", return_value=["http://ollama-host:11434"]
     ), patch.object(
         vision_provider, "request_ollama", return_value=(_Response(), "http://ollama-host:11434")
-    ) as request_ollama, patch.object(vision_provider, "resolve_ollama_model") as resolve_model:
+    ) as request_ollama, patch.object(
+        vision_provider, "resolve_ollama_model", return_value="qwen3.5:cloud"
+    ) as resolve_model:
         vision_provider.analyze_images(
             ["base64-image"],
             "Describe this image.",
@@ -64,14 +66,14 @@ def test_cloud_ollama_vision_honors_web_model_override():
             model="qwen3.5:cloud",
         )
 
-    resolve_model.assert_not_called()
+    resolve_model.assert_called_once_with("cloud", model_override="qwen3.5:cloud")
     assert request_ollama.call_args.kwargs["json"]["model"] == "qwen3.5:cloud"
 
 
 def test_ollama_text_only_model_is_rejected_before_generation():
     show_response = _Response({"capabilities": ["completion", "tools"]})
     with patch.object(
-        vision_provider, "get_ollama_base_urls", return_value=["http://ollama-host:11434"]
+        vision_provider, "get_ollama_request_urls", return_value=["http://ollama-host:11434"]
     ), patch.object(
         vision_provider,
         "request_ollama",
@@ -103,7 +105,7 @@ def test_ollama_generate_error_is_classified_when_show_metadata_is_unavailable()
         status_code=400,
     )
     with patch.object(
-        vision_provider, "get_ollama_base_urls", return_value=["http://ollama-host:11434"]
+        vision_provider, "get_ollama_request_urls", return_value=["http://ollama-host:11434"]
     ), patch.object(
         vision_provider,
         "request_ollama",

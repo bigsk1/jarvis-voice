@@ -21,7 +21,11 @@ import subprocess
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
 from model_catalog import get_provider_fallback_model
-from ollama_utils import get_ollama_base_urls, request_ollama
+from ollama_utils import (
+    get_ollama_execution_class,
+    request_ollama,
+    OLLAMA_EXECUTION_LOCAL_DAEMON,
+)
 from stash_helper import (
     open_space, get_space, list_spaces, cleanup_expired,
     StashFile
@@ -153,18 +157,18 @@ Do NOT add commentary or opinions - just the facts."""
         
         
         elif provider == 'ollama':
-            base_urls = get_ollama_base_urls()
             stash_model = (get_config_value('STASH_SUMMARIZE_MODEL', '') or '').strip()
             if stash_model:
-                model = stash_model
+                from ollama_utils import resolve_ollama_model
+                model = resolve_ollama_model(model_override=stash_model)
             else:
                 from ollama_utils import resolve_ollama_model
                 model = resolve_ollama_model()
-            
+            execution_class = get_ollama_execution_class(model)
             response, _ = request_ollama(
                 'post',
                 '/api/chat',
-                base_urls=base_urls,
+                cloud_access=(execution_class != OLLAMA_EXECUTION_LOCAL_DAEMON),
                 json={
                     'model': model,
                     'messages': [

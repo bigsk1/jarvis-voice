@@ -2009,8 +2009,13 @@ class JarvisApp {
     const modelSelect = document.getElementById(selectId);
     if (!modelSelect) return;
     const models = this._settingsData?.provider_models?.[provider] || [];
-    
-    let html = '<option value="">Use default for provider</option>';
+    const endpointDefault = this._settingsData?.provider_model_defaults?.[provider];
+    const settingsDefault = selectId === 'setting-completion-guard-eval-model'
+      ? this._settingsData?.completion_guard?.eval_model?.default
+      : this._settingsData?.llm?.model?.default;
+    const defaultModel = endpointDefault || settingsDefault;
+
+    let html = `<option value="">Use env default${defaultModel ? ` (${defaultModel})` : ''}</option>`;
     for (const model of models) {
       html += `<option value="${model.id}">${model.name} (${model.context})</option>`;
     }
@@ -2027,6 +2032,10 @@ class JarvisApp {
         this._settingsData = this._settingsData || {};
         this._settingsData.provider_models = this._settingsData.provider_models || {};
         this._settingsData.provider_models[provider] = data.models;
+        this._settingsData.provider_model_defaults = this._settingsData.provider_model_defaults || {};
+        if (data.default_model) {
+          this._settingsData.provider_model_defaults[provider] = data.default_model;
+        }
       }
     } catch (err) {
       console.error('[App] Failed to refresh provider models:', err);

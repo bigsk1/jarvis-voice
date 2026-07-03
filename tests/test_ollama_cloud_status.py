@@ -45,7 +45,9 @@ class _Response:
 def _status_payload(response):
     api._OLLAMA_CLOUD_STATUS_CACHE.clear()
     with app.test_request_context("/api/ollama/cloud-status?mode=cloud"):
-        with patch("requests.post", return_value=response):
+        with patch("ollama_utils.get_ollama_api_key", return_value=""), patch(
+            "requests.post", return_value=response
+        ):
             return api.get_ollama_cloud_status().get_json()
 
 
@@ -71,6 +73,31 @@ def test_valid_account_is_sanitized():
     assert payload["plan"] == "free"
     assert "id" not in payload
     assert "email" not in payload
+
+
+def test_api_key_mode_skips_daemon_me_check():
+    import config_loader
+    import tempfile
+
+    api._OLLAMA_CLOUD_STATUS_CACHE.clear()
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg = Path(tmp) / "config"
+        cfg.mkdir()
+        (cfg / "cloud.env").write_text('OLLAMA_API_KEY="test-key"\n')
+        (cfg / "local.env").write_text("")
+        orig_root = config_loader.get_project_root
+        config_loader.get_project_root = lambda: Path(tmp)
+        try:
+            with app.test_request_context("/api/ollama/cloud-status?mode=cloud"):
+                with patch("requests.post") as mock_post:
+                    payload = api.get_ollama_cloud_status().get_json()
+                    mock_post.assert_not_called()
+        finally:
+            config_loader.get_project_root = orig_root
+
+    assert payload["connection_mode"] == "api_key"
+    assert payload["signed_in"] is True
+    assert payload["reachable"] is True
 
 
 def test_web_chat_overrides_are_scoped_and_exported_to_children():

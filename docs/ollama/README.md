@@ -24,8 +24,8 @@ OLLAMA_CLOUD_MODEL="minimax-m3:cloud"
 EMBEDDING_PROVIDER=openai
 ```
 
-`OLLAMA_CLOUD_MODEL` must be cloud-tagged. Jarvis recognizes both forms used by
-Ollama:
+With a signed-in daemon, `OLLAMA_CLOUD_MODEL` must be cloud-tagged. Jarvis
+recognizes both forms used by Ollama:
 
 ```text
 qwen3.5:cloud
@@ -48,6 +48,11 @@ Cloud-tagged models:
 - report subscription/compute billing as unknown rather than `$0`;
 - do not receive local-model tool-call correction rewrites.
 
+With `OLLAMA_API_KEY`, the direct API also returns canonical IDs such as
+`minimax-m3`, `qwen3.5:397b`, and `gpt-oss:120b`. Jarvis classifies these as
+cloud execution from the active transport, so it likewise omits `num_ctx`,
+reports cloud billing correctly, and skips local tool-call rewrites.
+
 ## Local mode
 
 Configure `config/local.env`:
@@ -56,17 +61,20 @@ Configure `config/local.env`:
 LLM_PROVIDER=ollama
 OLLAMA_BASE_URL="http://your-local-gpu-host:11434"
 OLLAMA_MODEL="qwen3:latest"
+ALLOW_OLLAMA_CLOUD=false
 EMBEDDING_PROVIDER=ollama
 ```
 
-The local Settings UI lists non-cloud models returned by the configured daemon.
-`OLLAMA_MODEL` is expected to name a model installed on that daemon. Jarvis keeps
-localhost as the final fallback in local mode for backward compatibility.
+By default the local Settings UI lists non-cloud models returned by the
+configured daemon. `OLLAMA_MODEL` is expected to name a model installed on that
+daemon. Jarvis keeps localhost as the final fallback in local mode for backward
+compatibility.
 
-Local deployment mode does not technically make cloud-tagged models impossible:
-model execution class is deliberately separate from data mode. The supported
-default is nevertheless a non-cloud `OLLAMA_MODEL`, which keeps inference,
-databases, and embeddings local.
+Set `ALLOW_OLLAMA_CLOUD=true` in `config/local.env` to also show and permit
+downloaded cloud-tagged cards. They continue through `OLLAMA_BASE_URL`, require
+the daemon user to run `ollama signin`, and do not enable direct API-key access.
+The default remains `false`, keeping local inference, databases, and embeddings
+local.
 
 ## Vision and image analysis
 
@@ -121,8 +129,9 @@ image input, Jarvis falls back to conservative text-only enhancement, returns
 | `JARVIS_MODE` | `cloud` or `local`; defaults to `cloud` at startup | Launchers, Docker, background services | Selects env/data boundaries; never inferred from `LLM_PROVIDER` |
 | `LLM_PROVIDER` | `xai`, `anthropic`, `openai`, or `ollama` | Selected mode config | Chooses chat backend; does not select mode |
 | `OLLAMA_MODEL` | Ollama model name | Normally local mode | Required for the primary local Ollama path; local auxiliary calls retain a compatibility fallback |
-| `OLLAMA_CLOUD_MODEL` | Recognized `*:cloud` or `*-cloud` name | Cloud mode with `LLM_PROVIDER=ollama` | A normal local tag is rejected; also used for Ollama vision in cloud mode |
+| `OLLAMA_CLOUD_MODEL` | Cloud card or direct API model ID | Cloud mode with `LLM_PROVIDER=ollama` | Signed-in daemon requires `*:cloud` / `*-cloud`; direct API accepts IDs returned by ollama.com; also used for vision |
 | `OLLAMA_VISION_MODEL` | Ollama model name | Local mode with `LLM_PROVIDER=ollama` | Vision/image analysis only; not used in cloud mode (see Vision section above) |
+| `ALLOW_OLLAMA_CLOUD` | `false` (default) or `true` | Local mode | When true, permits cloud-tagged cards through the signed-in daemon; never enables direct API routing |
 | `OLLAMA_BASE_URL` | One URL or comma-separated URLs | Both configs | Cloud tries only explicit hosts; local retains localhost as a final compatibility fallback |
 | `EMBEDDING_PROVIDER` | Commonly `openai` in cloud, `ollama` in local | Memory, Tool RAG, Intelligence | Independent of the chat provider; keep DB dimensions aligned with the selected data mode |
 | `JARVIS_SYNC_MODES` | Space-separated `cloud` / `local`; defaults to `JARVIS_MODE` in Docker | First-boot Docker tool sync | Does not change the running stack's mode |
@@ -144,32 +153,54 @@ select an installed non-cloud model.
 
 ## Authentication and account status
 
-Phase-one cloud access uses an Ollama daemon signed in with:
+Cloud-mode Ollama access is **either/or** — never both at once:
+
+| Config | Path | How it works |
+|--------|------|--------------|
+| No `OLLAMA_API_KEY` | **Signed-in daemon** | `OLLAMA_BASE_URL` → local/remote daemon that ran `ollama signin`; cloud models use `:cloud` tags |
+| `OLLAMA_API_KEY` set | **Direct ollama.com API** | Jarvis talks only to `https://ollama.com` with `Authorization: Bearer …`; no daemon required |
+
+### Signed-in daemon (default)
 
 ```bash
-ollama signin
+OLLAMA_BASE_URL="http://your-signed-in-ollama-host:11434"
+# Do not set OLLAMA_API_KEY
 ```
 
-Authentication belongs to the Ollama daemon user, not the Jarvis checkout. A
-fresh Jarvis clone on the same machine can reuse the signed-in daemon without
-copying credentials.
+Authentication belongs to the Ollama daemon user, not the Jarvis checkout. Run
+`ollama signin` on the daemon host. Jarvis calls the daemon API; the daemon
+proxies cloud models to ollama.com.
 
-The Web System tab lazily calls the daemon's `POST /api/me` endpoint and exposes
-only:
+The Web System tab calls `POST {OLLAMA_BASE_URL}/api/me` and exposes only
+reachability, signed-in/signed-out/unknown, plan when supplied, and validated
+sign-in links — never raw profile data.
 
-- host reachability;
-- signed-in, signed-out, or unknown state;
-- account plan when supplied;
-- a validated Ollama sign-in link when supplied;
-- the official Ollama settings link.
+### Direct API key (alternative)
 
-Ollama currently does not expose the session/weekly quota bars through this
-endpoint. Jarvis therefore does not fabricate percentages and links to
-<https://ollama.com/settings> instead. Malformed or changed `/api/me` responses
-are reported as unknown rather than signed in.
+```bash
+OLLAMA_API_KEY=your_key_from_ollama_com_settings_keys
+OLLAMA_CLOUD_MODEL="qwen3.5:397b"
+# OLLAMA_BASE_URL is ignored for cloud-model inference when the key is set
+```
 
-Direct `https://ollama.com/api` access using `OLLAMA_API_KEY` is not implemented.
-It is a separate topology and is never selected as an automatic fallback.
+Create a key at <https://ollama.com/settings/keys>. When `OLLAMA_API_KEY` is
+present and nonblank in cloud mode, Jarvis uses **only**
+`https://ollama.com/api/*` with Bearer auth. Model discovery also comes from
+ollama.com, not your local daemon list. Like the other provider gates, a
+nonblank key is treated as configured; authentication errors surface on use.
+The Web Settings list pins any current override and `OLLAMA_CLOUD_MODEL` first,
+then orders the remaining direct catalog by Ollama's `modified_at` metadata
+newest-first. The empty-value choice names the actual env default explicitly.
+
+Keep an active `OLLAMA_API_KEY=""` assignment when direct access is disabled.
+This masks a same-named variable exported by `.bashrc` or another parent
+process. A commented `# OLLAMA_API_KEY=` line does not mask inherited values.
+
+Local mode always uses the daemon; `OLLAMA_API_KEY` is ignored there so GPU
+inference is unaffected.
+
+Ollama currently does not expose session/weekly quota bars through `/api/me`.
+Jarvis links to <https://ollama.com/settings> instead of fabricating percentages.
 
 ## Migrating from the older local-only Ollama setup
 
@@ -178,8 +209,9 @@ and their local `OLLAMA_BASE_URL` in `config/local.env`; no rename is required.
 
 To add Ollama Cloud without disturbing local mode:
 
-1. Put `LLM_PROVIDER=ollama`, the signed-in daemon URL, and a cloud-tagged
-   `OLLAMA_CLOUD_MODEL` in `config/cloud.env`.
+1. Put `LLM_PROVIDER=ollama` in `config/cloud.env`, then configure either a
+   signed-in daemon plus cloud-tagged model or `OLLAMA_API_KEY` plus a canonical
+   direct API model.
 2. Leave the normal GPU-backed `OLLAMA_MODEL` in `config/local.env`.
 3. Start cloud and local modes explicitly; do not use provider values to imply
    the mode.
@@ -193,7 +225,8 @@ the boundary explicit and is the supported configuration going forward.
 
 | Symptom | Check |
 |---|---|
-| `OLLAMA_CLOUD_MODEL must be a cloud-tagged Ollama model` | Use a recognized `*:cloud` or `*-cloud` tag; do not put a normal local GPU model in the cloud variable |
+| `OLLAMA_CLOUD_MODEL must be a cloud-tagged Ollama model` | The signed-daemon path requires `*:cloud` or `*-cloud`; canonical IDs are accepted only on the direct API-key path |
+| `OLLAMA_MODEL is cloud-tagged but ALLOW_OLLAMA_CLOUD is disabled` | Use a local model or set `ALLOW_OLLAMA_CLOUD=true` in `config/local.env` and sign the daemon in |
 | `No cloud Ollama model configured` | Add `OLLAMA_CLOUD_MODEL` to `config/cloud.env`; `OLLAMA_MODEL` is only a compatibility fallback when it is already cloud-tagged |
 | `No local Ollama model configured` | Add `OLLAMA_MODEL` to `config/local.env` and confirm it appears in `/api/tags` |
 | `No Ollama base URLs configured` or connection failures | Check `OLLAMA_BASE_URL`, daemon reachability, and firewall/listen settings |
@@ -230,6 +263,13 @@ curl -fsS "$OLLAMA_URL/api/chat" \
 
 The first two commands do not make a chat inference. The final command consumes
 Ollama Cloud allowance.
+
+For direct API-key mode, use `https://ollama.com` and include the bearer header:
+
+```bash
+curl -fsS https://ollama.com/api/tags \
+  -H "Authorization: Bearer $OLLAMA_API_KEY" | jq -r '.models[].name'
+```
 
 ## Docker
 
@@ -290,6 +330,7 @@ pytest -q \
   tests/test_scoped_config.py \
   tests/test_ollama_cloud_primary.py \
   tests/test_ollama_provider_usage.py \
+  tests/test_ollama_aux_routing.py \
   tests/test_ollama_utils.py \
   tests/test_ollama_cloud_status.py \
   tests/test_api_mode_scopes.py \
@@ -307,7 +348,7 @@ Useful runtime checks:
 Cloud Ollama should report:
 
 - `startup_mode=cloud`;
-- provider `ollama` and the selected cloud-tagged model;
+- provider `ollama` and the selected cloud model (tagged daemon card or canonical direct ID);
 - cloud DB paths and 1536-dimensional embeddings;
 - token usage with subscription/unknown cost;
 - no localhost fallback in provider diagnostics.

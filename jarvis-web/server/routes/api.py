@@ -300,6 +300,7 @@ def get_system_config():
     if mode == 'local':
         config['OLLAMA_MODEL'] = get_jarvis_setting('OLLAMA_MODEL', 'qwen3')
         config['OLLAMA_BASE_URL'] = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
+        config['ALLOW_OLLAMA_CLOUD'] = get_jarvis_setting('ALLOW_OLLAMA_CLOUD', 'false')
         config['KOKORO_TTS_URL'] = get_jarvis_setting('KOKORO_TTS_URL', '')
         config['KOKORO_TTS_VOICE'] = get_jarvis_setting('KOKORO_TTS_VOICE', '')
         config['QWEN3_TTS_URL'] = get_jarvis_setting('QWEN3_TTS_URL', '')
@@ -452,12 +453,31 @@ def get_provider_models(provider):
 
     if provider == 'ollama':
         from ..services.settings_manager import fetch_ollama_models
-        from ..config import load_jarvis_config, get_jarvis_setting
+        from ..config import load_jarvis_config, get_jarvis_setting, load_web_config
         load_jarvis_config(mode)
+        mode_config = load_web_config().get(mode, {})
+        selected_models = []
+        effective_llm_provider = (
+            mode_config.get('llm_provider')
+            or get_jarvis_setting('LLM_PROVIDER', 'ollama' if mode == 'local' else 'xai')
+        )
+        if effective_llm_provider == 'ollama' and mode_config.get('llm_model'):
+            selected_models.append(mode_config['llm_model'])
+        effective_guard_provider = (
+            mode_config.get('completion_guard_eval_provider')
+            or get_jarvis_setting(
+                'JARVIS_COMPLETION_GUARD_EVAL_PROVIDER',
+                'ollama' if mode == 'local' else 'openai',
+            )
+        )
+        if effective_guard_provider == 'ollama' and mode_config.get('completion_guard_eval_model'):
+            selected_models.append(mode_config['completion_guard_eval_model'])
         models = fetch_ollama_models(
             get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434'),
-            mode=mode
+            mode=mode,
+            selected_models=selected_models,
         )
+        default_model = get_settings_manager(mode)._ollama_env_default_model()
     else:
         from ..config import load_jarvis_config, get_jarvis_setting
         load_jarvis_config(mode)
@@ -469,10 +489,12 @@ def get_provider_models(provider):
         }
         current_model = get_jarvis_setting(env_key_map.get(provider, ''), '').strip() if provider in env_key_map else ''
         models = settings._get_model_options_with_current(provider, current_model)
+        default_model = settings._get_default_model(provider)
     return jsonify({
         'ok': True,
         'provider': provider,
-        'models': models
+        'models': models,
+        'default_model': default_model,
     })
 
 
@@ -598,26 +620,28 @@ def _validate_ollama_signin_url(url):
 def get_ollama_cloud_status():
     """Lazy, best-effort Ollama host/account readiness for the System tab.
 
-    Mirrors the ElevenLabs usage flow: only call this when the System tab opens
-    and the effective cloud provider is Ollama. Calls POST {OLLAMA_BASE_URL}/api/me
-    with a short timeout and bounded cache. Returns a sanitized shape only;
-    never exposes OLLAMA_API_KEY, raw /api/me profile data, or daemon keys.
+    Cloud mode uses one of two exclusive paths:
+
+    - ``OLLAMA_API_KEY`` set → report direct ``https://ollama.com`` configuration
+    - no key → ``POST {OLLAMA_BASE_URL}/api/me`` on the configured daemon
+
+    Returns a sanitized shape only; never exposes key values or raw profile data.
     """
     import time
     import requests as http_requests
     from ..config import load_jarvis_config, get_jarvis_setting
+    from ollama_utils import get_ollama_api_key
 
     mode = request.args.get('mode', 'cloud')
     load_jarvis_config(mode)
 
-    # Resolve the effective base URL (first configured host; no localhost
-    # fallback injected here for cloud topologies).
     raw_base = (get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434') or '').strip()
     base_url = raw_base.split(',')[0].strip().rstrip('/') if raw_base else 'http://localhost:11434'
 
     effective_provider = (get_jarvis_setting('LLM_PROVIDER', 'xai' if mode == 'cloud' else 'ollama') or '').lower()
 
-    cache_key = f"{mode}:{base_url}"
+    api_key_mode = mode == 'cloud' and bool(get_ollama_api_key())
+    cache_key = f"{mode}:{'api_key' if api_key_mode else base_url}"
     now = time.time()
     cached = _OLLAMA_CLOUD_STATUS_CACHE.get(cache_key)
     if cached and (now - cached['ts']) < _OLLAMA_CLOUD_STATUS_TTL_SECONDS:
@@ -625,17 +649,23 @@ def get_ollama_cloud_status():
 
     payload = {
         'provider': 'ollama',
-        'connection_mode': 'signed_in_host',
+        'connection_mode': 'api_key' if api_key_mode else 'signed_in_host',
         'effective_provider': effective_provider,
         'reachable': False,
         'signed_in': 'unknown',
         'plan': None,
-        # /api/me does not expose quota/usage; treat it as unknown rather than
-        # claiming "no quota". Usage limits live on the ollama.com dashboard.
         'quota_available': None,
         'dashboard_url': 'https://ollama.com/settings',
         'signin_url': None,
     }
+
+    if api_key_mode:
+        # Match the other provider gates: a nonblank key means configured.
+        # Authentication failures are reported by the actual model request.
+        payload['reachable'] = True
+        payload['signed_in'] = True
+        _OLLAMA_CLOUD_STATUS_CACHE[cache_key] = {'ts': now, 'payload': payload}
+        return jsonify(payload)
 
     try:
         response = http_requests.post(f"{base_url}/api/me", timeout=(3, 6))
@@ -711,7 +741,14 @@ def get_ollama_model_context():
     raw_base = (get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434') or '').strip()
     base_url = raw_base.split(',')[0].strip().rstrip('/') if raw_base else 'http://localhost:11434'
 
-    cache_key = f"{base_url}:{model}"
+    from ollama_utils import (
+        get_ollama_execution_class,
+        request_ollama,
+        OLLAMA_EXECUTION_LOCAL_DAEMON,
+    )
+
+    execution_class = get_ollama_execution_class(model, mode)
+    cache_key = f"{execution_class}:{base_url}:{model}"
     now = time.time()
     cached = _OLLAMA_MODEL_CONTEXT_CACHE.get(cache_key)
     if cached and (now - cached['ts']) < _OLLAMA_MODEL_CONTEXT_TTL_SECONDS:
@@ -719,7 +756,13 @@ def get_ollama_model_context():
 
     payload = {'ok': True, 'model': model, 'context_length': None}
     try:
-        response = http_requests.post(f"{base_url}/api/show", json={'model': model}, timeout=(3, 6))
+        response, _ = request_ollama(
+            "post",
+            "/api/show",
+            json={"model": model},
+            timeout=(3, 6),
+            cloud_access=(execution_class != OLLAMA_EXECUTION_LOCAL_DAEMON),
+        )
         if response.status_code == 200:
             try:
                 payload['context_length'] = _extract_ollama_context_length(response.json())

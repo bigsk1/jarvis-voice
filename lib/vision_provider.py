@@ -15,7 +15,13 @@ import requests
 
 from config_loader import get_config_value
 from model_catalog import get_provider_fallback_model
-from ollama_utils import get_ollama_base_urls, request_ollama, resolve_ollama_model
+from ollama_utils import (
+    get_ollama_execution_class,
+    get_ollama_request_urls,
+    request_ollama,
+    resolve_ollama_model,
+    OLLAMA_EXECUTION_LOCAL_DAEMON,
+)
 from vision_multimodal import (
     build_anthropic_content,
     build_ollama_prompt,
@@ -115,16 +121,21 @@ def _ollama_vision_capability(model: str, base_urls: list[str]) -> bool | None:
 
 def _ollama_vision(images_base64: list[str], prompt: str, mode: str, model: str | None) -> str:
     if model:
-        vision_model = model
+        vision_model = resolve_ollama_model(mode, model_override=model)
     elif mode == "cloud":
         vision_model = resolve_ollama_model("cloud")
     else:
-        vision_model = (
-            get_config_value("OLLAMA_VISION_MODEL", "")
-            or resolve_ollama_model("local")
+        configured_vision = get_config_value("OLLAMA_VISION_MODEL", "")
+        vision_model = resolve_ollama_model(
+            "local",
+            model_override=(configured_vision or None),
         )
 
-    base_urls = get_ollama_base_urls()
+    execution_class = get_ollama_execution_class(vision_model, mode)
+    cloud_execution = execution_class != OLLAMA_EXECUTION_LOCAL_DAEMON
+    base_urls = get_ollama_request_urls(
+        cloud_access=cloud_execution,
+    )
     if _ollama_vision_capability(vision_model, base_urls) is False:
         raise VisionCapabilityError("Ollama", vision_model)
 
@@ -139,6 +150,7 @@ def _ollama_vision(images_base64: list[str], prompt: str, mode: str, model: str 
             "stream": False,
         },
         timeout=120,
+        cloud_access=cloud_execution,
     )
     if response.status_code != 200:
         raise _response_error("Ollama", response, model=vision_model)

@@ -262,7 +262,7 @@
 ## 🔧 Configuration
 
 **Main config files:**
-- `config/cloud.env` - Cloud data/config mode; supports xAI, Anthropic, OpenAI, or cloud-tagged Ollama models
+- `config/cloud.env` - Cloud data/config mode; supports xAI, Anthropic, OpenAI, or Ollama Cloud through a signed daemon/direct API key
 - `config/local.env` - Local data/config mode; normally uses a locally hosted Ollama model
 - `~/.config/opencode/opencode.json` - OpenCode config
 
@@ -598,7 +598,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 **2026-04-09:**
 - ✅ **Ollama local-model routing hardening**
-  - Ollama tool-routing requests now apply `OLLAMA_CONTEXT_WINDOW` to any Ollama model, including newer local models like `gemma4`
+  - Ollama tool-routing requests apply `OLLAMA_CONTEXT_WINDOW` to local models such as `gemma4`; cloud-backed models omit `num_ctx`
   - Native Ollama tool calls now send explicit exact-schema tool-contract guidance plus stricter retry hints after invalid tool-name or arg-shape failures
   - Tool-routing requests now explicitly disable Ollama thinking unless thinking is intentionally enabled, which helps preserve context for large Tool RAG turns
 - ✅ **Fresh-install sync repair path**

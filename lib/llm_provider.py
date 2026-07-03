@@ -16,7 +16,12 @@ from abc import ABC, abstractmethod
 os.environ.setdefault("GRPC_DNS_RESOLVER", "native")
 
 from model_catalog import get_model_supports_xai_reasoning_effort, get_provider_fallback_model
-from ollama_utils import parse_ollama_base_urls, request_ollama
+from ollama_utils import (
+    get_ollama_execution_class,
+    get_ollama_request_urls,
+    request_ollama,
+    OLLAMA_EXECUTION_LOCAL_DAEMON,
+)
 
 
 class LLMProvider(ABC):
@@ -1476,8 +1481,10 @@ class OllamaProvider(LLMProvider):
         # Cloud mode must use only explicitly configured hosts: silently trying
         # localhost can route a hosted-model request through the wrong daemon,
         # and in Docker it points back into the Jarvis container.
-        self.base_urls = parse_ollama_base_urls(
-            base_url,
+        self.execution_class = get_ollama_execution_class(model)
+        self.base_urls = get_ollama_request_urls(
+            cloud_access=(self.execution_class != OLLAMA_EXECUTION_LOCAL_DAEMON),
+            base_url=base_url,
             include_localhost_fallback=(get_active_config_mode() == "local"),
         )
         self.base_url = self.base_urls[0]
@@ -1640,9 +1647,8 @@ class OllamaProvider(LLMProvider):
             return f"Error: {str(e)}"
     
     def _is_cloud_model(self) -> bool:
-        """True when the active model is an Ollama Cloud-tagged model."""
-        from ollama_utils import is_ollama_cloud_model
-        return is_ollama_cloud_model(self.model)
+        """True when execution is cloud-backed, regardless of model ID shape."""
+        return self.execution_class != OLLAMA_EXECUTION_LOCAL_DAEMON
 
     def _correct_tool_call_for_execution_class(self, raw_call: dict) -> dict:
         """Apply compatibility rewrites only to locally executed models."""
@@ -1692,9 +1698,9 @@ class OllamaProvider(LLMProvider):
         note_suffix: str = "",
         input_estimated: bool = False,
     ) -> dict:
-        """Build truthful usage metadata for local vs Ollama Cloud models.
+        """Build truthful usage metadata for local vs Ollama Cloud execution.
 
-        Cloud-tagged Ollama models are subscription/compute-metered, so per-token
+        Cloud-backed Ollama models are subscription/compute-metered, so per-token
         dollar cost is unknown rather than ``$0``. Local models remain free.
         When ``input_estimated`` is set the input token count is an approximation
         (Ollama did not return ``prompt_eval_count``) and is flagged as such.
@@ -1705,6 +1711,7 @@ class OllamaProvider(LLMProvider):
             "input_tokens": prompt_eval_count,
             "output_tokens": eval_count,
             "total_tokens": prompt_eval_count + eval_count,
+            "ollama_execution": self.execution_class,
         }
         if input_estimated:
             base["input_estimated"] = True
@@ -1727,8 +1734,8 @@ class OllamaProvider(LLMProvider):
     def _get_context_options(self) -> dict[str, Any]:
         """Get context window options for the current model."""
         options = {}
-        # Cloud-tagged models proxy to a managed backend that uses its maximum
-        # context by default; do not send a local GPU num_ctx for them.
+        # Cloud-backed models use their managed context; num_ctx is local daemon
+        # GPU tuning and must not be sent for either cloud transport.
         if self._is_cloud_model():
             return options
         # For local Ollama requests, always honor the configured context window.
@@ -1819,7 +1826,7 @@ class OllamaProvider(LLMProvider):
         
         Returns:
             Tuple of (text_response, tool_call, usage_info, thinking)
-            - usage_info contains token counts (cost is always 0 for local models)
+            - usage_info contains token counts and local/cloud billing classification
             - thinking is available for reasoning models (qwen3.5:latest, etc.)
         """
         import requests

@@ -490,11 +490,11 @@ class ChatUI {
         } else if (provider === 'openai') {
           this.contextWindow = 128000;
         } else if (provider === 'ollama') {
-          // Ollama (local or cloud-tagged). Catalog "context" is "cloud" for
-          // cloud models, so ask the daemon for the real context length via
-          // /api/show. A managed cloud context remains unknown when the daemon
-          // does not expose metadata; never substitute a local 32K window.
+          // Ask the active Ollama endpoint for the real context length. Cloud
+          // execution may use a :cloud daemon card or an untagged canonical ID
+          // from ollama.com; never substitute a local 32K num_ctx for either.
           const cloudTaggedModel = /(?:\:cloud|-cloud)$/i.test(String(modelId || ''));
+          const cloudExecution = currentMode === 'cloud' || cloudTaggedModel;
           let resolved = null;
           if (modelId) {
             try {
@@ -509,7 +509,7 @@ class ChatUI {
           }
           if (resolved) {
             this.contextWindow = resolved;
-          } else if (currentMode === 'cloud' && cloudTaggedModel) {
+          } else if (cloudExecution) {
             this.contextWindow = null;
           } else {
             try {

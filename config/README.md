@@ -5,7 +5,7 @@ This directory contains configuration files for Jarvis Voice Assistant.
 ## Quick Start
 
 1. **Choose your mode:**
-   - **Cloud mode**: xAI, Anthropic, OpenAI, or cloud-tagged Ollama models through a signed-in daemon
+   - **Cloud mode**: xAI, Anthropic, OpenAI, or Ollama Cloud through a signed-in daemon or `OLLAMA_API_KEY`
    - **Local mode**: Ollama on your GPU (offline-capable; no cloud LLM keys required)
 
 2. **Copy the example file:**
@@ -187,10 +187,12 @@ XAI_MODEL="grok-build-0.1"
 # LLM_PROVIDER="ollama"
 # OLLAMA_BASE_URL="http://your-signed-in-ollama-host:11434"
 # OLLAMA_CLOUD_MODEL="minimax-m3:cloud"
+# Or set OLLAMA_API_KEY and use a canonical ID returned by ollama.com/api/tags.
 
 # Local mode
 LLM_PROVIDER="ollama"
 OLLAMA_MODEL="gemma4"
+ALLOW_OLLAMA_CLOUD=false  # true permits signed-daemon :cloud cards locally
 ```
 
 **OpenCode Agent** (coding tasks):
@@ -269,7 +271,8 @@ only explicitly listed hosts, so add localhost yourself only when intentional.
 
 ### GPU Optimization
 ```bash
-# Adjust for your VRAM (16GB example)
+# Local models only: adjust for your VRAM (16GB example).
+# Cloud-backed Ollama models ignore this Jarvis setting.
 OLLAMA_CONTEXT_WINDOW=12888
 ```
 
@@ -533,13 +536,14 @@ echo $BRAVE_API_KEY  # Should show your API key
 - **xAI**: `grok-4.3`, `grok-build-0.1` (see `cloud.env.example` and [xAI provider](../docs/XAI_PROVIDER.md))
 - **Anthropic**: `claude-sonnet-5` and related Claude models
 - **OpenAI**: `gpt-5.4-mini`, `gpt-5.4-nano`, and related GPT models
-- **Ollama Cloud**: a cloud-tagged `OLLAMA_CLOUD_MODEL` (`*:cloud` or `*-cloud`) through a signed-in Ollama daemon
+- **Ollama Cloud**: a cloud-tagged model through a signed-in daemon, or a canonical direct-API model with `OLLAMA_API_KEY`
 
 Curated metadata for the Web UI and cost helpers lives in `lib/model_catalog.py`.
 
 ### Local Mode (Ollama)
 
 - **Jarvis**: `gemma4`, `qwen3.5:latest`, or another tool-capable model you have pulled
+- Set `ALLOW_OLLAMA_CLOUD=true` to additionally permit signed-daemon cloud cards; direct API keys remain cloud-mode-only
 - **OpenCode**: prefer a cloud API for reliability; local Ollama is supported but less dependable for long coding runs
 
 ## Quick Reference

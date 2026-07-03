@@ -62,6 +62,17 @@ class ModelPromptOverrideTests(unittest.TestCase):
             self.assertEqual(override.matched_model, "minimax-m3")
             self.assertIn("Do NOT add meta lead-ins", override.get("qa_append"))
 
+    def test_ollama_direct_size_tag_falls_back_to_family(self):
+        candidates = get_model_override_candidates("gemma4:31b", provider="ollama")
+        self.assertEqual(candidates, ["gemma4:31b", "gemma4"])
+
+    def test_ollama_combined_cloud_tag_falls_back_to_family(self):
+        candidates = get_model_override_candidates("gpt-oss:120b-cloud", provider="ollama")
+        self.assertEqual(
+            candidates,
+            ["gpt-oss:120b-cloud", "gpt-oss:120b", "gpt-oss"],
+        )
+
     def test_xai_canonical_release_id_falls_back_to_stable_family(self):
         candidates = get_model_override_candidates("grok-4.20-0309-non-reasoning")
 

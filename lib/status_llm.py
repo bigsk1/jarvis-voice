@@ -15,7 +15,12 @@ import requests
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import get_config_value, get_int
-from ollama_utils import get_ollama_base_urls, get_primary_ollama_base_url, request_ollama
+from ollama_utils import (
+    get_ollama_execution_class,
+    get_ollama_request_urls,
+    request_ollama,
+    OLLAMA_EXECUTION_LOCAL_DAEMON,
+)
 
 
 class StatusSummarizer:
@@ -56,13 +61,13 @@ Only output the status phrase, nothing else."""
             self.api_key = get_config_value('ANTHROPIC_API_KEY')
             self.base_url = 'https://api.anthropic.com/v1'
         elif self.provider == 'ollama':
-            self.base_url = get_primary_ollama_base_url()
             status_model = (get_config_value('STATUS_LLM_MODEL', '') or '').strip()
-            if status_model:
-                self.model = status_model
-            else:
-                from ollama_utils import resolve_ollama_model
-                self.model = resolve_ollama_model()
+            from ollama_utils import resolve_ollama_model
+            self.model = resolve_ollama_model(model_override=(status_model or None))
+            execution_class = get_ollama_execution_class(self.model)
+            self.base_url = get_ollama_request_urls(
+                cloud_access=(execution_class != OLLAMA_EXECUTION_LOCAL_DAEMON),
+            )[0]
     
     def _build_system_prompt(self) -> str:
         """Build system prompt based on personality settings."""
@@ -214,7 +219,7 @@ Generate a natural 5-8 word status update:"""
         return self._clean_response(content)
     
     def _call_ollama(self, prompt: str) -> str | None:
-        """Call local Ollama API."""
+        """Call the mode-appropriate Ollama daemon or direct cloud API."""
         payload = {
             'model': self.model,
             'prompt': f"{self.system_prompt}\n\n{prompt}",
@@ -225,10 +230,11 @@ Generate a natural 5-8 word status update:"""
             }
         }
         
+        execution_class = get_ollama_execution_class(self.model)
         response, used_base_url = request_ollama(
             'post',
             '/api/generate',
-            base_urls=get_ollama_base_urls(),
+            cloud_access=(execution_class != OLLAMA_EXECUTION_LOCAL_DAEMON),
             json=payload,
             timeout=10  # Ollama may need more time
         )

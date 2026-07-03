@@ -88,7 +88,26 @@ def _strip_xai_release_suffix(model_name: str) -> str:
     )
 
 
-def get_model_override_candidates(model_name: str) -> list[str]:
+def _strip_ollama_cloud_tag(model_name: str) -> str:
+    """Normalize combined Ollama tags such as ``120b-cloud``."""
+    if ":" not in model_name:
+        return re.sub(r"-cloud$", "", model_name, flags=re.IGNORECASE)
+    base, tag = model_name.rsplit(":", 1)
+    normalized_tag = re.sub(r"-cloud$", "", tag, flags=re.IGNORECASE)
+    return f"{base}:{normalized_tag}" if normalized_tag != tag else model_name
+
+
+def _strip_ollama_size_tag(model_name: str) -> str:
+    """Fall back from canonical cloud variants like ``gemma4:31b`` to family."""
+    if ":" not in model_name:
+        return model_name
+    base, tag = model_name.rsplit(":", 1)
+    if re.fullmatch(r"\d+(?:\.\d+)?[bkmt](?:-[a-z0-9._-]+)?", tag, re.IGNORECASE):
+        return base
+    return model_name
+
+
+def get_model_override_candidates(model_name: str, provider: str | None = None) -> list[str]:
     """
     Return ordered candidate names for override lookup.
 
@@ -103,7 +122,9 @@ def get_model_override_candidates(model_name: str) -> list[str]:
 
     ordered = [model_name]
     worklist = [model_name]
-    transforms = (_strip_runtime_suffix, _strip_date_suffix, _strip_xai_release_suffix)
+    transforms = [_strip_runtime_suffix, _strip_date_suffix, _strip_xai_release_suffix]
+    if (provider or "").strip().lower() == "ollama":
+        transforms.extend((_strip_ollama_cloud_tag, _strip_ollama_size_tag))
 
     while worklist:
         current = worklist.pop(0)
@@ -160,7 +181,7 @@ def load_model_prompt_override(
         logger.warning("[MODEL_PROMPTS] PyYAML is unavailable; skipping prompt overrides")
         return empty
 
-    for candidate in get_model_override_candidates(model):
+    for candidate in get_model_override_candidates(model, provider=provider):
         path = _build_override_path(root, provider, candidate)
         if not path.exists():
             continue

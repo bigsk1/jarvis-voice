@@ -19,26 +19,48 @@ from model_catalog import (
     get_provider_catalog,
     get_provider_model_options,
 )
-from ollama_utils import get_ollama_base_urls, request_ollama, is_ollama_cloud_model
+from ollama_utils import request_ollama, is_ollama_cloud_model
 
 
-def fetch_ollama_models(base_url: str = None, mode: str = None) -> list:
+def fetch_ollama_models(
+    base_url: str = None,
+    mode: str = None,
+    selected_models: list[str] | None = None,
+) -> list:
     """Fetch available models from Ollama server, filtered by mode when useful."""
+    mode = (mode or 'cloud').strip().lower()
+    direct_cloud_api = mode == 'cloud' and bool(
+        (get_jarvis_setting('OLLAMA_API_KEY', '') or '').strip()
+    )
+    allow_local_cloud = mode == 'local' and str(
+        get_jarvis_setting('ALLOW_OLLAMA_CLOUD', 'false') or ''
+    ).strip().lower() in {'true', '1', 'yes', 'on'}
     try:
         response, used_base_url = request_ollama(
             "get",
             "/api/tags",
-            base_urls=get_ollama_base_urls() if base_url is None else None,
-            base_url=base_url,
+            # Direct cloud discovery must not be pinned back to the daemon URL.
+            base_url=None if direct_cloud_api else base_url,
             timeout=5,
+            cloud_access=(mode == "cloud"),
         )
         base_url = used_base_url
         if response.status_code == 200:
             data = response.json()
+            raw_models = data.get('models', [])
+            if direct_cloud_api:
+                # ollama.com does not promise a useful response order. Its
+                # modified_at values track catalog releases well enough to
+                # present a stable newest-first list without maintaining one.
+                raw_models = sorted(
+                    raw_models,
+                    key=lambda item: item.get('modified_at') or '',
+                    reverse=True,
+                )
             models = []
-            for model in data.get('models', []):
+            for model in raw_models:
                 name = model.get('name', '')
-                is_cloud_model = is_ollama_cloud_model(name)
+                is_cloud_model = direct_cloud_api or is_ollama_cloud_model(name)
                 # Get size info if available
                 size_gb = model.get('size', 0) / (1024**3)
                 size_str = f"{size_gb:.1f}GB" if size_gb > 0 else ''
@@ -49,14 +71,36 @@ def fetch_ollama_models(base_url: str = None, mode: str = None) -> list:
                     '_is_cloud': is_cloud_model,
                 })
 
-            if mode == 'cloud':
+            if mode == 'cloud' and not direct_cloud_api:
                 models = [m for m in models if m.get('_is_cloud')]
-            elif mode == 'local':
+            elif mode == 'local' and not allow_local_cloud:
                 models = [m for m in models if not m.get('_is_cloud')]
 
             for model in models:
                 model.pop('_is_cloud', None)
-            return models
+            configured_model = (
+                (get_jarvis_setting('OLLAMA_CLOUD_MODEL', '') or '').strip()
+                if mode == 'cloud'
+                else (get_jarvis_setting('OLLAMA_MODEL', '') or '').strip()
+            )
+            selected = [str(value).strip() for value in (selected_models or []) if str(value).strip()]
+            pinned_ids = list(dict.fromkeys([*selected, configured_model] if configured_model else selected))
+            by_id = {model.get('id'): model for model in models}
+            pinned = []
+            for model_id in pinned_ids:
+                model = by_id.pop(model_id, None) or {
+                    'id': model_id,
+                    'name': model_id,
+                    'context': 'cloud' if (direct_cloud_api or is_ollama_cloud_model(model_id)) else 'local',
+                }
+                labels = []
+                if model_id in selected:
+                    labels.append('selected')
+                if model_id == configured_model:
+                    labels.append('env default')
+                model = {**model, 'name': f"{model_id} ({', '.join(labels)})"}
+                pinned.append(model)
+            return [*pinned, *by_id.values()]
     except Exception as e:
         print(f"[Settings] Failed to fetch Ollama models: {e}")
     
@@ -70,7 +114,7 @@ def fetch_ollama_models(base_url: str = None, mode: str = None) -> list:
         )
     else:
         default_model = get_jarvis_setting('OLLAMA_MODEL', 'qwen3')
-    fallback_context = 'cloud' if is_ollama_cloud_model(default_model) else 'local'
+    fallback_context = 'cloud' if (direct_cloud_api or is_ollama_cloud_model(default_model)) else 'local'
     return [{'id': default_model, 'name': f'{default_model} (default)', 'context': fallback_context}]
 
 TTS_PROVIDERS = {
@@ -143,6 +187,7 @@ class SettingsManager:
         'OWNER_NAME',
         'LLM_PROVIDER',
         'OLLAMA_CLOUD_MODEL',
+        'ALLOW_OLLAMA_CLOUD',
         'TTS_PROVIDER',
         'IMAGE_TOOL_PROVIDER',
         'VIDEO_TOOL_PROVIDER',
@@ -274,9 +319,15 @@ class SettingsManager:
                 if normalized in {str(value).lower() for value in known_ids if value}:
                     return False
 
-        # Ollama Cloud identifiers must be cloud-tagged; local Ollama must not
-        # accidentally retain a :cloud model when switching modes.
-        return is_ollama_cloud_model(model) == (self.mode == 'cloud')
+        cloud_tagged = is_ollama_cloud_model(model)
+        if self.mode == 'cloud':
+            # Direct ollama.com IDs are canonical names without a required
+            # :cloud suffix. Signed-in-daemon cloud cards remain tagged.
+            return bool((get_jarvis_setting('OLLAMA_API_KEY', '') or '').strip()) or cloud_tagged
+        allow_local_cloud = str(
+            get_jarvis_setting('ALLOW_OLLAMA_CLOUD', 'false') or ''
+        ).strip().lower() in {'true', '1', 'yes', 'on'}
+        return not cloud_tagged or allow_local_cloud
     
     def _is_sensitive(self, key: str) -> bool:
         """Check if a setting key is sensitive"""
@@ -631,11 +682,34 @@ class SettingsManager:
         )
         if ollama_needed:
             ollama_url = get_jarvis_setting('OLLAMA_BASE_URL', 'http://localhost:11434')
-            models['ollama'] = fetch_ollama_models(ollama_url, mode=self.mode)
+            selected_models = []
+            effective_llm_provider = (
+                mode_overrides.get('llm_provider')
+                or get_jarvis_setting('LLM_PROVIDER', 'ollama' if self.mode == 'local' else 'xai')
+            )
+            if effective_llm_provider == 'ollama' and mode_overrides.get('llm_model'):
+                selected_models.append(mode_overrides['llm_model'])
+            effective_guard_provider = (
+                mode_overrides.get('completion_guard_eval_provider')
+                or get_jarvis_setting(
+                    'JARVIS_COMPLETION_GUARD_EVAL_PROVIDER',
+                    'ollama' if self.mode == 'local' else 'openai',
+                )
+            )
+            if effective_guard_provider == 'ollama' and mode_overrides.get('completion_guard_eval_model'):
+                selected_models.append(mode_overrides['completion_guard_eval_model'])
+            models['ollama'] = fetch_ollama_models(
+                ollama_url,
+                mode=self.mode,
+                selected_models=selected_models,
+            )
         else:
             # Fallback when Ollama is not the active provider.
             default_model = self._ollama_env_default_model()
-            context = 'cloud' if is_ollama_cloud_model(default_model) else 'local'
+            direct_cloud_api = self.mode == 'cloud' and bool(
+                (get_jarvis_setting('OLLAMA_API_KEY', '') or '').strip()
+            )
+            context = 'cloud' if (direct_cloud_api or is_ollama_cloud_model(default_model)) else 'local'
             models['ollama'] = [{'id': default_model, 'name': f'{default_model}', 'context': context}]
         
         return models
@@ -684,10 +758,13 @@ class SettingsManager:
     def _get_api_key_status(self) -> dict[str, bool]:
         """Check which API keys are configured"""
         self._ensure_jarvis_config()
-        keys = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 
+        keys = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'OLLAMA_API_KEY',
                 'GEMINI_API_KEY', 'ELEVENLABS_API_KEY', 'VAPI_API_KEY',
                 'COINGECKO_API_KEY', 'OPENWEATHER_API_KEY', 'CLOUDFLARE_API_TOKEN']
-        return {key: bool(get_jarvis_setting(key, '')) for key in keys}
+        return {
+            key: bool(str(get_jarvis_setting(key, '') or '').strip())
+            for key in keys
+        }
 
     def _provider_availability_entry(self, provider: str) -> dict[str, Any]:
         """Availability status for one provider (booleans/reasons only, never values)."""
@@ -695,11 +772,15 @@ class SettingsManager:
         if provider == 'ollama':
             if self.mode == 'local':
                 return {'status': 'available', 'reason': None}
-            # Ollama Cloud availability depends on host sign-in, not an env
-            # key Jarvis owns; the client merges /api/ollama/cloud-status.
+            if get_jarvis_setting('OLLAMA_API_KEY', '').strip():
+                return {
+                    'status': 'available',
+                    'reason': 'OLLAMA_API_KEY configured (direct ollama.com API)',
+                }
+            # Daemon sign-in is checked live via /api/ollama/cloud-status.
             return {
                 'status': 'unknown',
-                'reason': 'Depends on Ollama host sign-in (checked live)',
+                'reason': 'Depends on Ollama daemon sign-in (checked live)',
             }
         required_key = PROVIDER_KEY_REQUIREMENTS.get(provider)
         if required_key is None:
@@ -799,12 +880,12 @@ class SettingsManager:
         
         # Add status for common API keys (don't show value)
         api_keys = [
-            'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY',
+            'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'OLLAMA_API_KEY',
             'GEMINI_API_KEY', 'ELEVENLABS_API_KEY', 'VAPI_API_KEY',
             'COINGECKO_API_KEY', 'OPENWEATHER_API_KEY', 'CLOUDFLARE_API_TOKEN',
         ]
         for key in api_keys:
-            value = get_jarvis_setting(key, '')
+            value = str(get_jarvis_setting(key, '') or '').strip()
             settings[key] = {
                 'value': '***configured***' if value else '',
                 'sensitive': True,

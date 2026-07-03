@@ -1029,7 +1029,8 @@ a financial advisor for personalized guidance.
 - `XAI_MODEL` - xAI Grok model (`grok-4.3` recommended; see `XAI_PROVIDER.md` for `grok-build-0.1` and alternatives)
 - `ANTHROPIC_MODEL` - Claude model
 - `OLLAMA_MODEL` - Local-mode Ollama model (`qwen3.5:latest` in `local.env.example`)
-- `OLLAMA_CLOUD_MODEL` - Cloud-mode Ollama model; must use a recognized `*:cloud` or `*-cloud` tag
+- `OLLAMA_CLOUD_MODEL` - Cloud-mode Ollama model; signed-daemon mode requires a cloud tag, while direct API mode accepts canonical ollama.com IDs
+- `ALLOW_OLLAMA_CLOUD` - Local-mode opt-in for signed-daemon cloud cards; defaults to `false` and never enables direct API routing
 
 ---
 

@@ -550,14 +550,16 @@ nano config/cloud.env  # Configure the chosen provider and credentials/daemon
 # XAI_API_KEY="xai-..."  # Get from https://console.x.ai
 # XAI_MODEL="grok-4.3"  # 1M context, configurable reasoning effort
 
-# Ollama Cloud alternative (requires a signed-in Ollama daemon):
+# Ollama Cloud alternative (signed-in daemon path):
 # LLM_PROVIDER="ollama"
 # OLLAMA_BASE_URL="http://your-ollama-host:11434"
 # OLLAMA_CLOUD_MODEL="minimax-m3:cloud"
+# Or set OLLAMA_API_KEY for direct ollama.com access; see docs/ollama/README.md.
 
 # For local mode (Ollama)
 cp config/local.env.example config/local.env
 nano config/local.env  # Adjust Ollama endpoint
+# ALLOW_OLLAMA_CLOUD=true optionally exposes signed-daemon cloud cards locally.
 ```
 
 See [`config/README.md`](config/README.md), [`docs/XAI_PROVIDER.md`](docs/XAI_PROVIDER.md),
