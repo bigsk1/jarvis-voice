@@ -742,6 +742,14 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
     # then falls back to cloud.env default. LLM-passed provider is ignored
     # when a config/override value exists.
     provider = get_config_value('IMAGE_TOOL_PROVIDER', provider or 'gemini').lower()
+
+    # Credential preflight: fail with configured alternatives instead of a
+    # provider-specific API error. Never auto-switches providers.
+    from tool_availability import media_provider_preflight
+    preflight_error = media_provider_preflight(provider)
+    if preflight_error:
+        raise ValueError(preflight_error)
+
     
     if reference_image:
         mode_label = "editing" if reference_image else "generating"

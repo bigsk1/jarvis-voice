@@ -82,6 +82,21 @@ def cmd_build(args):
             print()
             print("📋 To reject:")
             print(f"   ./bin/build-tool reject {result.tool_name}")
+
+        elif result.status == "pending_api_key":
+            env_var = (result.report_card or {}).get('suggested_env_var') or 'the required API key'
+            print(f"🔑 Tool pending API key: {result.tool_name}")
+            print(f"   Requires: {env_var}")
+            print(f"   Add it to config/{args.mode}.env, then approve.")
+            print(f"   (Static checks passed; the live test run is deferred until approval.)")
+            if result.needs_packages:
+                print(f"   Also needs packages: {', '.join(result.needs_packages)}")
+            print()
+            print("📋 To approve (after adding the key):")
+            print(f"   ./bin/build-tool approve {result.tool_name}")
+            print()
+            print("📋 To reject:")
+            print(f"   ./bin/build-tool reject {result.tool_name}")
     else:
         if result.status == "skipped_mcp":
             print(f"⏭️  Skipped: MCP tool already exists")
@@ -128,13 +143,17 @@ def cmd_approve(args):
         print(f"❌ Tool not found in pending: {tool_name}")
         return
     
-    # Load report to check packages
+    # Load report to check packages and the original build mode
     report_path = PENDING_DIR / f"{tool_name}.report.json"
     needs_packages = []
+    build_mode = 'cloud'
     if report_path.exists():
         with open(report_path) as f:
             report = json.load(f)
         needs_packages = report.get('packages_new', [])
+        build_mode = report.get('mode') or 'cloud'
+        if build_mode not in ('cloud', 'local'):
+            build_mode = 'cloud'
     
     if needs_packages and not args.install_packages:
         print(f"⚠️  Tool needs packages: {', '.join(needs_packages)}")
@@ -145,16 +164,17 @@ def cmd_approve(args):
         print(f"  3. Reject: ./bin/build-tool reject {tool_name}")
         return
     
-    if approve_pending_tool(tool_name, install_packages=args.install_packages):
-        print(f"✅ Approved: {tool_name}")
+    ok, message = approve_pending_tool(tool_name, install_packages=args.install_packages)
+    if ok:
+        print(f"✅ {message}")
         print(f"   Moved to: skills/auto-tools/")
         if needs_packages and args.install_packages:
             print(f"   Installed: {', '.join(needs_packages)}")
         print()
         print("🔄 Run sync to enable:")
-        print(f"   ./bin/sync-tools.py cloud")
+        print(f"   ./bin/sync-tools.py {build_mode}")
     else:
-        print(f"❌ Failed to approve: {tool_name}")
+        print(f"❌ Failed to approve: {message}")
 
 
 def cmd_reject(args):

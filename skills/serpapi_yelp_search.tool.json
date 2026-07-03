@@ -19,7 +19,10 @@
         "description": "Location like New York, NY, USA. Defaults to JARVIS_DEFAULT_LOCATION when omitted."
       },
       "attrs": {
-        "type": ["string", "array"],
+        "type": [
+          "string",
+          "array"
+        ],
         "items": {
           "type": "string"
         },
@@ -62,7 +65,9 @@
         "description": "If true, include raw SerpApi payloads in data.raw and review_data.raw."
       }
     },
-    "required": ["find_desc"]
+    "required": [
+      "find_desc"
+    ]
   },
   "permissions": {
     "dangerous": false,
@@ -70,5 +75,11 @@
     "network": true,
     "filesystem": false,
     "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "SERP_API_KEY"
+    ],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file."
   }
 }

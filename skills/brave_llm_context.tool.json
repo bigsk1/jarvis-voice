@@ -28,7 +28,12 @@
       },
       "freshness": {
         "type": "string",
-        "enum": ["pd", "pw", "pm", "py"],
+        "enum": [
+          "pd",
+          "pw",
+          "pm",
+          "py"
+        ],
         "description": "Optional freshness filter: pd=24h, pw=7d, pm=31d, py=365d. For custom ranges, use freshness_range."
       },
       "freshness_range": {
@@ -57,7 +62,12 @@
       },
       "context_threshold_mode": {
         "type": "string",
-        "enum": ["strict", "balanced", "lenient", "disabled"],
+        "enum": [
+          "strict",
+          "balanced",
+          "lenient",
+          "disabled"
+        ],
         "description": "Relevance filtering mode. Use strict for precision, balanced by default, lenient for broad recall."
       },
       "enable_local": {
@@ -105,7 +115,9 @@
         "description": "If true, include the full raw Brave response in data.raw. Default false to keep context compact."
       }
     },
-    "required": ["query"]
+    "required": [
+      "query"
+    ]
   },
   "permissions": {
     "dangerous": false,
@@ -113,5 +125,12 @@
     "network": true,
     "filesystem": false,
     "auto_approve": true
+  },
+  "availability": {
+    "any_of_env": [
+      "BRAVE_API_KEY",
+      "BRAVE_SEARCH_API_KEY"
+    ],
+    "setup_hint": "Set BRAVE_API_KEY in the active mode env file."
   }
 }

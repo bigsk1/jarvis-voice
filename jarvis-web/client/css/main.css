@@ -335,6 +335,15 @@ body {
   color: var(--bg-primary);
 }
 
+.tool-badge.unavailable {
+  background: var(--warning, #e0a800);
+  color: var(--bg-primary, #111);
+}
+
+.tool-item.tool-unavailable {
+  opacity: 0.65;
+}
+
 /* Tools section header */
 .tools-section-header {
   font-size: var(--text-xs);

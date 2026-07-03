@@ -13,8 +13,10 @@ Usage (run with -h / --help on this script or on a subcommand for full flags):
 
   ./bin/manage-tools.py list
   ./bin/manage-tools.py list -v
-  ./bin/manage-tools.py list --verbose
-      List all tools with effective enabled/disabled (merges .tool.json + active profile).
+  ./bin/manage-tools.py --mode local list
+      List all tools with effective enabled/disabled (merges .tool.json + active profile)
+      and credential availability for the selected mode. --mode picks the env file
+      (cloud/local); default follows the active scope / JARVIS_MODE / cloud.
 
   ./bin/manage-tools.py enable <tool_name>
   ./bin/manage-tools.py disable <tool_name>
@@ -42,6 +44,8 @@ _EXAMPLES = """
 Examples:
   ./bin/manage-tools.py list
   ./bin/manage-tools.py list -v
+  ./bin/manage-tools.py --mode local list
+  ./bin/manage-tools.py --mode cloud profile export
   ./bin/manage-tools.py disable weather
   ./bin/manage-tools.py enable weather
   ./bin/manage-tools.py enable-all
@@ -88,10 +92,11 @@ def iter_tool_files(skills_dir: Path):
 
 
 def list_tools(verbose: bool = False) -> None:
-    """List all tools and their enabled status."""
+    """List all tools with effective enabled status and credential availability."""
     skills_dir = get_skills_dir()
     tools = []
     _ensure_lib_path()
+    from tool_availability import check_tool_availability, describe_missing
     from tool_profiles import effective_enabled, get_active_profile_name, load_active_profile_overrides
 
     profile_name = get_active_profile_name()
@@ -105,30 +110,42 @@ def list_tools(verbose: bool = False) -> None:
             base_enabled = config.get('enabled', True)  # Default to True for backward compatibility
             name = config.get('name', tool_file.stem)
             eff = effective_enabled(name, base_enabled, overrides)
-            status = f"{GREEN}✓ enabled{RESET}" if eff else f"{RED}⊝ disabled{RESET}"
+            availability = check_tool_availability(config)
+            if not eff:
+                status = f"{RED}⊝ disabled{RESET}"
+            elif not availability.available:
+                status = f"{YELLOW}🔒 unavailable{RESET}"
+            else:
+                status = f"{GREEN}✓ enabled{RESET}"
             tools.append({
                 'name': name,
                 'enabled': eff,
+                'available': availability.available,
                 'base_enabled': base_enabled,
                 'file': tool_file.name,
                 'description': config.get('description', 'No description')[:60]
             })
 
+            extra = ""
+            if eff and not availability.available:
+                extra = f" {YELLOW}({describe_missing(availability)}){RESET}"
+            elif verbose and name in overrides and base_enabled != eff:
+                extra = f" {YELLOW}(profile {profile_name}){RESET}"
+
             if verbose:
-                extra = ""
-                if name in overrides and base_enabled != eff:
-                    extra = f" {YELLOW}(profile {profile_name}){RESET}"
                 print(f"{status:20} {tools[-1]['name']:25} {tools[-1]['description']}{extra}")
             else:
-                print(f"{status:20} {tools[-1]['name']}")
+                print(f"{status:20} {tools[-1]['name']}{extra}")
         except Exception as e:
             print(f"{RED}✗ Error loading {tool_file.name}: {e}{RESET}")
     
     # Summary
-    enabled_count = sum(1 for t in tools if t['enabled'])
-    disabled_count = len(tools) - enabled_count
+    enabled_count = sum(1 for t in tools if t['enabled'] and t['available'])
+    unavailable_count = sum(1 for t in tools if t['enabled'] and not t['available'])
+    disabled_count = sum(1 for t in tools if not t['enabled'])
     print(
-        f"\n{BLUE}Total: {len(tools)} tools ({enabled_count} enabled, {disabled_count} disabled) — "
+        f"\n{BLUE}Total: {len(tools)} tools ({enabled_count} enabled, "
+        f"{unavailable_count} unavailable (missing config), {disabled_count} disabled) — "
         f"profile: {profile_name}{RESET}"
     )
 
@@ -289,8 +306,9 @@ def cmd_profile_show() -> None:
 
 
 def cmd_profile_export() -> None:
-    """Print effective enabled map (base from .tool.json merged with profile) as JSON."""
+    """Print effective enabled map (base + profile + availability) as JSON."""
     _ensure_lib_path()
+    from tool_availability import check_tool_availability
     from tool_profiles import effective_enabled, get_active_profile_name, load_active_profile_overrides
 
     skills_dir = get_skills_dir()
@@ -303,11 +321,18 @@ def cmd_profile_export() -> None:
                 config = json.load(f)
             name = config.get('name', tool_file.stem)
             base = config.get('enabled', True)
-            out["tools"][name] = {
+            availability = check_tool_availability(config)
+            entry = {
                 "file": str(tool_file.relative_to(get_project_root())),
                 "base_enabled": base,
                 "effective_enabled": effective_enabled(name, base, overrides),
+                "available": availability.available,
             }
+            if not availability.available:
+                entry["missing_requirements"] = list(availability.missing)
+                if availability.setup_hint:
+                    entry["setup_hint"] = availability.setup_hint
+            out["tools"][name] = entry
         except Exception as e:
             out["tools"][tool_file.name] = {"error": str(e)}
     print(json.dumps(out, indent=2))
@@ -319,6 +344,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=_EXAMPLES
         + "\nSee the module docstring at the top of this file for full usage and environment notes.\n",
+    )
+    parser.add_argument(
+        '--mode', choices=['cloud', 'local'], default=None,
+        help='Config mode for profile/availability inspection (default: active scope / JARVIS_MODE / cloud)'
     )
     
     subparsers = parser.add_subparsers(dest='command', help='Command to execute')
@@ -352,28 +381,37 @@ def main():
     if not args.command:
         parser.print_help()
         sys.exit(1)
-    
-    if args.command == 'list':
-        list_tools(args.verbose)
-    elif args.command == 'enable':
-        enable_tool(args.tool_name)
-    elif args.command == 'disable':
-        disable_tool(args.tool_name)
-    elif args.command == 'enable-all':
-        enable_all_tools()
-    elif args.command == 'init':
-        add_enabled_field()
-    elif args.command == 'profile':
-        if not getattr(args, 'profile_cmd', None):
-            prof.print_help()
-            sys.exit(1)
-        pc = args.profile_cmd
-        if pc == 'list':
-            cmd_profile_list()
-        elif pc == 'show':
-            cmd_profile_show()
-        elif pc == 'export':
-            cmd_profile_export()
+
+    # Inspection commands read config (profile name, availability keys), so
+    # they must run inside an explicit config scope. Otherwise results could
+    # depend on stale shell environment state.
+    _ensure_lib_path()
+    from config_loader import config_scope, get_active_config_mode
+    mode = get_active_config_mode(args.mode)
+
+    with config_scope(mode):
+        if args.command == 'list':
+            print(f"{BLUE}Mode: {mode}{RESET}")
+            list_tools(args.verbose)
+        elif args.command == 'enable':
+            enable_tool(args.tool_name)
+        elif args.command == 'disable':
+            disable_tool(args.tool_name)
+        elif args.command == 'enable-all':
+            enable_all_tools()
+        elif args.command == 'init':
+            add_enabled_field()
+        elif args.command == 'profile':
+            if not getattr(args, 'profile_cmd', None):
+                prof.print_help()
+                sys.exit(1)
+            pc = args.profile_cmd
+            if pc == 'list':
+                cmd_profile_list()
+            elif pc == 'show':
+                cmd_profile_show()
+            elif pc == 'export':
+                cmd_profile_export()
 
 
 if __name__ == '__main__':

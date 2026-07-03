@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "generate_image",
-  "description": "🎨 Generate or edit AI images with Gemini, OpenAI, or xAI. Create pictures, artwork, infographics, visualizations. Edit existing images by providing a reference_image (stash ref, path, or URL). Use when user says 'generate an image', 'create a picture', 'make artwork', 'draw', 'visualize', 'edit this image', 'change the image'. PROVIDERS: Gemini (default) has Google Search grounding; OpenAI has best text rendering; xAI is fast and cheap. All 3 support image-to-image editing. Images save to stash for email, print, canvas, PDF.",
+  "description": "\ud83c\udfa8 Generate or edit AI images with Gemini, OpenAI, or xAI. Create pictures, artwork, infographics, visualizations. Edit existing images by providing a reference_image (stash ref, path, or URL). Use when user says 'generate an image', 'create a picture', 'make artwork', 'draw', 'visualize', 'edit this image', 'change the image'. PROVIDERS: Gemini (default) has Google Search grounding; OpenAI has best text rendering; xAI is fast and cheap. All 3 support image-to-image editing. Images save to stash for email, print, canvas, PDF.",
   "script": "generate_image.py",
   "parameters": {
     "type": "object",
@@ -16,22 +16,44 @@
       },
       "provider": {
         "type": "string",
-        "enum": ["gemini", "openai", "xai"],
+        "enum": [
+          "gemini",
+          "openai",
+          "xai"
+        ],
         "description": "Image provider: 'gemini' (default, grounding for real-time data), 'openai' (GPT Image, best text/instruction following), 'xai' (grok-imagine-image, fast & cheap). Uses IMAGE_TOOL_PROVIDER from config if not specified."
       },
       "aspect_ratio": {
         "type": "string",
-        "enum": ["square", "landscape", "portrait", "wide", "1:1", "16:9", "9:16", "4:3", "3:4", "2:3", "3:2", "4:5", "5:4"],
+        "enum": [
+          "square",
+          "landscape",
+          "portrait",
+          "wide",
+          "1:1",
+          "16:9",
+          "9:16",
+          "4:3",
+          "3:4",
+          "2:3",
+          "3:2",
+          "4:5",
+          "5:4"
+        ],
         "description": "Image shape: 'square' (1:1), 'landscape'/'wide' (16:9 cinematic), 'portrait' (9:16), or exact ratios. Do not use 21:9; xAI rejects it. OpenAI maps to closest size."
       },
       "image_size": {
         "type": "string",
-        "enum": ["1K", "2K", "4K"],
+        "enum": [
+          "1K",
+          "2K",
+          "4K"
+        ],
         "description": "Resolution/Quality: '1K' (fast/low), '2K' (default/medium), '4K' (best/high). For OpenAI gpt-image-2, also maps to larger size dimensions where supported."
       },
       "use_grounding": {
         "type": "boolean",
-        "description": "🌐 GEMINI ONLY: Enable Google Search grounding for REAL-TIME data. Use for: weather infographics, stock charts, current events, sports scores. Gemini searches web first, then generates accurate imagery."
+        "description": "\ud83c\udf10 GEMINI ONLY: Enable Google Search grounding for REAL-TIME data. Use for: weather infographics, stock charts, current events, sports scores. Gemini searches web first, then generates accurate imagery."
       },
       "style": {
         "type": "string",
@@ -51,7 +73,11 @@
       },
       "output_format": {
         "type": "string",
-        "enum": ["png", "jpeg", "webp"],
+        "enum": [
+          "png",
+          "jpeg",
+          "webp"
+        ],
         "description": "OPENAI ONLY: Output format. 'png' (default, lossless), 'jpeg' (faster, smaller), 'webp' (modern, good compression). Transparent requires png/webp."
       },
       "n": {
@@ -63,7 +89,9 @@
         "description": "Save to stash for use with email/print/canvas/PDF (default: true)"
       }
     },
-    "required": ["prompt"]
+    "required": [
+      "prompt"
+    ]
   },
   "permissions": {
     "dangerous": false,
@@ -71,5 +99,27 @@
     "network": true,
     "filesystem": true,
     "auto_approve": true
+  },
+  "availability": {
+    "provider_setting": "IMAGE_TOOL_PROVIDER",
+    "provider_default": "gemini",
+    "provider_requirements": {
+      "gemini": {
+        "all_of_env": [
+          "GEMINI_API_KEY"
+        ]
+      },
+      "openai": {
+        "all_of_env": [
+          "OPENAI_API_KEY"
+        ]
+      },
+      "xai": {
+        "all_of_env": [
+          "XAI_API_KEY"
+        ]
+      }
+    },
+    "setup_hint": "Configure at least one image provider API key (GEMINI_API_KEY, OPENAI_API_KEY, or XAI_API_KEY) in the active mode env file."
   }
 }

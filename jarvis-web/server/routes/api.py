@@ -376,14 +376,8 @@ def update_web_settings():
         return jsonify({'ok': False, 'error': 'Mode must be "cloud" or "local"'}), 400
 
     settings = get_settings_manager()
-    if requested_mode is not None and not settings.set_mode(requested_mode):
-        return jsonify({
-            'ok': False,
-            'error': 'Failed to persist mode in jarvis-web/config/web_config.json'
-        }), 500
-    
-    # Use new override system if structured data provided
-    if any(k in data for k in [
+
+    structured = any(k in data for k in [
         'llm_provider', 'llm_model', 'image_provider', 'video_provider',
         'response_style', 'qa_word_limit', 'multi_turn_word_limit',
         'completion_guard_enabled', 'completion_guard_mode',
@@ -391,8 +385,33 @@ def update_web_settings():
         'completion_guard_include_qa', 'completion_guard_include_tool_tasks',
         'completion_guard_auto_threshold', 'completion_guard_eval_provider', 'completion_guard_eval_model',
         'tts_provider', 'tool_similarity', 'memory_similarity', 'tts_enabled'
-    ]):
-        success = settings.save_web_overrides(data)
+    ])
+
+    if structured:
+        # Validate the full payload against the REQUESTED mode before
+        # persisting anything (including the mode itself) so a rejected
+        # request leaves web_config.json completely untouched.
+        from ..services.settings_manager import SettingsValidationError
+        if requested_mode is not None:
+            settings.mode = requested_mode  # in-memory only; persisted below
+        try:
+            settings.validate_web_overrides(data)
+        except SettingsValidationError as e:
+            return jsonify({'ok': False, **e.to_dict()}), 400
+
+    if requested_mode is not None and not settings.set_mode(requested_mode):
+        return jsonify({
+            'ok': False,
+            'error': 'Failed to persist mode in jarvis-web/config/web_config.json'
+        }), 500
+
+    # Use new override system if structured data provided
+    if structured:
+        try:
+            success = settings.save_web_overrides(data)
+        except SettingsValidationError as e:
+            # save_web_overrides re-validates before mutating; nothing saved.
+            return jsonify({'ok': False, **e.to_dict()}), 400
         # Force reload config cache so changes take effect immediately
         reload_web_config()
         return jsonify({

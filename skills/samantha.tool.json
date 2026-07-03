@@ -17,7 +17,11 @@
       },
       "priority": {
         "type": "string",
-        "enum": ["urgent", "normal", "background"],
+        "enum": [
+          "urgent",
+          "normal",
+          "background"
+        ],
         "description": "Task priority. 'urgent' = needs immediate attention, 'normal' = standard (default), 'background' = can wait/lower priority.",
         "default": "normal"
       },
@@ -27,7 +31,9 @@
         "default": 240
       }
     },
-    "required": ["message"]
+    "required": [
+      "message"
+    ]
   },
   "permissions": {
     "dangerous": false,
@@ -40,5 +46,14 @@
     "message": "Hello, this is a test from Jarvis. Please respond briefly.",
     "timeout": 30
   },
-  "expected_output_contains": ["ok", "response"]
+  "expected_output_contains": [
+    "ok",
+    "response"
+  ],
+  "availability": {
+    "all_of_env": [
+      "SAMANTHA_GATEWAY_TOKEN"
+    ],
+    "setup_hint": "Set SAMANTHA_GATEWAY_TOKEN in the active mode env file."
+  }
 }

@@ -96,6 +96,41 @@ COMPLETION_GUARD_MODE_OPTIONS = {
     'auto': {'name': 'Auto', 'description': 'Evaluate the final raw answer and auto-repair when confidence is low'}
 }
 
+# Provider -> required API key env var (presence checked, value never exposed).
+# Providers absent from this map are either always available (local engines)
+# or handled specially (ollama: live sign-in check in cloud mode).
+PROVIDER_KEY_REQUIREMENTS = {
+    'openai': 'OPENAI_API_KEY',
+    'anthropic': 'ANTHROPIC_API_KEY',
+    'xai': 'XAI_API_KEY',
+    'gemini': 'GEMINI_API_KEY',
+    'elevenlabs': 'ELEVENLABS_API_KEY',
+}
+
+# Short UI labels for credential availability. Native select option text does
+# not wrap consistently (especially on mobile), so keep these deliberately
+# compact instead of exposing env filenames or long setup instructions there.
+PROVIDER_DISPLAY_NAMES = {
+    'openai': 'OpenAI',
+    'anthropic': 'Anthropic',
+    'xai': 'xAI',
+    'gemini': 'Gemini',
+    'elevenlabs': 'ElevenLabs',
+}
+
+
+class SettingsValidationError(ValueError):
+    """A web settings save was rejected before any mutation occurred."""
+
+    def __init__(self, field: str, provider: str, reason: str):
+        super().__init__(reason)
+        self.field = field
+        self.provider = provider
+        self.reason = reason
+
+    def to_dict(self) -> dict[str, str]:
+        return {'field': self.field, 'provider': self.provider, 'reason': self.reason}
+
 
 class SettingsManager:
     """Manages settings for the web UI with override support"""
@@ -556,6 +591,9 @@ class SettingsManager:
             
             # API Key status
             'api_keys': self._get_api_key_status(),
+
+            # Per-domain provider availability (status/reason only, no values)
+            'provider_availability': self.get_provider_availability(),
             
             # Other Jarvis settings
             'owner_name': get_jarvis_setting('OWNER_NAME', 'Boss'),
@@ -650,6 +688,100 @@ class SettingsManager:
                 'GEMINI_API_KEY', 'ELEVENLABS_API_KEY', 'VAPI_API_KEY',
                 'COINGECKO_API_KEY', 'OPENWEATHER_API_KEY', 'CLOUDFLARE_API_TOKEN']
         return {key: bool(get_jarvis_setting(key, '')) for key in keys}
+
+    def _provider_availability_entry(self, provider: str) -> dict[str, Any]:
+        """Availability status for one provider (booleans/reasons only, never values)."""
+        provider = (provider or '').strip().lower()
+        if provider == 'ollama':
+            if self.mode == 'local':
+                return {'status': 'available', 'reason': None}
+            # Ollama Cloud availability depends on host sign-in, not an env
+            # key Jarvis owns; the client merges /api/ollama/cloud-status.
+            return {
+                'status': 'unknown',
+                'reason': 'Depends on Ollama host sign-in (checked live)',
+            }
+        required_key = PROVIDER_KEY_REQUIREMENTS.get(provider)
+        if required_key is None:
+            # Local engines (kokoro, qwen3-tts) and unrecognized providers:
+            # no static credential requirement to enforce here.
+            return {'status': 'available', 'reason': None}
+        value = get_jarvis_setting(required_key, '')
+        if value is not None and str(value).strip():
+            return {'status': 'available', 'reason': None}
+        display_name = PROVIDER_DISPLAY_NAMES.get(provider, provider.title())
+        return {
+            'status': 'unavailable',
+            'reason': f'{display_name} API key missing',
+        }
+
+    def get_provider_availability(self) -> dict[str, dict[str, dict[str, Any]]]:
+        """Per-domain provider availability for the UI (no secret values)."""
+        self._ensure_jarvis_config()
+        llm_options = self._get_llm_provider_options()
+        guard_options = ['ollama'] if self.mode == 'local' else get_catalog_providers()
+        image_options = list(get_media_catalog_providers('image'))
+        video_options = list(get_media_catalog_providers('video'))
+        tts_options = self._get_tts_provider_options()
+        return {
+            'llm': {p: self._provider_availability_entry(p) for p in llm_options},
+            'image': {p: self._provider_availability_entry(p) for p in image_options},
+            'video': {p: self._provider_availability_entry(p) for p in video_options},
+            'tts': {p: self._provider_availability_entry(p) for p in tts_options},
+            'completion_guard': {p: self._provider_availability_entry(p) for p in guard_options},
+        }
+
+    def _validate_provider_overrides(self, overrides: dict[str, Any]) -> None:
+        """Reject NEWLY selected unavailable providers before any mutation.
+
+        A provider that is already the effective value (env default or a
+        previously saved override) does not block saving unrelated settings;
+        only a change TO an unavailable provider is rejected. Raises
+        SettingsValidationError; performs no writes.
+        """
+        config = load_web_config()
+        mode_config = config.get(self.mode, {})
+
+        current_effective = {
+            'llm_provider': (
+                mode_config.get('llm_provider')
+                or get_jarvis_setting('LLM_PROVIDER', 'xai' if self.mode == 'cloud' else 'ollama')
+            ),
+            'image_provider': mode_config.get('image_provider') or get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini'),
+            'video_provider': mode_config.get('video_provider') or get_jarvis_setting('VIDEO_TOOL_PROVIDER', 'xai'),
+            'tts_provider': (
+                mode_config.get('tts_provider')
+                or get_jarvis_setting('TTS_PROVIDER', 'qwen3-tts' if self.mode == 'local' else 'elevenlabs')
+            ),
+            'completion_guard_eval_provider': (
+                mode_config.get('completion_guard_eval_provider')
+                or get_jarvis_setting(
+                    'JARVIS_COMPLETION_GUARD_EVAL_PROVIDER',
+                    'ollama' if self.mode == 'local' else 'openai',
+                )
+            ),
+        }
+
+        for field in (
+            'llm_provider', 'image_provider', 'video_provider',
+            'tts_provider', 'completion_guard_eval_provider',
+        ):
+            if field not in overrides:
+                continue
+            requested = overrides[field]
+            if not requested:
+                continue  # clearing an override is always allowed
+            requested = str(requested).strip().lower()
+            effective = str(current_effective[field] or '').strip().lower()
+            if requested == effective:
+                continue  # not a new selection
+            entry = self._provider_availability_entry(requested)
+            if entry['status'] == 'unavailable':
+                raise SettingsValidationError(
+                    field=field,
+                    provider=requested,
+                    reason=entry['reason'] or f"Provider '{requested}' is not configured",
+                )
     
     def get_settings_with_status(self) -> dict[str, dict]:
         """Return settings with configured status (for backward compat)"""
@@ -685,9 +817,26 @@ class SettingsManager:
         """Return web UI specific settings"""
         return load_web_config()
     
-    def save_web_overrides(self, overrides: dict[str, Any]) -> bool:
-        """Save web UI overrides (per-mode for LLM/image)"""
+    def validate_web_overrides(self, overrides: dict[str, Any]) -> None:
+        """Validate a settings payload without mutating anything.
+
+        Raises SettingsValidationError when the payload newly selects a
+        provider whose credentials are not configured. Used by the route to
+        validate BEFORE persisting anything (including a mode change), so a
+        rejected request leaves web_config.json completely untouched.
+        """
         self._ensure_jarvis_config()
+        self._validate_provider_overrides(overrides)
+
+    def save_web_overrides(self, overrides: dict[str, Any]) -> bool:
+        """Save web UI overrides (per-mode for LLM/image).
+
+        Raises SettingsValidationError (mapped to HTTP 400 by the route)
+        BEFORE any mutation when the request newly selects a provider whose
+        credentials are not configured. Unrelated settings remain saveable
+        even when an existing env-default provider lacks credentials.
+        """
+        self.validate_web_overrides(overrides)
         config = load_web_config()
         
         # Ensure mode section exists

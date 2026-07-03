@@ -431,6 +431,15 @@ socket.on('feedback:complete', {
 | Image Provider | AI Config → Image Provider | xAI Grok, Google Gemini, OpenAI DALL-E |
 | Video Provider | AI Config → Video Provider | xAI Grok, Google Gemini Veo |
 
+**Credential-aware provider availability:** dropdown options for providers
+whose API key is missing/blank in the active mode's env file are annotated
+(e.g. `Anthropic — ANTHROPIC_API_KEY not configured in cloud.env`) and cannot
+be newly selected. The server also validates saves: choosing an unconfigured
+provider returns HTTP 400 with `{field, provider, reason}` and nothing is
+persisted, while unrelated settings still save normally. Ollama in cloud mode
+is reported as `unknown` until the live Ollama Cloud sign-in check runs. Key
+*values* are never sent to the client — only configured/missing status.
+
 ### web_config.json
 
 ```json

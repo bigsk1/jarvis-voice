@@ -327,6 +327,10 @@ class ToolRegistry:
         self.mcp_clients: dict[str, Any] = {}
         self.mcp_manager = None
         self.mcp_unavailable: dict[str, str] = {}
+        # Tools excluded because required configuration is missing in the
+        # active mode: name -> AvailabilityResult (diagnostics for sync,
+        # manage-tools, and web discovery; never contains secret values).
+        self.unavailable_tools: dict[str, Any] = {}
         self._registry_verbose = sys.stdout.isatty() and not os.environ.get("JARVIS_JSON_MODE")
         self._profile_name = get_active_profile_name()
         self._profile_overrides = load_active_profile_overrides()
@@ -358,6 +362,7 @@ class ToolRegistry:
     def _discover_tools(self):
         """Auto-discover tools by finding .tool.json files."""
         from config_loader import get_config_value
+        from tool_availability import check_tool_availability, describe_missing
         from tool_profiles import effective_enabled
 
         verbose = self._registry_verbose
@@ -396,6 +401,16 @@ class ToolRegistry:
                 if tool_file.stem == 'opencode' and not opencode_enabled:
                     if verbose:
                         print(f"⊝ Skipping opencode tool (disabled in config)")
+                    continue
+
+                # Credential-aware availability: runs AFTER profile resolution
+                # so a profile force-enable cannot bypass a missing hard
+                # requirement. Only requirement NAMES are ever logged.
+                availability = check_tool_availability(tool_config)
+                if not availability.available:
+                    self.unavailable_tools[name] = availability
+                    if verbose:
+                        print(f"⊝ Skipping {name} (unavailable — {describe_missing(availability)})")
                     continue
 
                 schema = ToolSchema.from_json_file(str(tool_file))

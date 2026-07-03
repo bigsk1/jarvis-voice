@@ -12,7 +12,13 @@
       },
       "source_type": {
         "type": "string",
-        "enum": ["auto", "file", "url", "base64", "stash"],
+        "enum": [
+          "auto",
+          "file",
+          "url",
+          "base64",
+          "stash"
+        ],
         "description": "Source type. 'auto' (default) detects from source format.",
         "default": "auto"
       },
@@ -31,7 +37,9 @@
       },
       "tags": {
         "type": "array",
-        "items": {"type": "string"},
+        "items": {
+          "type": "string"
+        },
         "description": "Tags for the image (stored as metadata, not public)"
       },
       "provider": {
@@ -39,7 +47,9 @@
         "description": "Image provider (gemini, openai, etc) - stored as metadata"
       }
     },
-    "required": ["source"]
+    "required": [
+      "source"
+    ]
   },
   "permissions": {
     "dangerous": false,
@@ -52,5 +62,14 @@
     "source": "https://via.placeholder.com/150",
     "source_type": "url"
   },
-  "expected_output_contains": ["ok"]
+  "expected_output_contains": [
+    "ok"
+  ],
+  "availability": {
+    "all_of_env": [
+      "CLOUDFLARE_API_TOKEN",
+      "CLOUDFLARE_ACCOUNT_ID"
+    ],
+    "setup_hint": "Configure Cloudflare Images credentials (CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID) in the active mode env file."
+  }
 }

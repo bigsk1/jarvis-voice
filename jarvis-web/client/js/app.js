@@ -1040,18 +1040,27 @@ class JarvisApp {
     const desc = (tool.description || '').replace(/[📞🎵🖼️⚡🔧💾📄✉️🖨️🔔⏰💡🌐🔍💬📝🧠💰🎤]/g, '').trim();
     const isBlocked = tool.blocked;
     const isMcp = tool.source === 'mcp';
+    const needsConfig = tool.available === false;
     
     const classes = ['tool-item'];
     if (isBlocked) classes.push('tool-blocked');
     if (isMcp) classes.push('tool-mcp');
+    if (needsConfig) classes.push('tool-unavailable');
     
-    const badge = isBlocked ? '<span class="tool-badge blocked">blocked</span>' : 
+    const badge = isBlocked ? '<span class="tool-badge blocked">blocked</span>' :
+                  needsConfig ? '<span class="tool-badge unavailable" title="Missing configuration">needs config</span>' :
                   isMcp ? '<span class="tool-badge mcp">mcp</span>' : '';
     
-    const tooltipDesc = Utils.escapeHtml(Utils.truncate(desc, 2000));
+    let tooltipText = desc;
+    if (needsConfig) {
+      const missing = (tool.missing || []).join(', ');
+      tooltipText = `Needs configuration${missing ? ` (missing: ${missing})` : ''}. ` +
+        `${tool.setup_hint || ''} ${desc}`.trim();
+    }
+    const tooltipDesc = Utils.escapeHtml(Utils.truncate(tooltipText, 2000));
     
     return `
-      <div class="${classes.join(' ')}" title="${Utils.escapeHtml(tool.description || tool.name)}">
+      <div class="${classes.join(' ')}" title="${Utils.escapeHtml(tooltipText || tool.name)}">
         <div class="tool-item-name">${emoji} ${Utils.escapeHtml(tool.name)} ${badge}</div>
         <div class="tool-item-desc">${Utils.escapeHtml(Utils.truncate(desc, 500))}</div>
         <div class="tool-item-tooltip" aria-hidden="true">${tooltipDesc}</div>
@@ -1356,6 +1365,14 @@ class JarvisApp {
           ttsDefault.textContent = `⚡ override: ${s.tts.provider.value}`;
         }
 
+        // Annotate/disable providers without configured credentials.
+        // Runs after select values are set so the current selection keeps
+        // its warning label instead of being blocked.
+        this._applyProviderAvailability('setting-llm-provider', 'llm');
+        this._applyProviderAvailability('setting-image-provider', 'image');
+        this._applyProviderAvailability('setting-video-provider', 'video');
+        this._applyProviderAvailability('setting-tts-provider', 'tts');
+
         // Populate Response Style
         const responseStyleSelect = document.getElementById('setting-response-style');
         responseStyleSelect.value = s.response?.style?.is_override ? s.response.style.value : '';
@@ -1419,6 +1436,7 @@ class JarvisApp {
         if (s.completion_guard?.eval_provider?.is_override) {
           completionGuardEvalProviderDefault.textContent = `⚡ override: ${s.completion_guard.eval_provider.value}`;
         }
+        this._applyProviderAvailability('setting-completion-guard-eval-provider', 'completion_guard');
 
         const completionGuardEvalProvider = this._getCompletionGuardEvalProviderSelection(
           s.completion_guard?.eval_provider?.value
@@ -1486,7 +1504,11 @@ class JarvisApp {
         const historyLimit = s.conversation?.history_limit || 20;
         document.getElementById('setting-history-limit').value = historyLimit;
         
-        // Populate API Keys status
+        // Populate API Keys status (note names the ACTIVE mode's env file)
+        const apiKeysEnvFile = document.getElementById('api-keys-env-file');
+        if (apiKeysEnvFile) {
+          apiKeysEnvFile.textContent = `config/${envFile}`;
+        }
         const apiKeysContainer = document.getElementById('api-keys-status');
         const apiKeys = s.api_keys || {};
         
@@ -1946,6 +1968,23 @@ class JarvisApp {
         </span>
       `;
       el.title = data.connection_mode ? `Connection: ${data.connection_mode}` : '';
+
+      // Merge live sign-in status into provider availability (server marks
+      // cloud-mode ollama as "unknown" because it needs this live check).
+      if ((this._settingsData?.mode || this.socket.mode) === 'cloud'
+          && this._settingsData?.provider_availability) {
+        const resolved = (!reachable || !signedIn)
+          ? { status: 'unavailable', reason: !reachable ? 'Ollama host unreachable' : 'Ollama host not signed in' }
+          : { status: 'available', reason: null };
+        for (const domain of ['llm', 'completion_guard']) {
+          const map = this._settingsData.provider_availability[domain];
+          if (map && map.ollama && map.ollama.status !== resolved.status) {
+            map.ollama = { ...resolved };
+          }
+        }
+        this._applyProviderAvailability('setting-llm-provider', 'llm');
+        this._applyProviderAvailability('setting-completion-guard-eval-provider', 'completion_guard');
+      }
     } catch (err) {
       console.error('[App] Failed to load Ollama Cloud status:', err);
       el.innerHTML = `
@@ -2063,6 +2102,45 @@ class JarvisApp {
       const hidden = !allowed.has(option.value);
       option.hidden = hidden;
       option.disabled = hidden;
+    });
+  }
+
+  /**
+   * Annotate and disable provider options that lack configured credentials.
+   * Unavailable options stay visible (for discoverability) but cannot be
+   * newly selected; the server rejects such saves with HTTP 400 anyway.
+   * A currently selected unavailable provider keeps its selection and shows
+   * a warning suffix.
+   */
+  _applyProviderAvailability(selectId, domain) {
+    const select = document.getElementById(selectId);
+    const availability = this._settingsData?.provider_availability?.[domain];
+    if (!select || !availability) return;
+
+    Array.from(select.options).forEach((option) => {
+      if (!option.value) return;
+      // Restore the pre-annotation label, then re-capture it (other code may
+      // have legitimately relabeled the option, e.g. "Ollama (Cloud)").
+      if (option.dataset.availAnnotated === '1' && option.dataset.baseLabel) {
+        option.textContent = option.dataset.baseLabel;
+      }
+      option.dataset.baseLabel = option.textContent;
+      delete option.dataset.availAnnotated;
+
+      const entry = availability[option.value];
+      if (!entry) return;
+      if (entry.status === 'unavailable') {
+        const reason = entry.reason || 'not configured';
+        const isCurrent = option.value === select.value;
+        // Native select options do not wrap reliably. Use the shared compact
+        // reason instead of appending it to the provider's full label/pricing.
+        option.textContent = `${isCurrent ? '⚠ ' : ''}${reason}`;
+        option.dataset.availAnnotated = '1';
+        // Keep the current selection visible/selected but block re-selection.
+        option.disabled = !isCurrent;
+      } else if (!option.hidden) {
+        option.disabled = false;
+      }
     });
   }
   
@@ -2809,6 +2887,11 @@ class JarvisApp {
           const newMode = document.getElementById('setting-mode').value;
           await window.chatUI.refreshContextWindow(newMode);
         }
+      } else if (response.status === 400 && result.reason) {
+        // Typed validation rejection (e.g. newly selected unavailable
+        // provider). Nothing was saved server-side.
+        const fieldLabel = (result.field || 'setting').replace(/_/g, ' ');
+        Utils.toast(`Not saved — ${fieldLabel}: ${result.reason}`, 'error');
       } else {
         Utils.toast(result.error || 'Failed to save settings', 'error');
       }

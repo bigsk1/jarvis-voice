@@ -1909,6 +1909,33 @@ class ChatUI {
   }
 
   /**
+   * Disable modal provider options whose API keys are not configured
+   * (uses provider_availability from the cached settings payload).
+   */
+  _applyMediaProviderAvailability(select, domain) {
+    const availability = window.jarvisApp?._settingsData?.provider_availability?.[domain];
+    if (!select || !availability) return;
+    Array.from(select.options).forEach((option) => {
+      if (!option.value) return;
+      if (option.dataset.availAnnotated === '1' && option.dataset.baseLabel) {
+        option.textContent = option.dataset.baseLabel;
+      }
+      option.dataset.baseLabel = option.textContent;
+      delete option.dataset.availAnnotated;
+      const entry = availability[option.value];
+      if (entry?.status === 'unavailable') {
+        // Keep native dropdown text short; option rows do not wrap reliably
+        // on narrow/mobile browsers.
+        option.textContent = entry.reason || 'Provider not configured';
+        option.dataset.availAnnotated = '1';
+        option.disabled = option.value !== select.value;
+      } else {
+        option.disabled = false;
+      }
+    });
+  }
+
+  /**
    * Reset all image action options to defaults
    */
   _resetImageActionOptions() {
@@ -1921,6 +1948,7 @@ class ChatUI {
     if (videoRatio) videoRatio.value = '16:9';
     if (videoDuration) videoDuration.value = '5';
     this._updateVideoProviderOptions();
+    this._applyMediaProviderAvailability(videoProvider, 'video');
     if (videoResolution && [...videoResolution.options].some(option => option.value === '720p')) {
       videoResolution.value = '720p';
     }
@@ -1931,6 +1959,7 @@ class ChatUI {
     const imageSize = document.getElementById('imgActionImageSize');
     const imageStyle = document.getElementById('imgActionImageStyle');
     if (imageProvider) imageProvider.value = this._getEffectiveImageProvider();
+    this._applyMediaProviderAvailability(imageProvider, 'image');
     if (imageRatio) imageRatio.value = '';
     if (imageSize) imageSize.value = '2K';
     if (imageStyle) imageStyle.value = '';

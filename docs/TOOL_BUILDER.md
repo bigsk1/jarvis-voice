@@ -255,14 +255,34 @@ SYSTEM INFO:
 - Specifies `suggested_env_var: "SOME_API_KEY"`
 - Tool goes to `skills/pending/` with status `pending_api_key`
 - Shows in `list-pending` with 🔑 indicator
+- Only **static** verification runs (the live test would fail without the key);
+  the generated files are kept in `skills/pending/` for review
 
 This prevents tools from being deployed that would fail at runtime due to missing credentials.
+
+**Availability metadata (always emitted):**
+The spec's `required_env_vars` list (plus `suggested_env_var` when a new key is
+needed) is written into the generated manifest as an `availability` block —
+even when the keys are already configured on this machine — so fresh clones
+gate the tool correctly. Env var names must match `^[A-Z][A-Z0-9_]*$`; invalid
+names fail the build attempt. See `skills/README.md` → "Availability".
+
+**Approval is availability-gated:**
+`./bin/build-tool approve <name>` re-reads the report card, uses its original
+build mode (`cloud`/`local`), refuses approval while the declared requirements
+are still unmet, then runs **full** verification (static + live test) before
+moving files to `skills/auto-tools/`. The success message prints the
+mode-correct `./bin/sync-tools.py <mode>` command.
 
 ### 5. Verification Pipeline
 
 1. **Syntax check** - AST parse
-2. **Import check** - Try importing
-3. **Runtime test** - Run with `test_input` from JSON config
+2. **Compile check** - `py_compile` (bytecode-level errors)
+3. **Import resolution** - every top-level import is resolved with
+   `importlib.util.find_spec()` in a subprocess — generated code is **never
+   executed** during static review
+4. **Runtime test** - Run with `test_input` from JSON config (skipped for
+   `pending_api_key` builds until approval)
 
 ### 6. Retry Loop with Smart Error Analysis
 

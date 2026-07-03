@@ -106,6 +106,18 @@ def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False) -> dict[
             + ", ".join(sorted(registry.mcp_unavailable.keys()))
         )
         print("   Pull missing Docker images or set enabled=false in config/mcp-servers.json.")
+
+    # Tools excluded because required configuration is missing in this mode.
+    # Their DB rows are disabled by the stale-tools pass below; adding the
+    # missing key(s) and re-running sync re-enables them automatically.
+    if registry.unavailable_tools:
+        from tool_availability import describe_missing
+        print(
+            f"🔒 Unavailable tools ({len(registry.unavailable_tools)}) — "
+            f"missing configuration in {mode} mode:"
+        )
+        for name in sorted(registry.unavailable_tools):
+            print(f"     - {name}: {describe_missing(registry.unavailable_tools[name])}")
     
     # Get DB connection
     db = get_memory_db()

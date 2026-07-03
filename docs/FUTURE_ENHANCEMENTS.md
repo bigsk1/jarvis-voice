@@ -528,7 +528,21 @@ On-demand or scheduled: short voice summary + full canvas detail (services, aler
 
 ### 9) Credential-Aware Tool and Provider Availability
 **Priority:** Medium
-**Status:** Planned — especially useful for fresh clones and new installations
+**Status:** Implemented (2026-07) — `lib/tool_availability.py` evaluator; manifests
+declare `availability` blocks (strict tools + media multi-provider); ToolRegistry
+filters unavailable tools after profile resolution and records diagnostics in
+`registry.unavailable_tools`; `sync-tools.py` prints unavailable diagnostics;
+`manage-tools.py --mode` shows availability; Web UI keeps unavailable tools
+visible as "needs config" (blocks stale Tool RAG resurrection), annotates and
+disables unconfigured providers, and rejects newly selected unavailable
+providers with HTTP 400 before mutation; `generate_image`/`generate_video`
+preflight the selected provider and list configured alternatives; Tool Builder
+always emits availability blocks, runs static-only checks for `pending_api_key`
+builds, and gates approval on availability + full verification in the report's
+build mode. Tests: `tests/test_tool_availability.py`,
+`tests/test_tool_builder.py`, `tests/test_web_provider_availability.py`.
+Deferred: TTS/Completion-Guard live health checks, `config_files` requirements,
+placeholder-value detection, MCP duplicate detection hardening.
 
 #### Verified current behavior
 

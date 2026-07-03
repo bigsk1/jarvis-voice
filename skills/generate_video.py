@@ -872,7 +872,14 @@ def generate_video(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
     # then falls back to cloud.env default. LLM-passed provider is ignored
     # when a config/override value exists.
     provider = get_config_value('VIDEO_TOOL_PROVIDER', provider or 'xai').lower()
-    
+
+    # Credential preflight: fail with configured alternatives instead of a
+    # provider-specific API error. Never auto-switches providers.
+    from tool_availability import media_provider_preflight
+    preflight_error = media_provider_preflight(provider)
+    if preflight_error:
+        raise ValueError(preflight_error)
+
     if provider == 'openai':
         # OpenAI Sora - video_url is treated as remix_video_id
         return generate_video_openai(

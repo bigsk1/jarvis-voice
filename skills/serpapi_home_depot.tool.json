@@ -27,7 +27,10 @@
         "description": "Friendly sort mode. US values map to top_sellers, price_low_to_high, price_high_to_low, top_rated, best_match. Canada values map to price-asc, price-desc, reviewAvgRating, relevance."
       },
       "hd_filter_tokens": {
-        "type": ["string", "array"],
+        "type": [
+          "string",
+          "array"
+        ],
         "items": {
           "type": "string"
         },
@@ -102,5 +105,11 @@
     "network": true,
     "filesystem": false,
     "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "SERP_API_KEY"
+    ],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file."
   }
 }

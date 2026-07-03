@@ -195,6 +195,11 @@ def _docker_checkout(tmp_path: Path, *, with_local_config: bool = True) -> tuple
         )
 
     env = os.environ.copy()
+    # entrypoint.sh prepends $VIRTUAL_ENV/bin (default: $JARVIS_VENV) to PATH;
+    # an activated/configured host venv would shadow the test's fake `python`
+    # shim in fake-bin, so the container defaults must apply instead.
+    env.pop("VIRTUAL_ENV", None)
+    env.pop("JARVIS_VENV", None)
     env.update(
         {
             "DOCKER_LAUNCH_LOG": str(launch_log),

@@ -251,6 +251,9 @@ API KEY RULES:
 - ONLY use API keys that are listed in "Available env vars" above
 - If the tool REQUIRES an API key that doesn't exist, set "requires_new_api_key": true
 - Specify which env var name should be added (e.g., "suggested_env_var": "SOME_API_KEY")
+- ALWAYS list EVERY env var the tool's code reads and hard-requires in
+  "required_env_vars" (UPPER_SNAKE_CASE names), even if the key already exists.
+  Leave it empty ([]) when the tool needs no configuration.
 - Tools requiring new API keys will be queued for manual setup
 - You are NOT required to use an API key, but if you do follow the rules above.
 
@@ -631,9 +634,13 @@ RESPOND WITH JSON:
     "expected_output_contains": ["expected", "strings"],
     "packages_needed": ["package1"],
     "requires_new_api_key": false,
-    "suggested_env_var": null
+    "suggested_env_var": null,
+    "required_env_vars": []
 }}
 '''
+
+# Env var names supplied by the LLM spec must match this pattern.
+ENV_VAR_NAME_PATTERN = re.compile(r'^[A-Z][A-Z0-9_]*$')
 
 
 class ToolBuilder:
@@ -1243,6 +1250,7 @@ class ToolBuilder:
             "packages_needed",
             "requires_new_api_key",
             "suggested_env_var",
+            "required_env_vars",
         ]
         key_pattern = r'\n\s*"(?:' + "|".join(trailing_keys) + r')"\s*:'
         next_key = re.search(key_pattern, text[start_idx:], re.DOTALL)
@@ -1312,6 +1320,25 @@ class ToolBuilder:
         # Check if new API key required
         requires_new_api_key = spec.get('requires_new_api_key', False)
         suggested_env_var = spec.get('suggested_env_var')
+
+        # Structured env requirements: emitted into the manifest's
+        # availability block REGARDLESS of whether the keys currently exist,
+        # so a fresh clone gates the tool correctly. requires_new_api_key is
+        # retained only to decide pending status.
+        required_env_vars: list[str] = []
+        raw_required = spec.get('required_env_vars') or []
+        if requires_new_api_key and suggested_env_var:
+            raw_required = [*raw_required, suggested_env_var]
+        if not isinstance(raw_required, list):
+            raise ValueError(f"required_env_vars must be a list, got: {type(raw_required).__name__}")
+        for env_name in raw_required:
+            env_name = str(env_name).strip()
+            if not env_name:
+                continue
+            if not ENV_VAR_NAME_PATTERN.match(env_name):
+                raise ValueError(f"Invalid env var name in spec: {env_name!r}")
+            if env_name not in required_env_vars:
+                required_env_vars.append(env_name)
         
         # Determine target directory
         needs_manual_setup = new_packages or requires_new_api_key
@@ -1359,16 +1386,37 @@ class ToolBuilder:
             "created_at": created_at,
             "feedback_ids": feedback_ids
         }
+
+        # Always emit availability metadata when the tool has env requirements
+        # (same contract as hand-written tools; runtime evaluator gates it).
+        if required_env_vars:
+            json_config["availability"] = {
+                "all_of_env": required_env_vars,
+                "setup_hint": (
+                    f"Set {', '.join(required_env_vars)} in the active mode env file "
+                    f"(config/cloud.env or config/local.env)."
+                ),
+            }
         
         with open(json_path, 'w') as f:
             json.dump(json_config, f, indent=2)
         
-        # Verify the tool (if no new packages needed)
+        # Verify the tool
         verification_passed = False
         verification_output = ""
         test_output = ""
         
-        if not new_packages:
+        if requires_new_api_key:
+            # The required key is missing by definition, so a live run would
+            # fail and previously deleted the generated files before review.
+            # Run STATIC validation only and keep the pending_api_key files.
+            static_ok, static_output = self._static_verify(py_path)
+            verification_output = static_output or "Static checks passed (live run skipped: missing API key)"
+            if not static_ok:
+                py_path.unlink(missing_ok=True)
+                json_path.unlink(missing_ok=True)
+                raise ValueError(f"Static verification failed: {static_output}")
+        elif not new_packages:
             verification_passed, verification_output, test_output = self._verify_tool(
                 py_path,
                 spec.get('test_input', {})
@@ -1436,29 +1484,76 @@ class ToolBuilder:
             needs_packages=new_packages
         )
     
-    def _verify_tool(self, py_path: Path, test_input: dict) -> tuple[bool, str, str]:
-        """Verify the tool works."""
-        
+    def _static_verify(self, py_path: Path) -> tuple[bool, str]:
+        """Static validation WITHOUT executing any generated code.
+
+        1. ast.parse for syntax errors
+        2. py_compile for bytecode-level errors
+        3. Resolve every top-level imported module with importlib.util.find_spec
+           in a subprocess (imports are resolved, never executed)
+        """
         # 1. Syntax check
         try:
             with open(py_path) as f:
                 code = f.read()
-            ast.parse(code)
+            tree = ast.parse(code)
         except SyntaxError as e:
-            return False, f"Syntax error: {e}", ""
-        
-        # 2. Import check (try to import without running)
+            return False, f"Syntax error: {e}"
+
+        # 2. Bytecode compile check
+        try:
+            import py_compile
+            py_compile.compile(str(py_path), doraise=True)
+        except py_compile.PyCompileError as e:
+            return False, f"Compile error: {e}"
+
+        # 3. Import resolution (find_spec only; no module execution)
+        modules: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                modules.extend(alias.name.split('.')[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                if node.level == 0 and node.module:
+                    modules.append(node.module.split('.')[0])
+        modules = sorted(set(modules))
+        if not modules:
+            return True, "Static checks passed"
+
+        project_root = Path(__file__).parent.parent
+        check_script = (
+            "import importlib.util, json, sys\n"
+            "sys.path.insert(0, sys.argv[1])\n"   # lib/
+            "sys.path.insert(0, sys.argv[2])\n"   # skills/
+            "missing = [m for m in sys.argv[3:] if importlib.util.find_spec(m) is None]\n"
+            "print(json.dumps(missing))\n"
+        )
         try:
             result = subprocess.run(
-                [sys.executable, "-c", f"import ast; ast.parse(open('{py_path}').read())"],
+                [sys.executable, "-c", check_script,
+                 str(project_root / "lib"), str(py_path.parent), *modules],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=30
             )
             if result.returncode != 0:
-                return False, f"Import check failed: {result.stderr}", ""
+                return False, f"Import check failed: {result.stderr}"
+            missing = json.loads(result.stdout.strip() or "[]")
+            if missing:
+                return False, f"Unresolvable imports: {', '.join(missing)}"
         except subprocess.TimeoutExpired:
-            return False, "Import check timed out", ""
+            return False, "Import check timed out"
+        except (json.JSONDecodeError, OSError) as e:
+            return False, f"Import check error: {e}"
+
+        return True, "Static checks passed"
+
+    def _verify_tool(self, py_path: Path, test_input: dict, env: dict | None = None) -> tuple[bool, str, str]:
+        """Verify the tool works (static checks + live test run)."""
+
+        # 1-2. Static validation (syntax, compile, import resolution)
+        static_ok, static_output = self._static_verify(py_path)
+        if not static_ok:
+            return False, static_output, ""
         
         # 3. Run with test input
         try:
@@ -1470,7 +1565,8 @@ class ToolBuilder:
                 capture_output=True,
                 text=True,
                 timeout=30,
-                cwd=str(project_root)
+                cwd=str(project_root),
+                env=env
             )
             
             if result.returncode != 0:
@@ -1661,29 +1757,76 @@ def list_pending_tools() -> list[dict]:
     return pending
 
 
-def approve_pending_tool(tool_name: str, install_packages: bool = False) -> bool:
-    """Approve a pending tool and move to auto-tools."""
+def approve_pending_tool(tool_name: str, install_packages: bool = False) -> tuple[bool, str]:
+    """Approve a pending tool: availability gate + full verification, then move.
+
+    Uses the report card's original build mode for config scope. Refuses
+    (without moving files) when the tool's declared availability requirements
+    are still unmet, and when full verification fails. Returns (ok, message).
+    """
     py_path = PENDING_DIR / f"{tool_name}.py"
     json_path = PENDING_DIR / f"{tool_name}.tool.json"
     report_path = PENDING_DIR / f"{tool_name}.report.json"
     
     if not py_path.exists():
-        return False
-    
-    # Install packages if requested
-    if install_packages and report_path.exists():
+        return False, f"Tool not found in pending: {tool_name}"
+
+    report = {}
+    if report_path.exists():
         with open(report_path) as f:
             report = json.load(f)
-        for pkg in report.get('packages_new', []):
-            subprocess.run([sys.executable, "-m", "pip", "install", pkg], check=True)
-    
+    mode = report.get('mode') or 'cloud'
+    if mode not in ('cloud', 'local'):
+        mode = 'cloud'
+
+    manifest = {}
+    if json_path.exists():
+        try:
+            with open(json_path) as f:
+                manifest = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            return False, f"Cannot read pending manifest: {e}"
+
+    # Availability gate in the ORIGINAL build mode's config scope: the
+    # required key must have been added before approval can proceed.
+    from config_loader import config_scope
+    from tool_availability import check_tool_availability, describe_missing
+
+    with config_scope(mode):
+        availability = check_tool_availability(manifest)
+        if not availability.available:
+            return False, (
+                f"Requirements still unmet ({describe_missing(availability)}). "
+                f"Add the configuration to config/{mode}.env, then approve again."
+            )
+
+        # Install packages only after the availability gate passes, so a
+        # rejected approval never mutates the venv. Verification below needs
+        # the packages, so this must still run before the live test.
+        if install_packages:
+            for pkg in report.get('packages_new', []):
+                subprocess.run([sys.executable, "-m", "pip", "install", pkg], check=True)
+
+        # Full verification (static + live test run) now that requirements
+        # are configured. Pending-key builds only had static checks. The
+        # scoped config is a ContextVar and does not reach subprocesses, so
+        # materialize the mode env explicitly for the test run.
+        from config_loader import export_config_environment
+        run_env = export_config_environment(mode)
+        test_input = manifest.get('test_input', {}) or report.get('test_input_used', {}) or {}
+        verifier = ToolBuilder.__new__(ToolBuilder)  # verification only; no LLM provider needed
+        verifier.mode = mode
+        passed, output, _test_output = verifier._verify_tool(py_path, test_input, env=run_env)
+        if not passed:
+            return False, f"Verification failed: {output}"
+
     # Move files
     for src in [py_path, json_path, report_path]:
         if src.exists():
             dst = AUTO_TOOLS_DIR / src.name
             src.rename(dst)
     
-    return True
+    return True, f"Approved: {tool_name} (verified in {mode} mode)"
 
 
 if __name__ == "__main__":
@@ -1701,10 +1844,8 @@ if __name__ == "__main__":
         pending = list_pending_tools()
         print(json.dumps(pending, indent=2))
     elif args.approve:
-        if approve_pending_tool(args.approve, install_packages=True):
-            print(f"✅ Approved: {args.approve}")
-        else:
-            print(f"❌ Not found: {args.approve}")
+        ok, message = approve_pending_tool(args.approve, install_packages=True)
+        print(f"{'✅' if ok else '❌'} {message}")
     elif args.gap:
         builder = ToolBuilder(mode=args.mode)
         result = builder.build_tool(args.gap)

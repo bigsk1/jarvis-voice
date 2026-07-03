@@ -92,6 +92,43 @@ Every tool needs a `.tool.json` file:
 }
 ```
 
+### Availability (credential requirements)
+
+Tools with hard configuration requirements declare them in an optional
+`availability` block. The tool stays `"enabled": true` in git; at runtime
+`lib/tool_availability.py` checks that the named keys are present and
+non-blank in the active mode's env (`config/cloud.env` / `config/local.env`).
+Tools with unmet requirements are excluded from the registry and Tool RAG
+(shown as "needs config" in the Web UI) and come back automatically after the
+key is added and services restart or `./bin/sync-tools.py <mode>` runs.
+
+```json
+{
+  "availability": {
+    "all_of_env": ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"],
+    "any_of_env": ["BRAVE_API_KEY", "BRAVE_SEARCH_API_KEY"],
+    "provider_setting": "IMAGE_TOOL_PROVIDER",
+    "provider_default": "gemini",
+    "provider_requirements": {
+      "gemini": {"all_of_env": ["GEMINI_API_KEY"]},
+      "openai": {"all_of_env": ["OPENAI_API_KEY"]}
+    },
+    "setup_hint": "Set the key in the active mode env file."
+  }
+}
+```
+
+Rules:
+- All keys are optional; omit the block entirely for tools with no requirements.
+- `all_of_env`: every key must be set. `any_of_env`: at least one key must be set.
+- `provider_requirements`: the tool is available when at least ONE provider's
+  keys are configured (used by multi-provider tools like `generate_image`).
+- Only presence is checked — values are never read into logs or the UI.
+- A malformed block fails closed (that tool is treated as unavailable) and is
+  reported by `./bin/manage-tools.py --mode <mode> list` and sync-tools output.
+- Availability runs AFTER profile resolution: a profile cannot force-enable a
+  tool whose hard requirement is missing.
+
 ### Schema Rules For Reliable Tool Calling
 
 For best cross-provider compatibility, keep the top-level `parameters` schema simple:

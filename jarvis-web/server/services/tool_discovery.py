@@ -39,6 +39,7 @@ class ToolDiscoveryService:
 
         profile_overrides = _tool_profile_overrides()
         _ensure_lib_path()
+        from tool_availability import check_tool_availability
         from tool_profiles import effective_enabled
 
         # 1. Load local tools from skills/**/*.tool.json (including subdirectories like auto-tools/)
@@ -53,13 +54,22 @@ class ToolDiscoveryService:
                     base_enabled = tool.get('enabled', True)
                     effective = effective_enabled(name, base_enabled, profile_overrides)
 
+                    # Credential-aware availability (same evaluator as
+                    # ToolRegistry). Unavailable tools MUST stay in this map
+                    # (as enabled=False) so a stale enabled Tool RAG row can't
+                    # resurrect them via the DB fallback in step 2 below.
+                    availability = check_tool_availability(tool)
+
                     # Include all tools (effective enabled or blocked for visibility)
                     if effective or is_blocked:
                         self.tools[name] = {
                             'name': name,
                             'description': tool.get('description', ''),
-                            'enabled': effective and not is_blocked,
+                            'enabled': effective and not is_blocked and availability.available,
                             'blocked': is_blocked,
+                            'available': availability.available,
+                            'missing': list(availability.missing),
+                            'setup_hint': availability.setup_hint,
                             'source': 'local',
                             'parameters': tool.get('parameters', {}),
                             'script': tool.get('script', ''),
@@ -100,6 +110,9 @@ class ToolDiscoveryService:
                         'description': description,
                         'enabled': not is_blocked,
                         'blocked': is_blocked,
+                        'available': True,
+                        'missing': [],
+                        'setup_hint': None,
                         'source': 'mcp' if is_mcp else 'database',
                         'parameters': {},
                         'script': None,
@@ -119,10 +132,19 @@ class ToolDiscoveryService:
         return self.tools.get(name)
     
     def get_tool_count(self, include_blocked: bool = False) -> int:
-        """Return count of tools"""
+        """Return count of CALLABLE tools.
+
+        Excludes blocked tools (unless include_blocked) and tools whose
+        credential requirements are unmet — those remain in the map for
+        diagnostics/UI but are not callable, so counting them would overstate
+        what the LLM can actually use.
+        """
         if include_blocked:
             return len(self.tools)
-        return len([t for t in self.tools.values() if not t.get('blocked')])
+        return len([
+            t for t in self.tools.values()
+            if not t.get('blocked') and t.get('available', True)
+        ])
     
     def get_mcp_tools(self) -> list[dict]:
         """Return only MCP tools"""
@@ -148,7 +170,10 @@ class ToolDiscoveryService:
                 'description': t['description'],
                 'source': t.get('source', 'local'),
                 'enabled': t.get('enabled', True),
-                'blocked': t.get('blocked', False)
+                'blocked': t.get('blocked', False),
+                'available': t.get('available', True),
+                'missing': t.get('missing', []),
+                'setup_hint': t.get('setup_hint')
             }
             for t in sorted(self.tools.values(), key=lambda x: x['name'])
         ]
@@ -161,7 +186,8 @@ class ToolDiscoveryService:
             'local': len([t for t in tools if t.get('source') == 'local']),
             'mcp': len([t for t in tools if t.get('source') == 'mcp']),
             'enabled': len([t for t in tools if t.get('enabled')]),
-            'blocked': len([t for t in tools if t.get('blocked')])
+            'blocked': len([t for t in tools if t.get('blocked')]),
+            'unavailable': len([t for t in tools if not t.get('available', True)])
         }
 
 

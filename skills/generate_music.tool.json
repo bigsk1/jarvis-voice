@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "generate_music",
-  "description": "🎵 Generate AI music with ElevenLabs. Create songs, instrumentals, jingles, soundtracks. Use when user says 'make music', 'create a song', 'compose', 'generate a beat', 'make a jingle'. Supports genres (pop, rock, jazz, electronic, ambient, cinematic), moods (happy, sad, energetic, calm), and tempos. Can create instrumental or vocal tracks. Output saves to stash for playback in web UI. Duration 3 seconds to 10 minutes.",
+  "description": "\ud83c\udfb5 Generate AI music with ElevenLabs. Create songs, instrumentals, jingles, soundtracks. Use when user says 'make music', 'create a song', 'compose', 'generate a beat', 'make a jingle'. Supports genres (pop, rock, jazz, electronic, ambient, cinematic), moods (happy, sad, energetic, calm), and tempos. Can create instrumental or vocal tracks. Output saves to stash for playback in web UI. Duration 3 seconds to 10 minutes.",
   "script": "generate_music.py",
   "parameters": {
     "type": "object",
@@ -20,7 +20,22 @@
       },
       "genre": {
         "type": "string",
-        "enum": ["pop", "rock", "jazz", "classical", "electronic", "ambient", "hip-hop", "country", "r&b", "folk", "metal", "lo-fi", "cinematic", "jingle"],
+        "enum": [
+          "pop",
+          "rock",
+          "jazz",
+          "classical",
+          "electronic",
+          "ambient",
+          "hip-hop",
+          "country",
+          "r&b",
+          "folk",
+          "metal",
+          "lo-fi",
+          "cinematic",
+          "jingle"
+        ],
         "description": "Music genre. Enhances prompt with genre-specific production hints."
       },
       "mood": {
@@ -37,7 +52,14 @@
       },
       "output_format": {
         "type": "string",
-        "enum": ["mp3_low", "mp3_medium", "mp3_high", "opus_low", "opus_medium", "opus_high"],
+        "enum": [
+          "mp3_low",
+          "mp3_medium",
+          "mp3_high",
+          "opus_low",
+          "opus_medium",
+          "opus_high"
+        ],
         "description": "Audio quality: mp3_low (fast), mp3_medium (default), mp3_high (best). Opus formats for smaller files."
       },
       "composition_plan": {
@@ -46,7 +68,9 @@
         "properties": {
           "global_styles": {
             "type": "array",
-            "items": {"type": "string"},
+            "items": {
+              "type": "string"
+            },
             "description": "Overall song style directions"
           },
           "sections": {
@@ -54,10 +78,28 @@
             "items": {
               "type": "object",
               "properties": {
-                "section_name": {"type": "string", "description": "intro, verse, chorus, bridge, outro"},
-                "duration_seconds": {"type": "integer", "description": "Section length 3-120 seconds"},
-                "styles": {"type": "array", "items": {"type": "string"}, "description": "Style hints for this section"},
-                "lyrics": {"type": "array", "items": {"type": "string"}, "description": "Lyric lines (max 200 chars each)"}
+                "section_name": {
+                  "type": "string",
+                  "description": "intro, verse, chorus, bridge, outro"
+                },
+                "duration_seconds": {
+                  "type": "integer",
+                  "description": "Section length 3-120 seconds"
+                },
+                "styles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Style hints for this section"
+                },
+                "lyrics": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Lyric lines (max 200 chars each)"
+                }
               }
             }
           }
@@ -68,7 +110,9 @@
         "description": "Save to stash for web UI playback (default: true)"
       }
     },
-    "required": ["prompt"]
+    "required": [
+      "prompt"
+    ]
   },
   "permissions": {
     "dangerous": false,
@@ -76,5 +120,11 @@
     "network": true,
     "filesystem": true,
     "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "ELEVENLABS_API_KEY"
+    ],
+    "setup_hint": "Set ELEVENLABS_API_KEY in the active mode env file."
   }
 }

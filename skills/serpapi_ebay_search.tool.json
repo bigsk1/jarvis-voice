@@ -77,7 +77,7 @@
       },
       "num_results": {
         "type": "integer",
-        "description": "Max listings to normalize for the LLM (clamped 1–5, default 3). Raising wastes context; widen only when the user explicitly needs more rows."
+        "description": "Max listings to normalize for the LLM (clamped 1\u20135, default 3). Raising wastes context; widen only when the user explicitly needs more rows."
       },
       "no_cache": {
         "type": "boolean",
@@ -99,5 +99,11 @@
     "network": true,
     "filesystem": false,
     "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "SERP_API_KEY"
+    ],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file."
   }
 }
