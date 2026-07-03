@@ -3693,12 +3693,7 @@ class ChatUI {
       `;
     }
     
-    const hideCanvasReceipt = Boolean(
-      canvasPreview
-      && !chartHtml
-      && this._isCanvasReceiptOnly(text)
-    );
-    const messageBubbleHtml = hideCanvasReceipt ? '' : `
+    const messageBubbleHtml = `
       <div class="message-bubble">
         ${chartHtml}
         ${parsedText}
@@ -3880,15 +3875,6 @@ class ChatUI {
         </a>
       </div>
     `;
-  }
-
-  _isCanvasReceiptOnly(text) {
-    const raw = String(text || '').trim();
-    if (!raw || raw.length > 800) return false;
-    if (/```|(^|\n)\s*#{1,6}\s|(^|\n)\s*[-*]\s+/m.test(raw)) return false;
-
-    const normalized = raw.replace(/\s+/g, ' ').toLowerCase();
-    return /^(?:canvas page (?:created|updated|saved)(?: successfully)?|a new canvas page|i(?:'ve| have) saved|i created (?:a )?canvas page|created (?:a )?canvas page|updated (?:the )?canvas page)/.test(normalized);
   }
 
   _canvasPreviewImageUrl(content, preview) {

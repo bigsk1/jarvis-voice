@@ -57,18 +57,26 @@ const html = harness._renderCanvasPreviewHtml(preview);
 if (!html.includes('canvas-preview-thumbnail')) process.exit(4);
 if (!html.includes('Jarvis Avatar Preference')) process.exit(5);
 if (!html.includes('Open in Canvas')) process.exit(6);
-if (!harness._isCanvasReceiptOnly('Canvas page created successfully: "Example". View at: http://canvas.test/page')) process.exit(7);
-if (harness._isCanvasReceiptOnly('The top options are A, B, and C. I saved the full comparison to Canvas.')) process.exit(8);
 const imageUrl = harness._canvasPreviewImageUrl(
   '![Preferred avatar](stash://space_avatar/f_image)',
   preview
 );
-if (imageUrl !== 'http://192.168.70.228:8890/api/stash/space_avatar/f_image') process.exit(9);
+if (imageUrl !== 'http://192.168.70.228:8890/api/stash/space_avatar/f_image') process.exit(7);
 const excerpt = harness._canvasPreviewExcerpt('# Heading\\n\\n![Image](stash://space/file)\\nUseful **page** details.');
-if (excerpt !== 'Heading Useful page details.') process.exit(10);
+if (excerpt !== 'Heading Useful page details.') process.exit(8);
 """
 
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
+def test_canvas_preview_keeps_assistant_reply_bubble():
+    chat_js = CHAT_JS.read_text()
+
+    assert "const messageBubbleHtml = `" in chat_js
+    assert "${canvasPreviewHtml}" in chat_js
+    assert "${messageBubbleHtml}" in chat_js
+    assert "hideCanvasReceipt" not in chat_js
+    assert "_isCanvasReceiptOnly" not in chat_js
 
 
 def test_canvas_preview_hydrates_stash_image_and_text_excerpt():
