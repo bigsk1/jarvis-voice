@@ -1564,6 +1564,17 @@ class JarvisApp {
         const effectiveCgThreshold = s.completion_guard?.auto_threshold?.value ?? c.JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD;
         const effectiveTtsProvider = s.tts?.provider?.value || c.TTS_PROVIDER;
         const ttsProvider = String(effectiveTtsProvider || '').toLowerCase();
+        const formatUrlList = (value) => {
+          const urls = String(value || '(not set)')
+            .split(',')
+            .map((url) => url.trim())
+            .filter(Boolean);
+          return `
+            <span class="config-value config-value-list">
+              ${urls.map((url) => `<span class="config-value-list-item">${Utils.escapeHtml(url)}</span>`).join('')}
+            </span>
+          `;
+        };
         
         // Mode-specific model display
         const modelHtml = isLocal ? `
@@ -1573,7 +1584,7 @@ class JarvisApp {
           </div>
           <div class="config-item">
             <span class="config-label">OLLAMA_BASE_URL</span>
-            <span class="config-value">${c.OLLAMA_BASE_URL || '(not set)'}</span>
+            ${formatUrlList(c.OLLAMA_BASE_URL)}
           </div>
         ` : `
           <div class="config-item">
@@ -1595,7 +1606,7 @@ class JarvisApp {
           </div>
           <div class="config-item">
             <span class="config-label">OLLAMA_BASE_URL</span>
-            <span class="config-value">${c.OLLAMA_BASE_URL || '(not set)'}</span>
+            ${formatUrlList(c.OLLAMA_BASE_URL)}
           </div>
           <div class="config-item" id="ollama-cloud-status">
             <span class="config-label">Ollama Cloud</span>

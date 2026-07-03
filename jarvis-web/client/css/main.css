@@ -3822,12 +3822,15 @@ body {
   flex-direction: column;
   gap: var(--space-sm);
   margin-top: var(--space-md);
+  min-width: 0;
 }
 
 .config-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-md);
+  min-width: 0;
   padding: var(--space-sm) var(--space-md);
   background: var(--bg-secondary);
   border-radius: var(--radius-md);
@@ -3838,6 +3841,7 @@ body {
   font-size: var(--text-sm);
   color: var(--text-secondary);
   font-family: var(--font-mono);
+  flex: 0 0 auto;
 }
 
 .config-value {
@@ -3848,6 +3852,24 @@ body {
   background: var(--bg-tertiary);
   padding: 2px 8px;
   border-radius: var(--radius-sm);
+  min-width: 0;
+  max-width: 70%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  text-align: right;
+}
+
+.config-value-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.config-value-list-item {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .config-value.enabled {

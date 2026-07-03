@@ -152,6 +152,36 @@ The client connection itself works, the server receives the normal Socket.IO dis
 
 **Likely files:** `jarvis-web/server/app.py`, `bin/jarvis-web`, `docker/entrypoint.sh`, `Dockerfile`, dependency manifests, Web runtime tests, and Docker/native deployment docs.
 
+### 7) Ollama Cloud Account Quota and Usage Status
+**Priority:** Blocked upstream / integrate when Ollama exposes a supported API
+
+Jarvis can currently identify the Ollama Cloud connection path and authentication state:
+- `connection_mode=api_key` for direct `https://ollama.com` requests using `OLLAMA_API_KEY`
+- signed-daemon status through Ollama's account probe
+- per-request input/output token counts returned by model calls
+
+It cannot retrieve account-level session or weekly usage, remaining quota, reset times, or plan limits. Ollama's `/api/me` response does not expose those values, model responses provide only per-request token counts, and there is no documented public quota endpoint or response header. Therefore, Web Settings → System must treat quota as unavailable rather than infer it from chat totals, scrape the Ollama dashboard, or display a guessed percentage.
+
+**Interim UI semantics:**
+- API-key path: `API key configured · usage unavailable · Manage`
+- signed-daemon path: `Signed in · usage unavailable · Manage`
+- Keep connection/authentication status separate from account quota status
+- Continue linking **Manage** to Ollama's account/usage page
+
+**Implementation trigger:** Add live quota reporting only after Ollama documents a stable source such as `/api/me` fields, a dedicated account-usage endpoint, or official quota response headers.
+
+**Desired implementation once available:**
+- Normalize limit, used, remaining, period, and reset timestamp into the existing Ollama Cloud status payload
+- Support both direct API-key and signed-daemon transports without changing model routing
+- Cache/poll conservatively and degrade to `usage unavailable` on unsupported versions or request failures
+- Show session/weekly usage and reset times in System without mixing them with conversation token accounting
+- Add contract tests for complete, partial, unavailable, unauthorized, and rate-limited responses
+
+**Upstream tracking (checked 2026-07-03):**
+- [ollama/ollama#12532 — Cloud usage stats](https://github.com/ollama/ollama/issues/12532) — open primary request for exposing usage through `/api/me`
+- [ollama/ollama#15663 — Expose account quota/usage details via the Cloud API](https://github.com/ollama/ollama/issues/15663) — closed as a duplicate of #12532; documents the missing headers/body/endpoint options
+- [ollama/ollama#16448 — API endpoint to check Cloud Usage/Quota limits](https://github.com/ollama/ollama/issues/16448) — closed as a duplicate of #12532
+
 ---
 
 ## ⭐ State-of-the-Art Assistant Upgrades (Worth Doing Early)
