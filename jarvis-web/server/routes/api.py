@@ -2542,6 +2542,29 @@ Enhanced: "Find a compatible Amazon pole-mount option for the Ambient Weather WS
 
 Now enhance the following input. Return ONLY the enhanced prompt text, nothing else."""
 
+        enhancement_message = user_input
+        if vision_warning:
+            # A text-only model cannot ground new visual detail. Use a narrow
+            # media rewrite contract instead of the general Jarvis enhancer,
+            # which can otherwise replace a short instruction with generic
+            # video/image boilerplate or an assistant-style clarification.
+            system_prompt = f"""You rewrite user instructions for {action_label}.
+
+The attached image is NOT visible to you. Improve only the instruction text the user supplied.
+
+Rules:
+- Preserve every concrete action, subject reference, camera request, timing request, and audio request from the original.
+- References such as "it", "the person", "her head", or "the background" must remain references; never guess what they depict.
+- Do not invent visual details, identities, objects, scenery, animation, audio, or intent.
+- Do not replace the instruction with generic advice such as "create a video with motion".
+- Do not ask a question, request more details, offer help, or mention that you cannot see the image.
+- If the instruction is already concise and cannot be safely improved without seeing the image, return it unchanged.
+- Return only the rewritten generation prompt, with no label, explanation, or quotation marks."""
+            enhancement_message = (
+                "Rewrite this exact instruction without answering it or changing its intent:\n\n"
+                f"{user_input}"
+            )
+
         # Create provider based on effective per-mode Web settings.
         if provider_type == 'ollama':
             from ollama_utils import resolve_ollama_model
@@ -2572,7 +2595,7 @@ Now enhance the following input. Return ONLY the enhanced prompt text, nothing e
         # Call LLM to enhance
         # chat() signature: chat(message: str, system_prompt: str = None, max_tokens: int = None) -> str
         enhanced = provider.chat(
-            message=user_input,
+            message=enhancement_message,
             system_prompt=system_prompt,
             max_tokens=500
         )
@@ -2587,6 +2610,32 @@ Now enhance the following input. Return ONLY the enhanced prompt text, nothing e
                 enhanced = enhanced[9:].strip()
         else:
             enhanced = user_input  # Fallback to original if empty
+
+        if vision_warning:
+            # Text-only enhancement must never destructively replace the
+            # user's media instruction with assistant chatter. Models differ
+            # in instruction-following quality, so keep the original on any
+            # clarification/meta-response instead of putting it in the media
+            # generation text area.
+            unsafe_meta_phrases = (
+                "ask me what",
+                "what you'd like",
+                "what you would like",
+                "if you need a specific",
+                "please provide",
+                "please specify",
+                "could you provide",
+                "can you provide",
+                "i need more",
+                "need more details",
+                "cannot see the image",
+                "can't see the image",
+                "unable to see the image",
+            )
+            enhanced_lower = enhanced.lower()
+            if any(phrase in enhanced_lower for phrase in unsafe_meta_phrases):
+                enhanced = user_input
+                vision_warning += " The model returned a generic clarification, so your original text was kept."
         
         return jsonify({
             'ok': True,

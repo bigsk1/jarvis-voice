@@ -73,11 +73,13 @@ def test_enhance_falls_back_to_warned_text_only_when_model_rejects_images(tmp_pa
 
     app = Flask(__name__)
     app.register_blueprint(api_module.api_bp)
-    provider = SimpleNamespace(
-        chat=lambda message, system_prompt=None, max_tokens=None: (
-            "Make the existing subject look around while preserving all unspecified visual details."
-        )
-    )
+    captured = {}
+
+    def text_only_enhance(message, system_prompt=None, max_tokens=None):
+        captured.update({"message": message, "system_prompt": system_prompt})
+        return "Make the existing subject look around while preserving all unspecified visual details."
+
+    provider = SimpleNamespace(chat=text_only_enhance)
     tool_service = SimpleNamespace(get_tools_summary=lambda: [])
 
     with patch.object(
@@ -107,3 +109,52 @@ def test_enhance_falls_back_to_warned_text_only_when_model_rejects_images(tmp_pa
     assert payload["vision_grounded"] is False
     assert "used text only" in payload["vision_warning"]
     assert payload["enhanced"].startswith("Make the existing subject")
+    assert "You rewrite user instructions for image-to-video generation" in captured["system_prompt"]
+    assert "Do not ask a question" in captured["system_prompt"]
+    assert captured["message"].endswith("make the head look around")
+
+
+def test_text_only_enhance_keeps_original_when_model_returns_generic_clarification(tmp_path):
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    (uploads / "upload_test.jpg").write_bytes(b"jpeg-image-bytes")
+    api_module.WEB_DATA_PATH = tmp_path
+
+    app = Flask(__name__)
+    app.register_blueprint(api_module.api_bp)
+    provider = SimpleNamespace(
+        chat=lambda message, system_prompt=None, max_tokens=None: (
+            "Create a video with motion. Generate a short AI video clip that includes "
+            "dynamic movement and animation. If you need a specific subject or scene, "
+            "ask me what you'd like the video to show."
+        )
+    )
+    tool_service = SimpleNamespace(get_tools_summary=lambda: [])
+
+    with patch.object(
+        web_config,
+        "load_web_config",
+        return_value={
+            "cloud": {"llm_provider": "ollama", "llm_model": "glm-5.2:cloud"}
+        },
+    ), patch(
+        "vision_provider.analyze_images",
+        side_effect=RuntimeError("model does not support image input"),
+    ), patch(
+        "llm_provider.create_provider", return_value=provider
+    ), patch.object(api_module, "get_tool_service", return_value=tool_service):
+        response = app.test_client().post(
+            "/api/enhance-prompt",
+            json={
+                "input": "make her head slowly look around",
+                "mode": "cloud",
+                "image_action": "video",
+                "image": {"filename": "upload_test.jpg"},
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["vision_grounded"] is False
+    assert payload["enhanced"] == "make her head slowly look around"
+    assert "original text was kept" in payload["vision_warning"]
