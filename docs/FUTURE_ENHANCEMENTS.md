@@ -144,9 +144,11 @@ The client connection itself works, the server receives the normal Socket.IO dis
 - Preserve Web UI auth, shared-secret loading, upload paths, background tasks, and Socket.IO event registration
 - Verify long-running LLM/tool requests against Gunicorn worker/thread timeouts
 - Keep stdout/stderr logging, Docker health checks, graceful shutdown, and native tmux behavior intact
-- Add `gunicorn` consistently to `pyproject.toml`, `requirements.txt`, and the uv lock
+- Add `gunicorn` consistently to `pyproject.toml`, `requirements.txt`, `jarvis-web/requirements.txt`, and the uv lock
 
-**Not urgent:** The current traceback is noisy but non-breaking. Until this is implemented and tested, it can be ignored when it occurs immediately after a normal `[WS] Client disconnected` event and health checks continue returning 200.
+**Not urgent:** The traceback was noisy but non-breaking, and is now suppressed by the interim mitigation below. If it ever reappears (for example after a python-engineio upgrade), it can still be ignored when it occurs immediately after a normal `[WS] Client disconnected` event and health checks continue returning 200.
+
+**Interim mitigation (2026-07-03):** the traceback is now suppressed by `jarvis-web/server/werkzeug_ws_compat.py` (applied in `server/app.py`, covered by `tests/test_werkzeug_websocket_teardown.py`). The shim patches a private Engine.IO module and is temporary; remove it when this Gunicorn item lands or when python-engineio fixes the `werkzeug` teardown upstream. Details in `docs/personal/Gunicorn_Upgrade.md`. This item stays open for the lifecycle/supervision benefits, not the traceback.
 
 **Likely files:** `jarvis-web/server/app.py`, `bin/jarvis-web`, `docker/entrypoint.sh`, `Dockerfile`, dependency manifests, Web runtime tests, and Docker/native deployment docs.
 
