@@ -247,12 +247,13 @@
 | **[archive/DATABASE_DEEP_DIVE.md](archive/DATABASE_DEEP_DIVE.md)** | Database evolution (historical) |
 | **JARVIS_INTEL_SYSTEM.md** | Intel file ingestion |
 | **FUTURE_ENHANCEMENTS.md** | Planned features |
+| **[STATUS_UPDATES.md](STATUS_UPDATES.md)** | Current latency-aware status behavior, configuration, caching, and delivery |
 | **[DOCS_STATUS.md](DOCS_STATUS.md)** | Documentation health and maintenance checklist |
 | **archive/** | Historical docs, changelogs, and phase milestones |
 | **[archive/thinking/](archive/thinking/)** | Thinking-mode branch notes (see `EXTENDED_THINKING.md`) |
 | **[archive/XAI_NATIVE_CONTINUATION_PLAN.md](archive/XAI_NATIVE_CONTINUATION_PLAN.md)** | Implemented historical design; live guide: `XAI_PROVIDER.md` |
 | **[archive/OPENAI_RESPONSES_ADAPTER_PLAN.md](archive/OPENAI_RESPONSES_ADAPTER_PLAN.md)** | Implemented historical design; live guide: `OPENAI_PROVIDER.md` |
-| **[archive/STATUS_UPDATES_DESIGN.md](archive/STATUS_UPDATES_DESIGN.md)** | Implemented voice-progress design history; current values are in env examples |
+| **[archive/STATUS_UPDATES_DESIGN.md](archive/STATUS_UPDATES_DESIGN.md)** | Historical 2025 design sketches; live guide: `STATUS_UPDATES.md` |
 | **[archive/SEQUENTIAL_THINKING_ARCHITECTURE.md](archive/SEQUENTIAL_THINKING_ARCHITECTURE.md)** | Unimplemented sequential-thinking research design |
 | **[archive/OAuth/README.md](archive/OAuth/README.md)** | Unimplemented provider OAuth research; not a setup guide |
 | **[archive/docker/DOCKER_PLANNING.md](archive/docker/DOCKER_PLANNING.md)** | Original Docker design record; use `docker/README.md` for operations |
@@ -334,7 +335,16 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
-**2026-07-03 (v2.54.0):**
+**2026-07-04 (v2.54.1):**
+- ✅ **Latency-aware status updates across Web, CLI, and Wake Word**
+  - Status LLM generation moved off the tool critical path; a 250 ms debounce suppresses speech for fast tools and a 1-second deadline selects the static fallback without delaying execution.
+  - Status prompts now use a bounded, sanitized snapshot instead of raw tool output or conversation context, with one Status LLM request allowed at a time.
+  - Turn completion cancels native status generation/playback; Web final responses, errors, cancellation, and mode changes abort pending status TTS so progress audio cannot interrupt the answer.
+  - Web status phrases now use a persistent status-only TTS cache, while final-response TTS remains independent. Effective timing/model/cache values are visible in Settings → System.
+  - Actual Status LLM calls now use `prompt_type=status_update` in `llm-calls` logs; a separate `status-updates` lifecycle log tracks emitted/discarded/fallback outcomes and Web TTS cache/provider activity without changing conversation usage totals.
+  - See: [`STATUS_UPDATES.md`](STATUS_UPDATES.md)
+
+**2026-07-03 (v2.54.1):**
 - ✅ **xAI Grok CLI OAuth subscription provider**
   - Added `XAI_AUTH_MODE=auto|api_key|oauth` and `XAI_OAUTH_MODEL=grok-build`; OAuth uses xAI's documented CLI chat proxy and owner-only `~/.grok/auth.json` credentials without logging or returning tokens.
   - Primary chat, Jarvis function calls, status summaries, and completion-guard evaluators can use OAuth; xAI server-side search, uploaded-image vision, image/video generation, and TTS remain explicitly API-key-only.
@@ -409,7 +419,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Generated videos in Web chat now use cached ffmpeg first-frame posters, matching the reliable thumbnails already shown by the Canvas video gallery in native and Docker installs.
   - Replaced deprecated eventlet monkey-patching with Flask-SocketIO threading plus `simple-websocket`, eliminating gRPC/subprocess greenlet-finalization tracebacks during Ctrl-C or tmux shutdown while preserving native WebSocket transport.
 
-**2026-06-27 (v2.53.4):**
+**2026-06-27 (v2.54.1):**
 - ✅ **Cloud/local startup mode plumbing**
   - Added one canonical `JARVIS_MODE` resolver with cloud as the backward-compatible default and strict validation for explicit local startup.
   - `./bin/start --local` starts the full local-env stack; the TUI exposes **Start All Services (Local)** and **Start UI Only (Local)** without changing existing cloud actions.
@@ -448,7 +458,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: [`opencode/OPENCODE.md`](opencode/OPENCODE.md), [`opencode/OPENCODE_PLUGINS.md`](opencode/OPENCODE_PLUGINS.md), [`FUTURE_ENHANCEMENTS.md`](FUTURE_ENHANCEMENTS.md)
 
 **2026-06-22:**
-- ✅ **Experimental Docker Web stack (v2.53.4)**
+- ✅ **Experimental Docker Web stack (v2.54.1)**
   - Added root `Dockerfile` and `docker-compose.yml` for the Web UI, API, Canvas, Memory, Intelligence, Docs, and background services using the existing host `data/`, config, logs, and audio bind mounts.
   - Added Docker service DNS/internal API routing with optional Bearer auth, a foreground daemon supervisor, Compose restart policies, crash-safe init locking, and native-watchdog separation.
   - Added the tracked `skills/profiles/docker.json` baseline plus configurable `JARVIS_DOCKER_TOOL_PROFILE`; hybrid installs can use `default` Tool RAG while blocking container-incompatible tools only in Web UI Settings.
@@ -457,7 +467,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: [`docs/docker/README.md`](docker/README.md), [`docs/archive/docker/DOCKER_PLANNING.md`](archive/docker/DOCKER_PLANNING.md)
 
 **2026-05-21:**
-- ✅ **Cross-turn correction learning (v2.53.4)**
+- ✅ **Cross-turn correction learning (v2.54.1)**
   - `USER_CORRECTION_LEARNING_MODE=shadow|apply` — shadow records correction candidates without changing routing; apply downgrades the linked prior experience and can append deduped lessons to `jarvis-learned-lessons.md`.
   - Web UI and wake-word paths pass `experience_id` so turn-2 corrections can reach the prior turn's experience record.
   - Topic-pivot guard skips new questions that look like corrections without an explicit correction cue.
@@ -482,7 +492,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: [`docs/XAI_PROVIDER.md`](XAI_PROVIDER.md)
 
 **2026-05-10:**
-- ✅ **OpenAI Responses API routing support (v2.53.4)**
+- ✅ **OpenAI Responses API routing support (v2.54.1)**
   - OpenAI tool-capable router turns can now use `/v1/responses` when `OPENAI_API_MODE=responses` and `OPENAI_RESPONSES_TOOLS=true` are enabled.
   - Optional in-flight continuation supports `previous_response_id` + `function_call_output` for Jarvis client tool loops without making saved Web UI follow-ups depend on provider-side state.
   - Responses tools are converted through a dedicated adapter with non-strict function schemas, usage/cost parsing, cached-input/reasoning token reporting, diagnostics, and safe Chat Completions fallback boundaries.
@@ -1565,15 +1575,15 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Status Updates System** - Real-time voice progress during long tasks ⭐ MAJOR
   - **Phase 1**: Core infrastructure (StatusUpdater, TTS scripts, phrase config)
   - **Phase 2**: Orchestrator integration (tool-aware updates, error handling)
-  - **Phase 3**: LLM dynamic summaries (natural language from tool output)
+  - **Phase 3**: Optional LLM summaries from a bounded, sanitized execution snapshot
   - Configurable phrases with humor/encouragement toggles
   - Tool-specific updates (opencode, search, weather, fetch, etc.)
-  - Rate limiting (20s default), error deduplication, collision prevention
-  - Cloud (OpenAI TTS) and Local (Kokoro TTS) support
+  - Non-blocking deadline fallback, debounce, rate limiting, error deduplication, and final-audio priority
+  - Cloud/local native TTS plus Web status TTS with separate persistent caches
   - **Phrase modes**: `normal` (professional) or `unhinged` (chaotic/funny)
   - **Silence padding**: Prevents speaker wake-up cutoff (`STATUS_SILENCE_PAD_MS`)
-  - **Audio caching**: Pre-gen static phrases to reduce TTS calls (`./bin/status-cache`)
-  - See: `docs/archive/STATUS_UPDATES_DESIGN.md`
+  - **Audio caching**: Repeated static or dynamic phrases avoid another TTS call (`./bin/status-cache`)
+  - Current guide: [`STATUS_UPDATES.md`](STATUS_UPDATES.md); original design: `archive/STATUS_UPDATES_DESIGN.md`
 - ✅ **Weather Tool** - OpenWeatherMap integration with geocoding
   - Accurate location via Geocoding API (lat/lon)
   - US state code handling ("Denver, CO" → "Denver, Colorado")

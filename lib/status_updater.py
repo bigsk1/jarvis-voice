@@ -7,10 +7,14 @@ Handles rate limiting, error deduplication, and collision prevention.
 """
 
 import os
+import re
+import signal
 import sys
 import time
 import threading
 import subprocess
+import contextvars
+import uuid
 from pathlib import Path
 from typing import Any
 from collections.abc import Callable
@@ -20,6 +24,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import get_config_value, get_int
 from status_phrases import StatusPhrases
 from status_llm import StatusSummarizer
+from status_activity_logger import log_status_event
 
 
 class StatusUpdater:
@@ -47,10 +52,16 @@ class StatusUpdater:
         self.mode = mode
         self.project_root = Path(__file__).parent.parent.resolve()
         self.speech_callback = speech_callback
+        self._log_event = log_status_event
         
         # Config
         self.enabled = get_config_value('STATUS_UPDATES_ENABLED', 'false').lower() == 'true'
         self.interval = get_int('STATUS_UPDATE_INTERVAL', 20)
+        self.debounce_ms = max(0, get_int('STATUS_UPDATE_DEBOUNCE_MS', 250))
+        self.llm_deadline_ms = max(
+            self.debounce_ms,
+            get_int('STATUS_LLM_DEADLINE_MS', 1000),
+        )
         self.style = get_config_value('JARVIS_RESPONSE_STYLE', 'casual')
         
         # State
@@ -67,8 +78,14 @@ class StatusUpdater:
         self.max_spoken_errors = 2  # Max errors to speak per task
         
         # Thread safety
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._speaking = False
+        self._speech_process: subprocess.Popen | None = None
+        self._status_request_id = 0
+        self._pending_status: dict[int, threading.Event] = {}
+        self._llm_semaphore = threading.Semaphore(1)
+        self._task_id = uuid.uuid4().hex
+        self._metrics = self._empty_metrics()
         
         # Phrase generator
         self.phrases = StatusPhrases()
@@ -95,16 +112,47 @@ class StatusUpdater:
             self.recent_errors.clear()
             self.spoken_errors_count = 0
             self._stop_background.clear()
+            self._last_context = None
+            self._cancel_pending_status_locked()
+            self._cancel_speech_locked()
             self.phrases.reset_recent()
+            self._task_id = uuid.uuid4().hex
+            self._metrics = self._empty_metrics()
+            task_id = self._task_id
+        self._log_event('turn_started', mode=self.mode, task_id=task_id)
+
+    @staticmethod
+    def _empty_metrics() -> dict[str, int]:
+        return {
+            'status_requests': 0,
+            'rate_limited': 0,
+            'llm_started': 0,
+            'llm_completed': 0,
+            'llm_discarded': 0,
+            'llm_skipped_busy': 0,
+            'dynamic_emitted': 0,
+            'fallback_emitted': 0,
+            'static_emitted': 0,
+        }
     
     def mark_complete(self):
         """Signal that task is done - suppress further updates."""
         with self._lock:
+            was_complete = self.task_complete
             self.task_complete = True
             self._stop_background.set()
-        
-        # Wait briefly for any in-flight audio
-        time.sleep(0.3)
+            self._cancel_pending_status_locked()
+            self._cancel_speech_locked()
+            summary = dict(self._metrics)
+            summary['llm_in_flight'] = max(0, summary['llm_started'] - summary['llm_completed'])
+            task_id = self._task_id
+        if not was_complete:
+            self._log_event(
+                'turn_completed',
+                mode=self.mode,
+                task_id=task_id,
+                **summary,
+            )
     
     def update(
         self,
@@ -125,7 +173,7 @@ class StatusUpdater:
             context: Optional context dict
         
         Returns:
-            True if update was spoken, False if skipped
+            True if update was queued, False if skipped
         """
         if not self.enabled:
             return False
@@ -133,6 +181,8 @@ class StatusUpdater:
         with self._lock:
             if self.task_complete:
                 return False
+
+            self._metrics['status_requests'] = self._metrics.get('status_requests', 0) + 1
             
             now = time.time()
             
@@ -140,6 +190,15 @@ class StatusUpdater:
             if priority != 'high':
                 time_since_last = now - self.last_update_time
                 if time_since_last < self.interval:
+                    self._metrics['rate_limited'] += 1
+                    self._log_event(
+                        'status_rate_limited',
+                        mode=self.mode,
+                        task_id=self._task_id,
+                        tool=tool_name,
+                        category=category,
+                        seconds_since_emit=round(time_since_last, 3),
+                    )
                     return False
             
             # Get message - try LLM first (if enabled), then fall back to static phrases
@@ -149,27 +208,30 @@ class StatusUpdater:
                 # Try dynamic LLM summary
                 # Build context from available info (explicit context, tool name, category)
                 effective_tool = tool_name or self.current_tool
-                event_type = 'error' if 'error' in category else ('start' if category == 'task_start' else 'progress')
+                event_type = self._status_event_type(category, context)
                 
                 # Use explicit context if available, otherwise build minimal context
-                if self._last_context:
+                if context:
+                    llm_context = self._build_minimal_context(effective_tool, category, context)
+                    self._last_context = llm_context
+                elif self._last_context:
                     llm_context = self._last_context
                 else:
                     # Build context from tool name and category for LLM to work with
                     llm_context = self._build_minimal_context(effective_tool, category, context)
                 
-                message = self.summarizer.summarize(
-                    llm_context,
+                fallback = self.phrases.get_phrase(
+                    category=category,
                     tool_name=effective_tool,
-                    event_type=event_type
+                    style=self.style
                 )
-                # Fallback to static phrase if LLM fails
-                if not message:
-                    message = self.phrases.get_phrase(
-                        category=category,
-                        tool_name=effective_tool,
-                        style=self.style
-                    )
+                self._queue_dynamic_status(
+                    context=llm_context,
+                    tool_name=effective_tool,
+                    event_type=event_type,
+                    fallback=fallback,
+                )
+                message = None
             else:
                 message = self.phrases.get_phrase(
                     category=category,
@@ -177,13 +239,17 @@ class StatusUpdater:
                     style=self.style
                 )
             
-            # Update state
-            self.last_update_time = now
+            # Reserve only the current tool here. The rate-limit clock starts
+            # when a phrase actually wins the debounce/deadline race; a status
+            # suppressed by fast completion must not silence the next tool.
             if tool_name:
                 self.current_tool = tool_name
         
-        # Speak in background (don't block)
-        self._speak_async(message)
+        # Static/custom status is also debounced so a fast tool can complete
+        # before speech begins. Dynamic status is queued above and races its
+        # short deadline without holding the tool execution path.
+        if message:
+            self._queue_static_status(message)
         return True
     
     def update_with_context(
@@ -203,15 +269,18 @@ class StatusUpdater:
             priority: 'normal' or 'high'
         
         Returns:
-            True if update was spoken, False if skipped
+            True if update was queued, False if skipped
         """
-        # Store context for LLM summarization
-        self._last_context = context
-        return self.update(category=category, tool_name=tool_name, priority=priority)
+        return self.update(
+            category=category,
+            tool_name=tool_name,
+            priority=priority,
+            context={'detail': context},
+        )
     
     def set_context(self, context: str):
         """Set the current tool context for dynamic summaries."""
-        self._last_context = context
+        self._last_context = self._sanitize_status_text(context, 300)
     
     def update_error(
         self,
@@ -255,7 +324,14 @@ class StatusUpdater:
             category = 'error_retry'
             priority = 'normal'
         
-        return self.update(category=category, priority=priority)
+        return self.update(
+            category=category,
+            priority=priority,
+            context={
+                'phase': 'retrying',
+                'error': error_message,
+            },
+        )
     
     def _should_speak_error(self, error_message: str) -> bool:
         """Check if this error should be spoken (not a repeat)."""
@@ -288,6 +364,59 @@ class StatusUpdater:
         msg = re.sub(r'[a-f0-9-]{36}', 'UUID', msg)
         return msg[:100]  # Truncate
     
+    @staticmethod
+    def _status_event_type(category: str, context: dict[str, Any] | None) -> str:
+        phase = str((context or {}).get('phase') or '').strip().lower()
+        if phase in {'retrying', 'error'} or 'error' in category:
+            return 'error'
+        if phase in {'wrapping_up', 'complete'} or category == 'near_complete':
+            return 'complete'
+        if phase in {'starting', 'start'} or category in {'task_start', 'searching', 'fetching'}:
+            return 'start'
+        return 'progress'
+
+    @staticmethod
+    def _sanitize_status_text(value: Any, max_chars: int = 120) -> str:
+        text = re.sub(r'\s+', ' ', str(value or '')).strip()
+        text = re.sub(
+            r'(?i)(api[_ -]?key|password|token|secret|authorization|cookie)\s*[:=]\s*\S+',
+            r'\1=[redacted]',
+            text,
+        )
+        text = re.sub(r'https?://([^/?#\s]+)[^\s]*', r'https://\1', text)
+        return text[:max_chars].rstrip()
+
+    def _safe_argument_summary(self, arguments: Any) -> str:
+        if not isinstance(arguments, dict):
+            return ''
+        allowed = {
+            'action', 'city', 'date', 'duration', 'file', 'file_path',
+            'filename', 'format', 'location', 'model', 'name', 'path',
+            'provider', 'query', 'resolution', 'symbol', 'task',
+            'task_type', 'ticker', 'time', 'topic', 'url',
+        }
+        blocked = {
+            'authorization', 'body', 'content', 'cookie', 'credentials',
+            'data', 'headers', 'image', 'images', 'password', 'secret',
+            'token', 'api_key', 'apikey', 'audio', 'base64',
+        }
+        parts = []
+        for key, value in arguments.items():
+            normalized = str(key).strip().lower()
+            if normalized not in allowed or any(marker in normalized for marker in blocked):
+                continue
+            if isinstance(value, (str, int, float, bool)):
+                safe_value = self._sanitize_status_text(value, 80)
+            elif isinstance(value, list) and all(isinstance(item, (str, int, float, bool)) for item in value[:3]):
+                safe_value = ', '.join(self._sanitize_status_text(item, 35) for item in value[:3])
+            else:
+                continue
+            if safe_value:
+                parts.append(f'{str(key)[:30]}={safe_value}')
+            if len(parts) >= 5:
+                break
+        return '; '.join(parts)[:220]
+
     def _build_minimal_context(self, tool_name: str | None, category: str, context: dict[str, Any] | None) -> str:
         """Build minimal context for LLM when no explicit context is set."""
         parts = []
@@ -342,6 +471,22 @@ class StatusUpdater:
         if category in category_descriptions:
             parts.append(category_descriptions[category])
         
+        safe_args = self._safe_argument_summary((context or {}).get('arguments'))
+        if safe_args:
+            parts.append(f'Details: {safe_args}')
+
+        previous = self._sanitize_status_text((context or {}).get('previous_outcome'), 120)
+        if previous:
+            parts.append(f'Previous step: {previous}')
+
+        error = self._sanitize_status_text((context or {}).get('error'), 100)
+        if error:
+            parts.append(f'Issue: {error}')
+
+        detail = self._sanitize_status_text((context or {}).get('detail'), 160)
+        if detail:
+            parts.append(detail)
+
         # Add turn info if available
         if self.turn_number > 1:
             parts.append(f'Step {self.turn_number} of multi-step task')
@@ -351,7 +496,173 @@ class StatusUpdater:
         if elapsed > 30:
             parts.append(f'Been working for {int(elapsed)} seconds')
         
-        return '\n'.join(parts) if parts else 'Working on a task'
+        return ('\n'.join(parts) if parts else 'Working on a task')[:500]
+
+    def _cancel_pending_status_locked(self):
+        self._status_request_id += 1
+        for cancel_event in self._pending_status.values():
+            cancel_event.set()
+        self._pending_status.clear()
+
+    def _new_status_request_locked(self) -> tuple[int, threading.Event]:
+        self._cancel_pending_status_locked()
+        request_id = self._status_request_id
+        cancel_event = threading.Event()
+        self._pending_status[request_id] = cancel_event
+        return request_id, cancel_event
+
+    def _claim_status(self, request_id: int, message: str, source: str) -> bool:
+        with self._lock:
+            cancel_event = self._pending_status.get(request_id)
+            if self.task_complete or not cancel_event or cancel_event.is_set():
+                return False
+            cancel_event.set()
+            self._pending_status.pop(request_id, None)
+            self.last_update_time = time.time()
+            metric = {
+                'dynamic': 'dynamic_emitted',
+                'fallback': 'fallback_emitted',
+                'static': 'static_emitted',
+            }[source]
+            self._metrics[metric] = self._metrics.get(metric, 0) + 1
+            task_id = self._task_id
+        self._log_event(
+            'phrase_emitted',
+            mode=self.mode,
+            task_id=task_id,
+            request_id=request_id,
+            source=source,
+            message=message,
+        )
+        self._speak_async(message)
+        return True
+
+    def _queue_static_status(self, message: str):
+        with self._lock:
+            request_id, cancel_event = self._new_status_request_locked()
+
+        def emit_after_debounce():
+            if not cancel_event.wait(self.debounce_ms / 1000):
+                self._claim_status(request_id, message, 'static')
+
+        threading.Thread(target=emit_after_debounce, daemon=True).start()
+
+    def _queue_dynamic_status(
+        self,
+        *,
+        context: str,
+        tool_name: str | None,
+        event_type: str,
+        fallback: str,
+    ):
+        with self._lock:
+            request_id, cancel_event = self._new_status_request_locked()
+            metrics = self._metrics
+            task_id = self._task_id
+        started = time.monotonic()
+        config_context = contextvars.copy_context()
+
+        def wait_for_earliest_emit():
+            remaining = (started + self.debounce_ms / 1000) - time.monotonic()
+            return cancel_event.wait(max(0, remaining)) if remaining > 0 else cancel_event.is_set()
+
+        def generate_dynamic():
+            if not self._llm_semaphore.acquire(blocking=False):
+                with self._lock:
+                    metrics['llm_skipped_busy'] += 1
+                self._log_event(
+                    'status_llm_skipped_busy',
+                    mode=self.mode,
+                    task_id=task_id,
+                    request_id=request_id,
+                    tool=tool_name,
+                    event_type=event_type,
+                )
+                return
+            message = None
+            llm_started_at = time.monotonic()
+            with self._lock:
+                metrics['llm_started'] += 1
+                call_index = metrics['llm_started']
+            self._log_event(
+                'status_llm_started',
+                mode=self.mode,
+                task_id=task_id,
+                request_id=request_id,
+                call_index=call_index,
+                provider=getattr(self.summarizer, 'provider', None),
+                model=getattr(self.summarizer, 'model', None),
+                tool=tool_name,
+                event_type=event_type,
+            )
+            try:
+                message = self.summarizer.summarize(
+                    context,
+                    tool_name=tool_name,
+                    event_type=event_type,
+                    call_metadata={
+                        'mode': self.mode,
+                        'status_task_id': task_id,
+                        'status_request_id': request_id,
+                        'status_call_index': call_index,
+                        'status_tool': tool_name,
+                        'status_event_type': event_type,
+                    },
+                )
+            except Exception as exc:
+                print(f"[StatusUpdater] Dynamic status failed: {exc}", file=sys.stderr)
+            finally:
+                with self._lock:
+                    metrics['llm_completed'] += 1
+                self._llm_semaphore.release()
+            self._log_event(
+                'status_llm_completed',
+                mode=self.mode,
+                task_id=task_id,
+                request_id=request_id,
+                call_index=call_index,
+                duration_ms=round((time.monotonic() - llm_started_at) * 1000, 2),
+                had_phrase=bool(message),
+            )
+            if wait_for_earliest_emit():
+                with self._lock:
+                    metrics['llm_discarded'] += 1
+                    discard_reason = 'turn_complete' if self.task_complete else 'superseded_or_fallback'
+                self._log_event(
+                    'status_llm_discarded',
+                    mode=self.mode,
+                    task_id=task_id,
+                    request_id=request_id,
+                    call_index=call_index,
+                    reason=discard_reason,
+                    had_phrase=bool(message),
+                )
+                return
+            if not self._claim_status(
+                request_id,
+                message or fallback,
+                'dynamic' if message else 'fallback',
+            ):
+                with self._lock:
+                    metrics['llm_discarded'] += 1
+                    discard_reason = 'turn_complete' if self.task_complete else 'superseded_or_fallback'
+                self._log_event(
+                    'status_llm_discarded',
+                    mode=self.mode,
+                    task_id=task_id,
+                    request_id=request_id,
+                    call_index=call_index,
+                    reason=discard_reason,
+                    had_phrase=bool(message),
+                )
+
+        def deadline_fallback():
+            remaining = (started + self.llm_deadline_ms / 1000) - time.monotonic()
+            if not cancel_event.wait(max(0, remaining)):
+                self._claim_status(request_id, fallback, 'fallback')
+
+        threading.Thread(target=lambda: config_context.run(generate_dynamic), daemon=True).start()
+        threading.Thread(target=deadline_fallback, daemon=True).start()
     
     def _speak_async(self, message: str):
         """Speak message in background thread."""
@@ -362,7 +673,7 @@ class StatusUpdater:
                 self._speaking = True
             
             try:
-                self._speak(message, blocking=False)
+                self._speak(message, blocking=True)
             finally:
                 with self._lock:
                     self._speaking = False
@@ -370,6 +681,19 @@ class StatusUpdater:
         thread = threading.Thread(target=speak, daemon=True)
         thread.start()
     
+    def _cancel_speech_locked(self):
+        process = self._speech_process
+        self._speech_process = None
+        if not process or process.poll() is not None:
+            return
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            try:
+                process.terminate()
+            except ProcessLookupError:
+                pass
+
     def _speak(self, message: str, blocking: bool = False):
         """Speak via TTS script or callback."""
         # If callback is set, use it instead of local TTS
@@ -389,16 +713,34 @@ class StatusUpdater:
             script = self.project_root / 'bin' / ('say-local.sh' if self.mode == 'local' else 'say.sh')
         
         blocking_arg = 'true' if blocking else 'false'
-        
+
         try:
-            subprocess.run(
+            process = subprocess.Popen(
                 [str(script), message, blocking_arg],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                timeout=30  # Don't hang forever
+                start_new_session=True,
             )
-        except subprocess.TimeoutExpired:
-            pass
+            with self._lock:
+                if self.task_complete:
+                    try:
+                        os.killpg(process.pid, signal.SIGTERM)
+                    except (ProcessLookupError, PermissionError):
+                        process.terminate()
+                    return
+                self._cancel_speech_locked()
+                self._speech_process = process
+            try:
+                process.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except (ProcessLookupError, PermissionError):
+                    process.terminate()
+            finally:
+                with self._lock:
+                    if self._speech_process is process:
+                        self._speech_process = None
         except Exception as e:
             # Log but don't crash
             print(f"[StatusUpdater] TTS error: {e}", file=sys.stderr)
@@ -429,6 +771,8 @@ class StatusUpdater:
             return
         
         self._stop_background.clear()
+        with self._lock:
+            initial_context = self._last_context
         
         def background_loop():
             interval = interval_override or self.interval
@@ -446,8 +790,7 @@ class StatusUpdater:
                     context = self._poll_opencode_session(session_id)
                 
                 # If we have context, use LLM summarization
-                if context:
-                    self.set_context(context)
+                effective_context = context or initial_context
                 
                 # Progress through categories
                 if update_count >= 4:
@@ -457,7 +800,14 @@ class StatusUpdater:
                 else:
                     cat = category
                 
-                self.update(category=cat, tool_name=tool_name)
+                self.update(
+                    category=cat,
+                    tool_name=tool_name,
+                    context={
+                        'phase': 'running',
+                        'detail': effective_context,
+                    },
+                )
         
         self._background_thread = threading.Thread(target=background_loop, daemon=True)
         self._background_thread.start()
@@ -530,6 +880,8 @@ class StatusUpdater:
     def set_turn(self, turn_number: int):
         """Update turn number for multi-turn tracking."""
         with self._lock:
+            if turn_number != self.turn_number:
+                self._last_context = None
             self.turn_number = turn_number
     
     def is_enabled(self) -> bool:

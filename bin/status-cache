@@ -5,17 +5,18 @@
 #       Final speech (say.sh) is NOT cached - always fresh
 #
 # Usage:
-#   status-cache stats              - Show cache statistics
-#   status-cache clear              - Clear all cached audio
-#   status-cache clear cloud        - Clear cloud cache only (ElevenLabs/OpenAI)
-#   status-cache clear local        - Clear local cache only (Kokoro)
-#   status-cache list               - List cached files
-#   status-cache warm [cloud|local] - Pre-generate cache for all phrases
+#   ./bin/status-cache stats              - Show cache statistics
+#   ./bin/status-cache clear                    - Clear all cached audio
+#   ./bin/status-cache clear cloud        - Clear cloud cache only (ElevenLabs/OpenAI)
+#   ./bin/status-cache clear local        - Clear local cache only (Kokoro)
+#   ./bin/status-cache list               - List cached files
+#   ./bin/status-cache warm [cloud|local] - Pre-generate cache for all phrases
 
 set -euo pipefail
 
 CACHE_DIR_CLOUD="${HOME}/.cache/jarvis/status-tts"
 CACHE_DIR_LOCAL="${HOME}/.cache/jarvis/status-tts-local"
+CACHE_DIR_WEB="${HOME}/.cache/jarvis/status-tts-web"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 show_stats() {
@@ -47,6 +48,18 @@ show_stats() {
     else
         echo "Local TTS Cache: (not created yet)"
     fi
+
+    echo ""
+    if [ -d "$CACHE_DIR_WEB" ]; then
+        WEB_COUNT=$(find "$CACHE_DIR_WEB" -name "*.audio" 2>/dev/null | wc -l)
+        WEB_SIZE=$(du -sh "$CACHE_DIR_WEB" 2>/dev/null | cut -f1)
+        echo "Web Status TTS Cache:"
+        echo "  Location: $CACHE_DIR_WEB"
+        echo "  Files:    $WEB_COUNT cached phrases"
+        echo "  Size:     $WEB_SIZE"
+    else
+        echo "Web Status TTS Cache: (not created yet)"
+    fi
     
     echo ""
     echo "Tip: Use 'status-cache warm' to pre-generate all phrases"
@@ -60,9 +73,13 @@ clear_cache() {
             echo "Clearing cloud status audio cache..."
             if [ -d "$CACHE_DIR_CLOUD" ]; then
                 rm -rf "$CACHE_DIR_CLOUD"
-                echo "✓ Cleared cloud cache (812 phrases)"
+                echo "✓ Cleared cloud cache"
             else
                 echo "Cloud cache doesn't exist"
+            fi
+            if [ -d "$CACHE_DIR_WEB/cloud" ]; then
+                rm -rf "$CACHE_DIR_WEB/cloud"
+                echo "✓ Cleared cloud Web status cache"
             fi
             ;;
         local)
@@ -72,6 +89,10 @@ clear_cache() {
                 echo "✓ Cleared local cache"
             else
                 echo "Local cache doesn't exist"
+            fi
+            if [ -d "$CACHE_DIR_WEB/local" ]; then
+                rm -rf "$CACHE_DIR_WEB/local"
+                echo "✓ Cleared local Web status cache"
             fi
             ;;
         all)
@@ -83,6 +104,10 @@ clear_cache() {
             if [ -d "$CACHE_DIR_LOCAL" ]; then
                 rm -rf "$CACHE_DIR_LOCAL"
                 echo "✓ Cleared local cache"
+            fi
+            if [ -d "$CACHE_DIR_WEB" ]; then
+                rm -rf "$CACHE_DIR_WEB"
+                echo "✓ Cleared web status cache"
             fi
             ;;
         *)
@@ -109,6 +134,14 @@ list_cache() {
     echo "Local TTS Cache ($CACHE_DIR_LOCAL):"
     if [ -d "$CACHE_DIR_LOCAL" ]; then
         ls -lh "$CACHE_DIR_LOCAL"/*.wav 2>/dev/null || echo "  (empty)"
+    else
+        echo "  (not created yet)"
+    fi
+
+    echo ""
+    echo "Web Status TTS Cache ($CACHE_DIR_WEB):"
+    if [ -d "$CACHE_DIR_WEB" ]; then
+        find "$CACHE_DIR_WEB" -name "*.audio" -printf "  %p\n" 2>/dev/null || true
     else
         echo "  (not created yet)"
     fi
@@ -199,4 +232,3 @@ case "${1:-stats}" in
         exit 1
         ;;
 esac
-

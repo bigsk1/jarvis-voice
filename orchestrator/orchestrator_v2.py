@@ -1778,28 +1778,51 @@ Mode: {self.mode}
                 
                 # Status update before tool execution
                 self.status_updater.set_turn(turn_num + 1)
+                previous_status_outcome = None
+                if conversation_context:
+                    previous_item = conversation_context[-1]
+                    previous_result = previous_item.get("result")
+                    previous_result_speech = (
+                        previous_result.get("speech")
+                        if isinstance(previous_result, dict)
+                        else None
+                    )
+                    previous_status_outcome = (
+                        previous_item.get("speech")
+                        or previous_result_speech
+                    )
+                status_context = {
+                    'phase': 'starting',
+                    'arguments': arguments,
+                    'previous_outcome': previous_status_outcome,
+                }
                 
                 # @TOOL_CONFIG: status update categories — route tools to UI status messages
                 if tool_name == 'opencode':
                     # OpenCode is long-running - start background updates
-                    self.status_updater.update(category='building', tool_name=tool_name)
+                    self.status_updater.update(
+                        category='building',
+                        tool_name=tool_name,
+                        context=status_context,
+                    )
+                    # Background OpenCode updates fall back to initial context + static/LLM phrases, not live session logs TODO: in /docs/FUTURE_ENHANCEMENTS.md
                     self.status_updater.start_background_updates(tool_name=tool_name, category='building')
                 elif 'search' in tool_name or 'brave' in tool_name:
-                    self.status_updater.update(category='searching', tool_name=tool_name)
+                    self.status_updater.update(category='searching', tool_name=tool_name, context=status_context)
                 elif 'fetch' in tool_name or 'playwright' in tool_name:
-                    self.status_updater.update(category='fetching', tool_name=tool_name)
+                    self.status_updater.update(category='fetching', tool_name=tool_name, context=status_context)
                 elif tool_name == 'weather':
-                    self.status_updater.update(category='fetching', tool_name=tool_name)
+                    self.status_updater.update(category='fetching', tool_name=tool_name, context=status_context)
                 elif 'memory' in tool_name or 'recall' in tool_name:
                     # Memory tools are fast, skip status
                     pass
                 elif turn_num >= 2:
                     # Multi-turn progress
-                    self.status_updater.update(category='multi_turn', tool_name=tool_name)
+                    self.status_updater.update(category='multi_turn', tool_name=tool_name, context=status_context)
                 else:
                     # Default: acknowledge any other tool at first turn
                     if turn_num == 0:
-                        self.status_updater.update(category='task_start', tool_name=tool_name)
+                        self.status_updater.update(category='task_start', tool_name=tool_name, context=status_context)
                 
                 # Check for cancellation before executing tool
                 if self._is_cancelled():
@@ -2122,7 +2145,10 @@ Mode: {self.mode}
             elif route["intent"] == "qa":
                 # Status update: near complete (if tools were used)
                 if tools_used:
-                    self.status_updater.update(category='near_complete')
+                    self.status_updater.update(
+                        category='near_complete',
+                        context={'phase': 'wrapping_up'},
+                    )
                 
                 # @TOOL_CONFIG: direct speech bypass — tools whose speech is used as-is (LLM won't reformat)
                 last_tool = tools_used[-1] if tools_used else None
@@ -2989,7 +3015,7 @@ Your synthesized response:"""
             
             # Status callback to use the existing status updater
             def status_callback(msg: str):
-                self.status_updater.update(msg)
+                self.status_updater.update(category='progress', custom_message=msg)
             
             # Execute the workflow pipeline
             result = self.pipeline_executor.execute(

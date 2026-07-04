@@ -254,11 +254,13 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
 - **Smart Response Formatting**: Auto-condenses verbose outputs for voice
 - **Status Updates**: Real-time voice progress during long tasks
   - "Searching the web", "Building with OpenCode", "Checking the weather"
-  - LLM-generated dynamic summaries from tool output
+  - Optional LLM summaries run concurrently and never delay tool execution
+  - 250 ms debounce skips unnecessary speech between fast tool calls
+  - Bounded, sanitized execution context with static phrase fallback
   - Configurable phrases with humor/encouragement toggles
   - Phrase modes: `normal` or `unhinged` (chaotic/funny)
-  - Audio caching for instant playback of repeated phrases
-  - See [`docs/archive/STATUS_UPDATES_DESIGN.md`](docs/archive/STATUS_UPDATES_DESIGN.md)
+  - Native and Web status-audio caching for repeated phrases
+  - See [`docs/STATUS_UPDATES.md`](docs/STATUS_UPDATES.md)
 
 
 ![jarvis-tui](docs/images/jarvis-tui.png)
@@ -1526,8 +1528,8 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - File paths simplified to just filename
   - Technical refs preserved in `detailed` mode and internal LLM processing
 - ✅ **TTS Cache Management** - Granular cache control
-  - `./bin/status-cache clear cloud` - clear cloud cache only
-  - `./bin/status-cache clear local` - clear local cache only
+  - `./bin/status-cache clear cloud` - clear native + Web cloud status cache
+  - `./bin/status-cache clear local` - clear native + Web local status cache
   - Dashboard TUI updated with new cache commands
 - ✅ **Dashboard Security & Features** - Safer config viewing
   - Removed commands that exposed API keys
@@ -1825,12 +1827,13 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Run any command with Enter, view output in real-time
   - Launch: `./bin/jarvis-dashboard` or `jarvis-d` alias
 - ✅ **Status Updates System** - Real-time voice progress during tasks ⭐ MAJOR
-  - LLM dynamic summaries (gpt-4o-mini/qwen3 generates natural phrases)
+  - LLM dynamic summaries (gpt-4o-mini/qwen3 generates natural phrases without delaying tools)
   - Tool-aware updates (opencode, search, weather, fetch)
-  - Rate limiting, error deduplication, collision prevention
+  - Debounce, deadline fallback, rate limiting, error deduplication, and final-audio priority
   - Cloud (ElevenLabs/OpenAI) + Local (Kokoro) TTS support
-  - Phrase modes (`normal` / `unhinged`), audio caching, silence padding
+  - Phrase modes (`normal` / `unhinged`), native/Web status caching, silence padding
   - Cache management: `./bin/status-cache clear [cloud|local|all]`
+  - Current guide: `docs/STATUS_UPDATES.md`
 - ✅ **Weather Tool** - OpenWeatherMap with geocoding for accurate locations
 - ✅ **Intelligence Layer Phase 1.5** - Full insight lifecycle ⭐ MAJOR
   - Positive AND negative constraints (what to do AND what NOT to do)
@@ -1889,7 +1892,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.54.0 (July 2026)
+**Current Version:** v2.54.1 (July 2026)
 **Status:** Production Ready ✅
 **Latest Features:** v2.54.0 adds safe xAI Grok CLI OAuth subscription auth for
 text/tool calls, dynamic OAuth model discovery, explicit API-key-only media

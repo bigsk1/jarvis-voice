@@ -5,6 +5,8 @@ REST endpoints for status, tools, settings, and more
 import os
 import json
 import functools
+import hashlib
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, jsonify, request, send_file, send_from_directory, abort
@@ -30,6 +32,7 @@ api_bp = Blueprint('api', __name__, url_prefix='/api')
 # Ensure shared lib helpers are importable in this module
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 from model_catalog import get_provider_fallback_model
+from status_activity_logger import log_status_event
 from vision_multimodal import max_vision_images
 
 
@@ -78,6 +81,50 @@ def _scoped_request_config(handler):
         with config_scope(mode, overrides=overrides):
             return handler(*args, **kwargs)
     return wrapper
+
+
+_STATUS_TTS_CACHE_SETTING_KEYS = (
+    'VOICE', 'TTS_MODEL',
+    'ELEVENLABS_TTS_VOICE', 'ELEVENLABS_TTS_MODEL',
+    'ELEVENLABS_TTS_STABILITY', 'ELEVENLABS_TTS_SIMILARITY_BOOST',
+    'ELEVENLABS_TTS_STYLE', 'ELEVENLABS_TTS_USE_SPEAKER_BOOST',
+    'XAI_TTS_VOICE', 'XAI_TTS_LANGUAGE', 'XAI_TTS_CODEC',
+    'XAI_TTS_SAMPLE_RATE', 'XAI_TTS_BIT_RATE',
+    'QWEN3_TTS_VOICE', 'QWEN3_TTS_SPEED', 'QWEN3_TTS_FORMAT', 'QWEN3_TTS_URL',
+    'KOKORO_TTS_VOICE', 'KOKORO_TTS_SPEED', 'KOKORO_TTS_URL',
+)
+
+
+def _status_tts_cache_paths(mode, provider, text, get_setting):
+    settings = {
+        key: get_setting(key, '')
+        for key in _STATUS_TTS_CACHE_SETTING_KEYS
+    }
+    digest = hashlib.sha256(json.dumps({
+        'version': 1,
+        'mode': mode,
+        'provider': provider,
+        'text': text,
+        'settings': settings,
+    }, sort_keys=True, separators=(',', ':')).encode('utf-8')).hexdigest()
+    cache_dir = Path.home() / '.cache' / 'jarvis' / 'status-tts-web' / mode
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir / f'{digest}.audio', cache_dir / f'{digest}.mime'
+
+
+def _write_status_tts_cache(audio_path: Path, mime_path: Path, content: bytes, content_type: str):
+    for target, payload, binary in (
+        (audio_path, content, True),
+        (mime_path, content_type, False),
+    ):
+        with tempfile.NamedTemporaryFile(
+            mode='wb' if binary else 'w',
+            dir=target.parent,
+            delete=False,
+        ) as handle:
+            handle.write(payload)
+            temporary = Path(handle.name)
+        os.replace(temporary, target)
 
 
 # Path to generated images
@@ -291,6 +338,13 @@ def get_system_config():
         # TTS/Audio (mode-specific)
         'TTS_PROVIDER': get_jarvis_setting('TTS_PROVIDER', 'qwen3-tts' if mode == 'local' else 'elevenlabs'),
         'STATUS_UPDATES_ENABLED': get_jarvis_setting('STATUS_UPDATES_ENABLED', 'true'),
+        'STATUS_UPDATE_INTERVAL': get_jarvis_setting('STATUS_UPDATE_INTERVAL', '18'),
+        'STATUS_UPDATE_DEBOUNCE_MS': get_jarvis_setting('STATUS_UPDATE_DEBOUNCE_MS', '250'),
+        'STATUS_CACHE_ENABLED': get_jarvis_setting('STATUS_CACHE_ENABLED', 'true'),
+        'STATUS_LLM_ENABLED': get_jarvis_setting('STATUS_LLM_ENABLED', 'false'),
+        'STATUS_LLM_PROVIDER': get_jarvis_setting('STATUS_LLM_PROVIDER', 'ollama' if mode == 'local' else 'openai'),
+        'STATUS_LLM_MODEL': get_jarvis_setting('STATUS_LLM_MODEL', ''),
+        'STATUS_LLM_DEADLINE_MS': get_jarvis_setting('STATUS_LLM_DEADLINE_MS', '1000'),
         
         # Features
         'JARVIS_INTELLIGENCE': get_jarvis_setting('JARVIS_INTELLIGENCE', 'false'),
@@ -1544,6 +1598,8 @@ def text_to_speech():
     data = request.get_json() or {}
     text = data.get('text', '')
     mode = data.get('mode')  # Accept mode from client to ensure sync
+    purpose = str(data.get('purpose') or 'final').strip().lower()
+    message_id = data.get('message_id')
     
     if not text:
         return jsonify({'ok': False, 'error': 'No text provided'}), 400
@@ -1569,6 +1625,41 @@ def text_to_speech():
         text = sanitize_for_speech(text, preserve_xai_tags=provider == 'xai')
         if not text:
             text = "Done. I shared the details in chat."
+
+        status_cache_enabled = (
+            purpose == 'status'
+            and get_jarvis_setting('STATUS_CACHE_ENABLED', 'true').strip().lower() == 'true'
+        )
+        status_cache_paths = None
+        if status_cache_enabled:
+            status_cache_paths = _status_tts_cache_paths(
+                mode,
+                provider,
+                text,
+                get_jarvis_setting,
+            )
+            cached_audio, cached_mime = status_cache_paths
+            if cached_audio.is_file() and cached_audio.stat().st_size and cached_mime.is_file():
+                log_status_event(
+                    'tts_cache_hit',
+                    mode=mode,
+                    provider=provider,
+                    message_id=message_id,
+                    text_chars=len(text),
+                )
+                response = send_file(cached_audio, mimetype=cached_mime.read_text().strip())
+                response.headers['X-Jarvis-TTS-Cache'] = 'hit'
+                return response
+
+        if purpose == 'status':
+            log_status_event(
+                'tts_provider_started',
+                mode=mode,
+                provider=provider,
+                message_id=message_id,
+                cache_enabled=status_cache_enabled,
+                text_chars=len(text),
+            )
         
         # Qwen3-TTS (OpenAI-compatible voice cloning on local network)
         if provider == 'qwen3-tts':
@@ -1596,9 +1687,17 @@ def text_to_speech():
             
             # Return audio directly
             content_type = 'audio/mpeg' if tts_format == 'mp3' else f'audio/{tts_format}'
+            if status_cache_paths:
+                _write_status_tts_cache(*status_cache_paths, response.content, content_type)
+            if purpose == 'status':
+                log_status_event(
+                    'tts_provider_completed', mode=mode, provider=provider,
+                    message_id=message_id, audio_bytes=len(response.content),
+                )
             return response.content, 200, {
                 'Content-Type': content_type,
-                'Content-Disposition': 'inline'
+                'Content-Disposition': 'inline',
+                'X-Jarvis-TTS-Cache': 'miss' if status_cache_paths else 'disabled',
             }
         
         # Kokoro TTS (local)
@@ -1624,9 +1723,18 @@ def text_to_speech():
             response.raise_for_status()
             
             # Return audio directly (Kokoro returns raw audio)
+            content_type = response.headers.get('Content-Type') or 'audio/mpeg'
+            if status_cache_paths:
+                _write_status_tts_cache(*status_cache_paths, response.content, content_type)
+            if purpose == 'status':
+                log_status_event(
+                    'tts_provider_completed', mode=mode, provider=provider,
+                    message_id=message_id, audio_bytes=len(response.content),
+                )
             return response.content, 200, {
-                'Content-Type': 'audio/mpeg',
-                'Content-Disposition': 'inline'
+                'Content-Type': content_type,
+                'Content-Disposition': 'inline',
+                'X-Jarvis-TTS-Cache': 'miss' if status_cache_paths else 'disabled',
             }
         
         # Cloud mode: ElevenLabs or OpenAI
@@ -1649,15 +1757,36 @@ def text_to_speech():
                 '.mulaw': 'audio/basic',
                 '.alaw': 'audio/alaw',
             }.get(audio_path.suffix.lower(), 'application/octet-stream')
-            return send_from_directory(
+            if status_cache_paths:
+                _write_status_tts_cache(
+                    *status_cache_paths,
+                    audio_path.read_bytes(),
+                    mimetype,
+                )
+            if purpose == 'status':
+                log_status_event(
+                    'tts_provider_completed', mode=mode, provider=provider,
+                    message_id=message_id, audio_bytes=audio_path.stat().st_size,
+                )
+            response = send_from_directory(
                 str(audio_path.parent),
                 audio_path.name,
                 mimetype=mimetype
             )
+            response.headers['X-Jarvis-TTS-Cache'] = 'miss' if status_cache_paths else 'disabled'
+            return response
         else:
             return jsonify({'ok': False, 'error': 'TTS generation failed'}), 500
             
     except Exception as e:
+        if purpose == 'status':
+            log_status_event(
+                'tts_provider_failed',
+                mode=mode or 'unknown',
+                provider=locals().get('provider'),
+                message_id=message_id,
+                error=str(e)[:300],
+            )
         import traceback
         traceback.print_exc()
         return jsonify({'ok': False, 'error': str(e)}), 500

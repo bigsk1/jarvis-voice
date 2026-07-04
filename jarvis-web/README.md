@@ -230,7 +230,7 @@ Event names below are what the **server** emits / the **client** sends (see `cli
 |-------|-------------|
 | `connected` | Session established |
 | `chat:thinking` | Processing started |
-| `chat:status` | Intermediate status / TTS lines during a turn |
+| `chat:status` | Deadline-bound intermediate status line; browser may request cached status TTS |
 | `tool:start` / `tool:progress` / `tool:complete` / `tool:error` | Tool execution lifecycle |
 | `chat:response` | Final response payload (text, usage, completion guard snapshot, …) |
 | `chat:error` / `chat:cancelled` | Errors and user cancel |

@@ -15,6 +15,33 @@ from llm_logger import LLMLogger
 
 
 class LLMLoggerProvenanceTests(unittest.TestCase):
+    def test_status_call_metadata_is_persisted_without_routing_provenance(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logger = LLMLogger(log_dir=tmpdir)
+            metadata = {
+                "status_task_id": "task-1",
+                "status_request_id": 3,
+                "status_call_index": 2,
+                "status_tool": "weather",
+            }
+            logger.log_llm_call(
+                provider="openai",
+                model="gpt-4o-mini",
+                prompt_type="status_update",
+                messages=[{"role": "user", "content": "Checking weather"}],
+                response_text="Checking the latest forecast",
+                tool_call=None,
+                usage_info={"input_tokens": 40, "output_tokens": 6, "total_tokens": 46},
+                thinking=None,
+                duration_ms=25,
+                call_metadata=metadata,
+            )
+
+            entry = json.loads(logger.log_file.read_text().strip())
+            self.assertEqual(entry["prompt_type"], "status_update")
+            self.assertEqual(entry["call_metadata"], metadata)
+            self.assertEqual(entry["total_tokens"], 46)
+
     def test_log_llm_call_persists_routing_provenance_and_flat_flags(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             logger = LLMLogger(log_dir=tmpdir)

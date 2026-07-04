@@ -61,13 +61,13 @@ OpenCode is working again and the current integration is intentionally simple an
 - Jarvis routes one build/coding request to the `opencode` tool
 - Jarvis sends a single long-running request to the OpenCode HTTP API
 - Jarvis waits for the final result (up to 6 minutes timeout)
-- Jarvis shows generic "building" status updates while waiting
+- Jarvis can show a bounded task-aware opening status plus generic periodic updates while waiting
 - Jarvis summarizes the returned build result for voice/web response
 
 Important details:
 
 - **Not fire-and-forget**: Jarvis waits for the OpenCode result before answering
-- **Not true live progress yet**: current status updates are Jarvis-side filler, not streamed OpenCode step events
+- **Not true live progress yet**: current status updates use the safe OpenCode task summary, not streamed OpenCode step events
 - **Session/log checks are fallback-only**: `check_opencode_sessions` is useful when a run stalls, returns no usable result, or the user explicitly asks for session status/logs
 - **Successful builds should answer from OpenCode directly**: Jarvis should not replace a good build summary with a thin session-status recap
 
@@ -311,18 +311,21 @@ Notes:
 
 ### Status Update Reality Today
 
-During a long build, Jarvis currently speaks/shows generic progress phrases such as:
+During a long build, Jarvis may speak/show a task-aware opening phrase followed
+by generic progress phrases such as:
 
 - "OpenCode is working on your request"
 - "Still building"
 - "Almost there"
 
-These are **not** live step-by-step updates from OpenCode itself.
-They are background Jarvis status messages while waiting on one blocking OpenCode API call.
+These are **not** live step-by-step updates from OpenCode itself. The opening
+phrase may use a bounded, sanitized version of the OpenCode `task` argument;
+later phrases are background Jarvis status messages while waiting on one
+blocking OpenCode API call. Status generation never delays that call.
 
 That means:
 
-- you will not currently hear "creating index.html now" unless OpenCode includes that in the final result
+- you will not currently hear "creating index.html now" from actual live state unless a future session/log bridge exposes that step
 - permission prompts or internal OpenCode pauses are not streamed back as structured live events
 - if real progress visibility is needed, logs or OpenCode UI are still the best source
 

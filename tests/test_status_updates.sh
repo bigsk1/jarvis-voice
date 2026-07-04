@@ -9,9 +9,11 @@ cd "$REPO_ROOT"
 python3 << 'EOF'
 import os
 import sys
+import time
 sys.path.insert(0, 'lib')
 from config_loader import load_config
 load_config('cloud')
+os.environ['STATUS_LOGGING_ENABLED'] = 'false'
 
 # Capture spoken messages
 spoken_messages = []
@@ -55,6 +57,8 @@ def run_test(test_name, settings, categories_to_test):
     
     for cat, tool in categories_to_test:
         updater.update(category=cat, tool_name=tool)
+        # Status generation is intentionally asynchronous and deadline-bound.
+        time.sleep(max(updater.llm_deadline_ms, updater.debounce_ms) / 1000 + 0.1)
     
     print("Messages spoken:")
     for i, msg in enumerate(spoken_messages, 1):

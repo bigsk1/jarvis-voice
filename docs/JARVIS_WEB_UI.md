@@ -52,7 +52,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Settings panel | ✅ | Tabbed modal (General/AI/API Keys) |
 | Provider dropdowns | ✅ | xAI/Anthropic/OpenAI/Ollama with model options |
 | Error handling | ✅ | Toast notifications, error messages |
-| Status updates | ✅ | Stream to browser, not local speaker |
+| Status updates | ✅ | Non-blocking deadline/fallback stream to browser, not local speaker |
 | Duplicate-call recovery status | ✅ | Blocked duplicate tool attempts surface as red status text, not fake failed tool cards |
 
 ### Phase 3: Voice - COMPLETE ✅
@@ -61,7 +61,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 |---------|--------|---------|
 | TTS playback | ✅ | Toggle audio, plays responses in browser |
 | Mode-aware TTS | ✅ | Cloud=ElevenLabs, Local=Kokoro or Qwen3-TTS via provider-specific URL settings |
-| Status TTS | ✅ | Status updates play as TTS when audio enabled |
+| Status TTS | ✅ | Cached, cancellable status speech when enabled; final audio has priority |
 | **Push-to-talk STT** | ✅ | Click mic → speak → click again → transcribe → send |
 | **Mode-aware STT** | ✅ | Cloud=OpenAI Whisper, Local=faster-whisper |
 | **Audio playback controls** | ✅ | Speaker button with pause/resume/stop, progress animation  |
@@ -583,7 +583,7 @@ curl -X PUT http://localhost:5001/api/settings/blocked-tools \
 
 ### Status Updates
 
-Status updates route to browser instead of local speaker:
+Status updates route to the browser instead of the server's local speaker:
 
 ```python
 # In orchestrator_v2.py
@@ -593,6 +593,17 @@ orchestrator.set_status_callback(callback)
 def status_callback(message):
     socketio.emit('chat:status', {'status': message})
 ```
+
+Status generation does not block the tool. The orchestrator starts execution
+immediately while the optional Status LLM races a short deadline; fast tools may
+finish during the debounce and emit no phrase. Tool cards use the separate
+`tool:*` event stream and can appear before a dynamic phrase.
+
+When browser audio is enabled, status speech calls `/api/tts` with
+`purpose=status`. Those responses use a persistent status-only cache. Final
+responses, errors, cancellation, and mode changes abort pending status TTS and
+stop status playback so progress audio cannot interrupt the answer. See
+[`STATUS_UPDATES.md`](STATUS_UPDATES.md).
 
 ### Conversation Context
 
@@ -1558,8 +1569,8 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 | **Conversation History** | `memory_db` + `AUTO_CONTEXT_*` (cloud.env, local.env) | JSON files + `conversation.history_limit` (web_config.json) - **COMPLETELY SEPARATE SYSTEMS** |
 | **LLM Provider** | `.env` file (restart to change) | `web_config.json` per-mode (on-the-fly) |
 | **Blocked Tools** | None (all tools available) | `tools.blocked` array |
-| **Status Updates** | Local speaker | Browser WebSocket + optional TTS |
-| **TTS** | Shell scripts (mode-specific) | Direct API (ElevenLabs/Kokoro based on mode) |
+| **Status Updates** | Local speaker with cancellable cached playback | Browser WebSocket + optional cancellable cached TTS |
+| **TTS** | Mode-specific shell scripts | Direct provider API; status cache is separate from final TTS |
 | **Intelligence/Insights** | ✅ Full (same orchestrator) | ✅ Full (singleton resets on mode switch) |
 | **Tool RAG** | ✅ Full | ✅ Full |
 | **Memory System** | ✅ Full (mode-specific DB) | ✅ Full (mode-specific DB) |

@@ -45,7 +45,8 @@ class LLMLogger:
         mode: str = "cloud",
         user_query: str | None = None,
         routing_provenance: dict[str, Any] | None = None,
-        error: str | None = None
+        error: str | None = None,
+        call_metadata: dict[str, Any] | None = None,
     ):
         """
         Log an LLM API call.
@@ -92,6 +93,7 @@ class LLMLogger:
             "user_query": user_query,
             "messages_count": len(messages),
             "routing_provenance": routing_provenance,
+            "call_metadata": call_metadata,
             
             # Flatten usage fields for easier Loki/Grafana querying
             "input_tokens": usage_value("input_tokens"),

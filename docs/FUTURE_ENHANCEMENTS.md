@@ -184,30 +184,38 @@ It cannot retrieve account-level session or weekly usage, remaining quota, reset
 
 ### 8) Latency-Aware Status Updates Across Web, CLI, and Wake Word
 **Priority:** Medium–High usability / latency
+**Status:** Implemented (2026-07-04); tune timing from live use
+
+Operational behavior and configuration are documented in
+[`STATUS_UPDATES.md`](STATUS_UPDATES.md).
 
 Status updates originated in the wake-word interface to fill otherwise silent
 tool waits. They remain useful in Web and CLI too, and the static phrase path
-must remain available on all three surfaces. The optional Status LLM adds
-variety, but its current request is synchronous and runs before `tool:start`
-and before the tool itself. A slow or missed provider call therefore extends
-the critical path even though status speech playback is asynchronous.
+remains available on all three surfaces. Previously, the optional Status LLM
+request ran synchronously before `tool:start` and the tool itself, so a slow or
+missed provider call extended the critical path even though speech playback was
+asynchronous. The implementation below removes that wait.
 
 **Goal:** Preserve short, well-timed feedback without making tool turns slower,
 feeding a small status model a large prompt, or allowing late status audio to
 interrupt the final answer.
 
-**Timing design:**
-- Start tool execution without waiting for the Status LLM provider.
-- Generate a dynamic phrase concurrently under a short, explicit deadline.
-- If the deadline is missed, use an immediate static phrase or remain silent;
+**Implemented timing design:**
+- Tool execution starts without waiting for the Status LLM provider.
+- A dynamic phrase is generated concurrently under `STATUS_LLM_DEADLINE_MS`
+  (default 1000 ms).
+- If the deadline is missed, use the static phrase fallback;
   do not hold the tool for the provider timeout.
-- Suppress a late phrase when the tool/turn has already completed.
-- Give final-response audio strict priority: cancel pending status generation,
+- Only one Status LLM request runs at a time; superseded provider calls may
+  finish in the background, but their result is discarded and no new overlap
+  is started.
+- A `STATUS_UPDATE_DEBOUNCE_MS` delay (default 250 ms) lets fast tools finish
+  without beginning status speech.
+- Late phrases are suppressed when the tool/turn has already completed.
+- Final-response audio has strict priority: cancel pending status generation,
   pending Web `/api/tts` requests, and status playback before final TTS starts.
-- Keep execution order separate from presentation order. Web may sequence an
-  ephemeral phrase and tool card without delaying the actual tool call.
-- Consider a short-task debounce so fast tools show a card but do not begin a
-  status phrase that would collide with an immediately available result.
+- Execution order is separate from presentation order. A Web tool card may
+  appear before its optional phrase because neither display blocks execution.
 
 **Small context contract:** Do not send the whole transcript, raw tool output,
 or accumulated conversation to the status model. Use a bounded, sanitized
@@ -221,11 +229,11 @@ snapshot (target roughly 300–500 characters):
 The status model should infer a natural phrase from that small snapshot. It
 does not need internal thinking, full results, or the final-answer context.
 
-**Caching:** Native `say-status.sh` and `say-status-local.sh` already cache audio
+**Caching:** Native `say-status.sh` and `say-status-local.sh` cache audio
 by exact text plus provider/voice settings, so repeated static or dynamic
-phrases avoid another TTS call. Web status speech currently calls `/api/tts`
-directly and does not share that status cache. A future Web cache should use the
-same semantic key while keeping final-response TTS behavior independent.
+phrases avoid another TTS call. Web `/api/tts` now has a persistent status-only
+cache keyed by mode, provider, text, and voice/model settings. Final-response
+TTS remains independent and uncached by this path.
 
 **Retain:**
 - `STATUS_UPDATES_ENABLED` as the master opt-in
@@ -234,10 +242,9 @@ same semantic key while keeping final-response TTS behavior independent.
 - personality controls and rate limiting
 - Web ephemeral text, optional Web TTS, CLI TTS, and wake-word TTS
 
-**Correctness cleanup when implemented:** Clear `_last_context` on every new
-turn, pass actual error phase/context safely instead of using errors only for
-deduplication, and distinguish `near_complete` from generic `progress` in the
-Status LLM event hint.
+**Included correctness cleanup:** `_last_context` is cleared on every new turn,
+errors provide a bounded redacted context, and `near_complete` maps to the
+Status LLM completion event rather than generic progress.
 
 ---
 

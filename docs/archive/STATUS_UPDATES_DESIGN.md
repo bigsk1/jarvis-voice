@@ -2,11 +2,13 @@
 
 > **Purpose**: Provide real-time voice updates during long-running tasks to keep the user informed without requiring terminal access.
 
-> **Status: implemented.** The first sections preserve the original design;
-> use [Current Implementation Status](#current-implementation-status) and the
-> current env examples in `config/cloud.env.example` / `config/local.env.example`
-> for operational configuration. The implemented default interval is 18
-> seconds in those examples, not every older value shown in the design history.
+> **Historical design record — not an operational guide.** This document
+> preserves the original 2025 proposal, code sketches, timing assumptions, and
+> phased implementation notes. Several claims below are intentionally stale,
+> including synchronous Status LLM generation, 20-second defaults, high phrase
+> counts, and live OpenCode polling. Use
+> [`../STATUS_UPDATES.md`](../STATUS_UPDATES.md) and the current env examples for
+> runtime behavior and configuration.
 
 ---
 

@@ -1,6 +1,6 @@
 # Documentation Status
 
-Last updated: 2026-07-02
+Last updated: 2026-07-04
 
 This file tracks doc health and maintenance. For the live index, see [README.md](README.md).
 
@@ -8,7 +8,7 @@ This file tracks doc health and maintenance. For the live index, see [README.md]
 
 ## Current state
 
-**Tracked docs:** 165 Markdown files under `docs/`: 134 active-tree docs and
+**Tracked docs:** 166 Markdown files under `docs/`: 135 active-tree docs and
 31 files under `docs/archive/`. The QMD collection can also include ignored
 personal directories present on a particular machine, so its count is not the
 tracked-repository count.
@@ -86,6 +86,21 @@ stores: relative-link scan, referenced-command/path scan, mode/provider wording
 scan, Compose config rendering, shell/Python syntax checks, and the project test
 collection boundary.
 
+## Pass 8 completed (2026-07-04)
+
+- Added [STATUS_UPDATES.md](STATUS_UPDATES.md) as the live operational guide for
+  latency-aware status generation across Web, CLI, and wake word.
+- Documented nonblocking tool execution, debounce/deadline behavior, bounded
+  Status LLM context, static fallback, cancellation, final-audio priority, and
+  native/Web status-only TTS caches.
+- Added monthly-auditable Status LLM token/cost logging and lifecycle/TTS-cache
+  outcome logging, with aggregation examples in the live guide.
+- Updated the main README, Web UI, OpenCode, xAI, future-enhancement, and event
+  reference pages to match the current implementation.
+- Marked `archive/STATUS_UPDATES_DESIGN.md` prominently as historical so its old
+  synchronous waits, polling sketches, and timing values are not mistaken for
+  current behavior.
+
 ## Pass 7 completed (2026-07-02)
 
 - Documented **credential-aware tool availability** (section 9 in
@@ -117,7 +132,7 @@ collection boundary.
 | `archive/OAuth/README.md` | Unimplemented provider-auth research proposal |
 | `archive/XAI_NATIVE_CONTINUATION_PLAN.md` | Implemented design record; live guide is `XAI_PROVIDER.md` |
 | `archive/OPENAI_RESPONSES_ADAPTER_PLAN.md` | Implemented design record; live guide is `OPENAI_PROVIDER.md` |
-| `archive/STATUS_UPDATES_DESIGN.md` | Implemented design history; operational values live in env examples |
+| `archive/STATUS_UPDATES_DESIGN.md` | Historical design sketches; live guide is `STATUS_UPDATES.md` |
 | `archive/SEQUENTIAL_THINKING_ARCHITECTURE.md` | Explicit unimplemented future design |
 | `archive/docker/DOCKER_PLANNING.md` | Original design record; live guide is `docker/README.md` |
 

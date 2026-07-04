@@ -303,6 +303,10 @@ Jarvis keeps this scoped carefully:
 
 Cloud status updates also play through xAI TTS when `TTS_PROVIDER=xai`; this includes the lightweight `bin/say-status.sh` path used during longer tasks.
 
+Status generation is deadline-bound and does not delay tool execution. Native
+and Web status audio are cached separately from final-response TTS, and final
+audio always has playback priority. See [`STATUS_UPDATES.md`](STATUS_UPDATES.md).
+
 The status LLM does not currently receive the expressive speech-tag prompt. It still generates very short plain phrases, which keeps progress updates predictable and avoids cached status audio changing style unexpectedly. If status tags become useful later, add a separate toggle such as `XAI_STATUS_TTS_STYLE_TAGS_ENABLED` instead of reusing the final-answer setting.
 
 ## Configuration

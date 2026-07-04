@@ -3,14 +3,16 @@
 Jarvis Status LLM - Dynamic status summaries using small/fast LLMs.
 
 Uses cheap models (gpt-4o-mini, grok-4.3, qwen2.5:1.5b) to generate
-natural status updates from tool output/logs.
+natural status updates from a small sanitized execution snapshot.
 
 Falls back to static phrases if LLM unavailable or fails.
 """
 
 import os
 import sys
+import time
 import requests
+from typing import Any
 
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
@@ -51,6 +53,7 @@ Only output the status phrase, nothing else."""
         self.api_key = None
         self.base_url = None
         self.xai_provider = None
+        self._last_usage_info: dict[str, Any] | None = None
         
         if self.provider == 'openai':
             self.api_key = get_config_value('OPENAI_API_KEY')
@@ -117,7 +120,8 @@ Be unpredictable, energetic, and slightly unhinged. Have fun with it!""")
         self, 
         context: str, 
         tool_name: str | None = None,
-        event_type: str = 'progress'
+        event_type: str = 'progress',
+        call_metadata: dict[str, Any] | None = None,
     ) -> str | None:
         """
         Generate a 5-8 word status summary.
@@ -139,12 +143,14 @@ Be unpredictable, energetic, and slightly unhinged. Have fun with it!""")
         ):
             return None
         
-        # Build prompt
+        started = time.monotonic()
         prompt = self._build_prompt(context, tool_name, event_type)
-        
+        self._last_usage_info = None
+        result = None
+        error = None
         try:
             if self.provider == 'ollama':
-                return self._call_ollama(prompt)
+                result = self._call_ollama(prompt)
             elif self.provider == 'xai':
                 if not self.xai_provider:
                     return None
@@ -154,17 +160,67 @@ Be unpredictable, energetic, and slightly unhinged. Have fun with it!""")
                     max_tokens=self.max_tokens,
                 )
                 if content.startswith('Error:'):
-                    return None
-                return self._clean_response(content)
+                    error = content
+                else:
+                    result = self._clean_response(content)
             elif self.provider == 'anthropic':
-                return self._call_anthropic(prompt)
+                result = self._call_anthropic(prompt)
             else:
                 # OpenAI-compatible (OpenAI, xAI)
-                return self._call_openai_compatible(prompt)
+                result = self._call_openai_compatible(prompt)
         except Exception as e:
             # Log but don't crash - caller should use fallback
+            error = str(e)
             print(f"[StatusLLM] Error: {e}", file=sys.stderr)
-            return None
+        finally:
+            self._log_call(
+                prompt=prompt,
+                response_text=result,
+                usage_info=self._last_usage_info,
+                duration_ms=(time.monotonic() - started) * 1000,
+                call_metadata=call_metadata,
+                error=error,
+            )
+        return result
+
+    def _log_call(
+        self,
+        *,
+        prompt: str,
+        response_text: str | None,
+        usage_info: dict[str, Any] | None,
+        duration_ms: float,
+        call_metadata: dict[str, Any] | None,
+        error: str | None,
+    ) -> None:
+        """Record actual provider calls without adding them to chat usage totals."""
+        if get_config_value('STATUS_LOGGING_ENABLED', 'true').strip().lower() != 'true':
+            return
+        try:
+            from llm_logger import get_logger
+
+            mode = str((call_metadata or {}).get('mode') or get_config_value('JARVIS_MODE', 'cloud'))
+            get_logger(mode).log_llm_call(
+                provider=self.provider,
+                model=self.model,
+                prompt_type='status_update',
+                messages=[
+                    {'role': 'system', 'content': self.system_prompt},
+                    {'role': 'user', 'content': prompt},
+                ],
+                response_text=response_text,
+                tool_call=None,
+                usage_info=usage_info,
+                thinking=None,
+                duration_ms=duration_ms,
+                mode=mode,
+                user_query=None,
+                error=error,
+                call_metadata=call_metadata,
+            )
+        except Exception as exc:
+            if os.environ.get('JARVIS_DEBUG'):
+                print(f"[StatusLLM] Failed to log call: {exc}", file=sys.stderr)
     
     def _build_prompt(self, context: str, tool_name: str | None, event_type: str) -> str:
         """Build the prompt for summarization."""
@@ -212,6 +268,23 @@ Generate a natural 5-8 word status update:"""
         response.raise_for_status()
         
         result = response.json()
+        usage = result.get('usage') or {}
+        if usage:
+            from cost_estimator import estimate_cost
+
+            input_tokens = int(usage.get('prompt_tokens') or 0)
+            output_tokens = int(usage.get('completion_tokens') or 0)
+            self._last_usage_info = estimate_cost(
+                provider='openai',
+                model=self.model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+            prompt_details = usage.get('prompt_tokens_details') or {}
+            cached_tokens = prompt_details.get('cached_tokens')
+            if cached_tokens is not None:
+                self._last_usage_info['cached_input_tokens'] = cached_tokens
+                self._last_usage_info['cache_read_tokens'] = cached_tokens
         content = result['choices'][0]['message']['content']
         return self._clean_response(content)
     
@@ -241,6 +314,24 @@ Generate a natural 5-8 word status update:"""
         response.raise_for_status()
         
         result = response.json()
+        usage = result.get('usage') or {}
+        if usage:
+            from cost_estimator import estimate_cost
+
+            input_tokens = int(usage.get('input_tokens') or 0)
+            output_tokens = int(usage.get('output_tokens') or 0)
+            self._last_usage_info = estimate_cost(
+                provider='anthropic',
+                model=self.model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+            for source, target in (
+                ('cache_creation_input_tokens', 'cache_creation_tokens'),
+                ('cache_read_input_tokens', 'cache_read_tokens'),
+            ):
+                if usage.get(source) is not None:
+                    self._last_usage_info[target] = usage[source]
         content = result['content'][0]['text']
         return self._clean_response(content)
     
@@ -268,6 +359,21 @@ Generate a natural 5-8 word status update:"""
         response.raise_for_status()
         
         result = response.json()
+        input_tokens = int(result.get('prompt_eval_count') or 0)
+        output_tokens = int(result.get('eval_count') or 0)
+        self._last_usage_info = {
+            'input_tokens': input_tokens,
+            'output_tokens': output_tokens,
+            'total_tokens': input_tokens + output_tokens,
+        }
+        if execution_class == OLLAMA_EXECUTION_LOCAL_DAEMON:
+            self._last_usage_info.update(cost_usd=0.0, billing_mode='local_compute')
+        else:
+            self._last_usage_info.update(
+                cost_usd=None,
+                cost_known=False,
+                billing_mode='ollama_cloud_subscription',
+            )
         content = result.get('response', '')
         return self._clean_response(content)
     

@@ -35,8 +35,12 @@ class JarvisApp {
     
     // Audio playback state
     this.currentAudio = null;
+    this.currentAudioKind = null;
     this.isPlaying = false;
     this.audioQueue = [];  // Queue for multiple audio clips
+    this._statusTTSController = null;
+    this._statusTTSGeneration = 0;
+    this._completedResponseIds = new Set();
     
     this._initialize();
   }
@@ -113,6 +117,7 @@ class JarvisApp {
     });
     
     this.socket.on('modeChanged', async (data) => {
+      this._cancelStatusTTS();
       this.modeSelect.value = data.mode;
       Utils.toast(`Mode changed to ${data.mode}`, 'info');
       
@@ -132,12 +137,19 @@ class JarvisApp {
     });
     
     this.socket.on('response', (data) => {
+      if (data.message_id) {
+        this._completedResponseIds.add(data.message_id);
+        if (this._completedResponseIds.size > 100) {
+          this._completedResponseIds.delete(this._completedResponseIds.values().next().value);
+        }
+      }
+      this._cancelStatusTTS();
       // Play audio if enabled and available
       if (this.audioEnabled && data.audio_url) {
-        this._playAudio(data.audio_url);
+        this._playAudio(data.audio_url, 'final');
       } else if (this.audioEnabled && data.speech) {
         // Generate TTS if no audio_url provided but audio enabled
-        this._generateAndPlayTTS(data.speech);
+        this._generateAndPlayTTS(data.speech, { kind: 'final' });
       }
       // Refresh history on new response
       this._loadConversationHistory();
@@ -145,15 +157,27 @@ class JarvisApp {
     
     // Handle status updates (progress during long tasks)
     this.socket.on('status', (data) => {
+      if (data.message_id && this._completedResponseIds.has(data.message_id)) return;
+      if (!data.message_id && this.chat && !this.chat.isProcessing) return;
       console.log('[App] Status update:', data.status);
       // Show status in chat as ephemeral message
       this.chat.showStatus(data.status);
       
       // Play TTS for status if audio enabled
       if (this.audioEnabled && data.status) {
-        this._generateAndPlayTTS(data.status);
+        this._generateAndPlayTTS(data.status, {
+          kind: 'status',
+          messageId: data.message_id,
+        });
       }
     });
+
+    for (const terminalEvent of ['error', 'cancelled']) {
+      this.socket.on(terminalEvent, (data) => {
+        if (data?.message_id) this._completedResponseIds.add(data.message_id);
+        this._cancelStatusTTS();
+      });
+    }
     
     // Handle new conversation created
     this.socket.on('conversationCreated', (data) => {
@@ -676,17 +700,30 @@ class JarvisApp {
   /**
    * Play audio response with controls
    */
-  _playAudio(url) {
+  _playAudio(url, kind = 'final') {
     console.log('[App] Playing audio:', url);
+
+    // A status phrase must never interrupt an answer that is already playing.
+    if (
+      kind === 'status'
+      && this.currentAudioKind === 'final'
+      && this.currentAudio
+      && !this.currentAudio.ended
+    ) {
+      if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+      return;
+    }
 
     // Stop any currently playing audio
     if (this.currentAudio) {
       this.currentAudio.pause();
       this.currentAudio = null;
+      this.currentAudioKind = null;
     }
     
     const audio = new Audio(url);
     this.currentAudio = audio;
+    this.currentAudioKind = kind;
     
     // Progress bar element
     const progressBar = document.getElementById('speakerProgress');
@@ -729,6 +766,7 @@ class JarvisApp {
         // Only hide if this is still the same audio (not replaced by new audio)
         if (this.currentAudio === audio) {
           this.currentAudio = null;
+          this.currentAudioKind = null;
           this._updateSpeakerButton();
           
           // Revoke blob URL to free memory
@@ -744,6 +782,7 @@ class JarvisApp {
       console.warn('[App] Audio error:', e);
       this.isPlaying = false;
       this.currentAudio = null;
+      this.currentAudioKind = null;
       this._updateSpeakerButton();
       if (progressBar) {
         progressBar.style.width = '0%';
@@ -755,6 +794,7 @@ class JarvisApp {
       Utils.toast('Audio playback failed', 'error');
       this.isPlaying = false;
       this.currentAudio = null;
+      this.currentAudioKind = null;
       this._updateSpeakerButton();
       if (progressBar) {
         progressBar.style.width = '0%';
@@ -795,6 +835,7 @@ class JarvisApp {
     this.currentAudio.currentTime = 0;
     this.isPlaying = false;
     this.currentAudio = null;
+    this.currentAudioKind = null;
     this._updateSpeakerButton();
     
     // Reset progress bar
@@ -840,21 +881,54 @@ class JarvisApp {
   /**
    * Generate TTS and play audio
    */
-  async _generateAndPlayTTS(text) {
+  _cancelStatusTTS() {
+    this._statusTTSGeneration += 1;
+    if (this._statusTTSController) {
+      this._statusTTSController.abort();
+      this._statusTTSController = null;
+    }
+    if (this.currentAudioKind === 'status' && this.currentAudio) {
+      this.stopAudioPlayback();
+    }
+  }
+
+  async _generateAndPlayTTS(text, { kind = 'final', messageId = null } = {}) {
     if (!text || text.length > 1000) {
       // Skip very long text
       console.log('[App] Skipping TTS for text length:', text?.length);
       return;
     }
     
+    let controller = null;
+    let generation = null;
+    if (kind === 'status') {
+      this._cancelStatusTTS();
+      controller = new AbortController();
+      this._statusTTSController = controller;
+      generation = this._statusTTSGeneration;
+    }
+
     try {
       console.log('[App] Generating TTS for:', text.substring(0, 50) + '...', 'mode:', this.socket.mode);
 
       const response = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, mode: this.socket.mode })
+        body: JSON.stringify({
+          text,
+          mode: this.socket.mode,
+          purpose: kind,
+          message_id: messageId,
+        }),
+        signal: controller?.signal,
       });
+
+      if (
+        kind === 'status'
+        && (controller.signal.aborted
+          || generation !== this._statusTTSGeneration
+          || (messageId && this._completedResponseIds.has(messageId)))
+      ) return;
       
       if (response.ok) {
         const contentType = response.headers.get('Content-Type');
@@ -863,7 +937,7 @@ class JarvisApp {
         console.log('[App] TTS blob size:', blob.size, 'type:', blob.type);
         if (blob.size > 0) {
           const audioUrl = URL.createObjectURL(blob);
-          this._playAudio(audioUrl);
+          this._playAudio(audioUrl, kind);
         } else {
           console.warn('[App] TTS returned empty audio');
         }
@@ -872,7 +946,12 @@ class JarvisApp {
         console.warn('[App] TTS generation failed:', response.status, errorText);
       }
     } catch (err) {
+      if (err?.name === 'AbortError') return;
       console.error('[App] TTS error:', err);
+    } finally {
+      if (kind === 'status' && this._statusTTSController === controller) {
+        this._statusTTSController = null;
+      }
     }
   }
 
@@ -1796,6 +1875,18 @@ class JarvisApp {
             <div class="config-item">
               <span class="config-label">STATUS_UPDATES_ENABLED</span>
               <span class="config-value ${c.STATUS_UPDATES_ENABLED === 'true' ? 'enabled' : 'disabled'}">${c.STATUS_UPDATES_ENABLED}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">Status timing</span>
+              <span class="config-value">${Utils.escapeHtml(c.STATUS_UPDATE_DEBOUNCE_MS)}ms debounce · ${Utils.escapeHtml(c.STATUS_LLM_DEADLINE_MS)}ms LLM deadline · ${Utils.escapeHtml(c.STATUS_UPDATE_INTERVAL)}s interval</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">Status LLM</span>
+              <span class="config-value ${c.STATUS_LLM_ENABLED === 'true' ? 'enabled' : 'disabled'}">${c.STATUS_LLM_ENABLED === 'true' ? `${Utils.escapeHtml(c.STATUS_LLM_PROVIDER)} · ${Utils.escapeHtml(c.STATUS_LLM_MODEL || '(provider default)')}` : 'disabled · static phrases'}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">Status audio cache</span>
+              <span class="config-value ${c.STATUS_CACHE_ENABLED === 'true' ? 'enabled' : 'disabled'}">${c.STATUS_CACHE_ENABLED}</span>
             </div>
           </div>
           
