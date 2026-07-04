@@ -20,6 +20,7 @@ import subprocess
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
+from paths import assert_not_restricted_read_path
 from stash_helper import (
     open_space, get_space, list_spaces, cleanup_expired,
     StashFile
@@ -244,10 +245,12 @@ def action_save(args: dict) -> dict:
             raise ValueError("file_path is required for kind='file'")
         
         from pathlib import Path
-        src_path = Path(file_path)
+        src_path = Path(file_path).expanduser().resolve()
         
         if not src_path.exists():
             raise ValueError(f"File not found: {file_path}")
+
+        assert_not_restricted_read_path(src_path, label="Source file")
         
         # Security: only allow files from /tmp or project directories
         allowed_prefixes = ['/tmp', str(Path(__file__).parent.parent)]

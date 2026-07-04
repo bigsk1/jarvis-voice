@@ -4,10 +4,13 @@ Jarvis Skill: Execute Bash Command
 Executes bash commands with safety checks.
 
 Security:
-- Blocks dangerous command patterns (expanded list)
+- Applies best-effort checks for dangerous commands and sensitive paths
 - Detects command injection attempts
 - Blocks interpreter escapes
 - Logs all executed commands
+
+These checks reduce accidental LLM misuse. They are not a filesystem sandbox or
+a security boundary against deliberately obfuscated shell commands.
 """
 import os
 import sys
@@ -21,11 +24,37 @@ from pathlib import Path
 # Add lib to path (same pattern as other skills)
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "lib"))
 from security_utils import is_path_protected
-from paths import get_project_root
+from paths import (
+    get_project_root,
+    get_restricted_read_match,
+    get_restricted_read_paths,
+    is_path_under_prefix,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+CD_COMMANDS = frozenset({"cd"})
+SEARCH_PATH_COMMANDS = frozenset({"grep", "rg", "ripgrep", "ag", "ack", "find"})
+SEARCH_PATTERN_FLAGS = frozenset({"-e", "--regexp"})
+SEARCH_FILE_FLAGS = frozenset({"-f", "--file"})
+SEARCH_FLAGS_WITH_VALUE = frozenset({
+    "-m", "--max-count", "--glob", "-g", "-A", "--after-context",
+    "-B", "--before-context", "-C", "--context", "--type", "-t",
+    "--include", "--exclude", "--exclude-dir",
+})
+SEARCH_DEFAULTS_TO_CWD = frozenset({"rg", "ripgrep", "ag", "ack", "find"})
+READ_PATH_COMMANDS = frozenset({
+    "cat", "head", "tail", "less", "more", "strings", "file", "stat", "ls",
+    "du", "wc", "sort", "uniq", "cut", "awk", "sed", "jq", "yq", "xxd",
+    "hexdump", "base64", "sqlite3", "tar", "zip", "unzip", "7z", "rsync",
+    "scp",
+})
+READ_EXPRESSION_COMMANDS = frozenset({"awk", "sed", "jq", "yq"})
+SHELL_OR_INTERPRETER_COMMANDS = frozenset({
+    "bash", "sh", "zsh", "python", "python3", "perl", "ruby", "node",
+})
 
 
 # Dangerous command patterns to block (comprehensive list)
@@ -100,26 +129,40 @@ BLOCKED_REGEX_PATTERNS = [
     r'\|\|\s*rm\s',  # Command chaining with rm
 ]
 
-# Commands that modify files - used to check against protected paths
-MODIFYING_COMMANDS = [
-    'rm', 'rmdir', 'mv', 'cp', 'touch', 'mkdir',
-    'chmod', 'chown', 'chgrp',
-    'sed -i', 'sed --in-place',
-    'tee', 'dd',
-    'git checkout', 'git reset', 'git clean',
-    'nano', 'vim', 'vi', 'emacs',
-    'echo.*>', 'cat.*>',  # Redirects
-    'truncate',
-]
+# Commands that modify files - used to check against protected paths.
+MODIFYING_COMMAND_NAMES = frozenset({
+    "rm", "rmdir", "mv", "cp", "touch", "mkdir", "chmod", "chown", "chgrp",
+    "tee", "dd", "nano", "vim", "vi", "emacs", "truncate",
+})
 
 
 def is_modifying_command(command: str) -> bool:
     """Check if command modifies files (vs read-only)."""
-    cmd_lower = command.lower()
-    
-    # Check for modifying commands
-    for mod_cmd in MODIFYING_COMMANDS:
-        if mod_cmd in cmd_lower:
+    # Inspect the command position in each simple shell segment. This avoids
+    # treating names such as ``jarvis_memory.db`` or ``/tmp/vi/example`` as
+    # editor commands merely because they contain a command substring.
+    for segment in re.split(r"&&|\|\||[;|]", command):
+        try:
+            tokens = shlex.split(segment, posix=True)
+        except ValueError:
+            tokens = segment.split()
+        while tokens and "=" in tokens[0] and not tokens[0].startswith(("/", "./", "../")):
+            tokens.pop(0)
+        if tokens and Path(tokens[0]).name == "sudo":
+            tokens.pop(0)
+            while tokens and tokens[0].startswith("-"):
+                tokens.pop(0)
+        if not tokens:
+            continue
+
+        command_name = Path(tokens[0]).name.lower()
+        if command_name in MODIFYING_COMMAND_NAMES:
+            return True
+        if command_name == "sed" and any(
+            arg == "--in-place" or arg.startswith("-i") for arg in tokens[1:]
+        ):
+            return True
+        if command_name == "git" and len(tokens) > 1 and tokens[1] in {"checkout", "reset", "clean"}:
             return True
     
     # Check for output redirection
@@ -140,6 +183,83 @@ def _looks_like_path_token(token: str) -> bool:
     return token.startswith(("~", "/", "./", "../")) or "/" in token
 
 
+def _resolve_shell_path(part: str, base_dir: Path) -> str:
+    normalized = Path(part).expanduser()
+    if not normalized.is_absolute():
+        normalized = base_dir / normalized
+    return str(normalized.resolve())
+
+
+def _extract_search_roots(tokens: list[str], start: int, base_dir: Path) -> tuple[list[str], int]:
+    """Extract search input roots while keeping the search expression out of path checks."""
+    command = Path(tokens[start]).name
+    if command == "find":
+        roots: list[str] = []
+        j = start + 1
+        while j < len(tokens):
+            part = tokens[j]
+            if part in {"|", "||", "&&", ";"} or part.startswith(("-", "!", "(")):
+                break
+            roots.append(_resolve_shell_path(part, base_dir))
+            j += 1
+        return roots or [str(base_dir)], j
+
+    roots = []
+    pattern_supplied = False
+    j = start + 1
+    while j < len(tokens):
+        part = tokens[j]
+        if part in {"|", "||", "&&", ";"}:
+            break
+        if part in SEARCH_PATTERN_FLAGS and j + 1 < len(tokens):
+            pattern_supplied = True
+            j += 2
+            continue
+        if part in SEARCH_FILE_FLAGS and j + 1 < len(tokens):
+            # A pattern file is itself a local read.
+            roots.append(_resolve_shell_path(tokens[j + 1], base_dir))
+            pattern_supplied = True
+            j += 2
+            continue
+        if part in SEARCH_FLAGS_WITH_VALUE and j + 1 < len(tokens):
+            j += 2
+            continue
+        if part.startswith("-"):
+            j += 1
+            continue
+        if not pattern_supplied:
+            pattern_supplied = True
+        else:
+            roots.append(_resolve_shell_path(part, base_dir))
+        j += 1
+
+    if not roots and command in SEARCH_DEFAULTS_TO_CWD:
+        roots.append(str(base_dir))
+    return roots, j
+
+
+def _extract_read_command_paths(tokens: list[str], start: int, base_dir: Path) -> tuple[list[str], int]:
+    """Extract likely file operands from common LLM-generated read commands."""
+    candidates: list[str] = []
+    command = Path(tokens[start]).name
+    expression_supplied = command not in READ_EXPRESSION_COMMANDS
+    j = start + 1
+    while j < len(tokens):
+        part = tokens[j]
+        if part in {"|", "||", "&&", ";"}:
+            break
+        if part.startswith("-"):
+            j += 1
+            continue
+        if not expression_supplied:
+            expression_supplied = True
+            j += 1
+            continue
+        candidates.append(_resolve_shell_path(part, base_dir))
+        j += 1
+    return candidates, j
+
+
 def _extract_candidate_paths(command: str, working_dir: str | None = None) -> list[str]:
     """Extract path-like shell tokens and normalize them against the working directory."""
     base_dir = Path(working_dir or os.getcwd()).expanduser().resolve()
@@ -150,36 +270,67 @@ def _extract_candidate_paths(command: str, working_dir: str | None = None) -> li
     except ValueError:
         tokens = command.split()
 
-    for token in tokens:
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+
+        command_name = Path(token).name
+
+        if command_name in CD_COMMANDS and i + 1 < len(tokens):
+            target = tokens[i + 1]
+            if not target.startswith("-") and target not in {"|", "||", "&&", ";"}:
+                candidates.append(_resolve_shell_path(target, base_dir))
+            i += 2
+            continue
+
+        if command_name in SEARCH_PATH_COMMANDS:
+            roots, j = _extract_search_roots(tokens, i, base_dir)
+            candidates.extend(roots)
+            i = j
+            continue
+
+        if command_name in READ_PATH_COMMANDS:
+            paths, j = _extract_read_command_paths(tokens, i, base_dir)
+            candidates.extend(paths)
+            i = j
+            continue
+
         parts = [token]
         if "=" in token and not token.startswith("/"):
-            left, right = token.split("=", 1)
+            _, right = token.split("=", 1)
             if _looks_like_path_token(right):
                 parts = [right]
 
         for part in parts:
             if not _looks_like_path_token(part):
                 continue
-            normalized = Path(part).expanduser()
-            if not normalized.is_absolute():
-                normalized = (base_dir / normalized)
-            candidates.append(str(normalized.resolve()))
+            candidates.append(_resolve_shell_path(part, base_dir))
+
+        i += 1
 
     return candidates
 
 
-def _is_execute_bash_blocked_path(path: str) -> tuple[bool, str]:
+def _is_execute_bash_blocked_write_path(path: str) -> tuple[bool, str]:
     """Apply execute_bash-specific write restrictions on top of shared security rules."""
     normalized = str(Path(path).expanduser().resolve())
     data_root = str((get_project_root().resolve() / "data").resolve())
 
-    if normalized == data_root or normalized.startswith(data_root + os.sep):
+    if is_path_under_prefix(normalized, data_root):
         return True, data_root
 
     protected, matched = is_path_protected(normalized, for_write=True)
     if protected:
         return True, matched or normalized
 
+    return False, ""
+
+
+def _is_execute_bash_blocked_read_path(path: str) -> tuple[bool, str]:
+    """Block shell reads of sensitive subtrees (backups, secrets, live config)."""
+    matched = get_restricted_read_match(path)
+    if matched:
+        return True, matched
     return False, ""
 
 
@@ -191,9 +342,48 @@ def targets_protected_path(command: str, working_dir: str | None = None) -> tupl
         (targets_protected, path_matched)
     """
     for candidate in _extract_candidate_paths(command, working_dir):
-        protected, matched = _is_execute_bash_blocked_path(candidate)
+        protected, matched = _is_execute_bash_blocked_write_path(candidate)
         if protected:
             return True, matched or candidate
+
+    return False, ""
+
+
+def targets_restricted_read_path(command: str, working_dir: str | None = None) -> tuple[bool, str]:
+    """Check if command references a path that must not be read via shell."""
+    candidates = _extract_candidate_paths(command, working_dir)
+    for candidate in candidates:
+        blocked, matched = _is_execute_bash_blocked_read_path(candidate)
+        if blocked:
+            return True, matched or candidate
+
+    # Search tools recurse from their roots. Reject a root that contains a
+    # restricted subtree even though the root itself is not restricted.
+    base_dir = Path(working_dir or os.getcwd()).expanduser().resolve()
+    try:
+        tokens = shlex.split(command, posix=True)
+    except ValueError:
+        tokens = command.split()
+    for i, token in enumerate(tokens):
+        if Path(token).name not in SEARCH_PATH_COMMANDS:
+            continue
+        roots, _ = _extract_search_roots(tokens, i, base_dir)
+        for root in roots:
+            root_path = Path(root).resolve()
+            for restricted in get_restricted_read_paths():
+                if is_path_under_prefix(restricted, root_path):
+                    return True, restricted
+
+    # Catch common shell/interpreter wrappers where the path is embedded in a
+    # code string rather than represented as its own shell token.
+    command_names = {Path(token).name for token in tokens}
+    if command_names & SHELL_OR_INTERPRETER_COMMANDS:
+        normalized = command.replace("\\", "/")
+        relative_markers = ("config/", "data/backups/", "data/secrets/")
+        if any(marker in normalized for marker in relative_markers):
+            for restricted in get_restricted_read_paths():
+                if Path(restricted).name in normalized or str(Path(restricted).relative_to(get_project_root())) in normalized:
+                    return True, restricted
 
     return False, ""
 
@@ -223,6 +413,16 @@ def is_command_safe(command: str, working_dir: str | None = None) -> tuple[bool,
         if re.search(r'\$\([^)]{20,}\)', command) or re.search(r'`[^`]{20,}`', command):
             return False, "complex command substitution detected"
     
+    # Block reads of sensitive subtrees (backups, secrets, config)
+    if working_dir:
+        blocked, matched = _is_execute_bash_blocked_read_path(working_dir)
+        if blocked:
+            return False, f"cannot use restricted working directory: {matched}"
+
+    targets, path = targets_restricted_read_path(command, working_dir)
+    if targets:
+        return False, f"cannot read restricted path: {path}"
+
     # CRITICAL: Check if modifying command targets protected paths
     if is_modifying_command(command):
         targets, path = targets_protected_path(command, working_dir)

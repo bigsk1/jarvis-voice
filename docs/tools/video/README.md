@@ -389,7 +389,7 @@ Then set:
 YTDLP_COOKIES_FILE="~/jarvis-voice/data/secrets/youtube/cookies.txt"
 ```
 
-Note: `data/secrets/` is not ignored by default in this repo. If you store cookies there, add it to `.gitignore`.
+`data/secrets/` is ignored by Git and is intended for Docker-friendly secret mounts. Jarvis file-reading tools deliberately refuse to expose files from this directory.
 
 ## Troubleshooting
 

@@ -18,6 +18,7 @@ from pathlib import Path
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
+from paths import assert_not_restricted_read_path
 from stash_helper import safe_resolve_file
 
 
@@ -446,6 +447,7 @@ def main():
                     resolved_path = file_path
             
             if resolved_path:
+                assert_not_restricted_read_path(resolved_path, label="Print file")
                 result = print_file(printer, resolved_path, color=color, quality=quality)
             elif text:
                 result = print_text(printer, text, title, compact=compact, color=color)

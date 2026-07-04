@@ -24,6 +24,7 @@ from pathlib import Path
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config
+from paths import assert_not_restricted_read_path
 from stash_helper import open_space, StashFile, parse_stash_ref, get_space
 
 # Format categories
@@ -75,7 +76,10 @@ def resolve_source(source: str) -> tuple[str, dict]:
             if not stash_file.exists or not stash_file.path:
                 raise ValueError(f"File not found in stash: {source}")
             
-            file_path = str(stash_file.path)
+            file_path = str(assert_not_restricted_read_path(
+                stash_file.path,
+                label="Stash source file",
+            ))
             original_name = stash_file.meta.get('name', file_id) if stash_file.meta else file_id
             
             return file_path, {'source_type': 'stash', 'stash_ref': source, 'original_name': original_name}
@@ -83,7 +87,8 @@ def resolve_source(source: str) -> tuple[str, dict]:
             raise ValueError(f"Could not resolve stash reference: {source} - {e}")
     
     # Handle local file paths
-    path = Path(source).expanduser()
+    path = Path(source).expanduser().resolve()
+    assert_not_restricted_read_path(path, label="Source file")
     if path.exists():
         return str(path), {'source_type': 'file', 'original_name': path.name}
     

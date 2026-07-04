@@ -37,6 +37,7 @@ except ImportError:
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import get_config_value, get_int
 from http_client import http_request
+from paths import assert_not_restricted_read_path, get_restricted_read_match
 
 
 # ============================================================================
@@ -511,7 +512,8 @@ class StashFile:
     @property
     def path(self) -> Path | None:
         if self.meta:
-            return self.space.space_path / self.meta.get('stored_name')
+            candidate = self.space.space_path / self.meta.get('stored_name')
+            return assert_not_restricted_read_path(candidate, label="Stash file")
         return None
     
     def save_text(self, content: str, name: str, on_conflict: str = 'error',
@@ -816,7 +818,7 @@ def resolve_file_path(space_id: str = None, file_id: str = None,
     """
     # Direct path
     if file_path:
-        return file_path
+        return str(assert_not_restricted_read_path(file_path, label="File path"))
     
     # Stash URI
     if stash_ref:
@@ -827,11 +829,11 @@ def resolve_file_path(space_id: str = None, file_id: str = None,
         space = get_space(space_id)
         stash_file = StashFile(space, file_id=file_id)
         if stash_file.path:
-            return str(stash_file.path)
+            return str(assert_not_restricted_read_path(stash_file.path, label="Stash file"))
         # Try by name if file_id doesn't match
         stash_file = StashFile(space, name=file_id)
         if stash_file.path:
-            return str(stash_file.path)
+            return str(assert_not_restricted_read_path(stash_file.path, label="Stash file"))
         raise ValueError(f"File {file_id} not found in space {space_id}")
     
     raise ValueError("Provide file_path, stash_ref, or space_id+file_id")
@@ -871,7 +873,10 @@ def safe_resolve_file(stash_ref: str = None, file_path: str = None,
     
     # 1. Try direct file path first
     if file_path:
-        if os.path.exists(file_path):
+        matched = get_restricted_read_match(file_path)
+        if matched:
+            result["error"] = f"File path is in a restricted location ({matched})"
+        elif os.path.exists(file_path):
             result["found"] = True
             result["path"] = file_path
             result["source"] = "path"
@@ -883,7 +888,10 @@ def safe_resolve_file(stash_ref: str = None, file_path: str = None,
     if stash_ref:
         try:
             resolved = resolve_file_path(stash_ref=stash_ref)
-            if os.path.exists(resolved):
+            matched = get_restricted_read_match(resolved)
+            if matched:
+                result["error"] = f"Stash file is in a restricted location ({matched})"
+            elif os.path.exists(resolved):
                 result["found"] = True
                 result["path"] = resolved
                 result["source"] = "stash"
@@ -902,6 +910,8 @@ def safe_resolve_file(stash_ref: str = None, file_path: str = None,
     # 3. Try fallback paths
     if fallback_paths:
         for fallback in fallback_paths:
+            if get_restricted_read_match(fallback):
+                continue
             if os.path.exists(fallback):
                 result["found"] = True
                 result["path"] = fallback
@@ -928,4 +938,3 @@ def extract_filename_from_stash_ref(stash_ref: str) -> str | None:
     except:
         pass
     return None
-

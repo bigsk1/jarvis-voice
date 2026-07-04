@@ -96,5 +96,11 @@ class BookmarkSearchDefaultQueryModeTests(unittest.TestCase):
         self.assertIn("chili", out["data"]["results"][0]["title"].lower())
 
 
+class BookmarkSearchPathSecurityTests(unittest.TestCase):
+    def test_restricted_bookmark_path_is_rejected_before_file_access(self):
+        with self.assertRaisesRegex(ValueError, "restricted location"):
+            bs.resolve_bookmark_path(PROJECT_ROOT, "config/cloud.env")
+
+
 if __name__ == "__main__":
     unittest.main()

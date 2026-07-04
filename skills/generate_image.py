@@ -31,6 +31,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
 from model_catalog import get_media_model_env_key, resolve_media_model
+from paths import assert_not_restricted_read_path
 
 # =============================================================================
 # Provider: Google Gemini
@@ -268,6 +269,8 @@ def _resolve_image_to_base64(image_source: str) -> tuple[str, str]:
     
     if not local_path:
         raise ValueError(f"Could not resolve image source: {image_source[:200]}")
+
+    assert_not_restricted_read_path(local_path, label="Image source")
     
     # Read file and encode
     mime_type = mimetypes.guess_type(local_path)[0] or 'image/jpeg'

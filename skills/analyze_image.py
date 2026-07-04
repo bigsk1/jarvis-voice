@@ -20,7 +20,7 @@ from datetime import datetime
 # Add lib to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
-from paths import get_local_file_tool_allowed_dirs
+from paths import assert_not_restricted_read_path, resolve_local_file_tool_path
 
 MAX_VISION_IMAGE_DIMENSION = 1568
 MAX_VISION_IMAGE_BYTES = 4 * 1024 * 1024
@@ -235,26 +235,8 @@ def _load_from_url(url: str) -> dict | None:
 def _load_from_file(path: str) -> dict | None:
     """Load image from local file path."""
     try:
-        # Expand user home directory
-        file_path = Path(path).expanduser().resolve()
-        
-        # SECURITY: Restrict file access to allowed directories
-        ALLOWED_DIRS = get_local_file_tool_allowed_dirs(include_pictures=True)
-        
-        # Check if file is in an allowed directory
-        file_allowed = False
-        for allowed in ALLOWED_DIRS:
-            try:
-                file_path.relative_to(allowed)
-                file_allowed = True
-                break
-            except ValueError:
-                continue
-        
-        if not file_allowed:
-            _debug(f"[ANALYZE_IMAGE] Path not in allowed directories: {file_path}")
-            return None
-        
+        file_path = resolve_local_file_tool_path(path, include_pictures=True)
+
         if not file_path.exists():
             _debug(f"[ANALYZE_IMAGE] File not found: {file_path}")
             return None
@@ -331,7 +313,10 @@ def _load_from_stash(stash_ref: str) -> dict | None:
         
         # Load the actual file
         stored_name = file_meta.get('stored_name', file_meta.get('name'))
-        file_path = space_path / stored_name
+        file_path = assert_not_restricted_read_path(
+            space_path / stored_name,
+            label="Stash image",
+        )
         
         if not file_path.exists():
             _debug(f"[ANALYZE_IMAGE] Stash file missing: {file_path}")

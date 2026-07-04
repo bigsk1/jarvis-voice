@@ -46,6 +46,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 
 from config_loader import load_config, get_config_value
+from paths import assert_not_restricted_read_path
 
 # Load config from correct env file (local.env or cloud.env based on JARVIS_MODE)
 load_config()
@@ -468,6 +469,10 @@ def upload_image(source: str, source_type: str = "auto", uploader: str = "jarvis
                                     detected_category = "stash"
                                 break
         
+        # Enforce the local read boundary after every source type has resolved.
+        # This also follows symlinks before checking the restricted trees.
+        file_path = str(assert_not_restricted_read_path(file_path, label="Upload source"))
+
         # Upload to Cloudflare with custom path and metadata
         result = upload_to_cloudflare(
             file_path, 

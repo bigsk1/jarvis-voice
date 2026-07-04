@@ -24,6 +24,21 @@ from datetime import datetime
 
 # Add lib to path for security checks
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+from paths import resolve_local_file_tool_output_path
+
+
+def resolve_screenshot_output_path(save_path: str | None) -> Path:
+    """Resolve a screenshot destination under an allowed writable directory."""
+    if save_path:
+        candidate = Path(save_path).expanduser()
+    else:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        candidate = Path(tempfile.gettempdir()) / f"screenshot_{timestamp}.png"
+
+    # Screenshots are normalized to JPEG after decoding.
+    if candidate.suffix.lower() == '.png':
+        candidate = candidate.with_suffix('.jpg')
+    return resolve_local_file_tool_output_path(candidate, label="Screenshot output path")
 
 
 def main():
@@ -109,12 +124,7 @@ def main():
             return 1
         
         # Save to file
-        if save_path:
-            file_path = Path(save_path).expanduser()
-        else:
-            # Save to temp directory
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            file_path = Path(tempfile.gettempdir()) / f"screenshot_{timestamp}.png"
+        file_path = resolve_screenshot_output_path(save_path)
         
         # Decode and convert to proper PNG/JPEG
         screenshot_bytes = b64decode(screenshot_b64)
@@ -139,9 +149,6 @@ def main():
                 img = img.convert('RGB')
             
             # Save as JPEG (much smaller than PNG/BMP)
-            if str(file_path).endswith('.png'):
-                file_path = Path(str(file_path).replace('.png', '.jpg'))
-            
             img.save(file_path, 'JPEG', quality=85, optimize=True)
             screenshot_bytes = open(file_path, 'rb').read()
             
@@ -230,4 +237,3 @@ def return_error(speech, data=None):
 
 if __name__ == "__main__":
     sys.exit(main())
-

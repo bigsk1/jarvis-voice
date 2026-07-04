@@ -21,6 +21,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
+from paths import assert_not_restricted_read_path
+
 
 MAX_RESULTS = 200
 DEFAULT_LIMIT = 20
@@ -390,7 +393,7 @@ def resolve_bookmark_path(project_root: Path, input_value: str | None) -> Path:
     candidate = Path(raw_path).expanduser()
     if not candidate.is_absolute():
         candidate = project_root / candidate
-    resolved = candidate.resolve()
+    resolved = assert_not_restricted_read_path(candidate, label="Bookmark file")
     if not resolved.exists():
         raise FileNotFoundError(f"Bookmark file not found: {resolved}")
     if not resolved.is_file():

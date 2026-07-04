@@ -160,6 +160,13 @@ BLOCKED_REGEX_PATTERNS = [
 # prefixes, with writes allowed under ``<repo>/data``, ``logs``, ``stash``, ``/tmp``, etc.
 ```
 
+`execute_bash` also applies best-effort checks for reads under the restricted Jarvis
+`config/`, `data/secrets/`, and `data/backups/` trees. These checks are designed to
+prevent common accidental LLM-generated commands from exposing sensitive files.
+They are heuristic command inspection, not a filesystem sandbox or a security
+boundary against deliberately obfuscated shell commands. Use OS-level isolation
+when commands must run against untrusted input.
+
 ---
 
 ### Fix 4: Memory Content Sanitization ✅ IMPLEMENTED

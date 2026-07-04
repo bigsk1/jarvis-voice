@@ -1,18 +1,18 @@
 {
   "enabled": true,
   "name": "execute_bash",
-  "description": "Execute a bash command on the system. USE THIS for: curl commands, checking services on private/local networks (192.168.x.x, 10.x.x.x, localhost), running system utilities, checking ports, ping, docker commands, systemctl, etc. When user says 'curl' or asks to check a local/private IP service → use this, NOT mcp_fetch (which only works for public internet URLs). RESTRICTIONS: Cannot modify the Jarvis repo checkout (except allowed data/logs/stash), /etc, ~/.ssh, ~/.gnupg. Cannot run: rm -rf, shutdown, reboot, fork bombs, reverse shells, curl|bash patterns. Read-only access to protected paths is OK.",
+  "description": "Execute a bash command on the system. USE THIS for: curl commands, checking services on private/local networks (192.168.x.x, 10.x.x.x, localhost), running system utilities, checking ports, ping, docker commands, systemctl, etc. When user says 'curl' or asks to check a local/private IP service → use this, NOT mcp_fetch (which only works for public internet URLs). RESTRICTIONS: Cannot modify the Jarvis repo checkout (except allowed data/logs/stash), /etc, ~/.ssh, ~/.gnupg, or read restricted Jarvis config/secret/backup trees. Cannot run: rm -rf, shutdown, reboot, fork bombs, reverse shells, curl|bash patterns. These checks are best-effort protection against accidental LLM misuse, not a filesystem sandbox or security boundary against deliberately obfuscated shell commands.",
   "script": "execute_bash.py",
   "parameters": {
     "type": "object",
     "properties": {
       "command": {
         "type": "string",
-        "description": "The bash command to execute. Cannot modify protected paths (Jarvis repo except allowed dirs, /etc, ~/.ssh, etc.)"
+        "description": "The bash command to execute. Cannot modify protected paths or read restricted Jarvis config/secret/backup trees. Checks are best-effort and not a shell sandbox."
       },
       "working_directory": {
         "type": "string",
-        "description": "Optional working directory for the command. Cannot be a protected path for write operations."
+        "description": "Optional working directory for the command. Cannot be a restricted read tree or a protected path for write operations."
       }
     },
     "required": [

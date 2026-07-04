@@ -31,6 +31,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
 from model_catalog import get_media_model_env_key, get_media_model_metadata, resolve_media_model
+from paths import assert_not_restricted_read_path
 
 # =============================================================================
 # Provider: xAI Grok Video
@@ -190,7 +191,7 @@ def _resolve_image_source(image_source: str) -> str | None:
     if image_source.startswith('stash://'):
         result = safe_resolve_file(stash_ref=image_source)
         if result['found']:
-            return result['path']
+            return str(assert_not_restricted_read_path(result['path'], label="Image source"))
         else:
             raise ValueError(f"Stash file not found: {result.get('error', image_source)}")
     
@@ -199,18 +200,18 @@ def _resolve_image_source(image_source: str) -> str | None:
         filename = image_source.split('/')[-1]
         uploads_path = Path(__file__).parent.parent / 'jarvis-web' / 'data' / 'uploads' / filename
         if uploads_path.exists():
-            return str(uploads_path)
+            return str(assert_not_restricted_read_path(uploads_path, label="Image source"))
     
     # Handle generated images path
     if image_source.startswith('/api/images/'):
         filename = image_source.split('/')[-1]
         images_path = Path(__file__).parent.parent / 'data' / 'generated_images' / filename
         if images_path.exists():
-            return str(images_path)
+            return str(assert_not_restricted_read_path(images_path, label="Image source"))
     
     # Handle direct local paths
     if Path(image_source).is_file():
-        return image_source
+        return str(assert_not_restricted_read_path(image_source, label="Image source"))
     
     # Check common image directories
     project_root = Path(__file__).parent.parent
@@ -225,7 +226,7 @@ def _resolve_image_source(image_source: str) -> str | None:
     for base_path in common_paths:
         candidate = base_path / filename
         if candidate.exists():
-            return str(candidate)
+            return str(assert_not_restricted_read_path(candidate, label="Image source"))
     
     # Not found locally
     return None

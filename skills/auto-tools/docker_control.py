@@ -8,9 +8,11 @@ import sys
 import os
 import json
 import subprocess
+import shlex
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lib'))
 from config_loader import load_config
+from paths import assert_not_restricted_read_path
 
 # Timeouts by operation type
 TIMEOUTS = {
@@ -221,7 +223,12 @@ def compose_action(action, compose_file=None, service=None, force_recreate=False
             "speech": "Invalid compose action"
         }
     
-    file_flag = f"-f {compose_file}" if compose_file else ""
+    if compose_file:
+        compose_file = str(assert_not_restricted_read_path(
+            compose_file,
+            label="Compose file",
+        ))
+    file_flag = f"-f {shlex.quote(compose_file)}" if compose_file else ""
     service_flag = service if service else ""
     
     timeout_key = 'default'

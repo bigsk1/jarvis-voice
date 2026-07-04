@@ -18,7 +18,7 @@ from pathlib import Path
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config
-from paths import get_local_file_tool_allowed_dirs
+from paths import resolve_local_file_tool_path, validate_tool_output_filename
 from stash_helper import (
     get_space, open_space, StashFile, resolve_file_path, safe_resolve_file
 )
@@ -48,22 +48,7 @@ def resolve_pdf_path(args: dict) -> str:
     file_path = args.get('file_path')
     
     if file_path:
-        # SECURITY: Restrict file access to allowed directories
-        resolved = Path(file_path).expanduser().resolve()
-        ALLOWED_DIRS = get_local_file_tool_allowed_dirs(include_pictures=False)
-        
-        file_allowed = False
-        for allowed in ALLOWED_DIRS:
-            try:
-                resolved.relative_to(allowed)
-                file_allowed = True
-                break
-            except ValueError:
-                continue
-        
-        if not file_allowed:
-            raise ValueError(f"File path not in allowed directories. Use stash_ref instead.")
-        
+        resolved = resolve_local_file_tool_path(file_path, include_pictures=False)
         if resolved.exists():
             return str(resolved)
     
@@ -275,29 +260,35 @@ def action_merge(args: dict) -> dict:
         raise ImportError("pymupdf required: pip install pymupdf")
     
     pdf_refs = args.get('pdfs', [])  # List of stash_refs or file_paths
-    output_name = args.get('output_name', f"merged_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
+    output_name = validate_tool_output_filename(
+        args.get('output_name', f"merged_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"),
+        label="PDF output name",
+    )
     
     if len(pdf_refs) < 2:
         raise ValueError("Need at least 2 PDFs to merge")
     
-    # Create output PDF
-    merged = fitz.open()
-    
+    resolved_paths = []
     for ref in pdf_refs:
         if isinstance(ref, str):
             if ref.startswith('stash://'):
                 path = resolve_file_path(stash_ref=ref)
             else:
-                path = ref
+                path = resolve_pdf_path({'file_path': ref})
         elif isinstance(ref, dict):
             path = resolve_pdf_path(ref)
         else:
             continue
-        
+
         if os.path.exists(path):
-            doc = fitz.open(path)
-            merged.insert_pdf(doc)
-            doc.close()
+            resolved_paths.append(path)
+
+    # Create output PDF only after every local source has passed policy checks.
+    merged = fitz.open()
+    for path in resolved_paths:
+        doc = fitz.open(path)
+        merged.insert_pdf(doc)
+        doc.close()
     
     # Save to stash
     space_id = args.get('output_space_id')
@@ -576,6 +567,12 @@ def main():
         
         # Load config
         load_config()
+
+        if args.get('output_name') is not None:
+            args['output_name'] = validate_tool_output_filename(
+                args['output_name'],
+                label="PDF output name",
+            )
         
         # Get action
         action = args.get('action', 'info').lower()

@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config
+from paths import resolve_local_file_tool_output_path, validate_tool_output_filename
 from stash_helper import (
     get_space, open_space, StashFile, resolve_file_path
 )
@@ -139,7 +140,10 @@ def action_create(args: dict) -> dict:
     files = args.get('files', [])
     text = args.get('text', '')
     title = args.get('title', 'Jarvis Document')
-    output_name = args.get('output_name', f'document_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf')
+    output_name = validate_tool_output_filename(
+        args.get('output_name', f'document_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'),
+        label="PDF output name",
+    )
     args.get('template', 'simple')
     
     if not files and not text:
@@ -202,7 +206,11 @@ def action_create(args: dict) -> dict:
         raise ValueError("No content to include in PDF")
     
     # Create PDF in stash space
-    output_path = str(space.space_path / output_name)
+    output_path = str(resolve_local_file_tool_output_path(
+        output_name,
+        base_dir=space.space_path,
+        label="PDF output path",
+    ))
     create_simple_pdf(title, content_items, output_path)
     
     # Register in stash metadata
@@ -329,4 +337,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
