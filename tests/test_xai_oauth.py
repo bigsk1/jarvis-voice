@@ -105,6 +105,8 @@ Available models:
     assert [model["id"] for model in models] == ["grok-build"]
     assert models[0]["context"] == "256K"
     assert models[0]["auth"] == "oauth"
+    assert models[0]["vision"] is False
+    assert models[0]["capabilities"] == ["tools", "thinking"]
     assert xai_oauth.get_xai_oauth_model("grok-build-0.1") == "grok-build"
 
 

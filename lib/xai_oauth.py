@@ -245,7 +245,7 @@ def discover_xai_oauth_models(
     cli_path: str | None = None,
     *,
     use_cache: bool = True,
-) -> list[dict[str, str]]:
+) -> list[dict[str, object]]:
     """Discover supported OAuth chat models from ``grok models`` output."""
 
     global _MODEL_CACHE
@@ -293,6 +293,10 @@ def discover_xai_oauth_models(
             "name": model,
             "context": context or "OAuth subscription",
             "auth": "oauth",
+            # The Grok CLI chat proxy currently accepts text only even though
+            # the similarly named xAI API model accepts image input.
+            "capabilities": ["tools", "thinking"],
+            "vision": False,
         })
     _MODEL_CACHE = (now, discovered)
     return [dict(item) for item in discovered]

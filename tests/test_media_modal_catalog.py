@@ -6,6 +6,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 CHAT_JS = (PROJECT_ROOT / "jarvis-web/client/js/chat.js").read_text()
 CHAT_SOCKET = (PROJECT_ROOT / "jarvis-web/server/sockets/chat.py").read_text()
+APP_JS = (PROJECT_ROOT / "jarvis-web/client/js/app.js").read_text()
+INDEX_HTML = (PROJECT_ROOT / "jarvis-web/client/index.html").read_text()
 
 
 def test_video_provider_change_refreshes_catalog_resolutions():
@@ -29,3 +31,11 @@ def test_enhance_sends_pending_image_and_active_mode_for_multimodal_context():
     assert "image_action: imagePayload?.action || null" in CHAT_JS
     assert "image: imagePayload?.images?.[0] || null" in CHAT_JS
     assert "mode: activeMode" in CHAT_JS
+
+
+def test_settings_media_providers_show_catalog_capabilities_and_pricing():
+    assert "_populateMediaProviderDropdown('image')" in APP_JS
+    assert "_populateMediaProviderDropdown('video')" in APP_JS
+    assert "_formatMediaProviderPrice(metadata.pricing)" in APP_JS
+    assert 'id="image-provider-capabilities"' in INDEX_HTML
+    assert 'id="video-provider-capabilities"' in INDEX_HTML

@@ -310,6 +310,13 @@ class JarvisApp {
       await this._ensureProviderModelsLoaded(provider);
       this._populateModelDropdown(provider);
       document.getElementById('setting-llm-model').value = '';  // Reset model selection
+      this._updateModelCapabilityDetail('setting-llm-model', provider);
+    });
+
+    document.getElementById('setting-llm-model')?.addEventListener('change', () => {
+      const provider = document.getElementById('setting-llm-provider')?.value
+        || this._settingsData?.llm?.provider?.default || 'xai';
+      this._updateModelCapabilityDetail('setting-llm-model', provider);
     });
 
     // Preview the selected mode's settings before Save. Without this, changing
@@ -325,7 +332,21 @@ class JarvisApp {
       await this._ensureProviderModelsLoaded(provider);
       this._populateCompletionGuardEvalModelDropdown(provider);
       document.getElementById('setting-completion-guard-eval-model').value = '';
+      this._updateModelCapabilityDetail('setting-completion-guard-eval-model', provider);
     });
+
+    document.getElementById('setting-completion-guard-eval-model')?.addEventListener('change', () => {
+      this._updateModelCapabilityDetail(
+        'setting-completion-guard-eval-model',
+        this._getCompletionGuardEvalProviderSelection()
+      );
+    });
+
+    for (const mediaType of ['image', 'video']) {
+      document.getElementById(`setting-${mediaType}-provider`)?.addEventListener('change', () => {
+        this._updateMediaProviderDetail(mediaType);
+      });
+    }
     
     // Reset to defaults button
     document.getElementById('resetDefaultsBtn')?.addEventListener('click', () => {
@@ -1334,8 +1355,10 @@ class JarvisApp {
           modelDefault.textContent = `(${envFile}: ${modelEnvDefault})`;
           modelDefault.className = 'setting-default';
         }
+        this._updateModelCapabilityDetail('setting-llm-model', s.llm?.provider?.value || provEnvDefault);
         
         // Populate Image Provider
+        this._populateMediaProviderDropdown('image');
         const imageSelect = document.getElementById('setting-image-provider');
         imageSelect.value = s.image?.provider?.is_override ? s.image.provider.value : '';
         const imageDefault = document.getElementById('image-provider-default');
@@ -1344,8 +1367,10 @@ class JarvisApp {
         if (s.image?.provider?.is_override) {
           imageDefault.textContent = `⚡ override: ${s.image.provider.value}`;
         }
+        this._updateMediaProviderDetail('image');
         
         // Populate Video Provider
+        this._populateMediaProviderDropdown('video');
         const videoSelect = document.getElementById('setting-video-provider');
         videoSelect.value = s.video?.provider?.is_override ? s.video.provider.value : '';
         const videoDefault = document.getElementById('video-provider-default');
@@ -1354,6 +1379,7 @@ class JarvisApp {
         if (s.video?.provider?.is_override) {
           videoDefault.textContent = `⚡ override: ${s.video.provider.value}`;
         }
+        this._updateMediaProviderDetail('video');
 
         // Populate TTS Provider
         const ttsSelect = document.getElementById('setting-tts-provider');
@@ -1452,6 +1478,10 @@ class JarvisApp {
         const completionGuardEvalModelDefault = document.getElementById('completion-guard-eval-model-default');
         completionGuardEvalModelDefault.textContent = `(${envFile}: ${s.completion_guard?.eval_model?.default || 'provider default'})`;
         completionGuardEvalModelDefault.className = s.completion_guard?.eval_model?.is_override ? 'setting-default setting-override' : 'setting-default';
+        this._updateModelCapabilityDetail(
+          'setting-completion-guard-eval-model',
+          completionGuardEvalProvider
+        );
         if (s.completion_guard?.eval_model?.is_override) {
           completionGuardEvalModelDefault.textContent = `⚡ override: ${s.completion_guard.eval_model.value}`;
         }
@@ -2110,11 +2140,130 @@ class JarvisApp {
       : this._settingsData?.llm?.model?.default;
     const defaultModel = endpointDefault || settingsDefault;
 
-    let html = `<option value="">Use env default${defaultModel ? ` (${defaultModel})` : ''}</option>`;
+    modelSelect.replaceChildren();
+    modelSelect.add(new Option(`Use env default${defaultModel ? ` (${defaultModel})` : ''}`, ''));
     for (const model of models) {
-      html += `<option value="${model.id}">${model.name} (${model.context})</option>`;
+      const summary = this._formatModelCapabilitySummary(model);
+      modelSelect.add(new Option(`${model.name}${summary ? ` — ${summary}` : ''}`, model.id));
     }
-    modelSelect.innerHTML = html;
+    this._updateModelCapabilityDetail(selectId, provider);
+  }
+
+  _formatModelCapabilitySummary(model) {
+    if (!model) return '';
+    const parts = [];
+    if (model.context) parts.push(model.context);
+    if (model.parameter_size) parts.push(model.parameter_size);
+    const capabilities = Array.isArray(model.capabilities) ? model.capabilities : [];
+    for (const capability of ['vision', 'tools', 'thinking']) {
+      if (capabilities.includes(capability)) parts.push(capability);
+    }
+    if (model.vision === false) parts.push('no vision');
+    return [...new Set(parts)].join(' · ');
+  }
+
+  _updateModelCapabilityDetail(selectId, provider) {
+    const detailId = selectId === 'setting-completion-guard-eval-model'
+      ? 'completion-guard-model-capabilities'
+      : 'llm-model-capabilities';
+    const detail = document.getElementById(detailId);
+    const select = document.getElementById(selectId);
+    if (!detail || !select) return;
+    const models = this._settingsData?.provider_models?.[provider] || [];
+    const defaultModel = this._settingsData?.provider_model_defaults?.[provider]
+      || (selectId === 'setting-completion-guard-eval-model'
+        ? this._settingsData?.completion_guard?.eval_model?.default
+        : this._settingsData?.llm?.model?.default);
+    const modelId = select.value || defaultModel;
+    const model = models.find(item => item.id === modelId);
+    const summary = this._formatModelCapabilitySummary(model);
+    detail.textContent = summary ? `Selected: ${summary}` : '';
+  }
+
+  _populateMediaProviderDropdown(mediaType) {
+    const select = document.getElementById(`setting-${mediaType}-provider`);
+    if (!select) return;
+    const providers = this._settingsData?.[`${mediaType}_providers`] || {};
+    select.replaceChildren();
+    select.add(new Option('Use env default', ''));
+    for (const [provider, metadata] of Object.entries(providers)) {
+      const summary = this._formatMediaProviderSummary(metadata, mediaType, true);
+      select.add(new Option(`${metadata.name || provider}${summary ? ` — ${summary}` : ''}`, provider));
+    }
+  }
+
+  _formatMediaProviderSummary(metadata, mediaType, compact = false) {
+    if (!metadata) return '';
+    const capabilityLabels = {
+      generation: 'generate',
+      editing: 'edit',
+      batch: 'batch',
+      grounding: 'grounding',
+      flexible_sizes: 'flexible sizes',
+      text_to_video: 'text→video',
+      image_to_video: 'image→video',
+      reference_to_video: 'reference→video',
+      video_editing: 'edit',
+      conversational_editing: 'conversational edit',
+      audio: 'audio',
+    };
+    const rawCapabilities = Array.isArray(metadata.capabilities) ? metadata.capabilities : [];
+    let capabilities = rawCapabilities
+      .map(value => capabilityLabels[value])
+      .filter(Boolean);
+    capabilities = [...new Set(capabilities)];
+    if (compact) capabilities = capabilities.slice(0, 3);
+
+    const parts = [...capabilities];
+    const resolutions = Array.isArray(metadata.resolutions) ? metadata.resolutions : [];
+    if (mediaType === 'video' && resolutions.length) {
+      const resolutionRank = value => {
+        const normalized = String(value).toLowerCase();
+        if (normalized.endsWith('k')) return Number.parseFloat(normalized) * 1000;
+        return Number.parseFloat(normalized) || 0;
+      };
+      const highest = [...resolutions].sort((a, b) => resolutionRank(b) - resolutionRank(a))[0];
+      const resolutionLabel = String(highest).toLowerCase().endsWith('k')
+        ? String(highest).toUpperCase()
+        : String(highest).toLowerCase();
+      parts.push(resolutions.length > 1 ? `up to ${resolutionLabel}` : resolutionLabel);
+    } else if (mediaType === 'image') {
+      const sizes = Object.keys(metadata.pricing?.usd_by_size || {});
+      if (sizes.length) parts.push(sizes.length > 1 ? `up to ${sizes[sizes.length - 1]}` : sizes[0]);
+    }
+
+    const price = this._formatMediaProviderPrice(metadata.pricing);
+    if (price) parts.push(price);
+    return [...new Set(parts)].join(' · ');
+  }
+
+  _formatMediaProviderPrice(pricing) {
+    if (!pricing) return '';
+    const values = Object.values(pricing.usd_by_resolution || pricing.usd_by_size || {})
+      .map(Number)
+      .filter(value => Number.isFinite(value));
+    if (values.length) {
+      const minimum = Math.min(...values);
+      const amount = `$${minimum.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}`;
+      const suffix = pricing.unit === 'second' ? '/s' : '/image';
+      return `${new Set(values).size > 1 ? 'from ' : ''}${amount}${suffix}`;
+    }
+    if (pricing.note) return 'variable pricing';
+    return '';
+  }
+
+  _updateMediaProviderDetail(mediaType) {
+    const select = document.getElementById(`setting-${mediaType}-provider`);
+    const detail = document.getElementById(`${mediaType}-provider-capabilities`);
+    if (!select || !detail) return;
+    const defaultProvider = this._settingsData?.[mediaType]?.provider?.default;
+    const provider = select.value || defaultProvider;
+    const metadata = this._settingsData?.[`${mediaType}_providers`]?.[provider];
+    const summary = this._formatMediaProviderSummary(metadata, mediaType);
+    const model = metadata?.model_name || metadata?.model;
+    detail.textContent = metadata && summary
+      ? `${model ? `${model} · ` : ''}${summary}`
+      : '';
   }
 
   async _ensureProviderModelsLoaded(provider) {

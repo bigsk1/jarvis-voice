@@ -2,9 +2,12 @@
 Settings Manager Service
 Handles safe reading/writing of Jarvis settings with web overrides
 """
+from concurrent.futures import ThreadPoolExecutor, wait
+import threading
+import time
 from typing import Any
 from ..config import (
-    get_web_setting, save_web_config, load_web_config,
+    save_web_config, load_web_config,
     get_jarvis_setting, load_jarvis_config,
     DEFAULT_JARVIS_QA_WORD_LIMIT, DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT,
 )
@@ -28,6 +31,152 @@ from xai_oauth import (
     get_xai_oauth_status,
     is_xai_oauth_model,
 )
+
+
+_OLLAMA_MODEL_METADATA_CACHE: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
+_OLLAMA_MODEL_METADATA_CACHE_LOCK = threading.Lock()
+_OLLAMA_MODEL_METADATA_TTL_SECONDS = 600
+_OLLAMA_MODEL_METADATA_FAILURE_TTL_SECONDS = 30
+_OLLAMA_MODEL_METADATA_BATCH_TIMEOUT_SECONDS = 5
+
+
+def _compact_count(value: Any) -> str | None:
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return None
+    if count <= 0:
+        return None
+    if count >= 1_000_000_000:
+        return f"{count / 1_000_000_000:.0f}B"
+    if count >= 1_000_000:
+        millions = count / 1_000_000
+        return f"{millions:.2f}".rstrip("0").rstrip(".") + "M"
+    if count >= 1_000:
+        return f"{count // 1_000}K"
+    return str(count)
+
+
+def _parse_ollama_show_metadata(payload: Any) -> dict[str, Any]:
+    """Extract only metadata Ollama explicitly reports for model selection."""
+    if not isinstance(payload, dict):
+        return {}
+    result: dict[str, Any] = {}
+    raw_capabilities = payload.get("capabilities")
+    if isinstance(raw_capabilities, list):
+        declared = list(dict.fromkeys(
+            str(value).strip().lower() for value in raw_capabilities if str(value).strip()
+        ))
+        result["vision"] = "vision" in declared
+        result["capabilities"] = [
+            value for value in declared if value in {"vision", "tools", "thinking"}
+        ]
+
+    model_info = payload.get("model_info")
+    if isinstance(model_info, dict):
+        for key, value in model_info.items():
+            if isinstance(key, str) and key.endswith("context_length"):
+                label = _compact_count(value)
+                if label:
+                    result["context"] = label
+                    break
+
+    details = payload.get("details")
+    if isinstance(details, dict):
+        raw_size = details.get("parameter_size")
+        if isinstance(raw_size, str) and raw_size.strip():
+            parameter_size = raw_size.strip().upper()
+            result["parameter_size"] = (
+                _compact_count(parameter_size) if parameter_size.isdigit() else parameter_size
+            )
+        elif raw_size is not None:
+            result["parameter_size"] = _compact_count(raw_size)
+    return {key: value for key, value in result.items() if value is not None}
+
+
+def _fetch_ollama_model_metadata(
+    model: str,
+    *,
+    base_url: str | None,
+    direct_cloud_api: bool,
+) -> dict[str, Any]:
+    cache_key = (("direct" if direct_cloud_api else (base_url or "")), model)
+    now = time.monotonic()
+    with _OLLAMA_MODEL_METADATA_CACHE_LOCK:
+        cached = _OLLAMA_MODEL_METADATA_CACHE.get(cache_key)
+    if cached:
+        ttl = (
+            _OLLAMA_MODEL_METADATA_TTL_SECONDS
+            if cached[1]
+            else _OLLAMA_MODEL_METADATA_FAILURE_TTL_SECONDS
+        )
+        if now - cached[0] < ttl:
+            return dict(cached[1])
+    try:
+        response, _ = request_ollama(
+            "post",
+            "/api/show",
+            base_url=None if direct_cloud_api else base_url,
+            json={"model": model, "verbose": False},
+            timeout=(3, 6),
+            cloud_access=direct_cloud_api,
+        )
+        metadata = _parse_ollama_show_metadata(response.json()) if response.status_code == 200 else {}
+    except Exception:
+        metadata = {}
+    with _OLLAMA_MODEL_METADATA_CACHE_LOCK:
+        _OLLAMA_MODEL_METADATA_CACHE[cache_key] = (now, metadata)
+    return metadata
+
+
+def _enrich_ollama_models(
+    models: list[dict[str, Any]],
+    *,
+    base_url: str | None,
+    direct_cloud_api: bool,
+) -> None:
+    """Best-effort capability enrichment without serially blocking the modal."""
+    if not models:
+        return
+    workers = min(12, len(models))
+    pool = ThreadPoolExecutor(max_workers=workers)
+    futures = {
+        pool.submit(
+            _fetch_ollama_model_metadata,
+            model["id"],
+            base_url=base_url,
+            direct_cloud_api=direct_cloud_api,
+        ): model
+        for model in models
+        if model.get("id")
+    }
+    done, pending = wait(
+        futures,
+        timeout=_OLLAMA_MODEL_METADATA_BATCH_TIMEOUT_SECONDS,
+    )
+    for future in done:
+        metadata = future.result()
+        if metadata:
+            futures[future].update(metadata)
+    for future in pending:
+        future.cancel()
+    pool.shutdown(wait=False, cancel_futures=True)
+
+    if direct_cloud_api:
+        # Direct ollama.com discovery returns canonical IDs, while an older
+        # env/UI selection may still pin the equivalent ``:cloud`` alias.
+        # Reuse the canonical card metadata so the selected default is useful.
+        by_id = {model.get("id"): model for model in models}
+        for model in models:
+            model_id = str(model.get("id") or "")
+            if not model_id.endswith(":cloud"):
+                continue
+            canonical = by_id.get(model_id[:-6])
+            if not canonical:
+                continue
+            for key in ("context", "parameter_size", "capabilities", "vision"):
+                if key in canonical:
+                    model[key] = canonical[key]
 
 
 def fetch_ollama_models(
@@ -108,7 +257,13 @@ def fetch_ollama_models(
                     labels.append('env default')
                 model = {**model, 'name': f"{model_id} ({', '.join(labels)})"}
                 pinned.append(model)
-            return [*pinned, *by_id.values()]
+            result = [*pinned, *by_id.values()]
+            _enrich_ollama_models(
+                result,
+                base_url=base_url,
+                direct_cloud_api=direct_cloud_api,
+            )
+            return result
     except Exception as e:
         print(f"[Settings] Failed to fetch Ollama models: {e}")
     
@@ -265,7 +420,7 @@ class SettingsManager:
             ),
         }
 
-    def _get_model_options_with_current(self, provider: str, current_model: str | None) -> list[dict[str, str]]:
+    def _get_model_options_with_current(self, provider: str, current_model: str | None) -> list[dict[str, Any]]:
         """Return curated provider options plus any active custom model."""
         if provider == 'xai' and self._xai_uses_oauth():
             try:
@@ -277,6 +432,8 @@ class SettingsManager:
                     'name': model,
                     'context': get_model_context_label('xai', model) or 'OAuth subscription',
                     'auth': 'oauth',
+                    'capabilities': ['tools', 'thinking'],
+                    'vision': False,
                 }]
 
         options = get_provider_model_options(provider)
@@ -711,6 +868,8 @@ class SettingsManager:
                     'name': model,
                     'context': get_model_context_label('xai', model) or 'OAuth subscription',
                     'auth': 'oauth',
+                    'capabilities': ['tools', 'thinking'],
+                    'vision': False,
                 }]
         
         # Dynamically fetch Ollama models if in local mode or Ollama selected

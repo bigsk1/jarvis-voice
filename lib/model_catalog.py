@@ -743,6 +743,7 @@ def get_media_provider_options(
         option = {
             "name": entry.get("name", provider),
             "model": model,
+            "model_name": metadata.get("name", model),
         }
         for key in ("capabilities", "resolutions", "pricing"):
             if key in metadata:
@@ -797,15 +798,46 @@ def get_model_metadata(provider: str, model: str | None) -> dict[str, Any] | Non
     return dict(best_entry) if best_entry else None
 
 
-def get_provider_model_options(provider: str) -> list[dict[str, str]]:
+def _model_option_capabilities(entry: dict[str, Any]) -> tuple[list[str], bool | None]:
+    """Return conservative, UI-facing capabilities from catalog metadata."""
+    # Every chat model admitted to this curated catalog is used through
+    # Jarvis's tool-calling provider stack.
+    tags: list[str] = ["tools"]
+    vision: bool | None = None
+
+    modalities = entry.get("input_modalities")
+    if isinstance(modalities, list):
+        vision = "image" in {str(value).strip().lower() for value in modalities}
+    else:
+        capabilities = entry.get("capabilities")
+        if isinstance(capabilities, dict):
+            image_input = capabilities.get("image_input")
+            if isinstance(image_input, dict) and "supported" in image_input:
+                vision = bool(image_input.get("supported"))
+            thinking = capabilities.get("thinking")
+            if isinstance(thinking, dict) and thinking.get("supported"):
+                tags.append("thinking")
+
+    if entry.get("reasoning_effort") or "reasoning" in str(entry.get("id", "")).lower():
+        if "thinking" not in tags:
+            tags.append("thinking")
+    if vision:
+        tags.insert(0, "vision")
+    return tags, vision
+
+
+def get_provider_model_options(provider: str) -> list[dict[str, Any]]:
     """Return curated models for UI dropdowns in display order."""
     options = []
     for entry in CLOUD_MODEL_CATALOG.get(provider, []):
+        capabilities, vision = _model_option_capabilities(entry)
         options.append(
             {
                 "id": entry["id"],
                 "name": entry["name"],
                 "context": _context_label(entry["context_tokens"]),
+                "capabilities": capabilities,
+                "vision": vision,
             }
         )
     return options

@@ -3346,6 +3346,14 @@ body {
   margin-top: var(--space-xs);
 }
 
+.setting-model-detail {
+  display: block;
+  min-height: 1.2em;
+  margin-top: var(--space-xs);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
 .setting-default {
   font-size: var(--text-xs);
   color: var(--text-muted);

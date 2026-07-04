@@ -45,6 +45,7 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(get_media_model_env_key("image", "gemini"), "GEMINI_IMAGE_MODEL")
         self.assertEqual(get_media_model_env_key("video", "openai"), "OPENAI_VIDEO_MODEL")
         self.assertEqual(get_media_provider_options("image")["gemini"]["model"], "gemini-3.1-flash-image")
+        self.assertEqual(get_media_provider_options("image")["gemini"]["model_name"], "Gemini 3.1 Flash Image")
         self.assertEqual(get_media_provider_options("video")["xai"]["model"], "grok-imagine-video")
         self.assertEqual(
             get_media_provider_options("video")["gemini"]["resolutions"],
@@ -162,6 +163,19 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertIsNotNone(pricing)
         self.assertEqual(pricing["input"], 1.00)
         self.assertEqual(pricing["output"], 2.00)
+
+    def test_provider_options_expose_only_known_vision_capabilities(self):
+        xai = {entry["id"]: entry for entry in get_provider_model_options("xai")}
+        anthropic = {entry["id"]: entry for entry in get_provider_model_options("anthropic")}
+        openai = {entry["id"]: entry for entry in get_provider_model_options("openai")}
+
+        # API-key Grok Build accepts images; the OAuth transport overrides this
+        # separately because its chat proxy is text-only.
+        self.assertTrue(xai["grok-build-0.1"]["vision"])
+        self.assertIn("vision", xai["grok-build-0.1"]["capabilities"])
+        self.assertIn("tools", xai["grok-build-0.1"]["capabilities"])
+        self.assertTrue(anthropic["claude-sonnet-5"]["vision"])
+        self.assertIsNone(openai["gpt-5.5"]["vision"])
 
     def test_xai_reasoning_effort_flag_from_catalog(self):
         self.assertTrue(get_model_supports_xai_reasoning_effort("xai", "grok-4.3"))

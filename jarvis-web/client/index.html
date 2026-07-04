@@ -417,6 +417,7 @@
               <select class="setting-input" id="setting-llm-model">
                 <!-- Populated dynamically based on provider -->
               </select>
+              <span class="setting-model-detail" id="llm-model-capabilities"></span>
             </div>
             <div class="setting-group">
               <label class="setting-label">
@@ -429,6 +430,7 @@
                 <option value="gemini">Google Gemini</option>
                 <option value="openai">OpenAI GPT Image</option>
               </select>
+              <span class="setting-model-detail" id="image-provider-capabilities"></span>
             </div>
             <div class="setting-group">
               <label class="setting-label">
@@ -441,6 +443,7 @@
                 <option value="openai">OpenAI Sora ($0.10/s)</option>
                 <option value="gemini">Google Gemini ($0.10+/s)</option>
               </select>
+              <span class="setting-model-detail" id="video-provider-capabilities"></span>
             </div>
             <div class="setting-group">
               <label class="setting-label">
@@ -547,6 +550,7 @@
               <select class="setting-input" id="setting-completion-guard-eval-model">
                 <option value="">Use default for provider</option>
               </select>
+              <span class="setting-model-detail" id="completion-guard-model-capabilities"></span>
               <span class="setting-desc">Auto mode only. Ignored when mode is manual.</span>
             </div>
             <div class="setting-group">

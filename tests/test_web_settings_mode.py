@@ -198,6 +198,26 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertIsNone(request_ollama.call_args.kwargs["base_url"])
         self.assertTrue(request_ollama.call_args.kwargs["cloud_access"])
 
+    def test_ollama_show_metadata_distinguishes_vision_and_context(self):
+        from server.services import settings_manager as settings_module
+
+        glm = settings_module._parse_ollama_show_metadata({
+            "capabilities": ["thinking", "completion", "tools"],
+            "model_info": {"glm5.2.context_length": 1_000_000},
+            "details": {"parameter_size": "756162687872"},
+        })
+        minimax = settings_module._parse_ollama_show_metadata({
+            "capabilities": ["completion", "tools", "thinking", "vision"],
+            "model_info": {"minimax.context_length": 524_288},
+        })
+
+        self.assertEqual(glm["context"], "1M")
+        self.assertEqual(glm["parameter_size"], "756B")
+        self.assertFalse(glm["vision"])
+        self.assertEqual(glm["capabilities"], ["thinking", "tools"])
+        self.assertTrue(minimax["vision"])
+        self.assertIn("vision", minimax["capabilities"])
+
     def test_direct_ollama_discovery_pins_selected_alias_before_env_default(self):
         from server.services import settings_manager as settings_module
 
