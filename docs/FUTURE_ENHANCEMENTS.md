@@ -182,6 +182,63 @@ It cannot retrieve account-level session or weekly usage, remaining quota, reset
 - [ollama/ollama#15663 — Expose account quota/usage details via the Cloud API](https://github.com/ollama/ollama/issues/15663) — closed as a duplicate of #12532; documents the missing headers/body/endpoint options
 - [ollama/ollama#16448 — API endpoint to check Cloud Usage/Quota limits](https://github.com/ollama/ollama/issues/16448) — closed as a duplicate of #12532
 
+### 8) Latency-Aware Status Updates Across Web, CLI, and Wake Word
+**Priority:** Medium–High usability / latency
+
+Status updates originated in the wake-word interface to fill otherwise silent
+tool waits. They remain useful in Web and CLI too, and the static phrase path
+must remain available on all three surfaces. The optional Status LLM adds
+variety, but its current request is synchronous and runs before `tool:start`
+and before the tool itself. A slow or missed provider call therefore extends
+the critical path even though status speech playback is asynchronous.
+
+**Goal:** Preserve short, well-timed feedback without making tool turns slower,
+feeding a small status model a large prompt, or allowing late status audio to
+interrupt the final answer.
+
+**Timing design:**
+- Start tool execution without waiting for the Status LLM provider.
+- Generate a dynamic phrase concurrently under a short, explicit deadline.
+- If the deadline is missed, use an immediate static phrase or remain silent;
+  do not hold the tool for the provider timeout.
+- Suppress a late phrase when the tool/turn has already completed.
+- Give final-response audio strict priority: cancel pending status generation,
+  pending Web `/api/tts` requests, and status playback before final TTS starts.
+- Keep execution order separate from presentation order. Web may sequence an
+  ephemeral phrase and tool card without delaying the actual tool call.
+- Consider a short-task debounce so fast tools show a card but do not begin a
+  status phrase that would collide with an immediately available result.
+
+**Small context contract:** Do not send the whole transcript, raw tool output,
+or accumulated conversation to the status model. Use a bounded, sanitized
+snapshot (target roughly 300–500 characters):
+- phase (`starting`, `running`, `retrying`, `wrapping_up`)
+- human-readable tool action/tool description
+- allowlisted, redacted argument summary when it materially explains the task
+- turn number and elapsed time
+- one short sanitized previous-tool outcome for multi-tool turns, when useful
+
+The status model should infer a natural phrase from that small snapshot. It
+does not need internal thinking, full results, or the final-answer context.
+
+**Caching:** Native `say-status.sh` and `say-status-local.sh` already cache audio
+by exact text plus provider/voice settings, so repeated static or dynamic
+phrases avoid another TTS call. Web status speech currently calls `/api/tts`
+directly and does not share that status cache. A future Web cache should use the
+same semantic key while keeping final-response TTS behavior independent.
+
+**Retain:**
+- `STATUS_UPDATES_ENABLED` as the master opt-in
+- `STATUS_LLM_ENABLED` as optional dynamic phrasing
+- `status_phrases.json` / unhinged phrases as the fast fallback
+- personality controls and rate limiting
+- Web ephemeral text, optional Web TTS, CLI TTS, and wake-word TTS
+
+**Correctness cleanup when implemented:** Clear `_last_context` on every new
+turn, pass actual error phase/context safely instead of using errors only for
+deduplication, and distinguish `near_complete` from generic `progress` in the
+Status LLM event hint.
+
 ---
 
 ## ⭐ State-of-the-Art Assistant Upgrades (Worth Doing Early)
@@ -521,7 +578,7 @@ First-class `session` and `task` objects shared across voice, CLI, and Web UI. A
 **Priority:** Medium–High  
 **Status:** Phase 2 memory integration planned; interactive supervision loop not built
 
-Jarvis should stream OpenCode session logs, track progress, and interrupt/redirect like a user in the TUI — not fire-and-forget. Needs `opencode_interrupt`, `opencode_send_message`, and task-layer linkage. See [archive/opencode/OPENCODE_PHASE2_STATUS.md](archive/opencode/OPENCODE_PHASE2_STATUS.md) (historical milestone).
+Jarvis should eventually stream OpenCode session logs, track progress, and interrupt/redirect like a user in the TUI. Today the OpenCode tool blocks until a result or timeout, and `check_opencode_sessions` can combine the OpenCode API with Jarvis-side JSONL logs afterward when a result is missing or more detail is requested. Needs `opencode_interrupt`, `opencode_send_message`, and task-layer linkage. See [archive/opencode/OPENCODE_PHASE2_STATUS.md](archive/opencode/OPENCODE_PHASE2_STATUS.md) (historical milestone).
 
 **TODO: early session bridge for live status.** The OpenCode tool writes
 `logs/opencode/opencode-YYYY-MM-DD.jsonl` immediately after `create_session()`
@@ -531,13 +588,18 @@ returns, before the long blocking task message completes:
 {"event":"session_start","session_id":"ses_...","task":"..."}
 ```
 
-Explore a small side channel where `skills/opencode.py` or `OpenCodeLogger.log_session_start()`
-records the active OpenCode `session_id` keyed by `JARVIS_SESSION_ID` /
-`JARVIS_WEB_CONVERSATION_ID`. `StatusUpdater` could then discover that id while
-the subprocess is still running and poll `/session/{session_id}` with Basic auth.
-Current OpenCode API details are metadata-heavy, so first verify whether a newer
-endpoint or event stream exposes useful step/tool progress before building a full
-supervision UI.
+The newer `check_opencode_sessions` path can read those logs by OpenCode session
+ID after execution, but the outer `StatusUpdater` still does not receive that ID
+while `skills/opencode.py` is blocked. Revisit a small side channel where
+`skills/opencode.py` or `OpenCodeLogger.log_session_start()` records the active
+OpenCode `session_id` keyed by `JARVIS_SESSION_ID` /
+`JARVIS_WEB_CONVERSATION_ID`. `StatusUpdater` could then discover it while the
+subprocess is still running and read the bounded Jarvis log summary or poll an
+OpenCode endpoint with Basic auth. Do not add a routine post-success check:
+successful OpenCode output is already authoritative, and the router correctly
+keeps `check_opencode_sessions` fallback-only. First verify that the available
+logs or a newer endpoint/event stream provide meaningful incremental progress
+rather than metadata-only noise.
 
 ### 6) Personal Corpus Ingestion
 **Priority:** Medium (visible product win)  
