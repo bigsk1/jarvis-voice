@@ -4,6 +4,14 @@
 > **Priority**: Medium (cost savings potential)
 > **Last Updated**: February 2026
 
+> [!IMPORTANT]
+> **July 2026 xAI update:** Jarvis now supports Grok CLI OAuth subscription
+> authentication for xAI text chat and Jarvis function calling. See
+> [`../../XAI_PROVIDER.md`](../../XAI_PROVIDER.md#grok-cli-oauth-subscription).
+> xAI native search, vision, image/video generation, and TTS still require an
+> API key. The remaining Anthropic/Google/OpenAI material below is retained as
+> historical research and is not an implementation guide.
+
 > [!WARNING]
 > This is an unimplemented research note, not a setup guide. Current Jarvis
 > provider code does not read `ANTHROPIC_OAUTH_TOKEN`, Claude Code credentials,
@@ -17,7 +25,9 @@
 
 ### The Problem
 
-Jarvis currently uses **API keys** for all LLM providers. This means:
+Jarvis historically used **API keys** for all LLM providers. xAI text chat is
+now the implemented exception; the remaining research below predates it. API
+key usage means:
 - Pay-per-token billing (can get expensive)
 - Separate from any subscription you already have
 - No way to leverage your existing Claude Pro/Max, ChatGPT Plus, or Grok Premium
@@ -43,9 +53,10 @@ OAuth Flow:
 | **Anthropic** | Research only | Not integrated with Jarvis | Proposed Claude Code token path below is not implemented |
 | **Google** | Research only | Not integrated with Jarvis | Gemini CLI credentials are not read by Jarvis |
 | **OpenAI** | ⚠️ Apps SDK | Business/Enterprise only | "Sign in with ChatGPT" for MCP apps |
-| **xAI** | ❌ NO | Grok Premium ≠ API access | API keys only, no OAuth for subscriptions |
+| **xAI** | ✅ Grok CLI | Text/tool subscription path | Implemented; specialized APIs remain API-key-only |
 
-**Key Finding**: As of Feb 2026, **Anthropic** and **Google** have working OAuth flows for subscription-based API access. OpenAI has OAuth but it's primarily for business/enterprise MCP app development.
+**Historical finding (Feb 2026):** This table predated xAI's Grok CLI OAuth
+integration. Current Jarvis behavior is documented in `docs/XAI_PROVIDER.md`.
 
 ---
 
@@ -173,25 +184,31 @@ Per [Anthropic's docs](https://support.claude.com/en/articles/11145838-using-cla
 
 ---
 
-## xAI / Grok (No OAuth)
+## xAI / Grok (Implemented July 2026)
 
 ### Current Status
 
-xAI uses **API keys only**. There is no OAuth flow to use Grok Premium subscription for API access.
+xAI's official Grok CLI caches an OAuth session in `~/.grok/auth.json` and
+documents access to its CLI chat proxy. Jarvis now uses that path for text chat
+and Jarvis function calling through `XAI_AUTH_MODE=oauth` (or `auto` with a
+blank key).
 
 ```bash
-# xAI Authentication (API Key only)
-Authorization: Bearer $XAI_API_KEY
+# config/cloud.env
+XAI_AUTH_MODE=oauth
+XAI_OAUTH_MODEL=grok-build
+XAI_API_KEY=""
 ```
 
 ### Subscription vs API
 
 | Product | Access Type | Billing |
 |---------|-------------|---------|
-| Grok Premium (X subscription) | Web/App only | Monthly subscription |
-| Grok API | API Key | Pay-per-token ($5/M input, $15/M output) |
+| Grok CLI OAuth | Jarvis text chat + function calls | Subscription limits |
+| Grok API | Native search, vision, media, TTS, API chat | API-key billing |
 
-**Note**: Even with Grok Premium, you still need a separate API key and pay separately for API usage.
+**Boundary**: OAuth does not authorize xAI native search, vision, image/video,
+or TTS endpoints. Those still need `XAI_API_KEY`.
 
 ### Free Credits
 
@@ -543,7 +560,7 @@ Many apps (like Cursor, OpenCode, Claw) use the **provider's own CLI tools** to 
 | **Anthropic** | Claude Code | `claude setup-token` | `CLAUDE_CODE_OAUTH_TOKEN` env var |
 | **Google** | Gemini CLI | `gemini auth login` | `~/.config/gemini/credentials.json` |
 | **OpenAI** | (none for consumers) | N/A | API keys only |
-| **xAI** | (none) | N/A | API keys only |
+| **xAI** | Grok CLI | `grok login` | `~/.grok/auth.json` |
 
 ### Strategy: Piggyback on Provider CLIs
 
@@ -622,8 +639,8 @@ Add OAuth section to Settings → API Keys tab:
 │                                                  │
 │  xAI                                             │
 │  ┌───────────────────────────────────────────┐  │
-│  │ ● API Key     <xai-api-key> ✓ Active      │  │
-│  │   (OAuth not available for xAI)           │  │
+│  │ ○ API Key     <xai-api-key>               │  │
+│  │ ● OAuth       Grok CLI session ✓ Active   │  │
 │  └───────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────┘
 ```
@@ -646,7 +663,7 @@ Add OAuth section to Settings → API Keys tab:
 | Provider | API Key Cost | With Subscription |
 |----------|--------------|-------------------|
 | **Anthropic** | ~$50-100/month | $20/month (Pro) or $100/month (Max) |
-| **xAI** | ~$30-50/month | Same (no OAuth) |
+| **xAI** | Provider-dependent | Grok subscription limits for OAuth text chat |
 | **OpenAI** | ~$40-80/month | Same (no OAuth for API) |
 
 ### Break-Even Analysis
@@ -729,7 +746,7 @@ Add OAuth section to Settings → API Keys tab:
 | **Anthropic** | `claude setup-token` | Pro ($20) / Max ($100) | ✅ Ready to use |
 | **Google** | `gemini auth login` | AI Pro / AI Ultra | ✅ Ready to use |
 | **OpenAI** | Apps SDK | Business/Enterprise only | ⚠️ Not for consumers |
-| **xAI** | None | N/A | ❌ API keys only |
+| **xAI** | `grok login` | Grok subscription | ✅ Implemented for text/tool calls |
 
 ### Proposed Setup (Not Implemented)
 
@@ -764,7 +781,7 @@ gemini auth login
 1. **Anthropic** - Most users have Claude, clear OAuth path
 2. **Google** - Gemini CLI provides easy OAuth
 3. **OpenAI** - Only if targeting Business/Enterprise users
-4. **xAI** - No OAuth available, API keys only
+4. **xAI** - Implemented for Grok CLI OAuth text/tool calls in July 2026
 
 ### Cost Savings Potential
 

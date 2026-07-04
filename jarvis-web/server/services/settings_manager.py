@@ -20,6 +20,14 @@ from model_catalog import (
     get_provider_model_options,
 )
 from ollama_utils import request_ollama, is_ollama_cloud_model
+from xai_oauth import (
+    XaiOAuthError,
+    discover_xai_oauth_models,
+    get_xai_auth_mode,
+    get_xai_oauth_model,
+    get_xai_oauth_status,
+    is_xai_oauth_model,
+)
 
 
 def fetch_ollama_models(
@@ -186,6 +194,8 @@ class SettingsManager:
         'MODE',
         'OWNER_NAME',
         'LLM_PROVIDER',
+        'XAI_AUTH_MODE',
+        'XAI_OAUTH_MODEL',
         'OLLAMA_CLOUD_MODEL',
         'ALLOW_OLLAMA_CLOUD',
         'TTS_PROVIDER',
@@ -257,6 +267,18 @@ class SettingsManager:
 
     def _get_model_options_with_current(self, provider: str, current_model: str | None) -> list[dict[str, str]]:
         """Return curated provider options plus any active custom model."""
+        if provider == 'xai' and self._xai_uses_oauth():
+            try:
+                return discover_xai_oauth_models()
+            except XaiOAuthError:
+                model = get_xai_oauth_model(current_model)
+                return [{
+                    'id': model,
+                    'name': model,
+                    'context': get_model_context_label('xai', model) or 'OAuth subscription',
+                    'auth': 'oauth',
+                }]
+
         options = get_provider_model_options(provider)
         if not current_model:
             return options
@@ -309,6 +331,8 @@ class SettingsManager:
 
     def _model_is_compatible_with_provider(self, provider: str, model: str | None) -> bool:
         """Reject a model override that clearly belongs to another provider/mode."""
+        if provider == 'xai' and self._xai_uses_oauth():
+            return not model or is_xai_oauth_model(model)
         if not model or provider != 'ollama':
             return True
 
@@ -328,6 +352,16 @@ class SettingsManager:
             get_jarvis_setting('ALLOW_OLLAMA_CLOUD', 'false') or ''
         ).strip().lower() in {'true', '1', 'yes', 'on'}
         return not cloud_tagged or allow_local_cloud
+
+    def _xai_uses_oauth(self) -> bool:
+        """Whether primary xAI text calls resolve to the Grok CLI OAuth path."""
+        try:
+            return get_xai_auth_mode(
+                get_jarvis_setting('XAI_API_KEY', ''),
+                get_jarvis_setting('XAI_AUTH_MODE', 'auto'),
+            ) == 'oauth'
+        except XaiOAuthError:
+            return False
     
     def _is_sensitive(self, key: str) -> bool:
         """Check if a setting key is sensitive"""
@@ -667,6 +701,17 @@ class SettingsManager:
             provider: get_provider_model_options(provider)
             for provider in get_catalog_providers()
         }
+        if self._xai_uses_oauth():
+            try:
+                models['xai'] = discover_xai_oauth_models()
+            except XaiOAuthError:
+                model = get_xai_oauth_model()
+                models['xai'] = [{
+                    'id': model,
+                    'name': model,
+                    'context': get_model_context_label('xai', model) or 'OAuth subscription',
+                    'auth': 'oauth',
+                }]
         
         # Dynamically fetch Ollama models if in local mode or Ollama selected
         web_config = load_web_config()
@@ -735,6 +780,8 @@ class SettingsManager:
         if provider == 'ollama':
             # Mode-aware: cloud uses OLLAMA_CLOUD_MODEL, local uses OLLAMA_MODEL.
             return self._ollama_env_default_model()
+        if provider == 'xai' and self._xai_uses_oauth():
+            return get_xai_oauth_model()
 
         return get_default_model_id(provider)
 
@@ -743,6 +790,8 @@ class SettingsManager:
         if provider == 'ollama':
             # Mode-aware Ollama default (OLLAMA_CLOUD_MODEL in cloud).
             return self._ollama_env_default_model()
+        if provider == 'xai' and self._xai_uses_oauth():
+            return get_xai_oauth_model()
         env_key_map = {
             'xai': 'XAI_MODEL',
             'anthropic': 'ANTHROPIC_MODEL',
@@ -766,7 +815,11 @@ class SettingsManager:
             for key in keys
         }
 
-    def _provider_availability_entry(self, provider: str) -> dict[str, Any]:
+    def _provider_availability_entry(
+        self,
+        provider: str,
+        domain: str | None = None,
+    ) -> dict[str, Any]:
         """Availability status for one provider (booleans/reasons only, never values)."""
         provider = (provider or '').strip().lower()
         if provider == 'ollama':
@@ -782,6 +835,28 @@ class SettingsManager:
                 'status': 'unknown',
                 'reason': 'Depends on Ollama daemon sign-in (checked live)',
             }
+        if provider == 'xai' and domain in {'llm', 'completion_guard'}:
+            api_key = get_jarvis_setting('XAI_API_KEY', '')
+            try:
+                auth_mode = get_xai_auth_mode(
+                    api_key,
+                    get_jarvis_setting('XAI_AUTH_MODE', 'auto'),
+                )
+            except XaiOAuthError as exc:
+                return {'status': 'unavailable', 'reason': str(exc)}
+            if auth_mode == 'oauth':
+                status = get_xai_oauth_status()
+                return {
+                    'status': status['status'],
+                    'reason': status.get('reason') or 'Grok CLI OAuth subscription',
+                    'connection': 'oauth',
+                }
+            if str(api_key or '').strip():
+                return {
+                    'status': 'available',
+                    'reason': 'XAI_API_KEY configured',
+                    'connection': 'api_key',
+                }
         required_key = PROVIDER_KEY_REQUIREMENTS.get(provider)
         if required_key is None:
             # Local engines (kokoro, qwen3-tts) and unrecognized providers:
@@ -805,11 +880,14 @@ class SettingsManager:
         video_options = list(get_media_catalog_providers('video'))
         tts_options = self._get_tts_provider_options()
         return {
-            'llm': {p: self._provider_availability_entry(p) for p in llm_options},
-            'image': {p: self._provider_availability_entry(p) for p in image_options},
-            'video': {p: self._provider_availability_entry(p) for p in video_options},
-            'tts': {p: self._provider_availability_entry(p) for p in tts_options},
-            'completion_guard': {p: self._provider_availability_entry(p) for p in guard_options},
+            'llm': {p: self._provider_availability_entry(p, 'llm') for p in llm_options},
+            'image': {p: self._provider_availability_entry(p, 'image') for p in image_options},
+            'video': {p: self._provider_availability_entry(p, 'video') for p in video_options},
+            'tts': {p: self._provider_availability_entry(p, 'tts') for p in tts_options},
+            'completion_guard': {
+                p: self._provider_availability_entry(p, 'completion_guard')
+                for p in guard_options
+            },
         }
 
     def _validate_provider_overrides(self, overrides: dict[str, Any]) -> None:
@@ -856,7 +934,14 @@ class SettingsManager:
             effective = str(current_effective[field] or '').strip().lower()
             if requested == effective:
                 continue  # not a new selection
-            entry = self._provider_availability_entry(requested)
+            domain = {
+                'llm_provider': 'llm',
+                'image_provider': 'image',
+                'video_provider': 'video',
+                'tts_provider': 'tts',
+                'completion_guard_eval_provider': 'completion_guard',
+            }[field]
+            entry = self._provider_availability_entry(requested, domain)
             if entry['status'] == 'unavailable':
                 raise SettingsValidationError(
                     field=field,

@@ -52,7 +52,11 @@ class SettingsAvailabilityTests(unittest.TestCase):
 
     def test_provider_availability_statuses_cloud(self):
         secret = "zz-secret-value-999"
-        env = {"OPENAI_API_KEY": secret, "XAI_API_KEY": "  "}  # blank xai
+        env = {
+            "OPENAI_API_KEY": secret,
+            "XAI_API_KEY": "  ",
+            "XAI_AUTH_MODE": "api_key",
+        }  # blank xai with API-key auth forced
         manager, patches = self._manager("cloud", env)
         with patches[0], patches[1]:
             availability = manager.get_provider_availability()
@@ -82,6 +86,40 @@ class SettingsAvailabilityTests(unittest.TestCase):
         self.assertEqual(availability["completion_guard"]["openai"]["status"], "available")
         # No secret values anywhere in the payload
         self.assertNotIn(secret, json.dumps(availability))
+
+    def test_xai_oauth_enables_text_domains_but_not_media_or_tts(self):
+        env = {"XAI_API_KEY": "", "XAI_AUTH_MODE": "oauth"}
+        manager, patches = self._manager("cloud", env)
+        oauth_status = {
+            "status": "available",
+            "signed_in": True,
+            "reason": None,
+        }
+        with (
+            patches[0], patches[1],
+            patch.object(self.settings_module, "get_xai_oauth_status", return_value=oauth_status),
+        ):
+            availability = manager.get_provider_availability()
+
+        self.assertEqual(availability["llm"]["xai"]["status"], "available")
+        self.assertEqual(availability["llm"]["xai"]["connection"], "oauth")
+        self.assertEqual(availability["completion_guard"]["xai"]["status"], "available")
+        self.assertEqual(availability["image"]["xai"]["status"], "unavailable")
+        self.assertEqual(availability["video"]["xai"]["status"], "unavailable")
+        self.assertEqual(availability["tts"]["xai"]["status"], "unavailable")
+
+    def test_xai_oauth_uses_subscription_model_not_api_model(self):
+        env = {
+            "XAI_API_KEY": "",
+            "XAI_AUTH_MODE": "oauth",
+            "XAI_MODEL": "grok-build-0.1",
+            "XAI_OAUTH_MODEL": "grok-build",
+        }
+        manager, patches = self._manager("cloud", env)
+        with patches[0], patches[1]:
+            self.assertEqual(manager._get_env_provider_model("xai"), "grok-build")
+            self.assertFalse(manager._model_is_compatible_with_provider("xai", "grok-build-0.1"))
+            self.assertTrue(manager._model_is_compatible_with_provider("xai", "grok-build"))
 
     def test_ollama_available_in_local_mode(self):
         manager, patches = self._manager("local", {})
@@ -219,6 +257,74 @@ class SettingsRouteValidationTests(unittest.TestCase):
         self.assertEqual(body["reason"], "Anthropic API key missing")
         reload_cfg.assert_not_called()
         settings.save_web_overrides.assert_not_called()
+
+    def test_xai_oauth_status_route_is_sanitized(self):
+        from server import config as web_config_module
+
+        safe_status = {
+            "connection": "oauth",
+            "signed_in": True,
+            "status": "available",
+            "reason": None,
+            "usage_available": False,
+            "expires_at": "2099-01-01T00:00:00+00:00",
+            "models": [{"id": "grok-build", "name": "grok-build", "context": "256K"}],
+        }
+
+        def get_setting(key, default=""):
+            return {
+                "XAI_API_KEY": "",
+                "XAI_AUTH_MODE": "oauth",
+                "XAI_SEARCH": "true",
+            }.get(key, default)
+
+        with (
+            self.app.test_request_context("/api/xai/oauth-status?mode=cloud"),
+            patch.object(web_config_module, "load_jarvis_config"),
+            patch.object(web_config_module, "get_jarvis_setting", side_effect=get_setting),
+            patch("xai_oauth.get_xai_oauth_status", return_value=safe_status),
+        ):
+            response = self.api.get_xai_oauth_status_route.__wrapped__()
+
+        body = response.get_json()
+        self.assertEqual(body["connection_mode"], "oauth")
+        self.assertTrue(body["signed_in"])
+        self.assertFalse(body["usage_available"])
+        self.assertTrue(body["native_search_requested"])
+        self.assertFalse(body["native_search_available"])
+        self.assertIn("requires API-key auth", body["native_search_note"])
+        self.assertEqual(body["models"][0]["id"], "grok-build")
+        self.assertNotIn("token", json.dumps(body).lower())
+
+    def test_xai_explicit_oauth_reports_present_api_key_is_ignored_for_chat(self):
+        from server import config as web_config_module
+
+        def get_setting(key, default=""):
+            return {
+                "XAI_API_KEY": "configured-secret",
+                "XAI_AUTH_MODE": "oauth",
+                "XAI_SEARCH": "true",
+            }.get(key, default)
+
+        with (
+            self.app.test_request_context("/api/xai/oauth-status?mode=cloud"),
+            patch.object(web_config_module, "load_jarvis_config"),
+            patch.object(web_config_module, "get_jarvis_setting", side_effect=get_setting),
+            patch("xai_oauth.get_xai_oauth_status", return_value={
+                "connection": "oauth",
+                "signed_in": True,
+                "status": "available",
+                "reason": None,
+                "usage_available": False,
+            }),
+        ):
+            response = self.api.get_xai_oauth_status_route.__wrapped__()
+
+        body = response.get_json()
+        self.assertEqual(body["connection_mode"], "oauth")
+        self.assertTrue(body["api_key_present"])
+        self.assertFalse(body["native_search_available"])
+        self.assertNotIn("configured-secret", json.dumps(body))
 
     def test_rejected_save_does_not_persist_requested_mode(self):
         """Atomicity: a provider rejection must not change the stored mode."""

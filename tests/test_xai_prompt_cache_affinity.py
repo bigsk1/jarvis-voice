@@ -203,7 +203,7 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
 
     def test_xai_provider_default_model_comes_from_catalog(self):
         with patch("config_loader.get_config_value", return_value="false"):
-            provider = XAIProvider(api_key="xai-test-key")
+            provider = XAIProvider(api_key="xai-test-key", auth_mode="api_key")
 
         self.assertEqual(provider.model, "grok-4.3")
 
@@ -220,7 +220,11 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
         with patch.dict(sys.modules, {"xai_sdk": fake_xai_sdk}), \
              patch("config_loader.get_config_value", return_value="true"), \
              patch.dict(os.environ, {"XAI_PROMPT_CACHE_KEY": "conv_sdk"}, clear=True):
-            provider = XAIProvider(api_key="xai-test-key", model="grok-test")
+            provider = XAIProvider(
+                api_key="xai-test-key",
+                model="grok-test",
+                auth_mode="api_key",
+            )
 
         self.assertTrue(provider.enable_search)
         self.assertIsInstance(provider.xai_client, FakeXAIClient)

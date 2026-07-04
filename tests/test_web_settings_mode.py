@@ -289,9 +289,10 @@ class WebSettingsModeTests(unittest.TestCase):
         from server.services.settings_manager import SettingsManager
 
         settings = SettingsManager("cloud")
-        options = settings._get_model_options_with_current(
-            "xai", "grok-4.20-non-reasoning-latest"
-        )
+        with patch.object(settings, "_xai_uses_oauth", return_value=False):
+            options = settings._get_model_options_with_current(
+                "xai", "grok-4.20-non-reasoning-latest"
+            )
 
         matching = [
             option

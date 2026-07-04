@@ -50,13 +50,25 @@ Only output the status phrase, nothing else."""
         # API keys/URLs based on provider
         self.api_key = None
         self.base_url = None
+        self.xai_provider = None
         
         if self.provider == 'openai':
             self.api_key = get_config_value('OPENAI_API_KEY')
             self.base_url = 'https://api.openai.com/v1'
         elif self.provider == 'xai':
             self.api_key = get_config_value('XAI_API_KEY')
-            self.base_url = 'https://api.x.ai/v1'
+            if self.enabled:
+                try:
+                    from llm_provider import create_provider
+
+                    self.xai_provider = create_provider(
+                        'xai',
+                        api_key=self.api_key,
+                        model=self.model,
+                    )
+                    self.model = self.xai_provider.model
+                except Exception as exc:
+                    print(f"[StatusLLM] xAI auth unavailable: {exc}", file=sys.stderr)
         elif self.provider == 'anthropic':
             self.api_key = get_config_value('ANTHROPIC_API_KEY')
             self.base_url = 'https://api.anthropic.com/v1'
@@ -121,7 +133,10 @@ Be unpredictable, energetic, and slightly unhinged. Have fun with it!""")
         if not self.enabled:
             return None
         
-        if not self.api_key and self.provider != 'ollama':
+        if (
+            not self.api_key
+            and self.provider not in {'ollama', 'xai'}
+        ):
             return None
         
         # Build prompt
@@ -130,6 +145,17 @@ Be unpredictable, energetic, and slightly unhinged. Have fun with it!""")
         try:
             if self.provider == 'ollama':
                 return self._call_ollama(prompt)
+            elif self.provider == 'xai':
+                if not self.xai_provider:
+                    return None
+                content = self.xai_provider.chat(
+                    prompt,
+                    system_prompt=self.system_prompt,
+                    max_tokens=self.max_tokens,
+                )
+                if content.startswith('Error:'):
+                    return None
+                return self._clean_response(content)
             elif self.provider == 'anthropic':
                 return self._call_anthropic(prompt)
             else:
@@ -273,6 +299,8 @@ Generate a natural 5-8 word status update:"""
         """Check if LLM summarization is enabled and configured."""
         if not self.enabled:
             return False
+        if self.provider == 'xai':
+            return self.xai_provider is not None
         if self.provider != 'ollama' and not self.api_key:
             return False
         return True

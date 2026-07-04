@@ -740,13 +740,15 @@ class ChatHandler:
                 model=model_name or get_config_value('OPENAI_MODEL', get_provider_fallback_model('openai'))
             )
         if provider_name == 'xai':
-            return provider_name, (
+            configured_model = (
                 model_name or get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
-            ), create_provider(
+            )
+            provider = create_provider(
                 'xai',
                 api_key=get_config_value('XAI_API_KEY'),
-                model=model_name or get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
+                model=configured_model,
             )
+            return provider_name, getattr(provider, 'model', configured_model), provider
 
         from ollama_utils import resolve_ollama_model
         ollama_model = resolve_ollama_model(mode, model_override=(model_name or None))

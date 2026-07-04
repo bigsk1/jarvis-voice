@@ -5269,7 +5269,7 @@ class ChatUI {
     const cost = typeof usage.cost_usd === 'number' ? usage.cost_usd : 0;
     const unknownCost = usage.has_unknown_cost === true
       || usage.cost_known === false
-      || usage.billing_mode === 'ollama_cloud_subscription';
+      || ['ollama_cloud_subscription', 'xai_oauth_subscription'].includes(usage.billing_mode);
 
     this.cumulativeTokens.input += inputTokens;
     this.cumulativeTokens.output += outputTokens;
@@ -5401,7 +5401,7 @@ class ChatUI {
     } else if (this.cumulativeCost > 0) {
       lines.push(`Estimated cost: $${this.cumulativeCost.toFixed(4)}`);
     }
-    if (this.tokenStatsMeta.billingMode === 'ollama_cloud_subscription') {
+    if (['ollama_cloud_subscription', 'xai_oauth_subscription'].includes(this.tokenStatsMeta.billingMode)) {
       lines.push('Account quota: unavailable via API');
     }
 

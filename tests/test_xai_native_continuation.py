@@ -228,6 +228,57 @@ class XAINativeContinuationTests(unittest.TestCase):
         self.assertLess(prompt.index("system"), prompt.index("RUNTIME CONTEXT FOR THIS TURN"))
         self.assertLess(prompt.index("system"), prompt.index("CURRENT DATE AND TIME"))
 
+    def test_router_prompt_disables_native_search_claim_for_oauth_provider(self):
+        router = LLMRouter.__new__(LLMRouter)
+        router.timezone = ZoneInfo("America/Los_Angeles")
+        router.prompt_override = None
+        router._system_prompt_base = "system"
+        router._provider_override = "xai"
+        router._model_override = "grok-build"
+        router.provider = SimpleNamespace(enable_search=False, xai_client=None)
+
+        with (
+            patch("router_v2.get_config_value", side_effect=_config({
+                "XAI_SEARCH": "true",
+                "LLM_PROVIDER": "xai",
+            })),
+            patch(
+                "router_v2.append_profile_card_for_router_direct_answer",
+                side_effect=lambda prompt: prompt,
+            ),
+        ):
+            prompt = router.system_prompt
+
+        self.assertIn("XAI NATIVE SERVER-SIDE TOOLS DISABLED", prompt)
+        self.assertIn("use the available Jarvis search/fetch tools", prompt)
+        self.assertNotIn("NATIVE SERVER-SIDE TOOLS ENABLED", prompt)
+        self.assertNotIn("DO NOT use brave_search", prompt)
+
+    def test_router_prompt_claims_native_search_only_for_live_sdk_provider(self):
+        router = LLMRouter.__new__(LLMRouter)
+        router.timezone = ZoneInfo("America/Los_Angeles")
+        router.prompt_override = None
+        router._system_prompt_base = "system"
+        router._provider_override = "xai"
+        router._model_override = "grok-4.3"
+        router.provider = SimpleNamespace(enable_search=True, xai_client=object())
+
+        with (
+            patch("router_v2.get_config_value", side_effect=_config({
+                "XAI_SEARCH": "true",
+                "LLM_PROVIDER": "xai",
+            })),
+            patch(
+                "router_v2.append_profile_card_for_router_direct_answer",
+                side_effect=lambda prompt: prompt,
+            ),
+        ):
+            prompt = router.system_prompt
+
+        self.assertIn("NATIVE SERVER-SIDE TOOLS ENABLED", prompt)
+        self.assertIn("NATIVE WEB/X SEARCH", prompt)
+        self.assertNotIn("XAI NATIVE SERVER-SIDE TOOLS DISABLED", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

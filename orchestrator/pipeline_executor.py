@@ -56,6 +56,7 @@ class PipelineExecutor:
             "cost_usd": 0.0,
             "has_unknown_cost": False,
             "cost_known": True,
+            "billing_mode": None,
             "cache_creation_tokens": 0,
             "cache_read_tokens": 0,
             "cache_write_cost_usd": 0.0,
@@ -101,11 +102,16 @@ class PipelineExecutor:
                     self._total_usage["cost_usd"] += cost
                 if (
                     usage_info.get("cost_known") is False
-                    or usage_info.get("billing_mode") == "ollama_cloud_subscription"
+                    or usage_info.get("billing_mode") in {
+                        "ollama_cloud_subscription",
+                        "xai_oauth_subscription",
+                    }
                     or cost is None
                 ):
                     self._total_usage["has_unknown_cost"] = True
                     self._total_usage["cost_known"] = False
+                if usage_info.get("billing_mode"):
+                    self._total_usage["billing_mode"] = usage_info["billing_mode"]
                 for key in (
                     "cache_creation_tokens",
                     "cache_read_tokens",

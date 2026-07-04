@@ -309,6 +309,9 @@ def get_system_config():
         config['QWEN3_TTS_FORMAT'] = get_jarvis_setting('QWEN3_TTS_FORMAT', 'mp3')
     else:
         config['XAI_MODEL'] = get_jarvis_setting('XAI_MODEL', '')
+        config['XAI_AUTH_MODE'] = get_jarvis_setting('XAI_AUTH_MODE', 'auto')
+        config['XAI_OAUTH_MODEL'] = get_jarvis_setting('XAI_OAUTH_MODEL', 'grok-build')
+        config['XAI_SEARCH'] = get_jarvis_setting('XAI_SEARCH', 'false')
         config['ANTHROPIC_MODEL'] = get_jarvis_setting('ANTHROPIC_MODEL', '')
         config['OPENAI_MODEL'] = get_jarvis_setting('OPENAI_MODEL', '')
         # Ollama-cloud-primary (safe metadata only; never OLLAMA_API_KEY)
@@ -584,6 +587,65 @@ _OLLAMA_CLOUD_STATUS_TTL_SECONDS = 45
 
 _OLLAMA_MODEL_CONTEXT_CACHE = {}
 _OLLAMA_MODEL_CONTEXT_TTL_SECONDS = 600
+
+
+@api_bp.route('/xai/oauth-status', methods=['GET'])
+@_scoped_request_config
+def get_xai_oauth_status_route():
+    """Return sanitized xAI API-key/OAuth readiness for the System tab."""
+    from ..config import load_jarvis_config, get_jarvis_setting
+    from xai_oauth import XaiOAuthError, get_xai_auth_mode, get_xai_oauth_status
+
+    mode = request.args.get('mode', 'cloud')
+    load_jarvis_config(mode)
+    api_key = get_jarvis_setting('XAI_API_KEY', '')
+    api_key_present = bool(str(api_key or '').strip())
+    native_search_requested = (
+        str(get_jarvis_setting('XAI_SEARCH', 'false') or '').strip().lower() == 'true'
+    )
+    payload = {
+        'provider': 'xai',
+        'dashboard_url': 'https://grok.com',
+        'usage_available': False,
+        'usage_note': 'xAI does not expose subscription quota through this API',
+        'api_key_present': api_key_present,
+        'native_search_requested': native_search_requested,
+    }
+    try:
+        auth_mode = get_xai_auth_mode(
+            api_key,
+            get_jarvis_setting('XAI_AUTH_MODE', 'auto'),
+        )
+    except XaiOAuthError as exc:
+        return jsonify({
+            **payload,
+            'connection_mode': 'invalid',
+            'signed_in': False,
+            'status': 'unavailable',
+            'reason': str(exc),
+        })
+
+    if auth_mode == 'api_key':
+        return jsonify({
+            **payload,
+            'connection_mode': 'api_key',
+            'signed_in': api_key_present,
+            'status': 'available' if api_key_present else 'unavailable',
+            'reason': None if api_key_present else 'XAI_API_KEY missing',
+            'native_search_available': native_search_requested and api_key_present,
+        })
+
+    return jsonify({
+        **payload,
+        **get_xai_oauth_status(check_models=True),
+        'connection_mode': 'oauth',
+        'native_search_available': False,
+        'native_search_note': (
+            'XAI_SEARCH requires API-key auth; use Jarvis search tools while OAuth is active'
+            if native_search_requested
+            else None
+        ),
+    })
 
 
 def _extract_ollama_context_length(show_data):

@@ -38,6 +38,37 @@ def _config_bool(name: str, default: str = "false") -> bool:
     }
 
 
+def _feedback_native_search_enabled(
+    server_side_tools: dict[str, Any] | None,
+    config_context: str | None,
+) -> bool:
+    """Determine actual native-search availability for feedback grading."""
+
+    if any(
+        str(name) in {"SERVER_SIDE_TOOL_WEB_SEARCH", "SERVER_SIDE_TOOL_X_SEARCH"}
+        for name in (server_side_tools or {})
+    ):
+        return True
+    if config_context and "Native Search: ENABLED" in config_context:
+        return True
+
+    llm_provider = str(get_config_value("LLM_PROVIDER", "anthropic") or "").strip().lower()
+    if llm_provider == "xai":
+        from xai_oauth import xai_native_search_configured
+
+        return xai_native_search_configured(get_config_value("XAI_API_KEY", ""))
+    if llm_provider == "anthropic":
+        return _config_bool("ANTHROPIC_SEARCH")
+    if llm_provider == "openai":
+        return (
+            str(get_config_value("OPENAI_API_MODE", "chat") or "chat").strip().lower()
+            == "responses"
+            and _config_bool("OPENAI_RESPONSES_SERVER_SIDE_TOOLS")
+            and _config_bool("OPENAI_RESPONSES_WEB_SEARCH")
+        )
+    return False
+
+
 FEEDBACK_PROMPT = """A task was just completed as a voice assistant. Now provide HONEST, SPECIFIC FEEDBACK to help improve the system.
 
 📅 CRITICAL - TODAY'S DATE: {current_date}
@@ -406,6 +437,9 @@ class FeedbackCollector:
                         api_key=get_config_value("ANTHROPIC_API_KEY"),
                         model=self.model_name
                     )
+
+        # OAuth may resolve an API model alias to the subscription model.
+        self.model_name = getattr(self.provider, "model", self.model_name)
         
         # Setup logging
         self.log_dir = Path(__file__).parent.parent / "logs" / "feedback"
@@ -472,25 +506,10 @@ class FeedbackCollector:
         
         # Determine native search status for prominent display
         # Check config_context for native search status or check environment
-        native_search_enabled = any(
-            str(name) in {"SERVER_SIDE_TOOL_WEB_SEARCH", "SERVER_SIDE_TOOL_X_SEARCH"}
-            for name in server_side_tools
+        native_search_enabled = _feedback_native_search_enabled(
+            server_side_tools,
+            config_context,
         )
-        if config_context and "Native Search: ENABLED" in config_context:
-            native_search_enabled = True
-        elif not native_search_enabled:
-            # Fallback to checking environment
-            llm_provider = get_config_value("LLM_PROVIDER", "anthropic")
-            if llm_provider == "xai":
-                native_search_enabled = _config_bool("XAI_SEARCH")
-            elif llm_provider == "anthropic":
-                native_search_enabled = _config_bool("ANTHROPIC_SEARCH")
-            elif llm_provider == "openai":
-                native_search_enabled = (
-                    str(get_config_value("OPENAI_API_MODE", "chat") or "chat").strip().lower() == "responses"
-                    and _config_bool("OPENAI_RESPONSES_SERVER_SIDE_TOOLS")
-                    and _config_bool("OPENAI_RESPONSES_WEB_SEARCH")
-                )
         
         if native_search_enabled:
             native_search_status = "🟢 ENABLED - LLM has built-in web search"

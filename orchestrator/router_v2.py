@@ -1170,9 +1170,18 @@ RESPONSE STYLE: {response_style.upper()}
         xai_image_understanding = get_config_value("XAI_IMAGE_UNDERSTANDING", "true").lower() == "true"
         xai_video_understanding = get_config_value("XAI_VIDEO_UNDERSTANDING", "true").lower() == "true"
         anthropic_search = get_config_value("ANTHROPIC_SEARCH", "false").lower() == "true"
-        provider_type = self._provider_override or get_config_value("LLM_PROVIDER", "")
+        provider_type = str(
+            self._provider_override or get_config_value("LLM_PROVIDER", "")
+        ).strip().lower()
         
-        if xai_search and provider_type == "xai":
+        active_provider = getattr(self, "provider", None)
+        xai_native_search_available = (
+            provider_type == "xai"
+            and bool(getattr(active_provider, "enable_search", False))
+            and getattr(active_provider, "xai_client", None) is not None
+        )
+
+        if xai_search and xai_native_search_available:
             # Build xAI capabilities note
             capabilities = []
             capabilities.append("- NATIVE WEB/X SEARCH: Use for current info, news, prices - DO NOT use brave_search or mcp_fetch_fetch (crawl_url is OK for specific URL extraction)")
@@ -1198,6 +1207,12 @@ NATIVE SERVER-SIDE TOOLS ENABLED:
 {chr(10).join(capabilities)}
 - Results are grounded and cited automatically
 - Only use external tools when native capabilities are insufficient
+"""
+        elif xai_search and provider_type == "xai":
+            native_search_note = """
+XAI NATIVE SERVER-SIDE TOOLS DISABLED:
+- The current xAI authentication/transport does not provide native web/X search or code execution.
+- For current information, use the available Jarvis search/fetch tools; do not answer from stale knowledge.
 """
         elif anthropic_search and provider_type == "anthropic":
             native_search_note = """

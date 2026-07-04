@@ -158,7 +158,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
         },
         {
             "id": "grok-build-0.1",
-            "name": "Grok Build 0.1 (Coding)",
+            "name": "Grok Build 0.1 (agentic)",
             "context_tokens": 256_000,
             "input_modalities": ["text", "image"],
             "output_modalities": ["text"],
@@ -176,7 +176,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
                 },
             },
             "reasoning_effort": False,
-            "aliases": ["grok-code-fast-1", "grok-code-fast", "grok-code-fast-1-0825"],
+            "aliases": ["grok-build", "grok-code-fast-1", "grok-code-fast", "grok-code-fast-1-0825"],
         },
         {
             "id": "grok-4.20-0309-reasoning",

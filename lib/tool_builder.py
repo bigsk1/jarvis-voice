@@ -688,7 +688,7 @@ class ToolBuilder:
             raise ValueError(f"Unknown provider: {provider_type}")
         
         self.provider_type = provider_type
-        self.model = model or "default"
+        self.model = getattr(self.provider, 'model', model or "default")
     
     def get_mcp_tools(self) -> list[str]:
         """Get list of available MCP tools for overlap checking."""

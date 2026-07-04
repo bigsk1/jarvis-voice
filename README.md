@@ -547,8 +547,10 @@ nano config/cloud.env  # Configure the chosen provider and credentials/daemon
 
 # Recommended cloud provider: xAI Grok
 # LLM_PROVIDER="xai"
-# XAI_API_KEY="xai-..."  # Get from https://console.x.ai
+# XAI_AUTH_MODE="auto"   # API key when set; otherwise a current `grok login`
+# XAI_API_KEY="xai-..."  # Optional for chat; required for xAI media/TTS/search APIs
 # XAI_MODEL="grok-4.3"  # 1M context, configurable reasoning effort
+# XAI_OAUTH_MODEL="grok-build"  # Grok CLI subscription chat model
 
 # Ollama Cloud alternative (signed-in daemon path):
 # LLM_PROVIDER="ollama"
@@ -1887,11 +1889,9 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.53.4 (June 2026)
+**Current Version:** v2.54.0 (July 2026)
 **Status:** Production Ready ✅
-**Latest Features:** v2.53.0 adds mode-safe Ollama Cloud as a primary provider,
-request-local cloud/local config isolation, separate per-mode Intelligence
-ownership, strict API mode validation, mode-aware scheduled-task execution,
-and Docker/browser reminder audio without changing native speaker behavior.
-Earlier v2.51-v2.52 additions include multi-image Web vision, OpenCode
-hardening, the Docker Web stack, correction learning, and Profile Card injection.
+**Latest Features:** v2.54.0 adds safe xAI Grok CLI OAuth subscription auth for
+text/tool calls, dynamic OAuth model discovery, explicit API-key-only media
+boundaries, subscription-aware usage, and Web auth status. v2.53 added mode-safe
+Ollama Cloud, request-local cloud/local isolation, and per-mode Intelligence.

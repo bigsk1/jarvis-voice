@@ -1325,6 +1325,7 @@ Mode: {self.mode}
             # billing (e.g. Ollama Cloud) where per-token dollar cost is unknown.
             "has_unknown_cost": False,
             "cost_known": True,
+            "billing_mode": None,
             # input_estimated is set when any turn's input tokens were approximated
             # because the provider (e.g. Ollama Cloud) omitted prompt_eval_count.
             "input_estimated": False,
@@ -1577,7 +1578,12 @@ Mode: {self.mode}
                 # (e.g. Ollama Cloud) instead of coercing None to $0.
                 if isinstance(usage.get("cost_usd"), (int, float)):
                     total_usage["cost_usd"] += usage["cost_usd"]
-                if usage.get("cost_known") is False or usage.get("billing_mode") == "ollama_cloud_subscription":
+                if usage.get("billing_mode"):
+                    total_usage["billing_mode"] = usage["billing_mode"]
+                if usage.get("cost_known") is False or usage.get("billing_mode") in {
+                    "ollama_cloud_subscription",
+                    "xai_oauth_subscription",
+                }:
                     total_usage["has_unknown_cost"] = True
                     total_usage["cost_known"] = False
                 if usage.get("input_estimated"):

@@ -1564,6 +1564,7 @@ class JarvisApp {
         const effectiveCgThreshold = s.completion_guard?.auto_threshold?.value ?? c.JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD;
         const effectiveTtsProvider = s.tts?.provider?.value || c.TTS_PROVIDER;
         const ttsProvider = String(effectiveTtsProvider || '').toLowerCase();
+        const xaiAuthMode = String(c.XAI_AUTH_MODE || 'auto').toLowerCase();
         const formatUrlList = (value) => {
           const urls = String(value || '(not set)')
             .split(',')
@@ -1591,6 +1592,24 @@ class JarvisApp {
             <span class="config-label">XAI_MODEL</span>
             <span class="config-value">${c.XAI_MODEL || '(not set)'}</span>
           </div>
+          ${String(effectiveProvider).toLowerCase() === 'xai' ? `
+          <div class="config-item">
+            <span class="config-label">XAI_AUTH_MODE</span>
+            <span class="config-value">${Utils.escapeHtml(xaiAuthMode)}</span>
+          </div>
+          <div class="config-item">
+            <span class="config-label">XAI_OAUTH_MODEL</span>
+            <span class="config-value">${Utils.escapeHtml(c.XAI_OAUTH_MODEL || 'grok-build')}</span>
+          </div>
+          <div class="config-item">
+            <span class="config-label">XAI_SEARCH</span>
+            <span class="config-value">${Utils.escapeHtml(c.XAI_SEARCH || 'false')}</span>
+          </div>
+          <div class="config-item" id="xai-auth-status">
+            <span class="config-label">xAI Auth</span>
+            <span class="config-value loading">Loading...</span>
+          </div>
+          ` : ''}
           <div class="config-item">
             <span class="config-label">ANTHROPIC_MODEL</span>
             <span class="config-value">${c.ANTHROPIC_MODEL || '(not set)'}</span>
@@ -1615,6 +1634,7 @@ class JarvisApp {
           ` : ''}
         `;
         const showOllamaCloudCard = !isLocal && String(effectiveProvider).toLowerCase() === 'ollama';
+        const showXaiAuthCard = !isLocal && String(effectiveProvider).toLowerCase() === 'xai';
 
         const audioProviderHtml = ttsProvider === 'qwen3-tts'
           ? `
@@ -1834,6 +1854,9 @@ class JarvisApp {
         if (showOllamaCloudCard) {
           this._loadOllamaCloudStatus();
         }
+        if (showXaiAuthCard) {
+          this._loadXaiAuthStatus();
+        }
       }
     } catch (err) {
       console.error('[App] Failed to load system config:', err);
@@ -2000,6 +2023,67 @@ class JarvisApp {
       console.error('[App] Failed to load Ollama Cloud status:', err);
       el.innerHTML = `
         <span class="config-label">Ollama Cloud</span>
+        <span class="config-value error">Error loading</span>
+      `;
+    }
+  }
+
+  /** Load xAI API-key/OAuth readiness without exposing cached credentials. */
+  async _loadXaiAuthStatus() {
+    const el = document.getElementById('xai-auth-status');
+    if (!el) return;
+
+    try {
+      const mode = this._settingsData?.mode || this.socket.mode;
+      const response = await fetch(`/api/xai/oauth-status?mode=${encodeURIComponent(mode)}`);
+      const data = await response.json();
+      const available = data.status === 'available';
+      const isOauth = data.connection_mode === 'oauth';
+      const statusClass = available ? 'usage-ok' : 'usage-warning';
+      let label;
+      if (available && isOauth) {
+        const parts = ['OAuth signed in'];
+        if (data.api_key_present) parts.push('API key ignored for chat');
+        if (data.native_search_requested && !data.native_search_available) {
+          parts.push('native search disabled');
+        }
+        parts.push('quota unavailable');
+        label = parts.join(' · ');
+      } else if (available) {
+        label = 'API key configured';
+      } else {
+        label = data.reason || (isOauth ? 'OAuth sign-in required' : 'Not configured');
+      }
+      const safeLabel = Utils.escapeHtml(label);
+      const link = data.dashboard_url || 'https://grok.com';
+
+      el.innerHTML = `
+        <span class="config-label">xAI Auth</span>
+        <span class="config-value ${statusClass}">
+          ${safeLabel} · <a href="${link}" target="_blank" rel="noopener">Manage</a>
+        </span>
+      `;
+      const details = [`Connection: ${data.connection_mode || 'unknown'}`];
+      if (data.expires_at) details.push(`Session expires: ${data.expires_at}`);
+      if (data.usage_note) details.push(data.usage_note);
+      if (data.native_search_note) details.push(data.native_search_note);
+      el.title = details.join('\n');
+
+      if (this._settingsData?.provider_availability) {
+        const resolved = available
+          ? { status: 'available', reason: isOauth ? 'Grok CLI OAuth subscription' : 'XAI_API_KEY configured', connection: data.connection_mode }
+          : { status: 'unavailable', reason: data.reason || 'xAI authentication unavailable', connection: data.connection_mode };
+        for (const domain of ['llm', 'completion_guard']) {
+          const map = this._settingsData.provider_availability[domain];
+          if (map?.xai) map.xai = { ...resolved };
+        }
+        this._applyProviderAvailability('setting-llm-provider', 'llm');
+        this._applyProviderAvailability('setting-completion-guard-eval-provider', 'completion_guard');
+      }
+    } catch (err) {
+      console.error('[App] Failed to load xAI auth status:', err);
+      el.innerHTML = `
+        <span class="config-label">xAI Auth</span>
         <span class="config-value error">Error loading</span>
       `;
     }
@@ -2711,7 +2795,7 @@ class JarvisApp {
             cumulativeCache.savingsUsd += usage.cache_savings_usd;
           }
           if (usage.has_unknown_cost === true || usage.cost_known === false
-              || usage.billing_mode === 'ollama_cloud_subscription') {
+              || ['ollama_cloud_subscription', 'xai_oauth_subscription'].includes(usage.billing_mode)) {
             cumulativeUnknownCost = true;
           }
           if (usage.input_estimated === true) {

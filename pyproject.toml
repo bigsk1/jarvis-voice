@@ -1,6 +1,6 @@
 [project]
 name = "jarvis-voice"
-version = "2.53.4"
+version = "2.54.0"
 description = "Self-hosted intelligent voice assistant"
 requires-python = ">=3.12"
 dependencies = [

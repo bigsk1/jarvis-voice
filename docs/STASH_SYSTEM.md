@@ -1306,31 +1306,38 @@ STASH_ALLOWED_DOWNLOAD_HOSTS=""  # Empty = allow all external
 STASH_BLOCKED_DOWNLOAD_HOSTS="localhost,127.0.0.1,169.254.169.254"
 
 # Stash LLM Summarization (for stash.remember)
-# Optional: Override model for summarization (uses provider's default otherwise)
+# Optional: Override provider/model for stash.remember summarize=true only.
+# Provider falls back to LLM_PROVIDER; model falls back to that provider's default.
+# STASH_SUMMARIZE_LLM_PROVIDER="xai"
 # STASH_SUMMARIZE_MODEL="gpt-4o-mini"        # OpenAI
 # STASH_SUMMARIZE_MODEL="claude-3-5-haiku-latest"  # Anthropic
 # STASH_SUMMARIZE_MODEL="qwen3.5:latest"          # Ollama (local)
-# STASH_SUMMARIZE_MODEL="grok-4.3"  # xAI
+# STASH_SUMMARIZE_MODEL="grok-4.3"                # xAI API key
+# Under xAI OAuth, unsupported API model pins resolve to XAI_OAUTH_MODEL (grok-build)
 ```
 
 ### LLM Summarization Details
 
 When `stash.remember` is called with `summarize: true`:
 
-1. **Provider Detection**: Uses `LLM_PROVIDER` from environment
-2. **Model Selection**: Uses `STASH_SUMMARIZE_MODEL` if set, otherwise provider default
-3. **API Call**: Direct HTTP call to provider (not via orchestrator)
-4. **Token Limit**: Input truncated to 8000 chars, output limited to 300 tokens
-5. **Cost**: Separate from orchestrator tool call limits
+1. **Provider Detection**: `STASH_SUMMARIZE_LLM_PROVIDER` → `LLM_PROVIDER`
+2. **Model Selection**: `STASH_SUMMARIZE_MODEL` → provider default; xAI OAuth resolves through `XAI_OAUTH_MODEL`
+3. **Provider Stack**: Uses `create_configured_provider()`—the same mode-aware auth/routing stack as workflows and `text_summarizer`
+4. **Server-Side Tools**: Disabled for this plain-text summarization call
+5. **Token Limit**: Input truncated to 8000 characters, output limited to 400 tokens
+6. **Output Hygiene**: Provider confidence/control annotations are not stored in Memory
+7. **Cost**: Separate from orchestrator tool call limits
 
 **Supported Providers:**
 
-| Provider | Model Default | API Endpoint |
-|----------|---------------|--------------|
-| OpenAI | `gpt-4o-mini` | api.openai.com |
-| Anthropic | `claude-3-5-haiku-latest` | api.anthropic.com |
-| Ollama | `qwen3.5:latest` | localhost:11434 |
-| xAI | `grok-4.3` | api.x.ai |
+| Provider path | Model resolution | Authentication/routing |
+|---------------|------------------|------------------------|
+| OpenAI | `STASH_SUMMARIZE_MODEL` or `OPENAI_MODEL` | `OPENAI_API_KEY` |
+| Anthropic | `STASH_SUMMARIZE_MODEL` or `ANTHROPIC_MODEL` | `ANTHROPIC_API_KEY` |
+| Ollama local | `STASH_SUMMARIZE_MODEL` or `OLLAMA_MODEL` | Local daemon |
+| Ollama Cloud | `STASH_SUMMARIZE_MODEL` or `OLLAMA_CLOUD_MODEL` | Signed-in daemon or `OLLAMA_API_KEY` direct API |
+| xAI API | `STASH_SUMMARIZE_MODEL` or `XAI_MODEL` | `XAI_API_KEY` |
+| xAI OAuth | `XAI_OAUTH_MODEL` (`grok-build` by default) | Grok CLI OAuth chat proxy |
 
 **Note**: Summarization calls are independent of the main conversation context.
 This means costs are separate from your orchestrator tool call budget.

@@ -717,28 +717,69 @@ class XAIProvider(LLMProvider):
       for real-time web/X search (server-side tools)
     """
     
-    def __init__(self, api_key: str, model: str | None = None):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str | None = None,
+        auth_mode: str | None = None,
+    ):
         """Initialize xAI provider with hybrid SDK support."""
         try:
             from openai import OpenAI
         except ImportError:
             raise ImportError("openai package not installed. Run: pip install openai")
-        
-        # Store API key for xAI SDK usage
-        self.api_key = api_key
-        
-        # xAI uses OpenAI-compatible API with custom base URL
-        self.client = OpenAI(
-            api_key=api_key,
-            base_url="https://api.x.ai/v1"
+
+        from xai_oauth import (
+            XAI_OAUTH_BASE_URL,
+            build_xai_oauth_headers,
+            get_fresh_xai_oauth_credentials,
+            get_grok_cli_version,
+            get_xai_auth_mode,
+            get_xai_oauth_model,
         )
-        self.model = model or get_provider_fallback_model("xai")
+
+        self.auth_mode = get_xai_auth_mode(api_key, auth_mode)
+        self._openai_class = OpenAI
+        self._oauth_auth_file = None
+        self._oauth_auth_mtime_ns = None
+        self._oauth_cli_version = None
+        self._oauth_account_id = None
+
+        if self.auth_mode == "oauth":
+            credentials = get_fresh_xai_oauth_credentials()
+            self.model = get_xai_oauth_model(model)
+            self.api_key = credentials.token
+            self._oauth_auth_file = credentials.auth_file
+            self._oauth_auth_mtime_ns = credentials.mtime_ns
+            self._oauth_cli_version = get_grok_cli_version()
+            self._oauth_account_id = credentials.account_id
+            self.client = OpenAI(
+                api_key=credentials.token,
+                base_url=XAI_OAUTH_BASE_URL,
+                default_headers=build_xai_oauth_headers(self.model, self._oauth_cli_version),
+            )
+        else:
+            if not str(api_key or "").strip():
+                raise ValueError("XAI_API_KEY is required when XAI_AUTH_MODE=api_key")
+            self.api_key = str(api_key).strip()
+            self.model = model or get_provider_fallback_model("xai")
+            self.client = OpenAI(
+                api_key=self.api_key,
+                base_url="https://api.x.ai/v1",
+            )
+
         self.is_reasoning_model = self._xai_model_is_reasoning(self.model)
         
         # Check if live search is enabled (XAI_SEARCH=true in cloud.env)
         # When enabled, uses xAI SDK with Agent Tools API for web/X search
         from config_loader import get_config_value
-        self.enable_search = get_config_value("XAI_SEARCH", "false").lower() == "true"
+        search_requested = get_config_value("XAI_SEARCH", "false").lower() == "true"
+        self.enable_search = search_requested and self.auth_mode == "api_key"
+        if search_requested and self.auth_mode == "oauth" and os.environ.get("JARVIS_DEBUG"):
+            print(
+                "DEBUG: xAI OAuth uses chat-proxy tool calling; xAI SDK server-side search is API-key-only",
+                file=sys.stderr,
+            )
         
         # Initialize xAI SDK client if search is enabled
         self.xai_client = None
@@ -754,6 +795,54 @@ class XAIProvider(LLMProvider):
             except ImportError:
                 print("WARNING: xai-sdk not installed, falling back to OpenAI SDK without search", file=sys.stderr)
                 self.enable_search = False
+
+    def _rebuild_xai_oauth_client(self, credentials: Any) -> None:
+        """Reload a CLI-refreshed bearer token without exposing it to logs."""
+
+        from xai_oauth import XAI_OAUTH_BASE_URL, build_xai_oauth_headers
+
+        self.api_key = credentials.token
+        self._oauth_auth_file = credentials.auth_file
+        self._oauth_auth_mtime_ns = credentials.mtime_ns
+        self._oauth_account_id = credentials.account_id
+        self.client = self._openai_class(
+            api_key=credentials.token,
+            base_url=XAI_OAUTH_BASE_URL,
+            default_headers=build_xai_oauth_headers(self.model, self._oauth_cli_version),
+        )
+
+    def _refresh_xai_oauth_client_if_changed(self) -> None:
+        if getattr(self, "auth_mode", "api_key") != "oauth" or not getattr(self, "_oauth_auth_file", None):
+            return
+        try:
+            current_mtime = self._oauth_auth_file.stat().st_mtime_ns
+        except OSError:
+            return
+        if current_mtime == self._oauth_auth_mtime_ns:
+            return
+        from xai_oauth import get_fresh_xai_oauth_credentials
+
+        self._rebuild_xai_oauth_client(get_fresh_xai_oauth_credentials())
+
+    @staticmethod
+    def _is_xai_authentication_error(exc: Exception) -> bool:
+        status_code = getattr(exc, "status_code", None)
+        response = getattr(exc, "response", None)
+        return status_code == 401 or getattr(response, "status_code", None) == 401
+
+    def _xai_completion_create(self, **params):
+        """Create a completion, refreshing a rejected OAuth session once."""
+
+        self._refresh_xai_oauth_client_if_changed()
+        try:
+            return self.client.chat.completions.create(**params)
+        except Exception as exc:
+            if getattr(self, "auth_mode", "api_key") != "oauth" or not self._is_xai_authentication_error(exc):
+                raise
+            from xai_oauth import refresh_xai_oauth_credentials
+
+            self._rebuild_xai_oauth_client(refresh_xai_oauth_credentials())
+            return self.client.chat.completions.create(**params)
     
     def chat(self, message: str, system_prompt: str | None = None, max_tokens: int = None) -> str:
         """Simple chat without tools. Uses xAI SDK Agent Tools when XAI_SEARCH=true."""
@@ -781,7 +870,7 @@ class XAIProvider(LLMProvider):
             if extra_headers:
                 params["extra_headers"] = extra_headers
             
-            response = self.client.chat.completions.create(**params)
+            response = self._xai_completion_create(**params)
             return response.choices[0].message.content or ""
         except Exception as e:
             print(f"xAI API error: {e}", file=sys.stderr)
@@ -933,7 +1022,12 @@ class XAIProvider(LLMProvider):
             return None
 
         namespace = (os.environ.get("XAI_PROMPT_CACHE_NAMESPACE") or "jarvis-voice").strip()
-        seed = f"{namespace}|{self.api_key or ''}"
+        auth_identity = (
+            f"oauth:{getattr(self, '_oauth_account_id', '')}"
+            if getattr(self, "auth_mode", "api_key") == "oauth"
+            else self.api_key or ""
+        )
+        seed = f"{namespace}|{auth_identity}"
         digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:24]
         return f"jarvis_{digest}"
 
@@ -1089,7 +1183,7 @@ class XAIProvider(LLMProvider):
                 request_params["tools"] = tools
                 request_params["tool_choice"] = "auto"
             
-            response = self.client.chat.completions.create(**request_params)
+            response = self._xai_completion_create(**request_params)
             
             message = response.choices[0].message
             
@@ -1121,6 +1215,20 @@ class XAIProvider(LLMProvider):
                     usage_info["cache_read_tokens"] = cached_tokens
                 if reasoning_effort:
                     usage_info["xai_reasoning_effort"] = reasoning_effort
+                completion_details = getattr(response.usage, "completion_tokens_details", None)
+                reasoning_tokens = self._usage_field(completion_details, "reasoning_tokens")
+                if reasoning_tokens is not None:
+                    usage_info["reasoning_tokens"] = reasoning_tokens
+                reported_total = getattr(response.usage, "total_tokens", None)
+                if reported_total is not None:
+                    usage_info["total_tokens"] = reported_total
+                if getattr(self, "auth_mode", "api_key") == "oauth":
+                    usage_info.update(
+                        cost_usd=None,
+                        cost_known=False,
+                        billing_mode="xai_oauth_subscription",
+                        note="xAI OAuth subscription; account quota is unavailable via API",
+                    )
             
             # Check if tool was called
             if message.tool_calls:
@@ -2202,7 +2310,7 @@ def create_configured_provider(
                     os.environ.pop("JARVIS_OVERRIDE_ANTHROPIC_SEARCH", None)
                 else:
                     os.environ["JARVIS_OVERRIDE_ANTHROPIC_SEARCH"] = previous
-        return provider_type, model, provider
+        return provider_type, getattr(provider, "model", model), provider
     if provider_type == "xai":
         model = model or get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
         previous = os.environ.get("JARVIS_OVERRIDE_XAI_SEARCH")
@@ -2220,7 +2328,7 @@ def create_configured_provider(
                     os.environ.pop("JARVIS_OVERRIDE_XAI_SEARCH", None)
                 else:
                     os.environ["JARVIS_OVERRIDE_XAI_SEARCH"] = previous
-        return provider_type, model, provider
+        return provider_type, getattr(provider, "model", model), provider
     if provider_type == "ollama":
         from config_loader import get_active_config_mode
         from ollama_utils import get_effective_ollama_model, OllamaModelError
@@ -2265,8 +2373,9 @@ def create_provider(provider_type: str, **config) -> LLMProvider:
         )
     elif provider_type == "xai":
         return XAIProvider(
-            api_key=config["api_key"],
-            model=config.get("model", get_provider_fallback_model("xai"))
+            api_key=config.get("api_key"),
+            model=config.get("model", get_provider_fallback_model("xai")),
+            auth_mode=config.get("auth_mode"),
         )
     elif provider_type == "ollama":
         return OllamaProvider(

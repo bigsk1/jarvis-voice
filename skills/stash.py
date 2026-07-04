@@ -14,18 +14,12 @@ import sys
 import os
 import json
 import base64
-import requests
+import re
 import subprocess
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
-from model_catalog import get_provider_fallback_model
-from ollama_utils import (
-    get_ollama_execution_class,
-    request_ollama,
-    OLLAMA_EXECUTION_LOCAL_DAEMON,
-)
 from stash_helper import (
     open_space, get_space, list_spaces, cleanup_expired,
     StashFile
@@ -83,131 +77,51 @@ def extract_pdf_text(file_path: str) -> str | None:
     return None
 
 
+_TRAILING_CONFIDENCE_TAG_RE = re.compile(
+    r"\s*\\confidence\{\s*(?:\d{1,3}(?:\.\d+)?|0?\.\d+)\s*\}\s*$",
+    re.IGNORECASE,
+)
+
+
+def _clean_llm_summary(summary: str) -> str:
+    """Remove provider control annotations that must not enter Memory."""
+
+    return _TRAILING_CONFIDENCE_TAG_RE.sub("", summary or "").strip()
+
+
 def summarize_content_with_llm(content: str, file_name: str, max_length: int = 500) -> str | None:
     """
-    Summarize content using configured LLM provider.
-    
-    Makes a direct API call (not through orchestrator) to keep key facts
-    for memory storage. Uses cheap/fast models when available.
-    
-    Args:
-        content: Full text content to summarize
-        file_name: For context in the prompt
-        max_length: Target summary length
-    
-    Returns:
-        Summary string, or None if LLM call fails (caller should fallback to truncation)
+    Summarize content using the shared Jarvis LLM provider stack.
+
+    Uses the same auth routing as workflows and text_summarizer, including xAI
+    Grok CLI OAuth and Ollama Cloud signed-in daemon access.
     """
-    provider = get_config_value('LLM_PROVIDER', 'openai').lower()
-    
-    # System prompt for summarization
     system_prompt = """You are a precise summarizer. Extract and preserve ALL key facts, numbers, dates, names, and conclusions from the content. 
 Output a dense summary that captures the essential information for future reference.
-Do NOT add commentary or opinions - just the facts."""
-    
+Do NOT add commentary or opinions - just the facts.
+Return only the summary. Do not include confidence scores, control tags, labels, or preambles."""
+
     user_prompt = f"""Summarize this content from "{file_name}" in under {max_length} characters, preserving all key facts:
 
-{content[:8000]}"""  # Cap input to avoid token limits
-    
+{content[:8000]}"""
+
     try:
-        if provider == 'openai':
-            api_key = get_config_value('OPENAI_API_KEY')
-            if not api_key:
-                return None
-            
-            response = requests.post(
-                'https://api.openai.com/v1/chat/completions',
-                headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
-                json={
-                    'model': get_config_value('STASH_SUMMARIZE_MODEL', 'gpt-4o-mini'),
-                    'messages': [
-                        {'role': 'system', 'content': system_prompt},
-                        {'role': 'user', 'content': user_prompt}
-                    ],
-                    'max_tokens': 400,
-                    'temperature': 0.3
-                },
-                timeout=30
-            )
-            response.raise_for_status()
-            return response.json()['choices'][0]['message']['content'].strip()
-        
-        elif provider == 'anthropic':
-            api_key = get_config_value('ANTHROPIC_API_KEY')
-            if not api_key:
-                return None
-            
-            response = requests.post(
-                'https://api.anthropic.com/v1/messages',
-                headers={
-                    'x-api-key': api_key,
-                    'Content-Type': 'application/json',
-                    'anthropic-version': '2023-06-01'
-                },
-                json={
-                    'model': get_config_value('STASH_SUMMARIZE_MODEL', 'claude-4-5-sonnet-20250929'),
-                    'max_tokens': 400,
-                    'system': system_prompt,
-                    'messages': [{'role': 'user', 'content': user_prompt}]
-                },
-                timeout=30
-            )
-            response.raise_for_status()
-            return response.json()['content'][0]['text'].strip()
-        
-        
-        elif provider == 'ollama':
-            stash_model = (get_config_value('STASH_SUMMARIZE_MODEL', '') or '').strip()
-            if stash_model:
-                from ollama_utils import resolve_ollama_model
-                model = resolve_ollama_model(model_override=stash_model)
-            else:
-                from ollama_utils import resolve_ollama_model
-                model = resolve_ollama_model()
-            execution_class = get_ollama_execution_class(model)
-            response, _ = request_ollama(
-                'post',
-                '/api/chat',
-                cloud_access=(execution_class != OLLAMA_EXECUTION_LOCAL_DAEMON),
-                json={
-                    'model': model,
-                    'messages': [
-                        {'role': 'system', 'content': system_prompt},
-                        {'role': 'user', 'content': user_prompt}
-                    ],
-                    'stream': False,
-                    'options': {'num_predict': 300, 'temperature': 0.3}
-                },
-                timeout=60  # Ollama can be slower
-            )
-            response.raise_for_status()
-            return response.json()['message']['content'].strip()
-        
-        elif provider == 'xai':
-            api_key = get_config_value('XAI_API_KEY')
-            if not api_key:
-                return None
-            
-            response = requests.post(
-                'https://api.x.ai/v1/chat/completions',
-                headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
-                json={
-                    'model': get_config_value('STASH_SUMMARIZE_MODEL', get_provider_fallback_model('xai')),
-                    'messages': [
-                        {'role': 'system', 'content': system_prompt},
-                        {'role': 'user', 'content': user_prompt}
-                    ],
-                    'max_tokens': 400,
-                    'temperature': 0.3
-                },
-                timeout=30
-            )
-            response.raise_for_status()
-            return response.json()['choices'][0]['message']['content'].strip()
-        
-        else:
-            return None
-            
+        from llm_provider import create_configured_provider
+
+        _, _, provider = create_configured_provider(
+            provider_config_keys=("STASH_SUMMARIZE_LLM_PROVIDER", "LLM_PROVIDER"),
+            model_config_keys=("STASH_SUMMARIZE_MODEL",),
+            disable_server_side_tools=True,
+        )
+        summary = provider.chat(
+            user_prompt,
+            system_prompt=system_prompt,
+            max_tokens=400,
+        )
+        cleaned_summary = _clean_llm_summary(summary)
+        if cleaned_summary and not cleaned_summary.lower().startswith("error:"):
+            return cleaned_summary
+        return None
     except Exception as e:
         # Silent fail - caller will fallback to truncation
         print(f"LLM summarize failed: {e}", file=sys.stderr)

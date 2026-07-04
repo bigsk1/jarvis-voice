@@ -190,6 +190,10 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
         self.assertEqual(executor._total_usage["cost_usd"], 0.0)
         self.assertTrue(executor._total_usage["has_unknown_cost"])
         self.assertFalse(executor._total_usage["cost_known"])
+        self.assertEqual(
+            executor._total_usage["billing_mode"],
+            "ollama_cloud_subscription",
+        )
         self.assertEqual(executor._total_usage["model_calls"], 1)
         self.assertEqual(executor._total_usage["peak_context_tokens"], 5)
 

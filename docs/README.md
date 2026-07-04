@@ -334,6 +334,13 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-07-03 (v2.54.0):**
+- ✅ **xAI Grok CLI OAuth subscription provider**
+  - Added `XAI_AUTH_MODE=auto|api_key|oauth` and `XAI_OAUTH_MODEL=grok-build`; OAuth uses xAI's documented CLI chat proxy and owner-only `~/.grok/auth.json` credentials without logging or returning tokens.
+  - Primary chat, Jarvis function calls, status summaries, and completion-guard evaluators can use OAuth; xAI server-side search, uploaded-image vision, image/video generation, and TTS remain explicitly API-key-only.
+  - Web settings discover supported OAuth chat models from `grok models`, reject coding-agent Composer as a drop-in chat model, report the 256K context correctly, and show sanitized auth/quota status in the System tab.
+  - OAuth usage retains exact provider token counts while marking dollar cost and account quota unavailable under subscription billing; expired sessions delegate refresh to the official Grok CLI.
+
 **2026-07-02:**
 - ✅ **Credential-aware tool and provider availability**
   - Tools with hard requirements declare an optional `availability` block in `skills/*.tool.json` (`all_of_env`, `config_files`, `webhook_registry`, `provider_requirements`); `lib/tool_availability.py` gates registration at runtime — metadata is not sent to the LLM.

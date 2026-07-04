@@ -313,12 +313,20 @@ The status LLM does not currently receive the expressive speech-tag prompt. It s
 # Use xAI as primary provider
 LLM_PROVIDER="xai"
 
-# xAI API Key (get from https://console.x.ai)
+# auto prefers a nonblank API key, then falls back to a current Grok CLI login
+XAI_AUTH_MODE="auto"  # auto | api_key | oauth
+
+# xAI API Key (get from https://console.x.ai). Optional for OAuth chat.
 XAI_API_KEY="xai-..."
 
 # Model Selection
 # Recommended for reasoning / agentic tool workloads
 XAI_MODEL="grok-4.3"
+
+# Subscription/OAuth chat model used when XAI_AUTH_MODE resolves to oauth
+XAI_OAUTH_MODEL="grok-build"
+# Optional reviewed opt-ins for newly advertised direct-chat models:
+# XAI_OAUTH_ALLOWED_MODELS="grok-build,grok-new-chat-model"
 
 # Optional Grok 4.3 reasoning effort: low, medium, or high.
 # xAI defaults to medium when unset. Low is best when latency matters.
@@ -370,6 +378,55 @@ XAI_TTS_STYLE_TAGS_ENABLED=true
 # XAI_MODEL="grok-4.20-0309-non-reasoning"  # Lower-latency non-reasoning
 # XAI_MODEL="grok-4.20-0309-reasoning"      # Automatic reasoning, no effort knob
 ```
+
+### Grok CLI OAuth subscription
+
+Jarvis can use the OAuth session created by the official Grok CLI for primary
+text chat, Jarvis tool calling, status summaries, and completion-guard LLM
+evaluation. The CLI's own README documents direct access through
+`https://cli-chat-proxy.grok.com/v1/chat/completions`; Jarvis reads the cached
+bearer session from `~/.grok/auth.json`, requires owner-only file permissions,
+and never logs or returns the token.
+
+```bash
+grok login
+
+# config/cloud.env
+LLM_PROVIDER="xai"
+XAI_AUTH_MODE="oauth"     # explicit, or use auto with a blank XAI_API_KEY
+XAI_OAUTH_MODEL="grok-build"
+XAI_API_KEY=""
+```
+
+`XAI_AUTH_MODE=auto` makes switching reversible: a nonblank `XAI_API_KEY` uses
+the normal xAI API, while a blank value uses the Grok CLI OAuth session. The
+explicit `oauth` mode wins even when a key is present; the System tab reports
+that the key is being ignored for chat (media/TTS may still use it). The
+Web UI model dropdown discovers OAuth models from `grok models`; it filters out
+Composer because Composer is a coding agent that emits its own filesystem tools,
+not a drop-in chat-completions model. The current documented OAuth chat model is
+`grok-build`.
+
+Jarvis intentionally defaults the OAuth allowlist to `grok-build`. If xAI later
+advertises another model that is documented to support direct non-agent chat
+completions, add it to `XAI_OAUTH_ALLOWED_MODELS` and select it with
+`XAI_OAUTH_MODEL`; no code/catalog change is required. Composer remains blocked
+even if listed because its autonomous filesystem tools do not match Jarvis's
+provider contract.
+
+The OAuth boundary is intentionally narrow:
+
+- Supported: primary text chat, native Jarvis function calls, exact token usage,
+  status LLM, and completion-guard/evaluator calls.
+- API-key-only: xAI Agent Tools search (`XAI_SEARCH`), image/video generation,
+  uploaded-image vision, and xAI TTS.
+- Subscription quota is shown as unavailable because xAI does not expose a
+  public quota/usage endpoint for this session path.
+
+If the cached access token expires, Jarvis delegates refresh to the installed
+Grok CLI. If the login itself is no longer renewable, run `grok login` again.
+`GROK_CLI_PATH` and `XAI_OAUTH_AUTH_FILE` are optional overrides for nonstandard
+installations.
 
 `XAI_SERVER_SIDE_MAX_TOOL_TURNS` caps xAI's internal server-side agent loop for a single `chat.sample()` call and is also used as Jarvis's total native-search budget for the user request unless `XAI_SERVER_SIDE_MAX_SEARCHES_PER_REQUEST` is set. This prevents native web/X search calls from multiplying across many Jarvis router turns while still allowing xAI to spend the budget adaptively on the synthesis turn that needs it.
 
