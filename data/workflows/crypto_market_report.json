@@ -123,6 +123,7 @@
       "tool": "crawl_url",
       "for_each": "${search_results.urls[:3]}",
       "output_var": "news_articles",
+      "validated_output_var": "validated_articles",
       "params": {},
       "validation": {
         "type": "heuristic",

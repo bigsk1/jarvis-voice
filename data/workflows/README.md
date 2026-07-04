@@ -127,6 +127,10 @@ Each step typically includes:
 - `params` — object; values may contain `${variables}` strings.
 - `extract` — maps **new variable names** to paths under **`result.data`** (paths must **not** use a `data.` prefix).
 - `output_var` — optional; stores raw tool payload under that variable name.
+- `for_each` — repeats a step over an array such as `${search_results.urls[:5]}`.
+- `required_success_count` — for a `for_each` producer, stop after this many successful/validated results (default `1`).
+- `process_all` — for a `for_each` consumer, process every input item instead of stopping after one success.
+- `validated_output_var` — stores the successful/validated outputs from a `for_each` producer under an explicit semantic variable such as `validated_articles`.
 - `required` — default true; if false and step fails, behavior depends on `on_fail`.
 - `on_fail` — e.g. `"continue"` for optional steps.
 - `llm_prompt` — optional; LLM fills params (uses tokens).
@@ -140,8 +144,10 @@ Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
 1. Valid JSON only—no `//` comments inside JSON files.
 2. Include **`id`** and a non-empty **`steps`** array or the loader skips the file.
 3. Use **`extract`** paths relative to tool **`data`** (never prefix with `data.`).
-4. For **`llm_prompt`** steps that produce user-visible markdown, instruct the model to emit **real values**, not literal `${var}` text.
-5. Prefer **`JARVIS_DEFAULT_LOCATION`** (env-backed `variables`) for default geography instead of embedding a specific city in shared workflow JSON.
+4. On validated `for_each` source steps, set **`validated_output_var`** explicitly; do not rely on tool-specific compatibility behavior.
+5. When a later `for_each` step must save/process every validated result, set **`process_all: true`**.
+6. For **`llm_prompt`** steps that produce user-visible markdown, instruct the model to emit **real values**, not literal `${var}` text.
+7. Prefer **`JARVIS_DEFAULT_LOCATION`** (env-backed `variables`) for default geography instead of embedding a specific city in shared workflow JSON.
 
 ---
 
@@ -248,6 +254,116 @@ The `stash` tool accepts:
   "description": "Optional crawl; pipeline continues if blocked"
 }
 ```
+
+---
+
+## Validated multi-step recipes (`validated_output_var`)
+
+Use `validated_output_var` when one repeated step gathers source material and later steps must consume the **validated source payloads**, not the output of an intervening save/export step.
+
+### Contract
+
+- Put `validated_output_var` on the **producer** `for_each` step—for example, `crawl_url`.
+- The value is the list of successful outputs that passed the step's `validation`. If no `validation` block is present, successful tool outputs count as validated.
+- `output_var` and `validated_output_var` are different:
+  - `output_var` receives all loop outputs, including failures and validation failures.
+  - `validated_output_var` receives only successful/validated outputs suitable for downstream synthesis.
+- Consume the list with `${validated_articles}` (or the exact variable name you chose).
+- Do **not** put `validated_output_var: "validated_articles"` on a later `stash`, export, email, or Canvas loop. That would redefine “articles” to mean save receipts or delivery metadata.
+- A `crawl_url` loop has a legacy fallback to `validated_articles`, but new workflows must declare the variable explicitly so the data ownership is obvious and works for other producer tools.
+
+### Correct gather → save → synthesize recipe
+
+```json
+{
+  "steps": [
+    {
+      "step": 1,
+      "tool": "stash",
+      "action": "open_space",
+      "params": { "labels": ["research", "${topic}"] },
+      "output_var": "research_space",
+      "required": true
+    },
+    {
+      "step": 2,
+      "tool": "mcp_brave_search_brave_web_search",
+      "params": { "query": "${topic}", "count": 5 },
+      "output_var": "search_results",
+      "required": true
+    },
+    {
+      "step": 3,
+      "tool": "crawl_url",
+      "for_each": "${search_results.urls[:5]}",
+      "output_var": "crawl_attempts",
+      "validated_output_var": "validated_articles",
+      "validation": {
+        "type": "heuristic",
+        "heuristic": {
+          "min_length": 500,
+          "reject_patterns": ["access denied", "subscribe to continue"]
+        }
+      },
+      "required_success_count": 2,
+      "on_all_fail": "abort_with_message"
+    },
+    {
+      "step": 4,
+      "tool": "stash",
+      "action": "save",
+      "for_each": "${validated_articles}",
+      "process_all": true,
+      "params": {
+        "space_id": "${space_id}",
+        "kind": "text"
+      },
+      "output_var": "saved_files",
+      "required": true
+    },
+    {
+      "step": 5,
+      "tool": "canvas",
+      "action": "create",
+      "params": { "title": "Workflows/Research/${topic}" },
+      "llm_prompt": "Summarize these source articles and cite their URLs:\n\n${validated_articles}",
+      "required": true
+    }
+  ]
+}
+```
+
+In this pattern:
+
+1. `crawl_attempts` is the audit trail of every attempted crawl.
+2. `validated_articles` remains the authoritative source material.
+3. `saved_files` contains stash receipts and never replaces `validated_articles`.
+4. `process_all: true` makes the stash step save every validated article. Without it, a `for_each` step defaults to one required success and may stop after the first item.
+5. The Canvas LLM receives actual crawl payloads, including article text and URLs—not stash metadata.
+
+### Incorrect pattern
+
+```json
+{
+  "tool": "stash",
+  "action": "save",
+  "for_each": "${validated_articles}",
+  "validated_output_var": "validated_articles"
+}
+```
+
+This reassigns `validated_articles` to stash results. A later summarizer can then receive blank article text/URLs and produce a refusal or hallucinated report.
+
+### Choosing loop controls
+
+| Goal | Setting |
+|------|---------|
+| Try candidates until two good sources are found | `required_success_count: 2` |
+| Save/process every item in an already validated list | `process_all: true` |
+| Preserve all attempts for diagnostics | `output_var` |
+| Preserve only usable source payloads for later LLM synthesis | `validated_output_var` |
+
+Use `process_all` intentionally. It is opt-in so adding a consumer loop does not change the early-stop behavior of existing search/crawl workflows.
 
 ---
 

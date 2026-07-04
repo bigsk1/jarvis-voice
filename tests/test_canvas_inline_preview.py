@@ -69,6 +69,45 @@ if (excerpt !== 'Heading Useful page details.') process.exit(8);
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
 
 
+def test_live_workflow_result_builds_canvas_preview_from_nested_steps():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(CHAT_JS))}, 'utf8');
+const start = source.indexOf('  _flattenWorkflowToolResults(');
+const end = source.indexOf('  _renderCanvasPreviewHtml(', start);
+const classSource = `class WorkflowPreviewHarness {{\n${{source.slice(start, end)}}\n}}; WorkflowPreviewHarness;`;
+const sandbox = {{
+  URL,
+  window: {{ location: {{ hostname: 'web.test' }} }}
+}};
+vm.createContext(sandbox);
+const WorkflowPreviewHarness = vm.runInContext(classSource, sandbox);
+const harness = new WorkflowPreviewHarness();
+const flattened = harness._flattenWorkflowToolResults({{
+  workflow_id: 'deep_research',
+  results: [
+    {{ step: 1, tool: 'stash', data: {{ space_id: 'space_1' }} }},
+    {{
+      step: 6,
+      tool: 'canvas',
+      data: {{
+        page_id: 'page_20260704_153800',
+        title: 'Workflows/Research/Hazelnuts',
+        url: 'http://web.test:8890/page_20260704_153800'
+      }}
+    }}
+  ]
+}});
+const preview = harness._extractCanvasPreview(flattened, {{}});
+if (!preview) process.exit(2);
+if (preview.pageId !== 'page_20260704_153800') process.exit(3);
+if (preview.title !== 'Workflows/Research/Hazelnuts') process.exit(4);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
 def test_canvas_preview_keeps_assistant_reply_bubble():
     chat_js = CHAT_JS.read_text()
 

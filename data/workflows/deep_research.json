@@ -75,6 +75,7 @@
       "tool": "crawl_url",
       "for_each": "${search_results.urls[:5]}",
       "output_var": "articles",
+      "validated_output_var": "validated_articles",
       "params": {},
       "llm_hints": {
         "css_selector": "Look for main content: .article, .post-content, main, .entry-content",
@@ -112,6 +113,7 @@
       "tool": "stash",
       "action": "save",
       "for_each": "${validated_articles}",
+      "process_all": true,
       "params": {
         "space_id": "${space_id}",
         "kind": "text",
@@ -143,6 +145,17 @@
         "tags": ["research", "workflow", "${topic}"]
       },
       "llm_prompt": "Create a comprehensive research summary about '${topic}' using these articles:\n\n${validated_articles}\n\nInclude:\n- Executive summary (2-3 sentences with specific findings)\n- Key findings with specific facts, dates, and quotes from the articles\n- Sources used (list the actual URLs)\n- Reference to stash ${space_id} for full articles\n- Open questions for further research",
+      "llm_output_validation": {
+        "param": "content",
+        "min_length": 300,
+        "reject_patterns": [
+          "unable to complete this research summary",
+          "actual article content was not included",
+          "no articles gathered",
+          "provide working urls"
+        ]
+      },
+      "abort_speech": "I found research sources, but the summary generation failed validation, so I did not create a misleading Canvas page.",
       "required": true,
       "description": "Create canvas summary"
     }

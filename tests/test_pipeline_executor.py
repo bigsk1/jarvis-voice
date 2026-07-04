@@ -6,6 +6,7 @@ Run:
     python3 tests/test_pipeline_executor.py
 """
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -226,6 +227,105 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
         self.assertEqual(executor._total_usage["total_tokens"], 370)
         self.assertEqual(executor._total_usage["model_calls"], 2)
         self.assertEqual(executor._total_usage["peak_context_tokens"], 260)
+
+    def test_process_all_for_each_runs_every_item(self):
+        calls = []
+
+        def execute(tool, params):
+            calls.append((tool, params["value"]))
+            return {"ok": True, "data": {"saved": params["value"]}}
+
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(execute=execute),
+            provider=None,
+        )
+        result = executor._execute_for_each(
+            {
+                "tool": "stash",
+                "for_each": "${items}",
+                "process_all": True,
+                "params": {},
+            },
+            "stash",
+            None,
+            {},
+            {"items": [{"value": "one"}, {"value": "two"}]},
+            {},
+            0,
+            10,
+        )
+
+        self.assertEqual(calls, [("stash", "one"), ("stash", "two")])
+        self.assertEqual(result["items_succeeded"], 2)
+
+    def test_non_crawl_for_each_does_not_replace_validated_articles(self):
+        article = {"ok": True, "data": {"results": [{"url": "https://example.test", "markdown": "source"}]}}
+        variables = {"validated_articles": [article], "items": [{"value": "saved"}]}
+        workflow = {
+            "id": "preserve_articles",
+            "steps": [
+                {
+                    "step": 1,
+                    "tool": "stash",
+                    "for_each": "${items}",
+                    "process_all": True,
+                    "output_var": "saved_files",
+                }
+            ],
+        }
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(execute=lambda *_args, **_kwargs: {"ok": True, "data": {"saved": True}}),
+            provider=None,
+        )
+
+        step = workflow["steps"][0]
+        step_result = executor._execute_for_each(step, "stash", None, {}, variables, {}, 0, 10)
+        executor._store_validated_outputs(step, "stash", step_result, variables)
+
+        self.assertEqual(variables["validated_articles"], [article])
+        formatted = executor._format_articles_for_llm(variables["validated_articles"])
+        self.assertIn("https://example.test", formatted)
+        self.assertIn("source", formatted)
+
+    def test_builtin_research_workflows_declare_validated_article_ownership(self):
+        workflows_dir = PROJECT_ROOT / "data" / "workflows"
+        deep = json.loads((workflows_dir / "deep_research.json").read_text())
+        crypto = json.loads((workflows_dir / "crypto_market_report.json").read_text())
+
+        deep_crawl = next(step for step in deep["steps"] if step["tool"] == "crawl_url")
+        deep_stash = next(
+            step for step in deep["steps"]
+            if step["tool"] == "stash" and step.get("action") == "save"
+        )
+        crypto_crawl = next(step for step in crypto["steps"] if step["tool"] == "crawl_url")
+
+        self.assertEqual(deep_crawl["validated_output_var"], "validated_articles")
+        self.assertTrue(deep_stash["process_all"])
+        self.assertEqual(crypto_crawl["validated_output_var"], "validated_articles")
+
+        deep_canvas = next(step for step in deep["steps"] if step["tool"] == "canvas")
+        self.assertEqual(deep_canvas["llm_output_validation"]["param"], "content")
+
+    def test_opt_in_llm_output_validation_rejects_refusal_content(self):
+        step = {
+            "llm_output_validation": {
+                "param": "content",
+                "min_length": 20,
+                "reject_patterns": ["unable to complete this research summary"],
+            }
+        }
+        error = self.executor._validate_llm_filled_params(
+            step,
+            {"content": "I am unable to complete this research summary without URLs."},
+        )
+        self.assertIn("refusal", error)
+
+    def test_llm_output_validation_is_opt_in(self):
+        self.assertIsNone(
+            self.executor._validate_llm_filled_params({}, {"content": "short"})
+        )
 
 
 if __name__ == "__main__":

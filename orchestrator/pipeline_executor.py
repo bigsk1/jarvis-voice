@@ -294,9 +294,11 @@ class PipelineExecutor:
                 total_retries += step_result.get("retries", 0)
                 variables[step.get("output_var", f"step{step_num}_results")] = step_result.get("outputs", [])
                 
-                # Also store validated articles for convenience
-                if step_result.get("validated_outputs"):
-                    variables["validated_articles"] = step_result["validated_outputs"]
+                # Store validated outputs only when the workflow explicitly names
+                # their semantic variable. Keep a crawl-only fallback for older
+                # custom workflows, but never let later stash/save loops overwrite
+                # the source articles used by synthesis steps.
+                self._store_validated_outputs(step, tool_name, step_result, variables)
                 
                 results.append({
                     "step": step_num,
@@ -370,6 +372,13 @@ class PipelineExecutor:
         # LLM parameter filling if needed
         if step.get("llm_prompt") and self.provider:
             llm_params = self._llm_fill_params(step, variables)
+            llm_output_error = self._validate_llm_filled_params(step, llm_params)
+            if llm_output_error:
+                return {
+                    "ok": False,
+                    "error": llm_output_error,
+                    "speech": llm_output_error,
+                }
             params.update(llm_params)
         
         # Execute tool
@@ -382,6 +391,44 @@ class PipelineExecutor:
                 result["validation_failed"] = True
         
         return result
+
+    def _validate_llm_filled_params(self, step: dict, llm_params: dict) -> str | None:
+        """Validate generated tool parameters when a workflow explicitly opts in."""
+        validation = step.get("llm_output_validation")
+        if not validation:
+            return None
+
+        param_name = validation.get("param", "content")
+        content = str(llm_params.get(param_name, "") or "").strip()
+        min_length = int(validation.get("min_length", 0) or 0)
+        if len(content) < min_length:
+            return f"LLM-generated {param_name} was empty or too short"
+
+        content_lower = content.lower()
+        for pattern in validation.get("reject_patterns", []):
+            if str(pattern).lower() in content_lower:
+                return f"LLM-generated {param_name} contained refusal or placeholder content"
+        return None
+
+    def _store_validated_outputs(
+        self,
+        step: dict,
+        tool_name: str,
+        step_result: dict,
+        variables: dict,
+    ) -> None:
+        """Store validated loop outputs without allowing later save steps to replace sources."""
+        validated_outputs = step_result.get("validated_outputs")
+        if not validated_outputs:
+            return
+
+        validated_output_var = step.get("validated_output_var")
+        if validated_output_var:
+            variables[validated_output_var] = validated_outputs
+        elif tool_name == "crawl_url":
+            # Backward compatibility for custom crawl workflows created before
+            # validated_output_var became explicit.
+            variables["validated_articles"] = validated_outputs
     
     def _execute_for_each(self, step: dict, tool_name: str, action: str,
                           tool_defaults: dict, variables: dict,
@@ -404,7 +451,11 @@ class PipelineExecutor:
         outputs = []
         validated_outputs = []
         retries = 0
-        required_success = step.get("required_success_count", 1)
+        required_success = (
+            len(items)
+            if step.get("process_all", False)
+            else step.get("required_success_count", 1)
+        )
         step.get("retry", {}).get("max_attempts", 1)
         
         item_index = 0
@@ -1431,7 +1482,7 @@ class PipelineExecutor:
                                start_time: float = None, query: str = None,
                                step_error: str = None) -> dict[str, Any]:
         """Build abort response and log workflow abortion."""
-        speech_template = workflow.get("abort_speech", "Workflow aborted.")
+        speech_template = failed_step.get("abort_speech") or workflow.get("abort_speech", "Workflow aborted.")
         speech = speech_template
         speech = speech.replace("${topic}", variables.get("topic", ""))
         

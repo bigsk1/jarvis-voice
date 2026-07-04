@@ -2991,24 +2991,7 @@ class ChatUI {
     
     // Build tool cards HTML from pendingTools (supports duplicate tools with unique keys)
     let toolResultsData = data.data || data || {};
-    // Workflow messages store tool output in data.results (array); build flat map for loading
-    if (data.results && Array.isArray(data.results)) {
-      const flat = {};
-      for (const step of data.results) {
-        const tool = step.tool || 'unknown';
-        const stepOutput = step.outputs
-          ? (step.outputs[0]?.data ?? step.outputs[0] ?? {})
-          : (step.data ?? {});
-        if (flat[tool] === undefined) {
-          flat[tool] = stepOutput;
-        } else if (Array.isArray(flat[tool])) {
-          flat[tool].push(stepOutput);
-        } else {
-          flat[tool] = [flat[tool], stepOutput];
-        }
-      }
-      toolResultsData = { ...toolResultsData, ...flat };
-    }
+    toolResultsData = this._flattenWorkflowToolResults(toolResultsData);
     let toolCardsHtml = '';
     const pendingToolEntries = Object.entries(this.pendingTools);
     if (pendingToolEntries.length > 0) {
@@ -3804,6 +3787,33 @@ class ChatUI {
       false,
       null
     );
+  }
+
+  _flattenWorkflowToolResults(toolResultsData = {}) {
+    const workflowResults = Array.isArray(toolResultsData?.results)
+      ? toolResultsData.results
+      : [];
+    if (!workflowResults.length) return toolResultsData;
+
+    const flat = {};
+    for (const step of workflowResults) {
+      const tool = step.tool || 'unknown';
+      const rawOutputs = Array.isArray(step.outputs) ? step.outputs : [];
+      const stepOutputs = rawOutputs.length
+        ? rawOutputs.map(output => output?.data ?? output ?? {})
+        : [step.data ?? {}];
+
+      for (const stepOutput of stepOutputs) {
+        if (flat[tool] === undefined) {
+          flat[tool] = stepOutput;
+        } else if (Array.isArray(flat[tool])) {
+          flat[tool].push(stepOutput);
+        } else {
+          flat[tool] = [flat[tool], stepOutput];
+        }
+      }
+    }
+    return { ...toolResultsData, ...flat };
   }
 
   _extractCanvasPreview(toolResultsData = {}, data = {}) {
