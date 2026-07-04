@@ -2,11 +2,16 @@
 """
 Sync Intelligence Database - merge or replace between cloud and local modes.
 
-Syncs ALL intelligence data:
+Syncs portable learning data:
 - experiences (raw interaction data)
 - insights (learned patterns)
 - insight_evidence (audit trail for insights)
 - reflection_queue (pending reflections)
+
+Does NOT sync meta_knowledge. Each cloud/local Intelligence database keeps its
+own maintenance history and meta-cognition findings because those rows describe
+the state of that specific database (for example, its last decay run and blind
+spots). The target can derive its own findings from the learning data it receives.
 
 IMPORTANT: Cloud and local use DIFFERENT embedding dimensions (1536 vs 768).
 This script copies the TEXT content and REGENERATES embeddings for the target mode.

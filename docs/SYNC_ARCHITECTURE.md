@@ -543,6 +543,7 @@ Synchronizes the **intelligence layer** (self-learning system) between cloud and
 - ✅ **Insight Evidence** - Audit trail linking insights back to source experiences/web conversations
 - ✅ **Reflection Queue** - Pending reflections awaiting processing
 - ✅ Regenerates all embeddings for target mode dimensions
+- ❌ **Meta Knowledge** - Deliberately not copied. Each cloud/local Intelligence database keeps its own maintenance history and meta-cognition findings.
 
 ### Important Behavior
 
@@ -553,6 +554,7 @@ Synchronizes the **intelligence layer** (self-learning system) between cloud and
   - `updated_at`
   - `last_applied`
 - **Only pending reflection queue rows are synced**. Processed queue history is not copied across modes.
+- **`meta_knowledge` stays separate for each database**. It records facts about that specific database, including when its decay job last ran, blind spots derived from its recent experiences, and learning-quality findings. Copying those rows could make one database skip maintenance because maintenance ran only against the other database. After learning data is synced, each database can derive its own current findings.
 - **Ollama embedding requests now use context-aware safeguards**:
   - `OLLAMA_EMBEDDING_CONTEXT_WINDOW` when set
   - otherwise `OLLAMA_CONTEXT_WINDOW`

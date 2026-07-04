@@ -1095,7 +1095,9 @@ Output shows:
 ./bin/sync-intelligence-db.py --reset local
 ```
 
-Default sync is additive: it copies missing source experiences, insights, insight evidence, and pending reflections while preserving target-only learning from the other mode. Use `--replace` only when you intentionally want the target intelligence DB to become a mirror of the source.
+Default sync is additive: it copies missing source experiences, insights, insight evidence, and pending reflections while preserving target-only learning from the other mode. Use `--replace` only when you intentionally want those synchronized tables in the target Intelligence database to mirror the source.
+
+`meta_knowledge` is deliberately not synchronized. The cloud and local Intelligence databases each keep their own maintenance history and meta-cognition findings because these rows describe the state of that specific database, such as its last decay run, blind spots, and learning-quality findings. Keeping them separate prevents maintenance performed on one database from incorrectly changing the maintenance schedule or reported health of the other. Each database can derive fresh findings after portable learning data is synchronized.
 
 Cloud learned: "Use crypto_price for price queries" (1536-dim embedding)
                           ↓
