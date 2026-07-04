@@ -35,6 +35,7 @@ TTS_PROVIDER="${TTS_PROVIDER:-openai}"
 STATUS_CACHE_ENABLED="${STATUS_CACHE_ENABLED:-true}"
 CACHE_DIR="${HOME}/.cache/jarvis/status-tts"
 SILENCE_PAD_MS="${STATUS_SILENCE_PAD_MS:-250}"
+STATUS_ELEVENLABS_TTS_MODEL="${ELEVENLABS_STATUS_TTS_MODEL:-${ELEVENLABS_TTS_MODEL:-}}"
 
 # Create cache dir if caching enabled
 if [ "$STATUS_CACHE_ENABLED" = "true" ]; then
@@ -46,8 +47,12 @@ fi
 generate_cache_key() {
     local text="$1"
     if [ "$TTS_PROVIDER" = "elevenlabs" ]; then
-        # Include all ElevenLabs settings in hash (model, voice, stability, similarity)
-        echo -n "${text}|elevenlabs|${ELEVENLABS_TTS_VOICE:-}|${ELEVENLABS_TTS_MODEL:-}|${ELEVENLABS_TTS_STABILITY:-0.5}|${ELEVENLABS_TTS_SIMILARITY_BOOST:-0.75}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+        # Hash only voice settings that are actually sent for the effective model.
+        local eleven_key="${text}|elevenlabs|${ELEVENLABS_TTS_VOICE:-}|${STATUS_ELEVENLABS_TTS_MODEL}|${ELEVENLABS_TTS_STABILITY:-0.5}|${ELEVENLABS_TTS_SIMILARITY_BOOST:-0.75}"
+        if [ "$STATUS_ELEVENLABS_TTS_MODEL" != "eleven_v3" ]; then
+            eleven_key="${eleven_key}|${ELEVENLABS_TTS_STYLE:-0.5}|${ELEVENLABS_TTS_USE_SPEAKER_BOOST:-true}"
+        fi
+        echo -n "${eleven_key}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     elif [ "$TTS_PROVIDER" = "qwen3-tts" ]; then
         # Include Qwen3-TTS settings in hash
         echo -n "${text}|qwen3-tts|${QWEN3_TTS_VOICE:-Jarvis}|${QWEN3_TTS_SPEED:-1.0}|${QWEN3_TTS_FORMAT:-mp3}|${QWEN3_TTS_URL:-http://localhost:8881/v1/audio/speech}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
@@ -114,7 +119,7 @@ else
         # ============================================================================
         ELEVENLABS_API_KEY="${ELEVENLABS_API_KEY:-}"
         ELEVENLABS_TTS_VOICE="${ELEVENLABS_TTS_VOICE:-pgCnBQgKPGkIP8fJuita}"
-        ELEVENLABS_TTS_MODEL="${ELEVENLABS_TTS_MODEL:-eleven_multilingual_v2}"
+        ELEVENLABS_TTS_MODEL="${STATUS_ELEVENLABS_TTS_MODEL:-eleven_multilingual_v2}"
         
         if [ -z "$ELEVENLABS_API_KEY" ]; then
             echo "❌ ELEVENLABS_API_KEY not set" >&2
@@ -124,7 +129,7 @@ else
         # Get voice settings from config (with sensible defaults)
         ELEVENLABS_TTS_STABILITY="${ELEVENLABS_TTS_STABILITY:-0.5}"
         ELEVENLABS_TTS_SIMILARITY_BOOST="${ELEVENLABS_TTS_SIMILARITY_BOOST:-0.75}"
-        ELEVENLABS_TTS_STYLE="${ELEVENLABS_TTS_STYLE:-0.0}"
+        ELEVENLABS_TTS_STYLE="${ELEVENLABS_TTS_STYLE:-0.5}"
         ELEVENLABS_TTS_USE_SPEAKER_BOOST="${ELEVENLABS_TTS_USE_SPEAKER_BOOST:-true}"
         
         # Build ElevenLabs TTS JSON

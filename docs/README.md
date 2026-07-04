@@ -341,6 +341,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Status prompts now use a bounded, sanitized snapshot instead of raw tool output or conversation context, with one Status LLM request allowed at a time.
   - Turn completion cancels native status generation/playback; Web final responses, errors, cancellation, and mode changes abort pending status TTS so progress audio cannot interrupt the answer.
   - Web status phrases now use a persistent status-only TTS cache, while final-response TTS remains independent. Effective timing/model/cache values are visible in Settings → System.
+  - ElevenLabs can use `eleven_flash_v2_5` for fast, lower-cost status speech through `ELEVENLABS_STATUS_TTS_MODEL` while preserving `ELEVENLABS_TTS_MODEL` and the same custom voice ID for final answers.
   - Actual Status LLM calls now use `prompt_type=status_update` in `llm-calls` logs; a separate `status-updates` lifecycle log tracks emitted/discarded/fallback outcomes and Web TTS cache/provider activity without changing conversation usage totals.
   - See: [`STATUS_UPDATES.md`](STATUS_UPDATES.md)
 

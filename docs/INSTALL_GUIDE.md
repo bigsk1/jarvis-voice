@@ -221,6 +221,7 @@ TTS_PROVIDER="elevenlabs"  # Options: "elevenlabs", "xai", "openai", "qwen3-tts"
 ELEVENLABS_API_KEY=your-elevenlabs-key
 ELEVENLABS_TTS_VOICE=your-voice-id  # Get from elevenlabs.io/app/voice-library
 ELEVENLABS_TTS_MODEL=eleven_v3
+ELEVENLABS_STATUS_TTS_MODEL=eleven_flash_v2_5  # Faster/cheaper progress phrases
 
 # Or if using OpenAI TTS (uses OPENAI_API_KEY):
 # TTS_MODEL="gpt-4o-mini-tts"

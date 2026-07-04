@@ -24,13 +24,17 @@ from ollama_utils import (
     OLLAMA_EXECUTION_LOCAL_DAEMON,
 )
 
+_STATUS_CONTEXT_MAX_CHARS = 500
+_STATUS_CONTEXT_TRUNCATED = "... [truncated]"
+
 
 class StatusSummarizer:
     """Generate dynamic status summaries using small LLM."""
     
     # Base system prompt for status summaries
-    BASE_SYSTEM_PROMPT = """You are a voice assistant status updater. Generate VERY short (5-8 words) 
+    BASE_SYSTEM_PROMPT = """You are a voice assistant status updater. Generate VERY short (5-8 words)
 conversational status updates. Be natural and avoid technical jargon.
+Do not use exclamation marks.
 Only output the status phrase, nothing else."""
     
     def __init__(self):
@@ -222,10 +226,25 @@ Be unpredictable, energetic, and slightly unhinged. Have fun with it!""")
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"[StatusLLM] Failed to log call: {exc}", file=sys.stderr)
     
+    @staticmethod
+    def _truncate_context_for_prompt(
+        context: str,
+        max_chars: int = _STATUS_CONTEXT_MAX_CHARS,
+    ) -> str:
+        """Bound execution snapshot size with an explicit truncation marker."""
+        cleaned = (context or "").strip()
+        if not cleaned:
+            return "Working on task"
+        if len(cleaned) <= max_chars:
+            return cleaned
+        budget = max_chars - len(_STATUS_CONTEXT_TRUNCATED)
+        if budget < 1:
+            return _STATUS_CONTEXT_TRUNCATED[:max_chars]
+        return cleaned[:budget].rstrip() + _STATUS_CONTEXT_TRUNCATED
+
     def _build_prompt(self, context: str, tool_name: str | None, event_type: str) -> str:
         """Build the prompt for summarization."""
-        # Truncate context to avoid large prompts
-        context = context[:500] if context else "Working on task"
+        context = self._truncate_context_for_prompt(context)
         
         tool_hint = f"Tool: {tool_name}\n" if tool_name else ""
         event_hint = {
@@ -392,6 +411,9 @@ Generate a natural 5-8 word status update:"""
             if content.lower().startswith(prefix.lower()):
                 content = content[len(prefix):].strip()
         
+        # Flash/v2 status TTS reads "!" as shouting; static JSON phrases are unchanged.
+        content = content.replace('!', '.')
+
         # Ensure reasonable length (5-15 words)
         words = content.split()
         if len(words) > 15:

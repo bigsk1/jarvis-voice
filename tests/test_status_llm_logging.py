@@ -62,3 +62,31 @@ def test_openai_status_call_logs_usage_and_correlation_metadata():
     assert logged["call_metadata"] == metadata
     assert logged["usage_info"]["input_tokens"] == 42
     assert logged["usage_info"]["output_tokens"] == 6
+
+
+def test_status_context_truncation_is_explicit_not_empty_fallback():
+    empty = status_llm.StatusSummarizer._truncate_context_for_prompt("")
+    assert empty == "Working on task"
+
+    short = "Searching for chair reviews"
+    assert status_llm.StatusSummarizer._truncate_context_for_prompt(short) == short
+
+    long_context = "x" * 600
+    truncated = status_llm.StatusSummarizer._truncate_context_for_prompt(long_context)
+    assert truncated.endswith("... [truncated]")
+    assert len(truncated) == 500
+    assert truncated != "Working on task"
+
+
+def test_build_prompt_keeps_long_context_with_truncation_marker():
+    summarizer = status_llm.StatusSummarizer()
+    prompt = summarizer._build_prompt("y" * 600, "serpapi_search", "progress")
+    assert "... [truncated]" in prompt
+    assert "Working on task" not in prompt.split("Current state:")[1]
+
+
+def test_clean_response_strips_exclamation_marks_for_tts():
+    summarizer = status_llm.StatusSummarizer()
+    assert summarizer._clean_response("Digging for info like a pro!") == (
+        "Digging for info like a pro."
+    )

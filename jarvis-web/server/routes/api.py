@@ -83,23 +83,63 @@ def _scoped_request_config(handler):
     return wrapper
 
 
-_STATUS_TTS_CACHE_SETTING_KEYS = (
-    'VOICE', 'TTS_MODEL',
-    'ELEVENLABS_TTS_VOICE', 'ELEVENLABS_TTS_MODEL',
-    'ELEVENLABS_TTS_STABILITY', 'ELEVENLABS_TTS_SIMILARITY_BOOST',
-    'ELEVENLABS_TTS_STYLE', 'ELEVENLABS_TTS_USE_SPEAKER_BOOST',
-    'XAI_TTS_VOICE', 'XAI_TTS_LANGUAGE', 'XAI_TTS_CODEC',
-    'XAI_TTS_SAMPLE_RATE', 'XAI_TTS_BIT_RATE',
-    'QWEN3_TTS_VOICE', 'QWEN3_TTS_SPEED', 'QWEN3_TTS_FORMAT', 'QWEN3_TTS_URL',
-    'KOKORO_TTS_VOICE', 'KOKORO_TTS_SPEED', 'KOKORO_TTS_URL',
-)
+def _effective_elevenlabs_models(get_setting):
+    final_model = str(
+        get_setting('ELEVENLABS_TTS_MODEL', 'eleven_multilingual_v2') or ''
+    ).strip() or 'eleven_multilingual_v2'
+    status_model = str(
+        get_setting('ELEVENLABS_STATUS_TTS_MODEL', final_model) or ''
+    ).strip() or final_model
+    return final_model, status_model
+
+
+def _status_tts_cache_settings(provider, get_setting):
+    """Return only settings that affect the selected provider's status audio."""
+    if provider == 'elevenlabs':
+        _, model = _effective_elevenlabs_models(get_setting)
+        settings = {
+            'voice': get_setting('ELEVENLABS_TTS_VOICE', ''),
+            'model': model,
+            'stability': get_setting('ELEVENLABS_TTS_STABILITY', '0.5'),
+            'similarity_boost': get_setting('ELEVENLABS_TTS_SIMILARITY_BOOST', '0.75'),
+        }
+        if model != 'eleven_v3':
+            settings.update({
+                'style': get_setting('ELEVENLABS_TTS_STYLE', '0.5'),
+                'use_speaker_boost': get_setting(
+                    'ELEVENLABS_TTS_USE_SPEAKER_BOOST', 'true'
+                ),
+            })
+        return settings
+    if provider == 'xai':
+        return {
+            key: get_setting(key, '')
+            for key in (
+                'XAI_TTS_VOICE', 'XAI_TTS_LANGUAGE', 'XAI_TTS_CODEC',
+                'XAI_TTS_SAMPLE_RATE', 'XAI_TTS_BIT_RATE',
+            )
+        }
+    if provider == 'qwen3-tts':
+        return {
+            key: get_setting(key, '')
+            for key in (
+                'QWEN3_TTS_VOICE', 'QWEN3_TTS_SPEED',
+                'QWEN3_TTS_FORMAT', 'QWEN3_TTS_URL',
+            )
+        }
+    if provider == 'kokoro':
+        return {
+            key: get_setting(key, '')
+            for key in ('KOKORO_TTS_VOICE', 'KOKORO_TTS_SPEED', 'KOKORO_TTS_URL')
+        }
+    return {
+        'voice': get_setting('VOICE', ''),
+        'model': get_setting('TTS_MODEL', ''),
+    }
 
 
 def _status_tts_cache_paths(mode, provider, text, get_setting):
-    settings = {
-        key: get_setting(key, '')
-        for key in _STATUS_TTS_CACHE_SETTING_KEYS
-    }
+    settings = _status_tts_cache_settings(provider, get_setting)
     digest = hashlib.sha256(json.dumps({
         'version': 1,
         'mode': mode,
@@ -377,7 +417,10 @@ def get_system_config():
         config['QWEN3_TTS_VOICE'] = get_jarvis_setting('QWEN3_TTS_VOICE', '')
         config['QWEN3_TTS_FORMAT'] = get_jarvis_setting('QWEN3_TTS_FORMAT', 'mp3')
         config['ELEVENLABS_TTS_VOICE'] = get_jarvis_setting('ELEVENLABS_TTS_VOICE', '')
-        config['ELEVENLABS_TTS_MODEL'] = get_jarvis_setting('ELEVENLABS_TTS_MODEL', 'eleven_multilingual_v2')
+        (
+            config['ELEVENLABS_TTS_MODEL'],
+            config['ELEVENLABS_STATUS_TTS_MODEL'],
+        ) = _effective_elevenlabs_models(get_jarvis_setting)
         config['XAI_TTS_VOICE'] = get_jarvis_setting('XAI_TTS_VOICE', 'eve')
         config['XAI_TTS_LANGUAGE'] = get_jarvis_setting('XAI_TTS_LANGUAGE', 'en')
         config['XAI_TTS_CODEC'] = get_jarvis_setting('XAI_TTS_CODEC', 'mp3')
@@ -1622,6 +1665,15 @@ def text_to_speech():
         provider = get_jarvis_setting('TTS_PROVIDER', 'qwen3-tts' if mode == 'local' else 'elevenlabs')
         print(f"[TTS] Mode: {mode}, Provider: {provider}", flush=True)
 
+        effective_tts_model = None
+        if provider == 'elevenlabs':
+            final_tts_model, status_tts_model = _effective_elevenlabs_models(
+                get_jarvis_setting
+            )
+            effective_tts_model = (
+                status_tts_model if purpose == 'status' else final_tts_model
+            )
+
         text = sanitize_for_speech(text, preserve_xai_tags=provider == 'xai')
         if not text:
             text = "Done. I shared the details in chat."
@@ -1644,6 +1696,7 @@ def text_to_speech():
                     'tts_cache_hit',
                     mode=mode,
                     provider=provider,
+                    model=effective_tts_model,
                     message_id=message_id,
                     text_chars=len(text),
                 )
@@ -1656,6 +1709,7 @@ def text_to_speech():
                 'tts_provider_started',
                 mode=mode,
                 provider=provider,
+                model=effective_tts_model,
                 message_id=message_id,
                 cache_enabled=status_cache_enabled,
                 text_chars=len(text),
@@ -1743,7 +1797,12 @@ def text_to_speech():
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         
         if provider == 'elevenlabs':
-            audio_path = _generate_elevenlabs_tts(text, tts_dir, timestamp)
+            audio_path = _generate_elevenlabs_tts(
+                text,
+                tts_dir,
+                timestamp,
+                model_override=effective_tts_model,
+            )
         elif provider == 'xai':
             audio_path = _generate_xai_tts(text, tts_dir, timestamp)
         else:
@@ -1766,7 +1825,8 @@ def text_to_speech():
             if purpose == 'status':
                 log_status_event(
                     'tts_provider_completed', mode=mode, provider=provider,
-                    message_id=message_id, audio_bytes=audio_path.stat().st_size,
+                    model=effective_tts_model, message_id=message_id,
+                    audio_bytes=audio_path.stat().st_size,
                 )
             response = send_from_directory(
                 str(audio_path.parent),
@@ -1784,6 +1844,7 @@ def text_to_speech():
                 'tts_provider_failed',
                 mode=mode or 'unknown',
                 provider=locals().get('provider'),
+                model=locals().get('effective_tts_model'),
                 message_id=message_id,
                 error=str(e)[:300],
             )
@@ -1792,20 +1853,31 @@ def text_to_speech():
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 
-def _generate_elevenlabs_tts(text: str, output_dir: Path, timestamp: str) -> Path:
+def _generate_elevenlabs_tts(
+    text: str,
+    output_dir: Path,
+    timestamp: str,
+    model_override: str | None = None,
+) -> Path:
     """Generate TTS using ElevenLabs API"""
     import requests
     from ..config import get_jarvis_setting
     
     api_key = get_jarvis_setting('ELEVENLABS_API_KEY', '')
     voice_id = get_jarvis_setting('ELEVENLABS_TTS_VOICE', 'pgCnBQgKPGkIP8fJuita')
-    model_id = get_jarvis_setting('ELEVENLABS_TTS_MODEL', 'eleven_multilingual_v2')
+    model_id = model_override or get_jarvis_setting(
+        'ELEVENLABS_TTS_MODEL', 'eleven_multilingual_v2'
+    )
     
     if not api_key:
         raise ValueError('ELEVENLABS_API_KEY not configured')
     
-    # v3 has 5k char limit, v2 has 10k - truncate if needed
-    char_limit = 5000 if model_id == 'eleven_v3' else 10000
+    # Current ElevenLabs per-request limits: v3 5k, Flash 2.5 40k, v2 10k.
+    char_limit = (
+        5000 if model_id == 'eleven_v3'
+        else 40000 if model_id == 'eleven_flash_v2_5'
+        else 10000
+    )
     if len(text) > char_limit:
         print(f"[API TTS] Text truncated from {len(text)} to {char_limit} chars for {model_id}")
         text = text[:char_limit]

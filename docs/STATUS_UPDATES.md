@@ -189,6 +189,10 @@ STATUS_UPDATE_DEBOUNCE_MS=250
 STATUS_CACHE_ENABLED=true
 STATUS_LOGGING_ENABLED=true
 
+# Optional ElevenLabs split: expressive final answers, fast/cheaper statuses
+ELEVENLABS_TTS_MODEL=eleven_v3
+ELEVENLABS_STATUS_TTS_MODEL=eleven_flash_v2_5
+
 STATUS_LLM_ENABLED=true
 STATUS_LLM_PROVIDER=openai
 STATUS_LLM_MODEL=gpt-4o-mini
@@ -210,7 +214,16 @@ Timing guidance:
   tool now, but a long deadline makes useful fallback arrive later.
 
 Web Settings → System shows the effective Status LLM, debounce, deadline,
-interval, and cache state for the active mode.
+interval, cache state, and ElevenLabs final/status TTS models for the active
+mode.
+
+When `TTS_PROVIDER=elevenlabs`, `ELEVENLABS_STATUS_TTS_MODEL` overrides the
+model only for progress phrases. It uses the same `ELEVENLABS_TTS_VOICE`, so
+custom/cloned voice IDs remain unchanged. If the status override is absent,
+Jarvis falls back to `ELEVENLABS_TTS_MODEL`. The effective status model and
+voice settings are part of the audio-cache key. Flash/v2 keys include style and
+Speaker Boost because those values affect the request; v3 keys omit them because
+the v3 payload does not use those settings.
 
 ## Tool Triggers
 

@@ -605,6 +605,9 @@ responses, errors, cancellation, and mode changes abort pending status TTS and
 stop status playback so progress audio cannot interrupt the answer. See
 [`STATUS_UPDATES.md`](STATUS_UPDATES.md).
 
+For ElevenLabs, `ELEVENLABS_STATUS_TTS_MODEL` can select a faster status-only
+model without changing the final-answer model or `ELEVENLABS_TTS_VOICE`.
+
 ### Conversation Context
 
 Web conversations use a **completely separate** context system from CLI/TUI:
