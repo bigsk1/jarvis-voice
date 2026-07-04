@@ -95,6 +95,24 @@ clear_cache() {
                 echo "✓ Cleared local Web status cache"
             fi
             ;;
+        web-cloud)
+            echo "Clearing Web UI cloud status TTS cache..."
+            if [ -d "$CACHE_DIR_WEB/cloud" ]; then
+                rm -rf "$CACHE_DIR_WEB/cloud"
+                echo "✓ Cleared Web cloud status cache"
+            else
+                echo "Web cloud status cache doesn't exist"
+            fi
+            ;;
+        web-local)
+            echo "Clearing Web UI local status TTS cache..."
+            if [ -d "$CACHE_DIR_WEB/local" ]; then
+                rm -rf "$CACHE_DIR_WEB/local"
+                echo "✓ Cleared Web local status cache"
+            else
+                echo "Web local status cache doesn't exist"
+            fi
+            ;;
         all)
             echo "Clearing ALL status audio cache..."
             if [ -d "$CACHE_DIR_CLOUD" ]; then
@@ -111,7 +129,7 @@ clear_cache() {
             fi
             ;;
         *)
-            echo "Usage: status-cache clear [cloud|local|all]"
+            echo "Usage: status-cache clear [cloud|local|web-cloud|web-local|all]"
             exit 1
             ;;
     esac
@@ -195,12 +213,19 @@ warm_cache() {
         TTS_SCRIPT="$SCRIPT_DIR/say-status-local.sh"
     fi
     
-    echo "$ALL_PHRASES" | while read -r phrase; do
+    # Read phrases from a here-string (not a pipe). aplay inside say-status*.sh can
+    # consume stdin; sharing a pipe with `read` drops the first char of later phrases.
+    while IFS= read -r phrase; do
+        [ -z "$phrase" ] && continue
         COUNT=$((COUNT + 1))
-        echo "[$COUNT/$TOTAL] Caching: ${phrase:0:50}..."
-        # Run TTS but redirect audio to null (just cache it)
-        OUT_DEV="null" "$TTS_SCRIPT" "$phrase" true 2>/dev/null || true
-    done
+        preview="$phrase"
+        if [ "${#preview}" -gt 50 ]; then
+            preview="${preview:0:47}..."
+        fi
+        echo "[$COUNT/$TOTAL] Caching: ${preview}..." >&2
+        # Cache only: silence playback, detach stdin, hide TTS noise on stdout/stderr.
+        OUT_DEV="null" "$TTS_SCRIPT" "$phrase" true </dev/null >/dev/null 2>&1 || true
+    done <<< "$ALL_PHRASES"
     
     echo ""
     echo "✓ Cache warming complete!"
@@ -226,7 +251,7 @@ case "${1:-stats}" in
         echo ""
         echo "Commands:"
         echo "  stats                  Show cache statistics"
-        echo "  clear [cloud|local|all]  Clear cache (default: all)"
+        echo "  clear [cloud|local|web-cloud|web-local|all]  Clear cache (default: all)"
         echo "  list                   List cached files"
         echo "  warm [cloud|local]     Pre-generate cache for all phrases"
         exit 1

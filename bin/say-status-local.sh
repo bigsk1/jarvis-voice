@@ -163,7 +163,7 @@ fi
 
 # Play audio
 if [ "$BLOCKING" = "true" ]; then
-    aplay -D "$OUT_DEV" "$OUTFILE" 2>/dev/null || true
+    aplay -D "$OUT_DEV" "$OUTFILE" 2>/dev/null </dev/null || true
     # Only delete temp files, not cached files
     if [[ "$OUTFILE" == /tmp/* ]]; then
         rm -f "$OUTFILE" 2>/dev/null || true
@@ -171,8 +171,8 @@ if [ "$BLOCKING" = "true" ]; then
 else
     # Background playback with cleanup (only temp files)
     if [[ "$OUTFILE" == /tmp/* ]]; then
-        (aplay -D "$OUT_DEV" "$OUTFILE" 2>/dev/null; rm -f "$OUTFILE" 2>/dev/null) &
+        (aplay -D "$OUT_DEV" "$OUTFILE" 2>/dev/null </dev/null; rm -f "$OUTFILE" 2>/dev/null) &
     else
-        (aplay -D "$OUT_DEV" "$OUTFILE" 2>/dev/null) &
+        (aplay -D "$OUT_DEV" "$OUTFILE" 2>/dev/null </dev/null) &
     fi
 fi
