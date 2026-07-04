@@ -51,6 +51,21 @@ class TtsNormalizerTests(unittest.TestCase):
         self.assertNotIn("www.example.org", normalized)
         self.assertNotIn("Sources:", normalized)
 
+    def test_default_normalizer_removes_bare_stash_space_id(self):
+        normalized = normalize_tts_text(
+            "The full articles are saved in stash space_20260704_232042_7d345c6a."
+        )
+
+        self.assertEqual(normalized, "The full articles are saved in stash.")
+        self.assertNotIn("space_", normalized)
+
+    def test_default_normalizer_removes_inline_legacy_dashed_stash_space_id(self):
+        normalized = normalize_tts_text(
+            "Saved in stash space_2026-07-04_232042_7d345c6a, ready to review."
+        )
+
+        self.assertEqual(normalized, "Saved in stash, ready to review.")
+
     def test_default_normalizer_removes_parenthesized_bare_url_examples(self):
         normalized = normalize_tts_text(
             "Preview limited; full details like exact hours in Yelp results "

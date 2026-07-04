@@ -517,6 +517,15 @@ def normalize_tts_text(
 
     text = _repair_malformed_xai_speech_tags(text)
     text = strip_llm_citation_artifacts(text)
+    # Do this before Markdown cleanup strips underscores from the identifier.
+    # Workflow completion messages sometimes expose a bare stash space ID
+    # instead of a full stash:// reference; retain the useful surrounding phrase.
+    text = re.sub(
+        r'\bspace_(?:\d{8}|\d{4}-\d{2}-\d{2})_\d{6}_[a-z0-9]+\b',
+        '',
+        text,
+        flags=re.IGNORECASE,
+    )
     protected_tags: dict[str, str] = {}
     if preserve_xai_tags:
         text, protected_tags = _protect_xai_speech_tags(text)
