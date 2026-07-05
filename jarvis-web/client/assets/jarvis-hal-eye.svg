@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Jarvis HAL eye  self-contained animated SVG.
+
+  Usage (animations run):
+    " Inline in HTML: copy/paste or fetch + innerHTML
+    " <object type="image/svg+xml" data="/assets/jarvis-hal-eye.svg">
+    " <embed src="/assets/jarvis-hal-eye.svg">
+
+  Usage (static only  no animation):
+    " <img src="/assets/jarvis-hal-eye.svg">
+
+  Power-down: add class "eye-off" to the root <svg> (when inlined or via object contentDocument).
+-->
+<svg id="jarvisHalEye" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Jarvis eye">
+  <style>
+    #jarvisHalEye {
+      --hal-center: 60px;
+      filter: drop-shadow(0 0 7px rgba(160, 17, 17, 0.35));
+    }
+
+    #jarvisHalEye .jhe-ticks {
+      transform-origin: var(--hal-center) var(--hal-center);
+      animation: jhe-ticks-rotate 90s linear infinite;
+    }
+
+    #jarvisHalEye .jhe-eye {
+      transform-origin: var(--hal-center) var(--hal-center);
+      animation: jhe-eye-breathe 7s ease-in-out infinite;
+    }
+
+    #jarvisHalEye .jhe-scan {
+      transform-origin: var(--hal-center) var(--hal-center);
+      animation: jhe-scan-rotate 11s linear infinite;
+    }
+
+    #jarvisHalEye .jhe-ripple {
+      transform-origin: var(--hal-center) var(--hal-center);
+      opacity: 0;
+    }
+
+    #jarvisHalEye .jhe-ripple-1 { animation: jhe-ripple-out 6s ease-out 1s infinite; }
+    #jarvisHalEye .jhe-ripple-2 { animation: jhe-ripple-out 6s ease-out 4s infinite; }
+
+    #jarvisHalEye .jhe-core {
+      transform-origin: var(--hal-center) var(--hal-center);
+      animation: jhe-core-smolder 7s ease-in-out infinite;
+    }
+
+    #jarvisHalEye .jhe-pupil { animation: jhe-pupil-flicker 13s linear infinite; }
+
+    #jarvisHalEye .jhe-surge {
+      opacity: 0;
+      animation: jhe-threat-surge 13s ease-in-out infinite;
+    }
+
+    #jarvisHalEye .jhe-eye,
+    #jarvisHalEye .jhe-core,
+    #jarvisHalEye .jhe-pupil {
+      transition: opacity 1.2s ease;
+    }
+
+    #jarvisHalEye.eye-off {
+      filter: none;
+    }
+
+    #jarvisHalEye.eye-off .jhe-eye {
+      animation: none;
+      opacity: 0.05;
+    }
+
+    #jarvisHalEye.eye-off .jhe-core {
+      animation: none;
+      opacity: 0.08;
+    }
+
+    #jarvisHalEye.eye-off .jhe-pupil {
+      animation: none;
+      opacity: 0.15;
+    }
+
+    #jarvisHalEye.eye-off .jhe-scan,
+    #jarvisHalEye.eye-off .jhe-ripple,
+    #jarvisHalEye.eye-off .jhe-surge {
+      animation: none;
+      opacity: 0;
+    }
+
+    #jarvisHalEye.eye-off .jhe-ticks {
+      animation-play-state: paused;
+    }
+
+    @keyframes jhe-ticks-rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes jhe-eye-breathe {
+      0%, 100% { opacity: 0.78; transform: scale(0.985); }
+      50% { opacity: 1; transform: scale(1.015); }
+    }
+
+    @keyframes jhe-scan-rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes jhe-ripple-out {
+      0% { transform: scale(0.3); opacity: 0.35; }
+      70% { opacity: 0.08; }
+      100% { transform: scale(1.15); opacity: 0; }
+    }
+
+    @keyframes jhe-core-smolder {
+      0%, 100% { opacity: 0.85; transform: scale(0.96); }
+      50% { opacity: 1; transform: scale(1.05); }
+    }
+
+    @keyframes jhe-pupil-flicker {
+      0%, 86%, 100% { opacity: 1; }
+      87% { opacity: 0.3; }
+      88.5% { opacity: 1; }
+      90% { opacity: 0.45; }
+      91.5% { opacity: 1; }
+    }
+
+    @keyframes jhe-threat-surge {
+      0%, 84%, 96%, 100% { opacity: 0; }
+      88% { opacity: 0.4; }
+      92% { opacity: 0.18; }
+    }
+  </style>
+
+  <defs>
+    <radialGradient id="jhe-bezel" cx="35%" cy="28%" r="85%">
+      <stop offset="0%" stop-color="#4a4d55"/>
+      <stop offset="42%" stop-color="#1d1f24"/>
+      <stop offset="100%" stop-color="#08090b"/>
+    </radialGradient>
+    <radialGradient id="jhe-glass" cx="42%" cy="34%" r="75%">
+      <stop offset="0%" stop-color="#131518"/>
+      <stop offset="55%" stop-color="#0a0708"/>
+      <stop offset="100%" stop-color="#040203"/>
+    </radialGradient>
+    <radialGradient id="jhe-bloom" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#6e0b0b" stop-opacity="0.55"/>
+      <stop offset="55%" stop-color="#3a0505" stop-opacity="0.32"/>
+      <stop offset="100%" stop-color="#1a0303" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="jhe-iris" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#e23b1f" stop-opacity="0.95"/>
+      <stop offset="45%" stop-color="#a01111" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#4d0505" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="jhe-hot-core" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ff6a3d"/>
+      <stop offset="55%" stop-color="#d31717"/>
+      <stop offset="100%" stop-color="#7d0b0b"/>
+    </radialGradient>
+    <radialGradient id="jhe-pupil-grad" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#fff2cf"/>
+      <stop offset="45%" stop-color="#ffb35c"/>
+      <stop offset="100%" stop-color="#ff5a1f"/>
+    </radialGradient>
+  </defs>
+
+  <circle cx="60" cy="60" r="57" fill="url(#jhe-bezel)"/>
+  <circle cx="60" cy="60" r="56.2" fill="none" stroke="#5a5e68" stroke-width="0.8" opacity="0.45"/>
+  <g class="jhe-ticks">
+    <circle cx="60" cy="60" r="52.5" fill="none" stroke="#3d4048" stroke-width="3"
+            stroke-dasharray="1.5 5.4" opacity="0.5"/>
+  </g>
+  <circle cx="60" cy="60" r="49" fill="none" stroke="#111317" stroke-width="3"/>
+  <circle cx="60" cy="60" r="46" fill="url(#jhe-glass)"/>
+  <circle cx="60" cy="60" r="38" fill="none" stroke="#a01111" stroke-width="1" class="jhe-ripple jhe-ripple-1"/>
+  <circle cx="60" cy="60" r="38" fill="none" stroke="#a01111" stroke-width="1" class="jhe-ripple jhe-ripple-2"/>
+  <g class="jhe-eye">
+    <circle cx="60" cy="60" r="40" fill="url(#jhe-bloom)"/>
+    <circle cx="60" cy="60" r="21" fill="url(#jhe-iris)"/>
+  </g>
+  <g class="jhe-scan">
+    <path d="M60 60 L60 16 A44 44 0 0 1 75.05 18.65 Z" fill="#ff1a1a" opacity="0.06"/>
+    <path d="M60 60 L60 16" stroke="#ff2a2a" stroke-width="1" opacity="0.14"/>
+  </g>
+  <circle cx="60" cy="60" r="15" fill="#ff3b1f" class="jhe-surge"/>
+  <circle cx="60" cy="60" r="8.5" fill="url(#jhe-hot-core)" class="jhe-core"/>
+  <circle cx="60" cy="60" r="3" fill="url(#jhe-pupil-grad)" class="jhe-pupil"/>
+  <ellipse cx="44" cy="38" rx="10" ry="5.5" fill="#ffffff" opacity="0.07" transform="rotate(-25 44 38)"/>
+  <path d="M28 36 A 42 42 0 0 1 72 21" fill="none" stroke="#aebfd6" stroke-width="1.4" opacity="0.1"/>
+</svg>

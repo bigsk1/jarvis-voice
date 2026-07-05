@@ -66,11 +66,17 @@
       margin-bottom: 16px;
     }
 
-    .logo-icon .jarvis-mark-lg {
+    .logo-icon.jarvis-hud-logo {
       width: 72px;
       height: 72px;
-      margin: 0 auto;
-      object-fit: contain;
+      margin: 0 auto 16px;
+    }
+
+    .logo-icon.jarvis-hud-logo svg.hud-svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
     }
     
     .logo-text {
@@ -211,7 +217,7 @@
   <div class="login-container">
     <div class="login-card">
       <div class="logo">
-        <span class="logo-icon"><img src="/assets/jarvis-voice.png" alt="Jarvis" class="jarvis-mark jarvis-mark-lg"></span>
+        <div class="logo-icon jarvis-hud-logo online" id="loginHudLogo" aria-hidden="true"></div>
         <div class="logo-text">JARVIS</div>
         <div class="logo-subtitle">Voice Assistant</div>
       </div>
@@ -242,6 +248,26 @@
   </div>
   
   <script>
+    (function loadLoginHudLogo() {
+      const container = document.getElementById('loginHudLogo');
+      if (!container) return;
+
+      fetch('/assets/jarvis-hud-logo.svg', { cache: 'no-cache' })
+        .then((response) => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return response.text();
+        })
+        .then((svgMarkup) => {
+          container.insertAdjacentHTML('beforeend', svgMarkup.replace(/<\?xml[^?]*\?>\s*/i, ''));
+          const svg = container.querySelector('svg');
+          if (svg) {
+            svg.classList.add('hud-svg', 'online');
+            svg.classList.remove('offline');
+          }
+        })
+        .catch((err) => console.warn('[Login] HUD logo load failed:', err));
+    })();
+
     const form = document.getElementById('loginForm');
     const passwordInput = document.getElementById('password');
     const loginBtn = document.getElementById('loginBtn');

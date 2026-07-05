@@ -50,7 +50,28 @@ class LogsViewerApp {
 
     this._bindEvents();
     this._syncResponsiveState();
+    this._setupHudLogo();
     this.loadFolders();
+  }
+
+  _setupHudLogo() {
+    const container = document.getElementById('logsHudLogo');
+    if (!container || container.querySelector('svg.hud-svg')) return;
+
+    fetch('/assets/jarvis-hud-logo.svg', { cache: 'no-cache' })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.text();
+      })
+      .then((svgMarkup) => {
+        container.insertAdjacentHTML('beforeend', svgMarkup.replace(/<\?xml[^?]*\?>\s*/i, ''));
+        const svg = container.querySelector('svg');
+        if (svg) {
+          svg.classList.add('hud-svg', 'online');
+          svg.classList.remove('offline');
+        }
+      })
+      .catch((err) => console.warn('[Logs] HUD logo load failed:', err));
   }
 
   _bindEvents() {

@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Jarvis HUD header logo  self-contained animated SVG.
+
+  Usage (animations + online/offline states):
+    " Inline in HTML: copy/paste or fetch + innerHTML
+    " <object type="image/svg+xml" data="/assets/jarvis-hud-logo.svg">
+    " <embed src="/assets/jarvis-hud-logo.svg">
+
+  Usage (static only  no animation):
+    " <img src="/assets/jarvis-hud-logo.svg">
+
+  Connection state: add class "online" or "offline" to the root <svg>.
+-->
+<svg id="jarvisHudLogo" class="offline" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" shape-rendering="geometricPrecision" role="img" aria-label="Jarvis">
+  <style>
+    #jarvisHudLogo {
+      --jhl-center: 100px;
+    }
+
+    #jarvisHudLogo .jhl-status-arc,
+    #jarvisHudLogo .jhl-status-dots {
+      transition: stroke 0.35s ease, fill 0.35s ease, opacity 0.35s ease;
+    }
+
+    #jarvisHudLogo.online .jhl-status-sweep {
+      transform-origin: var(--jhl-center) var(--jhl-center);
+      animation: jhl-hud-scan 14s linear infinite;
+    }
+
+    #jarvisHudLogo.online .jhl-status-arc {
+      stroke: #ff9900;
+      opacity: 1;
+    }
+
+    #jarvisHudLogo.online .jhl-status-dots {
+      fill: #ff9900;
+      opacity: 1;
+    }
+
+    #jarvisHudLogo.online .jhl-tick-ring,
+    #jarvisHudLogo.online .jhl-hud-arcs {
+      opacity: 1;
+    }
+
+    #jarvisHudLogo.offline .jhl-status-arc {
+      stroke: #cc4444;
+      opacity: 0.55;
+    }
+
+    #jarvisHudLogo.offline .jhl-status-sweep {
+      animation: none;
+    }
+
+    #jarvisHudLogo.offline .jhl-status-dots {
+      fill: #cc4444;
+      opacity: 0.45;
+    }
+
+    #jarvisHudLogo.offline .jhl-tick-ring,
+    #jarvisHudLogo.offline .jhl-hud-arcs {
+      opacity: 0.65;
+    }
+
+    @keyframes jhl-hud-scan {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+  </style>
+
+  <g class="jhl-tick-ring" stroke="#00c8dc" stroke-width="1.5" stroke-linecap="round">
+    <line x1="100.0" y1="14.0" x2="100.0" y2="8.0"/>
+    <line x1="109.0" y1="14.5" x2="109.6" y2="8.5"/>
+    <line x1="117.9" y1="15.9" x2="119.1" y2="10.0"/>
+    <line x1="126.6" y1="18.2" x2="128.4" y2="12.5"/>
+    <line x1="135.0" y1="21.4" x2="137.4" y2="16.0"/>
+    <line x1="143.0" y1="25.5" x2="146.0" y2="20.3"/>
+    <line x1="150.5" y1="30.4" x2="154.1" y2="25.6"/>
+    <line x1="157.5" y1="36.1" x2="161.6" y2="31.6"/>
+    <line x1="163.9" y1="42.5" x2="168.4" y2="38.4"/>
+    <line x1="169.6" y1="49.5" x2="174.4" y2="45.9"/>
+    <line x1="174.5" y1="57.0" x2="179.7" y2="54.0"/>
+    <line x1="178.6" y1="65.0" x2="184.0" y2="62.6"/>
+    <line x1="181.8" y1="73.4" x2="187.5" y2="71.6"/>
+    <line x1="184.1" y1="82.1" x2="190.0" y2="80.9"/>
+    <line x1="185.5" y1="91.0" x2="191.5" y2="90.4"/>
+    <line x1="186.0" y1="100.0" x2="192.0" y2="100.0"/>
+    <line x1="185.5" y1="109.0" x2="191.5" y2="109.6"/>
+    <line x1="184.1" y1="117.9" x2="190.0" y2="119.1"/>
+    <line x1="181.8" y1="126.6" x2="187.5" y2="128.4"/>
+    <line x1="178.6" y1="135.0" x2="184.0" y2="137.4"/>
+    <line x1="174.5" y1="143.0" x2="179.7" y2="146.0"/>
+    <line x1="169.6" y1="150.5" x2="174.4" y2="154.1"/>
+    <line x1="163.9" y1="157.5" x2="168.4" y2="161.6"/>
+    <line x1="157.5" y1="163.9" x2="161.6" y2="168.4"/>
+    <line x1="150.5" y1="169.6" x2="154.1" y2="174.4"/>
+    <line x1="143.0" y1="174.5" x2="146.0" y2="179.7"/>
+    <line x1="135.0" y1="178.6" x2="137.4" y2="184.0"/>
+    <line x1="126.6" y1="181.8" x2="128.4" y2="187.5"/>
+    <line x1="117.9" y1="184.1" x2="119.1" y2="190.0"/>
+    <line x1="109.0" y1="185.5" x2="109.6" y2="191.5"/>
+    <line x1="100.0" y1="186.0" x2="100.0" y2="192.0"/>
+    <line x1="91.0" y1="185.5" x2="90.4" y2="191.5"/>
+    <line x1="82.1" y1="184.1" x2="80.9" y2="190.0"/>
+    <line x1="73.4" y1="181.8" x2="71.6" y2="187.5"/>
+    <line x1="65.0" y1="178.6" x2="62.6" y2="184.0"/>
+    <line x1="57.0" y1="174.5" x2="54.0" y2="179.7"/>
+    <line x1="49.5" y1="169.6" x2="45.9" y2="174.4"/>
+    <line x1="42.5" y1="163.9" x2="38.4" y2="168.4"/>
+    <line x1="36.1" y1="157.5" x2="31.6" y2="161.6"/>
+    <line x1="30.4" y1="150.5" x2="25.6" y2="154.1"/>
+    <line x1="25.5" y1="143.0" x2="20.3" y2="146.0"/>
+    <line x1="21.4" y1="135.0" x2="16.0" y2="137.4"/>
+    <line x1="18.2" y1="126.6" x2="12.5" y2="128.4"/>
+    <line x1="15.9" y1="117.9" x2="10.0" y2="119.1"/>
+    <line x1="14.5" y1="109.0" x2="8.5" y2="109.6"/>
+    <line x1="14.0" y1="100.0" x2="8.0" y2="100.0"/>
+    <line x1="14.5" y1="91.0" x2="8.5" y2="90.4"/>
+    <line x1="15.9" y1="82.1" x2="10.0" y2="80.9"/>
+    <line x1="18.2" y1="73.4" x2="12.5" y2="71.6"/>
+    <line x1="21.4" y1="65.0" x2="16.0" y2="62.6"/>
+    <line x1="25.5" y1="57.0" x2="20.3" y2="54.0"/>
+    <line x1="30.4" y1="49.5" x2="25.6" y2="45.9"/>
+    <line x1="36.1" y1="42.5" x2="31.6" y2="38.4"/>
+    <line x1="42.5" y1="36.1" x2="38.4" y2="31.6"/>
+    <line x1="49.5" y1="30.4" x2="45.9" y2="25.6"/>
+    <line x1="57.0" y1="25.5" x2="54.0" y2="20.3"/>
+    <line x1="65.0" y1="21.4" x2="62.6" y2="16.0"/>
+    <line x1="73.4" y1="18.2" x2="71.6" y2="12.5"/>
+    <line x1="82.1" y1="15.9" x2="80.9" y2="10.0"/>
+    <line x1="91.0" y1="14.5" x2="90.4" y2="8.5"/>
+  </g>
+  <circle cx="100" cy="100" r="82" fill="none" stroke="#00c8dc" stroke-width="1" stroke-dasharray="4 7" opacity="0.55"/>
+  <g class="jhl-hud-arcs" fill="none" stroke="#00c8dc" stroke-width="3.5" stroke-linecap="round">
+    <path d="M 28.58 125.99 A 76 76 0 0 1 28.58 74.01"/>
+    <path d="M 34.18 62.00 A 76 76 0 0 1 74.01 28.58"/>
+    <path d="M 125.99 28.58 A 76 76 0 0 1 153.74 46.26"/>
+    <path d="M 158.22 148.85 A 76 76 0 0 1 132.12 168.88"/>
+    <path d="M 113.20 174.85 A 76 76 0 0 1 62.00 165.82"/>
+  </g>
+  <g class="jhl-status-sweep">
+    <path d="M 161.63 128.74 A 68 68 0 0 1 38.37 128.74" fill="none" stroke="#cc4444" stroke-width="9" stroke-linecap="round" class="jhl-status-arc"/>
+  </g>
+  <g class="jhl-status-dots" fill="#cc4444">
+    <circle cx="133.3" cy="52.5" r="2.2"/>
+    <circle cx="138.8" cy="56.9" r="2.2"/>
+    <circle cx="143.8" cy="61.9" r="2.2"/>
+    <circle cx="148.1" cy="67.6" r="2.2"/>
+    <circle cx="151.7" cy="73.7" r="2.2"/>
+  </g>
+  <circle cx="100" cy="100" r="44" fill="#0a1520" stroke="#00c8dc" stroke-width="1.5"/>
+  <circle cx="100" cy="100" r="38" fill="none" stroke="#00c8dc" stroke-width="1" stroke-dasharray="1.5 5" opacity="0.45"/>
+  <text x="100" y="107" text-anchor="middle" fill="#ffffff" font-family="Inter, system-ui, sans-serif" font-size="28" font-weight="600" letter-spacing="2">JARVIS</text>
+</svg>

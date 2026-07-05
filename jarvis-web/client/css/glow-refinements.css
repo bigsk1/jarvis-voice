@@ -110,6 +110,267 @@
 }
 
 /* ============================================
+   AWAKENING WELCOME BUBBLE
+   ============================================ */
+
+.awakening-bubble {
+  background: linear-gradient(135deg, #0a0608 0%, #140c10 55%, #0e1014 100%);
+  border: 1px solid rgba(139, 0, 0, 0.28);
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.45),
+    0 0 10px rgba(139, 0, 0, 0.08);
+  animation: fadeInGlow 1s ease-in-out;
+}
+
+.awakening-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--space-sm);
+}
+
+.awakening-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.boot-line {
+  display: block;
+  font-weight: 700;
+  color: #e0f0ff;
+  line-height: 1.35;
+  opacity: 0;
+  transform: translateY(8px);
+  filter: blur(3px);
+  animation: boot-line-in 0.9s ease forwards;
+}
+
+.boot-line-1 { animation-delay: 0.7s; }
+.boot-line-2 { animation-delay: 2s; }
+.boot-line-3 { animation-delay: 3.3s; }
+
+@keyframes boot-line-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.awakening-tagline {
+  color: #a61b1b;
+  letter-spacing: 1px;
+}
+
+.awakening-bubble .welcome-capabilities {
+  color: var(--text-secondary);
+  font-style: normal;
+}
+
+.awakening-tagline-scroll {
+  display: inline-block;
+  max-width: 100%;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: bottom;
+  animation: awakening-tagline-type 3.4s steps(44, end) 4.5s forwards;
+}
+
+@keyframes awakening-tagline-type {
+  0% {
+    opacity: 0;
+    max-width: 0;
+  }
+  0.1% {
+    opacity: 1;
+    max-width: 0;
+  }
+  100% {
+    opacity: 1;
+    max-width: 100%;
+  }
+}
+
+.awakening-core-svg {
+  width: 76px;
+  height: 76px;
+  flex-shrink: 0;
+  margin-right: 14px;
+  opacity: 0;
+  filter: drop-shadow(0 0 7px rgba(160, 17, 17, 0.35));
+  animation: core-boot-in 1.4s ease 0.2s forwards;
+}
+
+/* Eye powers up from dead black */
+@keyframes core-boot-in {
+  0% { opacity: 0; }
+  40% { opacity: 0.4; }
+  55% { opacity: 0.25; }
+  100% { opacity: 1; }
+}
+
+/* Machined tick ring creeps around, barely perceptible */
+.hal-ticks {
+  transform-origin: 60px 60px;
+  animation: hal-ticks-rotate 90s linear infinite;
+}
+
+@keyframes hal-ticks-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* The whole eye breathes slowly */
+.hal-eye {
+  transform-origin: 60px 60px;
+  animation: hal-eye-breathe 7s ease-in-out infinite;
+}
+
+@keyframes hal-eye-breathe {
+  0%, 100% { opacity: 0.78; transform: scale(0.985); }
+  50% { opacity: 1; transform: scale(1.015); }
+}
+
+/* Scanning wedge sweeps like it's watching the room */
+.hal-scan {
+  transform-origin: 60px 60px;
+  animation: hal-scan-rotate 11s linear infinite;
+}
+
+@keyframes hal-scan-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Ripples radiate outward from the eye */
+.hal-ripple {
+  transform-origin: 60px 60px;
+  opacity: 0;
+}
+
+.hal-ripple-1 { animation: hal-ripple-out 6s ease-out 1s infinite; }
+.hal-ripple-2 { animation: hal-ripple-out 6s ease-out 4s infinite; }
+
+@keyframes hal-ripple-out {
+  0% { transform: scale(0.3); opacity: 0.35; }
+  70% { opacity: 0.08; }
+  100% { transform: scale(1.15); opacity: 0; }
+}
+
+/* Hot core: slow smolder */
+.hal-core {
+  transform-origin: 60px 60px;
+  animation: hal-core-smolder 7s ease-in-out infinite;
+}
+
+@keyframes hal-core-smolder {
+  0%, 100% { opacity: 0.85; transform: scale(0.96); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+/* Amber pupil: steady, with a rare unsettling flicker */
+.hal-pupil {
+  animation: hal-pupil-flicker 13s linear infinite;
+}
+
+@keyframes hal-pupil-flicker {
+  0%, 86%, 100% { opacity: 1; }
+  87% { opacity: 0.3; }
+  88.5% { opacity: 1; }
+  90% { opacity: 0.45; }
+  91.5% { opacity: 1; }
+}
+
+/* Threat surge: everything brightens for a beat, then settles */
+.hal-surge {
+  opacity: 0;
+  animation: hal-threat-surge 13s ease-in-out infinite;
+}
+
+@keyframes hal-threat-surge {
+  0%, 84%, 96%, 100% { opacity: 0; }
+  88% { opacity: 0.4; }
+  92% { opacity: 0.18; }
+}
+
+/* ---- Eye power-down on websocket disconnect ---- */
+
+.hal-eye,
+.hal-core,
+.hal-pupil {
+  transition: opacity 1.2s ease;
+}
+
+.awakening-core-svg {
+  transition: filter 1.2s ease;
+}
+
+#awakeningCore.eye-off {
+  filter: none;
+}
+
+#awakeningCore.eye-off .hal-eye {
+  animation: none;
+  opacity: 0.05;
+}
+
+#awakeningCore.eye-off .hal-core {
+  animation: none;
+  opacity: 0.08;
+}
+
+/* Faint dead ember left in the center */
+#awakeningCore.eye-off .hal-pupil {
+  animation: none;
+  opacity: 0.15;
+}
+
+#awakeningCore.eye-off .hal-scan,
+#awakeningCore.eye-off .hal-ripple,
+#awakeningCore.eye-off .hal-surge {
+  animation: none;
+  opacity: 0;
+}
+
+#awakeningCore.eye-off .hal-ticks {
+  animation-play-state: paused;
+}
+
+/* "online" ↔ "offline" word swap */
+.boot-state-word {
+  transition: color 0.5s ease;
+}
+
+.boot-state-word.offline {
+  color: #a61b1b;
+}
+
+@keyframes boot-tagline-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 768px) {
+  .awakening-core-svg {
+    width: 60px;
+    height: 60px;
+    margin-right: 10px;
+  }
+
+  .boot-line {
+    font-size: var(--text-sm);
+  }
+
+  .awakening-tagline-scroll {
+    white-space: normal;
+    overflow: visible;
+    animation: boot-tagline-fade 0.9s ease 4.5s forwards;
+  }
+}
+
+/* ============================================
    USER MESSAGE BUBBLES - NO GLOW
    ============================================ */
 
@@ -379,55 +640,7 @@ body::after {
   display: block;
   width: 100%;
   height: 100%;
-}
-
-#jarvisLogo .status-arc,
-#jarvisLogo .status-dots {
-  transition: stroke 0.35s ease, fill 0.35s ease, opacity 0.35s ease;
-}
-
-#jarvisLogo.online .status-sweep {
-  transform-origin: 100px 100px;
-  animation: hud-scan 14s linear infinite;
-}
-
-@keyframes hud-scan {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-
-#jarvisLogo.online .status-arc {
-  stroke: #ff9900;
-  opacity: 1;
-}
-
-#jarvisLogo.online .status-dots {
-  fill: #ff9900;
-  opacity: 1;
-}
-
-#jarvisLogo.offline .status-arc {
-  stroke: #cc4444;
-  opacity: 0.55;
-}
-
-#jarvisLogo.offline .status-sweep {
-  animation: none;
-}
-
-#jarvisLogo.offline .status-dots {
-  fill: #cc4444;
-  opacity: 0.45;
-}
-
-#jarvisLogo.online .tick-ring,
-#jarvisLogo.online .hud-arcs {
-  opacity: 1;
-}
-
-#jarvisLogo.offline .tick-ring,
-#jarvisLogo.offline .hud-arcs {
-  opacity: 0.65;
+  pointer-events: none;
 }
 
 @media (max-width: 768px) {

@@ -72,6 +72,10 @@ body.logs-page {
   align-items: center;
 }
 
+.logs-home-link .jarvis-hud {
+  --hud-size: 44px;
+}
+
 .logs-title-block {
   display: flex;
   flex-direction: column;

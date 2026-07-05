@@ -41,6 +41,7 @@ class JarvisApp {
     this._statusTTSController = null;
     this._statusTTSGeneration = 0;
     this._completedResponseIds = new Set();
+    this._connectionConnected = false;
     
     this._initialize();
   }
@@ -50,6 +51,7 @@ class JarvisApp {
    */
   _initialize() {
     this._setupSocketListeners();
+    this._setupHudLogo();
     this._setupUIListeners();
     this._restoreState();
     this._applyGlowIntensity();  // Apply saved glow intensity
@@ -682,13 +684,62 @@ class JarvisApp {
   }
 
   /**
+   * Load the header HUD logo SVG inline so animations and state classes work reliably.
+   */
+  async _setupHudLogo() {
+    const jarvisLogo = document.getElementById('jarvisLogo');
+    if (!jarvisLogo || jarvisLogo.querySelector('svg.hud-svg')) return;
+
+    try {
+      const response = await fetch('/assets/jarvis-hud-logo.svg', { cache: 'no-cache' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const svgMarkup = (await response.text()).replace(/<\?xml[^?]*\?>\s*/i, '');
+      jarvisLogo.insertAdjacentHTML('beforeend', svgMarkup);
+
+      const hudSvg = jarvisLogo.querySelector('svg');
+      if (hudSvg) {
+        hudSvg.classList.add('hud-svg');
+        this._syncJarvisHudLogo(this._connectionConnected);
+      }
+    } catch (err) {
+      console.warn('[App] HUD logo load failed:', err);
+    }
+  }
+
+  /**
+   * Mirror connection state on the header HUD logo wrapper and embedded SVG.
+   */
+  _syncJarvisHudLogo(connected) {
+    const jarvisLogo = document.getElementById('jarvisLogo');
+    if (!jarvisLogo) return;
+
+    jarvisLogo.classList.toggle('online', connected);
+    jarvisLogo.classList.toggle('offline', !connected);
+
+    const hudSvg = jarvisLogo.querySelector('svg.hud-svg');
+    if (hudSvg) {
+      hudSvg.classList.toggle('online', connected);
+      hudSvg.classList.toggle('offline', !connected);
+    }
+  }
+
+  /**
    * Update connection status UI
    */
   _updateConnectionStatus(connected) {
-    const jarvisLogo = document.getElementById('jarvisLogo');
-    if (jarvisLogo) {
-      jarvisLogo.classList.toggle('online', connected);
-      jarvisLogo.classList.toggle('offline', !connected);
+    this._connectionConnected = connected;
+    this._syncJarvisHudLogo(connected);
+
+    // HAL eye in the welcome bubble powers down on disconnect
+    const awakeningCore = document.getElementById('awakeningCore');
+    if (awakeningCore) {
+      awakeningCore.classList.toggle('eye-off', !connected);
+    }
+    const bootStateWord = document.getElementById('bootStateWord');
+    if (bootStateWord) {
+      bootStateWord.textContent = connected ? 'online' : 'offline';
+      bootStateWord.classList.toggle('offline', !connected);
     }
 
     if (connected) {
