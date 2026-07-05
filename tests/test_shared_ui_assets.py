@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -63,8 +64,36 @@ def test_shared_brand_assets_use_explicit_canonical_route(
     with app.test_client() as client:
         png = client.get(f"{asset_prefix}/jarvis-voice.png")
         svg = client.get(f"{asset_prefix}/jarvis-hud-logo.svg")
+        touch_icon = client.get(f"{asset_prefix}/apple-touch-icon.png")
 
     assert png.status_code == 200
     assert png.data == (CANONICAL_ASSETS / "jarvis-voice.png").read_bytes()
     assert svg.status_code == 200
     assert svg.data == (CANONICAL_ASSETS / "jarvis-hud-logo.svg").read_bytes()
+    assert touch_icon.status_code == 200
+    assert touch_icon.data == (CANONICAL_ASSETS / "apple-touch-icon.png").read_bytes()
+
+
+def test_apple_touch_icon_has_opaque_jarvis_black_background():
+    icon_path = CANONICAL_ASSETS / "apple-touch-icon.png"
+
+    with Image.open(icon_path) as icon:
+        assert icon.size == (180, 180)
+        assert icon.mode == "RGB"
+        assert icon.getpixel((0, 0)) == (10, 10, 15)
+
+
+def test_pages_reference_dedicated_apple_touch_icon():
+    pages = (
+        PROJECT_ROOT / "jarvis-web" / "client" / "index.html",
+        PROJECT_ROOT / "jarvis-web" / "client" / "login.html",
+        PROJECT_ROOT / "jarvis-web" / "client" / "logs.html",
+        PROJECT_ROOT / "jarvis-canvas" / "client" / "templates" / "base.html",
+        PROJECT_ROOT / "jarvis-docs" / "client" / "index.html",
+        PROJECT_ROOT / "jarvis-docs" / "client" / "login.html",
+    )
+
+    for page in pages:
+        html = page.read_text(encoding="utf-8")
+        assert 'rel="apple-touch-icon" sizes="180x180"' in html
+        assert "apple-touch-icon.png" in html
