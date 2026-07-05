@@ -631,6 +631,10 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
             "quality": quality_setting,
             "n": "1"
         }
+        if transparent and output_format in ("png", "webp"):
+            form_data["background"] = "transparent"
+        if output_format in ("jpeg", "webp"):
+            form_data["output_format"] = output_format
         
         response = requests.post(
             OPENAI_EDIT_API,

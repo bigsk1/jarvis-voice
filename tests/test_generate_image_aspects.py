@@ -147,6 +147,46 @@ class GenerateImageAspectTests(unittest.TestCase):
         self.assertIsNone(captured["config"].tools)
         self.assertTrue(result["is_edit"])
 
+    def test_openai_edit_sends_transparent_background_for_gpt_image_1_5(self):
+        captured = {}
+        encoded_reference = base64.b64encode(b"reference-image-bytes").decode("ascii")
+
+        class FakeResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json():
+                return {"data": [{"b64_json": base64.b64encode(b"edited").decode("ascii")}]}
+
+        def fake_post(url, **kwargs):
+            captured["url"] = url
+            captured.update(kwargs)
+            return FakeResponse()
+
+        def fake_config(key, default=None):
+            return {
+                "OPENAI_API_KEY": "test-key",
+                "OPENAI_IMAGE_MODEL": "gpt-image-1.5",
+            }.get(key, default)
+
+        with patch.object(generate_image, "get_config_value", side_effect=fake_config), patch.object(
+            generate_image,
+            "_resolve_image_to_base64",
+            return_value=(encoded_reference, "image/png"),
+        ), patch.object(generate_image.requests, "post", side_effect=fake_post):
+            result = generate_image.generate_image_openai(
+                "Keep the logo and remove the background",
+                transparent=True,
+                output_format="png",
+                reference_image="stash://space/file",
+            )
+
+        self.assertTrue(captured["url"].endswith("/v1/images/edits"))
+        self.assertEqual(captured["data"]["model"], "gpt-image-1.5")
+        self.assertEqual(captured["data"]["background"], "transparent")
+        self.assertTrue(result["transparent"])
+
 
 if __name__ == "__main__":
     unittest.main()

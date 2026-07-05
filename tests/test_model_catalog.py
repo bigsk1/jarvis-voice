@@ -71,6 +71,12 @@ class ModelCatalogTests(unittest.TestCase):
             "interactions",
         )
 
+        openai_image = get_media_provider_options(
+            "image", {"openai": "gpt-image-1.5"}
+        )["openai"]
+        self.assertEqual(openai_image["model_name"], "GPT Image 1.5")
+        self.assertIn("transparent_background", openai_image["capabilities"])
+
     def test_media_resolution_defaults_empty_values_and_preserves_unknown_pins(self):
         self.assertEqual(resolve_media_model("image", "openai"), "gpt-image-2")
         self.assertEqual(resolve_media_model("image", "openai", ""), "gpt-image-2")

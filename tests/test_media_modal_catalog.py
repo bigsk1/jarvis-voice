@@ -39,3 +39,11 @@ def test_settings_media_providers_show_catalog_capabilities_and_pricing():
     assert "_formatMediaProviderPrice(metadata.pricing)" in APP_JS
     assert 'id="image-provider-capabilities"' in INDEX_HTML
     assert 'id="video-provider-capabilities"' in INDEX_HTML
+
+
+def test_image_modal_loads_and_displays_effective_model_capabilities():
+    assert "await window.jarvisApp?._ensureSettingsData?." in CHAT_JS
+    assert "openaiCapabilities.includes('transparent_background')" in CHAT_JS
+    assert "Effective model:" in CHAT_JS
+    assert 'id="imgActionImageModelDesc"' in INDEX_HTML
+    assert "this._settingsData = data.settings" in APP_JS

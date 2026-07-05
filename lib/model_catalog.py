@@ -527,6 +527,15 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
                         "unit": "variable",
                         "note": "Token-, quality-, and output-size-based pricing",
                     },
+                },
+                {
+                    "id": "gpt-image-1.5",
+                    "name": "GPT Image 1.5",
+                    "capabilities": ["generation", "editing", "transparent_background"],
+                    "pricing": {
+                        "unit": "variable",
+                        "note": "Token-, quality-, and output-size-based pricing",
+                    },
                 }
             ],
         },

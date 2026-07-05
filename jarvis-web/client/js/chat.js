@@ -1753,8 +1753,14 @@ class ChatUI {
   /**
    * Show the image action modal with preview
    */
-  _showImageActionModal(uploadDataOrArray) {
+  async _showImageActionModal(uploadDataOrArray) {
     if (!this.imageActionModal) return;
+
+    try {
+      await window.jarvisApp?._ensureSettingsData?.(window.jarvisSocket?.mode || 'cloud');
+    } catch (error) {
+      console.warn('[Chat] Could not refresh media model settings:', error);
+    }
     
     const uploads = Array.isArray(uploadDataOrArray) ? uploadDataOrArray : [uploadDataOrArray];
     this.pendingImageBatch = uploads;
@@ -1860,10 +1866,21 @@ class ChatUI {
     if (openaiOpts) openaiOpts.style.display = provider === 'openai' ? 'block' : 'none';
     if (xaiOpts) xaiOpts.style.display = provider === 'xai' ? 'block' : 'none';
 
-    const openaiModel = window.jarvisApp?._settingsData?.image_providers?.openai?.model || 'gpt-image-2';
+    const providerMetadata = window.jarvisApp?._settingsData?.image_providers?.[provider];
+    const openaiMetadata = window.jarvisApp?._settingsData?.image_providers?.openai;
+    const openaiModel = openaiMetadata?.model || 'gpt-image-2';
+    const openaiCapabilities = Array.isArray(openaiMetadata?.capabilities)
+      ? openaiMetadata.capabilities
+      : [];
     const transparent = document.getElementById('imgActionTransparent');
     const transparentDesc = document.getElementById('imgActionTransparentDesc');
-    const supportsTransparent = !String(openaiModel).startsWith('gpt-image-2');
+    const modelDesc = document.getElementById('imgActionImageModelDesc');
+    const supportsTransparent = openaiCapabilities.includes('transparent_background')
+      || (openaiCapabilities.length === 0 && !String(openaiModel).startsWith('gpt-image-2'));
+    if (modelDesc) {
+      const effectiveModel = providerMetadata?.model_name || providerMetadata?.model;
+      modelDesc.textContent = effectiveModel ? `Effective model: ${effectiveModel}` : '';
+    }
     if (transparent) {
       transparent.disabled = provider === 'openai' && !supportsTransparent;
       if (transparent.disabled) transparent.checked = false;
@@ -2306,7 +2323,7 @@ class ChatUI {
         return;
       }
 
-      this._showImageActionModal(uploads);
+      await this._showImageActionModal(uploads);
     } catch (err) {
       console.error('[Chat] Image upload error:', err);
       Utils.toast('Failed to upload image', 'error');
