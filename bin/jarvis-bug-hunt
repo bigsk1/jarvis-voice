@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""Run the isolated Jarvis static bug-hunt loop."""
+
+import sys
+
+sys.dont_write_bytecode = True
+
+import argparse
+from datetime import datetime
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "lib"))
+
+from bug_hunt import (  # noqa: E402
+    DEFAULT_MODEL,
+    MEMORY_RELATIVE_PATH,
+    RESULTS_RELATIVE_PATH,
+    BugHuntEngine,
+    parse_deadline,
+)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Read-only autonomous static bug hunter for jarvis-voice",
+    )
+    parser.add_argument("--model", default=DEFAULT_MODEL,
+                        help=f"Ollama Cloud model (default: {DEFAULT_MODEL})")
+    parser.add_argument("--max-iterations", type=int, default=50,
+                        help="Maximum fresh investigator iterations (default: 50)")
+    parser.add_argument("--until", metavar="HH:MM",
+                        help="Stop at this local time; a past time means tomorrow")
+    parser.add_argument("--max-tool-turns", type=int, default=8,
+                        help="Maximum repository reads per investigator/verifier")
+    parser.add_argument("--min-confidence", type=float, default=0.8,
+                        help="Minimum investigator and verifier confidence")
+    parser.add_argument("--sleep-seconds", type=float, default=1.0,
+                        help="Pause between iterations")
+    parser.add_argument(
+        "--docs-only",
+        action="store_true",
+        help="Only report active documentation problems; source remains readable for verification",
+    )
+    parser.add_argument("--show-whitelist", action="store_true",
+                        help="Print readable tracked files and exit without an LLM call")
+    args = parser.parse_args()
+
+    if args.max_iterations < 1:
+        parser.error("--max-iterations must be at least 1")
+    if args.max_tool_turns < 1:
+        parser.error("--max-tool-turns must be at least 1")
+    if not 0.0 <= args.min_confidence <= 1.0:
+        parser.error("--min-confidence must be between 0 and 1")
+
+    try:
+        deadline = parse_deadline(args.until)
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    engine = BugHuntEngine(
+        PROJECT_ROOT,
+        model=args.model,
+        max_tool_turns=args.max_tool_turns,
+        min_confidence=args.min_confidence,
+        docs_only=args.docs_only,
+    )
+
+    if args.show_whitelist:
+        for path in sorted(engine.policy.readable_files):
+            print(path)
+        print(f"\n{len(engine.policy.readable_files)} readable files", file=sys.stderr)
+        return 0
+
+    print("Jarvis Bug Hunt")
+    print(f"  model:       {args.model}")
+    print(f"  iterations:  {args.max_iterations}")
+    print(f"  deadline:    {deadline.isoformat(timespec='minutes') if deadline else 'none'}")
+    print(f"  hunt mode:   {'documentation-only' if args.docs_only else 'code correctness'}")
+    print(f"  readable:    {len(engine.policy.readable_files)} tracked/private state files")
+    print(f"  memory:      {MEMORY_RELATIVE_PATH}")
+    print(f"  findings:    {RESULTS_RELATIVE_PATH}")
+    print("  source mode: read-only; no shell, tests, network tools, or code writes")
+    print()
+
+    def progress(iteration, outcome, usage):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        detail = f" - {outcome.message}" if outcome.message else ""
+        print(
+            f"[{timestamp}] iteration {iteration}: {outcome.action}{detail} "
+            f"(tokens~{usage['total_tokens']})",
+            flush=True,
+        )
+
+    try:
+        outcomes = engine.run(
+            max_iterations=args.max_iterations,
+            deadline=deadline,
+            sleep_seconds=max(0.0, args.sleep_seconds),
+            progress_callback=progress,
+        )
+    except KeyboardInterrupt:
+        print("\nStopped; memory and verified findings are already persisted.")
+        return 130
+
+    confirmed = sum(1 for outcome in outcomes if outcome.finding_written)
+    errors = sum(1 for outcome in outcomes if outcome.action == "error")
+    print()
+    print(
+        f"Complete: {len(outcomes)} iterations, {confirmed} verified findings, "
+        f"{errors} errors, ~{engine.total_usage['total_tokens']} tokens."
+    )
+    return 1 if errors and errors == len(outcomes) else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
