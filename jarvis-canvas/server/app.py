@@ -26,6 +26,7 @@ def create_app(mode='cloud'):
     template_dir = package_root / 'client' / 'templates'
     static_dir = package_root / 'client' / 'static'
     fonts_dir = JARVIS_ROOT / 'jarvis-web' / 'client' / 'fonts'
+    assets_dir = JARVIS_ROOT / 'jarvis-web' / 'client' / 'assets'
     
     app = Flask(
         __name__,
@@ -93,6 +94,11 @@ def create_app(mode='cloud'):
     def shared_fonts(path):
         """Serve shared fonts without relying on checkout symlink support."""
         return send_from_directory(fonts_dir, path)
+
+    @app.route('/static/assets/<path:path>')
+    def shared_assets(path):
+        """Serve shared branding assets without relying on checkout symlink support."""
+        return send_from_directory(assets_dir, path)
     
     return app
 

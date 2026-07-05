@@ -12,6 +12,7 @@ INTELLIGENCE_ROOT = Path(__file__).parent.parent
 JARVIS_ROOT = INTELLIGENCE_ROOT.parent
 CLIENT_PATH = INTELLIGENCE_ROOT / 'client'
 FONTS_PATH = JARVIS_ROOT / 'jarvis-web' / 'client' / 'fonts'
+ASSETS_PATH = JARVIS_ROOT / 'jarvis-web' / 'client' / 'assets'
 DATA_PATH = JARVIS_ROOT / 'data'
 
 # Add lib to path
@@ -114,6 +115,12 @@ def serve_index():
 def serve_fonts(path):
     """Serve shared fonts without relying on checkout symlink support."""
     return send_from_directory(FONTS_PATH, path)
+
+
+@app.route('/assets/<path:path>')
+def serve_brand_assets(path):
+    """Serve shared branding assets without relying on checkout symlink support."""
+    return send_from_directory(ASSETS_PATH, path)
 
 
 @app.route('/<path:path>')

@@ -16,6 +16,7 @@ CLIENT_PATH = DOCS_UI_ROOT / 'client'
 DOCS_PATH = JARVIS_ROOT / 'docs'
 WEB_FONTS_PATH = JARVIS_ROOT / 'jarvis-web' / 'client' / 'fonts'
 WEB_VENDOR_PATH = JARVIS_ROOT / 'jarvis-web' / 'client' / 'vendor'
+WEB_ASSETS_PATH = JARVIS_ROOT / 'jarvis-web' / 'client' / 'assets'
 
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 
@@ -86,6 +87,12 @@ def serve_fonts(path: str):
 @app.route('/vendor/<path:path>')
 def serve_vendor(path: str):
     return send_from_directory(WEB_VENDOR_PATH, path)
+
+
+@app.route('/assets/<path:path>')
+def serve_brand_assets(path: str):
+    """Serve shared branding assets without relying on checkout symlink support."""
+    return send_from_directory(WEB_ASSETS_PATH, path)
 
 
 @app.route('/docs-files/<path:path>')
