@@ -26,6 +26,7 @@ Host-only tools (Spotify, phone, printer, OpenCode, etc.) are disabled by the tr
 - Docker Engine + Docker Compose v2
 - Git clone of this repo with `config/cloud.env` and/or `config/local.env` configured (same as native install)
 - Existing `./data` databases are reused via bind mounts — nothing is wiped on container recreate
+- Web status-only TTS audio is cached under `./data/cache/status-tts-web/`, so repeated phrases can be reused after a container rebuild or recreation
 
 ---
 

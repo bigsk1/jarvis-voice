@@ -49,6 +49,10 @@ services:
   jarvis-web:
     <<: *jarvis-common
     command: ["web"]
+    environment:
+      <<: *jarvis-environment
+      # Keep Web status-only TTS audio across container rebuilds/recreation.
+      JARVIS_OVERRIDE_WEB_STATUS_TTS_CACHE_DIR: /app/data/cache/status-tts-web
     depends_on:
       jarvis-api:
         condition: service_started

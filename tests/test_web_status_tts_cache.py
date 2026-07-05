@@ -9,6 +9,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = (ROOT / "jarvis-web/client/js/app.js").read_text()
 NATIVE_STATUS_SCRIPT = (ROOT / "bin/say-status.sh").read_text()
+DOCKER_COMPOSE = (ROOT / "docker-compose.yml").read_text()
 
 
 def _purge_server_modules():
@@ -92,6 +93,35 @@ def test_web_status_tts_reuses_persistent_audio_cache():
     assert events.count("tts_provider_started") == 1
     assert events.count("tts_provider_completed") == 1
     assert events.count("tts_cache_hit") == 1
+
+
+def test_web_status_tts_cache_supports_docker_persistent_root():
+    _purge_server_modules()
+    sys.path.insert(0, str(ROOT / "jarvis-web"))
+    from server.routes import api
+
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp) / "status-tts-web"
+
+        def get_setting(key, default=""):
+            if key == "WEB_STATUS_TTS_CACHE_DIR":
+                return str(root)
+            return default
+
+        audio_path, mime_path = api._status_tts_cache_paths(
+            "cloud", "openai", "Still checking", get_setting
+        )
+
+        assert audio_path.parent == root / "cloud"
+        assert mime_path.parent == root / "cloud"
+        assert audio_path.suffix == ".audio"
+        assert mime_path.suffix == ".mime"
+        assert audio_path.parent.is_dir()
+
+    assert (
+        "JARVIS_OVERRIDE_WEB_STATUS_TTS_CACHE_DIR: "
+        "/app/data/cache/status-tts-web"
+    ) in DOCKER_COMPOSE
 
 
 def test_elevenlabs_status_uses_flash_without_changing_final_model_or_voice():

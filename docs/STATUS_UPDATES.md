@@ -161,11 +161,16 @@ final-answer TTS.
 |---|---|
 | Native cloud | `~/.cache/jarvis/status-tts/` |
 | Native local | `~/.cache/jarvis/status-tts-local/` |
-| Web cloud/local | `~/.cache/jarvis/status-tts-web/<mode>/` |
+| Web cloud/local (native) | `~/.cache/jarvis/status-tts-web/<mode>/` |
+| Web cloud/local (Docker) | `./data/cache/status-tts-web/<mode>/` on the host |
 
 Cache keys include exact phrase text plus the effective provider, voice, model,
 and relevant voice settings. Repeated static or dynamic phrases can therefore
 play without another ElevenLabs/OpenAI/xAI/local TTS generation call.
+Docker stores the Web cache under the existing read-write `./data` bind mount,
+so cached status audio survives container recreation and image rebuilds. The
+native `./bin/status-cache` command continues to manage native cache locations
+only.
 
 ```bash
 ./bin/status-cache stats

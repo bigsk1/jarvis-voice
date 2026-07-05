@@ -97,6 +97,7 @@ data/*.db-*
 *.sqlite.*
 *.sqlite-*
 data/backups
+data/cache/
 data/.email_rate_limit
 data/.webhook_rate_limit
 data/.scheduled_task_notification_rate_limit

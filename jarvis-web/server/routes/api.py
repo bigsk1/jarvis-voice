@@ -147,7 +147,13 @@ def _status_tts_cache_paths(mode, provider, text, get_setting):
         'text': text,
         'settings': settings,
     }, sort_keys=True, separators=(',', ':')).encode('utf-8')).hexdigest()
-    cache_dir = Path.home() / '.cache' / 'jarvis' / 'status-tts-web' / mode
+    configured_cache_dir = str(
+        get_setting('WEB_STATUS_TTS_CACHE_DIR', '') or ''
+    ).strip()
+    if configured_cache_dir:
+        cache_dir = Path(configured_cache_dir).expanduser() / mode
+    else:
+        cache_dir = Path.home() / '.cache' / 'jarvis' / 'status-tts-web' / mode
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / f'{digest}.audio', cache_dir / f'{digest}.mime'
 
