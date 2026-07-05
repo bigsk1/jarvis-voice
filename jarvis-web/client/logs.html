@@ -14,7 +14,8 @@
   <link rel="stylesheet" href="/css/log-viewer.css">
   <script src="/vendor/marked.min.js" onerror="this.removeAttribute('onerror');this.src='https://cdn.jsdelivr.net/npm/marked@15.0.6/marked.min.js'"></script>
 
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+  <link rel="icon" type="image/png" sizes="256x256" href="/assets/jarvis-voice.png">
+  <link rel="apple-touch-icon" href="/assets/jarvis-voice.png">
 </head>
 <body class="logs-page">
   <div id="logsApp">
@@ -22,8 +23,7 @@
       <div class="header-left">
         <a class="logs-home-link" href="/">
           <div class="logo">
-            <span class="logo-icon"></span>
-            <span></span>
+            <img src="/assets/jarvis-voice.png" alt="Jarvis" class="jarvis-mark jarvis-mark-md">
           </div>
         </a>
         <div class="logs-title-block">
@@ -33,7 +33,7 @@
       </div>
 
       <div class="header-right">
-        <a href="/" class="icon-btn" title="Back to chat">🤖</a>
+        <a href="/" class="icon-btn icon-btn-mark" title="Back to chat"><img src="/assets/jarvis-voice.png" alt="Jarvis" class="jarvis-mark"></a>
         <a href="#" class="icon-btn" title="Open Canvas" onclick="window.open('http://' + window.location.hostname + ':8890', '_blank'); return false;">📄</a>
         <a href="#" class="icon-btn" title="Memory Browser" onclick="window.open('http://' + window.location.hostname + ':5002', '_blank'); return false;">🧠</a>
         <a href="#" class="icon-btn" title="Intelligence Dashboard" onclick="window.open('http://' + window.location.hostname + ':5003', '_blank'); return false;">📊</a>

@@ -363,6 +363,20 @@ body {
   border-color: var(--border-secondary);
 }
 
+.btn-jarvis {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-sm) var(--space-md);
+}
+
+.jarvis-mark {
+  display: block;
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
 .btn-danger {
   background: var(--error);
   color: white;

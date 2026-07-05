@@ -2,6 +2,13 @@
 
 This file contains knowledge about Jarvis tools, provider limitations, common failure patterns, and best practices. When uncertain about a tool or encountering errors, search memory for relevant guidance before retrying blindly.
 
+## Jarvis Identity / Branding
+
+- **Name**: Jarvis (voice assistant and AI orchestrator)
+- **Avatar / logo (public CDN)**: `https://imagedelivery.net/WfhVb8dSNAAvdXUdMfBuPQ/gallery/2026-07-04/generated/recreate_the_exact_same_image_but_with_a_20260704__286c0cd4/public`
+- **Local Web UI asset**: `/assets/jarvis-voice.png` on jarvis-web (port 5001)
+- Use the **CDN URL** for emails, webhooks, social clips, markdown/HTML embeds, or any external output that needs a stable HTTPS image link.
+
 ## General Rules
 
 - If a tool fails or returns unexpected results, do not retry with the same parameters. Search memory first for known limitations.

@@ -54,14 +54,25 @@ body {
 .logo {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  font-size: var(--text-xl);
-  font-weight: 700;
-  color: var(--text-primary);
+  flex-shrink: 0;
 }
 
-.logo-icon {
-  font-size: 1.5rem;
+.jarvis-mark {
+  display: block;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.jarvis-mark-md {
+  width: 28px;
+  height: 28px;
+}
+
+.icon-btn-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .connection-status {
@@ -2680,10 +2691,6 @@ body {
     padding: var(--space-sm) var(--space-md);
   }
   
-  .header-left .logo span:not(.logo-icon) {
-    display: none; /* Hide "JARVIS" text, keep robot icon */
-  }
-  
   .header-right {
     gap: var(--space-sm); /* Reduce gap between header icons */
   }
@@ -2768,10 +2775,6 @@ body {
 
 /* Extra small screens (phones) */
 @media (max-width: 480px) {
-  .header-left .logo span:not(.logo-icon) {
-    display: none; /* Keep robot head visible on tiny screens */
-  }
-  
   .header-left {
     gap: var(--space-sm);
   }
@@ -3114,18 +3117,14 @@ body {
   flex-shrink: 0;
 }
 
-.avatar-icon {
+.profile-avatar-img {
   width: 64px;
   height: 64px;
-  background: linear-gradient(135deg, var(--accent-primary), #6366f1);
   border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--text-2xl);
-  font-weight: 700;
-  color: white;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  object-fit: cover;
+  display: block;
+  border: 1px solid rgba(0, 200, 220, 0.35);
+  background: var(--bg-primary);
 }
 
 .profile-info {

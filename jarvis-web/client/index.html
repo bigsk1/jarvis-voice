@@ -17,7 +17,8 @@
   <!-- Markdown (local vendor; CDN fallback) -->
   <script src="/vendor/marked.min.js" onerror="this.removeAttribute('onerror');this.src='https://cdn.jsdelivr.net/npm/marked@15.0.6/marked.min.js'"></script>
   
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+  <link rel="icon" type="image/png" sizes="256x256" href="/assets/jarvis-voice.png">
+  <link rel="apple-touch-icon" href="/assets/jarvis-voice.png">
 </head>
 <body>
   <div id="app">
@@ -25,10 +26,93 @@
     <header class="header">
         <div class="header-left">
           <button class="hamburger-btn" id="hamburgerBtn" title="Toggle Sidebar">☰</button>
-          <div class="logo">
-          <span class="logo-icon"></span>
-          <span>JARVIS</span>
-        </div>
+          <div class="logo jarvis-hud offline" id="jarvisLogo">
+            <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" class="hud-svg" shape-rendering="geometricPrecision" aria-hidden="true">
+              <g class="tick-ring" stroke="#00c8dc" stroke-width="1.5" stroke-linecap="round">
+                <line x1="100.0" y1="14.0" x2="100.0" y2="8.0"/>
+                <line x1="109.0" y1="14.5" x2="109.6" y2="8.5"/>
+                <line x1="117.9" y1="15.9" x2="119.1" y2="10.0"/>
+                <line x1="126.6" y1="18.2" x2="128.4" y2="12.5"/>
+                <line x1="135.0" y1="21.4" x2="137.4" y2="16.0"/>
+                <line x1="143.0" y1="25.5" x2="146.0" y2="20.3"/>
+                <line x1="150.5" y1="30.4" x2="154.1" y2="25.6"/>
+                <line x1="157.5" y1="36.1" x2="161.6" y2="31.6"/>
+                <line x1="163.9" y1="42.5" x2="168.4" y2="38.4"/>
+                <line x1="169.6" y1="49.5" x2="174.4" y2="45.9"/>
+                <line x1="174.5" y1="57.0" x2="179.7" y2="54.0"/>
+                <line x1="178.6" y1="65.0" x2="184.0" y2="62.6"/>
+                <line x1="181.8" y1="73.4" x2="187.5" y2="71.6"/>
+                <line x1="184.1" y1="82.1" x2="190.0" y2="80.9"/>
+                <line x1="185.5" y1="91.0" x2="191.5" y2="90.4"/>
+                <line x1="186.0" y1="100.0" x2="192.0" y2="100.0"/>
+                <line x1="185.5" y1="109.0" x2="191.5" y2="109.6"/>
+                <line x1="184.1" y1="117.9" x2="190.0" y2="119.1"/>
+                <line x1="181.8" y1="126.6" x2="187.5" y2="128.4"/>
+                <line x1="178.6" y1="135.0" x2="184.0" y2="137.4"/>
+                <line x1="174.5" y1="143.0" x2="179.7" y2="146.0"/>
+                <line x1="169.6" y1="150.5" x2="174.4" y2="154.1"/>
+                <line x1="163.9" y1="157.5" x2="168.4" y2="161.6"/>
+                <line x1="157.5" y1="163.9" x2="161.6" y2="168.4"/>
+                <line x1="150.5" y1="169.6" x2="154.1" y2="174.4"/>
+                <line x1="143.0" y1="174.5" x2="146.0" y2="179.7"/>
+                <line x1="135.0" y1="178.6" x2="137.4" y2="184.0"/>
+                <line x1="126.6" y1="181.8" x2="128.4" y2="187.5"/>
+                <line x1="117.9" y1="184.1" x2="119.1" y2="190.0"/>
+                <line x1="109.0" y1="185.5" x2="109.6" y2="191.5"/>
+                <line x1="100.0" y1="186.0" x2="100.0" y2="192.0"/>
+                <line x1="91.0" y1="185.5" x2="90.4" y2="191.5"/>
+                <line x1="82.1" y1="184.1" x2="80.9" y2="190.0"/>
+                <line x1="73.4" y1="181.8" x2="71.6" y2="187.5"/>
+                <line x1="65.0" y1="178.6" x2="62.6" y2="184.0"/>
+                <line x1="57.0" y1="174.5" x2="54.0" y2="179.7"/>
+                <line x1="49.5" y1="169.6" x2="45.9" y2="174.4"/>
+                <line x1="42.5" y1="163.9" x2="38.4" y2="168.4"/>
+                <line x1="36.1" y1="157.5" x2="31.6" y2="161.6"/>
+                <line x1="30.4" y1="150.5" x2="25.6" y2="154.1"/>
+                <line x1="25.5" y1="143.0" x2="20.3" y2="146.0"/>
+                <line x1="21.4" y1="135.0" x2="16.0" y2="137.4"/>
+                <line x1="18.2" y1="126.6" x2="12.5" y2="128.4"/>
+                <line x1="15.9" y1="117.9" x2="10.0" y2="119.1"/>
+                <line x1="14.5" y1="109.0" x2="8.5" y2="109.6"/>
+                <line x1="14.0" y1="100.0" x2="8.0" y2="100.0"/>
+                <line x1="14.5" y1="91.0" x2="8.5" y2="90.4"/>
+                <line x1="15.9" y1="82.1" x2="10.0" y2="80.9"/>
+                <line x1="18.2" y1="73.4" x2="12.5" y2="71.6"/>
+                <line x1="21.4" y1="65.0" x2="16.0" y2="62.6"/>
+                <line x1="25.5" y1="57.0" x2="20.3" y2="54.0"/>
+                <line x1="30.4" y1="49.5" x2="25.6" y2="45.9"/>
+                <line x1="36.1" y1="42.5" x2="31.6" y2="38.4"/>
+                <line x1="42.5" y1="36.1" x2="38.4" y2="31.6"/>
+                <line x1="49.5" y1="30.4" x2="45.9" y2="25.6"/>
+                <line x1="57.0" y1="25.5" x2="54.0" y2="20.3"/>
+                <line x1="65.0" y1="21.4" x2="62.6" y2="16.0"/>
+                <line x1="73.4" y1="18.2" x2="71.6" y2="12.5"/>
+                <line x1="82.1" y1="15.9" x2="80.9" y2="10.0"/>
+                <line x1="91.0" y1="14.5" x2="90.4" y2="8.5"/>
+              </g>
+              <circle cx="100" cy="100" r="82" fill="none" stroke="#00c8dc" stroke-width="1" stroke-dasharray="4 7" opacity="0.55"/>
+              <g class="hud-arcs" fill="none" stroke="#00c8dc" stroke-width="3.5" stroke-linecap="round">
+                <path d="M 28.58 125.99 A 76 76 0 0 1 28.58 74.01"/>
+                <path d="M 34.18 62.00 A 76 76 0 0 1 74.01 28.58"/>
+                <path d="M 125.99 28.58 A 76 76 0 0 1 153.74 46.26"/>
+                <path d="M 158.22 148.85 A 76 76 0 0 1 132.12 168.88"/>
+                <path d="M 113.20 174.85 A 76 76 0 0 1 62.00 165.82"/>
+              </g>
+              <g class="status-sweep">
+                <path d="M 161.63 128.74 A 68 68 0 0 1 38.37 128.74" fill="none" stroke="#cc4444" stroke-width="9" stroke-linecap="round" class="status-arc"/>
+              </g>
+              <g class="status-dots" fill="#cc4444">
+                <circle cx="133.3" cy="52.5" r="2.2"/>
+                <circle cx="138.8" cy="56.9" r="2.2"/>
+                <circle cx="143.8" cy="61.9" r="2.2"/>
+                <circle cx="148.1" cy="67.6" r="2.2"/>
+                <circle cx="151.7" cy="73.7" r="2.2"/>
+              </g>
+              <circle cx="100" cy="100" r="44" fill="#0a1520" stroke="#00c8dc" stroke-width="1.5"/>
+              <circle cx="100" cy="100" r="38" fill="none" stroke="#00c8dc" stroke-width="1" stroke-dasharray="1.5 5" opacity="0.45"/>
+              <text x="100" y="107" text-anchor="middle" fill="#ffffff" font-family="Inter, system-ui, sans-serif" font-size="28" font-weight="600" letter-spacing="2">JARVIS</text>
+            </svg>
+          </div>
         <div class="connection-status">
           <span class="status-dot" id="statusDot"></span>
           <span id="statusText">Connecting...</span>
@@ -662,7 +746,7 @@
           <div class="settings-panel" id="settings-profile">
             <div class="profile-card">
               <div class="profile-avatar">
-                <div class="avatar-icon">J</div>
+                <img src="/assets/jarvis-voice.png" alt="Jarvis" class="profile-avatar-img">
               </div>
               <div class="profile-info">
                 <div class="profile-name">Administrator</div>
@@ -700,7 +784,7 @@
                 </a>
                 <a href="https://github.com/bigsk1" target="_blank" rel="noopener" class="profile-link">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
                   </svg>
                   <span>Github Profile</span>
                   <span class="link-external">↗</span>
@@ -959,6 +1043,7 @@
                 <option value="openai">OpenAI GPT Image</option>
                 <option value="xai">xAI (fast)</option>
               </select>
+              <span class="setting-desc" id="imgActionImageModelDesc"></span>
             </div>
             <div class="setting-group">
               <label class="setting-label">Aspect Ratio</label>

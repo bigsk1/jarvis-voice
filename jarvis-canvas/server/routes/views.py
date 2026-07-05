@@ -1,11 +1,15 @@
 """
 Jarvis Canvas - Main view routes (templates)
 """
+from pathlib import Path
+
 from flask import Blueprint, render_template, send_from_directory
 
 from config import STATIC_DIR
 
 views_bp = Blueprint('views', __name__)
+
+JARVIS_LOGO = Path(__file__).resolve().parents[3] / 'jarvis-web' / 'client' / 'assets' / 'jarvis-voice.png'
 
 
 @views_bp.route('/')
@@ -22,8 +26,8 @@ def page_link(page_suffix):
 
 @views_bp.route('/favicon.ico')
 def favicon():
-    """Serve favicon."""
-    return send_from_directory(STATIC_DIR, 'favicon.ico', mimetype='image/x-icon')
+    """Serve Jarvis logo as favicon."""
+    return send_from_directory(JARVIS_LOGO.parent, JARVIS_LOGO.name, mimetype='image/png')
 
 
 @views_bp.route('/docs/images/<path:filename>')

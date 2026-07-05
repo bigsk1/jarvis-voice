@@ -67,6 +67,11 @@ body.logs-page {
   text-decoration: none;
 }
 
+.logs-home-link .logo {
+  display: flex;
+  align-items: center;
+}
+
 .logs-title-block {
   display: flex;
   flex-direction: column;

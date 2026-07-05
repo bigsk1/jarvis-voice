@@ -654,10 +654,9 @@ class JarvisApp {
   async _syncAudioWithServer() {
     try {
       const mode = this.socket?.mode || 'cloud';
-      const response = await fetch(`/api/settings?mode=${encodeURIComponent(mode)}`);
-      const data = await response.json();
-      if (data.ok && data.settings) {
-        const serverTtsEnabled = data.settings.audio?.tts_enabled || false;
+      const settings = await this._ensureSettingsData(mode);
+      if (settings) {
+        const serverTtsEnabled = settings.audio?.tts_enabled || false;
         if (this.audioEnabled !== serverTtsEnabled) {
           this.audioEnabled = serverTtsEnabled;
           Utils.storage.set('audioEnabled', this.audioEnabled);
@@ -669,10 +668,29 @@ class JarvisApp {
     }
   }
 
+  async _ensureSettingsData(requestedMode = null, force = false) {
+    const mode = requestedMode || this.socket?.mode || 'cloud';
+    if (!force && this._settingsData?.mode === mode) return this._settingsData;
+
+    const response = await fetch(`/api/settings?mode=${encodeURIComponent(mode)}`);
+    const data = await response.json();
+    if (!response.ok || !data.ok || !data.settings) {
+      throw new Error(data.error || `Failed to load ${mode} settings`);
+    }
+    this._settingsData = data.settings;
+    return this._settingsData;
+  }
+
   /**
    * Update connection status UI
    */
   _updateConnectionStatus(connected) {
+    const jarvisLogo = document.getElementById('jarvisLogo');
+    if (jarvisLogo) {
+      jarvisLogo.classList.toggle('online', connected);
+      jarvisLogo.classList.toggle('offline', !connected);
+    }
+
     if (connected) {
       this.statusDot.classList.add('connected');
       this.statusText.textContent = 'Connected';
@@ -2300,6 +2318,7 @@ class JarvisApp {
       reference_to_video: 'reference→video',
       video_editing: 'edit',
       conversational_editing: 'conversational edit',
+      transparent_background: 'transparent background',
       audio: 'audio',
     };
     const rawCapabilities = Array.isArray(metadata.capabilities) ? metadata.capabilities : [];
