@@ -18,6 +18,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 from bug_hunt import (  # noqa: E402
     DEFAULT_MODEL,
     MAX_FINDING_JSON_CHARS,
+    MAX_MODE_MEMORY_CHARS,
     MEMORY_RELATIVE_PATH,
     RESULTS_RELATIVE_PATH,
     BugHuntEngine,
@@ -308,6 +309,7 @@ def test_engine_executes_plain_json_tool_action_from_cloud_model(tmp_path):
     first_system_prompt = provider.calls[0]["system_prompt"]
     assert "non-authoritative navigation aids" in first_system_prompt
     assert "trusted single-user application" in first_system_prompt
+    assert "Reject semantic duplicates" in first_system_prompt
     second_messages = provider.calls[1]["messages"]
     assert "1: needle" in second_messages[-1]["content"]
 
@@ -443,6 +445,77 @@ def test_code_and_docs_modes_preserve_separate_memory_sections(tmp_path):
     assert "Reviewed code sentinel." in memory
     assert "Reviewed docs sentinel." in memory
     assert memory.index("Reviewed code sentinel.") < memory.index("Reviewed docs sentinel.")
+
+
+def test_recorded_findings_summary_is_mode_scoped_and_keeps_old_entries(tmp_path):
+    policy = RepositoryPolicy(tmp_path, tracked_files=set())
+    policy.ensure_state_files()
+    records = [
+        {
+            "id": f"code-{index}",
+            "hunt_mode": "code",
+            "title": f"Code finding {index}",
+            "severity": "medium",
+            "evidence": [{"path": "lib/example.py"}],
+        }
+        for index in range(30)
+    ]
+    records.append({
+        "id": "docs-1",
+        "hunt_mode": "docs_only",
+        "title": "Documentation finding",
+        "severity": "low",
+        "evidence": [{"path": "docs/README.md"}],
+    })
+    (tmp_path / RESULTS_RELATIVE_PATH).write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
+
+    code_summary = BugHuntEngine(
+        tmp_path,
+        provider=_FakeProvider([]),
+        tracked_files=set(),
+    )._recent_findings_summary()
+    docs_summary = BugHuntEngine(
+        tmp_path,
+        provider=_FakeProvider([]),
+        tracked_files=set(),
+        docs_only=True,
+    )._recent_findings_summary()
+
+    assert "code-0 | Code finding 0" in code_summary
+    assert "code-29 | Code finding 29" in code_summary
+    assert "Documentation finding" not in code_summary
+    assert "docs-1 | Documentation finding" in docs_summary
+    assert "Code finding" not in docs_summary
+
+
+def test_memory_drops_model_claimed_findings_and_preserves_tail_when_compacted(tmp_path):
+    policy = RepositoryPolicy(tmp_path, tracked_files=set())
+    policy.ensure_state_files()
+    oversized = (
+        "## Areas Reviewed\n" + "coverage line\n" * 1000
+        + "\n## Confirmed Candidates (filed)\n- unsupported result claim\n"
+        + "\n## Next Paths\n- preserve this tail sentinel\n"
+    )
+    policy.write_memory(
+        f"# Bug Hunt Memory\n\n## Code Correctness Mode\n\n{oversized}\n\n"
+        "## Documentation-Only Mode\n\nNo docs reviewed.\n"
+    )
+
+    BugHuntEngine(
+        tmp_path,
+        provider=_FakeProvider([]),
+        tracked_files=set(),
+    )
+
+    memory = (tmp_path / MEMORY_RELATIVE_PATH).read_text(encoding="utf-8")
+    code, _docs = BugHuntEngine._split_memory_sections(memory)
+    assert "unsupported result claim" not in code
+    assert "preserve this tail sentinel" in code
+    assert "older memory compacted" in code
+    assert len(code) <= MAX_MODE_MEMORY_CHARS
 
 
 def test_recorded_finding_text_is_bounded(tmp_path):
