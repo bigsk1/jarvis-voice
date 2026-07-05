@@ -6,6 +6,7 @@ import json
 import re
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
+from lib.canvas_page_ids import generate_canvas_page_id
 from lib.canvas_content import append_content, is_suspicious_content_shrink
 from ..models.canvas import (
     CanvasPage, CanvasPageFull, CanvasPageResponse,
@@ -321,7 +322,7 @@ async def create_page(data: CanvasCreate):
     
     # Generate page ID
     now = datetime.now(timezone.utc)
-    page_id = f"page_{now.strftime('%Y%m%d_%H%M%S')}"
+    page_id = generate_canvas_page_id(now)
     
     # Build page data
     page_data = {

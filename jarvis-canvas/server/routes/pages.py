@@ -10,6 +10,7 @@ from flask import Blueprint, jsonify, request, Response
 
 from config import CANVAS_DIR, STASH_DIR
 from canvas_content import append_content, is_suspicious_content_shrink
+from canvas_page_ids import generate_canvas_page_id
 from server.pages import (
     delete_page_file,
     get_page_path,
@@ -98,7 +99,7 @@ def create_page():
         return jsonify({"error": "Title is required"}), 400
     
     now_utc = datetime.now(timezone.utc)
-    page_id = f"page_{now_utc.strftime('%Y%m%d_%H%M%S')}"
+    page_id = generate_canvas_page_id(now_utc)
     timestamp = now_utc.strftime('%Y-%m-%dT%H:%M:%S') + "Z"
     
     page = {
@@ -294,7 +295,7 @@ def upload_page():
     
     # Create new page
     now_utc = datetime.now(timezone.utc)
-    page_id = f"page_{now_utc.strftime('%Y%m%d_%H%M%S')}"
+    page_id = generate_canvas_page_id(now_utc)
     
     page = {
         'id': page_id,
