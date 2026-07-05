@@ -64,3 +64,12 @@ class CanvasUpdate(BaseModel):
     content: str | None = Field(None, description="New content (optional)")
     tags: list[str] | None = Field(None, description="New tags (optional, replaces existing)")
     pinned: bool | None = Field(None, description="Pin status (optional)")
+    allow_content_shrink: bool = Field(
+        False,
+        description="Allow an intentional replacement that removes most existing content",
+    )
+
+
+class CanvasAppend(BaseModel):
+    """Request to append content while preserving the existing page."""
+    content: str = Field(..., min_length=1, description="New Markdown section to append")

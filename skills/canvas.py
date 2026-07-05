@@ -3,7 +3,7 @@
 Canvas Tool - Create and manage pages in Jarvis Canvas viewer.
 
 Input: {
-    "action": "create|update|delete|list|open",
+    "action": "create|append|update|delete|list|open|read",
     "title": "Page Title",
     "content": "Markdown content",
     "image_url": "https://..." or "stash://...",
@@ -385,6 +385,9 @@ def create_page(title: str, content: str, tags: list[str] = None,
             pinned=pinned,
             image_url=image_url,
             image_alt=image_alt,
+            # create with an existing exact title has historically meant
+            # replace that generated page; preserve that behavior.
+            allow_content_shrink=True,
         )
         if update_result.get("ok"):
             update_result["speech"] = f"Updated existing canvas page '{title}'."
@@ -434,7 +437,8 @@ def create_page(title: str, content: str, tags: list[str] = None,
 
 def update_page(page_id: str, title: str = None, content: str = None,
                 tags: list[str] = None, pinned: bool = None,
-                image_url: str | None = None, image_alt: str | None = None) -> dict[str, Any]:
+                image_url: str | None = None, image_alt: str | None = None,
+                allow_content_shrink: bool = False) -> dict[str, Any]:
     """Update an existing canvas page."""
     
     if not check_canvas_health():
@@ -459,6 +463,8 @@ def update_page(page_id: str, title: str = None, content: str = None,
                 "speech": "I couldn't update that canvas page because one or more source links were truncated. Please regenerate with full URLs."
             }
         data['content'] = content
+        if allow_content_shrink:
+            data['allow_content_shrink'] = True
     if tags is not None:
         data['tags'] = tags
     if pinned is not None:
@@ -479,6 +485,51 @@ def update_page(page_id: str, title: str = None, content: str = None,
     return {
         "ok": True,
         "speech": f"Updated '{result['title']}' in your canvas.",
+        "data": result
+    }
+
+
+def append_page(page_id: str, content: str,
+                image_url: str | None = None, image_alt: str | None = None) -> dict[str, Any]:
+    """Append a Markdown section without reconstructing the existing page in the LLM."""
+    if not check_canvas_health():
+        return {
+            "ok": False,
+            "error": "Canvas server not running",
+            "speech": "Canvas isn't running right now."
+        }
+
+    content = (content or '').replace('\\n', '\n')
+    content = _embed_image_markdown(content, image_url=image_url, image_alt=image_alt)
+    content = _unwrap_outer_markdown_fence(content)
+    content = _normalize_bare_urls_in_sources_sections(content)
+    if not content.strip():
+        return {
+            "ok": False,
+            "error": "content is required for append",
+            "speech": "I can't append an empty section to Canvas."
+        }
+
+    truncated_urls = _find_truncated_urls(content)
+    if truncated_urls:
+        return {
+            "ok": False,
+            "error": f"Canvas content contains truncated URLs: {truncated_urls[:3]}",
+            "speech": "I couldn't append that section because one or more source links were truncated. Please regenerate it with full URLs."
+        }
+
+    result = api_request('POST', f'/pages/{page_id}/append', {'content': content})
+    if 'error' in result:
+        return {
+            "ok": False,
+            "error": result['error'],
+            "speech": f"Couldn't append to page: {result['error']}"
+        }
+
+    save_to_memory(result)
+    return {
+        "ok": True,
+        "speech": f"Added the new section to '{result['title']}' in your canvas.",
         "data": result
     }
 
@@ -799,7 +850,19 @@ def main():
                 tags=args.get('tags'),
                 pinned=args.get('pinned'),
                 image_url=args.get('image_url'),
-                image_alt=args.get('image_alt')
+                image_alt=args.get('image_alt'),
+                allow_content_shrink=args.get('allow_content_shrink') is True,
+            )
+
+        elif action == 'append':
+            page_id = args.get('page_id')
+            if not page_id:
+                raise ValueError("page_id is required for append action")
+            result = append_page(
+                page_id,
+                content=args.get('content', ''),
+                image_url=args.get('image_url'),
+                image_alt=args.get('image_alt'),
             )
         
         elif action == 'delete':
@@ -822,7 +885,7 @@ def main():
             result = read_page(page_id=page_id, search=search)
         
         else:
-            raise ValueError(f"Unknown action: {action}. Use: create, update, delete, list, open, read")
+            raise ValueError(f"Unknown action: {action}. Use: create, append, update, delete, list, open, read")
         
         print(json.dumps(result))
         

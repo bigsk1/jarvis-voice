@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "canvas",
-  "description": "Save and read rich content from Jarvis Canvas - a visual viewer for research results, code snippets, comparisons, media, and reference material.\n\nIMPORTANT: For research tasks, create canvas as your FINAL step AFTER gathering ALL data. If you already created a canvas but gathered more data, use action='update' with page_id to add the new information. When the source result includes media, preserve its complete URL or stash:// reference in content. Canvas automatically embeds supported YouTube videos and direct or stashed video files without tool-specific markup.\n\nUse when:\n- User asks to research something and results are complex\n- User asks to 'save to canvas' or 'put in viewer'\n- Content has tables, code, media, or detailed formatting\n- User asks 'what's on my canvas?' or 'read my canvas page about X'\n- User wants to summarize/read a specific canvas page\n\nFinding pages:\n- 'summarize the 69x Opportunity page' → action=read, search='69x Opportunity'\n- 'read my notes from yesterday' → action=read, search='Notes/2026-01'\n- 'what research do I have?' → action=read, search='Workflows/Research'\n- 'show all canvas pages' → action=list\n\nActions: create (new page), update (modify existing), delete (remove), list (show all), open (get URL), read (find and get page content by search term or page_id).",
+  "description": "Save and read rich content from Jarvis Canvas - a visual viewer for research results, code snippets, comparisons, media, and reference material.\n\nIMPORTANT: For research tasks, create canvas as your FINAL step AFTER gathering ALL data. To ADD new material to an existing page, use action='append' with page_id and only the new Markdown; Canvas preserves the existing page server-side. Use action='update' only for an intentional full-page rewrite and pass the complete replacement content. When the source result includes media, preserve its complete URL or stash:// reference in content. Canvas automatically embeds supported YouTube videos and direct or stashed video files without tool-specific markup.\n\nUse when:\n- User asks to research something and results are complex\n- User asks to 'save to canvas' or 'put in viewer'\n- User asks to add a new section, source, video, or finding to an existing Canvas page → append\n- Content has tables, code, media, or detailed formatting\n- User asks 'what's on my canvas?' or 'read my canvas page about X'\n- User wants to summarize/read a specific canvas page\n\nFinding pages:\n- 'summarize the 69x Opportunity page' → action=read, search='69x Opportunity'\n- 'read my notes from yesterday' → action=read, search='Notes/2026-01'\n- 'what research do I have?' → action=read, search='Workflows/Research'\n- 'show all canvas pages' → action=list\n\nActions: create (new page), append (add content while preserving the page), update (intentional full replacement), delete (remove), list (show all), open (get URL), read (find and get page content by search term or page_id).",
   "complementary_tools": [
     "stash",
     "manage_intel"
@@ -12,8 +12,8 @@
     "properties": {
       "action": {
         "type": "string",
-        "enum": ["create", "update", "delete", "list", "open", "read"],
-        "description": "Action to perform. create=new page, update=modify existing, delete=remove, list=show all, open=get URL, read=get page content"
+        "enum": ["create", "append", "update", "delete", "list", "open", "read"],
+        "description": "Action to perform. create=new page; append=add new Markdown to an existing page without resending old content; update=replace the full existing content; delete=remove; list=show all; open=get URL; read=get page content"
       },
       "title": {
         "type": "string",
@@ -21,7 +21,7 @@
       },
       "content": {
         "type": "string",
-        "description": "Markdown content for the page. REQUIRED for create/update. For update: pass the FULL new content (read existing first, add new sections, then pass combined). Supports headers, lists, tables, code blocks, images, and video. Preserve complete direct media URLs and stash:// references from source tool results; Canvas detects video by media metadata rather than tool name. If you include sources/links, URLs must be complete and resolvable. NEVER use shortened/truncated links like 'https://...'."
+        "description": "Markdown content. REQUIRED for create/append/update. For append, pass ONLY the new section; existing content is preserved server-side and no line numbers are needed. For update, pass the FULL replacement page. Supports headers, lists, tables, code blocks, images, and video. Preserve complete direct media URLs and stash:// references from source tool results; Canvas detects video by media metadata rather than tool name. If you include sources/links, URLs must be complete and resolvable. NEVER use shortened/truncated links like 'https://...'."
       },
       "image_url": {
         "type": "string",
@@ -51,6 +51,10 @@
       "pinned": {
         "type": "boolean",
         "description": "Pin page to top of list"
+      },
+      "allow_content_shrink": {
+        "type": "boolean",
+        "description": "For update only. Set true only when the user intends to replace a large existing page with substantially less content. Never use this to add material; use append instead."
       },
       "limit": {
         "type": "integer",

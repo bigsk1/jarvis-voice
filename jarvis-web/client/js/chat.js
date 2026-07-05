@@ -377,6 +377,8 @@ class ChatUI {
     
     this.currentMessageId = null;
     this.pendingTools = {};
+    this.pendingToolsByMessage = new Map();
+    this.pendingToolMessageId = null;
     this.isProcessing = false;
     
     // Feedback toggle state
@@ -1434,12 +1436,14 @@ class ChatUI {
     
     socket.on('thinking', (data) => {
       this.currentMessageId = data.message_id;
+      this._activatePendingToolsForMessage(data.message_id, true);
       this.isProcessing = true;
       this.updateSendButton();
       this.showThinking();
     });
     
     socket.on('toolStart', (data) => {
+      this._activatePendingToolsForMessage(data.message_id);
       // Use call_index for unique card ID when same tool called multiple times
       const cardId = data.call_index > 0 ? `${data.tool}_${data.call_index}` : data.tool;
       this.addToolCard(cardId, data.tool, 'pending', data.args);
@@ -1456,6 +1460,7 @@ class ChatUI {
     });
     
     socket.on('toolComplete', (data) => {
+      this._activatePendingToolsForMessage(data.message_id);
       // Use call_index or workflow_step for unique ID (allows duplicate tools)
       let cardId;
       if (data.call_index > 0) {
@@ -1469,6 +1474,7 @@ class ChatUI {
     });
     
     socket.on('toolError', (data) => {
+      this._activatePendingToolsForMessage(data.message_id);
       // Use call_index for unique card ID when same tool called multiple times
       const cardId = data.call_index > 0 ? `${data.tool}_${data.call_index}` : data.tool;
       this.updateToolCard(cardId, data.tool, 'error', { error: data.error });
@@ -1479,6 +1485,7 @@ class ChatUI {
     });
     
     socket.on('response', (data) => {
+      this._activatePendingToolsForMessage(data.message_id);
       this.hideThinking();
       this.clearStatus();  // Clear any status messages
       this.pendingVisionRetryPayload = null;
@@ -1517,6 +1524,7 @@ class ChatUI {
       this.hideThinking();
       this.clearStatus();
       this.addErrorMessage(data.error);
+      this._clearPendingToolsForMessage(data.message_id);
       if (
         ['vision_model_unsupported', 'vision_analysis_failed'].includes(data.error_code)
         && this.pendingVisionRetryPayload
@@ -1538,6 +1546,7 @@ class ChatUI {
 
     socket.on('cancelled', (data) => {
       this._resetProcessingUi();
+      this._clearPendingToolsForMessage(data?.message_id);
 
       if (data?.message_id && this.currentMessageId === data.message_id) {
         this.currentMessageId = null;
@@ -2873,7 +2882,7 @@ class ChatUI {
     // Send via socket (include image data, prompt metadata, and feedback request)
     this.isProcessing = true;
     this.updateSendButton();
-    this.pendingTools = {};
+    this._resetPendingToolState();
     this.pendingVisionRetryPayload = imagePayload?.action === 'analyze'
       ? {
           action: 'analyze',
@@ -2993,6 +3002,7 @@ class ChatUI {
     let toolResultsData = data.data || data || {};
     toolResultsData = this._flattenWorkflowToolResults(toolResultsData);
     let toolCardsHtml = '';
+    this._reconcilePendingToolsWithFinalList(toolsUsed);
     const pendingToolEntries = Object.entries(this.pendingTools);
     if (pendingToolEntries.length > 0) {
       toolCardsHtml = '<div class="tool-cards">';
@@ -3741,7 +3751,72 @@ class ChatUI {
     }
     Utils.scrollToBottom(this.messagesContainer);
     
-    // Clear pending tools
+    // Clear only this response's pending tool state. Late events from another
+    // message remain isolated instead of contaminating the next response.
+    this._clearPendingToolsForMessage(liveMessageId);
+  }
+
+  _activatePendingToolsForMessage(messageId, reset = false) {
+    const normalizedId = String(messageId || '').trim();
+    if (!normalizedId) return this.pendingTools;
+
+    if (reset || !this.pendingToolsByMessage.has(normalizedId)) {
+      this.pendingToolsByMessage.set(normalizedId, {});
+    }
+    this.pendingToolMessageId = normalizedId;
+    this.pendingTools = this.pendingToolsByMessage.get(normalizedId);
+    return this.pendingTools;
+  }
+
+  _reconcilePendingToolsWithFinalList(toolsUsed = []) {
+    if (!Array.isArray(toolsUsed) || toolsUsed.length === 0) return;
+
+    const existingEntries = Object.entries(this.pendingTools);
+    const entriesByTool = new Map();
+    for (const entry of existingEntries) {
+      const toolName = entry[1]?.toolName || entry[0].replace(/_(?:step|final)\d+(?:_\d+)?$/, '');
+      if (!entriesByTool.has(toolName)) entriesByTool.set(toolName, []);
+      entriesByTool.get(toolName).push(entry);
+    }
+
+    const reconciled = {};
+    const usedCardIds = new Set();
+    toolsUsed.forEach((toolName, index) => {
+      const queued = entriesByTool.get(toolName)?.shift();
+      let cardId = queued?.[0] || `${toolName}_final${index}`;
+      while (usedCardIds.has(cardId)) cardId = `${cardId}_${index}`;
+      usedCardIds.add(cardId);
+      reconciled[cardId] = queued?.[1] || {
+        toolName,
+        status: 'success',
+        args: {},
+        result: null,
+        duration: null
+      };
+    });
+
+    for (const [cardId, toolData] of existingEntries) {
+      if (!usedCardIds.has(cardId)) reconciled[cardId] = toolData;
+    }
+
+    this.pendingTools = reconciled;
+    if (this.pendingToolMessageId) {
+      this.pendingToolsByMessage.set(this.pendingToolMessageId, reconciled);
+    }
+  }
+
+  _clearPendingToolsForMessage(messageId) {
+    const normalizedId = String(messageId || this.pendingToolMessageId || '').trim();
+    if (normalizedId) this.pendingToolsByMessage.delete(normalizedId);
+    if (!normalizedId || this.pendingToolMessageId === normalizedId) {
+      this.pendingToolMessageId = null;
+      this.pendingTools = {};
+    }
+  }
+
+  _resetPendingToolState() {
+    this.pendingToolsByMessage.clear();
+    this.pendingToolMessageId = null;
     this.pendingTools = {};
   }
 
@@ -3770,7 +3845,7 @@ class ChatUI {
     this._expirePendingCompletionGuardCards();
     this.addUserMessage(prompt, null, '<span class="badge">📄 Canvas</span>');
     this.isProcessing = true;
-    this.pendingTools = {};
+    this._resetPendingToolState();
     this.updateSendButton();
 
     if (button) {
@@ -3819,6 +3894,19 @@ class ChatUI {
   _extractCanvasPreview(toolResultsData = {}, data = {}) {
     const rawCanvas = toolResultsData?.canvas ?? data?.canvas;
     const candidates = Array.isArray(rawCanvas) ? [...rawCanvas].reverse() : [rawCanvas];
+
+    const trace = data?._tool_trace || data?.data?._tool_trace;
+    if (Array.isArray(trace)) {
+      for (const entry of [...trace].reverse()) {
+        if (entry?.tool !== 'canvas' || entry?.ok === false) continue;
+        const args = entry.arguments;
+        if (!args || typeof args !== 'object' || !args.page_id) continue;
+        candidates.push({
+          page_id: args.page_id,
+          title: args.title || 'Canvas Page'
+        });
+      }
+    }
 
     for (const candidate of candidates) {
       if (!candidate || typeof candidate !== 'object') continue;
@@ -5564,7 +5652,7 @@ class ChatUI {
   clearChat() {
     this._resetProcessingUi();
     this.currentMessageId = null;
-    this.pendingTools = {};
+    this._resetPendingToolState();
 
     // Keep only the welcome message
     const messages = this.messagesContainer.querySelectorAll('.message');

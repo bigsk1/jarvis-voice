@@ -62,6 +62,19 @@ class ModelPromptOverrideTests(unittest.TestCase):
             self.assertEqual(override.matched_model, "minimax-m3")
             self.assertIn("Do NOT add meta lead-ins", override.get("qa_append"))
 
+    def test_glm_5_2_cloud_card_curbing_destructive_canvas_updates_loads(self):
+        override = load_model_prompt_override(
+            provider="ollama",
+            model="glm-5.2:cloud",
+            mode="cloud",
+        )
+
+        self.assertTrue(override.enabled)
+        self.assertEqual(override.matched_model, "glm-5.2")
+        self.assertIn("action=append", override.get("tool_calling_prepend"))
+        self.assertIn("allow_content_shrink=true", override.get("tool_calling_prepend"))
+        self.assertIn("stop tool use", override.get("routing_append"))
+
     def test_ollama_direct_size_tag_falls_back_to_family(self):
         candidates = get_model_override_candidates("gemma4:31b", provider="ollama")
         self.assertEqual(candidates, ["gemma4:31b", "gemma4"])

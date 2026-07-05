@@ -137,7 +137,7 @@ The validator sends the reviewing LLM:
 
 5. **Known Patterns** - Intentional designs that shouldn't be flagged:
    - Memory tool fallback (MAX 2 attempts)
-   - Canvas update exception
+   - Canvas append/update exception
    - stash vs canvas distinction
    - deep_memory_search purpose
    - Native search behavior

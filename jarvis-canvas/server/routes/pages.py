@@ -9,12 +9,17 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, Response
 
 from config import CANVAS_DIR, STASH_DIR
-from server.pages import load_pages, save_page, delete_page_file, get_page_path
+from canvas_content import append_content, is_suspicious_content_shrink
+from server.pages import (
+    delete_page_file,
+    get_page_path,
+    load_pages,
+    save_page,
+)
 from server.utils import sync_stash_pins
 
 pages_bp = Blueprint('pages', __name__)
 SKILLS_DIR = Path(__file__).resolve().parents[3] / "skills"
-
 
 @pages_bp.route('/api/pages/crypto-chart/<symbol>', methods=['GET'])
 def proxy_crypto_chart(symbol):
@@ -133,6 +138,23 @@ def update_page(page_id):
     if 'title' in data:
         page['title'] = data['title']
     if 'content' in data:
+        old_content = page.get('content', '')
+        new_content = data['content']
+        allow_content_shrink = data.get('allow_content_shrink') is True
+        if (
+            not allow_content_shrink
+            and is_suspicious_content_shrink(old_content, new_content)
+        ):
+            return jsonify({
+                "error": "Content replacement blocked because it would remove most of the existing Canvas page",
+                "error_code": "suspicious_content_shrink",
+                "existing_content_length": len(old_content),
+                "new_content_length": len(new_content or ''),
+                "hint": (
+                    "Use the append action to add a section, or set "
+                    "allow_content_shrink=true for an intentional full replacement."
+                ),
+            }), 409
         page['content'] = data['content']
     if 'tags' in data:
         page['tags'] = data['tags']
@@ -148,6 +170,31 @@ def update_page(page_id):
         # Page was just pinned - sync stash spaces
         sync_stash_pins(page.get('content', ''), pinned=True, stash_dir=STASH_DIR)
     
+    save_page(page)
+    return jsonify(page)
+
+
+@pages_bp.route('/api/pages/<page_id>/append', methods=['POST'])
+def append_page(page_id):
+    """Append Markdown to a page without sending its existing content through the LLM."""
+    filepath = get_page_path(page_id)
+    if not filepath.exists():
+        return jsonify({"error": "Page not found"}), 404
+
+    data = request.get_json() or {}
+    additional_content = data.get('content')
+    if not isinstance(additional_content, str) or not additional_content.strip():
+        return jsonify({"error": "Content is required for append"}), 400
+
+    with open(filepath) as f:
+        page = json.load(f)
+
+    page['content'] = append_content(page.get('content', ''), additional_content)
+    page['updated'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "Z"
+
+    if page.get('pinned', False):
+        sync_stash_pins(page['content'], pinned=True, stash_dir=STASH_DIR)
+
     save_page(page)
     return jsonify(page)
 

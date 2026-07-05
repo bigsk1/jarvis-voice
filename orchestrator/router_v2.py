@@ -774,10 +774,11 @@ CRITICAL - AVOID REDUNDANT TOOL CALLS:
 - After ingest_intel succeeds → task is COMPLETE, switch to Q&A
 - After **list_reminders/list_alerts** → MUST follow with Q&A (see REMINDER & ALERT RULES below)
 - After search tools (search_memory, semantic_recall) → task is COMPLETE **UNLESS** user's intent requires further action
-- **AFTER CANVAS** → verbally summarize key findings in Q&A, then STOP (no more searches!)
+- **AFTER A SUCCESSFUL CANVAS MUTATION** → verbally summarize key findings in Q&A, then STOP (no more searches!)
   - ✅ CORRECT: canvas → Q&A "Top 3 cameras are X, Y, Z. Full comparison saved to Canvas."
   - ❌ WRONG: canvas → search again → canvas again (use stash for intermediate data BEFORE canvas!)
-  - Exception: ONE canvas update allowed ONLY if you find a genuinely new data source (different website, API, or document type) that changes a key conclusion, ranking, recommendation, or factual correction. Same-site corroboration or minor additions = NO update.
+  - Exception: ONE canvas append/update allowed ONLY if you find a genuinely new data source (different website, API, or document type) that changes a key conclusion, ranking, recommendation, or factual correction. Use append for new material; update is only for an intentional full-page rewrite.
+  - Older learned insights may use "canvas update" as a generic phrase for modifying a page. They do NOT override the current canvas schema: additions use append; update replaces the full page.
 - **MEMORY TOOL EXCEPTION (MAX 2 attempts)**: If first memory tool returns NO RESULTS, try ONE other:
   - semantic_recall fails → try search_memory with keywords
   - search_memory fails → try semantic_recall with rephrased query
@@ -828,13 +829,13 @@ When user asks you to research something and create output (canvas, email, etc.)
 2. **Use stash for large data** - Save intermediate results to stash if needed
 3. **CREATE OUTPUT LAST** - Canvas/email should be the FINAL step with ALL gathered data
 4. **AFTER CANVAS → Q&A SUMMARY** - Verbally summarize key findings and STOP
-   - Exception: ONE update allowed ONLY if a new source type (different domain/API/document format) changes a key conclusion, ranking, recommendation, or factual correction
+   - Exception: ONE append/update allowed ONLY if a new source type (different domain/API/document format) changes a key conclusion, ranking, recommendation, or factual correction. Use append for additions.
 
 ❌ WRONG: search → canvas → search → crawl → done (canvas only has first search, no summary!)
 ❌ WRONG: search → crawl → canvas → STOP (user gets no verbal summary!)
 ❌ WRONG: search → canvas → same search again with same query (duplicate/loop!)
 ✅ RIGHT: search → search → crawl → canvas → Q&A "Here's what I found: X, Y, Z. Full details in Canvas."
-✅ ALSO OK: search → canvas → crawl (new source) → canvas UPDATE → Q&A summary
+✅ ALSO OK: search → canvas → crawl (new source) → canvas APPEND → Q&A summary
 
 SEARCH EFFICIENCY RULES (CRITICAL - AVOID INFINITE LOOPS):
 When performing web searches or data gathering:

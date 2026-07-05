@@ -894,7 +894,7 @@ class Orchestrator:
                 continue
             arguments = ctx.get("arguments") if isinstance(ctx.get("arguments"), dict) else {}
             action = str(arguments.get("action") or "create").strip().lower()
-            if action not in {"create", "update"}:
+            if action not in {"create", "append", "update"}:
                 continue
             result = ctx.get("result") if isinstance(ctx.get("result"), dict) else {}
             if result.get("ok"):
@@ -910,7 +910,7 @@ class Orchestrator:
         """
         Export-only, success-aware Canvas write cap.
 
-        Send-to-Canvas exports may perform one successful create/update. Failed
+        Send-to-Canvas exports may perform one successful create/append/update. Failed
         writes and read/list/open calls do not count, so the model can inspect or
         self-correct before the write. Normal Canvas workflows are not capped.
         """
@@ -918,7 +918,7 @@ class Orchestrator:
             return False, ""
 
         action = str(arguments.get("action") or "create").strip().lower()
-        if action not in {"create", "update"}:
+        if action not in {"create", "append", "update"}:
             return False, ""
 
         successful = self._successful_canvas_write_calls(conversation_context)

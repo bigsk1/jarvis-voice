@@ -108,6 +108,87 @@ if (preview.title !== 'Workflows/Research/Hazelnuts') process.exit(4);
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
 
 
+def test_live_response_can_recover_canvas_preview_from_tool_trace():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(CHAT_JS))}, 'utf8');
+const start = source.indexOf('  _extractCanvasPreview(');
+const end = source.indexOf('  _normalizeDisplayText(', start);
+const classSource = `class PreviewHarness {{\n${{source.slice(start, end)}}\n}}; PreviewHarness;`;
+const sandbox = {{ URL, window: {{ location: {{ hostname: 'web.test' }} }} }};
+vm.createContext(sandbox);
+const PreviewHarness = vm.runInContext(classSource, sandbox);
+const harness = new PreviewHarness();
+const preview = harness._extractCanvasPreview({{}}, {{
+  _tool_trace: [
+    {{
+      tool: 'canvas',
+      ok: true,
+      arguments: {{
+        action: 'append',
+        page_id: 'page_20260704_223806',
+        title: 'Workflows/Research/Hazelnuts'
+      }}
+    }}
+  ]
+}});
+if (!preview) process.exit(2);
+if (preview.pageId !== 'page_20260704_223806') process.exit(3);
+if (preview.title !== 'Workflows/Research/Hazelnuts') process.exit(4);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
+def test_live_tool_state_is_scoped_by_message_id():
+    chat_js = CHAT_JS.read_text()
+
+    assert "this.pendingToolsByMessage = new Map()" in chat_js
+    assert "this._activatePendingToolsForMessage(data.message_id" in chat_js
+    assert "this._reconcilePendingToolsWithFinalList(toolsUsed)" in chat_js
+    assert "this._clearPendingToolsForMessage(liveMessageId)" in chat_js
+
+
+def test_final_tool_list_repairs_missed_live_progress_events_without_cross_message_leakage():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(CHAT_JS))}, 'utf8');
+const start = source.indexOf('  _activatePendingToolsForMessage(');
+const end = source.indexOf('  sendResponseToCanvas(', start);
+const classSource = `class ToolStateHarness {{\n${{source.slice(start, end)}}\n}}; ToolStateHarness;`;
+const sandbox = {{ console }};
+vm.createContext(sandbox);
+const ToolStateHarness = vm.runInContext(classSource, sandbox);
+const harness = new ToolStateHarness();
+harness.pendingTools = {{}};
+harness.pendingToolsByMessage = new Map();
+harness.pendingToolMessageId = null;
+
+harness._activatePendingToolsForMessage('message-a', true);
+harness.pendingTools.search = {{ toolName: 'serpapi_youtube_search', status: 'success' }};
+harness.pendingTools.canvas = {{ toolName: 'canvas', status: 'success' }};
+harness._reconcilePendingToolsWithFinalList([
+  'serpapi_youtube_search', 'canvas', 'canvas', 'canvas', 'manage_intel'
+]);
+const names = Object.values(harness.pendingTools).map(item => item.toolName);
+if (names.length !== 5) process.exit(2);
+if (names.filter(name => name === 'canvas').length !== 3) process.exit(3);
+
+harness._activatePendingToolsForMessage('message-b', true);
+if (Object.keys(harness.pendingTools).length !== 0) process.exit(4);
+harness.pendingTools.stash = {{ toolName: 'stash', status: 'pending' }};
+harness._activatePendingToolsForMessage('message-a');
+if (Object.keys(harness.pendingTools).length !== 5) process.exit(5);
+harness._clearPendingToolsForMessage('message-a');
+harness._activatePendingToolsForMessage('message-b');
+if (!harness.pendingTools.stash) process.exit(6);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
 def test_canvas_preview_keeps_assistant_reply_bubble():
     chat_js = CHAT_JS.read_text()
 

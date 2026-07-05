@@ -125,6 +125,22 @@ class CanvasDuplicateGuardTests(unittest.TestCase):
         self.assertTrue(blocked)
         self.assertIn("export", reason)
 
+    def test_canvas_export_counts_append_as_a_write(self):
+        orchestrator = Orchestrator.__new__(Orchestrator)
+        blocked, reason = orchestrator._is_canvas_success_cap(
+            {"action": "append", "page_id": "page_123", "content": "# More"},
+            [
+                {
+                    "tool": "canvas",
+                    "arguments": {"action": "create", "title": "Export"},
+                    "result": {"ok": True, "data": {"page_id": "page_123"}},
+                }
+            ],
+            "canvas_export",
+        )
+        self.assertTrue(blocked)
+        self.assertIn("export", reason)
+
     def test_canvas_export_allows_write_after_successful_read(self):
         orchestrator = Orchestrator.__new__(Orchestrator)
         blocked, reason = orchestrator._is_canvas_success_cap(

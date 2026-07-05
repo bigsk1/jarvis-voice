@@ -121,10 +121,10 @@ stash (action: list, space_id: xxx)  → See what's already stashed
 - Focus on gaps or specific sub-topics
 - Add NEW articles to the SAME stash space
 
-### Step 4: UPDATE Existing Canvas
+### Step 4: APPEND to Existing Canvas
 ```
-canvas (action: update, page_id: xxx, content: expanded_content)
-  → Preserves original + adds new sections
+canvas (action: append, page_id: xxx, content: new_research_section)
+  → Canvas preserves the original server-side and adds the new section
 ```
 
 **Canvas has NO content limit** - make it as comprehensive as needed!
@@ -134,7 +134,7 @@ canvas (action: update, page_id: xxx, content: expanded_content)
 ## Follow-up Capability
 
 After research, user can say:
-- "Go deeper on [topic]" → Read existing, fetch more, UPDATE canvas
+- "Go deeper on [topic]" → Read existing, fetch more, APPEND to canvas
 - "Read me the [source] article" → Retrieve from stash
 - "What did [source] say about [detail]?" → Search stash content
 - "Not interested in X, focus on Y" → Pivot while keeping stash

@@ -46,8 +46,8 @@ KNOWN_PATTERNS = """
    (or vice versa) if first returns no results. This is LIMITED to 2 attempts by design - NOT a violation
    of "avoid redundant calls" since they use different search strategies.
 
-2. **Canvas update exception**: After canvas create, task is normally complete. However, if a crucial 
-   new source is discovered AFTER canvas creation, ONE update is allowed. This is intentional flexibility.
+2. **Canvas mutation exception**: After canvas create, task is normally complete. However, if a crucial
+   new source is discovered AFTER canvas creation, ONE append/update is allowed. Append is preferred for additions.
 
 3. **stash vs canvas distinction**: These serve DIFFERENT purposes:
    - stash = temporary workspace for intermediate data (7-day TTL)

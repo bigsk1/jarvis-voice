@@ -1,0 +1,20 @@
+enabled: true
+description: "GLM-5.2 cloud — finish mutations cleanly and avoid destructive artifact rewrites"
+applies_to_modes:
+  - cloud
+
+tool_calling_prepend: |
+  Stay anchored to the user's requested outcome. Do not call topic-adjacent memory or intel tools after the requested action has succeeded.
+  After a successful mutation and any necessary verification, answer the user; do not perform another verification read or exploratory tool call.
+  Use manage_intel only when the user requests intel management or you discovered a genuinely new reusable tool/provider limitation. In the latter case use action=append with the specific lesson; never call action=list merely to decide whether to finish.
+  For an existing Canvas page, use action=append when adding a source, video, finding, or section. Use action=update only for an intentional full-page replacement with complete replacement content. Never set allow_content_shrink=true unless the user explicitly requested a shorter replacement.
+  If a Canvas read is truncated in routing context, do not attempt to reconstruct or resend the full page. Use append for additions.
+
+routing_append: |
+  Once the requested artifact mutation succeeds, stop tool use and report the result. Do not re-read the same artifact or inspect unrelated intel.
+
+qa_append: |
+  Describe the mutation truthfully: say content was appended when append succeeded, and say replaced only when a full replacement was intentionally performed.
+
+intelligence_reflection_prepend: |
+  Do not learn that destructive full-page replacement is a successful pattern when the request was to add content. Prefer the reusable rule that additions to existing Canvas pages use append.

@@ -1,6 +1,6 @@
 # 📄 Canvas API
 
-> Read-only access to Jarvis canvas pages - markdown documents with embedded images.
+> Read and safely modify Jarvis canvas pages - markdown documents with embedded images.
 
 ## Overview
 
@@ -24,6 +24,11 @@ curl "http://localhost:8880/api/canvas/search?q=bitcoin"
 
 # Get a specific page
 curl http://localhost:8880/api/canvas/page_20260115_175126
+
+# Append a section without replacing existing content
+curl -X POST http://localhost:8880/api/canvas/page_20260115_175126/append \
+  -H 'Content-Type: application/json' \
+  -d '{"content":"## New Findings\n\nAdditional details."}'
 ```
 
 ---
@@ -226,6 +231,46 @@ Get a specific canvas page by ID.
 
 ---
 
+### Create Page
+
+```http
+POST /api/canvas
+```
+
+Creates a new page from `title`, complete Markdown `content`, optional `tags`, and optional `source_tool`.
+
+### Append to Page
+
+```http
+POST /api/canvas/{page_id}/append
+```
+
+Adds the supplied Markdown to the end of an existing page. The server preserves the existing content; callers send only the new section.
+
+```json
+{
+  "content": "## YouTube Videos\n\n- [Harvesting Hazelnuts](https://www.youtube.com/watch?v=example)"
+}
+```
+
+### Replace or Edit Page
+
+```http
+PUT /api/canvas/{page_id}
+```
+
+Updates provided fields. The `content` field is a full replacement. Suspicious large shrinkage returns HTTP `409`; set `allow_content_shrink: true` only for an intentional shorter rewrite. Use the append endpoint for additions.
+
+### Delete Page
+
+```http
+DELETE /api/canvas/{page_id}
+```
+
+Deletes the specified page.
+
+---
+
 ## Page Fields
 
 | Field | Type | Description |
@@ -414,7 +459,7 @@ curl -s http://localhost:8880/api/canvas/stats | jq '.'
 
 ## Notes
 
-- **Read-only API** - No create/update/delete endpoints
+- **Safe mutations supported** - create, append, guarded full replacement, metadata update, and delete
 - **Pages stored in** `data/canvas/` as JSON files
 - **Embedded images** use `stash://` protocol
 - **Content preview** is first 500 characters

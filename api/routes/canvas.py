@@ -6,9 +6,10 @@ import json
 import re
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
+from lib.canvas_content import append_content, is_suspicious_content_shrink
 from ..models.canvas import (
     CanvasPage, CanvasPageFull, CanvasPageResponse,
-    CanvasListResponse, CanvasStats, CanvasCreate, CanvasUpdate
+    CanvasListResponse, CanvasStats, CanvasAppend, CanvasCreate, CanvasUpdate
 )
 
 router = APIRouter(prefix="/api/canvas", tags=["canvas"])
@@ -383,6 +384,21 @@ async def update_page(page_id: str, data: CanvasUpdate):
     if data.title is not None:
         page_data["title"] = data.title
     if data.content is not None:
+        existing_content = page_data.get("content", "")
+        if (
+            not data.allow_content_shrink
+            and is_suspicious_content_shrink(existing_content, data.content)
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "Content replacement blocked because it would remove most of the existing Canvas page",
+                    "error_code": "suspicious_content_shrink",
+                    "existing_content_length": len(existing_content),
+                    "new_content_length": len(data.content),
+                    "hint": "Use the append endpoint, or explicitly allow content shrink for an intentional replacement.",
+                },
+            )
         page_data["content"] = data.content
     if data.tags is not None:
         page_data["tags"] = data.tags
@@ -403,6 +419,36 @@ async def update_page(page_id: str, data: CanvasUpdate):
     return CanvasPageResponse(
         ok=True,
         page=_page_to_model(page_data, include_content=True, for_list=False)
+    )
+
+
+@router.post("/{page_id}/append", response_model=CanvasPageResponse)
+async def append_page(page_id: str, data: CanvasAppend):
+    """Append a Markdown section while preserving all existing page content."""
+    if not page_id.startswith("page_"):
+        page_id = f"page_{page_id}"
+
+    filename = f"{page_id}.json" if not page_id.endswith(".json") else page_id
+    filepath = os.path.join(CANVAS_DIR, filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail=f"Page not found: {page_id}")
+
+    page_data = _load_page(filepath)
+    if not page_data:
+        raise HTTPException(status_code=500, detail="Failed to load page")
+
+    page_data["content"] = append_content(page_data.get("content", ""), data.content)
+    page_data["updated"] = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+    try:
+        with open(filepath, 'w') as f:
+            json.dump(page_data, f, indent=2)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save page: {e}")
+
+    return CanvasPageResponse(
+        ok=True,
+        page=_page_to_model(page_data, include_content=True, for_list=False),
     )
 
 
