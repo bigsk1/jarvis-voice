@@ -17,6 +17,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
 from bug_hunt import (  # noqa: E402
     DEFAULT_MODEL,
+    DISMISSALS_RELATIVE_PATH,
     MAX_FINDING_JSON_CHARS,
     MAX_MODE_MEMORY_CHARS,
     MEMORY_RELATIVE_PATH,
@@ -156,6 +157,41 @@ def test_only_memory_action_can_write_and_verifier_cannot_use_it(tmp_path):
     assert unexpected == sorted([MEMORY_RELATIVE_PATH, RESULTS_RELATIVE_PATH])
 
 
+def test_human_dismissal_registry_is_readable_but_not_writable_by_tool(tmp_path):
+    original = (
+        '{"id":"dismiss-1","hunt_mode":"code",'
+        '"disposition":"accepted_current_behavior","title":"Session state",'
+        '"root_cause":"State is session scoped","reason":"Intentional for now",'
+        '"reopen_if":["Sessions become durable"]}\n'
+    )
+    _write(tmp_path, DISMISSALS_RELATIVE_PATH, original)
+    policy = RepositoryPolicy(tmp_path, tracked_files=set())
+    policy.ensure_state_files()
+    tool = BugHuntRepoTool(policy)
+
+    read = tool.execute(
+        {"action": "read_lines", "path": DISMISSALS_RELATIVE_PATH},
+        allow_memory_write=False,
+    )
+    denied = tool.execute(
+        {"action": "update_dismissals", "content": "replace me"},
+        allow_memory_write=True,
+    )
+
+    assert read["ok"] is True
+    assert "Session state" in read["content"]
+    assert denied["ok"] is False
+    assert (tmp_path / DISMISSALS_RELATIVE_PATH).read_text(encoding="utf-8") == original
+
+
+def test_invalid_human_dismissal_fails_closed(tmp_path):
+    _write(tmp_path, DISMISSALS_RELATIVE_PATH, "{not-json}\n")
+    policy = RepositoryPolicy(tmp_path, tracked_files=set())
+
+    with pytest.raises(ValueError, match="Invalid dismissal JSON on line 1"):
+        policy.read_dismissals()
+
+
 def test_finding_append_is_jsonl_and_deduplicated(tmp_path):
     policy = RepositoryPolicy(tmp_path, tracked_files=set())
     finding = {
@@ -282,6 +318,61 @@ def test_engine_records_only_independently_confirmed_candidates(tmp_path):
     memory = (tmp_path / MEMORY_RELATIVE_PATH).read_text()
     assert "Status: confirmed" in memory
     assert outcome.finding_id in memory
+
+
+def test_dismissals_are_mode_filtered_and_injected_for_both_agents(tmp_path):
+    _write(tmp_path, "lib/example.py", "state = current\nstate = fallback\nreturn state\n")
+    dismissals = [
+        {
+            "id": "code-dismissal",
+            "hunt_mode": "code",
+            "disposition": "accepted_current_behavior",
+            "title": "Session-scoped record",
+            "root_cause": "Record belongs to one live session",
+            "reason": "Persistence is disproportionate in the current product scope",
+            "reopen_if": ["Sessions become durable"],
+        },
+        {
+            "id": "docs-dismissal",
+            "hunt_mode": "docs_only",
+            "disposition": "rejected",
+            "title": "Documentation-only decision",
+            "root_cause": "Guide is already current",
+            "reason": "The claimed drift does not exist",
+            "reopen_if": ["The command changes"],
+        },
+    ]
+    _write(
+        tmp_path,
+        DISMISSALS_RELATIVE_PATH,
+        "".join(json.dumps(item) + "\n" for item in dismissals),
+    )
+    provider = _FakeProvider([
+        json.dumps(_candidate_payload()),
+        json.dumps(_verifier_payload()),
+    ])
+    engine = BugHuntEngine(
+        tmp_path,
+        provider=provider,
+        tracked_files={"lib/example.py"},
+    )
+
+    engine.run_iteration(1)
+
+    investigator_task = provider.calls[0]["messages"][0]["content"]
+    verifier_task = provider.calls[1]["messages"][0]["content"]
+    for task in (investigator_task, verifier_task):
+        assert "code-dismissal | accepted_current_behavior | Session-scoped record" in task
+        assert "Sessions become durable" in task
+        assert "docs-dismissal" not in task
+    docs_summary = BugHuntEngine(
+        tmp_path,
+        provider=_FakeProvider([]),
+        tracked_files={"lib/example.py"},
+        docs_only=True,
+    )._dismissals_summary()
+    assert "docs-dismissal | rejected | Documentation-only decision" in docs_summary
+    assert "code-dismissal" not in docs_summary
 
 
 def test_progress_line_shows_severity_only_for_confirmed_findings():
