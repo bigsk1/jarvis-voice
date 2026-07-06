@@ -205,15 +205,18 @@ Add Cloudflare Access for authentication:
 
 ### Minimal Security Setup
 
-**1. Add API key authentication:**
-```python
-# In api/middleware/auth.py
-from fastapi import Header, HTTPException
+**1. Enable the built-in Bearer authentication:**
+```bash
+# config/cloud.env (or config/local.env for local mode)
+JARVIS_API_AUTH=true
+JARVIS_API_KEY=replace-with-a-long-random-secret
+```
 
-async def verify_api_key(x_api_key: str = Header(None)):
-    if x_api_key != os.getenv("JARVIS_API_KEY"):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    return x_api_key
+External requests must then send the configured key:
+
+```bash
+curl -H "Authorization: Bearer replace-with-a-long-random-secret" \
+  https://jarvis.yourdomain.com/api/alerts
 ```
 
 **2. Use HTTPS (with Let's Encrypt):**
@@ -300,30 +303,23 @@ http {
 
 ### 1. API Key Authentication
 
-Add to Jarvis API:
+Enable the authentication middleware already built into `api/server.py`:
 
-```python
-# config/cloud.env
-JARVIS_API_KEY="your-secure-random-key-here"
-
-# api/middleware/auth.py
-from fastapi import Security, HTTPException
-from fastapi.security.api_key import APIKeyHeader
-
-API_KEY = os.getenv("JARVIS_API_KEY")
-api_key_header = APIKeyHeader(name="X-API-Key")
-
-async def verify_api_key(api_key: str = Security(api_key_header)):
-    if api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API Key")
-    return api_key
+```bash
+# config/cloud.env (or config/local.env for local mode)
+JARVIS_API_AUTH=true
+JARVIS_API_KEY=your-secure-random-key-here
 ```
 
 Use in monitoring agent:
 ```python
-headers = {"X-API-Key": "your-secure-random-key-here"}
+headers = {"Authorization": "Bearer your-secure-random-key-here"}
 requests.post(JARVIS_API, json=payload, headers=headers)
 ```
+
+Localhost requests and documented public health/docs paths remain exempt. See
+[Security Hardening](../SECURITY_HARDENING.md) for
+the complete behavior and Docker override instructions.
 
 ### 2. IP Whitelist
 
