@@ -753,17 +753,18 @@ The user-facing tool should not require cron syntax for common schedules.
 
 ### Run
 
-1. `scheduled_task_runner` wakes up on a fixed interval
-2. It fetches due tasks where:
+1. On startup, `scheduled_task_runner` recovers locks owned by runner processes that no longer exist and marks their unfinished run records as failed
+2. `scheduled_task_runner` wakes up on a fixed interval
+3. It fetches due tasks where:
    - `enabled = true`
    - `next_run_at <= now`
    - not currently locked/running
-3. It marks the task as running
-4. It executes either:
+4. It marks the task as running
+5. It executes either:
    - orchestrator query mode, or
    - workflow executor mode
-5. It stores run history, status, timing, and outputs
-6. It calculates the next run or disables/completes the task
+6. It stores run history, status, timing, and outputs
+7. It calculates the next run or disables/completes the task
 
 ### Inspect
 

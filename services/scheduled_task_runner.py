@@ -12,6 +12,7 @@ import hashlib
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -34,6 +35,48 @@ NOTIFICATION_RATE_LIMIT_FILE = PROJECT_ROOT / "data" / ".scheduled_task_notifica
 def _load_mode() -> str:
     load_config()
     return get_active_config_mode()
+
+
+def _lock_owner_process_is_alive(owner: str, mode: str, current_owner: str) -> bool:
+    """Return True unless a same-mode runner owner is demonstrably gone."""
+    if owner == current_owner:
+        return True
+    parts = str(owner or "").split(":", 2)
+    if len(parts) < 2 or parts[0] != mode:
+        return True
+    try:
+        pid = int(parts[1])
+    except (TypeError, ValueError):
+        return True
+
+    # A lock with our PID but a different/legacy session token predates this
+    # runner instance (notably after a container PID namespace is recreated).
+    if pid == os.getpid():
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except (PermissionError, OSError):
+        return True
+    return True
+
+
+def _recover_abandoned_locks(
+    manager: ScheduledTaskManager,
+    mode: str,
+    current_owner: str,
+) -> list[int]:
+    """Release locks left by runner processes that no longer exist."""
+    recovered = []
+    for task in manager.list_locked_tasks():
+        owner = str(task.get("lock_owner") or "")
+        if _lock_owner_process_is_alive(owner, mode, current_owner):
+            continue
+        reason = f"Recovered abandoned scheduled-task lock from runner {owner}"
+        if manager.release_abandoned_lock(task["id"], owner, reason=reason):
+            recovered.append(task["id"])
+    return recovered
 
 
 def _run_query_task(mode: str, query: str) -> dict:
@@ -276,12 +319,20 @@ def main():
     logger.log_startup(mode, {"check_interval": 60, "database": manager.db.db_path})
 
     project_root = Path(__file__).parent.parent
-    owner = f"{mode}:{os.getpid()}"
+    owner = f"{mode}:{os.getpid()}:{uuid4().hex[:12]}"
+    recovered_locks = _recover_abandoned_locks(manager, mode, owner)
+    if recovered_locks:
+        logger.log_action("recover_abandoned_locks", {
+            "task_ids": recovered_locks,
+            "count": len(recovered_locks),
+        })
 
     print("⏱️ Scheduled Task Runner Starting...")
     print(f"   Mode: {mode}")
     print(f"   Database: {manager.db.db_path}")
     print(f"   Check interval: 60 seconds")
+    if recovered_locks:
+        print(f"   Recovered abandoned task locks: {', '.join(map(str, recovered_locks))}")
     print()
 
     try:

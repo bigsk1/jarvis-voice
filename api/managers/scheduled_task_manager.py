@@ -319,6 +319,54 @@ class ScheduledTaskManager:
         conn.close()
         return ok
 
+    def list_locked_tasks(self) -> list[dict[str, Any]]:
+        """Return locks owned by runners for this manager's execution mode."""
+        conn = sqlite3.connect(self.db.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        rows = cursor.execute("""
+            SELECT id, name, lock_owner, lock_acquired_at
+            FROM scheduled_tasks
+            WHERE mode = ?
+              AND lock_owner IS NOT NULL
+              AND lock_owner != ''
+            ORDER BY id
+        """, (self.mode,)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def release_abandoned_lock(self, task_id: int, owner: str, *, reason: str) -> bool:
+        """Release one lock only if it is still owned by the crashed runner."""
+        now = datetime.now().isoformat()
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE scheduled_tasks
+            SET lock_owner = NULL,
+                lock_acquired_at = NULL,
+                last_status = 'failure',
+                last_error = ?,
+                updated_at = ?
+            WHERE id = ? AND lock_owner = ?
+        """, (reason, now, task_id, owner))
+        released = cursor.rowcount > 0
+        if released:
+            cursor.execute("""
+                UPDATE scheduled_task_runs
+                SET finished_at = ?,
+                    status = 'failure',
+                    error = CASE
+                        WHEN error IS NULL OR error = '' THEN ?
+                        ELSE error
+                    END
+                WHERE task_id = ?
+                  AND status = 'running'
+                  AND finished_at IS NULL
+            """, (now, reason, task_id))
+        conn.commit()
+        conn.close()
+        return released
+
     def release_lock_and_update(self, task_id: int, *, status: str, error: str | None = None,
                                 duration_ms: float | None = None, summary: str | None = None,
                                 next_run_at: str | None = None):
