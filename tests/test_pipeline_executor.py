@@ -259,6 +259,70 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
         self.assertEqual(calls, [("stash", "one"), ("stash", "two")])
         self.assertEqual(result["items_succeeded"], 2)
 
+    def test_for_each_respects_explicit_step_max_attempts(self):
+        calls = []
+
+        def execute(_tool, params):
+            calls.append(params["url"])
+            return {"ok": False, "error": "unavailable"}
+
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(execute=execute),
+            provider=None,
+        )
+        result = executor._execute_for_each(
+            {
+                "tool": "crawl_url",
+                "for_each": "${urls}",
+                "params": {},
+                "retry": {"max_attempts": 2, "strategy": "next_url"},
+                "required_success_count": 1,
+                "on_all_fail": "abort_with_message",
+            },
+            "crawl_url",
+            None,
+            {},
+            {"urls": ["https://one.test", "https://two.test", "https://three.test"]},
+            {},
+            0,
+            10,
+        )
+
+        self.assertEqual(calls, ["https://one.test", "https://two.test"])
+        self.assertEqual(result["items_processed"], 2)
+        self.assertEqual(result["retries"], 2)
+        self.assertTrue(result["abort"])
+
+    def test_for_each_still_respects_workflow_retry_budget(self):
+        calls = []
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(
+                execute=lambda _tool, params: calls.append(params["url"])
+                or {"ok": False}
+            ),
+            provider=None,
+        )
+
+        result = executor._execute_for_each(
+            {
+                "tool": "crawl_url",
+                "for_each": "${urls}",
+                "retry": {"max_attempts": 5},
+            },
+            "crawl_url",
+            None,
+            {},
+            {"urls": ["https://one.test", "https://two.test"]},
+            {},
+            3,
+            3,
+        )
+
+        self.assertEqual(calls, [])
+        self.assertEqual(result["items_processed"], 0)
+
     def test_non_crawl_for_each_does_not_replace_validated_articles(self):
         article = {"ok": True, "data": {"results": [{"url": "https://example.test", "markdown": "source"}]}}
         variables = {"validated_articles": [article], "items": [{"value": "saved"}]}

@@ -456,10 +456,19 @@ class PipelineExecutor:
             if step.get("process_all", False)
             else step.get("required_success_count", 1)
         )
-        step.get("retry", {}).get("max_attempts", 1)
+        configured_max_attempts = step.get("retry", {}).get("max_attempts")
+        step_max_attempts = (
+            max(1, int(configured_max_attempts))
+            if configured_max_attempts is not None
+            else len(items)
+        )
         
         item_index = 0
-        while item_index < len(items) and len(validated_outputs) < required_success:
+        while (
+            item_index < len(items)
+            and item_index < step_max_attempts
+            and len(validated_outputs) < required_success
+        ):
             if current_retries + retries >= max_retries:
                 break
             

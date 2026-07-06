@@ -128,6 +128,7 @@ Each step typically includes:
 - `extract` — maps **new variable names** to paths under **`result.data`** (paths must **not** use a `data.` prefix).
 - `output_var` — optional; stores raw tool payload under that variable name.
 - `for_each` — repeats a step over an array such as `${search_results.urls[:5]}`.
+- `retry.max_attempts` — when explicitly set on a `for_each` step, caps the number of input items attempted; the workflow-wide `max_total_retries` still caps accumulated failed attempts.
 - `required_success_count` — for a `for_each` producer, stop after this many successful/validated results (default `1`).
 - `process_all` — for a `for_each` consumer, process every input item instead of stopping after one success.
 - `validated_output_var` — stores the successful/validated outputs from a `for_each` producer under an explicit semantic variable such as `validated_articles`.
