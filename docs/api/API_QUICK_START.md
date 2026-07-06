@@ -294,9 +294,8 @@ GET /api/intelligence/logs/recent?limit=50
 # Manually process pending reflections
 POST /api/intelligence/reflect?batch_size=5
 
-# Evaluate query against learned insights
+# Run meta-cognition evaluation of recent learning quality (no request body)
 GET /api/intelligence/evaluate
-Body: {"query": "What's the Bitcoin price?"}
 ```
 
 **Example: Check Intelligence Stats**
