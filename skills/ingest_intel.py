@@ -217,7 +217,7 @@ def main():
         for stored_filename in list(existing_hash_map.keys()):
             if stored_filename not in current_filenames:
                 # File was deleted - remove its facts and hash
-                cursor.execute("DELETE FROM knowledge_base WHERE source LIKE ?", (f"intel/{stored_filename}",))
+                cursor.execute("DELETE FROM knowledge_base WHERE source = ?", (f"intel/{stored_filename}",))
                 facts_removed = cursor.rowcount
                 cursor.execute("DELETE FROM knowledge_base WHERE category = 'system' AND key = ?", 
                              (f"intel_hash_{stored_filename}",))
@@ -281,7 +281,7 @@ def main():
             # If so, delete old facts from this source (file was modified)
             if stored_hash is not None and stored_hash != file_hash:
                 # File was modified - delete old memories from this file
-                cursor.execute("DELETE FROM knowledge_base WHERE source LIKE ?", (f"intel/{filepath.name}",))
+                cursor.execute("DELETE FROM knowledge_base WHERE source = ?", (f"intel/{filepath.name}",))
                 db.conn.commit()
             
             # Save each fact to memory with metadata

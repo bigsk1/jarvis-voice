@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import sys
+import sqlite3
 import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -21,6 +23,7 @@ from ingest_intel import extract_facts_from_content
 from manage_intel import (
     append_intel_file,
     auto_ingest,
+    delete_intel_file,
     format_ingest_summary,
     replace_intel_content,
     search_intel_file,
@@ -35,6 +38,54 @@ def _fake_export_environment(mode):
 
 
 class TestIntelContentNormalization(unittest.TestCase):
+    def test_delete_intel_file_treats_underscore_as_literal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel_dir = Path(tmpdir)
+            target = intel_dir / "bitcoin_price.md"
+            neighbor = intel_dir / "bitcoin-price.md"
+            target.write_text("target\n", encoding="utf-8")
+            neighbor.write_text("neighbor\n", encoding="utf-8")
+            conn = sqlite3.connect(":memory:")
+            conn.row_factory = sqlite3.Row
+            conn.execute("""
+                CREATE TABLE knowledge_base (
+                    id INTEGER PRIMARY KEY,
+                    category TEXT,
+                    key TEXT,
+                    value TEXT,
+                    source TEXT
+                )
+            """)
+            conn.executemany(
+                "INSERT INTO knowledge_base (category, key, value, source) VALUES (?, ?, ?, ?)",
+                [
+                    ("fact", "target", "target fact", "intel/bitcoin_price.md"),
+                    ("fact", "neighbor", "neighbor fact", "intel/bitcoin-price.md"),
+                    ("system", "intel_hash_bitcoin_price.md", "hash", "system"),
+                ],
+            )
+            db = SimpleNamespace(conn=conn)
+
+            result = delete_intel_file(intel_dir, target.name, db)
+
+            remaining = conn.execute(
+                "SELECT key, source FROM knowledge_base ORDER BY key"
+            ).fetchall()
+            self.assertEqual(result["facts_removed"], 1)
+            self.assertFalse(target.exists())
+            self.assertTrue(neighbor.exists())
+            self.assertEqual(
+                [(row["key"], row["source"]) for row in remaining],
+                [("neighbor", "intel/bitcoin-price.md")],
+            )
+            conn.close()
+
+    def test_ingest_cleanup_uses_exact_source_deletes(self) -> None:
+        source = (PROJECT_ROOT / "skills" / "ingest_intel.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("DELETE FROM knowledge_base WHERE source LIKE ?", source)
+        self.assertEqual(source.count("DELETE FROM knowledge_base WHERE source = ?"), 3)
+
     def test_document_eof_collapses_trailing_blank_lines_only(self) -> None:
         content = "# Lessons\n\nFirst paragraph.\n\nSecond paragraph.\n\n\n"
 

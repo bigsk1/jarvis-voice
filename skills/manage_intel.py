@@ -363,7 +363,7 @@ def delete_intel_file(intel_dir: Path, path: str, db: MemoryDB) -> dict[str, Any
     
     # Remove associated memories from database
     cursor = db.conn.cursor()
-    cursor.execute("DELETE FROM knowledge_base WHERE source LIKE ?", (f"intel/{filename}",))
+    cursor.execute("DELETE FROM knowledge_base WHERE source = ?", (f"intel/{filename}",))
     deleted_facts = cursor.rowcount
     db.conn.commit()
     
