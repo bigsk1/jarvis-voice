@@ -15,7 +15,7 @@ import re
 import queue
 import requests
 from typing import Any, Union
-from threading import Lock, Thread, Event
+from threading import Event, Lock, RLock, Thread
 
 from config_loader import get_config_value
 
@@ -576,7 +576,10 @@ class MCPRemoteClient:
         self.url = url.rstrip('/')
         self.transport_type = transport_type
         self.headers = headers or {}
-        self.lock = Lock()
+        # SSE initialization and reconnect both re-enter _send_request() while
+        # the outer request is serialized. The remote transport therefore
+        # requires a reentrant lock; the stdio client does not.
+        self.lock = RLock()
         self.request_id = 0
         self._tools_cache = None
         self._initialized = False
@@ -606,7 +609,7 @@ class MCPRemoteClient:
             pass
 
         # Critical: replace lock in case a prior request thread is wedged
-        self.lock = Lock()
+        self.lock = RLock()
         self.request_id = 0
     
     def start(self):
