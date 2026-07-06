@@ -494,6 +494,7 @@ class ChatHandler:
 
         message_id = record.get('message_id')
         conversation_id = record.get('conversation_id')
+        delivery_room = self._delivery_room(session_id, conversation_id)
         try:
             from ..services.conversation_store import get_conversation_store
             store = get_conversation_store()
@@ -518,7 +519,7 @@ class ChatHandler:
             'status': status,
             'note': record.get('user_note', ''),
             'reason': reason,
-        }, room=session_id)
+        }, room=delivery_room)
 
         self._update_completion_guard_experience(
             record,
@@ -1279,25 +1280,26 @@ Returned tool data:
         mode = record.get('mode', 'cloud')
         repair_message_id = str(uuid.uuid4())
         start_time = time.time()
+        delivery_room = self._delivery_room(session_id, conversation_id)
 
         self.socketio.emit('completion_guard:updated', {
             'message_id': parent_message_id,
             'conversation_id': conversation_id,
             'status': 'repairing',
             'auto_triggered': bool(record.get('auto_evaluation'))
-        }, room=session_id)
+        }, room=delivery_room)
 
         self.socketio.emit('chat:thinking', {
             'message_id': repair_message_id,
             'conversation_id': conversation_id
-        }, room=session_id)
+        }, room=delivery_room)
 
         self.socketio.emit('chat:status', {
             'message_id': repair_message_id,
             'conversation_id': conversation_id,
             'status': "Let's see if we can find a better solution.",
             'timestamp': time.time()
-        }, room=session_id)
+        }, room=delivery_room)
 
         try:
             from orchestrator_v2 import Orchestrator
@@ -1321,7 +1323,7 @@ Returned tool data:
                     'conversation_id': conversation_id,
                     'status': status_message,
                     'timestamp': time.time()
-                }, room=session_id)
+                }, room=delivery_room)
 
             def progress_callback(event_type: str, **kwargs):
                 if event_type == 'tool_start':
@@ -1335,7 +1337,7 @@ Returned tool data:
                         'turn': kwargs.get('turn'),
                         'max_turns': kwargs.get('max_turns'),
                         'timestamp': time.time()
-                    }, room=session_id)
+                    }, room=delivery_room)
                 elif event_type == 'tool_complete':
                     tool_name = kwargs.get('tool')
                     call_index = kwargs.get('call_index', 0)
@@ -1354,13 +1356,13 @@ Returned tool data:
                         payload['success'] = True
                     else:
                         payload['error'] = kwargs.get('error', 'Unknown error')
-                    self.socketio.emit(event_name, payload, room=session_id)
+                    self.socketio.emit(event_name, payload, room=delivery_room)
                 elif event_type == 'routing':
                     self.socketio.emit('tool:progress', {
                         'message_id': repair_message_id,
                         'status': kwargs.get('message'),
                         'timestamp': time.time()
-                    }, room=session_id)
+                    }, room=delivery_room)
 
             orchestrator.set_status_callback(status_callback)
             orchestrator.set_progress_callback(progress_callback)
@@ -1463,11 +1465,11 @@ Previous structured data:
                     'conversation_id': conversation_id,
                     'status': 'cancelled',
                     'note': note
-                }, room=session_id)
+                }, room=delivery_room)
                 self.socketio.emit('chat:cancelled', {
                     'conversation_id': conversation_id,
                     'message_id': repair_message_id
-                }, room=session_id)
+                }, room=delivery_room)
                 self._start_feedback_async(
                     session_id,
                     parent_message_id,
@@ -1640,7 +1642,7 @@ Previous structured data:
                 'status': 'tighten_only' if tighten_only else ('repaired' if repaired else 'unresolved'),
                 'note': note,
                 'delta': delta
-            }, room=session_id)
+            }, room=delivery_room)
 
             if not tighten_only:
                 self.socketio.emit('chat:response', {
@@ -1662,7 +1664,7 @@ Previous structured data:
                         'ticket_on_fail': record.get('completion_guard', {}).get('ticket_on_fail', True),
                         'prompt_user': False
                     }
-                }, room=session_id)
+                }, room=delivery_room)
 
             feedback_result_payload = {
                 'ok': result.get('ok', True),
@@ -1715,7 +1717,7 @@ Previous structured data:
                     'conversation_id': conversation_id,
                     'ticket_path': rel_path,
                     'note': note
-                }, room=session_id)
+                }, room=delivery_room)
                 self._start_feedback_async(
                     session_id,
                     parent_message_id,
@@ -1786,7 +1788,7 @@ Previous structured data:
                         'conversation_id': conversation_id,
                         'ticket_path': rel_path,
                         'note': note
-                    }, room=session_id)
+                    }, room=delivery_room)
                     self._start_feedback_async(
                         session_id,
                         parent_message_id,
@@ -1800,12 +1802,12 @@ Previous structured data:
                     self.socketio.emit('completion_guard:error', {
                         'message_id': parent_message_id,
                         'error': f'Completion Guard repair and ticketing failed: {ticket_err}'
-                    }, room=session_id)
+                    }, room=delivery_room)
             else:
                 self.socketio.emit('completion_guard:error', {
                     'message_id': parent_message_id,
                     'error': f'Completion Guard repair failed: {e}'
-                }, room=session_id)
+                }, room=delivery_room)
                 self._start_feedback_async(
                     session_id,
                     parent_message_id,

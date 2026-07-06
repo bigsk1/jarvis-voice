@@ -10,6 +10,7 @@ import sys
 import types
 import unittest
 from pathlib import Path
+from unittest import mock
 from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
@@ -229,6 +230,72 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
         self.assertEqual(record["settled_reason"], "conversation_continued")
         self.assertEqual(handler.socketio.emitted[0][0], "completion_guard:updated")
         self.assertEqual(handler.socketio.emitted[0][1]["status"], "superseded")
+        self.assertEqual(handler.socketio.emitted[0][2].get("room"), "conversation:conv1")
+
+    def test_repair_flow_emits_to_conversation_room_not_session_room(self):
+        handler = ChatHandler.__new__(ChatHandler)
+        handler.socketio = _FakeSocketIO()
+        handler.pending_cancellations = {}
+        handler.sessions = {}
+
+        record = {
+            "conversation_id": "conv-repair-room",
+            "message_id": "msg-parent",
+            "mode": "cloud",
+            "query": "What is X?",
+            "speech": "Answer",
+            "raw_llm_response": "Answer",
+            "tools_used": [],
+            "data": {},
+            "completion_guard": {"ticket_on_fail": False},
+        }
+
+        fake_result = {
+            "ok": True,
+            "speech": (
+                "REPAIR_STATUS: repaired\n"
+                "Better answer with verified source according to jarvis-intel/user_profile.md"
+            ),
+            "raw_llm_response": (
+                "REPAIR_STATUS: repaired\n"
+                "Better answer with verified source according to jarvis-intel/user_profile.md"
+            ),
+            "tools_used": ["search_memory"],
+            "data": {},
+        }
+
+        fake_orchestrator = unittest.mock.MagicMock()
+        fake_orchestrator.process.return_value = fake_result
+
+        with patch("orchestrator_v2.Orchestrator", return_value=fake_orchestrator), patch(
+            "jarvis_web_test_server.services.conversation_store.get_conversation_store"
+        ), patch.object(
+            handler, "_classify_completion_guard_strategy", return_value={"family": "verify"}
+        ), patch.object(
+            handler, "_format_completion_guard_strategy", return_value="verify source"
+        ), patch.object(
+            handler,
+            "_analyze_completion_guard_delta",
+            return_value={
+                "operational_correction": True,
+                "original_tools": [],
+                "repair_tools": ["search_memory"],
+            },
+        ), patch.object(
+            handler, "_prepare_web_response_text", return_value=("Better text", "Better speech")
+        ), patch.object(handler, "_compute_effective_evidence", return_value=None), patch.object(
+            handler, "_update_completion_guard_experience"
+        ), patch.object(handler, "_start_feedback_async"), patch.object(
+            handler, "_generate_tts", return_value=None
+        ):
+            handler._run_completion_guard_repair("ephemeral-session-99", record, note="wrong")
+
+        expected_room = "conversation:conv-repair-room"
+        self.assertTrue(handler.socketio.emitted)
+        for event, _payload, kwargs in handler.socketio.emitted:
+            with self.subTest(event=event):
+                self.assertEqual(kwargs.get("room"), expected_room)
+                self.assertNotEqual(kwargs.get("room"), "ephemeral-session-99")
 
 
 if __name__ == "__main__":
