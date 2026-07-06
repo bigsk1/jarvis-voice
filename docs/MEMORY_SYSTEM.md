@@ -57,7 +57,7 @@ This table is separate from `knowledge_base` so scalar traits like verbosity or 
 
 ## Memory Tools
 
-Jarvis has 5 memory management tools that it uses intelligently:
+Jarvis has 6 memory management tools that it uses intelligently:
 
 ### `remember`
 Stores important information proactively.
