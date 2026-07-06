@@ -161,8 +161,9 @@ Open Command Prompt and run:
 git clone https://github.com/bigsk1/jarvis-voice.git
 cd jarvis-voice
 
+REM Choose the mode you will run; the other file is optional.
 copy config\cloud.env.example config\cloud.env
-copy config\local.env.example config\local.env
+REM copy config\local.env.example config\local.env
 copy jarvis-web\config\web_config.json.example jarvis-web\config\web_config.json
 copy docker.env.example .env
 notepad config\cloud.env
