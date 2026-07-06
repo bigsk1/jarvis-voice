@@ -434,6 +434,7 @@ def main():
 
             for task in due_tasks:
                 task_id = task['id']
+                manual_run_once = manager.is_manual_run_once(task)
                 if not manager.acquire_lock(task_id, owner):
                     continue
 
@@ -471,7 +472,11 @@ def main():
                     logger.log_error(f"Scheduled task {task_id} failed", {"task_id": task_id, "error": error})
 
                 duration_ms = round((time.time() - started) * 1000, 2)
-                next_run = manager.calculate_followup_next_run(task, reference_utc=task.get('next_run_at'))
+                next_run = manager.resolve_followup_next_run(
+                    task,
+                    reference_utc=task.get('next_run_at'),
+                    manual_run_once=manual_run_once,
+                )
                 notification_results = _maybe_send_notifications(
                     task,
                     status=status,

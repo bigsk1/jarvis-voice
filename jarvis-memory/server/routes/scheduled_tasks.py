@@ -153,10 +153,15 @@ def run_scheduled_task_now(task_id: int):
     if not ok:
         return jsonify({'ok': False, 'error': f'Scheduled task not found: {task_id}'}), 404
     task = manager.get_task(task_id)
+    one_shot = task and manager.is_manual_run_once(task)
     return jsonify({
         'ok': True,
         'mode': get_mode(),
-        'message': 'Scheduled task queued to run now',
+        'message': (
+            'Scheduled task queued for a one-time run (schedule stays disabled)'
+            if one_shot
+            else 'Scheduled task queued to run now'
+        ),
         'task': task
     })
 

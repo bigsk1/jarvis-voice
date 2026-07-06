@@ -20,6 +20,8 @@ from workflow_loader import WorkflowLoader
 class ScheduledTaskManager:
     """Manages scheduled tasks and run history."""
 
+    RUN_ONCE_PENDING_STATUS = 'run_once_pending'
+
     def __init__(self, mode: str | None = None):
         if not mode:
             mode = os.environ.get('JARVIS_API_MODE')
@@ -195,10 +197,25 @@ class ScheduledTaskManager:
             return False
 
         fields: dict[str, Any] = {}
+        timezone_name = updates.get('timezone') or existing['timezone']
         if updates.get('name') is not None:
             fields['name'] = updates['name']
         if updates.get('enabled') is not None:
             fields['enabled'] = 1 if updates['enabled'] else 0
+            if updates['enabled'] and not existing.get('enabled'):
+                if existing.get('last_status') == self.RUN_ONCE_PENDING_STATUS:
+                    fields['last_status'] = None
+                    if updates.get('when') is None:
+                        expr = json.loads(existing['schedule_expr'])
+                        fields['next_run_at'] = calculate_next_run(
+                            existing['schedule_type'], expr, tz_name=timezone_name
+                        )
+                elif updates.get('when') is None and not existing.get('next_run_at'):
+                    if existing.get('schedule_type') != 'once':
+                        expr = json.loads(existing['schedule_expr'])
+                        fields['next_run_at'] = calculate_next_run(
+                            existing['schedule_type'], expr, tz_name=timezone_name
+                        )
         if updates.get('allow_overlap') is not None:
             fields['allow_overlap'] = 1 if updates['allow_overlap'] else 0
         if updates.get('max_retries') is not None:
@@ -208,7 +225,6 @@ class ScheduledTaskManager:
         if updates.get('mode') is not None:
             fields['mode'] = updates['mode']
 
-        timezone_name = updates.get('timezone') or existing['timezone']
         if updates.get('timezone') is not None:
             fields['timezone'] = timezone_name
 
@@ -250,13 +266,25 @@ class ScheduledTaskManager:
         return updated
 
     def cancel_task(self, task_id: int) -> bool:
+        existing = self.get_task(task_id)
+        if not existing:
+            return False
+
+        now = datetime.now().isoformat()
         conn = sqlite3.connect(self.db.db_path)
         cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE scheduled_tasks
-            SET enabled = 0, last_status = 'cancelled', updated_at = ?
-            WHERE id = ?
-        """, (datetime.now().isoformat(), task_id))
+        if existing.get('last_status') == self.RUN_ONCE_PENDING_STATUS:
+            cursor.execute("""
+                UPDATE scheduled_tasks
+                SET enabled = 0, last_status = 'cancelled', next_run_at = NULL, updated_at = ?
+                WHERE id = ?
+            """, (now, task_id))
+        else:
+            cursor.execute("""
+                UPDATE scheduled_tasks
+                SET enabled = 0, last_status = 'cancelled', updated_at = ?
+                WHERE id = ?
+            """, (now, task_id))
         conn.commit()
         updated = cursor.rowcount > 0
         conn.close()
@@ -272,16 +300,34 @@ class ScheduledTaskManager:
         conn.close()
         return deleted
 
+    def is_manual_run_once(self, task: dict[str, Any]) -> bool:
+        return task.get('last_status') == self.RUN_ONCE_PENDING_STATUS
+
     def run_now(self, task_id: int) -> bool:
+        task = self.get_task(task_id)
+        if not task:
+            return False
+
+        now = format_utc_db(now_utc())
+        updated_at = datetime.now().isoformat()
         conn = sqlite3.connect(self.db.db_path)
         cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE scheduled_tasks
-            SET enabled = 1,
-                next_run_at = ?,
-                updated_at = ?
-            WHERE id = ?
-        """, (format_utc_db(now_utc()), datetime.now().isoformat(), task_id))
+        if not task.get('enabled'):
+            cursor.execute("""
+                UPDATE scheduled_tasks
+                SET last_status = ?,
+                    next_run_at = ?,
+                    updated_at = ?
+                WHERE id = ?
+            """, (self.RUN_ONCE_PENDING_STATUS, now, updated_at, task_id))
+        else:
+            cursor.execute("""
+                UPDATE scheduled_tasks
+                SET enabled = 1,
+                    next_run_at = ?,
+                    updated_at = ?
+                WHERE id = ?
+            """, (now, updated_at, task_id))
         conn.commit()
         updated = cursor.rowcount > 0
         conn.close()
@@ -294,14 +340,14 @@ class ScheduledTaskManager:
         now = format_utc_db(now_utc())
         rows = cursor.execute("""
             SELECT * FROM scheduled_tasks
-            WHERE enabled = 1
-              AND mode = ?
+            WHERE mode = ?
               AND next_run_at IS NOT NULL
               AND next_run_at <= ?
               AND (lock_owner IS NULL OR lock_owner = '')
+              AND (enabled = 1 OR last_status = ?)
             ORDER BY next_run_at ASC
             LIMIT ?
-        """, (self.mode, now, limit)).fetchall()
+        """, (self.mode, now, self.RUN_ONCE_PENDING_STATUS, limit)).fetchall()
         conn.close()
         return [dict(row) for row in rows]
 
@@ -462,3 +508,14 @@ class ScheduledTaskManager:
             return None
         expr = json.loads(task['schedule_expr'])
         return calculate_next_run(task['schedule_type'], expr, from_utc=reference_utc or task['next_run_at'], tz_name=task['timezone'])
+
+    def resolve_followup_next_run(
+        self,
+        task: dict[str, Any],
+        *,
+        reference_utc: str | None = None,
+        manual_run_once: bool = False,
+    ) -> str | None:
+        if manual_run_once:
+            return None
+        return self.calculate_followup_next_run(task, reference_utc=reference_utc)

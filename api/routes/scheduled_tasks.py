@@ -108,10 +108,16 @@ async def run_scheduled_task_now(task_id: int):
     if not ok:
         raise HTTPException(status_code=404, detail=f"Scheduled task {task_id} not found")
     task = scheduled_task_manager.get_task(task_id)
+    one_shot = task and scheduled_task_manager.is_manual_run_once(task)
+    message = (
+        f"Scheduled task {task_id} queued for a one-time run (schedule stays disabled)"
+        if one_shot
+        else f"Scheduled task {task_id} queued to run now"
+    )
     return ScheduledTaskResponse(
         ok=True,
         task=ScheduledTask(**task) if task else None,
-        message=f"Scheduled task {task_id} queued to run now"
+        message=message
     )
 
 
