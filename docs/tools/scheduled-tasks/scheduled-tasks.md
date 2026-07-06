@@ -760,7 +760,7 @@ The user-facing tool should not require cron syntax for common schedules.
    - `next_run_at <= now`
    - not currently locked/running
 4. It marks the task as running
-5. It executes either:
+5. It executes either in an isolated worker process, enforcing the task's `timeout_seconds` deadline:
    - orchestrator query mode, or
    - workflow executor mode
 6. It stores run history, status, timing, and outputs

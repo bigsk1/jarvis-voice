@@ -9,6 +9,8 @@ import sys
 import time
 import json
 import hashlib
+import multiprocessing
+import signal
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +32,10 @@ from api.managers.scheduled_task_manager import ScheduledTaskManager
 
 PROJECT_ROOT = Path(__file__).parent.parent
 NOTIFICATION_RATE_LIMIT_FILE = PROJECT_ROOT / "data" / ".scheduled_task_notification_rate_limit"
+
+
+class ScheduledTaskTimeoutError(TimeoutError):
+    """Raised when a scheduled execution exceeds its configured deadline."""
 
 
 def _load_mode() -> str:
@@ -110,6 +116,92 @@ def _run_workflow_task(mode: str, workflow_id: str, query: str | None = None) ->
 
         transcript = query or workflow.get("triggers", {}).get("explicit", [f"/{workflow['id']}"])[0]
         return executor.execute(workflow, transcript)
+
+
+def _execute_scheduled_task(task: dict, payload: dict) -> dict:
+    """Dispatch one scheduled task inside its isolated worker process."""
+    if task['task_type'] == 'query':
+        return _run_query_task(task['mode'], payload.get('query', ''))
+    if task['task_type'] == 'workflow':
+        return _run_workflow_task(task['mode'], task['task_target'], payload.get('query'))
+    raise ValueError(f"Unsupported task_type: {task['task_type']}")
+
+
+def _task_process_entry(send_conn, target, args):
+    """Execute one picklable callable and return a serializable outcome."""
+    if os.name == 'posix':
+        os.setsid()
+    try:
+        send_conn.send(("result", target(*args)))
+    except BaseException as exc:
+        try:
+            send_conn.send(("error", f"{type(exc).__name__}: {exc}"))
+        except Exception:
+            pass
+    finally:
+        send_conn.close()
+
+
+def _stop_task_process(process) -> None:
+    """Stop a timed-out task process and any subprocesses it started."""
+    if not process.is_alive():
+        process.join(timeout=1)
+        return
+    if os.name == 'posix':
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    else:
+        process.terminate()
+    process.join(timeout=2)
+    if process.is_alive():
+        if os.name == 'posix':
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        else:
+            process.kill()
+        process.join(timeout=2)
+
+
+def _run_with_timeout(target, args: tuple, timeout_seconds: int):
+    """Run a callable in an isolated process and enforce a hard deadline."""
+    timeout_seconds = max(1, int(timeout_seconds))
+    context = multiprocessing.get_context('spawn')
+    receive_conn, send_conn = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_task_process_entry,
+        args=(send_conn, target, args),
+        name="jarvis-scheduled-task",
+    )
+    process.start()
+    send_conn.close()
+    deadline = time.monotonic() + timeout_seconds
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                _stop_task_process(process)
+                raise ScheduledTaskTimeoutError(
+                    f"Scheduled task timed out after {timeout_seconds} seconds"
+                )
+            if receive_conn.poll(min(0.1, remaining)):
+                outcome, value = receive_conn.recv()
+                process.join(timeout=1)
+                if process.is_alive():
+                    _stop_task_process(process)
+                if outcome == "error":
+                    raise RuntimeError(value)
+                return value
+            if not process.is_alive():
+                process.join(timeout=1)
+                raise RuntimeError(
+                    f"Scheduled task worker exited without a result (exit {process.exitcode})"
+                )
+    finally:
+        receive_conn.close()
 
 
 def _execution_identity(mode: str) -> tuple[str | None, str | None]:
@@ -359,12 +451,12 @@ def main():
                     payload = json.loads(task.get('task_payload') or "{}")
                     print(f"[{datetime.now().strftime('%H:%M:%S')}] Running task {task_id}: {task['name']}")
 
-                    if task['task_type'] == 'query':
-                        result = _run_query_task(task['mode'], payload.get('query', ''))
-                    elif task['task_type'] == 'workflow':
-                        result = _run_workflow_task(task['mode'], task['task_target'], payload.get('query'))
-                    else:
-                        raise ValueError(f"Unsupported task_type: {task['task_type']}")
+                    timeout_seconds = max(1, int(task.get('timeout_seconds') or 300))
+                    result = _run_with_timeout(
+                        _execute_scheduled_task,
+                        (task, payload),
+                        timeout_seconds,
+                    )
 
                     execution_provider, execution_model = _execution_identity(task['mode'])
 
