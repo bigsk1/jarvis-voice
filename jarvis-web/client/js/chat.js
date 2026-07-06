@@ -419,6 +419,10 @@ class ChatUI {
     this.pendingTools = {};
     this.pendingToolsByMessage = new Map();
     this.pendingToolMessageId = null;
+    this.activeToolCalls = new Set();
+    this.processingPhaseDelayMs = 275;
+    this._workingLabelTimer = null;
+    this._workingLabelVisible = false;
     this.isProcessing = false;
     
     // Feedback toggle state
@@ -1484,6 +1488,7 @@ class ChatUI {
     
     socket.on('toolStart', (data) => {
       this._activatePendingToolsForMessage(data.message_id);
+      this._markToolStarted(data);
       // Use call_index for unique card ID when same tool called multiple times
       const cardId = data.call_index > 0 ? `${data.tool}_${data.call_index}` : data.tool;
       this.addToolCard(cardId, data.tool, 'pending', data.args);
@@ -1501,6 +1506,7 @@ class ChatUI {
     
     socket.on('toolComplete', (data) => {
       this._activatePendingToolsForMessage(data.message_id);
+      this._markToolFinished(data);
       // Use call_index or workflow_step for unique ID (allows duplicate tools)
       let cardId;
       if (data.call_index > 0) {
@@ -1515,6 +1521,7 @@ class ChatUI {
     
     socket.on('toolError', (data) => {
       this._activatePendingToolsForMessage(data.message_id);
+      this._markToolFinished(data);
       // Use call_index for unique card ID when same tool called multiple times
       const cardId = data.call_index > 0 ? `${data.tool}_${data.call_index}` : data.tool;
       this.updateToolCard(cardId, data.tool, 'error', { error: data.error });
@@ -4872,7 +4879,7 @@ class ChatUI {
           <span></span>
           <span></span>
         </div>
-        <span>Thinking...</span>
+        <span class="thinking-label">Thinking...</span>
       </div>
       <div class="tool-cards" id="pendingToolCards"></div>
     `;
@@ -4885,6 +4892,7 @@ class ChatUI {
    * Hide thinking indicator
    */
   hideThinking() {
+    this._resetProcessingPhase();
     const thinkingEl = this.messagesContainer.querySelector('.thinking-message');
     if (thinkingEl) {
       thinkingEl.remove();
@@ -4896,6 +4904,53 @@ class ChatUI {
       this.stopBtn.disabled = false;
       this.stopBtn.style.opacity = '1';
     }
+  }
+
+  _processingToolKey(data = {}) {
+    const messageId = data.message_id || this.currentMessageId || 'current';
+    const callId = data.call_index ?? data.workflow_step ?? 0;
+    return `${messageId}:${data.tool || 'tool'}:${callId}`;
+  }
+
+  _setProcessingLabel(label) {
+    const labelEl = this.messagesContainer.querySelector('.thinking-label');
+    if (labelEl) labelEl.textContent = label;
+  }
+
+  _markToolStarted(data = {}) {
+    this.activeToolCalls.add(this._processingToolKey(data));
+    if (this.activeToolCalls.size !== 1) return;
+
+    if (this._workingLabelTimer) clearTimeout(this._workingLabelTimer);
+    this._workingLabelTimer = setTimeout(() => {
+      this._workingLabelTimer = null;
+      if (this.activeToolCalls.size === 0) return;
+      this._workingLabelVisible = true;
+      this._setProcessingLabel('Working...');
+    }, this.processingPhaseDelayMs);
+  }
+
+  _markToolFinished(data = {}) {
+    this.activeToolCalls.delete(this._processingToolKey(data));
+    if (this.activeToolCalls.size > 0) return;
+
+    if (this._workingLabelTimer) {
+      clearTimeout(this._workingLabelTimer);
+      this._workingLabelTimer = null;
+    }
+    if (this._workingLabelVisible) {
+      this._workingLabelVisible = false;
+      this._setProcessingLabel('Reviewing results...');
+    }
+  }
+
+  _resetProcessingPhase() {
+    if (this._workingLabelTimer) {
+      clearTimeout(this._workingLabelTimer);
+      this._workingLabelTimer = null;
+    }
+    this.activeToolCalls.clear();
+    this._workingLabelVisible = false;
   }
 
   _resetProcessingUi() {
