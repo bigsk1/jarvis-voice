@@ -609,7 +609,7 @@ docker run -d \
   --name n8n \
   --restart unless-stopped \
   -p 5678:5678 \
-  -e N8N_HOST=OLLAMA_BASE_URL \
+  -e N8N_HOST=localhost \
   -e WEBHOOK_URL=http://localhost:5678/ \
   -e N8N_PROTOCOL=http \
   -v ~/.n8n:/home/node/.n8n \
