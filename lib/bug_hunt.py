@@ -247,7 +247,24 @@ class IterationOutcome:
     action: str
     finding_written: bool = False
     finding_id: str | None = None
+    severity: str | None = None
     message: str = ""
+
+
+def format_progress_line(
+    iteration: int,
+    outcome: IterationOutcome,
+    usage: dict[str, Any],
+    *,
+    timestamp: str,
+) -> str:
+    """Render one compact CLI progress line."""
+    severity = f" [{outcome.severity}]" if outcome.finding_written and outcome.severity else ""
+    detail = f" - {outcome.message}" if outcome.message else ""
+    return (
+        f"[{timestamp}] iteration {iteration}: {outcome.action}{severity}{detail} "
+        f"(tokens~{usage['total_tokens']})"
+    )
 
 
 class RepositoryPolicy:
@@ -1039,6 +1056,7 @@ Use current repository evidence and return the required verifier JSON.
                 action="confirmed",
                 finding_written=True,
                 finding_id=finding_id,
+                severity=finding["severity"],
                 message=finding["title"],
             ),
         )

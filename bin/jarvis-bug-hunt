@@ -18,6 +18,7 @@ from bug_hunt import (  # noqa: E402
     MEMORY_RELATIVE_PATH,
     RESULTS_RELATIVE_PATH,
     BugHuntEngine,
+    format_progress_line,
     parse_deadline,
 )
 
@@ -86,12 +87,12 @@ def main() -> int:
 
     def progress(iteration, outcome, usage):
         timestamp = datetime.now().strftime("%H:%M:%S")
-        detail = f" - {outcome.message}" if outcome.message else ""
-        print(
-            f"[{timestamp}] iteration {iteration}: {outcome.action}{detail} "
-            f"(tokens~{usage['total_tokens']})",
-            flush=True,
-        )
+        print(format_progress_line(
+            iteration,
+            outcome,
+            usage,
+            timestamp=timestamp,
+        ), flush=True)
 
     try:
         outcomes = engine.run(

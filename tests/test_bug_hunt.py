@@ -23,7 +23,9 @@ from bug_hunt import (  # noqa: E402
     RESULTS_RELATIVE_PATH,
     BugHuntEngine,
     BugHuntRepoTool,
+    IterationOutcome,
     RepositoryPolicy,
+    format_progress_line,
     parse_deadline,
 )
 
@@ -271,6 +273,7 @@ def test_engine_records_only_independently_confirmed_candidates(tmp_path):
 
     assert outcome.action == "confirmed"
     assert outcome.finding_written is True
+    assert outcome.severity == "medium"
     finding = json.loads((tmp_path / RESULTS_RELATIVE_PATH).read_text().strip())
     assert finding["title"] == "Example state is dropped"
     assert finding["verification"]["verdict"] == "confirmed"
@@ -279,6 +282,35 @@ def test_engine_records_only_independently_confirmed_candidates(tmp_path):
     memory = (tmp_path / MEMORY_RELATIVE_PATH).read_text()
     assert "Status: confirmed" in memory
     assert outcome.finding_id in memory
+
+
+def test_progress_line_shows_severity_only_for_confirmed_findings():
+    confirmed = format_progress_line(
+        42,
+        IterationOutcome(
+            action="confirmed",
+            finding_written=True,
+            severity="high",
+            message="Scheduled task can remain locked",
+        ),
+        {"total_tokens": 1234},
+        timestamp="12:34:56",
+    )
+    rejected = format_progress_line(
+        43,
+        IterationOutcome(action="rejected", message="Verifier rejected candidate"),
+        {"total_tokens": 1300},
+        timestamp="12:35:10",
+    )
+
+    assert confirmed == (
+        "[12:34:56] iteration 42: confirmed [high] - "
+        "Scheduled task can remain locked (tokens~1234)"
+    )
+    assert rejected == (
+        "[12:35:10] iteration 43: rejected - "
+        "Verifier rejected candidate (tokens~1300)"
+    )
 
 
 def test_engine_executes_plain_json_tool_action_from_cloud_model(tmp_path):
