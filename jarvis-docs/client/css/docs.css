@@ -534,6 +534,46 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.mermaid-diagram-shell {
+  margin: 24px 0;
+  padding: 18px;
+  border-radius: 16px;
+  background: #091018;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow-x: auto;
+}
+
+.mermaid-diagram-shell pre.mermaid {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.mermaid-diagram-shell svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.mermaid-loading {
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.mermaid-error {
+  margin-bottom: 12px;
+  color: var(--warning);
+  font-size: var(--text-sm);
+}
+
+.mermaid-fallback {
+  margin: 0;
+}
+
 .code-block-shell {
   position: relative;
   margin: 24px 0;

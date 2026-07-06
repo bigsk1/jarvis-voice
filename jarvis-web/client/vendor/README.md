@@ -6,6 +6,7 @@ These files are served from `/vendor/` so the web UI works without internet afte
 |------|---------|------------------------------|
 | `marked.min.js` | 15.0.6 | jsdelivr `marked@15.0.6` |
 | `socket.io.min.js` | 4.7.2 | cdn.socket.io `4.7.2` |
+| `mermaid.min.js` | 11.4.1 | jsdelivr `mermaid@11.4.1` |
 
 `index.html` uses `onerror` on each `<script>` to retry the CDN if `/vendor/*` is missing (e.g. partial deploy).
 

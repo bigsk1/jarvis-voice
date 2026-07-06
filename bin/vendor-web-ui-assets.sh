@@ -7,6 +7,7 @@ mkdir -p "$VENDOR"
 
 MARKED_VER="15.0.6"
 SOCKET_VER="4.7.2"
+MERMAID_VER="11.4.1"
 
 echo "Fetching marked@${MARKED_VER}..."
 curl -fsSL -o "$VENDOR/marked.min.js" \
@@ -15,6 +16,10 @@ curl -fsSL -o "$VENDOR/marked.min.js" \
 echo "Fetching socket.io-client ${SOCKET_VER}..."
 curl -fsSL -o "$VENDOR/socket.io.min.js" \
   "https://cdn.socket.io/${SOCKET_VER}/socket.io.min.js"
+
+echo "Fetching mermaid@${MERMAID_VER}..."
+curl -fsSL -o "$VENDOR/mermaid.min.js" \
+  "https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VER}/dist/mermaid.min.js"
 
 wc -c "$VENDOR"/*.js
 

@@ -318,7 +318,7 @@ class DocsApp {
     }
 
     this.elements.renderedMarkdown.innerHTML = this.parseMarkdown(documentData.content || '', documentData.path || '');
-    this.decorateMarkdown(documentData.path || '');
+    void this.decorateMarkdown(documentData.path || '');
     this.renderInsights(documentData);
     this.renderOutline(documentData.outline || []);
     this.renderEditState();
@@ -487,7 +487,7 @@ class DocsApp {
     this.applyBackdropState();
   }
 
-  decorateMarkdown(currentPath) {
+  async decorateMarkdown(currentPath) {
     const headings = this.elements.renderedMarkdown.querySelectorAll('h1, h2, h3, h4, h5, h6');
     headings.forEach((heading) => {
       const id = this.slugify(heading.textContent || '');
@@ -541,11 +541,16 @@ class DocsApp {
         image.src = `/docs-files/${resolved.path}`;
       }
     });
+
+    await this.hydrateMermaidDiagrams();
   }
 
   enhanceCodeBlocks() {
     const codeBlocks = this.elements.renderedMarkdown.querySelectorAll('pre');
     codeBlocks.forEach((pre) => {
+      if (pre.classList.contains('mermaid') || pre.closest('.mermaid-diagram-shell')) {
+        return;
+      }
       if (pre.parentElement && pre.parentElement.classList.contains('code-block-shell')) {
         return;
       }
@@ -826,7 +831,104 @@ class DocsApp {
     if (typeof marked === 'undefined') {
       return this.escapeHtml(text).replace(/\n/g, '<br>');
     }
+
+    if (!this._markedConfigured) {
+      const renderer = new marked.Renderer();
+      const defaultCode = renderer.code.bind(renderer);
+      renderer.code = (codeOrToken, infostring, escaped) => {
+        let rawCode = codeOrToken;
+        let language = infostring || '';
+
+        if (codeOrToken && typeof codeOrToken === 'object') {
+          rawCode = codeOrToken.text || '';
+          language = codeOrToken.lang || '';
+        }
+
+        const codeText = rawCode == null ? '' : String(rawCode);
+        const languageLabel = String(language || '').trim().toLowerCase();
+        if (languageLabel === 'mermaid') {
+          const encodedSource = encodeURIComponent(codeText);
+          return `
+            <div class="mermaid-diagram-shell" data-mermaid-source="${encodedSource}">
+              <div class="mermaid-loading">Rendering diagram…</div>
+            </div>
+          `;
+        }
+
+        return defaultCode(codeOrToken, infostring, escaped);
+      };
+      marked.use({ renderer, gfm: true, breaks: false });
+      this._markedConfigured = true;
+    }
+
     return marked.parse(text || '');
+  }
+
+  _ensureMermaidConfigured() {
+    if (this._mermaidConfigured || typeof mermaid === 'undefined') {
+      return;
+    }
+
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'dark',
+      securityLevel: 'strict',
+    });
+    this._mermaidConfigured = true;
+  }
+
+  async hydrateMermaidDiagrams() {
+    const shells = this.elements.renderedMarkdown.querySelectorAll('.mermaid-diagram-shell[data-mermaid-source]');
+    if (!shells.length) {
+      return;
+    }
+
+    if (typeof mermaid === 'undefined') {
+      shells.forEach((shell) => {
+        const source = decodeURIComponent(shell.dataset.mermaidSource || '');
+        shell.innerHTML = `<pre class="mermaid-fallback"><code>${this.escapeHtml(source)}</code></pre>`;
+      });
+      return;
+    }
+
+    this._ensureMermaidConfigured();
+
+    const nodes = [];
+    shells.forEach((shell) => {
+      let source = '';
+      try {
+        source = decodeURIComponent(shell.dataset.mermaidSource || '');
+      } catch (_error) {
+        shell.innerHTML = '<div class="mermaid-error">Invalid diagram source.</div>';
+        return;
+      }
+
+      const pre = document.createElement('pre');
+      pre.className = 'mermaid';
+      pre.textContent = source;
+      shell.replaceChildren(pre);
+      nodes.push(pre);
+    });
+
+    if (!nodes.length) {
+      return;
+    }
+
+    try {
+      await mermaid.run({ nodes });
+    } catch (_error) {
+      nodes.forEach((node) => {
+        const shell = node.closest('.mermaid-diagram-shell');
+        if (!shell) {
+          return;
+        }
+        const source = node.textContent || '';
+        shell.innerHTML = `
+          <div class="mermaid-error">Diagram could not be rendered.</div>
+          <pre class="mermaid-fallback"><code>${this.escapeHtml(source)}</code></pre>
+        `;
+      });
+    }
   }
 
   async copyText(text) {
