@@ -285,7 +285,7 @@ def search_web_conversations(query: str, limit: int, date_filter: datetime = Non
     return results[:limit]
 
 
-def search_intel_folder(query: str, limit: int) -> list[dict]:
+def search_intel_folder(query: str, limit: int, date_filter: datetime = None) -> list[dict]:
     """Search intel folder markdown files using ripgrep."""
     results = []
     intel_dir = PROJECT_ROOT / 'jarvis-intel'
@@ -307,8 +307,13 @@ def search_intel_folder(query: str, limit: int) -> list[dict]:
             files_matches[file_path] = []
         files_matches[file_path].append(match)
     
-    for file_path, matches in list(files_matches.items())[:limit]:
+    for file_path, matches in files_matches.items():
         try:
+            if date_filter:
+                file_mtime = datetime.fromtimestamp(Path(file_path).stat().st_mtime)
+                if file_mtime < date_filter:
+                    continue
+
             file_name = Path(file_path).name
             
             # Get file content preview
@@ -324,6 +329,9 @@ def search_intel_folder(query: str, limit: int) -> list[dict]:
                 '_source': 'intel',
                 '_source_display': f'Intel File: {file_name}'
             })
+
+            if len(results) >= limit:
+                break
         except Exception:
             continue
     
@@ -544,7 +552,7 @@ def main():
             source_counts['web_conversations'] = len(web_conv_results)
         
         if 'intel' in sources:
-            intel_results = search_intel_folder(query, limit)
+            intel_results = search_intel_folder(query, limit, date_filter)
             all_results['intel'] = intel_results
             source_counts['intel'] = len(intel_results)
         
