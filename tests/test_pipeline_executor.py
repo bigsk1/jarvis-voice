@@ -294,6 +294,36 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
         self.assertEqual(result["retries"], 2)
         self.assertTrue(result["abort"])
 
+    def test_for_each_empty_items_honors_on_all_fail_abort(self):
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(execute=lambda *_args, **_kwargs: {"ok": True}),
+            provider=None,
+        )
+        step = {
+            "tool": "crawl_url",
+            "for_each": "${urls}",
+            "on_all_fail": "abort_with_message",
+            "required_success_count": 1,
+        }
+
+        empty_result = executor._execute_for_each(
+            step, "crawl_url", None, {}, {"urls": []}, {}, 0, 10
+        )
+        self.assertTrue(empty_result["abort"])
+        self.assertEqual(empty_result["validated_outputs"], [])
+
+        missing_result = executor._execute_for_each(
+            step, "crawl_url", None, {}, {}, {}, 0, 10
+        )
+        self.assertTrue(missing_result["abort"])
+
+        continue_step = {**step, "on_all_fail": "continue"}
+        continue_result = executor._execute_for_each(
+            continue_step, "crawl_url", None, {}, {"urls": []}, {}, 0, 10
+        )
+        self.assertFalse(continue_result["abort"])
+
     def test_for_each_still_respects_workflow_retry_budget(self):
         calls = []
         executor = PipelineExecutor(

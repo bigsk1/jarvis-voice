@@ -441,11 +441,23 @@ class PipelineExecutor:
         items = self._resolve_variable(for_each_expr, variables)
         
         if not items:
+            required_success = (
+                len(items)
+                if step.get("process_all", False)
+                else step.get("required_success_count", 1)
+            )
+            validated_outputs = []
+            abort = (
+                len(validated_outputs) < required_success
+                and step.get("on_all_fail") == "abort_with_message"
+            )
             return {
                 "items_processed": 0,
                 "items_succeeded": 0,
                 "outputs": [],
-                "retries": 0
+                "validated_outputs": validated_outputs,
+                "retries": 0,
+                "abort": abort,
             }
         
         outputs = []
