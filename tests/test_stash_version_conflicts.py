@@ -2,7 +2,32 @@
 
 from __future__ import annotations
 
-from lib.stash_helper import StashFile, StashSpace
+from lib.stash_helper import StashFile, StashSpace, open_space
+
+
+def test_open_space_reopens_existing_space_without_touch_typeerror(tmp_path, monkeypatch):
+    monkeypatch.setenv("STASH_DIR", str(tmp_path))
+
+    space, is_new = open_space(labels=["test"])
+    assert is_new is True
+
+    reopened, is_new_again = open_space(space_id=space.space_id)
+    assert is_new_again is False
+    assert reopened.space_id == space.space_id
+    assert reopened.meta["last_used_at"] >= space.meta["last_used_at"]
+
+
+def test_touch_updates_last_used_at_without_preloading_meta(tmp_path):
+    space = StashSpace("space_test", tmp_path)
+    space.create()
+    original_last_used = space.meta["last_used_at"]
+
+    fresh = StashSpace("space_test", tmp_path)
+    assert fresh._meta is None
+
+    fresh.touch()
+
+    assert fresh.meta["last_used_at"] >= original_last_used
 
 
 def test_version_conflicts_preserve_each_file_and_make_names_reachable(tmp_path):

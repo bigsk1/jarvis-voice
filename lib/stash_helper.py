@@ -387,6 +387,7 @@ class StashSpace:
     def touch(self):
         """Update last_used_at timestamp."""
         if self.exists:
+            _ = self.meta
             self._meta['last_used_at'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
             self._save_meta()
     
