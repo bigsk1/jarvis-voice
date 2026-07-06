@@ -491,6 +491,13 @@ class StashFile:
             if f.get('name') == self.name:
                 return f
         return None
+
+    def _find_by_stored_name(self, stored_name: str) -> dict | None:
+        """Find metadata by its sanitized on-disk filename."""
+        for f in self.space.meta.get('files', []):
+            if f.get('stored_name') == stored_name:
+                return f
+        return None
     
     @property
     def exists(self) -> bool:
@@ -587,6 +594,7 @@ class StashFile:
                    on_conflict: str, tags: list[str], tool_origin: str) -> dict:
         """Internal method to save data."""
         sanitized_name = sanitize_filename(name)
+        effective_name = name
         
         # Check for existing file
         self.name = name
@@ -602,8 +610,9 @@ class StashFile:
                 while True:
                     new_name = f"{base}_{version}{ext}"
                     self.name = new_name
-                    if not self._find_by_name():
+                    if not self._find_by_name() and not self._find_by_stored_name(new_name):
                         sanitized_name = new_name
+                        effective_name = new_name
                         break
                     version += 1
             # else: overwrite - we'll update the existing entry
@@ -623,7 +632,7 @@ class StashFile:
         now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
         file_meta = {
             'file_id': file_id,
-            'name': name,
+            'name': effective_name,
             'stored_name': sanitized_name,
             'mime_type': mime_type,
             'size_bytes': len(data),
@@ -649,7 +658,7 @@ class StashFile:
         
         return {
             'file_id': file_id,
-            'name': name,
+            'name': effective_name,
             'stored_name': sanitized_name,
             'ref': ref,
             'path': str(file_path),
