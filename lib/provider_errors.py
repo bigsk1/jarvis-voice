@@ -50,6 +50,24 @@ def _auth_or_key_error_signals(lowered: str) -> bool:
     return False
 
 
+def _rate_limit_error_signals(lowered: str, *, original: str) -> bool:
+    """
+    Rate-limit phrasing in normal Q&A ("what is a rate limit?") must not match.
+    Real provider failures arrive as Error: / error code: wrappers or SDK types.
+    """
+    if "rate_limit_exceeded" in lowered:
+        return True
+    if re.search(r"\b429\b", lowered) and (
+        "error" in lowered
+        or "code" in lowered
+        or "status" in lowered
+    ):
+        return True
+    if original.startswith("Error:") or lowered.startswith("error code:"):
+        return "rate limit" in lowered or "too many requests" in lowered
+    return False
+
+
 def _common_sdk_or_http_error_signals(lowered: str) -> bool:
     """
     Phrases that show up in OpenAI / Anthropic / xAI / Ollama SDK exceptions and JSON
@@ -128,8 +146,7 @@ def is_provider_error_text(text: str | None) -> bool:
         or "does not have permission to execute" in lowered
         or "caller does not have permission" in lowered
         or "safety_check_type_" in lowered
-        or "rate limit" in lowered
-        or "too many requests" in lowered
+        or _rate_limit_error_signals(lowered, original=value)
         or _auth_or_key_error_signals(lowered)
         or _common_sdk_or_http_error_signals(lowered)
         or "_InactiveRpcError" in value

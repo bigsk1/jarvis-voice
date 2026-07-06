@@ -69,6 +69,31 @@ class ProviderErrorFallbackTests(unittest.TestCase):
             )
         )
 
+    def test_short_qa_about_rate_limits_is_not_provider_error(self):
+        self.assertFalse(
+            is_provider_error_text(
+                "A rate limit caps how many API requests a client can make in a time window."
+            )
+        )
+        self.assertFalse(
+            is_provider_error_text(
+                "HTTP 429 too many requests means the client hit a throttle and should back off."
+            )
+        )
+
+    def test_error_wrapped_rate_limit_still_detected(self):
+        wrapped = "Error: Rate limit exceeded. Please retry after 30 seconds."
+        self.assertTrue(is_provider_error_text(wrapped))
+        self.assertEqual(classify_provider_error(wrapped).kind, "rate_limit")
+
+        error_code = "Error code: 429 - {'error': 'too many requests'}"
+        self.assertTrue(is_provider_error_text(error_code))
+        self.assertEqual(classify_provider_error(error_code).kind, "rate_limit")
+
+        sdk_type = "Error: rate_limit_exceeded"
+        self.assertTrue(is_provider_error_text(sdk_type))
+        self.assertEqual(classify_provider_error(sdk_type).kind, "rate_limit")
+
     def test_connectivity_howto_with_sdk_phrases_not_provider_error(self):
         """Regression: long markdown answers may mention gateway timeout, rate limits, etc."""
         prose = (
