@@ -1,3 +1,8 @@
+---
+tool_hints:
+  - generate_video
+---
+
 # Image-to-Video: Voices Only (No Background Music)
 
 ## Audio Directive

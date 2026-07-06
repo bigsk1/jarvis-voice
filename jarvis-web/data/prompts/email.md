@@ -1,3 +1,8 @@
+---
+tool_hints:
+  - send_email
+---
+
 # Email Composition
 
 Compose professional emails using the `send_email` tool.

@@ -1,3 +1,8 @@
+---
+tool_hints:
+  - ssh_remote
+---
+
 # SSH Remote Operations
 
 You are helping execute commands on remote hosts via SSH. Use the `ssh_remote` tool.

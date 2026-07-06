@@ -62,12 +62,20 @@ class CommandSystem {
 
   async refreshTools() {
     try {
-      const res = await fetch('/api/tools?summary=true&include_blocked=false');
-      if (!res.ok) return;
-      const data = await res.json();
-      this._setToolsFromList(data.tools || []);
+      const [toolsRes, promptsRes] = await Promise.all([
+        fetch('/api/tools?summary=true&include_blocked=false'),
+        fetch('/api/prompts')
+      ]);
+      if (toolsRes.ok) {
+        const data = await toolsRes.json();
+        this._setToolsFromList(data.tools || []);
+      }
+      if (promptsRes.ok) {
+        const data = await promptsRes.json();
+        this.prompts = data.prompts || {};
+      }
     } catch (err) {
-      console.warn('[Commands] Failed to refresh tools:', err);
+      console.warn('[Commands] Failed to refresh tools/prompts:', err);
     }
   }
 
@@ -295,6 +303,14 @@ class CommandSystem {
         result.prompt = promptName;
         result.message = promptMatch[2].trim();
         result.instruction = prompt.content || '';
+        const promptHints = Array.isArray(prompt.tool_hints) ? prompt.tool_hints : [];
+        for (const name of promptHints) {
+          const tool = this.tools[name];
+          if (!tool || tool.blocked || tool.enabled === false) continue;
+          if (!result.toolHints.includes(name) && result.toolHints.length < this.maxToolHints) {
+            result.toolHints.push(name);
+          }
+        }
       }
     }
 
@@ -309,8 +325,12 @@ class CommandSystem {
       }
       return leading;
     }).replace(/\s{2,}/g, ' ').trim();
-    result.toolHints = hints;
-    
+    for (const name of hints) {
+      if (!result.toolHints.includes(name) && result.toolHints.length < this.maxToolHints) {
+        result.toolHints.push(name);
+      }
+    }
+
     return result;
   }
   
@@ -331,6 +351,26 @@ class CommandSystem {
       parts.push(parsed.toolHints.map(name => `#${name}`).join(' ') + ' 🛠️');
     }
     return parts.join(' + ');
+  }
+
+  /**
+   * Rebuild prompt/tool provenance from a saved user message.
+   * Historical badges describe what was selected for that turn, even if a
+   * referenced prompt or tool is no longer available in the current mode.
+   */
+  getPersistedDisplay(data = {}) {
+    const isSafeName = (value) => (
+      typeof value === 'string' && /^[A-Za-z0-9_-]+$/.test(value)
+    );
+    const prompt = isSafeName(data?.prompt) ? data.prompt : null;
+    const toolHints = [];
+    for (const name of Array.isArray(data?.tool_hints) ? data.tool_hints : []) {
+      if (!isSafeName(name) || toolHints.includes(name)) continue;
+      toolHints.push(name);
+      if (toolHints.length >= this.maxToolHints) break;
+    }
+
+    return this.getActiveDisplay({ prompt, workflow: null, toolHints });
   }
 }
 
@@ -2867,7 +2907,14 @@ class ChatUI {
     }
     
     // Build display message (show original with decorations, show feedback badge if enabled)
-    let displayMessage = this.inputField.value.trim();  // Use original for display
+    // The active badge already shows @prompt and recognized #tool selectors.
+    // Keep the bubble focused on the user's task instead of displaying those
+    // selectors twice. Workflows retain their original trigger text because
+    // parseInput intentionally keeps it in parsed.message.
+    const hasParsedSelectors = Boolean(parsed.prompt) || (parsed.toolHints || []).length > 0;
+    let displayMessage = hasParsedSelectors
+      ? parsed.message
+      : this.inputField.value.trim();
     let activeBadge = '';
     const displayParsed = {
       ...parsed,

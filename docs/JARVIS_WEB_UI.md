@@ -266,7 +266,8 @@ jarvis-web/
 │   └── web_config.json.example
 │
 ├── data/                           # Web-local assets (not conversation history)
-│   ├── prompts/                    # @prompt templates (*.md)
+│   ├── prompts/                    # Shared @prompt templates (*.md)
+│   │   └── personal/               # Git-ignored personal prompts + tracked README
 │   └── uploads/                    # Chat image uploads for vision
 │
 ├── requirements.txt
@@ -1070,7 +1071,42 @@ This ensures the LLM understands the methodology before seeing the task.
 
 This: Uses research methodology → Gathers comprehensive info → Saves to Canvas
 
-**File Location:** `jarvis-web/data/prompts/*.md`
+#### Shared and personal prompt files
+
+- Shared prompts live in `jarvis-web/data/prompts/*.md` and are committed with the repository.
+- Personal prompts live in `jarvis-web/data/prompts/personal/*.md`, are ignored by Git, and can contain machine-specific instructions.
+- A personal prompt overrides a shared prompt with the same filename.
+- `jarvis-web/data/prompts/personal/README.md` is tracked documentation and is never loaded as `@readme`.
+- The Markdown filename is the command name: `personal/social_clip.md` is invoked as `@social_clip your topic`.
+
+A basic personal prompt is just Markdown:
+
+```markdown
+# My Prompt
+
+Apply these reusable instructions to the user's request below.
+```
+
+Tool-specific prompts can declare an automatic tool hint in YAML frontmatter:
+
+```markdown
+---
+tool_hints:
+  - create_social_clip
+---
+
+# Social Clip
+
+Create the requested social clip and call `create_social_clip`.
+```
+
+When `tool_hints` contains exactly one tool, that tool is treated as a prerequisite for listing the prompt. If the tool is absent, disabled by the active profile, unavailable because required configuration is missing, or blocked in Jarvis Web, the prompt does not appear in `@` autocomplete or the prompt API. The hint itself remains a strong routing preference rather than a forced tool call.
+
+Leave `tool_hints` out of general prompts and prompts that can use several tools or native provider capabilities. This prevents an optional tool from unnecessarily hiding a useful prompt.
+
+Prompt and tool badges are saved as message metadata (`prompt` and `tool_hints`) and reconstructed when conversation history reloads. The badge shows the selectors while the user-message bubble shows only the clean task text.
+
+See `jarvis-web/data/prompts/personal/README.md` for the short authoring guide.
 
 ---
 
@@ -1088,6 +1124,7 @@ Examples:
 
 **Behavior:**
 - `#` autocomplete uses `/api/tools?summary=true&include_blocked=false`, so the list reflects enabled tools, web-blocked tools, MCP/database tools, and active tool profiles.
+- A prompt can attach hints automatically through its YAML `tool_hints` frontmatter; the server validates availability and the client handles them exactly like explicitly selected hints.
 - Unlike `/workflow` and `@prompt`, tool hints can appear more than once and can be inserted anywhere as standalone tokens.
 - Selecting a tool from `#` autocomplete turns it into a removable chip above the input. The raw `#partial` token is removed from the textarea so the task stays readable.
 - Typed or pasted `#tool_name` tokens still work as a plain-text fallback. The UI removes recognized tokens from the clean user query and sends canonical tool names as metadata.
@@ -1099,7 +1136,7 @@ Examples:
 [CONTEXT - Tool preference for this request]
 
 Selected tool hints: crypto_price.
-Treat these as preferences, not requirements. Prefer them if they fit the task; ignore them if they do not fit; use additional tools naturally when needed.
+Treat these as strong preferences for this turn. If one fits the user's request, use it before artifact/memory tools such as canvas; ignore a hinted tool only if it clearly does not fit or fails.
 
 [END CONTEXT]
 

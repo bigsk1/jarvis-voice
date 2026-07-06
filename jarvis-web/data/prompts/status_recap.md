@@ -1,3 +1,8 @@
+---
+tool_hints:
+  - status_recap
+---
+
 # Status Recap
 
 You are providing a comprehensive status briefing using the `status_recap` tool.

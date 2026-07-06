@@ -1,3 +1,8 @@
+---
+tool_hints:
+  - generate_music
+---
+
 # AI Music Generation
 
 You are helping create AI-generated music using ElevenLabs. Transform the user's idea into an optimal music generation request.

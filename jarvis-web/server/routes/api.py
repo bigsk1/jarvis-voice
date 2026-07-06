@@ -9,6 +9,8 @@ import hashlib
 import tempfile
 from datetime import datetime
 from pathlib import Path
+
+import yaml
 from flask import Blueprint, jsonify, request, send_file, send_from_directory, abort
 from ..services.log_explorer import get_log_explorer, LogExplorerError
 from ..services.tool_discovery import get_tool_service
@@ -189,6 +191,139 @@ STASH_PATH = JARVIS_ROOT / 'data' / 'stash'
 WEB_DATA_PATH = JARVIS_ROOT / 'jarvis-web' / 'data'
 PROMPTS_PATH = WEB_DATA_PATH / 'prompts'
 WORKFLOWS_PATH = JARVIS_ROOT / 'data' / 'workflows'  # Workflows are in main data folder
+
+
+def _parse_prompt_frontmatter(content: str) -> tuple[str, list[str]]:
+    """Return prompt body and optional tool_hints from YAML frontmatter."""
+    text = content or ''
+    stripped = text.lstrip()
+    lines = stripped.splitlines(keepends=True)
+    if not lines or lines[0].strip() != '---':
+        return text, []
+
+    closing_index = next(
+        (index for index, line in enumerate(lines[1:], start=1) if line.strip() == '---'),
+        None,
+    )
+    if closing_index is None:
+        return text, []
+
+    frontmatter_text = ''.join(lines[1:closing_index])
+    try:
+        frontmatter = yaml.safe_load(frontmatter_text) or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f'Invalid prompt YAML frontmatter: {exc}') from exc
+    if not isinstance(frontmatter, dict):
+        raise ValueError('Prompt YAML frontmatter must be a mapping')
+
+    raw_tool_hints = frontmatter.get('tool_hints', [])
+    if raw_tool_hints is None:
+        raw_tool_hints = []
+    if not isinstance(raw_tool_hints, list):
+        raise ValueError('Prompt frontmatter tool_hints must be a list of tool names')
+
+    tool_hints = []
+    for hint in raw_tool_hints:
+        if not isinstance(hint, str) or not hint.strip():
+            raise ValueError('Prompt frontmatter tool_hints must contain non-empty strings')
+        name = hint.strip()
+        if name not in tool_hints:
+            tool_hints.append(name)
+
+    body = ''.join(lines[closing_index + 1:]).lstrip('\r\n')
+    return body, tool_hints
+
+
+def _resolve_prompt_file(name: str) -> Path | None:
+    """Personal prompts override shared prompts with the same stem."""
+    if name.casefold() == 'readme':
+        return None
+    personal_file = PROMPTS_PATH / 'personal' / f'{name}.md'
+    if personal_file.exists():
+        return personal_file
+    shared_file = PROMPTS_PATH / f'{name}.md'
+    if shared_file.exists():
+        return shared_file
+    return None
+
+
+def _iter_prompt_files():
+    """Yield (stem, path) for shared and personal prompt files."""
+    prompts: dict[str, Path] = {}
+    if PROMPTS_PATH.exists():
+        for prompt_file in PROMPTS_PATH.glob('*.md'):
+            prompts[prompt_file.stem] = prompt_file
+        personal_dir = PROMPTS_PATH / 'personal'
+        if personal_dir.exists():
+            for prompt_file in personal_dir.glob('*.md'):
+                if prompt_file.name.casefold() == 'readme.md':
+                    continue
+                prompts[prompt_file.stem] = prompt_file
+    for stem in sorted(prompts):
+        yield stem, prompts[stem]
+
+
+def _load_prompt_record(name: str, prompt_file: Path) -> dict:
+    content = prompt_file.read_text()
+    body, tool_hints = _parse_prompt_frontmatter(content)
+    lines = body.strip().split('\n')
+    description = ''
+    if lines and lines[0].startswith('#'):
+        description = lines[0].lstrip('#').strip()
+
+    key_points = []
+    for line in lines[1:]:
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith(('-', '*', '•')) or (len(line) > 2 and line[0].isdigit() and line[1] in '.):'):
+            point = line.lstrip('-*•0123456789.) ').strip()
+            if point and len(point) > 3:
+                key_points.append(point[:80])
+        elif line.startswith('##'):
+            key_points.append(line.lstrip('#').strip())
+        if len(key_points) >= 5:
+            break
+
+    if not key_points:
+        for line in lines[1:6]:
+            line = line.strip()
+            if line and not line.startswith('#'):
+                key_points.append(line[:80])
+
+    record = {
+        'name': name,
+        'description': description,
+        'content': body,
+        'key_points': key_points[:5],
+    }
+    if tool_hints:
+        record['tool_hints'] = tool_hints
+    return record
+
+
+def _prompt_is_available(record: dict, tools_by_name: dict[str, dict]) -> bool:
+    """Hide a single-tool prompt when its required hinted tool is unavailable."""
+    tool_hints = record.get('tool_hints') or []
+    if len(tool_hints) != 1:
+        return True
+
+    tool = tools_by_name.get(tool_hints[0])
+    return bool(
+        tool
+        and tool.get('enabled', True)
+        and tool.get('available', True)
+        and not tool.get('blocked', False)
+    )
+
+
+def _prompt_tools_by_name() -> dict[str, dict]:
+    """Return the current Web UI tool registry keyed by exact tool name."""
+    return {
+        tool['name']: tool
+        for tool in get_tool_service().get_tools(include_blocked=True)
+        if tool.get('name')
+    }
 
 
 @api_bp.route('/status', methods=['GET'])
@@ -2618,56 +2753,18 @@ def get_workflow(workflow_id):
 
 @api_bp.route('/prompts', methods=['GET'])
 def list_prompts():
-    """List all available @prompts (auto-discovered from data/prompts/*.md)"""
+    """List all available @prompts (auto-discovered from data/prompts/*.md and personal/*.md)"""
     prompts = {}
-    
-    if PROMPTS_PATH.exists():
-        for prompt_file in PROMPTS_PATH.glob('*.md'):
-            try:
-                with open(prompt_file, 'r') as f:
-                    content = f.read()
-                    name = prompt_file.stem
-                    
-                    # Extract description from first line (# Title)
-                    lines = content.strip().split('\n')
-                    description = ''
-                    if lines and lines[0].startswith('#'):
-                        description = lines[0].lstrip('#').strip()
-                    
-                    # Extract key points for tooltip (bullets or first meaningful lines)
-                    key_points = []
-                    for line in lines[1:]:  # Skip title
-                        line = line.strip()
-                        if not line:
-                            continue
-                        # Look for bullet points or numbered items
-                        if line.startswith(('-', '*', '•')) or (len(line) > 2 and line[0].isdigit() and line[1] in '.):'):
-                            point = line.lstrip('-*•0123456789.) ').strip()
-                            if point and len(point) > 3:
-                                key_points.append(point[:80])  # Truncate long points
-                        # Also capture section headers
-                        elif line.startswith('##'):
-                            key_points.append(line.lstrip('#').strip())
-                        # Stop after finding enough points
-                        if len(key_points) >= 5:
-                            break
-                    
-                    # If no bullets found, take first few non-empty lines
-                    if not key_points:
-                        for line in lines[1:6]:
-                            line = line.strip()
-                            if line and not line.startswith('#'):
-                                key_points.append(line[:80])
-                    
-                    prompts[name] = {
-                        'name': name,
-                        'description': description,
-                        'content': content,
-                        'key_points': key_points[:5]  # Max 5 points
-                    }
-            except Exception as e:
-                print(f"[Prompts] Error loading {prompt_file}: {e}")
-    
+
+    tools_by_name = _prompt_tools_by_name()
+    for name, prompt_file in _iter_prompt_files():
+        try:
+            record = _load_prompt_record(name, prompt_file)
+            if _prompt_is_available(record, tools_by_name):
+                prompts[name] = record
+        except Exception as e:
+            print(f"[Prompts] Error loading {prompt_file}: {e}")
+
     return jsonify({
         'ok': True,
         'count': len(prompts),
@@ -2678,28 +2775,20 @@ def list_prompts():
 @api_bp.route('/prompts/<name>', methods=['GET'])
 def get_prompt(name):
     """Get a specific prompt by name"""
-    prompt_file = PROMPTS_PATH / f"{name}.md"
-    
-    if prompt_file.exists():
+    prompt_file = _resolve_prompt_file(name)
+
+    if prompt_file:
         try:
-            with open(prompt_file, 'r') as f:
-                content = f.read()
-                lines = content.strip().split('\n')
-                description = ''
-                if lines and lines[0].startswith('#'):
-                    description = lines[0].lstrip('#').strip()
-                
-                return jsonify({
-                    'ok': True,
-                    'prompt': {
-                        'name': name,
-                        'description': description,
-                        'content': content
-                    }
-                })
+            record = _load_prompt_record(name, prompt_file)
+            if not _prompt_is_available(record, _prompt_tools_by_name()):
+                return jsonify({'ok': False, 'error': f'Prompt not available: {name}'}), 404
+            return jsonify({
+                'ok': True,
+                'prompt': record
+            })
         except Exception as e:
             return jsonify({'ok': False, 'error': str(e)}), 500
-    
+
     return jsonify({'ok': False, 'error': f'Prompt not found: {name}'}), 404
 
 

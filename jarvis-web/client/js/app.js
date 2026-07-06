@@ -3085,7 +3085,8 @@ class JarvisApp {
         const imageData = imageUrls.length
           ? { images: imageUrls.map((url) => ({ url })) }
           : null;
-        this.chat.addUserMessage(msg.content, imageData);
+        const activeBadge = window.commandSystem?.getPersistedDisplay?.(msg.data) || '';
+        this.chat.addUserMessage(msg.content, imageData, activeBadge);
       } else if (msg.role === 'assistant') {
         // Pass as separate parameters: text, toolsUsed, data
         this.chat.addAssistantMessage(

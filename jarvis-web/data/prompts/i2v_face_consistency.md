@@ -1,3 +1,8 @@
+---
+tool_hints:
+  - generate_video
+---
+
 # Image-to-Video Face Consistency
 
 ## Core Directive

@@ -2336,6 +2336,16 @@ Previous structured data:
                     print(f"[MODE] Reset tool registry for {mode} mode")
                 except Exception as e:
                     print(f"[MODE] Warning: Could not reset tool registry: {e}")
+
+                # Prompt visibility uses the same enabled/available tool view as
+                # the Web UI. Refresh it before the mode-changed event tells the
+                # browser to reload both registries.
+                try:
+                    from ..services.tool_discovery import get_tool_service
+                    get_tool_service().refresh()
+                    print(f"[MODE] Refreshed Web tool discovery for {mode} mode")
+                except Exception as e:
+                    print(f"[MODE] Warning: Could not refresh Web tool discovery: {e}")
                 
                 emit('mode:changed', {'mode': mode})
         

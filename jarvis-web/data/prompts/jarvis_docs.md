@@ -1,3 +1,8 @@
+---
+tool_hints:
+  - search_docs
+---
+
 # Search Jarvis Documentation
 
 This is a Q&A request about Jarvis capabilities, tool parameters, or features. DO NOT execute generative tools.

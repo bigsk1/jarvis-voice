@@ -140,6 +140,8 @@ data/.webui_secret
 characters/
 data/generated_images/*
 jarvis-web/data/uploads/
+jarvis-web/data/prompts/personal/*.md
+!jarvis-web/data/prompts/personal/README.md
 
 # web ui
 data/web_conversations/*
