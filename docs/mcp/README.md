@@ -116,6 +116,12 @@ RESTART_COOLDOWN_SECONDS = 60  # Wait after hitting max
 | Container crashed (4th+ time) | 🛑 60s cooldown, fail gracefully |
 | After cooldown expires | 🔄 Counter resets, can retry |
 
+MCP tool execution errors are distinct from JSON-RPC transport errors. When a
+server returns a `CallToolResult` with `isError: true`, Jarvis preserves the
+server's text for diagnostics but reports `ok: false` to the orchestrator so
+workflows and the routing model cannot mistake the error payload for valid
+tool data. This behavior is shared by stdio, SSE, and Streamable HTTP clients.
+
 **Console output**:
 ```
 ⚠️ MCP brave_search crashed (exit code: 137)

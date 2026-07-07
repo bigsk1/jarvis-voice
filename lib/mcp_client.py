@@ -20,6 +20,47 @@ from threading import Event, Lock, RLock, Thread
 from config_loader import get_config_value
 
 
+def _normalize_call_tool_result(tool_name: str, result: dict[str, Any] | None) -> dict[str, Any]:
+    """Convert an MCP CallToolResult into Jarvis success/error semantics."""
+    if not result:
+        return {
+            "ok": False,
+            "speech": f"MCP tool {tool_name} returned no result",
+            "error": "Empty result",
+        }
+
+    content = result.get("content", [])
+    text_parts = []
+    for item in content:
+        if isinstance(item, dict) and item.get("type") == "text":
+            text_parts.append(item.get("text", ""))
+        elif isinstance(item, str):
+            text_parts.append(item)
+    combined_text = "\n".join(text_parts) if text_parts else (str(content) if content else "")
+
+    if result.get("isError") is True:
+        error_text = combined_text or str(result.get("error") or f"MCP tool {tool_name} failed")
+        return {
+            "ok": False,
+            "speech": error_text[:500],
+            "error": error_text,
+            "data": {"raw": content or result, "full_text": combined_text, "isError": True},
+        }
+
+    if not content:
+        return {
+            "ok": True,
+            "speech": str(result),
+            "data": {"raw": result},
+        }
+
+    return {
+        "ok": True,
+        "speech": combined_text[:500],
+        "data": {"raw": content, "full_text": combined_text},
+    }
+
+
 def _resolve_config_placeholder(var_name: str) -> str:
     """Resolve one explicitly referenced MCP variable from the active mode.
 
@@ -480,43 +521,7 @@ class MCPClient:
                     self._force_restart(f"tools/call error timeout: {err_text[:120]}")
                 raise err
 
-            result = response_holder.get("result")
-            
-            # Check if result has content
-            if not result:
-                return {
-                    "ok": False,
-                    "speech": f"MCP tool {tool_name} returned no result",
-                    "error": "Empty result"
-                }
-            
-            # Extract content from MCP response
-            content = result.get("content", [])
-            
-            if not content:
-                # Some MCP servers might return data differently
-                return {
-                    "ok": True,
-                    "speech": str(result),
-                    "data": {"raw": result}
-                }
-            
-            # Combine text content
-            text_parts = []
-            for item in content:
-                if isinstance(item, dict):
-                    if item.get("type") == "text":
-                        text_parts.append(item.get("text", ""))
-                elif isinstance(item, str):
-                    text_parts.append(item)
-            
-            combined_text = "\n".join(text_parts) if text_parts else str(content)
-            
-            return {
-                "ok": True,
-                "speech": combined_text[:500],  # Limit length for voice
-                "data": {"raw": content, "full_text": combined_text}
-            }
+            return _normalize_call_tool_result(tool_name, response_holder.get("result"))
             
         except Exception as e:
             import traceback
@@ -1057,41 +1062,7 @@ class MCPRemoteClient:
                     self._force_restart(f"remote tools/call error timeout: {err_text[:120]}")
                 raise err
 
-            result = response_holder.get("result")
-            
-            if not result:
-                return {
-                    "ok": False,
-                    "speech": f"MCP tool {tool_name} returned no result",
-                    "error": "Empty result"
-                }
-            
-            # Extract content from MCP response
-            content = result.get("content", [])
-            
-            if not content:
-                return {
-                    "ok": True,
-                    "speech": str(result),
-                    "data": {"raw": result}
-                }
-            
-            # Combine text content
-            text_parts = []
-            for item in content:
-                if isinstance(item, dict):
-                    if item.get("type") == "text":
-                        text_parts.append(item.get("text", ""))
-                elif isinstance(item, str):
-                    text_parts.append(item)
-            
-            combined_text = "\n".join(text_parts) if text_parts else str(content)
-            
-            return {
-                "ok": True,
-                "speech": combined_text[:500],
-                "data": {"raw": content, "full_text": combined_text}
-            }
+            return _normalize_call_tool_result(tool_name, response_holder.get("result"))
             
         except Exception as e:
             import traceback
