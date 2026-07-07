@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 
 from config_loader import config_scope, get_config_value
 from memory_db import MemoryDB
-from embeddings import get_embedding, get_effective_embedding_provider
+from embeddings import get_effective_embedding_provider, get_persistable_embedding
 
 # ANSI color codes
 GREEN = '\033[92m'
@@ -135,9 +135,15 @@ def check_embedding_dimensions(mode='cloud', _scoped=False):
                 'error': str(e)
             })
     
-    # Generate test embedding to verify current config
-    test_embedding = get_embedding("test query")
-    current_dim = len(test_embedding)
+    # Generate a real provider embedding to verify current config. A same-size
+    # hash fallback must not make a disconnected provider look healthy.
+    provider_error = None
+    try:
+        test_embedding = get_persistable_embedding("test query")
+        current_dim = len(test_embedding)
+    except Exception as exc:
+        current_dim = None
+        provider_error = str(exc)
     
     llm_provider = get_config_value("LLM_PROVIDER", "openai")
     effective = _effective_embedding_backend()
@@ -151,7 +157,12 @@ def check_embedding_dimensions(mode='cloud', _scoped=False):
         )
     
     return {
-        'ok': len(memory_issues) == 0 and len(tool_issues) == 0 and current_dim == expected_dim,
+        'ok': (
+            provider_error is None
+            and len(memory_issues) == 0
+            and len(tool_issues) == 0
+            and current_dim == expected_dim
+        ),
         'mode': mode,
         'expected_dimensions': expected_dim,
         'current_embedding_dimensions': current_dim,
@@ -163,6 +174,7 @@ def check_embedding_dimensions(mode='cloud', _scoped=False):
         'embedding_provider': effective,
         'llm_provider': llm_provider,
         'embedding_model': embedding_model,
+        'provider_error': provider_error,
     }
 
 
@@ -179,6 +191,8 @@ def print_health_report(health):
     # Overall status
     if ok:
         print(f"{GREEN}✅ All embeddings are healthy!{NC}")
+    elif health.get('provider_error'):
+        print(f"{RED}❌ Embedding provider unavailable!{NC}")
     else:
         print(f"{RED}❌ Embedding dimension mismatch detected!{NC}")
     
@@ -189,6 +203,8 @@ def print_health_report(health):
     if health.get("llm_provider") and health["llm_provider"] != health["embedding_provider"]:
         print(f"{BLUE}LLM Provider (chat):{NC} {health['llm_provider']}")
     print(f"{BLUE}Embedding Model:{NC} {health['embedding_model']}")
+    if health.get('provider_error'):
+        print(f"{RED}Provider Error:{NC} {health['provider_error']}")
     print()
     
     # Memory embeddings
@@ -231,7 +247,9 @@ def print_health_report(health):
     if not ok:
         print(f"{BOLD}{YELLOW}🔧 Recommended Actions:{NC}")
         
-        if health['current_embedding_dimensions'] != health['expected_dimensions']:
+        if health.get('provider_error'):
+            print(f"{YELLOW}  1. Restore the configured embedding provider, then rerun the failed sync{NC}")
+        elif health['current_embedding_dimensions'] != health['expected_dimensions']:
             print(f"{YELLOW}  1. Config issue: Current embedding model generates wrong dimensions{NC}")
             print(f"     Check config/{mode}.env for correct LLM_PROVIDER and embedding model")
         

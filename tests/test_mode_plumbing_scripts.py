@@ -318,3 +318,10 @@ def test_native_launchers_report_tool_sync_failure_without_false_success():
         assert "Tool embedding sync incomplete" in sync_block
         assert "Existing Tool RAG vectors were preserved" in sync_block
         assert "✅ Tool embeddings updated" in sync_block
+
+
+def test_embedding_health_rejects_provider_fallbacks():
+    script = (ROOT / "bin" / "check-embeddings-health.py").read_text()
+    assert "get_persistable_embedding" in script
+    assert "provider_error" in script
+    assert "Embedding provider unavailable" in script

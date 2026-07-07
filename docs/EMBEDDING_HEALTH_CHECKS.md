@@ -96,6 +96,8 @@ Use the health-check scripts to verify DB state:
 ```
 
 If these are healthy, your saved vectors in the DB are likely fine.
+The health probe requires a real provider embedding; a same-dimension hash
+fallback is reported as provider-unavailable rather than healthy.
 
 ### Runtime fallback
 
