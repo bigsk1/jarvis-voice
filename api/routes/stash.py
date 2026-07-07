@@ -14,13 +14,9 @@ from api.models.stash import (
 
 # Add lib to path for stash_helper
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "lib"))
-from stash_helper import open_space, StashFile as StashFileHelper
+from stash_helper import get_stash_dir, open_space, StashFile as StashFileHelper
 
 router = APIRouter(prefix="/api/stash", tags=["stash"])
-
-# Stash directory
-STASH_DIR = Path(__file__).parent.parent.parent / "data" / "stash"
-
 
 def normalize_space_id(space_id: str) -> str:
     """
@@ -45,7 +41,7 @@ def get_space_meta(space_id: str) -> dict | None:
     """Load meta.json for a space"""
     # Normalize space_id to handle LLM date reformatting
     space_id = normalize_space_id(space_id)
-    meta_path = STASH_DIR / space_id / "meta.json"
+    meta_path = get_stash_dir() / space_id / "meta.json"
     if not meta_path.exists():
         return None
     try:
@@ -109,7 +105,7 @@ async def get_stash_stats():
         oldest = None
         newest = None
         
-        for space_dir in STASH_DIR.iterdir():
+        for space_dir in get_stash_dir().iterdir():
             if not space_dir.is_dir() or not space_dir.name.startswith('space_'):
                 continue
             
@@ -175,7 +171,7 @@ async def list_spaces(
     try:
         all_spaces = []
         
-        for space_dir in sorted(STASH_DIR.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+        for space_dir in sorted(get_stash_dir().iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
             if not space_dir.is_dir() or not space_dir.name.startswith('space_'):
                 continue
             
@@ -280,7 +276,7 @@ async def download_file(space_id: str, file_id: str):
         
         for f in meta.get('files', []):
             if f['file_id'] == file_id:
-                file_path = STASH_DIR / normalized_space_id / f['stored_name']
+                file_path = get_stash_dir() / normalized_space_id / f['stored_name']
                 if not file_path.exists():
                     raise HTTPException(status_code=404, detail="File not found on disk")
                 
@@ -314,7 +310,7 @@ async def get_recent_spaces(
     try:
         spaces = []
         
-        for space_dir in sorted(STASH_DIR.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+        for space_dir in sorted(get_stash_dir().iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
             if not space_dir.is_dir() or not space_dir.name.startswith('space_'):
                 continue
             
@@ -349,7 +345,7 @@ async def search_stash(
         q_lower = q.lower()
         results = []
         
-        for space_dir in STASH_DIR.iterdir():
+        for space_dir in get_stash_dir().iterdir():
             if not space_dir.is_dir() or not space_dir.name.startswith('space_'):
                 continue
             
@@ -391,7 +387,7 @@ async def list_labels():
     try:
         labels = {}
         
-        for space_dir in STASH_DIR.iterdir():
+        for space_dir in get_stash_dir().iterdir():
             if not space_dir.is_dir() or not space_dir.name.startswith('space_'):
                 continue
             
