@@ -2,13 +2,8 @@
 Jarvis Canvas - Image Gallery routes
 """
 import json
-import sys
 from datetime import datetime
-from pathlib import Path
 from flask import Blueprint, jsonify, request, send_file, abort, render_template
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / 'lib'))
-from media_placeholders import send_placeholder
 
 from config import GENERATED_IMAGES_DIR, STASH_DIR
 from internal_api import get_internal_api_base_url, get_internal_api_headers
@@ -198,8 +193,8 @@ def serve_gallery_image(filename):
     
     filepath = GENERATED_IMAGES_DIR / filename
     if not filepath.exists():
-        return send_placeholder('image')
-
+        abort(404, "Image not found")
+    
     return send_file(filepath)
 
 

@@ -121,14 +121,6 @@ body {
     object-fit: cover;
 }
 
-.video-unavailable-fallback {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    background: var(--bg-secondary, #1a1a2e);
-    display: block;
-}
-
 .video-play-overlay {
     position: absolute;
     inset: 0;

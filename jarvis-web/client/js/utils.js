@@ -958,91 +958,6 @@ const Utils = {
 window.Utils = Utils;
 
 // =============================================================================
-// Missing media fallbacks (shared placeholder assets in /assets/)
-// =============================================================================
-
-window.JarvisMediaFallback = {
-  imageUrl: '/assets/image-unavailable.jpg',
-  videoUrl: '/assets/video-unavailable.jpg',
-
-  _isJarvisMediaUrl(src) {
-    return /\/api\/(images|uploads|stash|videos)\//.test(src || '');
-  },
-
-  _videoSource(video) {
-    if (!video) return '';
-    const source = video.querySelector('source');
-    return source?.getAttribute('src') || video.getAttribute('src') || video.currentSrc || '';
-  },
-
-  applyImage(img) {
-    if (!img || img.dataset.fallbackApplied) return;
-    const src = img.getAttribute('src') || '';
-    if (!this._isJarvisMediaUrl(src)) return;
-    img.dataset.fallbackApplied = '1';
-    img.src = this.imageUrl;
-    if (!img.alt || img.alt === 'Attached image') {
-      img.alt = 'Image no longer available';
-    }
-    img.classList.add('media-unavailable');
-  },
-
-  applyVideo(video) {
-    if (!video || video.dataset.fallbackApplied) return;
-    const sourceSrc = this._videoSource(video);
-    if (!this._isJarvisMediaUrl(sourceSrc)) return;
-    video.dataset.fallbackApplied = '1';
-    const poster = video.getAttribute('poster') || this.videoUrl;
-    const img = document.createElement('img');
-    img.src = poster;
-    img.alt = 'Video no longer available';
-    img.className = 'video-unavailable-fallback media-unavailable';
-    img.loading = 'lazy';
-    img.addEventListener('error', () => {
-      img.src = this.videoUrl;
-    }, { once: true });
-    video.replaceWith(img);
-  },
-
-  bindImage(img) {
-    if (!img || img.dataset.fallbackBound) return;
-    img.dataset.fallbackBound = '1';
-    img.addEventListener('error', () => this.applyImage(img), { once: true });
-  },
-
-  bindVideo(video) {
-    if (!video || video.dataset.fallbackBound) return;
-    video.dataset.fallbackBound = '1';
-    video.addEventListener('error', () => this.applyVideo(video), { once: true });
-    this.probeVideo(video);
-  },
-
-  async probeVideo(video) {
-    const sourceSrc = this._videoSource(video);
-    if (!sourceSrc || !this._isJarvisMediaUrl(sourceSrc) || video.dataset.fallbackApplied) {
-      return;
-    }
-    try {
-      const response = await fetch(sourceSrc, {
-        method: 'HEAD',
-        credentials: 'same-origin',
-      });
-      if (!response.ok) {
-        this.applyVideo(video);
-      }
-    } catch {
-      this.applyVideo(video);
-    }
-  },
-
-  bindRoot(root) {
-    if (!root) return;
-    root.querySelectorAll('img').forEach((img) => this.bindImage(img));
-    root.querySelectorAll('video').forEach((video) => this.bindVideo(video));
-  },
-};
-
-// =============================================================================
 // Lightbox functions
 // =============================================================================
 
@@ -1054,12 +969,7 @@ window.showImageLightbox = function(imageUrl) {
     window.open(imageUrl, '_blank', 'noopener,noreferrer');
     return;
   }
-
-  img.onerror = () => {
-    if (window.JarvisMediaFallback) {
-      window.JarvisMediaFallback.applyImage(img);
-    }
-  };
+  
   img.src = imageUrl;
   downloadBtn.href = imageUrl;
   

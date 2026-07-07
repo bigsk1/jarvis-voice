@@ -39,7 +39,6 @@ from tool_sync_status import read_tool_sync_status
 from vision_multimodal import max_vision_images
 from retention_cleanup import find_upload_stash_fallback
 from stash_helper import get_stash_dir
-from media_placeholders import is_image_extension, send_placeholder
 
 
 def _get_jarvis_version():
@@ -2226,12 +2225,8 @@ def serve_image(filename):
         abort(404)
     
     if not IMAGES_PATH.exists():
-        return send_placeholder('image')
-
-    image_path = IMAGES_PATH / filename
-    if not image_path.is_file():
-        return send_placeholder('image')
-
+        abort(404)
+    
     return send_from_directory(str(IMAGES_PATH), filename)
 
 
@@ -2287,7 +2282,7 @@ def serve_video_thumbnail(filename):
 
     video_path = VIDEOS_PATH / filename
     if not video_path.is_file():
-        return send_placeholder('video')
+        abort(404)
 
     thumbnail_dir = VIDEOS_PATH / '.thumbnails'
     thumbnail_dir.mkdir(parents=True, exist_ok=True)
@@ -2312,7 +2307,7 @@ def serve_video_thumbnail(filename):
         if result.returncode != 0 or not thumbnail_path.is_file():
             error = result.stderr.decode(errors='replace')[:200] if result.stderr else 'unknown ffmpeg error'
             print(f'[VIDEO] Failed to generate thumbnail for {filename}: {error}', file=sys.stderr)
-            return send_placeholder('video')
+            abort(500, 'Failed to generate video thumbnail')
 
     return send_file(thumbnail_path, mimetype='image/jpeg')
 
@@ -2358,11 +2353,6 @@ def serve_stash_file(space_id, file_id):
         file_path = space_path / file_id
     
     if not file_path.exists():
-        probe_ext = Path(file_id).suffix.lower()
-        if not probe_ext:
-            probe_ext = file_path.suffix.lower()
-        if is_image_extension(probe_ext):
-            return send_placeholder('image')
         abort(404)
     
     # Determine MIME type
@@ -2693,7 +2683,7 @@ def serve_upload(filename):
     )
     if fallback:
         return send_file(fallback)
-    return send_placeholder('image')
+    abort(404)
 
 
 # =============================================================================

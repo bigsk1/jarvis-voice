@@ -2,9 +2,6 @@
  * Jarvis Canvas - Image Gallery JavaScript
  */
 
-const IMAGE_UNAVAILABLE = '/static/assets/image-unavailable.jpg';
-const VIDEO_UNAVAILABLE = '/static/assets/video-unavailable.jpg';
-
 let images = [];
 let filteredImages = [];
 let videoModalImage = null;
@@ -89,8 +86,7 @@ function renderGallery() {
             <div class="image-wrapper" onclick="openLightboxByIndex(${index})">
                 <img src="/api/gallery/images/${encodeURIComponent(img.name)}" 
                      alt="${escapeHtml(img.name)}" 
-                     loading="lazy"
-                     onerror="this.onerror=null;this.src='${IMAGE_UNAVAILABLE}'">
+                     loading="lazy">
                 ${provider ? `<span class="image-provider">${provider}</span>` : ''}
             </div>
             <div class="image-info">
