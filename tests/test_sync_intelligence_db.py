@@ -42,6 +42,7 @@ class SyncIntelligenceDbTests(unittest.TestCase):
         sequence = sequence or tools
         intel = IntelligenceLayer(str(db_path))
         intel._get_embedding = lambda text: np.array([1.0, 0.5])
+        intel._get_persistable_embedding = intel._get_embedding
         exp_id = await intel.record_experience(
             query=query,
             tools_used=tools,

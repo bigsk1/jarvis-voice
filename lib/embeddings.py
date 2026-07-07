@@ -5,7 +5,9 @@ Supports:
 - OpenAI text-embedding-3-small (cloud mode)
 - Ollama nomic-embed-text (local mode)
 """
+import logging
 import threading
+import time
 from importlib.util import find_spec
 
 from config_loader import get_config_value, get_int, get_active_config_mode
@@ -13,6 +15,10 @@ from ollama_utils import get_ollama_base_urls, request_ollama
 
 
 _EMBEDDING_FALLBACK_STATE = threading.local()
+
+
+class PersistentEmbeddingError(RuntimeError):
+    """Raised when a real provider embedding cannot be produced for storage."""
 
 
 def get_effective_embedding_provider(mode: "str | None" = None) -> str:
@@ -56,6 +62,53 @@ def consume_embedding_fallback_tracking() -> dict:
         "fallback_providers": providers,
         "fallback_reasons": [event.get("reason", "") for event in events if event.get("reason")],
     }
+
+
+def get_persistable_embedding(
+    text: str,
+    provider: str = None,
+    *,
+    max_attempts: int = 1,
+    retry_delay_seconds: float = 1.0,
+) -> list[float]:
+    """Generate a real provider embedding, rejecting hash fallbacks.
+
+    Query-time callers should continue using ``get_embedding`` so temporary
+    fallback remains available. Database writers use this helper to prevent a
+    provider outage from being persisted as a valid semantic vector.
+    """
+    attempts = max(1, int(max_attempts))
+    delay = max(0.0, float(retry_delay_seconds))
+    last_reason = "embedding provider unavailable"
+
+    for attempt in range(1, attempts + 1):
+        reset_embedding_fallback_tracking()
+        try:
+            embedding = get_embedding(text, provider=provider)
+        except Exception as exc:
+            consume_embedding_fallback_tracking()
+            last_reason = f"{type(exc).__name__}: {exc}"
+        else:
+            diagnostics = consume_embedding_fallback_tracking()
+            if not diagnostics.get("fallback_embeddings"):
+                return embedding
+            reasons = diagnostics.get("fallback_reasons") or []
+            fallback_reason = "; ".join(reasons) or "provider unavailable"
+            last_reason = f"fallback embedding returned: {fallback_reason}"
+
+        if attempt < attempts:
+            logging.getLogger(__name__).warning(
+                "Persistent embedding attempt %s/%s failed: %s",
+                attempt,
+                attempts,
+                last_reason,
+            )
+            if delay:
+                time.sleep(delay * (2 ** (attempt - 1)))
+
+    raise PersistentEmbeddingError(
+        f"Could not generate a persistable embedding after {attempts} attempt(s): {last_reason}"
+    )
 
 
 def _compact_text_for_embedding(text: str, max_chars: int) -> str:

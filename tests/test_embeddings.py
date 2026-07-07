@@ -15,11 +15,14 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
 from embeddings import (
+    PersistentEmbeddingError,
+    _record_embedding_fallback,
     _compact_text_for_embedding,
     _extract_ollama_embedding,
     _get_ollama_embedding,
     _get_ollama_embedding_options,
     consume_embedding_fallback_tracking,
+    get_persistable_embedding,
     reset_embedding_fallback_tracking,
 )
 
@@ -82,6 +85,30 @@ class EmbeddingsTests(unittest.TestCase):
     def test_extract_ollama_embedding_supports_embed_endpoint_shape(self):
         result = {"embeddings": [[0.4, 0.5, 0.6]]}
         self.assertEqual(_extract_ollama_embedding(result), [0.4, 0.5, 0.6])
+
+    @patch("embeddings.time.sleep")
+    @patch("embeddings.get_embedding")
+    def test_persistable_embedding_retries_then_rejects_fallback(self, mock_get_embedding, mock_sleep):
+        def fallback_embedding(text, provider=None):
+            _record_embedding_fallback(provider or "ollama", text, "provider unavailable")
+            return [0.1, 0.2, 0.3]
+
+        mock_get_embedding.side_effect = fallback_embedding
+
+        with self.assertRaises(PersistentEmbeddingError) as raised:
+            get_persistable_embedding("store this", max_attempts=3, retry_delay_seconds=0.25)
+
+        self.assertEqual(mock_get_embedding.call_count, 3)
+        self.assertEqual(mock_sleep.call_count, 2)
+        self.assertIn("fallback", str(raised.exception).lower())
+
+    @patch("embeddings.get_embedding", return_value=[0.4, 0.5, 0.6])
+    def test_persistable_embedding_accepts_real_embedding(self, mock_get_embedding):
+        self.assertEqual(
+            get_persistable_embedding("store this", max_attempts=3),
+            [0.4, 0.5, 0.6],
+        )
+        mock_get_embedding.assert_called_once()
 
 
 if __name__ == "__main__":

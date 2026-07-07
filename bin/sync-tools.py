@@ -81,9 +81,20 @@ _ensure_jarvis_venv()
 
 from tool_schema import ToolRegistry
 from memory_db import get_memory_db
-from config_loader import load_config
+from config_loader import get_float, get_int, load_config
+from embeddings import PersistentEmbeddingError
 
 MCP_UNAVAILABLE_EXIT_CODE = 3
+EMBEDDING_UNAVAILABLE_EXIT_CODE = 4
+TOOL_SYNC_INCOMPLETE_EXIT_CODE = 5
+
+
+class ToolSyncEmbeddingError(RuntimeError):
+    """Raised when Tool RAG cannot safely persist a provider embedding."""
+
+
+class ToolSyncIncompleteError(RuntimeError):
+    """Raised when one or more tool definitions could not be synchronized."""
 
 
 def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False) -> dict[str, str]:
@@ -142,6 +153,9 @@ def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False) -> dict[
     skipped_hash = 0
     total = len(registry.tools)
     syncing = total - len(blocked_tools)
+    embedding_max_attempts = max(1, get_int("PERSISTENT_EMBEDDING_MAX_ATTEMPTS", 3))
+    embedding_retry_delay = max(0.0, get_float("PERSISTENT_EMBEDDING_RETRY_DELAY_SECONDS", 1.0))
+    sync_errors = []
     
     print(f"📝 Found {total} tools, syncing {syncing} (blocked: {len(blocked_tools)})...")
     if verbose:
@@ -176,6 +190,8 @@ def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False) -> dict[
                 schema_json=schema_json,
                 enabled=enabled,
                 force_reembed=force_reembed,
+                embedding_max_attempts=embedding_max_attempts,
+                embedding_retry_delay_seconds=embedding_retry_delay,
             )
             if result == "skipped":
                 skipped_hash += 1
@@ -185,8 +201,14 @@ def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False) -> dict[
                 print(f"  ✓ Synced: {tool_name}")
             count += 1
             
+        except PersistentEmbeddingError as e:
+            registry.cleanup()
+            raise ToolSyncEmbeddingError(
+                f"Tool embedding sync stopped at '{tool_name}'; existing vectors and hashes were preserved: {e}"
+            ) from e
         except Exception as e:
             print(f"  ❌ Failed to sync {tool_name}: {e}")
+            sync_errors.append((tool_name, str(e)))
 
     # Preview DB rows that will be disabled (explains why profile-disabled tools never show as "Unchanged")
     if verbose:
@@ -209,6 +231,13 @@ def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False) -> dict[
     # Disable tools that are no longer in the registry
     # This handles tools that were removed or have enabled=false in their .tool.json
     disabled_count = _disable_stale_tools(db, active_tools, verbose)
+
+    if sync_errors:
+        registry.cleanup()
+        failed_names = ", ".join(name for name, _error in sync_errors)
+        raise ToolSyncIncompleteError(
+            f"Tool sync was incomplete for {len(sync_errors)} tool(s): {failed_names}"
+        )
 
     print(f"\n✅ Processed {count}/{syncing} tools to vector DB.")
     if skipped_hash > 0 and not force_reembed:
@@ -280,7 +309,18 @@ def main():
     if mode not in ("cloud", "local"):
         print("mode must be 'cloud' or 'local'")
         sys.exit(1)
-    unavailable_mcp = sync_tools(mode, force_reembed=force_reembed)
+    try:
+        unavailable_mcp = sync_tools(mode, force_reembed=force_reembed)
+    except ToolSyncEmbeddingError as exc:
+        print(f"❌ {exc}", file=sys.stderr)
+        print(
+            "Tool RAG sync is incomplete. No fallback embedding was stored; retry after the embedding provider recovers.",
+            file=sys.stderr,
+        )
+        sys.exit(EMBEDDING_UNAVAILABLE_EXIT_CODE)
+    except ToolSyncIncompleteError as exc:
+        print(f"❌ {exc}", file=sys.stderr)
+        sys.exit(TOOL_SYNC_INCOMPLETE_EXIT_CODE)
     if unavailable_mcp and os.environ.get("JARVIS_MCP_SYNC_STRICT", "0") == "1":
         print(
             "⚠️ MCP tool sync was incomplete; Docker init will retry on the next start.",

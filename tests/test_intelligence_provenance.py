@@ -29,6 +29,7 @@ class IntelligenceProvenanceTests(unittest.TestCase):
     def _make_intel(self, tmpdir: str) -> IntelligenceLayer:
         intel = IntelligenceLayer(str(Path(tmpdir) / "intel.db"))
         intel._get_embedding = lambda text: np.array([1.0, 0.25, 0.5])
+        intel._get_persistable_embedding = intel._get_embedding
         return intel
 
     def _record_experience(self, intel: IntelligenceLayer, query: str, tools: list[str]):
@@ -147,6 +148,7 @@ class IntelligenceProvenanceTests(unittest.TestCase):
 
             reopened = IntelligenceLayer(str(db_path))
             reopened._get_embedding = lambda text: np.array([1.0, 0.25, 0.5])
+            reopened._get_persistable_embedding = reopened._get_embedding
             raw = reopened.conn.execute(
                 "SELECT raw_data FROM experiences WHERE id = ?",
                 (exp_id,),

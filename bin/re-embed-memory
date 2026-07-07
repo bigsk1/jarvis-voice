@@ -83,13 +83,13 @@ def main():
     
     # Generate new embedding
     try:
-        from embeddings import get_embedding
+        from embeddings import get_persistable_embedding
         
         # Combine key and value for richer semantic context (same as remember())
         text = f"{row['key']}: {row['value']}"
         
         print(f"   Generating embedding ({len(text)} chars)...")
-        embedding_vector = get_embedding(text)
+        embedding_vector = get_persistable_embedding(text, max_attempts=3)
         
         # Serialize as pickle blob (consistent with memory_db.py)
         embedding_blob = pickle.dumps(embedding_vector)
@@ -127,4 +127,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -371,17 +371,23 @@ class MemoryDB:
         
         # Generate embedding if requested
         embedding_blob = None
+        embedding_failed = False
         if generate_embedding:
             try:
-                from embeddings import get_embedding
+                from embeddings import get_persistable_embedding
                 # Combine key and value for richer semantic context
                 text = f"{key}: {value}"
-                embedding_vector = get_embedding(text)
+                embedding_vector = get_persistable_embedding(text)
                 # Serialize vector as blob
                 embedding_blob = pickle.dumps(embedding_vector)
-            except Exception:
-                # Silently fail - memory still gets stored without embedding
-                pass
+            except Exception as exc:
+                embedding_failed = True
+                logging.getLogger(__name__).warning(
+                    "Memory embedding update failed for %s/%s; preserving any existing vector: %s",
+                    category,
+                    key,
+                    exc,
+                )
         
         # Phase 3 memory quality gate groundwork: classify writes without
         # enforcing routing changes yet.
@@ -403,9 +409,19 @@ class MemoryDB:
             # Update existing memory
             cursor.execute("""
                 UPDATE knowledge_base 
-                SET value = ?, importance = ?, updated_at = CURRENT_TIMESTAMP, source = ?, embedding = ?, metadata = ?
+                SET value = ?, importance = ?, updated_at = CURRENT_TIMESTAMP, source = ?,
+                    embedding = CASE WHEN ? THEN embedding ELSE ? END,
+                    metadata = ?
                 WHERE id = ?
-            """, (value, importance, source, embedding_blob, metadata_json, existing['id']))
+            """, (
+                value,
+                importance,
+                source,
+                1 if embedding_failed else 0,
+                embedding_blob,
+                metadata_json,
+                existing['id'],
+            ))
             self.conn.commit()
             return existing['id']
         else:
@@ -1276,6 +1292,8 @@ class MemoryDB:
         schema_json: str,
         enabled: bool = True,
         force_reembed: bool = False,
+        embedding_max_attempts: int = 1,
+        embedding_retry_delay_seconds: float = 1.0,
     ) -> str:
         """
         Insert or update a tool definition in the database.
@@ -1306,13 +1324,15 @@ class MemoryDB:
                 embedding_blob = row["embedding"]
 
         if not skip_embed:
-            try:
-                from embeddings import get_embedding
-                text = f"Tool {name}: {description}"
-                embedding_vector = get_embedding(text)
-                embedding_blob = pickle.dumps(embedding_vector)
-            except Exception as e:
-                print(f"⚠️ Failed to generate embedding for tool {name}: {e}")
+            from embeddings import get_persistable_embedding
+
+            text = f"Tool {name}: {description}"
+            embedding_vector = get_persistable_embedding(
+                text,
+                max_attempts=embedding_max_attempts,
+                retry_delay_seconds=embedding_retry_delay_seconds,
+            )
+            embedding_blob = pickle.dumps(embedding_vector)
 
         cursor.execute("""
             INSERT OR REPLACE INTO tool_definitions (

@@ -52,8 +52,12 @@ def main():
         pattern = row['applies_to_pattern']
         
         print("   Generating embeddings...")
-        insight_embedding = intel._get_embedding(description)
-        pattern_embedding = intel._get_embedding(pattern) if pattern else None
+        insight_embedding = intel._get_persistable_embedding(description)
+        pattern_embedding = intel._get_persistable_embedding(pattern) if pattern else None
+
+        if insight_embedding is None or (pattern and pattern_embedding is None):
+            print("❌ Real provider embeddings were unavailable; existing vectors were preserved")
+            return False
         
         # Serialize embeddings
         insight_blob = intel._serialize_embedding(insight_embedding)
@@ -80,4 +84,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

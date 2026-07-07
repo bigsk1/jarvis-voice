@@ -101,6 +101,11 @@ If these are healthy, your saved vectors in the DB are likely fine.
 
 Runtime fallback is now surfaced in tool results and logs for embedding-backed memory tools.
 
+Fallback remains available for query-time retrieval so a temporary provider
+outage does not block requests. Persistent writers use
+`get_persistable_embedding()` instead: tracked hash fallbacks are rejected and
+are never written as valid memory, Tool RAG, sync, or Intelligence vectors.
+
 Tool log behavior:
 - `fallback_embeddings: true` → runtime fallback occurred for that tool call
 - `fallback_embeddings: null` → no fallback detected for that tool call
@@ -386,7 +391,7 @@ In that case:
 
 ### Q: Does runtime fallback get saved back into the DB?
 
-**A**: No. Query embeddings are generated per request and are **not** stored. A runtime fallback does not poison the memory DB or intelligence DB by itself.
+**A**: No. Query embeddings are generated per request and are **not** stored. Persistent embedding writers reject tracked fallback vectors; updates preserve their previous real vectors where one exists, and sync operations report the provider failure instead of committing fallback data.
 
 ### Q: Can I mix embedding dimensions in one database?
 

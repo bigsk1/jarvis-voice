@@ -274,3 +274,47 @@ exit 0
     assert "sync-tools.py" not in python_log.read_text()
     assert not (checkout / "data" / ".docker_tool_profile_synced").exists()
     assert launch_log.read_text().strip() == "web:local"
+
+
+@pytest.mark.parametrize(
+    ("sync_status", "warning"),
+    [(4, "embedding provider unavailable"), (5, "tool sync incomplete")],
+)
+def test_docker_tool_sync_failure_preserves_startup_and_retry_marker(tmp_path, sync_status, warning):
+    checkout, env, launch_log = _docker_checkout(tmp_path)
+    fake_bin = checkout / "fake-bin"
+    fake_bin.mkdir()
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+    _write_executable(
+        fake_bin / "python",
+        f"""#!/usr/bin/env bash
+if [[ "$*" == *"bin/sync-tools.py"* ]]; then
+  exit {sync_status}
+fi
+exit 0
+""",
+    )
+    env.pop("JARVIS_SKIP_INIT")
+
+    result = subprocess.run(
+        ["bash", str(checkout / "docker" / "entrypoint.sh"), "web"],
+        cwd=checkout,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert warning in result.stderr.lower()
+    assert not (checkout / "data" / ".docker_tool_profile_synced").exists()
+    assert launch_log.read_text().strip() == "web:local"
+
+
+def test_native_launchers_report_tool_sync_failure_without_false_success():
+    for script_name in ("jarvis-api", "jarvis-services"):
+        script = (ROOT / "bin" / script_name).read_text()
+        sync_block = script[script.index("# Sync tool definitions"):script.index("# Health check")]
+        assert "if python3" in sync_block
+        assert "Tool embedding sync incomplete" in sync_block
+        assert "Existing Tool RAG vectors were preserved" in sync_block
+        assert "✅ Tool embeddings updated" in sync_block

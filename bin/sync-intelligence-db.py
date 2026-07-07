@@ -39,7 +39,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 
 from config_loader import config_scope
-from embeddings import get_embedding
+from embeddings import get_persistable_embedding
 
 # ANSI colors
 GREEN = '\033[92m'
@@ -48,6 +48,11 @@ YELLOW = '\033[93m'
 BLUE = '\033[94m'
 BOLD = '\033[1m'
 NC = '\033[0m'
+
+
+def get_embedding(text: str):
+    """Generate a retrying provider embedding that is safe to persist."""
+    return get_persistable_embedding(text, max_attempts=3)
 
 
 def get_db_paths():
@@ -286,6 +291,14 @@ def sync_intelligence(
         print(f"{YELLOW}DRY RUN - no changes will be made{NC}")
         source_conn.close()
         return True
+
+    if replace and (exp_count or insight_count):
+        try:
+            get_embedding("Jarvis Intelligence persistence readiness check")
+        except Exception as exc:
+            print(f"{RED}❌ Replace sync aborted before deleting target data: {exc}{NC}")
+            source_conn.close()
+            return False
 
     # Backup target if exists
     if target_path.exists():

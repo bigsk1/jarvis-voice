@@ -258,8 +258,16 @@ fi
 
 # Sync tool definitions to vector database
 echo -e "${BLUE}🔧 Syncing tool definitions...${NC}"
-python3 "$PROJECT_ROOT/bin/sync-tools.py" "$MODE" > /dev/null 2>&1
-echo -e "${GREEN}  ✅ Tool embeddings updated${NC}"
+TOOL_SYNC_LOG="$PROJECT_ROOT/logs/tool-sync-${MODE}.log"
+if python3 "$PROJECT_ROOT/bin/sync-tools.py" "$MODE" > "$TOOL_SYNC_LOG" 2>&1; then
+    echo -e "${GREEN}  ✅ Tool embeddings updated${NC}"
+else
+    TOOL_SYNC_STATUS=$?
+    echo -e "${YELLOW}  ⚠️  Tool embedding sync incomplete (exit $TOOL_SYNC_STATUS)${NC}"
+    echo -e "${YELLOW}     Existing Tool RAG vectors were preserved; the API will still start.${NC}"
+    echo -e "${YELLOW}     Details: $TOOL_SYNC_LOG${NC}"
+    tail -20 "$TOOL_SYNC_LOG" >&2
+fi
 echo ""
 
 # Health check: Verify embedding dimensions are correct

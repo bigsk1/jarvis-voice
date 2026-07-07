@@ -60,6 +60,7 @@ class IntelligenceRedactionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             intel = IntelligenceLayer(str(Path(tmpdir) / "intel.db"))
             intel._get_embedding = lambda text: np.array([1.0, 0.5])
+            intel._get_persistable_embedding = intel._get_embedding
 
             exp_id = asyncio.run(
                 intel.record_experience(
@@ -110,6 +111,7 @@ class IntelligenceRedactionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             intel = IntelligenceLayer(str(Path(tmpdir) / "intel.db"))
             intel._get_embedding = lambda text: np.array([1.0, 0.5])
+            intel._get_persistable_embedding = intel._get_embedding
 
             old_layer = intelligence_hooks._intelligence_layer
             old_checked = intelligence_hooks._intelligence_checked

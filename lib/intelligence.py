@@ -738,6 +738,19 @@ class IntelligenceLayer:
 
         return None
 
+    def _get_persistable_embedding(self, text: str) -> np.ndarray | None:
+        """Get a real provider embedding for storage, never a hash fallback."""
+        if not text or not text.strip():
+            return None
+
+        try:
+            from embeddings import get_persistable_embedding
+
+            return np.array(get_persistable_embedding(text))
+        except Exception as exc:
+            logger.warning("Persistent intelligence embedding skipped: %s", exc)
+            return None
+
     def _cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
         """Compute cosine similarity between two vectors."""
         if a is None or b is None:
@@ -815,15 +828,15 @@ class IntelligenceLayer:
         user_signals = redact_sensitive_data(user_signals)
 
         # Generate embeddings
-        query_embedding = self._get_embedding(query)
+        query_embedding = self._get_persistable_embedding(query)
 
         # Create rich outcome description for embedding
         outcome_description = self._describe_outcome(query, tools_used, outcome, user_signals)
-        outcome_embedding = self._get_embedding(outcome_description)
+        outcome_embedding = self._get_persistable_embedding(outcome_description)
 
         # Context embedding
         context_summary = json.dumps(context)[:750] if context else ""
-        context_embedding = self._get_embedding(context_summary) if context_summary else None
+        context_embedding = self._get_persistable_embedding(context_summary) if context_summary else None
 
         # Infer satisfaction
         user_satisfied = self._infer_satisfaction(outcome, user_signals)
@@ -1712,9 +1725,9 @@ Example for FACTUAL (should NOT be stored here):
         constraint_type = reflection.get('constraint_type', 'positive')
 
         # Generate embeddings
-        insight_embedding = self._get_embedding(insight_text)
+        insight_embedding = self._get_persistable_embedding(insight_text)
         pattern_text = reflection.get('applies_to', '')
-        pattern_embedding = self._get_embedding(pattern_text) if pattern_text else None
+        pattern_embedding = self._get_persistable_embedding(pattern_text) if pattern_text else None
         trigger_concept = reflection.get('trigger_concept', '')
 
         suppress_preferred_tool = should_suppress_preferred_tool_for_native_search(reflection, experience)

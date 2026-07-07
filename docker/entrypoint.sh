@@ -104,6 +104,12 @@ run_init() {
           if [ "$sync_status" = "3" ]; then
             mcp_sync_incomplete=1
             echo "MCP tool sync incomplete in ${mode} mode; continuing startup and retrying next time." >&2
+          elif [ "$sync_status" = "4" ]; then
+            mcp_sync_incomplete=1
+            echo "Tool embedding provider unavailable in ${mode} mode; preserving the existing Tool RAG index, continuing startup, and retrying next time." >&2
+          elif [ "$sync_status" = "5" ]; then
+            mcp_sync_incomplete=1
+            echo "Tool sync incomplete in ${mode} mode; continuing startup without a completion marker so the next start retries." >&2
           else
             status=$sync_status
             break

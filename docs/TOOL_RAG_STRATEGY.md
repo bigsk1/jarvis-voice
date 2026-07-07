@@ -308,7 +308,10 @@ Tracing intentionally runs an extra ranking search so the log can show near miss
 
 ### Critical: Virtual Environment
 We discovered that running `sync-tools.py` outside the virtual environment resulted in **0 embeddings** because the `openai` package wasn't found. The script would fail silently (printing a warning) and store the tool *without* an embedding.
-**Fix**: Always ensure `openai` is installed and venv is active when syncing.
+**Fix**: The script now refuses to run outside the configured Jarvis venv. It
+also rejects provider fallback vectors even inside the correct venv, retries
+changed embeddings with bounded backoff, and preserves the previous vector and
+`embedding_input_hash` if the provider remains unavailable.
 
 ### Critical: Serialization
 The database stores embeddings as BLOBs.

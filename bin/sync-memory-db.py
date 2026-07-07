@@ -26,7 +26,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 
 from config_loader import config_scope
-from embeddings import get_embedding
+from embeddings import get_persistable_embedding
 
 
 def _table_columns(cursor, table_name):
@@ -209,7 +209,7 @@ def sync_databases(
                     
                     # Generate new embedding for target mode
                     text = f"{key}: {value}"
-                    embedding = get_embedding(text)
+                    embedding = get_persistable_embedding(text, max_attempts=3)
                     embedding_blob = json.dumps(embedding).encode('utf-8')
                     
                     target_cursor.execute("""
@@ -232,7 +232,7 @@ def sync_databases(
                 
                 # Generate embedding for target mode
                 text = f"{key}: {value}"
-                embedding = get_embedding(text)
+                embedding = get_persistable_embedding(text, max_attempts=3)
                 embedding_blob = json.dumps(embedding).encode('utf-8')
                 
                 target_cursor.execute("""
@@ -588,7 +588,7 @@ def sync_databases(
     if verbose:
         print()
         print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        print(f"✅ Sync Complete!")
+        print("✅ Sync Complete!" if errors == 0 else "⚠️  Sync incomplete; some memories were not updated")
         print(f"   Synced: {synced}")
         print(f"   Skipped: {skipped} (already current)")
         print(f"   User model synced: {user_model_synced}")
@@ -597,7 +597,7 @@ def sync_databases(
         print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print()
     
-    return True
+    return errors == 0
 
 
 if __name__ == '__main__':

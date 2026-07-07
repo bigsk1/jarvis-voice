@@ -211,8 +211,9 @@ db.upsert_tool(
 | **Storage** | Column `embedding_input_hash TEXT` on `tool_definitions`. |
 | **Skip path** | If `embedding IS NOT NULL`, stored hash equals computed hash, and `force_reembed` is false → skip `get_embedding()` and reuse stored blob. |
 | **Always embed** | New row, null embedding, null/mismatched hash, or **`./bin/sync-tools.py cloud|local --force`** (`force_reembed=True`). |
+| **Provider failure** | Storage rejects hash fallback vectors. A changed tool retries (`PERSISTENT_EMBEDDING_MAX_ATTEMPTS`, default `3`), then exits with status `4` without replacing the previous row or advancing `embedding_input_hash`. |
 
-**Manual workflow unchanged:** Run `./bin/sync-tools.py cloud|local` after changing tools; use **`--force`** when you need a full re-embed (e.g. after switching embedding model/dimensions or debugging). Startup sync in `jarvis-services` / `jarvis-api` benefits from fewer redundant embedding calls when nothing changed.
+**Manual workflow unchanged:** Run `./bin/sync-tools.py cloud|local` after changing tools; use **`--force`** when you need a full re-embed (e.g. after switching embedding model/dimensions or debugging). Startup sync in `jarvis-services` / `jarvis-api` benefits from fewer redundant embedding calls when nothing changed. Native startup logs failed sync details to `logs/tool-sync-<mode>.log` and continues with the last good index. Docker withholds its completed-sync marker and retries on the next container start.
 
 **Benefit skew:** **Cloud** embeddings save the most in cost and latency; **local** mode saves mainly time on large tool sets.
 

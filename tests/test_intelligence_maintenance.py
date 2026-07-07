@@ -37,6 +37,7 @@ class IntelligenceMaintenanceTests(unittest.TestCase):
     def _make_intel(self, tmpdir: str) -> IntelligenceLayer:
         intel = IntelligenceLayer(str(Path(tmpdir) / "intel.db"))
         intel._get_embedding = lambda text: np.array([1.0, 0.25, 0.5])
+        intel._get_persistable_embedding = intel._get_embedding
         return intel
 
     def test_ui_service_initializes_fresh_local_database(self):
