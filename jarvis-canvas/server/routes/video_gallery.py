@@ -1,8 +1,12 @@
 """Jarvis Canvas video-gallery routes."""
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, jsonify, send_file, abort, render_template
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / 'lib'))
+from media_placeholders import send_placeholder
 
 from config import GENERATED_VIDEOS_DIR, STASH_DIR
 from video_catalog import (
@@ -170,7 +174,7 @@ def serve_video_thumbnail(filename):
     
     video_path = GENERATED_VIDEOS_DIR / filename
     if not video_path.exists():
-        abort(404, "Video not found")
+        return send_placeholder('video')
     
     # Create thumbnail cache directory if needed
     THUMBNAIL_CACHE_DIR.mkdir(exist_ok=True)
@@ -201,16 +205,14 @@ def serve_video_thumbnail(filename):
         
         if result.returncode == 0 and thumb_path.exists():
             return send_file(thumb_path, mimetype='image/jpeg')
-        else:
-            # ffmpeg failed - return a placeholder or 404
-            print(f"⚠️  Failed to generate thumbnail for {filename}: {result.stderr.decode()[:200]}")
-            abort(500, "Failed to generate thumbnail")
-            
+        print(f"⚠️  Failed to generate thumbnail for {filename}: {result.stderr.decode()[:200]}")
+        return send_placeholder('video')
+
     except subprocess.TimeoutExpired:
-        abort(500, "Thumbnail generation timed out")
+        return send_placeholder('video')
     except Exception as e:
         print(f"⚠️  Thumbnail error for {filename}: {e}")
-        abort(500, str(e))
+        return send_placeholder('video')
 
 
 @video_gallery_bp.route('/api/gallery/videos/<filename>', methods=['DELETE'])

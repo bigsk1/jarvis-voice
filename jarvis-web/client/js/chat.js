@@ -3018,6 +3018,7 @@ class ChatUI {
     `;
     
     this.messagesContainer.appendChild(messageEl);
+    window.JarvisMediaFallback?.bindRoot(messageEl);
     Utils.scrollToBottom(this.messagesContainer);
   }
 
@@ -3369,13 +3370,14 @@ class ChatUI {
       const videoPosterUrl = videoUrl.startsWith('/api/videos/')
         ? `${videoUrl}/thumbnail`
         : '';
+      const videoPreload = videoUrl.startsWith('/api/videos/') ? 'none' : 'metadata';
       videoHtml = `
         <div class="message-video">
           <div class="video-header">
             <span class="video-icon">🎬</span>
             <span class="video-title">${Utils.escapeHtml(videoTitle)}</span>
           </div>
-          <video controls preload="metadata" class="video-player"${videoPosterUrl ? ` poster="${videoPosterUrl}"` : ''}>
+          <video controls preload="${videoPreload}" class="video-player"${videoPosterUrl ? ` poster="${videoPosterUrl}"` : ''}>
             <source src="${videoUrl}"${videoMimeType ? ` type="${videoMimeType}"` : ''}>
             Your browser does not support video playback.
           </video>
@@ -3816,6 +3818,7 @@ class ChatUI {
     this._attachCompletionGuardCard(messageEl, data, toolsUsed);
     
     this.messagesContainer.appendChild(messageEl);
+    window.JarvisMediaFallback?.bindRoot(messageEl);
     Utils.hydrateRichContent(messageEl);
     if (canvasPreview) {
       this._hydrateCanvasPreview(messageEl, canvasPreview);

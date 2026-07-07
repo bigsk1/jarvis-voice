@@ -2,6 +2,8 @@
  * Jarvis Canvas - Video Gallery JavaScript
  */
 
+const VIDEO_UNAVAILABLE = '/static/assets/video-unavailable.jpg';
+
 let videos = [];
 let filteredVideos = [];
 let currentVideo = null;
@@ -87,7 +89,8 @@ function renderGallery() {
                 <video data-src="/api/gallery/videos/${encodeURIComponent(vid.name)}" 
                        poster="/api/gallery/videos/${encodeURIComponent(vid.name)}/thumbnail"
                        preload="none"
-                       muted></video>
+                       muted
+                       onerror="applyVideoUnavailable(this)"></video>
                 <div class="video-play-overlay">
                     <div class="video-play-icon">▶</div>
                 </div>
@@ -249,10 +252,23 @@ function deleteByIndex(index) {
     }
 }
 
+function applyVideoUnavailable(video) {
+    if (!video || video.dataset.fallbackApplied) return;
+    video.dataset.fallbackApplied = '1';
+    const img = document.createElement('img');
+    img.src = VIDEO_UNAVAILABLE;
+    img.alt = 'Video no longer available';
+    img.className = 'video-unavailable-fallback';
+    video.replaceWith(img);
+}
+
 function openLightbox(filename) {
     if (!filename || filename === 'null' || filename === 'undefined') return;
     currentVideo = filename;
     const video = document.getElementById('lightboxVideo');
+    video.dataset.fallbackApplied = '';
+    video.onerror = () => applyVideoUnavailable(video);
+    video.poster = `/api/gallery/videos/${encodeURIComponent(filename)}/thumbnail`;
     video.src = `/api/gallery/videos/${encodeURIComponent(filename)}`;
     document.getElementById('lightboxFilename').textContent = filename;
     document.getElementById('videoLightbox').classList.add('active');
