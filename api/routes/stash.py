@@ -468,7 +468,7 @@ async def upload_file(
                 raise HTTPException(status_code=404, detail=f"Space {space_id} not found")
         else:
             # Create new space
-            space = open_space(
+            space, _is_new = open_space(
                 labels=label_list,
                 scope='project'  # Longer retention for uploaded files
             )
