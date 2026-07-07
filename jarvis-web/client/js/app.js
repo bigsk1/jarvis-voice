@@ -42,6 +42,7 @@ class JarvisApp {
     this._statusTTSGeneration = 0;
     this._completedResponseIds = new Set();
     this._connectionConnected = false;
+    this._toolSyncWarningTimer = null;
     
     this._initialize();
   }
@@ -112,6 +113,15 @@ class JarvisApp {
         this.logPanel = new LogPanelManager(this.socket.socket);
         console.log('[App] Log panel enabled');
       }
+
+      this._checkToolSyncWarning(savedMode);
+      if (!this._toolSyncWarningTimer) {
+        this._toolSyncWarningTimer = setInterval(() => {
+          if (this._connectionConnected) {
+            this._checkToolSyncWarning(this.modeSelect?.value || this.socket.mode || data.mode);
+          }
+        }, 30000);
+      }
     });
     
     this.socket.on('connectionError', (data) => {
@@ -122,6 +132,7 @@ class JarvisApp {
       this._cancelStatusTTS();
       this.modeSelect.value = data.mode;
       Utils.toast(`Mode changed to ${data.mode}`, 'info');
+      this._checkToolSyncWarning(data.mode);
       
       // Reload settings to reflect new mode's defaults
       if (this.settingsModal.classList.contains('active')) {
@@ -194,6 +205,46 @@ class JarvisApp {
       console.log('[App] Conversation loaded:', data);
       this._displayLoadedConversation(data.conversation);
     });
+  }
+
+  async _checkToolSyncWarning(mode) {
+    if (!this._connectionConnected) return;
+    const normalizedMode = mode === 'local' ? 'local' : 'cloud';
+
+    try {
+      const response = await Utils.auth.fetch(`/api/status?mode=${encodeURIComponent(normalizedMode)}`);
+      if (!response.ok) return;
+      const status = await response.json();
+      if (!status?.ok) return;
+
+      const warning = status.tool_sync_warning;
+      if (!warning || warning.mode !== normalizedMode || warning.status !== 'failed') {
+        Utils.removeToast('tool-sync-warning');
+        return;
+      }
+
+      const dismissedKey = `jarvis_tool_sync_warning_dismissed_${normalizedMode}`;
+      if (localStorage.getItem(dismissedKey) === warning.event_id) {
+        Utils.removeToast('tool-sync-warning');
+        return;
+      }
+
+      const visibleWarning = document.querySelector('[data-toast-id="tool-sync-warning"]');
+      if (visibleWarning?.dataset.eventId === warning.event_id) return;
+
+      const message = warning.has_usable_index
+        ? `Tool embedding sync failed during the previous startup. Jarvis is using its previous Tool RAG index (${warning.usable_tool_count} tools). Check that the ${normalizedMode} embedding provider is accessible, then restart Jarvis or rerun ./bin/sync-tools.py ${normalizedMode}.`
+        : `Tool embedding sync failed during the previous startup and no Tool RAG index is available. Most tools may not be discovered. Check that the ${normalizedMode} embedding provider is accessible, then restart Jarvis or rerun ./bin/sync-tools.py ${normalizedMode}.`;
+
+      const toast = Utils.persistentToast(message, 'warning', 'tool-sync-warning', () => {
+        localStorage.setItem(dismissedKey, warning.event_id);
+      });
+      if (toast) toast.dataset.eventId = warning.event_id;
+    } catch (error) {
+      // Connection loss is not Tool RAG evidence. Keep existing UI state and
+      // wait for the socket reconnect or the next successful status poll.
+      console.debug('[App] Tool sync status unavailable:', error);
+    }
   }
 
   /**

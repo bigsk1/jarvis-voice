@@ -759,6 +759,39 @@ const Utils = {
     }, duration);
   },
 
+  persistentToast(message, type = 'warning', id = 'persistent-toast', onClose = null) {
+    const container = document.getElementById('toastContainer');
+    if (!container) return null;
+
+    this.removeToast(id);
+    const toast = document.createElement('div');
+    toast.className = `toast ${type} persistent`;
+    toast.dataset.toastId = id;
+
+    const text = document.createElement('span');
+    text.className = 'toast-message';
+    text.textContent = message;
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'toast-close';
+    close.setAttribute('aria-label', 'Dismiss warning');
+    close.textContent = '×';
+    close.addEventListener('click', () => {
+      onClose?.();
+      toast.remove();
+    });
+
+    toast.append(text, close);
+    container.appendChild(toast);
+    return toast;
+  },
+
+  removeToast(id) {
+    const toast = document.querySelector(`[data-toast-id="${CSS.escape(id)}"]`);
+    toast?.remove();
+  },
+
   async copyCodeBlock(button) {
     const container = button?.closest('.code-block');
     const codeEl = container?.querySelector('code');

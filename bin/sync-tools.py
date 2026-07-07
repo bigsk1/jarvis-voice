@@ -83,6 +83,11 @@ from tool_schema import ToolRegistry
 from memory_db import get_memory_db
 from config_loader import get_float, get_int, load_config
 from embeddings import PersistentEmbeddingError
+from tool_sync_status import (
+    count_usable_tool_embeddings,
+    record_tool_sync_failure,
+    record_tool_sync_success,
+)
 
 MCP_UNAVAILABLE_EXIT_CODE = 3
 EMBEDDING_UNAVAILABLE_EXIT_CODE = 4
@@ -95,6 +100,23 @@ class ToolSyncEmbeddingError(RuntimeError):
 
 class ToolSyncIncompleteError(RuntimeError):
     """Raised when one or more tool definitions could not be synchronized."""
+
+
+def _record_sync_outcome(mode: str, *, exit_code: int = 0, reason: str = "") -> None:
+    """Persist startup-visible sync state without masking the sync result."""
+    try:
+        usable_count = count_usable_tool_embeddings(mode)
+        if exit_code:
+            record_tool_sync_failure(
+                mode,
+                exit_code=exit_code,
+                reason=reason,
+                usable_tool_count=usable_count,
+            )
+        else:
+            record_tool_sync_success(mode, usable_tool_count=usable_count)
+    except Exception as exc:
+        print(f"⚠️ Failed to persist Tool RAG sync status: {exc}", file=sys.stderr)
 
 
 def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False) -> dict[str, str]:
@@ -312,6 +334,11 @@ def main():
     try:
         unavailable_mcp = sync_tools(mode, force_reembed=force_reembed)
     except ToolSyncEmbeddingError as exc:
+        _record_sync_outcome(
+            mode,
+            exit_code=EMBEDDING_UNAVAILABLE_EXIT_CODE,
+            reason=str(exc),
+        )
         print(f"❌ {exc}", file=sys.stderr)
         print(
             "Tool RAG sync is incomplete. No fallback embedding was stored; retry after the embedding provider recovers.",
@@ -319,14 +346,28 @@ def main():
         )
         sys.exit(EMBEDDING_UNAVAILABLE_EXIT_CODE)
     except ToolSyncIncompleteError as exc:
+        _record_sync_outcome(
+            mode,
+            exit_code=TOOL_SYNC_INCOMPLETE_EXIT_CODE,
+            reason=str(exc),
+        )
         print(f"❌ {exc}", file=sys.stderr)
         sys.exit(TOOL_SYNC_INCOMPLETE_EXIT_CODE)
+    except Exception as exc:
+        _record_sync_outcome(mode, exit_code=1, reason=f"Unexpected Tool RAG sync failure: {exc}")
+        raise
     if unavailable_mcp and os.environ.get("JARVIS_MCP_SYNC_STRICT", "0") == "1":
+        _record_sync_outcome(
+            mode,
+            exit_code=MCP_UNAVAILABLE_EXIT_CODE,
+            reason="MCP tool discovery was incomplete",
+        )
         print(
             "⚠️ MCP tool sync was incomplete; Docker init will retry on the next start.",
             file=sys.stderr,
         )
         sys.exit(MCP_UNAVAILABLE_EXIT_CODE)
+    _record_sync_outcome(mode)
 
 if __name__ == "__main__":
     main()

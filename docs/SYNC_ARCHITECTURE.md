@@ -215,9 +215,22 @@ db.upsert_tool(
 
 **Manual workflow unchanged:** Run `./bin/sync-tools.py cloud|local` after changing tools; use **`--force`** when you need a full re-embed (e.g. after switching embedding model/dimensions or debugging). Startup sync in `jarvis-services` / `jarvis-api` benefits from fewer redundant embedding calls when nothing changed. Native startup logs failed sync details to `logs/tool-sync-<mode>.log` and continues with the last good index. Docker withholds its completed-sync marker and retries on the next container start.
 
+Each completed sync attempt also writes an atomic, per-mode status file under
+`data/.tool_sync_status_<mode>.json`. Jarvis Web displays a persistent warning
+for a recorded failed attempt and tells the operator whether a previous usable
+index remains. The warning is dismissed per failure event, so a later failure
+appears again. A successful startup sync or manual
+`./bin/sync-tools.py <mode>` run records success and clears the warning on the
+next Web status poll.
+
+The browser does not infer sync health from its WebSocket connection. A server
+disconnect, failed `/api/status` request, missing status file, or malformed
+status file cannot create a Tool RAG warning; only a valid persisted failed
+sync record can do so.
+
 **Benefit skew:** **Cloud** embeddings save the most in cost and latency; **local** mode saves mainly time on large tool sets.
 
-**Out of scope:** Tool RAG retrieval logic, web UI, and merging tool sync with memory sync are unchanged.
+**Out of scope:** Tool RAG retrieval logic and merging tool sync with memory sync are unchanged.
 
 ---
 

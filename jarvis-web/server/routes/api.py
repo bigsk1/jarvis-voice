@@ -35,6 +35,7 @@ api_bp = Blueprint('api', __name__, url_prefix='/api')
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 from model_catalog import get_provider_fallback_model
 from status_activity_logger import log_status_event
+from tool_sync_status import read_tool_sync_status
 from vision_multimodal import max_vision_images
 
 
@@ -330,8 +331,16 @@ def _prompt_tools_by_name() -> dict[str, dict]:
 def get_status():
     """Health check and basic status info"""
     tool_service = get_tool_service()
+    requested_mode = str(request.args.get('mode', '')).strip().lower()
     current_mode = get_web_setting('defaults.mode', 'cloud')
     settings = get_settings_manager(current_mode)
+    warning_mode = requested_mode if requested_mode in {'cloud', 'local'} else settings.mode
+    tool_sync_status = read_tool_sync_status(warning_mode, project_root=JARVIS_ROOT)
+    tool_sync_warning = (
+        tool_sync_status
+        if tool_sync_status and tool_sync_status.get('status') == 'failed'
+        else None
+    )
     
     from ..app import get_startup_mode
 
@@ -342,6 +351,7 @@ def get_status():
         'mode': settings.mode,
         'startup_mode': get_startup_mode(),
         'tools_count': tool_service.get_tool_count(),
+        'tool_sync_warning': tool_sync_warning,
         'features': {
             'tts': get_web_setting('audio.tts_enabled', False),
             'stt': get_web_setting('audio.stt_enabled', False),
