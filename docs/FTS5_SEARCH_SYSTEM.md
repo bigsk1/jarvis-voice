@@ -144,21 +144,29 @@ CREATE TRIGGER kb_fts_insert AFTER INSERT ON knowledge_base BEGIN
     VALUES (new.id, new.category, new.key, new.value, new.long_form);
 END;
 
--- Update
-CREATE TRIGGER kb_fts_update AFTER UPDATE ON knowledge_base BEGIN
-    UPDATE knowledge_base_fts SET
-        category = new.category,
-        key = new.key,
-        value = new.value,
-        long_form = new.long_form
-    WHERE rowid = new.id;
+-- External-content FTS5 updates must delete the old indexed values, then insert new ones.
+CREATE TRIGGER kb_fts_update
+AFTER UPDATE OF category, key, value, long_form ON knowledge_base BEGIN
+    INSERT INTO knowledge_base_fts(
+        knowledge_base_fts, rowid, category, key, value, long_form
+    ) VALUES ('delete', old.id, old.category, old.key, old.value, old.long_form);
+    INSERT INTO knowledge_base_fts(rowid, category, key, value, long_form)
+    VALUES (new.id, new.category, new.key, new.value, new.long_form);
 END;
 
 -- Delete
 CREATE TRIGGER kb_fts_delete AFTER DELETE ON knowledge_base BEGIN
-    DELETE FROM knowledge_base_fts WHERE rowid = old.id;
+    INSERT INTO knowledge_base_fts(
+        knowledge_base_fts, rowid, category, key, value, long_form
+    ) VALUES ('delete', old.id, old.category, old.key, old.value, old.long_form);
 END;
 ```
+
+`MemoryDB` detects the older direct `UPDATE`/`DELETE` trigger definitions when
+opening an existing database. It rebuilds that mode's FTS index once from
+`knowledge_base`, installs the corrected triggers, and leaves healthy indexes
+untouched on later startups. This repairs stale search terms and orphaned FTS
+row IDs; it does not rewrite memory rows or embeddings.
 
 ### BM25 Relevance Query
 ```python

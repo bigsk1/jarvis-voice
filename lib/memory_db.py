@@ -312,32 +312,82 @@ class MemoryDB:
         """)
         self._ensure_column(cursor, "tool_definitions", "embedding_input_hash", "TEXT")
         
-        # Triggers to keep FTS5 in sync with knowledge_base
+        self._ensure_fts_triggers(cursor)
+
+        self.conn.commit()
+
+    def _ensure_fts_triggers(self, cursor: sqlite3.Cursor) -> None:
+        """Install correct external-content FTS triggers and repair legacy indexes."""
+        trigger_rows = cursor.execute(
+            """
+            SELECT name, sql
+            FROM sqlite_master
+            WHERE type = 'trigger'
+              AND name IN ('kb_fts_insert', 'kb_fts_update', 'kb_fts_delete')
+            """
+        ).fetchall()
+        trigger_sql = {
+            row["name"]: " ".join((row["sql"] or "").upper().split())
+            for row in trigger_rows
+        }
+        insert_sql = trigger_sql.get("kb_fts_insert", "")
+        update_sql = trigger_sql.get("kb_fts_update", "")
+        delete_sql = trigger_sql.get("kb_fts_delete", "")
+        triggers_are_current = (
+            "INSERT INTO KNOWLEDGE_BASE_FTS" in insert_sql
+            and "NEW.ID" in insert_sql
+            and "AFTER UPDATE OF CATEGORY, KEY, VALUE, LONG_FORM" in update_sql
+            and "'DELETE', OLD.ID" in update_sql
+            and "'DELETE', OLD.ID" in delete_sql
+        )
+        if triggers_are_current:
+            return
+
+        knowledge_count = cursor.execute("SELECT COUNT(*) FROM knowledge_base").fetchone()[0]
+        if knowledge_count:
+            # Legacy UPDATE/DELETE triggers cannot remove old tokens from an
+            # external-content FTS5 index. Rebuild before installing the fixed
+            # triggers so existing stale terms and deleted rowids are repaired.
+            cursor.execute(
+                "INSERT INTO knowledge_base_fts(knowledge_base_fts) VALUES('rebuild')"
+            )
+            logging.getLogger(__name__).info(
+                "Rebuilt legacy knowledge_base FTS5 index for %s", self.db_path
+            )
+
+        cursor.execute("DROP TRIGGER IF EXISTS kb_fts_insert")
+        cursor.execute("DROP TRIGGER IF EXISTS kb_fts_update")
+        cursor.execute("DROP TRIGGER IF EXISTS kb_fts_delete")
+
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS kb_fts_insert AFTER INSERT ON knowledge_base BEGIN
                 INSERT INTO knowledge_base_fts(rowid, category, key, value, long_form)
                 VALUES (new.id, new.category, new.key, new.value, new.long_form);
             END
         """)
-        
+
         cursor.execute("""
-            CREATE TRIGGER IF NOT EXISTS kb_fts_update AFTER UPDATE ON knowledge_base BEGIN
-                UPDATE knowledge_base_fts SET 
-                    category = new.category,
-                    key = new.key,
-                    value = new.value,
-                    long_form = new.long_form
-                WHERE rowid = new.id;
+            CREATE TRIGGER IF NOT EXISTS kb_fts_update
+            AFTER UPDATE OF category, key, value, long_form ON knowledge_base BEGIN
+                INSERT INTO knowledge_base_fts(
+                    knowledge_base_fts, rowid, category, key, value, long_form
+                ) VALUES(
+                    'delete', old.id, old.category, old.key, old.value, old.long_form
+                );
+                INSERT INTO knowledge_base_fts(rowid, category, key, value, long_form)
+                VALUES (new.id, new.category, new.key, new.value, new.long_form);
             END
         """)
-        
+
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS kb_fts_delete AFTER DELETE ON knowledge_base BEGIN
-                DELETE FROM knowledge_base_fts WHERE rowid = old.id;
+                INSERT INTO knowledge_base_fts(
+                    knowledge_base_fts, rowid, category, key, value, long_form
+                ) VALUES(
+                    'delete', old.id, old.category, old.key, old.value, old.long_form
+                );
             END
         """)
-        
-        self.conn.commit()
 
     def _ensure_column(self, cursor: sqlite3.Cursor, table: str, column: str, definition: str) -> None:
         """Add a missing column to an existing SQLite table."""
