@@ -2330,17 +2330,14 @@ def create_configured_provider(
                     os.environ["JARVIS_OVERRIDE_XAI_SEARCH"] = previous
         return provider_type, getattr(provider, "model", model), provider
     if provider_type == "ollama":
-        from config_loader import get_active_config_mode
-        from ollama_utils import get_effective_ollama_model, OllamaModelError
+        from ollama_utils import resolve_ollama_model
         # Resolve via the central mode-aware resolver: explicit/task model wins,
         # else OLLAMA_CLOUD_MODEL in cloud / OLLAMA_MODEL in local. Cloud mode
         # with no valid cloud model fails clearly; local keeps a safe fallback.
-        try:
-            model = get_effective_ollama_model(model_override=model)
-        except OllamaModelError:
-            if get_active_config_mode() == "cloud":
-                raise
-            model = model or get_config_value("OLLAMA_MODEL", get_provider_fallback_model("ollama"))
+        model = resolve_ollama_model(
+            model_override=model,
+            local_fallback=get_provider_fallback_model("ollama"),
+        )
         return provider_type, model, create_provider(
             "ollama",
             base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),

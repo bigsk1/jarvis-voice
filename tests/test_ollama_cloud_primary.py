@@ -18,6 +18,7 @@ from ollama_utils import (
     is_ollama_cloud_model,
 )
 from embeddings import get_effective_embedding_provider
+from llm_provider import create_configured_provider
 
 
 @pytest.fixture
@@ -138,6 +139,20 @@ def test_local_cloud_model_requires_opt_in(tmp_path, monkeypatch):
     with config_scope("local"):
         with pytest.raises(OllamaModelError, match="ALLOW_OLLAMA_CLOUD"):
             get_effective_ollama_model()
+
+
+def test_configured_provider_does_not_reaccept_rejected_local_cloud_model(tmp_path, monkeypatch):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "cloud.env").write_text("")
+    (config_dir / "local.env").write_text(
+        "LLM_PROVIDER=ollama\nOLLAMA_MODEL=minimax-m3:cloud\n"
+    )
+    monkeypatch.setattr(config_loader, "get_project_root", lambda: tmp_path)
+
+    with config_scope("local"):
+        with pytest.raises(OllamaModelError, match="ALLOW_OLLAMA_CLOUD"):
+            create_configured_provider(provider_override="ollama")
 
 
 def test_local_cloud_model_allowed_by_flag(tmp_path, monkeypatch):
