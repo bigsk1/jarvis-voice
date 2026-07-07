@@ -25,7 +25,7 @@ async def create_reminder(reminder: ReminderCreate):
             related_intel_file=reminder.related_intel_file,
             callback_url=reminder.callback_url,
             recurrence_rule=reminder.recurrence_rule,
-            metadata=reminder.metadata
+            metadata=reminder.metadata,
         )
         
         created_reminder = reminder_manager.get_reminder(reminder_id)
@@ -128,7 +128,8 @@ async def update_reminder(reminder_id: int, reminder: ReminderCreate):
             related_intel_file=reminder.related_intel_file,
             callback_url=reminder.callback_url,
             recurrence_rule=reminder.recurrence_rule,
-            metadata=reminder.metadata
+            metadata=reminder.metadata,
+            reactivate=True,
         )
         
         if not success:
@@ -198,7 +199,8 @@ async def update_reminder_by_gcal_id(gcal_event_id: str, reminder: ReminderCreat
             related_intel_file=reminder.related_intel_file,
             callback_url=reminder.callback_url,
             recurrence_rule=reminder.recurrence_rule,
-            metadata=reminder.metadata
+            metadata=reminder.metadata,
+            reactivate=True,
         )
         
         updated_reminder = reminder_manager.get_reminder(existing['id'])

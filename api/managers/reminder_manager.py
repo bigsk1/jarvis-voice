@@ -205,7 +205,8 @@ class ReminderManager:
                        related_intel_file: str | None = None,
                        callback_url: str | None = None,
                        recurrence_rule: str | None = None,
-                       metadata: dict[str, Any] | None = None) -> bool:
+                       metadata: dict[str, Any] | None = None,
+                       reactivate: bool = False) -> bool:
         """Update an existing reminder
         
         Args:
@@ -217,6 +218,7 @@ class ReminderManager:
             callback_url: Webhook to call when triggered
             recurrence_rule: Cron-like syntax
             metadata: Additional data (JSON)
+            reactivate: Reset lifecycle state so the updated time can fire again
             
         Returns:
             True if updated, False if not found
@@ -234,12 +236,19 @@ class ReminderManager:
                 related_intel_file = ?,
                 callback_url = ?,
                 recurrence_rule = ?,
-                metadata = ?
+                metadata = ?,
+                status = CASE WHEN ? THEN 'scheduled' ELSE status END,
+                triggered_at = CASE WHEN ? THEN NULL ELSE triggered_at END,
+                acknowledged_at = CASE WHEN ? THEN NULL ELSE acknowledged_at END,
+                spoken = CASE WHEN ? THEN 0 ELSE spoken END,
+                spoken_at = CASE WHEN ? THEN NULL ELSE spoken_at END
             WHERE id = ?
         """, (
             title, description, trigger_time,
             related_intel_file, callback_url, recurrence_rule,
-            metadata_json, reminder_id
+            metadata_json,
+            reactivate, reactivate, reactivate, reactivate, reactivate,
+            reminder_id
         ))
         
         success = cursor.rowcount > 0

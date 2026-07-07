@@ -123,6 +123,11 @@ Content-Type: application/json
 }
 ```
 
+Updating a reminder through this synchronization path reactivates it as
+`scheduled` and clears its previous trigger, acknowledgement, and spoken
+timestamps. A calendar event moved after it already fired or was canceled will
+therefore fire once at its newly synchronized time.
+
 **Delete Jarvis API Call**:
 ```bash
 DELETE http://localhost:8880/api/reminders/by-gcal/{gcal_event_id}

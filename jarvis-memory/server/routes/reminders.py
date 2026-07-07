@@ -94,7 +94,8 @@ def update_reminder(reminder_id: int):
         related_intel_file=(data.get('related_intel_file') or existing.get('related_intel_file') or '').strip() or None,
         callback_url=(data.get('callback_url') or existing.get('callback_url') or '').strip() or None,
         recurrence_rule=(data.get('recurrence_rule') or existing.get('recurrence_rule') or '').strip() or None,
-        metadata=data.get('metadata') if 'metadata' in data else existing.get('metadata')
+        metadata=data.get('metadata') if 'metadata' in data else existing.get('metadata'),
+        reactivate=True,
     )
 
     reminder = manager.get_reminder(reminder_id)
