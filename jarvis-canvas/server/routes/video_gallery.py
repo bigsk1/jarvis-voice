@@ -1,23 +1,16 @@
-"""
-Jarvis Canvas - Video Gallery routes
-
-TODO: REFACTOR - This file duplicates logic from api/routes/generated_videos.py
-The shared functions (lookup_stash_metadata, sync_video_catalog, load/save_video_catalog,
-provider detection) should be extracted to lib/video_catalog.py and imported by both:
-  - This Flask Blueprint (jarvis-canvas)
-  - The FastAPI router (api/routes/generated_videos.py)
-
-Current situation: jarvis-canvas is Flask, main api/ is FastAPI. The duplication exists
-because routes can't be shared across frameworks, but the underlying logic CAN be.
-When adding new providers (like OpenAI), changes must be made in BOTH files until refactored.
-"""
-import json
+"""Jarvis Canvas video-gallery routes."""
 import subprocess
 from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, jsonify, send_file, abort, render_template
 
 from config import GENERATED_VIDEOS_DIR, STASH_DIR
+from video_catalog import (
+    load_video_catalog as _load_video_catalog,
+    lookup_stash_metadata as _lookup_stash_metadata,
+    save_video_catalog as _save_video_catalog,
+    sync_video_catalog as _sync_video_catalog,
+)
 
 video_gallery_bp = Blueprint('video_gallery', __name__)
 
@@ -44,22 +37,12 @@ def get_video_duration(filepath):
 
 def load_video_catalog():
     """Load the video catalog from disk."""
-    if VIDEO_CATALOG_FILE.exists():
-        try:
-            with open(VIDEO_CATALOG_FILE) as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {}
+    return _load_video_catalog(VIDEO_CATALOG_FILE)
 
 
 def save_video_catalog(catalog):
     """Save the video catalog to disk."""
-    try:
-        with open(VIDEO_CATALOG_FILE, 'w') as f:
-            json.dump(catalog, f, indent=2)
-    except Exception as e:
-        print(f"⚠️  Failed to save video catalog: {e}")
+    _save_video_catalog(VIDEO_CATALOG_FILE, catalog)
 
 
 def sync_video_catalog():
@@ -70,39 +53,11 @@ def sync_video_catalog():
     - Removes entries for deleted videos
     - Returns the synced catalog
     """
-    catalog = load_video_catalog()
-    changed = False
-    
-    # Get actual video files
-    actual_files = set()
-    if GENERATED_VIDEOS_DIR.exists():
-        for f in GENERATED_VIDEOS_DIR.iterdir():
-            if f.is_file() and f.suffix.lower() in ('.mp4', '.webm', '.mov', '.avi', '.mkv'):
-                actual_files.add(f.name)
-    
-    # Remove entries for deleted videos
-    deleted = [name for name in catalog if name not in actual_files]
-    for name in deleted:
-        del catalog[name]
-        changed = True
-        print(f"🗑️  Removed from catalog: {name}")
-    
-    # Add new videos (lookup stash metadata)
-    for filename in actual_files:
-        if filename not in catalog:
-            # New video - try to get metadata from stash
-            meta = lookup_stash_metadata(filename)
-            catalog[filename] = meta or {}
-            changed = True
-            if meta and meta.get('provider'):
-                print(f"📝 Added to catalog: {filename} ({meta.get('provider')})")
-            else:
-                print(f"📝 Added to catalog: {filename}")
-    
-    if changed:
-        save_video_catalog(catalog)
-    
-    return catalog
+    return _sync_video_catalog(
+        GENERATED_VIDEOS_DIR,
+        STASH_DIR,
+        VIDEO_CATALOG_FILE,
+    )
 
 
 def lookup_stash_metadata(filename):
@@ -110,65 +65,7 @@ def lookup_stash_metadata(filename):
     Look up metadata for a video file from stash.
     Returns dict with provider, aspect, tags if found.
     """
-    if not STASH_DIR.exists():
-        return None
-    
-    for space_dir in STASH_DIR.iterdir():
-        if not space_dir.is_dir():
-            continue
-        
-        meta_file = space_dir / "meta.json"
-        if not meta_file.exists():
-            continue
-        
-        try:
-            with open(meta_file) as f:
-                meta = json.load(f)
-            
-            # Only process video stash spaces
-            if 'generated_videos' not in meta.get('labels', []):
-                continue
-            
-            for file_info in meta.get('files', []):
-                stored_name = file_info.get('stored_name') or file_info.get('name')
-                if stored_name != filename:
-                    continue
-                
-                tags = file_info.get('tags', [])
-                
-                # Detect provider from tags
-                provider = None
-                if 'openai' in tags:
-                    provider = 'OpenAI'
-                elif 'gemini' in tags:
-                    provider = 'Gemini'
-                elif 'xai' in tags:
-                    provider = 'xAI'
-                elif 'runway' in tags:
-                    provider = 'Runway'
-                elif 'pika' in tags:
-                    provider = 'Pika'
-                elif 'kling' in tags:
-                    provider = 'Kling'
-                
-                # Get aspect ratio from tags
-                aspect = None
-                for tag in tags:
-                    if ':' in tag and tag.replace(':', '').replace('.', '').isdigit():
-                        aspect = tag
-                        break
-                
-                return {
-                    'provider': provider,
-                    'aspect': aspect,
-                    'tags': tags,
-                    'tool_origin': file_info.get('tool_origin'),
-                    'created_at': file_info.get('created_at')
-                }
-        except Exception:
-            pass
-    
-    return None
+    return _lookup_stash_metadata(filename, STASH_DIR)
 
 
 @video_gallery_bp.route('/video-gallery')

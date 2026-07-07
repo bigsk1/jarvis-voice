@@ -26,6 +26,13 @@ sys.path.insert(0, str(PROJECT_ROOT / 'skills'))
 
 from config_loader import load_config, get_config_value
 from model_catalog import get_media_model_env_key, resolve_media_model
+from stash_helper import get_stash_dir
+from video_catalog import (
+    load_video_catalog as _load_video_catalog,
+    lookup_stash_metadata as _lookup_stash_metadata,
+    save_video_catalog as _save_video_catalog,
+    sync_video_catalog as _sync_video_catalog,
+)
 
 # Load config
 load_config()
@@ -40,7 +47,7 @@ GENERATED_VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
 VIDEO_CATALOG_FILE = GENERATED_VIDEOS_DIR / "video_catalog.json"
 
 # Stash directory for looking up metadata
-STASH_DIR = PROJECT_ROOT / "data" / "stash"
+STASH_DIR = get_stash_dir()
 
 # Supported video extensions
 VIDEO_EXTENSIONS = {'.mp4', '.webm', '.mov', '.avi', '.mkv'}
@@ -48,131 +55,26 @@ VIDEO_EXTENSIONS = {'.mp4', '.webm', '.mov', '.avi', '.mkv'}
 
 def load_video_catalog() -> dict:
     """Load the video catalog from disk."""
-    if VIDEO_CATALOG_FILE.exists():
-        try:
-            with open(VIDEO_CATALOG_FILE) as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {}
+    return _load_video_catalog(VIDEO_CATALOG_FILE)
 
 
 def save_video_catalog(catalog: dict):
     """Save the video catalog to disk."""
-    try:
-        with open(VIDEO_CATALOG_FILE, 'w') as f:
-            json.dump(catalog, f, indent=2)
-    except Exception as e:
-        print(f"⚠️  Failed to save video catalog: {e}")
+    _save_video_catalog(VIDEO_CATALOG_FILE, catalog)
 
 
 def lookup_stash_metadata(filename: str) -> Optional[dict]:
     """Look up metadata for a video file from stash."""
-    if not STASH_DIR.exists():
-        return None
-    
-    for space_dir in STASH_DIR.iterdir():
-        if not space_dir.is_dir():
-            continue
-        
-        meta_file = space_dir / "meta.json"
-        if not meta_file.exists():
-            continue
-        
-        try:
-            with open(meta_file) as f:
-                meta = json.load(f)
-            
-            if 'generated_videos' not in meta.get('labels', []):
-                continue
-            
-            for file_info in meta.get('files', []):
-                stored_name = file_info.get('stored_name') or file_info.get('name')
-                if stored_name != filename:
-                    continue
-                
-                tags = file_info.get('tags', [])
-                
-                # Detect provider from tags
-                provider = None
-                if 'openai' in tags:
-                    provider = 'OpenAI'
-                elif 'gemini' in tags:
-                    provider = 'Gemini'
-                elif 'xai' in tags:
-                    provider = 'xAI'
-                elif 'runway' in tags:
-                    provider = 'Runway'
-                
-                # Get aspect ratio from tags
-                aspect = None
-                for tag in tags:
-                    if ':' in tag and tag.replace(':', '').replace('.', '').isdigit():
-                        aspect = tag
-                        break
-                
-                # Compute edit URL status (xAI URLs expire after ~4h)
-                source_url = file_info.get('source_url')
-                source_url_created = file_info.get('source_url_created')
-                edit_url_status = None
-                if source_url and source_url.startswith('http'):
-                    edit_url_status = 'available'
-                    if source_url_created:
-                        try:
-                            created_dt = datetime.fromisoformat(source_url_created)
-                            age_hours = (datetime.now() - created_dt).total_seconds() / 3600
-                            if age_hours > 4:
-                                edit_url_status = 'expired'
-                        except Exception:
-                            pass
-                
-                return {
-                    'provider': provider,
-                    'aspect': aspect,
-                    'tags': tags,
-                    'tool_origin': file_info.get('tool_origin'),
-                    'created_at': file_info.get('created_at'),
-                    'stash_ref': f"stash://{meta.get('space_id')}/{file_info.get('file_id')}",
-                    'space_id': meta.get('space_id'),
-                    'source_url': source_url,
-                    'source_url_created': source_url_created,
-                    'edit_url_status': edit_url_status,
-                }
-        except Exception:
-            pass
-    
-    return None
+    return _lookup_stash_metadata(filename, STASH_DIR)
 
 
 def sync_video_catalog() -> dict:
     """Sync video catalog with actual files and stash metadata."""
-    catalog = load_video_catalog()
-    changed = False
-    
-    # Get actual video files
-    actual_files = set()
-    if GENERATED_VIDEOS_DIR.exists():
-        for f in GENERATED_VIDEOS_DIR.iterdir():
-            if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS:
-                actual_files.add(f.name)
-    
-    # Remove deleted videos from catalog
-    deleted = [name for name in catalog if name not in actual_files]
-    for name in deleted:
-        del catalog[name]
-        changed = True
-    
-    # Add new videos (lookup stash metadata)
-    for filename in actual_files:
-        if filename not in catalog:
-            meta = lookup_stash_metadata(filename)
-            catalog[filename] = meta or {}
-            changed = True
-    
-    if changed:
-        save_video_catalog(catalog)
-    
-    return catalog
+    return _sync_video_catalog(
+        GENERATED_VIDEOS_DIR,
+        STASH_DIR,
+        VIDEO_CATALOG_FILE,
+    )
 
 
 class VideoInfo(BaseModel):

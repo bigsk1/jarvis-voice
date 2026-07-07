@@ -207,7 +207,9 @@ The `video_catalog.json` stores persistent metadata for all videos:
 
 **How it works:**
 - When videos are generated, metadata is saved to stash AND catalog
-- Catalog syncs automatically - new files get metadata from stash
+- Flask Canvas and FastAPI use the same catalog persistence module and metadata schema
+- Catalog syncs automatically; new and legacy incomplete entries get metadata from stash
+- Time-sensitive `edit_url_status` is recomputed on sync instead of remaining cached
 - Catalog survives stash TTL (7-day cleanup) - metadata persists
 - Shared by `jarvis-api` (8880) and `jarvis-canvas` (8890)
 
