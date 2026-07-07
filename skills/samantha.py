@@ -24,6 +24,7 @@ import requests
 # Configuration - loaded from environment (no hardcoded URLs/tokens)
 SAMANTHA_URL = os.environ.get("SAMANTHA_URL", "https://your-vps.ts.net/v1/chat/completions")
 SAMANTHA_TOKEN = os.environ.get("SAMANTHA_GATEWAY_TOKEN", "")
+SAMANTHA_MODEL = os.environ.get("SAMANTHA_MODEL", "openclaw/main")
 DEFAULT_TIMEOUT = 120  # Default timeout, can be overridden per-call (30-300s)
 
 # For reference - Samantha's capabilities (she has different tools than Jarvis)
@@ -75,7 +76,7 @@ def call_samantha(message: str, session: str = "jarvis", priority: str = "normal
         task_message = message
     
     payload = {
-        "model": "clawdbot:main",
+        "model": SAMANTHA_MODEL,
         "messages": [
             {"role": "user", "content": task_message}
         ],
