@@ -112,6 +112,11 @@ another. Even when a file hash is unchanged, ingestion verifies that the file
 still owns all expected fact identities; this repairs databases created by the
 older cross-file deduplication behavior.
 
+Per-file API status, update, and delete operations match `intel/<filename>`
+literally rather than as a SQL wildcard pattern. Updating or deleting a name
+containing `_` therefore cannot affect a similarly named file, and invalidation
+removes the current `intel_hash_<filename>` tracking row before re-ingestion.
+
 Mode behavior:
 - direct `ingest_intel` updates only the current mode DB
 - `manage_intel` with `auto_ingest=true` and Memory UI `Ingest All` run current mode first, then sibling DB if it exists

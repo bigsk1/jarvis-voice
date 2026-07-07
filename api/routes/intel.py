@@ -50,7 +50,7 @@ def get_file_info(filepath: Path, db=None) -> IntelFile:
         cursor = db.conn.cursor()
         # Check for facts from this file
         count = cursor.execute(
-            "SELECT COUNT(*) FROM knowledge_base WHERE source LIKE ?",
+            "SELECT COUNT(*) FROM knowledge_base WHERE source = ?",
             (f"intel/{filepath.name}",)
         ).fetchone()[0]
         if count > 0:
@@ -125,7 +125,7 @@ async def get_intel_stats():
         pending = 0
         for f in files:
             count = cursor.execute(
-                "SELECT COUNT(*) FROM knowledge_base WHERE source LIKE ?",
+                "SELECT COUNT(*) FROM knowledge_base WHERE source = ?",
                 (f"intel/{f.name}",)
             ).fetchone()[0]
             if count == 0:
@@ -344,13 +344,13 @@ async def update_intel_file(filename: str, data: IntelUpdate):
             db = get_db()
             cursor = db.conn.cursor()
             cursor.execute(
-                "DELETE FROM knowledge_base WHERE source LIKE ?",
+                "DELETE FROM knowledge_base WHERE source = ?",
                 (f"intel/{filename}",)
             )
             # Delete hash tracking
             cursor.execute(
-                "DELETE FROM knowledge_base WHERE category = 'system' AND key = 'intel_files_ingested' AND value LIKE ?",
-                (f"%|{filename}",)
+                "DELETE FROM knowledge_base WHERE category = 'system' AND key = ?",
+                (f"intel_hash_{filename}",)
             )
             db.conn.commit()
             
@@ -393,20 +393,20 @@ async def delete_intel_file(filename: str):
         
         # Count facts to be deleted
         deleted_facts = cursor.execute(
-            "SELECT COUNT(*) FROM knowledge_base WHERE source LIKE ?",
+            "SELECT COUNT(*) FROM knowledge_base WHERE source = ?",
             (f"intel/{filename}",)
         ).fetchone()[0]
         
         # Delete facts
         cursor.execute(
-            "DELETE FROM knowledge_base WHERE source LIKE ?",
+            "DELETE FROM knowledge_base WHERE source = ?",
             (f"intel/{filename}",)
         )
         
         # Delete hash tracking
         cursor.execute(
-            "DELETE FROM knowledge_base WHERE category = 'system' AND key = 'intel_files_ingested' AND value LIKE ?",
-            (f"%|{filename}",)
+            "DELETE FROM knowledge_base WHERE category = 'system' AND key = ?",
+            (f"intel_hash_{filename}",)
         )
         db.conn.commit()
         
