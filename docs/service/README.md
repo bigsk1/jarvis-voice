@@ -317,8 +317,9 @@ The `cleanup-all` script handles everything with appropriate retention:
 |-----------|-----------|---------|
 | `logs/` | 60 days | LLM calls, services, API, tools |
 | `audio/` | 30 days | TTS output, mic recordings |
-| `data/generated_images/` | 90 days | AI-generated images |
-| `data/stash/` | 7 days (TTL) | Workflow artifacts, temporary storage |
+| `data/generated_images/` | 120 days | Primary AI-generated image files |
+| `jarvis-web/data/uploads/` | 60 days if unreferenced | Saved-conversation attachments are preserved |
+| `data/stash/` | 7/30/120 days by policy | Temporary/generated-media/source artifacts; pins and saved-conversation references are preserved |
 
 ### Individual Cleanup Scripts
 

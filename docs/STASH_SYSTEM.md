@@ -88,6 +88,7 @@ data/stash/
   "owner": "boss",
   "scope": "session",
   "ttl_days": 7,
+  "retention_policy": "temporary",
   "pinned": false,
   "files": [
     {
@@ -114,6 +115,22 @@ data/stash/
 | `session` | Ephemeral, tied to single conversation | Auto-clean at session end + TTL |
 | `user` | Cross-session, owned by user | Respect TTL, require explicit cleanup |
 | `shared` | (Future) Global templates/resources | Never auto-delete |
+
+### Retention policies
+
+New spaces receive an automatic policy unless the caller supplies `ttl_days`:
+
+| Policy | Default | Examples |
+|---|---:|---|
+| `temporary` | 7 days | Session workflow intermediates and research scratch data |
+| `generated_media` | 30 days | Stash duplicates of generated images, videos, and music |
+| `source_artifact` | 120 days | Web/API uploads, PDFs, downloads, and project/user-scoped conversions |
+| `explicit` | Caller value | A space created or updated with an explicit `ttl_days` |
+
+Pinned spaces never expire. In addition, scheduled cleanup protects any stash
+space still referenced by a saved Web conversation. Legacy spaces carrying the
+old default of 7 days are classified before cleanup; legacy custom TTL values
+are preserved as `legacy_explicit`.
 
 ### File ID vs Filename
 
@@ -1300,6 +1317,10 @@ See also: [TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md) for full pattern docu
 # Stash System
 STASH_DIR="data/stash"
 STASH_DEFAULT_TTL_DAYS=7
+STASH_GENERATED_MEDIA_TTL_DAYS=30
+STASH_SOURCE_ARTIFACT_TTL_DAYS=120
+STASH_CLEANUP_MAX_SPACES=100
+STASH_CLEANUP_MAX_BYTES_MB=512
 STASH_MAX_SPACE_SIZE_MB=500
 STASH_MAX_TOTAL_SIZE_GB=5
 STASH_ALLOWED_DOWNLOAD_HOSTS=""  # Empty = allow all external

@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Apply conversation-aware upload and policy-aware stash retention."""
+
+import argparse
+import os
+import sys
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / 'lib'))
+
+from config_loader import load_config
+from retention_cleanup import (
+    cleanup_web_uploads,
+    collect_conversation_asset_references,
+)
+from stash_helper import cleanup_expired, get_stash_dir
+
+
+def _human_size(size: int) -> str:
+    for unit in ('B', 'KB', 'MB', 'GB'):
+        if size < 1024 or unit == 'GB':
+            return f"{size:.1f} {unit}" if unit != 'B' else f"{size} B"
+        size /= 1024
+    return f"{size:.1f} GB"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('target', choices=('uploads', 'stash'))
+    parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--days', type=int, default=60)
+    args = parser.parse_args()
+
+    load_config(os.environ.get('JARVIS_MODE', 'cloud'))
+    conversations_dir = PROJECT_ROOT / 'data' / 'web_conversations'
+    if args.target == 'uploads':
+        result = cleanup_web_uploads(
+            PROJECT_ROOT / 'jarvis-web' / 'data' / 'uploads',
+            conversations_dir,
+            retention_days=args.days,
+            dry_run=args.dry_run,
+        )
+        action = 'Would delete' if args.dry_run else 'Deleted'
+        count = len(result['candidates']) if args.dry_run else result['deleted_files']
+        print(f"{action} {count} unreferenced upload(s), {_human_size(result['freed_bytes'])}")
+        print(f"Preserved {result['preserved_referenced']} conversation-referenced upload(s)")
+        if result['referenced_missing']:
+            print(f"WARNING: {result['referenced_missing']} referenced upload(s) were already missing")
+    else:
+        references = collect_conversation_asset_references(conversations_dir)
+        result = cleanup_expired(
+            dry_run=args.dry_run,
+            protected_space_ids=references.stash_space_ids,
+            stash_dir=get_stash_dir(),
+        )
+        action = 'Would delete' if args.dry_run else 'Deleted'
+        count = result['expired_spaces'] if args.dry_run else result['deleted_spaces']
+        print(f"{action} {count} expired stash space(s), {_human_size(result['freed_bytes'])}")
+        print(
+            f"Protected {result['protected_spaces']} conversation-referenced space(s); "
+            f"migrated {result['migrated_spaces']} legacy policy record(s)"
+        )
+        if result['deferred_spaces']:
+            print(f"Deferred {result['deferred_spaces']} space(s) due to per-run safety limits")
+
+    if result['errors']:
+        for error in result['errors'][:10]:
+            print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

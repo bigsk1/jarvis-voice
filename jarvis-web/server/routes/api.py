@@ -37,6 +37,8 @@ from model_catalog import get_provider_fallback_model
 from status_activity_logger import log_status_event
 from tool_sync_status import read_tool_sync_status
 from vision_multimodal import max_vision_images
+from retention_cleanup import find_upload_stash_fallback
+from stash_helper import get_stash_dir
 
 
 def _get_jarvis_version():
@@ -2670,10 +2672,18 @@ def serve_upload(filename):
     if ext not in allowed_extensions:
         abort(404)
     
-    if not UPLOADS_PATH.exists():
-        abort(404)
-    
-    return send_from_directory(str(UPLOADS_PATH), filename)
+    upload_path = UPLOADS_PATH / filename
+    if upload_path.is_file():
+        return send_from_directory(str(UPLOADS_PATH), filename)
+
+    fallback = find_upload_stash_fallback(
+        filename,
+        JARVIS_ROOT / 'data' / 'web_conversations',
+        get_stash_dir(),
+    )
+    if fallback:
+        return send_file(fallback)
+    abort(404)
 
 
 # =============================================================================

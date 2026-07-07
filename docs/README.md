@@ -895,7 +895,8 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Clear Chat: clears messages, keeps conversation; API `POST /api/conversations/<id>/clear`
   - Import Knowledge: upload .txt/.md to jarvis-intel/, background ingestion; API `POST /api/intel/upload` (max 1MB)
 - ✅ **"No Specific Preference" Filter** - Auto-memory skips these from always-include; router steers "forget" to forget tool
-- ✅ **cleanup-all Updates** - Web uploads (30-day retention), disk usage summary for missing paths
+- ✅ **cleanup-all Updates** - Unreferenced Web uploads use 60-day retention;
+  saved-conversation uploads and stash references are protected
 
 **2026-02-11:**
 - ✅ **Jarvis Intel System**

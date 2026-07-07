@@ -264,6 +264,19 @@ def get_default_ttl() -> int:
     return get_int('STASH_DEFAULT_TTL_DAYS', 7)
 
 
+def get_retention_policy(labels: list[str] = None, scope: str = 'session') -> tuple[str, int]:
+    """Return the automatic retention class and TTL for a stash space."""
+    normalized = {str(label).strip().lower() for label in (labels or [])}
+    if normalized & {'generated_images', 'generated_videos', 'generated_music'}:
+        return 'generated_media', get_int('STASH_GENERATED_MEDIA_TTL_DAYS', 30)
+    if scope in {'project', 'user'} or normalized & {
+        'web_upload', 'uploaded', 'youtube_downloads', 'youtube_transcripts',
+        'pdf', 'pdf_images',
+    }:
+        return 'source_artifact', get_int('STASH_SOURCE_ARTIFACT_TTL_DAYS', 120)
+    return 'temporary', get_default_ttl()
+
+
 def get_max_space_size() -> int:
     """Get max space size in bytes."""
     mb = get_int('STASH_MAX_SPACE_SIZE_MB', 500)
@@ -369,6 +382,11 @@ class StashSpace:
         
         # Initialize metadata
         now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+        if ttl_days is None:
+            retention_policy, resolved_ttl_days = get_retention_policy(labels, scope)
+        else:
+            retention_policy, resolved_ttl_days = 'explicit', ttl_days
+
         self._meta = {
             'space_id': self.space_id,
             'created_at': now,
@@ -376,7 +394,8 @@ class StashSpace:
             'labels': labels or [],
             'owner': owner,
             'scope': scope,
-            'ttl_days': ttl_days or get_default_ttl(),
+            'ttl_days': resolved_ttl_days,
+            'retention_policy': retention_policy,
             'pinned': False,
             'files': []
         }
@@ -402,6 +421,7 @@ class StashSpace:
         
         if ttl_days is not None:
             self._meta['ttl_days'] = ttl_days
+            self._meta['retention_policy'] = 'explicit'
         if pinned is not None:
             self._meta['pinned'] = pinned
         if labels is not None:
@@ -750,7 +770,8 @@ def list_spaces() -> list[dict]:
         return []
     
     spaces = []
-    for item in stash_dir.iterdir():
+    items = sorted(stash_dir.iterdir(), key=lambda path: path.stat().st_mtime)
+    for item in items:
         if item.is_dir() and item.name.startswith('space_'):
             try:
                 space = StashSpace(item.name, stash_dir)
@@ -762,26 +783,121 @@ def list_spaces() -> list[dict]:
     return sorted(spaces, key=lambda x: x.get('last_used_at', ''), reverse=True)
 
 
-def cleanup_expired() -> dict:
-    """Clean up expired spaces."""
-    stash_dir = get_stash_dir()
+def _space_expires_at(space: StashSpace) -> datetime:
+    """Return when a stash space expires based on last use and TTL."""
+    ttl_days = space.meta.get('ttl_days', get_default_ttl())
+    last_used_str = space.meta.get('last_used_at', space.meta.get('created_at', ''))
+    last_used = datetime.fromisoformat(last_used_str.rstrip('Z'))
+    return last_used + timedelta(days=ttl_days)
+
+
+def _migrate_retention_policy(space: StashSpace, *, dry_run: bool = False) -> bool:
+    """Classify legacy spaces without overwriting known custom TTL values."""
+    if space.meta.get('retention_policy'):
+        return False
+    current_ttl = space.meta.get('ttl_days')
+    if current_ttl not in (None, 7):
+        policy, ttl_days = 'legacy_explicit', current_ttl
+    else:
+        policy, ttl_days = get_retention_policy(
+            space.meta.get('labels', []),
+            space.meta.get('scope', 'session'),
+        )
+    space._meta['retention_policy'] = policy
+    space._meta['ttl_days'] = ttl_days
+    if not dry_run:
+        space._save_meta()
+    return True
+
+
+def cleanup_expired(
+    *,
+    dry_run: bool = False,
+    protected_space_ids: set[str] | frozenset[str] | None = None,
+    stash_dir: Path = None,
+    max_delete_spaces: int | None = None,
+    max_delete_bytes: int | None = None,
+) -> dict:
+    """Clean up expired spaces after applying retention policy migration."""
+    stash_dir = stash_dir or get_stash_dir()
+    if protected_space_ids is None:
+        try:
+            from retention_cleanup import collect_conversation_asset_references
+            conversations_dir = Path(__file__).parent.parent / 'data' / 'web_conversations'
+            protected_space_ids = collect_conversation_asset_references(
+                conversations_dir
+            ).stash_space_ids
+        except Exception:
+            protected_space_ids = frozenset()
+    if max_delete_spaces is None:
+        max_delete_spaces = get_int('STASH_CLEANUP_MAX_SPACES', 100)
+    if max_delete_bytes is None:
+        max_delete_bytes = get_int('STASH_CLEANUP_MAX_BYTES_MB', 512) * 1024 * 1024
     if not stash_dir.exists():
-        return {'deleted_spaces': 0, 'freed_bytes': 0}
+        return {
+            'deleted_spaces': 0, 'expired_spaces': 0, 'freed_bytes': 0,
+            'protected_spaces': 0, 'migrated_spaces': 0, 'candidates': [],
+            'deferred_spaces': 0, 'errors': [],
+        }
     
     deleted = 0
     freed = 0
-    
+    expired = 0
+    protected = 0
+    migrated = 0
+    candidates = []
+    deferred = 0
+    errors = []
+    expired_queue: list[tuple[datetime, str, StashSpace, int]] = []
+
     for item in stash_dir.iterdir():
         if item.is_dir() and item.name.startswith('space_'):
             try:
                 space = StashSpace(item.name, stash_dir)
-                if space.exists and space.is_expired():
-                    freed += space.delete()
-                    deleted += 1
-            except Exception:
-                pass
-    
-    return {'deleted_spaces': deleted, 'freed_bytes': freed}
+                if not space.exists:
+                    continue
+                if _migrate_retention_policy(space, dry_run=dry_run):
+                    migrated += 1
+                if item.name in protected_space_ids:
+                    protected += 1
+                    continue
+                if space.is_expired:
+                    expired += 1
+                    candidates.append(item.name)
+                    candidate_size = sum(
+                        path.stat().st_size
+                        for path in item.rglob('*')
+                        if path.is_file()
+                    )
+                    expired_queue.append(
+                        (_space_expires_at(space), item.name, space, candidate_size)
+                    )
+            except Exception as exc:
+                errors.append({'space_id': item.name, 'error': str(exc)})
+
+    expired_queue.sort(key=lambda entry: (entry[0], entry[1]))
+    for expires_at, space_id, space, candidate_size in expired_queue:
+        if dry_run:
+            freed += candidate_size
+            continue
+        limit_reached = deleted >= max_delete_spaces
+        byte_limit_reached = deleted > 0 and freed + candidate_size > max_delete_bytes
+        if limit_reached or byte_limit_reached:
+            deferred += 1
+            continue
+        freed += space.delete()
+        deleted += 1
+
+    return {
+        'deleted_spaces': deleted,
+        'expired_spaces': expired,
+        'freed_bytes': freed,
+        'protected_spaces': protected,
+        'migrated_spaces': migrated,
+        'candidates': candidates,
+        'deferred_spaces': deferred,
+        'errors': errors,
+    }
 
 
 def normalize_space_id(space_id: str) -> str:

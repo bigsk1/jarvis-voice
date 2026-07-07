@@ -1286,7 +1286,8 @@ crontab -e
 # Keep only last 30 days of database backups
 0 4 * * * find $HOME/jarvis-voice/data/backups/ -name "jarvis_memory-*.db" -mtime +30 -delete
 
-# Jarvis weekly cleanup (logs 60d, audio 30d, images 90d, stash TTL)
+# Jarvis weekly cleanup (logs 60d, audio 30d, images 120d,
+# unreferenced uploads 60d, policy-based stash TTL)
 0 3 * * 0 $HOME/jarvis-voice/bin/cleanup-all >> $HOME/jarvis-voice/logs/cleanup.log 2>&1
 
 # Monthly profile reconcile report, review-only, no auto-write
