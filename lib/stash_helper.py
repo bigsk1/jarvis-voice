@@ -876,7 +876,7 @@ def cleanup_expired(
                 errors.append({'space_id': item.name, 'error': str(exc)})
 
     expired_queue.sort(key=lambda entry: (entry[0], entry[1]))
-    for expires_at, space_id, space, candidate_size in expired_queue:
+    for _expires_at, _space_id, space, candidate_size in expired_queue:
         if dry_run:
             freed += candidate_size
             continue
