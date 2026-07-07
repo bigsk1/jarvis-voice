@@ -347,11 +347,14 @@ def _maybe_send_notifications(task: dict, *, status: str, summary: str | None, e
         ident = _notification_identifier(task["id"], "email", outcome, scheduled_for)
         if _notification_allowed(ident):
             subject = f"Jarvis scheduled task {outcome}: {task['name']}"
-            result = _run_skill_script("send_email.py", {
-                "to": contact_name,
-                "subject": subject,
-                "body": body,
-            })
+            try:
+                result = _run_skill_script("send_email.py", {
+                    "to": contact_name,
+                    "subject": subject,
+                    "body": body,
+                })
+            except Exception as exc:
+                result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
             results.append({"channel": "email", "outcome": outcome, "result": result})
         else:
             results.append({"channel": "email", "outcome": outcome, "result": {"ok": False, "error": "cooldown_suppressed"}})
@@ -359,20 +362,23 @@ def _maybe_send_notifications(task: dict, *, status: str, summary: str | None, e
     if webhook_name and ((is_success and notifications.get("webhook_on_success")) or (is_failure and notifications.get("webhook_on_failure"))):
         ident = _notification_identifier(task["id"], "webhook", outcome, scheduled_for)
         if _notification_allowed(ident):
-            result = _run_skill_script("send_webhook.py", {
-                "webhook": webhook_name,
-                "data": {
-                    "task_id": task["id"],
-                    "task_name": task["name"],
-                    "status": status,
-                    "mode": task["mode"],
-                    "task_type": task["task_type"],
-                    "scheduled_for": scheduled_for,
-                    "next_run_at": next_run,
-                    "summary": summary,
-                    "error": error,
-                }
-            })
+            try:
+                result = _run_skill_script("send_webhook.py", {
+                    "webhook": webhook_name,
+                    "data": {
+                        "task_id": task["id"],
+                        "task_name": task["name"],
+                        "status": status,
+                        "mode": task["mode"],
+                        "task_type": task["task_type"],
+                        "scheduled_for": scheduled_for,
+                        "next_run_at": next_run,
+                        "summary": summary,
+                        "error": error,
+                    }
+                })
+            except Exception as exc:
+                result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
             results.append({"channel": "webhook", "outcome": outcome, "result": result})
         else:
             results.append({"channel": "webhook", "outcome": outcome, "result": {"ok": False, "error": "cooldown_suppressed"}})

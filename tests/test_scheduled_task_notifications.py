@@ -7,6 +7,7 @@ Run:
 """
 
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -49,6 +50,46 @@ class ScheduledTaskNotificationTests(unittest.TestCase):
                         self.assertFalse(runner._notification_allowed(identifier))
                     with patch.object(runner.time, "time", return_value=2001.0):
                         self.assertTrue(runner._notification_allowed(identifier))
+
+    def test_notification_timeout_is_reported_and_later_channels_continue(self):
+        task = {
+            "id": 12,
+            "name": "Daily summary",
+            "task_type": "query",
+            "mode": "cloud",
+            "task_payload": json.dumps({"query": "Summarize today"}),
+            "metadata": json.dumps({
+                "notifications": {
+                    "contact_name": "boss",
+                    "webhook_name": "notify_slack",
+                    "email_on_success": True,
+                    "webhook_on_success": True,
+                }
+            }),
+        }
+
+        with patch.object(runner, "_notification_allowed", return_value=True):
+            with patch.object(
+                runner,
+                "_run_skill_script",
+                side_effect=[
+                    subprocess.TimeoutExpired("send_email.py", 60),
+                    {"ok": True},
+                ],
+            ):
+                results = runner._maybe_send_notifications(
+                    task,
+                    status="success",
+                    summary="Done",
+                    error=None,
+                    scheduled_for="2026-07-06 12:00:00",
+                    next_run="2026-07-07 12:00:00",
+                )
+
+        self.assertEqual([item["channel"] for item in results], ["email", "webhook"])
+        self.assertFalse(results[0]["result"]["ok"])
+        self.assertIn("timed out", results[0]["result"]["error"].lower())
+        self.assertTrue(results[1]["result"]["ok"])
 
 
 if __name__ == "__main__":
