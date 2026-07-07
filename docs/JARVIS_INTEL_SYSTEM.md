@@ -98,7 +98,9 @@ Jarvis can now recall the facts via memory search:
 
 1. **Scan folder** — Find all `.txt` and `.md` files (README.md is skipped)
 2. **Check hashes** — Compare file MD5 hashes against stored hashes (`intel_hash_{filename}`)
-3. **Clean up deleted** — Remove facts for files that no longer exist on disk
+3. **Clean up deleted** — Remove facts and hash rows for files that no longer
+   exist on disk, including when the final Intel file was removed and the
+   folder is otherwise empty
 4. **Skip unchanged** — Files with matching hashes are not re-processed
 5. **Extract facts** — Parse key-value pairs, bullets, headers, and text sections
 6. **Save to memory** — Store in `knowledge_base` table with importance 8, auto-categorized

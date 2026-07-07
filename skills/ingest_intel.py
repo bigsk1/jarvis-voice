@@ -183,13 +183,6 @@ def main():
         files = list(intel_dir.glob("*.txt")) + list(intel_dir.glob("*.md"))
         files = [f for f in files if f.name != "README.md"]  # Skip README
         
-        if not files:
-            return_success(
-                "No intel files found. Add .txt or .md files to jarvis-intel folder.",
-                {"files_found": 0}
-            )
-            return 0
-        
         # Initialize memory DB
         db = MemoryDB()
         
@@ -333,11 +326,16 @@ def main():
         elif skipped_files > 0:
             speech_parts.append(f"Skipped {skipped_files} unchanged file{'s' if skipped_files != 1 else ''}")
         
-        speech = ". ".join(speech_parts) + "." if speech_parts else "No intel files found."
+        speech = (
+            ". ".join(speech_parts) + "."
+            if speech_parts
+            else "No intel files found. Add .txt or .md files to jarvis-intel folder."
+        )
         
         return_success(
             speech,
             {
+                "files_found": len(files),
                 "new_files": new_files,
                 "skipped_files": skipped_files,
                 "deleted_files": deleted_files,
