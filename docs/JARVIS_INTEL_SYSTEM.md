@@ -106,6 +106,12 @@ Jarvis can now recall the facts via memory search:
 6. **Save to memory** — Store in `knowledge_base` table with importance 8, auto-categorized
 7. **Update hash** — Store new hash for tracking
 
+Intel fact identity includes the source filename as well as category/key. Two
+files may therefore use the same heading and field name without overwriting one
+another. Even when a file hash is unchanged, ingestion verifies that the file
+still owns all expected fact identities; this repairs databases created by the
+older cross-file deduplication behavior.
+
 Mode behavior:
 - direct `ingest_intel` updates only the current mode DB
 - `manage_intel` with `auto_ingest=true` and Memory UI `Ingest All` run current mode first, then sibling DB if it exists

@@ -400,8 +400,9 @@ class MemoryDB:
     
     # ========== Knowledge Base Operations ==========
     
-    def remember(self, category: str, key: str, value: str, importance: int = 5, source: str = None, 
-                 generate_embedding: bool = True, metadata: dict = None) -> int:
+    def remember(self, category: str, key: str, value: str, importance: int = 5, source: str = None,
+                 generate_embedding: bool = True, metadata: dict = None,
+                 dedupe_by_source: bool = False) -> int:
         """
         Store a fact in memory with optional semantic embedding and metadata.
         
@@ -413,6 +414,8 @@ class MemoryDB:
             source: Where this came from
             generate_embedding: Whether to generate vector embedding for semantic search
             metadata: Optional dict with tags, expiration, related info
+            dedupe_by_source: Include source in identity matching. Intended for
+                independently owned Intel-file facts that may share category/key.
             
         Returns:
             ID of the stored memory
@@ -450,10 +453,19 @@ class MemoryDB:
         metadata_json = json.dumps(memory_metadata) if memory_metadata else None
         
         # Check if similar memory exists
-        existing = cursor.execute(
-            "SELECT id FROM knowledge_base WHERE category = ? AND key = ?",
-            (category, key)
-        ).fetchone()
+        if dedupe_by_source:
+            existing = cursor.execute(
+                """
+                SELECT id FROM knowledge_base
+                WHERE category = ? AND key = ? AND source IS ?
+                """,
+                (category, key, source),
+            ).fetchone()
+        else:
+            existing = cursor.execute(
+                "SELECT id FROM knowledge_base WHERE category = ? AND key = ?",
+                (category, key),
+            ).fetchone()
         
         if existing:
             # Update existing memory

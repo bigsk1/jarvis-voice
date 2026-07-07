@@ -244,19 +244,13 @@ def main():
         
         for filepath in files:
             file_hash = get_file_hash(filepath)
-            
-            # Check if already ingested (same hash = unchanged file)
-            stored_hash = existing_hash_map.get(filepath.name)
-            if stored_hash == file_hash:
-                skipped_files += 1
-                continue
-            
+
             # Read and extract facts
             with open(filepath, 'r', encoding='utf-8') as f:
                 content = f.read()
-            
+
             facts = extract_facts_from_content(content, filepath.name)
-            
+
             # If no structured facts extracted, store full content as single fact
             # (handles plain text like "hello world" or unstructured notes)
             if not facts and content.strip():
@@ -269,14 +263,34 @@ def main():
                 }]
             elif not facts:
                 continue
-            
+
+            # A matching file hash is not sufficient by itself: older ingestion
+            # collapsed equal category/key pairs across files and reassigned the
+            # surviving row's source. Verify this file still owns every expected
+            # identity before skipping so affected databases self-repair.
+            expected_identities = {
+                (fact.get("category", "technical"), fact["key"])
+                for fact in facts
+            }
+            stored_identities = {
+                (row["category"], row["key"])
+                for row in cursor.execute(
+                    "SELECT category, key FROM knowledge_base WHERE source = ?",
+                    (f"intel/{filepath.name}",),
+                ).fetchall()
+            }
+            stored_hash = existing_hash_map.get(filepath.name)
+            identities_current = expected_identities.issubset(stored_identities)
+            if stored_hash == file_hash and identities_current:
+                skipped_files += 1
+                continue
+
             # Before adding new facts, check if this file was previously ingested
-            # If so, delete old facts from this source (file was modified)
-            if stored_hash is not None and stored_hash != file_hash:
-                # File was modified - delete old memories from this file
+            # or needs repair, then replace only rows owned by this source.
+            if stored_hash is not None and (stored_hash != file_hash or not identities_current):
                 cursor.execute("DELETE FROM knowledge_base WHERE source = ?", (f"intel/{filepath.name}",))
                 db.conn.commit()
-            
+
             # Save each fact to memory with metadata
             for fact in facts:
                 # Include source in the value for context
@@ -296,7 +310,8 @@ def main():
                     value=enriched_value,
                     importance=8,  # High importance for explicitly provided intel
                     source=fact.get("source", "intel"),  # Track source for future deletions
-                    metadata=metadata
+                    metadata=metadata,
+                    dedupe_by_source=True,
                 )
                 total_facts += 1
             

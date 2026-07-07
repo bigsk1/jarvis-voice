@@ -8,6 +8,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from lib.memory_db import MemoryDB
 
@@ -74,6 +75,67 @@ class SyncMemoryDbUserModelTests(unittest.TestCase):
                 self.assertEqual(row["value"], "0.8")
                 self.assertEqual(row["confidence"], 0.75)
                 self.assertEqual(row["source"], "test")
+            finally:
+                conn.close()
+
+    def test_sync_preserves_same_intel_identity_from_different_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            data_dir = root / "data"
+            data_dir.mkdir()
+            cloud_path = data_dir / "jarvis_memory.db"
+            local_path = data_dir / "jarvis_memory_local.db"
+
+            cloud_db = MemoryDB(str(cloud_path))
+            local_db = MemoryDB(str(local_path))
+            try:
+                for source, value in (
+                    ("intel/site_a.md", "10.0.0.1"),
+                    ("intel/site_b.md", "192.168.1.1"),
+                ):
+                    cloud_db.remember(
+                        "network",
+                        "Servers - IP",
+                        value,
+                        source=source,
+                        generate_embedding=False,
+                        dedupe_by_source=True,
+                    )
+                # Legacy target state has only the last globally deduplicated row.
+                local_db.remember(
+                    "network",
+                    "Servers - IP",
+                    "192.168.1.1",
+                    source="intel/site_b.md",
+                    generate_embedding=False,
+                )
+            finally:
+                cloud_db.close()
+                local_db.close()
+
+            with patch("embeddings.get_embedding", return_value=[1.0, 0.0, 0.0]):
+                self.assertTrue(
+                    self.module.sync_databases(
+                        source_mode="cloud",
+                        target_mode="local",
+                        verbose=False,
+                        project_root=root,
+                    )
+                )
+
+            conn = sqlite3.connect(local_path)
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT source FROM knowledge_base
+                    WHERE category = 'network' AND key = 'Servers - IP'
+                    ORDER BY source
+                    """
+                ).fetchall()
+                self.assertEqual(
+                    [row[0] for row in rows],
+                    ["intel/site_a.md", "intel/site_b.md"],
+                )
             finally:
                 conn.close()
 

@@ -195,11 +195,21 @@ def sync_databases(
         long_form = memory['long_form']
         
         try:
-            # Check if already exists in target
-            existing = target_cursor.execute(
-                "SELECT id, updated_at FROM knowledge_base WHERE key = ? AND category = ?",
-                (key, category)
-            ).fetchone()
+            # Intel files independently own facts that may share category/key.
+            # Other memories retain the historical global category/key identity.
+            if source and str(source).startswith("intel/"):
+                existing = target_cursor.execute(
+                    """
+                    SELECT id, updated_at FROM knowledge_base
+                    WHERE key = ? AND category = ? AND source = ?
+                    """,
+                    (key, category, source),
+                ).fetchone()
+            else:
+                existing = target_cursor.execute(
+                    "SELECT id, updated_at FROM knowledge_base WHERE key = ? AND category = ?",
+                    (key, category),
+                ).fetchone()
             
             if existing:
                 # Update if source is newer
