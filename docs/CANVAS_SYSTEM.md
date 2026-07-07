@@ -429,7 +429,8 @@ Pinning a canvas page automatically pins any stash images referenced in that pag
 
 How it works:
 - Canvas pages embed images as `![img](stash://space_xxx/file.jpg)`
-- Clicking pin extracts all `stash://` references and pins those stash spaces
+- Pinning, updating, appending to, or importing a pinned page extracts all
+  `stash://` references and pins those stash spaces
 - Pinned stash spaces never expire
 
 Unpinning a page does NOT auto-unpin stash spaces (other pages might reference them).

@@ -133,8 +133,6 @@ def update_page(page_id):
         page = json.load(f)
     
     data = request.get_json()
-    old_pinned = page.get('pinned', False)
-    
     # Update allowed fields
     if 'title' in data:
         page['title'] = data['title']
@@ -164,11 +162,8 @@ def update_page(page_id):
     
     page['updated'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "Z"
     
-    # Sync stash pins when page is pinned
-    # (auto-pins referenced stash spaces so images don't expire)
-    new_pinned = page.get('pinned', False)
-    if new_pinned and not old_pinned:
-        # Page was just pinned - sync stash spaces
+    # Re-scan every pinned update so newly referenced stash spaces do not expire.
+    if page.get('pinned', False):
         sync_stash_pins(page.get('content', ''), pinned=True, stash_dir=STASH_DIR)
     
     save_page(page)
@@ -289,7 +284,10 @@ def upload_page():
             existing['tags'] = data.get('tags', existing.get('tags', []))
             existing['pinned'] = data.get('pinned', existing.get('pinned', False))
             existing['updated'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "Z"
-            
+
+            if existing.get('pinned', False):
+                sync_stash_pins(existing.get('content', ''), pinned=True, stash_dir=STASH_DIR)
+
             save_page(existing)
             return jsonify({"action": "updated", "page": existing})
     
@@ -307,6 +305,9 @@ def upload_page():
         'updated': now_utc.strftime('%Y-%m-%dT%H:%M:%S') + "Z",
         'source_query': data.get('source_query')
     }
-    
+
+    if page.get('pinned', False):
+        sync_stash_pins(page.get('content', ''), pinned=True, stash_dir=STASH_DIR)
+
     save_page(page)
     return jsonify({"action": "created", "page": page}), 201
