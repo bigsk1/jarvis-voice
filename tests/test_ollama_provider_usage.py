@@ -3,6 +3,7 @@
 
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -10,6 +11,31 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lib"))
 
 from llm_provider import OllamaProvider
+
+
+GLM_ORPHAN_THINK_RESPONSE = (
+    "The user asked for the current Solana price, and I already have it from "
+    "the crypto_price tool. The result is fresh and authoritative. No need to "
+    "call another tool.\n\nLet me respond directly with the information."
+    "</think>**Solana (SOL) is currently at $77.89**, down 4.51%."
+)
+
+
+class _ChatResponse:
+    status_code = 200
+
+    def __init__(self, content):
+        self.content = content
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return {
+            "message": {"content": self.content},
+            "prompt_eval_count": 10,
+            "eval_count": 5,
+        }
 
 
 def _provider(model, monkeypatch=None, mode="local"):
@@ -105,6 +131,65 @@ def test_direct_cloud_canonical_model_omits_num_ctx_and_reports_cloud(monkeypatc
     assert "num_ctx" not in p._get_context_options()
     assert p._build_usage(10, 5)["billing_mode"] == "ollama_cloud_subscription"
     assert p._build_usage(10, 5)["ollama_execution"] == "direct_cloud_api"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("<think>internal plan</think>Final answer", "Final answer"),
+        ("<reasoning>internal plan</reasoning>Final answer", "Final answer"),
+        ("internal plan</think>Final answer", "Final answer"),
+        ("internal plan</reasoning>Final answer", "Final answer"),
+        (GLM_ORPHAN_THINK_RESPONSE, "**Solana (SOL) is currently at $77.89**, down 4.51%."),
+        ("Ordinary answer", "Ordinary answer"),
+    ],
+)
+def test_strip_reasoning_content_handles_closed_and_orphan_wrappers(raw, expected):
+    assert OllamaProvider._strip_reasoning_content(raw) == expected
+
+
+def test_native_tool_q_and_a_path_strips_glm_orphan_reasoning(monkeypatch):
+    provider = _provider("glm-5.2", monkeypatch, mode="cloud")
+    response = _ChatResponse(GLM_ORPHAN_THINK_RESPONSE)
+
+    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")):
+        text, tool_call, usage, thinking = provider.chat_with_tools(
+            messages=[{"role": "user", "content": "What is Solana worth?"}],
+            tools=[],
+            system_prompt="Answer directly.",
+        )
+
+    assert text == "**Solana (SOL) is currently at $77.89**, down 4.51%."
+    assert tool_call is None
+    assert usage["total_tokens"] == 15
+    assert thinking is None
+
+
+def test_simple_chat_path_strips_glm_orphan_reasoning(monkeypatch):
+    provider = _provider("glm-5.2", monkeypatch, mode="cloud")
+    response = _ChatResponse(GLM_ORPHAN_THINK_RESPONSE)
+
+    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")):
+        text = provider.chat("What is Solana worth?", system_prompt="Answer directly.")
+
+    assert text == "**Solana (SOL) is currently at $77.89**, down 4.51%."
+
+
+def test_structured_fallback_q_and_a_path_returns_cleaned_content(monkeypatch):
+    provider = _provider("glm-5.2", monkeypatch, mode="cloud")
+    response = _ChatResponse(GLM_ORPHAN_THINK_RESPONSE)
+
+    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")):
+        text, tool_call, usage, thinking = provider._chat_with_tools_structured(
+            messages=[{"role": "user", "content": "What is Solana worth?"}],
+            tools=[],
+            system_prompt="Answer directly.",
+        )
+
+    assert text == "**Solana (SOL) is currently at $77.89**, down 4.51%."
+    assert tool_call is None
+    assert usage["total_tokens"] == 15
+    assert thinking is None
 
 
 if __name__ == "__main__":

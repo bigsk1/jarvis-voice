@@ -1612,6 +1612,17 @@ class OllamaProvider(LLMProvider):
         cleaned = re.sub(r'<think>.*?</think>\s*', '', cleaned, flags=re.IGNORECASE | re.DOTALL)
         cleaned = re.sub(r'<reasoning>.*?</reasoning>\s*', '', cleaned, flags=re.IGNORECASE | re.DOTALL)
 
+        # Orphan closing tag: some Ollama Cloud models emit the reasoning as
+        # ordinary content, omit the opening tag, then place </think> directly
+        # before the user-facing answer. Drop the prefix through that boundary.
+        cleaned = re.sub(
+            r'^.*?</(?:think|reasoning)>\s*',
+            '',
+            cleaned,
+            count=1,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
         # Unclosed <think>/<reasoning> — cloud models sometimes omit the
         # closing tag.  Strip from the opening tag up to (not including) the
         # first '{' so any trailing JSON is preserved.
@@ -1749,7 +1760,7 @@ class OllamaProvider(LLMProvider):
                         f"DEBUG: Ollama JSON-mode empty content - model={self.model}, result={preview}",
                         file=sys.stderr
                     )
-            return self._strip_reasoning_content(content) if json_mode else content
+            return self._strip_reasoning_content(content)
         except Exception as e:
             print(f"Ollama API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}"
@@ -2007,7 +2018,7 @@ class OllamaProvider(LLMProvider):
             
             result = response.json()
             message = result.get("message", {})
-            content = message.get("content", "")
+            content = self._strip_reasoning_content(message.get("content", ""))
             tool_calls = message.get("tool_calls", [])
             
             # Extract token counts from Ollama response. Ollama Cloud often omits
@@ -2216,7 +2227,7 @@ CRITICAL RULES:
                 pass
             
             # Otherwise return as text (Q&A mode)
-            return content, None, usage_info, thinking
+            return parse_content, None, usage_info, thinking
             
         except Exception as e:
             print(f"Ollama API error (structured fallback): {e}", file=sys.stderr)
