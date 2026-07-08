@@ -3578,9 +3578,17 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
-.filter-input {
+.filter-input-wrap {
+  position: relative;
   flex: 1;
+  min-width: 0;
+}
+
+.filter-input {
+  width: 100%;
+  box-sizing: border-box;
   padding: var(--space-xs) var(--space-sm);
+  padding-right: 28px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-secondary);
@@ -3595,6 +3603,32 @@ body {
 .filter-input:focus {
   outline: none;
   border-color: var(--accent-primary);
+}
+
+.filter-clear-btn {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #f87171;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.filter-clear-btn:hover {
+  background: rgba(248, 113, 113, 0.14);
+}
+
+.filter-clear-btn[hidden] {
+  display: none;
 }
 
 .search-btn {

@@ -65,6 +65,23 @@ class ConversationStoreTests(unittest.TestCase):
         self.assertFalse(full["pinned"])
         self.assertTrue(full["archived"])
 
+    def test_rename_updates_full_conversation_and_index_without_changing_state(self) -> None:
+        conversation = self.store.create_conversation("Original title")
+        self.store.add_message(conversation["id"], "user", "Original message")
+        self.store.update_state(conversation["id"], pinned=True)
+
+        before = self.store.get_conversation(conversation["id"])
+        self.assertTrue(self.store.update_title(conversation["id"], "!@#z$A12"))
+
+        renamed = self.store.get_conversation(conversation["id"])
+        listed = self.store.list_conversations(limit=10, include_archived=True)
+        summary = next(item for item in listed if item["id"] == conversation["id"])
+        self.assertEqual(renamed["title"], "!@#z$A12")
+        self.assertEqual(summary["title"], "!@#z$A12")
+        self.assertEqual(renamed["messages"], before["messages"])
+        self.assertEqual(renamed["updated_at"], before["updated_at"])
+        self.assertTrue(renamed["pinned"])
+
 
 if __name__ == "__main__":
     unittest.main()

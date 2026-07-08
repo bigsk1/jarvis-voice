@@ -82,8 +82,12 @@
           <div class="tab-content active" id="tab-conversations">
             <!-- Quick Filter -->
             <div class="conversation-filter">
-              <input type="text" id="conversationFilter" placeholder="Filter by title..." class="filter-input">
-              <button class="search-btn" id="deepSearchBtn" title="Deep search messages">🔍</button>
+              <div class="filter-input-wrap">
+                <input type="text" id="conversationFilter" placeholder="Filter by title..." class="filter-input">
+                <button class="filter-clear-btn" id="conversationFilterClear" type="button"
+                        title="Clear title filter" aria-label="Clear title filter" hidden>×</button>
+              </div>
+              <button class="search-btn" id="deepSearchBtn" title="Search conversation titles and messages">🔍</button>
             </div>
             <div class="history-list" id="historyList">
               <div class="history-loading">

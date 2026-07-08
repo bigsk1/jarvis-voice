@@ -1237,19 +1237,48 @@ def update_conversation_title(conv_id):
     from ..services.conversation_store import get_conversation_store
     store = get_conversation_store()
     
-    data = request.get_json() or {}
-    title = data.get('title', '')
+    data = request.get_json(silent=True) or {}
+    title = data.get('title')
+    if not isinstance(title, str):
+        return jsonify({
+            'ok': False,
+            'error': 'Conversation name must be a string'
+        }), 400
+
+    title = ' '.join(title.split())
+    if not title:
+        return jsonify({
+            'ok': False,
+            'error': 'Conversation name cannot be blank'
+        }), 400
+    if len(title) > 200:
+        return jsonify({
+            'ok': False,
+            'error': 'Conversation name must be 200 characters or fewer'
+        }), 400
+
+    conversation = store.get_conversation(conv_id)
+    if not conversation:
+        return jsonify({
+            'ok': False,
+            'error': 'Conversation not found'
+        }), 404
+    if not conversation.get('messages'):
+        return jsonify({
+            'ok': False,
+            'error': 'Add a message before renaming this conversation'
+        }), 409
     
     if store.update_title(conv_id, title):
         return jsonify({
             'ok': True,
             'message': 'Title updated'
         })
-    else:
-        return jsonify({
-            'ok': False,
-            'error': 'Conversation not found'
-        }), 404
+
+    return jsonify({
+        'ok': False,
+        'error': 'Conversation not found'
+    }), 404
 
 
 @api_bp.route('/conversations/<conv_id>/state', methods=['PATCH'])
@@ -1325,10 +1354,26 @@ def search_conversations():
         if not conv:
             continue
         
+        title = str(conv.get('title') or '')
+        title_matches = query in title.lower()
         matches = []
+        if title_matches:
+            matches.append({
+                'message_id': None,
+                'role': 'title',
+                'snippet': title,
+                'timestamp': conv.get('updated_at')
+            })
+
+        message_match_count = 0
         for msg in conv.get('messages', []):
             content = msg.get('content', '').lower()
             if query in content:
+                message_match_count += 1
+                if len(matches) >= limit_per_conv:
+                    # Keep counting matches so the result total remains truthful.
+                    continue
+
                 # Extract snippet around match
                 idx = content.find(query)
                 start = max(0, idx - 50)
@@ -1345,9 +1390,6 @@ def search_conversations():
                     'snippet': snippet,
                     'timestamp': msg.get('timestamp')
                 })
-                
-                if len(matches) >= limit_per_conv:
-                    break
         
         if matches:
             results.append({
@@ -1355,8 +1397,7 @@ def search_conversations():
                 'title': conv.get('title', 'Untitled'),
                 'updated_at': conv.get('updated_at'),
                 'matches': matches,
-                'total_matches': len([m for m in conv.get('messages', []) 
-                                      if query in m.get('content', '').lower()])
+                'total_matches': message_match_count + (1 if title_matches else 0)
             })
     
     return jsonify({

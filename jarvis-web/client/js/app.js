@@ -495,9 +495,19 @@ class JarvisApp {
     
     // Conversation filter (quick filter by title)
     const filterInput = document.getElementById('conversationFilter');
+    const filterClearBtn = document.getElementById('conversationFilterClear');
     if (filterInput) {
       filterInput.addEventListener('input', (e) => {
         this._filterConversations(e.target.value);
+        if (filterClearBtn) filterClearBtn.hidden = !e.target.value;
+      });
+    }
+    if (filterInput && filterClearBtn) {
+      filterClearBtn.addEventListener('click', () => {
+        filterInput.value = '';
+        filterClearBtn.hidden = true;
+        this._filterConversations('');
+        filterInput.focus();
       });
     }
     
@@ -2698,6 +2708,12 @@ class JarvisApp {
     const fullTitle = conv.title || 'Untitled';
     const archiveBadge = conv.archived ? '<span class="history-state-pill">Archived</span>' : '';
     const pinBadge = conv.pinned ? '<span class="history-pin" title="Pinned conversation">📌</span>' : '';
+    const renameAction = (conv.message_count || 0) > 0 ? `
+      <button class="history-menu-item" type="button"
+              onclick="event.stopPropagation(); window.jarvisApp.renameConversation('${conv.id}')">
+        Rename
+      </button>
+    ` : '';
 
     return `
       <div class="history-item ${isActive ? 'active' : ''} ${conv.archived ? 'archived' : ''}"
@@ -2721,6 +2737,7 @@ class JarvisApp {
                   aria-label="Conversation options"
                   onclick="event.stopPropagation(); window.jarvisApp.toggleConversationMenu('${conv.id}')">☰</button>
           <div class="history-menu-dropdown" data-conv-id="${conv.id}">
+            ${renameAction}
             <button class="history-menu-item" type="button"
                     onclick="event.stopPropagation(); window.jarvisApp.toggleConversationPin('${conv.id}', ${conv.pinned ? 'false' : 'true'})">
               ${conv.pinned ? 'Unpin' : 'Pin'}
@@ -2792,6 +2809,44 @@ class JarvisApp {
     const ok = await this._updateConversationState(convId, { archived });
     if (ok) {
       Utils.toast(archived ? 'Conversation archived' : 'Conversation restored', 'info');
+    }
+  }
+
+  async renameConversation(convId) {
+    this._closeConversationMenus();
+    const conversation = this._conversations?.find(conv => conv.id === convId);
+    const currentTitle = conversation?.title || '';
+    const enteredTitle = window.prompt('Rename conversation:', currentTitle);
+    if (enteredTitle === null) return;
+
+    const title = enteredTitle.trim().replace(/\s+/g, ' ');
+    if (!title) {
+      Utils.toast('Conversation name cannot be blank', 'error');
+      return;
+    }
+    if (title.length > 200) {
+      Utils.toast('Conversation name must be 200 characters or fewer', 'error');
+      return;
+    }
+    if (title === currentTitle) return;
+
+    try {
+      const response = await fetch(`/api/conversations/${convId}/title`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ title })
+      });
+      const data = await response.json();
+      if (!data.ok) {
+        Utils.toast(data.error || 'Failed to rename conversation', 'error');
+        return;
+      }
+      await this._loadConversationHistory();
+      Utils.toast('Conversation renamed', 'info');
+    } catch (err) {
+      Utils.toast(`Error: ${err.message}`, 'error');
     }
   }
 
@@ -2892,15 +2947,17 @@ class JarvisApp {
           `;
           
           for (const match of result.matches) {
-            const roleIcon = match.role === 'user' ? '👤' : '🤖';
+            const roleIcon = match.role === 'title' ? '🏷️' : (match.role === 'user' ? '👤' : '🤖');
+            const roleLabel = match.role === 'title' ? 'saved title' : match.role;
+            const escapedQuery = Utils.escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const snippet = Utils.escapeHtml(match.snippet).replace(
-              new RegExp(`(${Utils.escapeHtml(query)})`, 'gi'),
+              new RegExp(`(${escapedQuery})`, 'gi'),
               '<mark>$1</mark>'
             );
             
             html += `
               <div class="search-match">
-                <div class="search-match-role">${roleIcon} ${match.role}</div>
+                <div class="search-match-role">${roleIcon} ${roleLabel}</div>
                 <div class="search-match-snippet">${snippet}</div>
               </div>
             `;
