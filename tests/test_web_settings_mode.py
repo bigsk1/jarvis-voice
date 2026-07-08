@@ -66,6 +66,26 @@ class WebSettingsModeTests(unittest.TestCase):
         settings.set_mode.assert_called_once_with("cloud")
         settings.save_web_overrides.assert_called_once_with({"llm_provider": None})
 
+    def test_save_routes_router_prompt_version_through_structured_overrides(self):
+        settings = MagicMock()
+        settings.set_mode.return_value = True
+        settings.save_web_overrides.return_value = True
+
+        with (
+            self.app.test_request_context(
+                "/api/settings/web",
+                method="PUT",
+                json={"mode": "cloud", "router_prompt_version": "v1"},
+            ),
+            patch.object(self.api, "get_settings_manager", return_value=settings),
+            patch.object(self.api, "reload_web_config"),
+        ):
+            response = self.api.update_web_settings()
+
+        self.assertEqual(response.status_code, 200)
+        settings.validate_web_overrides.assert_called_once_with({"router_prompt_version": "v1"})
+        settings.save_web_overrides.assert_called_once_with({"router_prompt_version": "v1"})
+
     def test_settings_reject_invalid_mode(self):
         with self.app.test_request_context("/api/settings?mode=hybrid"):
             response, status = self.api.get_settings()
@@ -438,6 +458,66 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertIsNone(web_config["cloud"]["qa_word_limit"])
         self.assertIsNone(web_config["cloud"]["multi_turn_word_limit"])
         self.assertIsNone(web_config["cloud"]["completion_guard_auto_threshold"])
+
+    def test_router_prompt_override_is_allowlisted_and_saved_per_mode(self):
+        from server.services import settings_manager as settings_module
+        from server.services.settings_manager import SettingsManager, SettingsValidationError
+
+        web_config = {"cloud": {}}
+        settings = SettingsManager("cloud")
+        with (
+            patch.object(settings, "_ensure_jarvis_config"),
+            patch.object(settings_module, "load_web_config", return_value=web_config),
+            patch.object(settings_module, "get_jarvis_setting", side_effect=lambda key, default="": default),
+            patch.object(settings_module, "save_web_config", return_value=True),
+        ):
+            self.assertTrue(settings.save_web_overrides({"router_prompt_version": "v1"}))
+            self.assertEqual(web_config["cloud"]["router_prompt_version"], "v1")
+            self.assertTrue(settings.save_web_overrides({"router_prompt_version": "v2"}))
+            self.assertEqual(web_config["cloud"]["router_prompt_version"], "v2")
+
+            with self.assertRaises(SettingsValidationError):
+                settings.save_web_overrides({"router_prompt_version": "v9"})
+
+        self.assertEqual(web_config["cloud"]["router_prompt_version"], "v2")
+
+    def test_settings_payload_describes_router_prompt_default_and_override(self):
+        from server.services import settings_manager as settings_module
+        from server.services.settings_manager import SettingsManager
+
+        web_config = {
+            "cloud": {"router_prompt_version": "v1"},
+            "audio": {},
+            "ui": {},
+            "conversation": {},
+            "tools": {},
+        }
+        settings = SettingsManager("cloud")
+        with (
+            patch.object(settings, "_ensure_jarvis_config"),
+            patch.object(settings_module, "load_web_config", return_value=web_config),
+            patch.object(
+                settings_module,
+                "get_jarvis_setting",
+                side_effect=lambda key, default="": {
+                    "JARVIS_ROUTER_PROMPT_VERSION": "v1",
+                }.get(key, default),
+            ),
+            patch.object(settings, "_get_provider_models", return_value={}),
+            patch.object(settings, "_get_api_key_status", return_value={}),
+            patch.object(settings, "get_provider_availability", return_value={}),
+        ):
+            payload = settings.get_settings_for_ui()
+
+        self.assertEqual(payload["router_prompt"]["version"], {
+            "value": "v1",
+            "default": "v1",
+            "is_override": True,
+            "options": [
+                {"id": "v1", "label": "v1 - Full context system prompt"},
+                {"id": "v2", "label": "v2 - Full context without blank lines"},
+            ],
+        })
 
 
 if __name__ == "__main__":

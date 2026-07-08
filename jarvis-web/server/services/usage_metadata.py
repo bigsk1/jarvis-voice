@@ -31,6 +31,10 @@ def format_usage_markdown(usage):
     if identity:
         lines.append(f"**LLM:** {identity}")
 
+    router_prompt_version = usage.get('router_prompt_version')
+    if router_prompt_version:
+        lines.append(f"**Router prompt:** {router_prompt_version}")
+
     input_tokens = usage.get('input_tokens')
     output_tokens = usage.get('output_tokens')
     model_calls = usage.get('model_calls')

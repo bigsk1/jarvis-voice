@@ -79,6 +79,7 @@ def _scoped_by_mode(method):
         mode_overrides = web_config.get(mode, {}) if isinstance(web_config, dict) else {}
         scoped_overrides = {}
         key_map = {
+            'router_prompt_version': 'JARVIS_ROUTER_PROMPT_VERSION',
             'image_provider': 'IMAGE_TOOL_PROVIDER',
             'video_provider': 'VIDEO_TOOL_PROVIDER',
             'tts_provider': 'TTS_PROVIDER',

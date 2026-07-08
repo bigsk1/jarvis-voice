@@ -44,6 +44,19 @@ class OrchestratorUsagePassthroughTests(unittest.TestCase):
         }
         self.assertTrue(Orchestrator._has_usage_data(usage))
 
+    def test_has_usage_data_when_only_router_prompt_provenance_is_present(self):
+        self.assertTrue(Orchestrator._has_usage_data({"router_prompt_version": "v1"}))
+
+    def test_attaches_router_prompt_version_without_replacing_initial_version(self):
+        handler = Orchestrator.__new__(Orchestrator)
+        handler.router = SimpleNamespace(system_prompt_version="v2")
+
+        usage = handler._attach_router_prompt_usage({"input_tokens": 10})
+        continued_usage = handler._attach_router_prompt_usage({"router_prompt_version": "v1"})
+
+        self.assertEqual(usage["router_prompt_version"], "v2")
+        self.assertEqual(continued_usage["router_prompt_version"], "v1")
+
     def test_has_usage_data_false_for_empty_usage(self):
         usage = {
             "input_tokens": 0,

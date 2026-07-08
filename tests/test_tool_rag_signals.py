@@ -199,6 +199,10 @@ Tools executed so far:
                     final_tools=["search_memory", "send_email"],
                     ghost_tools=["search_memory"],
                     excluded_tools=[],
+                    router_prompt_version="v1",
+                    system_prompt_chars=31_491,
+                    system_prompt_est_tokens=7_873,
+                    system_prompt_sent=True,
                     tool_schema_chars=1234,
                     tool_schema_est_tokens=309,
                     tool_schema_top=[{"name": "send_email", "chars": 900, "est_tokens": 225}],
@@ -210,6 +214,9 @@ Tools executed so far:
             self.assertEqual(entry["signal_source"], "current_request")
             self.assertEqual(entry["final_tools"], ["search_memory", "send_email"])
             self.assertEqual(entry["ranked_tools"][0]["name"], "send_email")
+            self.assertEqual(entry["router_prompt_version"], "v1")
+            self.assertEqual(entry["system_prompt_est_tokens"], 7_873)
+            self.assertTrue(entry["system_prompt_sent"])
             self.assertEqual(entry["tool_schema_est_tokens"], 309)
             self.assertEqual(entry["tool_schema_top"][0]["name"], "send_email")
 

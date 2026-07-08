@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""Calculate, check, or update Jarvis router-prompt SHA-256 values."""
+
+# Examples:
+#   bin/router-prompt-hash v2
+#   bin/router-prompt-hash v2 --write
+#   bin/router-prompt-hash --check-all
+#
+# Prompt files are shared by cloud and local modes. Select versions separately
+# in each mode's env or Web setting; this helper therefore has no mode flag.
+# read README.md at orchestrator/router_prompts/README.md for more information.
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import importlib
+import re
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent.parent
+ORCHESTRATOR_DIR = ROOT / "orchestrator"
+sys.path.insert(0, str(ROOT / "lib"))
+sys.path.insert(0, str(ORCHESTRATOR_DIR))
+
+from router_prompt_catalog import available_router_prompt_versions  # noqa: E402
+
+
+VERSION_RE = re.compile(r"^v[1-9][0-9]*$")
+HASH_LINE_RE = re.compile(
+    r'^BASE_SYSTEM_PROMPT_SHA256 = "[^"]*"$',
+    re.MULTILINE,
+)
+
+
+def _load_prompt(version: str) -> tuple[str, str, Path]:
+    if not VERSION_RE.fullmatch(version):
+        raise ValueError(f"Invalid prompt version {version!r}; expected v1, v2, ...")
+    module_path = ORCHESTRATOR_DIR / "router_prompts" / f"{version}.py"
+    if not module_path.is_file():
+        raise ValueError(f"Prompt module does not exist: {module_path}")
+    module = importlib.import_module(f"router_prompts.{version}")
+    prompt = getattr(module, "BASE_SYSTEM_PROMPT", None)
+    stored = getattr(module, "BASE_SYSTEM_PROMPT_SHA256", None)
+    if not isinstance(prompt, str) or not isinstance(stored, str):
+        raise ValueError(
+            f"{module_path} must define string BASE_SYSTEM_PROMPT and "
+            "BASE_SYSTEM_PROMPT_SHA256 values"
+        )
+    return prompt, stored, module_path
+
+
+def _actual_hash(prompt: str) -> str:
+    return hashlib.sha256(prompt.encode()).hexdigest()
+
+
+def _write_hash(module_path: Path, actual: str) -> None:
+    source = module_path.read_text()
+    replacement = f'BASE_SYSTEM_PROMPT_SHA256 = "{actual}"'
+    updated, count = HASH_LINE_RE.subn(replacement, source)
+    if count != 1:
+        raise ValueError(
+            f"Expected exactly one BASE_SYSTEM_PROMPT_SHA256 assignment in "
+            f"{module_path}; found {count}"
+        )
+    module_path.write_text(updated)
+
+
+def _report(version: str, *, write: bool = False) -> bool:
+    prompt, stored, module_path = _load_prompt(version)
+    actual = _actual_hash(prompt)
+    if write:
+        if version == "v1":
+            raise ValueError("Refusing to rewrite immutable v1; restore it from Git instead")
+        _write_hash(module_path, actual)
+        stored = actual
+        print(f"Updated {module_path.relative_to(ROOT)}")
+    matches = stored == actual
+    print(f"{version}: {'OK' if matches else 'MISMATCH'}")
+    print(f"  characters: {len(prompt):,}")
+    print(f"  stored:     {stored}")
+    print(f"  actual:     {actual}")
+    if not matches:
+        print(f'  set: BASE_SYSTEM_PROMPT_SHA256 = "{actual}"')
+    return matches
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Check the actual runtime string for a versioned router prompt"
+    )
+    parser.add_argument("version", nargs="?", help="Prompt version such as v2")
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help="write the calculated hash into the selected non-v1 module",
+    )
+    parser.add_argument(
+        "--check-all",
+        action="store_true",
+        help="check every version registered in the shared prompt catalog",
+    )
+    args = parser.parse_args()
+
+    try:
+        if args.check_all:
+            if args.version or args.write:
+                parser.error("--check-all cannot be combined with a version or --write")
+            versions = available_router_prompt_versions()
+            matches = True
+            for version in versions:
+                if not _report(version):
+                    matches = False
+            return 0 if matches else 1
+        if not args.version:
+            parser.error("provide a version or use --check-all")
+        return 0 if _report(args.version.lower(), write=args.write) else 1
+    except (ImportError, RuntimeError, ValueError) as exc:
+        print(f"router-prompt-hash: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

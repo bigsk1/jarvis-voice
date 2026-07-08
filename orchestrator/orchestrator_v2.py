@@ -227,7 +227,7 @@ class Orchestrator:
 
     @staticmethod
     def _has_usage_data(usage: dict | None) -> bool:
-        """Return True when usage contains meaningful token, cache, cost, or native-tool info."""
+        """Return True when usage contains meaningful metering or prompt provenance."""
         if not isinstance(usage, dict):
             return False
         numeric_keys = (
@@ -241,7 +241,17 @@ class Orchestrator:
         )
         if any((usage.get(key) or 0) > 0 for key in numeric_keys):
             return True
-        return bool(usage.get("server_side_tools"))
+        return bool(
+            usage.get("server_side_tools")
+            or usage.get("router_prompt_version")
+        )
+
+    def _attach_router_prompt_usage(self, usage: dict) -> dict:
+        """Stamp usage with the request's initial hash-validated prompt version."""
+        router_prompt_version = getattr(self.router, "system_prompt_version", None)
+        if router_prompt_version:
+            usage.setdefault("router_prompt_version", router_prompt_version)
+        return usage
 
     @classmethod
     def _sanitize_tool_trace_value(
@@ -1230,6 +1240,9 @@ Mode: {self.mode}
                 vision_pre_analyzed or _request_has_web_vision_analysis(transcript)
             )
         routing_provenance = {
+            "router_prompt": {
+                "version": getattr(self.router, "system_prompt_version", None),
+            },
             "auto_context": {
                 "enabled": bool(self.auto_context_enabled),
                 "source": auto_context_source,
@@ -1339,6 +1352,10 @@ Mode: {self.mode}
             "cache_savings_usd": 0.0,
             "server_side_tools": {}  # Track xAI native search usage
         }
+        # Web conversation history already persists usage, so storing the
+        # compact version here preserves prompt provenance without copying the
+        # much larger routing provenance payload onto every message.
+        self._attach_router_prompt_usage(total_usage)
         
         # Track thinking from first turn (for display)
         first_thinking = retry_state.get("first_thinking")

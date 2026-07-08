@@ -23,6 +23,12 @@ from model_catalog import (
     get_provider_model_options,
 )
 from ollama_utils import request_ollama, is_ollama_cloud_model
+from router_prompt_catalog import (
+    DEFAULT_ROUTER_PROMPT_VERSION,
+    available_router_prompt_versions,
+    normalize_router_prompt_version,
+    router_prompt_version_options,
+)
 from xai_oauth import (
     XaiOAuthError,
     discover_xai_oauth_models,
@@ -561,6 +567,9 @@ class SettingsManager:
         
         # Get env defaults for current mode
         env_provider = get_jarvis_setting('LLM_PROVIDER', 'xai' if self.mode == 'cloud' else 'ollama')
+        env_router_prompt_version = normalize_router_prompt_version(
+            get_jarvis_setting('JARVIS_ROUTER_PROMPT_VERSION', DEFAULT_ROUTER_PROMPT_VERSION)
+        )
         env_image_provider = get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini')
         env_video_provider = get_jarvis_setting('VIDEO_TOOL_PROVIDER', 'xai')
         env_tts_provider = get_jarvis_setting('TTS_PROVIDER', 'qwen3-tts' if self.mode == 'local' else 'elevenlabs')
@@ -597,6 +606,9 @@ class SettingsManager:
         web_model = mode_overrides.get('llm_model')
         if provider_invalid:
             web_model = None
+        web_router_prompt_version = mode_overrides.get('router_prompt_version')
+        if web_router_prompt_version not in (None, *available_router_prompt_versions()):
+            web_router_prompt_version = None
         web_image = mode_overrides.get('image_provider')
         web_video = mode_overrides.get('video_provider')
         web_tts = mode_overrides.get('tts_provider')
@@ -621,6 +633,7 @@ class SettingsManager:
         if not self._model_is_compatible_with_provider(effective_provider, web_model):
             web_model = None
         effective_model = web_model or self._get_env_provider_model(effective_provider)
+        effective_router_prompt_version = web_router_prompt_version or env_router_prompt_version
         effective_image = web_image or env_image_provider
         effective_video = web_video or env_video_provider
         effective_tts = web_tts or env_tts_provider
@@ -698,6 +711,15 @@ class SettingsManager:
                     'default': self._get_env_provider_model(effective_provider),
                     'is_override': web_model is not None,
                     'options': self._get_model_options_with_current(effective_provider, effective_model)
+                }
+            },
+
+            'router_prompt': {
+                'version': {
+                    'value': effective_router_prompt_version,
+                    'default': env_router_prompt_version,
+                    'is_override': web_router_prompt_version is not None,
+                    'options': router_prompt_version_options(),
                 }
             },
             
@@ -1152,6 +1174,20 @@ class SettingsManager:
         """
         self._ensure_jarvis_config()
         self._validate_provider_overrides(overrides)
+        if 'router_prompt_version' in overrides and overrides['router_prompt_version'] not in (
+            None,
+            '',
+            *available_router_prompt_versions(),
+        ):
+            requested = str(overrides['router_prompt_version'])
+            raise SettingsValidationError(
+                field='router_prompt_version',
+                provider=requested,
+                reason=(
+                    f"Unknown router prompt version '{requested}'. Available versions: "
+                    f"{', '.join(available_router_prompt_versions())}"
+                ),
+            )
 
     def save_web_overrides(self, overrides: dict[str, Any]) -> bool:
         """Save web UI overrides (per-mode for LLM/image).
@@ -1185,6 +1221,10 @@ class SettingsManager:
             if not self._model_is_compatible_with_provider(effective_provider, value):
                 value = None
             mode_config['llm_model'] = value
+
+        if 'router_prompt_version' in overrides:
+            value = overrides['router_prompt_version'] or None
+            mode_config['router_prompt_version'] = value
         
         # Handle image overrides (per-mode)
         if 'image_provider' in overrides:
@@ -1311,6 +1351,7 @@ class SettingsManager:
         config[self.mode] = {
             'llm_provider': None,
             'llm_model': None,
+            'router_prompt_version': None,
             'image_provider': None,
             'video_provider': None,
             'tts_provider': None,

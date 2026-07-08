@@ -1573,6 +1573,28 @@ class JarvisApp {
           modelDefault.className = 'setting-default';
         }
         this._updateModelCapabilityDetail('setting-llm-model', s.llm?.provider?.value || provEnvDefault);
+
+        // Populate versioned router system prompt selection.
+        const routerPromptSelect = document.getElementById('setting-router-prompt-version');
+        const routerPromptSetting = s.router_prompt?.version || {};
+        routerPromptSelect.innerHTML = '<option value="">Use env default</option>';
+        for (const promptOption of (routerPromptSetting.options || [])) {
+          const version = typeof promptOption === 'string' ? promptOption : promptOption.id;
+          const label = typeof promptOption === 'string' ? promptOption : (promptOption.label || version);
+          const option = document.createElement('option');
+          option.value = version;
+          option.textContent = label;
+          routerPromptSelect.appendChild(option);
+        }
+        routerPromptSelect.value = routerPromptSetting.is_override ? routerPromptSetting.value : '';
+        const routerPromptDefault = document.getElementById('router-prompt-version-default');
+        routerPromptDefault.textContent = `(${envFile}: ${routerPromptSetting.default || 'v1'})`;
+        routerPromptDefault.className = routerPromptSetting.is_override
+          ? 'setting-default setting-override'
+          : 'setting-default';
+        if (routerPromptSetting.is_override) {
+          routerPromptDefault.textContent = `⚡ override: ${routerPromptSetting.value} · (${envFile} default: ${routerPromptSetting.default || 'v1'})`;
+        }
         
         // Populate Image Provider
         this._populateMediaProviderDropdown('image');
@@ -1801,6 +1823,7 @@ class JarvisApp {
         const s = this._settingsData || {};
         const effectiveProvider = s.llm?.provider?.value || c.LLM_PROVIDER;
         const effectiveModel = s.llm?.model?.value || c[`${String(effectiveProvider).toUpperCase()}_MODEL`] || c.OLLAMA_MODEL || '(provider default)';
+        const effectiveRouterPrompt = s.router_prompt?.version?.value || c.JARVIS_ROUTER_PROMPT_VERSION || 'v1';
         const effectiveCgEvalProvider = s.completion_guard?.eval_provider?.value || c.JARVIS_COMPLETION_GUARD_EVAL_PROVIDER;
         const effectiveCgEvalModel = s.completion_guard?.eval_model?.value || c.JARVIS_COMPLETION_GUARD_EVAL_MODEL || '(provider default)';
         const effectiveResponseStyle = s.response?.style?.value || c.JARVIS_RESPONSE_STYLE;
@@ -1961,6 +1984,10 @@ class JarvisApp {
             <div class="config-item">
               <span class="config-label">LLM</span>
               <span class="config-value">${effectiveProvider} / ${effectiveModel}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">Router Prompt</span>
+              <span class="config-value">${Utils.escapeHtml(effectiveRouterPrompt)}</span>
             </div>
             <div class="config-item">
               <span class="config-label">Completion Guard</span>
@@ -3354,6 +3381,7 @@ class JarvisApp {
         progress_events: document.getElementById('setting-progress-events').checked,
         llm_provider: document.getElementById('setting-llm-provider').value || null,
         llm_model: document.getElementById('setting-llm-model').value || null,
+        router_prompt_version: document.getElementById('setting-router-prompt-version').value || null,
         image_provider: document.getElementById('setting-image-provider').value || null,
         video_provider: document.getElementById('setting-video-provider').value || null,
         tts_provider: document.getElementById('setting-tts-provider').value || null,

@@ -46,6 +46,7 @@ class EnrichUsageMetadataTests(unittest.TestCase):
             "provider": "ollama",
             "model": "deepseek-v4-pro",
             "mode": "cloud",
+            "router_prompt_version": "v1",
             "input_tokens": 27_088,
             "output_tokens": 83,
             "model_calls": 2,
@@ -53,9 +54,10 @@ class EnrichUsageMetadataTests(unittest.TestCase):
         })
 
         self.assertEqual(lines[0], "**LLM:** ollama / deepseek-v4-pro (cloud)")
-        self.assertIn("processed 27,088 input / 83 output", lines[1])
-        self.assertIn("2 model calls", lines[1])
-        self.assertIn("peak context 13,842 tokens", lines[1])
+        self.assertEqual(lines[1], "**Router prompt:** v1")
+        self.assertIn("processed 27,088 input / 83 output", lines[2])
+        self.assertIn("2 model calls", lines[2])
+        self.assertIn("peak context 13,842 tokens", lines[2])
 
 
 class ConversationStoreLlmMetadataTests(unittest.TestCase):
@@ -89,6 +91,7 @@ class ImportConversationMetadataTests(unittest.TestCase):
                         "provider": "anthropic",
                         "model": "claude-sonnet-5",
                         "mode": "cloud",
+                        "router_prompt_version": "v1",
                         "model_calls": 2,
                         "peak_context_tokens": 3_400,
                         "cache_read_tokens": 5000,
@@ -125,6 +128,7 @@ class ImportConversationMetadataTests(unittest.TestCase):
             self.assertEqual(usage["cache_read_tokens"], 5000)
             self.assertEqual(usage["provider"], "anthropic")
             self.assertEqual(usage["mode"], "cloud")
+            self.assertEqual(usage["router_prompt_version"], "v1")
             self.assertEqual(usage["model_calls"], 2)
             self.assertEqual(usage["peak_context_tokens"], 3_400)
 

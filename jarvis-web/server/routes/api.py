@@ -38,6 +38,7 @@ from status_activity_logger import log_status_event
 from tool_sync_status import read_tool_sync_status
 from vision_multimodal import max_vision_images
 from retention_cleanup import find_upload_stash_fallback
+from router_prompt_catalog import available_router_prompt_versions
 from stash_helper import get_stash_dir
 
 
@@ -66,6 +67,16 @@ def _apply_tts_provider_override(mode: str) -> str | None:
     return tts_provider
 
 
+def _apply_router_prompt_override(mode: str) -> str | None:
+    """Return the validated per-mode Web UI router prompt override."""
+    from ..config import load_web_config
+
+    web_config = load_web_config()
+    mode_overrides = web_config.get(mode, {}) if isinstance(web_config, dict) else {}
+    version = mode_overrides.get('router_prompt_version')
+    return version if version in available_router_prompt_versions() else None
+
+
 def _scoped_request_config(handler):
     """Run a Web API handler in its requested immutable config scope."""
     @functools.wraps(handler)
@@ -81,9 +92,11 @@ def _scoped_request_config(handler):
         if mode not in ('cloud', 'local'):
             return jsonify({'ok': False, 'error': 'Mode must be "cloud" or "local"'}), 400
         tts_provider = _apply_tts_provider_override(mode)
-        overrides = {'TTS_PROVIDER': str(tts_provider)} if tts_provider else None
+        overrides = {}
+        if tts_provider:
+            overrides['TTS_PROVIDER'] = str(tts_provider)
         from config_loader import config_scope
-        with config_scope(mode, overrides=overrides):
+        with config_scope(mode, overrides=overrides or None):
             return handler(*args, **kwargs)
     return wrapper
 
@@ -522,6 +535,10 @@ def get_system_config():
     config = {
         # LLM Settings
         'LLM_PROVIDER': get_jarvis_setting('LLM_PROVIDER', 'ollama' if mode == 'local' else 'xai'),
+        'JARVIS_ROUTER_PROMPT_VERSION': (
+            _apply_router_prompt_override(mode)
+            or get_jarvis_setting('JARVIS_ROUTER_PROMPT_VERSION', 'v1')
+        ),
         
         # Thresholds (important!)
         'TOOL_SIMILARITY_THRESHOLD': get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD', '0.0'),
@@ -633,7 +650,7 @@ def update_web_settings():
     settings = get_settings_manager()
 
     structured = any(k in data for k in [
-        'llm_provider', 'llm_model', 'image_provider', 'video_provider',
+        'llm_provider', 'llm_model', 'router_prompt_version', 'image_provider', 'video_provider',
         'response_style', 'qa_word_limit', 'multi_turn_word_limit',
         'completion_guard_enabled', 'completion_guard_mode',
         'completion_guard_ticket_on_fail', 'completion_guard_show_ui_prompt',
