@@ -1162,6 +1162,9 @@ class JarvisApp {
     const gap = 6;
     const maxTooltipWidth = 320;
     const showDelayMs = 380;
+    const conversationMenuOpen = () => Boolean(
+      container.querySelector('.history-menu-dropdown.open')
+    );
     const hideAllTooltips = () => {
       container.querySelectorAll('.history-title-tooltip').forEach(el => {
         el.style.display = 'none';
@@ -1178,6 +1181,10 @@ class JarvisApp {
         }
       };
       const positionAndShow = () => {
+        if (conversationMenuOpen()) {
+          tooltip.style.display = 'none';
+          return;
+        }
         const rect = item.getBoundingClientRect();
         const w = Math.min(maxTooltipWidth, window.innerWidth - 16);
         tooltip.style.display = 'block';
@@ -1205,6 +1212,7 @@ class JarvisApp {
       const onEnter = () => {
         clearShow();
         hideAllTooltips();
+        if (conversationMenuOpen()) return;
         showTimeout = setTimeout(() => {
           showTimeout = null;
           positionAndShow();
