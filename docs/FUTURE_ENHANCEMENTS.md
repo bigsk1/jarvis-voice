@@ -73,6 +73,38 @@ Concrete improvements:
 - Add a “preferred tool ordering” policy when multiple tools cover the same capability (search/fetch/browser)
 - Make `BLOCKED_TOOLS` operational docs explicit (“blocked ≠ disabled at discovery time”)
 
+#### Ghost-Tool Description and Schema Compression
+**Priority:** Medium–High token efficiency / measure after router-prompt A/B testing
+
+Ghost tools are included on every applicable routing request, so their tool
+descriptions and JSON schemas have a larger recurring token cost than tools
+loaded only when Tool RAG retrieves them. A Caveman-light cleanup could keep
+the same tool behavior with shorter, more direct wording.
+
+**Experiment boundary:** Do not combine this with router-prompt comparisons.
+Hold the selected router prompt, provider/model, ghost list, Tool RAG settings,
+and test requests fixed so routing changes can be attributed to tool metadata.
+
+**Measurement-first approach:**
+- Use Tool RAG trace fields (`tool_schema_chars`, estimated tokens, and largest
+  schema contributors) to record the current cost per request and per tool.
+- Start with the effective always-loaded ghost list because it offers the
+  highest repeat savings; optimize retrieved-only tools later.
+- Shorten descriptions first. Preserve exact tool names, “use when,” “do not
+  use,” side effects, live-data/freshness rules, and all argument semantics.
+- Treat parameter names, types, required fields, enums, defaults, and validation
+  constraints as contracts; do not remove them merely to reduce tokens.
+- Compare tool-selection accuracy, invalid/missing arguments, duplicate loops,
+  multi-tool completion, total input tokens, and latency before expanding the
+  rollout.
+
+**Main risk:** Always-loaded tools influence nearly every request. An ambiguous
+short description could save tokens while causing unnecessary memory calls,
+wrong-tool selection, malformed arguments, or failures on complex workflows.
+Keep the existing descriptions as the control and roll back individual tools
+that lose adherence. Provider/model-specific compact variants are a possible
+later step only if one shared description cannot perform reliably everywhere.
+
 ### 3) Short-Lived Continuation Across Wake Activations - HAVE THIS ALREADY IN AUTO CONTEXT NUM AND MINUTES - IS DIFFERENT IN SESSION ID AND LOADING CONVERSATION FROM MEMORY DB
 **Priority:** Medium
 

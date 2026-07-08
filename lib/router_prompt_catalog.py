@@ -3,7 +3,9 @@
 DEFAULT_ROUTER_PROMPT_VERSION = "v1"
 ROUTER_PROMPT_LABELS = {
     "v1": "v1 - Full context system prompt",
-    "v2": "v2 - Full context without blank lines",
+    "v2": "v2 - Compact full-context prompt",
+    "v3": "v3 - Caveman hybrid prompt",
+    "v4": "v4 - Caveman-light hybrid prompt",
 }
 ROUTER_PROMPT_VERSIONS = tuple(ROUTER_PROMPT_LABELS)
 

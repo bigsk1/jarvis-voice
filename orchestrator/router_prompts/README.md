@@ -46,6 +46,51 @@ RAG configuration, and runtime settings. Start a fresh provider session for
 each sample. Model variance, temperature, runtime overlays, and retrieved tool
 schemas can still add noise; record them or hold them fixed as appropriate.
 
+For one-process CLI samples, use the override namespace because `load_config()`
+hydrates ordinary values from the selected mode env file. `EXPORT=...` is not
+shell export syntax and would set an unrelated variable named `EXPORT`.
+
+```bash
+QUERY='What is the current price of Solana?'
+
+env JARVIS_OVERRIDE_JARVIS_ROUTER_PROMPT_VERSION=v1 \
+    JARVIS_OVERRIDE_AUTO_CONTEXT_ENABLED=false \
+    ./orchestrator/orchestrator_v2.py cloud "$QUERY" --json
+
+env JARVIS_OVERRIDE_JARVIS_ROUTER_PROMPT_VERSION=v2 \
+    JARVIS_OVERRIDE_AUTO_CONTEXT_ENABLED=false \
+    ./orchestrator/orchestrator_v2.py cloud "$QUERY" --json
+
+env JARVIS_OVERRIDE_JARVIS_ROUTER_PROMPT_VERSION=v3 \
+    JARVIS_OVERRIDE_AUTO_CONTEXT_ENABLED=false \
+    ./orchestrator/orchestrator_v2.py cloud "$QUERY" --json
+
+env JARVIS_OVERRIDE_JARVIS_ROUTER_PROMPT_VERSION=v4 \
+    JARVIS_OVERRIDE_AUTO_CONTEXT_ENABLED=false \
+    ./orchestrator/orchestrator_v2.py cloud "$QUERY" --json
+```
+
+Both commands append real provider calls to the normal daily LLM log. Inspect
+recent routing samples with:
+
+```bash
+tail -n 100 "logs/llm-calls-$(date +%F).jsonl" | jq -c '
+  select(.prompt_type == "routing") |
+  {timestamp,
+   version: .routing_provenance.router_prompt.version,
+   system_prompt_chars: .routing_provenance.router_prompt.chars,
+   system_prompt_sent: .routing_provenance.router_prompt.sent,
+   input_tokens, output_tokens, total_tokens,
+   cached_input_tokens,
+   tool: .response.tool_name}'
+```
+
+`system_prompt_chars` includes v1/v2 plus unchanged runtime context, provider
+capability notes, model overrides, and profile data. Structural continuation
+may correctly show `system_prompt_sent=false`; that call inherits the version
+established by the first provider call in the request. Sum all routing calls in
+a multi-tool request when comparing its total token cost.
+
 The Web UI selector is operational control: for example, cloud Web may use v2
 while local Web uses v1. It is convenient for live evaluation, but saved Web
 overrides and ongoing provider sessions make it a less controlled benchmark
@@ -56,7 +101,9 @@ surface than a fixed CLI/env run.
 | Version | UI label | Purpose | Status |
 | --- | --- | --- | --- |
 | `v1` | `v1 - Full context system prompt` | Exact established Jarvis router prompt accumulated through production use and provider/model testing | Immutable baseline |
-| `v2` | `v2 - Full context without blank lines` | Whitespace-only experiment derived from v1 | Experimental |
+| `v2` | `v2 - Compact full-context prompt` | Consolidated production prompt preserving v1 behavioral contracts | Experimental candidate |
+| `v3` | `v3 - Caveman hybrid prompt` | Telegraphic v1/v2 hybrid with normal user-facing speech | Experimental |
+| `v4` | `v4 - Caveman-light hybrid prompt` | Natural compact wording at nearly v3 size | Experimental |
 
 ## v1: Full context system prompt
 
@@ -91,25 +138,92 @@ are validated when selected. A stale hash in an unused experimental version
 therefore cannot prevent Jarvis from starting with v1, while selecting that
 broken version still fails closed with its expected and actual hashes.
 
-## v2: Full context without blank lines
+## v2: Compact full-context prompt
 
 File: `v2.py`
 
-`v2` derives from immutable v1 and removes blank lines while preserving every
-instruction and its order. This is deliberately a narrow whitespace-only test
-of the version-selection, integrity, persistence, and comparison workflow—not
-the semantic compression pass.
+`v2` is a standalone rewrite of v1. It preserves the operational contracts for
+context freshness, tool discovery, duplicate prevention, multi-part workflows,
+reminders/alerts, research-to-output sequencing, Canvas finalization, memory,
+image stash follow-ups, OpenCode, headless operation, and response style. It
+removes repeated warnings and tutorial-style good/bad examples, consolidating
+each rule and its exceptions into one authoritative section.
 
 Measurements:
 
-- Characters: `31,396` (`95` fewer than v1)
-- Physical lines: `340`
-- Space-separated words: `4,821`
-- Prompt SHA-256: `2eac90483f6908db2308d1c2cedd79d35cd7e73c70704b4a2ee18a74285dbb90`
+- Characters: `11,977` (`62.0%` fewer than v1)
+- Physical lines: `81` (`69` nonblank)
+- Space-separated words: `1,676`
+- Rough token estimate: approximately `3,000`, depending on provider tokenizer
+- Prompt SHA-256: `cc3c7a8a8e97dd5923ecebcdd2c4ff8da1a2ad4a15a0d04199c9b31c069fce8d`
 
-Because v2 is an established experiment once committed, broader removal of
-emoji, Markdown, or repeated instructions belongs in v3 rather than silently
-changing v2.
+Tool RAG, schemas, runtime date/time, provider capability notes, response-style
+overlays, model overrides, and profile cards remain unchanged. Treat live tests
+as an A/B experiment against v1; once v2 is accepted and committed, further
+semantic changes belong in v3 rather than silently moving this baseline.
+
+## v3: Caveman hybrid prompt
+
+File: `v3.py`
+
+`v3` compresses v1/v2 into short, telegraphic instructions while explicitly
+requiring normal fluent user-facing answers. It is not a Grug persona and must
+not leak Caveman grammar into responses. Exact tool names, parameters,
+exceptions, stop conditions, and workflow boundaries remain explicit.
+
+V3 also makes injected-runtime precedence unambiguous: configured
+location/ZIP/timezone questions use the injected values directly, explicit
+current-time questions still call `get_time`, and casual greetings may mention
+the injected time without a tool call.
+
+Measurements:
+
+- Characters: `8,580` (`72.8%` fewer than v1; `28.4%` fewer than v2)
+- Physical lines: `85` (`71` nonblank)
+- Space-separated words: `1,102`
+- Rough token estimate: approximately `2,150`, depending on provider tokenizer
+- Prompt SHA-256: `59c7881829f36d4966e1c41996dd5e339e41ecf08ec870958ec03cbd00362fa9`
+
+The main experimental risk is instruction adherence on weaker/local models:
+telegraphic grammar removes explanatory redundancy that may help some models.
+Compare simple routing, multi-tool completion, duplicate recovery,
+research/crawl-to-Canvas, memory fallback, and failure handling against v1/v2.
+
+## v4: Caveman-light hybrid prompt
+
+File: `v4.py`
+
+`v4` uses the same compact contract set as v3 with fuller sentences and less
+telegraphic grammar. "Light" describes the lighter Caveman style, not a claim
+that it is smaller than v3. It is intended to test whether a tiny size increase
+improves adherence for providers/models that struggle with v3 shorthand.
+
+Measurements:
+
+- Characters: `8,849` (`71.9%` fewer than v1; `26.1%` fewer than v2; `3.1%` more than v3)
+- Physical lines: `43` (`29` nonblank)
+- Space-separated words: `1,145`
+- Rough token estimate: approximately `2,210`, depending on provider tokenizer
+- Prompt SHA-256: `56380c054f1dfb891d4a54445cf61113dab944fc10754f63cc56ce15d5c8c12f`
+
+V4 intentionally preserves the supplied Unicode comparison arrows and symbols;
+provider tokenization may therefore differ slightly from the character-based
+estimate. Its key comparison is adherence versus v3, not maximum compression.
+
+## Regression risks from v1 things to keep an eye on
+
+### v1 → v2 Behavioral Contract Comparison
+
+| Area                              | v1 Strength                                      | v2 Status                      | Risk Level   | Comment |
+|-----------------------------------|--------------------------------------------------|--------------------------------|--------------|---------|
+| **Memory fallback**               | Very explicit "max 2 attempts + specific order"  | Still present but softer       | Medium       | Easy to regress into looping or giving up too early |
+| **Canvas discipline**             | Extremely strict ("after Canvas → stop", one append only on new source type) | Present but less sharp     | **High**     | This one caused a lot of pain in v1. Worth keeping stricter. |
+| **Voice/spoken constraints**      | Very detailed rules                              | Almost gone                    | Medium       | If you still care about voice output quality, this got diluted |
+| **Failure handling nuance**       | Had good examples and "distinguish error vs constraint" language | More generic now     | Medium       | Models still need strong nudging here |
+| **"Never claim success unless confirmed"** | Repeated and strong                        | Present but less reinforced    | Medium-High  | One of the most important anti-hallucination rules |
+| **Research loop prevention**      | Very explicit stop criteria + "partial answer > endless search" | Good but shorter     | Low-Medium   | Still decent |
+| **Opencode rules**                | Very clear single-call + verification via other tools | Still solid              | Low          | One of the better preserved sections |
+
 
 ## Hash helper
 
@@ -154,19 +268,20 @@ Prefer Git because it restores the exact version tracked by the chosen branch,
 tag, or commit. Back up any intentional local work first.
 
 ```bash
-git fetch origin
-git restore --source=origin/main -- orchestrator/router_prompts/v1.py
+V1_REF=587e2ba1b7d3436b3af494b486fc503040765da8
+git restore --source="$V1_REF" -- orchestrator/router_prompts/v1.py
 ```
 
-For a release or experiment, replace `origin/main` with a known-good tag or
-commit. A commit-pinned restore is safer than relying on a moving branch.
+That commit introduced the immutable v1 baseline. A commit-pinned restore is
+safer than relying on a moving branch; `origin/main` remains an option when the
+latest upstream copy is intentionally desired.
 
 If Git restoration is unavailable, download the raw file to a temporary path,
 inspect it, and then install it. `REF` may be `main`, a tag, or preferably a
 known-good commit SHA:
 
 ```bash
-REF=main
+REF=587e2ba1b7d3436b3af494b486fc503040765da8
 curl --fail --location --proto '=https' --tlsv1.2 \
   "https://raw.githubusercontent.com/bigsk1/jarvis-voice/${REF}/orchestrator/router_prompts/v1.py" \
   --output /tmp/jarvis-router-prompt-v1.py

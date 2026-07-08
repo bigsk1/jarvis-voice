@@ -198,7 +198,8 @@ class XAINativeContinuationTests(unittest.TestCase):
         )
         with patch("router_v2.get_bool", return_value=False), \
              patch("router_v2.get_config_value", return_value=""), \
-             patch("router_v2.should_enable_thinking", return_value=False, create=True):
+             patch("router_v2.should_enable_thinking", return_value=False, create=True), \
+             patch("llm_logger.get_logger"):
             result = router.route(route_input)
 
         self.assertEqual(result["intent"], "tool")

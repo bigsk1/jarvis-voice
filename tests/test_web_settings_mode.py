@@ -475,11 +475,15 @@ class WebSettingsModeTests(unittest.TestCase):
             self.assertEqual(web_config["cloud"]["router_prompt_version"], "v1")
             self.assertTrue(settings.save_web_overrides({"router_prompt_version": "v2"}))
             self.assertEqual(web_config["cloud"]["router_prompt_version"], "v2")
+            self.assertTrue(settings.save_web_overrides({"router_prompt_version": "v3"}))
+            self.assertEqual(web_config["cloud"]["router_prompt_version"], "v3")
+            self.assertTrue(settings.save_web_overrides({"router_prompt_version": "v4"}))
+            self.assertEqual(web_config["cloud"]["router_prompt_version"], "v4")
 
             with self.assertRaises(SettingsValidationError):
                 settings.save_web_overrides({"router_prompt_version": "v9"})
 
-        self.assertEqual(web_config["cloud"]["router_prompt_version"], "v2")
+        self.assertEqual(web_config["cloud"]["router_prompt_version"], "v4")
 
     def test_settings_payload_describes_router_prompt_default_and_override(self):
         from server.services import settings_manager as settings_module
@@ -515,7 +519,9 @@ class WebSettingsModeTests(unittest.TestCase):
             "is_override": True,
             "options": [
                 {"id": "v1", "label": "v1 - Full context system prompt"},
-                {"id": "v2", "label": "v2 - Full context without blank lines"},
+                {"id": "v2", "label": "v2 - Compact full-context prompt"},
+                {"id": "v3", "label": "v3 - Caveman hybrid prompt"},
+                {"id": "v4", "label": "v4 - Caveman-light hybrid prompt"},
             ],
         })
 
