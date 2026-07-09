@@ -73,6 +73,49 @@ Concrete improvements:
 - Add a “preferred tool ordering” policy when multiple tools cover the same capability (search/fetch/browser)
 - Make `BLOCKED_TOOLS` operational docs explicit (“blocked ≠ disabled at discovery time”)
 
+#### Soft Empty-Result Tool Failures Should Continue In-Loop
+**Priority:** Medium reliability / token control
+**Status:** Possible patch; separate from the request-wide `MAX_TOOL_TURNS` accounting fix
+
+Some live-data tools can return a technically failed result for a normal
+research miss, such as `serpapi_yelp_search` reporting that Yelp returned no
+results for a narrow query. Today these failures can enter the recursive
+tool-failure retry path. That preserves trace context, but after the single
+retry budget is spent, a later soft miss can end an otherwise useful
+multi-tool research run.
+
+**Goal:** Treat recognized empty-result misses as in-loop context rather than
+terminal error recovery. The model should see the failed result, spend one
+normal tool turn, and continue choosing a broader query, alternate local-search
+tool, fetch/search source, or final answer from gathered evidence.
+
+**Possible design:**
+- Add a small failure taxonomy at the orchestrator/tool-result boundary:
+  `empty_results`, `invalid_args`, `auth_error`, `rate_limit`,
+  `transient_service_error`, and `terminal_tool_error`.
+- For `empty_results`, append the failed tool result to `conversation_context`
+  with `freshness: failed_tool_call`, emit the red tool card, and continue the
+  existing `for turn_num in range(...)` loop instead of recursively calling
+  `process()`.
+- Preserve the same request-wide `MAX_TOOL_TURNS` budget. Empty-result misses
+  should consume a turn, not reset or extend the budget.
+- Keep true failures on the existing guarded retry/terminal path: auth errors,
+  missing required args, schema errors, rate limits, and side-effecting
+  single-call tools should not be silently treated as harmless misses.
+- Include explicit prompt context such as: "That query returned no results;
+  broaden the query, use a different search source, or answer from results
+  already gathered."
+
+**Regression coverage to add:**
+- Yelp empty result followed by Maps/search fallback stays within
+  `MAX_TOOL_TURNS`.
+- A second empty-result miss does not abort the whole run before remaining
+  turns are exhausted.
+- Auth/rate-limit/schema errors still use the existing retry or terminal
+  failure path.
+- Failed tool cards remain ordered by `_tool_trace` and do not count as
+  successful grounding in Completion Guard / follow-up evidence.
+
 #### Ghost-Tool Description and Schema Compression
 **Priority:** Medium–High token efficiency / measure after router-prompt A/B testing
 

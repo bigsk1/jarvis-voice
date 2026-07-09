@@ -146,7 +146,7 @@ def test_live_tool_state_is_scoped_by_message_id():
 
     assert "this.pendingToolsByMessage = new Map()" in chat_js
     assert "this._activatePendingToolsForMessage(data.message_id" in chat_js
-    assert "this._reconcilePendingToolsWithFinalList(toolsUsed)" in chat_js
+    assert "this._reconcilePendingToolsWithFinalList(toolsUsed, toolTraceEntries)" in chat_js
     assert "this._clearPendingToolsForMessage(liveMessageId)" in chat_js
 
 
@@ -184,6 +184,90 @@ if (Object.keys(harness.pendingTools).length !== 5) process.exit(5);
 harness._clearPendingToolsForMessage('message-a');
 harness._activatePendingToolsForMessage('message-b');
 if (!harness.pendingTools.stash) process.exit(6);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
+def test_tool_trace_reconciles_failed_card_in_original_order():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(CHAT_JS))}, 'utf8');
+const start = source.indexOf('  _reconcilePendingToolsWithFinalList(');
+const end = source.indexOf('  /**\\n   * Show feedback card', start);
+const classSource = `class ToolTraceHarness {{\n${{source.slice(start, end)}}\n}}; ToolTraceHarness;`;
+const sandbox = {{ console }};
+vm.createContext(sandbox);
+const ToolTraceHarness = vm.runInContext(classSource, sandbox);
+const harness = new ToolTraceHarness();
+harness.pendingToolMessageId = 'message-a';
+harness.pendingToolsByMessage = new Map();
+harness.pendingTools = {{
+  tool_search: {{ toolName: 'tool_search', status: 'success', result: {{ matches: [] }} }},
+  serpapi_yelp_search: {{ toolName: 'serpapi_yelp_search', status: 'error', result: {{ error: 'No results' }} }},
+  serpapi_maps_search: {{ toolName: 'serpapi_maps_search', status: 'success', result: {{ places: [] }} }}
+}};
+
+harness._reconcilePendingToolsWithFinalList(
+  ['tool_search', 'serpapi_maps_search'],
+  [
+    {{ tool: 'tool_search', ok: true, duration_ms: 10 }},
+    {{ tool: 'serpapi_yelp_search', ok: false, error: 'No results', duration_ms: 20 }},
+    {{ tool: 'serpapi_maps_search', ok: true, duration_ms: 30 }}
+  ]
+);
+
+const entries = Object.values(harness.pendingTools);
+if (entries.map(entry => entry.toolName).join(',') !== 'tool_search,serpapi_yelp_search,serpapi_maps_search') process.exit(2);
+if (entries[1].status !== 'error') process.exit(3);
+if (entries[1].result.error !== 'No results') process.exit(4);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
+def test_live_pending_tool_cards_skip_failures_when_indexing_success_results():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(CHAT_JS))}, 'utf8');
+const start = source.indexOf('  _getToolResultForOccurrence(');
+const end = source.indexOf('  /**\\n   * Show feedback card', start);
+const classSource = `class PendingCardHarness {{\n${{source.slice(start, end)}}\n}}; PendingCardHarness;`;
+const sandbox = {{}};
+vm.createContext(sandbox);
+const PendingCardHarness = vm.runInContext(classSource, sandbox);
+const harness = new PendingCardHarness();
+
+const entries = harness._getPendingToolCardEntries(
+  {{
+    serpapi_yelp_search: [
+      {{ result_id: 'first-success' }},
+      {{ result_id: 'second-success' }}
+    ]
+  }},
+  [
+    ['serpapi_yelp_search', {{
+      toolName: 'serpapi_yelp_search',
+      status: 'error',
+      result: {{ error: 'No Yelp results' }},
+      duration: 20
+    }}],
+    ['serpapi_yelp_search_1', {{
+      toolName: 'serpapi_yelp_search',
+      status: 'success',
+      result: null,
+      duration: 30
+    }}]
+  ]
+);
+
+if (entries.length !== 2) process.exit(2);
+if (entries[0].status !== 'error') process.exit(3);
+if (entries[0].result.error !== 'No Yelp results') process.exit(4);
+if (entries[1].status !== 'success') process.exit(5);
+if (entries[1].result.result_id !== 'first-success') process.exit(6);
 """
 
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)

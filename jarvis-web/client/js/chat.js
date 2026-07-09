@@ -3073,27 +3073,49 @@ class ChatUI {
     let toolResultsData = data.data || data || {};
     toolResultsData = this._flattenWorkflowToolResults(toolResultsData);
     let toolCardsHtml = '';
-    this._reconcilePendingToolsWithFinalList(toolsUsed);
+    const toolTraceEntries = this._getToolTraceEntries(toolResultsData);
+    this._reconcilePendingToolsWithFinalList(toolsUsed, toolTraceEntries);
     const pendingToolEntries = Object.entries(this.pendingTools);
     if (pendingToolEntries.length > 0) {
       toolCardsHtml = '<div class="tool-cards">';
-      const toolOccurrenceCounts = {};
-      for (const [cardId, toolData] of pendingToolEntries) {
-        // Get display name - either stored toolName or extract from cardId
-        const displayName = toolData.toolName || cardId.replace(/_step\d+$/, '');
-        const occurrenceIndex = toolOccurrenceCounts[displayName] || 0;
-        toolOccurrenceCounts[displayName] = occurrenceIndex + 1;
-        const toolResult = this._getToolResultForOccurrence(
-          toolResultsData,
-          displayName,
-          occurrenceIndex,
-          toolData.result
-        );
+      for (const entry of this._getPendingToolCardEntries(toolResultsData, pendingToolEntries)) {
         toolCardsHtml += this._createToolCardHtml(
-          displayName,
-          toolData.status || 'success',
+          entry.displayName,
+          entry.status,
+          entry.result,
+          entry.duration
+        );
+      }
+      toolCardsHtml += '</div>';
+    } else if (toolTraceEntries.length > 0) {
+      toolCardsHtml = '<div class="tool-cards">';
+      const toolOccurrenceCounts = {};
+      const successfulToolOccurrenceCounts = {};
+      for (const entry of toolTraceEntries) {
+        const tool = entry.tool;
+        const occurrenceIndex = toolOccurrenceCounts[tool] || 0;
+        toolOccurrenceCounts[tool] = occurrenceIndex + 1;
+        const status = entry.ok === false ? 'error' : 'success';
+        const resultOccurrenceIndex = successfulToolOccurrenceCounts[tool] || 0;
+        if (status === 'success') {
+          successfulToolOccurrenceCounts[tool] = resultOccurrenceIndex + 1;
+        }
+        const fallback = status === 'error'
+          ? this._getToolTraceFailureResult(entry)
+          : this._getToolTraceSuccessFallback(entry);
+        const toolResult = status === 'error'
+          ? fallback
+          : this._getToolResultForOccurrence(
+            toolResultsData,
+            tool,
+            resultOccurrenceIndex,
+            fallback
+          );
+        toolCardsHtml += this._createToolCardHtml(
+          tool,
+          status,
           toolResult,
-          toolData.duration
+          entry.duration_ms ?? null
         );
       }
       toolCardsHtml += '</div>';
@@ -3839,8 +3861,11 @@ class ChatUI {
     return this.pendingTools;
   }
 
-  _reconcilePendingToolsWithFinalList(toolsUsed = []) {
-    if (!Array.isArray(toolsUsed) || toolsUsed.length === 0) return;
+  _reconcilePendingToolsWithFinalList(toolsUsed = [], toolTraceEntries = []) {
+    const traceEntries = Array.isArray(toolTraceEntries)
+      ? toolTraceEntries.filter(entry => entry?.tool)
+      : [];
+    if ((!Array.isArray(toolsUsed) || toolsUsed.length === 0) && traceEntries.length === 0) return;
 
     const existingEntries = Object.entries(this.pendingTools);
     const entriesByTool = new Map();
@@ -3852,18 +3877,41 @@ class ChatUI {
 
     const reconciled = {};
     const usedCardIds = new Set();
-    toolsUsed.forEach((toolName, index) => {
+    const orderedEntries = traceEntries.length > 0
+      ? traceEntries.map(entry => ({
+        toolName: entry.tool,
+        status: entry.ok === false ? 'error' : 'success',
+        result: entry.ok === false
+          ? this._getToolTraceFailureResult(entry)
+          : this._getToolTraceSuccessFallback(entry),
+        args: entry.arguments || {},
+        duration: entry.duration_ms ?? null
+      }))
+      : toolsUsed.map(toolName => ({
+        toolName,
+        status: 'success',
+        result: null,
+        args: {},
+        duration: null
+      }));
+
+    orderedEntries.forEach((entry, index) => {
+      const toolName = entry.toolName;
       const queued = entriesByTool.get(toolName)?.shift();
       let cardId = queued?.[0] || `${toolName}_final${index}`;
       while (usedCardIds.has(cardId)) cardId = `${cardId}_${index}`;
       usedCardIds.add(cardId);
-      reconciled[cardId] = queued?.[1] || {
+      const toolData = queued?.[1] || {
         toolName,
-        status: 'success',
-        args: {},
-        result: null,
-        duration: null
+        status: entry.status,
+        args: entry.args,
+        result: entry.result,
+        duration: entry.duration
       };
+      toolData.status = entry.status || toolData.status || 'success';
+      if (toolData.result === null || toolData.result === undefined) toolData.result = entry.result;
+      if (toolData.duration === null || toolData.duration === undefined) toolData.duration = entry.duration;
+      reconciled[cardId] = toolData;
     });
 
     for (const [cardId, toolData] of existingEntries) {
@@ -5216,6 +5264,55 @@ class ChatUI {
       return {};
     }
     return fallback ?? {};
+  }
+
+  _getPendingToolCardEntries(toolResultsData = {}, pendingToolEntries = Object.entries(this.pendingTools)) {
+    const toolOccurrenceCounts = {};
+    const successfulToolOccurrenceCounts = {};
+    return pendingToolEntries.map(([cardId, toolData]) => {
+      const displayName = toolData.toolName || cardId.replace(/_step\d+$/, '');
+      const occurrenceIndex = toolOccurrenceCounts[displayName] || 0;
+      toolOccurrenceCounts[displayName] = occurrenceIndex + 1;
+      const status = toolData.status || 'success';
+      const resultOccurrenceIndex = successfulToolOccurrenceCounts[displayName] || 0;
+      if (status !== 'error') {
+        successfulToolOccurrenceCounts[displayName] = resultOccurrenceIndex + 1;
+      }
+      const result = status === 'error'
+        ? (toolData.result ?? {})
+        : this._getToolResultForOccurrence(
+          toolResultsData,
+          displayName,
+          resultOccurrenceIndex,
+          toolData.result
+        );
+      return {
+        displayName,
+        status,
+        result,
+        duration: toolData.duration
+      };
+    });
+  }
+
+  _getToolTraceEntries(toolResultsData = {}) {
+    const trace = toolResultsData?._tool_trace || toolResultsData?.data?._tool_trace;
+    if (!Array.isArray(trace)) return [];
+    return trace.filter(entry => entry && typeof entry === 'object' && entry.tool);
+  }
+
+  _getToolTraceFailureResult(entry = {}) {
+    return {
+      error: entry.error || entry.speech || 'Tool failed',
+      arguments: entry.arguments || {}
+    };
+  }
+
+  _getToolTraceSuccessFallback(entry = {}) {
+    const fallback = {};
+    if (entry.speech) fallback.speech = entry.speech;
+    if (entry.arguments) fallback.arguments = entry.arguments;
+    return fallback;
   }
 
   /**

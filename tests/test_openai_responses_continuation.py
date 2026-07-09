@@ -64,6 +64,61 @@ class OpenAIContinuationShapeTests(unittest.TestCase):
         self.assertGreaterEqual(len(payload), 2)
         self.assertEqual(payload[0]["type"], "function_call_output")
 
+    def test_orchestrator_keeps_openai_shape_with_turn_notice_when_delta_off(self) -> None:
+        from orchestrator_v2 import Orchestrator  # noqa: E402
+
+        orch = Orchestrator.__new__(Orchestrator)
+
+        with mock.patch.object(orch, "_config_bool", return_value=False):
+            route_input = orch._build_openai_responses_route_input(
+                retrieval_query="compact query",
+                continuation={
+                    "response_id": "resp_42",
+                    "tool_call_id": "call_z",
+                    "result_message": "Jarvis ok",
+                },
+                turn_notice="[TURN 8/12 - 5 turns remaining. Prioritize finishing.]",
+            )
+
+        payload = route_input.responses_continuation_input or []
+        self.assertEqual(route_input.continuation_mode, "responses_structural")
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["type"], "function_call_output")
+        self.assertIn("[TURN 8/12 - 5 turns remaining", payload[0]["output"])
+
+    def test_orchestrator_adds_openai_delta_message_when_enabled(self) -> None:
+        from orchestrator_v2 import Orchestrator  # noqa: E402
+
+        orch = Orchestrator.__new__(Orchestrator)
+
+        with mock.patch.object(orch, "_config_bool", return_value=True):
+            route_input = orch._build_openai_responses_route_input(
+                retrieval_query="compact query",
+                continuation={
+                    "response_id": "resp_42",
+                    "tool_call_id": "call_z",
+                    "result_message": "Jarvis ok",
+                },
+                turn_notice="[TURN 8/12 - 5 turns remaining. Prioritize finishing.]",
+            )
+
+        payload = route_input.responses_continuation_input or []
+        self.assertEqual(route_input.continuation_mode, "responses_with_delta")
+        self.assertEqual(payload[1]["role"], "user")
+        self.assertNotIn("[TURN 8/12", payload[0]["output"])
+        self.assertIn("[TURN 8/12 - 5 turns remaining", payload[1]["content"])
+        self.assertIn("Continue the original Jarvis request", payload[1]["content"])
+
+    def test_turn_limit_notice_has_light_and_near_limit_forms(self) -> None:
+        from orchestrator_v2 import Orchestrator  # noqa: E402
+
+        self.assertIsNone(Orchestrator._build_turn_limit_notice(0, 12))
+        self.assertEqual(Orchestrator._build_turn_limit_notice(2, 12), "[Turn 3/12]")
+        self.assertIn(
+            "5 turns remaining",
+            Orchestrator._build_turn_limit_notice(7, 12),
+        )
+
     def test_openai_continuation_meta_does_not_emit_xai_aliases(self) -> None:
         meta = _provider_continuation_meta(
             provider_type="openai",

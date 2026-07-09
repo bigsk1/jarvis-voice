@@ -106,6 +106,47 @@ class XAINativeContinuationTests(unittest.TestCase):
         self.assertEqual(payload.messages[0]["tool_call_id"], "call_1")
         self.assertEqual(payload.continuation_mode, "stored_structural")
 
+    def test_structural_route_input_keeps_shape_with_turn_notice_when_delta_off(self):
+        orch = self._orch()
+        with patch("orchestrator_v2.get_config_value", side_effect=_config({
+            "XAI_CONTINUATION_DELTA_MESSAGE": "false",
+        })):
+            payload = orch._build_xai_structural_route_input(
+                retrieval_query="weather in Portland",
+                continuation={
+                    "response_id": "resp_1",
+                    "tool_call_id": "call_1",
+                    "result_message": "Jarvis tool result\nResult: ok",
+                },
+                turn_notice="[Turn 3/12]",
+            )
+
+        self.assertEqual(payload.continuation_mode, "stored_structural")
+        self.assertEqual(len(payload.messages), 1)
+        self.assertEqual(payload.messages[0]["role"], "tool")
+        self.assertIn("[Turn 3/12]", payload.messages[0]["content"])
+
+    def test_structural_route_input_uses_delta_message_when_enabled(self):
+        orch = self._orch()
+        with patch("orchestrator_v2.get_config_value", side_effect=_config({
+            "XAI_CONTINUATION_DELTA_MESSAGE": "true",
+        })):
+            payload = orch._build_xai_structural_route_input(
+                retrieval_query="weather in Portland",
+                continuation={
+                    "response_id": "resp_1",
+                    "tool_call_id": "call_1",
+                    "result_message": "Jarvis tool result\nResult: ok",
+                },
+                turn_notice="[Turn 3/12]",
+            )
+
+        self.assertEqual(payload.continuation_mode, "stored_with_delta")
+        self.assertEqual(payload.messages[1]["role"], "user")
+        self.assertNotIn("[Turn 3/12]", payload.messages[0]["content"])
+        self.assertIn("[Turn 3/12]", payload.messages[1]["content"])
+        self.assertIn("Continue the original Jarvis request", payload.messages[1]["content"])
+
     def test_continuation_validation_defaults_off(self):
         orch = self._orch()
         with patch("orchestrator_v2.get_config_value", side_effect=_config({

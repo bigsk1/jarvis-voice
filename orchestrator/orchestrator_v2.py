@@ -611,23 +611,32 @@ class Orchestrator:
         *,
         retrieval_query: str,
         continuation: dict[str, Any],
+        turn_notice: str | None = None,
     ) -> ProviderRouteInput:
+        delta_enabled = self._config_bool("XAI_CONTINUATION_DELTA_MESSAGE", False)
+        result_message = continuation["result_message"]
+        if turn_notice and not delta_enabled:
+            result_message = f"{turn_notice}\n{result_message}"
         messages: list[dict[str, Any]] = [
             {
                 "role": "tool",
-                "content": continuation["result_message"],
+                "content": result_message,
                 "tool_call_id": continuation["tool_call_id"],
                 "id": continuation["tool_call_id"],
             }
         ]
-        if self._config_bool("XAI_CONTINUATION_DELTA_MESSAGE", False):
+        if delta_enabled:
+            message_lines = []
+            if turn_notice:
+                message_lines.append(turn_notice)
+            message_lines.append(
+                "Continue the original Jarvis request. Use the completed tool result above. "
+                "Choose the next required tool only if the original request is not complete; "
+                "otherwise answer directly."
+            )
             messages.append({
                 "role": "user",
-                "content": (
-                    "Continue the original Jarvis request. Use the completed tool result above. "
-                    "Choose the next required tool only if the original request is not complete; "
-                    "otherwise answer directly."
-                ),
+                "content": "\n".join(message_lines),
             })
         return ProviderRouteInput(
             tool_retrieval_query=retrieval_query,
@@ -636,7 +645,7 @@ class Orchestrator:
             previous_response_id=continuation["response_id"],
             continuation_mode=(
                 "stored_with_delta"
-                if self._config_bool("XAI_CONTINUATION_DELTA_MESSAGE", False)
+                if delta_enabled
                 else "stored_structural"
             ),
         )
@@ -734,26 +743,35 @@ class Orchestrator:
         *,
         retrieval_query: str,
         continuation: dict[str, Any],
+        turn_notice: str | None = None,
     ) -> ProviderRouteInput:
+        delta_enabled = self._config_bool("OPENAI_RESPONSES_CONTINUATION_DELTA_MESSAGE", False)
+        result_message = continuation["result_message"]
+        if turn_notice and not delta_enabled:
+            result_message = f"{turn_notice}\n{result_message}"
         items: list[dict[str, Any]] = [
             {
                 "type": "function_call_output",
                 "call_id": continuation["tool_call_id"],
-                "output": continuation["result_message"],
+                "output": result_message,
             }
         ]
-        if self._config_bool("OPENAI_RESPONSES_CONTINUATION_DELTA_MESSAGE", False):
+        if delta_enabled:
+            message_lines = []
+            if turn_notice:
+                message_lines.append(turn_notice)
+            message_lines.append(
+                "Continue the original Jarvis request. Use the completed tool result above. "
+                "Choose the next required tool only if the original request is not complete; "
+                "otherwise answer directly."
+            )
             items.append({
                 "role": "user",
-                "content": (
-                    "Continue the original Jarvis request. Use the completed tool result above. "
-                    "Choose the next required tool only if the original request is not complete; "
-                    "otherwise answer directly."
-                ),
+                "content": "\n".join(message_lines),
             })
         mode = (
             "responses_with_delta"
-            if self._config_bool("OPENAI_RESPONSES_CONTINUATION_DELTA_MESSAGE", False)
+            if delta_enabled
             else "responses_structural"
         )
         return ProviderRouteInput(
@@ -764,6 +782,18 @@ class Orchestrator:
             continuation_mode=mode,
             responses_continuation_input=items,
         )
+
+    @staticmethod
+    def _build_turn_limit_notice(turn_num: int, max_turns: int) -> str | None:
+        turns_remaining = max_turns - turn_num
+        if turns_remaining <= 5:
+            return (
+                f"[TURN {turn_num + 1}/{max_turns} - {turns_remaining} turns remaining. "
+                "Prioritize finishing critical tasks like canvas/remember before limit!]"
+            )
+        if turn_num > 0:
+            return f"[Turn {turn_num + 1}/{max_turns}]"
+        return None
 
     def _build_openai_provider_continuation(
         self,
@@ -1365,8 +1395,11 @@ Mode: {self.mode}
         # Track available tools from first routing (for intelligence reflection)
         available_tools = retry_state.get("available_tools") or []
         
+        start_turn_num = int(retry_state.get("start_turn_num", 0) or 0)
+        start_turn_num = max(0, min(start_turn_num, max_turns))
+
         # Multi-turn loop
-        for turn_num in range(max_turns):
+        for turn_num in range(start_turn_num, max_turns):
             # Check for cancellation at start of each turn
             if self._is_cancelled():
                 self._emit_progress('routing', message='Processing cancelled')
@@ -1405,13 +1438,9 @@ Mode: {self.mode}
                 turn_input = f"{turn_input}\n\n" + "\n".join(guard_lines)
             
             # Inject turn limit awareness (helps LLM prioritize finishing critical tasks)
-            turns_remaining = max_turns - turn_num
-            if turns_remaining <= 5:
-                # Warn when getting close to limit
-                turn_input = f"[TURN {turn_num + 1}/{max_turns} - {turns_remaining} turns remaining. Prioritize finishing critical tasks like canvas/remember before limit!]\n\n{turn_input}"
-            elif turn_num > 0:
-                # Lighter context for middle turns
-                turn_input = f"[Turn {turn_num + 1}/{max_turns}]\n\n{turn_input}"
+            turn_notice = self._build_turn_limit_notice(turn_num, max_turns)
+            if turn_notice:
+                turn_input = f"{turn_notice}\n\n{turn_input}"
             
             # Route using LLM
             if os.environ.get('JARVIS_DEBUG'):
@@ -1468,6 +1497,7 @@ Mode: {self.mode}
                     route_payload = self._build_openai_responses_route_input(
                         retrieval_query=enhanced_transcript,
                         continuation=openai_provider_continuation,
+                        turn_notice=turn_notice,
                     )
                     used_openai_structural = True
                     route_previous_response_id = openai_provider_continuation.get("response_id")
@@ -1493,6 +1523,7 @@ Mode: {self.mode}
                     route_payload = self._build_xai_structural_route_input(
                         retrieval_query=enhanced_transcript,
                         continuation=xai_provider_continuation,
+                        turn_notice=turn_notice,
                     )
                     route_previous_response_id = xai_provider_continuation.get("response_id")
                 elif continuation_fallback_reason and xai_native_continuation_enabled:
@@ -2131,6 +2162,7 @@ Mode: {self.mode}
                                 "openai_previous_response_id": openai_previous_response_id,
                                 "openai_provider_continuation": openai_provider_continuation,
                                 "openai_text_fallback_retry_used": openai_text_fallback_retry_used,
+                                "start_turn_num": turn_num + 1,
                             }
                         )
                     
