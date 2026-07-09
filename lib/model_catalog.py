@@ -118,6 +118,11 @@ _ANTHROPIC_CAPABILITIES_ENABLED_NO_CODE = {
     "code_execution": {"supported": False},
 }
 
+_OPENAI_TEXT_IMAGE_MODALITIES = {
+    "input_modalities": ["text", "image"],
+    "output_modalities": ["text"],
+}
+
 
 def _context_label(tokens: int) -> str:
     """Format a context window for display."""
@@ -357,6 +362,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "name": "GPT-5.5",
             "context_tokens": 1_050_000,
             "max_output_tokens": 128_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 5.00, "output": 30.00, "cached": 0.50},
             "aliases": ["gpt-5.5-2026-04-23"],
         },
@@ -364,12 +370,14 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "id": "gpt-5.4",
             "name": "GPT-5.4",
             "context_tokens": 1_050_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 2.50, "output": 15.00, "cached": 0.25},
         },
         {
             "id": "gpt-5.4-mini",
             "name": "GPT-5.4 Mini",
             "context_tokens": 400_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 0.75, "output": 4.50, "cached": 0.075},
         },
         {
@@ -377,12 +385,14 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "name": "GPT-5.4 Nano (Default)",
             "context_tokens": 400_000,
             "default": True,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 0.20, "output": 1.25, "cached": 0.02},
         },
         {
             "id": "gpt-5.2",
             "name": "GPT-5.2",
             "context_tokens": 400_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 1.75, "output": 14.00, "cached": 0.17},
             "aliases": ["gpt-5.2-2025-12-11", "gpt-5.2-chat-latest"],
         },
@@ -390,18 +400,21 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "id": "gpt-5.2-chat-latest",
             "name": "GPT-5.2 Chat Latest",
             "context_tokens": 400_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 1.75, "output": 14.00, "cached": 0.17},
         },
         {
             "id": "gpt-5.2-2025-12-11",
             "name": "GPT-5.2 (Dec 2025)",
             "context_tokens": 400_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 1.75, "output": 14.00, "cached": 0.17},
         },
         {
             "id": "gpt-5.1",
             "name": "GPT-5.1",
             "context_tokens": 128_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 1.25, "output": 10.00, "cached": 0.125},
             "aliases": ["gpt-5.1-2025-11-13"],
         },
@@ -409,24 +422,28 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "id": "gpt-5.1-chat-latest",
             "name": "GPT-5.1 Chat Latest",
             "context_tokens": 128_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 1.25, "output": 10.00, "cached": 0.125},
         },
         {
             "id": "gpt-5.1-codex",
             "name": "GPT-5.1 Codex",
             "context_tokens": 128_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 1.25, "output": 10.00, "cached": 0.125},
         },
         {
             "id": "gpt-5.1-codex-mini",
             "name": "GPT-5.1 Codex Mini",
             "context_tokens": 128_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 0.25, "output": 2.00, "cached": 0.025},
         },
         {
             "id": "gpt-5-mini",
             "name": "GPT-5 Mini",
             "context_tokens": 128_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 0.25, "output": 2.00, "cached": 0.025},
             "aliases": ["gpt-5-mini-2025-08-07"],
         },
@@ -434,12 +451,14 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "id": "gpt-5-codex",
             "name": "GPT-5 Codex",
             "context_tokens": 128_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 1.25, "output": 10.00, "cached": 0.125},
         },
         {
             "id": "gpt-5-nano-2025-08-07",
             "name": "GPT-5 Nano (Aug 2025)",
             "context_tokens": 128_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 0.05, "output": 0.40, "cached": 0.005},
             "aliases": ["gpt-5-nano"],
         },
@@ -447,6 +466,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "id": "gpt-4.1",
             "name": "GPT-4.1",
             "context_tokens": 128_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 3.00, "output": 12.00, "cached": 0.75},
             "aliases": ["gpt-4.1-2025-04-14"],
         },
@@ -454,6 +474,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "id": "gpt-4o-mini",
             "name": "GPT-4o Mini",
             "context_tokens": 128_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 0.15, "output": 0.60, "cached": 0.07},
             "aliases": ["gpt-4o-mini-2024-07-18"],
         },

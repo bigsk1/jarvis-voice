@@ -202,7 +202,11 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertIn("vision", xai["grok-build-0.1"]["capabilities"])
         self.assertIn("tools", xai["grok-build-0.1"]["capabilities"])
         self.assertTrue(anthropic["claude-sonnet-5"]["vision"])
-        self.assertIsNone(openai["gpt-5.5"]["vision"])
+        self.assertTrue(openai["gpt-5.5"]["vision"])
+        self.assertIn("vision", openai["gpt-5.5"]["capabilities"])
+        self.assertIn("tools", openai["gpt-5.5"]["capabilities"])
+        self.assertTrue(openai["gpt-5.4-nano"]["vision"])
+        self.assertIn("vision", openai["gpt-5.4-nano"]["capabilities"])
 
     def test_xai_reasoning_effort_flag_from_catalog(self):
         self.assertTrue(get_model_supports_xai_reasoning_effort("xai", "grok-4.5"))
