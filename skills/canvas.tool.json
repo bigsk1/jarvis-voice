@@ -21,7 +21,7 @@
       },
       "content": {
         "type": "string",
-        "description": "Markdown content. REQUIRED for create/append/update. For append, pass ONLY the new section; existing content is preserved server-side and no line numbers are needed. For update, pass the FULL replacement page. Supports headers, lists, tables, code blocks, images, and video. Preserve complete direct media URLs and stash:// references from source tool results; Canvas detects video by media metadata rather than tool name. If you include sources/links, URLs must be complete and resolvable. NEVER use shortened/truncated links like 'https://...'."
+        "description": "Markdown content. REQUIRED for create/append/update unless create includes image_url. For create, pass the complete page content in this same tool call; never create a title-only or metadata-only page. For append, pass ONLY the new section; existing content is preserved server-side and no line numbers are needed. For update, pass the FULL replacement page. Supports headers, lists, tables, code blocks, images, and video. Preserve complete direct media URLs and stash:// references from source tool results; Canvas detects video by media metadata rather than tool name. If you include sources/links, URLs must be complete and resolvable. NEVER use shortened/truncated links like 'https://...'."
       },
       "image_url": {
         "type": "string",

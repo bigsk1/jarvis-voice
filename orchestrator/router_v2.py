@@ -410,9 +410,23 @@ def build_tool_retrieval_signals(
             else:
                 notes.append(f"skipped_low_bias_prefer={prefer_match.group(1)}:{bias_raw}")
 
-        avoid_match = re.search(r"\bAVOID:\s*([A-Za-z][A-Za-z0-9_]{1,120})", line)
+        avoid_match = re.search(
+            r"\bAVOID:\s*([A-Za-z][A-Za-z0-9_]{1,120})(?:\s*\(-?([0-9]+(?:\.[0-9]+)?)\))?",
+            line,
+        )
         if avoid_match:
-            negative_tools.update(_parse_enabled_tool_names(avoid_match.group(1), enabled_set))
+            min_bias = get_float("TOOL_RAG_MIN_LEARNED_AVOID_BIAS", 0.50)
+            bias_raw = avoid_match.group(2)
+            bias_ok = True
+            if bias_raw is not None:
+                try:
+                    bias_ok = float(bias_raw) >= min_bias
+                except ValueError:
+                    bias_ok = True
+            if bias_ok:
+                negative_tools.update(_parse_enabled_tool_names(avoid_match.group(1), enabled_set))
+            else:
+                notes.append(f"skipped_low_bias_avoid={avoid_match.group(1)}:{bias_raw}")
 
         do_not_match = re.search(r"\bDO NOT use:\s*(.+)$", line, flags=re.IGNORECASE)
         if do_not_match:

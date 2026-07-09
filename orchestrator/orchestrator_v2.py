@@ -2166,17 +2166,28 @@ Mode: {self.mode}
                             }
                         )
                     
-                    # Max retries exceeded - sanitize error for voice output
-                    friendly_error = _sanitize_error_for_speech(error)
-                    speech_clean = (speech or "").strip()
-                    if speech_clean:
-                        final_speech = speech_clean
-                        if friendly_error and friendly_error.lower() not in speech_clean.lower():
-                            final_speech = f"{final_speech} {friendly_error.capitalize()}."
-                        elif not final_speech.endswith((".", "!", "?")):
-                            final_speech += "."
-                    else:
-                        final_speech = f"{friendly_error.capitalize()}."
+                    # Max retries exceeded. If useful tools already succeeded,
+                    # preserve that progress in the user-facing response instead
+                    # of replacing the whole turn with only the last tool error.
+                    final_speech = self._format_terminal_failure_with_progress(
+                        transcript,
+                        tool_name,
+                        error,
+                        arguments,
+                        tools_used,
+                        accumulated_data,
+                    )
+                    if not final_speech:
+                        friendly_error = _sanitize_error_for_speech(error)
+                        speech_clean = (speech or "").strip()
+                        if speech_clean:
+                            final_speech = speech_clean
+                            if friendly_error and friendly_error.lower() not in speech_clean.lower():
+                                final_speech = f"{final_speech} {friendly_error.capitalize()}."
+                            elif not final_speech.endswith((".", "!", "?")):
+                                final_speech += "."
+                        else:
+                            final_speech = f"{friendly_error.capitalize()}."
                     
                     # Auto-log failed conversation
                     self._log_conversation(transcript, final_speech, tools_used, success=False)
@@ -2989,6 +3000,39 @@ Your synthesized response:"""
             accumulated_data,
             max_turns,
         )
+
+    def _format_terminal_failure_with_progress(
+        self,
+        user_query: str,
+        failed_tool: str,
+        error: Any,
+        arguments: dict | None,
+        tools_used: list,
+        accumulated_data: dict,
+    ) -> str:
+        """Best-effort final speech when a late tool failure follows useful work."""
+        if not tools_used or not accumulated_data:
+            return ""
+
+        try:
+            progress = (self._format_max_turns_summary(
+                user_query,
+                tools_used,
+                accumulated_data,
+                max(1, len(tools_used)),
+            ) or "").strip()
+        except Exception as exc:
+            if sys.stdout.isatty():
+                print(f"⚠️ Failed to format progress after tool failure: {exc}", file=sys.stderr)
+            progress = ""
+
+        if not progress:
+            return ""
+
+        failure = _format_terminal_tool_failure(failed_tool, error, arguments).strip()
+        if failure and failure.lower() not in progress.lower():
+            return f"{progress.rstrip()} One final step failed: {failure}"
+        return progress
     
     # Fallback only: long stash reads should normally be condensed through text_summarizer first.
     def _excerpt_for_synthesis(self, text: str, max_chars: int = 8000) -> str:

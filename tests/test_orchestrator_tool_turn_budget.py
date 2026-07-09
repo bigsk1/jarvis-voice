@@ -99,13 +99,18 @@ class ToolTurnBudgetTests(unittest.TestCase):
         orchestrator._maybe_collect_feedback = lambda result, _transcript: result
         return orchestrator
 
-    def _run_with_max_turns(self, orchestrator, max_turns):
+    def _run_with_max_turns_and_retries(self, orchestrator, max_turns, max_retries):
+        orchestrator.max_retries = max_retries
+
         def fake_get_int(key, default=0):
             return max_turns if key == "MAX_TOOL_TURNS" else default
 
         with patch("orchestrator_v2.get_int", side_effect=fake_get_int):
             result = orchestrator.process("find local activities")
         return result
+
+    def _run_with_max_turns(self, orchestrator, max_turns):
+        return self._run_with_max_turns_and_retries(orchestrator, max_turns, orchestrator.max_retries)
 
     def test_tool_failure_retry_does_not_reset_max_tool_turn_budget(self):
         orchestrator = self._build_orchestrator(fail_on_calls={1})
@@ -137,6 +142,19 @@ class ToolTurnBudgetTests(unittest.TestCase):
         self.assertEqual(orchestrator.router.calls, 3)
         self.assertEqual(orchestrator.executor.calls, 3)
         self.assertEqual([entry["ok"] for entry in result["tool_trace"]], [True, True, False])
+
+    def test_late_terminal_failure_preserves_progress_summary(self):
+        orchestrator = self._build_orchestrator(fail_on_calls={3})
+
+        result = self._run_with_max_turns_and_retries(orchestrator, 5, 0)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(orchestrator.router.calls, 3)
+        self.assertEqual(orchestrator.executor.calls, 3)
+        self.assertIn("Reached max turns.", result["speech"])
+        self.assertIn("One final step failed", result["speech"])
+        self.assertIn("Serpapi yelp search failed", result["speech"])
+        self.assertEqual(result["tools_used"], ["serpapi_yelp_search", "serpapi_yelp_search"])
 
 
 if __name__ == "__main__":

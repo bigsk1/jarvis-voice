@@ -230,7 +230,10 @@ def main() -> int:
             params["sortby"] = sort_by
 
         merge_extra_params(params, extra_params, reserved_keys=RESERVED_KEYS)
-        payload = request_serpapi(params)
+        payload = request_serpapi(
+            params,
+            allowed_error_substrings=("Yelp hasn't returned any results",),
+        )
         results = extract_yelp_results(payload, limit=num_results)
 
         selected_place_id = place_id or (results[0].get("place_id") if results else None)
@@ -265,6 +268,7 @@ def main() -> int:
             "top_results": results[:5],
             "top_url": results[0].get("url") if results else None,
             "place_id": selected_place_id,
+            "serpapi_error": payload.get("error"),
             "search_metadata": payload.get("search_metadata", {}),
             "search_information": payload.get("search_information", {}),
             "proxy_enabled": get_proxy_enabled(),

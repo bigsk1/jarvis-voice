@@ -168,3 +168,27 @@ def test_create_page_updates_existing_page_with_same_title():
     assert result["data"]["base_url"] == "http://canvas.lan:8890"
     assert result["data"]["updated_existing"] is True
     assert not any(method == "POST" and endpoint == "/pages" for method, endpoint, _ in calls)
+
+
+def test_create_page_rejects_empty_content_before_api_call(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(canvas_module, "check_canvas_health", lambda: True)
+
+    def fake_api(method, endpoint, data=None):
+        calls.append((method, endpoint, data))
+        raise AssertionError(f"Unexpected API call: {method} {endpoint}")
+
+    monkeypatch.setattr(canvas_module, "api_request", fake_api)
+
+    result = create_page(
+        "Hillsboro Kids Activities - July 15-16, 2026",
+        "",
+        tags=["activities"],
+        source_query="activities 7/15-7/16 nephew 10yo Hillsboro",
+        pinned=True,
+    )
+
+    assert result["ok"] is False
+    assert "requires content or an image" in result["error"]
+    assert calls == []

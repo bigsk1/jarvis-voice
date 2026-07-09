@@ -367,6 +367,16 @@ def create_page(title: str, content: str, tags: list[str] = None,
     content = _unwrap_outer_markdown_fence(content)
     content = _normalize_bare_urls_in_sources_sections(content)
 
+    if not (content or "").strip():
+        return {
+            "ok": False,
+            "error": "Canvas create requires content or an image to save.",
+            "speech": (
+                "I can't create an empty Canvas page. "
+                "Pass the full Markdown content or an image to save."
+            ),
+        }
+
     truncated_urls = _find_truncated_urls(content or "")
     if truncated_urls:
         return {

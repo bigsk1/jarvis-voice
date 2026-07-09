@@ -95,6 +95,7 @@ def request_serpapi(
     *,
     use_proxy: bool = True,
     fallback_on_proxy_fail: bool = True,
+    allowed_error_substrings: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     final_params = dict(params)
     final_params["api_key"] = get_api_key()
@@ -114,6 +115,10 @@ def request_serpapi(
 
     payload = response.json()
     if payload.get("error"):
+        error_text = str(payload.get("error"))
+        allowed_errors = tuple(allowed_error_substrings or ())
+        if any(allowed.lower() in error_text.lower() for allowed in allowed_errors):
+            return payload
         raise RuntimeError(f"SerpApi error: {payload.get('error')}")
     return payload
 

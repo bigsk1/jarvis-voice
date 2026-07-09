@@ -30,6 +30,7 @@ class ToolRagSignalsTests(unittest.TestCase):
             "TOOL_RAG_APPEND_POSITIVE_SIGNALS",
             "TOOL_RAG_EXCLUDE_NEGATIVE_SIGNALS",
             "TOOL_RAG_MIN_LEARNED_PREFER_BIAS",
+            "TOOL_RAG_MIN_LEARNED_AVOID_BIAS",
             "TOOL_RAG_MEMORY_TOOL_SIGNALS_ENABLED",
             "TOOL_RAG_TRACE_ENABLED",
             "TOOL_SIMILARITY_THRESHOLD",
@@ -43,6 +44,7 @@ class ToolRagSignalsTests(unittest.TestCase):
         os.environ["TOOL_RAG_APPEND_POSITIVE_SIGNALS"] = "true"
         os.environ["TOOL_RAG_EXCLUDE_NEGATIVE_SIGNALS"] = "true"
         os.environ["TOOL_RAG_MIN_LEARNED_PREFER_BIAS"] = "0.40"
+        os.environ["TOOL_RAG_MIN_LEARNED_AVOID_BIAS"] = "0.40"
         os.environ["TOOL_RAG_MEMORY_TOOL_SIGNALS_ENABLED"] = "false"
         os.environ["TOOL_RAG_TRACE_ENABLED"] = "true"
         os.environ["TOOL_SIMILARITY_THRESHOLD"] = "0.23"
@@ -100,6 +102,25 @@ Current request: email Riley
         self.assertIn("send_email", signals.conflicted_tools)
         self.assertNotIn("send_email", signals.positive_tools)
         self.assertNotIn("send_email", signals.negative_tools)
+
+    def test_weak_avoid_signal_is_not_a_hard_exclusion(self):
+        prompt = """
+=== TOOL PREFERENCES ===
+  ❌ AVOID: generate_image (-0.12)
+
+Current request: can you generate an image of now that quiet night looks?
+"""
+        signals = build_tool_retrieval_signals(prompt, {"generate_image"})
+
+        self.assertNotIn("generate_image", signals.negative_tools)
+        self.assertIn("skipped_low_bias_avoid=generate_image:0.12", signals.notes)
+        names, meta = merge_tool_signal_names(
+            ["generate_image", "analyze_image"],
+            signals,
+            {"generate_image", "analyze_image"},
+        )
+        self.assertIn("generate_image", names)
+        self.assertEqual(meta["negative"], [])
 
     def test_merge_appends_positive_and_filters_negative_non_ghost(self):
         signals = ToolRetrievalSignals(
