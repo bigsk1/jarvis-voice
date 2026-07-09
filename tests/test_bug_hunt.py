@@ -314,10 +314,73 @@ def test_engine_records_only_independently_confirmed_candidates(tmp_path):
     assert finding["title"] == "Example state is dropped"
     assert finding["verification"]["verdict"] == "confirmed"
     assert finding["model"] == DEFAULT_MODEL
+    assert finding["provider"] == "ollama"
+    assert finding["tool_calls"] == {"investigator": 0, "verifier": 0, "total": 0}
+    assert finding["duration_seconds"] >= 0
     assert engine.total_usage["total_tokens"] == 30
     memory = (tmp_path / MEMORY_RELATIVE_PATH).read_text()
     assert "Status: confirmed" in memory
+    assert "Repo tool calls: 0 (investigator 0, verifier 0)" in memory
+    assert "Duration seconds:" in memory
     assert outcome.finding_id in memory
+
+
+def test_engine_can_create_xai_oauth_provider(tmp_path):
+    _write(tmp_path, "lib/example.py", "safe test content\n")
+    created = object()
+
+    def fake_config(name, default=None):
+        return {
+            "XAI_API_KEY": "api-key-present-but-oauth-wins",
+            "XAI_MODEL": "grok-4.5",
+        }.get(name, default)
+
+    engine = BugHuntEngine(
+        tmp_path,
+        provider_type="xai",
+        xai_auth_mode="oauth",
+        model="grok-4.5",
+        tracked_files={"lib/example.py"},
+    )
+
+    with (
+        patch("config_loader.get_config_value", side_effect=fake_config),
+        patch("llm_provider.create_provider", return_value=created) as create_provider,
+    ):
+        provider = engine._create_provider()
+
+    assert provider is created
+    create_provider.assert_called_once_with(
+        "xai",
+        api_key="api-key-present-but-oauth-wins",
+        model="grok-4.5",
+        auth_mode="oauth",
+    )
+
+
+def test_xai_provider_receives_openai_style_tool_schema(tmp_path):
+    _write(tmp_path, "lib/example.py", "safe test content\n")
+    provider = _FakeProvider([json.dumps({"action": "no_finding"})])
+    engine = BugHuntEngine(
+        tmp_path,
+        provider=provider,
+        provider_type="xai",
+        model="grok-4.5",
+        tracked_files={"lib/example.py"},
+    )
+
+    result = engine._call_agent(
+        system_prompt="Return JSON.",
+        task="Inspect one thing.",
+        allow_memory_write=False,
+    )
+
+    assert json.loads(result)["action"] == "no_finding"
+    tool_schema = provider.calls[0]["tools"][0]
+    assert tool_schema["type"] == "function"
+    assert tool_schema["function"]["name"] == "bug_hunt_repo"
+    assert tool_schema["function"]["parameters"]["type"] == "object"
+    assert "input_schema" not in tool_schema
 
 
 def test_dismissals_are_mode_filtered_and_injected_for_both_agents(tmp_path):
@@ -396,11 +459,11 @@ def test_progress_line_shows_severity_only_for_confirmed_findings():
 
     assert confirmed == (
         "[12:34:56] iteration 42: confirmed [high] - "
-        "Scheduled task can remain locked (tokens~1234)"
+        "Scheduled task can remain locked (reads 0, inv/ver 0/0, tokens~1234)"
     )
     assert rejected == (
         "[12:35:10] iteration 43: rejected - "
-        "Verifier rejected candidate (tokens~1300)"
+        "Verifier rejected candidate (reads 0, inv/ver 0/0, tokens~1300)"
     )
 
 
@@ -428,6 +491,10 @@ def test_engine_executes_plain_json_tool_action_from_cloud_model(tmp_path):
     outcome = engine.run_iteration(1)
 
     assert outcome.action == "no_finding"
+    assert outcome.tool_calls == 1
+    assert outcome.investigator_tool_calls == 1
+    assert outcome.verifier_tool_calls == 0
+    assert outcome.duration_seconds >= 0
     assert len(provider.calls) == 2
     first_system_prompt = provider.calls[0]["system_prompt"]
     assert "non-authoritative navigation aids" in first_system_prompt

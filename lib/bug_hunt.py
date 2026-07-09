@@ -18,6 +18,7 @@ from typing import Any
 
 
 DEFAULT_MODEL = "glm-5.2:cloud"
+DEFAULT_PROVIDER = "ollama"
 MEMORY_RELATIVE_PATH = "docs/personal/bug-hunt-memory.md"
 RESULTS_RELATIVE_PATH = "docs/personal/bug-hunt-findings.jsonl"
 LEDGER_RELATIVE_PATH = "docs/personal/live-usage-bug-ledger.txt"
@@ -258,6 +259,10 @@ class IterationOutcome:
     finding_id: str | None = None
     severity: str | None = None
     message: str = ""
+    tool_calls: int = 0
+    investigator_tool_calls: int = 0
+    verifier_tool_calls: int = 0
+    duration_seconds: float = 0.0
 
 
 def format_progress_line(
@@ -270,9 +275,11 @@ def format_progress_line(
     """Render one compact CLI progress line."""
     severity = f" [{outcome.severity}]" if outcome.finding_written and outcome.severity else ""
     detail = f" - {outcome.message}" if outcome.message else ""
+    duration = f", {outcome.duration_seconds:.1f}s" if outcome.duration_seconds else ""
     return (
         f"[{timestamp}] iteration {iteration}: {outcome.action}{severity}{detail} "
-        f"(tokens~{usage['total_tokens']})"
+        f"(reads {outcome.tool_calls}, inv/ver {outcome.investigator_tool_calls}/"
+        f"{outcome.verifier_tool_calls}{duration}, tokens~{usage['total_tokens']})"
     )
 
 
@@ -620,7 +627,9 @@ class BugHuntEngine:
         self,
         root: Path,
         *,
-        model: str = DEFAULT_MODEL,
+        model: str | None = None,
+        provider_type: str = DEFAULT_PROVIDER,
+        xai_auth_mode: str | None = None,
         max_tool_turns: int = 8,
         min_confidence: float = 0.8,
         docs_only: bool = False,
@@ -628,7 +637,11 @@ class BugHuntEngine:
         tracked_files: set[str] | None = None,
     ):
         self.root = root.resolve()
-        self.model = model
+        self.provider_type = str(provider_type or DEFAULT_PROVIDER).strip().lower()
+        if self.provider_type not in {"ollama", "xai"}:
+            raise ValueError("BugHuntEngine provider_type must be 'ollama' or 'xai'")
+        self.model = model or (DEFAULT_MODEL if self.provider_type == "ollama" else None)
+        self.xai_auth_mode = str(xai_auth_mode).strip().lower() if xai_auth_mode else None
         self.max_tool_turns = max(1, max_tool_turns)
         self.min_confidence = min(max(float(min_confidence), 0.0), 1.0)
         self.docs_only = bool(docs_only)
@@ -638,18 +651,48 @@ class BugHuntEngine:
         self.tool = BugHuntRepoTool(self.policy)
         self.provider = provider
         self.total_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        self._last_agent_tool_calls = 0
 
     def _create_provider(self):
         from config_loader import get_config_value
         from llm_provider import create_provider
-        from ollama_utils import get_effective_ollama_model
 
+        if self.provider_type == "xai":
+            from model_catalog import get_provider_fallback_model
+
+            model = self.model or get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
+            provider = create_provider(
+                "xai",
+                api_key=get_config_value("XAI_API_KEY"),
+                model=model,
+                auth_mode=self.xai_auth_mode,
+            )
+            self.model = getattr(provider, "model", model)
+            return provider
+
+        from ollama_utils import get_effective_ollama_model
         model = get_effective_ollama_model("cloud", model_override=self.model)
-        return create_provider(
+        provider = create_provider(
             "ollama",
             base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),
             model=model,
         )
+        self.model = getattr(provider, "model", model)
+        return provider
+
+    def _tool_schema_for_provider(self, tool_schema: dict[str, Any]) -> dict[str, Any]:
+        """Return the bug-hunt repo tool in the selected provider's schema shape."""
+
+        if self.provider_type == "xai":
+            return {
+                "type": "function",
+                "function": {
+                    "name": tool_schema["name"],
+                    "description": tool_schema.get("description", ""),
+                    "parameters": tool_schema.get("input_schema", {"type": "object"}),
+                },
+            }
+        return tool_schema
 
     def _call_agent(
         self,
@@ -659,8 +702,12 @@ class BugHuntEngine:
         allow_memory_write: bool,
     ) -> str:
         messages: list[dict[str, Any]] = [{"role": "user", "content": task}]
-        tool_schema = BUG_HUNT_TOOL if allow_memory_write else READ_ONLY_BUG_HUNT_TOOL
+        tool_schema = self._tool_schema_for_provider(
+            BUG_HUNT_TOOL if allow_memory_write else READ_ONLY_BUG_HUNT_TOOL
+        )
         allowed_text_actions = set(READ_TOOL_ACTIONS)
+        tool_calls = 0
+        self._last_agent_tool_calls = 0
 
         for turn_index in range(self.max_tool_turns):
             text, tool_call, usage, _thinking = self.provider.chat_with_tools(
@@ -686,6 +733,8 @@ class BugHuntEngine:
             if text_tool_arguments is not None:
                 tool_call = {"name": "bug_hunt_repo", "arguments": text_tool_arguments}
             if tool_call:
+                tool_calls += 1
+                self._last_agent_tool_calls = tool_calls
                 name = str(tool_call.get("name") or "")
                 arguments = tool_call.get("arguments") or {}
                 if name != "bug_hunt_repo" or not isinstance(arguments, dict):
@@ -712,6 +761,7 @@ class BugHuntEngine:
             if text and str(text).strip():
                 if str(text).strip().lower().startswith("error:"):
                     raise RuntimeError(str(text).strip())
+                self._last_agent_tool_calls = tool_calls
                 return str(text).strip()
             raise RuntimeError("Provider returned neither text nor a tool call")
         messages.append({
@@ -732,6 +782,7 @@ class BugHuntEngine:
         if tool_call:
             raise RuntimeError("Provider attempted a tool call after the tool budget was removed")
         if text and str(text).strip() and not str(text).strip().lower().startswith("error:"):
+            self._last_agent_tool_calls = tool_calls
             return str(text).strip()
         raise RuntimeError(f"Agent failed to finalize after {self.max_tool_turns} tool turns")
 
@@ -956,6 +1007,9 @@ class BugHuntEngine:
             f"\n\n## Latest Iteration Outcome\n"
             f"- Status: {outcome.action}\n"
             f"- Verified finding ID: {outcome.finding_id or 'none'}\n"
+            f"- Repo tool calls: {outcome.tool_calls} "
+            f"(investigator {outcome.investigator_tool_calls}, verifier {outcome.verifier_tool_calls})\n"
+            f"- Duration seconds: {outcome.duration_seconds:.1f}\n"
             f"- Detail: {detail}\n"
         )
         available = MAX_MODE_MEMORY_CHARS - len(disposition) - 1
@@ -983,6 +1037,20 @@ class BugHuntEngine:
         }
 
     def run_iteration(self, iteration: int) -> IterationOutcome:
+        started = time.monotonic()
+        investigator_tool_calls = 0
+        verifier_tool_calls = 0
+
+        def finish(outcome: IterationOutcome) -> IterationOutcome:
+            outcome.investigator_tool_calls = investigator_tool_calls
+            outcome.verifier_tool_calls = verifier_tool_calls
+            outcome.tool_calls = investigator_tool_calls + verifier_tool_calls
+            outcome.duration_seconds = time.monotonic() - started
+            return outcome
+
+        def persist(memory_update: str, outcome: IterationOutcome) -> IterationOutcome:
+            return self._persist_iteration_memory(memory_update, finish(outcome))
+
         lenses = DOCS_LENSES if self.docs_only else DEFAULT_LENSES
         lens = lenses[(iteration - 1) % len(lenses)]
         mode_prompt = DOCS_MODE_PROMPT if self.docs_only else CODE_MODE_PROMPT
@@ -1009,19 +1077,20 @@ Inspect a meaningful current path under this lens. Use the repository tool repea
             task=task,
             allow_memory_write=False,
         )
+        investigator_tool_calls = self._last_agent_tool_calls
         investigator = self._extract_json(investigator_text)
         memory_update = str(investigator.get("memory_update") or "").strip()
 
         action = str(investigator.get("action") or "no_finding")
         if action != "candidate":
-            return self._persist_iteration_memory(
+            return persist(
                 memory_update,
                 IterationOutcome(action=action, message="No verified candidate"),
             )
 
         candidate = investigator.get("candidate")
         if not isinstance(candidate, dict):
-            return self._persist_iteration_memory(
+            return persist(
                 memory_update,
                 IterationOutcome(action="no_finding", message="Candidate payload missing"),
             )
@@ -1029,7 +1098,7 @@ Inspect a meaningful current path under this lens. Use the repository tool repea
             candidate["evidence"] = self._validate_evidence(candidate.get("evidence"))
             candidate_confidence = float(candidate.get("confidence") or 0.0)
         except (ValueError, TypeError, PermissionError, OSError) as exc:
-            return self._persist_iteration_memory(
+            return persist(
                 memory_update,
                 IterationOutcome(action="rejected", message=f"Invalid candidate evidence: {exc}"),
             )
@@ -1037,7 +1106,7 @@ Inspect a meaningful current path under this lens. Use the repository tool repea
             self._is_documentation_target(item["path"])
             for item in candidate["evidence"]
         ):
-            return self._persist_iteration_memory(
+            return persist(
                 memory_update,
                 IterationOutcome(
                     action="rejected",
@@ -1045,7 +1114,7 @@ Inspect a meaningful current path under this lens. Use the repository tool repea
                 ),
             )
         if candidate_confidence < self.min_confidence:
-            return self._persist_iteration_memory(
+            return persist(
                 memory_update,
                 IterationOutcome(
                     action="rejected",
@@ -1074,13 +1143,14 @@ Use current repository evidence and return the required verifier JSON.
             task=verifier_task,
             allow_memory_write=False,
         )
+        verifier_tool_calls = self._last_agent_tool_calls
         verifier = self._extract_json(verifier_text)
         try:
             verifier_confidence = float(verifier.get("confidence") or 0.0)
         except (TypeError, ValueError):
             verifier_confidence = 0.0
         if verifier.get("verdict") != "confirmed" or verifier_confidence < self.min_confidence:
-            return self._persist_iteration_memory(
+            return persist(
                 memory_update,
                 IterationOutcome(
                     action="rejected",
@@ -1093,7 +1163,7 @@ Use current repository evidence and return the required verifier JSON.
         try:
             verifier["evidence"] = self._validate_evidence(verifier.get("evidence"))
         except (ValueError, TypeError, PermissionError, OSError) as exc:
-            return self._persist_iteration_memory(
+            return persist(
                 memory_update,
                 IterationOutcome(action="rejected", message=f"Invalid verifier evidence: {exc}"),
             )
@@ -1103,8 +1173,15 @@ Use current repository evidence and return the required verifier JSON.
             "timestamp": datetime.now().isoformat(),
             "head_commit": self._head_commit(),
             "model": self.model,
+            "provider": self.provider_type,
             "hunt_mode": "docs_only" if self.docs_only else "code",
             "iteration": iteration,
+            "tool_calls": {
+                "investigator": investigator_tool_calls,
+                "verifier": verifier_tool_calls,
+                "total": investigator_tool_calls + verifier_tool_calls,
+            },
+            "duration_seconds": round(time.monotonic() - started, 3),
             "title": self._bounded_text(candidate.get("title"), 300),
             "severity": self._bounded_text(candidate.get("severity") or "medium", 20),
             "confidence": min(candidate_confidence, verifier_confidence),
@@ -1123,12 +1200,12 @@ Use current repository evidence and return the required verifier JSON.
             "verification": verifier,
         }
         if finding["severity"] not in {"low", "medium", "high", "critical"}:
-            return self._persist_iteration_memory(
+            return persist(
                 memory_update,
                 IterationOutcome(action="rejected", message="Candidate severity is invalid"),
             )
         if not finding["title"] or not finding["symptom"] or not finding["why_bug"]:
-            return self._persist_iteration_memory(
+            return persist(
                 memory_update,
                 IterationOutcome(
                     action="rejected",
@@ -1137,11 +1214,11 @@ Use current repository evidence and return the required verifier JSON.
             )
         finding_id = self.policy.append_finding(finding)
         if not finding_id:
-            return self._persist_iteration_memory(
+            return persist(
                 memory_update,
                 IterationOutcome(action="duplicate", message="Duplicate finding fingerprint"),
             )
-        return self._persist_iteration_memory(
+        return persist(
             memory_update,
             IterationOutcome(
                 action="confirmed",
@@ -1182,6 +1259,7 @@ Use current repository evidence and return the required verifier JSON.
             for iteration in range(1, max(1, max_iterations) + 1):
                 if deadline and datetime.now() >= deadline:
                     break
+                started = time.monotonic()
                 try:
                     outcome = self.run_iteration(iteration)
                     consecutive_errors = 0
@@ -1189,7 +1267,11 @@ Use current repository evidence and return the required verifier JSON.
                     raise
                 except Exception as exc:
                     consecutive_errors += 1
-                    outcome = IterationOutcome(action="error", message=str(exc))
+                    outcome = IterationOutcome(
+                        action="error",
+                        message=str(exc),
+                        duration_seconds=time.monotonic() - started,
+                    )
                 outcomes.append(outcome)
                 if progress_callback:
                     progress_callback(iteration, outcome, self.total_usage)
