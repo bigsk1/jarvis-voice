@@ -17,6 +17,8 @@ qa_prepend: |
 
 tool_calling_prepend: |
   Make the desired product-search or compatibility-check action explicit before supporting context from the product category.
+  If tool_search already returned relevant search or fetch tools, choose one exact surfaced tool and use it next. Do not call tool_search again just to rediscover similar search tools.
+  For live local activities, events, sports schedules, venues, hours, or family outing research, prefer a concrete search tool such as Brave local/web search, SerpApi maps/Yelp/search, crawl_url, or fetch once those tools are surfaced.
 
 completion_guard_eval_prepend: |
   For shopping or compatibility tasks, treat answers that provide only identifiers without actionable listings or verification as potentially incomplete.

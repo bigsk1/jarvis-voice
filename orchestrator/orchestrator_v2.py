@@ -1495,7 +1495,7 @@ Mode: {self.mode}
                 oai_reason = self._openai_continuation_fallback_reason(openai_provider_continuation)
                 if oai_reason is None and openai_provider_continuation:
                     route_payload = self._build_openai_responses_route_input(
-                        retrieval_query=enhanced_transcript,
+                        retrieval_query=turn_input,
                         continuation=openai_provider_continuation,
                         turn_notice=turn_notice,
                     )
@@ -1521,7 +1521,7 @@ Mode: {self.mode}
                 continuation_fallback_reason = self._xai_continuation_fallback_reason(xai_provider_continuation)
                 if continuation_fallback_reason is None and xai_provider_continuation:
                     route_payload = self._build_xai_structural_route_input(
-                        retrieval_query=enhanced_transcript,
+                        retrieval_query=turn_input,
                         continuation=xai_provider_continuation,
                         turn_notice=turn_notice,
                     )
