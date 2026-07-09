@@ -107,14 +107,17 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
         return {
             "image": get_config_value("IMAGE_TOOL_PROVIDER"),
             "tts": get_config_value("TTS_PROVIDER"),
+            "tool_rag": get_config_value("CLOUD_TOOL_RAG_LIMIT"),
             "child_image": child.get("JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER"),
             "child_tts": child.get("JARVIS_OVERRIDE_TTS_PROVIDER"),
+            "child_tool_rag": child.get("JARVIS_OVERRIDE_CLOUD_TOOL_RAG_LIMIT"),
         }
 
     web_config = {
         "cloud": {
             "image_provider": "gemini",
             "tts_provider": "elevenlabs",
+            "tool_rag_limit": 9,
         }
     }
     image_data = {"action": "image", "settings": {"provider": "openai"}}
@@ -125,7 +128,9 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
     assert result == {
         "image": "openai",
         "tts": "elevenlabs",
+        "tool_rag": "9",
         "child_image": "openai",
         "child_tts": "elevenlabs",
+        "child_tool_rag": "9",
     }
     assert dict(os.environ) == before

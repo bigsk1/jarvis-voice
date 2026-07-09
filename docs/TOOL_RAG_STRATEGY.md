@@ -13,7 +13,7 @@ Previously, `ToolRegistry` loaded **ALL** enabled tools into the LLM's system pr
 -   **Cloud Models (Claude/GPT-4)**: High cost, potential confusion with similar tools.
 -   **Local Models (Ollama)**: **CRITICAL FAILURE POINT**. Small context windows (8k-32k) get filled with tool definitions, leaving no room for conversation history or reasoning.
 
-**Solution**: Treat "Tools" like "Memories". Store them in a vector database and only retrieve the most relevant tools for the current request, then merge in a small always-available ghost set and any exact tool preferences that survived guardrails.
+**Solution**: Treat "Tools" like "Memories". Store them in a vector database, retrieve the most relevant tools for the current request, then merge prioritized ghost tools and exact tool preferences before applying the final schema cap.
 
 ---
 
@@ -28,7 +28,7 @@ graph TD
     C --> D{Tool RAG}
     D -- Compact Query Embedding --> E[Memory DB]
     E -- Ranked Tools --> D
-    D -- Ranked Tools + Ghost Tools + Exact Positive Signals --> F[LLM System Prompt]
+    D -- Capped Ranked Tools + Ghost/Exact Signals --> F[LLM System Prompt]
     A --> F
     F --> G[LLM Decision]
 ```
@@ -70,11 +70,11 @@ We modified `lib/tool_schema.py` to support retrieval.
 1.  **User speaks**: "What is the price of Bitcoin?"
 2.  **Router**: Calls `registry.find_tools("price of Bitcoin")`.
 3.  **Vector Search**: DB finds `crypto_price` (high similarity).
-4.  **Ghost Injection**: Registry adds critical "Ghost Tools" (Time, Memory, Logs).
+4.  **Ghost Prioritization**: Registry merges critical "Ghost Tools" (Time, Memory, Logs) before the final schema cap is applied.
 5.  **LLM Prompt**: Receives `[crypto_price, get_time, search_memory, ...]`.
 
 ### The "Ghost Tool" Pattern
-These tools are **ALWAYS** available, ensuring basic functionality never fails even if retrieval misses:
+These tools are priority candidates, ensuring basic functionality gets first chance inside the final schema cap when retrieval misses:
 -   `search_memory` / `semantic_recall` (Memory access)
 -   `remember` (Saving info)
 -   `check_tool_logs` (Self-debugging)
@@ -86,7 +86,8 @@ These tools are **ALWAYS** available, ensuring basic functionality never fails e
 -   it discovers tools from the **current live registry** rather than a second maintained metadata system
 -   it respects profile-disabled tools and request-scoped exclusions
 -   it returns **summaries first**, then surfaces exact tool-name hints so the next routing turn can make those exact tools eligible for direct use without exposing every full schema up front
--   it is a mandatory ghost tool in code, so it does **not** need to be added to `GHOST_TOOLS` in env files
+-   it is a mandatory discovery tool in code, so it does **not** need to be added to `GHOST_TOOLS` in env files
+-   final schema caps still prioritize `tool_search` as the discovery escape hatch
 
 ---
 
@@ -108,9 +109,9 @@ source ~/jarvis-venv/bin/activate
 ```
 
 ### B. Router Logic (`orchestrator/router_v2.py`)
--   **Local Mode**: Retrieves top **5** semantic tools, then adds ghost tools and exact positive signals.
--   **Cloud Mode**: Retrieves top **15** semantic tools, then adds ghost tools and exact positive signals.
--   **Ghost tools**: Always appended so core memory/log/time/artifact tools remain available even when similarity search misses.
+-   **Local Mode**: Defaults to a final schema cap of **6** tools (`LOCAL_TOOL_RAG_LIMIT`).
+-   **Cloud Mode**: Defaults to a final schema cap of **15** tools (`CLOUD_TOOL_RAG_LIMIT`).
+-   **Ghost tools**: Merged before the final cap so core memory/log/time/artifact tools are prioritized without bypassing the tool budget.
 -   **Positive tool signals**: UI-selected hints and high-confidence learned `PREFER: tool (+score)` lines can append an enabled non-ghost tool even if vector search missed it.
 -   **Negative tool signals**: `DO NOT use: tool` / `AVOID: tool` style signals can exclude non-ghost tools from the semantic result. If the same tool is both preferred and avoided in the same structured signal set, the conflict is neutralized.
 -   **Memory/intel tool-name signals**: Exact-match extraction from general memory/intel prose is experimental and disabled by default because that prose is noisier than explicit learned strategy lines.
@@ -125,7 +126,7 @@ source ~/jarvis-venv/bin/activate
 
 Current behavior:
 -   semantic discovery queries use the live tool registry plus request exclusions
--   semantic and browse discovery skip ghost tools that are already visible in the router prompt
+-   semantic and browse discovery focus on non-ghost tools because Tool RAG already considers ghost tools during routing
 -   exact inspection still allows ghost tools by exact name, except `tool_search` itself
 -   discovery ranking uses a zero-threshold semantic pass with a wider raw candidate pool than normal routing
 -   results are summary-first by default, with optional schema expansion for exact tool-name inspection
@@ -135,6 +136,28 @@ Current caveats:
 -   discovery still depends on synced tool embeddings, so brand-new or changed tools need `./bin/sync-tools.py`
 -   discovery is wider than the normal router shortlist, but it is still bounded by a raw top-K pool
 -   the next routing turn still runs normal Tool RAG plus exact positive hints; it is **not** true exact hydration yet
+
+## Final Schema Caps
+
+Tool RAG now treats the mode limits as final schema caps, not merely vector
+retrieval limits:
+
+```bash
+CLOUD_TOOL_RAG_LIMIT=15
+LOCAL_TOOL_RAG_LIMIT=6
+```
+
+The router retrieves candidates, merges ghost tools and exact positive signals,
+then caps the final tool schema list. Priority is:
+
+1. explicit positive signals such as UI-selected tool hints
+2. mandatory discovery tools such as `tool_search`
+3. retrieved non-ghost tools in rank order
+4. remaining ghost tools only if room remains
+
+Request surfaces can pass a one-turn lower cap for tightly scoped work. The Web
+UI's Send-to-Canvas action uses this to keep the schema list small while still
+leaving `tool_search` available as an escape hatch.
 
 Possible future evolution:
 -   if token pressure becomes the main concern, a later optimization could switch the turn after `tool_search` into a true exact-hydration mode that exposes only ghost tools plus the selected exact tool names
@@ -292,10 +315,10 @@ logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl
 Useful fields:
 - `signal_source`: Which extraction path was used.
 - `similarity_threshold`: The threshold active for that route.
-- `retrieval_limit`: `5` local or `15` cloud before ghost/positive-signal merge.
+- `retrieval_limit` / `final_schema_limit`: `LOCAL_TOOL_RAG_LIMIT` or `CLOUD_TOOL_RAG_LIMIT`; the same value is used for vector retrieval and the final post-merge schema cap.
 - `compact_query`: The query embedded for retrieval, capped for log readability.
 - `ranked_tools`: Similarity-ranked candidates from the trace search.
-- `final_tools` / `final_tool_count`: The actual tool names made available to the LLM after merging ghost tools and structured signals.
+- `final_tools` / `final_tool_count`: The actual tool names made available to the LLM after merging ghost tools and structured signals, then applying the final schema cap.
 - `tool_schema_chars` / `tool_schema_est_tokens`: Rough size of the schemas sent to the LLM. Token estimate is `chars / 4`, useful for tuning but not an exact provider bill.
 - `tool_schema_top`: Largest schema contributors in the final tool list.
 - `positive_tool_signals`, `negative_tool_signals`, and `excluded_tools`: Why exact signals changed the final list.

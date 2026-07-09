@@ -92,6 +92,12 @@ def _scoped_by_mode(method):
             if value is not None:
                 scoped_overrides[config_key] = str(value)
 
+        tool_rag_limit = mode_overrides.get('tool_rag_limit')
+        if tool_rag_limit is not None:
+            scoped_overrides[
+                'LOCAL_TOOL_RAG_LIMIT' if mode == 'local' else 'CLOUD_TOOL_RAG_LIMIT'
+            ] = str(tool_rag_limit)
+
         tts_provider = mode_overrides.get('tts_provider')
         allowed_tts = LOCAL_TTS_PROVIDER_OPTIONS if mode == 'local' else CLOUD_TTS_PROVIDER_OPTIONS
         if tts_provider not in (None, *allowed_tts):
@@ -186,6 +192,19 @@ class ChatHandler:
             if len(hints) >= max_hints:
                 break
         return hints
+
+    @staticmethod
+    def _sanitize_tool_rag_limit(raw_limit) -> int | None:
+        """Validate a one-request Tool RAG schema cap from the web client."""
+        if raw_limit in (None, ''):
+            return None
+        try:
+            limit = int(raw_limit)
+        except (TypeError, ValueError):
+            return None
+        if limit < 1:
+            return None
+        return min(limit, 50)
 
     @staticmethod
     def _format_tool_hint_context(tool_hints: list[str], request_kind: str = '') -> str:
@@ -1914,6 +1933,7 @@ Previous structured data:
                     if data.get('request_kind') == 'canvas_export'
                     else ''
                 ),
+                'tool_rag_limit': self._sanitize_tool_rag_limit(data.get('tool_rag_limit')),
             }
             
             from vision_multimodal import max_vision_images, normalize_web_image_payload
@@ -1995,6 +2015,8 @@ Previous structured data:
                 user_msg_data['tool_hints'] = prompt_meta['tool_hints']
             if prompt_meta.get('request_kind'):
                 user_msg_data['request_kind'] = prompt_meta['request_kind']
+            if prompt_meta.get('tool_rag_limit'):
+                user_msg_data['tool_rag_limit'] = prompt_meta['tool_rag_limit']
             store.add_message(conversation_id, 'user', message, data=user_msg_data if user_msg_data else None)
             
             # Update session
@@ -3321,10 +3343,15 @@ Previous structured data:
             
             # Process the query with conversation context, excluded tools, and forced overrides
             override_info = f", tool_overrides={list(tool_overrides.keys())}" if tool_overrides else ""
+            tool_rag_limit_info = (
+                f", tool_rag_limit={prompt_meta.get('tool_rag_limit')}"
+                if prompt_meta.get('tool_rag_limit')
+                else ""
+            )
             vision_pre_analyzed = bool(vision_result)
             if vision_pre_analyzed:
                 print("[CHAT] Web upload vision complete - native server-side tools disabled for this request")
-            print(f"[CHAT] Calling orchestrator.process() with {len(conversation_history)} history messages, {len(blocked_tools)} blocked tools{override_info}...")
+            print(f"[CHAT] Calling orchestrator.process() with {len(conversation_history)} history messages, {len(blocked_tools)} blocked tools{override_info}{tool_rag_limit_info}...")
             from config_loader import config_override_scope
             feedback_overrides = (
                 {'FEEDBACK_RANDOM_ENABLED': 'false'}
@@ -3339,6 +3366,7 @@ Previous structured data:
                     tool_overrides=tool_overrides if tool_overrides else None,
                     vision_pre_analyzed=vision_pre_analyzed,
                     request_kind=prompt_meta.get('request_kind', ''),
+                    tool_rag_limit=prompt_meta.get('tool_rag_limit'),
                 )
             
             # Clean up cancellation flag

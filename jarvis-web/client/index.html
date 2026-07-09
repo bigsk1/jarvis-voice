@@ -516,6 +516,14 @@
             </div>
             <div class="setting-group">
               <label class="setting-label">
+                Tool RAG Limit
+                <span class="setting-default" id="tool-rag-limit-default"></span>
+              </label>
+              <input type="number" class="setting-input" id="setting-tool-rag-limit" min="1" max="50" step="1" placeholder="Use env default" style="width: 110px;">
+              <span class="setting-desc">Final tool schema cap for normal chat. Focused actions can use a lower one-turn cap.</span>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
                 Image Provider
                 <span class="setting-default" id="image-provider-default"></span>
               </label>

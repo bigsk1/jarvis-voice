@@ -219,6 +219,7 @@ Tools executed so far:
             self.assertTrue(entry["system_prompt_sent"])
             self.assertEqual(entry["tool_schema_est_tokens"], 309)
             self.assertEqual(entry["tool_schema_top"][0]["name"], "send_email")
+            self.assertEqual(entry["final_schema_limit"], 15)
 
 
 if __name__ == "__main__":

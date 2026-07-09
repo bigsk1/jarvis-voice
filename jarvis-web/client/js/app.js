@@ -1595,6 +1595,12 @@ class JarvisApp {
         if (routerPromptSetting.is_override) {
           routerPromptDefault.textContent = `⚡ override: ${routerPromptSetting.value} · (${envFile} default: ${routerPromptSetting.default || 'v1'})`;
         }
+        this._populateNumericEnvSetting(
+          'setting-tool-rag-limit',
+          'tool-rag-limit-default',
+          s.tool_rag?.limit,
+          envFile,
+        );
         
         // Populate Image Provider
         this._populateMediaProviderDropdown('image');
@@ -1824,6 +1830,7 @@ class JarvisApp {
         const effectiveProvider = s.llm?.provider?.value || c.LLM_PROVIDER;
         const effectiveModel = s.llm?.model?.value || c[`${String(effectiveProvider).toUpperCase()}_MODEL`] || c.OLLAMA_MODEL || '(provider default)';
         const effectiveRouterPrompt = s.router_prompt?.version?.value || c.JARVIS_ROUTER_PROMPT_VERSION || 'v1';
+        const effectiveToolRagLimit = s.tool_rag?.limit?.value ?? c.TOOL_RAG_LIMIT;
         const effectiveCgEvalProvider = s.completion_guard?.eval_provider?.value || c.JARVIS_COMPLETION_GUARD_EVAL_PROVIDER;
         const effectiveCgEvalModel = s.completion_guard?.eval_model?.value || c.JARVIS_COMPLETION_GUARD_EVAL_MODEL || '(provider default)';
         const effectiveResponseStyle = s.response?.style?.value || c.JARVIS_RESPONSE_STYLE;
@@ -1990,6 +1997,10 @@ class JarvisApp {
               <span class="config-value">${Utils.escapeHtml(effectiveRouterPrompt)}</span>
             </div>
             <div class="config-item">
+              <span class="config-label">Tool RAG Limit</span>
+              <span class="config-value">${Utils.escapeHtml(effectiveToolRagLimit)}</span>
+            </div>
+            <div class="config-item">
               <span class="config-label">Completion Guard</span>
               <span class="config-value ${effectiveCgEnabled ? 'enabled' : 'disabled'}">${effectiveCgEnabled ? effectiveCgMode : 'off'}</span>
             </div>
@@ -2027,6 +2038,10 @@ class JarvisApp {
             <div class="config-item">
               <span class="config-label">TOOL_SIMILARITY_THRESHOLD_FULL</span>
               <span class="config-value">${c.TOOL_SIMILARITY_THRESHOLD_FULL || '(unset — same as base for full prompt embedding)'}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">${isLocal ? 'LOCAL_TOOL_RAG_LIMIT' : 'CLOUD_TOOL_RAG_LIMIT'}</span>
+              <span class="config-value">${Utils.escapeHtml(c.TOOL_RAG_LIMIT)}</span>
             </div>
             <div class="config-item">
               <span class="config-label">SEMANTIC_SIMILARITY_THRESHOLD</span>
@@ -3374,6 +3389,7 @@ class JarvisApp {
       }
       const qaWordLimitRaw = document.getElementById('setting-qa-word-limit').value.trim();
       const multiTurnWordLimitRaw = document.getElementById('setting-multi-turn-word-limit').value.trim();
+      const toolRagLimitRaw = document.getElementById('setting-tool-rag-limit').value.trim();
       const completionGuardAutoThresholdRaw = document.getElementById('setting-completion-guard-auto-threshold').value.trim();
       const ttsCheckbox = document.getElementById('setting-tts');
       const responseStyleInput = document.getElementById('setting-response-style');
@@ -3394,6 +3410,7 @@ class JarvisApp {
         video_provider: document.getElementById('setting-video-provider').value || null,
         tts_provider: document.getElementById('setting-tts-provider').value || null,
         response_style: responseStyleInput.value || null,
+        tool_rag_limit: toolRagLimitRaw === '' ? null : parseInt(toolRagLimitRaw, 10),
         qa_word_limit: qaWordLimitRaw === '' ? null : parseInt(qaWordLimitRaw, 10),
         multi_turn_word_limit: multiTurnWordLimitRaw === '' ? null : parseInt(multiTurnWordLimitRaw, 10),
         completion_guard_enabled: parseNullableBool(document.getElementById('setting-completion-guard-enabled').value),
@@ -3434,6 +3451,11 @@ class JarvisApp {
 
       if (settings.multi_turn_word_limit !== null && (Number.isNaN(settings.multi_turn_word_limit) || settings.multi_turn_word_limit < 25 || settings.multi_turn_word_limit > 300)) {
         Utils.toast('Multi-turn word limit must be between 25 and 300', 'warning');
+        return;
+      }
+
+      if (settings.tool_rag_limit !== null && (Number.isNaN(settings.tool_rag_limit) || settings.tool_rag_limit < 1 || settings.tool_rag_limit > 50)) {
+        Utils.toast('Tool RAG limit must be between 1 and 50', 'warning');
         return;
       }
 

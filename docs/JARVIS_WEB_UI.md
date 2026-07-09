@@ -459,14 +459,26 @@ is reported as `unknown` until the live Ollama Cloud sign-in check runs. Key
   "cloud": {
     "llm_provider": null,    // null = use cloud.env default (xai)
     "llm_model": null,       // null = use cloud.env model
+    "router_prompt_version": null,
     "image_provider": null,  // null = use cloud.env IMAGE_TOOL_PROVIDER
-    "video_provider": null   // null = use cloud.env VIDEO_TOOL_PROVIDER
+    "video_provider": null,  // null = use cloud.env VIDEO_TOOL_PROVIDER
+    "tts_provider": null,
+    "response_style": null,
+    "tool_rag_limit": null,
+    "qa_word_limit": null,
+    "multi_turn_word_limit": null
   },
   "local": {
     "llm_provider": null,    // null = use local.env default (ollama)
     "llm_model": null,       // null = use local.env model
+    "router_prompt_version": null,
     "image_provider": null,  // null = use local.env IMAGE_TOOL_PROVIDER
-    "video_provider": null   // null = use local.env VIDEO_TOOL_PROVIDER
+    "video_provider": null,  // null = use local.env VIDEO_TOOL_PROVIDER
+    "tts_provider": null,
+    "response_style": null,
+    "tool_rag_limit": null,
+    "qa_word_limit": null,
+    "multi_turn_word_limit": null
   },
   "conversation": {
     "history_limit": 20      // Messages to include as LLM context
@@ -1129,7 +1141,7 @@ Examples:
 - Selecting a tool from `#` autocomplete turns it into a removable chip above the input. The raw `#partial` token is removed from the textarea so the task stays readable.
 - Typed or pasted `#tool_name` tokens still work as a plain-text fallback. The UI removes recognized tokens from the clean user query and sends canonical tool names as metadata.
 - Ambient tool suggestions may appear while typing a normal request. These are optional suggested chips based on the current text and the enabled tool registry; clicking one adds it as a selected tool hint.
-- Ambient suggestions are not `GHOST_TOOLS`. Ghost tools are environment/config tools included in tool RAG automatically; ambient suggestions are visible user choices and are only sent if clicked.
+- Ambient suggestions are not `GHOST_TOOLS`. Ghost tools are environment/config tools prioritized by Tool RAG; ambient suggestions are visible user choices and are only sent if clicked.
 - The server validates hints again, dedupes them, caps them at 5, and injects a compact context block:
 
 ```text

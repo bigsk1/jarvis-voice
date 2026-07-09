@@ -266,15 +266,15 @@ SEMANTIC_SIMILARITY_THRESHOLD=0.40  # Default (balanced)
 
 See: `docs/SEMANTIC_THRESHOLD_TUNING.md`
 
-### Ghost Tools (Always Loaded)
+### Ghost Tools (Prioritized)
 
 ```bash
 # config/cloud.env or config/local.env
 GHOST_TOOLS=search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time
 ```
 
-Memory tools (`search_memory`, `semantic_recall`) are ghost tools, always available to the LLM.
-`tool_search` is also always available, but it is injected as a mandatory ghost in code rather than configured through `GHOST_TOOLS`.
+Memory tools (`search_memory`, `semantic_recall`) are ghost tools, prioritized inside the final Tool RAG schema cap.
+`tool_search` is injected as a mandatory discovery candidate in code rather than configured through `GHOST_TOOLS`.
 
 ---
 

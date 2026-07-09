@@ -214,8 +214,9 @@ def test_send_to_canvas_marks_explicit_export_request():
     chat_js = CHAT_JS.read_text()
     socket_js = SOCKET_JS.read_text()
 
-    assert "{ tool_hints: ['canvas'], request_kind: 'canvas_export' }" in chat_js
+    assert "{ tool_hints: ['canvas'], request_kind: 'canvas_export', tool_rag_limit: 3 }" in chat_js
     assert "payload.request_kind = promptMeta.request_kind" in socket_js
+    assert "payload.tool_rag_limit = promptMeta.tool_rag_limit" in socket_js
 
 
 def test_send_to_canvas_excerpt_uses_canonical_truncation_marker_and_drops_partial_url():

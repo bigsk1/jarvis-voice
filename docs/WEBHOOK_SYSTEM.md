@@ -585,16 +585,16 @@ Edit `config/webhook_registry.json`:
 
 ---
 
-## Ghost Tools (Always Available)
+## Ghost Tools (Prioritized)
 
-Both webhook tools are configured as **ghost tools** - they're ALWAYS available to the LLM without semantic search:
+Webhook tools can be configured as **ghost tools** when they are core actions for a deployment. Ghost tools are prioritized before the final Tool RAG schema cap; they do not bypass the cap.
 
 **Config:** `config/cloud.env` and `config/local.env`
 ```bash
 GHOST_TOOLS="search_memory,recall,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time,send_email,send_webhook"
 ```
 
-**Why?** Email and webhooks are common actions that should always be accessible, like memory tools.
+**Why?** Email and webhooks are common actions in some deployments, so prioritizing them can make retrieval misses less likely.
 
 ---
 

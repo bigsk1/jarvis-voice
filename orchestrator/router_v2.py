@@ -7,6 +7,7 @@ import os
 import sys
 import re
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 from pathlib import Path
@@ -84,6 +85,73 @@ _FULL_PROMPT_MARKERS = (
     "Tools executed so far:",
     "[Turn ",
 )
+_MANDATORY_DISCOVERY_TOOLS = ("tool_search",)
+_REQUEST_TOOL_RAG_LIMIT_MAX = 50
+
+
+def _resolve_tool_rag_limit(mode: str, override: int | str | None = None) -> int:
+    """Resolve final tool schema cap for Tool RAG."""
+    default = 6 if mode == "local" else 15
+    if override not in (None, ""):
+        try:
+            return min(max(1, int(override)), _REQUEST_TOOL_RAG_LIMIT_MAX)
+        except (TypeError, ValueError):
+            return default
+
+    if mode == "local":
+        return max(1, get_int("LOCAL_TOOL_RAG_LIMIT", default))
+    return max(1, get_int("CLOUD_TOOL_RAG_LIMIT", default))
+
+
+def _cap_tool_names_for_schema(
+    names: list[str],
+    limit: int,
+    positive_tools: set[str] | list[str] | None = None,
+    ghost_tools: list[str] | set[str] | None = None,
+) -> list[str]:
+    """
+    Apply a final Tool RAG schema cap after ghost/signal merging.
+
+    Priority:
+    1. explicit positive signals such as UI-selected tool hints
+    2. mandatory discovery escape hatches like tool_search
+    3. retrieved non-ghost tools in current rank order
+    4. remaining ghost tools, only if room remains
+    """
+    limit = max(1, int(limit or 1))
+    if len(names) <= limit:
+        return list(names)
+
+    positive_set = set(positive_tools or [])
+    ghost_set = set(ghost_tools or [])
+    name_set = set(names)
+    selected: list[str] = []
+    selected_set: set[str] = set()
+
+    def add(name: str) -> None:
+        if len(selected) >= limit or name in selected_set or name not in name_set:
+            return
+        selected.append(name)
+        selected_set.add(name)
+
+    for name in names:
+        if name in positive_set:
+            add(name)
+    for name in _MANDATORY_DISCOVERY_TOOLS:
+        add(name)
+    for name in names:
+        if name not in ghost_set:
+            add(name)
+    for name in names:
+        add(name)
+
+    return selected
+
+
+def _log_tool_rag_signal_meta(logger: logging.Logger, signal_meta: dict[str, Any]) -> None:
+    """Log signal metadata, including pure final-cap drops."""
+    if signal_meta:
+        logger.info(f"[TOOL_RAG] signal_meta={signal_meta}")
 
 _MEMORY_TOOL_SIGNAL_POSITIVE_MARKERS = (
     "always use",
@@ -503,6 +571,7 @@ def _log_tool_rag_trace(
             "signal_source": signal_source,
             "similarity_threshold": threshold,
             "retrieval_limit": retrieval_limit,
+            "final_schema_limit": retrieval_limit,
             "query": _cap_tool_rag_text(query, max_query_chars),
             "query_chars": len(query or ""),
             "full_transcript_chars": len(transcript or ""),
@@ -929,6 +998,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         routing_provenance: dict[str, Any] | None = None,
         server_side_max_tool_turns: int | None = None,
         previous_response_id: str | None = None,
+        tool_rag_limit: int | None = None,
     ) -> dict[str, Any]:
         """
         Use LLM to determine intent and route appropriately.
@@ -990,10 +1060,9 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         # DYNAMIC TOOL RETRIEVAL (The "Tool RAG" System)
         # Instead of loading all tools, we find only the relevant ones
         
-        # 1. Determine retrieval limit based on mode
-        # Local models (Ollama) have smaller context, so we serve fewer tools
-        # Cloud models (Claude/GPT/xAI) can handle more choices
-        retrieval_limit = 5 if self.mode == 'local' else 15
+        # 1. Determine final Tool RAG schema cap based on mode/request.
+        # This cap is applied again after ghost/signal merging.
+        retrieval_limit = _resolve_tool_rag_limit(self.mode, tool_rag_limit)
         
         # 2. Build a Tool RAG retrieval view. The routing LLM still receives the
         # full transcript, but embeddings use a compact task-shaped query plus
@@ -1073,6 +1142,25 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                 if tool:
                     merged_tools.append(tool)
             relevant_tools = merged_tools
+
+        uncapped_tool_names = [t.name for t in relevant_tools]
+        capped_tool_names = _cap_tool_names_for_schema(
+            uncapped_tool_names,
+            retrieval_limit,
+            positive_tools=tool_signals.positive_tools,
+            ghost_tools=ghost_list,
+        )
+        if capped_tool_names != uncapped_tool_names:
+            by_name = {t.name: t for t in relevant_tools}
+            relevant_tools = [
+                by_name[name]
+                for name in capped_tool_names
+                if name in by_name
+            ]
+            signal_meta["capped_to"] = [str(retrieval_limit)]
+            signal_meta["dropped_by_cap"] = [
+                name for name in uncapped_tool_names if name not in capped_tool_names
+            ]
         
         tool_names = [t.name for t in relevant_tools]
         retrieved = [name for name in tool_names if name not in ghost_list]
@@ -1086,7 +1174,6 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                 print(f"   👻 Ghost: {', '.join(ghosts)}")
         
         # ALWAYS log tool retrieval details for debugging
-        import logging
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(__name__)
         logger.info(f"[TOOL_RAG] Tool search query: {tool_search_query}")
@@ -1094,8 +1181,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             f"[TOOL_RAG] similarity_threshold={tool_sim_threshold:.4f} "
             f"(source={tool_signals.source}, full_transcript_embedding={tool_search_query == transcript_text})"
         )
-        if signal_meta.get("positive") or signal_meta.get("negative") or signal_meta.get("conflicted"):
-            logger.info(f"[TOOL_RAG] signal_meta={signal_meta}")
+        _log_tool_rag_signal_meta(logger, signal_meta)
         if tool_signals.notes:
             logger.info(f"[TOOL_RAG] signal_notes={tool_signals.notes}")
         logger.info(f"[TOOL_RAG] Retrieved {len(retrieved)} tools: {retrieved}")

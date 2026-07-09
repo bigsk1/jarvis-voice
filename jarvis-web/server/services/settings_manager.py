@@ -414,7 +414,10 @@ class SettingsManager:
         return parsed
 
     def _get_env_numeric_defaults(self) -> dict[str, int | float]:
+        tool_rag_key = 'LOCAL_TOOL_RAG_LIMIT' if self.mode == 'local' else 'CLOUD_TOOL_RAG_LIMIT'
+        tool_rag_default = '6' if self.mode == 'local' else '15'
         return {
+            'tool_rag_limit': int(get_jarvis_setting(tool_rag_key, tool_rag_default)),
             'qa_word_limit': int(
                 get_jarvis_setting('JARVIS_QA_WORD_LIMIT', str(DEFAULT_JARVIS_QA_WORD_LIMIT))
             ),
@@ -548,6 +551,8 @@ class SettingsManager:
             'JARVIS_RESPONSE_STYLE': ('response', 'style'),
             'JARVIS_QA_WORD_LIMIT': ('response', 'qa_word_limit'),
             'JARVIS_MULTI_TURN_WORD_LIMIT': ('response', 'multi_turn_word_limit'),
+            'CLOUD_TOOL_RAG_LIMIT': ('tool_rag', 'limit'),
+            'LOCAL_TOOL_RAG_LIMIT': ('tool_rag', 'limit'),
             'JARVIS_COMPLETION_GUARD_EVAL_PROVIDER': ('completion_guard', 'eval_provider'),
             'JARVIS_COMPLETION_GUARD_EVAL_MODEL': ('completion_guard', 'eval_model'),
             'TOOL_SIMILARITY_THRESHOLD': ('thresholds', 'tool_similarity'),
@@ -578,6 +583,9 @@ class SettingsManager:
         env_video_provider = get_jarvis_setting('VIDEO_TOOL_PROVIDER', 'xai')
         env_tts_provider = get_jarvis_setting('TTS_PROVIDER', 'qwen3-tts' if self.mode == 'local' else 'elevenlabs')
         env_response_style = get_jarvis_setting('JARVIS_RESPONSE_STYLE', 'auto')
+        env_tool_rag_key = 'LOCAL_TOOL_RAG_LIMIT' if self.mode == 'local' else 'CLOUD_TOOL_RAG_LIMIT'
+        env_tool_rag_default = '6' if self.mode == 'local' else '15'
+        env_tool_rag_limit = int(get_jarvis_setting(env_tool_rag_key, env_tool_rag_default))
         env_qa_word_limit = int(get_jarvis_setting('JARVIS_QA_WORD_LIMIT', str(DEFAULT_JARVIS_QA_WORD_LIMIT)))
         env_multi_turn_word_limit = int(get_jarvis_setting('JARVIS_MULTI_TURN_WORD_LIMIT', str(DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT)))
         env_completion_guard_enabled = get_jarvis_setting('JARVIS_COMPLETION_GUARD_ENABLED', 'false').lower() == 'true'
@@ -620,6 +628,7 @@ class SettingsManager:
         if web_tts not in (None, *tts_provider_options):
             web_tts = None
         web_response_style = mode_overrides.get('response_style')
+        web_tool_rag_limit = mode_overrides.get('tool_rag_limit')
         web_qa_word_limit = mode_overrides.get('qa_word_limit')
         web_multi_turn_word_limit = mode_overrides.get('multi_turn_word_limit')
         web_completion_guard_enabled = mode_overrides.get('completion_guard_enabled')
@@ -642,6 +651,9 @@ class SettingsManager:
         effective_video = web_video or env_video_provider
         effective_tts = web_tts or env_tts_provider
         effective_response_style = web_response_style or env_response_style
+        effective_tool_rag_limit = (
+            web_tool_rag_limit if web_tool_rag_limit is not None else env_tool_rag_limit
+        )
         effective_qa_word_limit = web_qa_word_limit if web_qa_word_limit is not None else env_qa_word_limit
         effective_multi_turn_word_limit = (
             web_multi_turn_word_limit if web_multi_turn_word_limit is not None else env_multi_turn_word_limit
@@ -724,6 +736,14 @@ class SettingsManager:
                     'default': env_router_prompt_version,
                     'is_override': web_router_prompt_version is not None,
                     'options': router_prompt_version_options(),
+                }
+            },
+
+            'tool_rag': {
+                'limit': {
+                    'value': effective_tool_rag_limit,
+                    'default': env_tool_rag_limit,
+                    'is_override': self._is_web_int_override(web_tool_rag_limit, env_tool_rag_limit),
                 }
             },
             
@@ -1192,6 +1212,17 @@ class SettingsManager:
                     f"{', '.join(available_router_prompt_versions())}"
                 ),
             )
+        if 'tool_rag_limit' in overrides and overrides['tool_rag_limit'] not in (None, ''):
+            try:
+                tool_rag_limit = int(overrides['tool_rag_limit'])
+            except (TypeError, ValueError):
+                tool_rag_limit = 0
+            if tool_rag_limit < 1 or tool_rag_limit > 50:
+                raise SettingsValidationError(
+                    field='tool_rag_limit',
+                    provider=str(overrides['tool_rag_limit']),
+                    reason='Tool RAG limit must be between 1 and 50',
+                )
 
     def save_web_overrides(self, overrides: dict[str, Any]) -> bool:
         """Save web UI overrides (per-mode for LLM/image).
@@ -1249,6 +1280,12 @@ class SettingsManager:
             mode_config['response_style'] = overrides['response_style'] or None
 
         env_numeric_defaults = self._get_env_numeric_defaults()
+
+        if 'tool_rag_limit' in overrides:
+            mode_config['tool_rag_limit'] = self._normalize_web_int_override(
+                overrides['tool_rag_limit'],
+                env_numeric_defaults['tool_rag_limit'],
+            )
 
         if 'qa_word_limit' in overrides:
             mode_config['qa_word_limit'] = self._normalize_web_int_override(
@@ -1360,6 +1397,7 @@ class SettingsManager:
             'video_provider': None,
             'tts_provider': None,
             'response_style': None,
+            'tool_rag_limit': None,
             'qa_word_limit': None,
             'multi_turn_word_limit': None,
             'completion_guard_enabled': None,

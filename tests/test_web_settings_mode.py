@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Regression coverage for Web settings mode/session consistency."""
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -144,6 +145,27 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertEqual(status, 500)
         self.assertIn("web_config.json", response.get_json()["error"])
         settings.save_web_overrides.assert_not_called()
+
+    def test_web_config_example_mode_keys_match_reset_defaults(self):
+        from server.services import settings_manager as settings_module
+        from server.services.settings_manager import SettingsManager
+
+        example_path = ROOT / "jarvis-web" / "config" / "web_config.json.example"
+        example = json.loads(example_path.read_text())
+        reset_config = {"cloud": {"stale": "value"}, "local": {}}
+        settings = SettingsManager("cloud")
+
+        with (
+            patch.object(settings_module, "load_web_config", return_value=reset_config),
+            patch.object(settings_module, "save_web_config", return_value=True),
+        ):
+            self.assertTrue(settings.reset_to_defaults())
+
+        reset_keys = set(reset_config["cloud"])
+        self.assertEqual(set(example["cloud"]), reset_keys)
+        self.assertEqual(set(example["local"]), reset_keys)
+        self.assertTrue(all(value is None for value in example["cloud"].values()))
+        self.assertTrue(all(value is None for value in example["local"].values()))
 
     def test_ollama_default_follows_effective_provider_not_env_provider(self):
         from server.services import settings_manager as settings_module
@@ -413,6 +435,7 @@ class WebSettingsModeTests(unittest.TestCase):
                 "qa_word_limit": 200,
                 "multi_turn_word_limit": 250,
                 "completion_guard_auto_threshold": 0.89,
+                "tool_rag_limit": 15,
             },
             "audio": {},
             "ui": {},
@@ -423,6 +446,7 @@ class WebSettingsModeTests(unittest.TestCase):
             "JARVIS_QA_WORD_LIMIT": "200",
             "JARVIS_MULTI_TURN_WORD_LIMIT": "250",
             "JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD": "0.89",
+            "CLOUD_TOOL_RAG_LIMIT": "15",
         }
 
         def get_setting(key, default=""):
@@ -440,7 +464,9 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertFalse(result["response"]["qa_word_limit"]["is_override"])
         self.assertFalse(result["response"]["multi_turn_word_limit"]["is_override"])
         self.assertFalse(result["completion_guard"]["auto_threshold"]["is_override"])
+        self.assertFalse(result["tool_rag"]["limit"]["is_override"])
         self.assertEqual(result["response"]["qa_word_limit"]["value"], 200)
+        self.assertEqual(result["tool_rag"]["limit"]["value"], 15)
         self.assertEqual(result["completion_guard"]["auto_threshold"]["value"], 0.89)
 
     def test_save_clears_numeric_override_when_matching_env(self):
@@ -452,6 +478,7 @@ class WebSettingsModeTests(unittest.TestCase):
             "JARVIS_QA_WORD_LIMIT": "200",
             "JARVIS_MULTI_TURN_WORD_LIMIT": "250",
             "JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD": "0.89",
+            "CLOUD_TOOL_RAG_LIMIT": "15",
         }
 
         def get_setting(key, default=""):
@@ -467,13 +494,37 @@ class WebSettingsModeTests(unittest.TestCase):
             success = settings.save_web_overrides({
                 "qa_word_limit": 200,
                 "multi_turn_word_limit": 250,
+                "tool_rag_limit": 15,
                 "completion_guard_auto_threshold": 0.89,
             })
 
         self.assertTrue(success)
         self.assertIsNone(web_config["cloud"]["qa_word_limit"])
         self.assertIsNone(web_config["cloud"]["multi_turn_word_limit"])
+        self.assertIsNone(web_config["cloud"]["tool_rag_limit"])
         self.assertIsNone(web_config["cloud"]["completion_guard_auto_threshold"])
+
+    def test_tool_rag_limit_override_is_validated_and_saved_per_mode(self):
+        from server.services import settings_manager as settings_module
+        from server.services.settings_manager import SettingsManager, SettingsValidationError
+
+        web_config = {"cloud": {}}
+        settings = SettingsManager("cloud")
+        with (
+            patch.object(settings, "_ensure_jarvis_config"),
+            patch.object(settings_module, "load_web_config", return_value=web_config),
+            patch.object(settings_module, "get_jarvis_setting", side_effect=lambda key, default="": default),
+            patch.object(settings_module, "save_web_config", return_value=True),
+        ):
+            self.assertTrue(settings.save_web_overrides({"tool_rag_limit": 9}))
+            self.assertEqual(web_config["cloud"]["tool_rag_limit"], 9)
+
+            with self.assertRaises(SettingsValidationError):
+                settings.save_web_overrides({"tool_rag_limit": 0})
+            with self.assertRaises(SettingsValidationError):
+                settings.save_web_overrides({"tool_rag_limit": 51})
+
+        self.assertEqual(web_config["cloud"]["tool_rag_limit"], 9)
 
     def test_router_prompt_override_is_allowlisted_and_saved_per_mode(self):
         from server.services import settings_manager as settings_module

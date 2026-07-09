@@ -43,6 +43,8 @@ from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
 from router_v2 import (
     build_tool_retrieval_signals,
     merge_tool_signal_names,
+    _cap_tool_names_for_schema,
+    _resolve_tool_rag_limit,
     _tool_rag_similarity_threshold,
 )
 
@@ -174,6 +176,13 @@ def _print_production_block(
         enabled_tool_names,
         ghost_tools=ghost_tools,
     )
+    uncapped_final_names = list(final_names)
+    final_names = _cap_tool_names_for_schema(
+        final_names,
+        retrieval_limit,
+        positive_tools=signals.positive_tools,
+        ghost_tools=ghost_tools,
+    )
     score_by_name = {tool["name"]: tool.get("similarity", 0.0) for tool in all_tools}
 
     print(title)
@@ -198,9 +207,14 @@ def _print_production_block(
         ghost_marker = "👻" if name in ghost_tools else "  "
         print(f"   {i:<6} {score:<8.4f} {ghost_marker} {name:<38} {passed}")
     print()
-    print("📚 Production-style tool list (ghost first, semantic top-K, then positive signals):")
+    print("📚 Production-style tool list (merged, then final schema cap):")
+    print(f"   Final schema limit: {retrieval_limit}")
     print(f"   Total tool list size: {len(final_names)}")
+    print(f"   Uncapped merged size: {len(uncapped_final_names)}")
     print(f"   Retrieved before signal merge: {len(initial_names)}")
+    dropped = [name for name in uncapped_final_names if name not in final_names]
+    if dropped:
+        print(f"   Dropped by final cap: {', '.join(dropped)}")
     for i, name in enumerate(final_names, 1):
         tags: list[str] = []
         if name in ghost_tools:
@@ -287,7 +301,7 @@ def debug_tool_rag(
     st = stripped_threshold if stripped_threshold is not None else env_threshold
     ft = full_threshold if full_threshold is not None else env_full_threshold
 
-    retrieval_limit = 5 if mode == "local" else 15
+    retrieval_limit = _resolve_tool_rag_limit(mode)
     db = get_memory_db()
 
     try:

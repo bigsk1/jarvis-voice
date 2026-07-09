@@ -630,11 +630,16 @@ class ToolRegistry:
     ) -> list[ToolSchema]:
         """
         Find relevant tools for a user query using vector search.
-        Always includes GHOST_TOOLS (configured core tools).
+        Prioritizes GHOST_TOOLS before semantic matches.
+
+        The router may apply a final schema cap after this merge, so ghost
+        tools are candidates for the final prompt rather than an unlimited
+        append outside the Tool RAG budget.
 
         Args:
             query: Text to embed for similarity search.
-            limit: Max retrieved tools (before merging ghost list).
+            limit: Max semantic candidates requested before ghost merge and
+                any router final schema cap.
             similarity_threshold: Min cosine similarity to keep a tool. If None, uses
                 TOOL_SIMILARITY_THRESHOLD from config (router may pass an explicit value).
             typo_hint_source: If set, typo/near-segment RAG hints consider only this text
@@ -644,8 +649,7 @@ class ToolRegistry:
         from memory_db import get_memory_db
         from config_loader import get_config_value, get_float
         
-        # Get Core "Ghost" Tools from config (or use defaults)
-        # These ensure basic functionality never fails
+        # Get prioritized "ghost" tools from config (or use defaults).
         ghost_tools_str = get_config_value('GHOST_TOOLS', 'search_memory,semantic_recall,remember')
         CORE_TOOLS = _merged_ghost_tool_names(ghost_tools_str, set(self.tools.keys()))
         

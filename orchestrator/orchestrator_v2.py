@@ -1109,6 +1109,7 @@ Mode: {self.mode}
                 tool_overrides: dict[str, dict] | None = None,
                 vision_pre_analyzed: bool = False,
                 request_kind: str = '',
+                tool_rag_limit: int | None = None,
                 _retry_state: dict[str, Any] | None = None) -> dict[str, Any]:
         """
         Process user transcript and execute tools or respond.
@@ -1132,6 +1133,7 @@ Mode: {self.mode}
                            injected. No-op for providers without native tools (Ollama, etc.).
             request_kind: Optional recognized request type. The Web UI uses
                            ``canvas_export`` for its Send-to-Canvas action.
+            tool_rag_limit: Optional one-request cap for final Tool RAG schemas.
             _retry_state: Internal only. Carries in-flight orchestrator state across
                          recursive tool-failure retries so UI events and accumulated
                          results stay consistent within one user request.
@@ -1512,6 +1514,7 @@ Mode: {self.mode}
                     else None
                 ),
                 previous_response_id=route_previous_response_id,
+                tool_rag_limit=tool_rag_limit,
             )
             if (
                 route.get("intent") == "error"
@@ -1541,6 +1544,7 @@ Mode: {self.mode}
                         else None
                     ),
                     previous_response_id=None,
+                    tool_rag_limit=tool_rag_limit,
                 )
             elif (
                 route.get("intent") == "error"
@@ -1568,6 +1572,7 @@ Mode: {self.mode}
                         else None
                     ),
                     previous_response_id=None,
+                    tool_rag_limit=tool_rag_limit,
                 )
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"DEBUG: Routing complete, intent={route.get('intent')}", file=sys.stderr)

@@ -131,7 +131,7 @@ The validator sends the reviewing LLM:
    - MCP tools (external servers)
    - Parameters and descriptions
 
-3. **Ghost Tools** - Tools always available regardless of query
+3. **Ghost Tools** - Tools prioritized regardless of query before the final Tool RAG cap
 
 4. **Intelligence Context** - Example of learned insights injection
 

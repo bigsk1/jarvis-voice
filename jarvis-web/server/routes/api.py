@@ -530,6 +530,8 @@ def get_system_config():
     mode = request.args.get('mode') or get_web_setting('defaults.mode', 'cloud')
     load_jarvis_config(mode)
     _apply_tts_provider_override(mode)
+    tool_rag_limit_key = 'LOCAL_TOOL_RAG_LIMIT' if mode == 'local' else 'CLOUD_TOOL_RAG_LIMIT'
+    tool_rag_limit_default = '6' if mode == 'local' else '15'
     
     # Return key system settings (read-only, informational)
     config = {
@@ -543,6 +545,7 @@ def get_system_config():
         # Thresholds (important!)
         'TOOL_SIMILARITY_THRESHOLD': get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD', '0.0'),
         'TOOL_SIMILARITY_THRESHOLD_FULL': get_jarvis_setting('TOOL_SIMILARITY_THRESHOLD_FULL', ''),
+        'TOOL_RAG_LIMIT': get_jarvis_setting(tool_rag_limit_key, tool_rag_limit_default),
         'SEMANTIC_SIMILARITY_THRESHOLD': get_jarvis_setting('SEMANTIC_SIMILARITY_THRESHOLD', '0.30'),
         
         # TTS/Audio (mode-specific)
@@ -651,7 +654,7 @@ def update_web_settings():
 
     structured = any(k in data for k in [
         'llm_provider', 'llm_model', 'router_prompt_version', 'image_provider', 'video_provider',
-        'response_style', 'qa_word_limit', 'multi_turn_word_limit',
+        'response_style', 'tool_rag_limit', 'qa_word_limit', 'multi_turn_word_limit',
         'completion_guard_enabled', 'completion_guard_mode',
         'completion_guard_ticket_on_fail', 'completion_guard_show_ui_prompt',
         'completion_guard_include_qa', 'completion_guard_include_tool_tasks',

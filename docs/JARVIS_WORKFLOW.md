@@ -244,7 +244,7 @@ graph TB
 - ⚡ **Scalability**: Can handle 100+ tools without context flooding
 - 🎯 **Relevance**: Only loads tools semantically relevant to the query
 - 💰 **Efficiency**: Reduces token usage by 60-80% (local models especially benefit)
-- 👻 **Ghost Tools**: Core functionality always available (memory, logs, time)
+- 👻 **Ghost Tools**: Core functionality prioritized inside the final schema cap (memory, logs, time)
 - 🔎 **Discovery Option**: `tool_search` can inspect enabled tools by summary first when the initial shortlist is not enough
 
 **Decision Types:**
@@ -255,13 +255,13 @@ graph TB
 
 ### Tool RAG Configuration
 
-**Ghost Tools** (always loaded, configurable via `.env`):
+**Ghost Tools** (priority candidates, configurable via `.env`):
 ```bash
 # In config/cloud.env or config/local.env
 GHOST_TOOLS="search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time"
 ```
 
-`tool_search` is also always available, but it is injected as a mandatory ghost in code rather than configured through `GHOST_TOOLS`.
+`tool_search` is injected as a mandatory discovery candidate in code rather than configured through `GHOST_TOOLS`. The final Tool RAG cap still applies, with explicit hints and `tool_search` prioritized before ranked non-ghost tools.
 
 **Similarity Thresholds and compact retrieval** (filter retrieved tools before top-K):
 ```bash
@@ -418,7 +418,7 @@ graph TB
 ### Ghost Tools Strategy
 
 **What are Ghost Tools?**
-Tools that are ALWAYS available, regardless of the query. These ensure core functionality never fails.
+Tools that are prioritized regardless of the query before the final Tool RAG cap. These give core functionality first chance when semantic retrieval misses.
 
 **Default Configurable Ghost Tools:**
 - `search_memory` - FTS5 keyword search
@@ -443,7 +443,7 @@ Tools that are ALWAYS available, regardless of the query. These ensure core func
 GHOST_TOOLS="search_memory,semantic_recall,remember,my_custom_tool"
 ```
 
-`tool_search` does not need to be added to `GHOST_TOOLS`; it is hardcoded as always available.
+`tool_search` does not need to be added to `GHOST_TOOLS`; it is hardcoded as a mandatory discovery candidate and prioritized inside the final Tool RAG cap.
 
 ### Tool Sync Workflow
 

@@ -3929,7 +3929,7 @@ class ChatUI {
     window.jarvisSocket.sendMessage(
       prompt,
       null,
-      { tool_hints: ['canvas'], request_kind: 'canvas_export' },
+      { tool_hints: ['canvas'], request_kind: 'canvas_export', tool_rag_limit: 3 },
       false,
       null
     );

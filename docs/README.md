@@ -1660,7 +1660,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Email Tool** - Send emails via n8n SMTP integration
   - Contact management (`config/contacts.json`) with name → email resolution
   - Rich HTML email templates with Jarvis branding
-  - Ghost tool (always available to LLM)
+  - Ghost tool (prioritized by Tool RAG when relevant and within the final schema cap)
   - See: `docs/n8n/docs/WEBHOOK_AND_EMAIL_SYSTEM.md`
 - ✅ **Monitoring Stack** - Production-grade observability with Grafana, Prometheus, Loki ⭐ MAJOR
   - Real-time LLM call metrics (cost, latency, token usage, model comparison)
@@ -1680,16 +1680,16 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Data restoration procedures
   - Validation tests for each component
   - See: `docs/INSTALL_GUIDE.md`
-- ✅ **Ghost Tools Pattern** - Critical tools always available via `GHOST_TOOLS` env var
-  - Bypasses semantic search for frequently used tools
-  - Ensures reliable tool discovery (e.g., send_email, send_webhook)
+- ✅ **Ghost Tools Pattern** - Critical tools prioritized via `GHOST_TOOLS` env var
+  - Merged with semantic results before the final Tool RAG schema cap is applied
+  - Helps reliable tool discovery (e.g., send_email, send_webhook)
   - Configurable per deployment mode (cloud/local)
 
 **2025-11-22:**
 - ✅ **Tool RAG System** - Dynamic tool retrieval using vector embeddings for infinite scalability
   - Loads only relevant tools per query (5-15 tools instead of all 32+)
   - Vector-based semantic search with configurable similarity threshold
-  - "Ghost tools" pattern for always-available core functionality
+  - "Ghost tools" pattern for prioritizing core functionality inside the schema cap
   - Optimized for local models (smaller context windows)
   - See: `docs/TOOL_RAG_STRATEGY.md`, `docs/archive/TOOL_RAG_IMPLEMENTATION_SUMMARY.md` (historical)
 - ✅ **Enhanced error propagation** - LLM now receives full error details from failed tools for self-healing

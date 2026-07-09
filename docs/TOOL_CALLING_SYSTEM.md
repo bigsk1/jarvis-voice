@@ -59,7 +59,7 @@ jarvis
 | **api_call** | "Call the API at github.com/users/X" | ⚠️ Network |
 | **execute_bash** | "Run the command uptime" | 🚨 Dangerous |
 
-`tool_search` is a summary-first discovery tool. In semantic and browse mode it focuses on non-ghost tools, because ghost tools are already visible every routing turn. Exact lookup can still inspect a ghost tool by name when needed.
+`tool_search` is a summary-first discovery tool. In semantic and browse mode it focuses on non-ghost tools, because ghost tools are already considered by Tool RAG. Exact lookup can still inspect a ghost tool by name when needed.
 
 ### Example Commands
 
@@ -107,7 +107,7 @@ Text-to-Speech (OpenAI TTS / Kokoro)
 You hear: "Webhook sent successfully to your server. Status 200."
 ```
 
-Tool availability is selected just before the router LLM call by Tool RAG. Local mode retrieves top 5 semantic tools and cloud mode retrieves top 15, then ghost tools and exact positive tool signals are merged in. `tool_search` is also always available as a mandatory ghost tool, so the model can discover enabled tools when the current shortlist is not enough.
+Tool availability is selected just before the router LLM call by Tool RAG. Local mode defaults to a final schema cap of 6 tools (`LOCAL_TOOL_RAG_LIMIT`) and cloud mode defaults to 15 (`CLOUD_TOOL_RAG_LIMIT`). Ghost tools and exact positive tool signals are merged first, then the final cap is applied with explicit tool hints and `tool_search` prioritized. Web/UI actions can pass a lower one-request cap for tightly scoped turns such as Send to Canvas.
 
 **Credential-aware registration** runs earlier, at registry load: tools whose manifest `availability` requirements are unmet in the active mode never enter the registry or Tool RAG (even if `"enabled": true` in git). Profile overlays cannot force-enable a tool with missing hard requirements. The `availability` block itself is not sent to the LLM — only name, description, and parameters from `to_openai_format()`. See `skills/README.md` → **Availability** and `docs/TOOL_MANAGEMENT.md` → **Enabled vs available**.
 

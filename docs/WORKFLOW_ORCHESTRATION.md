@@ -1093,7 +1093,7 @@ When we inject a "tool_chain" into the LLM context, the LLM is STILL presented w
 │              WHAT LLM SEES DURING ROUTING                        │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│   ✓ Ghost tools (always included)                               │
+│   ✓ Ghost tools (prioritized inside Tool RAG cap)               │
 │   ✓ Tool RAG results (similar tools to query)                   │
 │   ✓ Conversation history (if AUTO_CONTEXT enabled)              │
 │   ✓ Intelligence insights (learned preferences)                 │

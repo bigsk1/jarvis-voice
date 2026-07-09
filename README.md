@@ -113,7 +113,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
 - **Tool RAG System**: Dynamic tool retrieval - loads only relevant tools for each query
   - Scales to 100+ tools without context flooding
   - Vector-based semantic search for tool discovery
-  - "Ghost tools" always available for core functionality
+  - Ghost tools and `tool_search` are prioritized inside the final schema cap
   - See [`docs/TOOL_RAG_STRATEGY.md`](docs/TOOL_RAG_STRATEGY.md)
 - **Advanced Tool Calling**: LLM-powered routing with 80+ skills
 - **OpenAI Responses API support**: Optional `/v1/responses` routing for OpenAI tool-capable turns, in-flight client-tool continuation, hosted-tool gates, prompt-cache hints, and safe Chat Completions fallback
@@ -1859,7 +1859,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - ✅ **LLM Call Logging** (comprehensive telemetry: cost, latency, tokens, multi-turn analysis)
 - ✅ **Modular webhook system** (send_email, send_webhook with auth support)
 - ✅ **Email tool** (contact management, HTML templates, SMTP via n8n)
-- ✅ **Ghost tools pattern** (critical tools always available, bypasses semantic search)
+- ✅ **Ghost tools pattern** (critical tools prioritized in Tool RAG, capped with the rest of the final schema set)
 - ✅ **Disaster recovery guide** (complete system rebuild documentation)
 - ✅ **FTS5 full-text search** with BM25 ranking (faster, more accurate keyword searches)
 - ✅ **Auto-context system** (short-term conversation memory across wake word cycles)
