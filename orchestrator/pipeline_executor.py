@@ -124,7 +124,7 @@ class PipelineExecutor:
                     if isinstance(value, (int, float)):
                         self._total_usage[key] += value
                 
-                # Track server-side tools (xAI web_search, x_search, Anthropic web search)
+                # Track provider-native/server-side tools.
                 if usage_info.get("server_side_tools"):
                     for tool_name, count in usage_info["server_side_tools"].items():
                         self._server_side_tools[tool_name] = self._server_side_tools.get(tool_name, 0) + count

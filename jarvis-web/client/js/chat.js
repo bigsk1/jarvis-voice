@@ -1546,7 +1546,7 @@ class ChatUI {
         this._updateTokenCounter(data.usage);
       }
       
-      // Show discrete toast for server-side tools (xAI/Anthropic native search)
+      // Show discrete toast for provider-native/server-side tools.
       // Accept either the dedicated top-level field or the nested usage fallback.
       const serverSideTools = data.server_side_tools || data.usage?.server_side_tools || {};
       if (serverSideTools && typeof serverSideTools === 'object' && Object.keys(serverSideTools).length > 0) {

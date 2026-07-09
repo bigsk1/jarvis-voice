@@ -61,6 +61,18 @@ class _RecordingProvider:
         }, {"input_tokens": 1, "output_tokens": 1}, None
 
 
+class _ServerSideToolsProvider:
+    def __init__(self, model="test-model"):
+        self.model = model
+
+    def chat_with_tools(self, **_kwargs):
+        return "done", None, {
+            "input_tokens": 1,
+            "output_tokens": 1,
+            "server_side_tools": {"SERVER_SIDE_TOOL_WEB_SEARCH": 3},
+        }, None
+
+
 def _config(values):
     def fake_get_config_value(key, default=None):
         return values.get(key, default)
@@ -248,6 +260,66 @@ class XAINativeContinuationTests(unittest.TestCase):
         self.assertIsNone(provider.calls[0]["system_prompt"])
         self.assertEqual(provider.calls[0]["previous_response_id"], "resp_1")
         self.assertEqual(result["xai_continuation_mode"], "stored_structural")
+
+    def test_router_logs_openai_server_side_tools_as_openai(self):
+        router = LLMRouter.__new__(LLMRouter)
+        router.mode = "cloud"
+        router.registry = _FakeRegistry()
+        router.provider = _ServerSideToolsProvider(model="gpt-5.4-nano")
+        router.provider_type = "openai"
+        router.model_name = "gpt-5.4-nano"
+        router.timezone = ZoneInfo("America/Los_Angeles")
+        router.prompt_override = None
+        router._system_prompt_base = "system"
+        router._provider_override = None
+        router._model_override = None
+
+        route_input = ProviderRouteInput(
+            tool_retrieval_query="what happened today",
+            messages=[{"role": "user", "content": "what happened today"}],
+            system_prompt=None,
+        )
+        with patch("router_v2.get_bool", return_value=False), \
+             patch("router_v2.get_config_value", return_value=""), \
+             patch("router_v2.should_enable_thinking", return_value=False, create=True), \
+             patch("llm_logger.get_logger"), \
+             self.assertLogs("router_v2", level="INFO") as captured:
+            result = router.route(route_input)
+
+        logs = "\n".join(captured.output)
+        self.assertEqual(result["intent"], "qa")
+        self.assertIn("[OpenAI SERVER-SIDE TOOLS]", logs)
+        self.assertNotIn("[xAI SEARCH]", logs)
+
+    def test_router_logs_anthropic_server_side_tools_as_anthropic(self):
+        router = LLMRouter.__new__(LLMRouter)
+        router.mode = "cloud"
+        router.registry = _FakeRegistry()
+        router.provider = _ServerSideToolsProvider(model="claude-test")
+        router.provider_type = "anthropic"
+        router.model_name = "claude-test"
+        router.timezone = ZoneInfo("America/Los_Angeles")
+        router.prompt_override = None
+        router._system_prompt_base = "system"
+        router._provider_override = None
+        router._model_override = None
+
+        route_input = ProviderRouteInput(
+            tool_retrieval_query="what happened today",
+            messages=[{"role": "user", "content": "what happened today"}],
+            system_prompt=None,
+        )
+        with patch("router_v2.get_bool", return_value=False), \
+             patch("router_v2.get_config_value", return_value=""), \
+             patch("router_v2.should_enable_thinking", return_value=False, create=True), \
+             patch("llm_logger.get_logger"), \
+             self.assertLogs("router_v2", level="INFO") as captured:
+            result = router.route(route_input)
+
+        logs = "\n".join(captured.output)
+        self.assertEqual(result["intent"], "qa")
+        self.assertIn("[Anthropic SERVER-SIDE TOOLS]", logs)
+        self.assertNotIn("[xAI SEARCH]", logs)
 
     def test_router_system_prompt_includes_default_postal_code(self):
         router = LLMRouter.__new__(LLMRouter)

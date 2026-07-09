@@ -1376,12 +1376,20 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                     **continuation_meta,
                 }
             
-            # Log xAI server-side tool usage (native search)
+            # Log provider-native/server-side tool usage.
             if usage_info and usage_info.get('server_side_tools'):
                 server_tools = usage_info['server_side_tools']
                 tool_list = [f"{k.replace('SERVER_SIDE_TOOL_', '').lower()}({v}x)" for k, v in server_tools.items() if v > 0]
                 if tool_list:
-                    logger.info(f"[xAI SEARCH] Native search used: {', '.join(tool_list)}")
+                    provider_label = {
+                        "xai": "xAI",
+                        "openai": "OpenAI",
+                        "anthropic": "Anthropic",
+                    }.get(str(self.provider_type).lower(), str(self.provider_type or "Provider"))
+                    logger.info(
+                        f"[{provider_label} SERVER-SIDE TOOLS] "
+                        f"Native/hosted tools used: {', '.join(tool_list)}"
+                    )
             
             # Tool was called
             if tool_call:

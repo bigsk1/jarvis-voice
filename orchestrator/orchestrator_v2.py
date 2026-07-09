@@ -1382,7 +1382,7 @@ Mode: {self.mode}
             "cache_read_cost_usd": 0.0,
             "cache_cost_usd": 0.0,
             "cache_savings_usd": 0.0,
-            "server_side_tools": {}  # Track xAI native search usage
+            "server_side_tools": {}  # Track provider-native/server-side tools
         }
         # Web conversation history already persists usage, so storing the
         # compact version here preserves prompt provenance without copying the
@@ -1658,7 +1658,7 @@ Mode: {self.mode}
                     total_usage["cache_cost_usd"] += usage["cache_cost_usd"]
                 if usage.get("cache_savings_usd"):
                     total_usage["cache_savings_usd"] += usage["cache_savings_usd"]
-                # Accumulate xAI server-side tools usage
+                # Accumulate provider-native/server-side tools usage
                 if usage.get("server_side_tools"):
                     for tool_name, count in usage["server_side_tools"].items():
                         total_usage["server_side_tools"][tool_name] = total_usage["server_side_tools"].get(tool_name, 0) + count
@@ -2276,8 +2276,16 @@ Mode: {self.mode}
                     server_tools = total_usage["server_side_tools"]
                     total_searches = sum(server_tools.values())
                     tool_summary = ", ".join(f"{k.replace('SERVER_SIDE_TOOL_', '').lower()}={v}" for k, v in server_tools.items())
+                    provider_label = {
+                        "xai": "xAI",
+                        "openai": "OpenAI",
+                        "anthropic": "Anthropic",
+                    }.get(
+                        str(getattr(self.router, "provider_type", "")).lower(),
+                        str(getattr(self.router, "provider_type", None) or "Provider"),
+                    )
                     if sys.stdout.isatty():
-                        print(f"🔍 xAI native search: {total_searches} call(s) [{tool_summary}]")
+                        print(f"🔍 {provider_label} server-side tools: {total_searches} call(s) [{tool_summary}]")
                     response["server_side_tools"] = server_tools
                 
                 # Add thinking to response if available
