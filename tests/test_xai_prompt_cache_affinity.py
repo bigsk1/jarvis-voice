@@ -33,6 +33,11 @@ class _FakeCompletions:
         )
 
 
+class _FakeOpenAI:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+
 class XAIPromptCacheAffinityTests(unittest.TestCase):
     def _provider_shell(self, api_key: str = "xai-test-key") -> XAIProvider:
         provider = XAIProvider.__new__(XAIProvider)
@@ -120,6 +125,25 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
         self.assertIsNone(thinking)
         self.assertEqual(completions.last_kwargs["reasoning_effort"], "none")
 
+    def test_grok_45_reasoning_effort_is_sent_to_chat_completions(self):
+        provider = self._provider_shell()
+        provider.model = "grok-4.5"
+        completions = _FakeCompletions()
+        provider.client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+
+        with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "low"}, clear=True):
+            text, tool_call, usage, thinking = provider._chat_with_tools_openai_sdk(
+                messages=[{"role": "user", "content": "hello"}],
+                tools=[],
+                system_prompt="system",
+            )
+
+        self.assertEqual(text, "ok")
+        self.assertIsNone(tool_call)
+        self.assertIsNone(usage)
+        self.assertIsNone(thinking)
+        self.assertEqual(completions.last_kwargs["reasoning_effort"], "low")
+
     def test_chat_completions_path_exposes_xai_cached_tokens(self):
         provider = self._provider_shell()
         completions = _FakeCompletions(
@@ -163,7 +187,7 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
         self.assertEqual(usage["cached_prompt_text_tokens"], 0)
         self.assertEqual(usage["cache_read_tokens"], 0)
 
-    def test_reasoning_effort_is_only_for_grok_43_family(self):
+    def test_reasoning_effort_comes_from_catalog(self):
         provider = self._provider_shell()
         provider.model = "grok-4.3-latest"
 
@@ -172,6 +196,22 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
             self.assertEqual(
                 provider._xai_sdk_create_kwargs(tools=[])["reasoning_effort"],
                 "high",
+            )
+
+        provider.model = "grok-4.5"
+        with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "medium"}, clear=True):
+            self.assertEqual(provider._xai_reasoning_effort(), "medium")
+            self.assertEqual(
+                provider._xai_sdk_create_kwargs(tools=[])["reasoning_effort"],
+                "medium",
+            )
+
+        provider.model = "grok-build-latest"
+        with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "low"}, clear=True):
+            self.assertEqual(provider._xai_reasoning_effort(), "low")
+            self.assertEqual(
+                provider._xai_sdk_create_kwargs(tools=[])["reasoning_effort"],
+                "low",
             )
 
         provider.model = "grok-4.20-reasoning"
@@ -195,17 +235,31 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
         with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "medium"}, clear=True):
             self.assertEqual(provider._xai_sdk_create_kwargs(tools=[])["reasoning_effort"], "medium")
 
+    def test_grok_45_rejects_reasoning_effort_none(self):
+        provider = self._provider_shell()
+        provider.model = "grok-4.5"
+        with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "none"}, clear=True):
+            self.assertIsNone(provider._xai_reasoning_effort())
+            self.assertNotIn("reasoning_effort", provider._xai_sdk_create_kwargs(tools=[]))
+
     def test_xai_reasoning_model_detection_does_not_match_non_reasoning(self):
+        self.assertTrue(XAIProvider._xai_model_is_reasoning("grok-4.5"))
+        self.assertTrue(XAIProvider._xai_model_is_reasoning("grok-4.5-latest"))
+        self.assertTrue(XAIProvider._xai_model_is_reasoning("grok-build-latest"))
         self.assertTrue(XAIProvider._xai_model_is_reasoning("grok-4.3"))
         self.assertTrue(XAIProvider._xai_model_is_reasoning("grok-4.20-reasoning"))
         self.assertFalse(XAIProvider._xai_model_is_reasoning("grok-4.20-non-reasoning"))
         self.assertFalse(XAIProvider._xai_model_is_reasoning("grok-4.20-non-reasoning-latest"))
 
     def test_xai_provider_default_model_comes_from_catalog(self):
-        with patch("config_loader.get_config_value", return_value="false"):
+        fake_openai = types.ModuleType("openai")
+        fake_openai.OpenAI = _FakeOpenAI
+
+        with patch.dict(sys.modules, {"openai": fake_openai}), \
+             patch("config_loader.get_config_value", return_value="false"):
             provider = XAIProvider(api_key="xai-test-key", auth_mode="api_key")
 
-        self.assertEqual(provider.model, "grok-4.3")
+        self.assertEqual(provider.model, "grok-4.5")
 
     def test_xai_sdk_client_init_receives_grok_conv_id_metadata(self):
         calls = []
@@ -216,8 +270,10 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
 
         fake_xai_sdk = types.ModuleType("xai_sdk")
         fake_xai_sdk.Client = FakeXAIClient
+        fake_openai = types.ModuleType("openai")
+        fake_openai.OpenAI = _FakeOpenAI
 
-        with patch.dict(sys.modules, {"xai_sdk": fake_xai_sdk}), \
+        with patch.dict(sys.modules, {"openai": fake_openai, "xai_sdk": fake_xai_sdk}), \
              patch("config_loader.get_config_value", return_value="true"), \
              patch.dict(os.environ, {"XAI_PROMPT_CACHE_KEY": "conv_sdk"}, clear=True):
             provider = XAIProvider(

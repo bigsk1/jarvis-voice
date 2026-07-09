@@ -134,12 +134,31 @@ def _context_label(tokens: int) -> str:
 CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
     "xai": [
         {
-            "id": "grok-4.3",
-            "name": "Grok 4.3 (Default)",
-            "context_tokens": 1_000_000,
+            "id": "grok-4.5",
+            "name": "Grok 4.5 (Default)",
+            "context_tokens": 500_000,
             "input_modalities": ["text", "image"],
             "output_modalities": ["text"],
             "default": True,
+            "pricing": {
+                "input": 2.00,
+                "output": 6.00,
+                "cached": 0.50,
+                "image_input": 2.00,
+                "search": 0.0,
+            },
+            "reasoning": True,
+            "reasoning_effort": True,
+            "reasoning_effort_values": ["low", "medium", "high"],
+            "reasoning_effort_default": "high",
+            "aliases": ["grok-4.5-latest", "grok-build-latest"],
+        },
+        {
+            "id": "grok-4.3",
+            "name": "Grok 4.3",
+            "context_tokens": 1_000_000,
+            "input_modalities": ["text", "image"],
+            "output_modalities": ["text"],
             "pricing": {
                 "input": 1.25,
                 "output": 2.50,
@@ -154,6 +173,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
                 },
             },
             "reasoning_effort": True,
+            "reasoning_effort_values": ["none", "low", "medium", "high"],
             "aliases": ["grok-4.3-latest", "grok-latest"],
         },
         {
@@ -827,7 +847,7 @@ def _model_option_capabilities(entry: dict[str, Any]) -> tuple[list[str], bool |
             if isinstance(thinking, dict) and thinking.get("supported"):
                 tags.append("thinking")
 
-    if entry.get("reasoning_effort") or "reasoning" in str(entry.get("id", "")).lower():
+    if entry.get("reasoning") or entry.get("reasoning_effort") or "reasoning" in str(entry.get("id", "")).lower():
         if "thinking" not in tags:
             tags.append("thinking")
     if vision:
@@ -898,7 +918,7 @@ def get_model_supports_xai_reasoning_effort(provider: str, model: str | None) ->
     """
     Whether XAI_REASONING_EFFORT may be sent for this model.
 
-    Only grok-4.3 family supports the API parameter today; catalog is source of truth.
+    The catalog is source of truth for which Grok models accept this parameter.
     """
     if provider != "xai":
         return False
@@ -906,3 +926,29 @@ def get_model_supports_xai_reasoning_effort(provider: str, model: str | None) ->
     if not metadata:
         return False
     return bool(metadata.get("reasoning_effort"))
+
+
+def get_model_xai_reasoning_effort_values(provider: str, model: str | None) -> list[str]:
+    """Return allowed reasoning_effort values for an xAI model."""
+    if provider != "xai":
+        return []
+    metadata = get_model_metadata(provider, model)
+    if not metadata or not metadata.get("reasoning_effort"):
+        return []
+    values = metadata.get("reasoning_effort_values")
+    if isinstance(values, list):
+        return [str(value) for value in values]
+    return ["none", "low", "medium", "high"]
+
+
+def get_model_supports_xai_reasoning(provider: str, model: str | None) -> bool:
+    """Whether the catalog marks this xAI model as a reasoning model."""
+    if provider != "xai":
+        return False
+    metadata = get_model_metadata(provider, model)
+    if not metadata:
+        return False
+    model_id = str(metadata.get("id", "")).lower()
+    if "non-reasoning" in model_id or "non_reasoning" in model_id:
+        return False
+    return bool(metadata.get("reasoning") or metadata.get("reasoning_effort") or "reasoning" in model_id)

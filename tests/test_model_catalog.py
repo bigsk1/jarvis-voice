@@ -25,6 +25,8 @@ from lib.model_catalog import (
     get_model_context_window,
     get_model_metadata,
     get_model_pricing,
+    get_model_xai_reasoning_effort_values,
+    get_model_supports_xai_reasoning,
     get_model_supports_xai_reasoning_effort,
     get_provider_fallback_model,
     get_provider_model_options,
@@ -119,8 +121,9 @@ class ModelCatalogTests(unittest.TestCase):
     def test_xai_options_match_current_catalog(self):
         models = [entry["id"] for entry in get_provider_model_options("xai")]
         self.assertEqual(
-            models[:4],
+            models[:5],
             [
+                "grok-4.5",
                 "grok-4.3",
                 "grok-build-0.1",
                 "grok-4.20-0309-reasoning",
@@ -132,6 +135,18 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertNotIn("grok-4-1-fast-non-reasoning-latest", models)
         self.assertEqual(get_model_context_label("xai", "grok-4.20-reasoning"), "1M")
         self.assertEqual(get_model_context_window("xai", "grok-4.20-reasoning"), 1_000_000)
+
+    def test_grok_4_5_variant_resolves_with_pricing(self):
+        self.assertEqual(get_model_context_window("xai", "grok-4.5"), 500_000)
+        self.assertEqual(get_model_context_window("xai", "grok-4.5-latest"), 500_000)
+        self.assertEqual(get_model_context_window("xai", "grok-build-latest"), 500_000)
+        self.assertEqual(get_model_context_label("xai", "grok-4.5"), "500K")
+        self.assertEqual(get_model_metadata("xai", "grok-build-latest")["id"], "grok-4.5")
+        pricing = get_model_pricing("xai", "grok-4.5")
+        self.assertIsNotNone(pricing)
+        self.assertEqual(pricing["input"], 2.00)
+        self.assertEqual(pricing["cached"], 0.50)
+        self.assertEqual(pricing["output"], 6.00)
 
     def test_retired_xai_models_are_not_curated(self):
         models = [entry["id"] for entry in get_provider_model_options("xai")]
@@ -164,7 +179,9 @@ class ModelCatalogTests(unittest.TestCase):
 
     def test_grok_build_0_1_resolves_with_pricing(self):
         self.assertEqual(get_model_context_window("xai", "grok-build-0.1"), 256_000)
+        self.assertEqual(get_model_context_window("xai", "grok-build"), 256_000)
         self.assertEqual(get_model_context_label("xai", "grok-build-0.1"), "256K")
+        self.assertEqual(get_model_metadata("xai", "grok-build")["id"], "grok-build-0.1")
         pricing = get_model_pricing("xai", "grok-build-0.1")
         self.assertIsNotNone(pricing)
         self.assertEqual(pricing["input"], 1.00)
@@ -177,6 +194,10 @@ class ModelCatalogTests(unittest.TestCase):
 
         # API-key Grok Build accepts images; the OAuth transport overrides this
         # separately because its chat proxy is text-only.
+        self.assertTrue(xai["grok-4.5"]["vision"])
+        self.assertIn("vision", xai["grok-4.5"]["capabilities"])
+        self.assertIn("thinking", xai["grok-4.5"]["capabilities"])
+        self.assertIn("tools", xai["grok-4.5"]["capabilities"])
         self.assertTrue(xai["grok-build-0.1"]["vision"])
         self.assertIn("vision", xai["grok-build-0.1"]["capabilities"])
         self.assertIn("tools", xai["grok-build-0.1"]["capabilities"])
@@ -184,10 +205,36 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertIsNone(openai["gpt-5.5"]["vision"])
 
     def test_xai_reasoning_effort_flag_from_catalog(self):
+        self.assertTrue(get_model_supports_xai_reasoning_effort("xai", "grok-4.5"))
+        self.assertTrue(get_model_supports_xai_reasoning_effort("xai", "grok-4.5-latest"))
+        self.assertTrue(get_model_supports_xai_reasoning_effort("xai", "grok-build-latest"))
         self.assertTrue(get_model_supports_xai_reasoning_effort("xai", "grok-4.3"))
         self.assertTrue(get_model_supports_xai_reasoning_effort("xai", "grok-4.3-latest"))
         self.assertFalse(get_model_supports_xai_reasoning_effort("xai", "grok-build-0.1"))
         self.assertFalse(get_model_supports_xai_reasoning_effort("xai", "grok-4.20-reasoning"))
+
+    def test_xai_reasoning_effort_values_from_catalog(self):
+        self.assertEqual(
+            get_model_xai_reasoning_effort_values("xai", "grok-4.5"),
+            ["low", "medium", "high"],
+        )
+        self.assertEqual(
+            get_model_xai_reasoning_effort_values("xai", "grok-build-latest"),
+            ["low", "medium", "high"],
+        )
+        self.assertEqual(
+            get_model_xai_reasoning_effort_values("xai", "grok-4.3"),
+            ["none", "low", "medium", "high"],
+        )
+        self.assertEqual(get_model_xai_reasoning_effort_values("xai", "grok-build-0.1"), [])
+
+    def test_xai_reasoning_flag_from_catalog(self):
+        self.assertTrue(get_model_supports_xai_reasoning("xai", "grok-4.5"))
+        self.assertTrue(get_model_supports_xai_reasoning("xai", "grok-4.5-latest"))
+        self.assertTrue(get_model_supports_xai_reasoning("xai", "grok-build-latest"))
+        self.assertTrue(get_model_supports_xai_reasoning("xai", "grok-4.3"))
+        self.assertTrue(get_model_supports_xai_reasoning("xai", "grok-4.20-reasoning"))
+        self.assertFalse(get_model_supports_xai_reasoning("xai", "grok-4.20-non-reasoning"))
 
     def test_dated_openai_variant_resolves_to_family_metadata(self):
         self.assertEqual(get_model_context_window("openai", "gpt-5.4-nano-2026-03-17"), 400_000)
@@ -282,7 +329,7 @@ class ModelCatalogTests(unittest.TestCase):
 
     def test_catalog_defaults_are_explicit(self):
         self.assertEqual(get_default_model_id("openai"), "gpt-5.4-nano")
-        self.assertEqual(get_default_model_id("xai"), "grok-4.3")
+        self.assertEqual(get_default_model_id("xai"), "grok-4.5")
         self.assertEqual(get_default_model_id("anthropic"), "claude-sonnet-5")
 
     def test_legacy_claude_4_5_alias_resolves_to_sonnet(self):
@@ -291,9 +338,12 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(metadata["id"], "claude-sonnet-4-5-20250929")
 
     def test_latest_suffix_falls_back_to_family_match(self):
-        metadata = get_model_metadata("xai", "grok-4.3-latest")
+        metadata = get_model_metadata("xai", "grok-4.5-latest")
         self.assertIsNotNone(metadata)
-        self.assertEqual(metadata["id"], "grok-4.3")
+        self.assertEqual(metadata["id"], "grok-4.5")
+        alias = get_model_metadata("xai", "grok-build-latest")
+        self.assertIsNotNone(alias)
+        self.assertEqual(alias["id"], "grok-4.5")
         family = get_model_metadata("xai", "grok-4.3-2026-05-06")
         self.assertIsNotNone(family)
         self.assertEqual(family["id"], "grok-4.3")

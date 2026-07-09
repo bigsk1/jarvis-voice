@@ -30,7 +30,7 @@ OPENAI_API_KEY="sk-your-key-here"
 # Or use xAI Grok
 LLM_PROVIDER="xai"
 XAI_API_KEY="xai-your-key-here"
-XAI_MODEL="grok-4.3"
+XAI_MODEL="grok-4.5"
 
 ### 3. Test It
 
@@ -383,13 +383,13 @@ bin/
 
 ## Switching Providers
 
-### To xAI Grok 4.3 (Recommended)
+### To xAI Grok 4.5 (Recommended)
 
 `config/cloud.env`:
 ```bash
 LLM_PROVIDER="xai"
 XAI_API_KEY="xai-..."
-XAI_MODEL="grok-4.3"
+XAI_MODEL="grok-4.5"
 ```
 
 ### To Anthropic Claude

@@ -90,7 +90,7 @@ class OpenCodeClientTests(unittest.TestCase):
             defaults = resolve_opencode_defaults("cloud")
 
         self.assertEqual(defaults["providerID"], "xai")
-        self.assertEqual(defaults["modelID"], "grok-4.3")
+        self.assertEqual(defaults["modelID"], "grok-4.5")
 
     def test_client_uses_catalog_fallback_when_opencode_model_unset(self):
         def fake_get_config(key, default=None):

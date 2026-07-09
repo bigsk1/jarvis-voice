@@ -11,7 +11,7 @@
 - **[docker/README.md](docker/README.md)** - 🐳 **Docker guide** — run Web UIs + API in containers (commands, `.env`, hybrid mode)
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
-- **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (`grok-4.3` recommended default; also `grok-build-0.1`, native search/TTS, in-flight continuation) ⭐ RECOMMENDED
+- **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (`grok-4.5` recommended default; also `grok-4.3`, `grok-build-0.1`, native search/TTS, in-flight continuation) ⭐ RECOMMENDED
 - **[OPENAI_PROVIDER.md](OPENAI_PROVIDER.md)** - 🆕 **OpenAI provider** (Chat Completions default, optional Responses API routing, hosted tools, in-flight continuation)
 - **[ollama/README.md](ollama/README.md)** - **Ollama local + Ollama Cloud guide** (`OLLAMA_MODEL` vs `OLLAMA_CLOUD_MODEL`, vision uses cloud model in cloud mode / `OLLAMA_VISION_MODEL` in local mode, signed-in daemon, Docker addressing, troubleshooting)
 
@@ -347,9 +347,9 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 **2026-07-03 (v2.54.1):**
 - ✅ **xAI Grok CLI OAuth subscription provider**
-  - Added `XAI_AUTH_MODE=auto|api_key|oauth` and `XAI_OAUTH_MODEL=grok-build`; OAuth uses xAI's documented CLI chat proxy and owner-only `~/.grok/auth.json` credentials without logging or returning tokens.
+  - Added `XAI_AUTH_MODE=auto|api_key|oauth`; OAuth uses xAI's documented CLI chat proxy, discovered `grok models` chat IDs, and owner-only `~/.grok/auth.json` credentials without logging or returning tokens.
   - Primary chat, Jarvis function calls, status summaries, and completion-guard evaluators can use OAuth; xAI server-side search, uploaded-image vision, image/video generation, and TTS remain explicitly API-key-only.
-  - Web settings discover supported OAuth chat models from `grok models`, reject coding-agent Composer as a drop-in chat model, report the 256K context correctly, and show sanitized auth/quota status in the System tab.
+  - Web settings discover supported OAuth chat models from `grok models`, reject coding-agent Composer as a drop-in chat model, keep OAuth/API-key model capabilities separate, and show sanitized auth/quota status in the System tab.
   - OAuth usage retains exact provider token counts while marking dollar cost and account quota unavailable under subscription billing; expired sessions delegate refresh to the official Grok CLI.
 
 **2026-07-02:**

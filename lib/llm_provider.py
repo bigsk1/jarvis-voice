@@ -15,7 +15,12 @@ from abc import ABC, abstractmethod
 # environment already chose something else explicitly.
 os.environ.setdefault("GRPC_DNS_RESOLVER", "native")
 
-from model_catalog import get_model_supports_xai_reasoning_effort, get_provider_fallback_model
+from model_catalog import (
+    get_model_xai_reasoning_effort_values,
+    get_model_supports_xai_reasoning,
+    get_model_supports_xai_reasoning_effort,
+    get_provider_fallback_model,
+)
 from ollama_utils import (
     get_ollama_execution_class,
     get_ollama_request_urls,
@@ -970,14 +975,15 @@ class XAIProvider(LLMProvider):
         normalized = (model or "").strip().lower()
         if "non-reasoning" in normalized or "non_reasoning" in normalized:
             return False
-        return cls._xai_model_supports_reasoning_effort(normalized) or "reasoning" in normalized
+        return get_model_supports_xai_reasoning("xai", normalized) or "reasoning" in normalized
 
     def _xai_reasoning_effort(self) -> str | None:
         """
-        Optional Grok 4.3 reasoning-effort override.
+        Optional xAI reasoning-effort override.
 
-        xAI documents grok-4.3 as supporting none/low/medium/high (none disables
-        reasoning). Other Grok reasoning models may reject this parameter.
+        The catalog controls which Grok models accept this parameter and which
+        values are valid for each model. For example, grok-4.5 accepts
+        low/medium/high, while grok-4.3 also accepts none.
         See https://docs.x.ai/developers/model-capabilities/text/reasoning
 
         Requires ``xai-sdk>=1.12.2`` for SDK (gRPC) chat: older releases only
@@ -987,11 +993,13 @@ class XAIProvider(LLMProvider):
         if not raw:
             return None
 
-        allowed = {"none", "low", "medium", "high"}
+        allowed_values = get_model_xai_reasoning_effort_values("xai", self.model)
+        allowed = set(allowed_values or ["none", "low", "medium", "high"])
         if raw not in allowed:
+            expected = ", ".join(allowed_values or ["none", "low", "medium", "high"])
             print(
                 f"WARNING: Ignoring invalid XAI_REASONING_EFFORT={raw!r}; "
-                "expected none, low, medium, or high",
+                f"expected {expected}",
                 file=sys.stderr,
             )
             return None

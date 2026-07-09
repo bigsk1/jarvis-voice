@@ -343,6 +343,22 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertEqual(matching[0]["id"], "grok-4.20-non-reasoning-latest")
         self.assertIn("configured alias", matching[0]["name"])
 
+    def test_grok_build_latest_alias_uses_grok_45_dropdown_capabilities(self):
+        from server.services.settings_manager import SettingsManager
+
+        settings = SettingsManager("cloud")
+        with patch.object(settings, "_xai_uses_oauth", return_value=False):
+            options = settings._get_model_options_with_current("xai", "grok-build-latest")
+
+        matching = [option for option in options if option["id"] == "grok-build-latest"]
+        self.assertEqual(len(matching), 1)
+        self.assertIn("Grok 4.5", matching[0]["name"])
+        self.assertIn("configured alias", matching[0]["name"])
+        self.assertEqual(matching[0]["context"], "500K")
+        self.assertTrue(matching[0]["vision"])
+        self.assertIn("vision", matching[0]["capabilities"])
+        self.assertIn("thinking", matching[0]["capabilities"])
+
     def test_save_rejects_cross_mode_ollama_model(self):
         from server.services import settings_manager as settings_module
         from server.services.settings_manager import SettingsManager

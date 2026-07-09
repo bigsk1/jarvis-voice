@@ -1333,8 +1333,8 @@ STASH_BLOCKED_DOWNLOAD_HOSTS="localhost,127.0.0.1,169.254.169.254"
 # STASH_SUMMARIZE_MODEL="gpt-4o-mini"        # OpenAI
 # STASH_SUMMARIZE_MODEL="claude-3-5-haiku-latest"  # Anthropic
 # STASH_SUMMARIZE_MODEL="qwen3.5:latest"          # Ollama (local)
-# STASH_SUMMARIZE_MODEL="grok-4.3"                # xAI API key
-# Under xAI OAuth, unsupported API model pins resolve to XAI_OAUTH_MODEL (grok-build)
+# STASH_SUMMARIZE_MODEL="grok-4.5"                # xAI API key
+# Under xAI OAuth, unsupported API model pins resolve to XAI_OAUTH_MODEL.
 ```
 
 ### LLM Summarization Details
@@ -1358,7 +1358,7 @@ When `stash.remember` is called with `summarize: true`:
 | Ollama local | `STASH_SUMMARIZE_MODEL` or `OLLAMA_MODEL` | Local daemon |
 | Ollama Cloud | `STASH_SUMMARIZE_MODEL` or `OLLAMA_CLOUD_MODEL` | Signed-in daemon or `OLLAMA_API_KEY` direct API |
 | xAI API | `STASH_SUMMARIZE_MODEL` or `XAI_MODEL` | `XAI_API_KEY` |
-| xAI OAuth | `XAI_OAUTH_MODEL` (`grok-build` by default) | Grok CLI OAuth chat proxy |
+| xAI OAuth | `XAI_OAUTH_MODEL` (`grok-4.5` by default) | Grok CLI OAuth chat proxy |
 
 **Note**: Summarization calls are independent of the main conversation context.
 This means costs are separate from your orchestrator tool call budget.

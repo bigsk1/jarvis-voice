@@ -38,7 +38,7 @@ QMD does not respect `.gitignore`. After `qmd update`, verify private dirs were 
 
 ## Pass 2 completed (2026-05-25)
 
-- xAI: `grok-4.3` default + `grok-build-0.1` documented in `XAI_PROVIDER.md`
+- xAI: `grok-4.5` default + `grok-4.3` / `grok-build-0.1` documented in `XAI_PROVIDER.md`
 - Local Ollama: `qwen3.5:latest` across active docs
 - `INSTALL_GUIDE.md` → v2.50.2; `JARVIS_WORKFLOW.md` model tables/footer
 

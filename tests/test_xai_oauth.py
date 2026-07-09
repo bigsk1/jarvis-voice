@@ -107,7 +107,55 @@ Available models:
     assert models[0]["auth"] == "oauth"
     assert models[0]["vision"] is False
     assert models[0]["capabilities"] == ["tools", "thinking"]
-    assert xai_oauth.get_xai_oauth_model("grok-build-0.1") == "grok-build"
+    assert xai_oauth.get_xai_oauth_model("grok-build") == "grok-build"
+    assert xai_oauth.get_xai_oauth_model("grok-build-0.1") == "grok-4.5"
+
+
+def test_model_discovery_allows_grok_45_oauth_default():
+    output = """You are logged in with grok.com.
+Default model: grok-4.5
+
+Available models:
+  * grok-4.5 (default)
+  - grok-composer-2.5-fast
+"""
+    result = subprocess.CompletedProcess(["grok", "models"], 0, stdout=output, stderr="")
+    xai_oauth._MODEL_CACHE = None
+    with (
+        patch.object(xai_oauth, "get_grok_cli_path", return_value="/usr/bin/grok"),
+        patch.object(xai_oauth.subprocess, "run", return_value=result),
+    ):
+        models = xai_oauth.discover_xai_oauth_models(use_cache=False)
+
+    assert [model["id"] for model in models] == ["grok-4.5"]
+    assert models[0]["context"] == "500K"
+    assert models[0]["auth"] == "oauth"
+    assert models[0]["vision"] is False
+    assert models[0]["capabilities"] == ["tools", "thinking"]
+
+
+def test_parse_oauth_usage_output_supports_cli_text():
+    parsed = xai_oauth.parse_xai_oauth_usage_output(
+        "Weekly limit: 0%\nNext reset: July 13, 03:58 PT\n"
+    )
+
+    assert parsed == {
+        "weekly_limit_label": "0%",
+        "weekly_limit_percent": 0.0,
+        "next_reset": "July 13, 03:58 PT",
+    }
+
+
+def test_parse_oauth_usage_output_supports_tui_compact_text():
+    parsed = xai_oauth.parse_xai_oauth_usage_output(
+        "\x1b[?25lWeeklylimit:0%Nextreset:July13,03:58PT⠙MCP(0/4)"
+    )
+
+    assert parsed == {
+        "weekly_limit_label": "0%",
+        "weekly_limit_percent": 0.0,
+        "next_reset": "July 13, 03:58 PT",
+    }
 
 
 def test_operator_can_allow_new_advertised_chat_model_without_code_change():
@@ -237,13 +285,13 @@ def test_provider_uses_oauth_proxy_and_subscription_usage(tmp_path):
             }}],
         )
 
-    assert provider.model == "grok-build"
+    assert provider.model == "grok-4.5"
     assert provider.auth_mode == "oauth"
     client_kwargs = _FakeOpenAI.instances[-1].kwargs
     assert client_kwargs["api_key"] == "private-bearer-token"
     assert client_kwargs["base_url"] == xai_oauth.XAI_OAUTH_BASE_URL
     assert client_kwargs["default_headers"]["X-XAI-Token-Auth"] == "xai-grok-cli"
-    assert client_kwargs["default_headers"]["x-grok-model-override"] == "grok-build"
+    assert client_kwargs["default_headers"]["x-grok-model-override"] == "grok-4.5"
     assert text is None
     assert tool == {"name": "weather", "arguments": {"location": "Portland"}}
     assert thinking is None

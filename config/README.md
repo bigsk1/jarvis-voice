@@ -176,7 +176,7 @@ Notes:
 ```bash
 # Cloud mode — pick one provider
 LLM_PROVIDER="xai"
-XAI_MODEL="grok-build-0.1"
+XAI_MODEL="grok-4.5"
 
 # LLM_PROVIDER="anthropic"
 # ANTHROPIC_MODEL="claude-sonnet-5"
@@ -533,7 +533,7 @@ echo $BRAVE_API_KEY  # Should show your API key
 
 ### Cloud Mode
 
-- **xAI**: `grok-4.3`, `grok-build-0.1` (see `cloud.env.example` and [xAI provider](../docs/XAI_PROVIDER.md))
+- **xAI**: `grok-4.5`, `grok-4.3`, `grok-build-0.1` (see `cloud.env.example` and [xAI provider](../docs/XAI_PROVIDER.md))
 - **Anthropic**: `claude-sonnet-5` and related Claude models
 - **OpenAI**: `gpt-5.4-mini`, `gpt-5.4-nano`, and related GPT models
 - **Ollama Cloud**: a cloud-tagged model through a signed-in daemon, or a canonical direct-API model with `OLLAMA_API_KEY`

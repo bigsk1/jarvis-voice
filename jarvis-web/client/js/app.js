@@ -1869,7 +1869,7 @@ class JarvisApp {
           </div>
           <div class="config-item">
             <span class="config-label">XAI_OAUTH_MODEL</span>
-            <span class="config-value">${Utils.escapeHtml(c.XAI_OAUTH_MODEL || 'grok-build')}</span>
+            <span class="config-value">${Utils.escapeHtml(c.XAI_OAUTH_MODEL || 'grok-4.5')}</span>
           </div>
           <div class="config-item">
             <span class="config-label">XAI_SEARCH</span>
@@ -2337,7 +2337,13 @@ class JarvisApp {
         if (data.native_search_requested && !data.native_search_available) {
           parts.push('native search disabled');
         }
-        parts.push('quota unavailable');
+        const oauthUsage = data.oauth_usage || {};
+        if (data.usage_available && oauthUsage.weekly_limit_label) {
+          parts.push(`Weekly limit: ${oauthUsage.weekly_limit_label}`);
+          if (oauthUsage.next_reset) parts.push(`Next reset: ${oauthUsage.next_reset}`);
+        } else {
+          parts.push('quota unavailable');
+        }
         label = parts.join(' · ');
       } else if (available) {
         label = 'API key configured';
@@ -2355,6 +2361,8 @@ class JarvisApp {
       `;
       const details = [`Connection: ${data.connection_mode || 'unknown'}`];
       if (data.expires_at) details.push(`Session expires: ${data.expires_at}`);
+      if (data.oauth_usage?.weekly_limit_label) details.push(`Weekly limit: ${data.oauth_usage.weekly_limit_label}`);
+      if (data.oauth_usage?.next_reset) details.push(`Next reset: ${data.oauth_usage.next_reset}`);
       if (data.usage_note) details.push(data.usage_note);
       if (data.native_search_note) details.push(data.native_search_note);
       el.title = details.join('\n');

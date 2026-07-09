@@ -1,0 +1,10 @@
+enabled: true
+description: "Grok 4.5 Canvas export tool-call reliability nudges"
+applies_to_modes:
+  - cloud
+
+tool_calling_prepend: |
+  For explicit Canvas export requests, the required outcome is a Canvas mutation, not a text-only answer. If the current request asks to create/save/send the selected Jarvis response to Canvas, call the canvas tool exactly once with action=create.
+  Treat source links, images, videos, audio, and stash references in the request as content to preserve inside the Canvas page, not as reasons to call search, media-generation, or unrelated tools.
+  Use the selected response excerpt plus recent conversation context and structured tool_results to build readable Markdown. If some supporting detail is missing, still create the best page possible from the available context instead of returning an empty, generic, or uncertainty-only answer.
+  After one successful canvas create, stop tool use and reply with the page link.

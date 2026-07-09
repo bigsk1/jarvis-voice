@@ -1,6 +1,6 @@
 # xAI (Grok) Provider - The Best Cloud Option for Jarvis
 
-> **TL;DR**: xAI Grok offers strong agentic tool calling. **`grok-4.3`** is the recommended default (1M context, configurable reasoning). **`grok-build-0.1`** is available for coding-heavy workloads (256K context). See [Available Models](#available-models) and `lib/model_catalog.py` for the full curated list.
+> **TL;DR**: xAI Grok offers strong agentic tool calling. **`grok-4.5`** is the recommended default (500K context, vision, function calling, configurable reasoning effort). **`grok-4.3`** remains available when you need the `none` reasoning-effort value, and **`grok-build-0.1`** is available for coding-heavy workloads (256K context). See [Available Models](#available-models) and `lib/model_catalog.py` for the full curated list.
 
 ---
 
@@ -30,11 +30,11 @@ xAI's Grok models offer the **best value proposition** for Jarvis:
 
 | Feature | xAI Grok | Anthropic Claude | OpenAI GPT |
 |---------|----------|------------------|------------|
-| **Context Window** | **1M-2M tokens** | 200K tokens | 128K-1M+ tokens |
-| **Input Cost** | **$1.25-$2.00/1M** | $3.00/1M | varies by model |
+| **Context Window** | **256K-1M tokens** | 200K tokens | 128K-1M+ tokens |
+| **Input Cost** | **$1.00-$2.00/1M** | $3.00/1M | varies by model |
 | **Output Cost** | **$2.50-$6.00/1M** | $15.00/1M | varies by model |
 | **Caching** | **Cached input from $0.20/1M** | 90% discount | model-dependent |
-| **Reasoning Mode** | ✅ Configurable on Grok 4.3 | ✅ $3/$15 | model-dependent |
+| **Reasoning Mode** | ✅ Configurable on Grok 4.5 and Grok 4.3 | ✅ $3/$15 | model-dependent |
 | **Function Calling** | ✅ Native | ✅ Native | ✅ Native |
 | **Typical Query Cost** | Competitive | Medium | varies |
 
@@ -50,7 +50,8 @@ xAI's Grok models offer the **best value proposition** for Jarvis:
 ┌─────────────────────────────────────────────────────────────────┐
 │ MODEL                              INPUT    OUTPUT   CONTEXT    │
 ├─────────────────────────────────────────────────────────────────┤
-│ xAI grok-4.3                       $1.25    $2.50    1M    🏆  │
+│ xAI grok-4.5                       $2.00    $6.00    500K  🏆  │
+│ xAI grok-4.3                       $1.25    $2.50    1M        │
 │ xAI grok-build-0.1                 $1.00    $2.00    256K       │
 │ xAI grok-4.20 non-reasoning        $1.25    $2.50    1M        │
 │ xAI grok-4.20 reasoning            $1.25    $2.50    1M        │
@@ -325,15 +326,17 @@ XAI_API_KEY="xai-..."
 
 # Model Selection
 # Recommended for reasoning / agentic tool workloads
-XAI_MODEL="grok-4.3"
+XAI_MODEL="grok-4.5"
 
-# Subscription/OAuth chat model used when XAI_AUTH_MODE resolves to oauth
-XAI_OAUTH_MODEL="grok-build"
-# Optional reviewed opt-ins for newly advertised direct-chat models:
-# XAI_OAUTH_ALLOWED_MODELS="grok-build,grok-new-chat-model"
+# Subscription/OAuth chat model used when XAI_AUTH_MODE resolves to oauth.
+# OAuth models are discovered from `grok models`; API-key mode uses XAI_MODEL.
+XAI_OAUTH_MODEL="grok-4.5"
+# Optional reviewed opt-ins for newly advertised non-Composer chat models:
+# XAI_OAUTH_ALLOWED_MODELS="grok-4.5,grok-build,grok-new-chat-model"
 
-# Optional Grok 4.3 reasoning effort: low, medium, or high.
-# xAI defaults to medium when unset. Low is best when latency matters.
+# Optional xAI reasoning effort for models that support it.
+# grok-4.5 accepts low/medium/high and defaults to high when unset.
+# grok-4.3 also accepts none. Low is best when latency matters.
 XAI_REASONING_EFFORT=low
 
 # Prompt-cache affinity. xAI cache entries are stored per server, so Jarvis
@@ -378,6 +381,7 @@ XAI_TTS_TIMEOUT="180"
 XAI_TTS_STYLE_TAGS_ENABLED=true
 
 # Alternative models:
+# XAI_MODEL="grok-4.3"                      # 1M context or reasoning_effort=none
 # XAI_MODEL="grok-build-0.1"                  # Coding / build-heavy workloads (256K)
 # XAI_MODEL="grok-4.20-0309-non-reasoning"  # Lower-latency non-reasoning
 # XAI_MODEL="grok-4.20-0309-reasoning"      # Automatic reasoning, no effort knob
@@ -398,7 +402,7 @@ grok login
 # config/cloud.env
 LLM_PROVIDER="xai"
 XAI_AUTH_MODE="oauth"     # explicit, or use auto with a blank XAI_API_KEY
-XAI_OAUTH_MODEL="grok-build"
+XAI_OAUTH_MODEL="grok-4.5"
 XAI_API_KEY=""
 ```
 
@@ -406,17 +410,33 @@ XAI_API_KEY=""
 the normal xAI API, while a blank value uses the Grok CLI OAuth session. The
 explicit `oauth` mode wins even when a key is present; the System tab reports
 that the key is being ignored for chat (media/TTS may still use it). The
-Web UI model dropdown discovers OAuth models from `grok models`; it filters out
-Composer because Composer is a coding agent that emits its own filesystem tools,
-not a drop-in chat-completions model. The current documented OAuth chat model is
-`grok-build`.
+Web UI model dropdown discovers OAuth models from `grok models` after removing
+`XAI_API_KEY` from the CLI environment, so OAuth discovery is not confused with
+API-key availability. Jarvis filters out Composer because Composer is a coding
+agent that emits its own filesystem tools, not a drop-in chat-completions model.
+The reviewed OAuth chat models are `grok-4.5` and `grok-build` when your Grok
+CLI account advertises them. API-key mode uses the full curated xAI API catalog
+from `lib/model_catalog.py`.
 
-Jarvis intentionally defaults the OAuth allowlist to `grok-build`. If xAI later
-advertises another model that is documented to support direct non-agent chat
-completions, add it to `XAI_OAUTH_ALLOWED_MODELS` and select it with
-`XAI_OAUTH_MODEL`; no code/catalog change is required. Composer remains blocked
-even if listed because its autonomous filesystem tools do not match Jarvis's
-provider contract.
+OAuth and API-key auth are separate xAI products for Jarvis purposes:
+
+| Path | Auth method | Billing / tracking | What `console.x.ai` sees |
+|------|-------------|--------------------|---------------------------|
+| Grok CLI / Grok subscription | Browser/device OAuth login stored in `~/.grok/auth.json` | Covered by the user's X Premium+ / SuperGrok-style subscription; enforced by xAI's subscription and abuse systems | Nothing; this path does not appear in the developer console |
+| xAI Developer API | `XAI_API_KEY` bearer token for `api.x.ai` | Pay-per-token developer API billing | Full API-key usage, billing, and audit/log visibility |
+
+`https://console.x.ai/` is the developer platform console for public API-key
+traffic. Grok CLI OAuth requests go through the subscription chat proxy instead,
+so they do not show up as API usage or per-request logs in that console. The
+interactive `grok` CLI may expose high-level subscription quota information with
+its `/usage` slash command, but that is not equivalent to API-key billing logs
+or a detailed request audit trail.
+
+Jarvis intentionally keeps the OAuth allowlist separate from the xAI API-key
+catalog. If xAI later advertises another non-Composer chat model through
+`grok models`, add it to `XAI_OAUTH_ALLOWED_MODELS` and select it with
+`XAI_OAUTH_MODEL`. Composer remains blocked even if listed because its
+autonomous filesystem tools do not match Jarvis's provider contract.
 
 The OAuth boundary is intentionally narrow:
 
@@ -424,8 +444,11 @@ The OAuth boundary is intentionally narrow:
   status LLM, and completion-guard/evaluator calls.
 - API-key-only: xAI Agent Tools search (`XAI_SEARCH`), image/video generation,
   uploaded-image vision, and xAI TTS.
+- Model labels are transport-scoped: the xAI API-key catalog may mark `grok-4.5`
+  as vision-capable, while Jarvis still marks Grok CLI OAuth chat models as
+  `no vision` until the chat-proxy image path is verified.
 - Subscription quota is shown as unavailable because xAI does not expose a
-  public quota/usage endpoint for this session path.
+  public API-style quota/usage endpoint for this session path.
 
 If the cached access token expires, Jarvis delegates refresh to the installed
 Grok CLI. If the login itself is no longer renewable, run `grok login` again.
@@ -457,12 +480,13 @@ The provider supports OpenAI-style `assistant.tool_calls` plus `role="tool"` mes
 
 | Model | Context | Use Case | Reasoning |
 |-------|---------|----------|-----------|
-| `grok-4.3` | 1M | **Default — agentic reasoning/tool use** | ✅ Yes, configurable `low`/`medium`/`high` |
+| `grok-4.5` | 500K | **Default — agentic reasoning/tool use** | ✅ Yes, configurable `low`/`medium`/`high` |
+| `grok-4.3` | 1M | Workloads that need `none` or 1M context | ✅ Yes, configurable `none`/`low`/`medium`/`high` |
 | `grok-build-0.1` | 256K | **Coding / build-heavy workloads** | ❌ No (`XAI_REASONING_EFFORT` not sent) |
 | `grok-4.20-0309-non-reasoning` | 1M | Lower-latency non-reasoning; prior `*-latest` ID remains an alias | ❌ No |
 | `grok-4.20-0309-reasoning` | 1M | Automatic reasoning; prior non-dated ID remains an alias | ✅ Yes, automatic |
 
-**Recommendation**: Use **`grok-4.3`** with `XAI_REASONING_EFFORT=low` for most Jarvis tool-routing. Use **`grok-build-0.1`** when you want a coding-tuned Grok model at lower per-token cost. Use **`grok-4.20-0309-non-reasoning`** when you want the lower-latency non-reasoning path. All current xAI language models switch to their higher API pricing tier when a prompt reaches 200K tokens.
+**Recommendation**: Use **`grok-4.5`** with `XAI_REASONING_EFFORT=low` for most Jarvis tool-routing. Use **`grok-4.3`** when you need the `none` effort value or 1M context. Use **`grok-build-0.1`** when you want a coding-tuned Grok model at lower per-token cost. Use **`grok-4.20-0309-non-reasoning`** when you want the lower-latency non-reasoning path.
 
 Curated models, pricing, and Web UI labels come from **`lib/model_catalog.py`**. Your active `XAI_MODEL` in `config/cloud.env` can differ from the example default — pick any supported Grok ID.
 
@@ -648,8 +672,7 @@ Assuming 90% cache hit rate after first query:
 
    # To:
    LLM_PROVIDER="xai"
-   XAI_MODEL="grok-4.3"
-   XAI_REASONING_EFFORT=low
+   XAI_MODEL="grok-4.5"
    XAI_API_KEY="xai-..."  # Get from console.x.ai
    ```
 
@@ -661,7 +684,7 @@ Assuming 90% cache hit rate after first query:
 3. **Differences to note**:
    - `--debug-thinking` won't show reasoning (API limitation)
    - Caching is automatic (no `cache_control` needed)
-   - larger context window (1M for Grok 4.3)
+   - large context window (500K for Grok 4.5, 1M for Grok 4.3)
    - lower input/output pricing for many workloads
 
 ### From OpenAI GPT
@@ -674,8 +697,7 @@ Assuming 90% cache hit rate after first query:
 
    # To:
    LLM_PROVIDER="xai"
-   XAI_MODEL="grok-4.3"
-   XAI_REASONING_EFFORT=low
+   XAI_MODEL="grok-4.5"
    XAI_API_KEY="xai-..."
    ```
 

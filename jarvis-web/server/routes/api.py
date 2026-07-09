@@ -904,7 +904,7 @@ def get_xai_oauth_status_route():
 
     return jsonify({
         **payload,
-        **get_xai_oauth_status(check_models=True),
+        **get_xai_oauth_status(check_models=True, check_usage=True),
         'connection_mode': 'oauth',
         'native_search_available': False,
         'native_search_note': (

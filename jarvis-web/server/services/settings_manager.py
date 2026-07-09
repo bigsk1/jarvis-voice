@@ -432,7 +432,7 @@ class SettingsManager:
             try:
                 return discover_xai_oauth_models()
             except XaiOAuthError:
-                model = get_xai_oauth_model(current_model)
+                model = self._xai_oauth_model()
                 return [{
                     'id': model,
                     'name': model,
@@ -525,6 +525,10 @@ class SettingsManager:
             ) == 'oauth'
         except XaiOAuthError:
             return False
+
+    def _xai_oauth_model(self) -> str:
+        """Resolve the mode-scoped Grok CLI OAuth chat model."""
+        return get_xai_oauth_model(get_jarvis_setting('XAI_OAUTH_MODEL', ''))
     
     def _is_sensitive(self, key: str) -> bool:
         """Check if a setting key is sensitive"""
@@ -884,7 +888,7 @@ class SettingsManager:
             try:
                 models['xai'] = discover_xai_oauth_models()
             except XaiOAuthError:
-                model = get_xai_oauth_model()
+                model = self._xai_oauth_model()
                 models['xai'] = [{
                     'id': model,
                     'name': model,
@@ -962,7 +966,7 @@ class SettingsManager:
             # Mode-aware: cloud uses OLLAMA_CLOUD_MODEL, local uses OLLAMA_MODEL.
             return self._ollama_env_default_model()
         if provider == 'xai' and self._xai_uses_oauth():
-            return get_xai_oauth_model()
+            return self._xai_oauth_model()
 
         return get_default_model_id(provider)
 
@@ -972,7 +976,7 @@ class SettingsManager:
             # Mode-aware Ollama default (OLLAMA_CLOUD_MODEL in cloud).
             return self._ollama_env_default_model()
         if provider == 'xai' and self._xai_uses_oauth():
-            return get_xai_oauth_model()
+            return self._xai_oauth_model()
         env_key_map = {
             'xai': 'XAI_MODEL',
             'anthropic': 'ANTHROPIC_MODEL',
