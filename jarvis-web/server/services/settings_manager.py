@@ -36,6 +36,7 @@ from xai_oauth import (
     get_xai_oauth_model,
     get_xai_oauth_status,
     is_xai_oauth_model,
+    xai_oauth_model_supports_vision,
 )
 
 
@@ -436,13 +437,17 @@ class SettingsManager:
                 return discover_xai_oauth_models()
             except XaiOAuthError:
                 model = self._xai_oauth_model()
+                vision = xai_oauth_model_supports_vision(model)
+                capabilities = ['tools', 'thinking']
+                if vision:
+                    capabilities.append('vision')
                 return [{
                     'id': model,
                     'name': model,
                     'context': get_model_context_label('xai', model) or 'OAuth subscription',
                     'auth': 'oauth',
-                    'capabilities': ['tools', 'thinking'],
-                    'vision': False,
+                    'capabilities': capabilities,
+                    'vision': vision,
                 }]
 
         options = get_provider_model_options(provider)
@@ -909,13 +914,17 @@ class SettingsManager:
                 models['xai'] = discover_xai_oauth_models()
             except XaiOAuthError:
                 model = self._xai_oauth_model()
+                vision = xai_oauth_model_supports_vision(model)
+                capabilities = ['tools', 'thinking']
+                if vision:
+                    capabilities.append('vision')
                 models['xai'] = [{
                     'id': model,
                     'name': model,
                     'context': get_model_context_label('xai', model) or 'OAuth subscription',
                     'auth': 'oauth',
-                    'capabilities': ['tools', 'thinking'],
-                    'vision': False,
+                    'capabilities': capabilities,
+                    'vision': vision,
                 }]
         
         # Dynamically fetch Ollama models if in local mode or Ollama selected

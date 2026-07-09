@@ -362,7 +362,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 **2026-07-03 (v2.54.1):**
 - ✅ **xAI Grok CLI OAuth subscription provider**
   - Added `XAI_AUTH_MODE=auto|api_key|oauth`; OAuth uses xAI's documented CLI chat proxy, discovered `grok models` chat IDs, and owner-only `~/.grok/auth.json` credentials without logging or returning tokens.
-  - Primary chat, Jarvis function calls, status summaries, and completion-guard evaluators can use OAuth; xAI server-side search, uploaded-image vision, image/video generation, and TTS remain explicitly API-key-only.
+  - Primary chat, Jarvis function calls, verified `grok-4.5` uploaded-image vision, status summaries, and completion-guard evaluators can use OAuth; xAI server-side search, image/video generation, and TTS remain explicitly API-key-only.
   - Web settings discover supported OAuth chat models from `grok models`, reject coding-agent Composer as a drop-in chat model, keep OAuth/API-key model capabilities separate, and show sanitized auth/quota status in the System tab.
   - OAuth usage retains exact provider token counts while marking dollar cost and account quota unavailable under subscription billing; expired sessions delegate refresh to the official Grok CLI.
 

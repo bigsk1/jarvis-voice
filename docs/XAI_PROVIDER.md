@@ -390,8 +390,9 @@ XAI_TTS_STYLE_TAGS_ENABLED=true
 ### Grok CLI OAuth subscription
 
 Jarvis can use the OAuth session created by the official Grok CLI for primary
-text chat, Jarvis tool calling, status summaries, and completion-guard LLM
-evaluation. The CLI's own README documents direct access through
+text chat, Jarvis tool calling, verified `grok-4.5` uploaded-image vision,
+status summaries, and completion-guard LLM evaluation. The CLI's own README
+documents direct access through
 `https://cli-chat-proxy.grok.com/v1/chat/completions`; Jarvis reads the cached
 bearer session from `~/.grok/auth.json`, requires owner-only file permissions,
 and never logs or returns the token.
@@ -441,14 +442,15 @@ autonomous filesystem tools do not match Jarvis's provider contract.
 The OAuth boundary is intentionally narrow:
 
 - Supported: primary text chat, native Jarvis function calls, exact token usage,
-  status LLM, and completion-guard/evaluator calls.
+  `grok-4.5` uploaded-image vision through the chat proxy, status LLM, and
+  completion-guard/evaluator calls.
 - API-key-only: xAI Agent Tools search (`XAI_SEARCH`), image/video generation,
-  uploaded-image vision, and xAI TTS.
-- Model labels are transport-scoped: the xAI API-key catalog may mark `grok-4.5`
-  as vision-capable, while Jarvis still marks Grok CLI OAuth chat models as
-  `no vision` until the chat-proxy image path is verified.
-- Subscription quota is shown as unavailable because xAI does not expose a
-  public API-style quota/usage endpoint for this session path.
+  video understanding through xAI native tools, and xAI TTS.
+- Model labels are transport-scoped: Jarvis marks OAuth `grok-4.5` as vision
+  capable because the chat-proxy image path has been verified, but it does not
+  automatically promote older or operator-added OAuth model IDs.
+- Subscription quota is limited to the high-level `/usage` data exposed by the
+  Grok CLI; it is not equivalent to API-key billing logs.
 
 If the cached access token expires, Jarvis delegates refresh to the installed
 Grok CLI. If the login itself is no longer renewable, run `grok login` again.

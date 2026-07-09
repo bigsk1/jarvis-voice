@@ -192,8 +192,8 @@ class ModelCatalogTests(unittest.TestCase):
         anthropic = {entry["id"]: entry for entry in get_provider_model_options("anthropic")}
         openai = {entry["id"]: entry for entry in get_provider_model_options("openai")}
 
-        # API-key Grok Build accepts images; the OAuth transport overrides this
-        # separately because its chat proxy is text-only.
+        # API-key Grok Build accepts images; OAuth transport capabilities are
+        # advertised separately from the developer API catalog.
         self.assertTrue(xai["grok-4.5"]["vision"])
         self.assertIn("vision", xai["grok-4.5"]["capabilities"])
         self.assertIn("thinking", xai["grok-4.5"]["capabilities"])

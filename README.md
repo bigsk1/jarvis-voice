@@ -554,7 +554,7 @@ nano config/cloud.env  # Configure the chosen provider and credentials/daemon
 # Recommended cloud provider: xAI Grok
 # LLM_PROVIDER="xai"
 # XAI_AUTH_MODE="auto"   # API key when set; otherwise a current `grok login`
-# XAI_API_KEY="xai-..."  # Optional for chat; required for xAI media/TTS/search APIs
+# XAI_API_KEY="xai-..."  # Optional for chat/OAuth vision; required for xAI generation/TTS/search APIs
 # XAI_MODEL="grok-4.3"  # 1M context, configurable reasoning effort
 # XAI_OAUTH_MODEL="grok-build"  # Grok CLI subscription chat model
 

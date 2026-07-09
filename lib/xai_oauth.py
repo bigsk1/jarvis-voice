@@ -3,7 +3,8 @@
 
 The official Grok CLI documents direct API access with the cached credentials
 written by ``grok login``.  Jarvis uses that documented chat-proxy contract for
-text/tool calls only; xAI media and TTS APIs still require ``XAI_API_KEY``.
+text, tool calls, and verified ``grok-4.5`` image input; xAI native search,
+generation, video, and TTS APIs still require ``XAI_API_KEY``.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from typing import Any
 XAI_OAUTH_BASE_URL = "https://cli-chat-proxy.grok.com/v1"
 XAI_OAUTH_DEFAULT_MODEL = "grok-4.5"
 XAI_OAUTH_REVIEWED_MODELS = ("grok-4.5", "grok-build")
+XAI_OAUTH_VISION_MODELS = ("grok-4.5",)
 _VALID_AUTH_MODES = {"auto", "api_key", "oauth"}
 _VERSION_RE = re.compile(r"\bgrok\s+([0-9]+(?:\.[0-9]+){1,3})\b", re.IGNORECASE)
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
@@ -252,6 +254,13 @@ def get_xai_oauth_model(requested_model: str | None = None) -> str:
     return XAI_OAUTH_DEFAULT_MODEL
 
 
+def xai_oauth_model_supports_vision(model: str | None) -> bool:
+    """Whether Jarvis has verified image input for this OAuth chat-proxy model."""
+
+    normalized = (model or "").strip().lower()
+    return normalized in XAI_OAUTH_VISION_MODELS
+
+
 def discover_xai_oauth_models(
     cli_path: str | None = None,
     *,
@@ -301,16 +310,17 @@ def discover_xai_oauth_models(
     discovered = []
     for model in models:
         context = get_model_context_label("xai", model) if get_model_context_label else None
+        vision = xai_oauth_model_supports_vision(model)
+        capabilities = ["tools", "thinking"]
+        if vision:
+            capabilities.append("vision")
         discovered.append({
             "id": model,
             "name": model,
             "context": context or "OAuth subscription",
             "auth": "oauth",
-            # Keep capabilities transport-scoped: the Grok CLI chat proxy is
-            # treated as text-only until its image path is verified, even when
-            # the same model ID is vision-capable through the xAI API key path.
-            "capabilities": ["tools", "thinking"],
-            "vision": False,
+            "capabilities": capabilities,
+            "vision": vision,
         })
     _MODEL_CACHE = (now, discovered)
     return [dict(item) for item in discovered]

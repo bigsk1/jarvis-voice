@@ -2,6 +2,7 @@
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -10,6 +11,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 sys.path.insert(0, str(PROJECT_ROOT / "skills"))
 
 import vision_provider
+import xai_oauth
 import analyze_image
 
 
@@ -153,3 +155,53 @@ def test_analyze_image_uses_shared_ollama_cloud_dispatch():
         provider="ollama",
         model=None,
     )
+
+
+def test_xai_oauth_vision_uses_chat_proxy_without_api_key():
+    captured = {}
+
+    def fake_config(name, default=None):
+        values = {
+            "XAI_API_KEY": "",
+            "XAI_AUTH_MODE": "oauth",
+            "XAI_OAUTH_MODEL": "grok-4.5",
+            "VISION_DETAIL": "high",
+        }
+        return values.get(name, default)
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured["url"] = url
+        captured["headers"] = headers or {}
+        captured["payload"] = json or {}
+        captured["timeout"] = timeout
+        return _Response({"choices": [{"message": {"content": "blue and red"}}]})
+
+    with (
+        patch.object(vision_provider, "get_config_value", side_effect=fake_config),
+        patch.object(
+            xai_oauth,
+            "get_fresh_xai_oauth_credentials",
+            return_value=SimpleNamespace(token="private-oauth-token"),
+        ),
+        patch.object(xai_oauth, "get_grok_cli_version", return_value="0.2.93"),
+        patch.object(vision_provider.requests, "post", side_effect=fake_post),
+    ):
+        result = vision_provider.analyze_images(
+            ["base64-image"],
+            "What colors are visible?",
+            mode="cloud",
+            provider="xai",
+            model="grok-4.5",
+        )
+
+    assert result == "blue and red"
+    assert captured["url"] == f"{xai_oauth.XAI_OAUTH_BASE_URL}/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer private-oauth-token"
+    assert captured["headers"]["X-XAI-Token-Auth"] == "xai-grok-cli"
+    assert captured["headers"]["x-grok-model-override"] == "grok-4.5"
+    assert captured["payload"]["model"] == "grok-4.5"
+    assert captured["payload"]["max_tokens"] == 2048
+    content = captured["payload"]["messages"][0]["content"]
+    assert content[0]["type"] == "image_url"
+    assert content[0]["image_url"]["url"] == "data:image/jpeg;base64,base64-image"
+    assert content[1] == {"type": "text", "text": "What colors are visible?"}

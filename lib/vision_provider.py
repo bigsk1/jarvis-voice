@@ -199,16 +199,23 @@ def _openai_compatible_vision(
     is_xai = provider == "xai"
     api_key_name = "XAI_API_KEY" if is_xai else "OPENAI_API_KEY"
     api_key = get_config_value(api_key_name, "")
-    if not api_key:
-        raise VisionProviderError(f"{api_key_name} is not configured")
 
     if is_xai:
+        from xai_oauth import get_xai_auth_mode
+
+        auth_mode = get_xai_auth_mode(api_key, get_config_value("XAI_AUTH_MODE", "auto"))
+        if auth_mode == "oauth":
+            return _xai_oauth_vision(images_base64, prompt, model)
+        if not api_key:
+            raise VisionProviderError(f"{api_key_name} is not configured")
         selected_model = model or get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
         endpoint = "https://api.x.ai/v1/chat/completions"
         detail = str(get_config_value("VISION_DETAIL", "high") or "high").lower()
         if detail not in {"low", "high"}:
             detail = "high"
     else:
+        if not api_key:
+            raise VisionProviderError(f"{api_key_name} is not configured")
         selected_model = model or get_config_value(
             "OPENAI_MODEL", get_provider_fallback_model("openai")
         )
@@ -245,6 +252,67 @@ def _openai_compatible_vision(
         raise VisionProviderError(
             f"{'xAI' if is_xai else 'OpenAI'} vision returned an empty response"
         )
+    return text
+
+
+def _xai_oauth_vision(images_base64: list[str], prompt: str, model: str | None) -> str:
+    """Analyze images through the Grok CLI OAuth chat proxy."""
+
+    from xai_oauth import (
+        XAI_OAUTH_BASE_URL,
+        build_xai_oauth_headers,
+        get_fresh_xai_oauth_credentials,
+        get_grok_cli_version,
+        get_xai_oauth_model,
+        refresh_xai_oauth_credentials,
+        xai_oauth_model_supports_vision,
+    )
+
+    selected_model = get_xai_oauth_model(
+        model or get_config_value("XAI_OAUTH_MODEL", get_provider_fallback_model("xai"))
+    )
+    if not xai_oauth_model_supports_vision(selected_model):
+        raise VisionCapabilityError("xAI OAuth", selected_model)
+
+    detail = str(get_config_value("VISION_DETAIL", "high") or "high").lower()
+    if detail not in {"low", "high"}:
+        detail = "high"
+
+    payload: dict[str, Any] = {
+        "model": selected_model,
+        "messages": [{
+            "role": "user",
+            "content": build_openai_style_content(images_base64, prompt, detail),
+        }],
+        "max_tokens": 2048,
+    }
+
+    cli_version = get_grok_cli_version()
+
+    def send(token: str):
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            **build_xai_oauth_headers(selected_model, cli_version),
+        }
+        return requests.post(
+            f"{XAI_OAUTH_BASE_URL.rstrip('/')}/chat/completions",
+            json=payload,
+            headers=headers,
+            timeout=120,
+        )
+
+    credentials = get_fresh_xai_oauth_credentials()
+    response = send(credentials.token)
+    if response.status_code == 401:
+        response = send(refresh_xai_oauth_credentials().token)
+
+    if response.status_code != 200:
+        raise _response_error("xAI OAuth", response, model=selected_model)
+    choices = response.json().get("choices") or []
+    text = choices[0].get("message", {}).get("content", "").strip() if choices else ""
+    if not text:
+        raise VisionProviderError("xAI OAuth vision returned an empty response")
     return text
 
 

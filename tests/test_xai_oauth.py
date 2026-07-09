@@ -130,8 +130,8 @@ Available models:
     assert [model["id"] for model in models] == ["grok-4.5"]
     assert models[0]["context"] == "500K"
     assert models[0]["auth"] == "oauth"
-    assert models[0]["vision"] is False
-    assert models[0]["capabilities"] == ["tools", "thinking"]
+    assert models[0]["vision"] is True
+    assert models[0]["capabilities"] == ["tools", "thinking", "vision"]
 
 
 def test_parse_oauth_usage_output_supports_cli_text():
