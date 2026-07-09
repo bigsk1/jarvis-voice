@@ -115,6 +115,10 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - Vector-based semantic search for tool discovery
   - Ghost tools and `tool_search` are prioritized inside the final schema cap
   - See [`docs/TOOL_RAG_STRATEGY.md`](docs/TOOL_RAG_STRATEGY.md)
+- **Versioned Router Prompts**: selectable `v1`-`v4` system prompts for routing
+  - `v1` is the immutable full-context baseline; `v2`, `v3`, and `v4` reduce router prompt size while preserving production routing contracts
+  - `v4` is the local-mode default in `config/local.env.example`; cloud examples stay on `v1` unless changed in env or Web Settings
+  - See [`orchestrator/router_prompts/README.md`](orchestrator/router_prompts/README.md)
 - **Advanced Tool Calling**: LLM-powered routing with 80+ skills
 - **OpenAI Responses API support**: Optional `/v1/responses` routing for OpenAI tool-capable turns, in-flight client-tool continuation, hosted-tool gates, prompt-cache hints, and safe Chat Completions fallback
 - **Multi-Turn Orchestration**: Chains multiple tools to complete complex tasks
@@ -1894,7 +1898,8 @@ Source Available — free for personal use, modification, and non-commercial red
 
 **Current Version:** v2.54.1 (July 2026)
 **Status:** Production Ready ✅
-**Latest Features:** v2.54.0 adds safe xAI Grok CLI OAuth subscription auth for
-text/tool calls, dynamic OAuth model discovery, explicit API-key-only media
-boundaries, subscription-aware usage, and Web auth status. v2.53 added mode-safe
-Ollama Cloud, request-local cloud/local isolation, and per-mode Intelligence.
+**Latest Features:** v2.54.1 adds Grok 4.5 catalog/default support, xAI
+OAuth/API-key routing clarity, Web xAI quota status, versioned router prompts
+through `v4`, and final Tool RAG schema caps with per-mode Web settings and
+focused Send-to-Canvas narrowing. v2.53 added mode-safe Ollama Cloud,
+request-local cloud/local isolation, and per-mode Intelligence.

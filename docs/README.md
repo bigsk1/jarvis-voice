@@ -335,6 +335,20 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-07-08 (v2.54.1):**
+- ✅ **Grok 4.5 xAI support**
+  - Added `grok-4.5` with `grok-4.5-latest` / `grok-build-latest` aliases, 500K context, text+vision metadata, reasoning support, pricing, rate limits, and regional availability in the shared model catalog.
+  - xAI cloud defaults now target Grok 4.5; API-key chat, OAuth-backed Grok CLI chat, usage metadata, prompt-cache affinity, and model prompt overrides all follow the catalog entry instead of hardcoded model IDs.
+  - Web System status distinguishes OAuth subscription routing from xAI API-key billing and shows high-level Grok CLI `/usage` quota/reset details when OAuth is active.
+- ✅ **Versioned router system prompts**
+  - Added selectable router prompt versions `v1` through `v4`, with hash validation for pinned prompt contents and per-mode selection via env or Web Settings.
+  - `v1` remains the immutable full-context baseline; `v2` cuts the base router prompt by `62.0%`, `v3` by `72.8%`, and `v4` by `71.9%` versus v1 while using fuller wording than v3.
+  - Local env examples default to `v4`; cloud examples remain on `v1` for conservative rollout. See [`../orchestrator/router_prompts/README.md`](../orchestrator/router_prompts/README.md).
+- ✅ **Tool RAG final schema caps**
+  - Tool RAG limits now apply after semantic retrieval, ghost tools, `tool_search`, and explicit positive signals are merged, so final schemas respect `CLOUD_TOOL_RAG_LIMIT` / `LOCAL_TOOL_RAG_LIMIT`.
+  - Ghost tools are prioritized rather than appended outside the budget; cap drops are visible in Tool RAG logs via `dropped_by_cap` and in trace JSON via `final_schema_limit`.
+  - Web Settings can tune the per-mode cap, and Send-to-Canvas sends a one-turn cap of `3` to keep export turns focused (`canvas`, `tool_search`, plus one ranked fallback).
+
 **2026-07-04 (v2.54.1):**
 - ✅ **Latency-aware status updates across Web, CLI, and Wake Word**
   - Status LLM generation moved off the tool critical path; a 250 ms debounce suppresses speech for fast tools and a 1-second deadline selects the static fallback without delaying execution.

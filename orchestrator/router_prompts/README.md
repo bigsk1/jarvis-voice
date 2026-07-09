@@ -105,6 +105,25 @@ surface than a fixed CLI/env run.
 | `v3` | `v3 - Caveman hybrid prompt` | Telegraphic v1/v2 hybrid with normal user-facing speech | Experimental |
 | `v4` | `v4 - Caveman-light hybrid prompt` | Natural compact wording at nearly v3 size | Experimental |
 
+## Measured size comparison
+
+These measurements cover the static `BASE_SYSTEM_PROMPT` strings only. Runtime
+date/time, provider capability notes, model-specific overrides, profile cards,
+Tool RAG schemas, and conversation context are added separately at request
+time.
+
+| Version | Characters | Words | Rough Token Estimate | Character Delta |
+| --- | ---: | ---: | ---: | --- |
+| `v1` | `31,491` | `4,821` | `7,873-8,179` | Baseline |
+| `v2` | `11,977` | `1,676` | `~2,994` | `62.0%` fewer than v1 |
+| `v3` | `8,580` | `1,102` | `~2,145` | `72.8%` fewer than v1; `28.4%` fewer than v2 |
+| `v4` | `8,849` | `1,145` | `~2,212` | `71.9%` fewer than v1; `26.1%` fewer than v2; `3.1%` more than v3 |
+
+The important live metric is full routing payload size. A compact prompt can
+still be dominated by retrieved tool schemas, profile/context overlays, or
+provider continuation behavior. Use `logs/llm-calls-YYYY-MM-DD.jsonl` and
+`logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl` when comparing real turns.
+
 ## v1: Full context system prompt
 
 File: `v1.py`
