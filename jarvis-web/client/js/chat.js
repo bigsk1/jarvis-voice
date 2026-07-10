@@ -1573,17 +1573,20 @@ class ChatUI {
       this.addErrorMessage(data.error);
       this._clearPendingToolsForMessage(data.message_id);
       if (
-        ['vision_model_unsupported', 'vision_analysis_failed'].includes(data.error_code)
+        ['vision_model_unsupported', 'vision_analysis_failed', 'image_edit_stash_failed'].includes(data.error_code)
         && this.pendingVisionRetryPayload
       ) {
         const retryPayload = this.pendingVisionRetryPayload;
         this.pendingVisionRetryPayload = null;
         if (!this._hasAttachedImages()) {
           this.attachedImages = retryPayload.images.map(({ url, filename }) => ({ url, filename }));
-          this.imageAttachmentAction = 'analyze';
-          this.imageAttachmentSettings = {};
+          this.imageAttachmentAction = retryPayload.action;
+          this.imageAttachmentSettings = retryPayload.settings;
           this._renderImagePreviews();
-          Utils.toast('Image restored — switch to a vision-capable model and resend', 'info', 5000);
+          const retryMessage = data.error_code === 'image_edit_stash_failed'
+            ? 'Image restored — retry the edit'
+            : 'Image restored — switch to a vision-capable model and resend';
+          Utils.toast(retryMessage, 'info', 5000);
         }
       }
       this.currentMessageId = null;
@@ -2954,10 +2957,10 @@ class ChatUI {
     this.isProcessing = true;
     this.updateSendButton();
     this._resetPendingToolState();
-    this.pendingVisionRetryPayload = imagePayload?.action === 'analyze'
+    this.pendingVisionRetryPayload = ['analyze', 'image'].includes(imagePayload?.action)
       ? {
-          action: 'analyze',
-          settings: {},
+          action: imagePayload.action,
+          settings: { ...(imagePayload.settings || {}) },
           images: imagePayload.images.map(({ url, filename }) => ({ url, filename }))
         }
       : null;
