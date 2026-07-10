@@ -161,7 +161,7 @@ ROUTER_PROFILE_BOUNDARY = (
     "Apply for direct-text answers and for tool choice/arguments when the card gives relevant "
     "constraints (e.g. research before changes, ask before destructive actions).\n"
     "Does not affect Tool RAG retrieval — only this routing LLM system prompt.\n"
-    "Runtime env (LLM_PROVIDER, JARVIS_RESPONSE_STYLE), model overrides, and explicit pinned prefs win on conflict."
+    "Runtime RESPONSE STYLE / provider capabilities already in this prompt win on conflic."
 )
 
 
