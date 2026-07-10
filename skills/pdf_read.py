@@ -181,6 +181,9 @@ def action_extract_images(args: dict) -> dict:
     # Parse page range
     if pages is None:
         page_nums = range(doc.page_count)
+    elif isinstance(pages, str) and '-' in pages:
+        start, end = pages.split('-')
+        page_nums = range(int(start) - 1, int(end))  # 1-indexed input
     elif isinstance(pages, list):
         page_nums = [p - 1 if p > 0 else p for p in pages]
     else:
@@ -437,6 +440,9 @@ def action_to_images(args: dict) -> dict:
     # Parse page range
     if pages is None:
         page_nums = range(doc.page_count)
+    elif isinstance(pages, str) and '-' in pages:
+        start, end = pages.split('-')
+        page_nums = range(int(start) - 1, int(end))  # 1-indexed input
     elif isinstance(pages, list):
         page_nums = [p - 1 if p > 0 else p for p in pages]
     else:
