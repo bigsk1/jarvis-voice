@@ -3070,9 +3070,22 @@ Previous structured data:
                     
                     stash_info = self._auto_stash_image(primary_payload, '', mode)
                     stash_ref = stash_info.get('stash_ref', '') if stash_info else ''
+
+                    if not stash_ref:
+                        self.socketio.emit('chat:error', {
+                            'message_id': message_id,
+                            'conversation_id': conversation_id,
+                            'error': (
+                                'Could not prepare the uploaded image for editing. '
+                                'No image generation was attempted. Please retry the edit.'
+                            ),
+                            'error_code': 'image_edit_stash_failed',
+                            'retryable': True,
+                            'timestamp': time.time(),
+                        }, room=delivery_room)
+                        return
                     
-                    if stash_ref:
-                        print(f"[CHAT] Auto-stashed image for editing: {stash_ref}")
+                    print(f"[CHAT] Auto-stashed image for editing: {stash_ref}")
                     
                     # Build forced overrides for generate_image
                     img_overrides = {}
@@ -3081,8 +3094,7 @@ Previous structured data:
                             img_overrides[key] = val
                     
                     # Pass the reference image so the tool actually edits it
-                    if stash_ref:
-                        img_overrides['reference_image'] = stash_ref
+                    img_overrides['reference_image'] = stash_ref
                     
                     tool_overrides['generate_image'] = img_overrides
                     
