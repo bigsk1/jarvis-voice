@@ -106,7 +106,36 @@ class ModelCatalogTests(unittest.TestCase):
 
     def test_openai_options_are_newest_first(self):
         models = [entry["id"] for entry in get_provider_model_options("openai")]
-        self.assertEqual(models[:6], ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-5.2-chat-latest"])
+        self.assertEqual(
+            models[:7],
+            [
+                "gpt-5.6-sol",
+                "gpt-5.6-terra",
+                "gpt-5.6-luna",
+                "gpt-5.5",
+                "gpt-5.4",
+                "gpt-5.4-mini",
+                "gpt-5.4-nano",
+            ],
+        )
+
+    def test_gpt_5_6_models_resolve_with_pricing(self):
+        self.assertEqual(get_model_context_window("openai", "gpt-5.6-luna"), 1_050_000)
+        self.assertEqual(get_model_context_window("openai", "gpt-5.6"), 1_050_000)
+        self.assertEqual(get_model_context_label("openai", "gpt-5.6-luna"), "1.05M")
+        self.assertEqual(get_model_metadata("openai", "gpt-5.6")["id"], "gpt-5.6-sol")
+
+        sol_pricing = get_model_pricing("openai", "gpt-5.6-sol")
+        self.assertIsNotNone(sol_pricing)
+        self.assertEqual(sol_pricing["input"], 10.00)
+        self.assertEqual(sol_pricing["cached"], 1.00)
+        self.assertEqual(sol_pricing["output"], 60.00)
+
+        luna_pricing = get_model_pricing("openai", "gpt-5.6-luna")
+        self.assertIsNotNone(luna_pricing)
+        self.assertEqual(luna_pricing["input"], 2.00)
+        self.assertEqual(luna_pricing["cached"], 0.20)
+        self.assertEqual(luna_pricing["output"], 12.00)
 
     def test_gpt_5_5_resolves_with_pricing(self):
         self.assertEqual(get_model_context_window("openai", "gpt-5.5"), 1_050_000)
@@ -202,9 +231,9 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertIn("vision", xai["grok-build-0.1"]["capabilities"])
         self.assertIn("tools", xai["grok-build-0.1"]["capabilities"])
         self.assertTrue(anthropic["claude-sonnet-5"]["vision"])
-        self.assertTrue(openai["gpt-5.5"]["vision"])
-        self.assertIn("vision", openai["gpt-5.5"]["capabilities"])
-        self.assertIn("tools", openai["gpt-5.5"]["capabilities"])
+        self.assertTrue(openai["gpt-5.6-luna"]["vision"])
+        self.assertIn("vision", openai["gpt-5.6-luna"]["capabilities"])
+        self.assertIn("tools", openai["gpt-5.6-luna"]["capabilities"])
         self.assertTrue(openai["gpt-5.4-nano"]["vision"])
         self.assertIn("vision", openai["gpt-5.4-nano"]["capabilities"])
 
@@ -332,7 +361,7 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertLess(opus_index, models.index("claude-opus-4-6"))
 
     def test_catalog_defaults_are_explicit(self):
-        self.assertEqual(get_default_model_id("openai"), "gpt-5.4-nano")
+        self.assertEqual(get_default_model_id("openai"), "gpt-5.6-luna")
         self.assertEqual(get_default_model_id("xai"), "grok-4.5")
         self.assertEqual(get_default_model_id("anthropic"), "claude-sonnet-5")
 

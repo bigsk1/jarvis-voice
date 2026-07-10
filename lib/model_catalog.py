@@ -358,6 +358,32 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
     ],
     "openai": [
         {
+            "id": "gpt-5.6-sol",
+            "name": "GPT-5.6 Sol",
+            "context_tokens": 1_050_000,
+            "max_output_tokens": 128_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
+            "pricing": {"input": 10.00, "output": 60.00, "cached": 1.00},
+            "aliases": ["gpt-5.6"],
+        },
+        {
+            "id": "gpt-5.6-terra",
+            "name": "GPT-5.6 Terra",
+            "context_tokens": 1_050_000,
+            "max_output_tokens": 128_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
+            "pricing": {"input": 5.00, "output": 5.00, "cached": 0.50},
+        },
+        {
+            "id": "gpt-5.6-luna",
+            "name": "GPT-5.6 Luna (Default)",
+            "context_tokens": 1_050_000,
+            "max_output_tokens": 128_000,
+            "default": True,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
+            "pricing": {"input": 2.00, "output": 12.00, "cached": 0.20},
+        },
+        {
             "id": "gpt-5.5",
             "name": "GPT-5.5",
             "context_tokens": 1_050_000,
@@ -382,9 +408,8 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
         },
         {
             "id": "gpt-5.4-nano",
-            "name": "GPT-5.4 Nano (Default)",
+            "name": "GPT-5.4 Nano",
             "context_tokens": 400_000,
-            "default": True,
             **_OPENAI_TEXT_IMAGE_MODALITIES,
             "pricing": {"input": 0.20, "output": 1.25, "cached": 0.02},
         },
