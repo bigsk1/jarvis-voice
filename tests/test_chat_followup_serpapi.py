@@ -25,6 +25,7 @@ from server_package_utils import load_server_package
 load_server_package("jarvis_web_test_server", PROJECT_ROOT / "jarvis-web" / "server")
 
 from jarvis_web_test_server.sockets.chat import ChatHandler
+from jarvis_web_test_server.services import followup_extractor as followup_module
 from jarvis_web_test_server.services.followup_extractor import FOLLOWUP_SUMMARY_MAX_CHARS
 
 
@@ -343,6 +344,89 @@ def test_extract_followup_data_truncates_text_summarizer_summary():
     assert len(summary) <= FOLLOWUP_SUMMARY_MAX_CHARS
     assert summary.endswith("...[summary truncated for follow-up context]")
     assert result["text_summarizer"]["stash_ref"] == "stash://space/file"
+
+
+def test_extract_followup_data_preserves_manage_intel_document_content():
+    handler = _handler()
+    markdown = "# Family Visit\n- Danny arrives Monday\n- Joey leaves Sunday\n"
+    data = {
+        "manage_intel": [
+            {"files": [{"path": "existing.md", "size_bytes": 10}], "count": 1},
+            {
+                "action": "create",
+                "file": "2026-07-family-visit-timeline.md",
+                "content": markdown,
+                "size_bytes": len(markdown),
+                "created": True,
+                "ingest": {
+                    "ingested": True,
+                    "new_files": 2,
+                    "total_facts": 12,
+                    "modes": ["cloud", "local"],
+                },
+            },
+        ],
+        "_tool_trace": [
+            {"tool": "manage_intel", "ok": True, "arguments": {"action": "list", "pattern": "*"}},
+            {
+                "tool": "manage_intel",
+                "ok": True,
+                "arguments": {
+                    "action": "create",
+                    "path": "2026-07-family-visit-timeline.md",
+                    "content": markdown[:20] + "... [truncated]",
+                },
+            },
+        ],
+    }
+
+    result = handler._extract_followup_data(data)
+    intel = result["manage_intel"]
+
+    assert intel["operation_count"] == 2
+    assert intel["latest_action"] == "create"
+    assert intel["latest_file"] == "2026-07-family-visit-timeline.md"
+    assert intel["latest_content"] == markdown
+    assert intel["latest_content_source"] == "tool_result"
+    assert intel["latest_document"]["file"] == "2026-07-family-visit-timeline.md"
+    assert "content" not in intel["latest_document"]
+    assert intel["operations"][1]["ingest"]["modes"] == ["cloud", "local"]
+
+
+def test_extract_followup_data_rehydrates_manage_intel_create_from_flat_file(tmp_path, monkeypatch):
+    handler = _handler()
+    intel_dir = tmp_path / "jarvis-intel"
+    intel_dir.mkdir()
+    markdown = "# Family Visit\n- Full content from existing intel file\n"
+    (intel_dir / "2026-07-family-visit-timeline.md").write_text(markdown, encoding="utf-8")
+    monkeypatch.setattr(followup_module, "MANAGE_INTEL_DIR", intel_dir)
+
+    data = {
+        "manage_intel": {
+            "file": "2026-07-family-visit-timeline.md",
+            "size_bytes": len(markdown),
+            "created": True,
+        },
+        "_tool_trace": [
+            {
+                "tool": "manage_intel",
+                "ok": True,
+                "arguments": {
+                    "action": "create",
+                    "path": "2026-07-family-visit-timeline.md",
+                    "content": "# Family Visit\n- Full content... [truncated]",
+                },
+            }
+        ],
+    }
+
+    result = handler._extract_followup_data(data)
+    intel = result["manage_intel"]
+
+    assert intel["latest_action"] == "create"
+    assert intel["latest_file"] == "2026-07-family-visit-timeline.md"
+    assert intel["latest_content"] == markdown
+    assert intel["latest_content_source"] == "jarvis-intel/current_file"
 
 
 def test_extract_followup_data_preserves_crawl_url_deduped_urls():

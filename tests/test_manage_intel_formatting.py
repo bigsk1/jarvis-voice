@@ -23,10 +23,12 @@ from ingest_intel import extract_facts_from_content
 from manage_intel import (
     append_intel_file,
     auto_ingest,
+    create_intel_file,
     delete_intel_file,
     format_ingest_summary,
     replace_intel_content,
     search_intel_file,
+    update_intel_file,
 )
 
 
@@ -163,6 +165,24 @@ class TestIntelContentNormalization(unittest.TestCase):
             content = target.read_text(encoding="utf-8")
             self.assertIn("[2026-05-01 00:44 PDT]\n## 2026-05-01", content)
             self.assertIn("- Observation: structure preserved", content)
+
+    def test_create_update_and_append_return_document_content_for_followups(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel_dir = Path(tmpdir)
+            created = create_intel_file(intel_dir, "visit.md", "# Visit\n- Monday")
+            self.assertEqual(created["content"], "# Visit\n- Monday")
+
+            updated = update_intel_file(intel_dir, "visit.md", "# Visit\n- Tuesday")
+            self.assertEqual(updated["content"], "# Visit\n- Tuesday")
+
+            tz = ZoneInfo("America/Los_Angeles")
+            fake_now = datetime(2026, 7, 10, 8, 30, tzinfo=tz)
+            with patch("manage_intel.now_local", return_value=fake_now):
+                appended = append_intel_file(intel_dir, "visit.md", "- Wednesday")
+
+            self.assertIn("# Visit\n- Tuesday\n", appended["content"])
+            self.assertIn("[2026-07-10 08:30 PDT]\n- Wednesday", appended["content"])
+            self.assertEqual(appended["appended_content"], "[2026-07-10 08:30 PDT]\n- Wednesday")
 
     def test_search_returns_tail_context_line_numbers_and_hash(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

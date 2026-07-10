@@ -10,7 +10,9 @@ Used in two places:
 - Completion Guard effective evidence (richer, FOLLOWUP_EVIDENCE_MAX_CANDIDATES)
 """
 import re
+import hashlib
 from datetime import datetime
+from pathlib import Path
 
 # URL extractor for Brave MCP search results whose content is buried inside
 # raw[].text JSON blobs and full_text. We only need the URL list for
@@ -42,6 +44,7 @@ FOLLOWUP_EVIDENCE_MAX_CANDIDATES = 12
 # whole transcript-sized artifacts through every router prompt.
 FOLLOWUP_SUMMARY_MAX_CHARS = 6000
 _FOLLOWUP_TRUNCATION_SUFFIX = "\n...[summary truncated for follow-up context]"
+MANAGE_INTEL_DIR = Path(__file__).resolve().parents[3] / "jarvis-intel"
 
 FOLLOWUP_DATA_SKIP_KEYS = frozenset({
     'usage',
@@ -269,6 +272,200 @@ def extract_text_summarizer_followup(value, max_candidates: int) -> dict | None:
     return None
 
 
+def _manage_intel_payloads(value) -> list[dict]:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if isinstance(value, dict):
+        return [value]
+    return []
+
+
+def _manage_intel_trace_arguments(data: dict) -> list[dict]:
+    trace = data.get('_tool_trace')
+    if not isinstance(trace, list):
+        return []
+
+    args = []
+    for entry in trace:
+        if not isinstance(entry, dict) or entry.get('tool') != 'manage_intel':
+            continue
+        if entry.get('ok') is False:
+            continue
+        entry_args = entry.get('arguments')
+        args.append(entry_args if isinstance(entry_args, dict) else {})
+    return args
+
+
+def _safe_intel_file_from_name(file_name: str | None) -> Path | None:
+    if not isinstance(file_name, str) or not file_name.strip():
+        return None
+
+    name = file_name.strip().lstrip('/')
+    if '/' in name or '\\' in name:
+        return None
+    if name == 'README.md':
+        return None
+
+    candidate = (MANAGE_INTEL_DIR / name).resolve()
+    root = MANAGE_INTEL_DIR.resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return None
+    if candidate.suffix not in ('.md', '.txt', ''):
+        return None
+    if candidate.suffix == '':
+        candidate = candidate.with_suffix('.md')
+    return candidate
+
+
+def _read_manage_intel_document(file_name: str | None) -> dict | None:
+    path = _safe_intel_file_from_name(file_name)
+    if not path or not path.exists() or not path.is_file():
+        return None
+
+    try:
+        content = path.read_text(encoding='utf-8')
+    except OSError:
+        return None
+
+    return {
+        'content': content,
+        'size_bytes': len(content),
+        'content_sha256': hashlib.sha256(content.encode('utf-8')).hexdigest(),
+    }
+
+
+def _compact_ingest_summary(ingest: dict) -> dict:
+    if not isinstance(ingest, dict):
+        return {}
+    compact = {}
+    for field in ('ingested', 'new_files', 'total_facts', 'modes', 'partial', 'failed_modes'):
+        if ingest.get(field) not in (None, '', [], {}):
+            compact[field] = ingest[field]
+    if ingest.get('warning'):
+        compact['warning'] = str(ingest['warning'])[:500]
+    if ingest.get('error'):
+        compact['error'] = str(ingest['error'])[:500]
+    return compact
+
+
+def _manage_intel_document_meta(doc: dict) -> dict:
+    return {
+        key: value
+        for key, value in doc.items()
+        if key not in {'content', 'appended_content'} and value not in (None, '', [], {})
+    }
+
+
+def _extract_manage_intel_followup(data: dict, max_candidates: int) -> dict | None:
+    payloads = _manage_intel_payloads(data.get('manage_intel'))
+    if not payloads:
+        return None
+
+    trace_args = _manage_intel_trace_arguments(data)
+    operations = []
+    documents = []
+
+    for index, payload in enumerate(payloads):
+        args = trace_args[index] if index < len(trace_args) else {}
+        action = payload.get('action') or args.get('action')
+        file_name = payload.get('file') or args.get('path')
+
+        operation = {}
+        for field, value in (
+            ('action', action),
+            ('file', file_name),
+            ('size_bytes', payload.get('size_bytes')),
+            ('created', payload.get('created')),
+            ('updated', payload.get('updated')),
+            ('appended', payload.get('appended')),
+            ('deleted', payload.get('deleted')),
+            ('count', payload.get('count')),
+            ('match_count', payload.get('match_count')),
+            ('matches_returned', payload.get('matches_returned')),
+            ('matches_truncated', payload.get('matches_truncated')),
+            ('line_count', payload.get('line_count')),
+            ('file_sha256', payload.get('file_sha256')),
+        ):
+            if value not in (None, '', [], {}):
+                operation[field] = value
+
+        ingest = _compact_ingest_summary(payload.get('ingest'))
+        if ingest:
+            operation['ingest'] = ingest
+
+        if isinstance(payload.get('files'), list):
+            operation['files_count'] = payload.get('count', len(payload['files']))
+            operation['files'] = [
+                {
+                    key: item[key]
+                    for key in ('path', 'size_bytes', 'modified')
+                    if isinstance(item, dict) and item.get(key) not in (None, '', [], {})
+                }
+                for item in payload['files'][:max_candidates]
+                if isinstance(item, dict)
+            ]
+
+        if isinstance(payload.get('matches'), list):
+            operation['matches'] = payload['matches'][:max_candidates]
+
+        content = payload.get('content')
+        content_source = 'tool_result'
+        doc_meta = None
+        if not isinstance(content, str) and action in {'create', 'read', 'update', 'append'}:
+            doc_meta = _read_manage_intel_document(file_name)
+            if doc_meta:
+                content = doc_meta['content']
+                content_source = 'jarvis-intel/current_file'
+
+        if isinstance(content, str):
+            doc = {
+                'action': action,
+                'file': file_name,
+                'content': content,
+                'content_source': content_source,
+                'size_bytes': payload.get('size_bytes', len(content)),
+                'content_sha256': (
+                    payload.get('file_sha256')
+                    or (doc_meta or {}).get('content_sha256')
+                    or hashlib.sha256(content.encode('utf-8')).hexdigest()
+                ),
+            }
+            if isinstance(payload.get('appended_content'), str):
+                doc['appended_content'] = payload['appended_content']
+            documents.append(doc)
+            operation['document_available'] = True
+            operation['content_source'] = content_source
+
+        if operation:
+            operations.append(operation)
+
+    if not operations and not documents:
+        return None
+
+    extracted = {
+        'operation_count': len(operations),
+        'operations': operations,
+    }
+    if operations:
+        latest = operations[-1]
+        for field in ('action', 'file', 'size_bytes', 'created', 'updated', 'appended', 'deleted'):
+            if latest.get(field) not in (None, '', [], {}):
+                extracted[f'latest_{field}'] = latest[field]
+    if documents:
+        extracted['documents'] = [
+            _manage_intel_document_meta(doc)
+            for doc in documents[:max_candidates]
+        ]
+        extracted['latest_document'] = _manage_intel_document_meta(documents[-1])
+        extracted['latest_content'] = documents[-1]['content']
+        extracted['latest_content_source'] = documents[-1]['content_source']
+        if documents[-1].get('appended_content'):
+            extracted['latest_appended_content'] = documents[-1]['appended_content']
+    return extracted
+
+
 def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict | None:
     """
     Extract key data from tool results that enables follow-up actions.
@@ -293,6 +490,11 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
 
     for key, value in data.items():
         if key in FOLLOWUP_DATA_SKIP_KEYS:
+            continue
+        if key == 'manage_intel':
+            extracted = _extract_manage_intel_followup(data, max_candidates)
+            if extracted:
+                followup[key] = extracted
             continue
         if key == 'text_summarizer':
             extracted = extract_text_summarizer_followup(value, max_candidates)

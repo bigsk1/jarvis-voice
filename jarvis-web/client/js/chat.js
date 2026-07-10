@@ -3956,9 +3956,10 @@ class ChatUI {
     const prompt = [
       'Create a new Canvas page from the selected Jarvis response and its relevant supporting results in this conversation.',
       'Use exactly one canvas call with action=create. Include all useful source links from the prior turn.',
+      'Treat structured prior tool results as authoritative content; the selected response preview below may be truncated.',
       'Preserve useful source links and any image, video, audio, or stash references so Canvas can render the original media.',
       'Use a descriptive title and organize the result as readable Markdown.',
-      excerpt ? `The selected response begins: "${excerpt}"` : ''
+      excerpt ? `Selected response preview: "${excerpt}"` : ''
     ].filter(Boolean).join(' ');
 
     if (window.jarvisApp?.stopAudioPlayback) {

@@ -130,6 +130,7 @@ def create_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any
     
     return {
         "file": str(file_path.relative_to(intel_dir)),
+        "content": content,
         "size_bytes": len(content),
         "created": True,
         "content_normalized": content_normalized
@@ -278,6 +279,7 @@ def update_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any
     
     return {
         "file": str(file_path.relative_to(intel_dir)),
+        "content": content,
         "size_bytes": len(content),
         "updated": True,
         "content_normalized": content_normalized
@@ -314,12 +316,15 @@ def append_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any
         dated_content = f"[{date_stamp}] {content}"
     
     # Append new content
-    file_path.write_text(existing + separator + dated_content + "\n", encoding='utf-8')
+    updated = existing + separator + dated_content + "\n"
+    file_path.write_text(updated, encoding='utf-8')
     
     new_size = file_path.stat().st_size
     
     return {
         "file": str(file_path.relative_to(intel_dir)),
+        "content": updated,
+        "appended_content": dated_content,
         "size_bytes": new_size,
         "appended_bytes": len(content),
         "appended": True,
@@ -630,6 +635,8 @@ def main():
                 speech += f". {format_ingest_summary(ingest_result)}"
             else:
                 speech += f". Warning: Ingest failed - {ingest_result.get('error', 'unknown error')}"
+
+        result_data.setdefault('action', action)
         
         # Success response
         print(json.dumps({

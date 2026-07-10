@@ -299,6 +299,9 @@ def test_send_to_canvas_marks_explicit_export_request():
     socket_js = SOCKET_JS.read_text()
 
     assert "{ tool_hints: ['canvas'], request_kind: 'canvas_export', tool_rag_limit: 3 }" in chat_js
+    assert "Treat structured prior tool results as authoritative content" in chat_js
+    assert "Selected response preview:" in chat_js
+    assert "The selected response begins:" not in chat_js
     assert "payload.request_kind = promptMeta.request_kind" in socket_js
     assert "payload.tool_rag_limit = promptMeta.tool_rag_limit" in socket_js
 
