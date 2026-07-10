@@ -170,7 +170,7 @@ Jarvis: "From the Portland restaurants, here are the Italian options..."
 - Include in LLM context
 - Expire after idle timeout
 
-### 4) Anthropic SDK Consolidation (Stray Raw HTTP)
+### 4) Anthropic SDK Consolidation (Stray Raw HTTP) then we also have to do it for XAI, OpenAI and Olama Cloud because they all have functions for HTTP requests for analyze vision
 **Priority:** Low / housekeeping
 
 Main chat/tool path in `lib/llm_provider.py` already uses the Anthropic SDK (thinking, caching, native web search). A few stragglers still POST to `api.anthropic.com` directly:
@@ -257,7 +257,7 @@ It cannot retrieve account-level session or weekly usage, remaining quota, reset
 - [ollama/ollama#15663 — Expose account quota/usage details via the Cloud API](https://github.com/ollama/ollama/issues/15663) — closed as a duplicate of #12532; documents the missing headers/body/endpoint options
 - [ollama/ollama#16448 — API endpoint to check Cloud Usage/Quota limits](https://github.com/ollama/ollama/issues/16448) — closed as a duplicate of #12532
 
-### 8) Latency-Aware Status Updates Across Web, CLI, and Wake Word
+### 8) Latency-Aware Status Updates Across Web, CLI, and Wake Word - this is done
 **Priority:** Medium–High usability / latency
 **Status:** Implemented (2026-07-04); tune timing from live use
 
