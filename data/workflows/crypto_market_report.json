@@ -4,6 +4,7 @@
   "description": "Get crypto prices, search market sentiment and news, analyze price movements, save to canvas/stash, and email report to Boss. Specify coins after /crypto or defaults to BTC and SOL.",
   "enabled": true,
   "version": "1.1",
+  "disable_server_side_tools": true,
   
   "triggers": {
     "patterns": [

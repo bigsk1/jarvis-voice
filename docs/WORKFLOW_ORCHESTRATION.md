@@ -325,6 +325,11 @@ When a step needs LLM-generated content (e.g., summaries), use `llm_prompt`:
 2. LLM generates content based on the prompt
 3. Result is passed as `content` parameter to the tool
 
+At the workflow top level, set `"disable_server_side_tools": true` when `llm_prompt`
+calls should not use provider-native search/tools. This only affects workflow LLM
+helper calls; explicit workflow steps such as search, crawl, stash, and canvas still
+run exactly as defined.
+
 ### Variable Resolution in Prompts
 
 All `${...}` variables in `llm_prompt` are resolved:

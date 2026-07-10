@@ -7,6 +7,7 @@ Run:
 """
 
 import json
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -78,6 +79,28 @@ class SequencedUsageProvider:
 
     def chat_with_tools(self, **_kwargs):
         return "response", None, next(self.usages), None
+
+
+class EnvCapturingProvider:
+    def __init__(self):
+        self.enable_search = True
+        self.calls = []
+
+    def chat_with_tools(self, **kwargs):
+        self.calls.append(
+            {
+                "enable_search": self.enable_search,
+                "xai_disabled": os.environ.get("XAI_DISABLE_SERVER_SIDE_TOOLS"),
+                "openai_disabled": os.environ.get("OPENAI_RESPONSES_DISABLE_SERVER_SIDE_TOOLS"),
+                "xai_search_override": os.environ.get("JARVIS_OVERRIDE_XAI_SEARCH"),
+                "anthropic_search_override": os.environ.get("JARVIS_OVERRIDE_ANTHROPIC_SEARCH"),
+                "tools": kwargs.get("tools"),
+            }
+        )
+        return "Solana", None, {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}, None
+
+    def chat(self, *_args):
+        raise AssertionError("chat fallback should not be used")
 
 
 class PipelineExecutorResolutionTests(unittest.TestCase):
@@ -227,6 +250,67 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
         self.assertEqual(executor._total_usage["total_tokens"], 370)
         self.assertEqual(executor._total_usage["model_calls"], 2)
         self.assertEqual(executor._total_usage["peak_context_tokens"], 260)
+
+    def test_workflow_can_disable_provider_native_tools_for_llm_helpers(self):
+        provider = EnvCapturingProvider()
+        executed = []
+
+        previous_xai_disable = os.environ.get("XAI_DISABLE_SERVER_SIDE_TOOLS")
+        os.environ["XAI_DISABLE_SERVER_SIDE_TOOLS"] = "previous"
+        try:
+            executor = PipelineExecutor(
+                mode="cloud",
+                executor=SimpleNamespace(
+                    execute=lambda tool, params: executed.append((tool, params))
+                    or {"ok": True, "data": {"coin_id": params["coin"]}}
+                ),
+                provider=provider,
+            )
+            result = executor.execute(
+                {
+                    "id": "native_tool_free_helpers",
+                    "disable_server_side_tools": True,
+                    "steps": [
+                        {
+                            "step": 1,
+                            "tool": "crypto_price",
+                            "params": {},
+                            "llm_prompt": "Extract the second crypto coin.",
+                            "extract": {"coin_id": "coin_id"},
+                        }
+                    ],
+                },
+                "/crypto bitcoin solana",
+            )
+            restored_xai_disable = os.environ.get("XAI_DISABLE_SERVER_SIDE_TOOLS")
+        finally:
+            if previous_xai_disable is None:
+                os.environ.pop("XAI_DISABLE_SERVER_SIDE_TOOLS", None)
+            else:
+                os.environ["XAI_DISABLE_SERVER_SIDE_TOOLS"] = previous_xai_disable
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(executed, [("crypto_price", {"coin": "solana"})])
+        self.assertEqual(provider.calls[0]["tools"], [])
+        self.assertFalse(provider.calls[0]["enable_search"])
+        self.assertEqual(provider.calls[0]["xai_disabled"], "true")
+        self.assertEqual(provider.calls[0]["openai_disabled"], "true")
+        self.assertEqual(provider.calls[0]["xai_search_override"], "false")
+        self.assertEqual(provider.calls[0]["anthropic_search_override"], "false")
+        self.assertTrue(provider.enable_search)
+        self.assertEqual(restored_xai_disable, "previous")
+
+    def test_workflow_llm_helpers_leave_native_tools_enabled_by_default(self):
+        provider = EnvCapturingProvider()
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(execute=lambda *_args, **_kwargs: {"ok": True}),
+            provider=provider,
+        )
+
+        executor._chat_with_usage("probe")
+
+        self.assertTrue(provider.calls[0]["enable_search"])
 
     def test_process_all_for_each_runs_every_item(self):
         calls = []
@@ -395,6 +479,7 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
         )
         crypto_crawl = next(step for step in crypto["steps"] if step["tool"] == "crawl_url")
 
+        self.assertTrue(crypto["disable_server_side_tools"])
         self.assertEqual(deep_crawl["validated_output_var"], "validated_articles")
         self.assertTrue(deep_stash["process_all"])
         self.assertEqual(crypto_crawl["validated_output_var"], "validated_articles")

@@ -13,6 +13,7 @@ import sys
 import json
 import re
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from collections.abc import Callable
@@ -45,6 +46,8 @@ class PipelineExecutor:
         self.logger = ToolLogger()
         self.llm_logger = LLMLogger()
         load_config(mode)
+        self._disable_server_side_tools = False
+        self._server_side_tools = {}
         
         # Track cumulative token usage for this workflow execution
         self._total_usage = {
@@ -65,6 +68,40 @@ class PipelineExecutor:
             "cache_savings_usd": 0.0,
         }
     
+    @contextmanager
+    def _workflow_llm_tool_scope(self):
+        """Temporarily suppress provider-native tools for workflow LLM helper calls."""
+        if not self._disable_server_side_tools:
+            yield
+            return
+
+        env_overrides = {
+            "XAI_DISABLE_SERVER_SIDE_TOOLS": "true",
+            "OPENAI_RESPONSES_DISABLE_SERVER_SIDE_TOOLS": "true",
+            "JARVIS_OVERRIDE_XAI_SEARCH": "false",
+            "JARVIS_OVERRIDE_ANTHROPIC_SEARCH": "false",
+        }
+        previous_env = {key: os.environ.get(key) for key in env_overrides}
+        previous_enable_search = None
+        provider = self.provider
+
+        if provider is not None and hasattr(provider, "enable_search"):
+            previous_enable_search = getattr(provider, "enable_search")
+            setattr(provider, "enable_search", False)
+
+        try:
+            for key, value in env_overrides.items():
+                os.environ[key] = value
+            yield
+        finally:
+            if provider is not None and previous_enable_search is not None:
+                setattr(provider, "enable_search", previous_enable_search)
+            for key, previous in previous_env.items():
+                if previous is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = previous
+
     def _chat_with_usage(self, message: str, system_prompt: str = None, max_tokens: int = 1024) -> str:
         """
         Chat with the LLM and track token usage.
@@ -76,11 +113,12 @@ class PipelineExecutor:
         try:
             # Use chat_with_tools with empty tool list to get usage info
             messages = [{"role": "user", "content": message}]
-            text, _, usage_info, _ = self.provider.chat_with_tools(
-                messages=messages,
-                tools=[],  # No tools - just chat
-                system_prompt=system_prompt
-            )
+            with self._workflow_llm_tool_scope():
+                text, _, usage_info, _ = self.provider.chat_with_tools(
+                    messages=messages,
+                    tools=[],  # No Jarvis tools; workflow may also disable provider-native tools.
+                    system_prompt=system_prompt
+                )
             
             # Accumulate usage
             if usage_info:
@@ -133,7 +171,10 @@ class PipelineExecutor:
         except Exception as e:
             # Fallback to regular chat if chat_with_tools fails
             print(f"Warning: chat_with_usage failed, falling back: {e}", file=sys.stderr)
-            return self.provider.chat(message, system_prompt, max_tokens) if self.provider else ""
+            if not self.provider:
+                return ""
+            with self._workflow_llm_tool_scope():
+                return self.provider.chat(message, system_prompt, max_tokens)
     
     def _generate_short_title(self, query: str) -> str | None:
         """
@@ -236,6 +277,7 @@ class PipelineExecutor:
         steps = workflow.get("steps", [])
         tool_defaults = workflow.get("tool_defaults", {})
         validation_policy = workflow.get("validation_policy", {})
+        self._disable_server_side_tools = bool(workflow.get("disable_server_side_tools", False))
         
         # Track execution time
         start_time = time.time()

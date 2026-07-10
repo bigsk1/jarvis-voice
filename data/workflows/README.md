@@ -135,6 +135,7 @@ Each step typically includes:
 - `required` — default true; if false and step fails, behavior depends on `on_fail`.
 - `on_fail` — e.g. `"continue"` for optional steps.
 - `llm_prompt` — optional; LLM fills params (uses tokens).
+- Workflow-level `disable_server_side_tools` — optional boolean; when true, workflow LLM helper calls for `llm_prompt`, validation, branching, or completion speech run without provider-native search/tools. Explicit workflow steps such as Brave search, crawl, or other Jarvis tools still run normally.
 
 Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
 
@@ -149,6 +150,7 @@ Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
 5. When a later `for_each` step must save/process every validated result, set **`process_all: true`**.
 6. For **`llm_prompt`** steps that produce user-visible markdown, instruct the model to emit **real values**, not literal `${var}` text.
 7. Prefer **`JARVIS_DEFAULT_LOCATION`** (env-backed `variables`) for default geography instead of embedding a specific city in shared workflow JSON.
+8. Set workflow-level **`disable_server_side_tools: true`** when deterministic source/tool steps already provide the facts and `llm_prompt` should only extract or synthesize from workflow variables.
 
 ---
 
