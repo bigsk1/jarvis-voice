@@ -1,7 +1,12 @@
 import importlib.util
+import io
+import json
 import sys
 import unittest
 from pathlib import Path
+from contextlib import redirect_stdout
+from types import SimpleNamespace
+from unittest.mock import patch
 
 
 def _load_module():
@@ -48,6 +53,42 @@ class BraveLlmContextHelpersTest(unittest.TestCase):
 
         self.assertEqual(enriched[0]["site_name"], "Example News")
         self.assertEqual(enriched[0]["age"], "1 hour ago")
+
+    def _run_main_and_capture_request(self, args):
+        captured = {}
+
+        def fake_http_request(method, endpoint, **kwargs):
+            captured["method"] = method
+            captured["endpoint"] = endpoint
+            captured["json"] = kwargs.get("json")
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {"grounding": {"generic": []}, "sources": {}},
+                text="{}",
+            )
+
+        with patch.object(self.mod, "load_config"), \
+             patch.object(self.mod, "get_config_value", return_value="brave-key"), \
+             patch.object(self.mod, "http_request", side_effect=fake_http_request), \
+             patch.object(sys, "argv", ["brave_llm_context.py", json.dumps(args)]), \
+             redirect_stdout(io.StringIO()):
+            exit_code = self.mod.main()
+
+        self.assertEqual(exit_code, 0)
+        return captured["json"]
+
+    def test_enable_source_metadata_defaults_false(self):
+        body = self._run_main_and_capture_request({"query": "latest AI news"})
+
+        self.assertIs(body["enable_source_metadata"], False)
+
+    def test_enable_source_metadata_can_be_enabled_explicitly(self):
+        body = self._run_main_and_capture_request({
+            "query": "latest AI news",
+            "enable_source_metadata": True,
+        })
+
+        self.assertIs(body["enable_source_metadata"], True)
 
 
 if __name__ == "__main__":

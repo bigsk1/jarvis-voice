@@ -232,7 +232,7 @@ def main() -> int:
     }
 
     enable_source_metadata = as_bool_or_none(input_data.get("enable_source_metadata"))
-    body["enable_source_metadata"] = True if enable_source_metadata is None else enable_source_metadata
+    body["enable_source_metadata"] = False if enable_source_metadata is None else enable_source_metadata
 
     add_if_present(body, "freshness", freshness)
     add_if_present(body, "goggles", normalize_goggles(input_data.get("goggles")))

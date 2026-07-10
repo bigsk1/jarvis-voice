@@ -76,7 +76,7 @@
       },
       "enable_source_metadata": {
         "type": "boolean",
-        "description": "Request site_name, hostname, age, and favicon URL enrichment in sources metadata. Default: true. Thumbnails are omitted from Jarvis responses."
+        "description": "Request site_name, hostname, age, and favicon URL enrichment in sources metadata. Default: false to keep grounding context compact. Thumbnails are omitted from Jarvis responses."
       },
       "loc_city": {
         "type": "string",
