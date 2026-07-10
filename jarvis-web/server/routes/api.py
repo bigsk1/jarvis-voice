@@ -763,7 +763,7 @@ def get_provider_models(provider):
         }
         current_model = get_jarvis_setting(env_key_map.get(provider, ''), '').strip() if provider in env_key_map else ''
         models = settings._get_model_options_with_current(provider, current_model)
-        default_model = settings._get_default_model(provider)
+        default_model = settings._get_env_provider_model(provider)
     return jsonify({
         'ok': True,
         'provider': provider,

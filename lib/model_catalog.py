@@ -140,7 +140,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
     "xai": [
         {
             "id": "grok-4.5",
-            "name": "Grok 4.5 (Default)",
+            "name": "Grok 4.5 (Catalog default)",
             "context_tokens": 500_000,
             "input_modalities": ["text", "image"],
             "output_modalities": ["text"],
@@ -256,7 +256,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
     "anthropic": [
         {
             "id": "claude-sonnet-5",
-            "name": "Claude Sonnet 5 (Default)",
+            "name": "Claude Sonnet 5 (Catalog default)",
             "context_tokens": 1_000_000,
             "max_output_tokens": 128_000,
             "capabilities": _ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH,
@@ -376,7 +376,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
         },
         {
             "id": "gpt-5.6-luna",
-            "name": "GPT-5.6 Luna (Default)",
+            "name": "GPT-5.6 Luna (Catalog default)",
             "context_tokens": 1_050_000,
             "max_output_tokens": 128_000,
             "default": True,

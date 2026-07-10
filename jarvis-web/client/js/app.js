@@ -2551,7 +2551,7 @@ class JarvisApp {
   }
 
   async _ensureProviderModelsLoaded(provider) {
-    if (!provider || provider !== 'ollama') return;
+    if (!provider) return;
     try {
       const mode = this._settingsData?.mode || this.socket.mode;
       const response = await fetch(`/api/settings/models/${provider}?mode=${encodeURIComponent(mode)}`);

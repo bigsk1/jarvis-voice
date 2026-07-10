@@ -46,6 +46,25 @@ class WebSettingsModeTests(unittest.TestCase):
         get_manager.assert_called_once_with("cloud")
         get_default.assert_not_called()
 
+    def test_model_endpoint_returns_selected_provider_env_default(self):
+        settings = MagicMock()
+        settings._get_model_options_with_current.return_value = [
+            {"id": "gpt-provider-default", "name": "Configured OpenAI model"}
+        ]
+        settings._get_env_provider_model.return_value = "gpt-provider-default"
+
+        with (
+            self.app.test_request_context("/api/settings/models/openai?mode=cloud"),
+            patch.object(self.api, "get_settings_manager", return_value=settings),
+            patch("server.config.load_jarvis_config"),
+            patch("server.config.get_jarvis_setting", return_value="gpt-provider-default"),
+        ):
+            response = self.api.get_provider_models.__wrapped__("openai")
+
+        body = response.get_json()
+        self.assertEqual(body["default_model"], "gpt-provider-default")
+        settings._get_env_provider_model.assert_called_once_with("openai")
+
     def test_save_persists_explicit_mode_even_when_socket_already_matches(self):
         settings = MagicMock()
         settings.set_mode.return_value = True
@@ -260,7 +279,7 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertTrue(minimax["vision"])
         self.assertIn("vision", minimax["capabilities"])
 
-    def test_direct_ollama_discovery_pins_selected_alias_before_env_default(self):
+    def test_direct_ollama_discovery_pins_saved_alias_without_stale_selected_label(self):
         from server.services import settings_manager as settings_module
 
         response = MagicMock(status_code=200)
@@ -287,7 +306,7 @@ class WebSettingsModeTests(unittest.TestCase):
             [model["id"] for model in models],
             ["glm-5.2:cloud", "minimax-m3:cloud", "glm-5.2", "minimax-m3"],
         )
-        self.assertIn("selected", models[0]["name"])
+        self.assertEqual(models[0]["name"], "glm-5.2:cloud")
         self.assertIn("env default", models[1]["name"])
 
     def test_local_ollama_discovery_cloud_cards_require_opt_in(self):

@@ -258,11 +258,10 @@ def fetch_ollama_models(
                     'context': 'cloud' if (direct_cloud_api or is_ollama_cloud_model(model_id)) else 'local',
                 }
                 labels = []
-                if model_id in selected:
-                    labels.append('selected')
                 if model_id == configured_model:
                     labels.append('env default')
-                model = {**model, 'name': f"{model_id} ({', '.join(labels)})"}
+                display_name = f"{model_id} ({', '.join(labels)})" if labels else model_id
+                model = {**model, 'name': display_name}
                 pinned.append(model)
             result = [*pinned, *by_id.values()]
             _enrich_ollama_models(

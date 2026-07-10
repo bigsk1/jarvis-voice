@@ -119,6 +119,18 @@ class ModelCatalogTests(unittest.TestCase):
             ],
         )
 
+    def test_provider_options_distinguish_catalog_defaults(self):
+        for provider, model_id in (
+            ("xai", "grok-4.5"),
+            ("anthropic", "claude-sonnet-5"),
+            ("openai", "gpt-5.6-luna"),
+        ):
+            options = {
+                entry["id"]: entry
+                for entry in get_provider_model_options(provider)
+            }
+            self.assertIn("(Catalog default)", options[model_id]["name"])
+
     def test_gpt_5_6_models_resolve_with_pricing(self):
         self.assertEqual(get_model_context_window("openai", "gpt-5.6-luna"), 1_050_000)
         self.assertEqual(get_model_context_window("openai", "gpt-5.6"), 1_050_000)
