@@ -36,6 +36,13 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'brave_llm_context',
 )
 
+_PRESERVE_RUN_LIST_FOR_DEDICATED_BRANCHES = frozenset({
+    'crawl_url',
+    'mcp_brave_search_brave_web_search',
+    'mcp_brave_search_brave_news_search',
+    'mcp_brave_search_brave_local_search',
+})
+
 # Follow-up context: keep orchestrator history compact.
 FOLLOWUP_DEFAULT_MAX_CANDIDATES = 5
 # Completion Guard / effective evidence: allow ranking follow-ups without re-querying.
@@ -45,6 +52,128 @@ FOLLOWUP_EVIDENCE_MAX_CANDIDATES = 12
 FOLLOWUP_SUMMARY_MAX_CHARS = 6000
 _FOLLOWUP_TRUNCATION_SUFFIX = "\n...[summary truncated for follow-up context]"
 MANAGE_INTEL_DIR = Path(__file__).resolve().parents[3] / "jarvis-intel"
+
+GENERIC_FOLLOWUP_LIST_KEYS = (
+    'results',
+    'top_results',
+    'items',
+    'pages',
+    'chunks',
+    'files',
+    'matches',
+    'conversations',
+    'alerts',
+    'reminders',
+    'tasks',
+    'sessions',
+    'logs',
+    'events',
+    'jobs',
+    'outputs',
+)
+
+GENERIC_FOLLOWUP_SCALAR_KEYS = (
+    'id',
+    'key',
+    'name',
+    'title',
+    'subject',
+    'status',
+    'action',
+    'source',
+    'severity',
+    'category',
+    'type',
+    'url',
+    'top_url',
+    'link',
+    'href',
+    'asin',
+    'rating',
+    'price',
+    'price_total',
+    'price_per_night',
+    'price_formatted',
+    'thumbnail',
+    'address',
+    'reviews',
+    'path',
+    'file',
+    'filename',
+    'file_path',
+    'stash_ref',
+    'ref',
+    'space_id',
+    'file_id',
+    'page_id',
+    'canvas_id',
+    'canvas_page_id',
+    'alert_id',
+    'reminder_id',
+    'task_id',
+    'schedule_id',
+    'job_id',
+    'call_id',
+    'session_id',
+    'conversation_id',
+    'message_id',
+    'created_at',
+    'updated_at',
+    'due_at',
+    'scheduled_for',
+    'next_run',
+    'formatted_time',
+    'count',
+    'total',
+    'runs_count',
+    'results_count',
+    'files_count',
+    'matches_count',
+)
+
+GENERIC_FOLLOWUP_BULKY_OR_UNSAFE_KEYS = frozenset({
+    'content',
+    'body',
+    'html',
+    'markdown',
+    'raw',
+    'raw_data',
+    'raw_html',
+    'raw_text',
+    'transcript',
+    'headers',
+    'payload',
+    'data',
+    'json',
+    'full_text',
+    'description',
+    'summary',
+    'text',
+    'output',
+    'stdout',
+    'stderr',
+    'command',
+})
+
+GENERIC_FOLLOWUP_SENSITIVE_KEY_PARTS = (
+    'api_key',
+    'authorization',
+    'bearer',
+    'cookie',
+    'password',
+    'secret',
+    'token',
+)
+
+GENERIC_FOLLOWUP_STRING_MAX_CHARS = 300
+GENERIC_FOLLOWUP_URL_MAX_CHARS = 2048
+GENERIC_FOLLOWUP_URLISH_KEYS = frozenset({
+    'url',
+    'top_url',
+    'thumbnail',
+    'link',
+    'href',
+})
 
 FOLLOWUP_DATA_SKIP_KEYS = frozenset({
     'usage',
@@ -198,6 +327,201 @@ def _extract_memory_mutation_refs(payload: dict, max_candidates: int) -> dict:
                 deleted_candidates.append(candidate)
         if deleted_candidates:
             extracted['deleted'] = deleted_candidates
+
+    return extracted
+
+
+def _safe_generic_key(key: str) -> bool:
+    lowered = (key or '').lower()
+    if lowered in GENERIC_FOLLOWUP_BULKY_OR_UNSAFE_KEYS:
+        return False
+    return not any(part in lowered for part in GENERIC_FOLLOWUP_SENSITIVE_KEY_PARTS)
+
+
+def _is_generic_scalar(value) -> bool:
+    return value is None or isinstance(value, (str, int, float, bool))
+
+
+def _is_generic_urlish_key(key: str) -> bool:
+    return key.endswith(('_url', '_uri')) or key in GENERIC_FOLLOWUP_URLISH_KEYS
+
+
+def _compact_generic_scalar(key: str, value):
+    if value in (None, '', [], {}):
+        return None
+    if not _is_generic_scalar(value):
+        return None
+    if isinstance(value, str):
+        limit = (
+            GENERIC_FOLLOWUP_URL_MAX_CHARS
+            if _is_generic_urlish_key(key)
+            else GENERIC_FOLLOWUP_STRING_MAX_CHARS
+        )
+        if len(value) > limit:
+            suffix = '... [truncated]'
+            value = value[: max(0, limit - len(suffix))].rstrip() + suffix
+    return value
+
+
+def _generic_candidate_from_item(item: dict) -> dict:
+    candidate = {}
+    for field in GENERIC_FOLLOWUP_SCALAR_KEYS:
+        if field not in item or not _safe_generic_key(field):
+            continue
+        value = _compact_generic_scalar(field, item.get(field))
+        if value not in (None, '', [], {}):
+            candidate[field] = value
+
+    for field, value in item.items():
+        if (
+            field in candidate
+            or not field.endswith(('_id', '_ref', '_url', '_uri'))
+            or not _safe_generic_key(field)
+        ):
+            continue
+        compact = _compact_generic_scalar(field, value)
+        if compact not in (None, '', [], {}):
+            candidate[field] = compact
+
+    return candidate
+
+
+def _generic_item_identity(item: dict):
+    for field in (
+        'url',
+        'top_url',
+        'place_id',
+        'data_id',
+        'asin',
+        'product_id',
+        'video_id',
+        'id',
+        'title',
+        'name',
+    ):
+        value = item.get(field)
+        if value not in (None, '', [], {}):
+            return field, str(value)
+    return None
+
+
+def _collapse_repeated_tool_runs(runs: list[dict]) -> dict | None:
+    """Flatten repeated tool-call run envelopes into their nested result rows."""
+    if not runs or not all(isinstance(run, dict) for run in runs):
+        return None
+
+    rows = []
+    seen = set()
+    runs_with_rows = 0
+    collapsed = {}
+
+    for run in runs:
+        payload = run.get('data') if isinstance(run.get('data'), dict) else run
+        if not isinstance(payload, dict):
+            continue
+
+        nested = None
+        for list_key in GENERIC_FOLLOWUP_LIST_KEYS:
+            candidate_list = payload.get(list_key)
+            if (
+                isinstance(candidate_list, list)
+                and any(isinstance(item, dict) for item in candidate_list)
+            ):
+                nested = candidate_list
+                break
+        if nested is None:
+            continue
+
+        runs_with_rows += 1
+        for field, value in payload.items():
+            if field in GENERIC_FOLLOWUP_LIST_KEYS or not _safe_generic_key(field):
+                continue
+            compact = _compact_generic_scalar(field, value)
+            if compact not in (None, '', [], {}):
+                collapsed[field] = compact
+
+        for item in nested:
+            if not isinstance(item, dict):
+                continue
+            identity = _generic_item_identity(item)
+            if identity is not None:
+                if identity in seen:
+                    continue
+                seen.add(identity)
+            rows.append(item)
+
+    if not rows:
+        return None
+
+    collapsed['results'] = rows
+    collapsed['results_count'] = len(rows)
+    collapsed['runs_count'] = runs_with_rows
+    return collapsed
+
+
+def _generic_list_count(payload: dict, list_key: str, results: list) -> int:
+    list_count_key = f'{list_key}_count'
+    if isinstance(payload.get(list_count_key), (int, float)):
+        return payload[list_count_key]
+    if list_key == 'results' and isinstance(payload.get('results_count'), (int, float)):
+        return payload['results_count']
+    if isinstance(payload.get('count'), (int, float)):
+        return payload['count']
+    return len(results)
+
+
+def _extract_generic_followup(payload: dict, max_candidates: int) -> dict:
+    """Conservative fallback for tools without dedicated follow-up adapters."""
+    extracted = {}
+
+    for field in GENERIC_FOLLOWUP_SCALAR_KEYS:
+        if field not in payload or not _safe_generic_key(field):
+            continue
+        value = _compact_generic_scalar(field, payload.get(field))
+        if value not in (None, '', [], {}):
+            extracted[field] = value
+
+    for field, value in payload.items():
+        if (
+            field in extracted
+            or not field.endswith(('_id', '_ref', '_url', '_uri'))
+            or not _safe_generic_key(field)
+        ):
+            continue
+        compact = _compact_generic_scalar(field, value)
+        if compact not in (None, '', [], {}):
+            extracted[field] = compact
+
+    for list_key in GENERIC_FOLLOWUP_LIST_KEYS:
+        results = payload.get(list_key)
+        if not isinstance(results, list) or not results:
+            continue
+
+        candidates = []
+        for item in results[:max_candidates]:
+            if not isinstance(item, dict):
+                continue
+            candidate = _generic_candidate_from_item(item)
+            if candidate:
+                candidates.append(candidate)
+
+        if not candidates:
+            continue
+
+        count_key = f'{list_key}_count'
+        extracted[count_key] = _generic_list_count(payload, list_key, results)
+        first = candidates[0]
+        if first.get('title') and 'title' not in extracted:
+            extracted['title'] = first['title']
+        if first.get('name') and 'name' not in extracted:
+            extracted['name'] = first['name']
+        if first.get('url') and 'top_url' not in extracted:
+            extracted['top_url'] = first['url']
+        # Keep the established generic "candidates" key for compatibility,
+        # and record the source list so prompt consumers know what it represents.
+        extracted['candidate_source'] = list_key
+        extracted['candidates'] = candidates
+        break
 
     return extracted
 
@@ -506,7 +830,10 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             if not value:
                 continue
             if all(isinstance(x, dict) for x in value):
-                value = {'results': value}
+                if key in _PRESERVE_RUN_LIST_FOR_DEDICATED_BRANCHES:
+                    value = {'results': value}
+                else:
+                    value = _collapse_repeated_tool_runs(value) or {'results': value}
             else:
                 continue
         if not isinstance(value, dict):
@@ -549,6 +876,9 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 continue  # Already got it above
             if payload.get(field):
                 extracted[field] = payload[field]
+
+        if payload.get('runs_count') and 'runs_count' not in extracted:
+            extracted['runs_count'] = payload['runs_count']
 
         # Always include provider if present (needed for follow-ups)
         if payload.get('provider') and 'provider' not in extracted:
@@ -1031,41 +1361,17 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 extracted['sources_count'] = len(sources)
                 extracted['sources'] = sources
 
-        # Generic results[] / items[] for tools without explicit branches above
+        # Generic handle/candidate fallback for tools without explicit branches above.
+        # This is intentionally conservative: preserve IDs, refs, URLs, titles,
+        # statuses, and small candidate lists, but do not carry bulky text bodies.
         if (
             not extracted.get('candidates')
             and key not in _DEDICATED_FOLLOWUP_BRANCHES
         ):
-            results = (
-                value.get('results')
-                or value.get('top_results')
-                or value.get('items')
-                or value.get('pages')
-                or value.get('chunks')
-            )
-            if isinstance(results, list) and results:
-                first = results[0] if isinstance(results[0], dict) else {}
-                if isinstance(first, dict):
-                    if first.get('title'):
-                        extracted['title'] = first['title']
-                    if first.get('url') and 'top_url' not in extracted:
-                        extracted['top_url'] = first['url']
-                    if first.get('name') and 'name' not in extracted:
-                        extracted['name'] = first['name']
-                extracted['results_count'] = value.get('results_count', len(results))
-                generic_keys = (
-                    'title', 'name', 'url', 'asin', 'place_id', 'video_id',
-                    'id', 'rating', 'price', 'thumbnail', 'address', 'reviews',
-                )
-                candidates = []
-                for item in results[:max_candidates]:
-                    if not isinstance(item, dict):
-                        continue
-                    candidate = {k: item[k] for k in generic_keys if item.get(k)}
-                    if candidate:
-                        candidates.append(candidate)
-                if candidates:
-                    extracted['candidates'] = candidates
+            generic = _extract_generic_followup(payload, max_candidates)
+            for field, value in generic.items():
+                if field not in extracted:
+                    extracted[field] = value
 
         # @TOOL_CONFIG: video URL expiration — provider URLs have time limits
         # xAI ~4h, OpenAI 60min

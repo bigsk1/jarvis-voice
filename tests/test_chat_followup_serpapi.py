@@ -2,6 +2,7 @@
 """Regression tests for SerpApi follow-up context extraction."""
 
 import types
+import json
 from pathlib import Path
 import sys
 from unittest.mock import patch
@@ -429,6 +430,449 @@ def test_extract_followup_data_rehydrates_manage_intel_create_from_flat_file(tmp
     assert intel["latest_content_source"] == "jarvis-intel/current_file"
 
 
+def test_extract_followup_data_generic_fallback_preserves_scalar_handles():
+    handler = _handler()
+    data = {
+        "create_alert": {
+            "alert_id": "alert_123",
+            "title": "Frost warning",
+            "status": "pending",
+            "severity": "high",
+            "description": "Long prose should not be carried by generic fallback",
+            "api_token": "secret-token",
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    alert = result["create_alert"]
+
+    assert alert["alert_id"] == "alert_123"
+    assert alert["title"] == "Frost warning"
+    assert alert["status"] == "pending"
+    assert alert["severity"] == "high"
+    assert "description" not in alert
+    assert "api_token" not in alert
+
+
+def test_extract_followup_data_generic_fallback_preserves_common_candidate_lists():
+    handler = _handler()
+    data = {
+        "list_reminders": {
+            "count": 3,
+            "results_count": 99,
+            "reminders": [
+                {
+                    "reminder_id": "rem_1",
+                    "title": "Water garden",
+                    "status": "pending",
+                    "due_at": "2026-07-10T18:00:00",
+                    "content": "Do not carry full reminder body",
+                    "authorization": "Bearer nope",
+                },
+                {
+                    "reminder_id": "rem_2",
+                    "title": "Check smoker",
+                    "status": "pending",
+                    "due_at": "2026-07-10T19:00:00",
+                },
+                {
+                    "reminder_id": "rem_3",
+                    "title": "Third item",
+                    "status": "pending",
+                },
+            ],
+        }
+    }
+
+    result = handler._extract_followup_data(data, max_candidates=2)
+    reminders = result["list_reminders"]
+
+    assert reminders["reminders_count"] == 3
+    assert reminders["candidate_source"] == "reminders"
+    assert len(reminders["candidates"]) == 2
+    assert reminders["candidates"][0]["reminder_id"] == "rem_1"
+    assert reminders["candidates"][0]["title"] == "Water garden"
+    assert "content" not in reminders["candidates"][0]
+    assert "authorization" not in reminders["candidates"][0]
+    json.dumps(result)
+
+
+def test_extract_followup_data_generic_fallback_unwraps_nested_data_envelope():
+    handler = _handler()
+    data = {
+        "list_alerts": {
+            "ok": True,
+            "data": {
+                "count": 2,
+                "alerts": [
+                    {
+                        "alert_id": "alert_1",
+                        "title": "Freezer warning",
+                        "status": "pending",
+                        "severity": "critical",
+                    },
+                    {
+                        "alert_id": "alert_2",
+                        "title": "Door open",
+                        "status": "pending",
+                    },
+                ],
+            },
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    alerts = result["list_alerts"]
+
+    assert alerts["alerts_count"] == 2
+    assert alerts["title"] == "Freezer warning"
+    assert alerts["candidates"][0]["alert_id"] == "alert_1"
+    assert alerts["candidates"][0]["severity"] == "critical"
+
+
+def test_extract_followup_data_generic_fallback_handles_conversation_lists():
+    handler = _handler()
+    data = {
+        "search_conversations": {
+            "conversations": [
+                {
+                    "conversation_id": "aae4ab72",
+                    "title": "Family timeline",
+                    "updated_at": "2026-07-10T02:02:07",
+                    "summary": "Do not carry prose summary by default",
+                }
+            ]
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    conversations = result["search_conversations"]
+
+    assert conversations["candidate_source"] == "conversations"
+    assert conversations["conversations_count"] == 1
+    assert conversations["title"] == "Family timeline"
+    assert conversations["candidates"][0] == {
+        "title": "Family timeline",
+        "conversation_id": "aae4ab72",
+        "updated_at": "2026-07-10T02:02:07",
+    }
+
+
+def test_extract_followup_data_generic_fallback_keeps_maps_and_hotel_candidate_richness():
+    handler = _handler()
+    data = {
+        "serpapi_maps_search": {
+            "engine": "google_maps",
+            "query": "coffee",
+            "results": [
+                {
+                    "title": "Pup Cup Coffee",
+                    "url": "https://maps.example/pup",
+                    "place_id": "place_123",
+                    "rating": 4.8,
+                    "reviews": 321,
+                    "address": "123 Market St",
+                    "thumbnail": "https://images.example/pup.jpg",
+                }
+            ],
+        },
+        "serpapi_hotel_search": {
+            "destination": "Newport",
+            "items": [
+                {
+                    "name": "Harbor Inn",
+                    "url": "https://hotels.example/harbor",
+                    "rating": 4.4,
+                    "reviews": 88,
+                    "price_total": "$420",
+                    "price_per_night": "$210",
+                    "thumbnail": "https://images.example/harbor.jpg",
+                    "address": "1 Bay Rd",
+                }
+            ],
+        },
+    }
+
+    result = handler._extract_followup_data(data)
+    maps = result["serpapi_maps_search"]
+    hotels = result["serpapi_hotel_search"]
+
+    assert maps["title"] == "Pup Cup Coffee"
+    assert maps["top_url"] == "https://maps.example/pup"
+    assert maps["candidates"][0]["rating"] == 4.8
+    assert maps["candidates"][0]["address"] == "123 Market St"
+    assert maps["candidates"][0]["thumbnail"] == "https://images.example/pup.jpg"
+    assert maps["candidates"][0]["reviews"] == 321
+    assert hotels["name"] == "Harbor Inn"
+    assert hotels["top_url"] == "https://hotels.example/harbor"
+    assert hotels["candidates"][0]["price_total"] == "$420"
+    assert hotels["candidates"][0]["price_per_night"] == "$210"
+    assert hotels["candidates"][0]["rating"] == 4.4
+
+
+def test_extract_followup_data_flattens_repeated_maps_runs_before_generic_candidates():
+    handler = _handler()
+    data = {
+        "serpapi_maps_search": [
+            {
+                "engine": "google_maps",
+                "query": "coffee shops downtown Newport Beach",
+                "results_count": 2,
+                "results": [
+                    {
+                        "title": "Jasper Coffee",
+                        "url": "https://www.jasper.coffee/",
+                        "place_id": "place_1",
+                        "rating": 4.7,
+                        "reviews": 25,
+                        "address": "327 Marine Ave, Newport Beach, CA 92662",
+                        "thumbnail": "https://lh3.googleusercontent.com/example=w1000-h1000-c-n",
+                    }
+                ],
+            },
+            {
+                "engine": "google_maps",
+                "query": "coffee shops downtown Newport Beach",
+                "results_count": 2,
+                "results": [
+                    {
+                        "title": "Jasper Coffee",
+                        "url": "https://www.jasper.coffee/",
+                        "place_id": "place_1",
+                        "rating": 4.7,
+                        "address": "327 Marine Ave, Newport Beach, CA 92662",
+                    },
+                    {
+                        "title": "Sundays Coffee & Co.",
+                        "url": "https://serpapi.com/search.json?place_id=place_2",
+                        "place_id": "place_2",
+                        "rating": 4.7,
+                        "reviews": 27,
+                        "address": "408 31st St, Newport Beach, CA 92663",
+                    },
+                ],
+            },
+        ]
+    }
+
+    result = handler._extract_followup_data(data)
+    maps = result["serpapi_maps_search"]
+
+    assert maps["runs_count"] == 2
+    assert maps["results_count"] == 2
+    assert maps["candidates"][0]["title"] == "Jasper Coffee"
+    assert maps["candidates"][0]["rating"] == 4.7
+    assert maps["candidates"][0]["address"] == "327 Marine Ave, Newport Beach, CA 92662"
+    assert maps["candidates"][0]["thumbnail"] == "https://lh3.googleusercontent.com/example=w1000-h1000-c-n"
+    assert maps["candidates"][1]["title"] == "Sundays Coffee & Co."
+    assert maps["candidates"][1]["address"] == "408 31st St, Newport Beach, CA 92663"
+    assert "source" not in maps["candidates"][0]
+
+
+def test_extract_followup_data_flattens_repeated_hotel_runs_before_generic_candidates():
+    handler = _handler()
+    data = {
+        "serpapi_hotel_search": [
+            {
+                "engine": "google_hotels",
+                "destination": "Newport Beach",
+                "check_in_date": "2026-07-17",
+                "check_out_date": "2026-07-19",
+                "results_count": 2,
+                "results": [
+                    {
+                        "title": "Newport Beach Marriott Bayview",
+                        "url": "https://www.marriott.com/newport-bayview",
+                        "rating": 4.3,
+                        "reviews": 1520,
+                        "price_per_night": "$306",
+                        "price_total": "$612",
+                        "extracted_price_per_night": 306,
+                        "extracted_price_total": 612,
+                    },
+                    {
+                        "title": "Newport Channel Inn - Family Triple Room",
+                        "url": "https://www.freecancellations.com/channel-inn",
+                        "rating": 5,
+                        "reviews": 8,
+                        "price_per_night": "$330",
+                        "price_total": "$659",
+                        "extracted_price_per_night": 330,
+                        "extracted_price_total": 659,
+                    },
+                ],
+            },
+            {
+                "engine": "google_hotels",
+                "destination": "Newport Beach",
+                "check_in_date": "2026-07-17",
+                "check_out_date": "2026-07-19",
+                "results_count": 1,
+                "results": [
+                    {
+                        "title": "Newport Beach Marriott Bayview",
+                        "url": "https://www.marriott.com/newport-bayview",
+                        "rating": 4.3,
+                        "price_per_night": "$306",
+                        "price_total": "$612",
+                    }
+                ],
+            },
+        ]
+    }
+
+    result = handler._extract_followup_data(data)
+    hotels = result["serpapi_hotel_search"]
+
+    assert hotels["runs_count"] == 2
+    assert hotels["results_count"] == 2
+    assert hotels["destination"] == "Newport Beach"
+    assert hotels["check_in_date"] == "2026-07-17"
+    assert hotels["candidates"][0]["title"] == "Newport Beach Marriott Bayview"
+    assert hotels["candidates"][0]["price_per_night"] == "$306"
+    assert hotels["candidates"][0]["price_total"] == "$612"
+    assert hotels["candidates"][1]["title"] == "Newport Channel Inn - Family Triple Room"
+    assert hotels["candidates"][1]["price_per_night"] == "$330"
+    assert hotels["candidates"][1]["price_total"] == "$659"
+
+
+def test_extract_followup_data_flattens_repeated_serpapi_product_runs_for_dedicated_branch():
+    handler = _handler()
+    data = {
+        "serpapi_search": [
+            {
+                "engine": "amazon",
+                "query": "coffee",
+                "results_count": 1,
+                "results": [
+                    {
+                        "title": "Amazon Fresh Colombia Ground Coffee",
+                        "url": "https://www.amazon.com/dp/B072MQ5BRX/",
+                        "asin": "B072MQ5BRX",
+                        "price": "$17.79",
+                        "rating": 4.4,
+                        "thumbnail": "https://m.media-amazon.com/images/I/example.jpg",
+                    }
+                ],
+            },
+            {
+                "engine": "amazon",
+                "query": "coffee",
+                "results_count": 1,
+                "results": [
+                    {
+                        "title": "Amazon Fresh Colombia Ground Coffee",
+                        "url": "https://www.amazon.com/dp/B072MQ5BRX/",
+                        "asin": "B072MQ5BRX",
+                        "price": "$17.79",
+                        "rating": 4.4,
+                    }
+                ],
+            },
+        ]
+    }
+
+    result = handler._extract_followup_data(data)
+    serp = result["serpapi_search"]
+
+    assert serp["runs_count"] == 2
+    assert serp["results_count"] == 1
+    assert serp["title"] == "Amazon Fresh Colombia Ground Coffee"
+    assert serp["candidates"] == [
+        {
+            "title": "Amazon Fresh Colombia Ground Coffee",
+            "asin": "B072MQ5BRX",
+            "url": "https://www.amazon.com/dp/B072MQ5BRX/",
+            "price": "$17.79",
+            "rating": 4.4,
+            "thumbnail": "https://m.media-amazon.com/images/I/example.jpg",
+        }
+    ]
+
+
+def test_extract_followup_data_generic_fallback_keeps_candidate_only_shopping_handles():
+    handler = _handler()
+    data = {
+        "shopping_probe": {
+            "results": [
+                {
+                    "asin": "B000TEST",
+                    "price": "$19.99",
+                    "rating": 4.2,
+                    "thumbnail": "https://images.example/item.jpg",
+                }
+            ]
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    shopping = result["shopping_probe"]
+
+    assert shopping["results_count"] == 1
+    assert shopping["candidates"] == [
+        {
+            "asin": "B000TEST",
+            "rating": 4.2,
+            "price": "$19.99",
+            "thumbnail": "https://images.example/item.jpg",
+        }
+    ]
+
+
+def test_extract_followup_data_generic_fallback_keeps_urlish_candidate_values_intact():
+    handler = _handler()
+    long_thumbnail = "https://imagedelivery.net/account/hash/public?" + ("w=1200&" * 80)
+    long_link = "https://cdn.example.com/assets/photo.jpg?" + ("sig=abc123&" * 80)
+    long_href = "https://media.example.com/render/item?" + ("variant=full&" * 80)
+    long_image_uri = "cloudflare://images/" + ("nested-path/" * 80)
+    long_title = "Family trip image " + ("preview " * 80)
+    data = {
+        "image_probe": {
+            "results": [
+                {
+                    "title": long_title,
+                    "thumbnail": long_thumbnail,
+                    "link": long_link,
+                    "href": long_href,
+                    "image_uri": long_image_uri,
+                }
+            ]
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    candidate = result["image_probe"]["candidates"][0]
+
+    assert candidate["thumbnail"] == long_thumbnail
+    assert candidate["link"] == long_link
+    assert candidate["href"] == long_href
+    assert candidate["image_uri"] == long_image_uri
+    assert len(candidate["title"]) <= 300
+    assert candidate["title"].endswith("... [truncated]")
+
+
+def test_extract_followup_data_dedicated_branch_skips_generic_candidate_source():
+    handler = _handler()
+    data = {
+        "serpapi_yelp_search": {
+            "find_desc": "Coffee",
+            "results": [
+                {
+                    "title": "Pup Cup Coffee",
+                    "url": "https://www.yelp.com/biz/pup-cup-coffee",
+                    "place_id": "pup-cup-coffee-nyc",
+                }
+            ],
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    yelp = result["serpapi_yelp_search"]
+
+    assert yelp["candidates"][0]["place_id"] == "pup-cup-coffee-nyc"
+    assert "candidate_source" not in yelp
+
+
 def test_extract_followup_data_preserves_crawl_url_deduped_urls():
     handler = _handler()
     data = {
@@ -471,6 +915,42 @@ def test_extract_followup_data_preserves_crawl_url_deduped_urls():
         {"url": "https://example.com/other", "title": "Other Page", "success": False},
     ]
     assert "markdown" not in crawl["crawled_urls"][0]
+
+
+def test_extract_followup_data_preserves_top_level_crawl_url_run_list():
+    handler = _handler()
+    data = {
+        "crawl_url": [
+            {
+                "results": [
+                    {
+                        "url": "https://example.com/post",
+                        "title": "Example Post",
+                        "success": True,
+                        "markdown": "large content should not be retained",
+                    }
+                ]
+            },
+            {
+                "results": [
+                    {
+                        "url": "https://example.com/other",
+                        "title": "Other Page",
+                        "success": False,
+                    }
+                ]
+            },
+        ]
+    }
+
+    result = handler._extract_followup_data(data)
+    crawl = result["crawl_url"]
+
+    assert crawl["runs_count"] == 2
+    assert crawl["crawled_urls"] == [
+        {"url": "https://example.com/post", "title": "Example Post", "success": True},
+        {"url": "https://example.com/other", "title": "Other Page", "success": False},
+    ]
 
 
 def test_extract_followup_data_preserves_brave_urls_from_full_text():
