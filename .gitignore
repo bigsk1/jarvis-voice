@@ -116,6 +116,7 @@ cursor_*.md
 .agents
 .codex
 AGENTS.md
+.cursorignore
 
 # OpenCode sessions and logs
 logs/opencode/

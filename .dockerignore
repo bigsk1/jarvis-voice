@@ -98,7 +98,7 @@ node_modules/
 cursor_*.md
 *.cursor.*
 AGENTS.md
-
+.cursorignore
 # ===== Docs & assets not needed at runtime (optional slimming) =====
 # Keep docs/ in image if log viewer / search_docs needs them; uncomment to shrink:
 # docs/
