@@ -23,17 +23,18 @@ TMP_MP3="/tmp/qa-$STAMP.mp3"
 
 echo "🤖 Asking: $QUESTION"
 
+# Build chat JSON without interpolating user/config text into JSON syntax.
+CHAT_JSON=$(jq -n \
+  --arg model "$OPENAI_MODEL" \
+  --arg system "$SYSTEM_PROMPT" \
+  --arg user "$QUESTION" \
+  '{model:$model, messages:[{role:"system", content:$system}, {role:"user", content:$user}]}')
+
 # Get text answer
 ANSWER=$(curl -sS https://api.openai.com/v1/chat/completions \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d "{
-    \"model\": \"$OPENAI_MODEL\",
-    \"messages\": [
-      {\"role\":\"system\",\"content\":\"$SYSTEM_PROMPT\"},
-      {\"role\":\"user\",\"content\":\"$QUESTION\"}
-    ]
-  }" | jq -r '.choices[0].message.content // empty')
+  -d "$CHAT_JSON" | jq -r '.choices[0].message.content // empty')
 
 if [ -z "$ANSWER" ]; then
   echo "❌ No answer text from chat endpoint." >&2
@@ -85,4 +86,3 @@ rm -f "$TMP_MP3"
 echo "✅ Saved:"
 echo "   Text:  $TXT_FILE"
 echo "   Audio: $WAV_FILE"
-

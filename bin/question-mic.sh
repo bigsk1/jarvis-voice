@@ -52,17 +52,18 @@ echo "$QUESTION" > "$TXT_FILE"
 
 echo "🤖 Getting answer…"
 
+# Build chat JSON without interpolating transcription/config text into JSON syntax.
+CHAT_JSON=$(jq -n \
+  --arg model "$OPENAI_MODEL" \
+  --arg system "$SYSTEM_PROMPT" \
+  --arg user "$QUESTION" \
+  '{model:$model, messages:[{role:"system", content:$system}, {role:"user", content:$user}]}')
+
 ANSWER=$(
   curl -sS https://api.openai.com/v1/chat/completions \
     -H "Authorization: Bearer $OPENAI_API_KEY" \
     -H "Content-Type: application/json" \
-    -d "{
-      \"model\": \"$OPENAI_MODEL\",
-      \"messages\": [
-        {\"role\":\"system\",\"content\":\"$SYSTEM_PROMPT\"},
-        {\"role\":\"user\",\"content\":\"$QUESTION\"}
-      ]
-    }" \
+    -d "$CHAT_JSON" \
   | jq -r '.choices[0].message.content // empty'
 )
 
