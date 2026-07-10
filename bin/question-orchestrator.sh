@@ -1,6 +1,11 @@
 #!/bin/bash
 # Jarvis Voice Assistant - Question Handler with Orchestrator (Cloud)
 # Records audio, transcribes, routes through orchestrator, and speaks response
+#
+# Examples:
+#   ./bin/question-orchestrator.sh
+#   ./bin/question-orchestrator.sh "turn off the kitchen light"
+#   # no args: listen from mic; with text: skip recording, run full orchestrator
 set -euo pipefail
 
 # Get project root

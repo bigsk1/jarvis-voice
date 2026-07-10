@@ -1,5 +1,10 @@
 #!/bin/bash
 # Jarvis Voice Assistant - Local TTS (Kokoro or Qwen3-TTS)
+# Loads config/local.env — uses TTS_PROVIDER from env.
+#
+# Examples:
+#   ./bin/say-local.sh "Testing local TTS on CLI"
+#   ./bin/say-local.sh "The answer is forty-two"
 set -euo pipefail
 
 # Load configuration

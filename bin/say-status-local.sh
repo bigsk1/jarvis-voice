@@ -9,6 +9,10 @@
 #
 # Usage: say-status-local.sh "message" [blocking]
 #   blocking: "true" (wait for playback) or "false" (background)
+#
+# Examples:
+#   ./bin/say-status-local.sh "Working on it"
+#   ./bin/say-status-local.sh "Still thinking" false
 
 set -euo pipefail
 

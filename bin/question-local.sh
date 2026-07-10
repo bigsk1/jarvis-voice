@@ -1,4 +1,11 @@
 #!/bin/bash
+# Jarvis Voice Assistant - Local Q&A from text
+# Loads config/local.env — Ollama for LLM, TTS_PROVIDER from env (kokoro or qwen3-tts).
+#
+# Examples:
+#   ./bin/question-local.sh "What is the capital of France?"
+#   ./bin/question-local.sh "Explain quantum computing in simple terms"
+#
 # Load configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/config_loader.sh"

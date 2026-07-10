@@ -1,5 +1,10 @@
 #!/bin/bash
 # Jarvis Voice Assistant - Local Q&A from microphone
+# Loads config/local.env — local STT, then hands off to question-local.sh (Ollama + TTS_PROVIDER).
+#
+# Examples:
+#   ./bin/question-mic-local.sh
+#   # speak your question when prompted; local STT → Ollama → kokoro/qwen3-tts
 set -euo pipefail
 
 # Load configuration

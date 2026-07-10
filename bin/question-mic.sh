@@ -1,5 +1,11 @@
 #!/bin/bash
-# Jarvis Voice Assistant - Cloud Q&A from microphone
+# Jarvis Voice Assistant - Cloud Q&A from microphone (OpenAI STT + chat + TTS)
+# Loads config/cloud.env — all APIs hardcoded to OpenAI in this script.
+# For orchestrator/tools or multi-provider TTS, use question-orchestrator.sh instead.
+#
+# Examples:
+#   ./bin/question-mic.sh
+#   # speak your question when prompted; transcribes, asks OpenAI, speaks answer
 set -euo pipefail
 
 # Load configuration

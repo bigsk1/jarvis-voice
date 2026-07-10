@@ -1,6 +1,11 @@
 #!/bin/bash
 # Jarvis Voice Assistant - Question Handler with Orchestrator (Local)
 # Records audio, transcribes, routes through orchestrator, and speaks response
+#
+# Examples:
+#   ./bin/question-orchestrator-local.sh
+#   ./bin/question-orchestrator-local.sh "what's on my calendar today"
+#   # no args: listen from mic; with text: skip recording, run full orchestrator
 set -euo pipefail
 
 # Get project root

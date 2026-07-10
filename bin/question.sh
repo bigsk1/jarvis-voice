@@ -1,5 +1,11 @@
 #!/bin/bash
-# Jarvis Voice Assistant - Cloud Q&A from text
+# Jarvis Voice Assistant - Cloud Q&A from text (OpenAI chat + OpenAI TTS)
+# Loads config/cloud.env — STT/chat/TTS are hardcoded to OpenAI APIs in this script.
+# For multi-provider TTS, use say.sh or question-orchestrator.sh instead.
+#
+# Examples:
+#   ./bin/question.sh "What is the capital of France?"
+#   ./bin/question.sh "Summarize today's news in one sentence"
 set -euo pipefail
 
 # Load configuration

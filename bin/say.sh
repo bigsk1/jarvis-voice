@@ -1,5 +1,10 @@
 #!/bin/bash
 # Jarvis Voice Assistant - Cloud TTS (OpenAI, ElevenLabs, xAI, Qwen3-TTS, or Kokoro URL)
+# Loads config/cloud.env — uses TTS_PROVIDER from env.
+#
+# Examples:
+#   ./bin/say.sh "Testing TTS on CLI"
+#   ./bin/say.sh "The answer is forty-two"
 set -euo pipefail
 
 # Load configuration
