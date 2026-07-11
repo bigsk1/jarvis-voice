@@ -17,6 +17,8 @@ PAGES_ROUTE = ROOT / "jarvis-canvas" / "server" / "routes" / "pages.py"
 def _load_pages_route(tmp_path, monkeypatch):
     sync_pins = Mock()
     saved_pages = {}
+    monkeypatch.delenv("JARVIS_OVERRIDE_STASH_DIR", raising=False)
+    monkeypatch.setenv("STASH_DIR", str(tmp_path / "stash"))
 
     config = types.ModuleType("config")
     config.CANVAS_DIR = tmp_path

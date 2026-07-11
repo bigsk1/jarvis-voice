@@ -7,7 +7,10 @@ from pathlib import Path
 
 from flask import Blueprint, send_file, send_from_directory, abort, jsonify
 
-from config import STASH_DIR
+try:
+    from stash_helper import get_stash_dir
+except ImportError:
+    from lib.stash_helper import get_stash_dir
 from server.utils import normalize_space_id
 
 stash_bp = Blueprint('stash', __name__)
@@ -30,7 +33,7 @@ def stash_viewer_page(space_id, file_id):
 def _resolve_stash_file(space_id, file_id):
     """Resolve a stash id to its file and public metadata."""
     normalized_space_id = normalize_space_id(space_id)
-    space_dir = STASH_DIR / normalized_space_id
+    space_dir = get_stash_dir() / normalized_space_id
     if not space_dir.exists():
         abort(404, f"Stash space not found: {normalized_space_id}")
 

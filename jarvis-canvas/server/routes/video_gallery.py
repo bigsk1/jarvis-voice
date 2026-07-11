@@ -4,7 +4,11 @@ from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, jsonify, send_file, abort, render_template
 
-from config import GENERATED_VIDEOS_DIR, STASH_DIR
+from config import GENERATED_VIDEOS_DIR
+try:
+    from stash_helper import get_stash_dir
+except ImportError:
+    from lib.stash_helper import get_stash_dir
 from video_catalog import (
     load_video_catalog as _load_video_catalog,
     lookup_stash_metadata as _lookup_stash_metadata,
@@ -55,7 +59,7 @@ def sync_video_catalog():
     """
     return _sync_video_catalog(
         GENERATED_VIDEOS_DIR,
-        STASH_DIR,
+        get_stash_dir(),
         VIDEO_CATALOG_FILE,
     )
 
@@ -65,7 +69,7 @@ def lookup_stash_metadata(filename):
     Look up metadata for a video file from stash.
     Returns dict with provider, aspect, tags if found.
     """
-    return _lookup_stash_metadata(filename, STASH_DIR)
+    return _lookup_stash_metadata(filename, get_stash_dir())
 
 
 @video_gallery_bp.route('/video-gallery')

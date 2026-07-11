@@ -200,9 +200,6 @@ MUSIC_PATH = JARVIS_ROOT / 'data' / 'generated_music'
 # Path to generated videos
 VIDEOS_PATH = JARVIS_ROOT / 'data' / 'generated_videos'
 
-# Path to stash
-STASH_PATH = JARVIS_ROOT / 'data' / 'stash'
-
 # Paths for prompts and workflows
 WEB_DATA_PATH = JARVIS_ROOT / 'jarvis-web' / 'data'
 PROMPTS_PATH = WEB_DATA_PATH / 'prompts'
@@ -2385,7 +2382,7 @@ def serve_stash_file(space_id, file_id):
     if '..' in space_id or '/' in space_id or '..' in file_id or '/' in file_id:
         abort(404)
     
-    space_path = STASH_PATH / space_id
+    space_path = get_stash_dir() / space_id
     meta_path = space_path / 'meta.json'
     
     if not space_path.exists():
@@ -2485,7 +2482,7 @@ def upload_to_stash():
         file_id = f"f_{uuid.uuid4().hex[:12]}"
         
         # Create space directory
-        space_path = STASH_PATH / space_id
+        space_path = get_stash_dir() / space_id
         space_path.mkdir(parents=True, exist_ok=True)
         
         # Determine filename (preserve original name)

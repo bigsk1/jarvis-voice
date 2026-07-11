@@ -8,7 +8,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from flask import Blueprint, jsonify, request, Response
 
-from config import CANVAS_DIR, STASH_DIR
+from config import CANVAS_DIR
+try:
+    from stash_helper import get_stash_dir
+except ImportError:
+    from lib.stash_helper import get_stash_dir
 from canvas_content import append_content, is_suspicious_content_shrink
 from canvas_page_ids import generate_canvas_page_id
 from server.pages import (
@@ -116,7 +120,7 @@ def create_page():
     
     # Sync stash pins if page is created as pinned
     if page.get('pinned', False):
-        sync_stash_pins(page.get('content', ''), pinned=True, stash_dir=STASH_DIR)
+        sync_stash_pins(page.get('content', ''), pinned=True, stash_dir=get_stash_dir())
     
     save_page(page)
     return jsonify(page), 201
@@ -164,7 +168,7 @@ def update_page(page_id):
     
     # Re-scan every pinned update so newly referenced stash spaces do not expire.
     if page.get('pinned', False):
-        sync_stash_pins(page.get('content', ''), pinned=True, stash_dir=STASH_DIR)
+        sync_stash_pins(page.get('content', ''), pinned=True, stash_dir=get_stash_dir())
     
     save_page(page)
     return jsonify(page)
@@ -189,7 +193,7 @@ def append_page(page_id):
     page['updated'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "Z"
 
     if page.get('pinned', False):
-        sync_stash_pins(page['content'], pinned=True, stash_dir=STASH_DIR)
+        sync_stash_pins(page['content'], pinned=True, stash_dir=get_stash_dir())
 
     save_page(page)
     return jsonify(page)
@@ -286,7 +290,7 @@ def upload_page():
             existing['updated'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S') + "Z"
 
             if existing.get('pinned', False):
-                sync_stash_pins(existing.get('content', ''), pinned=True, stash_dir=STASH_DIR)
+                sync_stash_pins(existing.get('content', ''), pinned=True, stash_dir=get_stash_dir())
 
             save_page(existing)
             return jsonify({"action": "updated", "page": existing})
@@ -307,7 +311,7 @@ def upload_page():
     }
 
     if page.get('pinned', False):
-        sync_stash_pins(page.get('content', ''), pinned=True, stash_dir=STASH_DIR)
+        sync_stash_pins(page.get('content', ''), pinned=True, stash_dir=get_stash_dir())
 
     save_page(page)
     return jsonify({"action": "created", "page": page}), 201

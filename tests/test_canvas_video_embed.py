@@ -18,6 +18,8 @@ from server.routes import stash as stash_routes  # noqa: E402
 
 def test_stash_metadata_reports_video_without_tool_specific_logic(tmp_path, monkeypatch):
     stash_root = tmp_path / "stash"
+    monkeypatch.delenv("JARVIS_OVERRIDE_STASH_DIR", raising=False)
+    monkeypatch.setenv("STASH_DIR", str(stash_root))
     space = stash_root / "space_video"
     space.mkdir(parents=True)
     video_path = space / "social_clip.mp4"
@@ -39,8 +41,6 @@ def test_stash_metadata_reports_video_without_tool_specific_logic(tmp_path, monk
             }
         )
     )
-    monkeypatch.setattr(stash_routes, "STASH_DIR", stash_root)
-
     app = Flask(__name__)
     app.register_blueprint(stash_routes.stash_bp)
     client = app.test_client()

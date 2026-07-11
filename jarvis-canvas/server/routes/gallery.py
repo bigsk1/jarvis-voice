@@ -5,7 +5,11 @@ import json
 from datetime import datetime
 from flask import Blueprint, jsonify, request, send_file, abort, render_template
 
-from config import GENERATED_IMAGES_DIR, STASH_DIR
+from config import GENERATED_IMAGES_DIR
+try:
+    from stash_helper import get_stash_dir
+except ImportError:
+    from lib.stash_helper import get_stash_dir
 from internal_api import get_internal_api_base_url, get_internal_api_headers
 
 gallery_bp = Blueprint('gallery', __name__)
@@ -39,10 +43,11 @@ def lookup_image_stash_metadata(filename):
     Look up metadata for an image file from stash.
     Returns dict with provider, tags, aspect if found.
     """
-    if not STASH_DIR.exists():
+    stash_dir = get_stash_dir()
+    if not stash_dir.exists():
         return None
     
-    for space_dir in STASH_DIR.iterdir():
+    for space_dir in stash_dir.iterdir():
         if not space_dir.is_dir():
             continue
         
