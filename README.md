@@ -1902,7 +1902,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.54.1 (July 2026)
+**Current Version:** v2.54.2 (July 2026)
 **Status:** Production Ready ✅
 **Latest Features:** v2.54.1 adds Grok 4.5 catalog/default support, xAI
 OAuth/API-key routing clarity, Web xAI quota status, versioned router prompts
