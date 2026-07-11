@@ -784,19 +784,39 @@ class PipelineExecutor:
         return lines
     
     def _get_nested_value(self, data: dict, path: str) -> Any:
-        """Get a nested value from a dict using dot notation."""
+        """Get a nested value using dot notation with optional list indexes."""
         parts = path.split(".")
         current = data
         
         for part in parts:
-            if isinstance(current, dict):
-                current = current.get(part)
-            else:
-                return None
-            
+            current = self._get_path_part(current, part)
             if current is None:
                 return None
-        
+
+        return current
+
+    def _get_path_part(self, current: Any, part: str) -> Any:
+        """Resolve one dotted path segment, including forms like results[0]."""
+        match = re.fullmatch(r"([^\[\]]+)((?:\[\d+\])*)", part)
+        if not match:
+            if isinstance(current, dict):
+                return current.get(part)
+            return None
+
+        key, indexes = match.groups()
+        if isinstance(current, dict):
+            current = current.get(key)
+        else:
+            return None
+
+        for raw_index in re.findall(r"\[(\d+)\]", indexes):
+            index = int(raw_index)
+            if not isinstance(current, list) or index >= len(current):
+                return None
+            current = current[index]
+            if current is None:
+                return None
+
         return current
 
     def _apply_variable_assignments(self, assignments: dict | None, variables: dict) -> None:

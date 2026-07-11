@@ -355,6 +355,57 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
             ["https://example.test"],
         )
 
+    def test_extract_by_path_supports_indexed_array_segments(self):
+        data = {
+            "results": [
+                {"url": "https://first.example", "metadata": {"title": "First"}},
+                {"url": "https://second.example", "metadata": {"title": "Second"}},
+            ]
+        }
+
+        self.assertEqual(
+            self.executor._extract_by_path(data, "results[0].url"),
+            "https://first.example",
+        )
+        self.assertEqual(
+            self.executor._extract_by_path(data, "results[1].metadata.title"),
+            "Second",
+        )
+        self.assertIsNone(self.executor._extract_by_path(data, "results[2].url"))
+
+    def test_output_transforms_apply_indexed_extract_paths(self):
+        variables = {}
+        result = {
+            "ok": True,
+            "data": {
+                "results": [
+                    {"url": "https://first.example", "markdown": "# First"},
+                    {"url": "https://second.example", "markdown": "# Second"},
+                ]
+            },
+        }
+
+        self.executor._apply_output_transforms(
+            {
+                "extract": {
+                    "first_url": "results[0].url",
+                    "second_markdown": "results[1].markdown",
+                    "all_urls": "results[*].url",
+                }
+            },
+            result,
+            variables,
+            "example_tool",
+            None,
+        )
+
+        self.assertEqual(variables["first_url"], "https://first.example")
+        self.assertEqual(variables["second_markdown"], "# Second")
+        self.assertEqual(
+            variables["all_urls"],
+            ["https://first.example", "https://second.example"],
+        )
+
     def test_process_all_for_each_runs_every_item(self):
         calls = []
 
