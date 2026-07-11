@@ -111,9 +111,13 @@ Supported **`transform`** values: `domain`, `lowercase`, `uppercase`, `strip`.
 
 - `${var}` — simple variable.
 - `${nested.path}` — dotted lookup into the variables dict (e.g. fields merged from tool results).
-- `${arr[:N]}` — slice notation where implemented for arrays.
+- `${arr[0]}` — list index lookup.
+- `${nested.list[0].field}` — indexed lookup inside a dotted path.
+- `${arr[:N]}` — slice notation for arrays.
 
 Resolve rules and templating: see `_resolve_variable` / `_resolve_template_string` in `orchestrator/pipeline_executor.py`.
+
+Bracket syntax is only special inside workflow variable expressions such as `${results[0].url}` and `extract` paths such as `results[0].url`. Literal markdown/text sent to tools or Canvas is not parsed as a path just because it contains brackets or parentheses.
 
 ---
 
@@ -126,7 +130,7 @@ Each step typically includes:
 - `action` — for multi-action tools (e.g. `stash`, `canvas`).
 - `params` — object; values may contain `${variables}` strings.
 - `extract` — maps **new variable names** to paths under **`result.data`** (paths must **not** use a `data.` prefix).
-- `output_var` — optional; stores raw tool payload under that variable name.
+- `output_var` — optional; stores step output under that variable name. If a built-in transform creates a workflow-friendly value with the same name, that value is preserved instead of being overwritten by the raw payload.
 - `for_each` — repeats a step over an array such as `${search_results.urls[:5]}`.
 - `retry.max_attempts` — when explicitly set on a `for_each` step, caps the number of input items attempted; the workflow-wide `max_total_retries` still caps accumulated failed attempts.
 - `required_success_count` — for a `for_each` producer, stop after this many successful/validated results (default `1`).
@@ -151,6 +155,8 @@ Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
 6. For **`llm_prompt`** steps that produce user-visible markdown, instruct the model to emit **real values**, not literal `${var}` text.
 7. Prefer **`JARVIS_DEFAULT_LOCATION`** (env-backed `variables`) for default geography instead of embedding a specific city in shared workflow JSON.
 8. Set workflow-level **`disable_server_side_tools: true`** when deterministic source/tool steps already provide the facts and `llm_prompt` should only extract or synthesize from workflow variables.
+9. For search → crawl workflows, keep the search step's **`output_var`** as **`search_results`** so the built-in transform exposes `${search_results.urls[:N]}`.
+10. For single URL crawl workflows, use **`output_var: "article"`** when later steps need `${article.content}`, `${article.url}`, or `${article.title}`.
 
 ---
 
@@ -260,6 +266,88 @@ The `stash` tool accepts:
 
 ---
 
+## Built-in transformed output variables
+
+Some tools return large/raw payloads, but workflows usually need a smaller, stable shape. The executor creates these convenience variables automatically and preserves them when they share the same name as `output_var`.
+
+### Search results
+
+Search-like tools, including `mcp_brave_search_brave_web_search`, expose:
+
+```json
+{
+  "search_results": {
+    "urls": ["https://example.com/a", "https://example.com/b"],
+    "data": { "results": [] }
+  }
+}
+```
+
+Use this shape for crawl loops:
+
+```json
+{
+  "step": 1,
+  "tool": "mcp_brave_search_brave_web_search",
+  "params": { "query": "${topic}", "count": 5 },
+  "output_var": "search_results",
+  "required": true
+},
+{
+  "step": 2,
+  "tool": "crawl_url",
+  "for_each": "${search_results.urls[:3]}",
+  "output_var": "crawl_attempts",
+  "validated_output_var": "validated_articles",
+  "required_success_count": 1,
+  "on_all_fail": "continue"
+}
+```
+
+`search_results.urls` is the normalized URL list. `search_results.data` keeps the original search payload for diagnostics or prompt context.
+
+### Single URL crawl results
+
+For a single `crawl_url` step, `output_var: "article"` exposes:
+
+```json
+{
+  "article": {
+    "title": "Page title",
+    "content": "Markdown/text content",
+    "url": "https://example.com/page",
+    "results": []
+  }
+}
+```
+
+Use it for follow-up stash, Canvas, or summarizer steps:
+
+```json
+{
+  "step": 1,
+  "tool": "crawl_url",
+  "params": { "url": "${url}" },
+  "output_var": "article",
+  "required": true
+},
+{
+  "step": 2,
+  "tool": "stash",
+  "action": "save",
+  "params": {
+    "kind": "text",
+    "text": "${article.content}",
+    "name": "archive_${timestamp}.md"
+  },
+  "required": true
+}
+```
+
+Do not use `${article.data.results[0].markdown}` for normal workflows. Prefer the flattened `${article.content}` unless you specifically need the raw result array.
+
+---
+
 ## Validated multi-step recipes (`validated_output_var`)
 
 Use `validated_output_var` when one repeated step gathers source material and later steps must consume the **validated source payloads**, not the output of an intervening save/export step.
@@ -274,6 +362,7 @@ Use `validated_output_var` when one repeated step gathers source material and la
 - Consume the list with `${validated_articles}` (or the exact variable name you chose).
 - Do **not** put `validated_output_var: "validated_articles"` on a later `stash`, export, email, or Canvas loop. That would redefine “articles” to mean save receipts or delivery metadata.
 - A `crawl_url` loop has a legacy fallback to `validated_articles`, but new workflows must declare the variable explicitly so the data ownership is obvious and works for other producer tools.
+- If a producer loop has an explicit `validated_output_var` and gathers zero valid items, the variable is still set to an empty list. In LLM prompts, `${validated_articles}` formats as `[No articles gathered]` so Canvas/Stash/email synthesis does not see a literal unresolved placeholder.
 
 ### Correct gather → save → synthesize recipe
 
@@ -340,9 +429,10 @@ In this pattern:
 
 1. `crawl_attempts` is the audit trail of every attempted crawl.
 2. `validated_articles` remains the authoritative source material.
-3. `saved_files` contains stash receipts and never replaces `validated_articles`.
-4. `process_all: true` makes the stash step save every validated article. Without it, a `for_each` step defaults to one required success and may stop after the first item.
-5. The Canvas LLM receives actual crawl payloads, including article text and URLs—not stash metadata.
+3. `search_results.urls` is the normalized URL list used by the crawl step; the raw search payload remains under `search_results.data`.
+4. `saved_files` contains stash receipts and never replaces `validated_articles`.
+5. `process_all: true` makes the stash step save every validated article. Without it, a `for_each` step defaults to one required success and may stop after the first item.
+6. The Canvas LLM receives actual crawl payloads, including article text and URLs—not stash metadata.
 
 ### Incorrect pattern
 
@@ -377,14 +467,24 @@ Paths in **`extract`** are relative to the tool’s **`data`** object.
 CORRECT:
 
 ```json
-"extract": { "temperature": "temperature", "cpu": "cpu.total_percent" }
+"extract": {
+  "temperature": "temperature",
+  "cpu": "cpu.total_percent",
+  "first_url": "results[0].url",
+  "all_urls": "results[*].url"
+}
 ```
 
 WRONG:
 
 ```json
-"extract": { "temperature": "data.temperature" }
+"extract": {
+  "temperature": "data.temperature",
+  "first_url": "data.results[0].url"
+}
 ```
+
+Use `results[0].url` for the first item in a returned list. Use `results[*].url` when you want the same field from every item in the list. Missing paths resolve to `None` and are skipped.
 
 ---
 
