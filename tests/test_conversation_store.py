@@ -6,6 +6,8 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+import json
+from datetime import datetime, timedelta
 from pathlib import Path
 
 
@@ -17,6 +19,31 @@ from server_package_utils import load_server_package
 load_server_package("jarvis_web_test_server", PROJECT_ROOT / "jarvis-web" / "server")
 
 from jarvis_web_test_server.services.conversation_store import ConversationStore
+
+
+def _set_conversation_state(
+    store: ConversationStore,
+    conv_id: str,
+    *,
+    updated_at: datetime,
+    pinned: bool = False,
+) -> None:
+    timestamp = updated_at.isoformat()
+    conv_file = store.conversations_dir / f"{conv_id}.json"
+    conversation = json.loads(conv_file.read_text())
+    conversation["updated_at"] = timestamp
+    conversation["pinned"] = pinned
+    conversation["pinned_at"] = timestamp if pinned else None
+    conv_file.write_text(json.dumps(conversation, indent=2))
+
+    for item in store._index["conversations"]:
+        if item["id"] != conv_id:
+            continue
+        item["updated_at"] = timestamp
+        item["pinned"] = pinned
+        item["pinned_at"] = timestamp if pinned else None
+        break
+    store._save_index()
 
 
 class ConversationStoreTests(unittest.TestCase):
@@ -81,6 +108,52 @@ class ConversationStoreTests(unittest.TestCase):
         self.assertEqual(renamed["messages"], before["messages"])
         self.assertEqual(renamed["updated_at"], before["updated_at"])
         self.assertTrue(renamed["pinned"])
+
+    def test_cleanup_old_unpinned_preserves_pinned_and_recent_conversations(self) -> None:
+        now = datetime(2026, 7, 11, 12, 0, 0)
+        old_unpinned = self.store.create_conversation("Old unpinned")
+        old_pinned = self.store.create_conversation("Old pinned")
+        recent_unpinned = self.store.create_conversation("Recent unpinned")
+
+        _set_conversation_state(
+            self.store,
+            old_unpinned["id"],
+            updated_at=now - timedelta(days=120),
+        )
+        _set_conversation_state(
+            self.store,
+            old_pinned["id"],
+            updated_at=now - timedelta(days=120),
+            pinned=True,
+        )
+        _set_conversation_state(
+            self.store,
+            recent_unpinned["id"],
+            updated_at=now - timedelta(days=10),
+        )
+
+        dry_run = self.store.cleanup_old_unpinned(
+            retention_days=90,
+            dry_run=True,
+            now=now,
+        )
+
+        self.assertEqual([item["id"] for item in dry_run["candidates"]], [old_unpinned["id"]])
+        self.assertEqual(dry_run["deleted_conversations"], 0)
+        self.assertTrue((self.store.conversations_dir / f"{old_unpinned['id']}.json").exists())
+
+        result = self.store.cleanup_old_unpinned(
+            retention_days=90,
+            dry_run=False,
+            now=now,
+        )
+
+        self.assertEqual(result["deleted_conversations"], 1)
+        self.assertFalse((self.store.conversations_dir / f"{old_unpinned['id']}.json").exists())
+        self.assertTrue((self.store.conversations_dir / f"{old_pinned['id']}.json").exists())
+        self.assertTrue((self.store.conversations_dir / f"{recent_unpinned['id']}.json").exists())
+        remaining_ids = {item["id"] for item in self.store.list_conversations(limit=10)}
+        self.assertEqual(remaining_ids, {old_pinned["id"], recent_unpinned["id"]})
 
 
 if __name__ == "__main__":

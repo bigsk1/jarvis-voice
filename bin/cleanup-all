@@ -6,6 +6,7 @@
 #   - Logs: 60 days
 #   - Audio: 30 days  
 #   - Generated images: 120 days
+#   - Web conversations: 90 days, pinned conversations preserved
 #   - Web uploads: 60 days when unreferenced; saved-conversation assets are preserved
 #   - Stash spaces: Uses built-in TTL (via Python)
 #
@@ -16,6 +17,7 @@
 # For individual control:
 #   ./bin/cleanup-logs [--days N] [--dry-run]
 #   ./bin/cleanup-audio [--days N] [--dry-run]
+#   ./bin/cleanup-web-conversations [--days N] [--dry-run]
 
 set -e
 
@@ -30,7 +32,8 @@ fi
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║             Jarvis Master Cleanup                            ║"
 echo "║                                                              ║"
-echo "║ Logs: 60d | Audio: 30d | Images: 120d | Uploads: 60d* | Stash ║"
+echo "║ Logs: 60d | Audio: 30d | Images: 120d | Web chats: 90d*         ║"
+echo "║ Uploads: 60d* | Stash TTL                                       ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -113,7 +116,12 @@ else
 fi
 echo ""
 
-# 4. Cleanup unreferenced web uploads (60 days)
+# 4. Cleanup web conversations (90 days, preserving pinned)
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+"$SCRIPT_DIR/cleanup-web-conversations" --days 90 $DRY_RUN
+echo ""
+
+# 5. Cleanup unreferenced web uploads (60 days)
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 UPLOADS_DIR="$PROJECT_ROOT/jarvis-web/data/uploads"
 UPLOADS_RETENTION_DAYS=60
@@ -129,7 +137,7 @@ echo ""
 "$SCRIPT_DIR/cleanup-retention" uploads --days "$UPLOADS_RETENTION_DAYS" $DRY_RUN
 echo ""
 
-# 5. Cleanup stash expired spaces (uses built-in TTL)
+# 6. Cleanup stash expired spaces (uses built-in TTL)
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📦 Stash Spaces Cleanup (TTL-based)"
 "$SCRIPT_DIR/cleanup-retention" stash $DRY_RUN
@@ -141,7 +149,7 @@ echo ""
 
 # Show overall disk usage (only existing dirs to avoid du failures)
 echo "📊 Current disk usage:"
-for d in logs logs/server-side-tools audio data/generated_images jarvis-web/data/uploads data/stash; do
+for d in logs logs/server-side-tools audio data/generated_images data/web_conversations jarvis-web/data/uploads data/stash; do
     [[ -d "$PROJECT_ROOT/$d" ]] && du -sh "$PROJECT_ROOT/$d" 2>/dev/null
 done | while read size dir; do
     name=$(basename "$dir")

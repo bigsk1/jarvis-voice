@@ -3,7 +3,7 @@ Conversation Storage Service
 Saves and loads chat conversations
 """
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import uuid
 
@@ -194,6 +194,98 @@ class ConversationStore:
         ]
         self._save_index()
         return True
+
+    @staticmethod
+    def _parse_timestamp(value: str | None) -> datetime | None:
+        """Parse saved conversation timestamps for retention cleanup."""
+        if not value:
+            return None
+        try:
+            timestamp = str(value)
+            if timestamp.endswith('Z'):
+                timestamp = f"{timestamp[:-1]}+00:00"
+            parsed = datetime.fromisoformat(timestamp)
+        except ValueError:
+            return None
+        if parsed.tzinfo is not None:
+            return parsed.astimezone().replace(tzinfo=None)
+        return parsed
+
+    def cleanup_old_unpinned(
+        self,
+        *,
+        retention_days: int = 90,
+        dry_run: bool = False,
+        now: datetime | None = None,
+    ) -> dict:
+        """Delete unpinned conversations older than the retention window."""
+        now = now or datetime.now()
+        cutoff = now - timedelta(days=retention_days)
+        result = {
+            'deleted_conversations': 0,
+            'freed_bytes': 0,
+            'preserved_pinned': 0,
+            'preserved_recent': 0,
+            'skipped_invalid_timestamp': 0,
+            'missing_files': 0,
+            'candidates': [],
+            'warnings': [],
+            'errors': [],
+        }
+
+        for summary in list(self._index.get('conversations', [])):
+            summary = self._normalize_summary(summary)
+            conv_id = summary.get('id')
+            if not conv_id:
+                continue
+
+            conv_file = self.conversations_dir / f'{conv_id}.json'
+            conversation = self.get_conversation(conv_id)
+            if conversation is None:
+                result['missing_files'] += 1
+                conversation = {}
+
+            if summary.get('pinned') or conversation.get('pinned'):
+                result['preserved_pinned'] += 1
+                continue
+
+            timestamp = self._parse_timestamp(
+                conversation.get('updated_at')
+                or summary.get('updated_at')
+                or conversation.get('created_at')
+                or summary.get('created_at')
+            )
+            if timestamp is None:
+                result['skipped_invalid_timestamp'] += 1
+                result['warnings'].append({
+                    'conversation_id': conv_id,
+                    'warning': 'Missing or invalid updated_at timestamp',
+                })
+                continue
+            if timestamp >= cutoff:
+                result['preserved_recent'] += 1
+                continue
+
+            size = conv_file.stat().st_size if conv_file.exists() else 0
+            result['candidates'].append({
+                'id': conv_id,
+                'title': conversation.get('title') or summary.get('title') or conv_id,
+                'updated_at': timestamp.isoformat(),
+                'size': size,
+            })
+            result['freed_bytes'] += size
+            if dry_run:
+                continue
+
+            try:
+                self.delete_conversation(conv_id)
+                result['deleted_conversations'] += 1
+            except Exception as exc:
+                result['errors'].append({
+                    'conversation_id': conv_id,
+                    'error': str(exc),
+                })
+        return result
     
     def clear_conversation(self, conv_id: str) -> bool:
         """Clear all messages from a conversation (keeps the conversation, resets to empty)"""

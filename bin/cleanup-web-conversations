@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Remove old unpinned Jarvis Web conversations."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "jarvis-web"))
+
+from server.services.conversation_store import (  # noqa: E402
+    CONVERSATIONS_DIR,
+    ConversationStore,
+)
+
+
+def _human_size(size: int) -> str:
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024 or unit == "GB":
+            return f"{int(value)} B" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} GB"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Delete unpinned Jarvis Web conversations older than the retention window."
+    )
+    parser.add_argument("--days", type=int, default=90, help="Retention window in days")
+    parser.add_argument("--dry-run", action="store_true", help="Preview deletions")
+    args = parser.parse_args()
+
+    if args.days < 1:
+        parser.error("--days must be at least 1")
+
+    store = ConversationStore(CONVERSATIONS_DIR)
+    result = store.cleanup_old_unpinned(
+        retention_days=args.days,
+        dry_run=args.dry_run,
+    )
+
+    action = "Would delete" if args.dry_run else "Deleted"
+    count = len(result["candidates"]) if args.dry_run else result["deleted_conversations"]
+
+    print("Web Conversations Cleanup")
+    print(f"   Retention:         {args.days} days")
+    print(f"   Conversations dir: {store.conversations_dir}")
+    if args.dry_run:
+        print("   Mode:              DRY RUN (no files will be deleted)")
+    print("")
+
+    for candidate in result["candidates"][:10]:
+        print(
+            "   "
+            f"{'Would delete' if args.dry_run else 'Deleted'}: "
+            f"{candidate['id']} "
+            f"({candidate['updated_at']}, {_human_size(candidate['size'])}) "
+            f"{candidate['title']}"
+        )
+    if len(result["candidates"]) > 10:
+        print(f"   ... and {len(result['candidates']) - 10} more")
+    if result["candidates"]:
+        print("")
+
+    print(f"{action} {count} unpinned conversation(s), {_human_size(result['freed_bytes'])}")
+    print(f"Preserved {result['preserved_pinned']} pinned conversation(s)")
+    print(f"Preserved {result['preserved_recent']} recent unpinned conversation(s)")
+    if result["missing_files"]:
+        print(f"Found {result['missing_files']} index entry/entries with missing conversation files")
+    if result["skipped_invalid_timestamp"]:
+        print(f"Skipped {result['skipped_invalid_timestamp']} conversation(s) with invalid timestamps")
+    if result["warnings"]:
+        for warning in result["warnings"][:10]:
+            print(f"WARNING: {warning}", file=sys.stderr)
+
+    if result["errors"]:
+        for error in result["errors"][:10]:
+            print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
