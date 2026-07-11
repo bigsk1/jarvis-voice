@@ -199,7 +199,7 @@
         "to": "boss",
         "subject": "Crypto Market Report - ${report_date}"
       },
-      "llm_prompt": "Write a concise email body (3-4 paragraphs max) for a crypto market report.\n\nData:\n- ${coin1_name}: $${coin1_price} (${coin1_change}% 24h)\n- ${coin2_name}: $${coin2_price} (${coin2_change}% 24h)\n- Report date: ${report_date} at ${report_time}\n\nNews summary:\n${validated_articles}\n\nInclude:\n1. Opening with key price points and 24h changes\n2. Brief market sentiment (bullish/bearish/neutral based on the data)\n3. What's driving prices today (1-2 sentences from the news)\n4. Note that full report is saved in Canvas\n\nKeep it professional and scannable. Use plain text only (no markdown). Start directly with content, no greeting.",
+      "llm_prompt": "Write a concise email body (5-7 paragraphs max) for a crypto market report.\n\nData:\n- ${coin1_name}: $${coin1_price} (${coin1_change}% 24h)\n- ${coin2_name}: $${coin2_price} (${coin2_change}% 24h)\n- Report date: ${report_date} at ${report_time}\n\nNews summary:\n${validated_articles}\n\nInclude:\n1. Opening with key price points and 24h changes\n2. Brief market sentiment (bullish/bearish/neutral based on the data)\n3. What's driving prices today (1-2 sentences from the news)\n4. Note that full report is saved in Canvas\n\nKeep it professional and scannable. Use plain text only (no markdown). Start directly with content, no greeting.",
       "required": true,
       "description": "Email report to Boss"
     }
