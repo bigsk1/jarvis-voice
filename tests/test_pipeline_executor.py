@@ -103,6 +103,16 @@ class EnvCapturingProvider:
         raise AssertionError("chat fallback should not be used")
 
 
+class PromptCapturingProvider:
+    def __init__(self, response="generated canvas"):
+        self.response = response
+        self.prompts = []
+
+    def chat_with_tools(self, **kwargs):
+        self.prompts.append(kwargs["messages"][0]["content"])
+        return self.response, None, {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}, None
+
+
 class PipelineExecutorResolutionTests(unittest.TestCase):
     def setUp(self):
         self.executor = PipelineExecutor(
@@ -560,6 +570,38 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
         formatted = executor._format_articles_for_llm(variables["validated_articles"])
         self.assertIn("https://example.test", formatted)
         self.assertIn("source", formatted)
+
+    def test_empty_explicit_validated_outputs_are_available_to_llm_prompts(self):
+        provider = PromptCapturingProvider(response="rendered report")
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(execute=lambda *_args, **_kwargs: {"ok": True}),
+            provider=provider,
+        )
+        variables = {}
+        step = {
+            "tool": "crawl_url",
+            "validated_output_var": "validated_articles",
+        }
+
+        executor._store_validated_outputs(
+            step,
+            "crawl_url",
+            {"validated_outputs": []},
+            variables,
+        )
+        params = executor._llm_fill_params(
+            {
+                "tool": "canvas",
+                "llm_prompt": "News input:\n${validated_articles}",
+            },
+            variables,
+        )
+
+        self.assertEqual(variables["validated_articles"], [])
+        self.assertEqual(params["content"], "rendered report")
+        self.assertIn("[No articles gathered]", provider.prompts[0])
+        self.assertNotIn("${validated_articles}", provider.prompts[0])
 
     def test_builtin_research_workflows_declare_validated_article_ownership(self):
         workflows_dir = PROJECT_ROOT / "data" / "workflows"

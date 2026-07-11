@@ -462,13 +462,16 @@ class PipelineExecutor:
     ) -> None:
         """Store validated loop outputs without allowing later save steps to replace sources."""
         validated_outputs = step_result.get("validated_outputs")
-        if not validated_outputs:
-            return
 
         validated_output_var = step.get("validated_output_var")
         if validated_output_var:
-            variables[validated_output_var] = validated_outputs
-        elif tool_name == "crawl_url":
+            variables[validated_output_var] = validated_outputs or []
+            return
+
+        if not validated_outputs:
+            return
+
+        if tool_name == "crawl_url":
             # Backward compatibility for custom crawl workflows created before
             # validated_output_var became explicit.
             variables["validated_articles"] = validated_outputs
