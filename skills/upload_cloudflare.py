@@ -259,6 +259,7 @@ def download_from_url(url: str) -> str | None:
     Returns:
         Path to temp file or None on failure
     """
+    temp_path = None
     try:
         response = requests.get(url, timeout=30, stream=True)
         response.raise_for_status()
@@ -282,6 +283,11 @@ def download_from_url(url: str) -> str | None:
         
         return temp_path
     except Exception:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
         return None
 
 
@@ -295,6 +301,7 @@ def decode_base64_to_file(base64_data: str) -> str | None:
     Returns:
         Path to temp file or None on failure
     """
+    temp_path = None
     try:
         # Strip data URL prefix if present
         if base64_data.startswith('data:'):
@@ -321,6 +328,11 @@ def decode_base64_to_file(base64_data: str) -> str | None:
         
         return temp_path
     except Exception:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
         return None
 
 
