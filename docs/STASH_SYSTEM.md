@@ -2,7 +2,7 @@
 
 > **Status**: ✅ Implemented (v2.14)
 > **Purpose**: Generic artifact storage layer for the Jarvis ecosystem
-> **Updated**: 2026-04-17 - Documented Jarvis Web **stash viewer** (`/stash/view/...`)
+> **Updated**: 2026-07-11 - Documented configurable `STASH_DIR` storage root across Web, API, and Canvas
 
 ---
 
@@ -64,6 +64,11 @@ Each tool has no standard way to:
 | **Composed documents** | PDFs, reports (one consumer, not the only one) |
 
 ### Directory Structure
+
+By default, stash lives under `data/stash/`. That path is the default value of
+`STASH_DIR`, not a second storage system. If `STASH_DIR` points somewhere else
+(for example a Docker bind mount, a larger disk, or shared artifact storage),
+all stash readers and writers should use that same root.
 
 ```
 data/stash/
@@ -1336,6 +1341,13 @@ STASH_BLOCKED_DOWNLOAD_HOSTS="localhost,127.0.0.1,169.254.169.254"
 # STASH_SUMMARIZE_MODEL="grok-4.5"                # xAI API key
 # Under xAI OAuth, unsupported API model pins resolve to XAI_OAUTH_MODEL.
 ```
+
+`STASH_DIR` is the single storage root for stash artifacts. The normal value is
+`data/stash`, resolved relative to the project root. Use an absolute path when
+stash should live outside the checkout, such as a mounted Docker volume or a
+separate artifact disk. Code should resolve this through `lib/stash_helper.py`
+(`get_stash_dir()`), so FastAPI, Jarvis Web, Canvas, tools, cleanup, and
+metadata lookups all read and write the same spaces.
 
 ### LLM Summarization Details
 
