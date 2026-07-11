@@ -382,7 +382,12 @@ class PipelineExecutor:
                 # ok=True when a failed tool response still contains usable URLs.
                 output_var = step.get("output_var")
                 if output_var and step_result.get("ok"):
-                    variables[output_var] = step_result.get("data", {})
+                    # Built-in transforms may populate output_var with a
+                    # workflow-friendly shape, e.g. search_results.urls or
+                    # article.content. Preserve that instead of replacing it
+                    # with the raw tool payload.
+                    if output_var not in variables:
+                        variables[output_var] = step_result.get("data", {})
                     self._apply_variable_assignments(step.get("set_variables_on_success"), variables)
                 
                 results.append({

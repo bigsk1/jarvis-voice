@@ -365,6 +365,145 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
             ["https://example.test"],
         )
 
+    def test_search_output_var_preserves_normalized_urls_for_crawl_loop(self):
+        calls = []
+
+        def execute(tool, params):
+            calls.append((tool, dict(params)))
+            if tool == "mcp_brave_search_brave_web_search":
+                return {
+                    "ok": True,
+                    "data": {
+                        "results": [
+                            {"url": "https://one.example/article"},
+                            {"url": "https://two.example/article"},
+                        ]
+                    },
+                }
+            if tool == "crawl_url":
+                return {
+                    "ok": True,
+                    "data": {
+                        "results": [
+                            {
+                                "url": params["url"],
+                                "markdown": "validated article body " * 20,
+                            }
+                        ]
+                    },
+                }
+            return {"ok": True, "data": {}}
+
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(execute=execute),
+            provider=DummyProvider(),
+        )
+
+        result = executor.execute(
+            {
+                "id": "search_to_crawl",
+                "steps": [
+                    {
+                        "step": 1,
+                        "tool": "mcp_brave_search_brave_web_search",
+                        "params": {"query": "crypto news", "count": 2},
+                        "output_var": "search_results",
+                    },
+                    {
+                        "step": 2,
+                        "tool": "crawl_url",
+                        "for_each": "${search_results.urls[:2]}",
+                        "output_var": "articles",
+                        "validated_output_var": "validated_articles",
+                        "validation": {
+                            "type": "heuristic",
+                            "heuristic": {"min_length": 20},
+                        },
+                        "process_all": True,
+                    },
+                ],
+            },
+            "research crypto news",
+        )
+
+        crawled_urls = [
+            params["url"] for tool, params in calls if tool == "crawl_url"
+        ]
+        self.assertTrue(result["ok"])
+        self.assertEqual(
+            crawled_urls,
+            ["https://one.example/article", "https://two.example/article"],
+        )
+        self.assertEqual(
+            result["data"]["variables"]["search_results"]["urls"],
+            ["https://one.example/article", "https://two.example/article"],
+        )
+        self.assertEqual(len(result["data"]["variables"]["validated_articles"]), 2)
+
+    def test_crawl_output_var_preserves_flattened_content_for_followup_params(self):
+        content = "Fetched article content " * 20
+        calls = []
+
+        def execute(tool, params):
+            calls.append((tool, dict(params)))
+            if tool == "crawl_url":
+                return {
+                    "ok": True,
+                    "data": {
+                        "results": [
+                            {
+                                "title": "Fetched Title",
+                                "url": "https://example.test/page",
+                                "markdown": content,
+                            }
+                        ]
+                    },
+                }
+            if tool == "stash":
+                return {"ok": True, "data": {"ref": "stash://space/file"}}
+            return {"ok": True, "data": {}}
+
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(execute=execute),
+            provider=DummyProvider(),
+        )
+
+        result = executor.execute(
+            {
+                "id": "crawl_to_stash",
+                "steps": [
+                    {
+                        "step": 1,
+                        "tool": "crawl_url",
+                        "params": {"url": "https://example.test/page"},
+                        "output_var": "article",
+                    },
+                    {
+                        "step": 2,
+                        "tool": "stash",
+                        "action": "save",
+                        "params": {
+                            "kind": "text",
+                            "text": "${article.content}",
+                            "name": "article.txt",
+                        },
+                    },
+                ],
+            },
+            "archive https://example.test/page",
+        )
+
+        stash_params = next(params for tool, params in calls if tool == "stash")
+        self.assertTrue(result["ok"])
+        self.assertEqual(stash_params["text"], content)
+        self.assertEqual(result["data"]["variables"]["article"]["content"], content)
+        self.assertEqual(
+            result["data"]["variables"]["article"]["url"],
+            "https://example.test/page",
+        )
+
     def test_extract_by_path_supports_indexed_array_segments(self):
         data = {
             "results": [
