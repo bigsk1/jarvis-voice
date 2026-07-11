@@ -841,10 +841,12 @@ def main():
             page_id = args.get('page_id')
             if not page_id:
                 raise ValueError("page_id is required for update action")
-            if not any(args.get(key) for key in ('title', 'content', 'tags', 'image_url', 'image_alt')):
+            has_content_update = any(args.get(key) for key in ('title', 'content', 'tags', 'image_url', 'image_alt'))
+            has_pin_update = args.get('pinned') is not None
+            if not (has_content_update or has_pin_update):
                 return_result = {
                     "ok": False,
-                    "error": "Canvas update requires content, title, tags, or an image to change.",
+                    "error": "Canvas update requires content, title, tags, pinned, or an image to change.",
                     "speech": (
                         "I can't update Canvas without new content or metadata. "
                         "Read the page first or pass the full updated content."

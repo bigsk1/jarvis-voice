@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Regression tests for safe Canvas append and replacement behavior."""
 
+import json
 from pathlib import Path
 import sys
 
@@ -57,6 +58,43 @@ def test_update_only_sends_shrink_override_when_explicit(monkeypatch):
 
     assert "allow_content_shrink" not in calls[0]
     assert calls[1]["allow_content_shrink"] is True
+
+
+def test_main_allows_pin_only_updates(monkeypatch, capsys):
+    calls = []
+
+    monkeypatch.setattr(canvas_module, "load_config", lambda: None)
+
+    def fake_update_page(page_id, **kwargs):
+        calls.append((page_id, kwargs))
+        return {
+            "ok": True,
+            "data": {"page_id": page_id, "pinned": kwargs["pinned"]},
+        }
+
+    monkeypatch.setattr(canvas_module, "update_page", fake_update_page)
+
+    for pinned in (True, False):
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "canvas.py",
+                json.dumps({
+                    "action": "update",
+                    "page_id": "page_existing",
+                    "pinned": pinned,
+                }),
+            ],
+        )
+
+        canvas_module.main()
+        output = json.loads(capsys.readouterr().out)
+
+        assert output["ok"] is True
+        assert output["data"]["pinned"] is pinned
+
+    assert [call[1]["pinned"] for call in calls] == [True, False]
 
 
 def test_server_append_preserves_existing_content():

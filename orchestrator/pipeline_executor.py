@@ -375,14 +375,15 @@ class PipelineExecutor:
                                                           start_time=start_time, query=query,
                                                           step_error=step_result.get("error") or step_result.get("speech"))
                 
-                # Store output
+                # Apply output transformations defined in the step
+                self._apply_output_transforms(step, step_result, variables, tool_name, action)
+
+                # Store output after transforms because search recovery can flip
+                # ok=True when a failed tool response still contains usable URLs.
                 output_var = step.get("output_var")
                 if output_var and step_result.get("ok"):
                     variables[output_var] = step_result.get("data", {})
                     self._apply_variable_assignments(step.get("set_variables_on_success"), variables)
-                
-                # Apply output transformations defined in the step
-                self._apply_output_transforms(step, step_result, variables, tool_name, action)
                 
                 results.append({
                     "step": step_num,

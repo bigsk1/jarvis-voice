@@ -312,6 +312,49 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
 
         self.assertTrue(provider.calls[0]["enable_search"])
 
+    def test_recovered_search_applies_success_variables(self):
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(
+                execute=lambda *_args, **_kwargs: {
+                    "ok": False,
+                    "data": {"results": [{"url": "https://example.test"}]},
+                    "error": "temporary search failure",
+                }
+            ),
+            provider=DummyProvider(),
+        )
+
+        result = executor.execute(
+            {
+                "id": "recovered_search_success_variables",
+                "steps": [
+                    {
+                        "step": 1,
+                        "tool": "brave_search",
+                        "required": False,
+                        "output_var": "search_output",
+                        "set_variables_on_success": {
+                            "search_completed": True,
+                        },
+                    }
+                ],
+            },
+            "find example",
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["data"]["results"][0]["ok"])
+        self.assertTrue(result["data"]["variables"]["search_completed"])
+        self.assertEqual(
+            result["data"]["variables"]["search_output"],
+            {"results": [{"url": "https://example.test"}]},
+        )
+        self.assertEqual(
+            result["data"]["variables"]["search_results"]["urls"],
+            ["https://example.test"],
+        )
+
     def test_process_all_for_each_runs_every_item(self):
         calls = []
 
