@@ -81,7 +81,15 @@ def get_due_reminders(db_path: str) -> List[Dict[str, Any]]:
     return retry_on_db_lock(_query)
 
 
-def speak_reminder(reminder: Dict[str, Any], mode: str, project_root: Path):
+def _tts_script_timeout_seconds(default: int = 60) -> int:
+    """Bound native TTS script execution without fighting normal playback."""
+    try:
+        return max(1, int(get_config_value("TTS_SCRIPT_TIMEOUT_SECONDS", str(default))))
+    except (TypeError, ValueError):
+        return default
+
+
+def speak_reminder(reminder: Dict[str, Any], mode: str, project_root: Path) -> bool:
     """Speak reminder via TTS."""
     title = reminder.get('title', 'Reminder')
     description = reminder.get('description', '')
@@ -109,21 +117,34 @@ def speak_reminder(reminder: Dict[str, Any], mode: str, project_root: Path):
         say_script = project_root / 'bin' / 'say-local.sh'
     else:
         say_script = project_root / 'bin' / 'say.sh'
-    
-    if say_script.exists():
-        try:
-            spoken_message = normalize_tts_text(message)
-            if not spoken_message:
-                return
-            subprocess.run(
-                [str(say_script), spoken_message],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=15
-            )
-        except Exception as e:
-            print(f"Warning: TTS failed for reminder {reminder['id']}: {e}", file=sys.stderr)
+
+    if not say_script.exists():
+        print(f"Warning: TTS script not found for reminder {reminder['id']}: {say_script}", file=sys.stderr)
+        return False
+
+    try:
+        spoken_message = normalize_tts_text(message)
+        if not spoken_message:
+            print(f"Warning: TTS message empty after normalization for reminder {reminder['id']}", file=sys.stderr)
+            return False
+        result = subprocess.run(
+            [str(say_script), spoken_message],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=_tts_script_timeout_seconds()
+        )
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "").strip()
+            if detail:
+                print(f"Warning: TTS failed for reminder {reminder['id']}: {detail}", file=sys.stderr)
+            else:
+                print(f"Warning: TTS failed for reminder {reminder['id']} with exit {result.returncode}", file=sys.stderr)
+            return False
+        return True
+    except Exception as e:
+        print(f"Warning: TTS failed for reminder {reminder['id']}: {e}", file=sys.stderr)
+        return False
 
 
 def calculate_next_occurrence(current_trigger: str, recurrence_rule: str) -> str:
@@ -157,7 +178,13 @@ def calculate_next_occurrence(current_trigger: str, recurrence_rule: str) -> str
     return None
 
 
-def mark_reminder_triggered(db_path: str, reminder_id: int, recurrence_rule: str = None, current_trigger: str = None):
+def mark_reminder_triggered(
+    db_path: str,
+    reminder_id: int,
+    recurrence_rule: str = None,
+    current_trigger: str = None,
+    spoken: bool = True,
+):
     """Mark reminder as triggered, or reschedule if recurring."""
     def _update():
         conn = sqlite3.connect(db_path, timeout=30)  # 30 second timeout
@@ -166,7 +193,10 @@ def mark_reminder_triggered(db_path: str, reminder_id: int, recurrence_rule: str
         # Use UTC time for consistency
         now = now_utc().isoformat()
         
-        if recurrence_rule:
+        spoken_value = 1 if spoken else 0
+        spoken_at = now if spoken else None
+
+        if recurrence_rule and spoken:
             # Recurring reminder - calculate next occurrence and reschedule
             next_trigger = calculate_next_occurrence(current_trigger, recurrence_rule)
             
@@ -179,7 +209,7 @@ def mark_reminder_triggered(db_path: str, reminder_id: int, recurrence_rule: str
                         spoken = 1,
                         spoken_at = ?
                     WHERE id = ?
-                """, (next_trigger, now, now, reminder_id))
+                """, (next_trigger, now, spoken_at, reminder_id))
             else:
                 # Fallback: just mark as triggered if calculation fails
                 cursor.execute("""
@@ -189,17 +219,19 @@ def mark_reminder_triggered(db_path: str, reminder_id: int, recurrence_rule: str
                         spoken = 1,
                         spoken_at = ?
                     WHERE id = ?
-                """, (now, now, reminder_id))
+                """, (now, spoken_value, spoken_at, reminder_id))
         else:
-            # One-time reminder - mark as triggered
+            # One-time reminder, or recurring reminder whose speech failed.
+            # Keep failed speech visible as triggered + spoken=0 instead of
+            # silently advancing recurrence and pretending audio played.
             cursor.execute("""
                 UPDATE reminders
                 SET status = 'triggered',
                     triggered_at = ?,
-                    spoken = 1,
+                    spoken = ?,
                     spoken_at = ?
                 WHERE id = ?
-            """, (now, now, reminder_id))
+            """, (now, spoken_value, spoken_at, reminder_id))
         
         conn.commit()
         conn.close()
@@ -273,15 +305,23 @@ def main():
                         
                         try:
                             # Speak reminder
-                            speak_reminder(reminder, mode, project_root)
+                            speech_ok = speak_reminder(reminder, mode, project_root)
                             
                             # Mark as triggered or reschedule if recurring
                             mark_reminder_triggered(
                                 db_path, 
                                 reminder_id,
                                 recurrence_rule=reminder.get('recurrence_rule'),
-                                current_trigger=reminder['trigger_time']
+                                current_trigger=reminder['trigger_time'],
+                                spoken=speech_ok
                             )
+                            if not speech_ok:
+                                print(f"    TTS failed; reminder {reminder_id} marked triggered but unspoken")
+                                logger.log_error(f"TTS failed for reminder {reminder_id}; marked unspoken", {
+                                    "reminder_id": reminder_id,
+                                    "title": title,
+                                    "trigger_time": trigger_time,
+                                })
                             
                             # Log trigger action
                             recurrence_info = f" (recurring: {reminder.get('recurrence_rule')})" if reminder.get('recurrence_rule') else ""
@@ -289,8 +329,9 @@ def main():
                                 "reminder_id": reminder_id,
                                 "title": title,
                                 "trigger_time": trigger_time,
-                                "recurrence_rule": reminder.get('recurrence_rule')
-                            }, success=True)
+                                "recurrence_rule": reminder.get('recurrence_rule'),
+                                "spoken": speech_ok,
+                            }, success=speech_ok)
                             
                             # Call callback if provided
                             if callback_url:

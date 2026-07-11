@@ -14,6 +14,15 @@ from config_loader import load_config, get_config_value, get_active_config_mode
 from memory_db import get_memory_db
 from tts_normalizer import normalize_tts_text
 
+
+def _tts_script_timeout_seconds(default: int = 60) -> int:
+    """Bound native TTS script execution without blocking alert handling forever."""
+    try:
+        return max(1, int(get_config_value("TTS_SCRIPT_TIMEOUT_SECONDS", str(default))))
+    except (TypeError, ValueError):
+        return default
+
+
 class AlertManager:
     """Manages alerts: creation, status updates, notifications, self-healing"""
     
@@ -399,7 +408,10 @@ class AlertManager:
             message = f"{message}. {detail}"
 
         speech_profile = self._speech_profile_for_source(source)
-        self._speak(message, priority=severity, profile=speech_profile)
+        spoken = self._speak(message, priority=severity, profile=speech_profile, blocking=True)
+        if not spoken:
+            print(f"Warning: TTS failed for alert {alert_id}; leaving spoken=0", file=sys.stderr)
+            return False
         
         # Mark as spoken
         conn = sqlite3.connect(self.db.db_path)
@@ -411,13 +423,20 @@ class AlertManager:
         """, (datetime.now().isoformat(), alert_id))
         conn.commit()
         conn.close()
+        return True
     
-    def _speak(self, message: str, priority: str = "medium", profile: str | None = None):
-        """Trigger TTS using say-status.sh without blocking workflow execution."""
+    def _speak(
+        self,
+        message: str,
+        priority: str = "medium",
+        profile: str | None = None,
+        blocking: bool = False,
+    ) -> bool:
+        """Trigger TTS using say-status.sh and return whether delivery was started or completed."""
         try:
             spoken_message = normalize_tts_text(message, profile=profile)
             if not spoken_message:
-                return
+                return False
 
             # Use say-status.sh which has caching for repeated phrases
             # This is ideal for alerts like "Person: Front Door" spoken many times
@@ -433,15 +452,34 @@ class AlertManager:
                 else:
                     say_script = self.project_root / 'bin' / 'say.sh'
             
-            if say_script.exists():
-                subprocess.Popen(
-                    [str(say_script), spoken_message, "false"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
+            if not say_script.exists():
+                return False
+
+            blocking_arg = "true" if blocking else "false"
+            if blocking:
+                result = subprocess.run(
+                    [str(say_script), spoken_message, blocking_arg],
+                    capture_output=True,
+                    text=True,
+                    timeout=_tts_script_timeout_seconds()
                 )
+                if result.returncode != 0:
+                    detail = (result.stderr or result.stdout or "").strip()
+                    if detail:
+                        print(f"Warning: TTS failed: {detail}", file=sys.stderr)
+                    return False
+                return True
+
+            subprocess.Popen(
+                [str(say_script), spoken_message, blocking_arg],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            return True
         except Exception as e:
             # TTS failure shouldn't crash the system
             print(f"Warning: TTS failed: {e}", file=sys.stderr)
+            return False
     
     def get_pending_count(self) -> int:
         """Get count of pending alerts"""

@@ -10,6 +10,7 @@ set -euo pipefail
 # Load configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/config_loader.sh"
+source "$SCRIPT_DIR/tts-common.sh"
 load_config "local"
 
 TEXT="${*:-}"
@@ -20,7 +21,7 @@ fi
 
 OUTDIR="${AUDIO_DIR}/tts"
 mkdir -p "$OUTDIR"
-OUTFILE="$OUTDIR/tts-$(date +%F-%H%M%S).wav"
+OUTFILE="$OUTDIR/tts-$(date +%F-%H%M%S)-$$.wav"
 
 # Sanitize: collapse whitespace, strip control chars & emoji
 SANITIZED=$(printf "%s" "$TEXT" \
@@ -93,15 +94,28 @@ else
       '{voice:$voice, input:$input, speed:$speed}')
     
     # Call Kokoro TTS API
-    curl -sS -X POST "$KOKORO_URL" \
+    TEMP_AUDIO="/tmp/jarvis-tts-kokoro-local-$$.raw"
+    HTTP_CODE=$(curl -sS -w "%{http_code}" -o "$TEMP_AUDIO" \
+        -X POST "$KOKORO_URL" \
         -H "Content-Type: application/json" \
-        -d "$TTS_JSON" \
-    | ffmpeg -hide_banner -loglevel error -i - -ar "$RATE" -ac 2 -f wav -y "$OUTFILE"
+        -d "$TTS_JSON")
+
+    if [ "$HTTP_CODE" != "200" ]; then
+        echo "❌ Kokoro TTS API error (HTTP $HTTP_CODE)" >&2
+        cat "$TEMP_AUDIO" >&2
+        rm -f "$TEMP_AUDIO"
+        exit 1
+    fi
+
+    ffmpeg -hide_banner -loglevel error -i "$TEMP_AUDIO" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE"
+    rm -f "$TEMP_AUDIO"
 fi
+
+jarvis_tts_require_audio_file "$OUTFILE"
 
 # Add ~120ms of lead-in silence to avoid cut-ins
 sox "$OUTFILE" -t wav "$OUTFILE.pad.wav" pad 0.2
 mv "$OUTFILE.pad.wav" "$OUTFILE"
 
-aplay -D "$OUT_DEV" "$OUTFILE" 2>/dev/null || echo "⚠️ Playback failed" >&2
+jarvis_tts_play_audio "$OUTFILE"
 echo "✅ Saved and played: $OUTFILE (provider: $TTS_PROVIDER)"

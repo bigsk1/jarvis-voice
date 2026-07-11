@@ -19,6 +19,7 @@ set -euo pipefail
 # Load configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/config_loader.sh"
+source "$SCRIPT_DIR/tts-common.sh"
 load_config "local"
 
 TEXT="${1:-}"
@@ -167,16 +168,21 @@ fi
 
 # Play audio
 if [ "$BLOCKING" = "true" ]; then
-    aplay -D "$OUT_DEV" "$OUTFILE" 2>/dev/null </dev/null || true
+    if jarvis_tts_play_audio "$OUTFILE"; then
+        PLAYBACK_STATUS=0
+    else
+        PLAYBACK_STATUS=$?
+    fi
     # Only delete temp files, not cached files
     if [[ "$OUTFILE" == /tmp/* ]]; then
         rm -f "$OUTFILE" 2>/dev/null || true
     fi
+    exit "$PLAYBACK_STATUS"
 else
     # Background playback with cleanup (only temp files)
     if [[ "$OUTFILE" == /tmp/* ]]; then
-        (aplay -D "$OUT_DEV" "$OUTFILE" 2>/dev/null </dev/null; rm -f "$OUTFILE" 2>/dev/null) &
+        (jarvis_tts_play_audio "$OUTFILE" || true; rm -f "$OUTFILE" 2>/dev/null) &
     else
-        (aplay -D "$OUT_DEV" "$OUTFILE" 2>/dev/null </dev/null) &
+        (jarvis_tts_play_audio "$OUTFILE" || true) &
     fi
 fi

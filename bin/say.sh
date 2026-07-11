@@ -10,6 +10,7 @@ set -euo pipefail
 # Load configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/config_loader.sh"
+source "$SCRIPT_DIR/tts-common.sh"
 load_config "cloud"
 
 TEXT="$*"
@@ -22,7 +23,7 @@ OUTDIR="${AUDIO_DIR}/recordings"
 mkdir -p "$OUTDIR"
 
 # Timestamped filename
-OUTFILE="$OUTDIR/tts-$(date +%F-%H%M%S).wav"
+OUTFILE="$OUTDIR/tts-$(date +%F-%H%M%S)-$$.wav"
 
 # Determine TTS provider (default to openai for backward compatibility)
 # TTS_PROVIDER_OVERRIDE allows API calls to override the config file setting
@@ -246,19 +247,32 @@ else
       --arg instructions "$TTS_INSTRUCTIONS" \
       '{model:$model, voice:$voice, input:$input, instructions:$instructions}')
 
-    # Call OpenAI TTS → decode with ffmpeg → save as proper WAV
-    curl -s -X POST "https://api.openai.com/v1/audio/speech" \
+    # Call OpenAI TTS and decode with ffmpeg into a proper WAV.
+    TEMP_AUDIO="/tmp/jarvis-tts-openai-$$.raw"
+    HTTP_CODE=$(curl -sS -w "%{http_code}" -o "$TEMP_AUDIO" \
+      -X POST "https://api.openai.com/v1/audio/speech" \
       -H "Authorization: Bearer $OPENAI_API_KEY" \
       -H "Content-Type: application/json" \
-      -d "$TTS_JSON" \
-      | ffmpeg -hide_banner -loglevel error -i - -ar "$RATE" -ac 2 -f wav -y "$OUTFILE"
+      -d "$TTS_JSON")
+
+    if [ "$HTTP_CODE" != "200" ]; then
+        echo "❌ OpenAI TTS API error (HTTP $HTTP_CODE)" >&2
+        cat "$TEMP_AUDIO" >&2
+        rm -f "$TEMP_AUDIO"
+        exit 1
+    fi
+
+    ffmpeg -hide_banner -loglevel error -i "$TEMP_AUDIO" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE"
+    rm -f "$TEMP_AUDIO"
 fi
+
+jarvis_tts_require_audio_file "$OUTFILE"
 
 # Add ~120ms of lead-in silence to avoid cut-ins
 sox "$OUTFILE" -t wav "$OUTFILE.pad.wav" pad 0.2
 mv "$OUTFILE.pad.wav" "$OUTFILE"
 
 # Playback
-aplay -D "$OUT_DEV" "$OUTFILE" 2>/dev/null || echo "⚠️ Playback failed" >&2
+jarvis_tts_play_audio "$OUTFILE"
 
 echo "✅ Saved and played: $OUTFILE (provider: $TTS_PROVIDER)"

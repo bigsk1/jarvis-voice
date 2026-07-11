@@ -142,6 +142,54 @@ class AlertManagerDedupeTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in second_page], [alert_ids[1], alert_ids[0]])
         self.assertEqual([item["id"] for item in search_results], [alert_ids[1]])
 
+    def test_alert_speech_failure_leaves_alert_unspoken(self):
+        alert_id = self.manager.create_alert(
+            title="Person at front door",
+            source="unifi-protect",
+            severity="high",
+            speak_immediately=False,
+        )
+        self.manager._speak = lambda *_args, **_kwargs: False
+
+        spoken = self.manager._speak_alert(
+            alert_id,
+            "Person at front door",
+            "high",
+            source="unifi-protect",
+        )
+
+        conn = sqlite3.connect(self.db_path)
+        row = conn.execute("SELECT spoken, spoken_at FROM alerts WHERE id = ?", (alert_id,)).fetchone()
+        conn.close()
+
+        self.assertFalse(spoken)
+        self.assertEqual(row[0], 0)
+        self.assertIsNone(row[1])
+
+    def test_alert_speech_success_marks_alert_spoken(self):
+        alert_id = self.manager.create_alert(
+            title="Person at front door",
+            source="unifi-protect",
+            severity="high",
+            speak_immediately=False,
+        )
+        self.manager._speak = lambda *_args, **_kwargs: True
+
+        spoken = self.manager._speak_alert(
+            alert_id,
+            "Person at front door",
+            "high",
+            source="unifi-protect",
+        )
+
+        conn = sqlite3.connect(self.db_path)
+        row = conn.execute("SELECT spoken, spoken_at FROM alerts WHERE id = ?", (alert_id,)).fetchone()
+        conn.close()
+
+        self.assertTrue(spoken)
+        self.assertEqual(row[0], 1)
+        self.assertIsNotNone(row[1])
+
 
 if __name__ == "__main__":
     unittest.main()
