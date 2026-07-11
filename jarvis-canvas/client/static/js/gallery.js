@@ -25,6 +25,7 @@ async function fetchImages() {
 function filterImages() {
     const search = document.getElementById('searchInput').value.toLowerCase();
     const providerFilter = document.getElementById('providerFilter').value;
+    const favoriteFilter = document.getElementById('favoriteFilter')?.value || 'all';
     
     filteredImages = images.filter(img => {
         const name = img.name.toLowerCase();
@@ -40,6 +41,10 @@ function filterImages() {
             if (!imgProvider.includes(providerFilter)) {
                 return false;
             }
+        }
+
+        if (favoriteFilter === 'favorites' && !img.favorite) {
+            return false;
         }
         
         return true;
@@ -58,6 +63,12 @@ function sortImages() {
             case 'name-desc': return b.name.localeCompare(a.name);
             case 'size-desc': return b.size - a.size;
             case 'size-asc': return a.size - b.size;
+            case 'cdn-desc':
+                return Number(Boolean(b.cdn_cached)) - Number(Boolean(a.cdn_cached))
+                    || new Date(b.modified) - new Date(a.modified);
+            case 'cdn-asc':
+                return Number(Boolean(a.cdn_cached)) - Number(Boolean(b.cdn_cached))
+                    || new Date(b.modified) - new Date(a.modified);
             default: return 0;
         }
     });
@@ -80,9 +91,10 @@ function renderGallery() {
     gallery.innerHTML = filteredImages.map((img, index) => {
         // Use provider from API if available, otherwise detect from filename
         const provider = img.provider || detectProvider(img.name);
+        const favorite = Boolean(img.favorite);
         
         return `
-        <div class="image-card" data-index="${index}">
+        <div class="image-card${favorite ? ' is-favorite' : ''}" data-index="${index}">
             <div class="image-wrapper" onclick="openLightboxByIndex(${index})">
                 <img src="/api/gallery/images/${encodeURIComponent(img.name)}" 
                      alt="${escapeHtml(img.name)}" 
@@ -97,12 +109,13 @@ function renderGallery() {
                 </div>
                 <div class="image-actions">
                     <div class="image-actions-left">
-                        <button class="btn btn-primary" onclick="event.stopPropagation(); downloadByIndex(${index})">⬇️</button>
-                        <button class="btn btn-secondary" onclick="event.stopPropagation(); getCdnUrlByIndex(${index})" title="Get CDN URL">🔗</button>
+                        <button class="btn btn-favorite${favorite ? ' is-favorite' : ''}" onclick="event.stopPropagation(); toggleFavoriteByIndex(${index}, this)" title="${favorite ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${favorite ? 'true' : 'false'}">${favorite ? '♥' : '♡'}</button>
+                        <button class="btn btn-primary" onclick="event.stopPropagation(); downloadByIndex(${index})" title="Download image">⬇️</button>
+                        <button class="btn btn-secondary" onclick="event.stopPropagation(); getCdnUrlByIndex(${index}, this)" title="${img.cdn_cached ? 'Copy cached CDN URL' : 'Create CDN URL'}">🔗</button>
                         <button class="btn btn-accent" onclick="event.stopPropagation(); openVideoModalByIndex(${index})" title="Convert to Video">🎬</button>
                     </div>
                     <div class="image-actions-right">
-                        <button class="btn btn-danger" onclick="event.stopPropagation(); deleteByIndex(${index})">🗑️</button>
+                        <button class="btn btn-danger" onclick="event.stopPropagation(); deleteByIndex(${index})" title="Delete image">🗑️</button>
                     </div>
                 </div>
             </div>
@@ -171,14 +184,108 @@ function deleteByIndex(index) {
     }
 }
 
-function getCdnUrlByIndex(index) {
+function getCdnUrlByIndex(index, btn = null) {
     if (index >= 0 && index < filteredImages.length) {
-        getCdnUrl(filteredImages[index].name);
+        const img = filteredImages[index];
+        if (confirmCdnUploadIfNeeded(img)) {
+            getCdnUrl(img.name, btn);
+        }
     }
 }
 
-async function getCdnUrl(filename) {
-    const btn = event ? event.target : null;
+function findImageByName(filename) {
+    return images.find(item => item.name === filename) || null;
+}
+
+function confirmCdnUploadIfNeeded(imgOrFilename) {
+    const img = typeof imgOrFilename === 'string' ? findImageByName(imgOrFilename) : imgOrFilename;
+    if (img && img.cdn_cached) return true;
+
+    return window.confirm(
+        'Create a public Cloudflare CDN URL for this image?\n\n' +
+        'If this image is not already cached, Jarvis will upload it to Cloudflare Images. ' +
+        'Anyone with the resulting URL can open it.\n\n' +
+        'Continue?'
+    );
+}
+
+function markCdnCached(filename) {
+    const image = findImageByName(filename);
+    if (!image) return false;
+    image.cdn_cached = true;
+    return true;
+}
+
+function formatCdnError(error) {
+    const message = String(error || 'Failed to get URL');
+    if (/CLOUDFLARE_(API_TOKEN|ACCOUNT_ID) not configured/i.test(message)) {
+        return 'Cloudflare CDN is not configured for this Jarvis mode/env. Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to the active env file.';
+    }
+    return message;
+}
+
+function toggleFavoriteByIndex(index, btn = null) {
+    if (index >= 0 && index < filteredImages.length) {
+        const img = filteredImages[index];
+        toggleFavorite(img.name, !img.favorite, btn);
+    }
+}
+
+function toggleFavoriteCurrent() {
+    if (!currentImage) return;
+    const img = images.find(item => item.name === currentImage);
+    toggleFavorite(currentImage, !(img && img.favorite), document.getElementById('lightboxFavoriteBtn'));
+}
+
+function updateImageFavoriteState(filename, favorite, favoritedAt) {
+    const image = images.find(item => item.name === filename);
+    if (image) {
+        image.favorite = favorite;
+        image.favorited_at = favoritedAt || null;
+    }
+}
+
+function updateLightboxFavoriteButton(filename) {
+    const btn = document.getElementById('lightboxFavoriteBtn');
+    if (!btn || !filename) return;
+    const image = images.find(item => item.name === filename);
+    const favorite = Boolean(image && image.favorite);
+    btn.classList.toggle('is-favorite', favorite);
+    btn.setAttribute('aria-pressed', favorite ? 'true' : 'false');
+    btn.textContent = favorite ? '♥ Favorite' : '♡ Favorite';
+    btn.title = favorite ? 'Remove from favorites' : 'Add to favorites';
+}
+
+async function toggleFavorite(filename, favorite, btn = null) {
+    if (!filename) return;
+    if (btn) btn.disabled = true;
+
+    try {
+        const response = await fetch(`/api/gallery/images/${encodeURIComponent(filename)}/favorite`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ favorite })
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data.ok) {
+            throw new Error(data.error || 'Failed to update favorite');
+        }
+
+        updateImageFavoriteState(filename, Boolean(data.favorite), data.favorited_at);
+        if (currentImage === filename) {
+            updateLightboxFavoriteButton(filename);
+        }
+        filterImages();
+        showToast(data.favorite ? 'Added to favorites' : 'Removed from favorites');
+    } catch (err) {
+        showToast(err.message || 'Favorite update failed', 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function getCdnUrl(filename, btn = null) {
     if (btn) {
         btn.disabled = true;
         btn.textContent = '⏳';
@@ -189,6 +296,7 @@ async function getCdnUrl(filename) {
         const data = await response.json();
         
         if (data.ok && data.url) {
+            if (markCdnCached(filename)) sortImages();
             // Copy to clipboard (with fallback for non-HTTPS)
             const copied = await copyToClipboard(data.url);
             
@@ -204,7 +312,7 @@ async function getCdnUrl(filename) {
             // Always log to console for easy access
             console.log(`CDN URL for ${filename}:`, data.url);
         } else {
-            showToast(`❌ ${data.error || 'Failed to get URL'}`, 'error');
+            showToast(`❌ ${formatCdnError(data.error)}`, 'error');
         }
     } catch (err) {
         showToast(`❌ Error: ${err.message}`, 'error');
@@ -279,6 +387,7 @@ function openLightbox(filename) {
     currentImage = filename;
     document.getElementById('lightboxImage').src = `/api/gallery/images/${encodeURIComponent(filename)}`;
     document.getElementById('lightboxFilename').textContent = filename;
+    updateLightboxFavoriteButton(filename);
     document.getElementById('lightbox').classList.add('active');
     document.body.style.overflow = 'hidden';
 }
@@ -376,6 +485,7 @@ function deleteFromLightbox() {
 
 async function getCdnUrlFromLightbox() {
     if (currentImage) {
+        if (!confirmCdnUploadIfNeeded(currentImage)) return;
         const btn = document.getElementById('lightboxCdnBtn');
         if (btn) {
             btn.disabled = true;
@@ -387,6 +497,7 @@ async function getCdnUrlFromLightbox() {
             const data = await response.json();
             
             if (data.ok && data.url) {
+                if (markCdnCached(currentImage)) sortImages();
                 const copied = await copyToClipboard(data.url);
                 const msg = data.cached ? 'URL copied!' : 'Uploaded & copied!';
                 if (copied) {
@@ -396,7 +507,7 @@ async function getCdnUrlFromLightbox() {
                 }
                 console.log(`CDN URL for ${currentImage}:`, data.url);
             } else {
-                showToast(`❌ ${data.error || 'Failed'}`, 'error');
+                showToast(`❌ ${formatCdnError(data.error || 'Failed')}`, 'error');
             }
         } catch (err) {
             showToast(`❌ ${err.message}`, 'error');

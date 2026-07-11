@@ -176,12 +176,23 @@ The canvas server includes an integrated image gallery for browsing generated im
 - Thumbnail grid with lazy loading
 - Lightbox view with click-to-enlarge
 - Search by filename
-- Sort by date, name, or size
+- Filter favorites and sort by date, name, size, or CDN cached status
+- Mark favorite images so cleanup preserves them
 - Download images locally
-- CDN Upload for Cloudflare CDN URL sharing
+- CDN Upload for Cloudflare CDN URL sharing; uncached uploads require confirmation, cached URLs copy without re-uploading
 - Convert to Video (AI video from image)
 - Delete unwanted images
 - Keyboard shortcuts: `Escape` close, `←` / `→` navigate
+
+### Favorites and Cleanup
+
+Generated images live in `data/generated_images/`. Favorites are stored in `data/generated_images/image_catalog.json`, and cached Cloudflare URLs are tracked in `data/generated_images/cdn_catalog.json`.
+
+- The gallery can show all images or only favorites.
+- Favorite images are preserved by `./bin/cleanup-generated-images` and by `./bin/cleanup-all`.
+- Default generated-image cleanup is 120 days for non-favorites.
+- CDN sort uses the local cached-URL catalog; sorting does not contact Cloudflare or upload anything.
+- Use `./bin/cleanup-generated-images --dry-run` to preview old non-favorite images before deletion.
 
 ### Image to Video Conversion
 
@@ -294,6 +305,14 @@ curl -X PUT http://localhost:8890/api/pages/page_20241201_143022 \
 
 ```bash
 curl -X DELETE http://localhost:8890/api/pages/page_20241201_143022
+```
+
+### Favorite Gallery Image
+
+```bash
+curl -X PATCH http://localhost:8890/api/gallery/images/{filename}/favorite \
+  -H "Content-Type: application/json" \
+  -d '{"favorite": true}'
 ```
 
 ### Download Page
@@ -644,11 +663,12 @@ sqlite3 data/jarvis_memory.db "SELECT * FROM knowledge_base WHERE category='canv
 
 ---
 
-**Version:** 2.4
-**Last Updated:** 2026-06-27
+**Version:** 2.5
+**Last Updated:** 2026-07-11
 
 ### Changelog
 
+- **v2.5** (Jul 2026): Image Gallery favorites, favorites-only filter, CDN cached-status sorting, uncached CDN upload confirmation, and favorite-aware generated-image cleanup
 - **v2.4** (Jun 2026): Explicit cloud/local startup env selection and mode-aware health reporting; Canvas page storage remains shared and mode-agnostic
 - **v2.3** (Apr 2026): Stash viewer on Canvas (`/stash/view/...`), markdown pipeline for viewer vs `/api/stash` for media, pin sync recognizes viewer/API paths; see *Stash viewer* under Stash Integration
 - **v2.2** (Apr 2026): Explicit `image_url` support for page create/update plus inline `Image: https://...` auto-conversion so Amazon/product pages can reliably save with embedded images

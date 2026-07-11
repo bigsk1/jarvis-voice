@@ -16,6 +16,8 @@ gallery_bp = Blueprint('gallery', __name__)
 
 # Central catalog file for image metadata (provider, tags, etc.)
 IMAGE_CATALOG_FILE = GENERATED_IMAGES_DIR / "image_catalog.json"
+CDN_CATALOG_FILE = GENERATED_IMAGES_DIR / "cdn_catalog.json"
+IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif', '.webp')
 
 
 def load_image_catalog():
@@ -36,6 +38,46 @@ def save_image_catalog(catalog):
             json.dump(catalog, f, indent=2)
     except Exception as e:
         print(f"⚠️  Failed to save image catalog: {e}")
+
+
+def load_cdn_catalog():
+    """Load cached Cloudflare URLs for generated images."""
+    if CDN_CATALOG_FILE.exists():
+        try:
+            with open(CDN_CATALOG_FILE) as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else {}
+        except Exception:
+            pass
+    return {}
+
+
+def is_safe_image_filename(filename):
+    """Return true when a gallery filename cannot escape generated_images."""
+    return (
+        filename
+        and '..' not in filename
+        and '/' not in filename
+        and '\\' not in filename
+        and (GENERATED_IMAGES_DIR / filename).suffix.lower() in IMAGE_EXTENSIONS
+    )
+
+
+def update_image_favorite(filename, favorite):
+    """Persist favorite state in the image metadata catalog."""
+    if not is_safe_image_filename(filename):
+        return None
+    filepath = GENERATED_IMAGES_DIR / filename
+    if not filepath.exists():
+        return None
+
+    catalog = sync_image_catalog()
+    meta = dict(catalog.get(filename) or {})
+    meta['favorite'] = bool(favorite)
+    meta['favorited_at'] = datetime.now().isoformat() if favorite else None
+    catalog[filename] = meta
+    save_image_catalog(catalog)
+    return meta
 
 
 def lookup_image_stash_metadata(filename):
@@ -118,7 +160,7 @@ def sync_image_catalog():
     actual_files = set()
     if GENERATED_IMAGES_DIR.exists():
         for f in GENERATED_IMAGES_DIR.iterdir():
-            if f.is_file() and f.suffix.lower() in ('.jpg', '.jpeg', '.png', '.gif', '.webp'):
+            if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS:
                 actual_files.add(f.name)
     
     # Remove entries for deleted images
@@ -156,15 +198,18 @@ def list_gallery_images():
     
     # Sync catalog with actual files (handles additions and deletions)
     catalog = sync_image_catalog()
+    cdn_catalog = load_cdn_catalog()
     
     if GENERATED_IMAGES_DIR.exists():
         for f in GENERATED_IMAGES_DIR.iterdir():
-            if f.is_file() and f.suffix.lower() in ('.jpg', '.jpeg', '.png', '.gif', '.webp'):
+            if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS:
                 stat = f.stat()
                 image_info = {
                     'name': f.name,
                     'size': stat.st_size,
-                    'modified': datetime.fromtimestamp(stat.st_mtime).isoformat()
+                    'modified': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    'favorite': bool(catalog.get(f.name, {}).get('favorite', False)),
+                    'cdn_cached': bool((cdn_catalog.get(f.name) or {}).get('url')),
                 }
                 
                 # Get metadata from catalog
@@ -175,6 +220,8 @@ def list_gallery_images():
                     image_info['aspect'] = meta['aspect']
                 if meta.get('tags'):
                     image_info['tags'] = meta['tags']
+                if meta.get('favorited_at'):
+                    image_info['favorited_at'] = meta['favorited_at']
                 
                 images.append(image_info)
                 total_size += stat.st_size
@@ -193,7 +240,7 @@ def list_gallery_images():
 def serve_gallery_image(filename):
     """Serve an image from the gallery (inline)."""
     # Security: prevent path traversal
-    if '..' in filename or '/' in filename:
+    if not is_safe_image_filename(filename):
         abort(400, "Invalid filename")
     
     filepath = GENERATED_IMAGES_DIR / filename
@@ -210,7 +257,7 @@ def download_gallery_image(filename):
     This triggers Safari's native download prompt on iOS.
     """
     # Security: prevent path traversal
-    if '..' in filename or '/' in filename:
+    if not is_safe_image_filename(filename):
         abort(400, "Invalid filename")
     
     filepath = GENERATED_IMAGES_DIR / filename
@@ -220,11 +267,31 @@ def download_gallery_image(filename):
     return send_file(filepath, as_attachment=True, download_name=filename)
 
 
+@gallery_bp.route('/api/gallery/images/<filename>/favorite', methods=['PATCH'])
+def set_gallery_image_favorite(filename):
+    """Set or clear the favorite flag for a generated image."""
+    if not is_safe_image_filename(filename):
+        return jsonify({'ok': False, 'error': 'Invalid filename'}), 400
+
+    data = request.get_json(silent=True) or {}
+    favorite = bool(data.get('favorite', True))
+    meta = update_image_favorite(filename, favorite)
+    if meta is None:
+        return jsonify({'ok': False, 'error': 'Image not found'}), 404
+
+    return jsonify({
+        'ok': True,
+        'name': filename,
+        'favorite': bool(meta.get('favorite', False)),
+        'favorited_at': meta.get('favorited_at'),
+    })
+
+
 @gallery_bp.route('/api/gallery/images/<filename>', methods=['DELETE'])
 def delete_gallery_image(filename):
     """Delete an image from the gallery."""
     # Security: prevent path traversal
-    if '..' in filename or '/' in filename:
+    if not is_safe_image_filename(filename):
         return jsonify({'error': 'Invalid filename'}), 400
     
     filepath = GENERATED_IMAGES_DIR / filename
@@ -234,13 +301,12 @@ def delete_gallery_image(filename):
     try:
         filepath.unlink()
         # Remove from CDN catalog if present
-        cdn_catalog = GENERATED_IMAGES_DIR / "cdn_catalog.json"
-        if cdn_catalog.exists():
+        if CDN_CATALOG_FILE.exists():
             try:
-                catalog = json.loads(cdn_catalog.read_text())
+                catalog = json.loads(CDN_CATALOG_FILE.read_text())
                 if filename in catalog:
                     del catalog[filename]
-                    cdn_catalog.write_text(json.dumps(catalog, indent=2))
+                    CDN_CATALOG_FILE.write_text(json.dumps(catalog, indent=2))
             except:
                 pass
         # Remove from image catalog
@@ -260,7 +326,7 @@ def get_cdn_url(filename):
     import requests
     
     # Security: prevent path traversal
-    if '..' in filename or '/' in filename:
+    if not is_safe_image_filename(filename):
         return jsonify({'ok': False, 'error': 'Invalid filename'}), 400
     
     filepath = GENERATED_IMAGES_DIR / filename
@@ -268,10 +334,9 @@ def get_cdn_url(filename):
         return jsonify({'ok': False, 'error': 'Image not found'}), 404
     
     # Check local CDN catalog first
-    cdn_catalog = GENERATED_IMAGES_DIR / "cdn_catalog.json"
-    if cdn_catalog.exists():
+    if CDN_CATALOG_FILE.exists():
         try:
-            catalog = json.loads(cdn_catalog.read_text())
+            catalog = json.loads(CDN_CATALOG_FILE.read_text())
             if filename in catalog:
                 entry = catalog[filename]
                 return jsonify({
@@ -300,7 +365,7 @@ def convert_image_to_video(filename):
     import requests as req
     
     # Security: prevent path traversal
-    if '..' in filename or '/' in filename:
+    if not is_safe_image_filename(filename):
         return jsonify({'ok': False, 'error': 'Invalid filename'}), 400
     
     filepath = GENERATED_IMAGES_DIR / filename
@@ -318,10 +383,9 @@ def convert_image_to_video(filename):
     try:
         # Check if already in CDN catalog
         cdn_url = None
-        cdn_catalog = GENERATED_IMAGES_DIR / "cdn_catalog.json"
-        if cdn_catalog.exists():
+        if CDN_CATALOG_FILE.exists():
             try:
-                catalog = json.loads(cdn_catalog.read_text())
+                catalog = json.loads(CDN_CATALOG_FILE.read_text())
                 if filename in catalog:
                     cdn_url = catalog[filename].get('url')
             except:

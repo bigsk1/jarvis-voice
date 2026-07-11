@@ -11,8 +11,8 @@ Jarvis can run with cloud LLMs or in a fully local/offline mode using local mode
 The project includes several ways to use and inspect the system:
 
 - **Voice, CLI, Web UI, and TUI** entry points for talking to Jarvis, sending commands, and running workflows.
-- **Chat UI** with streaming tools, mode switching, prompt enhancement, file/image uploads, conversation search, exports, and live logs.
-- **Canvas, Image Gallery, and Video Gallery** for saved notes, generated artifacts, media browsing, and visual reports.
+- **Chat UI** with streaming tools, mode switching, prompt enhancement, file/image uploads, conversation search, exports, pinned-safe cleanup, and live logs.
+- **Canvas, Image Gallery, and Video Gallery** for saved notes, generated artifacts, media browsing, favorites, and visual reports.
 - **Memory Dashboard** for knowledge, conversations, scheduled tasks, reminders, and database maintenance.
 - **Intelligence Dashboard** for self-learning insights, tool performance, experience history, confidence tracking, and repair feedback.
 - **Docs Viewer** for browsing the project documentation with an assistant grounded in the local `docs/` folder.
@@ -69,7 +69,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - **Context-first injection**: Prompts inject BEFORE user message for better LLM context
   - **Tool Hints**: Start typing to get tool suggestions as you type or use #tool_name to add a tool to the request
   - **✨ Enhance with AI**: Magic button transforms input into optimal prompts
-  - **Conversation search/export**: Filter, deep search, JSON/Markdown export
+  - **Conversation search/export**: Filter, deep search, JSON/Markdown export, pinned-safe 90-day cleanup via `cleanup-all`
   - **Completion Guard**: Manual `Completed correctly?` card plus auto-evaluator mode, one bounded repair pass, stop/cancel support for repair runs, follow-up tickets, workflow/fire-and-forget exclusions, exported metadata, and intelligence-layer corrected-path learning
   - **Image upload**: Drag-drop/paste/click with multi-image vision analysis (up to 6 cloud / 2 local)
   - **Mode-aware TTS/STT**: Cloud vs Local providers
@@ -313,8 +313,9 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
 ---
 
 - **Image Gallery UI**: Browse generated images in Canvas web UI
-  - Grid view with thumbnails, search, sort options
-  - Lightbox viewer, download, get CDN URL, delete
+  - Grid view with thumbnails, search, favorites filter, and date/name/size/CDN cached sorting
+  - Lightbox viewer, favorite, download, get CDN URL, delete
+  - Favorites are preserved by generated-image cleanup; uncached CDN uploads require confirmation
   - Access via "🖼️ Gallery" link in Canvas header
 
 ![jarvis-image-gallery](docs/images/jarvis-image-gallery.png)
@@ -1432,6 +1433,11 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 ---
 
 ## 🎯 Roadmap
+
+**Completed (July 2026) — Web retention and Canvas Gallery polish:**
+- ✅ **Pinned-safe Web conversation cleanup** — `cleanup-all` prunes unpinned Web UI conversations after 90 days while preserving pinned conversations
+- ✅ **Canvas Gallery favorites** — Generated images can be favorited, filtered, and protected from generated-image cleanup
+- ✅ **CDN-aware Gallery sorting** — Images can be sorted by cached Cloudflare URL status without contacting Cloudflare; uncached upload actions ask for confirmation
 
 **Completed (June 2026) — v2.52.0 mode plumbing and OpenCode hardening:**
 - ✅ **Predictable cloud/local startup** — Shared mode resolution keeps cloud as the default while `./bin/start --local` and per-service launchers load `config/local.env` explicitly

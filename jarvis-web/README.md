@@ -12,6 +12,7 @@ A modern, feature-rich web interface for Jarvis with real-time streaming, voice 
 - **Deep Search** - Search across all conversation messages
 - **Export/Import** - Export to JSON or Markdown, import previous conversations
 - **Auto-title Generation** - Conversations are auto-titled based on content
+- **Pinned-safe cleanup** - `./bin/cleanup-all` prunes unpinned conversations older than 90 days; pinned chats are preserved
 - **Completion Guard** - Per-turn card to confirm tasks completed correctly (manual feedback), optional auto-evaluation path, bounded repair, follow-up ticket flow; streamed via WebSocket (`completion_guard:*`)
 - **Token usage** - Footer hint with cumulative tokens and estimated cost when the model returns usage; hover shows input/output, cache-write/read tokens and costs, savings from cache hits, provider/model provenance, and context percentage
 
@@ -123,6 +124,14 @@ jarvis-web/
 
 Workflow definitions live at repo root: ../data/workflows/*.json (not under jarvis-web/).
 ```
+
+## Retention Cleanup
+
+Saved Web UI conversations live under `data/web_conversations/`. The normal cron-friendly path is `./bin/cleanup-all`, which calls `./bin/cleanup-web-conversations --days 90`.
+
+- Pinned conversations are kept, even when older than 90 days.
+- Unpinned conversations are eligible when their saved `updated_at` timestamp is older than the retention window.
+- Use `./bin/cleanup-web-conversations --dry-run` or `./bin/cleanup-all --dry-run` to preview the exact candidates before deleting anything.
 
 ## API Endpoints
 

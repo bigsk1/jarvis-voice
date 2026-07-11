@@ -1,7 +1,7 @@
 # Jarvis Web UI
 
 > **Status**: Implemented and actively maintained
-> **Last Updated**: April 21, 2026
+> **Last Updated**: July 11, 2026
 
 ---
 
@@ -117,6 +117,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | **Export JSON** | ✅ | Download conversation as JSON file |
 | **Export Markdown** | ✅ | Download conversation as formatted Markdown |
 | **Import JSON** | ✅ | Upload JSON to restore conversation |
+| **Pinned-safe cleanup** | ✅ | `cleanup-all` removes unpinned chats older than 90 days; pinned chats are preserved |
 
 ### Phase 7: Developer Tools - COMPLETE ✅
 
@@ -277,6 +278,15 @@ Repo root (shared with core Jarvis — outside jarvis-web/):
 ├── data/web_conversations/         # Saved chats (index.json + <id>.json)
 └── data/workflows/                 # Slash-command workflow definitions (*.json)
 ```
+
+### Conversation Retention
+
+`data/web_conversations/` is maintained by `./bin/cleanup-web-conversations`, normally through the cron-friendly `./bin/cleanup-all` wrapper.
+
+- Default retention is 90 days for unpinned Web UI conversations.
+- Pinned conversations are preserved regardless of age.
+- Cleanup uses the saved conversation timestamp, preferring `updated_at` and falling back to `created_at` if needed.
+- Preview with `./bin/cleanup-web-conversations --dry-run` before a live run.
 
 ---
 

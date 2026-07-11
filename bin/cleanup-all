@@ -5,7 +5,7 @@
 # Runs all cleanup tasks with appropriate retention periods:
 #   - Logs: 60 days
 #   - Audio: 30 days  
-#   - Generated images: 120 days
+#   - Generated images: 120 days, favorites preserved
 #   - Web conversations: 90 days, pinned conversations preserved
 #   - Web uploads: 60 days when unreferenced; saved-conversation assets are preserved
 #   - Stash spaces: Uses built-in TTL (via Python)
@@ -17,6 +17,7 @@
 # For individual control:
 #   ./bin/cleanup-logs [--days N] [--dry-run]
 #   ./bin/cleanup-audio [--days N] [--dry-run]
+#   ./bin/cleanup-generated-images [--days N] [--dry-run]
 #   ./bin/cleanup-web-conversations [--days N] [--dry-run]
 
 set -e
@@ -49,71 +50,7 @@ echo ""
 
 # 3. Cleanup generated images (120 days)
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-IMAGES_DIR="$PROJECT_ROOT/data/generated_images"
-RETENTION_DAYS=120
-
-echo "🖼️  Generated Images Cleanup"
-echo "   Retention: $RETENTION_DAYS days"
-echo "   Images dir: $IMAGES_DIR"
-if [[ -n "$DRY_RUN" ]]; then
-    echo "   Mode:      DRY RUN (no files will be deleted)"
-fi
-echo ""
-
-if [[ -d "$IMAGES_DIR" ]]; then
-    BEFORE_COUNT=$(find "$IMAGES_DIR" -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.webp" -o -name "*.gif" \) 2>/dev/null | wc -l)
-    BEFORE_SIZE=$(du -sh "$IMAGES_DIR" 2>/dev/null | cut -f1)
-    
-    echo "📊 Before cleanup:"
-    echo "   Files: $BEFORE_COUNT"
-    echo "   Size:  $BEFORE_SIZE"
-    echo ""
-    
-    # Find old image files
-    TOTAL_DELETED=0
-    TOTAL_BYTES=0
-    
-    while IFS= read -r file; do
-        if [[ -n "$file" ]]; then
-            size=$(stat -c%s "$file" 2>/dev/null || echo 0)
-            TOTAL_BYTES=$((TOTAL_BYTES + size))
-            TOTAL_DELETED=$((TOTAL_DELETED + 1))
-            
-            if [[ -n "$DRY_RUN" ]]; then
-                if [[ $TOTAL_DELETED -le 10 ]]; then
-                    echo "   Would delete: $(basename "$file") ($(numfmt --to=iec $size 2>/dev/null || echo "${size}B"))"
-                fi
-            else
-                rm -f "$file"
-            fi
-        fi
-    done < <(find "$IMAGES_DIR" -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.webp" -o -name "*.gif" \) -mtime +$RETENTION_DAYS 2>/dev/null)
-    
-    echo ""
-    
-    if [[ $TOTAL_DELETED -eq 0 ]]; then
-        echo "✅ No images older than $RETENTION_DAYS days found."
-    else
-        SIZE_HUMAN=$(numfmt --to=iec $TOTAL_BYTES 2>/dev/null || echo "${TOTAL_BYTES}B")
-        if [[ -n "$DRY_RUN" ]]; then
-            [[ $TOTAL_DELETED -gt 10 ]] && echo "   ... and $((TOTAL_DELETED - 10)) more files"
-            echo ""
-            echo "📋 Would delete $TOTAL_DELETED images ($SIZE_HUMAN)"
-        else
-            echo "✅ Deleted $TOTAL_DELETED images ($SIZE_HUMAN)"
-            
-            AFTER_COUNT=$(find "$IMAGES_DIR" -type f \( -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.webp" -o -name "*.gif" \) 2>/dev/null | wc -l)
-            AFTER_SIZE=$(du -sh "$IMAGES_DIR" 2>/dev/null | cut -f1)
-            
-            echo ""
-            echo "📊 After cleanup:"
-            echo "   Files: $AFTER_COUNT"
-            echo "   Size:  $AFTER_SIZE"
-        fi
-    fi
-else
-    echo "   (directory does not exist)"
-fi
+"$SCRIPT_DIR/cleanup-generated-images" --days 120 $DRY_RUN
 echo ""
 
 # 4. Cleanup web conversations (90 days, preserving pinned)

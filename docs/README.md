@@ -335,6 +335,16 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-07-11 (v2.54.1):**
+- ✅ **Web conversation cleanup**
+  - `./bin/cleanup-all` now calls `./bin/cleanup-web-conversations --days 90`.
+  - Pinned Web UI conversations are preserved; only old unpinned conversations are eligible for deletion.
+  - Dry-run output lists exact candidates before live deletion.
+- ✅ **Canvas Image Gallery favorites and CDN sorting**
+  - Gallery images can be marked as favorites, filtered to favorites only, and protected from generated-image cleanup.
+  - Gallery sorting can group images by cached Cloudflare CDN URL status without contacting Cloudflare.
+  - Uncached CDN uploads now ask for confirmation; cached URLs still copy directly from `cdn_catalog.json`.
+
 **2026-07-08 (v2.54.1):**
 - ✅ **Grok 4.5 xAI support**
   - Added `grok-4.5` with `grok-4.5-latest` / `grok-build-latest` aliases, 500K context, text+vision metadata, reasoning support, pricing, rate limits, and regional availability in the shared model catalog.
