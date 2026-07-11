@@ -27,6 +27,9 @@
       },
       "output_var": "dedupe_result",
       "extract": {
+        "database_mode": "database.mode",
+        "database_label": "database.label",
+        "database_path": "database.path_display",
         "scanned_memories": "summary.scanned_memories",
         "exact_duplicate_groups": "summary.exact_duplicate_groups",
         "probable_duplicate_groups": "summary.probable_duplicate_groups",
@@ -39,6 +42,6 @@
     }
   ],
 
-  "success_speech": "Memory scan complete. Scanned ${scanned_memories} memories and found ${exact_duplicate_groups} exact duplicates, ${probable_duplicate_groups} probable duplicates, and ${conflict_pairs} conflicts. Report is saved to canvas.",
+  "success_speech": "Memory scan complete for ${database_label}. Scanned ${scanned_memories} memories and found ${exact_duplicate_groups} exact duplicates, ${probable_duplicate_groups} probable duplicates, and ${conflict_pairs} conflicts. Report is saved to canvas.",
   "abort_speech": "Memory scan failed. I could not complete the dedupe analysis."
 }

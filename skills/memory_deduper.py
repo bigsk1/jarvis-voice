@@ -21,7 +21,7 @@ from typing import Any
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
-from config_loader import load_config
+from config_loader import get_active_config_mode, get_project_root, load_config
 from memory_db import get_memory_db
 from stash_helper import open_space, StashFile
 
@@ -228,12 +228,32 @@ def memory_view(m: MemoryRecord) -> dict[str, Any]:
     }
 
 
+def database_context(db_path: str) -> dict[str, str]:
+    mode = get_active_config_mode()
+    path = Path(db_path).resolve()
+    label = "Local memory DB" if mode == "local" else "Cloud memory DB"
+
+    project_root = get_project_root().resolve()
+    try:
+        path_display = str(path.relative_to(project_root))
+    except ValueError:
+        path_display = str(path)
+
+    return {
+        "mode": mode,
+        "label": label,
+        "path": str(path),
+        "path_display": path_display,
+    }
+
+
 def load_records(
     include_categories: list[str],
     exclude_categories: list[str],
     limit: int,
-) -> list[MemoryRecord]:
+) -> tuple[list[MemoryRecord], dict[str, str]]:
     db = get_memory_db()
+    db_context = database_context(db.db_path)
     try:
         cursor = db.conn.cursor()
         query = """
@@ -275,7 +295,7 @@ def load_records(
         rec.confidence = compute_confidence(raw, metadata)
         records.append(rec)
 
-    return records[:limit]
+    return records[:limit], db_context
 
 
 def analyze_records(
@@ -439,9 +459,11 @@ def build_markdown_report(summary: dict[str, Any], analysis: dict[str, Any], max
         )
 
     lines: list[str] = []
-    lines.append("# Memory Deduper Report")
+    lines.append(f"# Memory Deduper Report - {summary['database_label']}")
     lines.append("")
     lines.append("## Summary")
+    lines.append(f"- Database: {summary['database_label']} (`{summary['database_mode']}`)")
+    lines.append(f"- Database file: `{summary['database_path_display']}`")
     lines.append(f"- Scanned memories: {summary['scanned_memories']}")
     lines.append(f"- Categories scanned: {summary['categories_scanned']}")
     lines.append(f"- Exact duplicate groups: {summary['exact_duplicate_groups']}")
@@ -649,7 +671,7 @@ def main():
         save_to_stash = bool(args.get("save_to_stash", action == "analyze"))
         save_to_canvas = bool(args.get("save_to_canvas", False))
 
-        records = load_records(
+        records, db_context = load_records(
             include_categories=include_categories,
             exclude_categories=exclude_categories,
             limit=scan_limit,
@@ -665,6 +687,10 @@ def main():
 
         categories_scanned = len({r.category for r in records})
         summary = {
+            "database_mode": db_context["mode"],
+            "database_label": db_context["label"],
+            "database_path": db_context["path"],
+            "database_path_display": db_context["path_display"],
             "scanned_memories": len(records),
             "categories_scanned": categories_scanned,
             "exact_duplicate_groups": len(analysis["exact_groups"]),
@@ -700,12 +726,12 @@ def main():
         if save_to_canvas:
             canvas_page_id, canvas_error = save_report_to_canvas(
                 markdown=markdown,
-                title=f"Memory Deduper Report {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                title=f"Memory Deduper Report - {db_context['label']} {datetime.now().strftime('%Y-%m-%d %H:%M')}",
             )
 
         if action == "analyze":
             speech = (
-                f"Scanned {summary['scanned_memories']} memories. "
+                f"Scanned {summary['scanned_memories']} memories in the {db_context['label']}. "
                 f"Found {summary['exact_duplicate_groups']} exact duplicate groups, "
                 f"{summary['probable_duplicate_groups']} probable duplicate groups, "
                 f"and {summary['conflict_pairs']} potential conflicts."
@@ -722,6 +748,7 @@ def main():
             "speech": speech,
             "data": {
                 "action": action,
+                "database": db_context,
                 "summary": summary,
                 "exact_duplicate_groups": exact_trimmed,
                 "probable_duplicate_groups": probable_trimmed,

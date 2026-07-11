@@ -25,6 +25,39 @@ Use this document as the **format contract** when authoring or editing workflows
 
 ---
 
+## Runtime mode and shared artifacts
+
+Workflow JSON is normally **mode-neutral**. A workflow does not need separate
+cloud/local files unless the actual step behavior is different. It runs in the
+mode of the Jarvis process or request that executed it.
+
+Mode-aware tools should label the source they used when output is saved for
+humans. For example, `/memory_scan` scans the active memory DB:
+
+- cloud mode: `data/jarvis_memory.db`
+- local mode: `data/jarvis_memory_local.db`
+
+If the Web UI/API session is switched to local and `/memory_scan` runs, the
+workflow should save a Canvas report that says it scanned the local memory DB.
+If it runs in cloud mode, the report should say cloud memory DB.
+
+Shared artifact surfaces are not split by cloud/local mode by default:
+
+- Canvas pages are shared under `data/canvas/*.json`. The Canvas server has a
+  startup mode for config, auth, URLs, and health reporting, but page storage is
+  mode-agnostic.
+- Stash uses one root from `STASH_DIR`, normally `data/stash`. If `STASH_DIR`
+  is intentionally pointed somewhere else, all stash readers and writers should
+  resolve that same root.
+- Docs and workflow JSON files are repo files, not mode-scoped data stores.
+
+Authoring rule: when a workflow reads mode-scoped data such as memory,
+intelligence, or provider-specific runtime config, include the mode/source/path
+in the tool result and in any saved Canvas or stash report. Do not create
+duplicate workflow files just to rename cloud vs local output.
+
+---
+
 ## Variables (exact formats)
 
 After load, the runtime always has at least: `query`, `topic`, `content` (same as `topic`), `workflow_id`, `timestamp`. Your `variables` block **adds or overrides** named keys used as `${name}` in steps.
@@ -157,6 +190,7 @@ Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
 8. Set workflow-level **`disable_server_side_tools: true`** when deterministic source/tool steps already provide the facts and `llm_prompt` should only extract or synthesize from workflow variables.
 9. For search → crawl workflows, keep the search step's **`output_var`** as **`search_results`** so the built-in transform exposes `${search_results.urls[:N]}`.
 10. For single URL crawl workflows, use **`output_var: "article"`** when later steps need `${article.content}`, `${article.url}`, or `${article.title}`.
+11. For mode-scoped data such as memory or intelligence, expose the active mode/source in the workflow output and in saved Canvas/stash reports.
 
 ---
 
@@ -222,7 +256,7 @@ Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
 | `youtube_research.json` | `/youtube_research <url> [notes]` | Download transcript, summarize, keywords, canvas study notes |
 | `youtube_ingest.json` | `/youtube_ingest <url>` | Download video + transcript, extract important facts/keywords, create canvas briefing |
 | `url_ingest.json` | `/url_ingest <url>` | Fetch any URL, create intel file, ingest to memory for RAG queries |
-| `memory_scan.json` | `/memory_scan` | Run memory_deduper analyze mode and save readable dedupe report to stash + canvas |
+| `memory_scan.json` | `/memory_scan` | Run memory_deduper against the active cloud/local memory DB and save a labeled report to stash + canvas |
 | `deep_dive.json` | `/deep_dive <topic or url>` | Screenshot + crawl + comprehensive canvas analysis with pros/cons, links |
 | `serpapi_search.json` | `/serpapi <query>` | Run SerpApi search, save `.txt` export to stash, create canvas summary report |
 
