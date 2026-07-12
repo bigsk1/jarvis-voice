@@ -91,6 +91,44 @@ class ScheduledTaskNotificationTests(unittest.TestCase):
         self.assertIn("timed out", results[0]["result"]["error"].lower())
         self.assertTrue(results[1]["result"]["ok"])
 
+    def test_alert_failure_is_reported_without_raising(self):
+        class FailingAlertManager:
+            def __init__(self, mode):
+                self.mode = mode
+
+            def create_alert(self, **kwargs):
+                raise RuntimeError("alert database unavailable")
+
+        task = {
+            "id": 44,
+            "name": "Health check",
+            "task_type": "workflow",
+            "mode": "cloud",
+            "task_payload": json.dumps({"workflow_id": "jarvis_health_check"}),
+            "metadata": json.dumps({
+                "notifications": {
+                    "alert_on_failure": True,
+                }
+            }),
+        }
+
+        with patch.object(runner, "_notification_allowed", return_value=True):
+            with patch("api.managers.alert_manager.AlertManager", FailingAlertManager):
+                results = runner._maybe_send_notifications(
+                    task,
+                    status="failure",
+                    summary="CPU core pinned",
+                    error="CPU 2 above threshold",
+                    scheduled_for="2026-07-12 08:00:00",
+                    next_run="2026-07-12 20:00:00",
+                )
+
+        self.assertEqual([item["channel"] for item in results], ["alert"])
+        self.assertEqual(results[0]["outcome"], "failure")
+        self.assertFalse(results[0]["result"]["ok"])
+        self.assertIn("RuntimeError", results[0]["result"]["error"])
+        self.assertIn("alert database unavailable", results[0]["result"]["error"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -389,24 +389,28 @@ def _maybe_send_notifications(task: dict, *, status: str, summary: str | None, e
     if is_failure and notifications.get("alert_on_failure"):
         ident = _notification_identifier(task["id"], "alert", outcome, scheduled_for)
         if _notification_allowed(ident):
-            from api.managers.alert_manager import AlertManager
-            alert_manager = AlertManager(mode=task["mode"])
-            description = body
-            alert_id = alert_manager.create_alert(
-                title=f"Scheduled task failed: {task['name']}",
-                source="scheduled_task_runner",
-                description=description,
-                severity="medium",
-                metadata={
-                    "task_id": task["id"],
-                    "task_name": task["name"],
-                    "scheduled_for": scheduled_for,
-                    "mode": task["mode"],
-                    "dedupe_key": f"scheduled_task_failure:{task['id']}:{scheduled_for or 'manual'}",
-                },
-                speak_immediately=False,
-            )
-            results.append({"channel": "alert", "outcome": outcome, "result": {"ok": True, "alert_id": alert_id}})
+            try:
+                from api.managers.alert_manager import AlertManager
+                alert_manager = AlertManager(mode=task["mode"])
+                description = body
+                alert_id = alert_manager.create_alert(
+                    title=f"Scheduled task failed: {task['name']}",
+                    source="scheduled_task_runner",
+                    description=description,
+                    severity="medium",
+                    metadata={
+                        "task_id": task["id"],
+                        "task_name": task["name"],
+                        "scheduled_for": scheduled_for,
+                        "mode": task["mode"],
+                        "dedupe_key": f"scheduled_task_failure:{task['id']}:{scheduled_for or 'manual'}",
+                    },
+                    speak_immediately=False,
+                )
+                result = {"ok": True, "alert_id": alert_id}
+            except Exception as exc:
+                result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+            results.append({"channel": "alert", "outcome": outcome, "result": result})
         else:
             results.append({"channel": "alert", "outcome": outcome, "result": {"ok": False, "error": "cooldown_suppressed"}})
 
