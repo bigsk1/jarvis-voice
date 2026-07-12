@@ -456,6 +456,9 @@ class PipelineExecutor:
         for pattern in validation.get("reject_patterns", []):
             if str(pattern).lower() in content_lower:
                 return f"LLM-generated {param_name} contained refusal or placeholder content"
+        for pattern in validation.get("required_patterns", []):
+            if str(pattern).lower() not in content_lower:
+                return f"LLM-generated {param_name} was missing required structure"
         return None
 
     def _store_validated_outputs(
@@ -1653,9 +1656,9 @@ def main():
     print("-" * 40)
     
     # Initialize executor
-    from tool_schema import ToolRegistry
-    project_root = Path(__file__).parent.parent.resolve()
-    registry = ToolRegistry(str(project_root / "skills"))
+    from tool_schema import get_tool_registry
+
+    registry = get_tool_registry(mode=args.mode)
     tool_executor = ToolExecutor(args.mode, registry=registry)
     
     # Execute pipeline

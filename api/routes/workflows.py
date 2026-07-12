@@ -358,8 +358,10 @@ async def _execute_workflow_scoped(workflow_id: str, request: WorkflowExecuteReq
         # Import and execute
         from executor import ToolExecutor
         from pipeline_executor import PipelineExecutor
+        from tool_schema import get_tool_registry
         
-        executor = ToolExecutor(mode=request.mode)
+        registry = get_tool_registry(mode=request.mode)
+        executor = ToolExecutor(mode=request.mode, registry=registry)
         pipeline = PipelineExecutor(request.mode, executor)
         
         start_time = time.time()

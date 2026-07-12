@@ -53,10 +53,12 @@ def test_query_route_uses_scope_without_mutating_parent_environment():
 
 def test_workflow_route_uses_scope_without_mutating_parent_environment():
     observed = {}
+    shared_registry = object()
 
     class FakeToolExecutor:
-        def __init__(self, mode):
+        def __init__(self, mode, registry=None):
             observed["tool_mode"] = mode
+            observed["registry"] = registry
 
     class FakePipelineExecutor:
         def __init__(self, mode, _executor):
@@ -71,6 +73,7 @@ def test_workflow_route_uses_scope_without_mutating_parent_environment():
     modules = {
         "executor": SimpleNamespace(ToolExecutor=FakeToolExecutor),
         "pipeline_executor": SimpleNamespace(PipelineExecutor=FakePipelineExecutor),
+        "tool_schema": SimpleNamespace(get_tool_registry=lambda mode=None: shared_registry),
     }
     request = WorkflowExecuteRequest(mode="local", query="all configured servers")
     with patch.dict(sys.modules, modules):
@@ -79,6 +82,7 @@ def test_workflow_route_uses_scope_without_mutating_parent_environment():
     assert result.ok is True
     assert observed == {
         "tool_mode": "local",
+        "registry": shared_registry,
         "mode": "local",
         "provider": "ollama",
         "pipeline_mode": "local",
@@ -112,6 +116,67 @@ def test_scheduled_query_uses_task_scope_not_runner_mode(tmp_path, monkeypatch):
         "constructor_mode": "local",
         "active_mode": "local",
         "provider": "ollama",
+    }
+    assert get_active_config_mode() == "cloud"
+
+
+def test_scheduled_workflow_uses_shared_tool_registry(tmp_path, monkeypatch):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "cloud.env").write_text("LLM_PROVIDER=xai\nXAI_MODEL=grok-cloud\n")
+    (config_dir / "local.env").write_text("LLM_PROVIDER=ollama\nOLLAMA_MODEL=gemma-local\n")
+    monkeypatch.setattr(config_loader, "get_project_root", lambda: tmp_path)
+    monkeypatch.setenv("JARVIS_MODE", "cloud")
+    observed = {}
+    shared_registry = object()
+
+    class FakeWorkflowLoader:
+        def __init__(self, explicit_only=True):
+            observed["loader_explicit_only"] = explicit_only
+            self.workflows = {}
+
+        def get_workflow(self, workflow_id):
+            return {
+                "id": workflow_id,
+                "triggers": {"explicit": [f"/{workflow_id}"]},
+                "steps": [{"step": 1, "tool": "get_time"}],
+            }
+
+    class FakeToolExecutor:
+        def __init__(self, mode, registry=None):
+            observed["tool_mode"] = mode
+            observed["registry"] = registry
+
+    class FakePipelineExecutor:
+        def __init__(self, mode, _executor):
+            observed["active_mode"] = get_active_config_mode()
+            observed["provider"] = get_config_value("LLM_PROVIDER")
+            observed["pipeline_mode"] = mode
+
+        def execute(self, workflow, transcript):
+            observed["workflow_id"] = workflow["id"]
+            observed["transcript"] = transcript
+            return {"ok": True, "speech": "done", "tools_used": []}
+
+    modules = {
+        "workflow_loader": SimpleNamespace(WorkflowLoader=FakeWorkflowLoader),
+        "executor": SimpleNamespace(ToolExecutor=FakeToolExecutor),
+        "pipeline_executor": SimpleNamespace(PipelineExecutor=FakePipelineExecutor),
+        "tool_schema": SimpleNamespace(get_tool_registry=lambda mode=None: shared_registry),
+    }
+    with patch.dict(sys.modules, modules):
+        result = scheduled_task_runner._run_workflow_task("local", "github_ai_radar_daily")
+
+    assert result["ok"] is True
+    assert observed == {
+        "loader_explicit_only": True,
+        "tool_mode": "local",
+        "registry": shared_registry,
+        "active_mode": "local",
+        "provider": "ollama",
+        "pipeline_mode": "local",
+        "workflow_id": "github_ai_radar_daily",
+        "transcript": "/github_ai_radar_daily",
     }
     assert get_active_config_mode() == "cloud"
 

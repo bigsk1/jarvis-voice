@@ -11,6 +11,8 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "orchestrator"))
@@ -35,6 +37,41 @@ class FakeRegistry:
 
     def is_mcp_tool(self, tool_name):
         return False
+
+
+class EmptyRegistry:
+    def get_tool(self, _tool_name):
+        return None
+
+    def is_mcp_tool(self, tool_name):
+        return tool_name.startswith("mcp_")
+
+
+class FakeMcpClient:
+    def __init__(self):
+        self.calls = []
+
+    def call_tool(self, name, args):
+        self.calls.append((name, args))
+        return {"ok": True, "speech": "mcp ok", "data": {"name": name, "args": args}}
+
+
+class FakeMcpRegistry:
+    def __init__(self, schema):
+        self._schema = schema
+        self.client = FakeMcpClient()
+        self.mcp_clients = {"brave_search": self.client}
+
+    def get_tool(self, tool_name):
+        return self._schema if tool_name == "mcp_brave_search_brave_web_search" else None
+
+    def is_mcp_tool(self, tool_name):
+        return tool_name.startswith("mcp_")
+
+    def get_mcp_info(self, tool_name):
+        if tool_name == "mcp_brave_search_brave_web_search":
+            return "brave_search", "brave_web_search"
+        return None, None
 
 
 class ToolExecutorCancelTests(unittest.TestCase):
@@ -109,6 +146,29 @@ class ToolExecutorCancelTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["data"]["jarvis_session"], "20260404_123456")
         self.assertEqual(result["data"]["web_conversation_id"], "6dbf22ca")
+
+    def test_missing_mcp_tool_recovers_from_shared_registry(self):
+        shared_registry = FakeMcpRegistry(FakeToolSchema("__mcp__brave_search__brave_web_search"))
+        executor = ToolExecutor(mode="cloud", registry=EmptyRegistry())
+
+        modules = {
+            "tool_schema": SimpleNamespace(
+                get_tool_registry=lambda mode=None: shared_registry,
+                reset_tool_registry=lambda: None,
+            )
+        }
+        with patch.dict(sys.modules, modules):
+            result = executor.execute(
+                "mcp_brave_search_brave_web_search",
+                {"query": "github trending"},
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertIs(executor.registry, shared_registry)
+        self.assertEqual(
+            shared_registry.client.calls,
+            [("brave_web_search", {"query": "github trending"})],
+        )
 
 
 if __name__ == "__main__":

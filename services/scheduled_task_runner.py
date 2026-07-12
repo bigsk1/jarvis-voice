@@ -98,6 +98,7 @@ def _run_workflow_task(mode: str, workflow_id: str, query: str | None = None) ->
         from executor import ToolExecutor
         from workflow_loader import WorkflowLoader
         from pipeline_executor import PipelineExecutor
+        from tool_schema import get_tool_registry
 
         loader = WorkflowLoader(explicit_only=True)
         workflow = loader.get_workflow(workflow_id)
@@ -111,7 +112,8 @@ def _run_workflow_task(mode: str, workflow_id: str, query: str | None = None) ->
         if not workflow:
             raise ValueError(f"Workflow '{workflow_id}' not found")
 
-        tool_executor = ToolExecutor(mode=mode)
+        registry = get_tool_registry(mode=mode)
+        tool_executor = ToolExecutor(mode=mode, registry=registry)
         executor = PipelineExecutor(mode, tool_executor)
 
         transcript = query or workflow.get("triggers", {}).get("explicit", [f"/{workflow['id']}"])[0]

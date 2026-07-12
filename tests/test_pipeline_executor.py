@@ -762,6 +762,62 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
         deep_canvas = next(step for step in deep["steps"] if step["tool"] == "canvas")
         self.assertEqual(deep_canvas["llm_output_validation"]["param"], "content")
 
+    def test_github_ai_radar_refreshes_single_canvas_page(self):
+        workflow = json.loads(
+            (PROJECT_ROOT / "data" / "workflows" / "github_ai_radar_daily.json").read_text()
+        )
+        canvas_steps = [step for step in workflow["steps"] if step["tool"] == "canvas"]
+        canvas_actions = [step.get("action") for step in canvas_steps]
+        brave_step = next(
+            step for step in workflow["steps"]
+            if step["tool"] == "mcp_brave_search_brave_web_search"
+        )
+        youtube_step = next(
+            step for step in workflow["steps"] if step["tool"] == "serpapi_youtube_search"
+        )
+
+        self.assertEqual(canvas_actions, ["read", "create", "update"])
+        self.assertNotIn("append", canvas_actions)
+        self.assertEqual(canvas_steps[1]["condition"]["op"], "not_exists")
+        self.assertEqual(canvas_steps[2]["condition"]["op"], "exists")
+        self.assertEqual(canvas_steps[2]["params"]["page_id"], "${radar_page_id}")
+        self.assertTrue(canvas_steps[2]["params"]["allow_content_shrink"])
+        self.assertTrue(workflow["disable_server_side_tools"])
+        self.assertTrue(brave_step["required"])
+        self.assertEqual(brave_step["output_var"], "search_results")
+        self.assertFalse(youtube_step["required"])
+        self.assertEqual(youtube_step["on_fail"], "continue")
+        self.assertEqual(youtube_step["params"]["search_query"], "${youtube_query}")
+        self.assertEqual(youtube_step["extract"]["youtube_top_url"], "top_url")
+        self.assertEqual(youtube_step["extract"]["youtube_top_results"], "top_results")
+
+        for step in canvas_steps[1:]:
+            prompt = step["llm_prompt"].lower()
+            rejects = step["llm_output_validation"]["reject_patterns"]
+            self.assertIn("raw markdown only", prompt)
+            self.assertIn("do not output html", prompt)
+            self.assertIn("youtube search results", prompt)
+            self.assertIn("featured video", prompt)
+            self.assertIn("so canvas can embed", prompt)
+            self.assertIn("```", rejects)
+            self.assertIn("<!doctype", rejects)
+            self.assertIn("<html", rejects)
+            self.assertIn("<pre", rejects)
+
+        update_prompt = canvas_steps[2]["llm_prompt"].lower()
+        update_rejects = canvas_steps[2]["llm_output_validation"]["reject_patterns"]
+        update_required = canvas_steps[2]["llm_output_validation"]["required_patterns"]
+        self.assertIn("full replacement markdown content", update_prompt)
+        self.assertIn("do not output only a delta", update_prompt)
+        self.assertIn("previous snapshots", update_prompt)
+        self.assertIn("do not include previous youtube watch urls", update_prompt)
+        self.assertIn("unable to update", update_rejects)
+        self.assertIn("# GitHub AI Radar", update_required)
+        self.assertIn("## Latest Snapshot", update_required)
+        self.assertIn("## Notable Projects", update_required)
+        self.assertIn("## Sources", update_required)
+        self.assertIn("## Run Log", update_required)
+
     def test_opt_in_llm_output_validation_rejects_refusal_content(self):
         step = {
             "llm_output_validation": {
@@ -775,6 +831,27 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
             {"content": "I am unable to complete this research summary without URLs."},
         )
         self.assertIn("refusal", error)
+
+    def test_opt_in_llm_output_validation_requires_structure(self):
+        step = {
+            "llm_output_validation": {
+                "param": "content",
+                "min_length": 20,
+                "required_patterns": ["# GitHub AI Radar", "## Run Log"],
+            }
+        }
+
+        error = self.executor._validate_llm_filled_params(
+            step,
+            {"content": "# GitHub AI Radar\n\n## Sources\nA source list without the log."},
+        )
+        self.assertIn("missing required structure", error)
+
+        error = self.executor._validate_llm_filled_params(
+            step,
+            {"content": "# GitHub AI Radar\n\n## Run Log\nA complete enough update."},
+        )
+        self.assertIsNone(error)
 
     def test_llm_output_validation_is_opt_in(self):
         self.assertIsNone(

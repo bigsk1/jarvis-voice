@@ -969,8 +969,8 @@
     }
 }
 
-/* Mobile responsive - 730px breakpoint */
-@media (max-width: 730px) {
+/* Tablet/narrow responsive - 990px breakpoint */
+@media (max-width: 990px) {
     /* Show hamburger button */
     .hamburger-btn {
         display: flex;
@@ -1020,7 +1020,10 @@
         margin-left: 0;
         padding: 16px;
     }
+}
 
+/* Mobile responsive - 730px breakpoint */
+@media (max-width: 730px) {
     /* Header adjustments */
     .header {
         padding: 0 16px;

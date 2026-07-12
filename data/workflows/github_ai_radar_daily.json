@@ -1,0 +1,293 @@
+{
+  "id": "github_ai_radar_daily",
+  "name": "GitHub AI Radar Daily",
+  "description": "Daily AI project radar: search the web for notable GitHub AI projects, gather Brave LLM context, and maintain one rolling Canvas page.",
+  "enabled": true,
+  "version": "1.0",
+  "disable_server_side_tools": true,
+
+  "triggers": {
+    "patterns": [
+      "github ai radar",
+      "ai radar",
+      "trending github ai projects"
+    ],
+    "keywords": ["github", "ai", "radar", "trending"],
+    "explicit": ["/github_ai_radar", "/ai_radar", "/ai-radar"]
+  },
+
+  "variables": {
+    "radar_title": {
+      "from": "static",
+      "value": "Workflows/GitHub AI Radar"
+    },
+    "radar_query": {
+      "from": "static",
+      "value": "latest notable open source GitHub AI projects agents developer tools new releases"
+    },
+    "youtube_query": {
+      "from": "static",
+      "value": "github trending AI open source projects latest"
+    },
+    "youtube_top_url": "none",
+    "youtube_top_results": "none",
+    "youtube_results_count": 0,
+    "brave_grounding": "none",
+    "brave_sources": "none"
+  },
+
+  "tool_defaults": {
+    "crawl_url": {
+      "stealth": true,
+      "wait_for_js": true,
+      "exclude_tags": ["nav", "footer", "aside", "script", "style", "header"]
+    },
+    "stash": {
+      "tags": ["github-ai-radar", "workflow"]
+    }
+  },
+
+  "validation_policy": {
+    "default_validation": "hybrid",
+    "abort_threshold": 0.5,
+    "max_total_retries": 8,
+    "retry_delay_ms": 500
+  },
+
+  "steps": [
+    {
+      "step": 1,
+      "tool": "get_time",
+      "params": {},
+      "extract": {
+        "run_date": "date_formatted",
+        "run_day": "day_of_week",
+        "run_time": "time_12h"
+      },
+      "required": true,
+      "description": "Get run timestamp"
+    },
+    {
+      "step": 2,
+      "tool": "canvas",
+      "action": "read",
+      "params": {
+        "search": "${radar_title}"
+      },
+      "output_var": "existing_radar_page",
+      "extract": {
+        "radar_page_id": "page_id",
+        "radar_existing_title": "title",
+        "radar_existing_content": "content",
+        "radar_existing_content_length": "content_length"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Find the existing radar Canvas page"
+    },
+    {
+      "step": 3,
+      "tool": "stash",
+      "action": "open_space",
+      "params": {
+        "labels": ["github-ai-radar", "${run_day}"]
+      },
+      "output_var": "radar_space",
+      "extract": {
+        "space_id": "space_id"
+      },
+      "required": true,
+      "description": "Create workspace for radar evidence"
+    },
+    {
+      "step": 4,
+      "tool": "mcp_brave_search_brave_web_search",
+      "params": {
+        "query": "${radar_query}",
+        "count": 10,
+        "freshness": "pw"
+      },
+      "output_var": "search_results",
+      "required": true,
+      "validation": {
+        "type": "heuristic",
+        "min_results": 3
+      },
+      "retry": {
+        "max_attempts": 2,
+        "strategy": "broaden_search"
+      },
+      "description": "Search for current GitHub AI project signals"
+    },
+    {
+      "step": 5,
+      "tool": "brave_llm_context",
+      "params": {
+        "query": "${radar_query}",
+        "country": "US",
+        "search_lang": "en",
+        "freshness": "pw",
+        "count": 20,
+        "maximum_number_of_urls": 8,
+        "maximum_number_of_tokens": 10000,
+        "maximum_number_of_snippets": 35,
+        "maximum_number_of_tokens_per_url": 2500,
+        "maximum_number_of_snippets_per_url": 6,
+        "context_threshold_mode": "balanced",
+        "enable_source_metadata": true
+      },
+      "output_var": "brave_context",
+      "extract": {
+        "brave_context_query": "query",
+        "brave_grounding": "grounding",
+        "brave_sources": "sources"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Gather Brave LLM Context snippets for the radar"
+    },
+    {
+      "step": 6,
+      "tool": "serpapi_youtube_search",
+      "params": {
+        "search_query": "${youtube_query}",
+        "gl": "us",
+        "hl": "en",
+        "num_results": 3,
+        "no_cache": true
+      },
+      "output_var": "youtube_search_output",
+      "extract": {
+        "youtube_top_url": "top_url",
+        "youtube_top_results": "top_results",
+        "youtube_results_count": "results_count"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Find a recent YouTube video to feature on the Canvas page"
+    },
+    {
+      "step": 7,
+      "tool": "crawl_url",
+      "for_each": "${search_results.urls[:6]}",
+      "output_var": "crawl_attempts",
+      "validated_output_var": "validated_articles",
+      "params": {},
+      "validation": {
+        "type": "heuristic",
+        "heuristic": {
+          "min_length": 500,
+          "reject_patterns": [
+            "subscribe to continue",
+            "create an account",
+            "sign in to continue",
+            "403 forbidden",
+            "access denied",
+            "please verify you are human",
+            "enable cookies to continue",
+            "404 error"
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 6,
+        "strategy": "next_url",
+        "fallback_tools": ["mcp_fetch_fetch"]
+      },
+      "required_success_count": 2,
+      "on_all_fail": "continue",
+      "description": "Crawl and validate search result pages"
+    },
+    {
+      "step": 8,
+      "tool": "stash",
+      "action": "save",
+      "for_each": "${validated_articles}",
+      "process_all": true,
+      "params": {
+        "space_id": "${space_id}",
+        "kind": "text",
+        "tags": ["github-ai-radar", "source"]
+      },
+      "output_var": "saved_source_files",
+      "required": false,
+      "on_fail": "continue",
+      "description": "Save validated source pages to stash"
+    },
+    {
+      "step": 9,
+      "tool": "canvas",
+      "action": "create",
+      "condition": {
+        "op": "not_exists",
+        "left": "${radar_page_id}"
+      },
+      "params": {
+        "title": "${radar_title}",
+        "tags": ["github", "ai", "radar", "workflow"],
+        "source_query": "${radar_query}",
+        "pinned": true
+      },
+      "llm_prompt": "Create the initial GitHub AI Radar Canvas page.\n\nRUN:\n- Date: ${run_date}\n- Time: ${run_time}\n- Search query: ${radar_query}\n- YouTube query: ${youtube_query}\n- Stash space: ${space_id}\n\nYOUTUBE SEARCH RESULTS:\n- Result count: ${youtube_results_count}\n- Top URL: ${youtube_top_url}\n- Top results: ${youtube_top_results}\n\nWEB SEARCH RESULTS:\n${search_results.data}\n\nBRAVE LLM CONTEXT:\n- Grounding: ${brave_grounding}\n- Sources: ${brave_sources}\n\nVALIDATED CRAWLED SOURCES:\n${validated_articles}\n\nOutput raw Markdown only. Do not output HTML. Do not output <!DOCTYPE>, <html>, <head>, <body>, <pre>, or any other wrapper tags. Do not wrap the answer in ```markdown, ```html, or any code fence. Use actual values and complete URLs; do not output curly-brace variable placeholders and do not shorten links.\n\nRequired structure:\n# GitHub AI Radar\n\nA one-paragraph purpose statement for this durable page.\n\n## Latest Snapshot - ${run_date}\nA concise summary of today's strongest signals.\n\n## Featured Video\nIf Top URL is a real YouTube URL, include the video title/channel/published date when available, then put exactly one YouTube watch URL on its own line so Canvas can embed it. Do not include any other YouTube watch URLs elsewhere in the page. If Top URL is none, omit this section entirely.\n\n## Notable Projects\nA markdown table with columns: Project, Why it matters, Evidence, Source. Include 5-8 rows if evidence supports them. Project names should be repository or project names when available. Source must be a complete markdown link.\n\n## Signals To Watch\nBullets for trends, repeated themes, or suspicious hype that needs verification.\n\n## Sources\nList every non-YouTube source URL used as a complete markdown link. Include the current featured YouTube URL only in the Featured Video section.\n\n## Run Log\n- ${run_date} ${run_time}: Initial radar page created from web search, Brave LLM Context, YouTube search when available, and validated crawled sources. Stash: ${space_id}",
+      "llm_output_validation": {
+        "param": "content",
+        "min_length": 500,
+        "reject_patterns": [
+          "unable to create",
+          "no sources were provided",
+          "actual values",
+          "https://...",
+          "```",
+          "<!doctype",
+          "<html",
+          "<body",
+          "<pre"
+        ]
+      },
+      "required": true,
+      "description": "Create the radar page on first run"
+    },
+    {
+      "step": 10,
+      "tool": "canvas",
+      "action": "update",
+      "condition": {
+        "op": "exists",
+        "left": "${radar_page_id}"
+      },
+      "params": {
+        "page_id": "${radar_page_id}",
+        "allow_content_shrink": true
+      },
+      "llm_prompt": "Refresh the existing GitHub AI Radar Canvas page by producing the full replacement Markdown content. Do NOT output only a delta, patch, summary, or new section. Preserve useful prior context from the existing page, but make the page current and easy to scan with today's snapshot first.\n\nEXISTING PAGE CONTEXT TO PRESERVE COMPACTLY:\n${radar_existing_content}\n\nRUN:\n- Date: ${run_date}\n- Time: ${run_time}\n- Search query: ${radar_query}\n- YouTube query: ${youtube_query}\n- Stash space: ${space_id}\n\nYOUTUBE SEARCH RESULTS:\n- Result count: ${youtube_results_count}\n- Top URL: ${youtube_top_url}\n- Top results: ${youtube_top_results}\n\nWEB SEARCH RESULTS:\n${search_results.data}\n\nBRAVE LLM CONTEXT:\n- Grounding: ${brave_grounding}\n- Sources: ${brave_sources}\n\nVALIDATED CRAWLED SOURCES:\n${validated_articles}\n\nOutput raw Markdown only. Do not output HTML. Do not output <!DOCTYPE>, <html>, <head>, <body>, <pre>, or any other wrapper tags. Do not wrap the answer in ```markdown, ```html, or any code fence. Use actual values and complete URLs; do not output curly-brace variable placeholders and do not shorten links.\n\nRequired full-page structure:\n# GitHub AI Radar\n\nA one-paragraph purpose statement for this durable page.\n\n## Latest Snapshot - ${run_date}\nA concise summary of today's strongest signals and what changed since the retained previous snapshots.\n\n## Featured Video\nIf Top URL is a real YouTube URL, include the video title/channel/published date when available, then put exactly one YouTube watch URL on its own line so Canvas can embed the current feature. Do not include previous YouTube watch URLs anywhere else in the replacement page; summarize older videos as title text only if useful. If Top URL is none, omit this section entirely.\n\n## Notable Projects\nA markdown table with columns: Project, Why it matters, Evidence, Source. Include 5-8 rows if evidence supports them. Project names should be repository or project names when available. Source must be a complete markdown link.\n\n## Signals To Watch\nBullets for trends, repeated themes, or suspicious hype that needs verification.\n\n## Sources\nList every non-YouTube source URL used as a complete markdown link. Include the current featured YouTube URL only in the Featured Video section.\n\n## Previous Snapshots\nKeep up to 7 brief dated bullets from the existing page context, newest first, and do not duplicate today's snapshot.\n\n## Run Log\nKeep up to 10 latest run-log entries, newest first.\n- ${run_date} ${run_time}: Refreshed radar page with web search, Brave LLM Context, YouTube search when available, and validated crawled sources. Stash: ${space_id}",
+      "llm_output_validation": {
+        "param": "content",
+        "min_length": 700,
+        "reject_patterns": [
+          "unable to update",
+          "no sources were provided",
+          "actual values",
+          "https://...",
+          "```",
+          "<!doctype",
+          "<html",
+          "<body",
+          "<pre"
+        ],
+        "required_patterns": [
+          "# GitHub AI Radar",
+          "## Latest Snapshot",
+          "## Notable Projects",
+          "## Sources",
+          "## Run Log"
+        ]
+      },
+      "required": true,
+      "description": "Refresh the existing radar page as a full-page update"
+    }
+  ],
+
+  "success_speech": "GitHub AI Radar complete. I updated ${radar_title} with today's snapshot.",
+  "partial_speech": "GitHub AI Radar partially complete. I updated the Canvas page with the evidence available.",
+  "abort_speech": "I couldn't complete the GitHub AI Radar run."
+}

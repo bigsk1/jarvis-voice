@@ -124,6 +124,26 @@ class ToolExecutor:
         # Get tool schema for permission check
         tool_schema = self.registry.get_tool(tool_name)
         
+        if not tool_schema and tool_name.startswith("mcp_"):
+            try:
+                from tool_schema import get_tool_registry, reset_tool_registry
+
+                shared_registry = get_tool_registry(mode=self.mode)
+                shared_schema = shared_registry.get_tool(tool_name)
+                if not shared_schema:
+                    reset_tool_registry()
+                    shared_registry = get_tool_registry(mode=self.mode)
+                    shared_schema = shared_registry.get_tool(tool_name)
+                if shared_schema:
+                    self.registry = shared_registry
+                    tool_schema = shared_schema
+            except Exception as e:
+                if os.environ.get("MCP_DEBUG", "").lower() == "true":
+                    print(
+                        f"[MCP DEBUG] Shared registry recovery failed for {tool_name}: {e}",
+                        file=sys.stderr,
+                    )
+
         if not tool_schema:
             return {
                 "ok": False,

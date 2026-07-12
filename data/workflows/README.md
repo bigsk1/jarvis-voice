@@ -258,6 +258,7 @@ Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
 | `url_ingest.json` | `/url_ingest <url>` | Fetch any URL, create intel file, ingest to memory for RAG queries |
 | `memory_scan.json` | `/memory_scan` | Run memory_deduper against the active cloud/local memory DB and save a labeled report to stash + canvas |
 | `deep_dive.json` | `/deep_dive <topic or url>` | Screenshot + crawl + comprehensive canvas analysis with pros/cons, links |
+| `github_ai_radar_daily.json` | `/github_ai_radar` (also `/ai_radar`, `/ai-radar`) | Search for current GitHub AI project signals with Brave MCP, optionally feature a YouTube result, gather Brave LLM Context, and keep one current Canvas page refreshed |
 | `serpapi_search.json` | `/serpapi <query>` | Run SerpApi search, save `.txt` export to stash, create canvas summary report |
 
 ---
