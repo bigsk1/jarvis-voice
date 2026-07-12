@@ -33,6 +33,7 @@ docker run -d \
   --restart unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -e JARVIS_API="http://YOUR_JARVIS_IP:8880/api/alerts" \
+  -e JARVIS_API_KEY="YOUR_JARVIS_API_KEY" \
   -e SOURCE_NAME="my-server" \
   -e MONITOR_CONTAINERS="container1,container2" \
   bigsk1/jarvis-monitor:latest && \
@@ -61,6 +62,7 @@ docker run -d \
   --restart unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -e JARVIS_API="http://YOUR_JARVIS_IP:8880/api/alerts" \
+  -e JARVIS_API_KEY="YOUR_JARVIS_API_KEY" \
   -e SOURCE_NAME="my-server" \
   -e MONITOR_CONTAINERS="nginx,redis,postgres" \
   -e MONITOR_URLS="" \
@@ -390,6 +392,16 @@ volumes:
 3. Verify JARVIS_API environment variable is correct
 4. Check logs: `docker logs jarvis-monitor`
 
+### "Failed to send alert: HTTP 401"
+
+**Cause**: Jarvis API authentication is enabled, but the monitor request did not include a valid bearer token.
+
+**Fix**:
+1. Confirm the container has the key: `docker inspect jarvis-monitor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep JARVIS_API_KEY`
+2. If using Compose, make sure `JARVIS_API_KEY=...` is in `jarvis-monitor/.env`
+3. Recreate the container so env changes apply: `docker compose up -d --force-recreate`
+4. Check logs: `docker logs jarvis-monitor`
+
 ### "Failed to send alert: Read timed out"
 
 **Cause**: Jarvis API is slow to respond (usually during TTS playback)
@@ -459,6 +471,5 @@ Monitoring agent only uses:
 - CPU: <1%
 - RAM: ~30MB
 - Network: Minimal (only when sending alerts)
-
 
 

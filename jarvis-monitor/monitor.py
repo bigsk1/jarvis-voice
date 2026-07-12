@@ -19,7 +19,11 @@ import signal
 from datetime import datetime
 
 # Configuration from environment variables
-JARVIS_API = os.getenv("JARVIS_API", "http://localhost:8880/api/alerts")
+JARVIS_API = (
+    os.getenv("JARVIS_API")
+    or os.getenv("JARVIS_API_URL")
+    or "http://localhost:8880/api/alerts"
+)
 JARVIS_API_KEY = os.getenv("JARVIS_API_KEY", "")  # Optional: for auth-enabled Jarvis API
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "60"))
 MONITOR_CONTAINERS = [c.strip() for c in os.getenv("MONITOR_CONTAINERS", "").split(",") if c.strip()]
@@ -34,6 +38,20 @@ def _get_auth_headers() -> dict:
     if JARVIS_API_KEY:
         headers["Authorization"] = f"Bearer {JARVIS_API_KEY}"
     return headers
+
+
+def _response_detail(response: requests.Response) -> str:
+    """Return a short, log-safe response detail for failed API calls."""
+    try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            detail = payload.get("detail") or payload.get("error") or payload.get("message")
+            if detail:
+                return str(detail)
+            return str(payload)
+        return str(payload)
+    except ValueError:
+        return (response.text or "").strip()[:300]
 
 
 def parse_monitor_urls(env_value: str) -> list:
@@ -102,7 +120,23 @@ def send_alert(title, description, severity, auto_resolve_url=None, metadata=Non
     
     try:
         response = requests.post(JARVIS_API, json=payload, headers=_get_auth_headers(), timeout=ALERT_TIMEOUT)
+        if not response.ok:
+            detail = _response_detail(response)
+            print(
+                f"❌ Failed to send alert: HTTP {response.status_code}"
+                f"{f' - {detail}' if detail else ''}",
+                file=sys.stderr
+            )
+            if response.status_code in (401, 403) and not JARVIS_API_KEY:
+                print(
+                    "   Jarvis API auth is enabled, but JARVIS_API_KEY is not configured in this monitor container.",
+                    file=sys.stderr
+                )
+            return {"ok": False, "status_code": response.status_code, "error": detail}
         return response.json()
+    except ValueError as e:
+        print(f"❌ Failed to parse Jarvis API response: {e}", file=sys.stderr)
+        return None
     except requests.exceptions.RequestException as e:
         print(f"❌ Failed to send alert: {e}", file=sys.stderr)
         return None
@@ -119,6 +153,12 @@ def resolve_alerts_by_source(title_pattern: str):
             timeout=ALERT_TIMEOUT
         )
         if not response.ok:
+            detail = _response_detail(response)
+            print(
+                f"⚠️  Failed to list alerts for resolution: HTTP {response.status_code}"
+                f"{f' - {detail}' if detail else ''}",
+                file=sys.stderr
+            )
             return False
         
         alerts = response.json().get('alerts', [])
@@ -129,8 +169,16 @@ def resolve_alerts_by_source(title_pattern: str):
                 alert_id = alert['id']
                 # Resolve this alert
                 resolve_url = JARVIS_API.replace('/alerts', f'/alerts/{alert_id}/resolve')
-                requests.post(resolve_url, headers=_get_auth_headers(), timeout=ALERT_TIMEOUT)
-                return True
+                resolve_response = requests.post(resolve_url, headers=_get_auth_headers(), timeout=ALERT_TIMEOUT)
+                if resolve_response.ok:
+                    return True
+                detail = _response_detail(resolve_response)
+                print(
+                    f"⚠️  Failed to resolve alert {alert_id}: HTTP {resolve_response.status_code}"
+                    f"{f' - {detail}' if detail else ''}",
+                    file=sys.stderr
+                )
+                return False
         
         return False
     except requests.exceptions.RequestException as e:
@@ -306,4 +354,3 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ Fatal error: {e}", file=sys.stderr)
         sys.exit(1)
-

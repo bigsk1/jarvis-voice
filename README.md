@@ -725,7 +725,8 @@ Deploy the **[Jarvis Monitor](./jarvis-monitor/README.md)** (Docker) on remote s
 docker run -d \
   --name jarvis-monitor \
   --restart unless-stopped \
-  -e JARVIS_API_URL="http://your-jarvis-server:8880/api/alerts" \
+  -e JARVIS_API="http://your-jarvis-server:8880/api/alerts" \
+  -e JARVIS_API_KEY="your-api-key-if-JARVIS_API_AUTH-is-enabled" \
   -e MONITOR_URLS="MyApp|http://localhost:8080/health" \
   -e SOURCE_NAME="remote-server" \
   -e CHECK_INTERVAL=60 \
