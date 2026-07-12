@@ -53,12 +53,15 @@ class CreateAlertToolTests(unittest.TestCase):
 
         class FakeManager:
             def create_alert(self, **kwargs):
+                self.kwargs = kwargs
                 return -12
 
             def get_alert(self, alert_id):
                 return {"id": alert_id, "title": "Frost risk", "severity": "high", "source": "crop_frost_watch"}
 
-        with patch("skills.create_alert.AlertManager", return_value=FakeManager()), \
+        fake_manager = FakeManager()
+
+        with patch("skills.create_alert.AlertManager", return_value=fake_manager), \
              patch.object(sys, "argv", ["create_alert.py", json.dumps({
                  "title": "Frost risk",
                  "source": "crop_frost_watch"
@@ -70,6 +73,8 @@ class CreateAlertToolTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["data"]["alert_id"], 12)
         self.assertTrue(result["data"]["duplicate_suppressed"])
+        self.assertEqual(result["data"]["severity"], "high")
+        self.assertEqual(fake_manager.kwargs["severity"], "high")
 
 
 if __name__ == "__main__":

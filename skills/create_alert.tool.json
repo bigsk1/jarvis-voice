@@ -21,7 +21,7 @@
       "severity": {
         "type": "string",
         "enum": ["low", "medium", "high", "critical"],
-        "description": "Alert severity. Default: medium"
+        "description": "Alert severity. Default: high so alert-producing workflows speak immediately unless they explicitly choose low or medium."
       },
       "auto_resolve_url": {
         "type": "string",

@@ -313,6 +313,9 @@ def analyze_health(data, thresholds=None):
 
     summary_lines = [f"- {issue['severity'].upper()}: {issue['title']} - {issue['detail']}" for issue in issues]
     top_issue = issues[0] if issues else None
+    alert_severity = "high"
+    if issues and highest == "critical":
+        alert_severity = "critical"
 
     analysis = {
         "status": status,
@@ -322,6 +325,8 @@ def analyze_health(data, thresholds=None):
         "issue_summary": "\n".join(summary_lines) if summary_lines else "No threshold issues detected.",
         "alert_title": f"Jarvis self-check: {top_issue['title']}" if top_issue else "Jarvis self-check healthy",
         "alert_description": "\n".join(summary_lines[:8]) if summary_lines else "No threshold issues detected.",
+        "alert_severity": alert_severity,
+        "alert_dedupe_key": top_issue["dedupe_key"] if top_issue else "jarvis_self_check:healthy",
         "dedupe_key": top_issue["dedupe_key"] if top_issue else "jarvis_self_check:healthy",
         "hot_core_count": len(hot_cores),
         "hot_cores": hot_cores,
@@ -350,6 +355,8 @@ def get_health_check(args):
             "issue_summary": f"- CRITICAL: {issue['title']} - {issue['detail']}",
             "alert_title": "Jarvis self-check: System monitor unavailable",
             "alert_description": issue["detail"],
+            "alert_severity": "critical",
+            "alert_dedupe_key": issue["dedupe_key"],
             "dedupe_key": issue["dedupe_key"],
             "hot_core_count": 0,
             "hot_cores": [],

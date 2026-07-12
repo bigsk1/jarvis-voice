@@ -15,6 +15,7 @@
     "self_check_page_id": "",
     "issue_count": 0,
     "highest_severity": "none",
+    "alert_severity": "high",
     "health_status": "unknown",
     "issue_summary": "System health check has not run yet.",
     "alert_duplicate_suppressed": false,
@@ -60,7 +61,8 @@
         "health_summary_markdown": "summary_markdown",
         "alert_title": "alert_title",
         "alert_description": "alert_description",
-        "alert_dedupe_key": "dedupe_key",
+        "alert_severity": "alert_severity",
+        "alert_dedupe_key": "alert_dedupe_key",
         "hot_core_count": "hot_core_count",
         "suspicious_process_count": "suspicious_process_count",
         "top_process_name": "top_process.name",
@@ -107,11 +109,59 @@
     },
     {
       "step": 5,
+      "tool": "canvas",
+      "action": "read",
+      "params": {
+        "search": "${canvas_title}"
+      },
+      "output_var": "existing_canvas_page",
+      "extract": {
+        "self_check_page_id": "page_id",
+        "existing_canvas_content": "content"
+      },
+      "required": true,
+      "description": "Find the durable Jarvis System Health Canvas page"
+    },
+    {
+      "step": 6,
+      "tool": "canvas",
+      "action": "create",
+      "condition": {
+        "op": "not_exists",
+        "left": "${self_check_page_id}"
+      },
+      "params": {
+        "title": "${canvas_title}",
+        "tags": ["jarvis", "system", "health", "workflow"],
+        "pinned": false,
+        "content": "# Jarvis System Health\n\nLast checked: ${run_date} ${run_time}\n\n## Current Status\n\n${health_summary_markdown}\n\n## Active Issues\n\n${issue_summary}\n\n## Top CPU Process\n\n- Name: ${top_process_name}\n- CPU: ${top_process_cpu}%\n- Command: `${top_process_cmdline}`\n\n## Alert Policy\n\n- Alert condition: issue_count >= 1\n- Alert source: ${alert_source}\n- Alert severity if triggered: ${alert_severity}\n- Alert dedupe key: `${alert_dedupe_key}`\n- Alert title: ${alert_title}\n\n## Recent Workflow Logs\n\n${recent_workflow_logs}\n\n## Service Stats\n\n${service_stats}\n\n## Raw Health Snapshot\n\n```json\n${health_result}\n```\n\n## Run Log\n\n- ${run_date} ${run_time}: Created Jarvis system health page. Status ${health_status}, issues ${issue_count}."
+      },
+      "required": true,
+      "description": "Create the durable health page on first run"
+    },
+    {
+      "step": 7,
+      "tool": "canvas",
+      "action": "update",
+      "condition": {
+        "op": "exists",
+        "left": "${self_check_page_id}"
+      },
+      "params": {
+        "page_id": "${self_check_page_id}",
+        "allow_content_shrink": true,
+        "content": "# Jarvis System Health\n\nLast checked: ${run_date} ${run_time}\n\n## Current Status\n\n${health_summary_markdown}\n\n## Active Issues\n\n${issue_summary}\n\n## Top CPU Process\n\n- Name: ${top_process_name}\n- CPU: ${top_process_cpu}%\n- Command: `${top_process_cmdline}`\n\n## Alert Policy\n\n- Alert condition: issue_count >= 1\n- Alert source: ${alert_source}\n- Alert severity if triggered: ${alert_severity}\n- Alert dedupe key: `${alert_dedupe_key}`\n- Alert title: ${alert_title}\n\n## Recent Workflow Logs\n\n${recent_workflow_logs}\n\n## Service Stats\n\n${service_stats}\n\n## Raw Health Snapshot\n\n```json\n${health_result}\n```\n\n## Run Log\n\n- ${run_date} ${run_time}: Refreshed Jarvis system health page. Status ${health_status}, issues ${issue_count}."
+      },
+      "required": true,
+      "description": "Refresh the existing health page"
+    },
+    {
+      "step": 8,
       "tool": "create_alert",
       "params": {
         "title": "${alert_title}",
         "description": "${alert_description}",
-        "severity": "${highest_severity}",
+        "severity": "${alert_severity}",
         "source": "${alert_source}",
         "speak_immediately": true,
         "metadata": {
@@ -120,6 +170,7 @@
           "health_status": "${health_status}",
           "issue_count": "${issue_count}",
           "highest_severity": "${highest_severity}",
+          "alert_severity": "${alert_severity}",
           "canvas_title": "${canvas_title}"
         }
       },
@@ -135,60 +186,8 @@
       "extract": {
         "alert_duplicate_suppressed": "duplicate_suppressed"
       },
-      "required": false,
-      "on_fail": "continue",
-      "description": "Create a deduped alert when health issues are detected"
-    },
-    {
-      "step": 6,
-      "tool": "canvas",
-      "action": "read",
-      "params": {
-        "search": "${canvas_title}"
-      },
-      "output_var": "existing_canvas_page",
-      "extract": {
-        "self_check_page_id": "page_id",
-        "existing_canvas_content": "content"
-      },
-      "required": false,
-      "on_fail": "continue",
-      "description": "Find the durable Jarvis System Health Canvas page"
-    },
-    {
-      "step": 7,
-      "tool": "canvas",
-      "action": "create",
-      "condition": {
-        "op": "not_exists",
-        "left": "${self_check_page_id}"
-      },
-      "params": {
-        "title": "${canvas_title}",
-        "tags": ["jarvis", "system", "health", "workflow"],
-        "pinned": false,
-        "content": "# Jarvis System Health\n\nLast checked: ${run_date} ${run_time}\n\n## Current Status\n\n${health_summary_markdown}\n\n## Active Issues\n\n${issue_summary}\n\n## Top CPU Process\n\n- Name: ${top_process_name}\n- CPU: ${top_process_cpu}%\n- Command: `${top_process_cmdline}`\n\n## Alert Action\n\n- Alert status: ${alert_result_status}\n- Duplicate suppressed: ${alert_duplicate_suppressed}\n- Source: ${alert_source}\n\n## Recent Workflow Logs\n\n${recent_workflow_logs}\n\n## Service Stats\n\n${service_stats}\n\n## Raw Health Snapshot\n\n```text\n${health_result}\n```\n\n## Run Log\n\n- ${run_date} ${run_time}: Created Jarvis system health page. Status ${health_status}, issues ${issue_count}."
-      },
-      "required": false,
-      "on_fail": "continue",
-      "description": "Create the durable health page on first run"
-    },
-    {
-      "step": 8,
-      "tool": "canvas",
-      "action": "update",
-      "condition": {
-        "op": "exists",
-        "left": "${self_check_page_id}"
-      },
-      "params": {
-        "page_id": "${self_check_page_id}",
-        "allow_content_shrink": true,
-        "content": "# Jarvis System Health\n\nLast checked: ${run_date} ${run_time}\n\n## Current Status\n\n${health_summary_markdown}\n\n## Active Issues\n\n${issue_summary}\n\n## Top CPU Process\n\n- Name: ${top_process_name}\n- CPU: ${top_process_cpu}%\n- Command: `${top_process_cmdline}`\n\n## Alert Action\n\n- Alert status: ${alert_result_status}\n- Duplicate suppressed: ${alert_duplicate_suppressed}\n- Source: ${alert_source}\n\n## Recent Workflow Logs\n\n${recent_workflow_logs}\n\n## Service Stats\n\n${service_stats}\n\n## Raw Health Snapshot\n\n```text\n${health_result}\n```\n\n## Run Log\n\n- ${run_date} ${run_time}: Refreshed Jarvis system health page. Status ${health_status}, issues ${issue_count}."
-      },
-      "required": false,
-      "on_fail": "continue",
-      "description": "Refresh the existing health page"
+      "required": true,
+      "description": "Create a deduped alert after the health Canvas page is refreshed"
     }
   ],
   "success_speech": "Jarvis self-check complete. Status ${health_status} with ${issue_count} issue(s).",

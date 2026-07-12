@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "system_monitor",
-  "description": "Get comprehensive system monitoring information including CPU usage, memory stats, disk usage, running processes, network I/O, system uptime, and compact health issues. Use when user asks about system performance, resource usage, system health, 'how much RAM', 'CPU usage', 'disk space', 'what processes are running', 'network activity', 'how long has system been running', or needs system diagnostics. Use action='health_check' for scheduled/self-monitoring workflows because it returns issues[], issue_count, severity, and dedupe keys.",
+  "description": "Get comprehensive system monitoring information including CPU usage, memory stats, disk usage, running processes, network I/O, system uptime, and compact health issues. Use when user asks about system performance, resource usage, system health, 'how much RAM', 'CPU usage', 'disk space', 'what processes are running', 'network activity', 'how long has system been running', or needs system diagnostics. Use action='health_check' for scheduled/self-monitoring workflows because it returns issues[], issue_count, alert_title, alert_description, alert_severity, and alert_dedupe_key.",
   "script": "system_monitor.py",
   "parameters": {
     "type": "object",

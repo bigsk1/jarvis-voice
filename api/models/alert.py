@@ -20,7 +20,7 @@ class AlertCreate(BaseModel):
     """Model for creating a new alert"""
     title: str = Field(..., description="Alert title")
     description: str | None = Field(None, description="Detailed description")
-    severity: AlertSeverity = Field(AlertSeverity.MEDIUM, description="Alert severity level")
+    severity: AlertSeverity = Field(AlertSeverity.HIGH, description="Alert severity level")
     source: str = Field(..., description="Source system (e.g., uptime_kuma, coolify)")
     auto_resolve_url: str | None = Field(None, description="URL to check for auto-resolution")
     auto_resolve_check_interval: int = Field(300, description="Seconds between auto-resolve checks")

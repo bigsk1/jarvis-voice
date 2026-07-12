@@ -48,11 +48,13 @@ def test_analyze_health_flags_hot_core_and_runaway_process():
     assert health["status"] == "critical"
     assert health["issue_count"] == 2
     assert health["highest_severity"] == "high"
+    assert health["alert_severity"] == "high"
     assert health["hot_core_count"] == 1
     assert health["suspicious_process_count"] == 1
     assert "CPU core 2" in health["issue_summary"]
     assert "Process aplay" in health["issue_summary"]
     assert health["dedupe_key"] == "jarvis_self_check:cpu_core_hot:core_2"
+    assert health["alert_dedupe_key"] == "jarvis_self_check:cpu_core_hot:core_2"
 
 
 def test_analyze_health_all_clear():
@@ -69,6 +71,7 @@ def test_analyze_health_all_clear():
     assert health["status"] == "healthy"
     assert health["issue_count"] == 0
     assert health["issue_summary"] == "No threshold issues detected."
+    assert health["alert_severity"] == "high"
 
 
 def test_health_check_reports_monitor_unavailable_without_failing(monkeypatch):
@@ -80,4 +83,6 @@ def test_health_check_reports_monitor_unavailable_without_failing(monkeypatch):
     assert health["status"] == "critical"
     assert health["issue_count"] == 1
     assert health["highest_severity"] == "critical"
+    assert health["alert_severity"] == "critical"
     assert health["dedupe_key"] == "jarvis_self_check:monitor_unavailable:psutil"
+    assert health["alert_dedupe_key"] == "jarvis_self_check:monitor_unavailable:psutil"

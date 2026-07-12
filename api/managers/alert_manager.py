@@ -87,7 +87,7 @@ class AlertManager:
                      title: str,
                      source: str,
                      description: str | None = None,
-                     severity: str = "medium",
+                     severity: str = "high",
                      auto_resolve_url: str | None = None,
                      auto_resolve_check_interval: int = 300,
                      metadata: dict[str, Any] | None = None,

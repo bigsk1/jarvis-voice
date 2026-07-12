@@ -7,7 +7,7 @@ Input: {
   "title": "Alert title",
   "source": "source_system",
   "description": "Optional details",
-  "severity": "low|medium|high|critical",
+  "severity": "low|medium|high|critical (default: high)",
   "auto_resolve_url": "Optional URL to check for recovery",
   "auto_resolve_check_interval": 300,
   "metadata": {"key": "value"},
@@ -43,7 +43,7 @@ def main():
         title = (args.get("title") or "").strip()
         source = (args.get("source") or "").strip()
         description = args.get("description")
-        severity = (args.get("severity") or "medium").strip().lower()
+        severity = (args.get("severity") or "high").strip().lower()
         auto_resolve_url = args.get("auto_resolve_url")
         auto_resolve_check_interval = int(args.get("auto_resolve_check_interval", 300))
         metadata = args.get("metadata")

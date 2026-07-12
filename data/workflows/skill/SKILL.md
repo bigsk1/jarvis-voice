@@ -30,7 +30,8 @@ Use this repo-tracked skill when a future agent needs to create or repair a Jarv
    - Use `action: update` only for full-page replacement.
    - If an intentional update may shrink content, set `allow_content_shrink: true` and require full-page headings with `required_patterns`.
    - In Canvas prompts, require raw Markdown only and reject HTML wrappers, code fences, placeholders, and truncated URLs.
-8. Keep scheduled-task workflows idempotent: repeated runs should update a durable target, append a bounded log, or create clearly dated artifacts.
+8. For alertable workflows, prefer tools that return `alert_title`, `alert_description`, `alert_severity`, and `alert_dedupe_key`, then wire those fields into a normal `create_alert` workflow step. Default alert severity is `high`; explicitly set `low` or `medium` only when the alert should not speak immediately.
+9. Keep scheduled-task workflows idempotent: repeated runs should update a durable target, append a bounded log, or create clearly dated artifacts.
 
 ## Validation
 
