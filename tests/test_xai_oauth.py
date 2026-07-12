@@ -2,8 +2,10 @@
 """Regression coverage for Grok CLI OAuth authentication."""
 
 from datetime import datetime, timezone
+import errno
 import json
 import os
+import pty
 from pathlib import Path
 import subprocess
 import sys
@@ -156,6 +158,30 @@ def test_parse_oauth_usage_output_supports_tui_compact_text():
         "weekly_limit_percent": 0.0,
         "next_reset": "July 13, 03:58 PT",
     }
+
+
+def test_oauth_usage_closes_slave_pty_when_popen_fails():
+    fds = {}
+    real_openpty = pty.openpty
+
+    def openpty():
+        master_fd, slave_fd = real_openpty()
+        fds["master_fd"] = master_fd
+        fds["slave_fd"] = slave_fd
+        return master_fd, slave_fd
+
+    xai_oauth._USAGE_CACHE = None
+    with (
+        patch.object(xai_oauth.pty, "openpty", side_effect=openpty),
+        patch.object(xai_oauth.subprocess, "Popen", side_effect=FileNotFoundError("missing grok")),
+    ):
+        with pytest.raises(xai_oauth.XaiOAuthError, match="Could not read Grok OAuth usage"):
+            xai_oauth.get_xai_oauth_usage("/missing/grok", use_cache=False)
+
+    for fd_name in ("master_fd", "slave_fd"):
+        with pytest.raises(OSError) as exc_info:
+            os.fstat(fds[fd_name])
+        assert exc_info.value.errno == errno.EBADF
 
 
 def test_operator_can_allow_new_advertised_chat_model_without_code_change():

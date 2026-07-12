@@ -400,6 +400,7 @@ def get_xai_oauth_usage(
     env.setdefault("TERM", "xterm-256color")
 
     master_fd: int | None = None
+    slave_fd: int | None = None
     process: subprocess.Popen[bytes] | None = None
     chunks: list[bytes] = []
     try:
@@ -414,6 +415,7 @@ def get_xai_oauth_usage(
             env=env,
         )
         os.close(slave_fd)
+        slave_fd = None
 
         start = time.monotonic()
         sent_usage = False
@@ -455,6 +457,11 @@ def get_xai_oauth_usage(
     except (OSError, subprocess.SubprocessError) as exc:
         raise XaiOAuthError("Could not read Grok OAuth usage from the CLI") from exc
     finally:
+        if slave_fd is not None:
+            try:
+                os.close(slave_fd)
+            except OSError:
+                pass
         if master_fd is not None:
             try:
                 os.close(master_fd)

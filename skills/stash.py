@@ -16,6 +16,7 @@ import json
 import base64
 import re
 import subprocess
+from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -28,6 +29,22 @@ from stash_helper import (
 
 # Tool locations for calling other tools
 SKILLS_DIR = os.path.dirname(__file__)
+
+
+def _allowed_file_source_prefixes() -> tuple[Path, ...]:
+    """Resolved roots allowed for kind='file' stash saves."""
+    return (
+        Path('/tmp').resolve(),
+        Path(__file__).resolve().parent.parent,
+    )
+
+
+def _path_is_under_prefix(path: Path, prefix: Path) -> bool:
+    try:
+        path.relative_to(prefix)
+        return True
+    except ValueError:
+        return False
 
 
 def call_tool(tool_name: str, args: dict = None, timeout: int = 60) -> dict:
@@ -244,7 +261,6 @@ def action_save(args: dict) -> dict:
         if not file_path:
             raise ValueError("file_path is required for kind='file'")
         
-        from pathlib import Path
         src_path = Path(file_path).expanduser().resolve()
         
         if not src_path.exists():
@@ -252,9 +268,11 @@ def action_save(args: dict) -> dict:
 
         assert_not_restricted_read_path(src_path, label="Source file")
         
-        # Security: only allow files from /tmp or project directories
-        allowed_prefixes = ['/tmp', str(Path(__file__).parent.parent)]
-        if not any(str(src_path).startswith(prefix) for prefix in allowed_prefixes):
+        # Security: only allow files from /tmp or project directories.
+        if not any(
+            _path_is_under_prefix(src_path, prefix)
+            for prefix in _allowed_file_source_prefixes()
+        ):
             raise ValueError(f"File path not allowed: {file_path}")
         
         # Read file and save as binary
