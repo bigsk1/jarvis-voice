@@ -62,3 +62,19 @@ def test_personal_workflow_overrides_shared_workflow_id(tmp_path):
     assert workflow["triggers"]["explicit"] == ["/my_private_radar"]
     assert workflow["steps"][0]["tool"] == "canvas"
     assert loader.match("/my_private_radar")["id"] == "github_ai_radar_daily"
+
+
+def test_workflow_loader_ignores_skill_folder(tmp_path):
+    _write_workflow(tmp_path / "shared.json", "shared_workflow", "/shared")
+    skill_dir = tmp_path / "skill"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: workflow-builder\ndescription: Workflow helper\n---\n"
+    )
+    _write_workflow(skill_dir / "sneaky.json", "should_not_load", "/sneaky")
+
+    loader = WorkflowLoader(str(tmp_path), explicit_only=True)
+
+    assert set(loader.workflows) == {"shared_workflow"}
+    assert loader.get_workflow("should_not_load") is None
+    assert loader.match("/sneaky") is None
