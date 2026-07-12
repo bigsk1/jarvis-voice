@@ -116,7 +116,8 @@ def _run_workflow_task(mode: str, workflow_id: str, query: str | None = None) ->
         tool_executor = ToolExecutor(mode=mode, registry=registry)
         executor = PipelineExecutor(mode, tool_executor)
 
-        transcript = query or workflow.get("triggers", {}).get("explicit", [f"/{workflow['id']}"])[0]
+        trigger = workflow.get("triggers", {}).get("explicit", [f"/{workflow['id']}"])[0]
+        transcript = f"{trigger} {query.strip()}" if query and query.strip() else trigger
         return executor.execute(workflow, transcript)
 
 

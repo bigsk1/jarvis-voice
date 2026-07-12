@@ -131,6 +131,8 @@ class ScheduledTaskManager:
             workflow_id = self._resolve_workflow_id(workflow_id)
 
         payload = {"query": query} if task_type == 'query' else {"workflow_id": workflow_id}
+        if task_type == 'workflow' and query:
+            payload["query"] = query
         payload["when_original"] = when
         payload["schedule_summary"] = schedule["summary"]
 
@@ -229,7 +231,7 @@ class ScheduledTaskManager:
             fields['timezone'] = timezone_name
 
         task_payload = json.loads(existing['task_payload'] or "{}")
-        if existing['task_type'] == 'query' and updates.get('query') is not None:
+        if existing['task_type'] in {'query', 'workflow'} and updates.get('query') is not None:
             task_payload['query'] = updates['query']
         if existing['task_type'] == 'workflow' and updates.get('workflow_id') is not None:
             resolved_workflow_id = self._resolve_workflow_id(updates['workflow_id'])

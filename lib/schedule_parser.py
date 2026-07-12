@@ -200,6 +200,15 @@ def parse_schedule_expression(when: str, tz_name: str | None = None, default_hou
     tz = get_app_timezone() if not tz_name else get_timezone_by_name(tz_name)
     now = datetime.now(tz)
 
+    if text in {"now", "right now", "immediately", "asap"}:
+        run_at_utc = format_utc_db(now)
+        return {
+            "schedule_type": "once",
+            "schedule_expr": {"run_at_utc": run_at_utc},
+            "next_run_at": run_at_utc,
+            "summary": "Once immediately",
+        }
+
     weekday_match = re.search(r"every\s+weekday(?:\s+at\s+(.+))?$", text)
     if weekday_match:
         hour, minute = extract_time_from_expression(text, default_hour)

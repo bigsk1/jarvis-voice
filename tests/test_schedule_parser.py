@@ -31,6 +31,13 @@ class ScheduleParserTests(unittest.TestCase):
         self.assertEqual(result["schedule_type"], "daily")
         self.assertEqual(result["summary"], "Every day at 9:00 AM")
 
+    def test_now_parses_as_immediate_one_shot(self):
+        result = parse_schedule_expression("now", tz_name="America/Los_Angeles")
+
+        self.assertEqual(result["schedule_type"], "once")
+        self.assertEqual(result["summary"], "Once immediately")
+        self.assertEqual(result["next_run_at"], result["schedule_expr"]["run_at_utc"])
+
 
 if __name__ == "__main__":
     unittest.main()

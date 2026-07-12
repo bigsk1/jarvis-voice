@@ -325,16 +325,24 @@
               </select>
             </div>
             <div class="form-group" id="scheduledTaskQueryGroup">
-              <label class="form-label" for="scheduledTaskQuery">Query *</label>
+              <label class="form-label" for="scheduledTaskQuery" id="scheduledTaskQueryLabel">Query *</label>
               <textarea class="form-input" id="scheduledTaskQuery" rows="4" placeholder="e.g., get bitcoin and solana price and email boss"></textarea>
             </div>
             <div class="form-group" id="scheduledTaskWorkflowGroup" style="display: none;">
               <label class="form-label" for="scheduledTaskWorkflowId">Workflow ID *</label>
-              <input type="text" class="form-input" id="scheduledTaskWorkflowId" placeholder="e.g., daily_status">
+              <select class="form-input" id="scheduledTaskWorkflowId">
+                <option value="">Loading workflows...</option>
+              </select>
+              <div class="detail-panel" id="scheduledTaskWorkflowDetails" style="display: none; margin-top: var(--space-sm);"></div>
             </div>
             <div class="form-group">
               <label class="form-label" for="scheduledTaskWhen">Schedule *</label>
               <input type="text" class="form-input" id="scheduledTaskWhen" placeholder="e.g., tomorrow at 1pm, every weekday at 9am, every 6 hours" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="scheduledTaskDateTime">Exact Date/Time</label>
+              <input type="datetime-local" class="form-input" id="scheduledTaskDateTime">
+              <div class="form-help">Optional helper for one-time schedules. Picking a value fills the Schedule field; recurring schedules can still use text.</div>
             </div>
             <div class="form-row">
               <div class="form-group">

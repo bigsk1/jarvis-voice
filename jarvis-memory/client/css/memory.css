@@ -926,6 +926,37 @@ body {
   color: var(--text-muted);
 }
 
+.detail-panel {
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  padding: var(--space-sm) var(--space-md);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.workflow-detail-title {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.workflow-detail-desc,
+.workflow-detail-muted {
+  margin-bottom: var(--space-xs);
+  line-height: 1.45;
+}
+
+.workflow-detail-grid {
+  display: grid;
+  gap: 4px;
+  line-height: 1.45;
+}
+
+.workflow-detail-grid code {
+  color: var(--accent-primary);
+}
+
 .view-toggle {
   display: inline-flex;
   align-items: center;

@@ -47,7 +47,8 @@ async def create_scheduled_task(task: ScheduledTaskCreate):
             message=f"Scheduled task created (ID: {task_id})"
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        status_code = 400 if isinstance(e, ValueError) else 500
+        raise HTTPException(status_code=status_code, detail=str(e))
 
 
 @router.get("", response_model=ScheduledTaskResponse)
@@ -90,7 +91,8 @@ async def update_scheduled_task(task_id: int, updates: ScheduledTaskUpdate):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        status_code = 400 if isinstance(e, ValueError) else 500
+        raise HTTPException(status_code=status_code, detail=str(e))
 
 
 @router.delete("/{task_id}", response_model=ScheduledTaskResponse)

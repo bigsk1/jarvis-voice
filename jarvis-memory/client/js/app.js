@@ -12,6 +12,8 @@ let intelFiles = [];
 let reminders = [];
 let alerts = [];
 let scheduledTasks = [];
+let scheduledTaskWorkflows = [];
+let scheduledTaskWorkflowsLoaded = false;
 let searchQuery = '';
 let editingMemory = null;
 let editingFile = null;
@@ -155,6 +157,8 @@ function setupEventListeners() {
   document.getElementById('intelEditorRenderedBtn')?.addEventListener('click', () => setIntelEditorView('rendered'));
   document.getElementById('scheduledTaskForm').addEventListener('submit', handleScheduledTaskSubmit);
   document.getElementById('scheduledTaskType')?.addEventListener('change', handleScheduledTaskTypeChange);
+  document.getElementById('scheduledTaskWorkflowId')?.addEventListener('change', updateScheduledTaskWorkflowDetails);
+  document.getElementById('scheduledTaskDateTime')?.addEventListener('change', syncScheduledTaskWhenFromDateTime);
   document.getElementById('scheduledStatusFilter')?.addEventListener('change', (e) => {
     scheduledStatusFilter = e.target.value;
     renderScheduledTasks();
@@ -1609,7 +1613,99 @@ async function cancelAlert(id) {
   }
 }
 
-function openScheduledTaskModal(task = null) {
+async function loadScheduledTaskWorkflows(force = false) {
+  if (scheduledTaskWorkflowsLoaded && !force) {
+    return scheduledTaskWorkflows;
+  }
+
+  const result = await api.listScheduledTaskWorkflows();
+  scheduledTaskWorkflows = result.workflows || [];
+  scheduledTaskWorkflowsLoaded = true;
+  return scheduledTaskWorkflows;
+}
+
+function formatWorkflowOptionLabel(workflow) {
+  const name = workflow.name || workflow.id;
+  return name === workflow.id ? workflow.id : `${name} (${workflow.id})`;
+}
+
+function renderScheduledTaskWorkflowOptions(selectedId = '') {
+  const select = document.getElementById('scheduledTaskWorkflowId');
+  if (!select) return;
+
+  const workflows = scheduledTaskWorkflows || [];
+  const selectedKnown = workflows.some(workflow => workflow.id === selectedId);
+  const options = [
+    '<option value="">Select a workflow...</option>',
+    ...workflows.map(workflow => {
+      const triggers = (workflow.triggers || []).join(', ');
+      const title = [workflow.description, triggers ? `Triggers: ${triggers}` : null]
+        .filter(Boolean)
+        .join(' | ');
+      return `<option value="${escapeHtml(workflow.id)}" title="${escapeHtml(title)}">${escapeHtml(formatWorkflowOptionLabel(workflow))}</option>`;
+    })
+  ];
+
+  if (selectedId && !selectedKnown) {
+    options.push(`<option value="${escapeHtml(selectedId)}">${escapeHtml(selectedId)} (not currently loaded)</option>`);
+  }
+  if (!workflows.length && !selectedId) {
+    options[0] = '<option value="">No workflows loaded</option>';
+  }
+
+  select.innerHTML = options.join('');
+  select.value = selectedId;
+  updateScheduledTaskWorkflowDetails();
+}
+
+function updateScheduledTaskWorkflowDetails() {
+  const select = document.getElementById('scheduledTaskWorkflowId');
+  const details = document.getElementById('scheduledTaskWorkflowDetails');
+  if (!select || !details) return;
+
+  const workflowId = select.value;
+  const workflow = (scheduledTaskWorkflows || []).find(item => item.id === workflowId);
+  const queryLabel = document.getElementById('scheduledTaskQueryLabel');
+  const queryInput = document.getElementById('scheduledTaskQuery');
+  const isWorkflowTask = document.getElementById('scheduledTaskType')?.value === 'workflow';
+  if (isWorkflowTask && queryLabel && queryInput) {
+    queryLabel.textContent = workflow?.requires_input ? 'Workflow Input *' : 'Workflow Input';
+    const inputNames = (workflow?.input_fields || []).map(field => field.name).join(', ');
+    queryInput.placeholder = inputNames
+      ? `Provide ${inputNames}, such as a URL, topic, host, or note text`
+      : 'Optional URL, topic, host, or parameters for the workflow';
+  }
+  if (!workflow) {
+    details.style.display = workflowId ? 'block' : 'none';
+    details.innerHTML = workflowId
+      ? `<div class="workflow-detail-title">${escapeHtml(workflowId)}</div><div class="workflow-detail-muted">This workflow is not currently loaded from data/workflows or data/workflows/personal.</div>`
+      : '';
+    return;
+  }
+
+  const triggers = (workflow.triggers || []).join(', ') || workflow.trigger || `/${workflow.id}`;
+  const tools = (workflow.tools_used || []).slice(0, 10).join(', ') || 'No tools listed';
+  const inputFields = workflow.input_fields || [];
+  const inputSummary = inputFields.length
+    ? inputFields.map(field => {
+      const label = field.extract ? `${field.name} (${field.extract})` : field.name;
+      return field.required ? `${label} required` : `${label} optional`;
+    }).join(', ')
+    : 'None';
+  details.style.display = 'block';
+  details.innerHTML = `
+    <div class="workflow-detail-title">${escapeHtml(workflow.name || workflow.id)}</div>
+    ${workflow.description ? `<div class="workflow-detail-desc">${escapeHtml(workflow.description)}</div>` : ''}
+    <div class="workflow-detail-grid">
+      <div><strong>ID:</strong> <code>${escapeHtml(workflow.id)}</code></div>
+      <div><strong>Trigger:</strong> <code>${escapeHtml(triggers)}</code></div>
+      <div><strong>Input:</strong> ${escapeHtml(inputSummary)}</div>
+      <div><strong>Tools:</strong> ${escapeHtml(tools)}</div>
+    </div>
+  `;
+}
+
+async function openScheduledTaskModal(task = null) {
   editingScheduledTask = task;
 
   const modal = document.getElementById('scheduledTaskModal');
@@ -1617,14 +1713,16 @@ function openScheduledTaskModal(task = null) {
   const payload = parseJsonSafe(task?.task_payload) || {};
   const metadata = parseJsonSafe(task?.metadata) || {};
   const notifications = metadata.notifications || {};
+  const selectedWorkflowId = task?.task_target || payload.workflow_id || '';
 
   title.textContent = task ? 'Edit Scheduled Task' : 'Add Scheduled Task';
 
   document.getElementById('scheduledTaskName').value = task?.name || '';
   document.getElementById('scheduledTaskType').value = task?.task_type || 'query';
   document.getElementById('scheduledTaskQuery').value = payload.query || '';
-  document.getElementById('scheduledTaskWorkflowId').value = task?.task_target || payload.workflow_id || '';
+  renderScheduledTaskWorkflowOptions(selectedWorkflowId);
   document.getElementById('scheduledTaskWhen').value = payload.when_original || '';
+  document.getElementById('scheduledTaskDateTime').value = '';
   document.getElementById('scheduledTaskTimezone').value = task?.timezone || DEFAULT_TIMEZONE;
   document.getElementById('scheduledTaskExecutionMode').value = task?.mode || api.mode || 'cloud';
   document.getElementById('scheduledTaskMaxRetries').value = task?.max_retries ?? 1;
@@ -1640,13 +1738,50 @@ function openScheduledTaskModal(task = null) {
   document.getElementById('scheduledTaskWebhookOnFailure').checked = !!notifications.webhook_on_failure;
 
   handleScheduledTaskTypeChange();
+  try {
+    await loadScheduledTaskWorkflows(true);
+    renderScheduledTaskWorkflowOptions(selectedWorkflowId);
+  } catch (error) {
+    scheduledTaskWorkflows = [];
+    scheduledTaskWorkflowsLoaded = false;
+    renderScheduledTaskWorkflowOptions(selectedWorkflowId);
+    showToast(`Could not load workflows: ${error.message}`, 'error');
+  }
   showModal(modal);
 }
 
 function handleScheduledTaskTypeChange() {
   const type = document.getElementById('scheduledTaskType').value;
-  document.getElementById('scheduledTaskQueryGroup').style.display = type === 'query' ? 'block' : 'none';
+  const queryLabel = document.getElementById('scheduledTaskQueryLabel');
+  const queryInput = document.getElementById('scheduledTaskQuery');
+  document.getElementById('scheduledTaskQueryGroup').style.display = 'block';
   document.getElementById('scheduledTaskWorkflowGroup').style.display = type === 'workflow' ? 'block' : 'none';
+  if (type === 'workflow') {
+    queryLabel.textContent = 'Workflow Input';
+    queryInput.placeholder = 'Optional URL, topic, host, or parameters for the workflow';
+    updateScheduledTaskWorkflowDetails();
+  } else {
+    queryLabel.textContent = 'Query *';
+    queryInput.placeholder = 'e.g., get bitcoin and solana price and email boss';
+  }
+}
+
+function syncScheduledTaskWhenFromDateTime() {
+  const dateTimeValue = document.getElementById('scheduledTaskDateTime')?.value;
+  const scheduleInput = document.getElementById('scheduledTaskWhen');
+  if (!dateTimeValue || !scheduleInput) return;
+
+  const local = new Date(dateTimeValue);
+  if (Number.isNaN(local.getTime())) return;
+
+  const month = local.getMonth() + 1;
+  const day = local.getDate();
+  const year = local.getFullYear();
+  let hour = local.getHours();
+  const minute = String(local.getMinutes()).padStart(2, '0');
+  const meridiem = hour >= 12 ? 'pm' : 'am';
+  hour = hour % 12 || 12;
+  scheduleInput.value = `${month}/${day}/${year} at ${hour}:${minute}${meridiem}`;
 }
 
 async function handleScheduledTaskSubmit(e) {
@@ -1690,6 +1825,13 @@ async function handleScheduledTaskSubmit(e) {
   if (taskType === 'workflow' && !data.workflow_id) {
     showToast('Workflow ID is required for workflow tasks', 'error');
     return;
+  }
+  if (taskType === 'workflow') {
+    const workflow = (scheduledTaskWorkflows || []).find(item => item.id === data.workflow_id);
+    if (workflow?.requires_input && !data.query) {
+      showToast('Workflow input is required for this workflow', 'error');
+      return;
+    }
   }
   if ((notifications.email_on_success || notifications.email_on_failure) && !notifications.contact_name) {
     showToast('Enter an email contact name when email notifications are enabled', 'error');

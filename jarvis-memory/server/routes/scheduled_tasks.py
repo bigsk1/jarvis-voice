@@ -8,8 +8,10 @@ import sys
 
 JARVIS_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(JARVIS_ROOT))
+sys.path.insert(0, str(JARVIS_ROOT / 'orchestrator'))
 
 from api.managers.scheduled_task_manager import ScheduledTaskManager
+from workflow_loader import WorkflowLoader
 
 
 scheduled_tasks_bp = Blueprint('scheduled_tasks', __name__, url_prefix='/api/scheduled-tasks')
@@ -22,6 +24,51 @@ def get_mode() -> str:
 
 def get_manager() -> ScheduledTaskManager:
     return ScheduledTaskManager(mode=get_mode())
+
+
+def _workflow_info(workflow: dict, workflow_id: str) -> dict:
+    triggers = workflow.get('triggers', {}).get('explicit', [])
+    tools_used = []
+    for step in workflow.get('steps', []):
+        tool = step.get('tool')
+        if tool and tool not in tools_used:
+            tools_used.append(tool)
+    input_fields = []
+    variables = workflow.get('variables') or {}
+    for name, config in variables.items():
+        if isinstance(config, dict) and config.get('from') == 'query':
+            input_fields.append({
+                'name': name,
+                'extract': config.get('extract'),
+                'required': 'default' not in config,
+            })
+
+    return {
+        'id': workflow_id,
+        'name': workflow.get('name') or workflow_id,
+        'description': workflow.get('description'),
+        'trigger': triggers[0] if triggers else f'/{workflow_id}',
+        'triggers': triggers if triggers else [f'/{workflow_id}'],
+        'version': workflow.get('version'),
+        'input_fields': input_fields,
+        'requires_input': any(field['required'] for field in input_fields),
+        'tools_used': tools_used,
+    }
+
+
+@scheduled_tasks_bp.route('/workflows', methods=['GET'])
+def list_available_workflows():
+    loader = WorkflowLoader(explicit_only=True)
+    workflows = [
+        _workflow_info(workflow, workflow_id)
+        for workflow_id, workflow in loader.workflows.items()
+    ]
+    workflows.sort(key=lambda item: (item.get('name') or item['id']).lower())
+    return jsonify({
+        'ok': True,
+        'count': len(workflows),
+        'workflows': workflows
+    })
 
 
 @scheduled_tasks_bp.route('', methods=['GET'])
@@ -66,20 +113,23 @@ def create_scheduled_task():
     if task_type == 'workflow' and not (data.get('workflow_id') or '').strip():
         return jsonify({'ok': False, 'error': 'workflow_id is required for workflow tasks'}), 400
 
-    task_id = manager.create_task(
-        name=name,
-        task_type=task_type,
-        query=(data.get('query') or '').strip() or None,
-        workflow_id=(data.get('workflow_id') or '').strip() or None,
-        when=when,
-        timezone_name=(data.get('timezone') or '').strip() or None,
-        mode=(data.get('execution_mode') or get_mode()),
-        enabled=bool(data.get('enabled', True)),
-        allow_overlap=bool(data.get('allow_overlap', False)),
-        max_retries=int(data.get('max_retries', 1)),
-        timeout_seconds=int(data.get('timeout_seconds', 300)),
-        metadata=data.get('metadata'),
-    )
+    try:
+        task_id = manager.create_task(
+            name=name,
+            task_type=task_type,
+            query=(data.get('query') or '').strip() or None,
+            workflow_id=(data.get('workflow_id') or '').strip() or None,
+            when=when,
+            timezone_name=(data.get('timezone') or '').strip() or None,
+            mode=(data.get('execution_mode') or get_mode()),
+            enabled=bool(data.get('enabled', True)),
+            allow_overlap=bool(data.get('allow_overlap', False)),
+            max_retries=int(data.get('max_retries', 1)),
+            timeout_seconds=int(data.get('timeout_seconds', 300)),
+            metadata=data.get('metadata'),
+        )
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
     task = manager.get_task(task_id)
     return jsonify({
         'ok': True,
@@ -122,7 +172,10 @@ def update_scheduled_task(task_id: int):
     if 'metadata' in data:
         updates['metadata'] = data.get('metadata')
 
-    ok = manager.update_task(task_id, **updates)
+    try:
+        ok = manager.update_task(task_id, **updates)
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
     task = manager.get_task(task_id)
     return jsonify({
         'ok': ok,

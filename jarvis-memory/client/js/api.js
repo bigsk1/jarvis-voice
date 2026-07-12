@@ -280,6 +280,10 @@ class MemoryAPI {
     return this.fetch(`/api/scheduled-tasks${query ? '?' + query : ''}`);
   }
 
+  async listScheduledTaskWorkflows() {
+    return this.fetch('/api/scheduled-tasks/workflows');
+  }
+
   async getScheduledTask(id) {
     return this.fetch(`/api/scheduled-tasks/${id}`);
   }
