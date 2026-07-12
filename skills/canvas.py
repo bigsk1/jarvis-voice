@@ -462,6 +462,7 @@ def update_page(page_id: str, title: str = None, content: str = None,
     if title is not None:
         data['title'] = title
     if content is not None:
+        content = content.replace('\\n', '\n')
         content = _embed_image_markdown(content, image_url=image_url, image_alt=image_alt)
         content = _unwrap_outer_markdown_fence(content)
         content = _normalize_bare_urls_in_sources_sections(content)

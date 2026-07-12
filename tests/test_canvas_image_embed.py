@@ -8,7 +8,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import skills.canvas as canvas_module  # noqa: E402
-from skills.canvas import _embed_image_markdown, create_page  # noqa: E402
+from skills.canvas import _embed_image_markdown, create_page, update_page  # noqa: E402
 
 
 def test_embed_image_markdown_prepends_image():
@@ -192,3 +192,32 @@ def test_create_page_rejects_empty_content_before_api_call(monkeypatch):
     assert result["ok"] is False
     assert "requires content or an image" in result["error"]
     assert calls == []
+
+
+def test_update_page_normalizes_literal_newline_escapes(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(canvas_module, "check_canvas_health", lambda: True)
+    monkeypatch.setattr(canvas_module, "save_to_memory", lambda page: None)
+
+    def fake_api(method, endpoint, data=None):
+        calls.append((method, endpoint, data))
+        return {
+            "id": "page_existing",
+            "title": "Research",
+            "content": data["content"],
+            "tags": [],
+        }
+
+    monkeypatch.setattr(canvas_module, "api_request", fake_api)
+
+    result = update_page("page_existing", content="Line 1\\nLine 2")
+
+    assert result["ok"] is True
+    assert calls == [
+        (
+            "PUT",
+            "/pages/page_existing",
+            {"content": "Line 1\nLine 2"},
+        )
+    ]
