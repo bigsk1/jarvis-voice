@@ -57,3 +57,8 @@ Use `data/workflows/skill/skill.py` for deterministic checks:
 - `validate <workflow.json>` checks common workflow shape mistakes.
 - `template --id <id> --trigger /cmd` prints a minimal workflow JSON starter.
 - `check-loader-scope` proves this `skill/` folder is ignored by workflow discovery.
+
+## Related Docs
+
+- [data/workflows/AGENTS.md](../AGENTS.md)
+- [data/workflows/README.md](../README.md)
