@@ -243,3 +243,48 @@ def test_tool_add_update_remove_persist_through_shared_storage(monkeypatch, tmp_
     price_alert.remove_alert(updated, "BTC")
     removed = price_alert_config.load_price_alert_config()
     assert removed["watchlist"]["crypto"] == []
+
+
+def test_percent_change_update_refreshes_message_and_uses_percent_format(monkeypatch, tmp_path):
+    _set_paths(monkeypatch, tmp_path)
+    price_alert_config.save_price_alert_config({
+        "watchlist": {
+            "crypto": [
+                {
+                    "symbol": "BTC",
+                    "enabled": True,
+                    "conditions": [
+                        {
+                            "type": "percent_change_24h",
+                            "value": 5,
+                            "message": "BTC moved 5%",
+                        }
+                    ],
+                }
+            ],
+            "stocks": [],
+        }
+    })
+
+    config = price_alert_config.load_price_alert_config()
+    speech = price_alert.update_alert(config, "BTC", "percent_change_24h", 10.5)
+    updated = price_alert_config.load_price_alert_config()
+    condition = updated["watchlist"]["crypto"][0]["conditions"][0]
+
+    assert speech == "Updated BTC percent_change_24h alert: 5% → 10.5%"
+    assert condition["value"] == 10.5
+    assert condition["message"] == "BTC moved 10.5%"
+
+
+def test_percent_change_add_uses_percent_message_and_speech(monkeypatch, tmp_path):
+    _set_paths(monkeypatch, tmp_path)
+    price_alert_config.save_price_alert_config({"watchlist": {}})
+
+    config = price_alert_config.load_price_alert_config()
+    speech = price_alert.add_alert(config, "BTC", "percent_change_24h", 5.5)
+    saved = price_alert_config.load_price_alert_config()
+    condition = saved["watchlist"]["crypto"][0]["conditions"][0]
+
+    assert speech == "Added alert: BTC 5.5% move"
+    assert condition["value"] == 5.5
+    assert condition["message"] == "BTC moved 5.5%"

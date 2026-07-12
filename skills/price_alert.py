@@ -76,6 +76,38 @@ def is_crypto(symbol: str) -> bool:
     crypto_symbols = ["BTC", "SOL", "ETH", "DOGE", "ADA", "XRP", "DOT", "LINK", "AVAX", "MATIC"]
     return symbol.upper() in crypto_symbols or symbol.upper() in COINGECKO_IDS
 
+def _format_number(value: float) -> str:
+    """Format threshold numbers without misleading trailing zeros."""
+    return f"{value:,.2f}".rstrip("0").rstrip(".")
+
+def _format_condition_value(condition_type: str, value: float) -> str:
+    """Format a threshold according to its condition type."""
+    if condition_type == "percent_change_24h":
+        return f"{_format_number(value)}%"
+    return f"${_format_number(value)}"
+
+def _default_condition_message(symbol: str, condition_type: str, value: float) -> str:
+    """Build the stored message n8n speaks when this threshold triggers."""
+    formatted_value = _format_condition_value(condition_type, value)
+    if condition_type == "above":
+        return f"{symbol} above {formatted_value}"
+    if condition_type == "below":
+        return f"{symbol} dropped below {formatted_value}"
+    if condition_type == "percent_change_24h":
+        return f"{symbol} moved {formatted_value}"
+    return f"{symbol} {condition_type} {formatted_value}"
+
+def _condition_summary(condition_type: str, value: float) -> str:
+    """Format a compact alert threshold for list/add/update speech."""
+    formatted_value = _format_condition_value(condition_type, value)
+    if condition_type == "above":
+        return f"above {formatted_value}"
+    if condition_type == "below":
+        return f"below {formatted_value}"
+    if condition_type == "percent_change_24h":
+        return f"{formatted_value} move"
+    return f"{condition_type} {formatted_value}"
+
 def find_asset(config: dict, symbol: str) -> tuple:
     """Find an asset in the config. Returns (asset_type, index, asset) or (None, None, None)."""
     symbol = normalize_symbol(symbol)
@@ -143,13 +175,7 @@ def add_alert(config: dict, symbol: str, condition_type: str, value: float,
     if message:
         new_condition["message"] = message
     else:
-        # Auto-generate message
-        if condition_type == "above":
-            new_condition["message"] = f"{symbol} above ${value:,.0f}" if value >= 1000 else f"{symbol} above ${value}"
-        elif condition_type == "below":
-            new_condition["message"] = f"{symbol} dropped below ${value:,.0f}" if value >= 1000 else f"{symbol} dropped below ${value}"
-        else:
-            new_condition["message"] = f"{symbol} moved {value}%"
+        new_condition["message"] = _default_condition_message(symbol, condition_type, value)
     
     if existing:
         # Add condition to existing asset
@@ -159,7 +185,7 @@ def add_alert(config: dict, symbol: str, condition_type: str, value: float,
         # Check for duplicate
         for cond in existing["conditions"]:
             if cond["type"] == condition_type and cond["value"] == value:
-                return f"Alert already exists: {symbol} {condition_type} {value}"
+                return f"Alert already exists: {symbol} {_condition_summary(condition_type, value)}"
         
         existing["conditions"].append(new_condition)
         config["watchlist"][asset_type][idx] = existing
@@ -184,7 +210,7 @@ def add_alert(config: dict, symbol: str, condition_type: str, value: float,
         config["watchlist"][asset_type].append(new_asset)
     
     save_config_file(config)
-    return f"Added alert: {symbol} {condition_type} ${value:,.0f}" if value >= 1000 else f"Added alert: {symbol} {condition_type} {value}"
+    return f"Added alert: {symbol} {_condition_summary(condition_type, value)}"
 
 def remove_alert(config: dict, symbol: str, condition_type: str = None, value: float = None) -> str:
     """Remove a price alert condition or entire asset."""
@@ -247,15 +273,15 @@ def update_alert(config: dict, symbol: str, condition_type: str, new_value: floa
             
             old_val = cond["value"]
             cond["value"] = new_value
-            # Update message
-            if condition_type == "above":
-                cond["message"] = f"{symbol} above ${new_value:,.0f}" if new_value >= 1000 else f"{symbol} above ${new_value}"
-            elif condition_type == "below":
-                cond["message"] = f"{symbol} dropped below ${new_value:,.0f}" if new_value >= 1000 else f"{symbol} dropped below ${new_value}"
+            cond["message"] = _default_condition_message(symbol, condition_type, new_value)
             
             config["watchlist"][asset_type][idx] = existing
             save_config_file(config)
-            return f"Updated {symbol} {condition_type} alert: ${old_val:,.0f} → ${new_value:,.0f}"
+            return (
+                f"Updated {symbol} {condition_type} alert: "
+                f"{_format_condition_value(condition_type, old_val)} → "
+                f"{_format_condition_value(condition_type, new_value)}"
+            )
     
     return f"No {condition_type} alert found for {symbol}"
 
@@ -317,12 +343,7 @@ def main():
                 for sym, sym_alerts in by_symbol.items():
                     conditions = []
                     for a in sym_alerts:
-                        if a["condition"] == "above":
-                            conditions.append(f"above ${a['value']:,.0f}" if a['value'] >= 1000 else f"above ${a['value']}")
-                        elif a["condition"] == "below":
-                            conditions.append(f"below ${a['value']:,.0f}" if a['value'] >= 1000 else f"below ${a['value']}")
-                        else:
-                            conditions.append(f"{a['value']}% move")
+                        conditions.append(_condition_summary(a["condition"], a["value"]))
                     parts.append(f"{sym} ({', '.join(conditions)})")
                 
                 speech += ", ".join(parts[:5])
