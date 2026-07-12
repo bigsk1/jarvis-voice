@@ -38,10 +38,9 @@ Use this repo-tracked skill when a future agent needs to create or repair a Jarv
 Run focused checks before handing off:
 
 ```bash
-python3 -m json.tool data/workflows/<id>.json >/dev/null
-python3 data/workflows/skill/skill.py validate data/workflows/<id>.json
-python3 orchestrator/workflow_loader.py validate --workflow <id>
-python3 data/workflows/skill/skill.py check-loader-scope
+.venv/bin/python -m json.tool data/workflows/<id>.json >/dev/null
+.venv/bin/python data/workflows/skill/skill.py validate data/workflows/<id>.json
+.venv/bin/python data/workflows/skill/skill.py check-loader-scope
 ```
 
 If Python code changed, run the smallest relevant pytest set. For workflow loader or API discovery changes, include:
