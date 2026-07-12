@@ -229,7 +229,7 @@ def _openai_compatible_vision(
             "content": build_openai_style_content(images_base64, prompt, detail),
         }],
     }
-    if not is_xai and str(selected_model).lower().startswith(("gpt-5", "o1", "o3", "o4")):
+    if not is_xai and str(selected_model).lower().startswith("gpt-5"):
         payload["max_completion_tokens"] = 1024
     else:
         payload["max_tokens"] = 2048 if is_xai else 1024

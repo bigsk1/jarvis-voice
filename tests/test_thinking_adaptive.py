@@ -68,7 +68,7 @@ class AdaptiveThinkingTests(unittest.TestCase):
 
     def test_unknown_or_provider_owned_models_are_not_catalog_thinking_models(self):
         self.assertFalse(is_thinking_supported("anthropic", "claude-future-99"))
-        self.assertFalse(is_thinking_supported("openai", "o3-mini"))
+        self.assertFalse(is_thinking_supported("openai", "gpt-5.4-mini"))
         self.assertFalse(is_thinking_supported("ollama", "deepseek-r1"))
 
     def test_sonnet_4_5_still_uses_budget_tokens(self):

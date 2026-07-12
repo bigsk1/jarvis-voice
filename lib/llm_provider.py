@@ -143,10 +143,10 @@ class OpenAIProvider(LLMProvider):
         """
         Optional reasoning-effort override for reasoning-capable OpenAI models.
 
-        Chat Completions supports reasoning_effort on GPT-5/o-series models, but
-        it should be omitted for older non-reasoning chat families.
+        Chat Completions supports reasoning_effort on GPT-5 models, but it
+        should be omitted for older non-reasoning chat families.
         """
-        if not self.model.startswith(("gpt-5", "o1", "o3", "o4")):
+        if not self.model.startswith("gpt-5"):
             return None
 
         from config_loader import get_config_value
@@ -202,8 +202,8 @@ class OpenAIProvider(LLMProvider):
             if reasoning_effort:
                 params["reasoning_effort"] = reasoning_effort
             if max_tokens:
-                # Newer OpenAI models (gpt-5.x, o1, o3, etc.) use max_completion_tokens
-                if self.model.startswith(('gpt-5', 'o1', 'o3')):
+                # Newer OpenAI GPT-5 models use max_completion_tokens.
+                if self.model.startswith("gpt-5"):
                     params["max_completion_tokens"] = max_tokens
                 else:
                     params["max_tokens"] = max_tokens

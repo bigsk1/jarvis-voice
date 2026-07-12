@@ -394,7 +394,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Refreshed active testing documentation to point at focused fresh-process pytest coverage and read-only diagnostics; cross-app `server`/`services` namespace collisions remain test-collection isolation debt rather than a runtime blocker.
 - ✅ **Catalog-backed Anthropic thinking**
   - Removed the stale model-name allowlist from `lib/thinking.py`; Anthropic thinking type, aliases, and valid effort levels now come from the audited shared model catalog, including Claude Fable 5.
-  - `--debug-thinking` remains opt-in and process-local, Web UI provider reasoning remains off by default, and OpenAI/xAI/Ollama keep their provider-native reasoning controls rather than sharing misleading legacy `o1`/`o3-mini` rules.
+  - `--debug-thinking` remains opt-in and process-local, Web UI provider reasoning remains off by default, and OpenAI/xAI/Ollama keep their provider-native reasoning controls rather than sharing misleading legacy model-name rules.
 - ✅ **OpenAI model-catalog availability audit**
   - Added `./bin/audit-openai-models.py --mode cloud`, machine-readable `--json`, and human `--show-all` output backed by the official OpenAI Models API.
   - The audit checks every curated ID/alias against the active account and detects newer general-purpose GPT families while filtering specialized image, audio, realtime, embedding, moderation, Sora, search, Codex, and legacy inventory from actionable chat-catalog drift.
@@ -1226,7 +1226,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Redundancy rule clarified with multi-step workflow exceptions
   - Music playback guidance updated for Spotify and ElevenLabs tools
   - crawl_url explicitly allowed when native search is enabled
-- ✅ **OpenAI API Fix** - max_completion_tokens for gpt-5.x/o1/o3 models
+- ✅ **OpenAI API Fix** - max_completion_tokens for gpt-5.x models
 
 **2026-01-24:**
 - ✅ **Feedback Tab in Intelligence Dashboard** - View all feedback logs in a friendly UI

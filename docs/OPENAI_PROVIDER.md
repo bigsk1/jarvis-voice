@@ -37,7 +37,7 @@ POST /v1/chat/completions
 `parameters` are passed through `_sanitize_schema_for_openai`; see [`tests/test_openai_tool_schema.py`](../tests/test_openai_tool_schema.py).
 
 - **Tool choice**: `tool_choice="auto"` when tools are present.
-- **Reasoning-capable models** (`gpt-5*`, `o1`, `o3`, `o4`): optional `reasoning_effort` from **`OPENAI_REASONING_EFFORT`** (`config_loader` / env). Older models omit it.
+- **Reasoning-capable models** (`gpt-5*`): optional `reasoning_effort` from **`OPENAI_REASONING_EFFORT`** (`config_loader` / env). Older models omit it.
   - Special case: **`gpt-5.4-mini` + tools on Chat Completions** — OpenAI rejects `reasoning_effort` together with tools; Jarvis skips `reasoning_effort` on that combination for the Chat path. On the Responses path (`use_responses_path=True`), reasoning may be supplied again according to config.
 
 ### Responses returned to Jarvis

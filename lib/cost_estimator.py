@@ -51,10 +51,6 @@ PRICING = {
         "gpt-4o-transcribe": {"input": 0.25, "output": 2.00},
         "gpt-4o-mini-transcribe": {"input": 0.05, "output": 0.40},
         "gpt-4o-mini-tts": {"input": 0.05, "output": 0.40},
-        
-        # Reasoning models (estimated)
-        "o4-mini": {"input": 3.00, "output": 12.00},
-        
         # GPT-4 Turbo (still available, estimated pricing)
         "gpt-4": {"input": 30.00, "output": 60.00},
         "gpt-4-turbo": {"input": 10.00, "output": 30.00},
