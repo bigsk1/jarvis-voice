@@ -6,6 +6,7 @@ Provides CPU, memory, disk, process, network, and uptime information.
 import sys
 import os
 import json
+import time
 from datetime import datetime
 
 # IMPORTANT: This tool lives in skills/auto-tools/, so go up 2 levels to reach lib/
@@ -19,8 +20,8 @@ except ImportError:
 
 def get_cpu_usage():
     """Get CPU usage statistics."""
-    cpu_percent = psutil.cpu_percent(interval=1)
     cpu_per_core = psutil.cpu_percent(interval=1, percpu=True)
+    cpu_percent = round(sum(cpu_per_core) / len(cpu_per_core), 2) if cpu_per_core else psutil.cpu_percent(interval=None)
     cpu_count = psutil.cpu_count(logical=True)
     cpu_count_physical = psutil.cpu_count(logical=False)
     
@@ -55,6 +56,12 @@ def get_disk_usage():
     """Get disk usage per mount point."""
     disks = []
     for partition in psutil.disk_partitions():
+        if (
+            partition.fstype in {"squashfs", "devtmpfs"}
+            or partition.device.startswith("/dev/loop")
+            or partition.mountpoint.startswith("/snap/")
+        ):
+            continue
         try:
             usage = psutil.disk_usage(partition.mountpoint)
             disks.append({
@@ -74,15 +81,43 @@ def get_disk_usage():
 def get_process_list(limit=10, sort_by="cpu"):
     """Get list of running processes."""
     processes = []
-    for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'status']):
+    proc_list = list(psutil.process_iter(['pid', 'name']))
+
+    for proc in proc_list:
         try:
-            pinfo = proc.info
+            proc.cpu_percent(interval=None)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    time.sleep(0.2)
+
+    for proc in proc_list:
+        try:
+            pinfo = proc.as_dict(attrs=[
+                'pid',
+                'ppid',
+                'name',
+                'cmdline',
+                'memory_percent',
+                'status',
+                'create_time',
+                'username',
+            ])
+            cpu_percent = proc.cpu_percent(interval=None)
+            create_time = pinfo.get('create_time')
+            age_seconds = max(0, int(time.time() - create_time)) if create_time else None
+            cmdline = pinfo.get('cmdline') or []
             processes.append({
                 "pid": pinfo['pid'],
+                "ppid": pinfo.get('ppid'),
                 "name": pinfo['name'],
-                "cpu_percent": round(pinfo['cpu_percent'] or 0, 2),
+                "cmdline": " ".join(str(part) for part in cmdline)[:500],
+                "cpu_percent": round(cpu_percent or 0, 2),
                 "memory_percent": round(pinfo['memory_percent'] or 0, 2),
-                "status": pinfo['status']
+                "status": pinfo['status'],
+                "username": pinfo.get('username'),
+                "age_seconds": age_seconds,
+                "age_minutes": round(age_seconds / 60, 1) if age_seconds is not None else None,
             })
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
@@ -94,6 +129,257 @@ def get_process_list(limit=10, sort_by="cpu"):
         processes.sort(key=lambda x: x['cpu_percent'], reverse=True)
     
     return processes[:limit]
+
+def _severity_rank(severity):
+    return {"low": 1, "medium": 2, "high": 3, "critical": 4}.get(severity, 0)
+
+def _add_issue(issues, issue_type, severity, title, detail, dedupe_key, metadata=None):
+    issues.append({
+        "type": issue_type,
+        "severity": severity,
+        "title": title,
+        "detail": detail,
+        "dedupe_key": dedupe_key,
+        "metadata": metadata or {}
+    })
+
+def _build_summary_markdown(data, analysis):
+    top_process = analysis.get("top_process") or {}
+    lines = [
+        f"- Status: {analysis.get('status', 'unknown')}",
+        f"- Issues: {analysis.get('issue_count', 0)}",
+        f"- Highest severity: {analysis.get('highest_severity', 'none')}",
+    ]
+    cpu = data.get("cpu") or {}
+    memory = data.get("memory") or {}
+    ram = memory.get("ram") or {}
+    swap = memory.get("swap") or {}
+    uptime = data.get("uptime") or {}
+    if cpu:
+        lines.append(f"- CPU total: {cpu.get('total_percent')}%")
+        lines.append(f"- Hot CPU cores: {analysis.get('hot_core_count', 0)}")
+    if ram:
+        lines.append(f"- RAM: {ram.get('percent_used')}%")
+    if swap:
+        lines.append(f"- Swap: {swap.get('percent_used')}%")
+    if uptime:
+        lines.append(f"- Uptime: {uptime.get('uptime_string')}")
+    if top_process:
+        lines.append(
+            f"- Top process: {top_process.get('name')} "
+            f"({top_process.get('cpu_percent')}% CPU, PID {top_process.get('pid')})"
+        )
+    lines.append("")
+    lines.append("Issues:")
+    lines.append(analysis.get("issue_summary") or "No threshold issues detected.")
+    return "\n".join(lines)
+
+def analyze_health(data, thresholds=None):
+    """Convert raw monitor data into compact health issues for workflows."""
+    thresholds = thresholds or {}
+    cpu_total_threshold = float(thresholds.get("cpu_total_threshold", 90))
+    cpu_core_threshold = float(thresholds.get("cpu_core_threshold", 95))
+    process_cpu_threshold = float(thresholds.get("process_cpu_threshold", 90))
+    process_min_age_minutes = float(thresholds.get("process_min_age_minutes", 5))
+    memory_threshold = float(thresholds.get("memory_threshold", 90))
+    swap_threshold = float(thresholds.get("swap_threshold", 50))
+    disk_threshold = float(thresholds.get("disk_threshold", 90))
+    suspicious_min_age_minutes = float(thresholds.get("suspicious_min_age_minutes", 10))
+    suspicious_keywords = [
+        str(item).lower()
+        for item in thresholds.get(
+            "suspicious_cmd_keywords",
+            ["/dev/null", "aplay", "arecord", "ffmpeg"]
+        )
+    ]
+
+    issues = []
+    cpu = data.get("cpu") or {}
+    total_cpu = float(cpu.get("total_percent") or 0)
+    if total_cpu >= cpu_total_threshold:
+        _add_issue(
+            issues,
+            "cpu_total_high",
+            "high",
+            f"CPU total at {total_cpu:.1f}%",
+            f"Total CPU is {total_cpu:.1f}% with threshold {cpu_total_threshold:.1f}%.",
+            "jarvis_self_check:cpu_total_high",
+            {"cpu_percent": total_cpu, "threshold": cpu_total_threshold}
+        )
+
+    hot_cores = []
+    for index, percent in enumerate(cpu.get("per_core_percent") or []):
+        try:
+            value = float(percent)
+        except (TypeError, ValueError):
+            continue
+        if value >= cpu_core_threshold:
+            core_number = index + 1
+            hot_cores.append({"core": core_number, "percent": value})
+            _add_issue(
+                issues,
+                "cpu_core_hot",
+                "high",
+                f"CPU core {core_number} at {value:.1f}%",
+                f"CPU core {core_number} is at {value:.1f}% with threshold {cpu_core_threshold:.1f}%.",
+                f"jarvis_self_check:cpu_core_hot:core_{core_number}",
+                {"core": core_number, "cpu_percent": value, "threshold": cpu_core_threshold}
+            )
+
+    memory = data.get("memory") or {}
+    ram = memory.get("ram") or {}
+    ram_percent = float(ram.get("percent_used") or 0)
+    if ram_percent >= memory_threshold:
+        _add_issue(
+            issues,
+            "memory_high",
+            "high",
+            f"RAM at {ram_percent:.1f}%",
+            f"RAM usage is {ram_percent:.1f}% with threshold {memory_threshold:.1f}%.",
+            "jarvis_self_check:memory_high",
+            {"memory_percent": ram_percent, "threshold": memory_threshold}
+        )
+
+    swap = memory.get("swap") or {}
+    swap_percent = float(swap.get("percent_used") or 0)
+    if swap_percent >= swap_threshold:
+        _add_issue(
+            issues,
+            "swap_high",
+            "medium",
+            f"Swap at {swap_percent:.1f}%",
+            f"Swap usage is {swap_percent:.1f}% with threshold {swap_threshold:.1f}%.",
+            "jarvis_self_check:swap_high",
+            {"swap_percent": swap_percent, "threshold": swap_threshold}
+        )
+
+    for disk in data.get("disks") or []:
+        try:
+            disk_percent = float(disk.get("percent_used") or 0)
+        except (TypeError, ValueError):
+            continue
+        if disk_percent >= disk_threshold:
+            mountpoint = str(disk.get("mountpoint") or "unknown")
+            _add_issue(
+                issues,
+                "disk_high",
+                "high",
+                f"Disk {mountpoint} at {disk_percent:.1f}%",
+                f"Disk {mountpoint} is {disk_percent:.1f}% full with {disk.get('free_gb')} GB free.",
+                f"jarvis_self_check:disk_high:{mountpoint}",
+                {"mountpoint": mountpoint, "disk_percent": disk_percent, "threshold": disk_threshold}
+            )
+
+    suspicious_processes = []
+    for proc in data.get("processes") or []:
+        name = str(proc.get("name") or "unknown")
+        cmdline = str(proc.get("cmdline") or "")
+        combined = f"{name} {cmdline}".lower()
+        cpu_percent = float(proc.get("cpu_percent") or 0)
+        age_minutes = float(proc.get("age_minutes") or 0)
+        keyword_hit = next((kw for kw in suspicious_keywords if kw and kw in combined), None)
+        if cpu_percent >= process_cpu_threshold and age_minutes >= process_min_age_minutes:
+            suspicious_processes.append(proc)
+            _add_issue(
+                issues,
+                "process_cpu_high",
+                "high",
+                f"Process {name} using {cpu_percent:.1f}% CPU",
+                f"PID {proc.get('pid')} ({name}) is using {cpu_percent:.1f}% CPU for {age_minutes:.1f}m. Command: {cmdline[:160]}",
+                f"jarvis_self_check:process_cpu_high:{name}",
+                {"pid": proc.get("pid"), "name": name, "cpu_percent": cpu_percent, "age_minutes": age_minutes, "cmdline": cmdline}
+            )
+        elif keyword_hit and age_minutes >= suspicious_min_age_minutes and cpu_percent >= 10:
+            suspicious_processes.append(proc)
+            _add_issue(
+                issues,
+                "process_suspicious",
+                "medium",
+                f"Suspicious process {name}",
+                f"PID {proc.get('pid')} matched '{keyword_hit}', age {age_minutes:.1f}m, CPU {cpu_percent:.1f}%. Command: {cmdline[:160]}",
+                f"jarvis_self_check:process_suspicious:{name}:{keyword_hit}",
+                {"pid": proc.get("pid"), "name": name, "cpu_percent": cpu_percent, "age_minutes": age_minutes, "keyword": keyword_hit}
+            )
+
+    highest = "none"
+    if issues:
+        highest = max((issue["severity"] for issue in issues), key=_severity_rank)
+
+    status = "healthy"
+    if highest in {"low", "medium"}:
+        status = "attention"
+    elif highest in {"high", "critical"}:
+        status = "critical"
+
+    summary_lines = [f"- {issue['severity'].upper()}: {issue['title']} - {issue['detail']}" for issue in issues]
+    top_issue = issues[0] if issues else None
+
+    analysis = {
+        "status": status,
+        "issue_count": len(issues),
+        "highest_severity": highest,
+        "issues": issues,
+        "issue_summary": "\n".join(summary_lines) if summary_lines else "No threshold issues detected.",
+        "alert_title": f"Jarvis self-check: {top_issue['title']}" if top_issue else "Jarvis self-check healthy",
+        "alert_description": "\n".join(summary_lines[:8]) if summary_lines else "No threshold issues detected.",
+        "dedupe_key": top_issue["dedupe_key"] if top_issue else "jarvis_self_check:healthy",
+        "hot_core_count": len(hot_cores),
+        "hot_cores": hot_cores,
+        "suspicious_process_count": len(suspicious_processes),
+        "top_process": (data.get("processes") or [{}])[0] if data.get("processes") else {},
+    }
+    analysis["summary_markdown"] = _build_summary_markdown(data, analysis)
+    return analysis
+
+def get_health_check(args):
+    """Return compact health data and issue flags for scheduled workflows."""
+    if psutil is None:
+        issue = {
+            "type": "monitor_unavailable",
+            "severity": "critical",
+            "title": "System monitor dependency missing",
+            "detail": "psutil is not installed, so Jarvis cannot read local system health.",
+            "dedupe_key": "jarvis_self_check:monitor_unavailable:psutil",
+            "metadata": {"dependency": "psutil"}
+        }
+        return {
+            "status": "critical",
+            "issue_count": 1,
+            "highest_severity": "critical",
+            "issues": [issue],
+            "issue_summary": f"- CRITICAL: {issue['title']} - {issue['detail']}",
+            "alert_title": "Jarvis self-check: System monitor unavailable",
+            "alert_description": issue["detail"],
+            "dedupe_key": issue["dedupe_key"],
+            "hot_core_count": 0,
+            "hot_cores": [],
+            "suspicious_process_count": 0,
+            "top_process": {},
+            "summary_markdown": (
+                "- Status: critical\n"
+                "- Issues: 1\n"
+                "- Highest severity: critical\n\n"
+                "Issues:\n"
+                f"- CRITICAL: {issue['title']} - {issue['detail']}"
+            ),
+            "cpu": {},
+            "memory": {},
+            "disks": [],
+            "processes": [],
+            "network": {},
+            "uptime": {},
+        }
+
+    raw = {
+        "cpu": get_cpu_usage(),
+        "memory": get_memory_usage(),
+        "disks": get_disk_usage(),
+        "processes": get_process_list(limit=args.get("limit", 15), sort_by=args.get("sort_by", "cpu")),
+        "network": get_network_stats(),
+        "uptime": get_system_uptime(),
+    }
+    analysis = analyze_health(raw, args)
+    return {**raw, **analysis}
 
 def get_network_stats():
     """Get network I/O statistics."""
@@ -129,6 +415,23 @@ def get_system_uptime():
 
 def main():
     try:
+        if len(sys.argv) > 1:
+            args = json.loads(sys.argv[1])
+        else:
+            args = json.load(sys.stdin)
+
+        load_config()
+        action = args.get('action', 'all').lower()
+
+        if action == 'health_check':
+            health_data = get_health_check(args)
+            print(json.dumps({
+                "ok": True,
+                "speech": f"System health check: {health_data['status']} with {health_data['issue_count']} issue(s).",
+                "data": health_data
+            }))
+            return
+
         if psutil is None:
             print(json.dumps({
                 "ok": False,
@@ -137,14 +440,6 @@ def main():
             }))
             sys.exit(1)
         
-        if len(sys.argv) > 1:
-            args = json.loads(sys.argv[1])
-        else:
-            args = json.load(sys.stdin)
-        
-        load_config()
-        
-        action = args.get('action', 'all').lower()
         result_data = {}
         speech_parts = []
         
@@ -188,7 +483,7 @@ def main():
             print(json.dumps({
                 "ok": False,
                 "error": f"Unknown action: {action}",
-                "speech": f"Unknown monitoring action: {action}. Available: cpu_usage, memory_usage, disk_usage, process_list, network_stats, system_uptime, all"
+                "speech": f"Unknown monitoring action: {action}. Available: cpu_usage, memory_usage, disk_usage, process_list, network_stats, system_uptime, health_check, all"
             }))
             sys.exit(1)
         

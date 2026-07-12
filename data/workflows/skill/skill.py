@@ -91,9 +91,14 @@ def _check_workflow(workflow: dict[str, Any]) -> tuple[list[str], list[str]]:
             and params.get("allow_content_shrink") is True
         ):
             required = validation.get("required_patterns", []) if isinstance(validation, dict) else []
-            if len(required) < 3:
+            content = str(params.get("content") or "")
+            required_headings_in_content = [
+                heading for heading in ("# ", "## Current Status", "## Run Log")
+                if heading in content
+            ]
+            if len(required) < 3 and len(required_headings_in_content) < 3:
                 errors.append(
-                    f"Step {step_num}: allow_content_shrink=true requires strong required_patterns"
+                    f"Step {step_num}: allow_content_shrink=true requires strong required_patterns or deterministic full-page content"
                 )
 
     if workflow.get("disable_server_side_tools") is True:

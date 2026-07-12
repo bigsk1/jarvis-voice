@@ -255,6 +255,7 @@ Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
 | `daily_status_visual.json` | `/status_visual` (also `/status-visual`, `/status-image`, `/daily-visual`) | Same as `/status` (including crypto charts) plus `generate_image` and dashboard image at top of Canvas |
 | `weather_watch.json` | `/weather_watch` | Default-location weather watch with canvas report and condition-specific alerts |
 | `crypto_market_report.json` | `/crypto [coins]` | Crypto prices with canvas report |
+| `jarvis_self_check.json` | `/jarvis_self_check` (also `/self_check`, `/jarvis_health`) | Local Jarvis host health check with deduped alerts and one refreshed Canvas health page |
 | `youtube_research.json` | `/youtube_research <url> [notes]` | Download transcript, summarize, keywords, canvas study notes |
 | `youtube_ingest.json` | `/youtube_ingest <url>` | Download video + transcript, extract important facts/keywords, create canvas briefing |
 | `url_ingest.json` | `/url_ingest <url>` | Fetch any URL, create intel file, ingest to memory for RAG queries |

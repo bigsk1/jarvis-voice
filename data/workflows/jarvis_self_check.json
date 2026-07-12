@@ -1,0 +1,197 @@
+{
+  "id": "jarvis_self_check",
+  "name": "Jarvis Self Check",
+  "description": "Check local Jarvis host health, update one durable Canvas page, and raise a deduped alert when system issues are detected.",
+  "version": "1.0",
+  "enabled": true,
+  "triggers": {
+    "explicit": ["/jarvis_self_check", "/self_check", "/jarvis_health"],
+    "patterns": [],
+    "keywords": []
+  },
+  "variables": {
+    "canvas_title": "Workflows/Jarvis System Health",
+    "alert_source": "jarvis_self_check",
+    "self_check_page_id": "",
+    "issue_count": 0,
+    "highest_severity": "none",
+    "health_status": "unknown",
+    "issue_summary": "System health check has not run yet.",
+    "alert_duplicate_suppressed": false,
+    "alert_result_status": "Not triggered"
+  },
+  "steps": [
+    {
+      "step": 1,
+      "tool": "get_time",
+      "params": {},
+      "output_var": "time_result",
+      "extract": {
+        "run_date": "date",
+        "run_time": "time",
+        "run_timestamp": "time"
+      },
+      "required": true,
+      "description": "Get current date and time"
+    },
+    {
+      "step": 2,
+      "tool": "system_monitor",
+      "params": {
+        "action": "health_check",
+        "limit": 15,
+        "sort_by": "cpu",
+        "cpu_total_threshold": 90,
+        "cpu_core_threshold": 95,
+        "process_cpu_threshold": 90,
+        "process_min_age_minutes": 5,
+        "memory_threshold": 90,
+        "swap_threshold": 50,
+        "disk_threshold": 90,
+        "suspicious_min_age_minutes": 10,
+        "suspicious_cmd_keywords": ["/dev/null", "aplay", "arecord", "ffmpeg"]
+      },
+      "output_var": "health_result",
+      "extract": {
+        "health_status": "status",
+        "issue_count": "issue_count",
+        "highest_severity": "highest_severity",
+        "issue_summary": "issue_summary",
+        "health_summary_markdown": "summary_markdown",
+        "alert_title": "alert_title",
+        "alert_description": "alert_description",
+        "alert_dedupe_key": "dedupe_key",
+        "hot_core_count": "hot_core_count",
+        "suspicious_process_count": "suspicious_process_count",
+        "top_process_name": "top_process.name",
+        "top_process_cpu": "top_process.cpu_percent",
+        "top_process_cmdline": "top_process.cmdline",
+        "cpu_total": "cpu.total_percent",
+        "memory_percent": "memory.ram.percent_used",
+        "swap_percent": "memory.swap.percent_used",
+        "uptime_string": "uptime.uptime_string"
+      },
+      "required": true,
+      "description": "Collect compact local system health signals"
+    },
+    {
+      "step": 3,
+      "tool": "check_tool_logs",
+      "params": {
+        "log_type": "workflows",
+        "limit": 8
+      },
+      "output_var": "workflow_log_result",
+      "extract": {
+        "recent_workflow_logs": "workflow_logs"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Check recent workflow execution history"
+    },
+    {
+      "step": 4,
+      "tool": "query_service_logs",
+      "params": {
+        "service": "all",
+        "show_stats": true,
+        "limit": 12
+      },
+      "output_var": "service_log_result",
+      "extract": {
+        "service_stats": "stats"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Check background service log statistics"
+    },
+    {
+      "step": 5,
+      "tool": "create_alert",
+      "params": {
+        "title": "${alert_title}",
+        "description": "${alert_description}",
+        "severity": "${highest_severity}",
+        "source": "${alert_source}",
+        "speak_immediately": true,
+        "metadata": {
+          "dedupe_key": "${alert_dedupe_key}",
+          "workflow_id": "jarvis_self_check",
+          "health_status": "${health_status}",
+          "issue_count": "${issue_count}",
+          "highest_severity": "${highest_severity}",
+          "canvas_title": "${canvas_title}"
+        }
+      },
+      "condition": {
+        "op": "gte",
+        "left": "${issue_count}",
+        "right": 1
+      },
+      "set_variables_on_success": {
+        "alert_result_status": "Created"
+      },
+      "output_var": "alert_result",
+      "extract": {
+        "alert_duplicate_suppressed": "duplicate_suppressed"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Create a deduped alert when health issues are detected"
+    },
+    {
+      "step": 6,
+      "tool": "canvas",
+      "action": "read",
+      "params": {
+        "search": "${canvas_title}"
+      },
+      "output_var": "existing_canvas_page",
+      "extract": {
+        "self_check_page_id": "page_id",
+        "existing_canvas_content": "content"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Find the durable Jarvis System Health Canvas page"
+    },
+    {
+      "step": 7,
+      "tool": "canvas",
+      "action": "create",
+      "condition": {
+        "op": "not_exists",
+        "left": "${self_check_page_id}"
+      },
+      "params": {
+        "title": "${canvas_title}",
+        "tags": ["jarvis", "system", "health", "workflow"],
+        "pinned": false,
+        "content": "# Jarvis System Health\n\nLast checked: ${run_date} ${run_time}\n\n## Current Status\n\n${health_summary_markdown}\n\n## Active Issues\n\n${issue_summary}\n\n## Top CPU Process\n\n- Name: ${top_process_name}\n- CPU: ${top_process_cpu}%\n- Command: `${top_process_cmdline}`\n\n## Alert Action\n\n- Alert status: ${alert_result_status}\n- Duplicate suppressed: ${alert_duplicate_suppressed}\n- Source: ${alert_source}\n\n## Recent Workflow Logs\n\n${recent_workflow_logs}\n\n## Service Stats\n\n${service_stats}\n\n## Raw Health Snapshot\n\n```text\n${health_result}\n```\n\n## Run Log\n\n- ${run_date} ${run_time}: Created Jarvis system health page. Status ${health_status}, issues ${issue_count}."
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Create the durable health page on first run"
+    },
+    {
+      "step": 8,
+      "tool": "canvas",
+      "action": "update",
+      "condition": {
+        "op": "exists",
+        "left": "${self_check_page_id}"
+      },
+      "params": {
+        "page_id": "${self_check_page_id}",
+        "allow_content_shrink": true,
+        "content": "# Jarvis System Health\n\nLast checked: ${run_date} ${run_time}\n\n## Current Status\n\n${health_summary_markdown}\n\n## Active Issues\n\n${issue_summary}\n\n## Top CPU Process\n\n- Name: ${top_process_name}\n- CPU: ${top_process_cpu}%\n- Command: `${top_process_cmdline}`\n\n## Alert Action\n\n- Alert status: ${alert_result_status}\n- Duplicate suppressed: ${alert_duplicate_suppressed}\n- Source: ${alert_source}\n\n## Recent Workflow Logs\n\n${recent_workflow_logs}\n\n## Service Stats\n\n${service_stats}\n\n## Raw Health Snapshot\n\n```text\n${health_result}\n```\n\n## Run Log\n\n- ${run_date} ${run_time}: Refreshed Jarvis system health page. Status ${health_status}, issues ${issue_count}."
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Refresh the existing health page"
+    }
+  ],
+  "success_speech": "Jarvis self-check complete. Status ${health_status} with ${issue_count} issue(s).",
+  "partial_speech": "Jarvis self-check partially complete. Status ${health_status} with ${issue_count} issue(s).",
+  "abort_speech": "I couldn't complete the Jarvis self-check workflow."
+}

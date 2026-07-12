@@ -818,6 +818,31 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
         self.assertIn("## Sources", update_required)
         self.assertIn("## Run Log", update_required)
 
+    def test_jarvis_self_check_uses_health_issues_alerts_and_single_canvas_page(self):
+        workflow = json.loads(
+            (PROJECT_ROOT / "data" / "workflows" / "jarvis_self_check.json").read_text()
+        )
+
+        health_step = next(step for step in workflow["steps"] if step["tool"] == "system_monitor")
+        alert_step = next(step for step in workflow["steps"] if step["tool"] == "create_alert")
+        canvas_steps = [step for step in workflow["steps"] if step["tool"] == "canvas"]
+        canvas_actions = [step.get("action") for step in canvas_steps]
+
+        self.assertEqual(health_step["params"]["action"], "health_check")
+        self.assertEqual(health_step["extract"]["issue_count"], "issue_count")
+        self.assertEqual(health_step["extract"]["alert_dedupe_key"], "dedupe_key")
+        self.assertEqual(alert_step["condition"]["op"], "gte")
+        self.assertEqual(alert_step["condition"]["left"], "${issue_count}")
+        self.assertEqual(alert_step["condition"]["right"], 1)
+        self.assertEqual(alert_step["params"]["metadata"]["dedupe_key"], "${alert_dedupe_key}")
+        self.assertEqual(canvas_actions, ["read", "create", "update"])
+        self.assertEqual(canvas_steps[1]["condition"]["op"], "not_exists")
+        self.assertEqual(canvas_steps[2]["condition"]["op"], "exists")
+        self.assertTrue(canvas_steps[2]["params"]["allow_content_shrink"])
+        self.assertIn("## Current Status", canvas_steps[2]["params"]["content"])
+        self.assertIn("## Active Issues", canvas_steps[2]["params"]["content"])
+        self.assertIn("## Run Log", canvas_steps[2]["params"]["content"])
+
     def test_opt_in_llm_output_validation_rejects_refusal_content(self):
         step = {
             "llm_output_validation": {

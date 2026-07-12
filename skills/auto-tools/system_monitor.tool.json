@@ -1,14 +1,14 @@
 {
   "enabled": true,
   "name": "system_monitor",
-  "description": "Get comprehensive system monitoring information including CPU usage, memory stats, disk usage, running processes, network I/O, and system uptime. Use when user asks about system performance, resource usage, system health, 'how much RAM', 'CPU usage', 'disk space', 'what processes are running', 'network activity', 'how long has system been running', or needs system diagnostics.",
+  "description": "Get comprehensive system monitoring information including CPU usage, memory stats, disk usage, running processes, network I/O, system uptime, and compact health issues. Use when user asks about system performance, resource usage, system health, 'how much RAM', 'CPU usage', 'disk space', 'what processes are running', 'network activity', 'how long has system been running', or needs system diagnostics. Use action='health_check' for scheduled/self-monitoring workflows because it returns issues[], issue_count, severity, and dedupe keys.",
   "script": "system_monitor.py",
   "parameters": {
     "type": "object",
     "properties": {
       "action": {
         "type": "string",
-        "description": "What to monitor: 'cpu_usage', 'memory_usage', 'disk_usage', 'process_list', 'network_stats', 'system_uptime', or 'all' (default)",
+        "description": "What to monitor: 'cpu_usage', 'memory_usage', 'disk_usage', 'process_list', 'network_stats', 'system_uptime', 'health_check', or 'all' (default). health_check returns compact issue detection for workflows.",
         "enum": [
           "cpu_usage",
           "memory_usage",
@@ -16,6 +16,7 @@
           "process_list",
           "network_stats",
           "system_uptime",
+          "health_check",
           "all"
         ]
       },
@@ -30,6 +31,43 @@
           "cpu",
           "memory"
         ]
+      },
+      "cpu_total_threshold": {
+        "type": "number",
+        "description": "For health_check: total CPU percent threshold for a high issue (default 90)"
+      },
+      "cpu_core_threshold": {
+        "type": "number",
+        "description": "For health_check: per-core CPU percent threshold for a high issue (default 95)"
+      },
+      "process_cpu_threshold": {
+        "type": "number",
+        "description": "For health_check: per-process CPU percent threshold for a high issue (default 90)"
+      },
+      "process_min_age_minutes": {
+        "type": "number",
+        "description": "For health_check: minimum process age before high CPU becomes an issue (default 5)"
+      },
+      "memory_threshold": {
+        "type": "number",
+        "description": "For health_check: RAM percent threshold for a high issue (default 90)"
+      },
+      "swap_threshold": {
+        "type": "number",
+        "description": "For health_check: swap percent threshold for a medium issue (default 50)"
+      },
+      "disk_threshold": {
+        "type": "number",
+        "description": "For health_check: disk percent threshold for a high issue (default 90)"
+      },
+      "suspicious_min_age_minutes": {
+        "type": "number",
+        "description": "For health_check: minimum process age before suspicious command keywords matter (default 10)"
+      },
+      "suspicious_cmd_keywords": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "For health_check: command/name substrings that are suspicious when long-running with CPU, such as /dev/null, aplay, arecord, ffmpeg"
       }
     },
     "required": []

@@ -44,3 +44,37 @@ def test_workflow_skill_check_loader_scope():
     )
 
     assert "WorkflowLoader ignores" in result.stdout
+
+
+def test_workflow_skill_accepts_deterministic_canvas_shrink_update(tmp_path):
+    workflow_path = tmp_path / "self_check.json"
+    workflow_path.write_text(
+        json.dumps(
+            {
+                "id": "self_check",
+                "triggers": {"explicit": ["/self_check"]},
+                "steps": [
+                    {
+                        "step": 1,
+                        "tool": "canvas",
+                        "action": "update",
+                        "params": {
+                            "page_id": "page_test",
+                            "allow_content_shrink": True,
+                            "content": "# Status\n\n## Current Status\nOK\n\n## Run Log\n- now",
+                        },
+                    }
+                ],
+            }
+        )
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(SKILL_HELPER), "validate", str(workflow_path)],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "OK:" in result.stdout
