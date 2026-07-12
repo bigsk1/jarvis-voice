@@ -4,6 +4,8 @@ JSON files here are **deterministic pipelines**: fixed tool order, optional LLM 
 
 Use this document as the **format contract** when authoring or editing workflows (humans and agents). Implementation details live in `orchestrator/pipeline_executor.py` (`_extract_workflow_variables`, `_resolve_params`) and `orchestrator/workflow_loader.py`.
 
+Private workflows can live in `data/workflows/personal/*.json`. That folder is gitignored for JSON workflow files, but loaded by the same workflow APIs and scheduler. Personal workflows with the same `id` as a shared workflow override the shared definition locally.
+
 ---
 
 ## Top-level object (required shape)

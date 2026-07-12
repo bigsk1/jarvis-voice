@@ -20,7 +20,7 @@ from api.models.query import QueryRequest  # noqa: E402
 from api.models.scheduled_task import ScheduledTaskCreate, ScheduledTaskType, ScheduledTaskUpdate  # noqa: E402
 from api.models.workflows import WorkflowExecuteRequest  # noqa: E402
 from api.routes.query import query_jarvis  # noqa: E402
-from api.routes.workflows import execute_workflow  # noqa: E402
+from api.routes.workflows import execute_workflow, _resolve_workflow  # noqa: E402
 from services import scheduled_task_runner  # noqa: E402
 import config_loader  # noqa: E402
 from config_loader import get_active_config_mode, get_config_value  # noqa: E402
@@ -88,6 +88,72 @@ def test_workflow_route_uses_scope_without_mutating_parent_environment():
         "pipeline_mode": "local",
     }
     assert dict(os.environ) == before
+
+
+def test_workflow_route_resolves_personal_trigger_alias():
+    observed = {}
+    shared_registry = object()
+
+    class FakeWorkflowLoader:
+        def __init__(self, explicit_only=True):
+            self.workflows = {
+                "private_radar": {
+                    "id": "private_radar",
+                    "triggers": {"explicit": ["/private_radar", "/secret_radar"]},
+                    "steps": [{"step": 1, "tool": "get_time"}],
+                }
+            }
+
+        def get_workflow(self, workflow_id):
+            return self.workflows.get(workflow_id)
+
+    class FakeToolExecutor:
+        def __init__(self, mode, registry=None):
+            observed["tool_mode"] = mode
+            observed["registry"] = registry
+
+    class FakePipelineExecutor:
+        def __init__(self, mode, _executor):
+            observed["pipeline_mode"] = mode
+
+        def execute(self, workflow, transcript):
+            observed["workflow_id"] = workflow["id"]
+            observed["transcript"] = transcript
+            return {"ok": True, "speech": "done", "tools_used": []}
+
+    modules = {
+        "workflow_loader": SimpleNamespace(WorkflowLoader=FakeWorkflowLoader),
+        "executor": SimpleNamespace(ToolExecutor=FakeToolExecutor),
+        "pipeline_executor": SimpleNamespace(PipelineExecutor=FakePipelineExecutor),
+        "tool_schema": SimpleNamespace(get_tool_registry=lambda mode=None: shared_registry),
+    }
+    request = WorkflowExecuteRequest(mode="cloud", query="today")
+    with patch.dict(sys.modules, modules):
+        result = asyncio.run(execute_workflow("secret_radar", request))
+
+    assert result.ok is True
+    assert observed == {
+        "tool_mode": "cloud",
+        "registry": shared_registry,
+        "pipeline_mode": "cloud",
+        "workflow_id": "private_radar",
+        "transcript": "/private_radar today",
+    }
+
+
+def test_workflow_api_alias_resolution_does_not_prefix_match():
+    loader = SimpleNamespace(
+        workflows={
+            "private_radar": {
+                "id": "private_radar",
+                "triggers": {"explicit": ["/private_radar", "/secret_radar"]},
+            }
+        },
+        get_workflow=lambda workflow_id: None,
+    )
+
+    assert _resolve_workflow(loader, "secret_radar")["id"] == "private_radar"
+    assert _resolve_workflow(loader, "secret") is None
 
 
 def test_scheduled_query_uses_task_scope_not_runner_mode(tmp_path, monkeypatch):

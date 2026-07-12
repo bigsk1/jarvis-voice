@@ -2,8 +2,9 @@
 """
 Jarvis Voice Assistant - Workflow Loader
 
-Loads workflow definitions from data/workflows/*.json and matches
-incoming queries against workflow triggers.
+Loads workflow definitions from data/workflows/*.json plus optional
+data/workflows/personal/*.json files, then matches incoming queries
+against workflow triggers.
 
 Workflows enable deterministic multi-tool execution (pipeline mode)
 as an alternative to free-form LLM routing.
@@ -47,7 +48,7 @@ class WorkflowLoader:
         if not self.workflows_dir.exists():
             return
         
-        for path in sorted(self.workflows_dir.glob("*.json")):
+        for path in self._iter_workflow_files():
             try:
                 with open(path, 'r') as f:
                     workflow = json.load(f)
@@ -74,6 +75,14 @@ class WorkflowLoader:
                 print(f"Warning: Invalid JSON in {path.name}: {e}", file=sys.stderr)
             except Exception as e:
                 print(f"Warning: Error loading {path.name}: {e}", file=sys.stderr)
+
+    def _iter_workflow_files(self):
+        """Yield shared workflow files, then personal overrides."""
+        yield from sorted(self.workflows_dir.glob("*.json"))
+
+        personal_dir = self.workflows_dir / "personal"
+        if personal_dir.exists():
+            yield from sorted(personal_dir.glob("*.json"))
     
     def match(self, query: str, allow_patterns: bool = None) -> dict | None:
         """

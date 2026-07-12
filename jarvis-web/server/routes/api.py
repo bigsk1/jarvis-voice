@@ -33,6 +33,7 @@ import sys
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 # Ensure shared lib helpers are importable in this module
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
+sys.path.insert(0, str(JARVIS_ROOT / 'orchestrator'))
 from model_catalog import get_provider_fallback_model
 from status_activity_logger import log_status_event
 from tool_sync_status import read_tool_sync_status
@@ -204,6 +205,55 @@ VIDEOS_PATH = JARVIS_ROOT / 'data' / 'generated_videos'
 WEB_DATA_PATH = JARVIS_ROOT / 'jarvis-web' / 'data'
 PROMPTS_PATH = WEB_DATA_PATH / 'prompts'
 WORKFLOWS_PATH = JARVIS_ROOT / 'data' / 'workflows'  # Workflows are in main data folder
+
+
+def _workflow_step_summary(steps: list[dict]) -> list[dict]:
+    """Build workflow step metadata for Web UI tooltips."""
+    step_summary = []
+    for step in steps:
+        tool = step.get('tool', 'unknown')
+        action = step.get('action', '')
+        desc = step.get('description', '')
+        step_text = f"{tool}.{action}" if action else tool
+        if desc:
+            step_text += f" - {desc}"
+        step_summary.append({
+            'step': step.get('step', len(step_summary) + 1),
+            'tool': tool,
+            'action': action,
+            'description': desc,
+            'display': step_text,
+        })
+    return step_summary
+
+
+def _workflow_record(wf_id: str, wf_data: dict) -> dict:
+    steps = wf_data.get('steps', [])
+    triggers = wf_data.get('triggers', {})
+    explicit_cmds = triggers.get('explicit', [])
+    return {
+        'id': wf_id,
+        'name': wf_data.get('name', wf_id),
+        'description': wf_data.get('description', ''),
+        'version': wf_data.get('version', '1.0'),
+        'triggers': explicit_cmds,
+        'step_count': len(steps),
+        'tools_used': list(dict.fromkeys(s.get('tool', '') for s in steps)),
+        'steps': _workflow_step_summary(steps),
+        'icon': '🔄',
+    }
+
+
+def _resolve_workflow(loader, workflow_id: str) -> dict | None:
+    workflow = loader.get_workflow(workflow_id)
+    if workflow:
+        return workflow
+    search_trigger = workflow_id if workflow_id.startswith('/') else f'/{workflow_id}'
+    for candidate in loader.workflows.values():
+        triggers = candidate.get('triggers', {}).get('explicit', [])
+        if search_trigger in triggers or workflow_id in triggers:
+            return candidate
+    return None
 
 
 def _parse_prompt_frontmatter(content: str) -> tuple[str, list[str]]:
@@ -2750,56 +2800,14 @@ def serve_upload(filename):
 
 @api_bp.route('/workflows', methods=['GET'])
 def list_workflows():
-    """List all available workflows (auto-discovered from data/workflows/*.json)"""
-    import json
+    """List all available workflows, including personal workflow JSON files."""
+    from workflow_loader import WorkflowLoader
     
     workflows = {}
-    
-    if WORKFLOWS_PATH.exists():
-        for wf_file in WORKFLOWS_PATH.glob('*.json'):
-            try:
-                with open(wf_file, 'r') as f:
-                    wf_data = json.load(f)
-                    
-                    # Skip disabled workflows
-                    if not wf_data.get('enabled', True):
-                        continue
-                    
-                    wf_id = wf_data.get('id') or wf_file.stem
-                    triggers = wf_data.get('triggers', {})
-                    explicit_cmds = triggers.get('explicit', [])
-                    steps = wf_data.get('steps', [])
-                    
-                    # Build step summary for tooltip
-                    step_summary = []
-                    for s in steps:
-                        tool = s.get('tool', 'unknown')
-                        action = s.get('action', '')
-                        desc = s.get('description', '')
-                        step_text = f"{tool}.{action}" if action else tool
-                        if desc:
-                            step_text += f" - {desc}"
-                        step_summary.append({
-                            'step': s.get('step', len(step_summary) + 1),
-                            'tool': tool,
-                            'action': action,
-                            'description': desc,
-                            'display': step_text
-                        })
-                    
-                    workflows[wf_id] = {
-                        'id': wf_id,
-                        'name': wf_data.get('name', wf_id),
-                        'description': wf_data.get('description', ''),
-                        'version': wf_data.get('version', '1.0'),
-                        'triggers': explicit_cmds,  # e.g., ["/research", "/deep-research"]
-                        'step_count': len(steps),
-                        'tools_used': list(dict.fromkeys(s.get('tool', '') for s in steps)),  # Preserve order
-                        'steps': step_summary,  # For hover tooltip
-                        'icon': '🔄'  # Default workflow icon
-                    }
-            except Exception as e:
-                print(f"[Workflows] Error loading {wf_file}: {e}")
+
+    loader = WorkflowLoader(explicit_only=True)
+    for wf_id, wf_data in loader.workflows.items():
+        workflows[wf_id] = _workflow_record(wf_id, wf_data)
     
     return jsonify({
         'ok': True,
@@ -2811,20 +2819,15 @@ def list_workflows():
 @api_bp.route('/workflows/<workflow_id>', methods=['GET'])
 def get_workflow(workflow_id):
     """Get a specific workflow by ID"""
-    import json
-    
-    wf_file = WORKFLOWS_PATH / f"{workflow_id}.json"
-    
-    if wf_file.exists():
-        try:
-            with open(wf_file, 'r') as f:
-                wf_data = json.load(f)
-                return jsonify({
-                    'ok': True,
-                    'workflow': wf_data
-                })
-        except Exception as e:
-            return jsonify({'ok': False, 'error': str(e)}), 500
+    from workflow_loader import WorkflowLoader
+
+    loader = WorkflowLoader(explicit_only=True)
+    wf_data = _resolve_workflow(loader, workflow_id)
+    if wf_data:
+        return jsonify({
+            'ok': True,
+            'workflow': wf_data,
+        })
     
     return jsonify({'ok': False, 'error': f'Workflow not found: {workflow_id}'}), 404
 

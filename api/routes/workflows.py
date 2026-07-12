@@ -21,6 +21,49 @@ from api.models.workflows import (
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
 
+def _workflow_info_from_definition(wf: dict, fallback_id: str | None = None) -> WorkflowInfo:
+    workflow_id = wf.get("id") or fallback_id or "unknown"
+
+    tools_used = []
+    for step in wf.get("steps", []):
+        tool = step.get("tool")
+        if tool and tool not in tools_used:
+            tools_used.append(tool)
+
+    explicit_triggers = wf.get("triggers", {}).get("explicit", [])
+    primary_trigger = explicit_triggers[0] if explicit_triggers else f"/{workflow_id}"
+
+    variables = wf.get("variables", {})
+    requires_input = any(
+        isinstance(v, dict) and v.get("extract") == "main_subject"
+        for v in variables.values()
+    )
+
+    return WorkflowInfo(
+        id=workflow_id,
+        name=wf.get("name", workflow_id),
+        description=wf.get("description"),
+        trigger=primary_trigger,
+        triggers=explicit_triggers if explicit_triggers else [f"/{workflow_id}"],
+        requires_input=requires_input,
+        version=wf.get("version"),
+        tools_used=tools_used,
+    )
+
+
+def _resolve_workflow(loader, workflow_id: str) -> dict | None:
+    workflow = loader.get_workflow(workflow_id)
+    if workflow:
+        return workflow
+
+    search_trigger = workflow_id if workflow_id.startswith("/") else f"/{workflow_id}"
+    for candidate in loader.workflows.values():
+        triggers = candidate.get("triggers", {}).get("explicit", [])
+        if search_trigger in triggers or workflow_id in triggers:
+            return candidate
+    return None
+
+
 def get_workflow_logs(limit: int = 20, workflow_id: str | None = None, days: int = 7) -> list:
     """Get recent workflow execution logs from JSONL files."""
     logs_dir = Path(__file__).parent.parent.parent / "logs"
@@ -72,47 +115,11 @@ async def list_workflows():
     try:
         from workflow_loader import WorkflowLoader
         
-        WorkflowLoader(explicit_only=True)
-        workflows_dir = Path(__file__).parent.parent.parent / "data" / "workflows"
-        
-        workflows = []
-        for wf_file in workflows_dir.glob("*.json"):
-            if wf_file.name.startswith("_") or wf_file.name == "AGENTS.md":
-                continue
-            try:
-                with open(wf_file, 'r') as f:
-                    wf = json.load(f)
-                
-                # Extract tools used from steps
-                tools_used = []
-                for step in wf.get("steps", []):
-                    tool = step.get("tool")
-                    if tool and tool not in tools_used:
-                        tools_used.append(tool)
-                
-                # Get explicit triggers
-                explicit_triggers = wf.get("triggers", {}).get("explicit", [])
-                primary_trigger = explicit_triggers[0] if explicit_triggers else f"/{wf_file.stem}"
-                
-                # Check if workflow requires input (has main_subject extraction)
-                variables = wf.get("variables", {})
-                requires_input = any(
-                    isinstance(v, dict) and v.get("extract") == "main_subject"
-                    for v in variables.values()
-                )
-                
-                workflows.append(WorkflowInfo(
-                    id=wf.get("id", wf_file.stem),
-                    name=wf.get("name", wf_file.stem),
-                    description=wf.get("description"),
-                    trigger=primary_trigger,
-                    triggers=explicit_triggers if explicit_triggers else [f"/{wf_file.stem}"],
-                    requires_input=requires_input,
-                    version=wf.get("version"),
-                    tools_used=tools_used
-                ))
-            except Exception:
-                continue
+        loader = WorkflowLoader(explicit_only=True)
+        workflows = [
+            _workflow_info_from_definition(wf, workflow_id)
+            for workflow_id, wf in loader.workflows.items()
+        ]
         
         return WorkflowListResponse(
             workflows=workflows,
@@ -190,43 +197,14 @@ async def get_workflow(workflow_id: str):
     - `workflow_id`: The workflow ID (e.g., 'crypto_market_report', 'web_archive')
     """
     try:
-        workflows_dir = Path(__file__).parent.parent.parent / "data" / "workflows"
-        wf_file = workflows_dir / f"{workflow_id}.json"
+        from workflow_loader import WorkflowLoader
         
-        if not wf_file.exists():
+        loader = WorkflowLoader(explicit_only=True)
+        wf = _resolve_workflow(loader, workflow_id)
+        if not wf:
             raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
         
-        with open(wf_file, 'r') as f:
-            wf = json.load(f)
-        
-        # Extract tools used from steps
-        tools_used = []
-        for step in wf.get("steps", []):
-            tool = step.get("tool")
-            if tool and tool not in tools_used:
-                tools_used.append(tool)
-        
-        # Get explicit triggers
-        explicit_triggers = wf.get("triggers", {}).get("explicit", [])
-        primary_trigger = explicit_triggers[0] if explicit_triggers else f"/{workflow_id}"
-        
-        # Check if workflow requires input (has main_subject extraction)
-        variables = wf.get("variables", {})
-        requires_input = any(
-            isinstance(v, dict) and v.get("extract") == "main_subject"
-            for v in variables.values()
-        )
-        
-        return WorkflowInfo(
-            id=wf.get("id", workflow_id),
-            name=wf.get("name", workflow_id),
-            description=wf.get("description"),
-            trigger=primary_trigger,
-            triggers=explicit_triggers if explicit_triggers else [f"/{workflow_id}"],
-            requires_input=requires_input,
-            version=wf.get("version"),
-            tools_used=tools_used
-        )
+        return _workflow_info_from_definition(wf, workflow_id)
         
     except HTTPException:
         raise
@@ -271,53 +249,19 @@ async def _execute_workflow_scoped(workflow_id: str, request: WorkflowExecuteReq
 
     try:
         # Load workflow
-        workflows_dir = Path(__file__).parent.parent.parent / "data" / "workflows"
-        wf_file = workflows_dir / f"{workflow_id}.json"
-        
-        # If direct ID not found, search by trigger alias (e.g., "health" → "server_health_check")
-        if not wf_file.exists():
-            # Search all workflows for matching trigger
-            found_workflow = None
-            search_trigger = f"/{workflow_id}" if not workflow_id.startswith("/") else workflow_id
-            
-            for wf_path in workflows_dir.glob("*.json"):
-                try:
-                    with open(wf_path, 'r') as f:
-                        wf = json.load(f)
-                    triggers = wf.get("triggers", {}).get("explicit", [])
-                    # Check if search_trigger matches any explicit trigger
-                    if search_trigger in triggers or workflow_id in triggers:
-                        found_workflow = wf
-                        wf_file = wf_path
-                        break
-                    # Also check without leading slash
-                    if f"/{workflow_id}" in triggers:
-                        found_workflow = wf
-                        wf_file = wf_path
-                        break
-                except (json.JSONDecodeError, IOError):
-                    continue
-            
-            if not found_workflow:
-                # List available workflows and their triggers for helpful error
-                available = []
-                for wf_path in workflows_dir.glob("*.json"):
-                    try:
-                        with open(wf_path, 'r') as f:
-                            wf = json.load(f)
-                        if wf.get("enabled", True):
-                            triggers = wf.get("triggers", {}).get("explicit", [])
-                            available.append(f"{wf.get('id')} (triggers: {', '.join(triggers) or 'none'})")
-                    except:
-                        continue
-                raise HTTPException(
-                    status_code=404, 
-                    detail=f"Workflow '{workflow_id}' not found. Available: {'; '.join(available[:5])}"
-                )
-            workflow = found_workflow
-        else:
-            with open(wf_file, 'r') as f:
-                workflow = json.load(f)
+        from workflow_loader import WorkflowLoader
+
+        loader = WorkflowLoader(explicit_only=True)
+        workflow = _resolve_workflow(loader, workflow_id)
+        if not workflow:
+            available = []
+            for wf in loader.workflows.values():
+                triggers = wf.get("triggers", {}).get("explicit", [])
+                available.append(f"{wf.get('id')} (triggers: {', '.join(triggers) or 'none'})")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Workflow '{workflow_id}' not found. Available: {'; '.join(available[:5])}"
+            )
         
         # Build transcript (trigger + optional query)
         # Use first explicit trigger if available, otherwise fall back to /{workflow_id}
