@@ -63,7 +63,7 @@ generate_cache_key() {
         echo -n "${text}|qwen3-tts|${QWEN3_TTS_VOICE:-Jarvis}|${QWEN3_TTS_SPEED:-1.0}|${QWEN3_TTS_FORMAT:-mp3}|${QWEN3_TTS_URL:-http://localhost:8881/v1/audio/speech}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     elif [ "$TTS_PROVIDER" = "xai" ]; then
         # Include xAI TTS settings in hash
-        echo -n "${text}|xai|${XAI_TTS_VOICE:-eve}|${XAI_TTS_LANGUAGE:-en}|${XAI_TTS_CODEC:-mp3}|${XAI_TTS_SAMPLE_RATE:-24000}|${XAI_TTS_BIT_RATE:-128000}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+        echo -n "${text}|xai|${XAI_TTS_VOICE:-eve}|${XAI_TTS_LANGUAGE:-en}|${XAI_TTS_CODEC:-mp3}|${XAI_TTS_SAMPLE_RATE:-24000}|${XAI_TTS_BIT_RATE:-128000}|${XAI_TTS_MAX_CHARS:-5000}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     elif [ "$TTS_PROVIDER" = "kokoro" ]; then
         echo -n "${text}|kokoro|${KOKORO_TTS_VOICE:-af_nicole}|${KOKORO_TTS_SPEED:-1.0}|${KOKORO_TTS_URL:-}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     else
@@ -200,7 +200,7 @@ else
         XAI_TTS_CODEC="${XAI_TTS_CODEC:-mp3}"
         XAI_TTS_SAMPLE_RATE="${XAI_TTS_SAMPLE_RATE:-24000}"
         XAI_TTS_BIT_RATE="${XAI_TTS_BIT_RATE:-128000}"
-        XAI_TTS_MAX_CHARS="${XAI_TTS_MAX_CHARS:-15000}"
+        XAI_TTS_MAX_CHARS="${XAI_TTS_MAX_CHARS:-5000}"
         XAI_TTS_TIMEOUT="${XAI_TTS_TIMEOUT:-180}"
 
         if [ -z "$XAI_API_KEY" ]; then

@@ -198,6 +198,16 @@ def test_native_openai_status_cache_includes_tts_instructions():
     assert "TTS_INSTRUCTIONS" in openai_cache_line
 
 
+def test_native_xai_status_cache_includes_5000_character_limit():
+    xai_cache_line = next(
+        line for line in NATIVE_STATUS_SCRIPT.splitlines()
+        if '${text}|xai|' in line
+    )
+
+    assert '${XAI_TTS_MAX_CHARS:-5000}' in xai_cache_line
+    assert 'XAI_TTS_MAX_CHARS="${XAI_TTS_MAX_CHARS:-5000}"' in NATIVE_STATUS_SCRIPT
+
+
 def test_elevenlabs_cache_hashes_only_effective_model_settings():
     _purge_server_modules()
     sys.path.insert(0, str(ROOT / "jarvis-web"))
