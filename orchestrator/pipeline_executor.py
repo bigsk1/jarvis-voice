@@ -493,6 +493,8 @@ class PipelineExecutor:
         # Get items to iterate
         for_each_expr = step["for_each"]
         items = self._resolve_variable(for_each_expr, variables)
+        if items is None:
+            items = []
         
         if not items:
             required_success = (

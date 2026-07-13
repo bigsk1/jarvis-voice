@@ -586,6 +586,34 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
         self.assertEqual(calls, [("stash", "one"), ("stash", "two")])
         self.assertEqual(result["items_succeeded"], 2)
 
+    def test_process_all_for_each_handles_missing_items(self):
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(execute=lambda *_args, **_kwargs: {}),
+            provider=None,
+        )
+
+        result = executor._execute_for_each(
+            {
+                "tool": "stash",
+                "for_each": "${missing_items}",
+                "process_all": True,
+                "params": {},
+            },
+            "stash",
+            None,
+            {},
+            {},
+            {},
+            0,
+            10,
+        )
+
+        self.assertEqual(result["items_processed"], 0)
+        self.assertEqual(result["items_succeeded"], 0)
+        self.assertEqual(result["outputs"], [])
+        self.assertFalse(result["abort"])
+
     def test_for_each_respects_explicit_step_max_attempts(self):
         calls = []
 

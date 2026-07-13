@@ -68,7 +68,7 @@ generate_cache_key() {
         echo -n "${text}|kokoro|${KOKORO_TTS_VOICE:-af_nicole}|${KOKORO_TTS_SPEED:-1.0}|${KOKORO_TTS_URL:-}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     else
         # Include OpenAI settings in hash
-        echo -n "${text}|openai|${VOICE}|${TTS_MODEL}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+        echo -n "${text}|openai|${VOICE}|${TTS_MODEL}|${TTS_INSTRUCTIONS:-}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     fi
 }
 

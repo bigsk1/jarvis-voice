@@ -189,6 +189,15 @@ def test_native_status_script_uses_status_only_elevenlabs_model():
     assert 'ELEVENLABS_TTS_MODEL="${STATUS_ELEVENLABS_TTS_MODEL:-eleven_multilingual_v2}"' in NATIVE_STATUS_SCRIPT
 
 
+def test_native_openai_status_cache_includes_tts_instructions():
+    openai_cache_line = next(
+        line for line in NATIVE_STATUS_SCRIPT.splitlines()
+        if '${text}|openai|' in line
+    )
+
+    assert "TTS_INSTRUCTIONS" in openai_cache_line
+
+
 def test_elevenlabs_cache_hashes_only_effective_model_settings():
     _purge_server_modules()
     sys.path.insert(0, str(ROOT / "jarvis-web"))

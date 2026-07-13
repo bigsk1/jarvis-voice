@@ -22,6 +22,12 @@ def get_manager() -> ReminderManager:
     return ReminderManager(mode=get_mode())
 
 
+def _updated_optional_text(data: dict, existing: dict, field: str) -> str | None:
+    """Preserve omitted text fields while allowing explicit null/blank clears."""
+    value = data[field] if field in data else existing.get(field)
+    return (value or '').strip() or None
+
+
 @reminders_bp.route('', methods=['GET'])
 def list_reminders():
     manager = get_manager()
@@ -89,11 +95,11 @@ def update_reminder(reminder_id: int):
     ok = manager.update_reminder(
         reminder_id=reminder_id,
         title=(data.get('title') or existing.get('title') or '').strip(),
-        description=(data.get('description') or existing.get('description') or '').strip() or None,
+        description=_updated_optional_text(data, existing, 'description'),
         trigger_time=(data.get('trigger_time') or existing.get('trigger_time') or '').strip(),
-        related_intel_file=(data.get('related_intel_file') or existing.get('related_intel_file') or '').strip() or None,
-        callback_url=(data.get('callback_url') or existing.get('callback_url') or '').strip() or None,
-        recurrence_rule=(data.get('recurrence_rule') or existing.get('recurrence_rule') or '').strip() or None,
+        related_intel_file=_updated_optional_text(data, existing, 'related_intel_file'),
+        callback_url=_updated_optional_text(data, existing, 'callback_url'),
+        recurrence_rule=_updated_optional_text(data, existing, 'recurrence_rule'),
         metadata=data.get('metadata') if 'metadata' in data else existing.get('metadata'),
         reactivate=True,
     )
