@@ -77,6 +77,14 @@ class MemoryResponse(BaseModel):
     count: int | None = None
 
 
+class MemoryCategoriesResponse(BaseModel):
+    """Memory category names and their record counts."""
+    ok: bool
+    message: str
+    categories: dict[str, int]
+    count: int
+
+
 class MemorySearchRequest(BaseModel):
     """Request for memory search"""
     query: str = Field(..., description="Search query")

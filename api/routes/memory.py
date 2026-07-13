@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 
 from api.models.memory import (
-    MemoryCreate, MemoryUpdate, Memory, MemoryResponse,
+    MemoryCreate, MemoryUpdate, Memory, MemoryCategoriesResponse, MemoryResponse,
     SemanticSearchRequest
 )
 
@@ -99,7 +99,7 @@ async def get_memory_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/categories", response_model=MemoryResponse)
+@router.get("/categories", response_model=MemoryCategoriesResponse)
 async def list_categories():
     """
     List all memory categories with counts.
@@ -119,10 +119,10 @@ async def list_categories():
         
         categories = {row['category']: row['count'] for row in rows}
         
-        return MemoryResponse(
+        return MemoryCategoriesResponse(
             ok=True,
             message=f"Found {len(categories)} categories",
-            memories=None,
+            categories=categories,
             count=sum(categories.values())
         )
     except Exception as e:

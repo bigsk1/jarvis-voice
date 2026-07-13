@@ -310,7 +310,7 @@ curl -s http://localhost:8880/api/memory/stats | jq
 curl -s http://localhost:8880/api/memory/categories | jq
 ```
 
-**Expected:** Returns category count and total memories.
+**Expected:** Returns every category name with its memory count, plus the total memories.
 
 ### 13. Test Memory List
 
@@ -561,7 +561,7 @@ echo -e "\n1. Stats:"
 curl -s $BASE/api/memory/stats | jq -c '{total: .total_memories, coverage: .embedding_coverage}'
 
 echo -e "\n2. Categories:"
-curl -s $BASE/api/memory/categories | jq -c '{count: .count}'
+curl -s $BASE/api/memory/categories | jq -c '{categories: .categories, count: .count}'
 
 echo -e "\n3. Keyword Search (flask):"
 curl -s "$BASE/api/memory/search/keyword?q=flask&limit=2" | jq -c '.count'

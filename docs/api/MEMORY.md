@@ -306,8 +306,13 @@ Returns all categories with memory counts.
 ```json
 {
   "ok": true,
-  "message": "Found 13 categories",
-  "count": 424
+  "message": "Found 3 categories",
+  "categories": {
+    "technical": 120,
+    "project": 95,
+    "personal": 42
+  },
+  "count": 257
 }
 ```
 
