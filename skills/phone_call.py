@@ -382,23 +382,28 @@ def is_call_in_progress() -> dict | None:
     return None
 
 
-def set_call_in_progress(call_id: str, phone_number: str, recipient: str):
+def set_call_in_progress(call_id: str, phone_number: str, recipient: str, task: str):
     """Mark a call as in progress."""
     try:
         CALL_IN_PROGRESS_FILE.write_text(json.dumps({
             'call_id': call_id,
             'phone_number': phone_number,
             'recipient': recipient,
+            'task': task,
             'started': time.time()
         }))
     except Exception:
         pass
 
 
-def clear_call_in_progress():
-    """Clear the in-progress marker."""
+def clear_call_in_progress(call_id: str | None = None):
+    """Clear the in-progress marker, optionally only for a matching call."""
     try:
         if CALL_IN_PROGRESS_FILE.exists():
+            if call_id is not None:
+                data = json.loads(CALL_IN_PROGRESS_FILE.read_text())
+                if data.get('call_id') != call_id:
+                    return
             CALL_IN_PROGRESS_FILE.unlink()
     except Exception:
         pass
@@ -977,7 +982,8 @@ def action_call(args: dict) -> dict:
                     clear_call_in_progress()
                     transcript = extract_transcript(call)  # Use full transcript extractor
                     summary = call.get('summary', '')
-                    saved = save_call_to_canvas(in_progress['call_id'], in_progress['recipient'], task, {
+                    prior_task = in_progress.get('task') or "Phone call"
+                    saved = save_call_to_canvas(in_progress['call_id'], in_progress['recipient'], prior_task, {
                         'status': 'ended',
                         'transcript': transcript,
                         'summary': summary,
@@ -1013,7 +1019,7 @@ def action_call(args: dict) -> dict:
         call_id = call_info['call_id']
         
         # Mark call as in progress and record it
-        set_call_in_progress(call_id, phone_number, recipient)
+        set_call_in_progress(call_id, phone_number, recipient, task)
         record_call_made(phone_number)
         
         if not wait:
@@ -1151,13 +1157,23 @@ def action_status(args: dict) -> dict:
         
         # If call is done and has transcript, save to Canvas
         if status == 'ended' and transcript and save_to_canvas:
+            in_progress = is_call_in_progress()
+            tracked_call = (
+                in_progress
+                if in_progress and in_progress.get('call_id') == call_id
+                else None
+            )
             customer = call.get('customer', {}).get('number', 'Unknown')
-            save_call_to_canvas(call_id, customer, "Phone call", {
+            recipient = (tracked_call or {}).get('recipient') or customer
+            task = (tracked_call or {}).get('task') or "Phone call"
+            save_call_to_canvas(call_id, recipient, task, {
                 'status': status,
                 'transcript': transcript,
                 'summary': summary,
                 'duration_seconds': call.get('duration')
             })
+            if tracked_call:
+                clear_call_in_progress(call_id)
         
         # Build speech response
         if status == 'ended' and transcript:
