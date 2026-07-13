@@ -207,9 +207,11 @@ class XAIMediaPayloadTests(unittest.TestCase):
                 duration=5,
                 aspect_ratio="16:9",
                 resolution="720p",
+                image_url="",
             )
 
         self.assertEqual(result["provider"], "xai")
+        self.assertFalse(result["from_image"])
         self.assertEqual(captured["client_kwargs"], {"api_key": "xai-test-key"})
         self.assertEqual(
             captured["generate_kwargs"],

@@ -23,7 +23,10 @@ import sys
 import json
 import time
 import base64
+import mimetypes
+import tempfile
 import requests
+from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime
 
@@ -232,6 +235,43 @@ def _resolve_image_source(image_source: str) -> str | None:
     return None
 
 
+@contextmanager
+def _materialize_video_image_source(image_source: str):
+    """Yield a readable local image path or fail before provider generation."""
+    resolved_path = _resolve_image_source(image_source)
+    if resolved_path and Path(resolved_path).exists():
+        yield resolved_path
+        return
+
+    temp_path = None
+    try:
+        if image_source.startswith(("http://", "https://")):
+            response = requests.get(image_source, timeout=30)
+            response.raise_for_status()
+            image_bytes = response.content
+            mime_type = response.headers.get("content-type", "image/png").split(";", 1)[0]
+        elif image_source.startswith("data:"):
+            header, encoded = image_source.split(",", 1)
+            if ";base64" not in header:
+                raise ValueError("Image data URI must be base64 encoded")
+            mime_type = header[5:].split(";", 1)[0] or "image/png"
+            image_bytes = base64.b64decode(encoded, validate=True)
+        else:
+            raise ValueError(f"Could not resolve image source: {image_source[:100]}")
+
+        if not image_bytes:
+            raise ValueError("Reference image was empty")
+
+        suffix = mimetypes.guess_extension(mime_type) or ".img"
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_file:
+            temp_file.write(image_bytes)
+            temp_path = Path(temp_file.name)
+        yield str(temp_path)
+    finally:
+        if temp_path:
+            temp_path.unlink(missing_ok=True)
+
+
 def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
                        resolution: str = "720p", image_url: str = None,
                        video_url: str = None) -> dict:
@@ -335,7 +375,7 @@ def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9
             "provider": "xai",
             "aspect_ratio": aspect_ratio,
             "resolution": resolution,
-            "from_image": image_url is not None,
+            "from_image": "image_url" in kwargs,
             "is_edit": video_url is not None
         }
         
@@ -345,24 +385,12 @@ def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9
         raise Exception(f"xAI Video generation failed: {str(e)}")
 
 
-def _load_gemini_image_bytes(image_url: str) -> tuple[bytes, str] | None:
-    """Resolve a local/stash/remote image into bytes for Gemini video APIs."""
-    import mimetypes
-
-    resolved_path = _resolve_image_source(image_url)
-    if resolved_path and Path(resolved_path).exists():
-        image_bytes = Path(resolved_path).read_bytes()
+def _load_video_image_bytes(image_url: str) -> tuple[bytes, str]:
+    """Resolve a local, stash, remote, or data-URI image for video providers."""
+    with _materialize_video_image_source(image_url) as resolved_path:
         mime_type, _ = mimetypes.guess_type(resolved_path)
-        print(f"[GEMINI VIDEO] Using local image: {resolved_path}", file=sys.stderr)
-        return image_bytes, mime_type or "image/png"
-
-    if image_url.startswith(("http://", "https://")):
-        response = requests.get(image_url, timeout=30)
-        response.raise_for_status()
-        content_type = response.headers.get("content-type", "image/png").split(";", 1)[0]
-        return response.content, content_type
-
-    return None
+        print(f"[VIDEO] Using reference image: {resolved_path}", file=sys.stderr)
+        return Path(resolved_path).read_bytes(), mime_type or "image/png"
 
 
 def _download_gemini_omni_video(client, video_output) -> bytes:
@@ -414,24 +442,16 @@ def _generate_video_gemini_omni(client, model_name: str, prompt: str, duration: 
     interaction_input = effective_prompt
     task = "text_to_video"
     if image_url:
-        try:
-            loaded_image = _load_gemini_image_bytes(image_url)
-        except Exception as exc:
-            print(f"Warning: Could not load image: {exc}", file=sys.stderr)
-            loaded_image = None
-        if loaded_image:
-            image_bytes, mime_type = loaded_image
-            interaction_input = [
-                {
-                    "type": "image",
-                    "data": base64.b64encode(image_bytes).decode("ascii"),
-                    "mime_type": mime_type,
-                },
-                {"type": "text", "text": effective_prompt},
-            ]
-            task = "image_to_video"
-        else:
-            print(f"Warning: Could not resolve image source: {image_url}", file=sys.stderr)
+        image_bytes, mime_type = _load_video_image_bytes(image_url)
+        interaction_input = [
+            {
+                "type": "image",
+                "data": base64.b64encode(image_bytes).decode("ascii"),
+                "mime_type": mime_type,
+            },
+            {"type": "text", "text": effective_prompt},
+        ]
+        task = "image_to_video"
 
     interaction = client.interactions.create(
         model=model_name,
@@ -553,47 +573,11 @@ def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "1
         
         # Add image for image-to-video if provided
         if image_url:
-            import mimetypes
-            try:
-                img_bytes = None
-                mime_type = 'image/png'
-                
-                # First try to resolve as stash ref or local path
-                resolved_path = _resolve_image_source(image_url)
-                if resolved_path and Path(resolved_path).exists():
-                    # Read local file
-                    with open(resolved_path, 'rb') as f:
-                        img_bytes = f.read()
-                    detected_mime, _ = mimetypes.guess_type(resolved_path)
-                    if detected_mime:
-                        mime_type = detected_mime
-                    print(f"[GEMINI VIDEO] Using local image: {resolved_path}", file=sys.stderr)
-                elif image_url.startswith(('http://', 'https://')):
-                    # Download from URL
-                    img_response = requests.get(image_url, timeout=30)
-                    img_response.raise_for_status()
-                    img_bytes = img_response.content
-                    
-                    # Determine mime type from response
-                    content_type = img_response.headers.get('content-type', 'image/png')
-                    if 'jpeg' in content_type or 'jpg' in content_type:
-                        mime_type = 'image/jpeg'
-                    elif 'png' in content_type:
-                        mime_type = 'image/png'
-                    elif 'webp' in content_type:
-                        mime_type = 'image/webp'
-                else:
-                    print(f"Warning: Could not resolve image source: {image_url}", file=sys.stderr)
-                
-                if img_bytes:
-                    # Create image object
-                    gen_kwargs["image"] = types.Image(
-                        image_bytes=img_bytes,
-                        mime_type=mime_type
-                    )
-            except Exception as e:
-                # Continue without image if download fails
-                print(f"Warning: Could not load image: {e}", file=sys.stderr)
+            img_bytes, mime_type = _load_video_image_bytes(image_url)
+            gen_kwargs["image"] = types.Image(
+                image_bytes=img_bytes,
+                mime_type=mime_type,
+            )
         
         # Start video generation (async operation)
         operation = client.models.generate_videos(**gen_kwargs)
@@ -637,7 +621,7 @@ def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "1
             "provider": "gemini",
             "aspect_ratio": aspect_ratio,
             "resolution": resolution,
-            "from_image": image_url is not None,
+            "from_image": "image" in gen_kwargs,
             "has_audio": True  # Veo 3+ generates native audio
         }
         
@@ -733,7 +717,10 @@ def generate_video_openai(prompt: str, duration: int = 8, aspect_ratio: str = "1
             except Exception as e:
                 raise ValueError(f"Failed to resize image: {e}")
         
+        used_input_reference = False
+
         async def create_video():
+            nonlocal used_input_reference
             # Build kwargs for video generation
             kwargs = {
                 "model": model_name,
@@ -744,27 +731,21 @@ def generate_video_openai(prompt: str, duration: int = 8, aspect_ratio: str = "1
             
             # Handle image-to-video
             if image_path:
-                # OpenAI expects input_reference as a file upload
-                # First, check if it's a local file
-                resolved_path = _resolve_image_source(image_path)
-                if resolved_path and Path(resolved_path).exists():
+                # OpenAI expects input_reference as a local file upload. Remote
+                # Canvas/CDN sources are materialized first and never omitted.
+                with _materialize_video_image_source(image_path) as resolved_path:
                     # Resize image to match target video dimensions (Sora requirement)
                     resized_path = resize_image_for_sora(resolved_path, target_width, target_height)
                     try:
                         # Upload resized file as input_reference
                         with open(resized_path, 'rb') as f:
                             kwargs["input_reference"] = f
+                            used_input_reference = True
                             # Use create_and_poll for automatic polling
                             video = await client.videos.create_and_poll(**kwargs)
                     finally:
                         # Clean up temp file
-                        try:
-                            Path(resized_path).unlink()
-                        except:
-                            pass
-                else:
-                    # No valid image, proceed without
-                    video = await client.videos.create_and_poll(**kwargs)
+                        Path(resized_path).unlink(missing_ok=True)
             else:
                 # Use create_and_poll for automatic polling
                 video = await client.videos.create_and_poll(**kwargs)
@@ -830,7 +811,7 @@ def generate_video_openai(prompt: str, duration: int = 8, aspect_ratio: str = "1
             "provider": "openai",
             "aspect_ratio": result_aspect,
             "resolution": "1080p" if is_pro and "1792" in size else "720p",
-            "from_image": image_path is not None,
+            "from_image": used_input_reference,
             "has_audio": True,  # Sora 2 generates native audio
             "remix_from": remix_video_id
         }

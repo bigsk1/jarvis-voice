@@ -1573,7 +1573,7 @@ class ChatUI {
       this.addErrorMessage(data.error);
       this._clearPendingToolsForMessage(data.message_id);
       if (
-        ['vision_model_unsupported', 'vision_analysis_failed', 'image_edit_stash_failed'].includes(data.error_code)
+        ['vision_model_unsupported', 'vision_analysis_failed', 'image_edit_stash_failed', 'image_video_stash_failed'].includes(data.error_code)
         && this.pendingVisionRetryPayload
       ) {
         const retryPayload = this.pendingVisionRetryPayload;
@@ -1585,7 +1585,9 @@ class ChatUI {
           this._renderImagePreviews();
           const retryMessage = data.error_code === 'image_edit_stash_failed'
             ? 'Image restored — retry the edit'
-            : 'Image restored — switch to a vision-capable model and resend';
+            : data.error_code === 'image_video_stash_failed'
+              ? 'Image restored — retry video generation'
+              : 'Image restored — switch to a vision-capable model and resend';
           Utils.toast(retryMessage, 'info', 5000);
         }
       }
@@ -2957,7 +2959,7 @@ class ChatUI {
     this.isProcessing = true;
     this.updateSendButton();
     this._resetPendingToolState();
-    this.pendingVisionRetryPayload = ['analyze', 'image'].includes(imagePayload?.action)
+    this.pendingVisionRetryPayload = ['analyze', 'image', 'video'].includes(imagePayload?.action)
       ? {
           action: imagePayload.action,
           settings: { ...(imagePayload.settings || {}) },

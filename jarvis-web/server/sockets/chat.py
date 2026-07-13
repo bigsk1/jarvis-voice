@@ -3018,9 +3018,22 @@ Previous structured data:
                     
                     stash_info = self._auto_stash_image(primary_payload, '', mode)
                     stash_ref = stash_info.get('stash_ref', '') if stash_info else ''
-                    
-                    if stash_ref:
-                        print(f"[CHAT] Auto-stashed image for video: {stash_ref}")
+
+                    if not stash_ref:
+                        self.socketio.emit('chat:error', {
+                            'message_id': message_id,
+                            'conversation_id': conversation_id,
+                            'error': (
+                                'Could not prepare the uploaded image for video generation. '
+                                'No video generation was attempted. Please retry.'
+                            ),
+                            'error_code': 'image_video_stash_failed',
+                            'retryable': True,
+                            'timestamp': time.time(),
+                        }, room=delivery_room)
+                        return
+
+                    print(f"[CHAT] Auto-stashed image for video: {stash_ref}")
                     
                     # @TOOL_CONFIG: web UI forced overrides — params enforced from user's modal selections
                     # The LLM generates the creative prompt, but technical params are overridden.

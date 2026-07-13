@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
 from google import genai
 
 
@@ -165,3 +166,46 @@ def test_omni_image_video_encodes_image_and_downloads_uri(tmp_path):
     assert fake_client.files.download_files == [video_uri]
     assert result["video_bytes"] == b"uri-video-bytes"
     assert result["from_image"] is True
+
+
+def test_omni_image_load_failure_aborts_before_generation():
+    captured = {}
+    encoded_video = base64.b64encode(b"unexpected-video").decode("ascii")
+    response = SimpleNamespace(
+        status="completed",
+        id="unexpected-interaction",
+        output_video=SimpleNamespace(data=encoded_video, uri=None),
+    )
+    fake_client = _FakeClient(response, captured)
+
+    with patch.object(generate_video, "get_config_value", side_effect=_config_value), patch.object(
+        generate_video, "_resolve_image_source", return_value=None
+    ), patch.object(generate_video.requests, "get", side_effect=OSError("download failed")), patch.object(
+        genai, "Client", return_value=fake_client
+    ):
+        with pytest.raises(Exception, match="download failed"):
+            generate_video.generate_video_gemini(
+                "Animate the subject",
+                image_url="https://cdn.example/reference.png",
+            )
+
+    assert captured == {}
+
+
+def test_veo_image_load_failure_aborts_before_generation():
+    captured = {}
+    operation = SimpleNamespace(done=True, response=SimpleNamespace(generated_videos=[]))
+    fake_client = _FakeVeoClient(operation, captured)
+
+    with patch.object(generate_video, "get_config_value", side_effect=_veo_config_value), patch.object(
+        generate_video, "_resolve_image_source", return_value=None
+    ), patch.object(generate_video.requests, "get", side_effect=OSError("download failed")), patch.object(
+        genai, "Client", return_value=fake_client
+    ):
+        with pytest.raises(Exception, match="download failed"):
+            generate_video.generate_video_gemini(
+                "Animate the subject",
+                image_url="https://cdn.example/reference.png",
+            )
+
+    assert captured == {}
