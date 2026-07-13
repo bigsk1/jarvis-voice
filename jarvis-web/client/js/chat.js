@@ -1805,7 +1805,7 @@ class ChatUI {
   /**
    * Show the image action modal with preview
    */
-  async _showImageActionModal(uploadDataOrArray) {
+  async _showImageActionModal(uploadDataOrArray, preferredAction = 'analyze') {
     if (!this.imageActionModal) return;
 
     try {
@@ -1841,16 +1841,28 @@ class ChatUI {
       });
     }
     
-    // Reset to default (Analyze)
-    const analyzeRadio = this.imageActionModal.querySelector('input[name="imageAction"][value="analyze"]');
-    if (analyzeRadio) analyzeRadio.checked = true;
-    
-    // Reset options visibility
-    this._updateImageActionOptions();
+    const allowedActions = new Set(['analyze', 'video', 'image']);
+    const selectedAction = allowedActions.has(preferredAction) ? preferredAction : 'analyze';
+    const selectedRadio = this.imageActionModal.querySelector(
+      `input[name="imageAction"][value="${selectedAction}"]`
+    );
+    if (selectedRadio) selectedRadio.checked = true;
+
     this._resetImageActionOptions();
+    this._updateImageActionOptions();
     
     // Show modal
     this.imageActionModal.classList.add('active');
+  }
+
+  async attachImportedImage(uploadData, preferredAction = 'analyze') {
+    if (!uploadData?.ok || !uploadData.url || !uploadData.filename) {
+      throw new Error('Jarvis Web received an invalid image handoff');
+    }
+
+    this.clearAttachedFile();
+    this.clearAttachedImage();
+    await this._showImageActionModal(uploadData, preferredAction);
   }
   
   /**

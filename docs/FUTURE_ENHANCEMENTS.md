@@ -481,6 +481,21 @@ A single command that checks:
 - Resolution/duration UI clamps correctly per selected model (Omni 720p only; Veo 4K when supported)
 - Image and video model pickers work independently per mode (cloud/local)
 
+### 11) Configurable Cross-UI Public Ports
+**Priority:** Low / coordinated infrastructure change
+
+Jarvis browser navigation currently assumes the established UI ports: Web `5001`, Memory `5002`, Intelligence `5003`, Docs `5004`, and Canvas `8890`. This includes header icons between UIs and Canvas media handoffs to Jarvis Web. The fixed ports are acceptable today; Docker users normally customize only the FastAPI host port when resolving a conflict.
+
+If configurable UI ports become necessary, implement them as one shared public-URL/port registry rather than changing a single link independently. The same configuration must drive:
+
+- Docker published ports and native launchers
+- Header links in every Jarvis UI
+- Canvas image/video handoffs to Jarvis Web
+- Documentation, health checks, and operator scripts
+- Same-hostname navigation so the shared authentication cookie continues working across UI ports
+
+Do not make only the Canvas-to-Web port configurable; partial configuration would leave the other cross-UI links inconsistent.
+
 ---
 
 ## 📊 Implementation Priority

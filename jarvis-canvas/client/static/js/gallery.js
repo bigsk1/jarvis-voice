@@ -4,7 +4,6 @@
 
 let images = [];
 let filteredImages = [];
-let videoModalImage = null;
 let currentImage = null;
 let refreshInProgress = false;
 
@@ -112,7 +111,7 @@ function renderGallery() {
                         <button class="btn btn-favorite${favorite ? ' is-favorite' : ''}" onclick="event.stopPropagation(); toggleFavoriteByIndex(${index}, this)" title="${favorite ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${favorite ? 'true' : 'false'}">${favorite ? '♥' : '♡'}</button>
                         <button class="btn btn-primary" onclick="event.stopPropagation(); downloadByIndex(${index})" title="Download image">⬇️</button>
                         <button class="btn btn-secondary" onclick="event.stopPropagation(); getCdnUrlByIndex(${index}, this)" title="${img.cdn_cached ? 'Copy cached CDN URL' : 'Create CDN URL'}">🔗</button>
-                        <button class="btn btn-accent" onclick="event.stopPropagation(); openVideoModalByIndex(${index})" title="Convert to Video">🎬</button>
+                        <button class="btn btn-accent" onclick="event.stopPropagation(); sendImageToJarvisWebByIndex(${index})" title="Send to Jarvis Web for video">🎬</button>
                     </div>
                     <div class="image-actions-right">
                         <button class="btn btn-danger" onclick="event.stopPropagation(); deleteByIndex(${index})" title="Delete image">🗑️</button>
@@ -546,7 +545,6 @@ async function refreshGallery() {
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeLightbox();
-        closeVideoModal();
     }
     if (e.key === 'ArrowRight' && currentImage) navigateImage(1);
     if (e.key === 'ArrowLeft' && currentImage) navigateImage(-1);
@@ -560,187 +558,45 @@ function navigateImage(direction) {
     openLightbox(filteredImages[newIndex].name);
 }
 
-// ============ Video Generation Modal ============
+// ============ Jarvis Web Media Handoff ============
 
-function openVideoModalByIndex(index) {
+function buildJarvisWebMediaHandoffUrl(filename, mediaType = 'image', action = 'video') {
+    const url = new URL(window.location.href);
+    url.port = '5001';
+    url.pathname = '/';
+    url.search = '';
+    url.hash = '';
+    url.searchParams.set('media_handoff', mediaType);
+    url.searchParams.set('media_filename', filename);
+    url.searchParams.set('media_action', action);
+    return url.toString();
+}
+
+function sendImageToJarvisWeb(filename) {
+    if (!filename || filename === 'null' || filename === 'undefined') {
+        showToast('Cannot send: no image selected', 'error');
+        return;
+    }
+
+    window.open(buildJarvisWebMediaHandoffUrl(filename), '_blank', 'noopener');
+    showToast('Opened image in a new Jarvis Web conversation', 'success');
+}
+
+function sendImageToJarvisWebByIndex(index) {
     if (index >= 0 && index < filteredImages.length) {
-        const name = filteredImages[index].name;
-        if (name) openVideoModal(name);
+        sendImageToJarvisWeb(filteredImages[index].name);
     }
 }
 
-function openVideoModalFromLightbox() {
+function sendCurrentImageToJarvisWeb() {
     const filename = currentImage || document.getElementById('lightboxFilename')?.textContent?.trim();
     if (!filename || filename === 'null' || filename === 'undefined') {
-        showToast('Cannot convert: no image selected', 'error');
+        showToast('Cannot send: no image selected', 'error');
         return;
     }
+
     closeLightbox();
-    openVideoModal(filename);
-}
-
-function openVideoModal(filename) {
-    if (!filename || filename === 'null' || filename === 'undefined') {
-        showToast('Cannot convert: no image selected', 'error');
-        return;
-    }
-    videoModalImage = filename;
-    document.getElementById('videoModalPreview').src = `/api/gallery/images/${encodeURIComponent(filename)}`;
-    document.getElementById('videoPrompt').value = '';
-    document.getElementById('videoModalForm').style.display = 'block';
-    document.getElementById('videoProgress').classList.remove('active');
-    document.getElementById('videoModal').classList.add('active');
-    document.body.style.overflow = 'hidden';
-    
-    // Set default aspect ratio based on image (could be enhanced to detect actual ratio)
-    document.getElementById('videoAspect').value = '16:9';
-    updateVideoOptions();
-}
-
-function closeVideoModal() {
-    document.getElementById('videoModal').classList.remove('active');
-    document.body.style.overflow = '';
-    videoModalImage = null;
-}
-
-function updateVideoOptions() {
-    const provider = document.getElementById('videoProvider').value;
-    const durationSelect = document.getElementById('videoDuration');
-    const resolutionSelect = document.getElementById('videoResolution');
-    const aspectSelect = document.getElementById('videoAspect');
-    
-    // Clear and rebuild duration options based on provider
-    durationSelect.innerHTML = '';
-    
-    if (provider === 'openai') {
-        // OpenAI Sora supports 4, 8, or 12 seconds
-        ['4', '8', '12'].forEach(d => {
-            const opt = document.createElement('option');
-            opt.value = d;
-            opt.text = d + ' seconds';
-            durationSelect.appendChild(opt);
-        });
-        durationSelect.value = '8';
-        
-        // Sora supports 720p and 1080p (1080p only with sora-2-pro)
-        resolutionSelect.innerHTML = `
-            <option value="720p">720p (HD) - $0.10/s</option>
-            <option value="1080p">1080p (Full HD) - $0.30-0.50/s</option>
-        `;
-        
-        // Sora only supports 2 aspect ratios
-        aspectSelect.innerHTML = `
-            <option value="16:9">16:9 (Landscape)</option>
-            <option value="9:16">9:16 (Portrait)</option>
-        `;
-    } else if (provider === 'gemini') {
-        // Gemini only supports 4, 6, or 8 seconds
-        ['4', '6', '8'].forEach(d => {
-            const opt = document.createElement('option');
-            opt.value = d;
-            opt.text = d + ' seconds';
-            durationSelect.appendChild(opt);
-        });
-        durationSelect.value = '8';
-        
-        // Gemini supports higher resolutions
-        resolutionSelect.innerHTML = `
-            <option value="720p">720p (HD)</option>
-            <option value="1080p">1080p (Full HD) - 8s only</option>
-            <option value="4k">4K (Ultra HD) - 8s only</option>
-        `;
-        
-        // Gemini only supports 2 aspect ratios
-        aspectSelect.innerHTML = `
-            <option value="16:9">16:9 (Landscape)</option>
-            <option value="9:16">9:16 (Portrait)</option>
-        `;
-    } else {
-        // xAI supports 1-15 seconds
-        ['5', '8', '10', '12', '15'].forEach(d => {
-            const opt = document.createElement('option');
-            opt.value = d;
-            opt.text = d + ' seconds';
-            durationSelect.appendChild(opt);
-        });
-        durationSelect.value = '5';
-        
-        // xAI supports 720p and 480p
-        resolutionSelect.innerHTML = `
-            <option value="720p">720p (HD)</option>
-            <option value="480p">480p (SD)</option>
-        `;
-        
-        // xAI supports more aspect ratios
-        aspectSelect.innerHTML = `
-            <option value="16:9">16:9 (Landscape)</option>
-            <option value="9:16">9:16 (Portrait)</option>
-            <option value="1:1">1:1 (Square)</option>
-            <option value="4:3">4:3 (Classic)</option>
-            <option value="3:2">3:2 (Photo)</option>
-        `;
-    }
-}
-
-async function generateVideo() {
-    if (!videoModalImage || videoModalImage === 'null' || videoModalImage === 'undefined') {
-        showToast('Cannot generate video: no image selected', 'error');
-        return;
-    }
-    
-    const prompt = document.getElementById('videoPrompt').value.trim();
-    if (!prompt) {
-        showToast('Please describe how the image should animate', 'error');
-        return;
-    }
-    
-    const provider = document.getElementById('videoProvider').value;
-    const duration = parseInt(document.getElementById('videoDuration').value);
-    const aspect = document.getElementById('videoAspect').value;
-    const resolution = document.getElementById('videoResolution').value;
-    
-    // Show progress
-    document.getElementById('videoModalForm').style.display = 'none';
-    document.getElementById('videoProgress').classList.add('active');
-    const providerName = provider === 'openai' ? 'OpenAI Sora' : provider === 'gemini' ? 'Gemini Veo' : 'xAI Grok';
-    document.getElementById('videoProgressStatus').textContent = `Using ${providerName}...`;
-    
-    try {
-        const response = await fetch(`/api/gallery/images/${encodeURIComponent(videoModalImage)}/to-video`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                prompt: prompt,
-                provider: provider,
-                duration: duration,
-                aspect_ratio: aspect,
-                resolution: resolution
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (data.ok) {
-            showToast('✅ Video generated! Check /video-gallery', 'success');
-            closeVideoModal();
-            
-            // Open video gallery in new tab if available
-            if (data.video_path) {
-                console.log('Video saved to:', data.video_path);
-            }
-        } else {
-            showToast(`❌ ${data.error || 'Video generation failed'}`, 'error');
-            // Show form again
-            document.getElementById('videoModalForm').style.display = 'block';
-            document.getElementById('videoProgress').classList.remove('active');
-        }
-    } catch (err) {
-        console.error('Video generation error:', err);
-        showToast(`❌ ${err.message || 'Failed to generate video'}`, 'error');
-        // Show form again
-        document.getElementById('videoModalForm').style.display = 'block';
-        document.getElementById('videoProgress').classList.remove('active');
-    }
+    sendImageToJarvisWeb(filename);
 }
 
 // Initialize

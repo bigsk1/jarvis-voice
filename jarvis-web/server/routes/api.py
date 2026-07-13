@@ -12,6 +12,7 @@ from pathlib import Path
 
 import yaml
 from flask import Blueprint, jsonify, request, send_file, send_from_directory, abort
+from werkzeug.datastructures import FileStorage
 from ..services.log_explorer import get_log_explorer, LogExplorerError
 from ..services.tool_discovery import get_tool_service
 from ..services.usage_metadata import format_usage_markdown
@@ -2610,6 +2611,7 @@ def upload_to_stash():
 # =============================================================================
 
 UPLOADS_PATH = JARVIS_ROOT / 'jarvis-web' / 'data' / 'uploads'
+GENERATED_IMAGES_PATH = JARVIS_ROOT / 'data' / 'generated_images'
 UPLOAD_ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 UPLOAD_MAX_FILE_BYTES = 30 * 1024 * 1024
 
@@ -2700,6 +2702,60 @@ def _process_uploaded_image_file(file, suffix: str = '', include_base64: bool = 
     except Exception as e:
         print(f"[Upload] Error processing image: {e}")
         return {'ok': False, 'error': str(e)}
+
+
+@api_bp.route('/media-handoff/import', methods=['POST'])
+def import_media_handoff():
+    """Import generated media into Web's normal attachment storage."""
+    data = request.get_json(silent=True) or {}
+    media_type = data.get('media_type')
+    filename = data.get('filename')
+
+    # Keep this contract typed so a future video-gallery handoff can extend it
+    # without allowing callers to submit arbitrary filesystem paths.
+    if media_type != 'image':
+        return jsonify({
+            'ok': False,
+            'error': f'Unsupported media type: {media_type or "missing"}',
+        }), 400
+
+    if (
+        not isinstance(filename, str)
+        or not filename
+        or filename != Path(filename).name
+        or '..' in filename
+        or '/' in filename
+        or '\\' in filename
+    ):
+        return jsonify({'ok': False, 'error': 'Invalid filename'}), 400
+
+    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+    if ext not in UPLOAD_ALLOWED_EXTENSIONS:
+        return jsonify({'ok': False, 'error': 'Unsupported image type'}), 400
+
+    source_path = GENERATED_IMAGES_PATH / filename
+    try:
+        generated_root = GENERATED_IMAGES_PATH.resolve()
+        resolved_source = source_path.resolve(strict=True)
+        resolved_source.relative_to(generated_root)
+    except (FileNotFoundError, OSError, ValueError):
+        return jsonify({'ok': False, 'error': 'Image not found'}), 404
+
+    if not resolved_source.is_file():
+        return jsonify({'ok': False, 'error': 'Image not found'}), 404
+    if resolved_source.stat().st_size > UPLOAD_MAX_FILE_BYTES:
+        return jsonify({'ok': False, 'error': 'Image too large (max 30MB)'}), 400
+
+    with resolved_source.open('rb') as stream:
+        result = _process_uploaded_image_file(
+            FileStorage(stream=stream, filename=filename),
+            include_base64=False,
+        )
+    if not result.get('ok'):
+        return jsonify(result), 400
+
+    result['media_type'] = media_type
+    return jsonify(result)
 
 
 @api_bp.route('/upload-image', methods=['POST'])

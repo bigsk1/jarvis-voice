@@ -186,31 +186,20 @@ The canvas server includes an integrated image gallery for browsing generated im
 - Sort by date, name, or size
 - Download images locally
 - CDN Upload for Cloudflare CDN URL sharing
-- Convert to Video (AI video from image)
+- Send to Jarvis Web for image-to-video generation
 - Delete unwanted images
 - Keyboard shortcuts: `Escape` close, `←` / `→` navigate
 
-### Image to Video Conversion
+### Image to Video Handoff
 
-Convert any gallery image to AI video with the video button:
+The video button sends the selected gallery image to Jarvis Web:
 
-1. Click the video icon on any image
-2. Configure animation prompt, provider (xAI Grok or Gemini Veo), duration, aspect ratio, resolution
-3. Click "Generate Video"
-4. Video saves to `data/generated_videos/`
+1. Click the video icon on any image.
+2. Canvas opens Jarvis Web in a new tab and explicitly starts a new conversation.
+3. Jarvis Web copies the local `data/generated_images/<filename>` image through its normal upload pipeline, including JPEG conversion and proportional resizing to a maximum dimension of 1024 pixels.
+4. The normal attachment modal opens with **Video** selected. Configure the provider and generation settings, enter your instruction, and send the message.
 
-```bash
-POST /api/gallery/images/{filename}/to-video
-Content-Type: application/json
-
-{
-  "prompt": "Gentle zoom with clouds moving slowly",
-  "provider": "xai",
-  "duration": 8,
-  "aspect_ratio": "16:9",
-  "resolution": "720p"
-}
-```
+Canvas remains mode-agnostic: the handoff uses the mode and media provider configured in Jarvis Web. It does not upload the image to Cloudflare or reuse a public CDN URL. Cloudflare upload remains an explicit gallery action behind **Get URL**.
 
 ### Source Directory
 Images are served from: `data/generated_images/`

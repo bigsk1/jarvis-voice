@@ -43,6 +43,7 @@ class JarvisApp {
     this._completedResponseIds = new Set();
     this._connectionConnected = false;
     this._toolSyncWarningTimer = null;
+    this._mediaHandoffStarted = false;
     
     this._initialize();
   }
@@ -115,6 +116,7 @@ class JarvisApp {
       }
 
       this._checkToolSyncWarning(savedMode);
+      void this._consumeMediaHandoff();
       if (!this._toolSyncWarningTimer) {
         this._toolSyncWarningTimer = setInterval(() => {
           if (this._connectionConnected) {
@@ -2691,6 +2693,52 @@ class JarvisApp {
     this._updateActiveConversation(null);
     this._updateConvIdBadge(null);
     Utils.toast('Started new chat', 'info');
+  }
+
+  /**
+   * Consume a one-time, typed Canvas media handoff in a fresh conversation.
+   */
+  async _consumeMediaHandoff() {
+    if (this._mediaHandoffStarted) return;
+
+    const url = new URL(window.location.href);
+    const mediaType = url.searchParams.get('media_handoff');
+    const filename = url.searchParams.get('media_filename');
+    const requestedAction = url.searchParams.get('media_action') || 'analyze';
+    if (!mediaType && !filename) return;
+
+    this._mediaHandoffStarted = true;
+    url.searchParams.delete('media_handoff');
+    url.searchParams.delete('media_filename');
+    url.searchParams.delete('media_action');
+    history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+
+    if (mediaType !== 'image' || !filename) {
+      Utils.toast('Invalid media handoff', 'error');
+      return;
+    }
+
+    this._startNewChat();
+
+    try {
+      const response = await fetch('/api/media-handoff/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ media_type: mediaType, filename })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Failed to import image');
+      }
+
+      const action = ['analyze', 'video', 'image'].includes(requestedAction)
+        ? requestedAction
+        : 'analyze';
+      await this.chat.attachImportedImage(data, action);
+    } catch (error) {
+      console.error('[App] Media handoff failed:', error);
+      Utils.toast(error.message || 'Failed to attach Canvas image', 'error');
+    }
   }
   
   /**

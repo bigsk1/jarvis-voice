@@ -74,7 +74,7 @@
                     <button class="btn btn-favorite" onclick="toggleFavoriteCurrent()" id="lightboxFavoriteBtn" aria-pressed="false">♡ Favorite</button>
                     <button class="btn btn-primary" onclick="downloadImage()">⬇️ Download</button>
                     <button class="btn btn-secondary" onclick="getCdnUrlFromLightbox()" id="lightboxCdnBtn">🔗 Get URL</button>
-                    <button class="btn btn-accent" onclick="openVideoModalFromLightbox()" id="lightboxVideoBtn">🎬 To Video</button>
+                    <button class="btn btn-accent" onclick="sendCurrentImageToJarvisWeb()" id="lightboxVideoBtn">🎬 Send to Jarvis</button>
                     <button class="btn btn-danger" onclick="deleteFromLightbox()">🗑️ Delete</button>
                 </div>
             </div>
@@ -82,70 +82,6 @@
     </div>
 
     <div class="toast" id="toast"></div>
-
-    <!-- Video Generation Modal -->
-    <div class="video-modal" id="videoModal">
-        <div class="video-modal-content">
-            <div class="video-modal-header">
-                <h2>🎬 Convert to Video</h2>
-                <button class="video-modal-close" onclick="closeVideoModal()">&times;</button>
-            </div>
-            <img id="videoModalPreview" class="video-modal-preview" src="" alt="Preview">
-            <div id="videoModalForm">
-                <div class="form-group">
-                    <label for="videoPrompt">Animation Prompt</label>
-                    <textarea id="videoPrompt" placeholder="Describe how the image should animate... e.g., 'Gentle camera pan with clouds moving slowly'"></textarea>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="videoProvider">Provider</label>
-                        <select id="videoProvider" onchange="updateVideoOptions()">
-                            <option value="xai">xAI Grok (1-15s)</option>
-                            <option value="openai">OpenAI Sora (4-12s, audio)</option>
-                            <option value="gemini">Gemini Veo (4-8s)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="videoDuration">Duration</label>
-                        <select id="videoDuration">
-                            <option value="5">5 seconds</option>
-                            <option value="8">8 seconds</option>
-                            <option value="10">10 seconds</option>
-                            <option value="15">15 seconds</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="videoAspect">Aspect Ratio</label>
-                        <select id="videoAspect">
-                            <option value="16:9">16:9 (Landscape)</option>
-                            <option value="9:16">9:16 (Portrait)</option>
-                            <option value="1:1">1:1 (Square)</option>
-                            <option value="4:3">4:3 (Classic)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="videoResolution">Resolution</label>
-                        <select id="videoResolution">
-                            <option value="720p">720p (HD)</option>
-                            <option value="1080p">1080p (Full HD)</option>
-                            <option value="4k">4K (Ultra HD)</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="video-modal-actions">
-                    <button class="btn btn-secondary" onclick="closeVideoModal()">Cancel</button>
-                    <button class="btn btn-primary" onclick="generateVideo()" id="generateVideoBtn">🎬 Generate Video</button>
-                </div>
-            </div>
-            <div class="video-progress" id="videoProgress">
-                <div class="spinner"></div>
-                <p>Generating video... This may take 2-5 minutes</p>
-                <p id="videoProgressStatus" style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 8px;"></p>
-            </div>
-        </div>
-    </div>
 
     <!-- Gallery JavaScript -->
     <script src="/static/js/gallery.js"></script>
