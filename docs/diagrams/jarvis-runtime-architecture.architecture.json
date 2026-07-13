@@ -1,0 +1,324 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Jarvis Voice Runtime Architecture",
+    "subtitle": "Live repository map: entrypoints, orchestration core, tools, providers, state, and artifacts",
+    "output": "jarvis-runtime-architecture.html",
+    "viewBox": [1120, 760]
+  },
+  "components": [
+    {
+      "id": "clients",
+      "type": "external",
+      "label": "Users + Integrations",
+      "sublabel": "browser, CLI, voice, webhooks",
+      "pos": [35, 300],
+      "size": [145, 72]
+    },
+    {
+      "id": "launchers",
+      "type": "cloud",
+      "label": "Launchers",
+      "sublabel": "bin/start, Docker Compose",
+      "pos": [245, 80],
+      "size": [150, 64]
+    },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "Web Surfaces",
+      "sublabel": "chat, canvas, memory, docs",
+      "pos": [245, 265],
+      "size": [150, 72],
+      "tag": ":5001/:8890/:5002+"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Jarvis API",
+      "sublabel": "FastAPI, proactive, query",
+      "pos": [245, 430],
+      "size": [150, 72],
+      "tag": ":8880"
+    },
+    {
+      "id": "services",
+      "type": "backend",
+      "label": "Background Services",
+      "sublabel": "followups, reminders, tasks",
+      "pos": [245, 585],
+      "size": [150, 72]
+    },
+    {
+      "id": "core",
+      "type": "backend",
+      "label": "Orchestrator Core",
+      "sublabel": "route, context, response",
+      "pos": [475, 265],
+      "size": [155, 80]
+    },
+    {
+      "id": "workflows",
+      "type": "messagebus",
+      "label": "Workflow Engine",
+      "sublabel": "data/workflows/*.json",
+      "pos": [475, 110],
+      "size": [155, 72]
+    },
+    {
+      "id": "tools",
+      "type": "backend",
+      "label": "Tool Runtime",
+      "sublabel": "executor, skills, MCP",
+      "pos": [710, 265],
+      "size": [150, 80]
+    },
+    {
+      "id": "providers",
+      "type": "cloud",
+      "label": "AI Providers",
+      "sublabel": "xAI, Anthropic, OpenAI, Ollama",
+      "pos": [925, 95],
+      "size": [155, 72]
+    },
+    {
+      "id": "integrations",
+      "type": "external",
+      "label": "External Services",
+      "sublabel": "search, media, phone, agents",
+      "pos": [925, 265],
+      "size": [155, 72]
+    },
+    {
+      "id": "state",
+      "type": "database",
+      "label": "Memory + Intel DBs",
+      "sublabel": "SQLite cloud/local, insights",
+      "pos": [925, 455],
+      "size": [155, 72]
+    },
+    {
+      "id": "artifacts",
+      "type": "database",
+      "label": "Artifacts + Logs",
+      "sublabel": "canvas, stash, media, audio",
+      "pos": [710, 585],
+      "size": [150, 72]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Entrypoint processes",
+      "wraps": ["launchers", "web", "api", "services"]
+    },
+    {
+      "kind": "region",
+      "label": "Core orchestration",
+      "wraps": ["core", "workflows", "tools"]
+    },
+    {
+      "kind": "region",
+      "label": "Provider and integration edge",
+      "wraps": ["providers", "integrations"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Repo-local durable state",
+      "wraps": ["state", "artifacts"]
+    }
+  ],
+  "connections": [
+    {
+      "from": "clients",
+      "to": "web",
+      "label": "HTTP + WebSocket",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelAt": [213, 386]
+    },
+    {
+      "from": "clients",
+      "to": "api",
+      "label": "webhooks / REST",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h",
+      "labelDy": 22
+    },
+    {
+      "from": "clients",
+      "to": "launchers",
+      "label": "CLI / voice / TUI",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "left",
+      "route": "orthogonal-h",
+      "labelDy": -18
+    },
+    {
+      "from": "launchers",
+      "to": "web",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "from": "launchers",
+      "to": "api",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v"
+    },
+    {
+      "from": "launchers",
+      "to": "services",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v"
+    },
+    {
+      "from": "web",
+      "to": "core",
+      "label": "chat turn",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "from": "api",
+      "to": "core",
+      "label": "/api/query",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h",
+      "labelDy": 22
+    },
+    {
+      "from": "services",
+      "to": "core",
+      "label": "scheduled queries",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "route": "orthogonal-h",
+      "labelDy": 24
+    },
+    {
+      "from": "core",
+      "to": "workflows",
+      "label": "explicit /cmd",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelDy": -24
+    },
+    {
+      "from": "core",
+      "to": "tools",
+      "label": "tool call loop",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "from": "workflows",
+      "to": "tools",
+      "label": "fixed steps",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "top",
+      "route": "orthogonal-h",
+      "labelDy": -18
+    },
+    {
+      "from": "core",
+      "to": "providers",
+      "label": "router + QA",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h",
+      "labelDy": -26
+    },
+    {
+      "from": "tools",
+      "to": "integrations",
+      "label": "tool APIs",
+      "variant": "default",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "from": "tools",
+      "to": "state",
+      "label": "memory + insight writes",
+      "variant": "default",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h",
+      "labelDy": 22
+    },
+    {
+      "from": "tools",
+      "to": "artifacts",
+      "label": "files, media, logs",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 36
+    },
+    {
+      "from": "api",
+      "to": "state",
+      "label": "alerts, tasks, config",
+      "variant": "default",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h",
+      "labelDy": -24
+    },
+    {
+      "from": "web",
+      "to": "artifacts",
+      "label": "uploads, views, logs",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "route": "orthogonal-h",
+      "labelDy": 34
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Request path",
+      "items": [
+        "WebSocket chat and /api/query both instantiate Orchestrator inside a mode-scoped config context.",
+        "The core branches to explicit workflow pipelines before falling back to LLM routing and tool execution."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Runtime modes",
+      "items": [
+        "Native startup uses tmux sessions and ~/jarvis-venv; Docker uses docker/entrypoint.sh, /opt/venv, and bind-mounted config/data/logs/audio.",
+        "JARVIS_MODE selects config and data boundaries; LLM_PROVIDER selects the chat backend."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Persistence",
+      "items": [
+        "SQLite memory/intelligence databases are split by cloud/local mode and synced by startup/service paths.",
+        "Canvas pages, stash artifacts, generated media, uploads, audio, and JSONL logs stay repo-local under data/, jarvis-web/data/, audio/, and logs/."
+      ]
+    }
+  ]
+}
