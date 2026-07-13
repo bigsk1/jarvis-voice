@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Jarvis Workflow Execution Lifecycle",
+    "subtitle": "Everything workflow-related: definitions, entrypoints, deterministic step execution, helper LLM calls, validation, artifacts, and abort paths",
+    "output": "jarvis-workflow-execution-lifecycle.html",
+    "viewBox": [720, 920]
+  },
+  "lanes": [
+    { "id": "entry", "label": "Invocation surfaces" },
+    { "id": "catalog", "label": "Workflow catalog + APIs" },
+    { "id": "state", "label": "Pipeline executor state" },
+    { "id": "work", "label": "Tool and helper LLM work" },
+    { "id": "outputs", "label": "Artifacts + responses" },
+    { "id": "exceptions", "label": "Skip, retry, abort", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "select", "label": "Select recipe", "fromCol": 0, "toCol": 1 },
+    { "id": "prepare", "label": "Prepare state", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "execute", "label": "Execute + report", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "loaded_scope", "label": "Loaded scope", "lane": "catalog", "fromCol": 0, "toCol": 1, "variant": "dashed" },
+    { "id": "step_loop", "label": "Deterministic step loop", "lane": "state", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "helper_calls", "label": "Tools plus optional helper LLM", "lane": "work", "fromCol": 2, "toCol": 4, "variant": "security" },
+    { "id": "failure_paths", "label": "Non-happy paths", "lane": "exceptions", "fromCol": 2, "toCol": 5, "variant": "security" }
+  ],
+  "mainPath": ["request", "loader", "variables", "gate", "tool_exec", "return_payload"],
+  "nodes": [
+    {
+      "id": "request",
+      "lane": "entry",
+      "col": 0,
+      "type": "external",
+      "label": "Request",
+      "sublabel": "slash, REST, schedule",
+      "width": 92
+    },
+    {
+      "id": "web_api",
+      "lane": "entry",
+      "col": 1,
+      "type": "frontend",
+      "label": "UI Metadata",
+      "sublabel": "tooltips + inputs",
+      "width": 100
+    },
+    {
+      "id": "json_scope",
+      "lane": "catalog",
+      "col": 0,
+      "type": "database",
+      "label": "Workflow JSON",
+      "sublabel": "shared + personal",
+      "width": 92
+    },
+    {
+      "id": "loader",
+      "lane": "catalog",
+      "col": 1,
+      "type": "backend",
+      "label": "WorkflowLoader",
+      "sublabel": "enabled files",
+      "width": 104
+    },
+    {
+      "id": "match",
+      "lane": "catalog",
+      "col": 3,
+      "type": "security",
+      "label": "Explicit Match",
+      "sublabel": "slash or id",
+      "width": 96
+    },
+    {
+      "id": "variables",
+      "lane": "state",
+      "col": 2,
+      "type": "messagebus",
+      "label": "Variables",
+      "sublabel": "query/env/static",
+      "width": 96
+    },
+    {
+      "id": "gate",
+      "lane": "state",
+      "col": 3,
+      "type": "backend",
+      "label": "Step Gate",
+      "sublabel": "condition / skip",
+      "width": 96
+    },
+    {
+      "id": "params",
+      "lane": "work",
+      "col": 2,
+      "type": "backend",
+      "label": "Resolve Params",
+      "sublabel": "${...} + defaults",
+      "width": 104
+    },
+    {
+      "id": "tool_exec",
+      "lane": "work",
+      "col": 4,
+      "type": "backend",
+      "label": "ToolExecutor",
+      "sublabel": "skills + MCP",
+      "width": 96
+    },
+    {
+      "id": "artifacts",
+      "lane": "outputs",
+      "col": 3,
+      "type": "database",
+      "label": "Artifacts",
+      "sublabel": "Canvas, stash, DB",
+      "width": 88
+    },
+    {
+      "id": "return_payload",
+      "lane": "outputs",
+      "col": 5,
+      "type": "frontend",
+      "label": "Return",
+      "sublabel": "cards, status, JSON",
+      "width": 88
+    },
+    {
+      "id": "skipped",
+      "lane": "exceptions",
+      "col": 2,
+      "type": "messagebus",
+      "label": "Skipped Step",
+      "sublabel": "set vars on skip",
+      "width": 96
+    },
+    {
+      "id": "invalid",
+      "lane": "exceptions",
+      "col": 4,
+      "type": "security",
+      "label": "Invalid",
+      "sublabel": "retry or continue",
+      "width": 88
+    },
+    {
+      "id": "abort",
+      "lane": "exceptions",
+      "col": 5,
+      "type": "security",
+      "label": "Abort",
+      "sublabel": "required failure",
+      "width": 88
+    }
+  ],
+  "edges": [
+    { "from": "json_scope", "to": "loader" },
+    { "from": "request", "to": "loader", "label": "trigger/id", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
+    { "from": "web_api", "to": "loader", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "route": "drop" },
+    { "from": "loader", "to": "match" },
+    { "from": "loader", "to": "variables", "label": "matched workflow", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
+    { "from": "variables", "to": "gate" },
+    { "from": "variables", "to": "params", "label": "substitute", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
+    { "from": "gate", "to": "tool_exec", "label": "execute step", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
+    { "from": "params", "to": "tool_exec" },
+    { "from": "tool_exec", "to": "artifacts", "label": "writes", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "route": "drop", "labelSegment": 1 },
+    { "from": "tool_exec", "to": "return_payload", "label": "step results", "variant": "emphasis", "role": "return", "fromSide": "right", "toSide": "right", "route": "outside-right", "width": 1.2 },
+    { "from": "artifacts", "to": "return_payload" },
+    { "from": "tool_exec", "to": "invalid", "variant": "security", "role": "error", "fromSide": "bottom", "toSide": "top", "route": "drop" },
+    { "from": "invalid", "to": "abort", "variant": "security", "role": "error" },
+    { "from": "abort", "to": "return_payload", "variant": "security", "role": "return", "fromSide": "right", "toSide": "right", "route": "outside-right", "width": 1.2 }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Loaded recipes",
+      "items": [
+        "WorkflowLoader reads enabled data/workflows/*.json plus gitignored data/workflows/personal/*.json overrides.",
+        "Normal matching is explicit-only: slash triggers or workflow ids, not broad keyword hijacks."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Execution contract",
+      "items": [
+        "PipelineExecutor extracts variables, resolves ${...}, runs ordered tool steps, and stores output_var/extract values for later steps.",
+        "for_each producers should own validated_output_var; process_all is opt-in for consumer loops."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "LLM and safety",
+      "items": [
+        "Only llm_prompt, LLM validation, llm_decides, or generated success speech use model tokens.",
+        "disable_server_side_tools suppresses provider-native helper tools only; explicit workflow tools still run."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Outputs",
+      "items": [
+        "Success and abort paths both log workflow execution with duration, tools, mode, and step results.",
+        "Canvas create/append/update semantics stay distinct: update replaces page content unless the workflow builds the full desired page."
+      ]
+    }
+  ]
+}

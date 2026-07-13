@@ -22,6 +22,8 @@ The `jarvis-dashboard` TUI is the terminal control center: one place to launch c
 
 Deterministic workflows are Jarvis's reliable automation path. Instead of asking an LLM to improvise every step, a workflow defines the exact tools, order, retries, timeouts, validation, and output handling. That makes repeated jobs predictable, inspectable, and easier to debug.
 
+[![Jarvis Voice runtime architecture](docs/diagrams/jarvis-voice-runtime.svg)](docs/diagrams/jarvis-runtime-architecture.html)
+
 ## Prerequisites
 
 Bare minimum to try Jarvis in the **browser** (Web UI chat — no local mic or speakers required):

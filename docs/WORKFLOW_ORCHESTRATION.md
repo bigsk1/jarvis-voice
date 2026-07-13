@@ -8,6 +8,8 @@
 
 ![workflow-graph](images/workflow-info-graph.jpeg)
 
+[![Jarvis workflow execution lifecycle](diagrams/jarvis-workflow-execution-lifecycle.svg)](diagrams/jarvis-workflow-execution-lifecycle.html)
+
 Workflows are Jarvis recipes: JSON pipelines that run known tool steps in a fixed order. They are useful when a task should be fast, repeatable, schedulable, and less dependent on an LLM remembering every step.
 
 They are not a second chat system. Chat, the API, scheduled tasks, and direct workflow runs all route through the same workflow loader, tool registry, and pipeline executor.
