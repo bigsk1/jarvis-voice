@@ -131,13 +131,15 @@ def _status_tts_cache_settings(provider, get_setting):
             })
         return settings
     if provider == 'xai':
-        return {
+        settings = {
             key: get_setting(key, '')
             for key in (
                 'XAI_TTS_VOICE', 'XAI_TTS_LANGUAGE', 'XAI_TTS_CODEC',
                 'XAI_TTS_SAMPLE_RATE', 'XAI_TTS_BIT_RATE',
             )
         }
+        settings['XAI_TTS_MAX_CHARS'] = get_setting('XAI_TTS_MAX_CHARS', '5000')
+        return settings
     if provider == 'qwen3-tts':
         return {
             key: get_setting(key, '')
@@ -2204,7 +2206,7 @@ def _generate_xai_tts(text: str, output_dir: Path, timestamp: str) -> Path:
     codec = get_jarvis_setting('XAI_TTS_CODEC', 'mp3').lower()
     sample_rate = int(get_jarvis_setting('XAI_TTS_SAMPLE_RATE', '24000'))
     bit_rate = int(get_jarvis_setting('XAI_TTS_BIT_RATE', '128000'))
-    max_chars = int(get_jarvis_setting('XAI_TTS_MAX_CHARS', '15000'))
+    max_chars = int(get_jarvis_setting('XAI_TTS_MAX_CHARS', '5000'))
     timeout = int(get_jarvis_setting('XAI_TTS_TIMEOUT', '180'))
 
     if not api_key:

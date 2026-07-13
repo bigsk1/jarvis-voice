@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_JS = (ROOT / "jarvis-web/client/js/app.js").read_text()
 NATIVE_STATUS_SCRIPT = (ROOT / "bin/say-status.sh").read_text()
 DOCKER_COMPOSE = (ROOT / "docker-compose.yml").read_text()
+WEB_CHAT_SOCKET = (ROOT / "jarvis-web/server/sockets/chat.py").read_text()
 
 
 def _purge_server_modules():
@@ -206,6 +207,52 @@ def test_native_xai_status_cache_includes_5000_character_limit():
 
     assert '${XAI_TTS_MAX_CHARS:-5000}' in xai_cache_line
     assert 'XAI_TTS_MAX_CHARS="${XAI_TTS_MAX_CHARS:-5000}"' in NATIVE_STATUS_SCRIPT
+
+
+def test_web_xai_status_cache_includes_character_limit():
+    _purge_server_modules()
+    sys.path.insert(0, str(ROOT / "jarvis-web"))
+    from server.routes import api
+
+    def settings(max_chars=None):
+        values = {}
+        if max_chars is not None:
+            values["XAI_TTS_MAX_CHARS"] = max_chars
+        return api._status_tts_cache_settings(
+            "xai",
+            lambda key, default="": values.get(key, default),
+        )
+
+    assert settings()["XAI_TTS_MAX_CHARS"] == "5000"
+    assert settings("500") != settings("2000")
+
+
+def test_web_xai_tts_fallback_uses_5000_character_policy():
+    _purge_server_modules()
+    sys.path.insert(0, str(ROOT / "jarvis-web"))
+    from server.routes import api
+    from server import config as server_config
+
+    def get_setting(key, default=""):
+        if key == "XAI_API_KEY":
+            return "test-key"
+        return default
+
+    response = type("Response", (), {
+        "status_code": 200,
+        "content": b"xai-audio",
+        "text": "",
+    })()
+
+    with TemporaryDirectory() as tmp:
+        with (
+            patch.object(server_config, "get_jarvis_setting", side_effect=get_setting),
+            patch("requests.post", return_value=response) as post,
+        ):
+            api._generate_xai_tts("x" * 5001, Path(tmp), "fallback")
+
+    assert len(post.call_args.kwargs["json"]["text"]) == 5000
+    assert "get_jarvis_setting('XAI_TTS_MAX_CHARS', '5000')" in WEB_CHAT_SOCKET
 
 
 def test_elevenlabs_cache_hashes_only_effective_model_settings():

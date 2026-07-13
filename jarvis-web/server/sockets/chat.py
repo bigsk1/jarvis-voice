@@ -4137,7 +4137,7 @@ Mode: {mode}
         codec = get_jarvis_setting('XAI_TTS_CODEC', 'mp3').lower()
         sample_rate = int(get_jarvis_setting('XAI_TTS_SAMPLE_RATE', '24000'))
         bit_rate = int(get_jarvis_setting('XAI_TTS_BIT_RATE', '128000'))
-        max_chars = int(get_jarvis_setting('XAI_TTS_MAX_CHARS', '15000'))
+        max_chars = int(get_jarvis_setting('XAI_TTS_MAX_CHARS', '5000'))
         timeout = int(get_jarvis_setting('XAI_TTS_TIMEOUT', '180'))
 
         if not api_key:
