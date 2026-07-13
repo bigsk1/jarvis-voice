@@ -8,7 +8,7 @@
 
 ![workflow-graph](images/workflow-info-graph.jpeg)
 
-[![Jarvis workflow execution lifecycle](diagrams/jarvis-workflow-execution-lifecycle.svg)](https://bigsk1.github.io/jarvis-voice/docs/diagrams/jarvis-workflow-execution-lifecycle.html)
+[![Jarvis workflow execution lifecycle](diagrams/jarvis-workflow-execution-lifecycle.svg)](https://bigsk1.com/jarvis-voice/docs/diagrams/jarvis-workflow-execution-lifecycle.html)
 
 Workflows are Jarvis recipes: JSON pipelines that run known tool steps in a fixed order. They are useful when a task should be fast, repeatable, schedulable, and less dependent on an LLM remembering every step.
 
