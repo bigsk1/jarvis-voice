@@ -14,6 +14,7 @@ Endpoints:
 - GET  /api/generated-images/{name}/base64 - Get image as base64
 - GET  /api/generated-images/{name}/cdn-url - Get/create CDN URL
 - DELETE /api/generated-images/{name}     - Delete image
+- DELETE /api/generated-images/cdn-catalog/{name} - Delete hosted Cloudflare image
 - POST /api/generated-images/generate     - Generate or edit image
 - GET  /api/generated-images/cdn-catalog  - List all CDN URLs
 """
@@ -87,14 +88,6 @@ def set_cdn_url(filename: str, url: str, image_id: str = None) -> None:
     save_cdn_catalog(catalog)
 
 
-def remove_cdn_url(filename: str) -> None:
-    """Remove CDN URL entry when image is deleted."""
-    catalog = load_cdn_catalog()
-    if filename in catalog:
-        del catalog[filename]
-        save_cdn_catalog(catalog)
-
-
 class ImageInfo(BaseModel):
     """Information about a generated image."""
     name: str
@@ -152,6 +145,29 @@ class CdnCatalogResponse(BaseModel):
     ok: bool = True
     count: int
     entries: list[CdnCatalogEntry]
+
+
+class CdnDeleteResponse(BaseModel):
+    """Response after deleting a cataloged image from Cloudflare."""
+    ok: bool = True
+    name: str
+    image_id: str
+    deleted_from_cloudflare: bool = True
+    removed_from_catalog: bool = True
+
+
+class CdnCatalogEntryRemovalRequest(BaseModel):
+    """Expected identity for removing a stale local CDN catalog entry."""
+    expected_image_id: str
+
+
+class CdnCatalogEntryRemovalResponse(BaseModel):
+    """Response after removing only a local CDN catalog entry."""
+    ok: bool = True
+    name: str
+    image_id: str
+    deleted_from_cloudflare: bool = False
+    removed_from_catalog: bool = True
 
 
 class GenerateRequest(BaseModel):
@@ -460,6 +476,95 @@ async def list_cdn_catalog():
     )
 
 
+@router.delete("/cdn-catalog/{filename}", response_model=CdnDeleteResponse)
+async def delete_cdn_catalog_image(filename: str):
+    """Permanently delete a cataloged Cloudflare image and forget its URL."""
+    if '..' in filename or '/' in filename or '\\' in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    catalog = load_cdn_catalog()
+    entry = catalog.get(filename)
+    if not isinstance(entry, dict):
+        raise HTTPException(status_code=404, detail="CDN catalog entry not found")
+
+    image_id = str(entry.get("image_id") or "").strip()
+    if not image_id:
+        raise HTTPException(
+            status_code=409,
+            detail="CDN catalog entry has no Cloudflare image ID",
+        )
+
+    try:
+        from upload_cloudflare import delete_from_cloudflare
+
+        result = delete_from_cloudflare(image_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Cloudflare delete failed: {e}") from e
+
+    if not result.get("ok"):
+        if result.get("status_code") == 404:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "cloudflare_image_not_found",
+                    "message": result.get("error", "Cloudflare image not found"),
+                    "image_id": image_id,
+                    "catalog_entry_preserved": True,
+                },
+            )
+        raise HTTPException(
+            status_code=502,
+            detail=result.get("error", "Cloudflare delete failed"),
+        )
+
+    # Reload after the remote request so a concurrent re-upload cannot make us
+    # remove a newer catalog entry for the same local filename.
+    current_catalog = load_cdn_catalog()
+    current_entry = current_catalog.get(filename)
+    removed_from_catalog = bool(
+        isinstance(current_entry, dict)
+        and str(current_entry.get("image_id") or "").strip() == image_id
+    )
+    if removed_from_catalog:
+        del current_catalog[filename]
+        save_cdn_catalog(current_catalog)
+
+    return CdnDeleteResponse(
+        name=filename,
+        image_id=image_id,
+        removed_from_catalog=removed_from_catalog,
+    )
+
+
+@router.delete(
+    "/cdn-catalog/{filename}/entry",
+    response_model=CdnCatalogEntryRemovalResponse,
+)
+async def remove_cdn_catalog_entry(
+    filename: str,
+    request: CdnCatalogEntryRemovalRequest,
+):
+    """Remove a confirmed stale catalog row without contacting Cloudflare."""
+    if '..' in filename or '/' in filename or '\\' in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    catalog = load_cdn_catalog()
+    entry = catalog.get(filename)
+    if not isinstance(entry, dict):
+        raise HTTPException(status_code=404, detail="CDN catalog entry not found")
+
+    image_id = str(entry.get("image_id") or "").strip()
+    if not image_id or image_id != request.expected_image_id.strip():
+        raise HTTPException(
+            status_code=409,
+            detail="CDN catalog entry changed; reload the export before removing it",
+        )
+
+    del catalog[filename]
+    save_cdn_catalog(catalog)
+    return CdnCatalogEntryRemovalResponse(name=filename, image_id=image_id)
+
+
 @router.get("/{filename}/cdn-url", response_model=CdnUrlResponse)
 async def get_or_create_cdn_url(filename: str):
     """
@@ -632,7 +737,7 @@ async def get_generated_image_base64(filename: str):
 @router.delete("/{filename}", response_model=DeleteResponse)
 async def delete_generated_image(filename: str):
     """
-    Delete a generated image.
+    Delete a local generated image while preserving any saved CDN URL.
     
     **Example**:
     ```bash
@@ -649,8 +754,6 @@ async def delete_generated_image(filename: str):
     
     try:
         filepath.unlink()
-        # Also remove from CDN catalog if present
-        remove_cdn_url(filename)
         return DeleteResponse(ok=True, deleted=filename)
     except Exception as e:
         return DeleteResponse(ok=False, error=str(e))

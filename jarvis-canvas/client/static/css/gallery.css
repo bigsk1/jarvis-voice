@@ -92,6 +92,14 @@ body {
     justify-content: center;
 }
 
+.cdn-export-btn {
+    min-height: 44px;
+    min-width: 118px;
+    justify-content: center;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
 .refresh-btn:disabled {
     cursor: default;
     opacity: 0.85;

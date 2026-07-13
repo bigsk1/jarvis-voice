@@ -3,9 +3,12 @@ Jarvis Canvas - Image Gallery routes
 """
 import json
 from datetime import datetime
-from flask import Blueprint, jsonify, request, send_file, abort, render_template
+from urllib.parse import quote, urlsplit
+
+from flask import Blueprint, jsonify, request, send_file, abort, render_template, make_response
 
 from config import GENERATED_IMAGES_DIR
+from config_loader import get_config_value
 try:
     from stash_helper import get_stash_dir
 except ImportError:
@@ -50,6 +53,32 @@ def load_cdn_catalog():
         except Exception:
             pass
     return {}
+
+
+def cloudflare_configured():
+    """Return whether the active Canvas mode has Cloudflare Images credentials."""
+    token = str(get_config_value('CLOUDFLARE_API_TOKEN', '') or '').strip()
+    account_id = str(get_config_value('CLOUDFLARE_ACCOUNT_ID', '') or '').strip()
+    return bool(token and account_id)
+
+
+def load_cdn_export_entries():
+    """Return safe, current CDN catalog entries sorted newest first."""
+    entries = []
+    for filename, data in load_cdn_catalog().items():
+        if not isinstance(data, dict):
+            continue
+        url = str(data.get('url') or '').strip()
+        parsed = urlsplit(url)
+        if parsed.scheme != 'https' or not parsed.netloc:
+            continue
+        entries.append({
+            'filename': str(filename),
+            'url': url,
+            'uploaded_at': str(data.get('uploaded_at') or ''),
+        })
+    entries.sort(key=lambda entry: (entry['uploaded_at'], entry['filename']), reverse=True)
+    return entries
 
 
 def is_safe_image_filename(filename):
@@ -190,6 +219,88 @@ def gallery():
     return render_template('gallery.html')
 
 
+@gallery_bp.route('/api/gallery/cdn-catalog/export')
+def export_cdn_catalog_html():
+    """Render the current CDN catalog as standalone, bookmarkable HTML."""
+    response = make_response(render_template(
+        'cdn-catalog-export.html',
+        entries=load_cdn_export_entries(),
+        cloudflare_configured=cloudflare_configured(),
+        generated_at=datetime.now().isoformat(timespec='seconds'),
+    ))
+    response.headers['Content-Disposition'] = 'inline; filename="jarvis-cdn-catalog.html"'
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; "
+        "script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'"
+    )
+    return response
+
+
+@gallery_bp.route('/api/cdn-catalog/delete', methods=['DELETE'])
+def delete_cdn_catalog_image():
+    """Proxy an authenticated CDN deletion through the internal Jarvis API."""
+    data = request.get_json(silent=True) or {}
+    filename = str(data.get('filename') or '')
+    if not is_safe_image_filename(filename):
+        return jsonify({'ok': False, 'error': 'Invalid filename'}), 400
+
+    import requests
+
+    encoded_filename = quote(filename, safe='')
+    api_url = (
+        f"{get_internal_api_base_url()}/api/generated-images/"
+        f"cdn-catalog/{encoded_filename}"
+    )
+    try:
+        response = requests.delete(
+            api_url,
+            headers=get_internal_api_headers(),
+            timeout=40,
+        )
+        try:
+            data = response.json()
+        except ValueError:
+            data = {'ok': False, 'error': 'Jarvis API returned an invalid response'}
+        return jsonify(data), response.status_code
+    except requests.exceptions.RequestException as e:
+        return jsonify({'ok': False, 'error': f'API error: {str(e)}'}), 502
+
+
+@gallery_bp.route('/api/cdn-catalog/remove-entry', methods=['DELETE'])
+def remove_cdn_catalog_entry():
+    """Proxy confirmed removal of a stale local CDN catalog entry."""
+    data = request.get_json(silent=True) or {}
+    filename = str(data.get('filename') or '')
+    expected_image_id = str(data.get('image_id') or '').strip()
+    if not is_safe_image_filename(filename) or not expected_image_id:
+        return jsonify({'ok': False, 'error': 'Invalid catalog entry'}), 400
+
+    import requests
+
+    encoded_filename = quote(filename, safe='')
+    api_url = (
+        f"{get_internal_api_base_url()}/api/generated-images/"
+        f"cdn-catalog/{encoded_filename}/entry"
+    )
+    try:
+        response = requests.delete(
+            api_url,
+            headers=get_internal_api_headers(),
+            json={'expected_image_id': expected_image_id},
+            timeout=15,
+        )
+        try:
+            response_data = response.json()
+        except ValueError:
+            response_data = {'ok': False, 'error': 'Jarvis API returned an invalid response'}
+        return jsonify(response_data), response.status_code
+    except requests.exceptions.RequestException as e:
+        return jsonify({'ok': False, 'error': f'API error: {str(e)}'}), 502
+
+
 @gallery_bp.route('/api/gallery/images')
 def list_gallery_images():
     """List all images in the generated_images directory."""
@@ -300,15 +411,6 @@ def delete_gallery_image(filename):
     
     try:
         filepath.unlink()
-        # Remove from CDN catalog if present
-        if CDN_CATALOG_FILE.exists():
-            try:
-                catalog = json.loads(CDN_CATALOG_FILE.read_text())
-                if filename in catalog:
-                    del catalog[filename]
-                    CDN_CATALOG_FILE.write_text(json.dumps(catalog, indent=2))
-            except:
-                pass
         # Remove from image catalog
         img_catalog = load_image_catalog()
         if filename in img_catalog:

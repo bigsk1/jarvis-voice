@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <link rel="icon" href="data:,">
+    <title>Jarvis CDN Catalog</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #0f0f1a;
+            --panel: #1a1a2e;
+            --panel-strong: #252542;
+            --border: #333355;
+            --text: #e8e8f0;
+            --muted: #a0a0b8;
+            --accent: #818cf8;
+            --warning: #fbbf24;
+            --danger: #f87171;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            padding: 16px clamp(16px, 4vw, 40px);
+            border-bottom: 1px solid var(--border);
+            background: rgba(15, 15, 26, 0.94);
+            backdrop-filter: blur(12px);
+        }
+        h1 { margin: 0; font-size: clamp(1.2rem, 4vw, 1.75rem); }
+        .summary { margin-top: 6px; color: var(--muted); font-size: 0.88rem; }
+        main { padding: 24px clamp(16px, 4vw, 40px) 40px; }
+        .notice, .empty {
+            max-width: 760px;
+            margin: 0 auto 24px;
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--panel);
+            line-height: 1.5;
+        }
+        .notice { border-color: rgba(251, 191, 36, 0.55); color: #fde68a; }
+        .empty { margin-top: 10vh; text-align: center; }
+        .empty h2 { margin-top: 0; }
+        code { color: var(--warning); overflow-wrap: anywhere; }
+        .catalog-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+            gap: 18px;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+        .card {
+            min-width: 0;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: var(--panel);
+        }
+        .image-link {
+            display: block;
+            aspect-ratio: 1 / 1;
+            background: var(--panel-strong);
+        }
+        .image-link img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: cover;
+        }
+        .details { padding: 13px; }
+        .filename { margin: 0; overflow-wrap: anywhere; font-size: 0.92rem; }
+        .date { margin: 7px 0 12px; color: var(--muted); font-size: 0.78rem; }
+        .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .action {
+            min-height: 44px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--panel-strong);
+            color: var(--text);
+            font: inherit;
+            font-size: 0.85rem;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .action:hover, .action:focus-visible { border-color: var(--accent); outline: none; }
+        .action-delete {
+            grid-column: 1 / -1;
+            color: #fecaca;
+            border-color: rgba(248, 113, 113, 0.5);
+        }
+        .action-delete:hover, .action-delete:focus-visible { border-color: var(--danger); }
+        .action:disabled { cursor: wait; opacity: 0.65; }
+        @media (max-width: 480px) {
+            header { position: static; }
+            main { padding-top: 16px; }
+            .catalog-grid { gap: 14px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>☁ Jarvis CDN Catalog</h1>
+        <div class="summary">{{ entries|length }} image{% if entries|length != 1 %}s{% endif %} · Exported {{ generated_at }}</div>
+    </header>
+    <main>
+        {% if not cloudflare_configured %}
+        <div class="notice">
+            Cloudflare CDN is not configured for this Jarvis mode. Add
+            <code>CLOUDFLARE_API_TOKEN</code> and <code>CLOUDFLARE_ACCOUNT_ID</code>
+            to the active environment file to upload new images.
+        </div>
+        {% endif %}
+
+        {% if entries %}
+        <div class="catalog-grid">
+            {% for entry in entries %}
+            <article class="card">
+                <a class="image-link" href="{{ entry.url }}" target="_blank" rel="noopener noreferrer" title="Open CDN image">
+                    <img src="{{ entry.url }}" alt="{{ entry.filename }}" loading="lazy">
+                </a>
+                <div class="details">
+                    <p class="filename">{{ entry.filename }}</p>
+                    <p class="date">{{ entry.uploaded_at or 'Upload date unavailable' }}</p>
+                    <div class="actions">
+                        <button class="action" type="button" data-url="{{ entry.url }}" onclick="copyUrl(this)">Copy URL</button>
+                        <a class="action" href="{{ entry.url }}" target="_blank" rel="noopener noreferrer">Open</a>
+                        <button class="action action-delete" type="button" data-filename="{{ entry.filename }}" onclick="deleteCdnImage(this)">Delete from Cloudflare</button>
+                    </div>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty">
+            <h2>No CDN images are currently cataloged</h2>
+            <p>Use <strong>Get URL</strong> on an image in the Canvas gallery to upload it and add it to this export.</p>
+        </div>
+        {% endif %}
+    </main>
+    <script>
+        async function copyUrl(button) {
+            const url = button.dataset.url;
+            let copied = false;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                try {
+                    await navigator.clipboard.writeText(url);
+                    copied = true;
+                } catch (error) {
+                    copied = false;
+                }
+            }
+            if (!copied) {
+                const input = document.createElement('textarea');
+                input.value = url;
+                input.style.position = 'fixed';
+                input.style.left = '-9999px';
+                document.body.appendChild(input);
+                input.select();
+                copied = document.execCommand('copy');
+                input.remove();
+            }
+            if (!copied) {
+                window.prompt('Copy this URL:', url);
+            }
+            const original = button.textContent;
+            button.textContent = copied ? 'Copied!' : 'Copy shown';
+            setTimeout(() => { button.textContent = original; }, 1400);
+        }
+
+        async function deleteCdnImage(button) {
+            const filename = button.dataset.filename;
+            if (!window.confirm(`Permanently delete ${filename} from Cloudflare?\n\nThe public URL will stop working. The local image, if present, will be kept.`)) {
+                return;
+            }
+            if (window.location.protocol !== 'http:' && window.location.protocol !== 'https:') {
+                window.alert('Open this catalog through the running Jarvis Canvas server to delete Cloudflare images.');
+                return;
+            }
+
+            const original = button.textContent;
+            button.disabled = true;
+            button.textContent = 'Deleting…';
+            try {
+                const response = await fetch('/api/cdn-catalog/delete', {
+                    method: 'DELETE',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ filename }),
+                    credentials: 'same-origin',
+                });
+                let payload = {};
+                try {
+                    payload = await response.json();
+                } catch (error) {
+                    payload = {};
+                }
+                if (!response.ok || !payload.ok) {
+                    const detail = payload.detail;
+                    if (response.status === 404 && detail && detail.code === 'cloudflare_image_not_found') {
+                        const removeStale = window.confirm(
+                            `Cloudflare could not find ${filename} in the configured account.\n\n` +
+                            'Remove this stale row from the local CDN catalog? This will not delete any image that may exist in another Cloudflare account.'
+                        );
+                        if (removeStale) {
+                            await removeStaleCatalogEntry(filename, detail.image_id);
+                            window.location.reload();
+                            return;
+                        }
+                        button.disabled = false;
+                        button.textContent = original;
+                        return;
+                    }
+                    const message = typeof detail === 'string'
+                        ? detail
+                        : (detail && detail.message) || payload.error || `Delete failed (${response.status})`;
+                    throw new Error(message);
+                }
+                window.location.reload();
+            } catch (error) {
+                window.alert(error.message || 'Cloudflare deletion failed.');
+                button.disabled = false;
+                button.textContent = original;
+            }
+        }
+
+        async function removeStaleCatalogEntry(filename, imageId) {
+            const response = await fetch('/api/cdn-catalog/remove-entry', {
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ filename, image_id: imageId }),
+                credentials: 'same-origin',
+            });
+            let payload = {};
+            try {
+                payload = await response.json();
+            } catch (error) {
+                payload = {};
+            }
+            if (!response.ok || !payload.ok) {
+                const detail = payload.detail;
+                const message = typeof detail === 'string'
+                    ? detail
+                    : (detail && detail.message) || payload.error || `Catalog removal failed (${response.status})`;
+                throw new Error(message);
+            }
+        }
+    </script>
+</body>
+</html>

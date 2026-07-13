@@ -186,9 +186,12 @@ The canvas server includes an integrated image gallery for browsing generated im
 - Sort by date, name, or size
 - Download images locally
 - CDN Upload for Cloudflare CDN URL sharing
+- Export the current CDN catalog as standalone dark-mode HTML
 - Send to Jarvis Web for image-to-video generation
 - Delete unwanted images
 - Keyboard shortcuts: `Escape` close, `←` / `→` navigate
+
+Local image deletion and generated-image cleanup preserve `cdn_catalog.json` entries. This keeps previously issued public URLs available in the CDN HTML export without keeping the local files in the main gallery. The export does not query Cloudflare to reconcile its contents. Its confirmed **Delete from Cloudflare** action permanently deletes the hosted image and removes its CDN catalog entry while leaving any local image untouched. If Cloudflare returns `404`, the row remains visible until the user confirms the offered stale-entry removal. Deletion requires opening the export through the running, authenticated Canvas server; a separately saved HTML copy remains read-only.
 
 ### Image to Video Handoff
 

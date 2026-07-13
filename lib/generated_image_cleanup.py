@@ -38,9 +38,7 @@ def cleanup_generated_images(
         now = now.replace(tzinfo=timezone.utc)
     cutoff = now - timedelta(days=retention_days)
     image_catalog_file = images_dir / "image_catalog.json"
-    cdn_catalog_file = images_dir / "cdn_catalog.json"
     image_catalog = _load_json(image_catalog_file)
-    cdn_catalog = _load_json(cdn_catalog_file)
 
     result: dict[str, Any] = {
         "deleted_images": 0,
@@ -55,7 +53,6 @@ def cleanup_generated_images(
         return result
 
     image_catalog_changed = False
-    cdn_catalog_changed = False
     for path in sorted(images_dir.iterdir()):
         if not path.is_file() or path.suffix.lower() not in IMAGE_EXTENSIONS:
             continue
@@ -88,16 +85,10 @@ def cleanup_generated_images(
             if path.name in image_catalog:
                 del image_catalog[path.name]
                 image_catalog_changed = True
-            if path.name in cdn_catalog:
-                del cdn_catalog[path.name]
-                cdn_catalog_changed = True
         except OSError as exc:
             result["errors"].append({"file": path.name, "error": str(exc)})
 
     if not dry_run:
         if image_catalog_changed:
             _save_json(image_catalog_file, image_catalog)
-        if cdn_catalog_changed:
-            _save_json(cdn_catalog_file, cdn_catalog)
-
     return result

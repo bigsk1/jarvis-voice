@@ -80,6 +80,6 @@ def test_cleanup_generated_images_preserves_favorites_and_recent_files(tmp_path)
     image_catalog = json.loads((tmp_path / "image_catalog.json").read_text())
     cdn_catalog = json.loads((tmp_path / "cdn_catalog.json").read_text())
     assert old_plain.name not in image_catalog
-    assert old_plain.name not in cdn_catalog
+    assert cdn_catalog[old_plain.name]["url"] == "https://cdn.example/old"
     assert image_catalog[old_favorite.name]["favorite"] is True
     assert cdn_catalog[old_favorite.name]["url"] == "https://cdn.example/favorite"

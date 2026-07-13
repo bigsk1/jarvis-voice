@@ -39,8 +39,10 @@ import os
 import json
 import base64
 import tempfile
-import requests
 from pathlib import Path
+from urllib.parse import quote
+
+import requests
 
 # Add lib to path for config_loader and stash helper
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
@@ -215,6 +217,49 @@ def upload_to_cloudflare(file_path: str, custom_id: str = None, uploader: str = 
             "ok": False,
             "error": f"Upload failed: {str(e)}"
         }
+
+
+def delete_from_cloudflare(image_id: str) -> dict:
+    """Permanently delete a Cloudflare Images asset by its cataloged ID."""
+    image_id = str(image_id or '').strip()
+    if not image_id:
+        return {"ok": False, "error": "Cloudflare image ID is required"}
+    if not CLOUDFLARE_API_TOKEN:
+        return {"ok": False, "error": "CLOUDFLARE_API_TOKEN not configured"}
+    if not CLOUDFLARE_ACCOUNT_ID:
+        return {"ok": False, "error": "CLOUDFLARE_ACCOUNT_ID not configured"}
+
+    headers = {'Authorization': f'Bearer {CLOUDFLARE_API_TOKEN}'}
+    encoded_image_id = quote(image_id, safe='')
+    url = (
+        f'https://api.cloudflare.com/client/v4/accounts/'
+        f'{CLOUDFLARE_ACCOUNT_ID}/images/v1/{encoded_image_id}'
+    )
+
+    try:
+        response = requests.delete(url, headers=headers, timeout=30)
+        try:
+            response_data = response.json()
+        except ValueError:
+            response_data = {}
+
+        if not response.ok or not response_data.get('success', False):
+            errors = response_data.get('errors') or []
+            message = errors[0].get('message') if errors and isinstance(errors[0], dict) else None
+            return {
+                "ok": False,
+                "error": message or f"Cloudflare delete failed ({response.status_code})",
+                "status_code": response.status_code,
+            }
+
+        return {
+            "ok": True,
+            "image_id": image_id,
+        }
+    except requests.exceptions.Timeout:
+        return {"ok": False, "error": "Cloudflare delete timed out after 30 seconds"}
+    except requests.exceptions.RequestException as e:
+        return {"ok": False, "error": f"Cloudflare delete failed: {str(e)}"}
 
 
 def resolve_stash_path(stash_ref: str) -> str | None:

@@ -180,6 +180,7 @@ The canvas server includes an integrated image gallery for browsing generated im
 - Mark favorite images so cleanup preserves them
 - Download images locally
 - CDN Upload for Cloudflare CDN URL sharing; uncached uploads require confirmation, cached URLs copy without re-uploading
+- Export the current CDN catalog as standalone dark-mode HTML
 - Send to Jarvis Web for image-to-video generation
 - Delete unwanted images
 - Keyboard shortcuts: `Escape` close, `←` / `→` navigate
@@ -192,6 +193,7 @@ Generated images live in `data/generated_images/`. Favorites are stored in `data
 - Favorite images are preserved by `./bin/cleanup-generated-images` and by `./bin/cleanup-all`.
 - Default generated-image cleanup is 120 days for non-favorites.
 - CDN sort uses the local cached-URL catalog; sorting does not contact Cloudflare or upload anything.
+- Local image deletion and cleanup preserve `cdn_catalog.json` entries, so the HTML export retains saved public URLs. The export does not query Cloudflare for live state. Its confirmed **Delete from Cloudflare** action permanently removes the hosted image and CDN catalog entry without deleting any local image. A Cloudflare `404` preserves the row and offers a separate confirmed stale-entry removal. These actions work from the authenticated Canvas-served page; a separately saved HTML copy is read-only.
 - Use `./bin/cleanup-generated-images --dry-run` to preview old non-favorite images before deletion.
 
 ### Image to Video Handoff

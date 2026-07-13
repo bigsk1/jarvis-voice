@@ -13,10 +13,12 @@ Unlike `/api/images` (Cloudflare CDN uploads), these routes manage the **local**
 | GET | `/` | List all images |
 | GET | `/{filename}` | Get image file |
 | GET | `/{filename}/base64` | Get image as base64 |
-| DELETE | `/{filename}` | Delete image |
+| DELETE | `/{filename}` | Delete local image |
 | POST | `/generate` | Generate new image |
 | GET | `/{filename}/cdn-url` | Get/create CDN URL |
 | GET | `/cdn-catalog` | List all CDN URLs |
+| DELETE | `/cdn-catalog/{filename}` | Permanently delete cataloged Cloudflare image |
+| DELETE | `/cdn-catalog/{filename}/entry` | Remove a confirmed stale local catalog entry |
 | GET | `/health` | Check status |
 
 ---
@@ -118,6 +120,8 @@ curl -X DELETE http://localhost:8880/api/generated-images/my_image.jpg
 }
 ```
 
+Deleting a generated image removes only the local file. Any saved entry in `cdn_catalog.json` is preserved for the CDN HTML export, and the remote Cloudflare image is not deleted.
+
 ---
 
 ## Get CDN URL
@@ -186,6 +190,16 @@ Use this to:
 - Check if an image has already been uploaded
 - Get URLs without re-uploading
 - Find images by their CDN URL or image_id
+
+### Delete a cataloged Cloudflare image
+
+```bash
+curl -X DELETE http://localhost:8880/api/generated-images/cdn-catalog/generated_robot_20260128.jpg
+```
+
+This permanently deletes the hosted image through the Cloudflare Images API and then removes its `cdn_catalog.json` entry. The local file in `data/generated_images/`, if present, is not deleted. If Cloudflare rejects the deletion, Jarvis preserves the catalog entry.
+
+The catalog is local and does not synchronize against Cloudflare. If Cloudflare reports `404` because an image was deleted out of band or is absent from the configured account, Canvas offers a second confirmed action that removes only the stale `cdn_catalog.json` row. That escape hatch supplies the image ID returned by the failed deletion as `expected_image_id`; FastAPI rejects the removal if the entry changed in the meantime.
 
 ---
 
