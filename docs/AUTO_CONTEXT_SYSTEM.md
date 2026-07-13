@@ -258,8 +258,10 @@ Jarvis: [Sees context: "Built tetris game"]
 **Flow:**
 ```python
 def process(self, transcript: str, ...):
-    # 1. Auto-inject context (if enabled)
-    if self.auto_context_enabled:
+    # 1. Auto-inject context
+    if conversation_history:
+        enhanced_transcript = self._format_conversation_context(transcript, conversation_history)
+    elif self.auto_context_enabled:
         enhanced_transcript = self._build_conversation_context(transcript)
     else:
         enhanced_transcript = transcript

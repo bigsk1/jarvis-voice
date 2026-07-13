@@ -182,7 +182,8 @@ Add to `config/cloud.env` and `config/local.env` (or copy from *.example):
 # Auto-Memory Injection (CLI, WebUI, wake word)
 AUTO_MEMORY_INJECTION_ENABLED=true
 AUTO_MEMORY_LIMIT=8
-AUTO_MEMORY_SIMILARITY_THRESHOLD=0.38
+AUTO_MEMORY_SIMILARITY_THRESHOLD=0.40
+AUTO_MEMORY_TYPE_FILTER_ENABLED=true
 AUTO_MEMORY_RECENCY_ENABLED=true
 AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT=2
 ```
@@ -191,7 +192,8 @@ AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT=2
 |-----|---------|--------------|
 | `AUTO_MEMORY_INJECTION_ENABLED` | true | Master switch – set false to disable |
 | `AUTO_MEMORY_LIMIT` | 8 | Max memories injected per request |
-| `AUTO_MEMORY_SIMILARITY_THRESHOLD` | 0.38 | Min similarity (0.35–0.42 recommended) |
+| `AUTO_MEMORY_SIMILARITY_THRESHOLD` | 0.40 (code fallback 0.42) | Min similarity (0.35–0.42 recommended) |
+| `AUTO_MEMORY_TYPE_FILTER_ENABLED` | true | Filter injected memories by query type |
 | `AUTO_MEMORY_RECENCY_ENABLED` | true | Recent memories rank slightly higher |
 | `AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT` | 2 | Max addressing/response-style items always included |
 

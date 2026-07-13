@@ -36,8 +36,8 @@ Optional password protection for all Jarvis web interfaces.
 When enabled, all web UIs require authentication:
 - **jarvis-web** (port 5001) - Main chat interface
 - **jarvis-canvas** (port 8890) - Artifact viewer
-- **jarvis-intelligence** (port 5002) - Intelligence dashboard  
-- **jarvis-memory** (port 5003) - Memory browser
+- **jarvis-intelligence** (port 5003) - Intelligence dashboard  
+- **jarvis-memory** (port 5002) - Memory browser
 
 ## How It Works
 
@@ -50,7 +50,7 @@ When enabled, all web UIs require authentication:
          ▼                    ▼                    ▼
    ┌───────────┐        ┌───────────┐        ┌───────────┐
    │ jarvis-web│        │  canvas   │        │  memory   │
-   │   :5001   │        │   :8890   │        │   :5003   │
+   │   :5001   │        │   :8890   │        │   :5002   │
    │           │        │           │        │           │
    │ Validates │        │ Validates │        │ Validates │
    │ same JWT  │        │ same JWT  │        │ same JWT  │

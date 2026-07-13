@@ -100,10 +100,20 @@ GET /api/reminders?status=acknowledged
 POST /api/reminders/{id}/acknowledge
 ```
 
-### Delete Reminder
+### Cancel Reminder
+
+Cancels a scheduled reminder (sets `status=canceled`; row is retained):
 
 ```bash
 DELETE /api/reminders/{id}
+```
+
+### Permanently Delete Reminder
+
+Hard-deletes the reminder row:
+
+```bash
+DELETE /api/reminders/{id}?permanent=true
 ```
 
 ---
@@ -317,7 +327,7 @@ CREATE TABLE reminders (
     title TEXT NOT NULL,
     description TEXT,
     trigger_time TIMESTAMP NOT NULL,  -- UTC
-    status TEXT DEFAULT 'scheduled',  -- scheduled|triggered|acknowledged
+    status TEXT DEFAULT 'scheduled',  -- scheduled|triggered|acknowledged|canceled|expired
     created_at TIMESTAMP,
     triggered_at TIMESTAMP,
     acknowledged_at TIMESTAMP,

@@ -110,7 +110,7 @@ See **[../INTELLIGENCE_LAYER.md](../INTELLIGENCE_LAYER.md)** for full documentat
 | `/api/alerts` | GET | List active alerts |
 | `/api/alerts/{id}` | DELETE | Dismiss alert |
 | `/api/reminders` | GET | List reminders |
-| `/health` | GET | API health check |
+| `/api/health` | GET | API health check |
 
 ### Integration & Examples
 - **[Code Examples](code-examples/)** - Ready-to-use templates (Python, Node.js, Bash, Docker)

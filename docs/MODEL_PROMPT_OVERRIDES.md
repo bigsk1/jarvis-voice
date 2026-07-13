@@ -119,6 +119,7 @@ completion_guard_eval_prepend: |
 - `qa_append`
 - `tool_calling_prepend`
 - `completion_guard_eval_prepend`
+- `intelligence_reflection_prepend`
 
 Future sections can be added later if they prove necessary, but the initial version should stay small.
 
@@ -283,17 +284,9 @@ This is important for debugging “why did this model behave differently?” lat
 
 ## Interaction With Feedback and Intelligence
 
-Initial recommendation:
-- **Do not inject these overrides into feedback/reflection/intelligence prompts by default**
-
-Why:
-- feedback and reflection should judge outcomes and behavior based on results
-- they should not inherit model-specific runtime patches unless there is a very deliberate reason
-- otherwise one model’s quirks could leak into analysis flows unexpectedly
-
-That means:
-- if main chat uses `openai/gpt-5.4-nano`, its runtime prompt override can apply there
-- feedback/reflection should remain on their own existing prompts unless explicitly given their own future override sections
+- **Main chat / routing / QA / tool-calling overrides** apply to their respective runtime prompts.
+- **`intelligence_reflection_prepend`** is injected into intelligence reflection prompts when configured.
+- **Feedback and other analysis flows** do not inherit model-specific runtime patches unless given their own future override sections.
 
 Possible future sections, if ever needed:
 - `feedback_prepend`
@@ -310,7 +303,9 @@ Start with:
 - `routing_append`
 - `qa_prepend`
 - `qa_append`
+- `tool_calling_prepend`
 - `completion_guard_eval_prepend`
+- `intelligence_reflection_prepend`
 
 Skip more exotic sections until the basic pattern proves useful.
 

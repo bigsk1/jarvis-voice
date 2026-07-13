@@ -13,16 +13,16 @@
 
 ## Issues Found 🔍
 
-### 1. **Category Mismatch** (Priority: High)
+### 1. **Category Mismatch** (Resolved)
 
-**Problem**: Different tools use different category sets
+**Status**: Harmonized — `remember.tool.json` now includes all categories used by intel ingestion.
 
 ```python
 # remember.tool.json defines:
-["contact", "personal", "preference", "location", "fact", "other"]
+["contact", "personal", "preference", "location", "technical",
+ "network", "credentials", "project", "system", "fact"]
 
-# ingest_intel.py actually uses:
-["technical", "network", "credentials", "project", "system"]
+# ingest_intel.py uses the same extended set (technical, network, credentials, project, system)
 ```
 
 **Impact**: 
@@ -223,7 +223,7 @@ After implementing fixes, test these scenarios:
 ## Implementation Priority
 
 1. **High Priority** (Do immediately):
-   - [ ] Fix category mismatch (harmonize remember.tool.json)
+   - [x] Fix category mismatch (harmonize remember.tool.json)
    - [ ] Add importance scoring guidance
    - [ ] Strengthen "ALWAYS check memory first" in system prompt
 

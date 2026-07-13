@@ -709,7 +709,7 @@ graph LR
 - **Cloud**: OpenAI text-embedding-3-small (1536 dimensions) + FTS5 full-text search
 - **Local**: nomic-embed-text (768 dimensions) + FTS5 full-text search
 - **Search**: Hybrid (FTS5 for keywords, embeddings for concepts)
-- **Models**: xAI Grok 4.5 / grok-4.3 / grok-build-0.1 ⭐, Claude Sonnet 4.5, GPT-4o (cloud) | qwen3.5:latest, qwen3-coder, gemma4 (local)
+- **Models**: xAI Grok 4.5 / grok-4.3 / grok-build-0.1 ⭐, Claude Sonnet 5, GPT-4o (cloud) | gemma4 ⭐, qwen3.5:latest, qwen3-coder (local)
 
 ### Key Configuration Variables
 
@@ -717,8 +717,8 @@ graph LR
 |----------|--------|----------------|
 | `LLM_PROVIDER` | Which LLM to use | `xai`, `anthropic`, `openai`, `ollama` |
 | `XAI_MODEL` | xAI Grok model | `grok-4.5` ⭐ (default); `grok-4.3` for 1M context or `reasoning_effort=none`; `grok-build-0.1` for coding-heavy |
-| `ANTHROPIC_MODEL` | Cloud model selection | `claude-sonnet-4-5-20250929` |
-| `OLLAMA_MODEL` | Ollama model used in local mode | `qwen3.5:latest` ⭐, `qwen3-coder`, `gemma4`, `deepseek-r1` |
+| `ANTHROPIC_MODEL` | Cloud model selection | `claude-sonnet-5` |
+| `OLLAMA_MODEL` | Ollama model used in local mode | `gemma4` ⭐, `qwen3.5:latest`, `qwen3-coder`, `deepseek-r1` |
 | `OLLAMA_CLOUD_MODEL` | Cloud-tagged Ollama model used in cloud mode | `minimax-m3:cloud`, `gpt-oss:120b-cloud` |
 | `JARVIS_DEBUG_THINKING` | Show LLM reasoning | `true`, `false` |
 | `SEMANTIC_SIMILARITY_THRESHOLD` | Memory search sensitivity | `0.40` (default), `0.30-0.50` range |

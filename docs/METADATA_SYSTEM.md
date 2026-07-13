@@ -151,7 +151,7 @@ db.remember(
 | Provider | Models Tracked | Notes |
 |----------|---------------|-------|
 | OpenAI | GPT-5.x / 4.1 family and others in `lib/cost_estimator.py` | Pricing maintained in code; defaults drift over time |
-| Anthropic | claude-sonnet-4, claude-3-5-sonnet, claude-3-opus | Current pricing as of Nov 2024 |
+| Anthropic | claude-sonnet-5, claude-sonnet-4-5-20250929, claude-opus-4-6, and others in `lib/model_catalog.py` | Pricing maintained in catalog; defaults drift over time |
 | Ollama | *None* | Local models have no API costs |
 
 ### Usage
@@ -172,7 +172,7 @@ print(cost_info)
 #   "input_tokens": 1000,
 #   "output_tokens": 500,
 #   "total_tokens": 1500,
-#   "cost_usd": 0.0105
+#   "cost_usd": 0.007
 # }
 
 # Human-readable format

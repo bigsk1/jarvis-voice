@@ -9,7 +9,7 @@
 
 ## 📊 Current Baseline Usage
 
-### Cloud Mode (Anthropic Claude Sonnet 4.5)
+### Cloud Mode (Anthropic Claude Sonnet 5)
 
 ```
 System Prompt:       1,915 tokens
@@ -18,16 +18,18 @@ Tool Definitions:    3,793 tokens
 TOTAL BASELINE:      5,708 tokens
 ─────────────────────────────────
 
-Context Window:    200,000 tokens
-Baseline %:            2.9%
-Available:         194,292 tokens (97.1%)
+Context Window:  1,000,000 tokens
+Baseline %:            0.6%
+Available:         994,292 tokens (99.4%)
 ```
 
 **Status**: ✅ Healthy (< 3% of context)
 
+**Note**: Token counts below are from the November 15, 2025 measurement run. Re-run `bin/measure-baseline-tokens` after major prompt or tool changes.
+
 ---
 
-### Local Mode (Ollama Qwen3-VL)
+### Local Mode (Ollama gemma4)
 
 ```
 System Prompt:       1,915 tokens
@@ -43,7 +45,7 @@ Available:          26,292 tokens (82.2%)
 
 **Status**: ✅ Healthy (< 20% of context)
 
-**Note**: Qwen3-VL context may vary (32K-128K depending on variant). Using conservative 32K estimate.
+**Note**: Local context window varies by model variant. Default `OLLAMA_MODEL` is `gemma4` per `config/local.env.example`.
 
 ---
 

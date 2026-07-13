@@ -175,14 +175,15 @@ curl "http://localhost:8880/api/prices/batch?stocks=TSLA,GC=F&crypto=BTC,SOL" | 
 **Response:**
 ```json
 {
-  "stocks": [
-    { "symbol": "TSLA", "price_usd": 437.50, ... },
-    { "symbol": "GC=F", "price_usd": 4595.40, ... }
-  ],
-  "crypto": [
-    { "symbol": "BTC", "price_usd": 94994.00, ... },
-    { "symbol": "SOL", "price_usd": 142.10, ... }
-  ]
+  "stocks": {
+    "TSLA": { "price": 437.50, "change_percent": 1.2, "name": "Tesla Inc" },
+    "GC=F": { "price": 4595.40, "change_percent": -0.3, "name": "Gold Futures" }
+  },
+  "crypto": {
+    "BTC": { "price": 94994.00, "change_percent": 2.1, "name": "Bitcoin" },
+    "SOL": { "price": 142.10, "change_percent": 0.8, "name": "Solana" }
+  },
+  "ok": true
 }
 ```
 

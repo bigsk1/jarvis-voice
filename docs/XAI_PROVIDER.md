@@ -93,19 +93,19 @@ xAI's Grok models offer the **best value proposition** for Jarvis:
 - Long documents: 100K+ tokens
 - Still have substantial headroom for multi-step work
 
-### 2. **Automatic Prompt Caching (90% Discount)**
+### 2. **Automatic Prompt Caching (75–84% Discount)**
 
 Unlike Anthropic (requires explicit `cache_control`), xAI caching is **automatic**:
 
 - Caches repeated prompt prefixes automatically
 - Jarvis keeps cache-affinity enabled by default with `XAI_PROMPT_CACHE_ENABLED=true`
-- Cache hits can be **90%+** for Jarvis (repeated system prompt + tools)
-- **$0.02/1M** for cached tokens vs **$0.20/1M** regular (90% savings!)
+- Cache hits can be **75–84%** for Jarvis (repeated system prompt + tools), depending on model
+- Cached input pricing from `lib/model_catalog.py`: grok-4.5 **$0.50/1M** (75% off $2.00), grok-4.3 and grok-build-0.1 **$0.20/1M** (80–84% off $1.00–$1.25)
 
-**Jarvis Benefit**: Since system prompt and tools are repeated every request:
-- First request: $0.0052 (full cost)
-- Subsequent requests: ~$0.0010 (cached system prompt + tools)
-- **80% cost reduction** after first query!
+**Jarvis Benefit** (example with grok-4.3: $1.25/1M input, $0.20/1M cached):
+- First request: 26K tokens × $1.25/1M ≈ **$0.033**
+- Subsequent requests: 25K cached + 1K new ≈ **$0.006**
+- **~81% cost reduction** after the first query
 
 ### 3. **Configurable Reasoning Effort**
 
@@ -500,20 +500,20 @@ Curated models, pricing, and Web UI labels come from **`lib/model_catalog.py`**.
 
 xAI automatically caches **repeated prompt prefixes**:
 
-1. **First Request**: Full cost ($0.20/1M input)
+1. **First Request**: Full cost (grok-4.3: $1.25/1M input)
    ```
    System prompt (10K tokens) + Tools (15K tokens) + Query (1K tokens) = 26K tokens
-   Cost: 26K × $0.20/1M = $0.0052
+   Cost: 26K × $1.25/1M = $0.0325
    ```
 
 2. **Second Request** (same system + tools):
    ```
-   Cached: System + Tools (25K tokens) @ $0.02/1M
-   New: Query (1K tokens) @ $0.20/1M
-   Cost: (25K × $0.02/1M) + (1K × $0.20/1M) = $0.0005 + $0.0002 = $0.0007
+   Cached: System + Tools (25K tokens) @ $0.20/1M
+   New: Query (1K tokens) @ $1.25/1M
+   Cost: (25K × $0.20/1M) + (1K × $1.25/1M) = $0.0050 + $0.00125 = $0.00625
    ```
 
-**Savings**: **86% cost reduction** on subsequent requests!
+**Savings**: **~81% cost reduction** on subsequent requests (varies by model; see `lib/model_catalog.py`).
 
 Jarvis keeps the large router instructions at the front of the system prompt,
 then appends per-turn runtime context such as current date/time, response

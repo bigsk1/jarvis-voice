@@ -1,6 +1,6 @@
 # 📦 Stash API
 
-> Read-only access to Jarvis's artifact storage - images, PDFs, music, and other generated files.
+> Access to Jarvis's artifact storage — images, PDFs, music, and other generated files. Includes read endpoints plus upload for new files.
 
 ## Overview
 
@@ -169,6 +169,43 @@ curl "http://localhost:8880/api/stash/search?q=pdf"
       ]
     }
   ]
+}
+```
+
+---
+
+### Upload File
+
+```http
+POST /api/stash/upload
+```
+
+Upload a file to stash. Creates a new space or adds to an existing one.
+
+**Form fields:**
+| Field | Required | Description |
+|-------|----------|-------------|
+| `file` | Yes | File to upload |
+| `labels` | No | Comma-separated labels (e.g. `uploaded,for_conversion`) |
+| `space_id` | No | Existing space to add to; omit to create a new space |
+
+**Example:**
+```bash
+curl -X POST http://localhost:8880/api/stash/upload \
+  -F "file=@image.jpg" \
+  -F "labels=uploaded,for_conversion"
+```
+
+**Response:**
+```json
+{
+  "ok": true,
+  "stash_ref": "stash://space_20260205_123456_abc123/f_xyz789",
+  "space_id": "space_20260205_123456_abc123",
+  "file_id": "f_xyz789",
+  "filename": "image.jpg",
+  "size_bytes": 123456,
+  "mime_type": "image/jpeg"
 }
 ```
 
@@ -475,7 +512,7 @@ for space in spaces:
 
 ## Notes
 
-- **Read-only API** - No create/update/delete endpoints
+- **Read and upload API** — `GET` endpoints list/read spaces; `POST /api/stash/upload` creates or extends spaces
 - **Files stored in** `data/stash/` directory
 - **Stash references** use format: `stash://{space_id}/{file_id}`
 - **TTL** - Spaces auto-delete after `ttl_days` unless pinned

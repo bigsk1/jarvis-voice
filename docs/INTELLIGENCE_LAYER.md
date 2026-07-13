@@ -1458,6 +1458,10 @@ Full REST API for intelligence management:
 | `/api/intelligence/maintenance/anomaly` | POST | Run anomaly detection |
 | `/api/intelligence/maintenance/meta-cognition` | POST | Run meta-cognition |
 | `/api/intelligence/maintenance/all` | POST | Run all maintenance jobs (`dry_run=true` previews decay and skips anomaly/meta writes) |
+| `/api/intelligence/metrics` | GET | JSON metrics snapshot (`status`, `metrics`) |
+| `/api/intelligence/reflections` | GET | Pending reflection queue |
+| `/api/intelligence/reflections/{reflection_id}` | DELETE | Cancel a single pending reflection |
+| `/api/intelligence/reflections` | DELETE | Clear the reflection queue |
 
 ### Sample REST API Calls
 
@@ -1480,7 +1484,7 @@ python3 -c "from lib.intelligence_hooks import trigger_reflection; trigger_refle
 
 ### Grafana / Prometheus metrics
 
-Prometheus metrics are exposed at **`GET /api/intelligence/metrics`** (port 8880). Example series:
+Intelligence metrics JSON is exposed at **`GET /api/intelligence/metrics`** (port 8880). For Prometheus text scraping, use **`GET /metrics`** instead. Example series from `/api/intelligence/metrics`:
 
 ```promql
 jarvis_intelligence_experiences_total
@@ -1834,7 +1838,7 @@ Monitoring and maintenance via `api/routes/intelligence.py` (no auth on local LA
 |--------|----------|-------------|
 | GET | `/api/intelligence/stats` | Counts, pending reflections, avg confidence |
 | GET | `/api/intelligence/health` | Enabled flag, issues list |
-| GET | `/api/intelligence/metrics` | Prometheus text exposition |
+| GET | `/api/intelligence/metrics` | JSON metrics snapshot |
 | GET | `/api/intelligence/insights` | Recent insights (limit 20) |
 | GET | `/api/intelligence/experiences` | Recent experiences |
 | GET | `/api/intelligence/reflections` | Reflection queue |

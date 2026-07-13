@@ -416,7 +416,7 @@ OPENAI_MODEL="gpt-4o-mini"
 ```bash
 LLM_PROVIDER="ollama"
 OLLAMA_BASE_URL="http://localhost:11434"
-OLLAMA_MODEL="llama3.1:latest"
+OLLAMA_MODEL="gemma4"
 ```
 
 Then use `jarvis-local` instead of `jarvis`.

@@ -107,9 +107,9 @@ curl http://localhost:8880/api/alerts | jq '.alerts[] | {title, source}'
 
 **Expected:** Alert syncs automatically between databases.
 
-### 5. Test Reminder (Manual Trigger)
+### 5. Test Reminder (Automated)
 
-**Note**: Background daemon not implemented yet, so manual trigger required.
+The `reminder_scheduler` daemon (started by `bin/jarvis-services`) processes due reminders automatically.
 
 ```bash
 # 1. Create reminder for 1 minute from now
@@ -122,13 +122,11 @@ curl -X POST http://localhost:8880/api/reminders \
     \"trigger_time\": \"${TRIGGER_TIME}\"
   }"
 
-# 2. Wait 1 minute
+# 2. Wait ~1 minute, then verify the daemon fired it
+curl http://localhost:8880/api/reminders | jq '.reminders[] | select(.status == "triggered")'
 
-# 3. Check if due
-curl http://localhost:8880/api/reminders | jq '.reminders[] | select(.status == "scheduled")'
-
-# 4. Manual trigger (Phase 2 will automate this)
-# For now, reminders are stored but need manual processing
+# 3. Optional: check daemon log
+tail -20 logs/reminder_scheduler.log
 ```
 
 ### 6. Test Different Severities

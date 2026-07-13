@@ -117,7 +117,7 @@ Or via voice:
 | `MONITOR_CONTAINERS` | `""` | Container names to monitor (comma-separated) |
 | `MONITOR_URLS` | `""` | URLs to monitor (comma-separated) |
 | `SOURCE_NAME` | hostname | Source name for alerts |
-| `ALERT_ON_START` | `false` | Send alert when agent starts |
+| `AUTO_RESOLVE_INTERVAL` | `60` | Auto-resolve check interval (seconds) |
 
 ### Example: Monitor Multiple Containers
 

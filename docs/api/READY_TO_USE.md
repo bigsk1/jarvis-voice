@@ -181,7 +181,7 @@ These are **future enhancements**, not required for basic usage:
 | **Voice Control Tools** | Pending | Have REST API endpoints |
 | **Follow-Up Daemon** | Pending | Can manually check alerts |
 | **Self-Healing Daemon** | Pending | Can manually trigger checks |
-| **Reminder Scheduler** | Pending | Reminders stored, need auto-trigger |
+| **Reminder Scheduler** | Done | `services/reminder_scheduler.py` auto-triggers due reminders every 60s |
 
 **You can use Phase 1 indefinitely** - it's production-ready!
 

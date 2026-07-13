@@ -85,7 +85,7 @@ curl -X POST http://localhost:8880/api/alerts \
 
 ### Optional Fields
 - `description`: Detailed info
-- `severity`: `low`, `medium`, `high`, `critical` (default: `medium`)
+- `severity`: `low`, `medium`, `high`, `critical` (default: `high`)
 - `auto_resolve_url`: URL to check for auto-resolution
 - `auto_resolve_check_interval`: Seconds between checks (default: 300)
 - `metadata`: JSON object with any additional data

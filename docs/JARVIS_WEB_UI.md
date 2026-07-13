@@ -539,8 +539,14 @@ tool reads:       get_config_value('IMAGE_TOOL_PROVIDER')
 
 | Setting | Env Var | Override Var | Options |
 |---------|---------|-------------|---------|
+| Router Prompt Version | `JARVIS_ROUTER_PROMPT_VERSION` | `JARVIS_OVERRIDE_JARVIS_ROUTER_PROMPT_VERSION` | v1, v2, … |
 | Image Provider | `IMAGE_TOOL_PROVIDER` | `JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER` | xai, gemini, openai |
 | Video Provider | `VIDEO_TOOL_PROVIDER` | `JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER` | xai, gemini |
+| TTS Provider | `TTS_PROVIDER` | `JARVIS_OVERRIDE_TTS_PROVIDER` | cloud: openai, elevenlabs, xai, qwen3-tts; local: kokoro, qwen3-tts |
+| Response Style | `JARVIS_RESPONSE_STYLE` | `JARVIS_OVERRIDE_JARVIS_RESPONSE_STYLE` | auto, casual, detailed |
+| QA Word Limit | `JARVIS_QA_WORD_LIMIT` | `JARVIS_OVERRIDE_JARVIS_QA_WORD_LIMIT` | integer |
+| Multi-Turn Word Limit | `JARVIS_MULTI_TURN_WORD_LIMIT` | `JARVIS_OVERRIDE_JARVIS_MULTI_TURN_WORD_LIMIT` | integer |
+| Tool RAG Limit | `CLOUD_TOOL_RAG_LIMIT` / `LOCAL_TOOL_RAG_LIMIT` | `JARVIS_OVERRIDE_CLOUD_TOOL_RAG_LIMIT` / `JARVIS_OVERRIDE_LOCAL_TOOL_RAG_LIMIT` | integer |
 
 **Adding New Overrides:**
 1. Add the setting-to-config-key mapping to the scoped override builder in `chat.py`.

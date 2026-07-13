@@ -507,7 +507,9 @@ Read file contents or get path for binary files.
 
 ---
 
-### 3.5 `stash.compose`
+### 3.5 `stash.compose` (Not Yet Implemented)
+
+> **Status**: Planned — see Phase 3 checklist below. The action is not in `skills/stash.tool.json` yet.
 
 Combine artifacts into a document (PDF).
 

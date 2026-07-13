@@ -401,7 +401,7 @@ openssl rand -hex 32
 | Request Source | Auth Required? |
 |----------------|----------------|
 | Localhost (127.0.0.1, ::1) | ❌ No - always allowed |
-| Public paths (`/`, `/api/health`, `/metrics`, `/docs`) | ❌ No - always allowed |
+| Public paths (`/`, `/api/health`, `/api/status`, `/metrics`, `/docs`, `/docs/dark`, `/redoc`, `/openapi.json`, and any `/docs/*` subpath) | ❌ No - always allowed |
 | External requests to other endpoints | ✅ Yes - requires Bearer token |
 
 **Making authenticated requests:**

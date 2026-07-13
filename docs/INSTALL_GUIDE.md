@@ -836,8 +836,8 @@ source ~/jarvis-venv/bin/activate
 # Install Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 
-# Pull models
-ollama pull qwen3.5:latest
+# Pull models (default local LLM is gemma4)
+ollama pull gemma4
 ollama pull nomic-embed-text
 
 # Test

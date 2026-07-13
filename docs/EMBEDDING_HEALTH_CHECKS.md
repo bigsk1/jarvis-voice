@@ -356,17 +356,21 @@ logs/tools/tool-calls-YYYY-MM-DD.jsonl
 
 ### API Health Endpoint
 
-The Jarvis API includes a health endpoint:
+The Jarvis API health endpoint does not include embedding status. Use the dedicated script instead:
+
 ```bash
-curl http://localhost:8091/health
+# API liveness (no embedding details)
+curl http://localhost:8880/api/health
 
 {
   "status": "ok",
-  "embeddings": {
-    "cloud": {"ok": true, "dimensions": 1536},
-    "local": {"ok": true, "dimensions": 768}
-  }
+  "service": "jarvis-api",
+  "version": "...",
+  "startup_mode": "cloud"
 }
+
+# Embedding health (recommended)
+./bin/check-embeddings-health.py
 ```
 
 ## Troubleshooting

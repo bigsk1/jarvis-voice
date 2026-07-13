@@ -286,7 +286,7 @@ Important:
 
 ### Example E: Direct speech bypass tool
 
-Example: `status_recap`, `generate_music`, `phone_call`
+Example: `status_recap`, `generate_music`, `phone_call`, `create_reminder`
 
 ```text
 User asks for task
@@ -419,7 +419,7 @@ So:
 There is a small exception path in the orchestrator:
 
 ```python
-DIRECT_SPEECH_TOOLS = {"status_recap", "generate_music", "phone_call"}
+DIRECT_SPEECH_TOOLS = {"status_recap", "generate_music", "phone_call", "create_reminder"}
 ```
 
 If the **last tool used** is one of those, and it provides a `speech` field, Jarvis uses that tool speech directly instead of letting the LLM reformulate it.
@@ -738,6 +738,6 @@ If your goal is "make it feel right":
 
 And for current code:
 - yes, the env vars matter
-- yes, `25 / 50 / 35` are still hardcoded
+- yes, `25 / 75 / 35` are still hardcoded
 - yes, the complex-tool TODO is still real
 - yes, the direct-speech bypass is a separate patch-path and not the same thing as `detailed`

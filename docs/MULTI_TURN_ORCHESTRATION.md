@@ -97,7 +97,7 @@ $ ./orchestrator_v2.py cloud "search for rust frameworks, summarize top 3, save 
 
 #### 1. `orchestrator/orchestrator_v2.py`
 **Key Changes:**
-- Added `max_turns = 10` loop in `process()`
+- Added `max_turns = 15` loop in `process()` (configurable via `MAX_TOOL_TURNS`)
 - Added `conversation_context` list to track tool results
 - Added `_build_turn_context()` helper to format context for LLM
 - Modified return structure to include `tools_used` array
@@ -105,7 +105,7 @@ $ ./orchestrator_v2.py cloud "search for rust frameworks, summarize top 3, save 
 **New Code Structure:**
 ```python
 def process(self, transcript: str) -> Dict[str, Any]:
-    max_turns = 10
+    max_turns = 15  # default; override with MAX_TOOL_TURNS env var
     conversation_context = []
     tools_used = []
     accumulated_data = {}
@@ -211,10 +211,13 @@ Notes:
 
 ## Configuration
 
-No configuration needed! Multi-turn is enabled by default for all modes (cloud/local).
+Multi-turn is enabled by default for all modes (cloud/local).
 
-**Environment Variables (Optional):**
+**Environment Variables:**
 ```bash
+# Max tool-calling turns per request (default: 15)
+MAX_TOOL_TURNS=15
+
 # Response style (affects final response formatting)
 JARVIS_RESPONSE_STYLE="casual"   # Default: natural conversational
 # JARVIS_RESPONSE_STYLE="detailed"  # Raw tool outputs
@@ -223,7 +226,7 @@ JARVIS_RESPONSE_STYLE="casual"   # Default: natural conversational
 
 ## Safety & Limits
 
-1. **Max Turns:** 10 iterations per request
+1. **Max Turns:** 15 iterations per request (override with `MAX_TOOL_TURNS`)
    - Prevents infinite loops
    - Logs warning if limit reached
    - Returns partial results + explanation
@@ -297,8 +300,8 @@ Location: orchestrator/router_v2.py (self.system_prompt)
 
 **Problem:** Max turns reached too often
 ```
-Solution: Increase max_turns in orchestrator_v2.py
-Current: 10 turns (should be plenty for 99% of tasks)
+Solution: Increase `MAX_TOOL_TURNS` in `config/cloud.env` or `config/local.env`
+Current: 15 turns default (should be plenty for 99% of tasks)
 ```
 
 **Problem:** Context too large (LLM slow)

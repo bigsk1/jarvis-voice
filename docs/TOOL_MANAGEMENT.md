@@ -451,8 +451,8 @@ Best for: Simple, fast, no external dependencies
 # Create tool files
 touch skills/weather.py skills/weather.tool.json
 
-# Template
-./bin/manage-tools.py template weather
+# Not yet implemented: ./bin/manage-tools.py template weather
+# Use `init` or copy an existing tool as a starting point instead.
 ```
 
 **Pros:** Fast, no network latency, full control
