@@ -212,8 +212,8 @@
     { src: 'site/images/jarvis-web.webp', alt: 'Current Jarvis Web conversational interface', title: 'Conversational workbench', copy: 'Chat, tools, files, images, voice, and live execution telemetry—composed into one focused surface.' },
     { src: 'site/images/jarvis-canvas.webp', alt: 'Jarvis Canvas daily status report', title: 'Durable Canvas', copy: 'Living reports, notes, dashboards, and visual artifacts that remain useful after the conversation ends.' },
     { src: 'site/images/jarvis-tui.webp', alt: 'Jarvis terminal command dashboard', title: 'Terminal control center', copy: 'Search commands, inspect system output, and operate the entire stack without leaving the terminal.' },
-    { src: 'site/images/jarvis-gallery.webp', alt: 'Jarvis generated asset gallery', title: 'Artifact gallery', copy: 'A polished, searchable home for generated media and the reports that use it.' },
-    { src: 'site/images/jarvis-images.webp', alt: 'Jarvis image gallery with generated artwork', title: 'Image intelligence', copy: 'Generate, organize, inspect, and reuse visual output from one integrated surface.' },
+    { src: 'site/images/memory-browser.webp', alt: 'Jarvis Memory Browser knowledge and conversation search', title: 'Persistent memory', copy: 'Hybrid keyword and semantic search across knowledge, conversations, reminders, and scheduled work—with mode-isolated data.' },
+    { src: 'site/images/jarvis-images.webp', alt: 'Jarvis image gallery with generated artwork', title: 'Image intelligence', copy: 'Generate, organize, inspect, and reuse visual output from the Canvas image gallery.' },
     { src: 'site/images/jarvis-videos.webp', alt: 'Jarvis generated video gallery', title: 'Motion library', copy: 'Generated video stays browsable, playable, and connected to the system that created it.' }
   ];
   let galleryIndex = 0;

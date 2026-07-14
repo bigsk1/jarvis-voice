@@ -20,8 +20,9 @@ Pages under `/jarvis-voice/`.
 
 No additional assets are required. The six WebP files are optimized derivatives
 of real screenshots already tracked in `docs/images/`; source files remain the
-canonical full-resolution versions. The current Web UI source is
-`docs/images/jarvis-web.jpg`, matching the screenshot used by the root README.
+canonical full-resolution versions. Current sources: `jarvis-web.jpg`,
+`jarvis-canvas` / TUI / video screenshots, `jarvis-image-gallery.png`, and
+`memory-browser.jpg`.
 The animated mark is reused directly from
 `jarvis-web/client/assets/jarvis-hud-logo.svg`, and both architecture previews
 remain linked to their existing interactive HTML pages.

@@ -169,7 +169,7 @@ The `short_title` extraction type is available to any workflow that needs concis
 
 ---
 
-![Jarvis Gallery](images/jarvis-gallery.png)
+![Jarvis Image Gallery](images/jarvis-image-gallery.png)
 
 ## Image Gallery
 
