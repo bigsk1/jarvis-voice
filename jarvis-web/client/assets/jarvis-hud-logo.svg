@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Jarvis HUD header logo  self-contained animated SVG.
+  Jarvis HUD header logo - self-contained animated SVG.
 
   Usage (animations + online/offline states):
     " Inline in HTML: copy/paste or fetch + innerHTML
     " <object type="image/svg+xml" data="/assets/jarvis-hud-logo.svg">
     " <embed src="/assets/jarvis-hud-logo.svg">
 
-  Usage (static only  no animation):
+  Usage (static only  no animation):
     " <img src="/assets/jarvis-hud-logo.svg">
 
   Connection state: add class "online" or "offline" to the root <svg>.

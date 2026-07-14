@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#05070a">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Jarvis Voice is a self-hosted AI system for voice, chat, automation, persistent memory, and coding—running in cloud or local mode.">
+  <meta property="og:title" content="Jarvis Voice — Your intelligence. Your machine.">
+  <meta property="og:description" content="A self-hosted personal AI operating system for voice, tools, workflows, memory, and creation.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://bigsk1.com/jarvis-voice/">
+  <title>Jarvis Voice — Personal AI, under your control</title>
+  <link rel="icon" href="jarvis-web/client/assets/jarvis-hud-logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@300;400;500;600;700&display=swap">
+  <link rel="preload" href="site/css/site.css" as="style">
+  <link rel="stylesheet" href="site/css/site.css">
+  <script>document.documentElement.classList.replace('no-js', 'js');</script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to experience</a>
+
+  <div class="boot-screen" aria-hidden="true">
+    <div class="boot-mark">
+      <span class="boot-ring"></span>
+      <span class="boot-core" data-inline-svg="hal">J</span>
+    </div>
+    <p>Initializing interface</p>
+    <div class="boot-track"><span></span></div>
+  </div>
+
+  <div class="page-noise" aria-hidden="true"></div>
+  <div class="cursor-light" aria-hidden="true"></div>
+  <canvas class="ambient-field" id="ambientField" aria-hidden="true"></canvas>
+
+  <header class="site-header" data-header>
+    <a class="brand" href="#top" aria-label="Jarvis Voice home">
+      <span class="brand-orbit" aria-hidden="true" data-inline-svg="hud:online"><span>J</span></span>
+      <span class="brand-copy"><strong>JARVIS</strong><small>VOICE SYSTEM</small></span>
+    </a>
+
+    <nav class="main-nav" id="mainNav" aria-label="Primary navigation">
+      <a href="#interface" data-nav-link><span>01</span> Interface</a>
+      <a href="#system" data-nav-link><span>02</span> System</a>
+      <a href="#proof" data-nav-link><span>03</span> Proof</a>
+      <a href="#architecture" data-nav-link><span>04</span> Architecture</a>
+    </nav>
+
+    <div class="header-actions">
+      <button class="command-trigger" type="button" data-command-open aria-label="Open command menu">
+        <span>Navigate</span><kbd>⌘ K</kbd>
+      </button>
+      <a class="github-link" href="https://github.com/bigsk1/jarvis-voice" target="_blank" rel="noreferrer">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .7a11.5 11.5 0 0 0-3.64 22.4c.58.1.79-.25.79-.56v-2.23c-3.22.7-3.9-1.37-3.9-1.37-.52-1.34-1.28-1.7-1.28-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.57-.29-5.27-1.28-5.27-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.06 0 0 .97-.31 3.16 1.18a10.9 10.9 0 0 1 5.76 0c2.2-1.49 3.16-1.18 3.16-1.18.63 1.59.23 2.77.11 3.06.74.81 1.19 1.84 1.19 3.1 0 4.42-2.71 5.39-5.29 5.68.42.36.79 1.07.79 2.16v3.2c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .7Z"/></svg>
+        <span>Source</span>
+      </a>
+      <button class="menu-toggle" type="button" aria-controls="mainNav" aria-expanded="false" data-menu-toggle>
+        <span></span><span></span><span class="sr-only">Toggle menu</span>
+      </button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="hero-grid" aria-hidden="true"></div>
+      <div class="hero-copy" data-reveal>
+        <div class="eyebrow"><span class="live-dot"></span> Self-hosted intelligence / online</div>
+        <h1 id="hero-title"><span>Your intelligence.</span><em>Your machine.</em></h1>
+        <p class="hero-lede">Jarvis is a personal AI system that listens, reasons, remembers, builds, and acts—across voice, chat, tools, and repeatable workflows.</p>
+        <div class="hero-actions">
+          <a class="button button-primary magnetic" href="#interface"><span>Enter the system</span><i aria-hidden="true">↘</i></a>
+          <a class="button button-ghost" href="https://github.com/bigsk1/jarvis-voice#quick-start" target="_blank" rel="noreferrer"><span>View quick start</span><i aria-hidden="true">↗</i></a>
+        </div>
+        <ul class="hero-facts" aria-label="System capabilities">
+          <li><strong>Cloud + local</strong><span>Mode-isolated operation</span></li>
+          <li><strong>80+ skills</strong><span>Retrieved on demand</span></li>
+          <li><strong>15 workflows</strong><span>Deterministic pipelines</span></li>
+        </ul>
+      </div>
+
+      <div class="hero-core" data-reveal data-delay="1">
+        <div class="core-telemetry core-telemetry-a" aria-hidden="true"><span>STT</span><b>LISTENING</b></div>
+        <div class="core-telemetry core-telemetry-b" aria-hidden="true"><span>ROUTER</span><b>READY</b></div>
+        <button class="voice-core" type="button" data-voice-core aria-label="Activate Jarvis voice visualization">
+          <span class="orbit orbit-1"></span>
+          <span class="orbit orbit-2"></span>
+          <span class="orbit orbit-3"></span>
+          <span class="core-glow"></span>
+          <span class="core-mark" data-inline-svg="hud:online"><img src="jarvis-web/client/assets/jarvis-hud-logo.svg" alt="" width="200" height="200"></span>
+          <span class="voice-hint">Visual demo · tap to activate</span>
+        </button>
+        <div class="hero-wave" aria-hidden="true" data-waveform></div>
+        <p class="core-status" aria-live="polite" data-core-status><span></span> Interactive preview · no microphone</p>
+      </div>
+
+      <div class="scroll-cue" aria-hidden="true"><span>Scroll to descend</span><i></i></div>
+      <div class="hero-index" aria-hidden="true">JVS / 001</div>
+    </section>
+
+    <section class="signal-strip" aria-label="Jarvis capabilities">
+      <div class="signal-track">
+        <span>Voice native</span><i></i><span>Persistent memory</span><i></i><span>Tool orchestration</span><i></i><span>Autonomous coding</span><i></i><span>Deterministic workflows</span><i></i><span>Local-first privacy</span><i></i>
+        <span aria-hidden="true">Voice native</span><i aria-hidden="true"></i><span aria-hidden="true">Persistent memory</span><i aria-hidden="true"></i><span aria-hidden="true">Tool orchestration</span><i aria-hidden="true"></i><span aria-hidden="true">Autonomous coding</span><i aria-hidden="true"></i><span aria-hidden="true">Deterministic workflows</span><i aria-hidden="true"></i><span aria-hidden="true">Local-first privacy</span><i aria-hidden="true"></i>
+      </div>
+    </section>
+
+    <section class="section command-deck" id="interface" aria-labelledby="interface-title">
+      <div class="section-heading" data-reveal>
+        <div><span class="section-number">01</span><span class="eyebrow">The interface</span></div>
+        <h2 id="interface-title">Ask naturally.<br><em>Watch the system move.</em></h2>
+        <p>Jarvis turns intent into observable action. Try a representative request to see how one command moves through voice, routing, tools, and durable output.</p>
+      </div>
+
+      <div class="terminal-shell" data-reveal>
+        <div class="terminal-topbar">
+          <div class="window-controls" aria-hidden="true"><i></i><i></i><i></i></div>
+          <span>JARVIS // COMMAND DECK</span>
+          <span class="secure-label"><i></i> LOCAL SESSION</span>
+        </div>
+        <div class="terminal-body">
+          <div class="prompt-panel">
+            <p class="panel-label">Select an intent</p>
+            <div class="intent-list" role="list">
+              <button class="intent active" type="button" data-intent="brief" role="listitem"><span>01</span><strong>Brief me for the day</strong><i>↗</i></button>
+              <button class="intent" type="button" data-intent="research" role="listitem"><span>02</span><strong>Research a topic</strong><i>↗</i></button>
+              <button class="intent" type="button" data-intent="remember" role="listitem"><span>03</span><strong>Remember something</strong><i>↗</i></button>
+              <button class="intent" type="button" data-intent="build" role="listitem"><span>04</span><strong>Build with an agent</strong><i>↗</i></button>
+            </div>
+            <div class="input-simulation"><span>›</span><p data-demo-prompt>Jarvis, brief me for the day.</p><i class="input-cursor"></i></div>
+            <p class="simulation-note">Interactive simulation · no data leaves your browser</p>
+          </div>
+          <div class="response-panel">
+            <div class="response-head"><span>Execution trace</span><b data-demo-timer>00:01.284</b></div>
+            <div class="trace-list" data-trace-list aria-live="polite"></div>
+            <div class="response-copy">
+              <div class="jarvis-avatar" data-inline-svg="hal">J</div>
+              <p data-demo-response>Your morning brief is ready. I checked weather, market movement, open alerts, and the health of your core services. I also saved the visual report to Canvas.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section system-section" id="system" aria-labelledby="system-title">
+      <div class="section-heading system-heading" data-reveal>
+        <div><span class="section-number">02</span><span class="eyebrow">System constellation</span></div>
+        <h2 id="system-title">One intelligence.<br><em>Every surface.</em></h2>
+        <p>Not a collection of disconnected demos. Each surface shares orchestration, memory, workflows, and mode-aware runtime state.</p>
+      </div>
+
+      <div class="constellation" data-reveal>
+        <svg class="constellation-lines" viewBox="0 0 1000 620" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M500 310L178 126M500 310L500 74M500 310L822 126M500 310L872 310M500 310L822 510M500 310L500 556M500 310L178 510M500 310L128 310"/>
+          <circle cx="500" cy="310" r="178"/><circle cx="500" cy="310" r="258"/>
+        </svg>
+        <button class="system-node node-voice active" type="button" data-system="voice"><span>01</span><strong>Voice</strong><small>Listen + speak</small></button>
+        <button class="system-node node-web" type="button" data-system="web"><span>02</span><strong>Web</strong><small>Chat + stream</small></button>
+        <button class="system-node node-workflows" type="button" data-system="workflows"><span>03</span><strong>Workflows</strong><small>Repeat + verify</small></button>
+        <button class="system-node node-canvas" type="button" data-system="canvas"><span>04</span><strong>Canvas</strong><small>Create + keep</small></button>
+        <button class="system-node node-memory" type="button" data-system="memory"><span>05</span><strong>Memory</strong><small>Recall + schedule</small></button>
+        <button class="system-node node-intelligence" type="button" data-system="intelligence"><span>06</span><strong>Intelligence</strong><small>Reflect + improve</small></button>
+        <button class="system-node node-dashboard" type="button" data-system="dashboard"><span>07</span><strong>Dashboard</strong><small>Observe + control</small></button>
+        <button class="system-node node-docs" type="button" data-system="docs"><span>08</span><strong>Docs</strong><small>Ground + explain</small></button>
+        <div class="system-core">
+          <div class="mini-orbit"></div>
+          <span data-inline-svg="hal">J</span><strong>ORCHESTRATION<br>CORE</strong>
+        </div>
+        <aside class="system-detail" data-system-detail>
+          <span class="detail-index">SURFACE / 01</span>
+          <h3>Voice native</h3>
+          <p>Wake-word entry, streaming transcription, mode-aware speech, and progress updates make the system feel present before a screen is involved.</p>
+          <div><span>Input</span><b>Wake word · microphone · API</b></div>
+          <div><span>Output</span><b>Speech · status · actions</b></div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section proof-section" id="proof" aria-labelledby="proof-title">
+      <div class="section-heading proof-heading" data-reveal>
+        <div><span class="section-number">03</span><span class="eyebrow">Inside the machine</span></div>
+        <h2 id="proof-title">Built to be used.<br><em>Built to be seen.</em></h2>
+        <p>Real interfaces from the running project—from a conversational workbench to the artifacts and control planes behind it.</p>
+      </div>
+
+      <div class="showcase" data-showcase data-reveal>
+        <div class="showcase-stage">
+          <button class="showcase-image" type="button" data-gallery-open aria-label="Open current screenshot">
+            <img src="site/images/jarvis-web.webp" alt="Current Jarvis Web conversational interface" width="1525" height="921" data-showcase-image>
+            <span class="image-scan" aria-hidden="true"></span>
+            <span class="expand-cue">EXPAND <i>↗</i></span>
+          </button>
+          <div class="showcase-caption">
+            <div><span data-showcase-index>01 / 06</span><h3 data-showcase-title>Conversational workbench</h3></div>
+            <p data-showcase-copy>Chat, tools, files, images, voice, and live execution telemetry—composed into one focused surface.</p>
+          </div>
+        </div>
+        <div class="showcase-rail" role="list" aria-label="Product screenshots">
+          <button class="thumb active" type="button" role="listitem" data-gallery-index="0"><img src="site/images/jarvis-web.webp" alt="" width="320" height="193"><span>Web</span></button>
+          <button class="thumb" type="button" role="listitem" data-gallery-index="1"><img src="site/images/jarvis-canvas.webp" alt="" width="320" height="153"><span>Canvas</span></button>
+          <button class="thumb" type="button" role="listitem" data-gallery-index="2"><img src="site/images/jarvis-tui.webp" alt="" width="320" height="173"><span>Control</span></button>
+          <button class="thumb" type="button" role="listitem" data-gallery-index="3"><img src="site/images/jarvis-gallery.webp" alt="" width="320" height="153"><span>Gallery</span></button>
+          <button class="thumb" type="button" role="listitem" data-gallery-index="4"><img src="site/images/jarvis-images.webp" alt="" width="320" height="154"><span>Images</span></button>
+          <button class="thumb" type="button" role="listitem" data-gallery-index="5"><img src="site/images/jarvis-videos.webp" alt="" width="320" height="151"><span>Video</span></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section architecture-section" id="architecture" aria-labelledby="architecture-title">
+      <div class="architecture-copy" data-reveal>
+        <div><span class="section-number">04</span><span class="eyebrow">Under the surface</span></div>
+        <h2 id="architecture-title">A system,<br><em>not a wrapper.</em></h2>
+        <p>Requests move through explicit entry points, orchestration, tool retrieval, provider boundaries, durable state, and observable output. Explore the real diagrams—not a simplified marketing sketch.</p>
+        <div class="architecture-actions">
+          <a class="text-link" href="docs/diagrams/jarvis-runtime-architecture.html">Explore runtime architecture <i>↗</i></a>
+          <a class="text-link" href="docs/diagrams/jarvis-workflow-execution-lifecycle.html">Trace a workflow <i>↗</i></a>
+        </div>
+        <div class="architecture-legend">
+          <span><i class="legend-cyan"></i> Entry + interface</span>
+          <span><i class="legend-violet"></i> State + memory</span>
+          <span><i class="legend-green"></i> Runtime flow</span>
+        </div>
+      </div>
+      <a class="diagram-window" href="docs/diagrams/jarvis-runtime-architecture.html" data-reveal aria-label="Open interactive Jarvis Voice runtime architecture diagram">
+        <div class="diagram-topbar"><span>RUNTIME_TOPOLOGY.svg</span><span>INTERACTIVE ↗</span></div>
+        <div class="diagram-viewport">
+          <img src="docs/diagrams/jarvis-voice-runtime.svg" alt="Jarvis Voice runtime architecture" width="1200" height="720" loading="lazy">
+          <span class="diagram-focus" aria-hidden="true"></span>
+        </div>
+      </a>
+    </section>
+
+    <section class="section workflow-story" aria-labelledby="workflow-title">
+      <div class="workflow-visual" data-reveal>
+        <div class="workflow-line" aria-hidden="true"></div>
+        <div class="workflow-step active"><span>01</span><div><small>INTENT</small><strong>“Research solid-state batteries”</strong></div></div>
+        <div class="workflow-step"><span>02</span><div><small>RETRIEVE</small><strong>Search · Crawl · Validate</strong></div></div>
+        <div class="workflow-step"><span>03</span><div><small>SYNTHESIZE</small><strong>Grounded analysis</strong></div></div>
+        <div class="workflow-step"><span>04</span><div><small>DELIVER</small><strong>Durable Canvas report</strong></div></div>
+      </div>
+      <div class="workflow-copy" data-reveal>
+        <span class="eyebrow">Determinism where it matters</span>
+        <h2 id="workflow-title">Give repetition<br><em>a memory.</em></h2>
+        <p>For recurring work, Jarvis stops improvising. Versioned JSON workflows define tools, order, retries, validation, and output—using near-zero orchestration tokens when every step is deterministic.</p>
+        <a class="text-link" href="https://github.com/bigsk1/jarvis-voice/blob/main/docs/WORKFLOW_ORCHESTRATION.md" target="_blank" rel="noreferrer">Read the workflow system <i>↗</i></a>
+      </div>
+    </section>
+
+    <section class="section manifesto" aria-labelledby="manifesto-title">
+      <div class="manifesto-mark" aria-hidden="true"><span data-inline-svg="hal">J</span></div>
+      <div class="manifesto-copy" data-reveal>
+        <span class="eyebrow">The operating principle</span>
+        <h2 id="manifesto-title">Intelligence should feel powerful.<br><em>Ownership should feel obvious.</em></h2>
+        <p>Choose cloud models when reach matters or local, offline paths when privacy matters. In either mode, keep the application, memories, workflows, artifacts, and mode-separated state on infrastructure you control.</p>
+      </div>
+      <div class="mode-switcher" data-reveal>
+        <div class="mode-tabs" role="tablist" aria-label="Operation modes">
+          <button class="active" type="button" role="tab" aria-selected="true" data-mode="local">Local</button>
+          <button type="button" role="tab" aria-selected="false" data-mode="cloud">Cloud</button>
+        </div>
+        <div class="mode-display" data-mode-display>
+          <div><span>MODEL PATH</span><b>Self-hosted Ollama</b></div>
+          <div><span>SPEECH PATH</span><b>Local STT + TTS</b></div>
+          <div><span>DATA BOUNDARY</span><b>Your machine</b></div>
+          <p><i></i> Offline-capable profile</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="final-cta" aria-labelledby="cta-title">
+      <div class="cta-grid" aria-hidden="true"></div>
+      <div class="cta-orb" aria-hidden="true"><span data-inline-svg="hud:online">J</span></div>
+      <p class="eyebrow">Personal system / source available</p>
+      <h2 id="cta-title">Make your machine<br><em>feel intelligent.</em></h2>
+      <p>Jarvis Voice is actively developed and source available for personal, non-commercial use.</p>
+      <div class="hero-actions">
+        <a class="button button-primary magnetic" href="https://github.com/bigsk1/jarvis-voice" target="_blank" rel="noreferrer"><span>Explore on GitHub</span><i>↗</i></a>
+        <a class="button button-ghost" href="https://github.com/bigsk1/jarvis-voice/blob/main/docs/INSTALL_GUIDE.md" target="_blank" rel="noreferrer"><span>Installation guide</span><i>↗</i></a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <a class="brand footer-brand" href="#top"><span class="brand-orbit" data-inline-svg="hud:online"><span>J</span></span><span class="brand-copy"><strong>JARVIS</strong><small>VOICE SYSTEM</small></span></a>
+    <p>Self-hosted AI for voice, chat, automation, memory, and coding.</p>
+    <div class="footer-links">
+      <a href="https://github.com/bigsk1/jarvis-voice" target="_blank" rel="noreferrer">GitHub</a>
+      <a href="https://github.com/bigsk1/jarvis-voice#readme" target="_blank" rel="noreferrer">Docs</a>
+      <a href="LICENSE">License</a>
+      <a href="docs/diagrams/jarvis-runtime-architecture.html">Architecture</a>
+    </div>
+    <div class="footer-status"><i></i><span>Actively developed</span><b>JVS / <span data-year>2026</span></b></div>
+  </footer>
+
+  <dialog class="command-palette" data-command-dialog aria-label="Site navigation">
+    <div class="command-dialog-head">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.4-4.4m2.4-5.1a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"/></svg>
+      <input type="search" aria-label="Filter navigation commands" placeholder="Navigate the system…" autocomplete="off" data-command-input>
+      <kbd>ESC</kbd>
+    </div>
+    <div class="command-results" data-command-results>
+      <a href="#interface" data-command-item><span>01</span><strong>Open command deck</strong><small>Interface</small></a>
+      <a href="#system" data-command-item><span>02</span><strong>Explore system constellation</strong><small>System</small></a>
+      <a href="#proof" data-command-item><span>03</span><strong>View product surfaces</strong><small>Gallery</small></a>
+      <a href="#architecture" data-command-item><span>04</span><strong>Inspect runtime architecture</strong><small>Diagram</small></a>
+      <a href="https://github.com/bigsk1/jarvis-voice" target="_blank" rel="noreferrer" data-command-item><span>↗</span><strong>Open source repository</strong><small>GitHub</small></a>
+    </div>
+    <div class="command-footer"><span><kbd>↑</kbd><kbd>↓</kbd> Move</span><span><kbd>↵</kbd> Open</span></div>
+  </dialog>
+
+  <dialog class="gallery-dialog" data-gallery-dialog aria-label="Product screenshot viewer">
+    <button type="button" class="dialog-close" data-gallery-close aria-label="Close screenshot viewer">×</button>
+    <button type="button" class="gallery-arrow previous" data-gallery-prev aria-label="Previous screenshot">←</button>
+    <figure><img src="site/images/jarvis-web.webp" alt="Current Jarvis Web conversational interface" width="1525" height="921" data-dialog-image><figcaption data-dialog-caption>Conversational workbench</figcaption></figure>
+    <button type="button" class="gallery-arrow next" data-gallery-next aria-label="Next screenshot">→</button>
+  </dialog>
+
+  <script src="site/js/site.js" defer></script>
+</body>
+</html>
