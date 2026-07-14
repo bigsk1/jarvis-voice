@@ -78,8 +78,9 @@ echo "✅ Audio directories created"
 # Create convenience aliases/symlinks
 echo ""
 echo "🔗 Creating convenience symlinks..."
-ln -sf "$PROJECT_ROOT/bin/wake-jarvis.py" "$PROJECT_ROOT/jarvis" 2>/dev/null || true
-ln -sf "$PROJECT_ROOT/bin/wake-jarvis-local.py" "$PROJECT_ROOT/jarvis-local" 2>/dev/null || true
+# Keep launcher symlinks portable for fresh clones and GitHub Pages artifact packaging.
+ln -sfn "bin/wake-jarvis.py" "$PROJECT_ROOT/jarvis" 2>/dev/null || true
+ln -sfn "bin/wake-jarvis-local.py" "$PROJECT_ROOT/jarvis-local" 2>/dev/null || true
 echo "✅ Symlinks created (./jarvis and ./jarvis-local)"
 
 # Git check (repo should already be cloned)
@@ -118,4 +119,3 @@ echo "   ./jarvis           # Start wake word listener"
 echo ""
 echo "See docs/INSTALL_GUIDE.md for full setup guide."
 echo ""
-

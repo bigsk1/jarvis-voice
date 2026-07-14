@@ -1022,8 +1022,8 @@ python api/main.py  # Should start API
 **Permission denied:**
 ```bash
 # Make scripts executable
-chmod +x "$HOME/jarvis-voice/jarvis"
-chmod +x "$HOME/jarvis-voice/jarvis-local"
+chmod +x "$HOME/jarvis-voice/bin/wake-jarvis.py"
+chmod +x "$HOME/jarvis-voice/bin/wake-jarvis-local.py"
 chmod +x "$HOME/jarvis-voice/skills/"*.py
 chmod +x "$HOME/jarvis-voice/bin/"*
 ```
