@@ -28,7 +28,7 @@ Comprehensive REST API for Jarvis Voice Assistant - includes proactive webhooks,
 | **Stash** | [STASH.md](STASH.md) | Access stored artifacts and files |
 | **Canvas** | [CANVAS.md](CANVAS.md) | Browse visual knowledge pages |
 | **Generated Images** | [GENERATED_IMAGES.md](GENERATED_IMAGES.md) | List, download, delete, generate AI images |
-| **Images (CDN)** | [API_OVERVIEW.md#images](API_OVERVIEW.md) | Upload to Cloudflare CDN (public URLs) |
+| **Images (CDN)** | [IMAGES.md](IMAGES.md) | Upload to Cloudflare CDN (public URLs) |
 
 ### Quick Reference - Core Endpoints
 

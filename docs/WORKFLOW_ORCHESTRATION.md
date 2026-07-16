@@ -312,7 +312,7 @@ Workflow scheduled tasks are first-class:
 
 - The workflow selector is populated from loaded shared and personal workflows.
 - The UI shows workflow name, id, triggers, required query-derived inputs, and tools.
-- If a workflow has required `from: "query"` variables without defaults, Workflow Input is required.
+- If a workflow declares a variable with `extract: "main_subject"`, Workflow Input is required (other `from: "query"` extract types do not set `requires_input`).
 - Workflow input is stored as `task_payload.query` and passed to the workflow trigger at runtime.
 - If a workflow does not need input, optional input is harmless and can be ignored by the workflow.
 - The schedule text field still accepts natural expressions, and the date/time picker fills that field with an exact local timestamp.

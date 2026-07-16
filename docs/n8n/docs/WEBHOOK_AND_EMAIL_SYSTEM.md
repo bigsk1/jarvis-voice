@@ -136,7 +136,7 @@ Contact list for email lookup:
 **Webhook URL:** `http://localhost:5678/webhook/jarvis-email`
 
 **Setup steps:**
-1. Open n8n: http://loclahost:5678/workflow/F38Tpz6OH4JqMLzW
+1. Open n8n: http://localhost:5678/workflow/F38Tpz6OH4JqMLzW
 2. Click the "Send Email" node
 3. Add SMTP credentials (click "Create new credential")
 4. Configure SMTP settings:
@@ -240,7 +240,7 @@ Now you can say: "Send email to John about the project"
 3. Check n8n execution logs for errors
 4. Test webhook directly:
 ```bash
-curl -X POST http://lo:5678/webhook/jarvis-email \
+curl -X POST http://localhost:5678/webhook/jarvis-email \
   -H "Content-Type: application/json" \
   -d '{"to": "test@example.com", "subject": "Test", "body": "Hello"}'
 ```

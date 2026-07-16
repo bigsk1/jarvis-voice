@@ -137,7 +137,7 @@ Authoritative commented defaults live next to **`OPENAI_API_KEY`** in **[`config
 
 ## SDK version
 
-Jarvis declares a lower bound compatible with **`client.responses.create`** in **`pyproject.toml`** (`openai>=2.14.0,<3` at time of writing). Use a matching venv in CI and on hosts.
+Jarvis declares an OpenAI SDK pin compatible with **`client.responses.create`** in **`pyproject.toml`** (`openai==2.24.0` at time of writing; `requirements.txt` uses `openai>=2.24.0`). Use a matching venv in CI and on hosts.
 
 ## Quick mental model
 

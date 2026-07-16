@@ -61,9 +61,9 @@ elif tool_name == "generate_music":
 | `genre` | string | No | Musical genre (pop, rock, jazz, etc.) |
 | `mood` | string | No | Emotional tone (happy, sad, energetic, calm) |
 | `tempo` | string | No | Speed: "slow", "medium", "fast", or BPM number |
-| `duration_seconds` | int | No | Length in seconds (15-600, default: 60) |
+| `duration_seconds` | int | No | Length in seconds (3-600, default: 60) |
 | `instrumental` | bool | No | Force no vocals (default: false) |
-| `output_format` | string | No | "mp3_low", "mp3_medium", "mp3_high", "opus" |
+| `output_format` | string | No | "mp3_low", "mp3_medium", "mp3_high", "opus_low", "opus_medium", "opus_high" |
 
 ## Best Practices (from ElevenLabs)
 

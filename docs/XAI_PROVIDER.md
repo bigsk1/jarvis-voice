@@ -30,7 +30,7 @@ xAI's Grok models offer the **best value proposition** for Jarvis:
 
 | Feature | xAI Grok | Anthropic Claude | OpenAI GPT |
 |---------|----------|------------------|------------|
-| **Context Window** | **256K-1M tokens** | 200K tokens | 128K-1M+ tokens |
+| **Context Window** | **256K-1M tokens** | 200K-1M tokens | 128K-1M+ tokens |
 | **Input Cost** | **$1.00-$2.00/1M** | $3.00/1M | varies by model |
 | **Output Cost** | **$2.50-$6.00/1M** | $15.00/1M | varies by model |
 | **Caching** | **Cached input from $0.20/1M** | 90% discount | model-dependent |
@@ -56,7 +56,7 @@ xAI's Grok models offer the **best value proposition** for Jarvis:
 │ xAI grok-4.20 non-reasoning        $1.25    $2.50    1M        │
 │ xAI grok-4.20 reasoning            $1.25    $2.50    1M        │
 │                                                                 │
-│ Anthropic Claude Sonnet 4.5        $3.00    $15.00   200K      │
+│ Anthropic Claude Sonnet 4.5        $3.00    $15.00   1M        │
 │ OpenAI GPT-5.1                     $1.25    $10.00   128K      │
 │ OpenAI GPT-4o                      $3.00    $12.00   128K      │
 └─────────────────────────────────────────────────────────────────┘
@@ -80,7 +80,7 @@ xAI's Grok models offer the **best value proposition** for Jarvis:
 
 ## Key Features
 
-### 1. **Large 1M-2M Context Windows**
+### 1. **Large Context Windows (up to 1M)**
 
 - Handle large tool catalogs and retrieved context
 - Include entire conversation history
@@ -602,7 +602,7 @@ Grok 4.3 performs extended internal thinking before responding, and its depth ca
 
 - **Latency**: 1-3 seconds (similar to Claude/GPT)
 - **Throughput**: High (scales well)
-- **Large context**: Current Grok models support 1M-2M token windows
+- **Large context**: Current Grok models support up to 1M token windows
 
 ### Reliability
 
@@ -709,7 +709,7 @@ Assuming 90% cache hit rate after first query:
    ```
 
 3. **Differences**:
-   - 15x larger context (2M vs 128K)
+   - Larger context (up to 1M vs 128K)
    - 6x cheaper
    - Better reasoning (if using reasoning models)
 
@@ -885,7 +885,7 @@ Completion guard, feedback, intelligence, logs, web conversation history should 
 
 xAI Grok is a strong cloud provider for Jarvis:
 
-✅ **1M-2M context window options**
+✅ **Up to 1M context window options**
 ✅ **Competitive pricing**
 ✅ **Automatic caching** (90% discount)
 ✅ **Configurable reasoning on Grok 4.3**

@@ -298,12 +298,12 @@ See [API Documentation](../../api/GENERATED_VIDEOS.md) for full endpoint referen
 ## Requirements
 
 **For xAI:**
-- xAI SDK >= 1.6.1 (video support added in 1.6.0)
+- xAI SDK >= 1.17.0 (video support added in 1.6.0; project floor is 1.17.0)
 - `XAI_API_KEY` configured in cloud.env
 - Sufficient xAI API credits
 
 **For OpenAI:**
-- OpenAI SDK >= 1.0.0
+- OpenAI SDK >= 2.24.0
 - `OPENAI_API_KEY` configured in cloud.env
 - Sufficient OpenAI API credits
 
@@ -314,7 +314,7 @@ See [API Documentation](../../api/GENERATED_VIDEOS.md) for full endpoint referen
 
 Install all:
 ```bash
-pip install xai-sdk>=1.6.1 openai>=1.0.0 google-genai>=2.10.0
+pip install xai-sdk>=1.17.0 openai>=2.24.0 google-genai>=2.10.0
 ```
 
 ## Costs
@@ -400,12 +400,12 @@ Upgrade xAI SDK:
 ```bash
 pip install --upgrade xai-sdk
 ```
-Requires version 1.6.0 or higher.
+Requires version 1.17.0 or higher.
 
 ### "openai SDK not installed" (OpenAI)
 Install OpenAI SDK:
 ```bash
-pip install openai
+pip install 'openai>=2.24.0'
 ```
 
 ### "google-genai not installed" (Gemini)

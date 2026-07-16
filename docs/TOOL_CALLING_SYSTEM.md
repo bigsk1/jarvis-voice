@@ -455,10 +455,10 @@ host list. See [ollama/README.md](ollama/README.md).
 
 ## Documentation
 
-- 📖 **TOOL_SYSTEM_SUMMARY.md** - Complete architecture overview
 - 📖 **TESTING.md** - Comprehensive testing guide
 - 📖 **orchestrator/README.md** - Orchestrator details
 - 📖 **skills/README.md** - Tool creation guide
+- 📖 **docs/TOOL_MANAGEMENT.md** - Tool management and evolution
 
 ## Inter-Tool Calling (Tools Calling Other Tools)
 

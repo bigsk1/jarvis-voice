@@ -56,86 +56,79 @@ This document shows **exactly** what gets sent to the LLM when auto-context is e
 
 ## Exact Payload Structure
 
+Built by `ContextAssembler.build_conversation_context` in `orchestrator/context_assembler.py`.
+
 ### Full Enhanced Transcript (Real Example)
 
 ```
-╔══════════════════════════════════════════════════════════╗
-║ RECENT CONVERSATION HISTORY (for context awareness)     ║
-║ Last 3 conversation(s) in past 10 minutes             ║
-╚══════════════════════════════════════════════════════════╝
+=== RECENT CONVERSATION HISTORY ===
+Last 3 conversation(s) in past 10 minutes
 
-─── Conversation #1 ───
-User asked: What is Ethereum price?
-Jarvis replied: Ethereum is currently priced at $3,031, down 2.7% today.
+[Previous Exchange 1]
+User: What is Ethereum price?
+Assistant: Ethereum is currently priced at $3,031, down 2.7% today.
 Tools used: crypto_price
-✅ STATUS: Success
+Status: Success
 Model: claude-sonnet-4-5-20250929, Tools called: 1
 
-─── Conversation #2 ───
-User asked: What is Ethereum price?
-Jarvis replied: Ethereum is $3,031, down 2.7% today.
-✅ STATUS: Success
+[Previous Exchange 2]
+User: What is Ethereum price?
+Assistant: Ethereum is $3,031, down 2.7% today.
+Status: Success
 Model: claude-sonnet-4-5-20250929, Tools called: 0
 
-─── Conversation #3 ───
-User asked: Did you just check Ethereum?
-Jarvis replied: Yes, Ethereum is $3,031, down 2.7% today.
-✅ STATUS: Success
+[Previous Exchange 3]
+User: Did you just check Ethereum?
+Assistant: Yes, Ethereum is $3,031, down 2.7% today.
+Status: Success
 Model: claude-sonnet-4-5-20250929, Tools called: 0
 
-╔══════════════════════════════════════════════════════════╗
-║ CURRENT USER QUERY (what they just asked)               ║
-╚══════════════════════════════════════════════════════════╝
+=== CURRENT USER QUERY ===
 Search for Python tutorials
 
-INSTRUCTIONS:
-- Use the above context to provide intelligent, context-aware responses
+Instructions:
+- Use the conversation history to provide context-aware responses
 - Reference previous topics naturally when relevant
-- Learn from failed attempts (check_tool_logs if needed)
-- Catch contradictions ("You just said X, now saying Y?")
 - Continue multi-step workflows seamlessly
-- If context window is too short, you can call get_recent_conversations tool for more history
 ```
 
 ---
 
 ## Payload with FAILED Conversation
 
-When a tool fails, it shows with ⚠️ status:
+When a conversation was stored with `success=false`, the status line is marked FAILED and suggests `check_tool_logs`:
 
 ```
-╔══════════════════════════════════════════════════════════╗
-║ RECENT CONVERSATION HISTORY (for context awareness)     ║
-║ Last 3 conversation(s) in past 10 minutes             ║
-╚══════════════════════════════════════════════════════════╝
+=== RECENT CONVERSATION HISTORY ===
+Last 2 conversation(s) in past 10 minutes
 
-─── Conversation #1 ───
-User asked: Install Redis
-Jarvis replied: Installation failed with permission denied
+[Previous Exchange 1]
+User: Install Redis
+Assistant: Installation failed with permission denied
 Tools used: execute_bash
-⚠️  STATUS: FAILED - Task did not complete successfully
-   Consider: Using check_tool_logs to understand why
+Status: FAILED - Task did not complete successfully
+Consider using check_tool_logs to understand why
 Model: claude-sonnet-4-5-20250929, Tools called: 1
 
-─── Conversation #2 ───
-User asked: Try again
-Jarvis replied: Redis installed successfully
+[Previous Exchange 2]
+User: Try again
+Assistant: Redis installed successfully
 Tools used: check_tool_logs, execute_bash
-✅ STATUS: Success
+Status: Success
 Model: claude-sonnet-4-5-20250929, Tools called: 2
 
-╔══════════════════════════════════════════════════════════╗
-║ CURRENT USER QUERY (what they just asked)               ║
-╚══════════════════════════════════════════════════════════╝
+=== CURRENT USER QUERY ===
 Is Redis running now?
 
-INSTRUCTIONS:
-...
+Instructions:
+- Use the conversation history to provide context-aware responses
+- Reference previous topics naturally when relevant
+- Continue multi-step workflows seamlessly
 ```
 
 **Key Points:**
-- ⚠️ FAILED status is **clearly marked**
-- Includes suggestion: "Consider: Using check_tool_logs"
+- FAILED status is clearly marked with `Status: FAILED - Task did not complete successfully`
+- Includes suggestion: `Consider using check_tool_logs to understand why`
 - LLM can see what failed and proactively investigate
 
 ---
@@ -144,38 +137,33 @@ INSTRUCTIONS:
 
 ### 1. Header Section
 ```
-╔══════════════════════════════════════════════════════════╗
-║ RECENT CONVERSATION HISTORY (for context awareness)     ║
-║ Last 3 conversation(s) in past 10 minutes             ║
-╚══════════════════════════════════════════════════════════╝
+=== RECENT CONVERSATION HISTORY ===
+Last 3 conversation(s) in past 10 minutes
 ```
-- **Purpose**: Visual separator, shows how many conversations and time window
-- **Box Drawing**: Unicode characters (╔═╗║╚═╝) for clear visual separation
+- **Purpose**: Plain-text separator; shows how many conversations and the time window
 
 ### 2. Conversation Blocks (repeated for each)
 ```
-─── Conversation #1 ───
-User asked: {user_query}
-Jarvis replied: {jarvis_response}
+[Previous Exchange 1]
+User: {user_query}
+Assistant: {jarvis_response}
 Tools used: {tools_used_list}
-✅ STATUS: Success  (or ⚠️ FAILED)
+Status: Success  (or Status: FAILED - Task did not complete successfully)
 Model: {model_name}, Tools called: {count}
 ```
 
 **Fields Included:**
 - `user_query` - Exact question asked
 - `jarvis_response` - Exact response given
-- `tools_used` - JSON array of tool names (e.g., `["crypto_price", "remember"]`)
-- `success` - Boolean (true = ✅, false = ⚠️)
-- `metadata` - Model used, tool count
+- `tools_used` - List of tool names (e.g., `crypto_price, remember`) when present
+- `success` - Boolean (`true` → `Status: Success`, `false` → FAILED + check_tool_logs hint)
+- `metadata` - Model used, tool count (when present)
 
-**Ordering**: Oldest first (#1), newest last (#3) - chronological order
+**Ordering**: Oldest first (Exchange 1), newest last — chronological order after reversing the DB result set
 
 ### 3. Current Query Section
 ```
-╔══════════════════════════════════════════════════════════╗
-║ CURRENT USER QUERY (what they just asked)               ║
-╚══════════════════════════════════════════════════════════╝
+=== CURRENT USER QUERY ===
 {current_transcript}
 ```
 - **Purpose**: Clear separation between context and current request
@@ -183,16 +171,13 @@ Model: {model_name}, Tools called: {count}
 
 ### 4. Instructions Section
 ```
-INSTRUCTIONS:
-- Use the above context to provide intelligent, context-aware responses
+Instructions:
+- Use the conversation history to provide context-aware responses
 - Reference previous topics naturally when relevant
-- Learn from failed attempts (check_tool_logs if needed)
-- Catch contradictions ("You just said X, now saying Y?")
 - Continue multi-step workflows seamlessly
-- If context window is too short, you can call get_recent_conversations tool for more history
 ```
 - **Purpose**: Remind LLM how to use the context
-- **Consistent**: Always included, ensures proper behavior
+- **Consistent**: Always included when auto-context injects history
 
 ---
 
@@ -296,9 +281,21 @@ JARVIS_DEBUG=1 python3 orchestrator/orchestrator_v2.py cloud "your query"
 ================================================================================
 DEBUG: Enhanced Transcript Being Sent to LLM:
 ================================================================================
-╔══════════════════════════════════════════════════════════╗
-║ RECENT CONVERSATION HISTORY (for context awareness)     ║
+=== RECENT CONVERSATION HISTORY ===
+Last 3 conversation(s) in past 10 minutes
+
+[Previous Exchange 1]
+User: ...
+Assistant: ...
+Status: Success
 ...
+=== CURRENT USER QUERY ===
+your query
+
+Instructions:
+- Use the conversation history to provide context-aware responses
+- Reference previous topics naturally when relevant
+- Continue multi-step workflows seamlessly
 ================================================================================
 ```
 
@@ -336,9 +333,9 @@ AUTO_CONTEXT_MINUTES=10
    - Usage instructions
 
 **Why It Works:**
-- Clear visual structure (box drawing)
+- Clear plain-text section headers
 - Chronological ordering (oldest first)
-- Explicit status indicators (✅/⚠️)
+- Explicit status indicators (`Status: Success` / `Status: FAILED`)
 - Instructions at the end (how to use context)
 - Separation between context and current query
 

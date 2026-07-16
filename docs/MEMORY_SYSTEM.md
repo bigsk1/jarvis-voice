@@ -286,7 +286,7 @@ Memories are converted to vector embeddings for semantic search:
 - Uses Ollama `nomic-embed-text`
 - 768 dimensions
 
-**Similarity Threshold:** 0.45 (configurable in `lib/memory_db.py`)
+**Similarity Threshold:** 0.40 (configurable via `SEMANTIC_SIMILARITY_THRESHOLD` in `lib/memory_db.py`)
 
 ## Configuration
 
@@ -305,7 +305,7 @@ OLLAMA_EMBEDDING_MODEL="nomic-embed-text"
 # Auto-memory injection (inject relevant memories before each LLM call)
 AUTO_MEMORY_INJECTION_ENABLED=true
 AUTO_MEMORY_LIMIT=8
-AUTO_MEMORY_SIMILARITY_THRESHOLD=0.38
+AUTO_MEMORY_SIMILARITY_THRESHOLD=0.40
 AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT=2
 ```
 

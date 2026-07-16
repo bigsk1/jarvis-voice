@@ -87,20 +87,20 @@ Located: `skills/*.tool.json` + MCP servers
 
 | Scenario | Query Tokens | Total Tokens | % of Context (Cloud) | % of Context (Local) |
 |----------|--------------|--------------|----------------------|----------------------|
-| Simple query | 50 | 5,758 | 2.9% | 18.0% |
-| Memory lookup | 100 | 5,808 | 2.9% | 18.1% |
-| Multi-turn task | 300 | 6,008 | 3.0% | 18.8% |
-| OpenCode build | 2,000 | 7,708 | 3.9% | 24.1% |
-| Complex multi-turn | 5,000 | 10,708 | 5.4% | 33.5% |
+| Simple query | 50 | 5,758 | 0.6% | 18.0% |
+| Memory lookup | 100 | 5,808 | 0.6% | 18.1% |
+| Multi-turn task | 300 | 6,008 | 0.6% | 18.8% |
+| OpenCode build | 2,000 | 7,708 | 0.8% | 24.1% |
+| Complex multi-turn | 5,000 | 10,708 | 1.1% | 33.5% |
 
-**Insight**: Local models consume proportionally more context due to smaller window (32K vs 200K).
+**Insight**: Local models consume proportionally more context due to smaller window (32K vs 1M).
 
 ---
 
 ## ⚠️ Why This Matters
 
 ### For Cloud Mode (Anthropic/OpenAI)
-- **Low impact**: 2.9% baseline leaves 97% for conversation
+- **Low impact**: 0.6% baseline leaves ~99% for conversation
 - **Large buffer**: Can handle complex multi-turn workflows (10K+ tokens)
 - **Cost efficiency**: Baseline is constant per request, optimize conversation tokens
 
@@ -118,7 +118,7 @@ Located: `skills/*.tool.json` + MCP servers
 ### Current Assessment: **NO, it's healthy**
 
 **Why**:
-1. ✅ Cloud mode: Only 2.9% of 200K context (negligible)
+1. ✅ Cloud mode: Only 0.6% of 1M context (negligible)
 2. ✅ Local mode: Only 17.8% of 32K context (acceptable)
 3. ✅ System prompt is **essential** (routing, memory, voice formatting)
 4. ✅ Tool definitions are **necessary** for native tool calling
@@ -194,13 +194,13 @@ diff before.txt after.txt
 
 ## 🎓 Understanding Token Budgets
 
-### Anthropic Claude Sonnet 4.5 (Cloud)
-- **Context Window**: 200,000 tokens
-- **Baseline**: 5,708 tokens (2.9%)
+### Anthropic Claude Sonnet 5 (Cloud)
+- **Context Window**: 1,000,000 tokens
+- **Baseline**: 5,708 tokens (0.6%)
 - **Comfortable Multi-Turn**: Can chain 20+ tool calls with context
-- **Max Conversation**: Could theoretically use 190K tokens (not recommended)
+- **Max Conversation**: Could theoretically use ~994K tokens (not recommended)
 
-### Ollama Qwen3-VL (Local)
+### Ollama gemma4 (Local)
 - **Context Window**: ~32,000 tokens (varies by variant)
 - **Baseline**: 5,708 tokens (17.8%)
 - **Comfortable Multi-Turn**: Can chain 3-5 tool calls safely

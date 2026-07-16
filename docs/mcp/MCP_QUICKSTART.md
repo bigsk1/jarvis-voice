@@ -76,29 +76,32 @@ docker pull mcp/duckduckgo
 ```bash
 cd ~/jarvis-voice
 source ~/jarvis-venv/bin/activate
-./bin/test-mcp --server
+./bin/test-mcp --discover
 ```
 
-**Expected output:**
+**Expected output** (varies by enabled servers):
 ```
-🧪 Testing DuckDuckGo MCP Server
-🚀 Starting MCP server...
-✅ Server started
+🛠️  Discovering Tools from Enabled Servers
+======================================================================
+📡 Loading cloud mode config...
+🔌 Starting MCP servers...
 
-📋 Listing available tools...
-✅ Found 2 tools:
+✅ Loaded N enabled server(s)
 
-  Tool: search
-  Description: Search DuckDuckGo and return formatted results
-  
-  Tool: fetch_content
-  Description: Fetch and parse content from a webpage URL
+⏳ Querying duckduckgo (stdio)...
+   ✅ Found 2 tool(s)
 
-🔍 Testing search tool...
-✅ Result: [Search results about bitcoin price...]
+📚 Tool Catalog (2 total tools)
+======================================================================
 
-✅ MCP server test successful!
+🔧 duckduckgo [stdio] (2 tools)
+----------------------------------------------------------------------
+
+  Tool: mcp_duckduckgo_search
+  Desc: Search DuckDuckGo and return formatted results
 ```
+
+Use `./bin/test-mcp --list` to list configured servers, or `./bin/test-mcp --all` for list + discover + audit.
 
 ## 4. Adding MCP Servers
 
@@ -257,7 +260,7 @@ Before using MCP in production:
 
 - [ ] Docker is installed and running
 - [ ] Pull MCP server: `docker pull mcp/duckduckgo`
-- [ ] Test connectivity: `./bin/test-mcp --server`
+- [ ] Test connectivity: `./bin/test-mcp --discover`
 - [ ] Check config: `cat config/mcp-servers.json`
 - [ ] Verify tools appear: `jarvis` (should show in tool list)
 
@@ -308,7 +311,7 @@ docker pull mcp/duckduckgo
 
 **Step 3:** Test
 ```bash
-./bin/test-mcp --list --mode cloud --all
+./bin/test-mcp --all --mode cloud
 ```
 
 **Step 4:** Use with voice (Phase 2)

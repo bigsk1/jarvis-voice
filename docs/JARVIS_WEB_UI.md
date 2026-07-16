@@ -856,8 +856,8 @@ ElevenLabs music generation integrated into Jarvis with automatic stash storage 
 - `genre` (optional): Electronic, Cinematic, Rock, Jazz, Classical, Hip-Hop, etc.
 - `mood` (optional): Epic, Mysterious, Uplifting, Dark, Energetic, Calm, etc.
 - `tempo` (optional): Slow, Medium, Fast, or BPM number
-- `instrumental` (optional): Whether vocals should be excluded (default: true)
-- `duration_seconds` (optional): 30-300 seconds (default: 60)
+- `instrumental` (optional): Whether vocals should be excluded (default: false)
+- `duration_seconds` (optional): 3-600 seconds (default: 60)
 
 **Web UI Integration:**
 - Audio player renders in tool result card

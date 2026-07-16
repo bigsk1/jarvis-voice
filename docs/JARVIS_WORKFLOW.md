@@ -1061,8 +1061,8 @@ a financial advisor for personalized guidance.
   - **GPT-5.4 Nano**: $0.20 input / $1.25 output per 1M tokens
 - **Capabilities**: Extended thinking, prompt caching, native tool calling, reasoning models
 - **Context Window**:
-  - **xAI Grok 4.3**: 1M tokens; curated Grok 4.20 models: 2M
-  - **Claude Sonnet 4.5**: 200K tokens
+  - **xAI Grok 4.3**: 1M tokens; curated Grok 4.20 models: 1M
+  - **Claude Sonnet 4.5**: 1M tokens
   - **GPT-5.4 Nano**: 400K tokens
 
 `lib/model_catalog.py` is the source of truth for Jarvis' curated cloud model

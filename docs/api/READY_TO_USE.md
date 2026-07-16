@@ -12,7 +12,7 @@
 | **Store Alerts** | ✅ Ready | Saved to database |
 | **Query Alerts** | ✅ Ready | GET `/api/alerts` with filters |
 | **Acknowledge** | ✅ Ready | PUT `/api/alerts/{id}/acknowledge` |
-| **Reminders** | ✅ Ready | POST `/api/reminders` (stored, manual trigger for now) |
+| **Reminders** | ✅ Ready | POST `/api/reminders` (stored; `services/reminder_scheduler.py` auto-triggers every 60s) |
 | **Cloud/Local Mode** | ✅ Ready | `--local` flag for offline operation |
 | **Database Sync** | ✅ Ready | Auto-syncs between cloud/local |
 | **Auto-Resolve** | ✅ Ready | Checks URLs, auto-cancels alerts |

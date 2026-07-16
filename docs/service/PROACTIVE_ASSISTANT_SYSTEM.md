@@ -610,7 +610,7 @@ The self-healing daemon now monitors two types of processes:
 **1. Systemd Services** (external services like unifi-protect-webhook):
 ```python
 MONITORED_SYSTEMD_SERVICES = {
-    "unifi-protect-webhook": {"required": True, "restart": False},
+    "unifi-protect-webhook": {"required": False, "restart": False},
     "opencode-jarvis": {"required": False, "restart": False},  # Optional
 }
 SERVICE_GRACE_PERIOD = 90  # Avoid false alarms during reboots
