@@ -163,3 +163,21 @@ Brave MCP remains enabled and uses the corrected client synchronization.
 - [FIXED 2026-07-13 | 1b32d2a | bh_20260713_064605_c9c1b7c3] REMINDER_SYSTEM.md DELETE section implied permanent deletion; documented cancel default and ?permanent=true plus full status enum.
 - [FIXED 2026-07-13 | 1b32d2a | bh_20260713_065440_59658598] READY_TO_USE.md listed Reminder Scheduler as Pending; marked Done with reminder_scheduler.py reference.
 - [FIXED 2026-07-13 | 1b32d2a | bh_20260713_070732_ec9a7e42] TEST_API.md stated reminder daemon not implemented; replaced manual-trigger section with automated daemon test steps.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_012455_2dcdc05a] AUTO_CONTEXT_PAYLOAD_STRUCTURE.md mismatched context_assembler payload format; rewritten to match build_conversation_context.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_013515_82634754] MCP_QUICKSTART.md used nonexistent test-mcp --server; replaced with --discover/--all.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_013902_1159df8e] MUSIC_GENERATION.md wrong duration 15-600 and bare opus; corrected to 3-600 and opus_low/medium/high.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_022842_1a04334c] XAI_PROVIDER.md claimed 1M-2M xAI context; capped claims at 1M per model_catalog.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_023505_44534c61] JARVIS_WEB_UI.md wrong generate_music duration 30-300 and instrumental default true; corrected to 3-600 and false.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_024518_f0579b1a] JARVIS_WORKFLOW.md wrong Grok 4.20=2M and Claude Sonnet 4.5=200K; both set to 1M.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_025050_edeccd6d] OPENAI_PROVIDER.md claimed openai>=2.14.0,<3; updated to openai==2.24.0 pin.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_030322_583075d2] docs/tools/video/README.md stale openai/xai-sdk floors; aligned to requirements.txt (>=2.24.0 / >=1.17.0).
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_031116_26bf548a] READY_TO_USE.md said reminders need manual trigger; updated Phase 1 blurb for reminder_scheduler auto-trigger.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_032249_a49f4494] WEBHOOK_AND_EMAIL_SYSTEM.md n8n URL typos loclahost/lo; corrected to localhost.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_033050_527ad908] XAI_PROVIDER.md understated Anthropic context as 200K; updated comparison to 200K-1M and Sonnet 4.5 to 1M.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_034039_7aeea25e] TOOL_CALLING_SYSTEM.md linked nonexistent TOOL_SYSTEM_SUMMARY.md; retargeted to TOOL_MANAGEMENT.md.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_034520_67f53bd7] docs/api/README.md Images (CDN) linked broken API_OVERVIEW.md#images; pointed to IMAGES.md.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_034751_5ca2d860] MEMORY_SYSTEM.md wrong thresholds 0.45/0.38; corrected to 0.40/0.40.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_035252_b64f7f69] BASELINE_TOKEN_USAGE.md stale 200K/2.9%/Qwen3-VL sections; aligned to 1M/0.6%/gemma4.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_035650_05cf1d93] INTELLIGENCE_LAYER.md presented 1.5/14 as code defaults; clarified recommended vs code defaults 1.0/7.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_040139_8aa0145d] docs/service README/PROACTIVE marked unifi-protect-webhook required True; matched daemon required False.
+- [FIXED 2026-07-16 | 8af247c | bh_20260714_040350_0ddf2729] WORKFLOW_ORCHESTRATION.md overstated requires_input; documented extract==main_subject only.
