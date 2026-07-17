@@ -236,9 +236,12 @@ class AlertTabMonitor {
 
   _readStoredSoundPreference() {
     try {
-      return this.storage?.getItem(this.storageKey) === 'true';
+      const stored = this.storage?.getItem(this.storageKey);
+      // Default on when unset; respect an explicit stored preference.
+      if (stored == null) return true;
+      return stored === 'true';
     } catch (_) {
-      return false;
+      return true;
     }
   }
 

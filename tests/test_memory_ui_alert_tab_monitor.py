@@ -116,6 +116,9 @@ const api = {
   });
 
   await monitor.init();
+  assert.strictEqual(monitor.soundEnabled, true, 'alert sound defaults to enabled');
+  assert.strictEqual(button.textContent, '🔔');
+  assert.strictEqual(button['aria-pressed'], 'true');
   assert.strictEqual(monitor.pendingCount, 1);
   assert.strictEqual(monitor.attentionActive, false, 'existing alerts must be a silent baseline');
   assert.strictEqual(documentRef.title, '1 · Jarvis Memory');
@@ -129,6 +132,7 @@ const api = {
   assert.strictEqual(documentRef.title, '2 NEW ALERTS');
   assert.strictEqual(changes.length, 1);
   assert.strictEqual(changes[0].newAlerts[0].id, 11);
+  assert.strictEqual(oscillatorStarts, 1, 'a new alert batch should play one ding when sound is on');
 
   await monitor.check();
   assert.strictEqual(monitor.pendingCount, 0);
@@ -137,11 +141,18 @@ const api = {
   assert.strictEqual(favicon.href, 'brain-favicon');
 
   await monitor.toggleSound();
+  assert.strictEqual(monitor.soundEnabled, false);
+  assert.strictEqual(storageValues['jarvis-memory-alert-sound'], 'false');
+  assert.strictEqual(button.textContent, '🔕');
+  assert.strictEqual(button['aria-pressed'], 'false');
+  assert.strictEqual(oscillatorStarts, 1, 'disabling sound should not play a ding');
+
+  await monitor.toggleSound();
   assert.strictEqual(monitor.soundEnabled, true);
   assert.strictEqual(storageValues['jarvis-memory-alert-sound'], 'true');
   assert.strictEqual(button.textContent, '🔔');
   assert.strictEqual(button['aria-pressed'], 'true');
-  assert.strictEqual(oscillatorStarts, 1, 'enabling sound should play one test ding');
+  assert.strictEqual(oscillatorStarts, 2, 'enabling sound should play one test ding');
 
   monitor.setControlVisible(true);
   assert.strictEqual(button.style.display, 'inline-flex');
@@ -149,7 +160,7 @@ const api = {
   await monitor.check();
   assert.strictEqual(monitor.pendingCount, 1);
   assert.strictEqual(monitor.attentionActive, true);
-  assert.strictEqual(oscillatorStarts, 2, 'a new alert batch should play one ding');
+  assert.strictEqual(oscillatorStarts, 3, 'a new alert batch should play one ding');
 
   monitor.acknowledgeAttention();
   assert.strictEqual(documentRef.title, '1 · Jarvis Memory');
