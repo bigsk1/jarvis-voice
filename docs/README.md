@@ -229,7 +229,7 @@
 | **Memory Browser** | Web UI for memories/intel/conversations - `./bin/jarvis-memory` (localhost:5002)  |
 | **Canvas Viewer** | Visual knowledge display - `./bin/jarvis-canvas` (localhost:8890)  |
 | **Feedback System** | LLM self-critique - `./bin/jarvis-feedback` or `--feedback` flag  |
-| **Prompt Evolution** | Self-improving prompts - `./bin/evolve-prompts check cloud`  |
+| **Prompt Evolution** | Self-improving prompts - `./bin/evolve-prompts check --mode cloud`  |
 | **Tool Builder** | Dynamic tool creation - `./bin/build-tool --mode cloud build "..."`  |
 | **[Prompt Validator](SYSTEM_PROMPT_VALIDATOR.md)** | Debug unexpected behavior - `./bin/validate-system-prompt --issue "..."`  |
 
@@ -1094,7 +1094,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Extracts documentation URLs and key technical terms
   - Removes sensitive info (API keys, IPs, paths)
   - Better error logging for build failures
-- ⬆️ **xai-sdk 1.6.1** - Required for video generation (1.6.0+)
+- ⬆️ **xai-sdk >= 1.17.0** - Required for video generation (1.17.0+)
 
 **2026-01-30:**
 - ✅ **Optional API Authentication** - Bearer token auth for Jarvis API
@@ -1538,8 +1538,8 @@ tail -f logs/tools/tool-calls-*.jsonl
   - System prompt suggestions saved to Canvas for review
   - A/B testing, versioning, and auto-rollback on degradation
   - Random feedback collection during normal operation (`FEEDBACK_RANDOM_ENABLED`)
-  - `./bin/evolve-prompts check cloud` - See what needs improvement
-  - `./bin/evolve-prompts auto cloud` - Generate and deploy improvements
+  - `./bin/evolve-prompts check --mode cloud` - See what needs improvement
+  - `./bin/evolve-prompts auto --mode cloud` - Generate and deploy improvements
   - See: `docs/ADVANCED_AI_TECHNIQUES.md`, `docs/FEEDBACK_SYSTEM.md`
 - ✅ **Dynamic Tool Builder** - Autonomous tool creation ⭐ MAJOR
   - Creates new tools when capability gaps detected

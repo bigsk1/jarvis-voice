@@ -469,8 +469,9 @@ See: `docs/TESTING.md` for updated test patterns.
 
 **API health endpoint:**
 ```bash
-curl http://localhost:8091/health
-# Returns embedding health status
+curl http://localhost:8880/api/health
+# Returns API status/version/mode (not embedding coverage)
+# For embedding health, use ./bin/check-embeddings-health.py above
 ```
 
 ---

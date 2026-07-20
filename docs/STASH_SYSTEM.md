@@ -650,8 +650,8 @@ Save a stash artifact to permanent memory with one tool call. Bridges stash (tem
 |-----------|----------|-------------|
 | `search` | ✅ | Search query to find stash file (matches filename, tags, space labels) |
 | `key` | ❌ | Memory key (auto-generated if not provided) |
-| `category` | ❌ | Memory category (default: `stash_artifact`) |
-| `importance` | ❌ | 1-10 importance score (default: 5) |
+| `category` | ❌ | Memory category (default: `fact`; enum: contact, personal, preference, location, technical, network, credentials, project, system, fact) |
+| `importance` | ❌ | 1-10 importance score (default: 7) |
 | `summary` | ❌ | Override the auto-generated summary |
 | `summarize` | ❌ | Use LLM to summarize large content (default: false) |
 

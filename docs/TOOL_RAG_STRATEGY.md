@@ -168,10 +168,12 @@ Long routing prompts can inflate similarity scores and cause Tool RAG to hit the
 
 ```bash
 # Base threshold used for compact/current/raw/trailing/original-tail query retrieval
-TOOL_SIMILARITY_THRESHOLD=0.23
+# Shipped: cloud/cloud.openai=0.29, local=0.27
+TOOL_SIMILARITY_THRESHOLD=0.29
 
 # Optional stricter cutoff only for true full_fallback
-TOOL_SIMILARITY_THRESHOLD_FULL=0.40
+# Shipped: cloud=0.43, cloud.openai=0.45; local often leaves this unset
+TOOL_SIMILARITY_THRESHOLD_FULL=0.43
 
 # Compact retrieval keeps the rich prompt for the LLM but embeds a smaller query
 TOOL_RAG_COMPACT_QUERY_ENABLED=true
@@ -179,12 +181,13 @@ TOOL_RAG_CURRENT_QUERY_MAX_CHARS=1200
 TOOL_RAG_CONTEXT_QUERY_MAX_CHARS=500
 TOOL_RAG_APPEND_POSITIVE_SIGNALS=true
 TOOL_RAG_EXCLUDE_NEGATIVE_SIGNALS=true
-TOOL_RAG_MIN_LEARNED_PREFER_BIAS=0.40
+# Shipped: cloud/cloud.openai=0.50, local=0.60
+TOOL_RAG_MIN_LEARNED_PREFER_BIAS=0.50
 TOOL_RAG_MEMORY_TOOL_SIGNALS_ENABLED=false
 ```
 
-**Observed behavior (`2026-04-12`):**
--   **Cloud mode**: `TOOL_SIMILARITY_THRESHOLD_FULL=0.40` was a good starting point in realistic follow-up prompts. It often reduced a noisy 15-tool shortlist down to the one or two tools that actually mattered.
+**Observed behavior (`2026-04-12`; thresholds below are historical tuning notes—prefer shipped values above):**
+-   **Cloud mode**: `TOOL_SIMILARITY_THRESHOLD_FULL` around `0.40`-`0.45` was a good starting point in realistic follow-up prompts. It often reduced a noisy 15-tool shortlist down to the one or two tools that actually mattered.
 -   **Local / Gemma mode**: `0.35`-`0.45` often had little effect because local only retrieves 5 tools and long-prompt similarities skewed much higher. Local needed much higher values before behavior changed, and those changes were cliff-like.
 -   **Practical read**: keep cloud and local tuning separate. A cloud-friendly full threshold does not automatically transfer to local.
 

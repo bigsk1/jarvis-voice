@@ -37,7 +37,7 @@ cd ~/jarvis-voice
 
 # One-time host prep (gitignored paths — Compose will not create the settings file)
 cp config/cloud.env.example config/cloud.env
-# cp config/cloud.openai.env config/cloud.env    # OpenAI mode only
+# cp config/cloud.openai.env.example config/cloud.env    # OpenAI mode only
 # cp config/local.env.example config/local.env   # local/Ollama mode instead
 mkdir -p audio jarvis-web/data/uploads
 cp -n jarvis-web/config/web_config.json.example jarvis-web/config/web_config.json

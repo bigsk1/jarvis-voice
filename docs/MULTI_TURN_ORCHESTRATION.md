@@ -28,7 +28,7 @@ User: "Send webhook to X and save the URL"
 ## How It Works
 
 1. **Loop Structure**
-   - Orchestrator enters a loop (max 10 turns)
+   - Orchestrator enters a loop (max turns via `MAX_TOOL_TURNS`)
    - Each iteration: LLM decides to call a tool OR finish
    - Context from previous tools feeds into next decision
 
@@ -43,7 +43,7 @@ User: "Send webhook to X and save the URL"
    - Returns: `tools_used` array + accumulated data
 
 4. **Safety Limits**
-   - Max 10 turns per request (prevents infinite loops)
+   - Max turns per request (prevents infinite loops): shipped cloud `12`, local `6`; code fallback `15`
    - Each tool failure can trigger retry logic
    - Total execution bounded by timeouts
 
@@ -97,7 +97,7 @@ $ ./orchestrator_v2.py cloud "search for rust frameworks, summarize top 3, save 
 
 #### 1. `orchestrator/orchestrator_v2.py`
 **Key Changes:**
-- Added `max_turns = 15` loop in `process()` (configurable via `MAX_TOOL_TURNS`)
+- Added `max_turns = get_int('MAX_TOOL_TURNS', 15)` loop in `process()` (code fallback 15; shipped configs override)
 - Added `conversation_context` list to track tool results
 - Added `_build_turn_context()` helper to format context for LLM
 - Modified return structure to include `tools_used` array
@@ -105,7 +105,7 @@ $ ./orchestrator_v2.py cloud "search for rust frameworks, summarize top 3, save 
 **New Code Structure:**
 ```python
 def process(self, transcript: str) -> Dict[str, Any]:
-    max_turns = 15  # default; override with MAX_TOOL_TURNS env var
+    max_turns = get_int('MAX_TOOL_TURNS', 15)  # code fallback; shipped cloud=12, local=6
     conversation_context = []
     tools_used = []
     accumulated_data = {}
@@ -215,18 +215,19 @@ Multi-turn is enabled by default for all modes (cloud/local).
 
 **Environment Variables:**
 ```bash
-# Max tool-calling turns per request (default: 15)
-MAX_TOOL_TURNS=15
+# Max tool-calling turns per request
+# Code fallback: 15 | Shipped: cloud=12, local=6
+MAX_TOOL_TURNS=12
 
 # Response style (affects final response formatting)
-JARVIS_RESPONSE_STYLE="casual"   # Default: natural conversational
+JARVIS_RESPONSE_STYLE="auto"      # Shipped default: smart mode based on tool
+# JARVIS_RESPONSE_STYLE="casual"    # Natural conversational
 # JARVIS_RESPONSE_STYLE="detailed"  # Raw tool outputs
-# JARVIS_RESPONSE_STYLE="auto"      # Smart mode based on tool
 ```
 
 ## Safety & Limits
 
-1. **Max Turns:** 15 iterations per request (override with `MAX_TOOL_TURNS`)
+1. **Max Turns:** Bound by `MAX_TOOL_TURNS` (shipped cloud 12 / local 6; code fallback 15)
    - Prevents infinite loops
    - Logs warning if limit reached
    - Returns partial results + explanation
@@ -301,7 +302,7 @@ Location: orchestrator/router_v2.py (self.system_prompt)
 **Problem:** Max turns reached too often
 ```
 Solution: Increase `MAX_TOOL_TURNS` in `config/cloud.env` or `config/local.env`
-Current: 15 turns default (should be plenty for 99% of tasks)
+Current shipped: cloud=12, local=6 (code fallback 15 if unset)
 ```
 
 **Problem:** Context too large (LLM slow)

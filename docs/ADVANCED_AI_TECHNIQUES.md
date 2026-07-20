@@ -39,10 +39,10 @@ Jarvis grades itself after every task. If a tool or the system prompt keeps gett
 **Manual Commands:**
 ```bash
 # See what needs improvement
-./bin/evolve-prompts check cloud
+./bin/evolve-prompts check --mode cloud
 
 # Generate improvements for candidates
-./bin/evolve-prompts auto cloud
+./bin/evolve-prompts auto --mode cloud
 
 # Review system prompt suggestions
 cat logs/evolution/system_prompt_suggestions.md
@@ -751,7 +751,7 @@ jarvis-dashboard → 🧬 Evolution → Evolution Logs
 #   Trigger: 5 low ratings, avg improved 5.4 → 7.8
 
 # Rollback if needed
-./bin/evolve-prompts rollback tool:search_memory --to-version 2
+./bin/evolve-prompts rollback tool:search_memory --to 2
 ```
 
 ---
@@ -1320,7 +1320,7 @@ data/
 # Version 3 (2025-12-01) avg: 6.1 samples: 25  [ACTIVE] ⚠️ DECLINING
 
 # Rollback
-./bin/evolve-prompts rollback system_prompt --to-version 2
+./bin/evolve-prompts rollback system_prompt --to 2
 
 # Output:
 # Rolling back system_prompt from v3 to v2...
@@ -1486,7 +1486,7 @@ crontab -e
 
 # 4. Check current feedback state
 sqlite3 data/jarvis_memory.db "SELECT COUNT(*) FROM feedback WHERE rating < 6"
-./bin/evolve-prompts check cloud
+./bin/evolve-prompts check --mode cloud
 ```
 
 ### The Deeper Problem: Reactive vs Autonomous

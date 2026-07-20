@@ -23,7 +23,7 @@ Private workflows can live in `data/workflows/personal/*.json`. That folder is g
 | `success_speech` | string | Resolved with `${variables}` when workflow completes. |
 | `abort_speech` | string | Optional; used when workflow aborts. |
 
-**Triggers:** Production matching is **explicit-only** by default (slash commands). `patterns` / `keywords` exist in the schema but are not the normal path; prefer `explicit`. Aliases like `/status-visual` and `/status_visual` are normalized by the router—define the forms you care about in `explicit`.
+**Triggers:** Production matching is **explicit-only** by default (slash commands). `patterns` / `keywords` exist in the schema but are not the normal path; prefer `explicit`. Matching is exact prefix (`startswith`) with no hyphen/underscore normalization—list every alias you care about in `explicit` (e.g. both `/status-visual` and `/status_visual` if you want both).
 
 ---
 

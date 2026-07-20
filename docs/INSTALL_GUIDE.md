@@ -1000,7 +1000,7 @@ aplay test.wav  # Should be clear, not too quiet
 
 # Adjust sensitivity in config
 nano config/cloud.env
-# Look for OPENWAKEWORD_THRESHOLD (default 0.5, try 0.3 for more sensitive)
+# Look for TRIGGER_THRESHOLD (default 0.2, try 0.15 for more sensitive; higher = less sensitive)
 ```
 
 ### Service Issues
@@ -1016,7 +1016,7 @@ tmux attach -t jarvis-api
 # Test API manually
 cd "$HOME/jarvis-voice"
 source ~/jarvis-venv/bin/activate
-python api/main.py  # Should start API
+python api/server.py  # Should start API
 ```
 
 **Permission denied:**

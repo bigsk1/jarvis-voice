@@ -196,7 +196,7 @@ Response uses:
 ```
 
 **Requirements**:
-- xai-sdk >= 1.6.1 (video generation requires 1.6.0+)
+- xai-sdk >= 1.17.0 (video generation requires 1.17.0+)
 - Supports current Grok text models such as `grok-4.3` and `grok-4.20-*`
 
 **Cost**: Standard token pricing + search tool invocations (see xAI pricing)
@@ -250,7 +250,7 @@ VIDEO_TOOL_PROVIDER="xai"
 
 **File Size**: ~3-5 MB per 5 seconds (720p)
 
-**Requirements**: xai-sdk >= 1.6.1 (video support added in 1.6.0)
+**Requirements**: xai-sdk >= 1.17.0 (video client API requires 1.17.0+)
 
 **Alternative**: Gemini Veo 3.1 is also supported with native audio, higher resolution (up to 4k), but limited duration (4/6/8s). See [Video Generation Docs](tools/video/README.md) for comparison.
 
