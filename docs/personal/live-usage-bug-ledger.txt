@@ -181,3 +181,47 @@ Brave MCP remains enabled and uses the corrected client synchronization.
 - [FIXED 2026-07-16 | 8af247c | bh_20260714_035650_05cf1d93] INTELLIGENCE_LAYER.md presented 1.5/14 as code defaults; clarified recommended vs code defaults 1.0/7.
 - [FIXED 2026-07-16 | 8af247c | bh_20260714_040139_8aa0145d] docs/service README/PROACTIVE marked unifi-protect-webhook required True; matched daemon required False.
 - [FIXED 2026-07-16 | 8af247c | bh_20260714_040350_0ddf2729] WORKFLOW_ORCHESTRATION.md overstated requires_input; documented extract==main_subject only.
+- [FIXED 2026-07-19 | e5d6339 | bh_20260719_020958_5295f059] ADVANCED_AI_TECHNIQUES.md (and docs/README.md) evolve-prompts used positional mode and --to-version; corrected to --mode and --to.
+- [FIXED 2026-07-19 | e5d6339 | bh_20260719_134354_8ee39b81] INSTALL_GUIDE troubleshooting ran nonexistent api/main.py; pointed to api/server.py.
+- [FIXED 2026-07-19 | e5d6339 | bh_20260718_235413_a61e51e5] INSTALL_GUIDE referenced nonexistent OPENWAKEWORD_THRESHOLD/0.5; corrected to TRIGGER_THRESHOLD=0.2 guidance.
+- [FIXED 2026-07-19 | e5d6339 | bh_20260719_005012_4b243e14] docs/docker/README.md OpenAI cp used cloud.openai.env; corrected to cloud.openai.env.example.
+- [FIXED 2026-07-19 | e5d6339 | bh_20260719_011649_0f416eb9] SYNC_ARCHITECTURE.md health curl used :8091/health; corrected to :8880/api/health.
+- [FIXED 2026-07-19 | e5d6339 | bh_20260719_005742_2fad8f60] COMPLETION_GUARD.md Current Configuration showed AUTO_THRESHOLD=0.70; aligned to shipped 0.89.
+- [FIXED 2026-07-19 | e5d6339 | bh_20260719_023614_de3c450f] data/workflows/README.md claimed hyphen/underscore trigger normalization; documented exact prefix matching.
+- [FIXED 2026-07-19 | e5d6339 | bh_20260719_140741_adf06161] STASH_SYSTEM.md stash.remember defaults stash_artifact/5; corrected to fact/7 and schema enum.
+- [FIXED 2026-07-19 | e5d6339 | bh_20260719_143832_193d335e] XAI_PROVIDER.md (and docs/README changelog) xai-sdk floor 1.6.1; aligned to >=1.17.0.
+- [FIXED 2026-07-19 | e5d6339 | bh_20260719_141509_d12e89a2] TOOL_RAG_STRATEGY.md config block used 0.23/0.40/0.40; aligned to shipped cloud 0.29/0.43/0.50.
+- [FIXED 2026-07-19 | e5d6339 | bh_20260719_140457_12200798] MULTI_TURN_ORCHESTRATION.md contradicted max turns and response style; aligned to shipped 12/6 and auto.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_013113_93a0b2d2] TOOL_BUILDER.md stale default models; aligned to grok-4.5 / claude-sonnet-5 / gpt-5.6-luna.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_140357_663c650c] AUTO_MEMORY_INJECTION_FEATURE.md LIMIT/threshold; matched shipped 3/2 and 0.40.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_141310_4f08706d] DUAL_DATABASE_SYSTEM.md cloud LLM_PROVIDER anthropic; set to openai shipped default.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_025919_d771fd23] JARVIS_WORKFLOW.md OLLAMA_MODEL claimed qwen3.5 in local.example; corrected to gemma4.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_133040_ae153db0] CASUAL_VS_DETAILED_MODE.md word limits 100/75; aligned to shipped cloud 200/200.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_001741_1a7fa011] docs/docker/README.md MCP override jarvis-web-only claim; documented all-service env + web extras.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_004836_1644b2ad] SEMANTIC_THRESHOLD_TUNING.md defaults 0.40/0.35; aligned to shipped 0.32/0.30.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_021138_1902917e] AUTO_CONTEXT_SYSTEM.md WINDOW/MINUTES 3/10; aligned to shipped cloud 2/5.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_141409_52c7f078] SEARCH_FALLBACK_SYSTEM.md GHOST_TOOLS example; matched shipped cloud list.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_142247_58bce65e] MEMORY_SYSTEM.md AUTO_MEMORY_LIMIT=8; aligned to shipped 3.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_015404_044e96d7] WORKFLOWS.md hyphenated triggers and missing workflows; exact aliases + full table.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_143049_dc56b1a6] TOOL_CALLING_SYSTEM.md Grok 4.3 / gpt-4o-mini; aligned to Grok 4.5 / gpt-5.4-nano.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_145033_c7e2c995] REMINDER_SYSTEM.md three ways including intel; corrected to two reminder paths.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_002125_9ec8febf] README OpenCode anthropic/claude example; aligned to xai/grok-build-0.1.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_012306_22d272e3] JARVIS_WEB_UI.md session:ready/conversation:new; corrected to connected/conversation:load.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_023433_6688085b] MCP_QUICKSTART.md Phase 2/duckduckgo; aligned to shipped fetch+brave_search integration.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_133444_95934716] INSTALL_GUIDE claimed install-system-deps covers full system-packages.txt; clarified omissions.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_141216_207b6423] CONVERSATION_STATE_ARCHITECTURE.md AUTO_CONTEXT 3/10; aligned to shipped 2/5.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_141625_6f22391a] BASELINE_TOKEN_USAGE.md Anthropic cloud label; aligned to shipped OpenAI gpt-5.4-nano.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_141924_08660c42] CANVAS_SYSTEM.md FastAPI read-only claim; documented CRUD endpoints.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_004359_8b0f7306] SECURITY_HARDENING.md QUERY_RATE_LIMIT default 30; aligned to shipped 15.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_030110_f489307d] JARVIS_WORKFLOW.md OpenCode Claude Sonnet 4.5 recommendation; aligned to shipped OpenCode models.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_140641_c7b01acd] DEEP_MEMORY_SEARCH.md parallel claim; corrected to sequential.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_141116_e7b469ac] METADATA_SYSTEM.md omitted xai provider; added xAI to provider/cost docs.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_144641_ae85db3b] TEST_API.md claimed critical alert severity; corrected to medium.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_145223_dcf2c429] MEMORY.md listed credentials category; removed to match MemoryCategory enum.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_010401_9a1eabb9] WEBHOOK_SYSTEM.md GHOST_TOOLS example; matched shipped cloud list.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_013431_099afdca] MAC-WINDOWS.md MCP override jarvis-web-only; documented all-service env vars.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_142041_66273f77] WORKFLOW_ORCHESTRATION.md omitted success_speech_llm_prompt; added schema field.
+- [FIXED 2026-07-19 | 95824fd | bh_20260718_235817_d6cf5449] ollama/README.md OLLAMA_MODEL qwen3:latest; aligned to shipped gemma4.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_012740_f76eabcc] FEEDBACK_SYSTEM.md openai default gpt-5.4-nano; corrected to gpt-5.6-luna code default.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_135508_e8190eb5] docs/README.md LLM_PROVIDER omitted xai; added xai.
+- [FIXED 2026-07-19 | 95824fd | bh_20260719_135924_c43456b1] TOOL_MANAGEMENT.md 17 tools+2 MCP vs coverage; aligned token example and live recount.
