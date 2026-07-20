@@ -250,18 +250,25 @@ HTTP Status: 404
 
 | Workflow ID | Triggers | Description |
 |-------------|----------|-------------|
+| `bookmark_search` | `*` | Search bookmarks (catch-all style trigger) |
 | `crypto_market_report` | `/crypto` | Crypto prices, news, analysis, email report (default: BTC, SOL) |
 | `daily_status` | `/status`, `/daily`, `/briefing`, `/recap` | Weather, crypto (+ 7d `crypto_chart` embeds), stocks, alerts, reminders, health → Canvas report |
-| `daily_status_visual` | `/status-visual`, `/status-image`, `/daily-visual` | Same as `daily_status` (including Canvas crypto charts) plus AI-generated dashboard image |
-| `deep_dive` | `/deep-dive`, `/dive` | Screenshot + crawl URL, create comprehensive Canvas summary with visual |
+| `daily_status_visual` | `/status_visual`, `/status_image`, `/daily_visual` | Same as `daily_status` (including Canvas crypto charts) plus AI-generated dashboard image |
+| `deep_dive` | `/deep_dive`, `/dive` | Screenshot + crawl URL, create comprehensive Canvas summary with visual |
 | `deep_research` | `/research` | Multi-source research with Brave + crawling, validates sources |
-| `quick_note` | `/note`, `/quicknote`, `/remember-this` | Save note to memory + Canvas |
-| `server_health_check` | `/health`, `/server-check` | SSH health check using hosts from config/ssh.json |
+| `github_ai_radar_daily` | `/github_ai_radar`, `/ai_radar`, `/ai-radar` | Daily GitHub AI radar report |
+| `jarvis_self_check` | `/jarvis_self_check`, `/self_check`, `/jarvis_health` | Self health / diagnostics workflow |
+| `memory_scan` | `/memory_scan`, `/dedupe_memory` | Scan/dedupe memory |
+| `quick_note` | `/note`, `/quicknote`, `/remember_this` | Save note to memory + Canvas |
+| `serpapi_search` | `/serpapi` | SerpAPI search workflow |
+| `server_health_check` | `/health`, `/server_check` | SSH health check using hosts from config/ssh.json |
 | `url_ingest` | `/url_ingest`, `/ingest_url`, `/learn_url` | Fetch URL, extract facts, create intel file, ingest to memory for RAG |
+| `weather_watch` | `/weather_watch`, `/garden_watch` | Weather / garden watch |
 | `web_archive` | `/archive` | Archive webpage to stash with Canvas summary |
-| `youtube_research` | `/youtube_research`, `/yt-research`, `/study-video` | Download transcript, summarize, create study notes on Canvas |
+| `youtube_ingest` | `/youtube_ingest`, `/yt_ingest`, `/ingest_video` | Ingest YouTube video content |
+| `youtube_research` | `/youtube_research`, `/yt_research`, `/study_video` | Download transcript, summarize, create study notes on Canvas |
 
-**Note:** Workflows can be triggered via API using workflow ID or trigger alias:
+**Note:** Trigger matching is exact prefix (no hyphen/underscore normalization). Use the aliases exactly as listed. Workflows can be triggered via API using workflow ID or trigger alias:
 ```bash
 # By workflow ID
 curl -X POST http://localhost:8880/api/workflows/server_health_check/execute

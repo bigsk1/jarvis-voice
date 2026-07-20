@@ -539,9 +539,9 @@ FEEDBACK_MODEL=qwen3:32b
 ### Supported Providers
 
 - `anthropic` - Claude models (claude-sonnet-4-5-20250929, etc.)
-- `openai` - GPT models (e.g. `gpt-5.4-nano` as default when `FEEDBACK_PROVIDER=openai` and model unset—see `lib/feedback.py`)
-- `xai` - Grok models (grok-4.3, etc.)
-- `ollama` - Local models (qwen3.5:latest, llama3:70b, etc.)
+- `openai` - GPT models (e.g. `gpt-5.6-luna` as code default when `FEEDBACK_PROVIDER=openai` and model unset—see `lib/feedback.py`; shipped cloud often pins `FEEDBACK_MODEL`)
+- `xai` - Grok models (grok-4.5, etc.)
+- `ollama` - Local models (gemma4, qwen3.5:latest, etc.)
 
 ### From Dashboard
 

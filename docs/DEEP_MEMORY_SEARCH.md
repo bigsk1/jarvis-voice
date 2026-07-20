@@ -107,7 +107,7 @@ Results are deduplicated based on content fingerprinting:
 ### Performance
 
 - **Slower than single-source tools** by design
-- Searches 6 sources in parallel where possible
+- Searches 6 sources sequentially in one call
 - `limit_per_source` controls total result volume
 - Use narrow `sources` filter if you know where to look
 

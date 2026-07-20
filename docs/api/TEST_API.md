@@ -23,7 +23,7 @@
 **This tests:**
 - ✅ Health check
 - ✅ System status
-- ✅ Create alerts (low, high, critical severity)
+- ✅ Create alerts (low, high, medium severity)
 - ✅ List alerts (all, pending, by severity)
 - ✅ Get specific alert
 - ✅ Acknowledge alerts (single and bulk)

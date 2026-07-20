@@ -2,11 +2,12 @@
 
 ## Overview
 
-Jarvis supports **three ways** to create reminders:
+Jarvis supports **two ways** to create reminders (intel files are related context, not reminders):
 
 1. **Voice (Natural Language)** - "Remind me in 4 hours..."
 2. **API (Programmatic)** - POST `/api/reminders` with UTC time
-3. **Intel Files (Context)** - Store details, query with `semantic_recall`
+
+Intel files store durable context you can query with `semantic_recall`; they do **not** create time-based reminder triggers.
 
 ---
 

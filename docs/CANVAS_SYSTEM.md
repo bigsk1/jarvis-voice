@@ -483,7 +483,7 @@ POST/PUT/DELETE http://localhost:8890/api/pages/{id}
 
 ### 2. Jarvis FastAPI (Port 8880)
 
-Read-only API for external integrations and scripts.
+Read/write API for external integrations and scripts (list/search plus create, update, append, delete).
 
 ```bash
 curl http://localhost:8880/api/canvas/stats
@@ -493,6 +493,7 @@ curl "http://localhost:8880/api/canvas/recent?limit=5"
 curl http://localhost:8880/api/canvas/tags
 curl http://localhost:8880/api/canvas/tools
 curl http://localhost:8880/api/canvas/page_20260115_175126
+# Mutations also available: POST/PUT/DELETE /api/canvas[/{page_id}] and POST .../append
 ```
 
 **Used by:** n8n workflows, external scripts, Dashboard TUI, monitoring
@@ -502,10 +503,10 @@ curl http://localhost:8880/api/canvas/page_20260115_175126
 | Use Case | API | Port |
 |----------|-----|------|
 | Canvas web viewer | Canvas Server | 8890 |
-| Create/update/delete pages | Canvas Server | 8890 |
+| Create/update/delete pages (viewer UI) | Canvas Server | 8890 |
 | `canvas` tool (skills/canvas.py) | Canvas Server | 8890 |
 | External integrations (n8n) | FastAPI | 8880 |
-| Programmatic queries | FastAPI | 8880 |
+| Programmatic queries and CRUD | FastAPI | 8880 |
 | Monitoring/debugging | FastAPI | 8880 |
 
 See `docs/api/CANVAS.md` for full FastAPI documentation.

@@ -35,13 +35,13 @@ jarvis
 
 ### What Are MCP Servers?
 
-MCP (Model Context Protocol) servers are **pre-built tools** you can add to Jarvis instantly:
+MCP (Model Context Protocol) servers are **pre-built tools** you can add to Jarvis instantly.
 
-- **`mcp/duckduckgo`** - Web search + content fetching
-- **`mcp/filesystem`** - File operations
-- **`mcp/github`** - GitHub integration
-- **`mcp/postgres`** - Database access
-- Many more...
+**Shipped enabled servers** (`config/mcp-servers.json`):
+- **`mcp/fetch`** - Fetch URL content as markdown
+- **`mcp/brave-search`** - Web search (requires `BRAVE_API_KEY`)
+
+Optional (present but disabled by default): `sequentialthinking`, `playwright`.
 
 ### Why Use MCP Servers?
 
@@ -56,19 +56,21 @@ MCP (Model Context Protocol) servers are **pre-built tools** you can add to Jarv
 
 **MCP approach:**
 ```bash
-# One command!
-docker pull mcp/duckduckgo
-# Done! Now you have web search.
+# Pull the shipped images
+docker pull mcp/fetch
+docker pull mcp/brave-search
+# Enable in config/mcp-servers.json — tools appear in Jarvis (voice, web, CLI)
 ```
 
-## 3. Testing MCP (DuckDuckGo Example)
+## 3. Testing MCP (Shipped Servers)
 
 ### Prerequisites
 - Docker installed and running
-- Pull the MCP server image:
+- Pull the enabled server images:
 
 ```bash
-docker pull mcp/duckduckgo
+docker pull mcp/fetch
+docker pull mcp/brave-search
 ```
 
 ### Test MCP Server
@@ -88,17 +90,16 @@ source ~/jarvis-venv/bin/activate
 
 ✅ Loaded N enabled server(s)
 
-⏳ Querying duckduckgo (stdio)...
-   ✅ Found 2 tool(s)
+⏳ Querying fetch (stdio)...
+   ✅ Found N tool(s)
 
-📚 Tool Catalog (2 total tools)
+📚 Tool Catalog
 ======================================================================
 
-🔧 duckduckgo [stdio] (2 tools)
+🔧 fetch [stdio]
 ----------------------------------------------------------------------
 
-  Tool: mcp_duckduckgo_search
-  Desc: Search DuckDuckGo and return formatted results
+  Tool: mcp_fetch_...
 ```
 
 Use `./bin/test-mcp --list` to list configured servers, or `./bin/test-mcp --all` for list + discover + audit.
@@ -107,29 +108,23 @@ Use `./bin/test-mcp --list` to list configured servers, or `./bin/test-mcp --all
 
 ### Option A: Docker MCP (Recommended)
 
-Edit `config/mcp-servers.json`:
+Edit `config/mcp-servers.json` (shipped shape):
 
 ```json
 {
   "mcpServers": {
-    "duckduckgo": {
+    "fetch": {
       "command": "docker",
-      "args": ["run", "-i", "--rm", "mcp/duckduckgo"],
-      "description": "Web search via DuckDuckGo",
+      "args": ["run", "-i", "--rm", "--network", "host", "mcp/fetch", "--ignore-robots-txt"],
+      "description": "Fetch URL content as markdown",
       "enabled": true
     },
-    "filesystem": {
+    "brave_search": {
       "command": "docker",
-      "args": [
-        "run",
-        "-i",
-        "--rm",
-        "-v",
-        "~:/workspace",
-        "mcp/filesystem"
-      ],
-      "description": "File system operations",
-      "enabled": false
+      "args": ["run", "-e", "BRAVE_API_KEY", "-i", "--rm", "--network", "host", "mcp/brave-search"],
+      "env": { "BRAVE_API_KEY": "${BRAVE_API_KEY}" },
+      "description": "Web search via Brave",
+      "enabled": true
     }
   }
 }
@@ -155,59 +150,42 @@ Edit `config/mcp-servers.json`:
 
 ## 5. Using MCP Tools with Voice
 
-Once integrated (Phase 2, coming next), you'll be able to:
+MCP tools are already integrated into voice, web, and CLI once servers are enabled. Example:
 
 ```
 "Hey Jarvis"
 "Search the web for bitcoin news"
   ↓
-Jarvis: [Uses mcp.duckduckgo.search]
+Jarvis: [Uses mcp_brave_search_...]
 "Here are the latest bitcoin news..."
 
-"Hey Jarvis"  
+"Hey Jarvis"
 "Fetch content from https://example.com"
   ↓
-Jarvis: [Uses mcp.duckduckgo.fetch_content]
+Jarvis: [Uses mcp_fetch_...]
 "The page contains..."
 ```
 
-## 6. Available MCP Servers
+## 6. Available MCP Servers (Shipped Config)
 
-### Search & Web
-- **`mcp/duckduckgo`** ✅ No API key needed
-  - Tools: `search`, `fetch_content`
-- **`mcp/brave-search`** Requires Brave API key
-  - Tools: `search`
-- **`mcp/exa`** Requires Exa API key
-  - Tools: `search`
+### Enabled by default
+- **`fetch`** (`mcp/fetch`) — URL content as markdown
+- **`brave_search`** (`mcp/brave-search`) — Web search (needs `BRAVE_API_KEY`)
 
-### Development
-- **`mcp/github`** Requires GitHub token
-  - Tools: `create_issue`, `search_repos`, `get_pr`, etc.
-- **`mcp/gitlab`** Requires GitLab token
-  - Tools: Similar to GitHub
+### Present but disabled by default
+- **`sequentialthinking`** — Step-by-step reasoning
+- **`playwright`** — Browser automation for JS-heavy sites
 
-### Filesystem
-- **`mcp/filesystem`** No API key
-  - Tools: `read_file`, `write_file`, `list_directory`
-
-### Databases
-- **`mcp/postgres`** Requires DB connection
-  - Tools: `query`, `execute`
-- **`mcp/sqlite`** No API key
-  - Tools: `query`, `execute`
-
-### Communication
-- **`mcp/slack`** Requires Slack token
-  - Tools: `send_message`, `list_channels`
+You can add other community MCP servers to `config/mcp-servers.json` the same way.
 
 ## 7. Current Implementation Status
 
 ### ✅ Completed
-- [x] Tool listing on startup (auto-updates!)
+- [x] Tool listing on startup
 - [x] MCP client library (JSON-RPC communication)
-- [x] MCP configuration format
-- [x] Test script for validation
+- [x] MCP configuration format (`config/mcp-servers.json`)
+- [x] Test script for validation (`./bin/test-mcp`)
+- [x] Voice / Web / CLI integration (tools appear in the router catalog)
 - [x] Documentation
 
 
@@ -218,14 +196,14 @@ Voice: "Hey Jarvis, search for bitcoin news"
   ↓
 STT → Transcript
   ↓
-Claude Sonnet 4.5
-  ↓ (sees all tools)
+Routing LLM (configured provider/model)
+  ↓ (sees local + MCP tools)
 ┌─────────────┬─────────────┐
 ↓             ↓
 Local Tools   MCP Tools
-get_time      mcp.duckduckgo.search ← Uses MCP client
-crypto_price  mcp.duckduckgo.fetch  ← Via Docker
-execute_bash  mcp.github.create_issue
+get_time      mcp_brave_search_...  ← Uses MCP client
+crypto_price  mcp_fetch_...         ← Via Docker
+execute_bash
   ↓
 Execute & Return Result
   ↓
@@ -241,7 +219,6 @@ TTS → Voice Response
 
 ### Performance
 - ✅ Docker MCP servers are isolated
-- ✅ Reuse connections (coming in Phase 2)
 - ✅ Fast enough for voice interaction (~100-300ms)
 
 ### Security
@@ -259,10 +236,10 @@ TTS → Voice Response
 Before using MCP in production:
 
 - [ ] Docker is installed and running
-- [ ] Pull MCP server: `docker pull mcp/duckduckgo`
+- [ ] Pull shipped images: `docker pull mcp/fetch` and `docker pull mcp/brave-search`
 - [ ] Test connectivity: `./bin/test-mcp --discover`
 - [ ] Check config: `cat config/mcp-servers.json`
-- [ ] Verify tools appear: `jarvis` (should show in tool list)
+- [ ] Verify tools appear: start Jarvis (should show MCP tools in the catalog)
 
 ## 11. Troubleshooting
 
@@ -278,7 +255,7 @@ systemctl start docker
 ### MCP server fails to start
 ```bash
 # Test manually
-docker run -i --rm mcp/duckduckgo
+docker run -i --rm mcp/fetch --ignore-robots-txt
 
 # Check logs
 docker logs <container-id>
@@ -293,20 +270,18 @@ cat config/mcp-servers.json
 # Should be: "enabled": true
 ```
 
-## 12. Example: Add DuckDuckGo to Jarvis
+## 12. Example: Verify Shipped MCP Servers
 
-**Step 1:** Pull Docker image
+**Step 1:** Pull Docker images
 ```bash
-docker pull mcp/duckduckgo
+docker pull mcp/fetch
+docker pull mcp/brave-search
 ```
 
-**Step 2:** Enable in config
+**Step 2:** Confirm enabled in config
 ```bash
-# Edit config/mcp-servers.json
-"duckduckgo": {
-  ...
-  "enabled": true  ← Change this
-}
+# Edit config/mcp-servers.json if needed
+# fetch and brave_search should have "enabled": true
 ```
 
 **Step 3:** Test
@@ -314,25 +289,25 @@ docker pull mcp/duckduckgo
 ./bin/test-mcp --all --mode cloud
 ```
 
-**Step 4:** Use with voice (Phase 2)
+**Step 4:** Use with voice / web / CLI
 ```
 "Hey Jarvis"
-"Search for Anthropic Claude Sonnet 4"
+"Search for Anthropic Claude Sonnet 5"
 ```
 
 ## 13. Recommendations
 
 ### Start With
-1. **DuckDuckGo** - No API key, useful for web search
-2. **Filesystem** - Useful for file operations (be careful with mounts!)
+1. **fetch + brave_search** — shipped defaults (set `BRAVE_API_KEY` for search)
+2. **playwright** — enable only when you need JS-heavy browsing
 
 ### Avoid Initially
-1. Paid API services (Brave, Exa) - Until you test free ones
-2. Database MCPs - Need careful configuration
-3. Too many servers - Start with 1-2, add more later
+- Broad filesystem mounts until you understand volume security
+- Unreviewed third-party MCP images
+- Too many servers at once — start with the shipped two, add more later
 
 ### Best Practices
-1. Test MCP servers individually first (`test-mcp`)
+1. Test MCP servers individually first (`./bin/test-mcp`)
 2. Start with `"enabled": false`, enable after testing
 3. Use specific volume mounts, not full filesystem
 4. Review MCP server docs before using
@@ -340,7 +315,5 @@ docker pull mcp/duckduckgo
 
 ---
 
-**You now have a modular, extensible tool system!** 🚀
-
-Next: Phase 2 will integrate MCP tools into the voice interface.
+MCP tools are live in the orchestrator once enabled — no separate voice-integration step.
 

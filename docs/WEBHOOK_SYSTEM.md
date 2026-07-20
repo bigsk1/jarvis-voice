@@ -589,12 +589,13 @@ Edit `config/webhook_registry.json`:
 
 Webhook tools can be configured as **ghost tools** when they are core actions for a deployment. Ghost tools are prioritized before the final Tool RAG schema cap; they do not bypass the cap.
 
-**Config:** `config/cloud.env` and `config/local.env`
+**Config:** `config/cloud.env` and `config/local.env` (shipped cloud shown)
 ```bash
-GHOST_TOOLS="search_memory,recall,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time,send_email,send_webhook"
+GHOST_TOOLS="search_memory,update_memory,semantic_recall,remember,canvas"
+# local.env.example omits canvas: search_memory,update_memory,semantic_recall,remember
 ```
 
-**Why?** Email and webhooks are common actions in some deployments, so prioritizing them can make retrieval misses less likely.
+**Why?** Memory/canvas helpers are prioritized before the final Tool RAG schema cap so retrieval misses for core actions are less likely.
 
 ---
 

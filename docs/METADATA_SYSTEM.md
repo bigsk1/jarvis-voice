@@ -41,8 +41,8 @@ Every conversation logged to the database now includes metadata:
 | Field | Type | Description | Cloud Only |
 |-------|------|-------------|------------|
 | `mode` | string | "cloud" or "local" | No |
-| `provider` | string | "openai", "anthropic", or "ollama" | No |
-| `model` | string | Model name (e.g., "qwen3.5:latest", "grok-4.3", "gpt-5.4-nano") | No |
+| `provider` | string | "openai", "anthropic", "xai", or "ollama" | No |
+| `model` | string | Model name (e.g., "gemma4", "grok-4.5", "gpt-5.4-nano") | No |
 | `execution_time_ms` | float | Total conversation time | No |
 | `tool_count` | int | Number of tools executed | No |
 | `input_tokens` | int | Input token count | Yes |
@@ -391,7 +391,7 @@ LIMIT 1;
 ## Troubleshooting
 
 ### "cost_usd always 0"
-- Check if you're using cloud provider (OpenAI/Anthropic)
+- Check if you're using a cloud provider (OpenAI/Anthropic/xAI)
 - Ollama is local (free) so cost is always 0
 - Verify model name matches PRICING table
 

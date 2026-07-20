@@ -339,10 +339,8 @@ socket.emit('chat:send', {
     mode: 'cloud'
 });
 
-// Create new conversation
-socket.emit('conversation:new', {});
-
-// Load conversation
+// After creating a conversation (client/REST), the server emits conversation:created.
+// Load an existing conversation:
 socket.emit('conversation:load', {
     conversation_id: 'conv_123'
 });
@@ -357,8 +355,8 @@ socket.emit('tools:refresh');
 #### Server → Client
 
 ```javascript
-// Session ready
-socket.on('session:ready', {
+// Session connected (server emits `connected`, not session:ready)
+socket.on('connected', {
     session_id: 'sess_abc',
     mode: 'cloud',
     tools_count: 35

@@ -106,11 +106,13 @@ After it finishes, edit your API keys and audio device settings, then continue a
 # Update system first
 sudo apt update && sudo apt upgrade -y
 
-# Install all system dependencies
+# Install core system dependencies
 sudo ./install-system-deps.sh
 
-# This installs: ffmpeg, sox, sqlite3, portaudio, pulseaudio, jq, curl, git, etc.
-# See system-packages.txt for full list
+# This installs: ffmpeg, sox, sqlite3, portaudio, jq, curl, git, tmux, etc.
+# system-packages.txt lists additional optional packages (e.g. imagemagick, potrace
+# for convert_file) that are NOT installed by install-system-deps.sh — install those
+# separately with apt if you need them.
 ```
 
 **Verify key packages:**

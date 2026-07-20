@@ -269,11 +269,11 @@ See: `docs/SEMANTIC_THRESHOLD_TUNING.md`
 ### Ghost Tools (Prioritized)
 
 ```bash
-# config/cloud.env or config/local.env
-GHOST_TOOLS=search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time
+# Shipped cloud (local omits canvas)
+GHOST_TOOLS=search_memory,update_memory,semantic_recall,remember,canvas
 ```
 
-Memory tools (`search_memory`, `semantic_recall`) are ghost tools, prioritized inside the final Tool RAG schema cap.
+Memory tools (`search_memory`, `semantic_recall`, `update_memory`, `remember`) are ghost tools, prioritized inside the final Tool RAG schema cap.
 `tool_search` is injected as a mandatory discovery candidate in code rather than configured through `GHOST_TOOLS`.
 
 ---

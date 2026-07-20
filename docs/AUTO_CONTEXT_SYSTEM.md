@@ -145,17 +145,18 @@ INSTRUCTIONS:
 
 ```bash
 # Auto-Context (Short-Term Conversation Memory)
+# Shipped: cloud WINDOW=2 MINUTES=5; local both 0 (disabled)
 AUTO_CONTEXT_ENABLED=true        # Enable/disable feature
-AUTO_CONTEXT_WINDOW=3            # Number of conversations to include
-AUTO_CONTEXT_MINUTES=10          # Time window (minutes)
+AUTO_CONTEXT_WINDOW=2            # Number of conversations to include
+AUTO_CONTEXT_MINUTES=5           # Time window (minutes)
 ```
 
 ### Tuning the "Sweet Spot"
 
 | Profile | Window | Minutes | Tokens/Request | Use Case |
 |---------|--------|---------|----------------|----------|
-| **Conservative** | 2 | 5 | ~200 | Casual use, cost-sensitive |
-| **Balanced** (default) | 3 | 10 | ~400 | Typical voice conversations |
+| **Conservative** (shipped cloud) | 2 | 5 | ~200 | Casual use, cost-sensitive |
+| **Balanced** | 3 | 10 | ~400 | Typical voice conversations |
 | **Aggressive** | 5 | 20 | ~800 | Complex multi-step tasks |
 | **Disabled** | - | - | 0 | Testing, minimal mode |
 
@@ -482,7 +483,7 @@ AUTO_CONTEXT_ENABLED=false
    ```bash
    sqlite3 data/jarvis_memory.db "SELECT COUNT(*) FROM conversations WHERE timestamp > datetime('now', '-10 minutes');"
    ```
-3. Time window is reasonable (`AUTO_CONTEXT_MINUTES=10`)
+3. Time window is reasonable (`AUTO_CONTEXT_MINUTES=5` shipped cloud)
 
 ### Context Too Long/Expensive
 
@@ -566,8 +567,8 @@ The Auto-Context System transforms Jarvis from a **stateless question-answering 
 **Configuration:**
 ```bash
 AUTO_CONTEXT_ENABLED=true
-AUTO_CONTEXT_WINDOW=3
-AUTO_CONTEXT_MINUTES=10
+AUTO_CONTEXT_WINDOW=2
+AUTO_CONTEXT_MINUTES=5
 ```
 
 **This is the "sweet spot" between stateless simplicity and stateful complexity.**

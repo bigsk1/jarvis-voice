@@ -62,9 +62,10 @@ Memory runs on the **raw user transcript** for search; the **injected blocks** a
 
 ```bash
 # Auto-Memory Injection (pre-LLM semantic search)
+# Shipped: cloud LIMIT=3, local LIMIT=2; THRESHOLD=0.40
 AUTO_MEMORY_INJECTION_ENABLED=true
-AUTO_MEMORY_LIMIT=8
-AUTO_MEMORY_SIMILARITY_THRESHOLD=0.45
+AUTO_MEMORY_LIMIT=3
+AUTO_MEMORY_SIMILARITY_THRESHOLD=0.40
 ```
 
 ### Tuning
@@ -72,8 +73,8 @@ AUTO_MEMORY_SIMILARITY_THRESHOLD=0.45
 | Threshold | Effect |
 |-----------|--------|
 | 0.30 | More memories, some loosely related |
-| 0.38–0.42 | Balanced (code default fallback) |
-| 0.45 | Fewer, tighter matches (example env) |
+| 0.38–0.42 | Balanced (shipped 0.40; code fallback nearby) |
+| 0.45 | Fewer, tighter matches |
 | 0.50+ | Only very close matches |
 
 **Token impact**: ~5–10 memories × ~50 tokens ≈ 250–500 tokens per request. Similar to auto-context.
@@ -180,8 +181,9 @@ Add to `config/cloud.env` and `config/local.env` (or copy from *.example):
 
 ```bash
 # Auto-Memory Injection (CLI, WebUI, wake word)
+# Shipped: cloud LIMIT=3, local LIMIT=2
 AUTO_MEMORY_INJECTION_ENABLED=true
-AUTO_MEMORY_LIMIT=8
+AUTO_MEMORY_LIMIT=3
 AUTO_MEMORY_SIMILARITY_THRESHOLD=0.40
 AUTO_MEMORY_TYPE_FILTER_ENABLED=true
 AUTO_MEMORY_RECENCY_ENABLED=true
@@ -191,8 +193,8 @@ AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT=2
 | Var | Default | Description |
 |-----|---------|--------------|
 | `AUTO_MEMORY_INJECTION_ENABLED` | true | Master switch – set false to disable |
-| `AUTO_MEMORY_LIMIT` | 8 | Max memories injected per request |
-| `AUTO_MEMORY_SIMILARITY_THRESHOLD` | 0.40 (code fallback 0.42) | Min similarity (0.35–0.42 recommended) |
+| `AUTO_MEMORY_LIMIT` | 3 cloud / 2 local (shipped) | Max memories injected per request |
+| `AUTO_MEMORY_SIMILARITY_THRESHOLD` | 0.40 (shipped) | Min similarity (0.35–0.42 recommended) |
 | `AUTO_MEMORY_TYPE_FILTER_ENABLED` | true | Filter injected memories by query type |
 | `AUTO_MEMORY_RECENCY_ENABLED` | true | Recent memories rank slightly higher |
 | `AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT` | 2 | Max addressing/response-style items always included |

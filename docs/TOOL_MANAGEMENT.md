@@ -170,13 +170,13 @@ self.tools[schema.name] = schema
 
 In current Tool RAG runtime, token impact is best measured from the final tool list rather than from all enabled tools. Enable `TOOL_RAG_TRACE_ENABLED=true` and inspect `logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl`; each trace includes `final_tool_count`, `tool_schema_chars`, `tool_schema_est_tokens`, and `tool_schema_top` so you can see which schemas actually reached the LLM.
 
-### Example Reduction (Ollama qwen3.5:latest)
+### Example Reduction (illustrative Tool RAG shortlist)
 
-**All 17 tools + 2 MCP servers:**
+**Large tool catalog exposed to the LLM (see Current Coverage below for live counts):**
 - Baseline tokens: ~6,200
 - With system prompt: ~7,500
 
-**Essential 10 tools only:**
+**Essential ~10 tools only:**
 - Baseline tokens: ~3,800 (-39%)
 - With system prompt: ~5,100 (-32%)
 
@@ -350,7 +350,7 @@ Automatically disable unused tools after 7 days:
 
 ## Tool Roadmap & Brainstorm
 
-### Current Coverage (78 Tool Manifests)
+### Current Coverage (Tool Manifests)
 
 #### Local Tools by Category
 
@@ -370,13 +370,14 @@ Automatically disable unused tools after 7 days:
 | **Auto-Tools** | docker_control, network_tools, system_monitor, text_summarizer, status_recap, generate_password | 6 |
 | **Utility** | calculator | 1 |
 
-**Total at last verification: 78 `*.tool.json` manifests.** Profile overlays and
-per-mode availability can reduce the active set. Recount with:
+**Recount live manifests (do not trust a stale hard-coded total):**
 
 ```bash
 find skills -name '*.tool.json' | wc -l
 ```
 
+At last check this tree had **69** `*.tool.json` manifests. Profile overlays and
+per-mode availability can reduce the active set.
 #### MCP Servers (4 configured)
 
 | Server | Capability | Status | Notes |

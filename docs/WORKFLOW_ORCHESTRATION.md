@@ -151,6 +151,7 @@ source ~/jarvis-venv/bin/activate
 | `validation_policy` | No | Workflow-wide retry limits such as `max_total_retries`. |
 | `disable_server_side_tools` | No | Disables provider-native tools for helper LLM calls only. |
 | `success_speech` | No | Resolved with variables on success. |
+| `success_speech_llm_prompt` | No | When set, LLM generates success speech (falls back to `success_speech`). |
 | `abort_speech` | No | Used when required steps fail. |
 
 ## Step Fields

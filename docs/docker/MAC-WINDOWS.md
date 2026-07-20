@@ -583,7 +583,7 @@ docker pull mcp/brave-search
 
 If you enable other entries (for example `mcp/sequentialthinking` or `mcr.microsoft.com/playwright/mcp`), pull those images too before starting.
 
-The MCP override only changes **`jarvis-web`**. Every other service is unchanged; use the same **`--profile extras`** pattern as the standard install, with both compose files on every command.
+The MCP override applies `JARVIS_DEFER_TOOL_SYNC=1` and the docker tool profile to **all** Jarvis services. Only **`jarvis-web`** additionally gets Docker CLI/socket access and the `docker-mcp` profile; use the same **`--profile extras`** pattern as the standard install, with both compose files on every command.
 
 **PowerShell** — build and start (pick one `up` line):
 

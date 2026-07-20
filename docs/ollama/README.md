@@ -60,7 +60,7 @@ Configure `config/local.env`:
 ```bash
 LLM_PROVIDER=ollama
 OLLAMA_BASE_URL="http://your-local-gpu-host:11434"
-OLLAMA_MODEL="qwen3:latest"
+OLLAMA_MODEL="gemma4"
 ALLOW_OLLAMA_CLOUD=false
 EMBEDDING_PROVIDER=ollama
 ```

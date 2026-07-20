@@ -268,7 +268,7 @@
 - `~/.config/opencode/opencode.json` - OpenCode config
 
 **Key environment variables:**
-- `LLM_PROVIDER` - openai | anthropic | ollama
+- `LLM_PROVIDER` - openai | anthropic | xai | ollama
 - `JARVIS_RESPONSE_STYLE` - casual | detailed
 - `OPENCODE_ENABLED` - true | false
 

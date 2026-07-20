@@ -9,7 +9,7 @@
 
 ## 📊 Current Baseline Usage
 
-### Cloud Mode (Anthropic Claude Sonnet 5)
+### Cloud Mode (OpenAI gpt-5.4-nano — shipped default)
 
 ```
 System Prompt:       1,915 tokens
@@ -18,14 +18,14 @@ Tool Definitions:    3,793 tokens
 TOTAL BASELINE:      5,708 tokens
 ─────────────────────────────────
 
-Context Window:  1,000,000 tokens
-Baseline %:            0.6%
-Available:         994,292 tokens (99.4%)
+Context Window:  ~1,050,000 tokens (model-dependent; see model catalog)
+Baseline %:            ~0.5%
+Available:         ~1,044,000 tokens
 ```
 
 **Status**: ✅ Healthy (< 3% of context)
 
-**Note**: Token counts below are from the November 15, 2025 measurement run. Re-run `bin/measure-baseline-tokens` after major prompt or tool changes.
+**Note**: Token counts below are from the November 15, 2025 measurement run (historically labeled Anthropic). Shipped `config/cloud.env.example` now defaults to `LLM_PROVIDER=openai` / `OPENAI_MODEL=gpt-5.4-nano`. Re-run `bin/measure-baseline-tokens` after major prompt or tool changes.
 
 ---
 
@@ -194,11 +194,11 @@ diff before.txt after.txt
 
 ## 🎓 Understanding Token Budgets
 
-### Anthropic Claude Sonnet 5 (Cloud)
-- **Context Window**: 1,000,000 tokens
-- **Baseline**: 5,708 tokens (0.6%)
-- **Comfortable Multi-Turn**: Can chain 20+ tool calls with context
-- **Max Conversation**: Could theoretically use ~994K tokens (not recommended)
+### OpenAI gpt-5.4-nano (Cloud — shipped default)
+- **Context Window**: ~1,050,000 tokens (see model catalog)
+- **Baseline**: 5,708 tokens (~0.5%)
+- **Comfortable Multi-Turn**: Can chain many tool calls with context
+- **Max Conversation**: Large remaining budget after baseline (not a reason to dump full history)
 
 ### Ollama gemma4 (Local)
 - **Context Window**: ~32,000 tokens (varies by variant)

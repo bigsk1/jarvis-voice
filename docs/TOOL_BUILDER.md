@@ -394,13 +394,15 @@ The Tool Builder uses providers in this order:
 ```bash
 # config/cloud.env
 
-# Dedicated tool builder (optional)
-TOOL_BUILDER_PROVIDER=xai
-TOOL_BUILDER_MODEL=grok-4.3
+# Dedicated tool builder (optional; shipped cloud often uses openai/gpt-5.4-nano)
+TOOL_BUILDER_PROVIDER=openai
+TOOL_BUILDER_MODEL=gpt-5.4-nano
 
-# Or use Anthropic
-TOOL_BUILDER_PROVIDER=anthropic
-TOOL_BUILDER_MODEL=claude-sonnet-5
+# Or use xAI / Anthropic
+# TOOL_BUILDER_PROVIDER=xai
+# TOOL_BUILDER_MODEL=grok-4.5
+# TOOL_BUILDER_PROVIDER=anthropic
+# TOOL_BUILDER_MODEL=claude-sonnet-5
 
 # Falls back to FEEDBACK_PROVIDER, then LLM_PROVIDER
 ```
@@ -415,10 +417,10 @@ TOOL_BUILDER_PROVIDER → FEEDBACK_PROVIDER → LLM_PROVIDER
 
 | Provider | Default Model |
 |----------|---------------|
-| xAI | `grok-4.3` |
-| Anthropic | `claude-sonnet-4-5-20250929` |
-| OpenAI | `gpt-4o` |
-| Ollama | `qwen3.5:latest` |
+| xAI | `grok-4.5` |
+| Anthropic | `claude-sonnet-5` |
+| OpenAI | `gpt-5.6-luna` |
+| Ollama | `qwen3.5:latest` (code fallback when unset; shipped local often uses `gemma4`) |
 
 ---
 

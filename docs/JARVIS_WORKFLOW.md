@@ -610,8 +610,8 @@ After a successful or failed run:
 ### Key env vars (orchestration)
 
 ```bash
-# Turns
-MAX_TOOL_TURNS=15
+# Turns (code fallback 15; shipped cloud=12, local=6)
+MAX_TOOL_TURNS=12
 
 # xAI continuation
 XAI_STORE_MESSAGES=true
@@ -945,7 +945,7 @@ Running on http://localhost:8091
 - Autonomous coding (multi-step tasks)
 - Workspace isolation (`~/jarvis-workspace`)
 - Auto-save project location to memory
-- Uses dedicated LLM (Claude Sonnet 4.5 recommended)
+- Uses dedicated LLM (shipped: cloud `xai`/`grok-build-0.1`, local `ollama`/`gemma4`)
 
 ---
 
@@ -1028,7 +1028,7 @@ a financial advisor for personalized guidance.
 - `LLM_PROVIDER` - Main LLM (`xai`, `anthropic`, `openai`, `ollama`)
 - `XAI_MODEL` - xAI API-key Grok model (`grok-4.5` recommended; see `XAI_PROVIDER.md` for OAuth/API-key boundaries and alternatives)
 - `ANTHROPIC_MODEL` - Claude model
-- `OLLAMA_MODEL` - Local-mode Ollama model (`qwen3.5:latest` in `local.env.example`)
+- `OLLAMA_MODEL` - Local-mode Ollama model (`gemma4` in `local.env.example`; alternatives include `qwen3.5:latest`)
 - `OLLAMA_CLOUD_MODEL` - Cloud-mode Ollama model; signed-daemon mode requires a cloud tag, while direct API mode accepts canonical ollama.com IDs
 - `ALLOW_OLLAMA_CLOUD` - Local-mode opt-in for signed-daemon cloud cards; defaults to `false` and never enables direct API routing
 

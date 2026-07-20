@@ -258,7 +258,7 @@ docker pull mcp/brave-search
 # Add any other enabled server images from mcp-servers.json "args"
 ```
 
-The override only changes **`jarvis-web`** (Docker CLI, socket mount, `docker-mcp` profile). All other services use the same images and settings as the base stack. Combine both compose files with **`--profile extras`** the same way as a normal bring-up.
+The MCP override sets `JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE=docker` and `JARVIS_DEFER_TOOL_SYNC=1` on **all** Jarvis services. Only **`jarvis-web`** additionally gets the Docker CLI/socket mount and `docker-mcp` profile. Combine both compose files with **`--profile extras`** the same way as a normal bring-up.
 
 ```bash
 # Build (jarvis-web uses the MCP image target; other services unchanged)

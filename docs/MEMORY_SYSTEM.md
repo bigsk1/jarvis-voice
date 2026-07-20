@@ -303,8 +303,9 @@ EMBEDDING_PROVIDER="openai"  # or "ollama"
 OLLAMA_EMBEDDING_MODEL="nomic-embed-text"
 
 # Auto-memory injection (inject relevant memories before each LLM call)
+# Shipped: cloud LIMIT=3, local LIMIT=2
 AUTO_MEMORY_INJECTION_ENABLED=true
-AUTO_MEMORY_LIMIT=8
+AUTO_MEMORY_LIMIT=3
 AUTO_MEMORY_SIMILARITY_THRESHOLD=0.40
 AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT=2
 ```

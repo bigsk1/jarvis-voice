@@ -257,7 +257,7 @@ stat data/jarvis_memory_local.db
 ### Cloud Mode (config/cloud.env)
 
 ```bash
-LLM_PROVIDER="anthropic"
+LLM_PROVIDER="openai"
 # Chat LLM is separate from embeddings: non-Ollama providers use OpenAI for vectors
 # (see lib/embeddings.py — only LLM_PROVIDER=ollama uses Ollama embeddings)
 ```

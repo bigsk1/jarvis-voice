@@ -443,7 +443,7 @@ The `/api/query` endpoint (and `/api/query/quick`) has per-IP rate limiting to r
 
 ```bash
 # In config/cloud.env or config/local.env
-QUERY_RATE_LIMIT_PER_MINUTE=30   # Default: 30 requests/min per IP
+QUERY_RATE_LIMIT_PER_MINUTE=15   # Shipped default: 15 requests/min per IP (code fallback: 30)
 # QUERY_RATE_LIMIT_PER_MINUTE=0   # Disable rate limiting
 ```
 

@@ -14,8 +14,8 @@ Understanding how Jarvis handles conversation state between interactions is crit
 **Q: So every time I say "Hey Jarvis", it knows what I just asked?**
 **A: Yes (if within time window):**
 - `AUTO_CONTEXT_ENABLED=true` (default) - loads recent conversations automatically
-- `AUTO_CONTEXT_WINDOW=3` - how many recent conversations to include
-- `AUTO_CONTEXT_MINUTES=10` - only include conversations from last N minutes
+- `AUTO_CONTEXT_WINDOW=2` - how many recent conversations to include (shipped cloud; local uses `0`)
+- `AUTO_CONTEXT_MINUTES=5` - only include conversations from last N minutes (shipped cloud; local uses `0`)
 
 **Q: How does the WebUI handle context?**
 **A:** WebUI maintains conversation history client-side and passes it directly to the orchestrator via `conversation_history` parameter - different from terminal auto-context.
@@ -124,7 +124,7 @@ Understanding how Jarvis handles conversation state between interactions is crit
 **What's NOW Included (with auto-context):**
 - ✅ Previous user questions (from AUTO_CONTEXT_WINDOW)
 - ✅ Previous Jarvis responses (from AUTO_CONTEXT_WINDOW)
-- ✅ Time-filtered (AUTO_CONTEXT_MINUTES, default 10 min)
+- ✅ Time-filtered (AUTO_CONTEXT_MINUTES, shipped cloud 5 min)
 
 **Why This Works:**
 - ✅ **Prompt Caching** - Anthropic/OpenAI cache the system prompt + tools for 5 minutes
@@ -226,10 +226,10 @@ After the cycle completes:
 AUTO_CONTEXT_ENABLED=true
 
 # How many recent conversations to include
-AUTO_CONTEXT_WINDOW=3
+AUTO_CONTEXT_WINDOW=2
 
 # Only include conversations from last N minutes
-AUTO_CONTEXT_MINUTES=10
+AUTO_CONTEXT_MINUTES=5
 ```
 
 **How It Works:**
@@ -534,8 +534,8 @@ If the cloud provider expects to "pick up later", it's assuming **stateful conte
 **Configuration:**
 ```bash
 AUTO_CONTEXT_ENABLED=true   # Enable auto-context
-AUTO_CONTEXT_WINDOW=3       # Recent conversations to include
-AUTO_CONTEXT_MINUTES=10     # Time window
+AUTO_CONTEXT_WINDOW=2       # Recent conversations to include
+AUTO_CONTEXT_MINUTES=5      # Time window
 ```
 
 **Bottom Line:**

@@ -18,7 +18,7 @@ config/local.env
 ### Setting
 ```bash
 # Add or modify this line:
-SEMANTIC_SIMILARITY_THRESHOLD=0.40  # Default
+SEMANTIC_SIMILARITY_THRESHOLD=0.32  # Shipped cloud default (local: 0.30; code fallback: 0.40)
 ```
 
 ## How It Works
@@ -139,9 +139,9 @@ Threshold 0.70 → ❌ Missed
 
 ## Best Practices
 
-### 1. Start Conservative (0.40)
-- Default value works for 90% of cases
-- Balanced between recall and precision
+### 1. Start with Shipped Defaults (cloud 0.32 / local 0.30)
+- Shipped example values work for most installs
+- Code fallback is 0.40 if the env var is unset
 - Adjust only if you see issues
 
 ### 2. Monitor Actual Similarity Scores
@@ -153,11 +153,11 @@ Threshold 0.70 → ❌ Missed
 
 ### 3. Different Thresholds for Different Modes
 ```bash
-# Cloud (better embeddings)
-config/cloud.env: SEMANTIC_SIMILARITY_THRESHOLD=0.40
+# Cloud (shipped example)
+config/cloud.env: SEMANTIC_SIMILARITY_THRESHOLD=0.32
 
-# Local (may be less accurate)
-config/local.env: SEMANTIC_SIMILARITY_THRESHOLD=0.35
+# Local (shipped example)
+config/local.env: SEMANTIC_SIMILARITY_THRESHOLD=0.30
 ```
 
 ### 4. Document Your Changes
@@ -239,14 +239,14 @@ results = db.semantic_search("query", similarity_threshold=0.30)
 ## Quick Reference
 
 ```bash
-# Default (balanced)
-SEMANTIC_SIMILARITY_THRESHOLD=0.40
+# Shipped cloud default (balanced)
+SEMANTIC_SIMILARITY_THRESHOLD=0.32
 
 # More results (lenient)
-SEMANTIC_SIMILARITY_THRESHOLD=0.35
+SEMANTIC_SIMILARITY_THRESHOLD=0.28
 
 # Fewer results (strict)
-SEMANTIC_SIMILARITY_THRESHOLD=0.45
+SEMANTIC_SIMILARITY_THRESHOLD=0.40
 
 # Test your changes
 ./orchestrator/orchestrator_v2.py cloud "What do I like to eat?"

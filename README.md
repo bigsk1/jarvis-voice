@@ -1129,9 +1129,11 @@ OpenCode is an autonomous coding agent that can build entire projects.
 ### Configuration
 
 ```bash
-# In cloud.env or local.env
-OPENCODE_MODEL="claude-sonnet-5"  # Or qwen2.5-coder:32b
-OPENCODE_PROVIDER="anthropic"              # Or ollama
+# In cloud.env or local.env (shipped defaults shown)
+# cloud: OPENCODE_PROVIDER=xai, OPENCODE_MODEL=grok-build-0.1
+# local: OPENCODE_PROVIDER=ollama, OPENCODE_MODEL=gemma4
+OPENCODE_PROVIDER="xai"
+OPENCODE_MODEL="grok-build-0.1"
 OPENCODE_BASE_URL="http://localhost:4096"
 ```
 

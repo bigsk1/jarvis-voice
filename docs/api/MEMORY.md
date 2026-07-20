@@ -83,7 +83,6 @@ Creates a new memory or updates existing one (matched by category+key).
 - `preference` - User preferences
 - `fact` - General knowledge
 - `location` - Physical/virtual locations
-- `credentials` - API keys, passwords (use high importance!)
 - `other` - Miscellaneous
 
 **Response:**

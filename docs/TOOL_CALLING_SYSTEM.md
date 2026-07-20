@@ -121,9 +121,9 @@ For live debugging of which tools were made available, enable `TOOL_RAG_TRACE_EN
 | **OpenAI GPT** | ✅ Native | Fast | Low | Cloud |
 | **Ollama (local model)** | ⚠️ Structured prompts | Model-dependent | Free | Local |
 | **Ollama Cloud** | ⚠️ Structured prompts | Network-dependent | Subscription/unknown | Cloud via signed-in daemon |
-| **xAI Grok 4.3** | ✅ Native | Medium | Low | Cloud |
+| **xAI Grok 4.5** | ✅ Native | Medium | Low | Cloud |
 
-**Recommendation:** Use xAI Grok 4.3 for agentic tool calling accuracy.
+**Recommendation:** Use xAI Grok 4.5 for agentic tool calling accuracy.
 
 ## Creating Custom Tools
 
@@ -407,7 +407,7 @@ ANTHROPIC_MODEL="claude-sonnet-5"
 ```bash
 LLM_PROVIDER="openai"
 OPENAI_API_KEY="sk-..."
-OPENAI_MODEL="gpt-4o-mini"
+OPENAI_MODEL="gpt-5.4-nano"
 ```
 
 ### To Ollama (Local)

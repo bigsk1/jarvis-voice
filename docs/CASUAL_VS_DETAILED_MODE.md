@@ -26,8 +26,8 @@ Jarvis has three response style modes that control how tool results and Q&A resp
 **Best for:** Voice mode, speakers, TTS
 
 **Behavior:**
-- Q&A responses: Up to `JARVIS_QA_WORD_LIMIT` (current cloud example: 100 words)
-- Multi-turn summaries: Up to `JARVIS_MULTI_TURN_WORD_LIMIT` (current cloud example: 75 words)
+- Q&A responses: Up to `JARVIS_QA_WORD_LIMIT` (shipped cloud: 200; local: 125)
+- Multi-turn summaries: Up to `JARVIS_MULTI_TURN_WORD_LIMIT` (shipped cloud: 200; local: 125)
 - Tool confirmations: 35 words max (hardcoded)
 - **Strips from speech:** stash:// refs, long URLs, file paths (added 2026-02-02)
 
@@ -99,12 +99,12 @@ The server is now accessible at http://localhost:5000"
 JARVIS_RESPONSE_STYLE="auto"
 
 # Word limit for Q&A/single-turn (used by _format_single_turn_casual)
-# Example current cloud value: 100 words
-JARVIS_QA_WORD_LIMIT=100
+# Shipped: cloud=200, local=125
+JARVIS_QA_WORD_LIMIT=200
 
 # Word limit for multi-turn/multi-tool summaries (used by _format_multi_turn_summary)
-# Example current cloud value: 75 words
-JARVIS_MULTI_TURN_WORD_LIMIT=75
+# Shipped: cloud=200, local=125
+JARVIS_MULTI_TURN_WORD_LIMIT=200
 ```
 
 ### Web UI Overrides
