@@ -314,40 +314,17 @@ For specific improvements, check feedback logs for exact issues reported."""
             return None
         
         # Use feedback LLM for generation
-        from llm_provider import create_provider
-        
-        provider_type = get_config_value('FEEDBACK_PROVIDER', 
-                                         get_config_value('LLM_PROVIDER', 'anthropic'))
-        model = get_config_value('FEEDBACK_MODEL',
-                                get_config_value('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929'))
+        from llm_provider import create_configured_provider
+
+        mode = get_active_config_mode()
+        provider_type, model, provider = create_configured_provider(
+            provider_config_keys=("FEEDBACK_PROVIDER", "LLM_PROVIDER"),
+            model_config_keys=("FEEDBACK_MODEL",),
+            default_provider="ollama" if mode == "local" else "anthropic",
+            mode=mode,
+        )
         
         print(f"⏳ Generating improvement using {provider_type}/{model}...")
-        
-        # Build provider - use the model variable we computed above
-        if provider_type == 'anthropic':
-            provider = create_provider(
-                'anthropic',
-                api_key=get_config_value('ANTHROPIC_API_KEY'),
-                model=model
-            )
-        elif provider_type == 'xai':
-            provider = create_provider(
-                'xai',
-                api_key=get_config_value('XAI_API_KEY'),
-                model=model
-            )
-        elif provider_type == 'openai':
-            provider = create_provider(
-                'openai',
-                api_key=get_config_value('OPENAI_API_KEY'),
-                model=model
-            )
-        else:
-            provider = create_provider(
-                'ollama',
-                model=model,
-                base_url=get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
-            )
         
         # Build improvement prompt
         prompt = self._build_improvement_prompt(summary, current_content)
@@ -977,4 +954,3 @@ if __name__ == "__main__":
         auto_deploy=args.auto,
         dry_run=not args.deploy
     )
-

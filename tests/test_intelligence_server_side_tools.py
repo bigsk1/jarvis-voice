@@ -6,13 +6,14 @@ Run:
     python3 tests/test_intelligence_server_side_tools.py
 """
 
+import asyncio
 import sys
 import types
 import unittest
 import json
 import sqlite3
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
@@ -31,11 +32,46 @@ from intelligence_hooks import (
     update_experience_from_user_correction,
     update_experience_from_feedback,
 )
-from intelligence import should_suppress_preferred_tool_for_native_search
+from intelligence import IntelligenceLayer, should_suppress_preferred_tool_for_native_search
 from orchestrator_v2 import Orchestrator
 
 
 class IntelligenceServerSideToolsTests(unittest.TestCase):
+    def test_direct_reflection_constructs_provider_without_native_tools(self):
+        layer = IntelligenceLayer.__new__(IntelligenceLayer)
+        provider = MagicMock()
+        provider.chat_with_tools.return_value = (
+            '{"is_procedural": false, "insight_summary": "test reflection"}',
+            None,
+            {},
+            None,
+        )
+        intel_logger = MagicMock()
+
+        with (
+            patch("config_loader.load_config"),
+            patch("intelligence.get_active_config_mode", return_value="cloud"),
+            patch(
+                "llm_provider.create_configured_provider",
+                return_value=("xai", "grok-test", provider),
+            ) as create_configured_provider,
+            patch("model_prompt_overrides.load_model_prompt_override", return_value={}),
+            patch(
+                "model_prompt_overrides.apply_prompt_override_sections",
+                side_effect=lambda prompt, *_args, **_kwargs: prompt,
+            ),
+            patch("intelligence.get_intel_logger", return_value=intel_logger),
+        ):
+            result = asyncio.run(layer._direct_llm_reflection("reflect on this", experience_id=42))
+
+        create_configured_provider.assert_called_once_with(
+            default_provider="anthropic",
+            mode="cloud",
+            disable_server_side_tools=True,
+        )
+        self.assertEqual(result["_reflection_provider"], "xai")
+        self.assertEqual(result["_reflection_model"], "grok-test")
+
     def _install_fake_intel(self):
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row

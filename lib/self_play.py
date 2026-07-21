@@ -22,8 +22,7 @@ from dataclasses import dataclass, asdict
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import config_scope, export_config_environment, get_config_value
-from llm_provider import create_provider
-from model_catalog import get_provider_fallback_model
+from llm_provider import create_configured_provider
 
 # Tools that are too side-effectful or operationally powerful for unattended self-play.
 DEFAULT_EXCLUDED_TOOLS = [
@@ -730,32 +729,11 @@ Generate {count} queries:"""
     def _create_provider(self):
         """Create LLM provider for query generation."""
         with config_scope(self.mode):
-            provider_type = get_config_value("LLM_PROVIDER", "anthropic")
-
-            if provider_type == "ollama":
-                from ollama_utils import resolve_ollama_model
-                return create_provider(
-                    "ollama",
-                    model=resolve_ollama_model(self.mode),
-                    base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),
-                )
-            if provider_type == "xai":
-                return create_provider(
-                    "xai",
-                    api_key=get_config_value("XAI_API_KEY"),
-                    model=get_config_value("XAI_MODEL", get_provider_fallback_model("xai")),
-                )
-            if provider_type == "anthropic":
-                return create_provider(
-                    "anthropic",
-                    api_key=get_config_value("ANTHROPIC_API_KEY"),
-                    model=get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic")),
-                )
-            return create_provider(
-                "openai",
-                api_key=get_config_value("OPENAI_API_KEY"),
-                model=get_config_value("OPENAI_MODEL", get_provider_fallback_model("openai")),
+            _, _, provider = create_configured_provider(
+                default_provider="ollama" if self.mode == "local" else "anthropic",
+                mode=self.mode,
             )
+            return provider
     
     def _log_result(self, session_id: str, result: dict[str, Any]):
         """Log a single result to JSONL file."""

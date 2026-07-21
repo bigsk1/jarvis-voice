@@ -725,7 +725,7 @@ class ChatHandler:
     ):
         """Create the provider used for Completion Guard auto-evaluation."""
         from config_loader import load_config, get_config_value
-        from llm_provider import create_provider
+        from llm_provider import create_configured_provider
 
         load_config(mode)
 
@@ -745,39 +745,11 @@ class ChatHandler:
             or ''
         ).strip()
 
-        if provider_name == 'anthropic':
-            return provider_name, (
-                model_name or get_config_value('ANTHROPIC_MODEL', get_provider_fallback_model('anthropic'))
-            ), create_provider(
-                'anthropic',
-                api_key=get_config_value('ANTHROPIC_API_KEY'),
-                model=model_name or get_config_value('ANTHROPIC_MODEL', get_provider_fallback_model('anthropic'))
-            )
-        if provider_name == 'openai':
-            return provider_name, (
-                model_name or get_config_value('OPENAI_MODEL', get_provider_fallback_model('openai'))
-            ), create_provider(
-                'openai',
-                api_key=get_config_value('OPENAI_API_KEY'),
-                model=model_name or get_config_value('OPENAI_MODEL', get_provider_fallback_model('openai'))
-            )
-        if provider_name == 'xai':
-            configured_model = (
-                model_name or get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
-            )
-            provider = create_provider(
-                'xai',
-                api_key=get_config_value('XAI_API_KEY'),
-                model=configured_model,
-            )
-            return provider_name, getattr(provider, 'model', configured_model), provider
-
-        from ollama_utils import resolve_ollama_model
-        ollama_model = resolve_ollama_model(mode, model_override=(model_name or None))
-        return provider_name, ollama_model, create_provider(
-            'ollama',
-            model=ollama_model,
-            base_url=get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
+        return create_configured_provider(
+            provider_override=provider_name,
+            model_override=model_name or None,
+            default_provider='ollama' if mode == 'local' else 'openai',
+            mode=mode,
         )
 
     @staticmethod

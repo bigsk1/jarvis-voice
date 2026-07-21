@@ -25,8 +25,7 @@ from dataclasses import dataclass, asdict
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import load_config, get_config_value
-from llm_provider import create_provider
-from model_catalog import get_provider_fallback_model
+from llm_provider import create_configured_provider
 
 # Directories
 SKILLS_DIR = Path(__file__).parent.parent / "skills"
@@ -650,45 +649,16 @@ class ToolBuilder:
         self.mode = mode
         load_config(mode=mode)
         
-        # Get provider config
-        provider_type = get_config_value('TOOL_BUILDER_PROVIDER') or \
-                       get_config_value('FEEDBACK_PROVIDER') or \
-                       get_config_value('LLM_PROVIDER', 'anthropic')
-        
-        model = get_config_value('TOOL_BUILDER_MODEL') or \
-                get_config_value('FEEDBACK_MODEL')
-        
-        # Create provider
-        if provider_type == 'anthropic':
-            self.provider = create_provider(
-                provider_type,
-                api_key=get_config_value('ANTHROPIC_API_KEY'),
-                model=model or get_config_value('ANTHROPIC_MODEL', get_provider_fallback_model('anthropic'))
-            )
-        elif provider_type == 'openai':
-            self.provider = create_provider(
-                provider_type,
-                api_key=get_config_value('OPENAI_API_KEY'),
-                model=model or get_config_value('OPENAI_MODEL', get_provider_fallback_model('openai'))
-            )
-        elif provider_type == 'xai':
-            self.provider = create_provider(
-                provider_type,
-                api_key=get_config_value('XAI_API_KEY'),
-                model=model or get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
-            )
-        elif provider_type == 'ollama':
-            from ollama_utils import resolve_ollama_model
-            self.provider = create_provider(
-                provider_type,
-                model=resolve_ollama_model(getattr(self, "mode", None), model_override=model),
-                base_url=get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
-            )
-        else:
-            raise ValueError(f"Unknown provider: {provider_type}")
-        
-        self.provider_type = provider_type
-        self.model = getattr(self.provider, 'model', model or "default")
+        self.provider_type, self.model, self.provider = create_configured_provider(
+            provider_config_keys=(
+                "TOOL_BUILDER_PROVIDER",
+                "FEEDBACK_PROVIDER",
+                "LLM_PROVIDER",
+            ),
+            model_config_keys=("TOOL_BUILDER_MODEL", "FEEDBACK_MODEL"),
+            default_provider="ollama" if mode == "local" else "anthropic",
+            mode=mode,
+        )
     
     def get_mcp_tools(self) -> list[str]:
         """Get list of available MCP tools for overlap checking."""

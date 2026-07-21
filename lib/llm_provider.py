@@ -439,7 +439,12 @@ class AnthropicProvider(LLMProvider):
     - Web search tool when ANTHROPIC_SEARCH=true (requires beta header)
     """
     
-    def __init__(self, api_key: str, model: str | None = None):
+    def __init__(
+        self,
+        api_key: str,
+        model: str | None = None,
+        enable_search: bool | None = None,
+    ):
         """Initialize Anthropic provider."""
         try:
             from anthropic import Anthropic
@@ -452,7 +457,8 @@ class AnthropicProvider(LLMProvider):
         # Check if web search is enabled (ANTHROPIC_SEARCH=true in cloud.env)
         # When enabled, Claude can search the web for real-time info
         from config_loader import get_config_value
-        self.enable_search = get_config_value("ANTHROPIC_SEARCH", "false").lower() == "true"
+        search_requested = get_config_value("ANTHROPIC_SEARCH", "false").lower() == "true"
+        self.enable_search = search_requested if enable_search is None else bool(enable_search)
         
         if self.enable_search and os.environ.get('JARVIS_DEBUG'):
             print(f"DEBUG: Anthropic Web Search enabled", file=sys.stderr)
@@ -727,6 +733,7 @@ class XAIProvider(LLMProvider):
         api_key: str | None = None,
         model: str | None = None,
         auth_mode: str | None = None,
+        enable_search: bool | None = None,
     ):
         """Initialize xAI provider with hybrid SDK support."""
         try:
@@ -778,7 +785,8 @@ class XAIProvider(LLMProvider):
         # Check if live search is enabled (XAI_SEARCH=true in cloud.env)
         # When enabled, uses xAI SDK with Agent Tools API for web/X search
         from config_loader import get_config_value
-        search_requested = get_config_value("XAI_SEARCH", "false").lower() == "true"
+        configured_search = get_config_value("XAI_SEARCH", "false").lower() == "true"
+        search_requested = configured_search if enable_search is None else bool(enable_search)
         self.enable_search = search_requested and self.auth_mode == "api_key"
         if search_requested and self.auth_mode == "oauth" and os.environ.get("JARVIS_DEBUG"):
             print(
@@ -2268,6 +2276,7 @@ def create_configured_provider(
     provider_config_keys: tuple[str, ...] = ("LLM_PROVIDER",),
     model_config_keys: tuple[str, ...] = (),
     default_provider: str = "openai",
+    mode: str | None = None,
     disable_server_side_tools: bool = False,
 ) -> tuple[str, str | None, LLMProvider]:
     """
@@ -2279,8 +2288,10 @@ def create_configured_provider(
         provider_config_keys: Config keys to try before falling back to default_provider.
         model_config_keys: Task-specific model config keys to try before provider defaults.
         default_provider: Provider to use when no configured provider is found.
-        disable_server_side_tools: Temporarily disable provider-native tools
-            during provider init for plain text processing tasks.
+        mode: Explicit cloud/local mode for mode-sensitive provider resolution.
+        disable_server_side_tools: Disable provider-native tools when constructing
+            a provider for plain text processing. Runtime per-call tool budgets
+            remain controlled independently by the router/orchestrator.
 
     Returns:
         Tuple of (provider_type, model_name, provider_instance)
@@ -2314,39 +2325,21 @@ def create_configured_provider(
         )
     if provider_type == "anthropic":
         model = model or get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic"))
-        previous = os.environ.get("JARVIS_OVERRIDE_ANTHROPIC_SEARCH")
-        if disable_server_side_tools:
-            os.environ["JARVIS_OVERRIDE_ANTHROPIC_SEARCH"] = "false"
-        try:
-            provider = create_provider(
-                "anthropic",
-                api_key=get_config_value("ANTHROPIC_API_KEY"),
-                model=model,
-            )
-        finally:
-            if disable_server_side_tools:
-                if previous is None:
-                    os.environ.pop("JARVIS_OVERRIDE_ANTHROPIC_SEARCH", None)
-                else:
-                    os.environ["JARVIS_OVERRIDE_ANTHROPIC_SEARCH"] = previous
+        provider = create_provider(
+            "anthropic",
+            api_key=get_config_value("ANTHROPIC_API_KEY"),
+            model=model,
+            enable_search=False if disable_server_side_tools else None,
+        )
         return provider_type, getattr(provider, "model", model), provider
     if provider_type == "xai":
         model = model or get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
-        previous = os.environ.get("JARVIS_OVERRIDE_XAI_SEARCH")
-        if disable_server_side_tools:
-            os.environ["JARVIS_OVERRIDE_XAI_SEARCH"] = "false"
-        try:
-            provider = create_provider(
-                "xai",
-                api_key=get_config_value("XAI_API_KEY"),
-                model=model,
-            )
-        finally:
-            if disable_server_side_tools:
-                if previous is None:
-                    os.environ.pop("JARVIS_OVERRIDE_XAI_SEARCH", None)
-                else:
-                    os.environ["JARVIS_OVERRIDE_XAI_SEARCH"] = previous
+        provider = create_provider(
+            "xai",
+            api_key=get_config_value("XAI_API_KEY"),
+            model=model,
+            enable_search=False if disable_server_side_tools else None,
+        )
         return provider_type, getattr(provider, "model", model), provider
     if provider_type == "ollama":
         from ollama_utils import resolve_ollama_model
@@ -2354,6 +2347,7 @@ def create_configured_provider(
         # else OLLAMA_CLOUD_MODEL in cloud / OLLAMA_MODEL in local. Cloud mode
         # with no valid cloud model fails clearly; local keeps a safe fallback.
         model = resolve_ollama_model(
+            mode,
             model_override=model,
             local_fallback=get_provider_fallback_model("ollama"),
         )
@@ -2385,13 +2379,15 @@ def create_provider(provider_type: str, **config) -> LLMProvider:
     elif provider_type == "anthropic":
         return AnthropicProvider(
             api_key=config["api_key"],
-            model=config.get("model", get_provider_fallback_model("anthropic"))
+            model=config.get("model", get_provider_fallback_model("anthropic")),
+            enable_search=config.get("enable_search"),
         )
     elif provider_type == "xai":
         return XAIProvider(
             api_key=config.get("api_key"),
             model=config.get("model", get_provider_fallback_model("xai")),
             auth_mode=config.get("auth_mode"),
+            enable_search=config.get("enable_search"),
         )
     elif provider_type == "ollama":
         return OllamaProvider(

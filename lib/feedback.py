@@ -353,93 +353,26 @@ class FeedbackCollector:
         self.mode = mode
         load_config(mode)
         
-        from llm_provider import create_provider
+        from llm_provider import create_configured_provider
         from config_loader import get_config_value
         
         # Check for dedicated feedback provider (recommended for unbiased grading)
         feedback_provider = get_config_value("FEEDBACK_PROVIDER", "")
         feedback_model = get_config_value("FEEDBACK_MODEL", "")
         
-        if feedback_provider:
-            # Use dedicated feedback provider (different LLM grades the task)
-            self.provider_name = feedback_provider
-            self.model_name = feedback_model
-            
-            if feedback_provider == "anthropic":
-                self.provider = create_provider(
-                    "anthropic",
-                    api_key=get_config_value("ANTHROPIC_API_KEY"),
-                    model=feedback_model or get_provider_fallback_model("anthropic")
-                )
-            elif feedback_provider == "openai":
-                self.provider = create_provider(
-                    "openai",
-                    api_key=get_config_value("OPENAI_API_KEY"),
-                    model=feedback_model or get_provider_fallback_model("openai")
-                )
-            elif feedback_provider == "xai":
-                self.provider = create_provider(
-                    "xai",
-                    api_key=get_config_value("XAI_API_KEY"),
-                    model=feedback_model or get_provider_fallback_model("xai")
-                )
-            elif feedback_provider == "ollama":
-                from ollama_utils import resolve_ollama_model
-                self.provider = create_provider(
-                    "ollama",
-                    model=resolve_ollama_model(mode, model_override=feedback_model),
-                    base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434")
-                )
-            else:
-                raise ValueError(f"Unknown FEEDBACK_PROVIDER: {feedback_provider}. Use: anthropic, openai, xai, ollama")
-        else:
-            # Fallback: Use same provider as mode (not ideal but works)
-            if mode == 'local':
-                from ollama_utils import resolve_ollama_model
-                self.provider_name = "ollama"
-                self.model_name = resolve_ollama_model(mode)
-                self.provider = create_provider(
-                    "ollama",
-                    model=self.model_name,
-                    base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434")
-                )
-            else:
-                # Cloud mode - use default provider
-                provider_type = get_config_value("LLM_PROVIDER", "anthropic")
-                self.provider_name = provider_type
-                
-                if provider_type == "ollama":
-                    from ollama_utils import resolve_ollama_model
-                    self.model_name = resolve_ollama_model(mode)
-                    self.provider = create_provider(
-                        "ollama",
-                        model=self.model_name,
-                        base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434")
-                    )
-                elif provider_type == "xai":
-                    self.model_name = get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
-                    self.provider = create_provider(
-                        "xai",
-                        api_key=get_config_value("XAI_API_KEY"),
-                        model=self.model_name
-                    )
-                elif provider_type == "openai":
-                    self.model_name = get_config_value("OPENAI_MODEL", get_provider_fallback_model("openai"))
-                    self.provider = create_provider(
-                        "openai",
-                        api_key=get_config_value("OPENAI_API_KEY"),
-                        model=self.model_name
-                    )
-                else:
-                    self.model_name = get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic"))
-                    self.provider = create_provider(
-                        "anthropic",
-                        api_key=get_config_value("ANTHROPIC_API_KEY"),
-                        model=self.model_name
-                    )
+        provider_override = feedback_provider or ("ollama" if mode == "local" else None)
+        model_override = (feedback_model or None) if feedback_provider else None
+        if feedback_provider and not model_override and feedback_provider != "ollama":
+            # Preserve the dedicated-feedback contract: an explicitly selected
+            # provider without FEEDBACK_MODEL uses that provider's catalog default.
+            model_override = get_provider_fallback_model(feedback_provider)
 
-        # OAuth may resolve an API model alias to the subscription model.
-        self.model_name = getattr(self.provider, "model", self.model_name)
+        self.provider_name, self.model_name, self.provider = create_configured_provider(
+            provider_override=provider_override,
+            model_override=model_override,
+            default_provider="ollama" if mode == "local" else "anthropic",
+            mode=mode,
+        )
         
         # Setup logging
         self.log_dir = Path(__file__).parent.parent / "logs" / "feedback"

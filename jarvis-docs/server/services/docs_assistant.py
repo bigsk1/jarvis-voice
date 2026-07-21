@@ -379,6 +379,7 @@ def run_docs_assistant(messages: list[dict[str, Any]], mode: str) -> dict[str, A
     )
 
     provider_type, model_name, provider = create_configured_provider(
+        mode=mode,
         disable_server_side_tools=True
     )
 

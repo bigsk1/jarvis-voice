@@ -25,11 +25,10 @@ from config_loader import (
     DEFAULT_JARVIS_QA_WORD_LIMIT,
     DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT,
 )
-from model_catalog import get_provider_fallback_model
 from model_prompt_overrides import load_model_prompt_override, apply_prompt_override_sections
 from router_prompts import DEFAULT_ROUTER_PROMPT_VERSION, get_router_system_prompt
 from tool_schema import ToolRegistry, _merged_ghost_tool_names
-from llm_provider import create_provider
+from llm_provider import create_configured_provider
 from provider_errors import classify_provider_error, friendly_provider_error, is_provider_error_text
 from user_profile import append_profile_card_for_router_direct_answer
 
@@ -764,9 +763,17 @@ class LLMRouter:
         # Initialize LLM provider
         self.provider = self._create_provider()
 
+        # ``_create_provider`` records the centrally resolved identity. Keep
+        # defensive fallbacks for tests and callers that inject/patch a provider.
+        if not hasattr(self, "provider_type"):
+            self.provider_type = self._provider_override or get_config_value(
+                "LLM_PROVIDER",
+                "openai" if self.mode == "cloud" else "ollama",
+            )
+        if not hasattr(self, "model_name"):
+            self.model_name = getattr(self.provider, "model", "unknown")
+
         # Store provider info for metadata tracking
-        self.provider_type = self._provider_override or get_config_value("LLM_PROVIDER", "unknown")
-        self.model_name = self.provider.model if hasattr(self.provider, 'model') else "unknown"
         self.prompt_override = load_model_prompt_override(
             provider=self.provider_type,
             model=self.model_name,
@@ -963,45 +970,13 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
     
     def _create_provider(self):
         """Create appropriate LLM provider based on config or overrides."""
-        # Use override if provided, otherwise fall back to config
-        provider_type = self._provider_override or get_config_value("LLM_PROVIDER", "openai" if self.mode == "cloud" else "ollama")
-        
-        if provider_type == "openai":
-            model = self._model_override or get_config_value("OPENAI_MODEL", get_provider_fallback_model("openai"))
-            return create_provider(
-                "openai",
-                api_key=get_config_value("OPENAI_API_KEY"),
-                model=model
-            )
-        elif provider_type == "anthropic":
-            model = self._model_override or get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic"))
-            return create_provider(
-                "anthropic",
-                api_key=get_config_value("ANTHROPIC_API_KEY"),
-                model=model
-            )
-        elif provider_type == "xai":
-            model = self._model_override or get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
-            return create_provider(
-                "xai",
-                api_key=get_config_value("XAI_API_KEY"),
-                model=model
-            )
-        elif provider_type == "ollama":
-            from ollama_utils import get_effective_ollama_model, OllamaModelError
-            try:
-                model = get_effective_ollama_model(self.mode, model_override=self._model_override)
-            except OllamaModelError:
-                if self.mode == "cloud":
-                    raise
-                model = self._model_override or get_config_value("OLLAMA_MODEL", "gemma4")
-            return create_provider(
-                "ollama",
-                base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),
-                model=model
-            )
-        else:
-            raise ValueError(f"Unknown LLM provider: {provider_type}")
+        self.provider_type, self.model_name, provider = create_configured_provider(
+            provider_override=self._provider_override,
+            model_override=self._model_override,
+            default_provider="openai" if self.mode == "cloud" else "ollama",
+            mode=self.mode,
+        )
+        return provider
     
     def route(
         self,

@@ -2955,7 +2955,7 @@ def enhance_prompt():
         # Load LLM provider
         sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
         from config_loader import load_config, get_config_value
-        from llm_provider import create_provider
+        from llm_provider import create_configured_provider
         from ..config import load_web_config
         
         load_config(mode=current_mode)
@@ -3111,32 +3111,13 @@ Rules:
                 f"{user_input}"
             )
 
-        # Create provider based on effective per-mode Web settings.
-        if provider_type == 'ollama':
-            from ollama_utils import resolve_ollama_model
-            provider = create_provider(
-                'ollama',
-                model=resolve_ollama_model(current_mode, model_override=provider_model),
-                base_url=get_config_value('OLLAMA_BASE_URL', 'http://localhost:11434')
-            )
-        elif provider_type == 'xai':
-            provider = create_provider(
-                'xai',
-                api_key=get_config_value('XAI_API_KEY'),
-                model=provider_model or get_config_value('XAI_MODEL', get_provider_fallback_model('xai'))
-            )
-        elif provider_type == 'anthropic':
-            provider = create_provider(
-                'anthropic',
-                api_key=get_config_value('ANTHROPIC_API_KEY'),
-                model=provider_model or get_config_value('ANTHROPIC_MODEL', get_provider_fallback_model('anthropic'))
-            )
-        else:
-            provider = create_provider(
-                'openai',
-                api_key=get_config_value('OPENAI_API_KEY'),
-                model=provider_model or get_config_value('OPENAI_MODEL', get_provider_fallback_model('openai'))
-            )
+        # Create the text provider from the effective per-mode Web settings.
+        _, _, provider = create_configured_provider(
+            provider_override=provider_type,
+            model_override=provider_model,
+            default_provider='ollama' if current_mode == 'local' else 'xai',
+            mode=current_mode,
+        )
         
         # Call LLM to enhance
         # chat() signature: chat(message: str, system_prompt: str = None, max_tokens: int = None) -> str

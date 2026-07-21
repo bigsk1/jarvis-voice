@@ -1393,52 +1393,22 @@ Example for FACTUAL (should NOT be stored here):
     ) -> dict[str, Any] | None:
         """Direct LLM call for reflection when sequential thinking unavailable."""
         try:
-            from llm_provider import create_provider
-            from model_catalog import get_provider_fallback_model
+            from llm_provider import create_configured_provider
             from model_prompt_overrides import (
                 apply_prompt_override_sections,
                 load_model_prompt_override,
             )
-            from config_loader import load_config, get_config_value
+            from config_loader import load_config
 
             # Ensure config is loaded
             load_config()
 
-            # Create provider based on current mode (same logic as router_v2.py)
-            provider_type = get_config_value('LLM_PROVIDER', 'anthropic')
-
-            if provider_type == "openai":
-                provider = create_provider(
-                    "openai",
-                    api_key=get_config_value("OPENAI_API_KEY"),
-                    model=get_config_value("OPENAI_MODEL", get_provider_fallback_model("openai"))
-                )
-            elif provider_type == "anthropic":
-                provider = create_provider(
-                    "anthropic",
-                    api_key=get_config_value("ANTHROPIC_API_KEY"),
-                    model=get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic"))
-                )
-            elif provider_type == "xai":
-                provider = create_provider(
-                    "xai",
-                    api_key=get_config_value("XAI_API_KEY"),
-                    model=get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
-                )
-            elif provider_type == "ollama":
-                from ollama_utils import resolve_ollama_model
-                provider = create_provider(
-                    "ollama",
-                    base_url=get_config_value("OLLAMA_BASE_URL", "http://localhost:11434"),
-                    model=resolve_ollama_model()
-                )
-            else:
-                logger.error(f"Unknown provider type: {provider_type}")
-                return None
-
-            # Get model name for logging
-            model_name = getattr(provider, 'model', 'unknown')
             override_mode = get_active_config_mode()
+            provider_type, model_name, provider = create_configured_provider(
+                default_provider="ollama" if override_mode == "local" else "anthropic",
+                mode=override_mode,
+                disable_server_side_tools=True,
+            )
             override = load_model_prompt_override(
                 provider=provider_type,
                 model=model_name,

@@ -19,16 +19,18 @@ def test_explicit_web_provider_and_model_reach_provider_factory_unchanged():
     router._model_override = "gpt-5.6-terra"
     created_provider = MagicMock()
 
-    with (
-        patch("router_v2.get_config_value", return_value="env-value") as get_config,
-        patch("router_v2.create_provider", return_value=created_provider) as create_provider,
-    ):
+    with patch(
+        "router_v2.create_configured_provider",
+        return_value=("openai", "gpt-5.6-terra", created_provider),
+    ) as create_provider:
         result = router._create_provider()
 
     assert result is created_provider
     create_provider.assert_called_once_with(
-        "openai",
-        api_key="env-value",
-        model="gpt-5.6-terra",
+        provider_override="openai",
+        model_override="gpt-5.6-terra",
+        default_provider="openai",
+        mode="cloud",
     )
-    assert all(call.args[0] != "OPENAI_MODEL" for call in get_config.call_args_list)
+    assert router.provider_type == "openai"
+    assert router.model_name == "gpt-5.6-terra"

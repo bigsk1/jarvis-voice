@@ -22,8 +22,7 @@ from datetime import datetime
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
-from llm_provider import create_provider
-from model_catalog import get_provider_fallback_model
+from llm_provider import create_configured_provider
 from tool_logger import ToolLogger
 from llm_logger import LLMLogger
 
@@ -42,10 +41,10 @@ class PipelineExecutor:
         """
         self.mode = mode
         self.executor = executor
+        load_config(mode)
         self.provider = provider or self._create_provider()
         self.logger = ToolLogger()
         self.llm_logger = LLMLogger()
-        load_config(mode)
         self._disable_server_side_tools = False
         self._server_side_tools = {}
         
@@ -201,30 +200,11 @@ class PipelineExecutor:
     def _create_provider(self):
         """Create LLM provider for parameter filling and validation."""
         try:
-            provider_type = get_config_value("LLM_PROVIDER", "openai").lower()
-            
-            # Build config based on provider
-            config = {}
-            if provider_type == "openai":
-                config["api_key"] = get_config_value("OPENAI_API_KEY")
-                config["model"] = get_config_value("OPENAI_MODEL", get_provider_fallback_model("openai"))
-            elif provider_type == "anthropic":
-                config["api_key"] = get_config_value("ANTHROPIC_API_KEY")
-                config["model"] = get_config_value("ANTHROPIC_MODEL", get_provider_fallback_model("anthropic"))
-            elif provider_type == "xai":
-                config["api_key"] = get_config_value("XAI_API_KEY")
-                config["model"] = get_config_value("XAI_MODEL", get_provider_fallback_model("xai"))
-            elif provider_type == "ollama":
-                from ollama_utils import get_effective_ollama_model, OllamaModelError
-                try:
-                    config["model"] = get_effective_ollama_model(getattr(self, "mode", None))
-                except OllamaModelError:
-                    if getattr(self, "mode", None) == "cloud":
-                        raise
-                    config["model"] = get_config_value("OLLAMA_MODEL", "qwen3.5:latest")
-                config["base_url"] = get_config_value("OLLAMA_BASE_URL", "http://localhost:11434")
-            
-            return create_provider(provider_type, **config)
+            _, _, provider = create_configured_provider(
+                default_provider="openai" if self.mode == "cloud" else "ollama",
+                mode=self.mode,
+            )
+            return provider
         except Exception as e:
             print(f"Warning: Could not create LLM provider: {e}", file=sys.stderr)
             return None
