@@ -372,6 +372,25 @@ environment, so unrelated packages are not removed. Routine updates change
 `uv.lock`; the minimum versions in `pyproject.toml` and `requirements.txt`
 should only be raised when an older yt-dlp release must be disallowed.
 
+### Automatic yt-dlp release watch
+
+The `yt_dlp_release_watch` workflow checks PyPI's structured release API for a
+new stable version. Its first run records a quiet baseline. When a newer
+version appears, the workflow creates or refreshes the matching GitHub release
+report in Canvas, creates one deduplicated Jarvis alert, and only then advances
+its saved state under `data/release-watch/`.
+
+Run it manually with:
+
+```text
+/yt_dlp_release_watch
+```
+
+The reusable `release_watch` tool also supports other PyPI packages and GitHub
+repositories. Use separate `watch_id` values for separate upstream projects.
+Scheduled workflows should call `check`, complete their Canvas and alert steps,
+then call `acknowledge` so a failed downstream step is retried on the next run.
+
 ### Proxy setup (`LOCAL_PROXY` / `LOCAL_PROXY2`)
 
 The tool walks **`LOCAL_PROXY`**, then **`LOCAL_PROXY2`** (if set), trying each with `yt-dlp` until a download succeeds. If both are unset, `yt-dlp` runs **without** `--proxy`.

@@ -213,6 +213,13 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'serpapi_youtube_search': ['search_query', 'top_url', 'title'],
     'serpapi_yelp_search': ['find_desc', 'find_loc', 'top_url', 'place_id'],
     'git_release_notes': ['release_tag', 'release_url', 'stash_ref', 'canvas_page_id', 'repo', 'owner'],
+    'release_watch': [
+        'watch_id', 'source', 'project', 'initialized', 'changed',
+        'regression_detected', 'previous_version', 'current_version',
+        'normalized_version', 'release_url', 'published_at', 'checked_at',
+        'acknowledged', 'version', 'alert_title', 'alert_severity',
+        'alert_dedupe_key',
+    ],
     'memory_deduper': ['stash_ref', 'canvas_page_id'],
     'stash': ['space_id', 'file_id', 'name', 'mime_type', 'size_bytes'],
     'screenshot_url': ['url', 'screenshot_path'],
@@ -874,8 +881,12 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         for field in fields_to_extract:
             if field in extracted:
                 continue  # Already got it above
-            if payload.get(field):
-                extracted[field] = payload[field]
+            field_value = payload.get(field)
+            if field_value:
+                extracted[field] = field_value
+            elif key == 'release_watch' and isinstance(field_value, bool):
+                # False is meaningful for change detection and first-run state.
+                extracted[field] = field_value
 
         if payload.get('runs_count') and 'runs_count' not in extracted:
             extracted['runs_count'] = payload['runs_count']

@@ -395,6 +395,7 @@ The authoritative list is `data/workflows/*.json` plus any private `data/workflo
 | `deep_research.json` | `/research` | Multi-source research with validation and Canvas output. |
 | `github_ai_radar_daily.json` | `/github_ai_radar` | Refresh one rolling GitHub AI Radar Canvas page with search, YouTube, and Brave context. |
 | `jarvis_self_check.json` | `/jarvis_self_check` | Check host health, create alerts on problems, and update one Canvas health page. |
+| `yt_dlp_release_watch.json` | `/yt_dlp_release_watch` | Detect new stable yt-dlp releases, create a Canvas release report, and raise one deduplicated alert. |
 | `daily_status.json` | `/status` | Weather, crypto, stocks, alerts, and system health dashboard. |
 | `daily_status_visual.json` | `/status_visual` | Daily status with generated dashboard image. |
 | `weather_watch.json` | `/weather_watch` | Default-location weather watch with Canvas and alerts. |

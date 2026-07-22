@@ -1,0 +1,56 @@
+{
+  "enabled": true,
+  "name": "release_watch",
+  "description": "Detect newly published stable releases from PyPI or GitHub without scraping HTML. The first check establishes a silent baseline. Later checks return changed=true until the caller acknowledges the release, allowing a workflow to create Canvas and alert artifacts before advancing state.",
+  "script": "release_watch.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": ["check", "acknowledge"],
+        "description": "Check the upstream source or acknowledge a successfully handled version. Default: check."
+      },
+      "watch_id": {
+        "type": "string",
+        "description": "Stable local identifier for this release watch, such as yt-dlp-stable."
+      },
+      "source": {
+        "type": "string",
+        "enum": ["pypi", "github"],
+        "description": "Structured release source."
+      },
+      "project": {
+        "type": "string",
+        "description": "PyPI package name or GitHub owner/repository."
+      },
+      "version": {
+        "type": "string",
+        "description": "Version to persist after Canvas and alert steps succeed; required for acknowledge."
+      },
+      "release_url": {
+        "type": "string",
+        "description": "Optional release URL to retain with acknowledged state."
+      },
+      "published_at": {
+        "type": "string",
+        "description": "Optional upstream publication timestamp to retain with acknowledged state."
+      }
+    },
+    "required": ["watch_id", "source", "project"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  },
+  "test_input": {
+    "action": "check",
+    "watch_id": "yt-dlp-stable",
+    "source": "pypi",
+    "project": "yt-dlp"
+  },
+  "expected_output_contains": ["current_version", "changed", "alert_dedupe_key"]
+}

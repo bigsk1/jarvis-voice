@@ -1,0 +1,136 @@
+{
+  "id": "yt_dlp_release_watch",
+  "name": "yt-dlp Stable Release Watch",
+  "description": "Check PyPI for a new stable yt-dlp release, create GitHub release notes in Canvas, alert once, and acknowledge the handled version.",
+  "version": "1.0",
+  "enabled": true,
+  "triggers": {
+    "explicit": ["/yt_dlp_release_watch", "/yt-dlp-release-watch"],
+    "patterns": [],
+    "keywords": []
+  },
+  "variables": {
+    "watch_id": "yt-dlp-stable",
+    "release_source": "pypi",
+    "release_project": "yt-dlp",
+    "github_project": "yt-dlp/yt-dlp",
+    "changed": false,
+    "initialized": false,
+    "current_version": "unknown",
+    "previous_version": "unknown",
+    "release_url": "",
+    "published_at": "",
+    "alert_source": "yt_dlp_release_watch",
+    "canvas_page_id": "",
+    "alert_duplicate_suppressed": false
+  },
+  "steps": [
+    {
+      "step": 1,
+      "tool": "release_watch",
+      "params": {
+        "action": "check",
+        "watch_id": "${watch_id}",
+        "source": "${release_source}",
+        "project": "${release_project}"
+      },
+      "output_var": "release_check",
+      "extract": {
+        "changed": "changed",
+        "initialized": "initialized",
+        "current_version": "current_version",
+        "previous_version": "previous_version",
+        "release_url": "release_url",
+        "published_at": "published_at",
+        "alert_title": "alert_title",
+        "alert_description": "alert_description",
+        "alert_severity": "alert_severity",
+        "alert_dedupe_key": "alert_dedupe_key"
+      },
+      "required": true,
+      "description": "Check the structured PyPI release API without advancing an existing watch"
+    },
+    {
+      "step": 2,
+      "tool": "git_release_notes",
+      "condition": {
+        "op": "eq",
+        "left": "${changed}",
+        "right": true
+      },
+      "params": {
+        "target": "${github_project}",
+        "mode": "quick",
+        "include_prs": true,
+        "include_issues": true,
+        "max_commits": 40,
+        "max_prs": 25,
+        "max_issues": 25,
+        "save_to_canvas": true,
+        "save_to_stash": false
+      },
+      "output_var": "release_notes",
+      "extract": {
+        "canvas_page_id": "canvas_page_id",
+        "github_release_tag": "release_tag",
+        "github_release_url": "release_url"
+      },
+      "required": true,
+      "description": "Create or refresh the exact-tag GitHub release report in Canvas"
+    },
+    {
+      "step": 3,
+      "tool": "create_alert",
+      "condition": {
+        "op": "eq",
+        "left": "${changed}",
+        "right": true
+      },
+      "params": {
+        "title": "${alert_title}",
+        "description": "${alert_description}",
+        "severity": "${alert_severity}",
+        "source": "${alert_source}",
+        "speak_immediately": false,
+        "metadata": {
+          "dedupe_key": "${alert_dedupe_key}",
+          "workflow_id": "yt_dlp_release_watch",
+          "watch_id": "${watch_id}",
+          "previous_version": "${previous_version}",
+          "current_version": "${current_version}",
+          "release_url": "${release_url}",
+          "canvas_page_id": "${canvas_page_id}"
+        }
+      },
+      "output_var": "alert_result",
+      "extract": {
+        "alert_duplicate_suppressed": "duplicate_suppressed"
+      },
+      "required": true,
+      "description": "Create one deduplicated medium-severity alert for the release"
+    },
+    {
+      "step": 4,
+      "tool": "release_watch",
+      "condition": {
+        "op": "eq",
+        "left": "${changed}",
+        "right": true
+      },
+      "params": {
+        "action": "acknowledge",
+        "watch_id": "${watch_id}",
+        "source": "${release_source}",
+        "project": "${release_project}",
+        "version": "${current_version}",
+        "release_url": "${release_url}",
+        "published_at": "${published_at}"
+      },
+      "output_var": "release_acknowledgement",
+      "required": true,
+      "description": "Advance watch state only after Canvas and alert creation succeed"
+    }
+  ],
+  "success_speech": "yt-dlp release watch complete. Latest stable version is ${current_version}.",
+  "abort_speech": "I couldn't complete the yt-dlp release watch."
+}

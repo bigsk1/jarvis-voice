@@ -454,6 +454,52 @@ def test_extract_followup_data_generic_fallback_preserves_scalar_handles():
     assert "api_token" not in alert
 
 
+def test_extract_followup_data_preserves_release_watch_state_for_direct_tool_followups():
+    handler = _handler()
+    data = {
+        "release_watch": {
+            "watch_id": "yt-dlp-stable",
+            "source": "pypi",
+            "project": "yt-dlp",
+            "initialized": False,
+            "changed": False,
+            "regression_detected": False,
+            "previous_version": "2026.7.4",
+            "current_version": "2026.7.4",
+            "normalized_version": "2026.7.4",
+            "release_url": "https://pypi.org/project/yt-dlp/2026.7.4/",
+            "published_at": "2026-07-04T22:42:14Z",
+            "checked_at": "2026-07-22T07:38:29Z",
+            "alert_title": "New yt-dlp release: 2026.7.4",
+            "alert_severity": "medium",
+            "alert_dedupe_key": "release-watch:yt-dlp-stable:2026.7.4",
+            "summary": "Bulky prose is intentionally not follow-up state.",
+            "state_path": "/private/internal/state.json",
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    release = result["release_watch"]
+
+    assert release == {
+        "watch_id": "yt-dlp-stable",
+        "source": "pypi",
+        "project": "yt-dlp",
+        "initialized": False,
+        "changed": False,
+        "regression_detected": False,
+        "previous_version": "2026.7.4",
+        "current_version": "2026.7.4",
+        "normalized_version": "2026.7.4",
+        "release_url": "https://pypi.org/project/yt-dlp/2026.7.4/",
+        "published_at": "2026-07-04T22:42:14Z",
+        "checked_at": "2026-07-22T07:38:29Z",
+        "alert_title": "New yt-dlp release: 2026.7.4",
+        "alert_severity": "medium",
+        "alert_dedupe_key": "release-watch:yt-dlp-stable:2026.7.4",
+    }
+
+
 def test_extract_followup_data_generic_fallback_preserves_common_candidate_lists():
     handler = _handler()
     data = {
