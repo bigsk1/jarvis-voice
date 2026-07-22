@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""Safely update yt-dlp's lock entry and the long-lived Jarvis environment.
+
+This intentionally does not run ``uv sync`` against the Jarvis environment.
+It updates only yt-dlp in ``uv.lock``, installs that exact resolved version into
+``JARVIS_VENV`` (default: ``~/jarvis-venv``), and optionally smoke-tests
+transcript extraction.
+
+Routine updates leave the minimum versions in pyproject.toml and
+requirements.txt unchanged. Raise those floors separately only when an older
+yt-dlp release must be explicitly disallowed.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import tomllib
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+class UpdateError(RuntimeError):
+    """Expected updater failure with an operator-facing message."""
+
+
+def _run(
+    command: list[str],
+    *,
+    cwd: Path,
+    capture_output: bool = False,
+    timeout: float | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    print(f"$ {shlex.join(command)}", flush=True)
+    try:
+        return subprocess.run(
+            command,
+            cwd=cwd,
+            check=True,
+            capture_output=capture_output,
+            text=True,
+            timeout=timeout,
+            env=env,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise UpdateError(f"Command timed out after {timeout:g} seconds") from exc
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        suffix = f": {detail}" if detail else ""
+        raise UpdateError(f"Command failed with exit code {exc.returncode}{suffix}") from exc
+
+
+def _locked_version(lock_path: Path) -> str:
+    try:
+        with lock_path.open("rb") as handle:
+            packages = tomllib.load(handle).get("package", [])
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise UpdateError(f"Could not read {lock_path}: {exc}") from exc
+
+    matches = [
+        str(package.get("version", "")).strip()
+        for package in packages
+        if package.get("name") == "yt-dlp"
+    ]
+    if len(matches) != 1 or not matches[0]:
+        raise UpdateError(f"Expected exactly one yt-dlp package entry in {lock_path}")
+    return matches[0]
+
+
+def _installed_version(python_path: Path, *, cwd: Path) -> str | None:
+    command = [
+        str(python_path),
+        "-c",
+        (
+            "import importlib.metadata as m; "
+            "print(m.version('yt-dlp'))"
+        ),
+    ]
+    result = subprocess.run(command, cwd=cwd, capture_output=True, text=True)
+    if result.returncode != 0:
+        return None
+    version = result.stdout.strip()
+    return version or None
+
+
+def _lock_is_dirty(repo_root: Path) -> bool:
+    if not (repo_root / ".git").exists() or not shutil.which("git"):
+        return False
+    result = subprocess.run(
+        ["git", "status", "--porcelain", "--", "uv.lock"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return bool(result.stdout.strip())
+
+
+def _smoke_test_transcript(
+    python_path: Path,
+    url: str,
+    *,
+    cwd: Path,
+    timeout: float,
+) -> None:
+    print("Running transcript smoke test...")
+    with tempfile.TemporaryDirectory(prefix="jarvis-ytdlp-smoke-") as temp_dir:
+        output_template = str(Path(temp_dir) / "transcript")
+        command = [
+            str(python_path),
+            "-m",
+            "yt_dlp",
+            "--no-warnings",
+            "--skip-download",
+            "--write-sub",
+            "--write-auto-sub",
+            "--sub-lang",
+            "en",
+            "--sub-format",
+            "srt",
+            "--output",
+            output_template,
+            url,
+        ]
+        _run(command, cwd=cwd, capture_output=True, timeout=timeout)
+        transcripts = list(Path(temp_dir).glob("*.srt"))
+        if not transcripts:
+            raise UpdateError(
+                "yt-dlp completed the smoke request but did not produce an English SRT transcript"
+            )
+        transcript_size = max(path.stat().st_size for path in transcripts)
+        print(f"Transcript smoke test passed ({transcript_size:,} bytes).")
+
+
+def _parse_args(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Update only yt-dlp in uv.lock and install that exact version into "
+            "the long-lived Jarvis environment without running uv sync."
+        )
+    )
+    parser.add_argument(
+        "--venv",
+        type=Path,
+        default=Path(
+            os.environ.get("JARVIS_VENV") or (Path.home() / "jarvis-venv")
+        ),
+        help="Jarvis virtual environment (default: JARVIS_VENV or ~/jarvis-venv).",
+    )
+    parser.add_argument(
+        "--smoke-url",
+        help="Optional YouTube URL whose English transcript should be smoke-tested.",
+    )
+    parser.add_argument(
+        "--smoke-timeout",
+        type=float,
+        default=90.0,
+        help="Transcript smoke-test timeout in seconds (default: 90).",
+    )
+    parser.add_argument(
+        "--allow-dirty-lock",
+        action="store_true",
+        help="Allow updating an already-modified uv.lock file.",
+    )
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=PROJECT_ROOT,
+        help=argparse.SUPPRESS,
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+    repo_root = args.repo_root.expanduser().resolve()
+    venv_path = args.venv.expanduser().resolve()
+    python_path = venv_path / "bin" / "python"
+    lock_path = repo_root / "uv.lock"
+
+    if args.smoke_timeout <= 0:
+        print("ERROR: --smoke-timeout must be greater than zero", file=sys.stderr)
+        return 2
+    if not lock_path.is_file():
+        print(f"ERROR: uv.lock was not found at {lock_path}", file=sys.stderr)
+        return 2
+    if not python_path.is_file():
+        print(
+            f"ERROR: Jarvis Python was not found at {python_path}. "
+            "Set JARVIS_VENV or pass --venv.",
+            file=sys.stderr,
+        )
+        return 2
+    uv_path = shutil.which("uv")
+    if not uv_path:
+        print("ERROR: uv is not installed or not on PATH", file=sys.stderr)
+        return 2
+    if _lock_is_dirty(repo_root) and not args.allow_dirty_lock:
+        print(
+            "ERROR: uv.lock already has staged or unstaged changes. "
+            "Commit/stash them first, or rerun with --allow-dirty-lock.",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        previous_locked = _locked_version(lock_path)
+        previous_installed = _installed_version(python_path, cwd=repo_root)
+        print("yt-dlp update")
+        print(f"  Lock before:      {previous_locked}")
+        print(f"  Jarvis venv before: {previous_installed or 'not installed'}")
+
+        lock_env = os.environ.copy()
+        lock_env.pop("UV_PROJECT_ENVIRONMENT", None)
+        lock_env.pop("VIRTUAL_ENV", None)
+        _run(
+            [uv_path, "lock", "--upgrade-package", "yt-dlp"],
+            cwd=repo_root,
+            env=lock_env,
+        )
+        resolved_version = _locked_version(lock_path)
+
+        requirement = f"yt-dlp=={resolved_version}"
+        _run(
+            [
+                uv_path,
+                "pip",
+                "install",
+                "--python",
+                str(python_path),
+                requirement,
+            ],
+            cwd=repo_root,
+        )
+        installed_version = _installed_version(python_path, cwd=repo_root)
+        if installed_version != resolved_version:
+            raise UpdateError(
+                f"Version verification failed: lock has {resolved_version}, "
+                f"Jarvis venv reports {installed_version or 'not installed'}"
+            )
+
+        if args.smoke_url:
+            _smoke_test_transcript(
+                python_path,
+                args.smoke_url,
+                cwd=repo_root,
+                timeout=args.smoke_timeout,
+            )
+
+        print()
+        if resolved_version == previous_locked:
+            print(f"yt-dlp was already locked at {resolved_version}.")
+        else:
+            print(f"Updated uv.lock: {previous_locked} -> {resolved_version}")
+        print(f"Jarvis venv: yt-dlp {installed_version}")
+        print("No uv sync was run; unrelated Jarvis packages were preserved.")
+        if resolved_version != previous_locked:
+            print("Review and commit uv.lock when ready.")
+        return 0
+    except UpdateError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -352,6 +352,26 @@ python3 skills/auto-tools/youtube_video.py '{
 }'
 ```
 
+### Updating yt-dlp safely
+
+Use the repository helper to update only the yt-dlp lock entry and install that
+exact version into `JARVIS_VENV` (default: `~/jarvis-venv`):
+
+```bash
+./bin/update-yt-dlp
+```
+
+Optionally verify real English transcript extraction after the update:
+
+```bash
+./bin/update-yt-dlp --smoke-url "https://www.youtube.com/watch?v=VIDEO_ID"
+```
+
+The helper deliberately does not run `uv sync` against the long-lived Jarvis
+environment, so unrelated packages are not removed. Routine updates change
+`uv.lock`; the minimum versions in `pyproject.toml` and `requirements.txt`
+should only be raised when an older yt-dlp release must be disallowed.
+
 ### Proxy setup (`LOCAL_PROXY` / `LOCAL_PROXY2`)
 
 The tool walks **`LOCAL_PROXY`**, then **`LOCAL_PROXY2`** (if set), trying each with `yt-dlp` until a download succeeds. If both are unset, `yt-dlp` runs **without** `--proxy`.
