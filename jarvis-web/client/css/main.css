@@ -164,7 +164,7 @@ body {
 
 /* Sidebar */
 .sidebar {
-  width: 335px;
+  width: 350px;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-primary);
   display: flex;
@@ -206,15 +206,28 @@ body {
 
 .sidebar-content {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .tab-content {
   display: none;
+  height: 100%;
+  min-height: 0;
 }
 
 .tab-content.active {
   display: block;
+}
+
+#tab-conversations.tab-content.active {
+  display: flex;
+  flex-direction: column;
+}
+
+#tab-tools.tab-content.active {
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .sidebar-footer {
@@ -2676,7 +2689,7 @@ body {
   
   .sidebar-content {
     overflow-x: hidden;
-    overflow-y: auto;
+    overflow-y: hidden;
   }
   
   .sidebar.mobile-open {
@@ -3649,9 +3662,11 @@ body {
 .history-list {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   gap: var(--space-xs);
   padding: var(--space-sm);
-  max-height: calc(100vh - 220px);
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
