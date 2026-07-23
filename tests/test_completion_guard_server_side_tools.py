@@ -297,6 +297,121 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
                 self.assertEqual(kwargs.get("room"), expected_room)
                 self.assertNotEqual(kwargs.get("room"), "ephemeral-session-99")
 
+    def test_latest_pending_message_reaction_updates_intelligence_and_conversation(self):
+        handler = ChatHandler.__new__(ChatHandler)
+        handler.socketio = _FakeSocketIO()
+        handler.sessions = {
+            "sid": {
+                "completion_guard_records": {
+                    "msg-live": {
+                        "message_id": "msg-live",
+                        "conversation_id": "conv-live",
+                        "feedback_requested": False,
+                    }
+                }
+            }
+        }
+        store = unittest.mock.MagicMock()
+        store.get_conversation.return_value = {
+            "messages": [{
+                "role": "assistant",
+                "tools_used": ["crypto_price"],
+                "data": {
+                    "_web_message_id": "msg-live",
+                    "_human_reaction_eligible": True,
+                    "_intelligence_mode": "cloud",
+                    "experience_id": 42,
+                    "usage": {"provider": "xai", "model": "grok-test"},
+                },
+            }]
+        }
+        store.update_message_data_by_web_message_id.return_value = True
+
+        with patch(
+            "jarvis_web_test_server.services.conversation_store.get_conversation_store",
+            return_value=store,
+        ), patch(
+            "intelligence_hooks.update_experience_from_user_reaction",
+            return_value={
+                "updated": True,
+                "reason": "recorded",
+                "priority": 0.8,
+            },
+        ) as update:
+            result = handler._apply_message_reaction("sid", {
+                "message_id": "msg-live",
+                "conversation_id": "conv-live",
+                "reaction": "up",
+            })
+
+        self.assertTrue(result["ok"])
+        update.assert_called_once_with(
+            42,
+            "up",
+            mode="cloud",
+            metadata={
+                "message_id": "msg-live",
+                "conversation_id": "conv-live",
+                "mode": "cloud",
+                "provider": "xai",
+                "model": "grok-test",
+                "tools_used": ["crypto_price"],
+                "completion_guard_status": "none",
+            },
+        )
+        store.update_message_data_by_web_message_id.assert_called_once()
+        event, payload, kwargs = handler.socketio.emitted[-1]
+        self.assertEqual(event, "message_reaction:updated")
+        self.assertEqual(payload["reaction"], "up")
+        self.assertEqual(kwargs["room"], "conversation:conv-live")
+
+    def test_message_reaction_rejects_response_after_user_continues(self):
+        handler = ChatHandler.__new__(ChatHandler)
+        handler.socketio = _FakeSocketIO()
+        handler.sessions = {
+            "sid": {
+                "completion_guard_records": {
+                    "msg-old": {
+                        "message_id": "msg-old",
+                        "conversation_id": "conv-live",
+                        "feedback_requested": False,
+                    }
+                }
+            }
+        }
+        store = unittest.mock.MagicMock()
+        store.get_conversation.return_value = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "data": {
+                        "_web_message_id": "msg-old",
+                        "_human_reaction_eligible": True,
+                        "_intelligence_mode": "cloud",
+                        "experience_id": 42,
+                    },
+                },
+                {"role": "user", "content": "new question", "data": {}},
+            ]
+        }
+
+        with patch(
+            "jarvis_web_test_server.services.conversation_store.get_conversation_store",
+            return_value=store,
+        ), patch(
+            "intelligence_hooks.update_experience_from_user_reaction",
+        ) as update:
+            result = handler._apply_message_reaction("sid", {
+                "message_id": "msg-old",
+                "conversation_id": "conv-live",
+                "reaction": "down",
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "not_latest_live_response")
+        update.assert_not_called()
+        store.update_message_data_by_web_message_id.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -610,7 +610,7 @@ def get_system_config():
         'STATUS_LLM_DEADLINE_MS': get_jarvis_setting('STATUS_LLM_DEADLINE_MS', '1000'),
         
         # Features
-        'JARVIS_INTELLIGENCE': get_jarvis_setting('JARVIS_INTELLIGENCE', 'false'),
+        'JARVIS_INTELLIGENCE': get_jarvis_setting('JARVIS_INTELLIGENCE', 'true'),
         'OPENCODE_BASE_URL': get_jarvis_setting('OPENCODE_BASE_URL', 'http://localhost:4096'),
     }
     

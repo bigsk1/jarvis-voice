@@ -1483,6 +1483,7 @@ class ChatUI {
       this._activatePendingToolsForMessage(data.message_id, true);
       this.isProcessing = true;
       this.updateSendButton();
+      this._clearMessageReactionActions();
       this.showThinking();
     });
     
@@ -1657,6 +1658,14 @@ class ChatUI {
       if (!staleContext) {
         Utils.toast(data.error || 'Completion Guard failed', 'error', 4000);
       }
+    });
+
+    socket.on('messageReactionUpdated', (data) => {
+      this._updateMessageReactionActions(data);
+    });
+
+    socket.on('messageReactionError', (data) => {
+      this._handleMessageReactionError(data);
     });
   }
 
@@ -3053,7 +3062,7 @@ class ChatUI {
   /**
    * Add assistant message to chat
    */
-  addAssistantMessage(text, toolsUsed = [], data = {}) {
+  addAssistantMessage(text, toolsUsed = [], data = {}, options = {}) {
     // Safety: ensure text is a string
     if (typeof text === 'object' && text !== null) {
       // Handle case where object was passed instead of string
@@ -3069,6 +3078,7 @@ class ChatUI {
     this.messagesContainer.querySelectorAll('.send-to-canvas-actions').forEach(actions => {
       actions.remove();
     });
+    this._clearMessageReactionActions();
     
     const messageEl = document.createElement('div');
     messageEl.className = 'message assistant new-message';
@@ -3853,6 +3863,9 @@ class ChatUI {
     });
 
     this._attachCompletionGuardCard(messageEl, data, toolsUsed);
+    if (options.allowReaction !== false) {
+      this._attachMessageReactionActions(messageEl, data);
+    }
     
     this.messagesContainer.appendChild(messageEl);
     Utils.hydrateRichContent(messageEl);
@@ -4694,6 +4707,7 @@ class ChatUI {
         return;
       }
 
+      this._clearMessageReactionActions();
       card.classList.add('submitting');
       statusEl.textContent = 'Repairing...';
       summaryEl.textContent = 'Trying one follow-up pass before logging a ticket.';
@@ -4798,6 +4812,7 @@ class ChatUI {
     }
 
     if (data.status === 'repairing') {
+      this._clearMessageReactionActions();
       card.classList.add('submitting');
       card.classList.remove('resolved');
       if (statusEl) statusEl.textContent = 'Repairing...';
@@ -4905,6 +4920,103 @@ class ChatUI {
       if (yesBtn) yesBtn.disabled = false;
       if (noBtn) noBtn.disabled = false;
       if (noteInput) noteInput.disabled = false;
+    }
+  }
+
+  _clearMessageReactionActions() {
+    this.messagesContainer.querySelectorAll('.message-reaction-actions').forEach((actions) => {
+      actions.remove();
+    });
+  }
+
+  _attachMessageReactionActions(messageEl, data = {}) {
+    const innerData = data.data || data || {};
+    const eligible = data.human_reaction_eligible === true
+      || innerData._human_reaction_eligible === true;
+    const messageId = data.message_id || innerData._web_message_id || '';
+    const conversationId = data.conversation_id
+      || innerData.conversation_id
+      || window.jarvisSocket?.conversationId
+      || '';
+    if (!eligible || !messageId || !conversationId) return;
+
+    const actions = document.createElement('div');
+    actions.className = 'message-reaction-actions';
+    actions.dataset.messageId = messageId;
+    actions.dataset.conversationId = conversationId;
+    actions.innerHTML = `
+      <button type="button" class="message-reaction-btn" data-reaction="up" title="I like this response — promote it for Intelligence" aria-label="I like this response — promote it for Intelligence">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M7 22H3V9h4v13Zm2-13 5-7c.6-.8 2-.4 2 1v5h4c1.2 0 2.1 1.1 1.8 2.3l-2 9A2.2 2.2 0 0 1 17.7 21H9V9Z"></path>
+        </svg>
+      </button>
+      <button type="button" class="message-reaction-btn" data-reaction="down" title="I dislike this response — prioritize it for Intelligence review" aria-label="I dislike this response — prioritize it for Intelligence review">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M7 2H3v13h4V2Zm2 13 5 7c.6.8 2 .4 2-1v-5h4c1.2 0 2.1-1.1 1.8-2.3l-2-9A2.2 2.2 0 0 0 17.7 3H9v12Z"></path>
+        </svg>
+      </button>
+      <span class="message-reaction-status" aria-live="polite"></span>
+    `;
+
+    actions.querySelectorAll('.message-reaction-btn').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (actions.classList.contains('submitting')) return;
+        actions.classList.add('submitting');
+        actions.querySelectorAll('.message-reaction-btn').forEach((item) => {
+          item.disabled = true;
+        });
+        window.jarvisSocket.emit('message_reaction:submit', {
+          message_id: messageId,
+          conversation_id: conversationId,
+          reaction: button.dataset.reaction
+        });
+      });
+    });
+
+    messageEl.appendChild(actions);
+  }
+
+  _updateMessageReactionActions(data = {}) {
+    const messageId = data.message_id || '';
+    const actions = this.messagesContainer.querySelector(
+      `.message-reaction-actions[data-message-id="${messageId}"]`
+    );
+    if (!actions) return;
+
+    actions.classList.remove('submitting');
+    actions.classList.add('recorded');
+    actions.querySelectorAll('.message-reaction-btn').forEach((button) => {
+      const selected = button.dataset.reaction === data.reaction;
+      button.classList.toggle('selected', selected);
+      button.disabled = true;
+      button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    });
+    const status = actions.querySelector('.message-reaction-status');
+    if (status) status.textContent = 'Saved for Intelligence';
+    Utils.toast(
+      data.reaction === 'up'
+        ? 'Helpful response promoted for Intelligence'
+        : 'Response marked unsatisfactory for Intelligence',
+      data.reaction === 'up' ? 'success' : 'info',
+      3000
+    );
+  }
+
+  _handleMessageReactionError(data = {}) {
+    const messageId = data.message_id || '';
+    const actions = this.messagesContainer.querySelector(
+      `.message-reaction-actions[data-message-id="${messageId}"]`
+    );
+    if (actions) actions.remove();
+
+    const quietReasons = new Set([
+      'reflection_not_pending',
+      'not_latest_live_response',
+      'reaction_not_available',
+      'already_reacted'
+    ]);
+    if (!quietReasons.has(data.reason)) {
+      Utils.toast('Could not save response feedback', 'error', 3000);
     }
   }
 

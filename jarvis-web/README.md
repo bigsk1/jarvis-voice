@@ -14,6 +14,7 @@ A modern, feature-rich web interface for Jarvis with real-time streaming, voice 
 - **Auto-title Generation** - Conversations are auto-titled based on content
 - **Pinned-safe cleanup** - `./bin/cleanup-all` prunes unpinned conversations older than 90 days; pinned chats are preserved
 - **Completion Guard** - Per-turn card to confirm tasks completed correctly (manual feedback), optional auto-evaluation path, bounded repair, follow-up ticket flow; streamed via WebSocket (`completion_guard:*`)
+- **Human reactions** - Thumbs up/down on only the latest live response when its Intelligence reflection is still pending; records satisfaction evidence without retrying the task
 - **Token usage** - Footer hint with cumulative tokens and estimated cost when the model returns usage; hover shows input/output, cache-write/read tokens and costs, savings from cache hits, provider/model provenance, and context percentage
 
 ### 🎤 Voice I/O
@@ -227,6 +228,7 @@ Event names below are what the **server** emits / the **client** sends (see `cli
 | `chat:send` | Send a message (supports image attachment) |
 | `chat:cancel` | Cancel current processing |
 | `completion_guard:submit` | Completion Guard feedback / repair flow |
+| `message_reaction:submit` | Record one human reaction for the latest pending response |
 | `conversation:load` | Load a conversation by id |
 | `mode:set` | Change mode (cloud/local) |
 | `tools:refresh` | Refresh tools list |
@@ -247,6 +249,7 @@ Event names below are what the **server** emits / the **client** sends (see `cli
 | `mode:changed` / `tools:updated` | Settings-driven updates |
 | `cancel:ack` | Ack after cancel |
 | `completion_guard:updated` / `completion_guard:ticket_created` / `completion_guard:error` | Completion Guard UI |
+| `message_reaction:updated` / `message_reaction:error` | Latest-response human reaction result |
 | `log:entry` | Real-time log stream line |
 | `logs:*` | Subscribe/sources ack helpers |
 | `proactive:counts` / `proactive:alert` / `proactive:reminder` | Proactive notifications |

@@ -504,9 +504,6 @@ tail -f logs/intelligence/intelligence-$(date +%Y-%m-%d).jsonl
 
 ### Intelligence not working
 ```bash
-# Check if enabled
-grep JARVIS_INTELLIGENCE config/cloud.env
-
 # Check health
 curl http://localhost:8880/api/intelligence/health | jq
 

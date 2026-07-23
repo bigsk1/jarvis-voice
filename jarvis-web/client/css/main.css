@@ -598,6 +598,77 @@ body {
   opacity: 0.65;
 }
 
+.message-reaction-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 var(--space-xs);
+}
+
+.message-reaction-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 5px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.message-reaction-btn svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.message-reaction-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.message-reaction-btn:disabled {
+  cursor: default;
+}
+
+.message-reaction-actions.submitting {
+  opacity: 0.65;
+}
+
+.message-reaction-btn.selected {
+  color: var(--accent-primary);
+  background: transparent;
+}
+
+.message-reaction-btn.selected svg {
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+.message-reaction-btn[data-reaction="down"].selected {
+  color: var(--warning);
+}
+
+.message-reaction-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Compact, clickable Canvas page preview */
 .canvas-inline-preview {
   width: min(238px, 72vw);

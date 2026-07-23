@@ -603,7 +603,7 @@ Per-request cap on provider-native web/X search (when server-side tools are on).
 
 After a successful or failed run:
 
-- **Experience recording** — `lib/intelligence_hooks.record_experience()` when `JARVIS_INTELLIGENCE=true`
+- **Experience recording** — `lib/intelligence_hooks.record_experience()` by default; `JARVIS_INTELLIGENCE=false` is an advanced emergency opt-out
 - **Correction learning** — `USER_CORRECTION_LEARNING_MODE=shadow|apply` detects user corrections across turns; see [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md#cross-turn-correction-learning-2026)
 - **Feedback bridge** — Low ratings retroactively mark experiences failed (see intelligence doc)
 
@@ -624,7 +624,6 @@ OPENAI_RESPONSES_SERVER_SIDE_MAX_TOOL_CALLS=0
 OPENAI_RESPONSES_RESULT_MAX_CHARS=6000
 
 # Intelligence + profile
-JARVIS_INTELLIGENCE=true
 USER_CORRECTION_LEARNING_MODE=shadow   # or apply
 
 # Debug

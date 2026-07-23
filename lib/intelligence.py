@@ -1045,6 +1045,19 @@ class IntelligenceLayer:
         )
         if not isinstance(latest_feedback, dict):
             latest_feedback = {}
+        user_feedback_record = raw_data.get('user_feedback', {})
+        latest_user_feedback = (
+            user_feedback_record.get('latest', {})
+            if isinstance(user_feedback_record, dict)
+            else {}
+        )
+        if not isinstance(latest_user_feedback, dict):
+            latest_user_feedback = {}
+        user_feedback_metadata = (
+            latest_user_feedback.get('metadata', {})
+            if isinstance(latest_user_feedback.get('metadata'), dict)
+            else {}
+        )
         response_style = context_data.get('response_style') or '[Not captured]'
         qa_word_limit = context_data.get('qa_word_limit') or '[Not captured]'
         multi_turn_word_limit = context_data.get('multi_turn_word_limit') or '[Not captured]'
@@ -1123,6 +1136,13 @@ Analyze this interaction to extract a PROCEDURAL insight (not a fact).
 - Issues: {json.dumps(latest_feedback.get('issues', []), default=str)[:800] if latest_feedback else '(none)'}
 - Analysis: {latest_feedback.get('analysis', '')[:800] if latest_feedback.get('analysis') else '(none)'}
 
+**Explicit User Reaction**:
+- Reaction: {latest_user_feedback.get('reaction', 'none')}
+- Source: {latest_user_feedback.get('source', '') or '(none)'}
+- Mode: {user_feedback_metadata.get('mode', '') or '(unknown)'}
+- Provider: {user_feedback_metadata.get('provider', '') or '(unknown)'}
+- Model: {user_feedback_metadata.get('model', '') or '(unknown)'}
+
 **Presentation Context**:
 - Response Style: {response_style}
 - Q&A Word Limit: {qa_word_limit}
@@ -1161,6 +1181,14 @@ CRITICAL EVALUATION:
     relevant prior knowledge (for example, the user's earlier notes about a hand sketch,
     provenance, related projects, previous uploads, or an explicit comparison/history request).
     Judge the incremental evidence; do not create a blanket rule to avoid memory for images.
+20. Explicit User Reaction is direct human evidence. A reaction of `up` means the user
+    strongly valued the settled answer or its tool path; identify the reusable strategy
+    without turning provider/model provenance into a universal model preference. A reaction
+    of `down` means the user was dissatisfied; determine the likely procedural weakness
+    without inventing a retry, clarification, or tool failure that did not occur.
+21. A strategy learned from a provider-native capability must remain capability-aware.
+    Never store provider-native labels as normal Jarvis preferred tools, and do not assume
+    another provider or local model has the same hosted capability.
 
 TOOL CATEGORIES (for understanding what tools do):
 - **MEMORY TOOLS** (check stored knowledge): search_memory, recall, semantic_recall, get_recent_conversations, search_conversations

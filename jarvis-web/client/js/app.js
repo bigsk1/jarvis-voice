@@ -3306,7 +3306,8 @@ class JarvisApp {
         this.chat.addAssistantMessage(
           msg.content || '',
           msg.tools_used || [],
-          msg.data || {}
+          msg.data || {},
+          { allowReaction: false }
         );
         
         // Sum up token usage from saved data

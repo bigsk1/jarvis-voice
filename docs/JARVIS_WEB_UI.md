@@ -1623,7 +1623,7 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 - **Keyboard shortcuts**: Ctrl+Enter send, Ctrl+N new chat, etc.
 - ✅ **Drag-drop files**: Upload images/files directly (DONE)
 - ✅ **Paste images**: Paste from clipboard (DONE)
-- **Message reactions**: Thumbs up/down for feedback
+- ✅ **Message reactions**: Thumbs up/down on the latest live response while its Intelligence reflection is pending
 - **Message editing**: Edit sent messages
 
 ---

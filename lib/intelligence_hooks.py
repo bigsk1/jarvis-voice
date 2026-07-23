@@ -83,20 +83,28 @@ def _run_async(coro):
 _intelligence_layer = None
 _intelligence_checked = False
 
-def _is_intelligence_enabled() -> bool:
+def _is_intelligence_enabled(mode: str | None = None) -> bool:
     """Check if intelligence is enabled via config.
     
     Set JARVIS_INTELLIGENCE=false in config/cloud.env or config/local.env to disable.
     """
-    from config_loader import get_config_value
-    enabled = get_config_value('JARVIS_INTELLIGENCE', 'true').lower()
+    from config_loader import config_scope, get_active_config_mode, get_config_value
+    if mode is not None:
+        resolved_mode = get_active_config_mode(mode)
+        with config_scope(resolved_mode):
+            enabled = get_config_value('JARVIS_INTELLIGENCE', 'true').lower()
+    else:
+        enabled = get_config_value('JARVIS_INTELLIGENCE', 'true').lower()
     return enabled in ('true', '1', 'yes', 'on')
 
-def _get_intel():
+def _get_intel(mode: str | None = None):
     """Resolve the Intelligence layer for the active request/data mode."""
+    from config_loader import get_active_config_mode
+    explicit_mode = mode
+    mode = get_active_config_mode(explicit_mode)
     
     # Check if disabled
-    if not _is_intelligence_enabled():
+    if not _is_intelligence_enabled(explicit_mode):
         return None
     
     # Preserve the existing test-injection contract without using this mutable
@@ -104,8 +112,6 @@ def _get_intel():
     if _intelligence_checked:
         return _intelligence_layer if _intelligence_layer else None
 
-    from config_loader import get_active_config_mode
-    mode = get_active_config_mode()
     try:
         from intelligence import get_intelligence_layer
         return get_intelligence_layer(mode)
@@ -397,6 +403,190 @@ def update_experience_from_feedback(
     except Exception as e:
         logger.warning(f"Failed to update experience {experience_id}: {e}")
         return False
+
+
+def is_experience_pending_user_reaction(
+    experience_id: int,
+    *,
+    mode: str | None = None,
+) -> bool:
+    """Return whether a live Web response can still accept one human reaction."""
+    if experience_id < 0:
+        return False
+
+    intel = _get_intel(mode)
+    if not intel:
+        return False
+
+    try:
+        row = intel.conn.execute("""
+            SELECT e.raw_data
+            FROM experiences e
+            JOIN reflection_queue rq ON rq.experience_id = e.id
+            WHERE e.id = ?
+              AND COALESCE(rq.processed, 0) = 0
+            LIMIT 1
+        """, (experience_id,)).fetchone()
+        if not row:
+            return False
+
+        try:
+            raw_data = json.loads(row["raw_data"] or "{}")
+        except Exception:
+            raw_data = {}
+        user_feedback = raw_data.get("user_feedback", {})
+        return not (
+            isinstance(user_feedback, dict)
+            and isinstance(user_feedback.get("latest"), dict)
+        )
+    except Exception as e:
+        logger.debug(
+            "Could not determine reaction eligibility for experience %s: %s",
+            experience_id,
+            e,
+        )
+        return False
+
+
+def update_experience_from_user_reaction(
+    experience_id: int,
+    reaction: str,
+    *,
+    mode: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Attach one explicit human reaction to a still-pending experience.
+
+    A reaction is satisfaction evidence, not evidence that Jarvis retried,
+    clarified, or operationally failed. Both reactions promote the pending
+    experience for reflection; a negative reaction receives higher priority.
+    """
+    result = {
+        "updated": False,
+        "reason": "unavailable",
+        "experience_id": experience_id,
+        "reaction": reaction,
+    }
+    if experience_id < 0:
+        result["reason"] = "invalid_experience"
+        return result
+
+    reaction = (reaction or "").strip().lower()
+    if reaction not in {"up", "down"}:
+        result["reason"] = "invalid_reaction"
+        return result
+
+    intel = _get_intel(mode)
+    if not intel:
+        result["reason"] = "intelligence_unavailable"
+        return result
+
+    metadata = redact_sensitive_data(metadata or {})
+    try:
+        cursor = intel.conn.cursor()
+        cursor.execute("""
+            SELECT e.outcome_success, e.user_satisfied, e.had_to_retry,
+                   e.had_to_clarify, e.raw_data
+            FROM experiences e
+            JOIN reflection_queue rq ON rq.experience_id = e.id
+            WHERE e.id = ?
+              AND COALESCE(rq.processed, 0) = 0
+            LIMIT 1
+        """, (experience_id,))
+        row = cursor.fetchone()
+        if not row:
+            result["reason"] = "reflection_not_pending"
+            return result
+
+        try:
+            raw_data = json.loads(row["raw_data"] or "{}")
+        except Exception:
+            raw_data = {}
+
+        feedback_record = raw_data.get("user_feedback", {})
+        if not isinstance(feedback_record, dict):
+            feedback_record = {}
+        if isinstance(feedback_record.get("latest"), dict):
+            result["reason"] = "already_reacted"
+            return result
+
+        latest_feedback = {
+            "reaction": reaction,
+            "source": "web_message_reaction",
+            "updated_at": datetime.now().isoformat(),
+            "metadata": metadata,
+        }
+        feedback_record["latest"] = latest_feedback
+        feedback_record.setdefault("history", [])
+        raw_data["user_feedback"] = feedback_record
+
+        priority = 0.8 if reaction == "up" else 0.9
+        cursor.execute("""
+            UPDATE experiences
+            SET user_satisfied = ?,
+                raw_data = ?
+            WHERE id = ?
+        """, (
+            1 if reaction == "up" else 0,
+            json.dumps(redact_sensitive_data(raw_data), default=str),
+            experience_id,
+        ))
+        if cursor.rowcount <= 0:
+            intel.conn.rollback()
+            result["reason"] = "experience_not_found"
+            return result
+
+        cursor.execute("""
+            UPDATE reflection_queue
+            SET priority = MAX(priority, ?)
+            WHERE experience_id = ?
+              AND COALESCE(processed, 0) = 0
+        """, (priority, experience_id))
+        if cursor.rowcount <= 0:
+            intel.conn.rollback()
+            result["reason"] = "reflection_not_pending"
+            return result
+
+        intel.conn.commit()
+        result.update({
+            "updated": True,
+            "reason": "recorded",
+            "priority": priority,
+            "user_satisfied": reaction == "up",
+        })
+
+        try:
+            from intelligence import get_intel_logger
+            get_intel_logger().log("user_reaction", {
+                "experience_id": experience_id,
+                "reaction": reaction,
+                "mode": mode,
+                "priority": priority,
+                "metadata": metadata,
+            })
+        except Exception:
+            pass
+
+        logger.info(
+            "Experience %s: recorded human reaction=%s with priority %.2f",
+            experience_id,
+            reaction,
+            priority,
+        )
+        return result
+    except Exception as e:
+        try:
+            intel.conn.rollback()
+        except Exception:
+            pass
+        logger.warning(
+            "Failed to update experience %s from human reaction: %s",
+            experience_id,
+            e,
+        )
+        result["reason"] = "update_failed"
+        return result
 
 
 def extract_user_correction_signals(query: str) -> dict[str, Any]:

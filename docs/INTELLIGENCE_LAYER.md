@@ -22,15 +22,12 @@ The Intelligence Layer is Jarvis's self-learning system. It observes interaction
 
 ## Quick Start
 
-### Enable/Disable
+### Default and Emergency Opt-Out
 
-Edit `config/cloud.env` or `config/local.env`:
+Intelligence is a core feature and is enabled by default. No cloud/local env
+declaration is required. To disable it temporarily for testing or recovery:
 
 ```bash
-# Enable (default)
-JARVIS_INTELLIGENCE=true
-
-# Disable for testing/debugging
 JARVIS_INTELLIGENCE=false
 
 # Uses current LLM_PROVIDER and related MODEL when you run it
@@ -706,8 +703,8 @@ data/
 ├── jarvis_intelligence_local.db # Local learning database (768-dim)
 
 config/
-├── cloud.env   # JARVIS_INTELLIGENCE=true/false + tuning params
-├── local.env   # JARVIS_INTELLIGENCE=true/false + tuning params
+├── cloud.env   # Optional Intelligence tuning and emergency opt-out
+├── local.env   # Optional Intelligence tuning and emergency opt-out
 
 logs/intelligence/
 ├── intelligence-YYYY-MM-DD.jsonl  # Daily intelligence logs
@@ -726,8 +723,8 @@ tests/
 ### Environment Variables
 
 ```bash
-# Enable/disable intelligence (default: true)
-JARVIS_INTELLIGENCE=true
+# Optional emergency opt-out (Intelligence defaults to enabled)
+# JARVIS_INTELLIGENCE=false
 
 # Learning parameters (advanced, optional)
 INTELLIGENCE_LEARNING_RATE=0.1          # How fast to update confidence on new evidence
@@ -749,18 +746,6 @@ INTELLIGENCE_NEGATIVE_WEIGHT=1.5        # Recommended; code default if unset: 1.
 | `NEGATIVE_WEIGHT` | 1.0 (equal to positive) | 2.0 (strong penalty) | 1.5 makes negatives win |
 
 **NEGATIVE_WEIGHT explained**: When multiple insights conflict (e.g., 2 positive + 1 negative for same tool), this multiplier ensures negative constraints are respected. At 1.5, a single negative insight can outweigh multiple weak positives.
-
-### Adding to Config Files
-
-Add to `config/cloud.env` and `config/local.env`:
-
-```bash
-# ===== Intelligence Layer =====
-# Enable self-learning from interactions
-JARVIS_INTELLIGENCE=true
-```
-
----
 
 ## Integration Points
 
@@ -851,7 +836,9 @@ print(f'Processed {processed} reflections')
 
 ### Reflection queue (operational detail)
 
-Reflection is **queued, not automatic**. Every interaction with `JARVIS_INTELLIGENCE=true` writes an experience and enqueues `reflection_queue` (`processed=0`). Nothing calls the reflection LLM until you trigger it.
+Reflection is **queued, not automatic**. By default, every interaction writes an
+experience and enqueues `reflection_queue` (`processed=0`). Nothing calls the
+reflection LLM until you trigger it.
 
 ```
 Every interaction:
@@ -1137,8 +1124,8 @@ The system continues working but insight matching quality is degraded until real
 ### Intelligence Not Working
 
 ```bash
-# Check if enabled
-grep JARVIS_INTELLIGENCE config/cloud.env
+# Check effective runtime status
+./bin/check-intelligence-health.py cloud --json
 
 # Check database exists
 ls -la data/jarvis_intelligence*.db
@@ -1938,7 +1925,7 @@ Example skip reasons:
 - [ ] **Chain caching / Macro-skills** - Learn entire workflows, not just tool preferences
 - [x] **Metrics exposition** - `/api/intelligence/metrics` (Prometheus); interactive UI at port 5003
 - [ ] **Grafana dashboard JSON** - Not checked in; build from metrics or use port 5003 UI
-- [ ] **Explicit user feedback** - `--thumbs-down` flag for explicit negative signal
+- [x] **Explicit user feedback** - Latest live Web response exposes 👍/👎 only while its reflection is pending; reactions update satisfaction and reflection priority without rerunning the task
 - [ ] **A/B testing** - Compare learned vs naive routing
 
 ---

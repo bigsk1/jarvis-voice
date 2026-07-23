@@ -27,10 +27,12 @@ import intelligence_hooks
 from intelligence_hooks import (
     _evaluate_insight_helpfulness,
     extract_user_correction_signals,
+    is_experience_pending_user_reaction,
     normalize_server_side_tools_for_reflection,
     record_user_correction_shadow_candidate,
     update_experience_from_user_correction,
     update_experience_from_feedback,
+    update_experience_from_user_reaction,
 )
 from intelligence import IntelligenceLayer, should_suppress_preferred_tool_for_native_search
 from orchestrator_v2 import Orchestrator
@@ -88,7 +90,8 @@ class IntelligenceServerSideToolsTests(unittest.TestCase):
         conn.execute("""
             CREATE TABLE reflection_queue (
                 experience_id INTEGER,
-                priority REAL DEFAULT 0.5
+                priority REAL DEFAULT 0.5,
+                processed BOOLEAN DEFAULT 0
             )
         """)
 
@@ -404,6 +407,97 @@ class IntelligenceServerSideToolsTests(unittest.TestCase):
         raw_data = json.loads(row["raw_data"])
         self.assertEqual(raw_data["completion_guard"]["status"], "repaired")
         self.assertEqual(raw_data["feedback"]["latest"]["rating"], 5)
+
+    def test_user_reaction_up_promotes_pending_experience_without_inventing_retry(self):
+        conn = self._install_fake_intel()
+        exp_id = self._insert_experience(
+            conn,
+            raw_data={"context": {"final_speech": "A useful answer"}},
+            outcome_success=1,
+            user_satisfied=0,
+            had_to_retry=0,
+            priority=0.4,
+        )
+
+        self.assertTrue(is_experience_pending_user_reaction(exp_id, mode="cloud"))
+        updated = update_experience_from_user_reaction(
+            exp_id,
+            "up",
+            mode="cloud",
+            metadata={
+                "provider": "xai",
+                "model": "grok-test",
+                "tools_used": ["crypto_price"],
+            },
+        )
+
+        self.assertTrue(updated["updated"])
+        self.assertEqual(updated["priority"], 0.8)
+        row = conn.execute("SELECT * FROM experiences WHERE id = ?", (exp_id,)).fetchone()
+        self.assertEqual(row["outcome_success"], 1)
+        self.assertEqual(row["user_satisfied"], 1)
+        self.assertEqual(row["had_to_retry"], 0)
+        self.assertEqual(row["had_to_clarify"], 0)
+
+        raw_data = json.loads(row["raw_data"])
+        latest = raw_data["user_feedback"]["latest"]
+        self.assertEqual(latest["reaction"], "up")
+        self.assertEqual(latest["source"], "web_message_reaction")
+        self.assertEqual(latest["metadata"]["provider"], "xai")
+        self.assertFalse(is_experience_pending_user_reaction(exp_id, mode="cloud"))
+
+    def test_user_reaction_down_marks_unsatisfied_but_preserves_success_and_flags(self):
+        conn = self._install_fake_intel()
+        exp_id = self._insert_experience(
+            conn,
+            raw_data={"context": {"final_speech": "Completed, but poorly"}},
+            outcome_success=1,
+            user_satisfied=1,
+            had_to_retry=0,
+            priority=0.5,
+        )
+
+        updated = update_experience_from_user_reaction(
+            exp_id,
+            "down",
+            mode="cloud",
+            metadata={"completion_guard_status": "none"},
+        )
+
+        self.assertTrue(updated["updated"])
+        self.assertEqual(updated["priority"], 0.9)
+        row = conn.execute("SELECT * FROM experiences WHERE id = ?", (exp_id,)).fetchone()
+        self.assertEqual(row["outcome_success"], 1)
+        self.assertEqual(row["user_satisfied"], 0)
+        self.assertEqual(row["had_to_retry"], 0)
+        self.assertEqual(row["had_to_clarify"], 0)
+        priority = conn.execute(
+            "SELECT priority FROM reflection_queue WHERE experience_id = ?",
+            (exp_id,),
+        ).fetchone()["priority"]
+        self.assertEqual(priority, 0.9)
+
+    def test_user_reaction_rejects_processed_reflection(self):
+        conn = self._install_fake_intel()
+        exp_id = self._insert_experience(conn)
+        conn.execute(
+            "UPDATE reflection_queue SET processed = 1 WHERE experience_id = ?",
+            (exp_id,),
+        )
+        conn.commit()
+
+        self.assertFalse(is_experience_pending_user_reaction(exp_id, mode="cloud"))
+        updated = update_experience_from_user_reaction(
+            exp_id,
+            "down",
+            mode="cloud",
+        )
+
+        self.assertFalse(updated["updated"])
+        self.assertEqual(updated["reason"], "reflection_not_pending")
+        row = conn.execute("SELECT * FROM experiences WHERE id = ?", (exp_id,)).fetchone()
+        self.assertEqual(row["user_satisfied"], 0)
+        self.assertNotIn("user_feedback", json.loads(row["raw_data"]))
 
 
 if __name__ == "__main__":

@@ -125,6 +125,14 @@ class JarvisSocket {
       this._emit('completionGuardError', data);
     });
 
+    this.socket.on('message_reaction:updated', (data) => {
+      this._emit('messageReactionUpdated', data);
+    });
+
+    this.socket.on('message_reaction:error', (data) => {
+      this._emit('messageReactionError', data);
+    });
+
     this.socket.on('mode:changed', (data) => {
       this.mode = data.mode;
       Utils.storage.set('mode', data.mode);

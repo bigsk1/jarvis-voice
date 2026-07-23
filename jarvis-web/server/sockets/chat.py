@@ -898,6 +898,161 @@ Important:
             print(f"[COMPLETION_GUARD] Failed to update intelligence experience {experience_id}: {e}")
             return False
 
+    @staticmethod
+    def _is_user_reaction_eligible(
+        experience_id: int | None,
+        mode: str,
+        *,
+        feedback_requested: bool = False,
+        cancelled: bool = False,
+    ) -> bool:
+        """Expose reactions only while the linked experience awaits reflection."""
+        if not experience_id or feedback_requested or cancelled:
+            return False
+        try:
+            from intelligence_hooks import is_experience_pending_user_reaction
+            return is_experience_pending_user_reaction(
+                int(experience_id),
+                mode=mode,
+            )
+        except Exception as e:
+            print(f"[REACTION] Failed to check experience {experience_id}: {e}")
+            return False
+
+    def _apply_message_reaction(self, session_id: str, data: dict) -> dict:
+        """Validate and persist one live-response reaction without running Jarvis again."""
+        message_id = str(data.get('message_id') or '').strip()
+        conversation_id = str(data.get('conversation_id') or '').strip()
+        reaction = str(data.get('reaction') or '').strip().lower()
+        failure = {
+            'ok': False,
+            'message_id': message_id,
+            'conversation_id': conversation_id,
+            'reaction': reaction,
+        }
+
+        if not message_id or not conversation_id:
+            return {**failure, 'reason': 'missing_message_context'}
+        if reaction not in {'up', 'down'}:
+            return {**failure, 'reason': 'invalid_reaction'}
+
+        records = (
+            self.sessions.get(session_id, {}).get('completion_guard_records', {})
+            if isinstance(getattr(self, 'sessions', None), dict)
+            else {}
+        )
+        live_record = records.get(message_id)
+        if not live_record:
+            live_record = next(
+                (
+                    record for record in records.values()
+                    if record.get('repair_message_id') == message_id
+                ),
+                None,
+            )
+        if (
+            not live_record
+            or live_record.get('conversation_id') != conversation_id
+            or live_record.get('feedback_requested')
+        ):
+            return {**failure, 'reason': 'not_latest_live_response'}
+
+        try:
+            from ..services.conversation_store import get_conversation_store
+            store = get_conversation_store()
+            conversation = store.get_conversation(conversation_id)
+        except Exception as e:
+            print(f"[REACTION] Failed to load conversation {conversation_id}: {e}")
+            return {**failure, 'reason': 'conversation_unavailable'}
+
+        messages = conversation.get('messages', []) if isinstance(conversation, dict) else []
+        latest_message = messages[-1] if messages else None
+        latest_data = (
+            latest_message.get('data') or {}
+            if isinstance(latest_message, dict)
+            else {}
+        )
+        if (
+            not isinstance(latest_message, dict)
+            or latest_message.get('role') != 'assistant'
+            or latest_data.get('_web_message_id') != message_id
+        ):
+            return {**failure, 'reason': 'not_latest_live_response'}
+        if latest_data.get('_human_reaction_eligible') is not True:
+            return {**failure, 'reason': 'reaction_not_available'}
+
+        experience_id = latest_data.get('experience_id')
+        mode = str(latest_data.get('_intelligence_mode') or '').strip().lower()
+        if not experience_id or mode not in {'cloud', 'local'}:
+            return {**failure, 'reason': 'missing_intelligence_context'}
+
+        usage = latest_data.get('usage') if isinstance(latest_data.get('usage'), dict) else {}
+        metadata = {
+            'message_id': message_id,
+            'conversation_id': conversation_id,
+            'mode': mode,
+            'provider': usage.get('provider') or latest_data.get('_llm_provider', ''),
+            'model': usage.get('model') or latest_data.get('_llm_model', ''),
+            'tools_used': latest_message.get('tools_used') or [],
+            'completion_guard_status': (
+                latest_data.get('_completion_guard', {}).get('status', 'none')
+                if isinstance(latest_data.get('_completion_guard'), dict)
+                else 'none'
+            ),
+        }
+
+        try:
+            from intelligence_hooks import update_experience_from_user_reaction
+            update = update_experience_from_user_reaction(
+                int(experience_id),
+                reaction,
+                mode=mode,
+                metadata=metadata,
+            )
+        except Exception as e:
+            print(f"[REACTION] Failed to update experience {experience_id}: {e}")
+            return {**failure, 'reason': 'intelligence_update_failed'}
+
+        if not update.get('updated'):
+            return {
+                **failure,
+                'reason': update.get('reason', 'reaction_not_available'),
+                'experience_id': experience_id,
+            }
+
+        persisted = store.update_message_data_by_web_message_id(
+            conversation_id,
+            message_id,
+            {
+                '_human_reaction_eligible': False,
+                '_user_feedback': {
+                    'reaction': reaction,
+                    'recorded_at': datetime.now().isoformat(),
+                },
+            },
+        )
+        if not persisted:
+            print(
+                f"[REACTION] Experience {experience_id} updated but conversation "
+                f"{conversation_id}/{message_id} could not be patched"
+            )
+
+        payload = {
+            'ok': True,
+            'message_id': message_id,
+            'conversation_id': conversation_id,
+            'experience_id': experience_id,
+            'reaction': reaction,
+            'user_satisfied': reaction == 'up',
+            'priority': update.get('priority'),
+        }
+        self.socketio.emit(
+            'message_reaction:updated',
+            payload,
+            room=self._delivery_room(session_id, conversation_id),
+        )
+        return payload
+
     def _classify_completion_guard_strategy(self, record: dict, note: str = '') -> dict:
         """Choose a repair strategy family and tool-family hints for the next pass."""
         return CompletionGuardPolicy.classify_strategy(record, note)
@@ -1551,6 +1706,21 @@ Previous structured data:
             if repair_usage:
                 save_data['usage'] = repair_usage
             save_data['_web_message_id'] = repair_message_id
+            save_data['_llm_provider'] = record.get('provider', '')
+            save_data['_llm_model'] = record.get('model', '')
+            if record.get('experience_id'):
+                save_data['experience_id'] = record['experience_id']
+                save_data['_intelligence_mode'] = mode
+            human_reaction_eligible = bool(
+                result.get('ok', True)
+                and self._is_user_reaction_eligible(
+                    record.get('experience_id'),
+                    mode,
+                    feedback_requested=bool(record.get('feedback_requested')),
+                    cancelled=False,
+                )
+            )
+            save_data['_human_reaction_eligible'] = human_reaction_eligible
             save_data['_completion_guard'] = {
                 'status': 'repair_response',
                 'repaired_from_message_id': parent_message_id,
@@ -1650,6 +1820,7 @@ Previous structured data:
                     'usage': repair_usage or {},
                     'audio_url': audio_url,
                     'server_side_tools': result.get('server_side_tools', {}),
+                    'human_reaction_eligible': human_reaction_eligible,
                     'completion_guard': {
                         'enabled': False,
                         'mode': 'off',
@@ -2252,6 +2423,14 @@ Previous structured data:
                     'message_id': message_id,
                     'error': f'Failed to start repair: {e}'
                 })
+
+        @self.socketio.on('message_reaction:submit')
+        def handle_message_reaction_submit(data):
+            """Record passive human feedback for the latest pending response."""
+            session_id = request.sid
+            result = self._apply_message_reaction(session_id, data or {})
+            if not result.get('ok'):
+                emit('message_reaction:error', result)
         
         @self.socketio.on('conversation:load')
         def handle_load_conversation(data):
@@ -3465,6 +3644,15 @@ Previous structured data:
                 effective_model,
                 mode,
             )
+            human_reaction_eligible = bool(
+                result.get('ok', True)
+                and self._is_user_reaction_eligible(
+                    result.get('experience_id'),
+                    mode,
+                    feedback_requested=bool(request_feedback),
+                    cancelled=bool(was_cancelled),
+                )
+            )
             try:
                 from ..services.conversation_store import get_conversation_store
                 store = get_conversation_store()
@@ -3505,8 +3693,12 @@ Previous structured data:
                 if stash_info:
                     save_data['stash'] = stash_info
                 save_data['_web_message_id'] = message_id
+                save_data['_llm_provider'] = effective_provider
+                save_data['_llm_model'] = effective_model
                 if result.get('experience_id'):
                     save_data['experience_id'] = result['experience_id']
+                    save_data['_intelligence_mode'] = mode
+                save_data['_human_reaction_eligible'] = human_reaction_eligible
                 # Include token usage for tracking
                 if response_usage:
                     save_data['usage'] = response_usage
@@ -3590,6 +3782,10 @@ Previous structured data:
                 response_data['stash'] = stash_info
             if result.get('experience_id'):
                 response_data['experience_id'] = result['experience_id']
+                response_data['_intelligence_mode'] = mode
+            response_data['_llm_provider'] = effective_provider
+            response_data['_llm_model'] = effective_model
+            response_data['_human_reaction_eligible'] = human_reaction_eligible
             if result.get('tool_trace'):
                 response_data['_tool_trace'] = result['tool_trace']
 
@@ -3647,6 +3843,7 @@ Previous structured data:
                 'usage': response_usage or {},
                 'audio_url': audio_url,
                 'server_side_tools': result.get('server_side_tools', {}),  # xAI/Anthropic native tools
+                'human_reaction_eligible': human_reaction_eligible,
                 'completion_guard': {
                     'enabled': completion_guard_config.get('enabled', False),
                     'mode': completion_guard_config.get('mode', 'off'),
