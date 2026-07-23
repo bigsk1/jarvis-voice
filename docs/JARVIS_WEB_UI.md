@@ -1623,8 +1623,7 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 - **Keyboard shortcuts**: Ctrl+Enter send, Ctrl+N new chat, etc.
 - ✅ **Drag-drop files**: Upload images/files directly (DONE)
 - ✅ **Paste images**: Paste from clipboard (DONE)
-- ✅ **Message reactions**: Thumbs up/down on the latest live response while its Intelligence reflection is pending
-- ✅ **Latest-exchange copy**: Leftmost response action copies only the associated user query and Jarvis response as Markdown, with HTTP/mobile fallback
+- ✅ **Latest-response action rail**: Copy Markdown, Send to Canvas, and conditional positive/negative Intelligence feedback share one compact mobile-friendly row
 - **Message editing**: Edit sent messages
 
 ---

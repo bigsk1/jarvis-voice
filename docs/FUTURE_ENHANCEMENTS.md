@@ -550,7 +550,7 @@ Several post-turn hooks already update the intelligence DB before reflection run
 |------|----------|--------------|
 | **Completion Guard (auto + manual)** | `update_experience_from_completion_guard()` | Writes guard status onto the linked experience; `repaired` / `unresolved` / `ticket_created` adjust `outcome_success`, `user_satisfied`, `had_to_retry`; folds corrected answer/tools into `raw_data.context` for reflection |
 | **Feedback (LLM-as-QA)** | `update_experience_from_feedback()` | All ratings store metadata in `raw_data.feedback.latest`; ratings ≤ 2 retroactively mark `outcome_success=false` and bump reflection priority |
-| **Latest-response human reaction** | `update_experience_from_user_reaction()` | One 👍/👎 while reflection is pending stores direct satisfaction evidence and promotes reflection without retrying, clarifying, or changing operational success |
+| **Latest-response human reaction** | `update_experience_from_user_reaction()` | One positive/negative reaction while reflection is pending stores direct satisfaction evidence and promotes reflection without retrying, clarifying, or changing operational success |
 | **Same-turn signal inference** | `_infer_user_signals()` in `intelligence_hooks.py` | Pattern-matches the **current** query ("try again", "what I meant", "not that") at record time — does **not** look back at the previous turn |
 
 See [FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md) and [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md) for the full bridge docs.

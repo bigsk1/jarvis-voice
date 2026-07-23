@@ -14,8 +14,7 @@ A modern, feature-rich web interface for Jarvis with real-time streaming, voice 
 - **Auto-title Generation** - Conversations are auto-titled based on content
 - **Pinned-safe cleanup** - `./bin/cleanup-all` prunes unpinned conversations older than 90 days; pinned chats are preserved
 - **Completion Guard** - Per-turn card to confirm tasks completed correctly (manual feedback), optional auto-evaluation path, bounded repair, follow-up ticket flow; streamed via WebSocket (`completion_guard:*`)
-- **Human reactions** - Thumbs up/down on only the latest live response when its Intelligence reflection is still pending; records satisfaction evidence without retrying the task
-- **Latest-response actions** - Copy Markdown stays leftmost, Send to Canvas sits beside it when eligible, and pending-reflection reactions follow after a visual gap; copy supports secure Clipboard API and HTTP/mobile fallback
+- **Latest-response actions** - Copy Markdown stays leftmost, Send to Canvas sits beside it when eligible, and pending-reflection promotion/review controls follow after a visual gap; copy supports secure Clipboard API and HTTP/mobile fallback
 - **Token usage** - Footer hint with cumulative tokens and estimated cost when the model returns usage; hover shows input/output, cache-write/read tokens and costs, savings from cache hits, provider/model provenance, and context percentage
 
 ### 🎤 Voice I/O

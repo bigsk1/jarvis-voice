@@ -1925,7 +1925,6 @@ Example skip reasons:
 - [ ] **Chain caching / Macro-skills** - Learn entire workflows, not just tool preferences
 - [x] **Metrics exposition** - `/api/intelligence/metrics` (Prometheus); interactive UI at port 5003
 - [ ] **Grafana dashboard JSON** - Not checked in; build from metrics or use port 5003 UI
-- [x] **Explicit user feedback** - Latest live Web response exposes 👍/👎 only while its reflection is pending; reactions update satisfaction and reflection priority without rerunning the task
 - [ ] **A/B testing** - Compare learned vs naive routing
 
 ---
