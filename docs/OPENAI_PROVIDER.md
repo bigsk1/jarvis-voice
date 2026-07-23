@@ -17,6 +17,60 @@ Code entry points:
 
 **Not migrated to Responses in this layer** (unchanged endpoints): Whisper STT, TTS, image/video APIs, embeddings, and other callers that hit OpenAI separately from `OpenAIProvider.chat_with_tools`. Simple `chat()` on `OpenAIProvider` always uses Chat Completions.
 
+## Codex plan OAuth (evaluated, not supported)
+
+Jarvis does **not** currently use a ChatGPT/Codex subscription as an OpenAI
+provider credential. There is no active `OPENAI_OAUTH` setting, and adding
+`OPENAI_OAUTH=true` to an env file does not change the runtime path described in
+this document.
+
+OpenAI's documented product-integration surface for reusing a host's Codex
+sign-in is [Codex App Server](https://learn.chatgpt.com/docs/app-server), not a
+general-purpose OAuth credential that Jarvis can pass to the normal OpenAI SDK.
+App Server can reuse and refresh the host's ChatGPT login, discover the models
+available to that account, stream agent events, and report account rate limits
+and token activity. Its upstream model path is Responses-based, but its client
+contract is a JSON-RPC **agent runtime**, not the `/v1/responses` request/response
+contract used by `OpenAIProvider`.
+
+That makes it a poor fit for Jarvis's current provider boundary:
+
+- **Duplicate orchestration:** Jarvis already owns Tool RAG, memory, tool
+  execution, approvals, retries, status events, and conversation history. Codex
+  App Server is designed to own an agent thread and its tool loop.
+- **Tool integration is not yet a stable drop-in:** App Server's custom
+  [`dynamicTools` request/response flow](https://learn.chatgpt.com/docs/app-server#dynamic-tool-calls-experimental)
+  is currently experimental. It does not directly match
+  `LLMProvider.chat_with_tools`, which returns one tool request to the Jarvis
+  orchestrator for execution.
+- **High per-turn context overhead:** A focused live evaluation on 2026-07-23
+  asked `gpt-5.6-luna` to return exactly `READY`. App Server reported only five
+  output tokens but 16,223 input tokens for one turn and 16,882 for a stripped
+  `/tmp` turn using low reasoning, no environments, and no dynamic tools. This
+  roughly 16K-token agent baseline would be counted again across Jarvis routing,
+  tool-continuation, workflow-helper, completion-guard, and status-model calls.
+- **Subscription limits are workload-sensitive:** Codex plan usage depends on
+  model, context, reasoning, retrieval, and tool activity rather than a simple
+  API-token price. A high-frequency voice assistant could consume included
+  usage much faster than an interactive coding session. See OpenAI's
+  [Codex usage-limit guidance](https://learn.chatgpt.com/docs/pricing#what-are-the-usage-limits-for-my-plan).
+- **Deployment is host-specific:** A native Jarvis process could reuse a Codex
+  login on the same host. Docker cannot implicitly see the host's Codex binary,
+  credential store, or App Server socket; exposing or mounting those would need
+  a deliberate authenticated bridge and a separate security review.
+- **It would not replace the API key:** Embeddings, image/video generation,
+  Whisper STT, TTS, and other OpenAI Platform calls would still require
+  `OPENAI_API_KEY` and API billing.
+
+We may revisit Codex OAuth as an explicit, opt-in provider if App Server offers a
+stable Jarvis-compatible tool bridge or a materially lighter inference mode.
+Any future design should use a long-lived App Server connection, discover
+subscription models dynamically, expose sanitized plan/rate-limit data in the
+System tab, classify per-response cost as subscription/unknown, remain disabled
+by default, and never silently fall back to `OPENAI_API_KEY`. Until those
+conditions are met, the supported OpenAI provider remains the API-key-backed
+Chat Completions/Responses implementation below.
+
 ## Chat Completions (default)
 
 When responses mode is **not** active for a tool-capable turn, `OpenAIProvider.chat_with_tools` calls:
