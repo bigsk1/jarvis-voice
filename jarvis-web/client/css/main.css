@@ -566,46 +566,14 @@ body {
   border-bottom-left-radius: var(--radius-sm);
 }
 
-.message-actions {
-  display: flex;
-  gap: var(--space-xs);
-  padding: 0 var(--space-xs);
-}
-
-.message-action-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 9px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  font: inherit;
-  font-size: var(--text-xs);
-  cursor: pointer;
-  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
-}
-
-.message-action-btn:hover:not(:disabled) {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-  border-color: var(--border-primary);
-}
-
-.message-action-btn:disabled {
-  cursor: default;
-  opacity: 0.65;
-}
-
-.message-reaction-actions {
+.message-response-actions {
   display: flex;
   align-items: center;
   gap: 2px;
   padding: 0 var(--space-xs);
 }
 
-.message-reaction-btn {
+.message-response-action-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -620,7 +588,7 @@ body {
   transition: color var(--transition-fast), background var(--transition-fast);
 }
 
-.message-reaction-btn svg {
+.message-response-action-btn svg {
   width: 17px;
   height: 17px;
   fill: none;
@@ -631,31 +599,48 @@ body {
   pointer-events: none;
 }
 
-.message-reaction-btn:hover:not(:disabled) {
+.message-response-action-btn:hover:not(:disabled) {
   color: var(--text-primary);
   background: var(--bg-hover);
 }
 
-.message-reaction-btn:disabled {
+.message-response-action-btn:disabled {
   cursor: default;
 }
 
-.message-reaction-actions.submitting {
+.message-response-actions.submitting {
   opacity: 0.65;
 }
 
-.message-reaction-btn.selected {
+.message-response-action-btn.selected {
   color: var(--accent-primary);
   background: transparent;
 }
 
-.message-reaction-btn.selected svg {
+.message-response-action-btn.selected svg {
   fill: currentColor;
   stroke: currentColor;
 }
 
-.message-reaction-btn[data-reaction="down"].selected {
+.message-response-action-btn[data-reaction="down"].selected {
   color: var(--warning);
+}
+
+.message-intelligence-action-start {
+  margin-left: 5px;
+}
+
+.message-copy-btn.copied {
+  color: var(--success);
+  background: transparent;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .message-response-action-btn {
+    width: 44px;
+    height: 44px;
+    padding: 12px;
+  }
 }
 
 .message-reaction-status {

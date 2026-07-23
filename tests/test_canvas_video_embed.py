@@ -109,8 +109,8 @@ vm.runInContext(source.slice(start, end), sandbox);
 def test_web_chat_exposes_context_aware_send_to_canvas_action():
     chat_js = (PROJECT_ROOT / "jarvis-web" / "client" / "js" / "chat.js").read_text()
 
-    assert "Send to Canvas" in chat_js
+    assert "Send this response to Canvas" in chat_js
     assert "tool_hints: ['canvas']" in chat_js
     assert "Preserve useful source links" in chat_js
-    assert "querySelectorAll('.send-to-canvas-actions')" in chat_js
-    assert "actions.remove()" in chat_js
+    assert 'class="message-response-action-btn send-to-canvas-btn"' in chat_js
+    assert "allowCanvas: !toolsUsed.includes('canvas')" in chat_js

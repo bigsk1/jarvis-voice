@@ -1062,7 +1062,7 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 |---------|--------|-------------|
 | **Canvas header icon** | ✅ Done | 📄 button opens Canvas in new tab |
 | **`/canvas` command** | ✅ Done | Type `/canvas query` to research + save to Canvas |
-| **Send to Canvas button** | ✅ Done | Create a Canvas page from the latest Jarvis response and its supporting conversation context |
+| **Send to Canvas button** | ✅ Done | Second icon in the consolidated latest-response action rail; creates a Canvas page from that response and its supporting conversation context |
 | **Inline Canvas preview** | ✅ Done | Show a compact clickable page thumbnail and direct Canvas link after successful page creation |
 
 ---
@@ -1624,6 +1624,7 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 - ✅ **Drag-drop files**: Upload images/files directly (DONE)
 - ✅ **Paste images**: Paste from clipboard (DONE)
 - ✅ **Message reactions**: Thumbs up/down on the latest live response while its Intelligence reflection is pending
+- ✅ **Latest-exchange copy**: Leftmost response action copies only the associated user query and Jarvis response as Markdown, with HTTP/mobile fallback
 - **Message editing**: Edit sent messages
 
 ---

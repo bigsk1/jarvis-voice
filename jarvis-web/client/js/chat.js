@@ -1483,7 +1483,7 @@ class ChatUI {
       this._activatePendingToolsForMessage(data.message_id, true);
       this.isProcessing = true;
       this.updateSendButton();
-      this._clearMessageReactionActions();
+      this._clearMessageResponseActions();
       this.showThinking();
     });
     
@@ -3033,7 +3033,9 @@ class ChatUI {
       badgeHtml = `<div class="command-badge">${activeBadge}</div>`;
     }
     
-    const defaultPrompt = images.length > 1 ? '<em>What\'s in these images?</em>' : '<em>What\'s in this image?</em>';
+    const defaultPromptText = images.length > 1 ? 'What\'s in these images?' : 'What\'s in this image?';
+    const defaultPrompt = `<em>${defaultPromptText}</em>`;
+    messageEl._jarvisMarkdownContent = text || defaultPromptText;
 
     messageEl.innerHTML = `
       <div class="message-bubble">
@@ -3073,12 +3075,8 @@ class ChatUI {
     }
     text = text || '';
 
-    // Only the latest Jarvis response can be sent to Canvas. This keeps the
-    // action unambiguous and also works while conversation history is rebuilt.
-    this.messagesContainer.querySelectorAll('.send-to-canvas-actions').forEach(actions => {
-      actions.remove();
-    });
-    this._clearMessageReactionActions();
+    // Keep one consolidated action rail on only the latest Jarvis response.
+    this._clearMessageResponseActions();
     
     const messageEl = document.createElement('div');
     messageEl.className = 'message assistant new-message';
@@ -3824,21 +3822,7 @@ class ChatUI {
       ${videoHtml}
       ${youtubeEmbedsHtml}
       ${messageBubbleHtml}
-      ${toolsUsed.includes('canvas') ? '' : `
-        <div class="message-actions send-to-canvas-actions">
-          <button type="button" class="message-action-btn send-to-canvas-btn" title="Create a Canvas page from this response and its supporting context">
-            <span aria-hidden="true">📄</span> Send to Canvas
-          </button>
-        </div>
-      `}
     `;
-
-    const sendToCanvasBtn = messageEl.querySelector('.send-to-canvas-btn');
-    if (sendToCanvasBtn) {
-      sendToCanvasBtn.addEventListener('click', () => {
-        this.sendResponseToCanvas(text, sendToCanvasBtn);
-      });
-    }
     
     // Add click handler for details toggle
     const detailsToggle = messageEl.querySelector('.details-toggle');
@@ -3863,9 +3847,10 @@ class ChatUI {
     });
 
     this._attachCompletionGuardCard(messageEl, data, toolsUsed);
-    if (options.allowReaction !== false) {
-      this._attachMessageReactionActions(messageEl, data);
-    }
+    this._attachMessageResponseActions(messageEl, text, data, {
+      allowReaction: options.allowReaction !== false,
+      allowCanvas: !toolsUsed.includes('canvas')
+    });
     
     this.messagesContainer.appendChild(messageEl);
     Utils.hydrateRichContent(messageEl);
@@ -4707,7 +4692,7 @@ class ChatUI {
         return;
       }
 
-      this._clearMessageReactionActions();
+      this._clearMessageResponseActions();
       card.classList.add('submitting');
       statusEl.textContent = 'Repairing...';
       summaryEl.textContent = 'Trying one follow-up pass before logging a ticket.';
@@ -4812,7 +4797,7 @@ class ChatUI {
     }
 
     if (data.status === 'repairing') {
-      this._clearMessageReactionActions();
+      this._clearMessageResponseActions();
       card.classList.add('submitting');
       card.classList.remove('resolved');
       if (statusEl) statusEl.textContent = 'Repairing...';
@@ -4923,46 +4908,79 @@ class ChatUI {
     }
   }
 
-  _clearMessageReactionActions() {
-    this.messagesContainer.querySelectorAll('.message-reaction-actions').forEach((actions) => {
+  _clearMessageResponseActions() {
+    this.messagesContainer.querySelectorAll('.message-response-actions').forEach((actions) => {
       actions.remove();
     });
   }
 
-  _attachMessageReactionActions(messageEl, data = {}) {
+  _attachMessageResponseActions(messageEl, responseText, data = {}, options = {}) {
     const innerData = data.data || data || {};
-    const eligible = data.human_reaction_eligible === true
-      || innerData._human_reaction_eligible === true;
+    const eligible = options.allowReaction !== false && (
+      data.human_reaction_eligible === true
+      || innerData._human_reaction_eligible === true
+    );
     const messageId = data.message_id || innerData._web_message_id || '';
     const conversationId = data.conversation_id
       || innerData.conversation_id
       || window.jarvisSocket?.conversationId
       || '';
-    if (!eligible || !messageId || !conversationId) return;
+    const reactionAvailable = eligible && Boolean(messageId) && Boolean(conversationId);
+    const canvasAvailable = options.allowCanvas !== false;
+    const userMessages = this.messagesContainer.querySelectorAll('.message.user');
+    const userMessage = userMessages[userMessages.length - 1];
+    const userText = userMessage?._jarvisMarkdownContent
+      || userMessage?.querySelector('.message-bubble')?.textContent?.trim()
+      || '';
+    if (!userText || !responseText) return;
 
     const actions = document.createElement('div');
-    actions.className = 'message-reaction-actions';
+    actions.className = 'message-response-actions';
     actions.dataset.messageId = messageId;
     actions.dataset.conversationId = conversationId;
     actions.innerHTML = `
-      <button type="button" class="message-reaction-btn" data-reaction="up" title="I like this response — promote it for Intelligence" aria-label="I like this response — promote it for Intelligence">
+      <button type="button" class="message-response-action-btn message-copy-btn" title="Copy latest question and response as Markdown" aria-label="Copy latest question and response as Markdown">
         <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M7 22H3V9h4v13Zm2-13 5-7c.6-.8 2-.4 2 1v5h4c1.2 0 2.1 1.1 1.8 2.3l-2 9A2.2 2.2 0 0 1 17.7 21H9V9Z"></path>
+          <rect x="8" y="8" width="12" height="12" rx="2"></rect>
+          <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
         </svg>
       </button>
-      <button type="button" class="message-reaction-btn" data-reaction="down" title="I dislike this response — prioritize it for Intelligence review" aria-label="I dislike this response — prioritize it for Intelligence review">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M7 2H3v13h4V2Zm2 13 5 7c.6.8 2 .4 2-1v-5h4c1.2 0 2.1-1.1 1.8-2.3l-2-9A2.2 2.2 0 0 0 17.7 3H9v12Z"></path>
-        </svg>
-      </button>
-      <span class="message-reaction-status" aria-live="polite"></span>
+      ${canvasAvailable ? `
+        <button type="button" class="message-response-action-btn send-to-canvas-btn" title="Send this response to Canvas" aria-label="Send this response to Canvas">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 3h8l4 4v14H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"></path>
+            <path d="M14 3v5h5M8 13h6M8 17h6"></path>
+          </svg>
+        </button>
+      ` : ''}
+      ${reactionAvailable ? `
+        <button type="button" class="message-response-action-btn message-intelligence-action-start" data-reaction="up" title="I like this response — promote it for Intelligence" aria-label="I like this response — promote it for Intelligence">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 22H3V9h4v13Zm2-13 5-7c.6-.8 2-.4 2 1v5h4c1.2 0 2.1 1.1 1.8 2.3l-2 9A2.2 2.2 0 0 1 17.7 21H9V9Z"></path>
+          </svg>
+        </button>
+        <button type="button" class="message-response-action-btn" data-reaction="down" title="I dislike this response — prioritize it for Intelligence review" aria-label="I dislike this response — prioritize it for Intelligence review">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 2H3v13h4V2Zm2 13 5 7c.6.8 2 .4 2-1v-5h4c1.2 0 2.1-1.1 1.8-2.3l-2-9A2.2 2.2 0 0 0 17.7 3H9v12Z"></path>
+          </svg>
+        </button>
+        <span class="message-reaction-status" aria-live="polite"></span>
+      ` : ''}
     `;
 
-    actions.querySelectorAll('.message-reaction-btn').forEach((button) => {
+    actions.querySelector('.message-copy-btn')?.addEventListener('click', (event) => {
+      this._copyLatestExchangeAsMarkdown(event.currentTarget, userText, responseText);
+    });
+
+    actions.querySelector('.send-to-canvas-btn')?.addEventListener('click', (event) => {
+      this.sendResponseToCanvas(responseText, event.currentTarget);
+    });
+
+    actions.querySelectorAll('[data-reaction]').forEach((button) => {
       button.addEventListener('click', () => {
         if (actions.classList.contains('submitting')) return;
         actions.classList.add('submitting');
-        actions.querySelectorAll('.message-reaction-btn').forEach((item) => {
+        actions.querySelectorAll('[data-reaction]').forEach((item) => {
           item.disabled = true;
         });
         window.jarvisSocket.emit('message_reaction:submit', {
@@ -4976,16 +4994,68 @@ class ChatUI {
     messageEl.appendChild(actions);
   }
 
+  async _copyLatestExchangeAsMarkdown(button, userText, responseText) {
+    const markdown = `## User\n\n${String(userText).trim()}\n\n## Jarvis\n\n${String(responseText).trim()}\n`;
+    const originalHtml = button.innerHTML;
+    const originalTitle = button.title;
+
+    try {
+      let copied = false;
+      let clipboardError = null;
+      if (window.isSecureContext
+          && navigator.clipboard
+          && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(markdown);
+          copied = true;
+        } catch (error) {
+          clipboardError = error;
+        }
+      }
+
+      if (!copied) {
+        try {
+          Utils.copyTextFallback(markdown);
+          copied = true;
+        } catch (fallbackError) {
+          throw clipboardError || fallbackError;
+        }
+      }
+
+      button.classList.add('copied');
+      button.disabled = true;
+      button.title = 'Copied as Markdown';
+      button.setAttribute('aria-label', 'Copied as Markdown');
+      button.innerHTML = `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m5 12 4 4L19 6"></path>
+        </svg>
+      `;
+      Utils.toast('Copied latest exchange as Markdown', 'success', 1800);
+
+      setTimeout(() => {
+        button.classList.remove('copied');
+        button.disabled = false;
+        button.title = originalTitle;
+        button.setAttribute('aria-label', originalTitle);
+        button.innerHTML = originalHtml;
+      }, 1400);
+    } catch (error) {
+      console.error('[Chat] Failed to copy latest exchange:', error);
+      Utils.toast('Could not copy the latest exchange', 'error', 3000);
+    }
+  }
+
   _updateMessageReactionActions(data = {}) {
     const messageId = data.message_id || '';
     const actions = this.messagesContainer.querySelector(
-      `.message-reaction-actions[data-message-id="${messageId}"]`
+      `.message-response-actions[data-message-id="${messageId}"]`
     );
     if (!actions) return;
 
     actions.classList.remove('submitting');
     actions.classList.add('recorded');
-    actions.querySelectorAll('.message-reaction-btn').forEach((button) => {
+    actions.querySelectorAll('[data-reaction]').forEach((button) => {
       const selected = button.dataset.reaction === data.reaction;
       button.classList.toggle('selected', selected);
       button.disabled = true;
@@ -5005,9 +5075,14 @@ class ChatUI {
   _handleMessageReactionError(data = {}) {
     const messageId = data.message_id || '';
     const actions = this.messagesContainer.querySelector(
-      `.message-reaction-actions[data-message-id="${messageId}"]`
+      `.message-response-actions[data-message-id="${messageId}"]`
     );
-    if (actions) actions.remove();
+    if (actions) {
+      actions.classList.remove('submitting');
+      actions.querySelectorAll('[data-reaction], .message-reaction-status').forEach((item) => {
+        item.remove();
+      });
+    }
 
     const quietReasons = new Set([
       'reflection_not_pending',
