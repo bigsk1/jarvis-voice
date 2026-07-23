@@ -25,6 +25,10 @@ from config_loader import load_config, get_config_value
 from llm_provider import create_configured_provider
 from tool_logger import ToolLogger
 from llm_logger import LLMLogger
+from workflow_availability import (
+    check_workflow_registry_availability,
+    workflow_unavailable_message,
+)
 
 
 class PipelineExecutor:
@@ -231,6 +235,28 @@ class PipelineExecutor:
                 "tools_used": [...]
             }
         """
+        registry = getattr(self.executor, "registry", None)
+        if registry is not None:
+            availability = check_workflow_registry_availability(
+                workflow,
+                registry,
+                excluded_tools=getattr(self.executor, "excluded_tools", set()),
+            )
+            if not availability["available"]:
+                message = workflow_unavailable_message(workflow, availability)
+                return {
+                    "ok": False,
+                    "speech": message,
+                    "error": message,
+                    "data": {
+                        "workflow_id": workflow.get("id"),
+                        "availability": availability,
+                        "results": [],
+                    },
+                    "tools_used": [],
+                    "steps_completed": 0,
+                }
+
         # Reset usage tracking for this workflow
         self._total_usage = {
             "input_tokens": 0,

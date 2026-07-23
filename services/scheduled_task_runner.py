@@ -99,6 +99,10 @@ def _run_workflow_task(mode: str, workflow_id: str, query: str | None = None) ->
         from workflow_loader import WorkflowLoader
         from pipeline_executor import PipelineExecutor
         from tool_schema import get_tool_registry
+        from workflow_availability import (
+            check_workflow_registry_availability,
+            workflow_unavailable_message,
+        )
 
         loader = WorkflowLoader(explicit_only=True)
         workflow = loader.get_workflow(workflow_id)
@@ -113,6 +117,22 @@ def _run_workflow_task(mode: str, workflow_id: str, query: str | None = None) ->
             raise ValueError(f"Workflow '{workflow_id}' not found")
 
         registry = get_tool_registry(mode=mode)
+        availability = check_workflow_registry_availability(workflow, registry)
+        if not availability["available"]:
+            message = workflow_unavailable_message(workflow, availability)
+            return {
+                "ok": False,
+                "speech": message,
+                "error": message,
+                "data": {
+                    "workflow_id": workflow.get("id"),
+                    "availability": availability,
+                    "results": [],
+                },
+                "tools_used": [],
+                "steps_completed": 0,
+            }
+
         tool_executor = ToolExecutor(mode=mode, registry=registry)
         executor = PipelineExecutor(mode, tool_executor)
 

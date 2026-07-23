@@ -113,12 +113,17 @@ async def list_workflows():
     - See what tools each workflow uses
     """
     try:
+        from config_loader import get_active_config_mode
+        from tool_schema import get_tool_registry
+        from workflow_availability import check_workflow_registry_availability
         from workflow_loader import WorkflowLoader
         
         loader = WorkflowLoader(explicit_only=True)
+        registry = get_tool_registry(mode=get_active_config_mode())
         workflows = [
             _workflow_info_from_definition(wf, workflow_id)
             for workflow_id, wf in loader.workflows.items()
+            if check_workflow_registry_availability(wf, registry)["available"]
         ]
         
         return WorkflowListResponse(
@@ -197,12 +202,27 @@ async def get_workflow(workflow_id: str):
     - `workflow_id`: The workflow ID (e.g., 'crypto_market_report', 'web_archive')
     """
     try:
+        from config_loader import get_active_config_mode
+        from tool_schema import get_tool_registry
+        from workflow_availability import (
+            check_workflow_registry_availability,
+            workflow_unavailable_message,
+        )
         from workflow_loader import WorkflowLoader
         
         loader = WorkflowLoader(explicit_only=True)
         wf = _resolve_workflow(loader, workflow_id)
         if not wf:
             raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
+        availability = check_workflow_registry_availability(
+            wf,
+            get_tool_registry(mode=get_active_config_mode()),
+        )
+        if not availability["available"]:
+            raise HTTPException(
+                status_code=409,
+                detail=workflow_unavailable_message(wf, availability),
+            )
         
         return _workflow_info_from_definition(wf, workflow_id)
         
@@ -262,6 +282,20 @@ async def _execute_workflow_scoped(workflow_id: str, request: WorkflowExecuteReq
                 status_code=404,
                 detail=f"Workflow '{workflow_id}' not found. Available: {'; '.join(available[:5])}"
             )
+
+        from tool_schema import get_tool_registry
+        from workflow_availability import (
+            check_workflow_registry_availability,
+            workflow_unavailable_message,
+        )
+
+        registry = get_tool_registry(mode=request.mode)
+        availability = check_workflow_registry_availability(workflow, registry)
+        if not availability["available"]:
+            raise HTTPException(
+                status_code=409,
+                detail=workflow_unavailable_message(workflow, availability),
+            )
         
         # Build transcript (trigger + optional query)
         # Use first explicit trigger if available, otherwise fall back to /{workflow_id}
@@ -302,9 +336,7 @@ async def _execute_workflow_scoped(workflow_id: str, request: WorkflowExecuteReq
         # Import and execute
         from executor import ToolExecutor
         from pipeline_executor import PipelineExecutor
-        from tool_schema import get_tool_registry
         
-        registry = get_tool_registry(mode=request.mode)
         executor = ToolExecutor(mode=request.mode, registry=registry)
         pipeline = PipelineExecutor(request.mode, executor)
         

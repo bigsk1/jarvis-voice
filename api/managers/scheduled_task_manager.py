@@ -10,7 +10,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'orchestrator'))
-from config_loader import load_config, get_config_value, get_active_config_mode
+from config_loader import config_scope, load_config, get_config_value, get_active_config_mode
 from memory_db import get_memory_db
 from schedule_parser import calculate_next_run, parse_schedule_expression
 from time_utils import format_utc_db, now_utc
@@ -96,24 +96,39 @@ class ScheduledTaskManager:
         conn.commit()
         conn.close()
 
-    @staticmethod
-    def _resolve_workflow_id(workflow_id: str) -> str:
+    def _resolve_workflow_id(self, workflow_id: str, *, mode: str | None = None) -> str:
         """Resolve a workflow by exact ID or explicit trigger alias like /crypto."""
         if not workflow_id:
             raise ValueError("workflow_id is required for workflow scheduled tasks")
 
         loader = WorkflowLoader(explicit_only=True)
         workflow = loader.get_workflow(workflow_id)
-        if workflow:
-            return workflow["id"]
+        if not workflow:
+            normalized = workflow_id if workflow_id.startswith("/") else f"/{workflow_id}"
+            for candidate in loader.workflows.values():
+                explicit = candidate.get("triggers", {}).get("explicit", [])
+                if workflow_id in explicit or normalized in explicit:
+                    workflow = candidate
+                    break
 
-        normalized = workflow_id if workflow_id.startswith("/") else f"/{workflow_id}"
-        for candidate in loader.workflows.values():
-            explicit = candidate.get("triggers", {}).get("explicit", [])
-            if workflow_id in explicit or normalized in explicit:
-                return candidate["id"]
+        if not workflow:
+            raise ValueError(f"Workflow '{workflow_id}' not found")
 
-        raise ValueError(f"Workflow '{workflow_id}' not found")
+        from tool_schema import get_tool_registry
+        from workflow_availability import (
+            check_workflow_registry_availability,
+            workflow_unavailable_message,
+        )
+
+        execution_mode = mode or self.mode
+        with config_scope(execution_mode):
+            availability = check_workflow_registry_availability(
+                workflow,
+                get_tool_registry(mode=execution_mode),
+            )
+        if not availability["available"]:
+            raise ValueError(workflow_unavailable_message(workflow, availability))
+        return workflow["id"]
 
     def create_task(self, *, name: str, task_type: str, query: str | None = None,
                     workflow_id: str | None = None, when: str, timezone_name: str | None = None,
@@ -128,7 +143,7 @@ class ScheduledTaskManager:
         if task_type == 'workflow' and not workflow_id:
             raise ValueError("workflow_id is required for workflow scheduled tasks")
         if task_type == 'workflow':
-            workflow_id = self._resolve_workflow_id(workflow_id)
+            workflow_id = self._resolve_workflow_id(workflow_id, mode=mode)
 
         payload = {"query": query} if task_type == 'query' else {"workflow_id": workflow_id}
         if task_type == 'workflow' and query:
@@ -233,10 +248,22 @@ class ScheduledTaskManager:
         task_payload = json.loads(existing['task_payload'] or "{}")
         if existing['task_type'] in {'query', 'workflow'} and updates.get('query') is not None:
             task_payload['query'] = updates['query']
-        if existing['task_type'] == 'workflow' and updates.get('workflow_id') is not None:
-            resolved_workflow_id = self._resolve_workflow_id(updates['workflow_id'])
-            fields['task_target'] = resolved_workflow_id
-            task_payload['workflow_id'] = resolved_workflow_id
+        if existing['task_type'] == 'workflow' and (
+            updates.get('workflow_id') is not None
+            or updates.get('mode') is not None
+        ):
+            requested_workflow_id = (
+                updates.get('workflow_id')
+                or task_payload.get('workflow_id')
+                or existing.get('task_target')
+            )
+            resolved_workflow_id = self._resolve_workflow_id(
+                requested_workflow_id,
+                mode=updates.get('mode') or existing['mode'],
+            )
+            if updates.get('workflow_id') is not None:
+                fields['task_target'] = resolved_workflow_id
+                task_payload['workflow_id'] = resolved_workflow_id
 
         if updates.get('metadata') is not None:
             fields['metadata'] = json.dumps(updates['metadata'])

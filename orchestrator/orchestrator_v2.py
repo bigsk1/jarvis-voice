@@ -34,6 +34,10 @@ from context_assembler import ContextAssembler
 from response_formatter import ResponseFormatter
 from executor import ToolExecutor
 from workflow_loader import WorkflowLoader
+from workflow_availability import (
+    check_workflow_registry_availability,
+    workflow_unavailable_message,
+)
 from pipeline_executor import PipelineExecutor
 
 
@@ -3116,6 +3120,26 @@ Your synthesized response:"""
             workflow = self.workflow_loader.match(transcript)
             if not workflow:
                 return None
+
+            availability = check_workflow_registry_availability(
+                workflow,
+                self.registry,
+                excluded_tools=self.executor.excluded_tools,
+            )
+            if not availability["available"]:
+                message = workflow_unavailable_message(workflow, availability)
+                return {
+                    "ok": False,
+                    "speech": message,
+                    "error": message,
+                    "data": {
+                        "workflow_id": workflow.get("id"),
+                        "availability": availability,
+                        "results": [],
+                    },
+                    "tools_used": [],
+                    "workflow_executed": workflow.get("id"),
+                }
             
             workflow.get("name", workflow.get("id"))
             

@@ -62,9 +62,10 @@ class CommandSystem {
 
   async refreshTools() {
     try {
-      const [toolsRes, promptsRes] = await Promise.all([
+      const [toolsRes, promptsRes, workflowsRes] = await Promise.all([
         fetch('/api/tools?summary=true&include_blocked=false'),
-        fetch('/api/prompts')
+        fetch('/api/prompts'),
+        fetch('/api/workflows')
       ]);
       if (toolsRes.ok) {
         const data = await toolsRes.json();
@@ -74,8 +75,12 @@ class CommandSystem {
         const data = await promptsRes.json();
         this.prompts = data.prompts || {};
       }
+      if (workflowsRes.ok) {
+        const data = await workflowsRes.json();
+        this.workflows = data.workflows || {};
+      }
     } catch (err) {
-      console.warn('[Commands] Failed to refresh tools/prompts:', err);
+      console.warn('[Commands] Failed to refresh tools/prompts/workflows:', err);
     }
   }
 

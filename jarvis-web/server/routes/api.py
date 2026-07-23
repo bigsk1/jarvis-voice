@@ -247,6 +247,31 @@ def _workflow_record(wf_id: str, wf_data: dict) -> dict:
     }
 
 
+def _web_workflow_availability(workflow: dict) -> dict:
+    """Resolve workflow availability against the Web-visible tool surface."""
+    from workflow_availability import check_workflow_availability
+
+    tools = get_tool_service().get_tools(include_blocked=True)
+    available = {
+        tool['name']
+        for tool in tools
+        if tool.get('name')
+        and tool.get('enabled', True)
+        and tool.get('available', True)
+        and not tool.get('blocked', False)
+    }
+    blocked = {
+        tool['name']
+        for tool in tools
+        if tool.get('name') and tool.get('blocked', False)
+    }
+    return check_workflow_availability(
+        workflow,
+        available_tools=available,
+        excluded_tools=blocked,
+    )
+
+
 def _resolve_workflow(loader, workflow_id: str) -> dict | None:
     workflow = loader.get_workflow(workflow_id)
     if workflow:
@@ -2865,7 +2890,8 @@ def list_workflows():
 
     loader = WorkflowLoader(explicit_only=True)
     for wf_id, wf_data in loader.workflows.items():
-        workflows[wf_id] = _workflow_record(wf_id, wf_data)
+        if _web_workflow_availability(wf_data)["available"]:
+            workflows[wf_id] = _workflow_record(wf_id, wf_data)
     
     return jsonify({
         'ok': True,
@@ -2882,6 +2908,14 @@ def get_workflow(workflow_id):
     loader = WorkflowLoader(explicit_only=True)
     wf_data = _resolve_workflow(loader, workflow_id)
     if wf_data:
+        availability = _web_workflow_availability(wf_data)
+        if not availability["available"]:
+            from workflow_availability import workflow_unavailable_message
+
+            return jsonify({
+                'ok': False,
+                'error': workflow_unavailable_message(wf_data, availability),
+            }), 409
         return jsonify({
             'ok': True,
             'workflow': wf_data,

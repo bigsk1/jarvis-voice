@@ -121,6 +121,15 @@ class ToolExecutor:
                 "requires_confirmation": bool (if permission check fails)
             }
         """
+        # Request/surface exclusions are an execution boundary, not just a
+        # discovery hint. Workflows bypass normal LLM schema selection.
+        if tool_name in self.excluded_tools:
+            return {
+                "ok": False,
+                "speech": f"Tool {tool_name} is blocked for this request",
+                "error": "Tool blocked for this request",
+            }
+
         # Get tool schema for permission check
         tool_schema = self.registry.get_tool(tool_name)
         

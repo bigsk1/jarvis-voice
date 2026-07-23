@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,7 +54,9 @@ def test_query_route_uses_scope_without_mutating_parent_environment():
 
 def test_workflow_route_uses_scope_without_mutating_parent_environment():
     observed = {}
-    shared_registry = object()
+    shared_registry = SimpleNamespace(
+        list_tools=lambda: ["get_time", "ssh_remote", "stash", "canvas"],
+    )
 
     class FakeToolExecutor:
         def __init__(self, mode, registry=None):
@@ -92,7 +95,7 @@ def test_workflow_route_uses_scope_without_mutating_parent_environment():
 
 def test_workflow_route_resolves_personal_trigger_alias():
     observed = {}
-    shared_registry = object()
+    shared_registry = SimpleNamespace(list_tools=lambda: ["get_time"])
 
     class FakeWorkflowLoader:
         def __init__(self, explicit_only=True):
@@ -156,6 +159,48 @@ def test_workflow_api_alias_resolution_does_not_prefix_match():
     assert _resolve_workflow(loader, "secret") is None
 
 
+def test_workflow_route_rejects_unavailable_tool_before_pipeline_creation():
+    class FakeWorkflowLoader:
+        def __init__(self, explicit_only=True):
+            self.workflows = {
+                "blocked_report": {
+                    "id": "blocked_report",
+                    "name": "Blocked Report",
+                    "triggers": {"explicit": ["/blocked_report"]},
+                    "steps": [{"step": 1, "tool": "disabled_tool"}],
+                }
+            }
+
+        def get_workflow(self, workflow_id):
+            return self.workflows.get(workflow_id)
+
+    modules = {
+        "workflow_loader": SimpleNamespace(WorkflowLoader=FakeWorkflowLoader),
+        "executor": SimpleNamespace(
+            ToolExecutor=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("unavailable workflow must not create an executor")
+            )
+        ),
+        "pipeline_executor": SimpleNamespace(
+            PipelineExecutor=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("unavailable workflow must not create a pipeline")
+            )
+        ),
+        "tool_schema": SimpleNamespace(
+            get_tool_registry=lambda mode=None: SimpleNamespace(
+                list_tools=lambda: ["get_time"]
+            )
+        ),
+    }
+    request = WorkflowExecuteRequest(mode="cloud")
+
+    with patch.dict(sys.modules, modules), pytest.raises(HTTPException) as exc:
+        asyncio.run(execute_workflow("blocked_report", request))
+
+    assert exc.value.status_code == 409
+    assert "disabled_tool" in str(exc.value.detail)
+
+
 def test_scheduled_query_uses_task_scope_not_runner_mode(tmp_path, monkeypatch):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
@@ -194,7 +239,7 @@ def test_scheduled_workflow_uses_shared_tool_registry(tmp_path, monkeypatch):
     monkeypatch.setattr(config_loader, "get_project_root", lambda: tmp_path)
     monkeypatch.setenv("JARVIS_MODE", "cloud")
     observed = {}
-    shared_registry = object()
+    shared_registry = SimpleNamespace(list_tools=lambda: ["get_time"])
 
     class FakeWorkflowLoader:
         def __init__(self, explicit_only=True):

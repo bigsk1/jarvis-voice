@@ -45,6 +45,15 @@ def test_scheduled_task_workflow_list_uses_loaded_workflows(monkeypatch):
             }
 
     monkeypatch.setattr(scheduled_tasks_route, "WorkflowLoader", FakeWorkflowLoader)
+    monkeypatch.setattr(
+        scheduled_tasks_route,
+        "get_tool_registry",
+        lambda mode=None: type(
+            "Registry",
+            (),
+            {"list_tools": lambda self: ["get_time", "canvas"]},
+        )(),
+    )
     app = Flask(__name__)
     app.register_blueprint(scheduled_tasks_route.scheduled_tasks_bp)
 
@@ -53,10 +62,9 @@ def test_scheduled_task_workflow_list_uses_loaded_workflows(monkeypatch):
 
     assert response.status_code == 200
     assert payload["ok"] is True
-    assert payload["count"] == 2
+    assert payload["count"] == 1
     assert [workflow["id"] for workflow in payload["workflows"]] == [
         "daily_status",
-        "jarvis_self_check",
     ]
     assert payload["workflows"][0]["name"] == "Daily Status"
     assert payload["workflows"][0]["trigger"] == "/daily_status"

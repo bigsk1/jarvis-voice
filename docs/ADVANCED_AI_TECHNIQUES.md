@@ -8,19 +8,21 @@
 
 1. [Overview & Philosophy](#overview--philosophy)
 2. [Design Note: Runtime-Aware Context Gating](#design-note-runtime-aware-context-gating)
-3. [Design Note: Presentation Artifact Learning](#design-note-presentation-artifact-learning)
-4. [Phase 3: Self-Evolving Prompts](#phase-3-self-evolving-prompts)
-5. [Phase 4: Dynamic Tool Creation](#phase-4-dynamic-tool-creation)
-6. [Phase 5: Parallel Subagents](#phase-5-parallel-subagents)
-7. [Phase 6: Self-Play Optimization](#phase-6-self-play-optimization)
-8. [Phase 7: Versioned Prompts & Rollback](#phase-7-versioned-prompts--rollback)
-9. [Implementation Priority](#implementation-priority)
-10. [Safety & Guardrails](#safety--guardrails)
-11. [Implementation Status](#implementation-status)
-12. [🚨 Reality Check: Why Nothing Evolves](#-reality-check-why-nothing-evolves-feb-2026)
-13. [Phase 8: Swarm Mode](#phase-8-swarm-mode-research-parallelism)
-14. [Phase 9: Autonomous Maintenance Agent](#phase-9-autonomous-maintenance-agent)
-15. [Phase 10: Proactive Briefing Agent](#phase-10-proactive-briefing-agent)
+3. [Design Note: Runtime-Aware Capability Narration](#design-note-runtime-aware-capability-narration-qa)
+4. [Design Note: Future Autonomous Workflow Orchestration](#design-note-future-autonomous-workflow-orchestration)
+5. [Design Note: Presentation Artifact Learning](#design-note-presentation-artifact-learning)
+6. [Phase 3: Self-Evolving Prompts](#phase-3-self-evolving-prompts)
+7. [Phase 4: Dynamic Tool Creation](#phase-4-dynamic-tool-creation)
+8. [Phase 5: Parallel Subagents](#phase-5-parallel-subagents)
+9. [Phase 6: Self-Play Optimization](#phase-6-self-play-optimization)
+10. [Phase 7: Versioned Prompts & Rollback](#phase-7-versioned-prompts--rollback)
+11. [Implementation Priority](#implementation-priority)
+12. [Safety & Guardrails](#safety--guardrails)
+13. [Implementation Status](#implementation-status)
+14. [🚨 Reality Check: Why Nothing Evolves](#-reality-check-why-nothing-evolves-feb-2026)
+15. [Phase 8: Swarm Mode](#phase-8-swarm-mode-research-parallelism)
+16. [Phase 9: Autonomous Maintenance Agent](#phase-9-autonomous-maintenance-agent)
+17. [Phase 10: Proactive Briefing Agent](#phase-10-proactive-briefing-agent)
 
 ---
 
@@ -347,6 +349,137 @@ Inject a short **runtime capabilities block** derived from the same effective en
 - Should capability narration be injected on every turn (small token cost) or only when the router detects a meta/capability query?
 - Should disabled tools be listed explicitly (“not available in this profile: phone_call, opencode, …”) or omitted silently?
 - Should `intel/jarvis-tool-knowledge.md` be split into “always-on architecture” vs “operational capabilities” sections to reduce overshoot before runtime gating lands?
+
+---
+
+## Design Note: Future Autonomous Workflow Orchestration
+
+> **Status:** Future design. Normal orchestration does not currently discover or autonomously launch workflows.
+
+### Goal
+
+Allow normal voice or Web chat orchestration to recognize when an existing deterministic workflow is a better fit than selecting and sequencing its component tools one turn at a time. Long workflows could eventually run in the background and deliver their result back to the originating conversation or voice session.
+
+This should preserve the current workflow advantage: the JSON definition owns tool order and step behavior, while the LLM only decides whether an eligible workflow matches the user's intent and supplies its inputs.
+
+### Current Safety Prerequisite
+
+Workflow availability is strict and runtime-aware:
+
+- Every tool named by every workflow step must exist in the effective tool registry.
+- Optional and conditional steps count; there is no degraded workflow mode.
+- Active tool-profile overrides, per-tool `enabled` state, missing configuration, and mode-specific availability are inherited from `ToolRegistry`.
+- Web-blocked or request-excluded tools make the workflow unavailable for that surface.
+- Unavailable workflows are omitted from normal workflow lists and slash-command suggestions.
+- Explicit slash execution, direct API execution, scheduled-task creation, scheduled execution, and `PipelineExecutor` all recheck availability before running.
+- `ToolExecutor` enforces request exclusions at execution time so a workflow cannot bypass a Web or request-level block.
+
+`data/.tool_sync_status_cloud.json` and its local equivalent are sync health markers. They report status and usable tool count but do not enumerate runtime capabilities. Workflow admission must use the current effective registry or surface-specific tool view, not the sync-status file alone.
+
+The invariant is deliberately simple:
+
+```text
+any workflow tool unavailable
+        ↓
+entire workflow unavailable
+```
+
+A workflow never force-enables a tool, changes the active profile, silently substitutes another tool, or starts with a known missing dependency.
+
+### Proposed Discovery Shape
+
+Do not register every workflow as a separate Tool RAG schema. That would duplicate component-tool descriptions and increase routing context.
+
+Instead, expose one compact meta-tool in the future:
+
+```text
+workflow(
+  action = search | start | status | result | cancel,
+  workflow_id,
+  query,
+  execution_mode = foreground | background
+)
+```
+
+The intended flow is:
+
+```text
+User request
+    ↓
+Tool RAG surfaces the workflow meta-tool
+    ↓
+workflow(search) returns a few currently runnable matches
+    ↓
+LLM selects one and supplies required input
+    ↓
+workflow(start) repeats availability and safety checks
+    ↓
+PipelineExecutor runs the fixed recipe
+```
+
+Search results should be compact: workflow ID, name, description, required input shape, expected result, estimated duration, and declared side effects. The LLM should not receive the full step definitions or every component-tool schema.
+
+### Foreground and Background Semantics
+
+Foreground execution is appropriate when the current answer depends on the workflow result. This is similar to explicit slash execution today: the orchestration turn waits for `PipelineExecutor`.
+
+Background execution requires a durable run object:
+
+```text
+queued → running → succeeded | failed | blocked | cancelled
+```
+
+The run should persist:
+
+- Run and workflow IDs.
+- Originating mode, surface, conversation/session, and tool profile.
+- Query/input and timestamps.
+- Current step and progress.
+- Tools used, usage, speech, result data, artifacts, and error.
+- Result-delivery status.
+
+Completion delivery would be surface-specific:
+
+- Web: persist an assistant follow-up in the originating conversation and emit it to the conversation Socket.IO room.
+- Active voice/CLI: announce a concise completion.
+- Disconnected/headless session: retain a pending completion notification.
+- Additional reasoning: start a new bounded orchestration turn using the trusted workflow result; do not attempt to resume an expired provider request.
+
+### Why `schedule_task run_now` Is Not the Execution Bridge
+
+Scheduled tasks own **when** work runs. Today, `run_now` queues an existing task by moving its next-run time; it does not immediately create a conversation-addressable workflow run or return the final result to the initiating LLM.
+
+A future shared workflow-run service should own execution and results:
+
+- Direct orchestration creates an ad-hoc run.
+- A scheduled task creates a run when it becomes due.
+- Both use the same worker and `PipelineExecutor`.
+
+This keeps scheduling, execution, and conversational delivery separate while sharing the same safety checks.
+
+### Required Guardrails
+
+- Workflow search returns only workflows runnable in the current mode/profile/surface.
+- `start` revalidates even if `search` just succeeded; profiles and credentials can change between turns.
+- Background workers preserve the originating surface exclusions and cannot select a broader profile.
+- Revalidate before execution and fail closed if a dependency becomes unavailable.
+- Prevent duplicate component-tool execution after a workflow is selected.
+- Side-effecting workflows remain subject to existing tool permission and approval behavior.
+- Apply idempotency and per-workflow concurrency limits before enabling parallel launches.
+- Report partial results explicitly if a policy change blocks a later step; completed external side effects may not be reversible.
+
+### Suggested Implementation Order
+
+1. Keep the current strict availability gate and expand regression coverage as workflow surfaces evolve.
+2. Add explicit workflow input and side-effect metadata.
+3. Add a read-only workflow search service that returns only runnable workflows.
+4. Add a foreground-only workflow meta-tool and evaluate routing accuracy.
+5. Introduce durable workflow run records and a shared worker.
+6. Add Web and voice completion delivery.
+7. Allow background selection only for explicitly background-safe workflows.
+8. Refactor scheduled workflows to create runs through the same service.
+
+This sequence keeps the autonomous idea optional. The current availability protection remains valuable even if automatic workflow discovery is never enabled.
 
 ---
 

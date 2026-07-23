@@ -11,6 +11,9 @@ sys.path.insert(0, str(JARVIS_ROOT))
 sys.path.insert(0, str(JARVIS_ROOT / 'orchestrator'))
 
 from api.managers.scheduled_task_manager import ScheduledTaskManager
+from config_loader import config_scope
+from tool_schema import get_tool_registry
+from workflow_availability import check_workflow_registry_availability
 from workflow_loader import WorkflowLoader
 
 
@@ -59,9 +62,13 @@ def _workflow_info(workflow: dict, workflow_id: str) -> dict:
 @scheduled_tasks_bp.route('/workflows', methods=['GET'])
 def list_available_workflows():
     loader = WorkflowLoader(explicit_only=True)
+    mode = get_mode()
+    with config_scope(mode):
+        registry = get_tool_registry(mode=mode)
     workflows = [
         _workflow_info(workflow, workflow_id)
         for workflow_id, workflow in loader.workflows.items()
+        if check_workflow_registry_availability(workflow, registry)["available"]
     ]
     workflows.sort(key=lambda item: (item.get('name') or item['id']).lower())
     return jsonify({
