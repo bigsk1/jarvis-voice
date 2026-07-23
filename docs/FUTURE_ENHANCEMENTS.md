@@ -359,7 +359,7 @@ Ideas:
 - Cost/latency budgets per request (“max tools”, “max time”, “max cost”)
 - A debug command that prints a short “decision summary” (for humans)
 
-### E) Background Jobs + Notifications (Headless)
+### E) Background Jobs + Notifications (Headless) - when a scheduled task runs workflow it doesnt block.? so this seems while in jarvis webui chat only.? 
 **Why:** Some workflows shouldn’t block interactive voice turns.
 
 Ideas:
