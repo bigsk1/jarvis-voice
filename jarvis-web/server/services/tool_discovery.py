@@ -4,6 +4,7 @@ Auto-loads tools from skills/*.tool.json AND memory_db (includes MCP tools)
 """
 import json
 import sys
+import threading
 from pathlib import Path
 from ..config import SKILLS_PATH, JARVIS_ROOT, get_web_setting
 
@@ -25,10 +26,22 @@ def _tool_profile_overrides():
 class ToolDiscoveryService:
     """Discovers and manages available Jarvis tools"""
     
-    def __init__(self, skills_path: Path = None):
+    def __init__(self, skills_path: Path = None, mode: str = None):
+        _ensure_lib_path()
+        from config_loader import get_active_config_mode
+
         self.skills_path = skills_path or SKILLS_PATH
+        self.mode = get_active_config_mode(mode)
         self.tools: dict[str, dict] = {}
-        self._load_tools()
+        self._lock = threading.RLock()
+        self.refresh()
+
+    def _run_in_mode_scope(self):
+        """Return a context manager for this service's immutable data mode."""
+        _ensure_lib_path()
+        from config_loader import config_scope
+
+        return config_scope(self.mode)
     
     def _load_tools(self):
         """Load all tool definitions from skills folder AND memory_db"""
@@ -123,13 +136,15 @@ class ToolDiscoveryService:
     
     def get_tools(self, include_blocked: bool = True) -> list[dict]:
         """Return all tools as a list"""
-        if include_blocked:
-            return list(self.tools.values())
-        return [t for t in self.tools.values() if not t.get('blocked')]
+        with self._lock:
+            if include_blocked:
+                return list(self.tools.values())
+            return [t for t in self.tools.values() if not t.get('blocked')]
     
     def get_tool(self, name: str) -> dict | None:
         """Get a specific tool by name"""
-        return self.tools.get(name)
+        with self._lock:
+            return self.tools.get(name)
     
     def get_tool_count(self, include_blocked: bool = False) -> int:
         """Return count of CALLABLE tools.
@@ -139,48 +154,55 @@ class ToolDiscoveryService:
         diagnostics/UI but are not callable, so counting them would overstate
         what the LLM can actually use.
         """
-        if include_blocked:
-            return len(self.tools)
-        return len([
-            t for t in self.tools.values()
-            if not t.get('blocked') and t.get('available', True)
-        ])
+        with self._lock:
+            if include_blocked:
+                return len(self.tools)
+            return len([
+                t for t in self.tools.values()
+                if not t.get('blocked') and t.get('available', True)
+            ])
     
     def get_mcp_tools(self) -> list[dict]:
         """Return only MCP tools"""
-        return [t for t in self.tools.values() if t.get('source') == 'mcp']
+        with self._lock:
+            return [t for t in self.tools.values() if t.get('source') == 'mcp']
     
     def get_local_tools(self) -> list[dict]:
         """Return only local tools"""
-        return [t for t in self.tools.values() if t.get('source') == 'local']
+        with self._lock:
+            return [t for t in self.tools.values() if t.get('source') == 'local']
     
     def get_blocked_tools(self) -> list[dict]:
         """Return only blocked tools"""
-        return [t for t in self.tools.values() if t.get('blocked')]
+        with self._lock:
+            return [t for t in self.tools.values() if t.get('blocked')]
     
     def refresh(self):
-        """Reload tools"""
-        self._load_tools()
+        """Reload tools inside the service's own mode scope."""
+        with self._lock, self._run_in_mode_scope():
+            self._load_tools()
     
     def get_tools_summary(self) -> list[dict]:
         """Return simplified tool list for UI (full descriptions for sidebar tooltip)"""
-        return [
-            {
-                'name': t['name'],
-                'description': t['description'],
-                'source': t.get('source', 'local'),
-                'enabled': t.get('enabled', True),
-                'blocked': t.get('blocked', False),
-                'available': t.get('available', True),
-                'missing': t.get('missing', []),
-                'setup_hint': t.get('setup_hint')
-            }
-            for t in sorted(self.tools.values(), key=lambda x: x['name'])
-        ]
+        with self._lock:
+            return [
+                {
+                    'name': t['name'],
+                    'description': t['description'],
+                    'source': t.get('source', 'local'),
+                    'enabled': t.get('enabled', True),
+                    'blocked': t.get('blocked', False),
+                    'available': t.get('available', True),
+                    'missing': t.get('missing', []),
+                    'setup_hint': t.get('setup_hint')
+                }
+                for t in sorted(self.tools.values(), key=lambda x: x['name'])
+            ]
     
     def get_stats(self) -> dict:
         """Return tool statistics"""
-        tools = list(self.tools.values())
+        with self._lock:
+            tools = list(self.tools.values())
         return {
             'total': len(tools),
             'local': len([t for t in tools if t.get('source') == 'local']),
@@ -191,13 +213,40 @@ class ToolDiscoveryService:
         }
 
 
-# Singleton instance
-_tool_service: ToolDiscoveryService | None = None
+# One discovery snapshot per mode. A single process can serve concurrent cloud
+# and local browser sessions, so a process-wide singleton would leak whichever
+# profile was loaded most recently into the other mode's UI.
+_tool_services: dict[str, ToolDiscoveryService] = {}
+_tool_services_lock = threading.RLock()
 
 
-def get_tool_service() -> ToolDiscoveryService:
-    """Get or create the tool discovery service singleton"""
-    global _tool_service
-    if _tool_service is None:
-        _tool_service = ToolDiscoveryService()
-    return _tool_service
+def get_tool_service(mode: str = None) -> ToolDiscoveryService:
+    """Get or create the discovery snapshot for one cloud/local mode."""
+    _ensure_lib_path()
+    from config_loader import get_active_config_mode
+
+    resolved = get_active_config_mode(mode)
+    with _tool_services_lock:
+        service = _tool_services.get(resolved)
+        if service is None:
+            service = ToolDiscoveryService(mode=resolved)
+            _tool_services[resolved] = service
+        return service
+
+
+def refresh_tool_services(mode: str = None) -> None:
+    """Refresh one mode or every already-created discovery snapshot."""
+    if mode is not None:
+        get_tool_service(mode).refresh()
+        return
+
+    with _tool_services_lock:
+        services = list(_tool_services.values())
+    for service in services:
+        service.refresh()
+
+
+def reset_tool_services() -> None:
+    """Drop cached discovery snapshots (primarily for tests and shutdown)."""
+    with _tool_services_lock:
+        _tool_services.clear()

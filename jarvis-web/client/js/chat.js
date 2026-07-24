@@ -13,20 +13,36 @@ class CommandSystem {
     this.tools = {};       // #tool hint registry
     this.maxToolHints = 5;
     this.loaded = false;
+    this._registryRequestId = 0;
     this._loadRegistry();
+  }
+
+  _resolveMode(mode = null) {
+    const selected = mode
+      || window.jarvisApp?.modeSelect?.value
+      || window.jarvisSocket?.mode
+      || Utils.storage.get('mode', 'cloud');
+    return selected === 'local' ? 'local' : 'cloud';
   }
 
   /**
    * Load prompts and workflows from server
    */
-  async _loadRegistry() {
+  async _loadRegistry(mode = null) {
+    const selectedMode = this._resolveMode(mode);
+    const modeQuery = `mode=${encodeURIComponent(selectedMode)}`;
+    const requestId = ++this._registryRequestId;
     try {
       // Load prompts, workflows, and enabled tools in parallel
       const [promptsRes, workflowsRes, toolsRes] = await Promise.all([
-        fetch('/api/prompts'),
-        fetch('/api/workflows'),
-        fetch('/api/tools?summary=true&include_blocked=false')
+        fetch(`/api/prompts?${modeQuery}`),
+        fetch(`/api/workflows?${modeQuery}`),
+        fetch(`/api/tools?summary=true&include_blocked=false&${modeQuery}`)
       ]);
+
+      // A rapid mode switch can finish requests out of order. Only the newest
+      // selected-mode snapshot may update slash commands and tool hints.
+      if (requestId !== this._registryRequestId) return;
       
       if (promptsRes.ok) {
         const data = await promptsRes.json();
@@ -60,13 +76,17 @@ class CommandSystem {
     }
   }
 
-  async refreshTools() {
+  async refreshTools(mode = null) {
+    const selectedMode = this._resolveMode(mode);
+    const modeQuery = `mode=${encodeURIComponent(selectedMode)}`;
+    const requestId = ++this._registryRequestId;
     try {
       const [toolsRes, promptsRes, workflowsRes] = await Promise.all([
-        fetch('/api/tools?summary=true&include_blocked=false'),
-        fetch('/api/prompts'),
-        fetch('/api/workflows')
+        fetch(`/api/tools?summary=true&include_blocked=false&${modeQuery}`),
+        fetch(`/api/prompts?${modeQuery}`),
+        fetch(`/api/workflows?${modeQuery}`)
       ]);
+      if (requestId !== this._registryRequestId) return;
       if (toolsRes.ok) {
         const data = await toolsRes.json();
         this._setToolsFromList(data.tools || []);

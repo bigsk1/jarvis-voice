@@ -420,11 +420,11 @@ def _prompt_tools_by_name() -> dict[str, dict]:
 @api_bp.route('/status', methods=['GET'])
 def get_status():
     """Health check and basic status info"""
-    tool_service = get_tool_service()
     requested_mode = str(request.args.get('mode', '')).strip().lower()
     current_mode = get_web_setting('defaults.mode', 'cloud')
     settings = get_settings_manager(current_mode)
     warning_mode = requested_mode if requested_mode in {'cloud', 'local'} else settings.mode
+    tool_service = get_tool_service(warning_mode)
     tool_sync_status = read_tool_sync_status(warning_mode, project_root=JARVIS_ROOT)
     tool_sync_warning = (
         tool_sync_status
@@ -512,8 +512,9 @@ def get_log_content():
 
 
 @api_bp.route('/tools', methods=['GET'])
+@_scoped_request_config
 def list_tools():
-    """List all available tools"""
+    """List tools for the explicitly requested cloud/local mode."""
     tool_service = get_tool_service()
     summary_only = request.args.get('summary', 'false').lower() == 'true'
     include_blocked = request.args.get('include_blocked', 'true').lower() == 'true'
@@ -532,8 +533,9 @@ def list_tools():
 
 
 @api_bp.route('/tools/<name>', methods=['GET'])
+@_scoped_request_config
 def get_tool(name):
-    """Get details for a specific tool"""
+    """Get tool details for the explicitly requested cloud/local mode."""
     tool_service = get_tool_service()
     tool = tool_service.get_tool(name)
     
@@ -550,8 +552,9 @@ def get_tool(name):
 
 
 @api_bp.route('/tools/refresh', methods=['POST'])
+@_scoped_request_config
 def refresh_tools():
-    """Reload tools from disk"""
+    """Reload tools from disk for the explicitly requested mode."""
     tool_service = get_tool_service()
     tool_service.refresh()
     
@@ -1214,9 +1217,9 @@ def update_blocked_tools():
     
     success = settings.update_blocked_tools(blocked)
     
-    # Refresh tool discovery to reflect new blocked list
-    tool_service = get_tool_service()
-    tool_service.refresh()
+    # Web blocking is global, so every cached mode must see the change.
+    from ..services.tool_discovery import refresh_tool_services
+    refresh_tool_services()
     
     return jsonify({
         'ok': success,
@@ -2882,8 +2885,9 @@ def serve_upload(filename):
 # =============================================================================
 
 @api_bp.route('/workflows', methods=['GET'])
+@_scoped_request_config
 def list_workflows():
-    """List all available workflows, including personal workflow JSON files."""
+    """List workflows available in the explicitly requested mode."""
     from workflow_loader import WorkflowLoader
     
     workflows = {}
@@ -2901,8 +2905,9 @@ def list_workflows():
 
 
 @api_bp.route('/workflows/<workflow_id>', methods=['GET'])
+@_scoped_request_config
 def get_workflow(workflow_id):
-    """Get a specific workflow by ID"""
+    """Get a workflow only when it is available in the requested mode."""
     from workflow_loader import WorkflowLoader
 
     loader = WorkflowLoader(explicit_only=True)
@@ -2925,8 +2930,9 @@ def get_workflow(workflow_id):
 
 
 @api_bp.route('/prompts', methods=['GET'])
+@_scoped_request_config
 def list_prompts():
-    """List all available @prompts (auto-discovered from data/prompts/*.md and personal/*.md)"""
+    """List @prompts visible in the explicitly requested mode."""
     prompts = {}
 
     tools_by_name = _prompt_tools_by_name()
@@ -2946,8 +2952,9 @@ def list_prompts():
 
 
 @api_bp.route('/prompts/<name>', methods=['GET'])
+@_scoped_request_config
 def get_prompt(name):
-    """Get a specific prompt by name"""
+    """Get a prompt only when it is available in the requested mode."""
     prompt_file = _resolve_prompt_file(name)
 
     if prompt_file:

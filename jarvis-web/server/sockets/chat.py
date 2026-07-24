@@ -165,14 +165,18 @@ class ChatHandler:
         return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
 
     @staticmethod
-    def _sanitize_tool_hints(raw_hints, max_hints: int = 5) -> list[str]:
+    def _sanitize_tool_hints(
+        raw_hints,
+        max_hints: int = 5,
+        mode: str | None = None,
+    ) -> list[str]:
         """Validate #tool hints against enabled, non-blocked tools."""
         if not isinstance(raw_hints, list):
             return []
 
         try:
             from ..services.tool_discovery import get_tool_service
-            service = get_tool_service()
+            service = get_tool_service(mode)
             allowed = {
                 t.get('name')
                 for t in service.get_tools(include_blocked=False)
@@ -2005,7 +2009,7 @@ Previous structured data:
             
             # Send connection confirmation
             from ..services.tool_discovery import get_tool_service
-            tool_service = get_tool_service()
+            tool_service = get_tool_service(default_mode)
             
             emit('connected', {
                 'session_id': session_id,
@@ -2070,7 +2074,10 @@ Previous structured data:
             prompt_meta = {
                 'system_instruction': data.get('system_instruction'),
                 'prompt_name': data.get('prompt_name'),
-                'tool_hints': self._sanitize_tool_hints(data.get('tool_hints')),
+                'tool_hints': self._sanitize_tool_hints(
+                    data.get('tool_hints'),
+                    mode=mode,
+                ),
                 'request_kind': (
                     'canvas_export'
                     if data.get('request_kind') == 'canvas_export'
@@ -2516,7 +2523,7 @@ Previous structured data:
                 # browser to reload both registries.
                 try:
                     from ..services.tool_discovery import get_tool_service
-                    get_tool_service().refresh()
+                    get_tool_service(mode).refresh()
                     print(f"[MODE] Refreshed Web tool discovery for {mode} mode")
                 except Exception as e:
                     print(f"[MODE] Warning: Could not refresh Web tool discovery: {e}")
@@ -2527,7 +2534,9 @@ Previous structured data:
         def handle_tools_refresh():
             """Refresh tools list"""
             from ..services.tool_discovery import get_tool_service
-            tool_service = get_tool_service()
+            session_id = request.sid
+            mode = self.sessions.get(session_id, {}).get('mode', 'cloud')
+            tool_service = get_tool_service(mode)
             tool_service.refresh()
             
             emit('tools:updated', {

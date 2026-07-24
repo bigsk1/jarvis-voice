@@ -32,6 +32,7 @@ class JarvisApp {
     this._settingsData = null;
     this._conversations = [];
     this._archivedExpanded = false;
+    this._toolsRequestId = 0;
     
     // Audio playback state
     this.currentAudio = null;
@@ -142,8 +143,8 @@ class JarvisApp {
       }
       
       // Reload tools list
-      await this._loadToolsList();
-      await window.commandSystem?.refreshTools?.();
+      await this._loadToolsList(data.mode);
+      await window.commandSystem?.refreshTools?.(data.mode);
       
       // Update token counter context window for new mode
       if (window.chatUI) {
@@ -404,6 +405,9 @@ class JarvisApp {
     document.getElementById('setting-mode')?.addEventListener('change', async (e) => {
       const mode = e.target.value === 'local' ? 'local' : 'cloud';
       await this._loadSettings(mode);
+      if (document.querySelector('.settings-tab.active')?.dataset.settingsTab === 'tools') {
+        await this._loadBlockedTools();
+      }
     });
 
     document.getElementById('setting-completion-guard-eval-provider')?.addEventListener('change', async (e) => {
@@ -1090,16 +1094,25 @@ class JarvisApp {
   /**
    * Load and display tools list
    */
-  async _loadToolsList() {
+  async _loadToolsList(mode = null) {
     const container = document.getElementById('toolsList');
+    const selectedMode = mode || this.modeSelect?.value || this.socket?.mode || 'cloud';
+    const requestId = ++this._toolsRequestId;
     
     try {
-      const response = await fetch('/api/tools?summary=true');
+      const response = await fetch(
+        `/api/tools?summary=true&mode=${encodeURIComponent(selectedMode)}`
+      );
       const data = await response.json();
+      if (requestId !== this._toolsRequestId) return;
       
       if (data.ok && data.tools) {
         const tools = data.tools;
         const stats = data.stats || {};
+        const toolsCount = document.getElementById('toolsCount');
+        if (toolsCount) {
+          toolsCount.textContent = `${stats.enabled || 0} tools`;
+        }
         
         // Show stats header
         let html = `
@@ -3607,8 +3620,17 @@ class JarvisApp {
       const blockedData = await blockedResponse.json();
       const blocked = blockedData.blocked || [];
       
-      // Get all tools for dropdown
-      const toolsResponse = await fetch('/api/tools?summary=true');
+      // The settings modal can preview a different mode from the active chat.
+      const mode = document.getElementById('setting-mode')?.value
+        || this._settingsData?.mode
+        || this.modeSelect?.value
+        || this.socket?.mode
+        || 'cloud';
+
+      // Get tools for the mode currently shown in the settings modal.
+      const toolsResponse = await fetch(
+        `/api/tools?summary=true&mode=${encodeURIComponent(mode)}`
+      );
       const toolsData = await toolsResponse.json();
       const allTools = toolsData.tools || [];
       
@@ -3672,7 +3694,7 @@ class JarvisApp {
         Utils.toast(`Blocked: ${toolName}`, 'success');
         this._loadBlockedTools();
         this._loadToolsList();  // Refresh tools list
-        window.commandSystem?.refreshTools?.();
+        window.commandSystem?.refreshTools?.(this.modeSelect?.value);
       }
     } catch (err) {
       Utils.toast(`Error: ${err.message}`, 'error');
@@ -3699,7 +3721,7 @@ class JarvisApp {
       Utils.toast(`Unblocked: ${toolName}`, 'success');
       this._loadBlockedTools();
       this._loadToolsList();  // Refresh tools list
-      window.commandSystem?.refreshTools?.();
+      window.commandSystem?.refreshTools?.(this.modeSelect?.value);
     } catch (err) {
       Utils.toast(`Error: ${err.message}`, 'error');
     }
