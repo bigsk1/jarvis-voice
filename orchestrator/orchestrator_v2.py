@@ -2204,6 +2204,8 @@ Mode: {self.mode}
                             "tool_trace": tool_trace,
                             "retries": retry_count,
                             "terminal_failure": True,
+                            "usage": total_usage if self._has_usage_data(total_usage) else None,
+                            "server_side_tools": total_usage.get("server_side_tools", {}),
                         }
                     
                     # Emit progress: retrying
@@ -2306,7 +2308,9 @@ Mode: {self.mode}
                         "tool_args": arguments,
                         "tools_used": tools_used or [tool_name],
                         "tool_trace": tool_trace,
-                        "retries": retry_count
+                        "retries": retry_count,
+                        "usage": total_usage if self._has_usage_data(total_usage) else None,
+                        "server_side_tools": total_usage.get("server_side_tools", {}),
                     }
             
             # Handle Q&A (task complete - LLM decided to respond directly)

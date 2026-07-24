@@ -40,6 +40,64 @@ from ..services.followup_extractor import (
     FOLLOWUP_SUMMARY_MAX_CHARS as _FOLLOWUP_SUMMARY_MAX_CHARS,
 )
 
+
+_WEB_VISION_GROUNDING_INSTRUCTION = """Perform the visual analysis now using only the attached image pixels.
+Answer the visual part of the user's request directly and describe the visible evidence that supports the answer.
+Do not describe future actions, promise to inspect the image later, mention tools or computer files, or perform non-visual tasks such as updating a file.
+If the user also requests a non-visual action, ignore that action during this vision pass.
+
+User's visual question:
+"""
+
+
+def _web_vision_prompt(user_prompt: str) -> str:
+    """Keep the pre-orchestration vision pass visual and non-agentic."""
+    return f"{_WEB_VISION_GROUNDING_INSTRUCTION}{str(user_prompt or '').strip()}"
+
+
+def _validate_web_vision_analysis(value: str) -> str:
+    """Reject empty or plan-only responses before marking Web vision complete."""
+    from vision_provider import VisionProviderError
+
+    analysis = str(value or '').strip()
+    if not analysis:
+        raise VisionProviderError("Vision provider returned an empty analysis")
+
+    compact = re.sub(r'\s+', ' ', analysis).strip()
+    plan_signal = re.search(
+        r"\b(?:i['’]?ll|i will|i am going to|let me)"
+        r"\s+(?:start\s+by\s+)?"
+        r"(?:identify|analy[sz]e|examine|inspect|check|locate|look)",
+        compact,
+        re.IGNORECASE,
+    )
+    non_visual_action = re.search(
+        r"\b(?:computer|file|tool|update|locate|start\s+by|next|then)\b",
+        compact,
+        re.IGNORECASE,
+    )
+    grounded_observation = re.search(
+        r"\b(?:"
+        r"the\s+(?:image|photo|screenshot|document)\s+(?:shows|contains|depicts)"
+        r"|i\s+(?:can\s+)?see"
+        r"|visible"
+        r"|appears\s+to\s+be"
+        r"|this\s+(?:is|looks\s+like)"
+        r"|it\s+(?:is|has|appears)"
+        r"|text\s+(?:reads|says)"
+        r"|foreground"
+        r"|background"
+        r")\b",
+        compact,
+        re.IGNORECASE,
+    )
+    if plan_signal and non_visual_action and not grounded_observation:
+        raise VisionProviderError(
+            "Vision provider returned an action plan instead of visual analysis"
+        )
+    return analysis
+
+
 def _scoped_by_mode(method):
     """Run a thread-entry handler inside a request-scoped config overlay.
 
@@ -93,6 +151,19 @@ def _scoped_by_mode(method):
             value = mode_overrides.get(web_key)
             if value is not None:
                 scoped_overrides[config_key] = str(value)
+
+        # Cloud analyze_image calls are the retry/follow-up counterpart to the
+        # direct Web upload vision pass, so they must use the same Web-selected
+        # provider/model. Keep these tool-specific: summarizers, workflows, and
+        # other component LLMs retain their dedicated/env provider precedence.
+        # Local vision intentionally remains pinned by OLLAMA_VISION_MODEL.
+        if mode == 'cloud':
+            analyze_provider = mode_overrides.get('llm_provider')
+            analyze_model = mode_overrides.get('llm_model')
+            if analyze_provider:
+                scoped_overrides['ANALYZE_IMAGE_LLM_PROVIDER'] = str(analyze_provider)
+            if analyze_model:
+                scoped_overrides['ANALYZE_IMAGE_LLM_MODEL'] = str(analyze_model)
 
         tool_rag_limit = mode_overrides.get('tool_rag_limit')
         if tool_rag_limit is not None:
@@ -3710,7 +3781,10 @@ Previous structured data:
                     error_data = {
                         'message': str(result['error'])[:2000],
                         'retries': result.get('retries', 0),
-                        'tool_failed': tools_used[-1] if tools_used else result.get('tool_name', 'unknown'),
+                        'tool_failed': (
+                            result.get('tool_name')
+                            or (tools_used[-1] if tools_used else 'unknown')
+                        ),
                     }
                     # Include tool arguments for debugging (truncated to avoid bloat)
                     if result.get('tool_args'):
@@ -4682,10 +4756,11 @@ Mode: {mode}
             )
             model = mode_config.get('llm_model')
         print(f"[VISION] Shared dispatch: mode={mode}, provider={provider}, model={model or '(default)'}")
-        return analyze_images(
+        analysis = analyze_images(
             images_base64,
-            prompt,
+            _web_vision_prompt(prompt),
             mode=mode,
             provider=provider,
             model=model,
         )
+        return _validate_web_vision_analysis(analysis)

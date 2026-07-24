@@ -45,14 +45,15 @@ class FakeRouter:
     system_prompt_version = "test"
     provider = None
 
-    def __init__(self):
+    def __init__(self, tool_name="serpapi_yelp_search"):
         self.calls = 0
+        self.tool_name = tool_name
 
     def route(self, *_args, **_kwargs):
         self.calls += 1
         return {
             "intent": "tool",
-            "tool_name": "serpapi_yelp_search",
+            "tool_name": self.tool_name,
             "arguments": {"find_desc": f"arcade games kids {self.calls}"},
             "usage_info": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
         }
@@ -76,10 +77,10 @@ class FakeStatusUpdater:
 
 
 class ToolTurnBudgetTests(unittest.TestCase):
-    def _build_orchestrator(self, *, fail_on_calls):
+    def _build_orchestrator(self, *, fail_on_calls, tool_name="serpapi_yelp_search"):
         orchestrator = Orchestrator.__new__(Orchestrator)
         orchestrator.executor = FakeExecutor(fail_on_calls=fail_on_calls)
-        orchestrator.router = FakeRouter()
+        orchestrator.router = FakeRouter(tool_name=tool_name)
         orchestrator.status_updater = FakeStatusUpdater()
         orchestrator.max_retries = 1
         orchestrator.timezone = ZoneInfo("America/Los_Angeles")
@@ -155,6 +156,22 @@ class ToolTurnBudgetTests(unittest.TestCase):
         self.assertIn("One final step failed", result["speech"])
         self.assertIn("Serpapi yelp search failed", result["speech"])
         self.assertEqual(result["tools_used"], ["serpapi_yelp_search", "serpapi_yelp_search"])
+        self.assertEqual(result["usage"]["model_calls"], 3)
+        self.assertEqual(result["usage"]["total_tokens"], 6)
+
+    def test_single_call_terminal_failure_preserves_usage(self):
+        orchestrator = self._build_orchestrator(
+            fail_on_calls={1},
+            tool_name="generate_image",
+        )
+
+        result = self._run_with_max_turns_and_retries(orchestrator, 5, 1)
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["terminal_failure"])
+        self.assertEqual(result["tool_name"], "generate_image")
+        self.assertEqual(result["usage"]["model_calls"], 1)
+        self.assertEqual(result["usage"]["total_tokens"], 2)
 
 
 if __name__ == "__main__":

@@ -157,6 +157,84 @@ def test_analyze_image_uses_shared_ollama_cloud_dispatch():
     )
 
 
+def test_analyze_image_honors_cloud_web_provider_and_model_override():
+    values = {
+        "LLM_PROVIDER": "ollama",
+        "ANALYZE_IMAGE_LLM_PROVIDER": "xai",
+        "ANALYZE_IMAGE_LLM_MODEL": "grok-4.5",
+        "VISION_MODEL": "different-vision-default",
+    }
+    with patch.object(
+        analyze_image,
+        "get_config_value",
+        side_effect=lambda key, default=None: values.get(key, default),
+    ), patch.object(
+        vision_provider, "analyze_images", return_value="xai vision result"
+    ) as shared:
+        result = analyze_image._analyze_with_vision(
+            ["base64-image"],
+            "Describe this image.",
+            "cloud",
+        )
+
+    assert result == "xai vision result"
+    shared.assert_called_once_with(
+        ["base64-image"],
+        "Describe this image.",
+        mode="cloud",
+        provider="xai",
+        model="grok-4.5",
+    )
+
+
+def test_analyze_image_local_ignores_web_chat_model_and_uses_vision_pin():
+    values = {
+        "ANALYZE_IMAGE_LLM_PROVIDER": "xai",
+        "ANALYZE_IMAGE_LLM_MODEL": "grok-4.5",
+        "OLLAMA_VISION_MODEL": "gemma4",
+    }
+    with patch.object(
+        analyze_image,
+        "get_config_value",
+        side_effect=lambda key, default=None: values.get(key, default),
+    ), patch.object(
+        vision_provider, "analyze_images", return_value="local vision result"
+    ) as shared:
+        result = analyze_image._analyze_with_vision(
+            ["base64-image"],
+            "Describe this image.",
+            "local",
+        )
+
+    assert result == "local vision result"
+    shared.assert_called_once_with(
+        ["base64-image"],
+        "Describe this image.",
+        mode="local",
+        provider="ollama",
+        model=None,
+    )
+
+
+def test_analyze_image_surfaces_provider_failure_in_top_level_error():
+    capability_error = vision_provider.VisionCapabilityError("Ollama", "glm-5.2:cloud")
+    resolved = {
+        "base64": "base64-image",
+        "source_type": "file",
+        "original_path": "/tmp/image.jpg",
+    }
+    with patch.object(analyze_image, "load_config"), patch.object(
+        analyze_image, "_resolve_image", return_value=resolved
+    ), patch.object(
+        analyze_image, "_analyze_with_vision", side_effect=capability_error
+    ):
+        result = analyze_image.analyze_image(image="/tmp/image.jpg")
+
+    assert result["ok"] is False
+    assert "does not support image input" in result["error"]
+    assert result["data"]["error"] == result["error"]
+
+
 def test_xai_oauth_vision_uses_chat_proxy_without_api_key():
     captured = {}
 

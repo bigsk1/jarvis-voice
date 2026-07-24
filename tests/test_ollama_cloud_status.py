@@ -108,9 +108,17 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
             "image": get_config_value("IMAGE_TOOL_PROVIDER"),
             "tts": get_config_value("TTS_PROVIDER"),
             "tool_rag": get_config_value("CLOUD_TOOL_RAG_LIMIT"),
+            "analyze_provider": get_config_value("ANALYZE_IMAGE_LLM_PROVIDER"),
+            "analyze_model": get_config_value("ANALYZE_IMAGE_LLM_MODEL"),
             "child_image": child.get("JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER"),
             "child_tts": child.get("JARVIS_OVERRIDE_TTS_PROVIDER"),
             "child_tool_rag": child.get("JARVIS_OVERRIDE_CLOUD_TOOL_RAG_LIMIT"),
+            "child_analyze_provider": child.get(
+                "JARVIS_OVERRIDE_ANALYZE_IMAGE_LLM_PROVIDER"
+            ),
+            "child_analyze_model": child.get(
+                "JARVIS_OVERRIDE_ANALYZE_IMAGE_LLM_MODEL"
+            ),
         }
 
     web_config = {
@@ -118,6 +126,8 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
             "image_provider": "gemini",
             "tts_provider": "elevenlabs",
             "tool_rag_limit": 9,
+            "llm_provider": "xai",
+            "llm_model": "grok-4.5",
         }
     }
     image_data = {"action": "image", "settings": {"provider": "openai"}}
@@ -129,8 +139,44 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
         "image": "openai",
         "tts": "elevenlabs",
         "tool_rag": "9",
+        "analyze_provider": "xai",
+        "analyze_model": "grok-4.5",
         "child_image": "openai",
         "child_tts": "elevenlabs",
         "child_tool_rag": "9",
+        "child_analyze_provider": "xai",
+        "child_analyze_model": "grok-4.5",
     }
     assert dict(os.environ) == before
+
+
+def test_local_web_chat_keeps_analyze_image_on_pinned_ollama_vision_model():
+    @_scoped_by_mode
+    def probe(mode):
+        child = export_config_environment(mode)
+        return {
+            "analyze_provider": get_config_value("ANALYZE_IMAGE_LLM_PROVIDER"),
+            "analyze_model": get_config_value("ANALYZE_IMAGE_LLM_MODEL"),
+            "child_analyze_provider": child.get(
+                "JARVIS_OVERRIDE_ANALYZE_IMAGE_LLM_PROVIDER"
+            ),
+            "child_analyze_model": child.get(
+                "JARVIS_OVERRIDE_ANALYZE_IMAGE_LLM_MODEL"
+            ),
+            "ollama_vision_model": get_config_value("OLLAMA_VISION_MODEL"),
+        }
+
+    web_config = {
+        "local": {
+            "llm_provider": "ollama",
+            "llm_model": "text-only-local-model",
+        }
+    }
+    with patch("jarvis_web_test_server.config.load_web_config", return_value=web_config):
+        result = probe("local")
+
+    assert result["analyze_provider"] is None
+    assert result["analyze_model"] is None
+    assert result["child_analyze_provider"] is None
+    assert result["child_analyze_model"] is None
+    assert result["ollama_vision_model"]

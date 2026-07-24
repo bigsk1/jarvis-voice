@@ -21,6 +21,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
 from paths import assert_not_restricted_read_path, resolve_local_file_tool_path
+from provider_errors import sanitize_provider_error
 
 MAX_VISION_IMAGE_DIMENSION = 1568
 MAX_VISION_IMAGE_BYTES = 4 * 1024 * 1024
@@ -76,6 +77,7 @@ def analyze_image(
             return {
                 "ok": False,
                 "speech": "No image source provided.",
+                "error": "Missing image source",
                 "data": {"error": "Missing image source"}
             }
         
@@ -84,6 +86,7 @@ def analyze_image(
             return {
                 "ok": False,
                 "speech": f"Maximum {image_limit} images allowed in {mode} mode.",
+                "error": "Too many images",
                 "data": {"error": "Too many images", "limit": image_limit, "provided": len(sources)}
             }
 
@@ -94,6 +97,7 @@ def analyze_image(
                 return {
                     "ok": False,
                     "speech": f"Could not load image from: {source[:50]}...",
+                    "error": "Failed to load image",
                     "data": {"error": "Failed to load image", "source": source}
                 }
             resolved_images.append(resolved)
@@ -105,6 +109,7 @@ def analyze_image(
             return {
                 "ok": False,
                 "speech": "Vision analysis failed.",
+                "error": "Vision model returned no result",
                 "data": {"error": "Vision model returned no result"}
             }
         
@@ -159,10 +164,12 @@ def analyze_image(
         }
         
     except Exception as e:
+        error = sanitize_provider_error(str(e), max_chars=500) or "Vision analysis failed"
         return {
             "ok": False,
-            "speech": f"Error analyzing image: {str(e)[:100]}",
-            "data": {"error": str(e), "source": image or images}
+            "speech": f"Error analyzing image: {error[:180]}",
+            "error": error,
+            "data": {"error": error, "source": image or images}
         }
 
 
@@ -464,25 +471,38 @@ def _analyze_with_vision(images_base64: list[str], question: str, mode: str) -> 
         return None
     from vision_provider import analyze_images
 
-    provider = 'ollama' if mode == 'local' else get_config_value('LLM_PROVIDER', 'xai')
-    model = None
-    if mode == 'cloud' and provider != 'ollama':
-        model = get_config_value('VISION_MODEL', '') or None
-    try:
-        _debug(
-            f"[ANALYZE_IMAGE] Shared vision dispatch: mode={mode}, "
-            f"provider={provider}, count={len(images_base64)}"
+    if mode == 'local':
+        provider = 'ollama'
+        model = None  # Local vision stays pinned by OLLAMA_VISION_MODEL.
+    else:
+        provider = str(
+            get_config_value(
+                'ANALYZE_IMAGE_LLM_PROVIDER',
+                get_config_value('LLM_PROVIDER', 'xai'),
+            )
+            or 'xai'
+        ).strip().lower()
+        model = (
+            get_config_value('ANALYZE_IMAGE_LLM_MODEL', '')
+            or (
+                get_config_value('VISION_MODEL', '')
+                if provider != 'ollama'
+                else ''
+            )
+            or None
         )
-        return analyze_images(
-            images_base64,
-            question,
-            mode=mode,
-            provider=provider,
-            model=model,
-        )
-    except Exception as e:
-        _debug(f"[ANALYZE_IMAGE] Vision failed: {e}")
-        return None
+    _debug(
+        f"[ANALYZE_IMAGE] Shared vision dispatch: mode={mode}, "
+        f"provider={provider}, model={model or '(vision default)'}, "
+        f"count={len(images_base64)}"
+    )
+    return analyze_images(
+        images_base64,
+        question,
+        mode=mode,
+        provider=provider,
+        model=model,
+    )
 
 
 def _stash_image(image_data: dict, analysis: str, mode: str) -> dict | None:
