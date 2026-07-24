@@ -2,7 +2,7 @@
 
 > **Status**: Implemented
 > **Purpose**: Deterministic multi-tool workflow execution for repeatable Jarvis tasks
-> **Last Updated**: July 12, 2026
+> **Last Updated**: July 23, 2026
 
 ---
 
@@ -12,7 +12,9 @@
 
 Workflows are Jarvis recipes: JSON pipelines that run known tool steps in a fixed order. They are useful when a task should be fast, repeatable, schedulable, and less dependent on an LLM remembering every step.
 
-They are not a second chat system. Chat, the API, scheduled tasks, and direct workflow runs all route through the same workflow loader, tool registry, and pipeline executor.
+They are not a second chat system. Chat, the API, scheduled tasks, direct slash
+commands, and the autonomous `workflow` meta-tool share the same workflow
+loader, effective tool registry, and pipeline executor.
 
 ## Why Workflows Matter
 
@@ -33,7 +35,11 @@ Only these workflow features use LLM tokens:
 - `condition: "${llm_decides}"`.
 - Final speech synthesis when the executor needs a model-generated summary.
 
-If a workflow uses only deterministic tool steps, orchestration itself uses zero LLM tokens.
+If an explicitly invoked workflow uses only deterministic tool steps, workflow
+execution itself uses zero LLM tokens. An autonomously selected workflow still
+uses the normal router calls needed to discover/select the recipe and synthesize
+the final answer, but avoids separate schema-bearing LLM turns for every
+component step.
 
 ## Where Workflows Live
 
@@ -56,14 +62,140 @@ Implementation references:
 
 ## How Workflows Run
 
-1. A query or scheduled task names a workflow by trigger or id.
+1. A slash command, API/scheduled task, or the autonomous `workflow` meta-tool names a workflow by trigger or id.
 2. `WorkflowLoader` loads enabled JSON definitions.
-3. `PipelineExecutor` extracts variables from the query.
-4. Steps run in order through the normal `ToolExecutor` and shared tool registry.
-5. Step outputs become variables for later steps.
-6. The response includes `workflow_id`, step results, tools used, usage metadata, and final speech.
+3. Runtime availability is checked against the active mode, profile, surface exclusions, and complete component-tool set.
+4. `PipelineExecutor` extracts variables from the query.
+5. Steps run in order through the normal `ToolExecutor` and shared tool registry.
+6. Step outputs become variables for later steps.
+7. The response includes `workflow_id`, step results, tools used, usage metadata, and final speech.
 
-Workflow runs are explicit by default. Slash triggers such as `/research` and `/github_ai_radar` are the normal invocation path. Pattern and keyword triggers exist in the schema but are not the safe default because they can hijack ordinary chat.
+Workflow definitions still match explicit slash triggers only by default.
+Pattern and keyword triggers exist in the schema but are not used to hijack
+ordinary chat. Autonomous selection is a separate, bounded path: Tool RAG may
+surface the compact `workflow` tool, which then searches currently runnable
+recipes by metadata and requires an exact workflow id before execution.
+
+## Invocation Paths and Disable Boundaries
+
+| Entry point | How it selects | What disables it |
+|-------------|----------------|------------------|
+| Explicit slash command | `WorkflowLoader.match()` before normal router turns | Disable the workflow JSON or make any component tool unavailable/excluded |
+| Workflow API | Exact workflow id/trigger | Disable the workflow JSON or make any component tool unavailable for that API mode |
+| Scheduled workflow | Stored workflow id | Disable the task/workflow or make any component tool unavailable at run time |
+| Autonomous chat/voice | `workflow(search → describe? → run)` selected through Tool RAG | Disable/block the `workflow` meta-tool, or make any component tool unavailable |
+
+The `workflow` tool is a feature switch for **autonomous workflow selection**,
+not a master switch for the entire workflow subsystem. For example, a profile
+containing:
+
+```json
+{
+  "overrides": {
+    "workflow": false
+  }
+}
+```
+
+removes autonomous `workflow` calls from the effective registry after restart,
+while `/research` and an existing scheduled `deep_research` task remain
+available if all of their component tools are still allowed.
+
+Jarvis Web's Settings → Tools blocked list is request/surface-specific. Blocking
+`workflow` prevents Web chat from discovering or calling the autonomous
+meta-tool; it does not currently hide direct slash workflow commands. Blocking
+a component tool, however, makes every workflow that contains that component
+unavailable in Web slash suggestions, detail APIs, and execution.
+
+## Tool and Workflow Availability
+
+Tool eligibility follows the normal precedence:
+
+```text
+manifest enabled value
+        ↓
+active profile override wins
+        ↓
+mode/config/credential availability
+        ↓
+effective ToolRegistry
+        ↓
+Web or request exclusions
+        ↓
+workflow admission
+```
+
+Workflow admission is strict:
+
+- Every step tool must exist in the effective registry.
+- Optional and conditional steps still count; there is no degraded recipe mode.
+- A workflow never force-enables a component or substitutes a different tool.
+- Search/list surfaces omit ineligible workflows.
+- Slash, API, scheduled, autonomous `run`, and `PipelineExecutor` recheck before execution.
+- A workflow cannot recursively call the `workflow` meta-tool.
+
+Tool RAG sync-status JSON files are health markers, not capability catalogs.
+Admission uses the live registry/surface view rather than
+`data/.tool_sync_status_<mode>.json`.
+
+## Autonomous Foreground Execution
+
+The meta-tool exposes three actions:
+
+```text
+workflow(action=search, query="task description")
+workflow(action=describe, workflow_id="exact_id")
+workflow(action=run, workflow_id="exact_id", query="required input")
+```
+
+Experimental router prompt versions v2-v4 include this routing contract in
+their own wording style. When `workflow` is actually available and a recipe
+fully matches the user's task, Jarvis searches with the underlying intent and
+desired output, confirms an exact currently runnable ID, and starts at most one
+run. It may still use a direct tool for a simple action where no recipe adds
+needed work. v1 remains the immutable comparison baseline.
+
+Search reads both shared and personal folders, respects personal same-id
+overrides, and returns compact metadata without component schemas. `run`
+revalidates availability and waits synchronously for `PipelineExecutor`.
+
+The outer `workflow` call runs in-process, before `ToolExecutor` enters its
+subprocess path. Therefore the generic 60-second cloud / 75-second local
+subprocess timeout does not cap the complete recipe, and the Web worker has no
+separate workflow wall-clock timeout. Each component tool still retains its
+normal default or tool-specific timeout, and provider/HTTP calls retain their
+own configured timeouts.
+
+Only one workflow **run** may start in a user request. Search and describe may
+precede it; missing-input or availability preflight failures do not consume the
+run. Once execution starts, the duplicate guard rejects a second workflow run
+even if it uses another workflow id. Completion Guard also excludes workflow
+turns so a manual/automatic repair cannot replay a completed recipe.
+
+The immediate router follow-up receives a step-aware preview capped at 8,000
+characters. It preserves all steps in current shared recipes, including late
+Canvas page ids and Stash refs, while omitting the duplicated workflow variables
+graph and bounding bulky content. The canonical result remains available to Web
+persistence/follow-up extraction.
+
+Jarvis Web emits component tool cards and saves a tool-name-keyed follow-up
+projection alongside the nested workflow result. Existing per-tool adapters
+preserve actionable Canvas ids, Stash refs, URLs, and bounded summaries;
+repeated component tools remain candidate/run lists rather than overwriting one
+another. A later user message can therefore read/update a Canvas page or call an
+individual follow-up tool without rerunning the recipe.
+
+Workflow-internal LLM usage is merged into the parent turn, including parameter
+filling, validation, generated titles/speech, and component tools such as
+`text_summarizer` or Stash auto-summary. Component provider/model identity is
+retained when a workflow uses a different summary model.
+
+The result also carries bounded workflow purpose, trigger, and query-input
+metadata into Intelligence reflection. Positive learning is matched to the
+recipe's actual job, not test phrases such as “run the previous workflow.” This
+keeps a large existing Intelligence database from disadvantaging a correct
+workflow insight merely because the successful test prompt used unusual
+orchestration wording.
 
 ## Quick Start
 
@@ -321,6 +453,13 @@ Workflow scheduled tasks are first-class:
 
 The scheduled runner executes workflows through `WorkflowLoader`, `ToolExecutor`, and `PipelineExecutor`. MCP tools are available through the shared MCP-aware registry used by orchestration, so a workflow run after server start should not need a prior chat message to initialize MCP tools.
 
+Scheduled workflows do not call the autonomous `workflow` meta-tool. Disabling
+or Web-blocking that meta-tool therefore does not cancel or suppress scheduled
+tasks. At execution time, the scheduled runner independently validates every
+component against its own mode/profile registry. The scheduled task's stored
+`timeout_seconds` wraps the complete worker run even though interactive
+`PipelineExecutor` execution has no global wall-clock timeout.
+
 Notification behavior:
 
 - Email and webhook notification failures are captured as failed notification results.
@@ -372,6 +511,7 @@ For loader, executor, API, or scheduled-task changes, run focused pytest from th
 ```bash
 cd ~/jarvis-voice
 .venv/bin/python -m pytest tests/test_workflow_loader.py tests/test_pipeline_executor.py tests/test_scheduled_task_workflow_input.py tests/test_memory_ui_scheduled_workflows.py
+.venv/bin/python -m pytest tests/test_workflow_tool_runtime.py tests/test_workflow_availability.py tests/test_web_workflow_availability.py
 ```
 
 If `.venv` is missing or stale:

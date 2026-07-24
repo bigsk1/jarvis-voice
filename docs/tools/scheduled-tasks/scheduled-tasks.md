@@ -816,6 +816,15 @@ This is better for known operational routines like:
 - health checks
 - research workflows
 
+Scheduled workflow tasks do not discover or execute through the autonomous
+`workflow` meta-tool. Consequently:
+
+- disabling/profile-disabling/Web-blocking the `workflow` meta-tool does not disable an existing scheduled workflow;
+- Web blocked tools are a Web-chat surface policy, not a scheduler policy;
+- the runner still checks its own mode/profile registry and rejects the complete workflow if any component is unavailable;
+- optional and conditional component steps count during that admission check;
+- the scheduled task's own `timeout_seconds` deadline still wraps the complete run, even though `PipelineExecutor` itself has no global wall-clock timeout.
+
 Why not route workflow commands back through free-form LLM every time:
 
 - direct workflow execution is more predictable

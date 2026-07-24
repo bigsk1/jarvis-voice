@@ -45,7 +45,8 @@ User: "Send webhook to X and save the URL"
 4. **Safety Limits**
    - Max turns per request (prevents infinite loops): shipped cloud `12`, local `6`; code fallback `15`
    - Each tool failure can trigger retry logic
-   - Total execution bounded by timeouts
+   - Local subprocess tools use default or tool-specific timeouts; there is no one global wall-clock timeout for an interactive orchestration request
+   - Duplicate/single-run guards prevent repeated side effects and recipe loops
 
 ## Real-World Examples
 
@@ -233,9 +234,12 @@ JARVIS_RESPONSE_STYLE="auto"      # Shipped default: smart mode based on tool
    - Returns partial results + explanation
 
 2. **Tool Timeouts:** Each tool has its own timeout
-   - `opencode`: 180 seconds
-   - Most tools: 30 seconds
-   - Total request bounded by sum of tool timeouts
+   - Default local-tool subprocess timeout: cloud 60 seconds, local 75 seconds
+   - `opencode`: 480 seconds
+   - Generators, phone calls, media, and other long-running tools have explicit longer limits in `ToolExecutor._get_subprocess_timeout()`
+   - MCP/provider/HTTP paths retain their own configured deadlines
+   - The in-process `workflow` meta-tool and `PipelineExecutor` have no overall interactive wall-clock timeout; each workflow component retains its own timeout
+   - Scheduled tasks separately enforce their stored `timeout_seconds` around the complete run
 
 3. **Retry Logic:** Still works within multi-turn
    - Failed tool can retry (max 1 retry)
@@ -246,6 +250,12 @@ JARVIS_RESPONSE_STYLE="auto"      # Shipped default: smart mode based on tool
    - Each tool runs in isolation
    - Results passed via JSON (immutable)
    - No shared state except context object
+
+5. **Duplicate and Workflow Run Caps:**
+   - Successful identical tool calls are blocked unless a real retry/refresh is justified
+   - Expensive/side-effecting single-call tools use a one-attempt cap
+   - `workflow(search)` and `workflow(describe)` may precede execution, but only one workflow run may start in a user request
+   - A completed workflow result tells the next turn to answer from the recipe rather than repeat its component tools
 
 ## Testing
 

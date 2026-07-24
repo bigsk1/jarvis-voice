@@ -21,7 +21,8 @@ These files are **templates only**. Jarvis loads profiles from `skills/profiles/
 - If a tool is already **`"enabled": false`** in its `*.tool.json`, you do **not** need to list it again as `"tool_name": false` in a profile—that is redundant; the tool is already off unless a profile sets it to **`true`**.
 - **Unknown names** in `overrides` (e.g. MCP tools you never installed, typos, or tools you deleted) are **ignored** at runtime—no error. Keys only apply when a matching tool is actually registered.
 - `canvas` and `stash` are intentionally **not** listed here so they stay on by default; add `"canvas": false` only if you want to hide them.
-- `tool_search` is mandatory in code for discovery; profile entries do not remove it from routing.
+- `tool_search` and `workflow` are mandatory discovery candidates only while present in the effective registry. A profile can disable either one normally.
+- `"workflow": false` disables autonomous workflow discovery/execution through the meta-tool, but does not disable direct `/workflow-name` commands or scheduled workflow tasks.
 - After copying, treat the file in `skills/profiles/` as yours (that folder stays gitignored except `default.json` and this `examples/` tree).
 
 ## Local mode (`local.env` + Ollama)

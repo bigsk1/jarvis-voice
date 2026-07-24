@@ -31,6 +31,61 @@ class ToolContextPreviewTests(unittest.TestCase):
     def test_bookmark_search_gets_larger_preview_budget(self):
         self.assertEqual(self.orch._tool_context_max_chars("bookmark_search"), 5000)
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_web_search"), 6000)
+        self.assertEqual(self.orch._tool_context_max_chars("workflow"), 8000)
+
+    def test_workflow_preview_keeps_late_step_handles_and_omits_variables_graph(self):
+        steps = []
+        for index in range(1, 14):
+            data = {
+                "content": f"step {index} " + ("large payload " * 700),
+                "status": "complete",
+            }
+            if index == 1:
+                data["stash_ref"] = "stash://research/source-1"
+            if index == 13:
+                data["page_id"] = "page_final_13"
+                data["url"] = "https://jarvis.example/canvas/page_final_13"
+            steps.append(
+                {
+                    "step": index,
+                    "tool": "canvas" if index == 13 else "stash",
+                    "ok": True,
+                    "data": data,
+                    "duration_ms": index * 10,
+                }
+            )
+
+        result = {
+            "ok": True,
+            "speech": "Workflow complete.",
+            "data": {
+                "action": "run",
+                "workflow_id": "deep_research",
+                "workflow_name": "Deep Research",
+                "execution": "foreground",
+                "workflow_started": True,
+                "workflow_completed": True,
+                "steps_completed": 13,
+                "component_tools_used": ["stash", "canvas"],
+                "results": steps,
+                "variables": {"huge": "do not expose " * 5000},
+            },
+        }
+
+        preview, total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "workflow",
+            result,
+        )
+
+        parsed = json.loads(preview)
+        step_results = parsed["llm_context_preview"]["step_results"]
+        self.assertTrue(truncated)
+        self.assertGreater(total, shown)
+        self.assertLessEqual(shown, 8000)
+        self.assertEqual(len(step_results), 13)
+        self.assertIn("stash://research/source-1", preview)
+        self.assertIn("page_final_13", preview)
+        self.assertNotIn("do not expose", preview)
 
     def test_search_preview_lifts_exact_source_candidates(self):
         long_blob = "x" * 9000

@@ -2,7 +2,7 @@
 
 **Status**: Active / Phase 1.5 Complete + 2026 operational bridges
 **Created**: 2025-11-27
-**Updated**: 2026-05-25 (Pass 4: correction learning, Profile Card, dashboard port 5003, schema, API table, debris cleanup)
+**Updated**: 2026-07-23 (effective-registry insight filtering and autonomous workflow discovery)
 **Location**: `lib/intelligence.py`, `lib/intelligence_hooks.py`, `jarvis-intelligence/` (dashboard)
 
 ## Overview
@@ -179,7 +179,50 @@ Tool argument values must be concrete user/query values, not JSON schema objects
 
 It also improves insight scoring: a positive insight that recommends a tool is not counted as helpful when that preferred tool failed and a later tool recovered the task.
 
-### 8. Presentation Artifact Learning (2026-04-18)
+### 8. Autonomous Workflow Attribution in Reflection (2026-07-23)
+
+Autonomous workflow orchestration records a compact `workflow_execution` block
+alongside the ordinary outer tool trace. It identifies:
+
+- autonomous meta-tool versus explicit slash invocation
+- discovery actions (`search`, `describe`) versus `run`
+- selected workflow ID, name, purpose, triggers, and query inputs
+- whether the run started, completed, failed, or was cancelled
+- component tools and bounded step outcomes
+- `component_order_owner=deterministic_workflow_recipe`
+
+Reflection therefore grades the router's decision to select a particular
+workflow separately from execution of the fixed recipe. Discovery calls are not
+treated as retries, and component order is never copied into
+`preferred_tool_sequence`.
+
+A positive workflow insight is accepted only for a successful, completed,
+non-cancelled run. It must explicitly prefer the `workflow` meta-tool and stores
+the exact recipe in `preferred_workflow_id`. The old `final_tool` fallback is
+disabled for workflow experiences, preventing a reflection that returns no
+preference from silently becoming a generic `workflow` preference.
+
+Workflow reflection is explicitly grounded in the recipe's underlying purpose
+and outputs. Test wording and orchestration phrases such as “run the previously
+successful procedure” must not become the trigger concept. For retrieval, a
+positive workflow insight's `applies_to_pattern` and embedding are anchored to
+the selected recipe metadata, so a `quick_note` lesson matches requests to save
+a note to memory and Canvas rather than only prompts that mention workflows.
+When a new reflection merges into the same exact `preferred_workflow_id`, these
+semantic fields replace the legacy workflow wording; ordinary non-workflow
+insight merges retain their existing blend-without-replace behavior.
+
+Before injection, Jarvis verifies that the `workflow` meta-tool, the named
+workflow, and every component tool remain in the effective registry for the
+current mode/profile/request surface. The prompt presents the recipe as a
+candidate that must still be confirmed through workflow discovery. If that
+specific workflow does not run successfully, the insight is not counted as
+helpful merely because some other workflow ran.
+
+Reflections already queued before this field existed reconstruct the same
+summary from their stored workflow result and tool trace when possible.
+
+### 9. Presentation Artifact Learning (2026-04-18)
 
 Experience context now records response presentation metadata:
 
@@ -206,7 +249,7 @@ Use the spoken response for a concise summary and save full structured details t
 
 Guardrail: reflection may only recommend artifact tools that were actually available to the original route. This avoids learning “use canvas” from experiences where `canvas` was not in Tool RAG/ghost tools.
 
-### 9. Provider-Native Tool Metadata in Reflection (2026-04-04)
+### 10. Provider-Native Tool Metadata in Reflection (2026-04-04)
 
 When providers use native server-side tools such as xAI `x_search` / `web_search` or native code execution, the intelligence layer now treats that as **evidence metadata**, not as Jarvis routing behavior.
 
@@ -214,7 +257,7 @@ When providers use native server-side tools such as xAI `x_search` / `web_search
 - Completion Guard also treats those native tools as real evidence during audits.
 - These native provider tools are **not** converted into `preferred_tool` / `avoided_tool` insights, so Jarvis does not start preferring provider-specific internals over normal Jarvis tools.
 
-### 10. Reflection Usage Tracking (2026-04-18)
+### 11. Reflection Usage Tracking (2026-04-18)
 
 Reflection LLM calls now preserve their own observability metadata on generated insights:
 
@@ -606,7 +649,7 @@ rm data/jarvis_intelligence.db
 
 | Scenario | Effect | Notes |
 |----------|--------|-------|
-| Disable a tool | ✅ Works | Old insights still valid, tool just won't be selected |
+| Disable a tool | ✅ Works | Insights that require the missing tool are filtered before prompt injection |
 | Enable a tool | ✅ Works | New experiences will include it |
 | Add new tool | ✅ Works | System learns about it naturally |
 | Remove tool | ✅ Works | Insights filtered at prompt time (won't recommend unavailable tools) |
@@ -636,9 +679,15 @@ After editing `BLOCKED_TOOLS`, run `./bin/sync-tools.py cloud` (or `local`).
 
 When insights are formatted for the LLM prompt, the orchestrator builds the **allowed tool set** as:
 
-1. `enabled = 1` rows in `tool_definitions` (same DB as Tool RAG)
-2. Minus **Web UI** blocked tools (`excluded_tools` from the chat request)
-3. Minus **`JARVIS_TOOL_PROFILE` overrides** where the value is `false`
+1. `ToolRegistry.list_tools()` from the active mode after manifest enablement,
+   profile overrides, and config/credential availability
+2. Minus **Web UI/request** blocked tools (`excluded_tools` from the request)
+
+The registry is the capability authority. `tool_definitions` remains the
+semantic ranking index; a stale enabled database row cannot make an insight
+surface a tool absent from the live registry. This includes the mandatory
+discovery helpers `tool_search` and `workflow`: when either helper is disabled
+or request-blocked, insights cannot reintroduce it.
 
 Then:
 
@@ -1083,6 +1132,10 @@ Output shows:
 ```
 
 Default sync is additive: it copies missing source experiences, insights, insight evidence, and pending reflections while preserving target-only learning from the other mode. Use `--replace` only when you intentionally want those synchronized tables in the target Intelligence database to mirror the source.
+
+Insight and evidence sync preserves `preferred_workflow_id`; the target-mode
+runtime still revalidates that recipe against its own effective registry before
+injecting the recommendation.
 
 `meta_knowledge` is deliberately not synchronized. The cloud and local Intelligence databases each keep their own maintenance history and meta-cognition findings because these rows describe the state of that specific database, such as its last decay run, blind spots, and learning-quality findings. Keeping them separate prevents maintenance performed on one database from incorrectly changing the maintenance schedule or reported health of the other. Each database can derive fresh findings after portable learning data is synchronized.
 

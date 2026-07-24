@@ -31,6 +31,7 @@ Example profile you can copy to `skills/profiles/<your_name>.json` and edit (fil
 {
   "description": "Short note for yourself (optional).",
   "overrides": {
+    "workflow": false,
     "weather": false,
     "serpapi_search": false,
     "mcp_fetch_fetch": false,
@@ -45,7 +46,15 @@ Example profile you can copy to `skills/profiles/<your_name>.json` and edit (fil
 - Use `true` to force-enable a tool that is disabled in the tool file (uncommon).
 - Discover exact tool names (including `mcp_*`): `./bin/manage-tools.py list` or `./bin/manage-tools.py profile export` while the tools you care about are registered.
 
-**Known gap:** profiles control which tools the router can *call*, but meta Q&A (“what can you do?”) may still describe disabled capabilities from the static system prompt or injected intel. That is expected today; see [Runtime-Aware Capability Narration (Q&A)](../docs/ADVANCED_AI_TECHNIQUES.md#design-note-runtime-aware-capability-narration-qa) in `docs/ADVANCED_AI_TECHNIQUES.md` for the problem statement and a possible future enhancement.
+`tool_search` and `workflow` follow the same profile rules as every other tool. They are mandatory **discovery candidates only when they remain in the effective registry**; neither is force-enabled. Setting either name to `false` removes it from normal Tool RAG routing after services restart.
+
+Disabling `workflow` here disables the autonomous `workflow(search|describe|run)` meta-tool. It does not disable the independent explicit slash-command or scheduled-workflow entry points. Those continue to validate every component tool against the active registry/profile before execution.
+
+**Known gap:** profiles control which tools the router can *call*, and
+tool-specific Intelligence insights are filtered against the effective live
+registry. Meta Q&A (“what can you do?”) may still overstate disabled
+capabilities from broad static prompt prose that is not generated from the
+effective tool set. See [Runtime-Aware Capability Narration (Q&A)](../docs/ADVANCED_AI_TECHNIQUES.md#design-note-runtime-aware-capability-narration-qa).
 
 CLI reference: `./bin/manage-tools.py -h` and the usage block at the top of `bin/manage-tools.py`.
 
@@ -59,6 +68,11 @@ Tools are automatically discovered when they have:
 3. Executable permission: `chmod +x toolname.py`
 
 The orchestrator loads tools from both `skills/` and `skills/auto-tools/`.
+
+`ToolRegistry.list_tools()` returns the names that survived manifest enablement,
+the active profile, mode-specific availability, and credential/config checks.
+It is not a raw list of every `*.tool.json`. Web/request blocks are applied
+after registry construction for that surface.
 
 ---
 
@@ -279,6 +293,7 @@ JSON object printed to stdout:
 | Tool | Description |
 |------|-------------|
 | `tool_search` | Discover enabled tools by summary first, then follow exact tool names |
+| `workflow` | Discover, describe, and synchronously run an eligible deterministic workflow |
 | `check_tool_logs` | View tool/workflow execution logs |
 | `check_opencode_sessions` | Monitor OpenCode progress |
 | `query_service_logs` | Check background service status |
@@ -424,7 +439,9 @@ Print statements must have in tool *.py files file=sys.stderr so they are not pr
 Tools are discovered dynamically using semantic search:
 - Only relevant tools are loaded per query (reduces context)
 - Tool descriptions are embedded for similarity matching
-- "Ghost tools" (critical tools) are always available
+- Configured ghost tools are prioritized inside the final schema cap
+- `tool_search` and `workflow` are mandatory discovery candidates when enabled
+- Profile-disabled, manifest-disabled, unavailable, and request-blocked tools are never resurrected by the Tool RAG database
 
 ---
 

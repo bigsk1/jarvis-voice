@@ -55,11 +55,17 @@ jarvis
 |------|-----------------|------------------|
 | **get_time** | "What time is it?", "Tell me the date" | ✅ Auto-approved |
 | **tool_search** | "Find the tool that can inspect logs", "Browse available tools" | ✅ Auto-approved |
+| **workflow** | "Find and run my existing research workflow" | ✅ Auto-approved |
 | **send_webhook** | "Send webhook to URL with data X" | ⚠️ Network |
 | **api_call** | "Call the API at github.com/users/X" | ⚠️ Network |
 | **execute_bash** | "Run the command uptime" | 🚨 Dangerous |
 
 `tool_search` is a summary-first discovery tool. In semantic and browse mode it focuses on non-ghost tools, because ghost tools are already considered by Tool RAG. Exact lookup can still inspect a ghost tool by name when needed.
+
+`workflow` is a summary-first deterministic-recipe tool. It can search shared
+and personal workflows, describe one compactly, and run one synchronously when
+all component tools are available. It returns the final recipe result to the
+same orchestration turn.
 
 ### Example Commands
 
@@ -107,9 +113,25 @@ Text-to-Speech (OpenAI TTS / Kokoro)
 You hear: "Webhook sent successfully to your server. Status 200."
 ```
 
-Tool availability is selected just before the router LLM call by Tool RAG. Local mode defaults to a final schema cap of 6 tools (`LOCAL_TOOL_RAG_LIMIT`) and cloud mode defaults to 15 (`CLOUD_TOOL_RAG_LIMIT`). Ghost tools and exact positive tool signals are merged first, then the final cap is applied with explicit tool hints and `tool_search` prioritized. Web/UI actions can pass a lower one-request cap for tightly scoped turns such as Send to Canvas.
+Tool availability is selected just before the router LLM call by Tool RAG. Local mode defaults to a final schema cap of 6 tools (`LOCAL_TOOL_RAG_LIMIT`) and cloud mode defaults to 15 (`CLOUD_TOOL_RAG_LIMIT`). Ghost tools and exact positive tool signals are merged first, then the final cap is applied with explicit tool hints followed by `tool_search` and `workflow`. Web/UI actions can pass a lower one-request cap for tightly scoped turns such as Send to Canvas.
 
 **Credential-aware registration** runs earlier, at registry load: tools whose manifest `availability` requirements are unmet in the active mode never enter the registry or Tool RAG (even if `"enabled": true` in git). Profile overlays cannot force-enable a tool with missing hard requirements. The `availability` block itself is not sent to the LLM — only name, description, and parameters from `to_openai_format()`. See `skills/README.md` → **Availability** and `docs/TOOL_MANAGEMENT.md` → **Enabled vs available**.
+
+The complete precedence is:
+
+```text
+manifest enabled
+    → profile override
+    → mode/config availability
+    → effective ToolRegistry
+    → Web/request exclusions
+    → Tool RAG shortlist
+```
+
+The two mandatory discovery tools are mandatory only after those earlier gates.
+Both can be disabled. Blocking `workflow` disables autonomous recipe selection
+for that surface, while direct slash commands and scheduled workflows remain
+separate entry points.
 
 For live debugging of which tools were made available, enable `TOOL_RAG_TRACE_ENABLED=true` and inspect `logs/tool-rag/tool-rag-YYYY-MM-DD.jsonl`; see `docs/TOOL_RAG_STRATEGY.md`.
 

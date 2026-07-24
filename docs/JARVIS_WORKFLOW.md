@@ -261,7 +261,10 @@ graph TB
 GHOST_TOOLS="search_memory,semantic_recall,remember,check_tool_logs,get_recent_conversations,get_time"
 ```
 
-`tool_search` is injected as a mandatory discovery candidate in code rather than configured through `GHOST_TOOLS`. The final Tool RAG cap still applies, with explicit hints and `tool_search` prioritized before ranked non-ghost tools.
+`tool_search` and `workflow` are injected as mandatory discovery candidates in
+code rather than configured through `GHOST_TOOLS`. The final Tool RAG cap still
+applies, with explicit hints first, then enabled discovery helpers, then ranked
+non-ghost tools.
 
 **Similarity Thresholds and compact retrieval** (filter retrieved tools before top-K):
 ```bash
@@ -400,7 +403,7 @@ graph TB
    - `send_webhook` (similarity: 0.45) ✅
    - `get_time` (similarity: 0.12) ❌
    - ... (27 other tools filtered out)
-4. **Ghost Tools Added**: `search_memory`, `semantic_recall`, `remember`, `check_tool_logs`, `get_recent_conversations`, `get_time`, `tool_search`
+4. **Ghost Tools Added**: configured memory/log/artifact ghosts plus enabled mandatory discovery helpers `tool_search` and `workflow`
 5. **Final Context**: 10 tools sent to LLM (3 retrieved + 7 ghost)
 6. **LLM Decision**: Selects `crypto_price` (highest relevance)
 
@@ -428,8 +431,9 @@ Tools that are prioritized regardless of the query before the final Tool RAG cap
 - `get_recent_conversations` - Context from past interactions
 - `get_time` - Basic utility (often needed as context)
 
-**Mandatory Discovery Ghost Tool:**
+**Mandatory Discovery Ghost Tools:**
 - `tool_search` - Search or browse non-ghost enabled tools by summary first, then follow exact tool-name hints on the next turn; exact inspection can still look up a ghost tool by name
+- `workflow` - Search runnable workflow metadata, inspect one compact recipe, and synchronously run one exact workflow id
 
 **Why Ghost Tools?**
 1. **Memory Access**: LLM must always be able to check/save memories
@@ -443,7 +447,20 @@ Tools that are prioritized regardless of the query before the final Tool RAG cap
 GHOST_TOOLS="search_memory,semantic_recall,remember,my_custom_tool"
 ```
 
-`tool_search` does not need to be added to `GHOST_TOOLS`; it is hardcoded as a mandatory discovery candidate and prioritized inside the final Tool RAG cap.
+`tool_search` and `workflow` do not need to be added to `GHOST_TOOLS`; they are
+hardcoded as mandatory discovery candidates and prioritized inside the final
+Tool RAG cap. “Mandatory” applies only after normal availability gates. Either
+tool can be removed by its manifest, the active tool profile, or a Web/request
+block.
+
+```text
+manifest enabled
+    → profile override
+    → mode/config availability
+    → effective ToolRegistry
+    → request exclusions
+    → Tool RAG shortlist
+```
 
 ### Tool Sync Workflow
 
@@ -485,14 +502,14 @@ This section documents the **actual** orchestrator path in `orchestrator/orchest
 
 ```mermaid
 flowchart TD
-    Q[User query] --> AC[Auto-context injection]
+    Q[User query] --> WF{Explicit workflow slash command?}
+    WF -->|yes| PE[PipelineExecutor bypass]
+    WF -->|no| AC[Auto-context injection]
     AC --> AM[Auto-memory injection]
     AM --> II[Intelligence insights PREFER/AVOID]
     II --> PC[Profile Card boundary]
     PC --> TR[Tool RAG retrieval + ghost tools]
-    TR --> WF{Workflow slash command?}
-    WF -->|yes| PE[PipelineExecutor bypass]
-    WF -->|no| RT[Router LLM turn loop]
+    TR --> RT[Router LLM turn loop]
     PE --> RF[ResponseFormatter]
     RT --> EX[Executor tool calls]
     EX --> DG{Duplicate guard?}
@@ -512,7 +529,7 @@ Before the first router call, context is assembled in this order:
 | 2 | Auto-memory (`Orchestrator._get_memory_context()` in `orchestrator/orchestrator_v2.py`) | FTS5 + semantic hits for the query |
 | 3 | `lib/intelligence_hooks.py` | Top matching insights (preferred/avoided tools, negative constraints) |
 | 4 | `lib/user_profile.py` | **Profile Card** — stable user prefs from memory DB `user_model` table |
-| 5 | Tool RAG | Embeddings + ghost tools + `tool_search` discovery |
+| 5 | Tool RAG | Embeddings + ghost tools + enabled `tool_search` / `workflow` discovery |
 | 6 | Router system prompt | Mode, freshness rules, duplicate guard text, memory-first |
 
 See [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md) and [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md) for Profile Card and insight injection details.
@@ -520,6 +537,32 @@ See [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md) and [INTELLIGENCE_LAYER.md]
 ### Workflow bypass (slash commands)
 
 `WorkflowLoader` (`orchestrator/workflow_loader.py`, `explicit_only=True`) matches commands like `/research`, `/code`, `/summarize`. When matched, **`PipelineExecutor`** runs a fixed step pipeline instead of open-ended multi-turn routing. The orchestrator still records experiences and applies formatting via `ResponseFormatter`.
+
+This direct path runs before auto-context, Intelligence, and Tool RAG. Disabling
+the `workflow` meta-tool does not disable explicit slash matching. A slash
+workflow is unavailable only when the workflow JSON is disabled or any
+component tool fails the active registry/profile/request gate.
+
+### Autonomous workflow path
+
+On a normal chat, voice, or CLI request, Tool RAG may expose the compact
+`workflow` meta-tool:
+
+```text
+workflow(search) → workflow(describe, optional) → workflow(run)
+```
+
+Search returns only shared/personal recipes whose entire component set is
+runnable in the current mode/profile/surface. `run` rechecks and waits for the
+foreground `PipelineExecutor` result. The outer call is in-process and is not
+limited by the generic 60-second cloud / 75-second local subprocess timeout;
+component tools keep their individual timeouts.
+
+Only one workflow run may start per user request, although discovery and
+description can happen first. The final LLM turn receives an 8,000-character
+step-aware preview that preserves late Canvas/Stash handles without replaying
+the entire variables graph. Web conversation persistence separately retains
+the nested workflow result and compact component follow-up projections.
 
 ### Direct speech bypass tools
 

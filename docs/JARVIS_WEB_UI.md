@@ -552,7 +552,8 @@ tool reads:       get_config_value('IMAGE_TOOL_PROVIDER')
 
 ### Blocked Tools
 
-Web-specific tool blocking (doesn't affect terminal):
+Web-specific tool blocking is read for each chat request and does not affect
+terminal/voice or scheduled-task execution:
 
 ```bash
 # View blocked tools
@@ -563,6 +564,23 @@ curl -X PUT http://localhost:5001/api/settings/blocked-tools \
   -H "Content-Type: application/json" \
   -d '{"blocked": ["get_recent_conversations", "some_tool"]}'
 ```
+
+The Web block list is the last gate after manifest enablement, active profile,
+and mode/config availability. Blocked names are removed from Tool RAG and passed
+to `ToolExecutor`, so the LLM cannot bypass the UI by naming a blocked tool
+directly.
+
+Blocking `workflow` disables autonomous `workflow(search|describe|run)` calls
+from Web chat. It does not currently disable explicit `/workflow-name` commands
+or scheduled workflows, which are independent entry points. To hide/block a
+specific workflow in Web slash suggestions and execution, block or disable any
+component tool used by that workflow; workflow admission is strict and the
+entire recipe becomes unavailable.
+
+Tool, prompt, and workflow discovery APIs accept the currently selected
+cloud/local mode. Their lists combine that mode's effective profile and
+availability with the Web block list, so switching the browser selection does
+not keep showing the startup mode's catalog.
 
 ---
 
@@ -662,6 +680,13 @@ The orchestrator checks: if `conversation_history` is passed (web UI always pass
 - `content`: the message text
 - `tools_used`: array of tool names used (for assistant messages)
 - `tool_results`: extracted follow-up data (stash refs, IDs, providers) for actionable tools
+
+For an autonomous or explicit workflow response, Web keeps the nested
+step-by-step result and also creates compact component projections using the
+normal per-tool follow-up adapters. Repeated component tools remain lists of
+runs/candidates. This preserves Canvas page ids, Stash refs, source URLs, and
+bounded summaries so a later turn can update an artifact or call an individual
+tool without rerunning the recipe.
 
 This means the LLM sees previous messages like:
 ```
@@ -1156,6 +1181,7 @@ Examples:
 - Typed or pasted `#tool_name` tokens still work as a plain-text fallback. The UI removes recognized tokens from the clean user query and sends canonical tool names as metadata.
 - Ambient tool suggestions may appear while typing a normal request. These are optional suggested chips based on the current text and the enabled tool registry; clicking one adds it as a selected tool hint.
 - Ambient suggestions are not `GHOST_TOOLS`. Ghost tools are environment/config tools prioritized by Tool RAG; ambient suggestions are visible user choices and are only sent if clicked.
+- `tool_search` and `workflow` are mandatory discovery candidates only while enabled in this effective Web tool surface. A profile or Web block can remove either helper.
 - The server validates hints again, dedupes them, caps them at 5, and injects a compact context block:
 
 ```text
@@ -1685,3 +1711,4 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v2.13: Completion Guard manual countdown, expired/superseded neutral settlement, and random-feedback coordination docs - April 17, 2026*
 *v2.14: `#tool` hints for soft per-request tool preference, full enabled-tool autocomplete, server validation, and ✨ Enhance preservation - April 20, 2026*
 *v2.15: Tool hint chips and ambient tool suggestions for optional per-request tool preferences - April 20, 2026*
+*v2.16: Mode-aware tool/prompt/workflow discovery, autonomous foreground workflow tool cards/follow-up context, and workflow Completion Guard exclusion - July 23, 2026*

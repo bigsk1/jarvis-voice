@@ -26,9 +26,9 @@ from router_v2 import LLMRouter  # noqa: E402
 
 
 V1_SHA256 = "6c2ecbb0c032af7f7ffc70b6d093d11e918230e31ef4ddb7bfffadf9f4b4efc1"
-V2_SHA256 = "cc3c7a8a8e97dd5923ecebcdd2c4ff8da1a2ad4a15a0d04199c9b31c069fce8d"
-V3_SHA256 = "59c7881829f36d4966e1c41996dd5e339e41ecf08ec870958ec03cbd00362fa9"
-V4_SHA256 = "56380c054f1dfb891d4a54445cf61113dab944fc10754f63cc56ce15d5c8c12f"
+V2_SHA256 = "690de3d9c82a7849af641f878bf8440f787a8f391c8576cdf509a79ac0582c27"
+V3_SHA256 = "488aab327f393fdc76f6703db4c626215049969d45c6bdc7690b304c1300df3a"
+V4_SHA256 = "3e6a96c8853f29e48b4f9443eeccb6df3d47cb3bf0c0ffc8a7942ab2a90d67ac"
 
 
 def test_v1_is_exact_established_router_prompt_baseline():
@@ -49,9 +49,9 @@ def test_v2_is_compact_standalone_prompt_with_its_own_hash():
     version, v2 = get_router_system_prompt("v2")
 
     assert version == "v2"
-    assert len(v2) == 11_977
-    assert len(v2.splitlines()) == 81
-    assert len(v2.split()) == 1_676
+    assert len(v2) == 12_976
+    assert len(v2.splitlines()) == 87
+    assert len(v2.split()) == 1_833
     assert v2.isascii()
     assert hashlib.sha256(v2.encode()).hexdigest() == V2_SHA256
 
@@ -60,9 +60,9 @@ def test_v3_is_caveman_hybrid_with_normal_output_guard_and_own_hash():
     version, v3 = get_router_system_prompt("v3")
 
     assert version == "v3"
-    assert len(v3) == 8_580
-    assert len(v3.splitlines()) == 85
-    assert len(v3.split()) == 1_102
+    assert len(v3) == 9_175
+    assert len(v3.splitlines()) == 91
+    assert len(v3.split()) == 1_189
     assert v3.isascii()
     assert "NEVER imitate caveman grammar in user-facing answer" in v3
     assert "Speak normal fluent language" in v3
@@ -73,9 +73,9 @@ def test_v4_is_caveman_light_with_normal_output_guard_and_own_hash():
     version, v4 = get_router_system_prompt("v4")
 
     assert version == "v4"
-    assert len(v4) == 8_849
-    assert len(v4.splitlines()) == 43
-    assert len(v4.split()) == 1_145
+    assert len(v4) == 9_571
+    assert len(v4.splitlines()) == 46
+    assert len(v4.split()) == 1_256
     assert "NEVER use caveman grammar in user answers" in v4
     assert "Speak normal fluent English" in v4
     assert hashlib.sha256(v4.encode()).hexdigest() == V4_SHA256
@@ -165,6 +165,33 @@ def test_v3_preserves_high_risk_behavioral_contracts(contract):
 def test_v4_preserves_high_risk_behavioral_contracts(contract):
     _, prompt = get_router_system_prompt("v4")
     assert contract in prompt
+
+
+def test_v2_routes_matching_workflows_without_bypassing_availability():
+    _, prompt = get_router_system_prompt("v2")
+
+    assert "When the workflow tool is available" in prompt
+    assert "Search with the user's actual intent and desired outputs" in prompt
+    assert "follow with at most one workflow(run)" in prompt
+    assert "do not rerun the recipe or its component tools" in prompt
+
+
+def test_v3_preserves_workflow_contract_in_caveman_style():
+    _, prompt = get_router_system_prompt("v3")
+
+    assert "workflow available + recipe fully matches real user task" in prompt
+    assert "Confirm runnable by workflow search/describe" in prompt
+    assert "Suitable recipe: max one run with required query" in prompt
+    assert "Do not rerun workflow or component tools same request" in prompt
+
+
+def test_v4_preserves_workflow_contract_in_caveman_light_style():
+    _, prompt = get_router_system_prompt("v4")
+
+    assert "When workflow is available" in prompt
+    assert "Search using the underlying task and desired output" in prompt
+    assert "Run at most one suitable recipe" in prompt
+    assert "do not rerun the workflow or its components" in prompt
 
 
 def test_bad_unselected_experiment_does_not_break_v1(monkeypatch):

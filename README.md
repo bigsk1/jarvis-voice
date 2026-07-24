@@ -87,6 +87,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - **Negative constraints**: "Avoid search_memory for real-time data"
   - **Tool provenance**: Source experience, web conversation ID, source tool sequence, and evidence trail for insight audits
   - **Preferred sequences**: Stores advisory multi-tool sequences plus primary intent/supporting tools without forcing rigid workflows
+  - **Workflow attribution**: Reflection separates workflow selection from recipe-owned component order and stores only specific, currently runnable `preferred_workflow_id` recommendations
   - Generalizability filtering (only stores reusable insights)
   - **Insight tracking**: times_applied, times_helpful, times_failed are updated when retrieved insights are later used
   - **Reflection observability**: Lifetime reflection tokens/cost and last reflection provider/model on insight records
@@ -105,7 +106,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - Experience details show configured-local + UTC time, Completion Guard metadata, and stored raw JSON
   - Sort insights by applied, helpful, preferred/avoided tools
   - 5-tier confidence filtering (Elite/High/Good/Medium/Low)
-  - Insight details show preferred sequence, source experience/web conversation, evidence trail, and reflection cost/tokens
+  - Insight details show preferred workflow/sequence, source experience/web conversation, evidence trail, and reflection cost/tokens
   - Tool performance plus optional lifetime Completion Guard repaired/status totals
   - Maintenance actions include safer decay confirmation; CLI/API dry-run available for previews
   - Launch: `./bin/jarvis-intelligence`
@@ -115,7 +116,8 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
 - **Tool RAG System**: Dynamic tool retrieval - loads only relevant tools for each query
   - Scales to 100+ tools without context flooding
   - Vector-based semantic search for tool discovery
-  - Ghost tools and `tool_search` are prioritized inside the final schema cap
+  - Ghost tools plus enabled `tool_search` and `workflow` discovery helpers are prioritized inside the final schema cap
+  - Effective order: manifest → profile override → mode/config availability → live registry → Web/request blocks → Tool RAG shortlist
   - See [`docs/TOOL_RAG_STRATEGY.md`](docs/TOOL_RAG_STRATEGY.md)
 - **Versioned Router Prompts**: selectable `v1`-`v4` system prompts for routing
   - `v1` is the immutable full-context baseline; `v2`, `v3`, and `v4` reduce router prompt size while preserving production routing contracts
@@ -469,6 +471,7 @@ jarvis-voice/
 │   ├── context_assembler.py  # Conversation & tool-result context
 │   ├── response_formatter.py # Final display / speech shaping
 │   ├── workflow_loader.py
+│   ├── workflow_tool_runtime.py # Autonomous workflow search/describe/run
 │   └── pipeline_executor.py
 ├── skills/                   # Tools: *.py + *.tool.json + auto-tools/
 │   ├── profiles/             # Tool profile overlays (JARVIS_TOOL_PROFILE)
@@ -476,6 +479,7 @@ jarvis-voice/
 │   │   └── examples/         # Tracked templates (copy to profiles/<name>.json)
 │   ├── auto-tools/           # Tool-builder outputs (docker_control, text_summarizer, …)
 │   ├── tool_search.py        # Summary-first discovery
+│   ├── workflow.py           # Compact deterministic-workflow meta-tool
 │   ├── canvas.py / stash.py / memory tools / generate_* / crawl_url / serpapi_* …
 │   └── *.tool.json
 ├── config/                   # Environment & wiring
@@ -779,6 +783,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `price_alert` - **Price alerts**: Create crypto/stock alerts monitored by n8n (above/below thresholds)
 - `status_recap` - **Daily status**: aggregates weather, crypto, stocks, alerts, reminders, system health → Canvas + Stash
 - `schedule_task` - **Scheduled tasks**: create/list/update/cancel/delete future query or workflow runs, inspect run history, and queue `run_now`
+- `workflow` - **Deterministic workflow discovery**: search/describe eligible shared or personal recipes and synchronously run one in the current orchestration turn
 - `generate_music` - **AI Music**: ElevenLabs music generation with genres, moods, tempo, stash integration
 - `generate_password` - **Password generation**: Secure passwords with length, complexity, memorable options
 - `samantha` - **Multi-agent**: Chat with Samantha (moltbot) AI, delegate tasks, fire-and-forget webhooks
@@ -932,14 +937,25 @@ See [`docs/TOOL_MANAGEMENT.md`](docs/TOOL_MANAGEMENT.md) for details.
 
 Workflows are deterministic multi-tool pipelines that execute predefined sequences of tools. Unlike normal LLM routing (where the LLM decides which tools to use), workflows guarantee consistent, repeatable execution.
 
-### Two Ways Tools Execute
+### Workflow Entry Points
 
 | Method | Trigger | Who Decides Tools | Use Case |
 |--------|---------|-------------------|----------|
 | **LLM Routing** | Any query | LLM analyzes and selects | General questions, flexible tasks |
-| **Workflow Pipelines** | `/command` | Predefined in JSON recipe | Repeatable multi-step tasks |
+| **Explicit workflow** | `/command`, API, or schedule | User/task names recipe; JSON defines steps | Repeatable or scheduled automation |
+| **Autonomous workflow** | Normal chat/voice request | LLM uses compact `workflow` metadata; JSON defines steps | Reuse an existing recipe without knowing its slash command |
 
-### Available Workflows (15)
+`tool_search` and `workflow` are mandatory discovery candidates only while
+enabled in the effective registry. A manifest, tool profile, or Web/request
+block can remove either one. Disabling `workflow` turns off autonomous recipe
+selection for that surface; it does not disable independent slash commands or
+scheduled workflow tasks.
+
+### Workflow Examples
+
+The live list is mode/profile-aware and may also include private
+`data/workflows/personal/*.json` recipes. Use `/api/workflows` or the Web slash
+picker for the authoritative current surface.
 
 | Command | Description | Tools Used |
 |---------|-------------|------------|
@@ -965,18 +981,28 @@ Workflows are deterministic multi-tool pipelines that execute predefined sequenc
 - **LLM Parameter Filling**: Dynamic parameter resolution via `llm_prompt`
 - **Content Validation**: Heuristic validation with min_length, reject_patterns
 - **Retry Logic**: Automatic retries with configurable limits
-- **Bypass Intelligence**: Workflows skip intelligence layer (deterministic = no routing to learn)
+- **Strict Availability**: Any disabled, unavailable, or surface-blocked component makes the complete recipe unavailable
+- **Autonomous Foreground Runs**: Normal orchestration can search compact workflow metadata and wait for one deterministic recipe to finish
+- **Safe Follow-Ups**: Web history preserves component Canvas/Stash handles and bounded summaries for later edits or individual tool calls
+- **Loop Protection**: One workflow run may start per user request, and Completion Guard does not replay workflow turns
 
 ### Token Efficiency
 
-Workflows bypass the entire LLM routing overhead, making them ideal for local models with limited context:
+Explicit workflows bypass normal LLM routing overhead, making them ideal for
+local models with limited context. Autonomous selection uses a small number of
+router calls for discovery and final synthesis, but still avoids sending every
+component schema and re-planning every recipe step:
 
-| Execution Method | Orchestration Tokens | Savings |
-|-----------------|---------------------|---------|
-| Normal LLM Chat | ~35,000 tokens (system prompt + 57 tool definitions) | - |
-| Workflow | ~0-500 tokens (only if using `llm_prompt`) | **99%+** |
+| Execution method | Routing cost |
+|------------------|--------------|
+| Normal multi-tool chat | Router/tool-schema context can repeat across component turns |
+| Explicit slash/API/scheduled workflow | No routing calls; only declared workflow helper/component LLM calls |
+| Autonomous `workflow` run | Discovery/final-answer routing plus declared workflow helper/component LLM calls |
 
-For a 32K context local model, normal LLM routing exceeds the limit before you even ask a question. Workflows execute the same multi-tool tasks with near-zero token overhead.
+The outer autonomous workflow call has no generic 60/75-second subprocess cap;
+each component retains its normal or tool-specific timeout. Results are
+step-aware and bounded for final synthesis while the canonical Web result
+remains available for follow-up extraction.
 
 ### API Access
 
@@ -1907,7 +1933,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.54.2 (July 2026)
+**Current Version:** v2.55.0 (July 2026)
 **Status:** Production Ready ✅
 **Latest Features:** v2.54.1 adds Grok 4.5 catalog/default support, xAI
 OAuth/API-key routing clarity, Web xAI quota status, versioned router prompts

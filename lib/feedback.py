@@ -101,6 +101,9 @@ Tools Used: {tools_used}
 **SERVER-SIDE / PROVIDER-NATIVE TOOL METADATA**:
 {server_side_tools}
 
+**WORKFLOW EXECUTION CONTEXT**:
+{workflow_execution_context}
+
 ⚠️ IMPORTANT CONTEXT FOR GRADING:
 
 1. **RESPONSE STYLE DETERMINES OUTPUT FORMAT** - check Configuration section FIRST!
@@ -222,6 +225,20 @@ Tools Used: {tools_used}
    - If Completion Guard status is `ticket_created`, `unresolved`, or `cancelled`, this means the system detected incompleteness or could not fully recover. Grade the final settled outcome accordingly, but do not treat the existence of Completion Guard itself as a flaw.
    - If Completion Guard status is `expired` or `superseded`, treat it as neutral manual prompt settlement. Do not infer user dissatisfaction from that status alone.
    - When Completion Guard metadata is present, use it as recovery context, not as a reason to lower the score by itself.
+
+8. **WORKFLOW ATTRIBUTION**:
+   - If Workflow Execution Context is present, grade whether the assistant selected the
+     right specific workflow and supplied appropriate input separately from component execution.
+   - `workflow(search)` and `workflow(describe)` are legitimate discovery operations and may
+     precede one `workflow(run)`. Do not penalize that sequence as repeated or unnecessary use.
+   - Component order is owned by the deterministic workflow recipe, not selected one tool at
+     a time by the routing LLM.
+   - A component-step failure can lower the settled task rating, but attribute it to the
+     component/recipe rather than claiming the generic workflow selector chose the wrong order.
+   - For `tool_ratings.workflow`, rate discovery and selection of the specific workflow. Do not
+     treat that wrapper rating as a rating of every internal component tool.
+   - Search-only, describe-only, missing-input, unavailable, cancelled, or failed-preflight
+     interactions are not successful workflow executions.
 
 Rate the interaction (1-5) using this STRICT rubric:
 
@@ -436,6 +453,15 @@ class FeedbackCollector:
                 server_side_tools_text = server_side_tools_text[:3000] + "\n... [truncated]"
         else:
             server_side_tools_text = "None"
+
+        from workflow_learning import (
+            extract_workflow_learning_context,
+            format_workflow_learning_context,
+        )
+
+        workflow_execution_context = format_workflow_learning_context(
+            extract_workflow_learning_context(result, tools_used)
+        )
         
         # Determine native search status for prominent display
         # Check config_context for native search status or check environment
@@ -471,7 +497,8 @@ If real-time data was needed and no tools were used, rate poorly."""
             completion_guard_context=json.dumps(completion_guard_context or {"status": "none"}, ensure_ascii=False, indent=2),
             native_search_status=native_search_status,
             native_search_instructions=native_search_instructions,
-            server_side_tools=server_side_tools_text
+            server_side_tools=server_side_tools_text,
+            workflow_execution_context=workflow_execution_context,
         )
         
         try:

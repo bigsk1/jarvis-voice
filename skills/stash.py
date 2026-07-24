@@ -107,7 +107,13 @@ def _clean_llm_summary(summary: str) -> str:
     return _TRAILING_CONFIDENCE_TAG_RE.sub("", summary or "").strip()
 
 
-def summarize_content_with_llm(content: str, file_name: str, max_length: int = 500) -> str | None:
+def _summarize_content_with_llm_and_usage(
+    content: str,
+    file_name: str,
+    max_length: int = 500,
+    *,
+    collect_usage: bool = True,
+) -> tuple[str | None, dict | None]:
     """
     Summarize content using the shared Jarvis LLM provider stack.
 
@@ -126,24 +132,55 @@ Return only the summary. Do not include confidence scores, control tags, labels,
     try:
         from llm_provider import create_configured_provider
 
-        _, _, provider = create_configured_provider(
+        provider_name, model, provider = create_configured_provider(
             provider_config_keys=("STASH_SUMMARIZE_LLM_PROVIDER", "LLM_PROVIDER"),
             model_config_keys=("STASH_SUMMARIZE_MODEL",),
             disable_server_side_tools=True,
         )
-        summary = provider.chat(
-            user_prompt,
-            system_prompt=system_prompt,
-            max_tokens=400,
-        )
+        usage = None
+        if collect_usage and hasattr(provider, "chat_with_tools"):
+            summary, _tool_call, usage, _thinking = provider.chat_with_tools(
+                messages=[{"role": "user", "content": user_prompt}],
+                tools=[],
+                system_prompt=system_prompt,
+            )
+        else:
+            summary = provider.chat(
+                user_prompt,
+                system_prompt=system_prompt,
+                max_tokens=400,
+            )
         cleaned_summary = _clean_llm_summary(summary)
         if cleaned_summary and not cleaned_summary.lower().startswith("error:"):
-            return cleaned_summary
-        return None
+            if isinstance(usage, dict):
+                usage = dict(usage)
+                usage["provider"] = provider_name
+                usage["model"] = getattr(provider, "model", model)
+                usage["model_calls"] = 1
+                call_tokens = usage.get("total_tokens")
+                if not isinstance(call_tokens, (int, float)):
+                    call_tokens = (
+                        (usage.get("input_tokens") or 0)
+                        + (usage.get("output_tokens") or 0)
+                    )
+                usage["peak_context_tokens"] = call_tokens
+            return cleaned_summary, usage
+        return None, usage
     except Exception as e:
         # Silent fail - caller will fallback to truncation
         print(f"LLM summarize failed: {e}", file=sys.stderr)
-        return None
+        return None, None
+
+
+def summarize_content_with_llm(content: str, file_name: str, max_length: int = 500) -> str | None:
+    """Backward-compatible summary helper used by direct callers and tests."""
+    summary, _usage = _summarize_content_with_llm_and_usage(
+        content,
+        file_name,
+        max_length,
+        collect_usage=False,
+    )
+    return summary
 
 
 def format_size(bytes_size: int) -> str:
@@ -560,6 +597,7 @@ def action_remember(args: dict) -> dict:
     is_pdf = mime_type == 'application/pdf'
     content_truncated = False
     llm_summarized = False
+    llm_usage = None
     pdf_extracted = False
     
     if summary:
@@ -575,7 +613,11 @@ def action_remember(args: dict) -> dict:
             # Handle long content (same logic as text)
             if len(content) > 2000:
                 if auto_summarize:
-                    llm_summary = summarize_content_with_llm(content, file_name)
+                    llm_summary, llm_usage = _summarize_content_with_llm_and_usage(
+                        content,
+                        file_name,
+                        collect_usage=bool(args.get("_capture_usage")),
+                    )
                     if llm_summary:
                         value = llm_summary
                         llm_summarized = True
@@ -601,7 +643,11 @@ def action_remember(args: dict) -> dict:
             if len(content) > 2000:
                 if auto_summarize:
                     # Use LLM to create intelligent summary
-                    llm_summary = summarize_content_with_llm(content, file_name)
+                    llm_summary, llm_usage = _summarize_content_with_llm_and_usage(
+                        content,
+                        file_name,
+                        collect_usage=bool(args.get("_capture_usage")),
+                    )
                     if llm_summary:
                         value = llm_summary
                         llm_summarized = True
@@ -658,7 +704,7 @@ def action_remember(args: dict) -> dict:
             "error": str(e)
         }
     
-    return {
+    response = {
         "ok": True,
         "speech": f"Saved '{file_name}' to memory as '{key}'",
         "data": {
@@ -668,6 +714,11 @@ def action_remember(args: dict) -> dict:
             "metadata": memory_metadata
         }
     }
+    if llm_usage:
+        response["usage"] = llm_usage
+        if llm_usage.get("server_side_tools"):
+            response["server_side_tools"] = llm_usage["server_side_tools"]
+    return response
 
 
 def main():

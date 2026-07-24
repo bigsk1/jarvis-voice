@@ -1,6 +1,6 @@
 # Documentation Status
 
-Last updated: 2026-07-04
+Last updated: 2026-07-23
 
 This file tracks doc health and maintenance. For the live index, see [README.md](README.md).
 
@@ -85,6 +85,24 @@ Safe validation performed without touching databases, logs, audio, or runtime
 stores: relative-link scan, referenced-command/path scan, mode/provider wording
 scan, Compose config rendering, shell/Python syntax checks, and the project test
 collection boundary.
+
+## Pass 9 completed (2026-07-23)
+
+- Documented autonomous foreground workflow discovery/execution through the
+  compact `workflow(search|describe|run)` meta-tool.
+- Added the manifest → profile → mode/config availability → effective registry
+  → Web/request exclusions → Tool RAG precedence model to the canonical tool,
+  workflow, Web, and API guides.
+- Corrected the meaning of mandatory discovery: enabled `tool_search` and
+  `workflow` are prioritized candidates, not force-enabled tools.
+- Documented the separate disable boundaries for autonomous workflow selection
+  versus direct slash/API/scheduled execution.
+- Documented strict component admission, foreground timeout behavior,
+  cancellation, one-run duplicate protection, Completion Guard exclusion,
+  workflow-internal usage aggregation, bounded step-aware LLM previews, and Web
+  follow-up projections.
+- Updated profile examples, cloud/local env examples, scheduled-task guidance,
+  and workflow token-efficiency claims to match current Tool RAG behavior.
 
 ## Pass 8 completed (2026-07-04)
 

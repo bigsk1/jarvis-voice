@@ -42,6 +42,22 @@ class _FakeSocketIO:
 
 
 class CompletionGuardServerSideToolsTests(unittest.TestCase):
+    def test_workflow_is_excluded_from_manual_and_auto_completion_guard(self):
+        handler = ChatHandler.__new__(ChatHandler)
+        policy = handler._get_completion_guard_policy()
+        manual = {
+            "enabled": True,
+            "mode": "manual",
+            "show_ui_prompt": True,
+            "include_tool_tasks": True,
+            "excluded_tools": sorted(ChatHandler.DEFAULT_COMPLETION_GUARD_EXCLUDED_TOOLS),
+        }
+        auto = {**manual, "mode": "auto"}
+
+        self.assertIn("workflow", ChatHandler.DEFAULT_COMPLETION_GUARD_EXCLUDED_TOOLS)
+        self.assertFalse(policy.should_prompt(manual, ["workflow"]))
+        self.assertFalse(policy.should_auto_evaluate(auto, ["workflow"]))
+
     def test_completion_guard_location_context_uses_default_location(self):
         def fake_config(key, default=""):
             return {

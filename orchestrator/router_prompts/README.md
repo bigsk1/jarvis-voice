@@ -34,8 +34,10 @@ independent per-tool prompt samples.
 Successful assistant messages store `router_prompt_version` in their persisted
 usage metadata. This makes the selected version visible in conversation JSON,
 export/import data, and Markdown exports without duplicating the full routing
-provenance payload. Since a prompt version is hash-validated when selected (and
-v1 is also validated at startup), the version identifies the pinned contents.
+provenance payload. Every version is hash-validated when selected, and v1 is
+also validated at startup. Because experimental v2-v4 may evolve in place, the
+version identifies the current checkout's pinned contents; use the Git revision
+or contemporaneous prompt hash/size when distinguishing older experiment runs.
 
 ## Comparing prompt versions
 
@@ -115,9 +117,9 @@ time.
 | Version | Characters | Words | Rough Token Estimate | Character Delta |
 | --- | ---: | ---: | ---: | --- |
 | `v1` | `31,491` | `4,821` | `7,873-8,179` | Baseline |
-| `v2` | `11,977` | `1,676` | `~2,994` | `62.0%` fewer than v1 |
-| `v3` | `8,580` | `1,102` | `~2,145` | `72.8%` fewer than v1; `28.4%` fewer than v2 |
-| `v4` | `8,849` | `1,145` | `~2,212` | `71.9%` fewer than v1; `26.1%` fewer than v2; `3.1%` more than v3 |
+| `v2` | `12,976` | `1,833` | `~3,244` | `58.8%` fewer than v1 |
+| `v3` | `9,175` | `1,189` | `~2,294` | `70.9%` fewer than v1; `29.3%` fewer than v2 |
+| `v4` | `9,571` | `1,256` | `~2,393` | `69.6%` fewer than v1; `26.2%` fewer than v2; `4.3%` more than v3 |
 
 The important live metric is full routing payload size. A compact prompt can
 still be dominated by retrieved tool schemas, profile/context overlays, or
@@ -164,22 +166,24 @@ File: `v2.py`
 `v2` is a standalone rewrite of v1. It preserves the operational contracts for
 context freshness, tool discovery, duplicate prevention, multi-part workflows,
 reminders/alerts, research-to-output sequencing, Canvas finalization, memory,
-image stash follow-ups, OpenCode, headless operation, and response style. It
-removes repeated warnings and tutorial-style good/bad examples, consolidating
-each rule and its exceptions into one authoritative section.
+image stash follow-ups, autonomous deterministic workflow selection, OpenCode,
+headless operation, and response style. It removes repeated warnings and
+tutorial-style good/bad examples, consolidating each rule and its exceptions
+into one authoritative section.
 
 Measurements:
 
-- Characters: `11,977` (`62.0%` fewer than v1)
-- Physical lines: `81` (`69` nonblank)
-- Space-separated words: `1,676`
-- Rough token estimate: approximately `3,000`, depending on provider tokenizer
-- Prompt SHA-256: `cc3c7a8a8e97dd5923ecebcdd2c4ff8da1a2ad4a15a0d04199c9b31c069fce8d`
+- Characters: `12,976` (`58.8%` fewer than v1)
+- Physical lines: `87` (`74` nonblank)
+- Space-separated words: `1,833`
+- Rough token estimate: approximately `3,244`, depending on provider tokenizer
+- Prompt SHA-256: `690de3d9c82a7849af641f878bf8440f787a8f391c8576cdf509a79ac0582c27`
 
 Tool RAG, schemas, runtime date/time, provider capability notes, response-style
 overlays, model overrides, and profile cards remain unchanged. Treat live tests
-as an A/B experiment against v1; once v2 is accepted and committed, further
-semantic changes belong in v3 rather than silently moving this baseline.
+as an A/B experiment against v1. v2 is an experimental baseline and may evolve
+in place when its hash, exact-size tests, documentation, and validation samples
+are updated together. v1 remains the immutable control.
 
 ## v3: Caveman hybrid prompt
 
@@ -188,7 +192,8 @@ File: `v3.py`
 `v3` compresses v1/v2 into short, telegraphic instructions while explicitly
 requiring normal fluent user-facing answers. It is not a Grug persona and must
 not leak Caveman grammar into responses. Exact tool names, parameters,
-exceptions, stop conditions, and workflow boundaries remain explicit.
+exceptions, stop conditions, workflow boundaries, and deterministic
+workflow-recipe routing remain explicit.
 
 V3 also makes injected-runtime precedence unambiguous: configured
 location/ZIP/timezone questions use the injected values directly, explicit
@@ -197,11 +202,11 @@ the injected time without a tool call.
 
 Measurements:
 
-- Characters: `8,580` (`72.8%` fewer than v1; `28.4%` fewer than v2)
-- Physical lines: `85` (`71` nonblank)
-- Space-separated words: `1,102`
-- Rough token estimate: approximately `2,150`, depending on provider tokenizer
-- Prompt SHA-256: `59c7881829f36d4966e1c41996dd5e339e41ecf08ec870958ec03cbd00362fa9`
+- Characters: `9,175` (`70.9%` fewer than v1; `29.3%` fewer than v2)
+- Physical lines: `91` (`76` nonblank)
+- Space-separated words: `1,189`
+- Rough token estimate: approximately `2,294`, depending on provider tokenizer
+- Prompt SHA-256: `488aab327f393fdc76f6703db4c626215049969d45c6bdc7690b304c1300df3a`
 
 The main experimental risk is instruction adherence on weaker/local models:
 telegraphic grammar removes explanatory redundancy that may help some models.
@@ -219,11 +224,11 @@ improves adherence for providers/models that struggle with v3 shorthand.
 
 Measurements:
 
-- Characters: `8,849` (`71.9%` fewer than v1; `26.1%` fewer than v2; `3.1%` more than v3)
-- Physical lines: `43` (`29` nonblank)
-- Space-separated words: `1,145`
-- Rough token estimate: approximately `2,210`, depending on provider tokenizer
-- Prompt SHA-256: `56380c054f1dfb891d4a54445cf61113dab944fc10754f63cc56ce15d5c8c12f`
+- Characters: `9,571` (`69.6%` fewer than v1; `26.2%` fewer than v2; `4.3%` more than v3)
+- Physical lines: `46` (`31` nonblank)
+- Space-separated words: `1,256`
+- Rough token estimate: approximately `2,393`, depending on provider tokenizer
+- Prompt SHA-256: `3e6a96c8853f29e48b4f9443eeccb6df3d47cb3bf0c0ffc8a7942ab2a90d67ac`
 
 V4 intentionally preserves the supplied Unicode comparison arrows and symbols;
 provider tokenization may therefore differ slightly from the character-based
@@ -263,6 +268,10 @@ bin/router-prompt-hash --check-all
 
 The helper refuses to rewrite v1. Its checksum is a source-controlled integrity
 guard against accidental drift, not a secret or a security signature.
+
+Experimental v2-v4 may be intentionally revised in place. Update their prompt,
+checksum, measurements, behavioral tests, and experiment notes as one change.
+Do not rewrite a checksum merely to hide unexplained prompt drift.
 
 ## Adding a new version
 

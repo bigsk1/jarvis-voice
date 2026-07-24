@@ -28,6 +28,10 @@ load_server_package("jarvis_web_test_server", PROJECT_ROOT / "jarvis-web" / "ser
 from jarvis_web_test_server.sockets.chat import ChatHandler
 from jarvis_web_test_server.services import followup_extractor as followup_module
 from jarvis_web_test_server.services.followup_extractor import FOLLOWUP_SUMMARY_MAX_CHARS
+from jarvis_web_test_server.services.followup_extractor import (
+    workflow_result_payload,
+    workflow_step_tool_results,
+)
 
 
 def _handler():
@@ -345,6 +349,110 @@ def test_extract_followup_data_truncates_text_summarizer_summary():
     assert len(summary) <= FOLLOWUP_SUMMARY_MAX_CHARS
     assert summary.endswith("...[summary truncated for follow-up context]")
     assert result["text_summarizer"]["stash_ref"] == "stash://space/file"
+
+
+def test_autonomous_workflow_followup_preserves_component_handles_and_summary():
+    workflow = {
+        "action": "run",
+        "workflow_id": "research",
+        "workflow_name": "Research",
+        "execution": "foreground",
+        "workflow_started": True,
+        "workflow_completed": True,
+        "steps_completed": 2,
+        "results": [
+            {
+                "step": 1,
+                "tool": "text_summarizer",
+                "ok": True,
+                "data": {
+                    "summary": "The report needs one correction before publishing.",
+                    "source": {
+                        "stash_ref": "stash://research/source",
+                        "space_id": "research",
+                        "file_id": "source",
+                    },
+                    "summary_meta": {
+                        "summary_method": "llm",
+                        "llm_used": True,
+                        "llm_provider": "ollama",
+                        "llm_model": "summary-model:cloud",
+                    },
+                },
+            },
+            {
+                "step": 2,
+                "tool": "canvas",
+                "ok": True,
+                "data": {
+                    "page_id": "page_research",
+                    "title": "Research Report",
+                },
+            },
+        ],
+    }
+    data = {"workflow": workflow}
+
+    assert workflow_result_payload(data) is workflow
+    flattened = workflow_step_tool_results(workflow)
+    assert flattened["canvas"]["page_id"] == "page_research"
+
+    result = _handler()._extract_followup_data(data)
+
+    assert result["workflow"]["workflow_id"] == "research"
+    assert result["workflow"]["workflow_completed"] is True
+    assert result["canvas"]["page_id"] == "page_research"
+    assert result["canvas"]["title"] == "Research Report"
+    assert result["text_summarizer"]["summary"].startswith("The report needs")
+    assert result["text_summarizer"]["stash_ref"] == "stash://research/source"
+    assert result["text_summarizer"]["llm_model"] == "summary-model:cloud"
+
+    searched_then_ran = {
+        "workflow": [
+            {
+                "action": "search",
+                "matches": [{"workflow_id": "research"}],
+            },
+            workflow,
+        ]
+    }
+    assert workflow_result_payload(searched_then_ran) is workflow
+    repeated_result = _handler()._extract_followup_data(searched_then_ran)
+    assert repeated_result["canvas"]["page_id"] == "page_research"
+
+
+def test_workflow_step_flattening_preserves_repeated_tool_results():
+    workflow = {
+        "results": [
+            {
+                "step": 1,
+                "tool": "crypto_price",
+                "data": {"coin": "bitcoin", "price_usd": 100000},
+            },
+            {
+                "step": 2,
+                "tool": "crypto_price",
+                "data": {"coin": "solana", "price_usd": 200},
+            },
+        ]
+    }
+
+    flattened = workflow_step_tool_results(workflow)
+
+    assert flattened["crypto_price"] == [
+        {"coin": "bitcoin", "price_usd": 100000},
+        {"coin": "solana", "price_usd": 200},
+    ]
+
+    followup = _handler()._extract_followup_data({"workflow": {
+        "action": "run",
+        "workflow_id": "crypto_report",
+        **workflow,
+    }})
+    assert followup["crypto_price"]["coin"] == "solana"
+    assert followup["crypto_price"]["runs_count"] == 2
+    assert followup["crypto_price"]["candidates"][0]["coin"] == "bitcoin"
+    assert followup["crypto_price"]["candidates"][1]["price_usd"] == 200
 
 
 def test_extract_followup_data_preserves_manage_intel_document_content():

@@ -81,13 +81,17 @@ These tools are priority candidates, ensuring basic functionality gets first cha
 -   `get_recent_conversations` (Context)
 -   `get_time` (Basic utility)
 -   `tool_search` (Summary-first discovery across the live enabled tool set)
+-   `workflow` (Compact discovery and foreground execution of eligible deterministic recipes)
 
-`tool_search` is special:
--   it discovers tools from the **current live registry** rather than a second maintained metadata system
--   it respects profile-disabled tools and request-scoped exclusions
--   it returns **summaries first**, then surfaces exact tool-name hints so the next routing turn can make those exact tools eligible for direct use without exposing every full schema up front
--   it is a mandatory discovery tool in code, so it does **not** need to be added to `GHOST_TOOLS` in env files
--   final schema caps still prioritize `tool_search` as the discovery escape hatch
+`tool_search` and `workflow` are special:
+-   `tool_search` discovers tools from the **current live registry** rather than treating the database as the capability authority
+-   `workflow` searches the shared/personal workflow loaders and checks each recipe against that same registry
+-   both respect manifest/profile enablement, active-mode availability, and request-scoped exclusions
+-   `tool_search` returns **tool summaries first**, then surfaces exact tool-name hints
+-   `workflow` returns compact runnable workflow metadata, then accepts an exact workflow id for `describe` or synchronous `run`
+-   both are mandatory discovery candidates in code, so neither needs to be added to `GHOST_TOOLS`
+-   “mandatory” means prioritized **when present in the effective registry**, not force-enabled; a manifest, profile, or Web/request block can remove either one
+-   final schema caps prioritize explicit positive signals first, then `tool_search` and `workflow`
 
 ---
 
@@ -137,6 +141,26 @@ Current caveats:
 -   discovery is wider than the normal router shortlist, but it is still bounded by a raw top-K pool
 -   the next routing turn still runs normal Tool RAG plus exact positive hints; it is **not** true exact hydration yet
 
+### C.1 `workflow` discovery mode
+
+`workflow` is the workflow equivalent of summary-first tool discovery. It
+searches shared and personal workflow definitions, but returns only recipes
+whose complete component-tool set is runnable in the current mode, profile, and
+request surface.
+
+- `search` returns compact workflow metadata without component schemas.
+- `describe` returns compact step labels for one exact workflow id.
+- `run` rechecks availability and waits for `PipelineExecutor` to finish.
+- A profile or manifest can disable the meta-tool normally.
+- Web/request exclusions remove it from routing and are enforced again by `ToolExecutor`.
+- Disabling the meta-tool does not disable direct slash or scheduled workflow entry points.
+
+The router's Intelligence insight filter also uses
+`ToolRegistry.list_tools()` minus request exclusions. This is the effective live
+registry, not the database's enabled-name list, so a stale Tool RAG row cannot
+cause an insight to mention a disabled `tool_search`, `workflow`, or component
+tool.
+
 ## Final Schema Caps
 
 Tool RAG now treats the mode limits as final schema caps, not merely vector
@@ -151,13 +175,14 @@ The router retrieves candidates, merges ghost tools and exact positive signals,
 then caps the final tool schema list. Priority is:
 
 1. explicit positive signals such as UI-selected tool hints
-2. mandatory discovery tools such as `tool_search`
+2. mandatory discovery tools `tool_search` and `workflow`, when enabled
 3. retrieved non-ghost tools in rank order
 4. remaining ghost tools only if room remains
 
 Request surfaces can pass a one-turn lower cap for tightly scoped work. The Web
-UI's Send-to-Canvas action uses this to keep the schema list small while still
-leaving `tool_search` available as an escape hatch.
+UI's Send-to-Canvas action uses this to keep the schema list small. Explicit
+positive hints are placed first, so an unusually small one-request cap can still
+leave only part of the discovery pair.
 
 Possible future evolution:
 -   if token pressure becomes the main concern, a later optimization could switch the turn after `tool_search` into a true exact-hydration mode that exposes only ghost tools plus the selected exact tool names

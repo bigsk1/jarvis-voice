@@ -108,6 +108,7 @@ class IntelligenceService:
             new_columns = [
                 ("trigger_signals", "TEXT"),
                 ("primary_intent", "TEXT"),
+                ("preferred_workflow_id", "TEXT"),
                 ("preferred_tool_sequence", "TEXT"),
                 ("supporting_tools", "TEXT"),
                 ("sequence_required", "BOOLEAN DEFAULT 0"),
@@ -136,6 +137,7 @@ class IntelligenceService:
                     query TEXT,
                     tool_sequence TEXT,
                     preferred_tool TEXT,
+                    preferred_workflow_id TEXT,
                     avoided_tool TEXT,
                     preferred_tool_sequence TEXT,
                     supporting_tools TEXT,
@@ -148,6 +150,13 @@ class IntelligenceService:
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_insight_evidence_insight ON insight_evidence(insight_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_insight_evidence_experience ON insight_evidence(experience_id)")
+            cursor.execute("PRAGMA table_info(insight_evidence)")
+            evidence_columns = {row[1] for row in cursor.fetchall()}
+            if "preferred_workflow_id" not in evidence_columns:
+                cursor.execute(
+                    "ALTER TABLE insight_evidence "
+                    "ADD COLUMN preferred_workflow_id TEXT"
+                )
             cursor.execute("""
                 UPDATE insights
                 SET source_experience_id = COALESCE(
@@ -648,7 +657,8 @@ class IntelligenceService:
                        constraint_type, applies_to_pattern, confidence, evidence_count,
                        times_applied, times_helpful, times_failed, consecutive_failures,
                        last_applied, last_outcome,
-                       preferred_tools, avoided_tools, generalizability,
+                       preferred_tools, preferred_workflow_id,
+                       avoided_tools, generalizability,
                        preferred_tool_sequence, supporting_tools, sequence_required,
                        trigger_signals, primary_intent,
                        source_experience_id, source_web_conversation_id,
@@ -715,7 +725,8 @@ class IntelligenceService:
                 SELECT id, created_at, updated_at, insight_type, description,
                        constraint_type, applies_to_pattern, confidence, evidence_count,
                        times_applied, times_helpful, times_failed, consecutive_failures,
-                       last_applied, last_outcome, preferred_tools, avoided_tools,
+                       last_applied, last_outcome, preferred_tools,
+                       preferred_workflow_id, avoided_tools,
                        generalizability,
                        preferred_tool_sequence, supporting_tools, sequence_required,
                        trigger_signals, primary_intent,
@@ -758,11 +769,13 @@ class IntelligenceService:
                 f"%{normalized_query}%",
                 f"%{normalized_query}%",
                 f"%{normalized_query}%",
+                f"%{normalized_query}%",
             ]
             where_clauses = [
                 "description LIKE ?",
                 "applies_to_pattern LIKE ?",
                 "preferred_tools LIKE ?",
+                "preferred_workflow_id LIKE ?",
                 "avoided_tools LIKE ?",
                 "source_web_conversation_id LIKE ?",
                 "source_query LIKE ?",
@@ -775,7 +788,7 @@ class IntelligenceService:
                 SELECT id, created_at, updated_at, insight_type, description,
                        constraint_type, applies_to_pattern, confidence, evidence_count,
                        times_applied, times_helpful, times_failed,
-                       preferred_tools, avoided_tools,
+                       preferred_tools, preferred_workflow_id, avoided_tools,
                        preferred_tool_sequence, supporting_tools, sequence_required,
                        trigger_signals, primary_intent,
                        source_experience_id, source_web_conversation_id,
@@ -807,7 +820,8 @@ class IntelligenceService:
 
             rows = cursor.execute("""
                 SELECT id, insight_id, experience_id, web_conversation_id, query,
-                       tool_sequence, preferred_tool, avoided_tool,
+                       tool_sequence, preferred_tool, preferred_workflow_id,
+                       avoided_tool,
                        preferred_tool_sequence, supporting_tools, reflection_json,
                        confidence, confidence_delta, action, created_at
                 FROM insight_evidence

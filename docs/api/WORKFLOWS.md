@@ -1,6 +1,6 @@
 # Workflows API
 
-> **Version**: 1.1 | **Updated**: February 2026
+> **Version**: 1.2 | **Updated**: July 23, 2026
 
 The Workflows API provides programmatic access to Jarvis workflow orchestration. Execute predefined multi-tool pipelines, list available workflows, and monitor execution history.
 
@@ -14,6 +14,34 @@ Workflows are deterministic multi-tool pipelines triggered by explicit commands 
 - Use variable substitution between steps
 - Support validation and retry logic
 - Bypass intelligence layer (no LLM routing decisions to learn from)
+
+Normal chat/voice orchestration can also discover and synchronously execute an
+eligible recipe through the compact `workflow(search|describe|run)` tool. That
+meta-tool is separate from this API: disabling or Web-blocking it turns off
+autonomous workflow selection but does not disable direct workflow API,
+slash-command, or scheduled execution.
+
+## Availability
+
+List/detail use the API's active mode; execute uses the `mode` in the request
+body. In either case, a workflow is available only when every component tool is
+enabled by its manifest and profile, available with current
+configuration/credentials, and allowed for the execution surface. Optional and
+conditional steps count; workflows do not run in a degraded mode.
+
+```text
+tool manifest
+    → profile override
+    → mode/config availability
+    → effective registry
+    → surface exclusions
+    → workflow available
+```
+
+In Jarvis Web, `/api/workflows` and workflow detail responses omit or reject a
+recipe when one of its component tools is Web-blocked. Blocking the `workflow`
+meta-tool alone does not hide direct API/slash workflows because it is not a
+component of those recipes.
 
 ---
 
@@ -166,7 +194,10 @@ mode's request-local config scope.
 }
 ```
 
-**Note:** Workflow execution can take 30-120+ seconds depending on the workflow complexity.
+**Note:** Workflow execution can take 30-120+ seconds depending on complexity.
+`PipelineExecutor` has no overall wall-clock timeout. Each component tool keeps
+its normal or tool-specific timeout; the autonomous outer `workflow` meta-tool
+is in-process and does not inherit the generic 60/75-second subprocess timeout.
 
 ---
 

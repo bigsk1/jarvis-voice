@@ -14,6 +14,72 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lib'))
 from config_loader import load_config, get_config_value
 from stash_helper import parse_stash_ref, resolve_file_path
 
+
+def merge_llm_usage(total: dict[str, Any], usage: dict[str, Any] | None) -> None:
+    """Accumulate provider usage across chunked summarization calls."""
+    if not isinstance(usage, dict):
+        return
+    total["model_calls"] = total.get("model_calls", 0) + 1
+    call_tokens = usage.get("total_tokens")
+    if not isinstance(call_tokens, (int, float)):
+        call_tokens = (usage.get("input_tokens") or 0) + (usage.get("output_tokens") or 0)
+    total["peak_context_tokens"] = max(total.get("peak_context_tokens", 0), call_tokens)
+    for key in (
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "cost_usd",
+        "cache_creation_tokens",
+        "cache_read_tokens",
+        "cache_write_cost_usd",
+        "cache_read_cost_usd",
+        "cache_cost_usd",
+        "cache_savings_usd",
+    ):
+        value = usage.get(key)
+        if isinstance(value, (int, float)):
+            total[key] = total.get(key, 0) + value
+    if usage.get("billing_mode"):
+        total["billing_mode"] = usage["billing_mode"]
+    if usage.get("cost_known") is False:
+        total["cost_known"] = False
+        total["has_unknown_cost"] = True
+    for tool_name, count in (usage.get("server_side_tools") or {}).items():
+        total.setdefault("server_side_tools", {})
+        total["server_side_tools"][tool_name] = (
+            total["server_side_tools"].get(tool_name, 0) + count
+        )
+
+
+def llm_chat_with_usage(
+    provider,
+    message: str,
+    *,
+    system_prompt: str,
+    usage_total: dict[str, Any],
+    provider_name: str,
+    model: str,
+    max_tokens: int,
+    capture_usage: bool,
+) -> str:
+    """Call the provider without tools and retain its metering data."""
+    if not capture_usage:
+        return provider.chat(
+            message,
+            system_prompt=system_prompt,
+            max_tokens=max_tokens,
+        ) or ""
+    text, _tool_call, usage, _thinking = provider.chat_with_tools(
+        messages=[{"role": "user", "content": message}],
+        tools=[],
+        system_prompt=system_prompt,
+    )
+    merge_llm_usage(usage_total, usage)
+    if isinstance(usage, dict):
+        usage_total["provider"] = provider_name
+        usage_total["model"] = model
+    return text or ""
+
 def count_stats(text: str) -> dict[str, int]:
     """Count words, characters, sentences, and paragraphs."""
     # Remove extra whitespace
@@ -275,6 +341,7 @@ def summarize_with_llm(text: str, args: dict[str, Any], source_info: dict[str, A
     chunk_chars = int(args.get("llm_chunk_chars") or get_config_value("TEXT_SUMMARIZER_LLM_CHUNK_CHARS", "12000"))
     max_chunks = int(args.get("llm_max_chunks") or get_config_value("TEXT_SUMMARIZER_LLM_MAX_CHUNKS", "12"))
     max_tokens = int(args.get("llm_max_tokens") or get_config_value("TEXT_SUMMARIZER_LLM_MAX_TOKENS", "900"))
+    capture_usage = parse_bool(args.get("_capture_usage"), default=False)
     source_label = source_info.get("stash_ref") or source_info.get("path") or "provided text"
 
     all_chunks = chunk_text(text, chunk_chars)
@@ -289,6 +356,7 @@ def summarize_with_llm(text: str, args: dict[str, Any], source_info: dict[str, A
         "chunks_used": len(chunks),
         "chunk_limited": was_chunk_limited,
     }
+    usage_total: dict[str, Any] = {}
 
     try:
         provider_name, model, provider = create_llm_provider(args)
@@ -304,10 +372,21 @@ def summarize_with_llm(text: str, args: dict[str, Any], source_info: dict[str, A
                 focus=focus,
                 source_label=source_label,
             )
-            summary = provider.chat(user_prompt, system_prompt=system_prompt, max_tokens=max_tokens)
+            summary = llm_chat_with_usage(
+                provider,
+                user_prompt,
+                system_prompt=system_prompt,
+                usage_total=usage_total,
+                provider_name=provider_name,
+                model=model,
+                max_tokens=max_tokens,
+                capture_usage=capture_usage,
+            )
             if summary and not summary.strip().lower().startswith("error:"):
                 meta["llm_used"] = True
+                meta["_usage"] = usage_total or None
                 return summary.strip(), meta
+            meta["_usage"] = usage_total or None
             return None, meta
 
         partials: list[str] = []
@@ -321,8 +400,18 @@ def summarize_with_llm(text: str, args: dict[str, Any], source_info: dict[str, A
                 source_label=source_label,
                 chunk_label=f" (chunk {idx} of {len(chunks)})",
             )
-            partial = provider.chat(user_prompt, system_prompt=system_prompt, max_tokens=max_tokens)
+            partial = llm_chat_with_usage(
+                provider,
+                user_prompt,
+                system_prompt=system_prompt,
+                usage_total=usage_total,
+                provider_name=provider_name,
+                model=model,
+                max_tokens=max_tokens,
+                capture_usage=capture_usage,
+            )
             if not partial or partial.strip().lower().startswith("error:"):
+                meta["_usage"] = usage_total or None
                 return None, meta
             partials.append(partial.strip())
 
@@ -334,13 +423,25 @@ def summarize_with_llm(text: str, args: dict[str, Any], source_info: dict[str, A
             focus=focus,
             source_label=f"chunk summaries for {source_label}",
         )
-        final = provider.chat(user_prompt, system_prompt=system_prompt, max_tokens=max_tokens)
+        final = llm_chat_with_usage(
+            provider,
+            user_prompt,
+            system_prompt=system_prompt,
+            usage_total=usage_total,
+            provider_name=provider_name,
+            model=model,
+            max_tokens=max_tokens,
+            capture_usage=capture_usage,
+        )
         if final and not final.strip().lower().startswith("error:"):
             meta["llm_used"] = True
+            meta["_usage"] = usage_total or None
             return final.strip(), meta
+        meta["_usage"] = usage_total or None
         return None, meta
     except Exception as e:
         meta["llm_error"] = str(e)[:500]
+        meta["_usage"] = usage_total or None
         return None, meta
 
 def should_use_llm_summary(text: str, args: dict[str, Any]) -> bool:
@@ -424,6 +525,7 @@ def main():
         
         if operation == 'summarize':
             summary, summary_meta = summarize_with_strategy(text, args, source_info)
+            usage = summary_meta.pop("_usage", None)
             result['summary'] = summary
             result['summary_meta'] = summary_meta
             if source_info:
@@ -456,11 +558,16 @@ def main():
         else:
             raise ValueError(f"Unknown operation: {operation}")
         
-        print(json.dumps({
+        response = {
             "ok": True,
             "speech": speech,
             "data": result
-        }))
+        }
+        if operation == "summarize" and usage:
+            response["usage"] = usage
+            if usage.get("server_side_tools"):
+                response["server_side_tools"] = usage["server_side_tools"]
+        print(json.dumps(response))
         
     except Exception as e:
         print(json.dumps({"ok": False, "error": str(e), "speech": f"Error: {e}"}))

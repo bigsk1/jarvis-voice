@@ -25,10 +25,16 @@ from config_loader import load_config, get_config_value
 from llm_provider import create_configured_provider
 from tool_logger import ToolLogger
 from llm_logger import LLMLogger
-from workflow_availability import (
-    check_workflow_registry_availability,
-    workflow_unavailable_message,
-)
+try:
+    from .workflow_availability import (
+        check_workflow_registry_availability,
+        workflow_unavailable_message,
+    )
+except ImportError:
+    from workflow_availability import (
+        check_workflow_registry_availability,
+        workflow_unavailable_message,
+    )
 
 
 class PipelineExecutor:
@@ -178,6 +184,85 @@ class PipelineExecutor:
                 return ""
             with self._workflow_llm_tool_scope():
                 return self.provider.chat(message, system_prompt, max_tokens)
+
+    def _merge_component_usage(
+        self,
+        result: dict[str, Any] | None,
+        *,
+        tool_name: str,
+    ) -> None:
+        """Include LLM usage reported by tools executed inside the workflow."""
+        if not isinstance(result, dict):
+            return
+        usage = result.get("usage")
+        if not isinstance(usage, dict):
+            usage = {}
+
+        if usage:
+            explicit_calls = usage.get("model_calls")
+            self._total_usage["model_calls"] += (
+                int(explicit_calls)
+                if isinstance(explicit_calls, (int, float))
+                else 1
+            )
+            call_tokens = usage.get("total_tokens")
+            if not isinstance(call_tokens, (int, float)):
+                call_tokens = (
+                    (usage.get("input_tokens") or 0)
+                    + (usage.get("output_tokens") or 0)
+                )
+            self._total_usage["peak_context_tokens"] = max(
+                self._total_usage["peak_context_tokens"],
+                usage.get("peak_context_tokens", 0) or call_tokens,
+            )
+            for key in (
+                "input_tokens",
+                "output_tokens",
+                "total_tokens",
+                "cost_usd",
+                "cache_creation_tokens",
+                "cache_read_tokens",
+                "cache_write_cost_usd",
+                "cache_read_cost_usd",
+                "cache_cost_usd",
+                "cache_savings_usd",
+            ):
+                value = usage.get(key)
+                if isinstance(value, (int, float)):
+                    self._total_usage[key] += value
+            if usage.get("billing_mode"):
+                self._total_usage["billing_mode"] = usage["billing_mode"]
+            if usage.get("has_unknown_cost") or usage.get("cost_known") is False:
+                self._total_usage["has_unknown_cost"] = True
+                self._total_usage["cost_known"] = False
+            component_identity = {
+                key: value
+                for key, value in {
+                    "tool": tool_name,
+                    "provider": usage.get("provider"),
+                    "model": usage.get("model"),
+                    "input_tokens": usage.get("input_tokens"),
+                    "output_tokens": usage.get("output_tokens"),
+                    "total_tokens": usage.get("total_tokens"),
+                    "model_calls": usage.get("model_calls", 1),
+                    "cost_usd": usage.get("cost_usd"),
+                    "billing_mode": usage.get("billing_mode"),
+                }.items()
+                if value is not None
+            }
+            self._total_usage.setdefault("component_llm_usage", []).append(component_identity)
+            if usage.get("provider") or usage.get("model"):
+                self._total_usage["mixed_model_usage"] = True
+
+        server_side_tools = (
+            usage.get("server_side_tools")
+            or result.get("server_side_tools")
+            or {}
+        )
+        for tool_name, count in server_side_tools.items():
+            self._server_side_tools[tool_name] = (
+                self._server_side_tools.get(tool_name, 0) + count
+            )
     
     def _generate_short_title(self, query: str) -> str | None:
         """
@@ -212,6 +297,16 @@ class PipelineExecutor:
         except Exception as e:
             print(f"Warning: Could not create LLM provider: {e}", file=sys.stderr)
             return None
+
+    def _cancel_requested(self) -> bool:
+        """Read the executor's request cancellation boundary without failing execution."""
+        callback = getattr(self.executor, "cancel_check", None)
+        if not callback:
+            return False
+        try:
+            return bool(callback())
+        except Exception:
+            return False
     
     def execute(self, workflow: dict, query: str, 
                 status_callback: Callable[[str], None] = None) -> dict[str, Any]:
@@ -305,6 +400,16 @@ class PipelineExecutor:
         
         # Execute each step
         for step in steps:
+            if self._cancel_requested():
+                return self._build_cancelled_response(
+                    workflow,
+                    results,
+                    variables,
+                    tools_used,
+                    start_time=start_time,
+                    query=query,
+                )
+
             step_num = step.get("step", len(results) + 1)
             tool_name = step["tool"]
             action = step.get("action")
@@ -333,6 +438,26 @@ class PipelineExecutor:
                     variables, validation_policy, total_retries, max_total_retries
                 )
                 step_duration_ms = int((time.time() - step_start_time) * 1000)
+
+                if step_result.get("cancelled"):
+                    results.append({
+                        "step": step_num,
+                        "tool": tool_name,
+                        "cancelled": True,
+                        "items_processed": step_result.get("items_processed", 0),
+                        "items_succeeded": step_result.get("items_succeeded", 0),
+                        "outputs": step_result.get("outputs", []),
+                        "duration_ms": step_duration_ms,
+                    })
+                    tools_used.append(tool_name)
+                    return self._build_cancelled_response(
+                        workflow,
+                        results,
+                        variables,
+                        tools_used,
+                        start_time=start_time,
+                        query=query,
+                    )
                 
                 if step_result.get("abort"):
                     # Workflow abort requested
@@ -364,6 +489,24 @@ class PipelineExecutor:
                     variables, validation_policy
                 )
                 step_duration_ms = int((time.time() - step_start_time) * 1000)
+
+                if step_result.get("cancelled"):
+                    results.append({
+                        "step": step_num,
+                        "tool": tool_name,
+                        "cancelled": True,
+                        "speech": step_result.get("speech"),
+                        "duration_ms": step_duration_ms,
+                    })
+                    tools_used.append(tool_name)
+                    return self._build_cancelled_response(
+                        workflow,
+                        results,
+                        variables,
+                        tools_used,
+                        start_time=start_time,
+                        query=query,
+                    )
                 
                 if not step_result.get("ok") and step.get("required", True):
                     # Required step failed - abort by default unless explicitly told to continue
@@ -422,6 +565,8 @@ class PipelineExecutor:
         # Add action if specified
         if action:
             params["action"] = action
+        if tool_name in {"text_summarizer", "stash"}:
+            params["_capture_usage"] = True
         
         # LLM parameter filling if needed
         if step.get("llm_prompt") and self.provider:
@@ -437,6 +582,7 @@ class PipelineExecutor:
         
         # Execute tool
         result = self.executor.execute(tool_name, params)
+        self._merge_component_usage(result, tool_name=tool_name)
         
         # Validate if needed
         if step.get("validation") and result.get("ok"):
@@ -557,6 +703,8 @@ class PipelineExecutor:
             # Add action if specified
             if action:
                 params["action"] = action
+            if tool_name in {"text_summarizer", "stash"}:
+                params["_capture_usage"] = True
             
             # Add item-specific params based on tool type
             if isinstance(item, str):
@@ -595,9 +743,22 @@ class PipelineExecutor:
             # Execute tool
             item_start_time = time.time()
             result = self.executor.execute(tool_name, params)
+            self._merge_component_usage(result, tool_name=tool_name)
             item_duration_ms = int((time.time() - item_start_time) * 1000)
             if isinstance(result, dict):
                 result["duration_ms"] = item_duration_ms
+            if result.get("cancelled"):
+                outputs.append(result)
+                variables.pop("_loop_index", None)
+                return {
+                    "items_processed": len(outputs),
+                    "items_succeeded": len(validated_outputs),
+                    "outputs": outputs,
+                    "validated_outputs": validated_outputs,
+                    "retries": retries,
+                    "abort": False,
+                    "cancelled": True,
+                }
             
             # Validate result
             if result.get("ok") and step.get("validation"):
@@ -1090,7 +1251,9 @@ class PipelineExecutor:
                 extracted_value = var_def.get("value")
             elif source == "env":
                 env_key = var_def.get("key", var_name)
-                extracted_value = os.environ.get(env_key)
+                # Respect the request's cloud/local config scope. Web mode
+                # selection intentionally does not mutate process-wide env.
+                extracted_value = get_config_value(env_key)
             elif source == "query":
                 if extract_type == "url":
                     # Extract URL from query
@@ -1625,6 +1788,49 @@ class PipelineExecutor:
                 mode=self.mode
             )
         
+        return response
+
+    def _build_cancelled_response(
+        self,
+        workflow: dict,
+        results: list[dict],
+        variables: dict,
+        tools_used: list[str],
+        *,
+        start_time: float | None = None,
+        query: str | None = None,
+    ) -> dict[str, Any]:
+        """Stop a foreground workflow without executing any later steps."""
+        response = {
+            "ok": True,
+            "cancelled": True,
+            "speech": f"Stopped {workflow.get('name') or workflow.get('id') or 'workflow'}.",
+            "data": {
+                "workflow_id": workflow.get("id"),
+                "workflow_name": workflow.get("name"),
+                "steps_completed": len(results),
+                "results": results,
+                "variables": {
+                    key: value
+                    for key, value in variables.items()
+                    if not key.startswith("_")
+                },
+            },
+            "tools_used": list(dict.fromkeys(tools_used)),
+            "usage": self._total_usage if self._total_usage.get("total_tokens", 0) > 0 else None,
+            "server_side_tools": self._server_side_tools if self._server_side_tools else None,
+        }
+        if start_time:
+            self.logger.log_workflow_execution(
+                workflow_id=workflow.get("id", "unknown"),
+                workflow_name=workflow.get("name", ""),
+                user_query=query or variables.get("query", ""),
+                result=response,
+                duration_ms=(time.time() - start_time) * 1000,
+                steps_completed=len(results),
+                tools_used=list(dict.fromkeys(tools_used)),
+                mode=self.mode,
+            )
         return response
 
 

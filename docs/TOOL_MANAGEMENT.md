@@ -34,12 +34,35 @@ Jarvis now supports enabling/disabling tools dynamically, similar to MCP servers
 
 ## Enabled vs available
 
-Two independent gates control whether a tool reaches the LLM:
+Several ordered gates control whether a tool reaches the LLM:
 
 | State | Meaning |
 |-------|---------|
-| **Enabled** | Manifest `"enabled": true` and not disabled by `JARVIS_TOOL_PROFILE` |
+| **Manifest default** | The tool's `*.tool.json` `enabled` value; missing means `true` |
+| **Profile enabled** | `JARVIS_TOOL_PROFILE` override, when present; the profile value wins over the manifest |
 | **Available** | Hard requirements in the manifest `availability` block are satisfied in the active mode |
+| **Surface allowed** | The tool is not in the current Web/request exclusion list |
+
+The effective order is:
+
+```text
+manifest enabled value
+        ↓
+active profile override wins
+        ↓
+mode/config/credential availability
+        ↓
+effective ToolRegistry
+        ↓
+Web or request exclusions
+        ↓
+Tool RAG discovery candidates
+```
+
+`ToolRegistry.list_tools()` is deliberately simple because `self.tools` has
+already passed the registry gates. Callers subtract Web/request exclusions
+afterward. The Tool RAG database supplies semantic ranking; a stale enabled row
+cannot resurrect a name absent from the live effective registry.
 
 A tool can be enabled in git but **unavailable** (missing API key, OAuth cache,
 `config/ssh.json`, webhook registry entry, etc.). Unavailable tools are skipped
@@ -56,6 +79,29 @@ section 9 for the full schema.
 change `embedding_input_hash`; only name, description, and parameter schema
 affect Tool RAG embeddings. Sync still disables stale DB rows when a previously
 synced tool becomes unavailable.
+
+Registry/profile state is loaded when the shared registry is constructed.
+Restart Jarvis after changing a manifest or profile (a mode change also rebuilds
+the registry), then run the mode's Tool RAG sync. Web blocked tools are read for
+each request and do not require a Tool RAG resync.
+
+### Mandatory discovery tools are still disableable
+
+`tool_search` and `workflow` are appended and prioritized as mandatory
+discovery candidates only when they exist in the effective registry and are not
+request-blocked. They are not force-registered:
+
+- Manifest `"enabled": false` removes either tool unless a profile overrides it with `true`.
+- Profile `"tool_search": false` or `"workflow": false` removes it after registry reload.
+- Jarvis Web's blocked-tools list excludes it for Web orchestration, and `ToolExecutor` enforces that request boundary.
+- Very small one-request schema caps still prioritize explicit positive hints before mandatory discovery candidates.
+
+The `workflow` tool controls autonomous workflow discovery and foreground
+execution. Explicit slash workflows and scheduled workflow tasks are separate
+entry points; disabling the meta-tool does not disable that broader workflow
+subsystem. Every direct/scheduled workflow still fails closed when any component
+tool is absent, unavailable, profile-disabled, or excluded for its execution
+surface.
 
 ## How It Works
 
@@ -159,9 +205,12 @@ self.tools[schema.name] = schema
 
 **3. All `skills/*.tool.json`** — Optional `enabled` and `availability` fields
 
-### No Hardcoded Dependencies
+### Discovery dependencies
 
-✅ No tool names in code (dynamically discovered)
+Most tools are dynamically discovered. `tool_search` and `workflow` are named
+discovery escape hatches, but only promoted when present in the effective
+registry.
+
 ✅ No broken imports if tool disabled
 ✅ System prompts mention tools as examples only
 ✅ Safe to add/remove tools anytime
@@ -214,10 +263,12 @@ cat logs/tools/tool-calls-*.jsonl | jq -r '.tool_name' | sort | uniq -c | sort -
 
 ### 4. Keep Core Tools Enabled
 
-Always keep these enabled for basic functionality:
+Usually keep these enabled for basic functionality:
 - `get_time` - Time/date queries
 - `remember` / `recall` / `search_memory` - Memory system
 - `get_recent_conversations` - Context awareness
+- `tool_search` - Compact discovery when initial Tool RAG retrieval misses
+- `workflow` - Autonomous deterministic workflow selection; optional if you only use slash/scheduled workflows
 
 ### 5. Document Your Profile
 
@@ -301,17 +352,25 @@ cat logs/baseline-tokens-local.json
 ./bin/manage-tools.py disable api_call     # -300 tokens
 ```
 
-## Future Enhancements
+## Profiles
 
-### Profiles (Not Yet Implemented)
+Profiles are implemented as overlays under `skills/profiles/<name>.json`:
 
-```bash
-# Save current state as profile
-./bin/manage-tools.py save-profile coding
-
-# Load profile
-./bin/manage-tools.py load-profile coding
+```json
+{
+  "description": "Default tools without autonomous workflow selection.",
+  "overrides": {
+    "workflow": false
+  }
+}
 ```
+
+Select one with `JARVIS_TOOL_PROFILE=<name>`, restart services, and run
+`./bin/sync-tools.py <cloud|local>`. Use
+`./bin/manage-tools.py profile show` and `profile export` to inspect the active
+overlay. See `skills/README.md`.
+
+## Future Enhancements
 
 ### Auto-Detection (Not Yet Implemented)
 

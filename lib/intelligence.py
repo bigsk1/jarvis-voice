@@ -117,6 +117,38 @@ def _coerce_string_list(value: Any) -> list[str]:
     return [text] if text else []
 
 
+def _workflow_semantic_pattern(
+    reflection: dict[str, Any],
+    metadata: dict[str, Any],
+) -> str:
+    """Anchor workflow retrieval to the recipe purpose, not test scaffolding."""
+    fallback = str(reflection.get('applies_to') or '').strip()
+    preferred_workflow_id = str(
+        metadata.get('preferred_workflow_id') or ''
+    ).strip()
+    if not preferred_workflow_id:
+        return fallback
+
+    workflow_context = reflection.get('_workflow_execution_context')
+    if not isinstance(workflow_context, dict):
+        return fallback
+    if str(workflow_context.get('selected_workflow_id') or '').strip() != preferred_workflow_id:
+        return fallback
+
+    name = str(workflow_context.get('selected_workflow_name') or '').strip()
+    summary = str(workflow_context.get('selected_workflow_summary') or '').strip()
+    triggers = workflow_context.get('selected_workflow_triggers')
+    triggers = triggers if isinstance(triggers, dict) else {}
+    trigger_phrases = _coerce_string_list(triggers.get('patterns'))
+    trigger_phrases.extend(_coerce_string_list(triggers.get('keywords')))
+    trigger_phrases = list(dict.fromkeys(trigger_phrases))
+
+    semantic_parts = [part for part in (name, summary) if part]
+    if trigger_phrases:
+        semantic_parts.append(" ".join(trigger_phrases))
+    return ". ".join(semantic_parts) or fallback
+
+
 def _has_provider_native_search(labels: list[str] | None) -> bool:
     """Return True when provider-native web/X search was used."""
     if not labels:
@@ -441,6 +473,7 @@ class IntelligenceLayer:
 
                 -- Learned associations
                 preferred_tools TEXT,  -- JSON: {"mcp_fetch": 0.8, "search_memory": 0.3}
+                preferred_workflow_id TEXT,  -- Specific recipe selected through the workflow meta-tool
                 preferred_tool_sequence TEXT,  -- JSON list: advisory observed sequence, not a hard workflow
                 supporting_tools TEXT,  -- JSON list: useful secondary tools observed with the primary preference
                 sequence_required BOOLEAN DEFAULT 0,  -- True only when order is essential
@@ -524,6 +557,7 @@ class IntelligenceLayer:
                 query TEXT,
                 tool_sequence TEXT,
                 preferred_tool TEXT,
+                preferred_workflow_id TEXT,
                 avoided_tool TEXT,
                 preferred_tool_sequence TEXT,
                 supporting_tools TEXT,
@@ -565,6 +599,7 @@ class IntelligenceLayer:
             ("trigger_signals", "TEXT"),
             ("primary_intent", "TEXT"),
             ("avoided_tools", "TEXT"),
+            ("preferred_workflow_id", "TEXT"),
             ("preferred_tool_sequence", "TEXT"),
             ("supporting_tools", "TEXT"),
             ("sequence_required", "BOOLEAN DEFAULT 0"),
@@ -594,6 +629,20 @@ class IntelligenceLayer:
                 except sqlite3.OperationalError as e:
                     # Column might already exist or other issue
                     logger.debug(f"Could not add column {col_name}: {e}")
+
+        cursor.execute("PRAGMA table_info(insight_evidence)")
+        evidence_columns = {row[1] for row in cursor.fetchall()}
+        if "preferred_workflow_id" not in evidence_columns:
+            try:
+                cursor.execute(
+                    "ALTER TABLE insight_evidence "
+                    "ADD COLUMN preferred_workflow_id TEXT"
+                )
+            except sqlite3.OperationalError as e:
+                logger.debug(
+                    "Could not add preferred_workflow_id to insight_evidence: %s",
+                    e,
+                )
 
     def _backfill_insight_sources_from_evidence(self, cursor: sqlite3.Cursor) -> None:
         """Populate blank insight source fields from their newest evidence row."""
@@ -1077,6 +1126,28 @@ class IntelligenceLayer:
         # Format available tools list
         available_tools_str = ', '.join(available_tools) if available_tools else '[Not captured]'
         tools_used_list = json.loads(exp['tools_used']) if exp['tools_used'] else []
+        workflow_execution = context_data.get('workflow_execution')
+        if not isinstance(workflow_execution, dict):
+            # Backward compatibility for reflections queued before workflow
+            # execution summaries were recorded explicitly.
+            from workflow_learning import extract_workflow_learning_context
+
+            reconstructed_data = _json_loads_safely(tool_results, {})
+            reconstructed_trace = _json_loads_safely(tool_trace, [])
+            workflow_execution = extract_workflow_learning_context(
+                {
+                    "ok": bool(exp['outcome_success']),
+                    "tools_used": tools_used_list,
+                    "data": reconstructed_data,
+                    "tool_trace": reconstructed_trace,
+                },
+                tools_used_list,
+            )
+        workflow_execution_str = (
+            json.dumps(workflow_execution, default=str)
+            if workflow_execution
+            else "(not a workflow interaction)"
+        )
         provider_native_tools_str = ', '.join(provider_native_tools_used) if provider_native_tools_used else '(none captured)'
         server_side_tools_str = json.dumps(server_side_tools) if server_side_tools else '(none captured)'
         artifact_tools = [tool for tool in ('canvas', 'stash') if tool in available_tools]
@@ -1109,6 +1180,9 @@ Analyze this interaction to extract a PROCEDURAL insight (not a fact).
 
 **Tool Attempt Trace** (attempted tools, sanitized arguments, failures, and recovery):
 {tool_trace[:2000] if tool_trace != '[Not captured]' else '[Not available]'}
+
+**Workflow Execution Context** (authoritative routing-vs-recipe attribution):
+{workflow_execution_str[:5000]}
 
 **LLM Response** (what was said to the user):
 {llm_response[:1000] if llm_response != '[Not captured]' else '[Not available]'}
@@ -1189,6 +1263,35 @@ CRITICAL EVALUATION:
 21. A strategy learned from a provider-native capability must remain capability-aware.
     Never store provider-native labels as normal Jarvis preferred tools, and do not assume
     another provider or local model has the same hosted capability.
+22. If Workflow Execution Context is present, evaluate the LLM's choice of the specific
+    workflow separately from the deterministic recipe's component execution.
+23. workflow(search) and workflow(describe) are discovery operations. They may legitimately
+    precede one workflow(run); do not classify those calls as retries, failed execution,
+    or an inefficient component-tool sequence merely because tools_used repeats "workflow".
+24. The workflow JSON owns component order. Never copy component_tools_used or step_outcomes
+    into preferred_tool_sequence, and never claim the router selected those tools individually.
+25. Attribute a wrong workflow ID, missing required query, or poor workflow match to workflow
+    selection/input. Attribute a failed recipe step to that component/recipe. Do not turn a
+    component failure into a blanket rule to avoid all workflows.
+26. Learn a positive workflow preference only when run_started and run_completed are true,
+    cancelled is false, outcome_success is true, and the selected workflow clearly matched
+    the user's intent. Search-only, describe-only, missing-input, unavailable, preflight-failed,
+    cancelled, and failed runs must not create a positive workflow preference.
+27. For a valid positive workflow lesson, set preferred_tool to "workflow" and
+    preferred_workflow_id to the exact selected_workflow_id. Do not create a generic
+    workflow preference without a workflow ID. The stored rule must say to discover or
+    confirm that recipe is currently runnable before running it.
+28. After a completed workflow, do not recommend rerunning the recipe or its component tools
+    in the same request. Component summarizer or LLM calls are recipe implementation details,
+    not router-selected tool or model preferences.
+29. For a positive workflow lesson, describe the UNDERLYING USER TASK and recipe outputs,
+    using selected_workflow_name, selected_workflow_summary, triggers, and query inputs.
+    Do not make "workflow discovery", "run a workflow", "previously successful procedure",
+    test labels, or other orchestration scaffolding the trigger concept or applies_to pattern.
+30. Example: if quick_note saves content to memory and Canvas, use an applies_to pattern like
+    "Requests to save a quick note to memory and Canvas" and an insight like "For quick-note
+    saving requests, confirm and run quick_note." The workflow ID belongs only in
+    preferred_workflow_id; the semantic trigger remains the user's real task.
 
 TOOL CATEGORIES (for understanding what tools do):
 - **MEMORY TOOLS** (check stored knowledge): search_memory, recall, semantic_recall, get_recent_conversations, search_conversations
@@ -1265,6 +1368,7 @@ Provide your analysis as JSON:
 
     "rule": "ALWAYS/NEVER + action + for + query type",  // e.g., "ALWAYS prefer crypto_price over search_memory for price queries"
     "preferred_tool": "tool_name" or null,  // The tool to use
+    "preferred_workflow_id": "workflow_id" or null,  // only with preferred_tool="workflow"
     "avoided_tool": "tool_name" or null,  // The tool to avoid (for negative constraints)
     "preferred_tool_sequence": ["tool_a", "tool_b"],  // optional/advisory only; [] if order was not the lesson
     "supporting_tools": ["tool_b"],  // optional secondary tools that helped but should not override primary intent
@@ -1352,6 +1456,8 @@ Example for FACTUAL (should NOT be stored here):
         )
 
         if reflection:
+            if workflow_execution:
+                reflection['_workflow_execution_context'] = workflow_execution
             # Store the insight
             await self._store_insight(reflection, exp)
 
@@ -1548,16 +1654,63 @@ Example for FACTUAL (should NOT be stored here):
         except (TypeError, ValueError):
             confidence = 0.5
 
+        raw_data = redact_sensitive_data(self._get_experience_raw_data(experience))
+        context = raw_data.get('context', {}) if isinstance(raw_data.get('context'), dict) else {}
+        workflow_execution = (
+            reflection.get('_workflow_execution_context')
+            if isinstance(reflection.get('_workflow_execution_context'), dict)
+            else (
+                context.get('workflow_execution')
+                if isinstance(context.get('workflow_execution'), dict)
+                else None
+            )
+        )
+        is_workflow_experience = bool(
+            workflow_execution
+            and workflow_execution.get('is_workflow_interaction')
+        )
+
         preferred_tools: dict[str, float] = {}
         preferred_tool_names = _coerce_string_list(reflection.get('preferred_tool'))
         if suppress_preferred_tool:
             preferred_tool_names = []
         if not preferred_tool_names and not suppress_preferred_tool:
             final_tool = _row_value(experience, 'final_tool')
-            if final_tool:
+            if final_tool and not is_workflow_experience:
                 # TODO: If the reflection also avoided this same tool, reshape the
                 # insight instead of creating contradictory prefer/avoid metadata.
                 preferred_tool_names = [str(final_tool)]
+
+        preferred_workflow_id = str(
+            reflection.get('preferred_workflow_id') or ''
+        ).strip()
+        if 'workflow' in preferred_tool_names:
+            selected_workflow_id = str(
+                (workflow_execution or {}).get('selected_workflow_id') or ''
+            ).strip()
+            valid_completed_run = bool(
+                selected_workflow_id
+                and workflow_execution.get('run_started')
+                and workflow_execution.get('run_completed')
+                and not workflow_execution.get('cancelled')
+                and workflow_execution.get('outcome_success')
+            ) if workflow_execution else False
+            if not valid_completed_run:
+                preferred_tool_names = [
+                    name for name in preferred_tool_names if name != 'workflow'
+                ]
+                preferred_workflow_id = ''
+            elif preferred_workflow_id and preferred_workflow_id != selected_workflow_id:
+                # Reflection may only reinforce the recipe evidenced by this run.
+                preferred_tool_names = [
+                    name for name in preferred_tool_names if name != 'workflow'
+                ]
+                preferred_workflow_id = ''
+            else:
+                preferred_workflow_id = selected_workflow_id
+        else:
+            preferred_workflow_id = ''
+
         for tool in preferred_tool_names:
             preferred_tools[tool] = confidence
 
@@ -1567,16 +1720,35 @@ Example for FACTUAL (should NOT be stored here):
 
         preferred_tool_sequence = _coerce_string_list(reflection.get('preferred_tool_sequence'))
         supporting_tools = _coerce_string_list(reflection.get('supporting_tools'))
+        if is_workflow_experience:
+            component_tools = set(
+                _coerce_string_list(
+                    (workflow_execution or {}).get('component_tools_used')
+                )
+            )
+            preferred_tool_sequence = [
+                tool
+                for tool in preferred_tool_sequence
+                if tool not in component_tools and tool != 'workflow'
+            ]
+            supporting_tools = [
+                tool
+                for tool in supporting_tools
+                if tool not in component_tools and tool != 'workflow'
+            ]
+            if preferred_workflow_id:
+                # A workflow preference selects one recipe; its internal order
+                # must never become a second router-enforced sequence.
+                preferred_tool_sequence = []
         trigger_signals = _coerce_string_list(reflection.get('trigger_signals'))
 
-        raw_data = redact_sensitive_data(self._get_experience_raw_data(experience))
-        context = raw_data.get('context', {}) if isinstance(raw_data.get('context'), dict) else {}
         source_tool_sequence = _coerce_string_list(_row_value(experience, 'tool_sequence'))
         if not source_tool_sequence:
             source_tool_sequence = _coerce_string_list(_row_value(experience, 'tools_used'))
 
         return {
             'preferred_tools': preferred_tools,
+            'preferred_workflow_id': preferred_workflow_id or None,
             'avoided_tools': avoided_tools,
             'preferred_tool_sequence': preferred_tool_sequence,
             'supporting_tools': supporting_tools,
@@ -1609,6 +1781,16 @@ Example for FACTUAL (should NOT be stored here):
         if existing_preferred and not new_preferred and metadata.get('suppressed_preferred_tool'):
             return False
         if existing_preferred and new_preferred and existing_preferred != new_preferred:
+            return False
+        existing_workflow_id = str(
+            _row_value(existing, 'preferred_workflow_id') or ''
+        ).strip()
+        new_workflow_id = str(
+            metadata.get('preferred_workflow_id') or ''
+        ).strip()
+        if existing_workflow_id != new_workflow_id and (
+            existing_workflow_id or new_workflow_id
+        ):
             return False
 
         existing_avoided = set(_coerce_string_list(_row_value(existing, 'avoided_tools')))
@@ -1646,10 +1828,10 @@ Example for FACTUAL (should NOT be stored here):
         cursor.execute("""
             INSERT INTO insight_evidence (
                 insight_id, experience_id, web_conversation_id, query,
-                tool_sequence, preferred_tool, avoided_tool,
+                tool_sequence, preferred_tool, preferred_workflow_id, avoided_tool,
                 preferred_tool_sequence, supporting_tools, reflection_json,
                 confidence, confidence_delta, action
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             insight_id,
             metadata.get('source_experience_id'),
@@ -1657,6 +1839,7 @@ Example for FACTUAL (should NOT be stored here):
             metadata.get('source_query'),
             json.dumps(metadata.get('source_tool_sequence') or []),
             preferred_tool_names[0] if preferred_tool_names else None,
+            metadata.get('preferred_workflow_id'),
             avoided_tools[0] if avoided_tools else None,
             json.dumps(metadata.get('preferred_tool_sequence') or []),
             json.dumps(metadata.get('supporting_tools') or []),
@@ -1722,12 +1905,6 @@ Example for FACTUAL (should NOT be stored here):
         # Extract constraint type
         constraint_type = reflection.get('constraint_type', 'positive')
 
-        # Generate embeddings
-        insight_embedding = self._get_persistable_embedding(insight_text)
-        pattern_text = reflection.get('applies_to', '')
-        pattern_embedding = self._get_persistable_embedding(pattern_text) if pattern_text else None
-        trigger_concept = reflection.get('trigger_concept', '')
-
         suppress_preferred_tool = should_suppress_preferred_tool_for_native_search(reflection, experience)
         if suppress_preferred_tool:
             logger.info(
@@ -1739,6 +1916,14 @@ Example for FACTUAL (should NOT be stored here):
             experience,
             suppress_preferred_tool=suppress_preferred_tool
         )
+
+        # Generate embeddings. Positive workflow lessons use the recipe's
+        # bounded semantic metadata so test wording such as "run the previous
+        # procedure" cannot become the retrieval pattern.
+        insight_embedding = self._get_persistable_embedding(insight_text)
+        pattern_text = _workflow_semantic_pattern(reflection, metadata)
+        pattern_embedding = self._get_persistable_embedding(pattern_text) if pattern_text else None
+        trigger_concept = reflection.get('trigger_concept', '')
 
         # Check for similar existing insights
         similar = await self._find_similar_insights(insight_embedding, threshold=0.85)
@@ -1761,6 +1946,22 @@ Example for FACTUAL (should NOT be stored here):
 
             cursor.execute("""
                 UPDATE insights SET
+                    description = CASE
+                        WHEN ? IS NOT NULL THEN ?
+                        ELSE description
+                    END,
+                    applies_to_pattern = CASE
+                        WHEN ? IS NOT NULL THEN ?
+                        ELSE applies_to_pattern
+                    END,
+                    pattern_embedding = CASE
+                        WHEN ? IS NOT NULL THEN ?
+                        ELSE pattern_embedding
+                    END,
+                    trigger_concept = CASE
+                        WHEN ? IS NOT NULL THEN ?
+                        ELSE trigger_concept
+                    END,
                     confidence = ?,
                     strength = ?,
                     evidence_count = evidence_count + 1,
@@ -1772,6 +1973,10 @@ Example for FACTUAL (should NOT be stored here):
                         THEN ?
                         ELSE preferred_tool_sequence
                     END,
+                    preferred_workflow_id = COALESCE(
+                        NULLIF(preferred_workflow_id, ''),
+                        ?
+                    ),
                     supporting_tools = ?,
                     trigger_signals = ?,
                     primary_intent = COALESCE(NULLIF(primary_intent, ''), ?),
@@ -1796,11 +2001,20 @@ Example for FACTUAL (should NOT be stored here):
                     END
                 WHERE id = ?
             """, (
+                metadata['preferred_workflow_id'],
+                insight_text,
+                metadata['preferred_workflow_id'] if pattern_text else None,
+                pattern_text,
+                metadata['preferred_workflow_id'] if pattern_embedding is not None else None,
+                self._serialize_embedding(pattern_embedding),
+                metadata['preferred_workflow_id'] if trigger_concept else None,
+                trigger_concept,
                 new_confidence,
                 min(1.0, existing['strength'] + 0.1),
                 reflection.get('why_or_why_not', ''),
                 generalizability,
                 json.dumps(metadata['preferred_tool_sequence']),
+                metadata['preferred_workflow_id'],
                 self._merge_json_list_fields(existing['supporting_tools'], metadata['supporting_tools']),
                 self._merge_json_list_fields(existing['trigger_signals'], metadata['trigger_signals']),
                 metadata['primary_intent'],
@@ -1857,7 +2071,8 @@ Example for FACTUAL (should NOT be stored here):
                     insight_type, description, insight_embedding,
                     constraint_type, trigger_concept,
                     applies_to_pattern, pattern_embedding,
-                    preferred_tools, preferred_tool_sequence, supporting_tools,
+                    preferred_tools, preferred_workflow_id,
+                    preferred_tool_sequence, supporting_tools,
                     sequence_required, avoided_tools, trigger_signals, primary_intent,
                     generalizability, reasoning,
                     reflection_provider, reflection_model,
@@ -1866,7 +2081,7 @@ Example for FACTUAL (should NOT be stored here):
                     confidence, evidence_count,
                     source_experience_id, source_web_conversation_id,
                     source_query, source_tool_sequence, source_reflection_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 insight_type,
                 insight_text,
@@ -1876,6 +2091,7 @@ Example for FACTUAL (should NOT be stored here):
                 pattern_text,
                 self._serialize_embedding(pattern_embedding),
                 json.dumps(metadata['preferred_tools']),
+                metadata['preferred_workflow_id'],
                 json.dumps(metadata['preferred_tool_sequence']),
                 json.dumps(metadata['supporting_tools']),
                 1 if metadata['sequence_required'] else 0,
@@ -2010,6 +2226,11 @@ Example for FACTUAL (should NOT be stored here):
                         'insight': row['description'],
                         'applies_to': row['applies_to_pattern'],
                         'preferred_tools': _json_loads_safely(row['preferred_tools'], {}),
+                        'preferred_workflow_id': (
+                            row['preferred_workflow_id']
+                            if 'preferred_workflow_id' in row.keys()
+                            else None
+                        ),
                         'confidence': row['confidence'],
                         'relevance': relevance,
                         'evidence_count': row['evidence_count'],

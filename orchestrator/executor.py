@@ -17,6 +17,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, export_config_environment
 from tool_logger import get_logger
 from tool_search_runtime import search_tools_runtime
+try:
+    from .workflow_tool_runtime import execute_workflow_tool
+except ImportError:
+    from workflow_tool_runtime import execute_workflow_tool
 
 
 class ToolExecutor:
@@ -51,6 +55,9 @@ class ToolExecutor:
         self.jarvis_session_id = None
         self.web_conversation_id = None
         self.excluded_tools: set[str] = set()
+        self.workflow_loader = None
+        self.pipeline_executor = None
+        self.workflow_status_callback = None
 
     def set_cancel_check(self, callback):
         """Set callback to check if the current tool execution should be cancelled."""
@@ -64,6 +71,18 @@ class ToolExecutor:
     def set_excluded_tools(self, excluded_tools: list[str] | None = None):
         """Set request-scoped tools that must remain hidden from discovery."""
         self.excluded_tools = {str(name).strip() for name in (excluded_tools or []) if str(name).strip()}
+
+    def set_workflow_runtime(
+        self,
+        *,
+        workflow_loader=None,
+        pipeline_executor=None,
+        status_callback=None,
+    ):
+        """Attach shared foreground workflow components from the orchestrator."""
+        self.workflow_loader = workflow_loader
+        self.pipeline_executor = pipeline_executor
+        self.workflow_status_callback = status_callback
 
     def _get_subprocess_timeout(self, tool_name: str) -> int:
         """Return the subprocess timeout for a local tool."""
@@ -162,6 +181,8 @@ class ToolExecutor:
 
         if tool_name == "tool_search":
             return self._execute_tool_search(tool_name, args)
+        if tool_name == "workflow":
+            return self._execute_workflow(tool_name, args)
         
         # Check permissions (unless explicitly skipped)
         if not skip_permission_check and tool_schema.requires_confirmation():
@@ -383,6 +404,36 @@ class ToolExecutor:
             result=result,
             duration_ms=duration_ms,
             mode=self.mode
+        )
+        return result
+
+    def _execute_workflow(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Discover or synchronously run workflows against this executor's registry."""
+        start_time = time.time()
+        try:
+            result = execute_workflow_tool(
+                registry=self.registry,
+                args=args,
+                mode=self.mode,
+                excluded_tools=self.excluded_tools,
+                loader=self.workflow_loader,
+                pipeline_executor=self.pipeline_executor,
+                tool_executor=self,
+                status_callback=self.workflow_status_callback,
+            )
+        except Exception as exc:
+            result = {
+                "ok": False,
+                "speech": "Workflow execution failed.",
+                "error": str(exc),
+            }
+        duration_ms = (time.time() - start_time) * 1000
+        self.logger.log_tool_call(
+            tool_name=tool_name,
+            arguments=args,
+            result=result,
+            duration_ms=duration_ms,
+            mode=self.mode,
         )
         return result
     

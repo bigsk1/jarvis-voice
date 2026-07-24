@@ -5,6 +5,7 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 # lib/ on path
 ROOT = Path(__file__).resolve().parent.parent
@@ -50,6 +51,35 @@ class TestToolProfiles(unittest.TestCase):
             finally:
                 tp.get_profiles_dir = orig
                 del os.environ["JARVIS_TOOL_PROFILE"]
+
+    def test_profile_can_remove_workflow_meta_tool_from_effective_registry(self):
+        from tool_schema import ToolRegistry
+
+        with TemporaryDirectory() as tmp:
+            skills_dir = Path(tmp)
+            (skills_dir / "workflow.tool.json").write_text(
+                json.dumps(
+                    {
+                        "enabled": True,
+                        "name": "workflow",
+                        "description": "Workflow discovery",
+                        "script": "workflow.py",
+                        "parameters": {"type": "object", "properties": {}},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with (
+                patch("tool_profiles.get_active_profile_name", return_value="minimal"),
+                patch(
+                    "tool_profiles.load_active_profile_overrides",
+                    return_value={"workflow": False},
+                ),
+                patch("tool_profiles.warn_missing_profile_file"),
+            ):
+                registry = ToolRegistry(str(skills_dir))
+
+        self.assertNotIn("workflow", registry.list_tools())
 
 
 if __name__ == "__main__":

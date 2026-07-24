@@ -116,7 +116,9 @@ Implemented now:
 - Synthesis fallback that can answer from existing tool results without another tool call
 - Repair cancellation support in the Web UI stop flow
 - Markdown ticket creation for unresolved failures
-- Tool-aware exclusions for workflows and fire-and-forget/sensitive tools
+- Tool-aware exclusions for workflows and fire-and-forget/sensitive tools;
+  `workflow` is a default exclusion and recognized slash/autonomous workflow
+  results also bypass manual prompting and automatic evaluation
 - Completion Guard metadata included in conversation exports when available
 - Accepted states are now persisted instead of being client-only
 - Accepted/repaired/ticketed/cancelled outcomes are fed back into the recorded intelligence experience and reflection prompt
@@ -601,7 +603,7 @@ JARVIS_COMPLETION_GUARD_SHOW_UI_PROMPT=true
 JARVIS_COMPLETION_GUARD_MANUAL_TTL_SECONDS=600
 JARVIS_COMPLETION_GUARD_INCLUDE_QA=true
 JARVIS_COMPLETION_GUARD_INCLUDE_TOOL_TASKS=true
-COMPLETION_GUARD_EXCLUDED_TOOLS=phone_call,send_email,create_reminder,create_alert
+COMPLETION_GUARD_EXCLUDED_TOOLS=phone_call,send_email,create_reminder,create_alert,workflow
 JARVIS_COMPLETION_GUARD_EVAL_PROVIDER=
 JARVIS_COMPLETION_GUARD_EVAL_MODEL=
 ```
@@ -610,6 +612,11 @@ Jarvis Web supports per-mode overrides for these settings. Repair remains
 bounded to one pass in code; there is no `MAX_REPAIRS` environment setting.
 Ticket storage is owned by the Web conversation/debug flow rather than a
 configurable `TICKET_DIR` variable.
+
+The code-owned default exclusion set is always merged with the environment
+list. Keeping `workflow` in both the documented examples and the default set is
+intentional defense in depth: Completion Guard must not start a repair
+orchestration turn that could replay a deterministic recipe or its side effects.
 
 ### Web Config Schema
 

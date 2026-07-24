@@ -196,6 +196,12 @@ def record_interaction(
         tool_trace_str = json.dumps(tool_trace, default=str)
         if len(tool_trace_str) > 5000:
             tool_trace_str = tool_trace_str[:5000] + "... [truncated]"
+
+        from workflow_learning import extract_workflow_learning_context
+
+        workflow_execution = redact_sensitive_data(
+            extract_workflow_learning_context(result, tools_used)
+        )
         
         # Context summary with full data
         context = {
@@ -211,6 +217,7 @@ def record_interaction(
             'final_speech': final_speech,
             'tool_results': tool_results_str,
             'tool_trace': tool_trace_str,
+            'workflow_execution': workflow_execution,
             'server_side_tools': server_side_tools,
             'provider_native_tools_used': native_tool_labels,
             # CRITICAL: What tools the LLM could have chosen from
@@ -1194,6 +1201,7 @@ def get_routing_insights(query: str) -> dict[str, Any]:
                     'avoided_tools': i.get('avoided_tools', []),
                     'reasoning': i.get('reasoning', ''),
                     'preferred_tools': i.get('preferred_tools') or {},
+                    'preferred_workflow_id': i.get('preferred_workflow_id'),
                     'preferred_tool_sequence': i.get('preferred_tool_sequence') or [],
                     'supporting_tools': i.get('supporting_tools') or [],
                     'sequence_required': bool(i.get('sequence_required')),
@@ -1250,6 +1258,35 @@ def _insight_ok_for_available_tools(insight: dict[str, Any], available_set: set[
             if tool not in available_set:
                 return False
 
+    preferred_workflow_id = str(
+        insight.get("preferred_workflow_id") or ""
+    ).strip()
+    if isinstance(pt, dict) and "workflow" in pt and not preferred_workflow_id:
+        # Never let a legacy/broad wrapper preference steer every workflow-
+        # adjacent query without identifying the recipe that earned it.
+        return False
+    if preferred_workflow_id:
+        if "workflow" not in available_set:
+            return False
+        try:
+            from orchestrator.workflow_availability import workflow_tool_names
+            from orchestrator.workflow_loader import WorkflowLoader
+
+            loader = WorkflowLoader(explicit_only=True)
+            loader.reload()
+            workflow = loader.get_workflow(preferred_workflow_id)
+            if not workflow:
+                return False
+            if any(
+                tool_name not in available_set
+                for tool_name in workflow_tool_names(workflow)
+            ):
+                return False
+        except Exception:
+            # A specific workflow preference is only useful when its current
+            # recipe and effective dependencies can be verified.
+            return False
+
     # Text scan: only for tool-like names (underscore or mcp_) so we do not treat the
     # English word "weather" as the weather tool when preferred_tools is empty.
     known = _tool_names_known_to_db()
@@ -1269,6 +1306,21 @@ def _insight_ok_for_available_tools(insight: dict[str, Any], available_set: set[
         if re.search(rf"\b{re.escape(name)}\b", text, re.IGNORECASE):
             return False
     return True
+
+
+def filter_insights_for_available_tools(
+    insight_items: list[dict[str, Any]],
+    available_tools: list[str] | None,
+) -> list[dict[str, Any]]:
+    """Return only insights whose preferred tool/workflow is runnable now."""
+    if not available_tools:
+        return list(insight_items or [])
+    available_set = set(available_tools)
+    return [
+        insight
+        for insight in (insight_items or [])
+        if _insight_ok_for_available_tools(insight, available_set)
+    ]
 
 
 def format_insights_for_prompt(insights: dict[str, Any], available_tools: list[str] = None) -> str:
@@ -1294,11 +1346,10 @@ def format_insights_for_prompt(insights: dict[str, Any], available_tools: list[s
     
     # Filter insights if available_tools provided
     all_insights = insights['insights']
-    if available_tools:
-        available_set = set(available_tools)
-        all_insights = [
-            i for i in all_insights if _insight_ok_for_available_tools(i, available_set)
-        ]
+    all_insights = filter_insights_for_available_tools(
+        all_insights,
+        available_tools,
+    )
     
     # Separate positive and negative constraints
     positive_insights = [i for i in all_insights if i.get('constraint_type', 'positive') == 'positive']
@@ -1315,6 +1366,12 @@ def format_insights_for_prompt(insights: dict[str, Any], available_tools: list[s
             lines.append(f"✅ {insight['description']}")
             if insight.get('applies_to'):
                 lines.append(f"   → Applies to: {insight['applies_to']}")
+            if insight.get('preferred_workflow_id'):
+                lines.append(
+                    "   → Candidate workflow: "
+                    f"{insight['preferred_workflow_id']} "
+                    "(confirm it is currently runnable with workflow discovery)"
+                )
             sequence = insight.get('preferred_tool_sequence') or []
             if sequence and insight.get('sequence_required'):
                 lines.append(f"   → Required sequence: {' → '.join(sequence)}")
@@ -1337,12 +1394,19 @@ def format_insights_for_prompt(insights: dict[str, Any], available_tools: list[s
     
     # Tool biases summary (filtered to available tools)
     if insights.get('tool_biases'):
-        biases = insights['tool_biases']
+        biases = dict(insights['tool_biases'])
         
         # Filter to available tools if list provided
         if available_tools:
             available_set = set(available_tools)
             biases = {k: v for k, v in biases.items() if k in available_set}
+            workflow_preference_survived = any(
+                "workflow" in (item.get("preferred_tools") or {})
+                for item in all_insights
+                if item.get("constraint_type", "positive") == "positive"
+            )
+            if not workflow_preference_survived:
+                biases.pop("workflow", None)
         
         prefer_tools = {k: v for k, v in biases.items() if v > 0}
         avoid_tools = {k: v for k, v in biases.items() if v < 0}
@@ -1502,6 +1566,15 @@ def _evaluate_insight_helpfulness(
             if _preferred_tool_had_trace_failure(preferred_tool_names, result):
                 return False
             if not any(tool in tools_used for tool in preferred_tool_names):
+                return False
+
+        preferred_workflow_id = str(
+            insight.get('preferred_workflow_id') or ''
+        ).strip()
+        if preferred_workflow_id:
+            from workflow_learning import completed_workflow_id
+
+            if completed_workflow_id(result, tools_used) != preferred_workflow_id:
                 return False
         return outcome_success
 

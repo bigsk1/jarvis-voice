@@ -25,6 +25,17 @@ Private workflows can live in `data/workflows/personal/*.json`. That folder is g
 
 **Triggers:** Production matching is **explicit-only** by default (slash commands). `patterns` / `keywords` exist in the schema but are not the normal path; prefer `explicit`. Matching is exact prefix (`startswith`) with no hyphen/underscore normalization—list every alias you care about in `explicit` (e.g. both `/status-visual` and `/status_visual` if you want both).
 
+Normal orchestration can also discover workflows through the compact
+`workflow(search|describe|run)` meta-tool. This does not enable keyword/pattern
+trigger matching: the meta-tool searches workflow metadata, returns only
+currently runnable recipes, and requires an exact workflow id for execution.
+Shared and `personal/` workflows participate equally, including personal
+same-id overrides.
+
+Disabling the `workflow` tool in its manifest, the active tool profile, or the
+Web blocked-tools list disables this **autonomous meta-tool path** for that
+surface. It does not disable direct slash commands or scheduled workflow tasks.
+
 ---
 
 ## Runtime mode and shared artifacts
@@ -176,6 +187,13 @@ Each step typically includes:
 - `llm_prompt` — optional; LLM fills params (uses tokens).
 - Workflow-level `disable_server_side_tools` — optional boolean; when true, workflow LLM helper calls for `llm_prompt`, validation, branching, or completion speech run without provider-native search/tools. Explicit workflow steps such as Brave search, crawl, or other Jarvis tools still run normally.
 
+Before any execution surface runs the recipe, every step tool must exist in the
+effective active-mode registry and must not be excluded for that surface.
+Optional and conditional steps count. If any component is manifest-disabled,
+profile-disabled, unavailable because of configuration, or Web/request-blocked,
+the entire workflow is unavailable; workflows never force-enable tools or run
+in a degraded mode. Recursive steps with `"tool": "workflow"` are rejected.
+
 Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
 
 ---
@@ -193,6 +211,8 @@ Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
 9. For search → crawl workflows, keep the search step's **`output_var`** as **`search_results`** so the built-in transform exposes `${search_results.urls[:N]}`.
 10. For single URL crawl workflows, use **`output_var: "article"`** when later steps need `${article.content}`, `${article.url}`, or `${article.title}`.
 11. For mode-scoped data such as memory or intelligence, expose the active mode/source in the workflow output and in saved Canvas/stash reports.
+12. Assume autonomous foreground execution may select the recipe: keep `name`, `description`, explicit triggers, and query-derived variables clear enough for compact metadata search.
+13. Make side effects and repeat behavior safe. Autonomous orchestration permits only one started workflow run per request, but scheduled or later explicit runs are independent.
 
 ---
 
@@ -202,6 +222,10 @@ Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
 2. Copy an existing workflow closest to your use case, then edit **`id`**, **`triggers.explicit`**, **`variables`**, **`steps`**.
 3. Set **`enabled`: true**.
 4. Run via CLI or Web UI using the explicit command.
+
+You can also ask Jarvis normally and let the enabled `workflow` meta-tool find
+the recipe. That path waits for completion and returns the workflow result to
+the same orchestration turn; it is not a durable background run.
 
 ---
 

@@ -84,6 +84,49 @@ class FeedbackOpenAINativeSearchTests(unittest.TestCase):
 
         self.assertIn("NATIVE SEARCH CHECK - READ FIRST: 🟢 ENABLED", provider.prompt)
 
+    def test_workflow_grading_receives_recipe_attribution_context(self):
+        provider = _PromptCaptureProvider()
+        collector = self._collector(provider)
+
+        with patch.object(feedback, "get_config_value", return_value=""), \
+             patch.object(collector, "_log_feedback"), \
+             patch.object(collector, "_record_prompt_usage"):
+            collector.collect(
+                query="research AI agents",
+                result={
+                    "ok": True,
+                    "speech": "Research report complete.",
+                    "tools_used": ["workflow", "workflow"],
+                    "data": {
+                        "workflow": [
+                            {"action": "search"},
+                            {
+                                "action": "run",
+                                "workflow_id": "research_report",
+                                "workflow_started": True,
+                                "workflow_completed": True,
+                                "component_tools_used": [
+                                    "search_docs",
+                                    "canvas",
+                                ],
+                            },
+                        ]
+                    },
+                },
+                tools_used=["workflow", "workflow"],
+                config_context="Mode: cloud",
+            )
+
+        self.assertIn('"selected_workflow_id": "research_report"', provider.prompt)
+        self.assertIn(
+            "rate discovery and selection of the specific workflow",
+            provider.prompt,
+        )
+        self.assertIn(
+            "Component order is owned by the deterministic workflow recipe",
+            provider.prompt,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

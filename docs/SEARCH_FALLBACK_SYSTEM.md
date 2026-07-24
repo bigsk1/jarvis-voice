@@ -274,7 +274,9 @@ GHOST_TOOLS=search_memory,update_memory,semantic_recall,remember,canvas
 ```
 
 Memory tools (`search_memory`, `semantic_recall`, `update_memory`, `remember`) are ghost tools, prioritized inside the final Tool RAG schema cap.
-`tool_search` is injected as a mandatory discovery candidate in code rather than configured through `GHOST_TOOLS`.
+Enabled `tool_search` and `workflow` are injected as mandatory discovery
+candidates in code rather than configured through `GHOST_TOOLS`. They are still
+subject to manifest/profile/mode availability and Web/request exclusions.
 
 ---
 

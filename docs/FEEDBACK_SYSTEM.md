@@ -93,6 +93,29 @@ When Completion Guard is enabled in Jarvis Web, **explicit async feedback waits 
 - **Intelligence bridge**: Feedback also stores `raw_data.feedback.latest` on the linked experience, preserving the rating, summary, issues, tool ratings, analysis, and guard status for future reflection.
 - **Reference**: [Completion Guard](./COMPLETION_GUARD.md).
 
+### Autonomous Workflow Grading
+
+When normal orchestration selects the `workflow` meta-tool, feedback receives a
+compact workflow execution block in addition to `Tools Used: workflow`. The
+grader separates:
+
+- workflow discovery and selection by the routing LLM
+- deterministic component order owned by the workflow JSON
+- component or recipe failures
+- the final settled answer and artifacts
+
+`workflow(search)` and `workflow(describe)` may legitimately precede one
+`workflow(run)` and are not graded as repeated execution. The
+`tool_ratings.workflow` score applies to discovery/input/selection of the
+specific recipe; it is not automatically a rating for every internal component
+tool. Search-only, missing-input, unavailable, cancelled, and failed-preflight
+interactions are not treated as successful workflow executions.
+
+Feedback remains optional/manual by default. Its rating can enrich the linked
+Intelligence experience, but the higher-impact protection is in reflection:
+workflow insights carry a specific `preferred_workflow_id` and cannot silently
+become a generic preference for the wrapper tool.
+
 ---
 
 ## Usage Methods

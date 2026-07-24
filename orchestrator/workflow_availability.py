@@ -6,6 +6,9 @@ from collections.abc import Iterable
 from typing import Any
 
 
+_WORKFLOW_META_TOOLS = frozenset({"workflow"})
+
+
 def workflow_tool_names(workflow: dict[str, Any]) -> list[str]:
     """Return unique workflow step tools in declaration order."""
     names: list[str] = []
@@ -43,7 +46,7 @@ def check_workflow_availability(
     blocked = [name for name in tools if name in excluded]
     unavailable = [
         name for name in tools
-        if name not in available and name not in excluded
+        if (name not in available or name in _WORKFLOW_META_TOOLS) and name not in excluded
     ]
     return {
         "available": not blocked and not unavailable,

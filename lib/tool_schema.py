@@ -12,7 +12,7 @@ from typing import Any
 from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
 
 _logger = logging.getLogger(__name__)
-_MANDATORY_GHOST_TOOLS = ("tool_search",)
+_MANDATORY_GHOST_TOOLS = ("tool_search", "workflow")
 
 
 def _merged_ghost_tool_names(raw_value: str | None, available_names: set[str]) -> list[str]:

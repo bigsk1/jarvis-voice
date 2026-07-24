@@ -158,6 +158,7 @@ def find_existing_insight(cursor: sqlite3.Cursor, row: sqlite3.Row) -> int | Non
           AND COALESCE(applies_to_pattern, '') = COALESCE(?, '')
           AND COALESCE(constraint_type, '') = COALESCE(?, '')
           AND COALESCE(preferred_tools, '') = COALESCE(?, '')
+          AND COALESCE(preferred_workflow_id, '') = COALESCE(?, '')
           AND COALESCE(avoided_tools, '') = COALESCE(?, '')
           AND COALESCE(preferred_tool_sequence, '') = COALESCE(?, '')
         LIMIT 1
@@ -166,6 +167,7 @@ def find_existing_insight(cursor: sqlite3.Cursor, row: sqlite3.Row) -> int | Non
         row['applies_to_pattern'],
         row['constraint_type'],
         row['preferred_tools'],
+        row['preferred_workflow_id'],
         row['avoided_tools'],
         row['preferred_tool_sequence'],
     )).fetchone()
@@ -187,6 +189,7 @@ def find_existing_evidence(
           AND COALESCE(query, '') = COALESCE(?, '')
           AND COALESCE(tool_sequence, '') = COALESCE(?, '')
           AND COALESCE(preferred_tool, '') = COALESCE(?, '')
+          AND COALESCE(preferred_workflow_id, '') = COALESCE(?, '')
           AND COALESCE(avoided_tool, '') = COALESCE(?, '')
           AND COALESCE(action, '') = COALESCE(?, '')
           AND COALESCE(created_at, '') = COALESCE(?, '')
@@ -198,6 +201,7 @@ def find_existing_evidence(
         row['query'],
         row['tool_sequence'],
         row['preferred_tool'],
+        row['preferred_workflow_id'],
         row['avoided_tool'],
         row['action'],
         row['created_at'],
@@ -437,6 +441,7 @@ def sync_intelligence(
         "primary_intent",
         "applies_to_pattern",
         "preferred_tools",
+        "preferred_workflow_id",
         "preferred_tool_sequence",
         "supporting_tools",
         "sequence_required",
@@ -509,7 +514,8 @@ def sync_intelligence(
                     insight_type, description, insight_embedding, constraint_type, trigger_concept,
                     trigger_signals, primary_intent,
                     applies_to_pattern, pattern_embedding,
-                    preferred_tools, preferred_tool_sequence, supporting_tools, sequence_required,
+                    preferred_tools, preferred_workflow_id,
+                    preferred_tool_sequence, supporting_tools, sequence_required,
                     avoided_tools, avoided_patterns,
                     generalizability, reasoning,
                     reflection_provider, reflection_model,
@@ -520,7 +526,7 @@ def sync_intelligence(
                     last_applied,
                     source_experience_id, source_web_conversation_id,
                     source_query, source_tool_sequence, source_reflection_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 row['created_at'],
                 row['updated_at'],
@@ -534,6 +540,7 @@ def sync_intelligence(
                 pattern,
                 pattern_embedding,
                 row['preferred_tools'],
+                row['preferred_workflow_id'],
                 row['preferred_tool_sequence'],
                 row['supporting_tools'],
                 row['sequence_required'],
@@ -593,6 +600,7 @@ def sync_intelligence(
             "query",
             "tool_sequence",
             "preferred_tool",
+            "preferred_workflow_id",
             "avoided_tool",
             "preferred_tool_sequence",
             "supporting_tools",
@@ -629,10 +637,11 @@ def sync_intelligence(
                 target_cursor.execute("""
                     INSERT INTO insight_evidence (
                         insight_id, experience_id, web_conversation_id, query,
-                        tool_sequence, preferred_tool, avoided_tool,
+                        tool_sequence, preferred_tool, preferred_workflow_id,
+                        avoided_tool,
                         preferred_tool_sequence, supporting_tools, reflection_json,
                         confidence, confidence_delta, action, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     insight_id_map[old_insight_id],
                     new_exp_id,
@@ -640,6 +649,7 @@ def sync_intelligence(
                     row['query'],
                     row['tool_sequence'],
                     row['preferred_tool'],
+                    row['preferred_workflow_id'],
                     row['avoided_tool'],
                     row['preferred_tool_sequence'],
                     row['supporting_tools'],

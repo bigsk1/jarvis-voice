@@ -501,6 +501,33 @@ class ContextAssembler:
                         context_parts.append(
                             "   Discovery Hint: The exact tool names above are now eligible for direct calls on the next turn."
                         )
+            if tool_name == "workflow":
+                workflow_data = result.get("data", {}) if isinstance(result, dict) else {}
+                action = workflow_data.get("action") if isinstance(workflow_data, dict) else None
+                selected_hints = (
+                    workflow_data.get("selected_workflow_hints", [])
+                    if isinstance(workflow_data, dict)
+                    else []
+                )
+                exact_ids = [str(item).strip() for item in selected_hints if str(item).strip()]
+                if exact_ids:
+                    context_parts.append(f"   Selected workflow hints: {', '.join(exact_ids)}.")
+                    context_parts.append(
+                        "   Workflow Discovery Hint: Use an exact workflow_id above for workflow describe or run."
+                    )
+                if action == "run" and result.get("ok") and not result.get("cancelled"):
+                    component_tools = workflow_data.get("component_tools_used", [])
+                    context_parts.append(
+                        "   Workflow Completion Hint: The deterministic recipe already completed. "
+                        "Answer from this result; do not rerun the workflow or its component tools "
+                        "unless the user explicitly asks to repeat/refresh it or the result says it is incomplete."
+                    )
+                    if component_tools:
+                        context_parts.append(
+                            "   Component tools already executed: "
+                            + ", ".join(str(name) for name in component_tools)
+                            + "."
+                        )
             if result_truncated and tool_name == "stash":
                 data = result.get("data", {}) if isinstance(result, dict) else {}
                 content = data.get("content") if isinstance(data, dict) else None
@@ -674,6 +701,11 @@ class ContextAssembler:
 
     def tool_context_max_chars(self, tool_name: str) -> int:
         lowered = (tool_name or "").lower()
+        if lowered == "workflow":
+            # Workflow runs return several component results at once. Give the
+            # compact workflow projection enough room to retain every current
+            # recipe step without exposing the much larger variables payload.
+            return 8000
         if "bookmark" in lowered:
             return 5000
         if "search" in lowered or "fetch" in lowered:
@@ -881,6 +913,127 @@ class ContextAssembler:
 
         return self.truncate_preview_text(value, 240)
 
+    def build_workflow_result_preview(
+        self,
+        result: dict[str, Any],
+        *,
+        max_chars: int,
+    ) -> dict[str, Any]:
+        """
+        Build a step-aware workflow projection for the next orchestration turn.
+
+        The generic preview intentionally keeps only a few items from bulky
+        arrays. A workflow's ``results`` array is different: later steps often
+        contain the final Canvas page, Stash ref, or summary needed to finish
+        the user's request. Keep every normal recipe step, but omit the
+        duplicated workflow ``variables`` graph and bound each component.
+        """
+        data = result.get("data") if isinstance(result, dict) else {}
+        data = data if isinstance(data, dict) else {}
+        raw_steps = data.get("results")
+        raw_steps = raw_steps if isinstance(raw_steps, list) else []
+
+        # Current built-in/personal recipes are small (the shipped maximum is
+        # 13). Keep a defensive head+tail selection for unexpectedly large
+        # personal workflows so final artifact-producing steps are never lost.
+        if len(raw_steps) > 20:
+            selected_steps = raw_steps[:10] + raw_steps[-10:]
+            omitted_steps = len(raw_steps) - len(selected_steps)
+        else:
+            selected_steps = raw_steps
+            omitted_steps = 0
+
+        # Reserve room for top-level workflow metadata plus per-step status
+        # fields. The remainder is shared fairly between component payloads.
+        reserved_chars = 3000
+        per_step_chars = max(
+            260,
+            min(650, (max_chars - reserved_chars) // max(1, len(selected_steps))),
+        )
+        step_previews: list[dict[str, Any]] = []
+        for raw_step in selected_steps:
+            if not isinstance(raw_step, dict):
+                step_previews.append(
+                    {"result_preview": self.truncate_preview_text(raw_step, per_step_chars)}
+                )
+                continue
+
+            step_preview: dict[str, Any] = {}
+            for key in (
+                "step",
+                "tool",
+                "ok",
+                "skipped",
+                "cancelled",
+                "reason",
+                "items_processed",
+                "items_succeeded",
+                "duration_ms",
+            ):
+                if key in raw_step and raw_step[key] is not None:
+                    step_preview[key] = self.build_preview_value(
+                        raw_step[key],
+                        parent_key=key,
+                        max_depth=1,
+                    )
+
+            if raw_step.get("error"):
+                step_preview["error"] = self.truncate_preview_text(raw_step["error"], 240)
+            if raw_step.get("speech"):
+                step_preview["speech"] = self.truncate_preview_text(raw_step["speech"], 300)
+
+            component_payload = (
+                raw_step.get("data")
+                if raw_step.get("data") not in (None, {}, [])
+                else raw_step.get("outputs")
+            )
+            if component_payload not in (None, {}, []):
+                component_preview = self.build_preview_value(
+                    component_payload,
+                    parent_key="data",
+                    max_depth=3,
+                )
+                component_context: dict[str, Any] = {}
+                source_candidates = self.build_source_candidates_preview(component_payload)
+                if source_candidates:
+                    component_context["source_candidates"] = source_candidates
+                component_context["data_preview"] = component_preview
+                component_text = json.dumps(
+                    component_context,
+                    default=str,
+                    separators=(",", ":"),
+                )
+                step_preview["result_preview"] = self.truncate_preview_text(
+                    component_text,
+                    per_step_chars,
+                )
+
+            step_previews.append(step_preview)
+
+        workflow_preview: dict[str, Any] = {
+            "ok": result.get("ok", True),
+            "speech": self.truncate_preview_text(result.get("speech", ""), 400),
+            "llm_context_preview": {
+                "tool": "workflow",
+                "action": data.get("action"),
+                "workflow_id": data.get("workflow_id"),
+                "workflow_name": data.get("workflow_name"),
+                "execution": data.get("execution"),
+                "workflow_started": data.get("workflow_started"),
+                "workflow_completed": data.get("workflow_completed"),
+                "steps_completed": data.get("steps_completed"),
+                "component_tools_used": data.get("component_tools_used", []),
+                "step_results": step_previews,
+            },
+        }
+        if omitted_steps:
+            workflow_preview["llm_context_preview"]["omitted_middle_steps"] = omitted_steps
+        if result.get("cancelled") is not None:
+            workflow_preview["cancelled"] = bool(result.get("cancelled"))
+        if result.get("error"):
+            workflow_preview["error"] = self.truncate_preview_text(result["error"], 300)
+        return workflow_preview
+
     def build_llm_result_context_preview(self, tool_name: str, result: dict[str, Any]) -> tuple[str, int, int, bool]:
         full_serialized = json.dumps(result, indent=2, default=str)
         result_chars_total = len(full_serialized)
@@ -890,16 +1043,22 @@ class ContextAssembler:
             return full_serialized, result_chars_total, result_chars_total, False
 
         data = result.get("data")
-        preview_payload: dict[str, Any] = {
-            "ok": result.get("ok", True),
-            "speech": self.truncate_preview_text(result.get("speech", ""), 400),
-            "llm_context_preview": {
-                "tool": tool_name,
-                "data_preview": self.build_preview_value(data, parent_key="data"),
-            },
-        }
+        if (tool_name or "").lower() == "workflow":
+            preview_payload = self.build_workflow_result_preview(
+                result,
+                max_chars=max_chars,
+            )
+        else:
+            preview_payload = {
+                "ok": result.get("ok", True),
+                "speech": self.truncate_preview_text(result.get("speech", ""), 400),
+                "llm_context_preview": {
+                    "tool": tool_name,
+                    "data_preview": self.build_preview_value(data, parent_key="data"),
+                },
+            }
         source_candidates = self.build_source_candidates_preview(data)
-        if source_candidates:
+        if source_candidates and (tool_name or "").lower() != "workflow":
             preview_payload["llm_context_preview"]["source_candidates"] = source_candidates
         if result.get("error"):
             preview_payload["error"] = self.truncate_preview_text(result["error"], 300)
@@ -911,6 +1070,18 @@ class ContextAssembler:
         preview_compact = json.dumps(preview_payload, separators=(",", ":"), default=str)
         if len(preview_compact) <= max_chars:
             return preview_compact, result_chars_total, len(preview_compact), True
+
+        if (tool_name or "").lower() == "workflow":
+            # Rebuild with a tighter shared component budget before falling
+            # through to the generic single-tool fallback, which would retain
+            # only the first few workflow steps.
+            preview_payload = self.build_workflow_result_preview(
+                result,
+                max_chars=max(2000, max_chars - 2500),
+            )
+            preview_compact = json.dumps(preview_payload, separators=(",", ":"), default=str)
+            if len(preview_compact) <= max_chars:
+                return preview_compact, result_chars_total, len(preview_compact), True
 
         fallback_payload = {
             "ok": result.get("ok", True),

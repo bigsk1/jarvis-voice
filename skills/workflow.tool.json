@@ -1,0 +1,43 @@
+{
+  "enabled": true,
+  "name": "workflow",
+  "description": "Discover, inspect, and synchronously run an enabled deterministic workflow from the shared or personal workflow folders. Search first when unsure. run waits for the complete workflow result while progress updates continue; after a successful run, answer from its result and do not repeat the workflow or its component tools.",
+  "script": "workflow.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "search",
+          "describe",
+          "run"
+        ],
+        "description": "search returns compact runnable matches; describe shows one compact recipe; run executes it in the foreground and returns the final result."
+      },
+      "query": {
+        "type": "string",
+        "description": "For search, describe the task to match. For run, provide the user's workflow input such as a topic, URL, location, or search phrase."
+      },
+      "workflow_id": {
+        "type": "string",
+        "description": "Exact workflow_id returned by search or describe. Required for describe and run."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum search matches. Defaults to 6 and is capped at 20."
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "dangerous": false,
+    "network": false,
+    "filesystem": false,
+    "bash": false,
+    "auto_approve": true
+  }
+}

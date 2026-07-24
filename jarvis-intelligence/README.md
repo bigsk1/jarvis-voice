@@ -41,6 +41,7 @@ http://localhost:5003
 
 ### 💡 Insights Tab
 - Browse learned insights (what works and doesn't)
+- Inspect preferred workflow IDs separately from generic preferred tools
 - **Sort by**: Times Applied, Times Helpful, Has Preferred Tools, Has Avoided Tools, Confidence, Recently Updated
 - **Filter by constraint type**:
   - ✅ **Positive** - "DO use this approach"

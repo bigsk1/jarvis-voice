@@ -76,6 +76,22 @@ def test_workflow_availability_distinguishes_request_block():
     assert availability["unavailable_tools"] == []
 
 
+def test_workflow_cannot_recursively_invoke_meta_tool():
+    workflow = {
+        "id": "recursive",
+        "name": "Recursive Workflow",
+        "steps": [{"step": 1, "tool": "workflow"}],
+    }
+
+    availability = check_workflow_availability(
+        workflow,
+        available_tools={"workflow"},
+    )
+
+    assert availability["available"] is False
+    assert availability["unavailable_tools"] == ["workflow"]
+
+
 def test_executor_enforces_request_exclusions_before_registry_lookup():
     executor = object.__new__(ToolExecutor)
     executor.excluded_tools = {"send_email"}
@@ -89,6 +105,25 @@ def test_executor_enforces_request_exclusions_before_registry_lookup():
 
     assert result["ok"] is False
     assert result["error"] == "Tool blocked for this request"
+
+
+def test_workflow_meta_tool_bypasses_subprocess_timeout_path():
+    executor = object.__new__(ToolExecutor)
+    executor.excluded_tools = set()
+    executor.registry = FakeRegistry({"workflow"})
+    executor._execute_workflow = lambda _tool_name, _args: {
+        "ok": True,
+        "speech": "Found workflows.",
+        "data": {"action": "search"},
+    }
+    executor._get_subprocess_timeout = lambda _tool_name: (_ for _ in ()).throw(
+        AssertionError("in-process workflow tool must not use subprocess timeout")
+    )
+
+    result = executor.execute("workflow", {"action": "search", "query": "research"})
+
+    assert result["ok"] is True
+    assert result["data"]["action"] == "search"
 
 
 def test_pipeline_preflight_blocks_before_any_step_executes():

@@ -261,6 +261,67 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
 }
 
 
+def workflow_result_payload(data: dict) -> dict | None:
+    """Return either an explicit-slash or autonomous nested workflow payload."""
+    if not isinstance(data, dict):
+        return None
+    nested = data.get('workflow')
+    nested_runs = nested if isinstance(nested, list) else [nested]
+    for candidate in reversed(nested_runs):
+        if (
+            isinstance(candidate, dict)
+            and candidate.get('action') == 'run'
+            and isinstance(candidate.get('results'), list)
+        ):
+            return candidate
+    if data.get('workflow_id') and isinstance(data.get('results'), list):
+        return data
+    return None
+
+
+def workflow_step_tool_results(workflow_data: dict) -> dict:
+    """Flatten workflow step envelopes into tool-name-keyed result payloads."""
+    if not isinstance(workflow_data, dict):
+        return {}
+
+    flattened: dict = {}
+
+    def add(tool_name, payload):
+        name = str(tool_name or '').strip()
+        if not name or name == 'unknown' or payload in (None, ''):
+            return
+        if name not in flattened:
+            flattened[name] = payload
+            return
+        existing = flattened[name]
+        if not isinstance(existing, list):
+            flattened[name] = [existing]
+        flattened[name].append(payload)
+
+    for step in workflow_data.get('results') or []:
+        if not isinstance(step, dict):
+            continue
+        tool_name = step.get('tool')
+        outputs = step.get('outputs')
+        if isinstance(outputs, list) and outputs:
+            for output in outputs:
+                if isinstance(output, dict):
+                    payload = output.get('data') if isinstance(output.get('data'), dict) else output
+                else:
+                    payload = output
+                add(tool_name, payload)
+            continue
+
+        payload = step.get('data')
+        if payload in (None, '', {}):
+            error = step.get('error') or step.get('speech')
+            if error:
+                payload = {'error': str(error)[:500]}
+        add(tool_name, payload)
+
+    return flattened
+
+
 def _compact_memory_candidate(item: dict) -> dict:
     """Keep only the fields needed for follow-up memory actions."""
     candidate = {}
@@ -831,6 +892,49 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             extracted = extract_text_summarizer_followup(value, max_candidates)
             if extracted:
                 followup[key] = extracted
+            continue
+        if key == 'workflow':
+            workflow_value = workflow_result_payload({'workflow': value})
+            if not workflow_value:
+                continue
+            workflow_meta = {
+                field: workflow_value[field]
+                for field in (
+                    'workflow_id',
+                    'workflow_name',
+                    'execution',
+                    'workflow_started',
+                    'workflow_completed',
+                    'steps_completed',
+                )
+                if workflow_value.get(field) not in (None, '', [], {})
+            }
+            if workflow_meta:
+                followup['workflow'] = workflow_meta
+            component_results = workflow_step_tool_results(workflow_value)
+            for component_name, component_value in component_results.items():
+                if isinstance(component_value, list) and component_name != 'text_summarizer':
+                    runs = []
+                    for run_value in component_value[:max_candidates]:
+                        run_followup = extract_followup_data(
+                            {component_name: run_value},
+                            max_candidates=max_candidates,
+                        ) or {}
+                        compact_run = run_followup.get(component_name)
+                        if isinstance(compact_run, dict) and compact_run:
+                            runs.append(compact_run)
+                    if runs:
+                        combined = dict(runs[-1])
+                        combined['runs_count'] = len(component_value)
+                        combined['candidates'] = runs
+                        followup[component_name] = combined
+                    continue
+                component_followup = extract_followup_data(
+                    {component_name: component_value},
+                    max_candidates=max_candidates,
+                )
+                if component_followup:
+                    followup.update(component_followup)
             continue
         # List-shaped tool payloads: normalize to dict with results[] (no per-tool registry).
         if isinstance(value, list):

@@ -35,19 +35,34 @@ class SyncIntelligenceDbTests(unittest.TestCase):
         tools: list[str] | None = None,
         web_id: str = "web-sync",
         preferred_tool: str = "send_email",
+        preferred_workflow_id: str | None = None,
         sequence: list[str] | None = None,
         summary: str = "For sending YouTube links, use send_email as the primary action tool.",
     ) -> None:
         tools = tools or ["youtube_video", "send_email"]
-        sequence = sequence or tools
+        sequence = tools if sequence is None else sequence
         intel = IntelligenceLayer(str(db_path))
         intel._get_embedding = lambda text: np.array([1.0, 0.5])
         intel._get_persistable_embedding = intel._get_embedding
+        context = {"web_conversation_id": web_id}
+        if preferred_workflow_id:
+            context["workflow_execution"] = {
+                "is_workflow_interaction": True,
+                "invocation": "autonomous_meta_tool",
+                "actions": ["run"],
+                "selected_workflow_id": preferred_workflow_id,
+                "run_started": True,
+                "run_completed": True,
+                "cancelled": False,
+                "outcome_success": True,
+                "component_tools_used": [],
+                "component_order_owner": "deterministic_workflow_recipe",
+            }
         exp_id = await intel.record_experience(
             query=query,
             tools_used=tools,
             outcome={"success": True, "turns": len(tools)},
-            context={"web_conversation_id": web_id},
+            context=context,
         )
         experience = intel.conn.execute(
             "SELECT * FROM experiences WHERE id = ?",
@@ -58,6 +73,7 @@ class SyncIntelligenceDbTests(unittest.TestCase):
                 "is_procedural": True,
                 "knowledge_type": "procedural",
                 "preferred_tool": preferred_tool,
+                "preferred_workflow_id": preferred_workflow_id,
                 "preferred_tool_sequence": sequence,
                 "supporting_tools": sequence[:-1],
                 "sequence_required": False,
@@ -111,6 +127,44 @@ class SyncIntelligenceDbTests(unittest.TestCase):
             self.assertEqual(evidence["tool_sequence"], '["youtube_video", "send_email"]')
             self.assertEqual(evidence["insight_id"], 1)
             self.assertEqual(evidence["experience_id"], 1)
+
+    def test_sync_preserves_preferred_workflow_identity(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            cloud_db = tmpdir / "cloud.db"
+            local_db = tmpdir / "local.db"
+            asyncio.run(
+                self._seed_source(
+                    cloud_db,
+                    query="save a quick note",
+                    tools=["workflow"],
+                    preferred_tool="workflow",
+                    preferred_workflow_id="quick_note",
+                    sequence=[],
+                    summary="Use quick_note for short saved-note requests.",
+                )
+            )
+
+            sync = load_sync_module()
+            sync.get_db_paths = lambda: {"cloud": cloud_db, "local": local_db}
+            sync.load_config = lambda mode=None: None
+            sync.get_embedding = lambda text: [1.0, 0.5]
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertTrue(sync.sync_intelligence("local", dry_run=False))
+
+            conn = sqlite3.connect(local_db)
+            conn.row_factory = sqlite3.Row
+            self.addCleanup(conn.close)
+            insight = conn.execute(
+                "SELECT preferred_workflow_id FROM insights"
+            ).fetchone()
+            evidence = conn.execute(
+                "SELECT preferred_workflow_id FROM insight_evidence"
+            ).fetchone()
+
+            self.assertEqual(insight["preferred_workflow_id"], "quick_note")
+            self.assertEqual(evidence["preferred_workflow_id"], "quick_note")
 
     def test_default_sync_merges_without_overwriting_target_only_learning(self):
         with tempfile.TemporaryDirectory() as tmpdir:

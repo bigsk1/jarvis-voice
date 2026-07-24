@@ -117,10 +117,12 @@ Populates the `tool_definitions` table with all available tool schemas and their
 ### Credential-aware filtering (before sync)
 
 `ToolRegistry` evaluates each manifest's optional `availability` block against the
-active mode **before** tools enter the sync loop. Tools with missing env keys,
-config files, or webhook registry entries are listed as unavailable and their
-existing DB rows are disabled by the stale-tools pass — they are not embedded
-or upserted on that run.
+active mode **before** tools enter the sync loop. Manifest `enabled` and the
+active `JARVIS_TOOL_PROFILE` overlay are applied first; profile values win over
+manifest defaults. Tools with missing env keys, config files, or webhook
+registry entries are listed as unavailable and their existing DB rows are
+disabled by the stale-tools pass — they are not embedded or upserted on that
+run.
 
 Adding the missing configuration and re-running sync re-enables them without
 manifest edits. This is separate from `embedding_input_hash`: availability-only
@@ -136,6 +138,13 @@ Tool definitions are **mode-specific** metadata, not user data:
 
 **Memory sync** is about user data (memories, conversations).
 **Tool sync** is about system capabilities (available tools).
+
+The resulting `tool_definitions` table is the semantic ranking index, not the
+runtime capability authority. Routing, Intelligence insight filtering, and
+workflow admission intersect ranking results with
+`ToolRegistry.list_tools()` and request exclusions. A stale enabled DB row
+cannot resurrect a manifest-disabled, profile-disabled, unavailable, or
+Web/request-blocked tool.
 
 ### How it Works
 
@@ -222,6 +231,11 @@ index remains. The warning is dismissed per failure event, so a later failure
 appears again. A successful startup sync or manual
 `./bin/sync-tools.py <mode>` run records success and clears the warning on the
 next Web status poll.
+
+The status file is a health marker only. It records outcome/count information,
+not an authoritative list of enabled tools. In particular, workflow
+availability must check the live effective registry and complete component-tool
+set rather than infer eligibility from `.tool_sync_status_<mode>.json`.
 
 The browser does not infer sync health from its WebSocket connection. A server
 disconnect, failed `/api/status` request, missing status file, or malformed
@@ -554,8 +568,8 @@ Synchronizes the **intelligence layer** (self-learning system) between cloud and
 
 ### What it Syncs
 - ✅ **Experiences** - Raw interaction data (queries, tools used, outcomes)
-- ✅ **Insights** - Learned patterns (positive/negative constraints, tool preferences)
-- ✅ **Insight Evidence** - Audit trail linking insights back to source experiences/web conversations
+- ✅ **Insights** - Learned patterns (positive/negative constraints, tool preferences, and specific `preferred_workflow_id` associations)
+- ✅ **Insight Evidence** - Audit trail linking insights back to source experiences/web conversations, including the workflow identity that earned a preference
 - ✅ **Reflection Queue** - Pending reflections awaiting processing
 - ✅ Regenerates all embeddings for target mode dimensions
 - ❌ **Meta Knowledge** - Deliberately not copied. Each cloud/local Intelligence database keeps its own maintenance history and meta-cognition findings.

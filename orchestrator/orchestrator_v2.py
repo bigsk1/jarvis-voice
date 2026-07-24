@@ -53,6 +53,25 @@ SINGLE_CALL_TOOLS = frozenset({
     "opencode",
 })
 
+def _workflow_run_is_capped(arguments: dict[str, Any], tool_trace: list[dict[str, Any]]) -> bool:
+    """
+    Allow workflow discovery/description plus one foreground run per request.
+
+    ``workflow`` cannot live in SINGLE_CALL_TOOLS because a normal autonomous
+    path is search -> describe (optional) -> run. Once a recipe has actually
+    started, however, a second run is blocked regardless of workflow id or
+    arguments to avoid duplicate side effects.
+    """
+    return (
+        str((arguments or {}).get("action") or "").strip().lower() == "run"
+        and any(
+            isinstance(item, dict)
+            and item.get("tool") == "workflow"
+            and item.get("workflow_run_started")
+            for item in (tool_trace or [])
+        )
+    )
+
 def _sanitize_error_for_speech(error) -> str:
     """
     Sanitize technical error messages for voice output.
@@ -257,6 +276,67 @@ class Orchestrator:
             usage.setdefault("router_prompt_version", router_prompt_version)
         return usage
 
+    @staticmethod
+    def _merge_workflow_usage(total_usage: dict, workflow_usage: dict | None) -> None:
+        """Merge LLM usage incurred inside a foreground workflow into the turn."""
+        if not isinstance(workflow_usage, dict):
+            return
+
+        total_usage["model_calls"] = total_usage.get("model_calls", 0) + int(
+            workflow_usage.get("model_calls") or 0
+        )
+        call_tokens = workflow_usage.get("total_tokens")
+        if not isinstance(call_tokens, (int, float)):
+            call_tokens = (
+                (workflow_usage.get("input_tokens") or 0)
+                + (workflow_usage.get("output_tokens") or 0)
+            )
+        total_usage["peak_context_tokens"] = max(
+            total_usage.get("peak_context_tokens", 0),
+            workflow_usage.get("peak_context_tokens", 0) or call_tokens,
+        )
+
+        numeric_keys = (
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "cost_usd",
+            "cache_creation_tokens",
+            "cache_creation_5m_tokens",
+            "cache_creation_1h_tokens",
+            "cache_read_tokens",
+            "cache_write_cost_usd",
+            "cache_read_cost_usd",
+            "cache_cost_usd",
+            "cache_savings_usd",
+        )
+        for key in numeric_keys:
+            value = workflow_usage.get(key)
+            if isinstance(value, (int, float)):
+                total_usage[key] = total_usage.get(key, 0) + value
+
+        if workflow_usage.get("billing_mode"):
+            total_usage["billing_mode"] = workflow_usage["billing_mode"]
+        if workflow_usage.get("input_estimated"):
+            total_usage["input_estimated"] = True
+        if (
+            workflow_usage.get("has_unknown_cost")
+            or workflow_usage.get("cost_known") is False
+        ):
+            total_usage["has_unknown_cost"] = True
+            total_usage["cost_known"] = False
+
+        server_side_tools = workflow_usage.get("server_side_tools") or {}
+        for tool_name, count in server_side_tools.items():
+            total_usage.setdefault("server_side_tools", {})
+            total_usage["server_side_tools"][tool_name] = (
+                total_usage["server_side_tools"].get(tool_name, 0) + count
+            )
+        component_usage = workflow_usage.get("component_llm_usage")
+        if isinstance(component_usage, list) and component_usage:
+            total_usage.setdefault("component_llm_usage", []).extend(component_usage)
+            total_usage["mixed_model_usage"] = True
+
     @classmethod
     def _sanitize_tool_trace_value(
         cls,
@@ -398,6 +478,14 @@ class Orchestrator:
         
         # Status updates for voice progress feedback
         self.status_updater = StatusUpdater(mode)
+        self.executor.set_workflow_runtime(
+            workflow_loader=self.workflow_loader,
+            pipeline_executor=self.pipeline_executor,
+            status_callback=lambda message: self.status_updater.update(
+                category="progress",
+                custom_message=message,
+            ),
+        )
         
         # Progress callback for real-time tool execution events (WebSocket)
         self.progress_callback = None
@@ -1235,19 +1323,15 @@ Mode: {self.mode}
             print(enhanced_transcript, file=sys.stderr)
             print("="*80 + "\n", file=sys.stderr)
         
-        # Pre-fetch available tool names for insight filtering
-        # DB enabled=1 minus Web UI blocked tools minus profile overrides (false)
+        # Use the same effective live registry used by routing/execution so
+        # insights cannot surface disabled tools and newly added ghost tools do
+        # not depend on a Tool RAG sync before becoming eligible.
         try:
-            from memory_db import get_memory_db
-            from tool_profiles import load_active_profile_overrides
-
-            db = get_memory_db()
-            names = db.get_enabled_tool_names() if hasattr(db, 'get_enabled_tool_names') else []
             excluded = set(excluded_tools or [])
-            for tname, en in load_active_profile_overrides().items():
-                if en is False:
-                    excluded.add(tname)
-            available_tool_names = [n for n in names if n not in excluded]
+            available_tool_names = [
+                name for name in self.registry.list_tools()
+                if name not in excluded
+            ]
         except Exception:
             available_tool_names = []  # Fallback: no filtering
         
@@ -1721,12 +1805,19 @@ Mode: {self.mode}
                     if tool_name == "canvas"
                     else (False, "")
                 )
+                is_workflow_run_capped = (
+                    tool_name == "workflow"
+                    and _workflow_run_is_capped(arguments, tool_trace)
+                )
 
                 # @TOOL_CONFIG: single-call cap — expensive tools limited to
                 # one attempt per request (including failed attempts).
                 is_over_cap = (
-                    tool_name in SINGLE_CALL_TOOLS
-                    and tool_call_counts.get(tool_name, 0) >= 1
+                    (
+                        tool_name in SINGLE_CALL_TOOLS
+                        and tool_call_counts.get(tool_name, 0) >= 1
+                    )
+                    or is_workflow_run_capped
                 )
 
                 if is_exact_duplicate or is_over_cap or is_fresh_same_target_recall or is_canvas_capped:
@@ -1912,6 +2003,8 @@ Mode: {self.mode}
                 tool_start_time = time.time()
                 result = self.executor.execute(tool_name, arguments)
                 tool_duration_ms = int((time.time() - tool_start_time) * 1000)
+                if tool_name == "workflow":
+                    self._merge_workflow_usage(total_usage, result.get("usage"))
                 tool_trace.append({
                     "tool": tool_name,
                     "ok": bool(result.get("ok")) if isinstance(result, dict) else False,
@@ -1919,6 +2012,12 @@ Mode: {self.mode}
                     "duration_ms": tool_duration_ms,
                     "error": str(result.get("error", ""))[:500] if isinstance(result, dict) and result.get("error") else None,
                     "speech": str(result.get("speech", ""))[:500] if isinstance(result, dict) else "",
+                    "workflow_run_started": bool(
+                        tool_name == "workflow"
+                        and isinstance(result, dict)
+                        and isinstance(result.get("data"), dict)
+                        and result["data"].get("workflow_started")
+                    ),
                 })
                 
                 # Stop background updates after tool completes
@@ -3580,16 +3679,30 @@ Your synthesized response:"""
             The insights list is used later to track if they were helpful.
         """
         try:
-            from intelligence_hooks import get_routing_insights, format_insights_for_prompt
+            from intelligence_hooks import (
+                filter_insights_for_available_tools,
+                format_insights_for_prompt,
+                get_routing_insights,
+            )
             
             insights = get_routing_insights(transcript)
             
             # Only include if we have meaningful insights
             if insights.get('insights') and insights.get('confidence', 0) > 0.3:
-                # Pass available_tools to filter out insights for blocked/unavailable tools
-                formatted = format_insights_for_prompt(insights, available_tools)
-                # Return both formatted string and raw insights for tracking
-                return formatted, insights.get('insights', [])
+                filtered_items = filter_insights_for_available_tools(
+                    insights.get('insights', []),
+                    available_tools,
+                )
+                filtered_payload = {
+                    **insights,
+                    "insights": filtered_items,
+                }
+                formatted = format_insights_for_prompt(
+                    filtered_payload,
+                    available_tools,
+                )
+                # Track only strategies that were actually shown to the router.
+                return formatted, filtered_items
         except Exception as e:
             # Don't let insight failures affect the main flow
             if os.environ.get('JARVIS_DEBUG'):

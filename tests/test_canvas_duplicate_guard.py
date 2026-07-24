@@ -36,6 +36,7 @@ from orchestrator.orchestrator_v2 import (
     SINGLE_CALL_TOOLS,
     _format_terminal_tool_failure,
     _sanitize_error_for_speech,
+    _workflow_run_is_capped,
 )
 from jarvis_web_test_server.sockets.chat import ChatHandler
 
@@ -91,6 +92,44 @@ class CanvasDuplicateGuardTests(unittest.TestCase):
 
     def test_canvas_is_not_single_call_capped(self):
         self.assertNotIn("canvas", SINGLE_CALL_TOOLS)
+
+    def test_workflow_discovery_can_precede_one_run_but_second_run_is_capped(self):
+        trace = [
+            {
+                "tool": "workflow",
+                "ok": True,
+                "workflow_run_started": False,
+                "arguments": {"action": "search", "query": "research"},
+            }
+        ]
+        self.assertNotIn("workflow", SINGLE_CALL_TOOLS)
+        self.assertFalse(
+            _workflow_run_is_capped(
+                {"action": "run", "workflow_id": "research_report"},
+                trace,
+            )
+        )
+
+        trace.append(
+            {
+                "tool": "workflow",
+                "ok": False,
+                "workflow_run_started": True,
+                "arguments": {"action": "run", "workflow_id": "research_report"},
+            }
+        )
+        self.assertTrue(
+            _workflow_run_is_capped(
+                {"action": "run", "workflow_id": "another_recipe"},
+                trace,
+            )
+        )
+        self.assertFalse(
+            _workflow_run_is_capped(
+                {"action": "describe", "workflow_id": "another_recipe"},
+                trace,
+            )
+        )
 
     def test_canvas_success_cap_allows_retry_after_failure(self):
         orchestrator = Orchestrator.__new__(Orchestrator)

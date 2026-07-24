@@ -938,13 +938,19 @@ function renderInsightCard(insight) {
       ${insight.applies_to_pattern ? `
         <div class="insight-pattern">📎 ${escapeHtml(truncate(insight.applies_to_pattern, 100))}</div>
       ` : ''}
-      ${preferredTools.length > 0 || avoidedTools.length > 0 || preferredSequence.length > 0 ? `
+      ${preferredTools.length > 0 || insight.preferred_workflow_id || avoidedTools.length > 0 || preferredSequence.length > 0 ? `
         <div class="insight-tools">
           ${preferredTools.length > 0 ? `
             <div class="tool-group preferred">
               <span class="tool-group-label">👍 Prefer:</span>
               ${preferredTools.slice(0, 3).map(t => `<span class="tool-tag preferred">${escapeHtml(t)}</span>`).join('')}
               ${preferredTools.length > 3 ? `<span class="tool-tag">+${preferredTools.length - 3}</span>` : ''}
+            </div>
+          ` : ''}
+          ${insight.preferred_workflow_id ? `
+            <div class="tool-group preferred">
+              <span class="tool-group-label">🧩 Workflow:</span>
+              <span class="tool-tag preferred">${escapeHtml(insight.preferred_workflow_id)}</span>
             </div>
           ` : ''}
           ${avoidedTools.length > 0 ? `
@@ -1659,6 +1665,10 @@ async function viewInsight(id) {
         <div>
           <div class="form-label">Preferred Tools</div>
           <span>${insight.preferred_tools ? `<code>${escapeHtml(insight.preferred_tools)}</code>` : '-'}</span>
+        </div>
+        <div>
+          <div class="form-label">Preferred Workflow</div>
+          <span>${insight.preferred_workflow_id ? `<code>${escapeHtml(insight.preferred_workflow_id)}</code>` : '-'}</span>
         </div>
         <div>
           <div class="form-label">Avoided Tools</div>

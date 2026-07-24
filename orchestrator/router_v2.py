@@ -84,7 +84,7 @@ _FULL_PROMPT_MARKERS = (
     "Tools executed so far:",
     "[Turn ",
 )
-_MANDATORY_DISCOVERY_TOOLS = ("tool_search",)
+_MANDATORY_DISCOVERY_TOOLS = ("tool_search", "workflow")
 _REQUEST_TOOL_RAG_LIMIT_MAX = 50
 
 
@@ -113,7 +113,7 @@ def _cap_tool_names_for_schema(
 
     Priority:
     1. explicit positive signals such as UI-selected tool hints
-    2. mandatory discovery escape hatches like tool_search
+    2. mandatory discovery escape hatches like tool_search and workflow
     3. retrieved non-ghost tools in current rank order
     4. remaining ghost tools, only if room remains
     """

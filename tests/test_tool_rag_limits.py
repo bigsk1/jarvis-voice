@@ -28,6 +28,7 @@ class ToolRagLimitTests(unittest.TestCase):
             "remember",
             "canvas",
             "tool_search",
+            "workflow",
             "generate_video",
             "stash",
         ]
@@ -43,10 +44,11 @@ class ToolRagLimitTests(unittest.TestCase):
                 "remember",
                 "canvas",
                 "tool_search",
+                "workflow",
             },
         )
 
-        self.assertEqual(capped, ["canvas", "tool_search", "generate_video"])
+        self.assertEqual(capped, ["canvas", "tool_search", "workflow"])
 
     def test_mode_limits_are_configurable(self):
         with patch.dict(os.environ, {

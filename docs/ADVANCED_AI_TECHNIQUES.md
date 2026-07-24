@@ -9,7 +9,7 @@
 1. [Overview & Philosophy](#overview--philosophy)
 2. [Design Note: Runtime-Aware Context Gating](#design-note-runtime-aware-context-gating)
 3. [Design Note: Runtime-Aware Capability Narration](#design-note-runtime-aware-capability-narration-qa)
-4. [Design Note: Future Autonomous Workflow Orchestration](#design-note-future-autonomous-workflow-orchestration)
+4. [Autonomous Workflow Orchestration](#autonomous-workflow-orchestration)
 5. [Design Note: Presentation Artifact Learning](#design-note-presentation-artifact-learning)
 6. [Phase 3: Self-Evolving Prompts](#phase-3-self-evolving-prompts)
 7. [Phase 4: Dynamic Tool Creation](#phase-4-dynamic-tool-creation)
@@ -335,9 +335,11 @@ For “what can you do?”, the gap usually shows up as **marketing overshoot**,
 
 ### Possible future enhancement
 
-Inject a short **runtime capabilities block** derived from the same effective enabled tool set the router already computes (`available_tool_names` after profile overlays, Web UI blocks, and sync state):
+Inject a short **runtime capabilities block** derived from the same effective
+enabled tool set the router already computes (`ToolRegistry.list_tools()` minus
+Web/request exclusions):
 
-1. **Source of truth** — effective enabled tools from `tool_definitions` ∩ active profile ∩ request exclusions (same set used for routing, not a duplicate profile-only list).
+1. **Source of truth** — the active-mode live registry after manifest/profile/config availability, minus request exclusions. `tool_definitions` remains the semantic ranking index, not the capability authority.
 2. **Placement** — append to per-turn router context (e.g. near existing runtime date/style notes), not a separate system prompt fork per profile.
 3. **Content** — compact summary for Q&A/meta queries: grouped categories or one-line descriptions from `*.tool.json`, not a raw dump of every tool name.
 4. **Behavior** — for meta questions, prefer this block over static prompt examples when describing *current* abilities; keep the static prompt for workflows and safety rules.
@@ -352,13 +354,13 @@ Inject a short **runtime capabilities block** derived from the same effective en
 
 ---
 
-## Design Note: Future Autonomous Workflow Orchestration
+## Autonomous Workflow Orchestration
 
-> **Status:** Future design. Normal orchestration does not currently discover or autonomously launch workflows.
+> **Status:** Foreground discovery and execution are implemented. Durable background runs and deferred conversation delivery remain future work.
 
 ### Goal
 
-Allow normal voice or Web chat orchestration to recognize when an existing deterministic workflow is a better fit than selecting and sequencing its component tools one turn at a time. Long workflows could eventually run in the background and deliver their result back to the originating conversation or voice session.
+Normal voice or Web chat orchestration can recognize when an existing deterministic workflow is a better fit than selecting and sequencing its component tools one turn at a time. Long workflows may eventually run in the background and deliver their result back to the originating conversation or voice session.
 
 This should preserve the current workflow advantage: the JSON definition owns tool order and step behavior, while the LLM only decides whether an eligible workflow matches the user's intent and supplies its inputs.
 
@@ -374,6 +376,27 @@ Workflow availability is strict and runtime-aware:
 - Explicit slash execution, direct API execution, scheduled-task creation, scheduled execution, and `PipelineExecutor` all recheck availability before running.
 - `ToolExecutor` enforces request exclusions at execution time so a workflow cannot bypass a Web or request-level block.
 
+The tool-discovery precedence is:
+
+```text
+manifest enabled value
+        ↓
+active profile override wins
+        ↓
+mode/config/credential availability
+        ↓
+effective ToolRegistry
+        ↓
+Web or request exclusions
+        ↓
+Tool RAG discovery candidates
+```
+
+`ToolRegistry.list_tools()` returns the already-filtered effective registry,
+not every manifest or every enabled database row. Intelligence filtering uses
+that live list minus request exclusions so stale Tool RAG metadata cannot
+resurface a disabled discovery helper or component tool.
+
 `data/.tool_sync_status_cloud.json` and its local equivalent are sync health markers. They report status and usable tool count but do not enumerate runtime capabilities. Workflow admission must use the current effective registry or surface-specific tool view, not the sync-status file alone.
 
 The invariant is deliberately simple:
@@ -386,22 +409,21 @@ entire workflow unavailable
 
 A workflow never force-enables a tool, changes the active profile, silently substitutes another tool, or starts with a known missing dependency.
 
-### Proposed Discovery Shape
+### Implemented Foreground Shape
 
-Do not register every workflow as a separate Tool RAG schema. That would duplicate component-tool descriptions and increase routing context.
+Jarvis does not register every workflow as a separate Tool RAG schema. That would duplicate component-tool descriptions and increase routing context.
 
-Instead, expose one compact meta-tool in the future:
+One compact `workflow` meta-tool is a mandatory discovery candidate, like `tool_search`, when it exists in the effective registry:
 
 ```text
 workflow(
-  action = search | start | status | result | cancel,
+  action = search | describe | run,
   workflow_id,
-  query,
-  execution_mode = foreground | background
+  query
 )
 ```
 
-The intended flow is:
+The foreground flow is:
 
 ```text
 User request
@@ -412,16 +434,77 @@ workflow(search) returns a few currently runnable matches
     ↓
 LLM selects one and supplies required input
     ↓
-workflow(start) repeats availability and safety checks
+workflow(run) repeats availability and safety checks
     ↓
-PipelineExecutor runs the fixed recipe
+PipelineExecutor runs the fixed recipe and the current turn waits
+    ↓
+LLM receives the final result and answers without repeating component tools
 ```
 
-Search results should be compact: workflow ID, name, description, required input shape, expected result, estimated duration, and declared side effects. The LLM should not receive the full step definitions or every component-tool schema.
+Search reads both `data/workflows/*.json` and `data/workflows/personal/*.json`, preserving personal same-ID overrides. Results contain only compact metadata: workflow ID, name, description, triggers, query-derived inputs, step count, and component-tool names. `describe` adds compact step labels but never includes component schemas.
+
+Only workflows runnable in the active mode, profile, and request surface are returned. A profile can disable the `workflow` tool itself; because mandatory ghost injection only uses the effective registry, a disabled meta-tool is neither routed nor surfaced by Intelligence. A workflow cannot call the `workflow` meta-tool recursively.
+
+That switch applies to autonomous orchestration only. Explicit slash commands,
+workflow APIs, and scheduled workflow tasks invoke the loader/pipeline directly
+and remain available when their workflow JSON and every component tool pass
+their own execution-surface checks. Likewise, a Web block on `workflow` stops
+autonomous Web calls but does not currently hide direct slash workflows.
+
+`run` is synchronous. The Web chat worker waits, but Socket.IO remains responsive and receives the existing workflow status callbacks (`Starting workflow` and step progress). The CLI/voice request likewise remains active until a final workflow result or failure is available.
+
+The outer `workflow` call executes in-process, before `ToolExecutor` enters its subprocess path, so the generic 60-second cloud / 75-second local subprocess timeout does not cap the whole recipe. There is also no separate Web worker or `PipelineExecutor` wall-clock timeout. Each component tool still runs through `ToolExecutor` and retains its own normal timeout, including any tool-specific longer timeout. Provider and HTTP calls inside a component retain their own configured timeouts.
+
+Foreground cancellation propagates through the shared `ToolExecutor`. A cancelled component stops the pipeline before later steps, returns partial step data, and prevents later side effects from continuing.
+
+Web conversation persistence recognizes both explicit slash workflows and autonomous `workflow(run)` results. It emits component step results to the live UI, stores a tool-name-keyed projection for history, and feeds each component through the existing compact follow-up adapters. Repeated component tools remain a candidate list rather than overwriting earlier runs. This preserves actionable handles such as Canvas page IDs and Stash refs; text summaries remain bounded. A later request can therefore call `canvas read`/`update`, inspect a Stash artifact, or run another individual tool without replaying the complete workflow payload.
+
+The immediate next orchestration turn receives a separate step-aware preview capped at 8,000 characters. It keeps every step in current workflows, including late artifact IDs/refs, while omitting the duplicated `variables` graph and bounding large component payloads. The full canonical result remains available to the Web persistence/follow-up path; preview truncation does not alter what the workflow executed or what is stored.
+
+Workflow execution is guarded at two different levels:
+
+- Discovery is not treated as execution: `workflow(search)` and `workflow(describe)` may precede one `workflow(run)`.
+- Once a workflow run has started, the duplicate guard rejects another run in the same user request, even with another workflow ID or different arguments. Failed preflight or missing-input validation does not consume the run.
+- `workflow` is in the default Completion Guard exclusion set, and recognized workflow results also bypass its manual prompt and automatic evaluation paths. Completion Guard therefore cannot launch a repair turn that repeats a completed recipe.
+
+Workflow usage is folded into the parent response:
+
+- LLM calls made by `PipelineExecutor` for parameter filling, validation, titles, and completion speech.
+- LLM usage reported by component tools, including `text_summarizer` and Stash auto-summary.
+- Token, cache, cost/billing, peak-context, model-call, and provider-native-tool fields when the selected provider reports them.
+- `component_llm_usage` preserves the component tool plus provider/model identity when a workflow uses a dedicated summary model instead of the router model.
+
+This is important for evaluating the intended context savings honestly: deterministic sequencing avoids repeated router schemas and prior-context replay, but a recipe may still deliberately perform its own summarization calls.
+
+Workflow turns also carry explicit learning attribution. Intelligence reflection
+sees discovery actions, the selected workflow ID, bounded recipe purpose,
+triggers/query inputs, run state, component tools, and bounded step outcomes in
+a separate `workflow_execution` block. It evaluates whether the LLM selected
+the right recipe without treating recipe-owned component order or internal
+summarizer calls as router decisions.
+
+Positive workflow learning requires a successful completed run and stores both
+`preferred_tools={"workflow": ...}` and the exact
+`preferred_workflow_id`. Workflow experiences do not use the generic
+`final_tool` preference fallback. Before an insight is injected again, the named
+workflow and all of its component tools must still be available in the effective
+mode/profile/request registry; otherwise both the advice and its workflow bias
+are omitted. Manual feedback uses the same attribution block and rates the
+`workflow` wrapper for discovery/selection rather than every component.
+
+Reflection must learn the underlying task (“save a quick note to memory and
+Canvas”), not orchestration/test scaffolding (“find a workflow” or “use the
+previously successful procedure”). Positive workflow relevance patterns are
+therefore anchored to the selected recipe metadata. The v2-v4 experimental
+router prompts also tell the routing model to search with that underlying task,
+confirm an exact runnable recipe, run it at most once, and leave component order
+to the recipe. A later reflection for the same exact workflow ID may replace
+legacy overfit workflow wording and its pattern embedding. v1 remains unchanged
+as the immutable prompt control.
 
 ### Foreground and Background Semantics
 
-Foreground execution is appropriate when the current answer depends on the workflow result. This is similar to explicit slash execution today: the orchestration turn waits for `PipelineExecutor`.
+Foreground execution is the current contract when the answer depends on the workflow result. It matches explicit slash execution: the orchestration turn waits for `PipelineExecutor`, receives status updates, and returns one final answer.
 
 Background execution requires a durable run object:
 
@@ -464,22 +547,23 @@ This keeps scheduling, execution, and conversational delivery separate while sha
 - Background workers preserve the originating surface exclusions and cannot select a broader profile.
 - Revalidate before execution and fail closed if a dependency becomes unavailable.
 - Prevent duplicate component-tool execution after a workflow is selected.
+- Keep the one-run-per-request guard distinct from tool discovery so search/describe can still lead to one execution.
+- Exclude workflow turns from Completion Guard repair/evaluation so it cannot replay a recipe with side effects.
 - Side-effecting workflows remain subject to existing tool permission and approval behavior.
 - Apply idempotency and per-workflow concurrency limits before enabling parallel launches.
 - Report partial results explicitly if a policy change blocks a later step; completed external side effects may not be reversible.
 
-### Suggested Implementation Order
+### Remaining Implementation Order
 
-1. Keep the current strict availability gate and expand regression coverage as workflow surfaces evolve.
-2. Add explicit workflow input and side-effect metadata.
-3. Add a read-only workflow search service that returns only runnable workflows.
-4. Add a foreground-only workflow meta-tool and evaluate routing accuracy.
-5. Introduce durable workflow run records and a shared worker.
-6. Add Web and voice completion delivery.
-7. Allow background selection only for explicitly background-safe workflows.
-8. Refactor scheduled workflows to create runs through the same service.
+1. Evaluate foreground workflow selection accuracy, latency, token savings, and false-positive rates.
+2. Add explicit workflow input, side-effect, expected-output, duration, idempotency, and background-safety metadata.
+3. Introduce durable workflow run records and a shared worker.
+4. Add authenticated Web conversation follow-up and reconnect delivery.
+5. Add voice/CLI pending-completion delivery and cancellation.
+6. Allow background selection only for explicitly background-safe workflows.
+7. Refactor scheduled workflows to create runs through the same service.
 
-This sequence keeps the autonomous idea optional. The current availability protection remains valuable even if automatic workflow discovery is never enabled.
+Do not add `background`, `status`, `result`, or `cancel` actions to the meta-tool until the durable run and delivery boundaries exist. A process-local thread or “fire and forget” response would lose results on restart, reconnect, or CLI exit and could execute under stale profile/exclusion state.
 
 ---
 

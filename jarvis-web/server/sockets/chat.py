@@ -34,6 +34,8 @@ from ..services.followup_extractor import (
     extract_text_summarizer_followup,
     compact_text_summarizer_item,
     truncate_followup_summary,
+    workflow_result_payload,
+    workflow_step_tool_results,
     FOLLOWUP_EVIDENCE_MAX_CANDIDATES as _FOLLOWUP_EVIDENCE_MAX_CANDIDATES,
     FOLLOWUP_SUMMARY_MAX_CHARS as _FOLLOWUP_SUMMARY_MAX_CHARS,
 )
@@ -129,6 +131,7 @@ class ChatHandler:
         'create_reminder',
         'create_alert',
         'opencode',
+        'workflow',
     }
     def __init__(self, socketio):
         self.socketio = socketio
@@ -3567,12 +3570,14 @@ Previous structured data:
             tools_used = result.get('tools_used', [])
             data = result.get('data', {})
             
-            # Check if this is a workflow result (has different structure)
-            is_workflow = result.get('workflow_executed') or data.get('workflow_id')
-            
+            # Explicit slash workflows return workflow data at the top level;
+            # autonomous workflow(run) is nested under the outer meta-tool.
+            workflow_data = workflow_result_payload(data)
+            is_workflow = bool(result.get('workflow_executed') or workflow_data)
+
             if is_workflow:
                 # Workflow results have step-by-step data in data.results
-                step_results = data.get('results', [])
+                step_results = (workflow_data or data).get('results', [])
                 emit_index = 0
                 for step_data in step_results:
                     tool = step_data.get('tool', 'unknown')
@@ -3674,21 +3679,7 @@ Previous structured data:
                 # Workflow results store tool output in data.results (array); client expects
                 # tool-name-keyed map when loading from history. Populate flat map for workflows.
                 if is_workflow:
-                    step_results = save_data.get('results', [])
-                    for step_data in step_results:
-                        tool = step_data.get('tool', 'unknown')
-                        step_ok = step_data.get('ok', True)
-                        if 'outputs' in step_data:
-                            outputs = step_data.get('outputs', [])
-                            step_output = outputs[0].get('data', outputs[0]) if outputs and isinstance(outputs[0], dict) else {}
-                        else:
-                            step_output = step_data.get('data', {})
-
-                        if (not step_ok) and not step_output:
-                            step_output = {
-                                'error': step_data.get('error') or step_data.get('speech') or 'Step failed'
-                            }
-                        save_data[tool] = step_output  # last wins for duplicate tools
+                    save_data.update(workflow_step_tool_results(workflow_data or save_data))
                 raw_response = result.get('raw_llm_response', '')
                 if raw_response:
                     save_data['raw_llm_response'] = raw_response

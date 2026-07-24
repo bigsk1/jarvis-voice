@@ -262,35 +262,33 @@ OpenCode build (turn 1) + verification (turn 2) + retry (turn 3) = 3 × ~6K = ~1
 
 ---
 
-## 🚀 Workflows: Zero-Baseline Execution
+## 🚀 Workflow Token Boundaries
 
-> **Game-changer for local models**: Workflows bypass the entire baseline overhead!
+Explicit workflows bypass router/tool-selection calls. Autonomous workflows
+trade a small discovery/final-synthesis cost for deterministic component
+execution.
 
 ### The Problem with Normal LLM Routing
 
-Every normal chat requires loading:
-```
-System Prompt:      ~5,000 tokens
-Tool Definitions:  ~30,000 tokens
-MCP Descriptions:   ~1,000 tokens
-───────────────────────────────────
-TOTAL BASELINE:    ~35,000 tokens
-```
-
-For a 32K context model, this **already exceeds** the limit before you even ask a question!
+Normal chat sends the router prompt plus the final Tool RAG shortlist on each
+model turn. The shortlist is bounded by `LOCAL_TOOL_RAG_LIMIT` or
+`CLOUD_TOOL_RAG_LIMIT`, so current Jarvis does not send the complete manifest
+catalog on every request. Multi-step chat can still repeat routing context and
+prior tool results across turns.
 
 ### The Workflow Solution
 
-Workflows execute tools **deterministically** - no LLM routing overhead:
+Workflow JSON already owns the component order:
 
-```
-Normal LLM Chat:    35,000+ tokens baseline
-Workflow:                 0 tokens baseline*
-───────────────────────────────────────────
-Savings:               99%+ reduction!
-```
+| Invocation | Router cost | Workflow/component LLM cost |
+|------------|-------------|-----------------------------|
+| Explicit slash/API/scheduled | No router tool-selection calls | Only declared helper calls and component tools that use LLMs |
+| Autonomous `workflow` meta-tool | Search/select and final synthesis turns | Same declared helper/component calls |
+| Normal multi-tool chat | One or more schema-bearing router turns | Any selected LLM-backed tools |
 
-*LLM tokens only used for optional `llm_prompt` parameter filling
+This usually saves context because component schemas and step planning are not
+repeated one tool at a time. Measure the actual difference from response usage
+and Tool RAG traces rather than assuming a fixed percentage.
 
 ### Real Example: `/quick_note` Workflow
 
@@ -298,28 +296,27 @@ Savings:               99%+ reduction!
 # This workflow: get_time → remember → canvas
 ./orchestrator/orchestrator_v2.py cloud "/note buy milk"
 
-# Token usage comparison:
-Normal LLM routing: ~35,583 tokens
-Workflow execution:     ~244 tokens  ← 99.3% savings!
+# Explicit slash execution skips the normal router selection loop.
+# Any llm_prompt, validation, completion-speech, text_summarizer, or Stash
+# auto-summary calls are still included in workflow usage.
 ```
 
 ### Why Workflows Bypass Baseline
 
-| Component | Normal Chat | Workflow |
-|-----------|-------------|----------|
-| System prompt | Required | **Skipped** |
-| 57 tool definitions | Required | **Skipped** |
-| MCP server info | Required | **Skipped** |
-| LLM routing decision | Required | **Skipped** (deterministic) |
-| Tool execution | Via LLM | **Direct execution** |
+| Component | Normal chat | Explicit workflow | Autonomous workflow |
+|-----------|-------------|-------------------|---------------------|
+| Router prompt | Required per router turn | **Skipped** | Used for discovery/final synthesis |
+| Tool schemas | Tool RAG shortlist | **Skipped for deterministic steps** | Compact `workflow` schema; component schemas skipped |
+| LLM routing decision | Required | **Skipped** | Chooses recipe, not component order |
+| Tool execution | Selected one turn at a time | Direct fixed pipeline | Direct fixed pipeline after selection |
 
 ### Impact on Local Models
 
-| Model Context | Normal Chat Feasibility | With Workflows |
-|---------------|------------------------|----------------|
-| 8K (small) | ❌ Impossible (35K > 8K) | ✅ Works perfectly |
-| 32K (Qwen3) | ⚠️ Overflow risk | ✅ 99%+ headroom |
-| 128K (large) | ✅ Works | ✅ Even more headroom |
+Smaller-context local models benefit most because a deterministic recipe avoids
+repeated component schemas and growing prior-turn context. Autonomous workflow
+selection still needs enough context for the router prompt and compact
+`workflow` schema; direct slash/scheduled execution has the lowest routing
+overhead.
 
 ### When to Use Workflows vs Normal Chat
 
@@ -327,6 +324,7 @@ Workflow execution:     ~244 tokens  ← 99.3% savings!
 |----------|----------------|
 | Simple Q&A | Normal chat (needs LLM reasoning) |
 | Multi-tool tasks with known steps | **Workflow** (deterministic, efficient) |
+| User describes a task but does not know the slash command | **Autonomous workflow** when the `workflow` tool is enabled |
 | Complex research needing judgment | Normal chat (needs LLM decisions) |
 | Repetitive tasks (daily reports, backups) | **Workflow** (reliable, cheap) |
 | Local model with limited context | **Workflow** (essential!) |
@@ -378,4 +376,3 @@ These are added PER CONVERSATION and vary by task.
 - Added workflow token efficiency section (99%+ savings vs normal chat)
 - Documented workflow bypass of system prompt and tool definitions
 - Added local model guidance for using workflows
-
