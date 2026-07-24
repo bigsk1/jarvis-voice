@@ -35,7 +35,7 @@ XAI_MODEL_AUDIT_IGNORES = {
 
 ANTHROPIC_MODELS_SOURCE = "https://platform.claude.com/docs/en/api/models/list"
 ANTHROPIC_PRICING_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing"
-ANTHROPIC_PRICING_VERIFIED = "2026-07-01"
+ANTHROPIC_PRICING_VERIFIED = "2026-07-24"
 ANTHROPIC_CACHE_WRITE_5M_MULTIPLIER = 1.25
 ANTHROPIC_CACHE_WRITE_1H_MULTIPLIER = 2.0
 ANTHROPIC_MODEL_AUDIT_IGNORES = {
@@ -310,6 +310,17 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "pricing_verified": ANTHROPIC_PRICING_VERIFIED,
             "pricing_source": ANTHROPIC_PRICING_SOURCE,
             "aliases": ["claude-haiku-4-5", "haiku-4.5"],
+        },
+        {
+            "id": "claude-opus-5",
+            "name": "Claude Opus 5",
+            "context_tokens": 1_000_000,
+            "max_output_tokens": 128_000,
+            "capabilities": _ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH,
+            "pricing": {"input": 5.00, "output": 25.00, "cached": 0.50},
+            "pricing_verified": ANTHROPIC_PRICING_VERIFIED,
+            "pricing_source": ANTHROPIC_PRICING_SOURCE,
+            "aliases": ["opus-5"],
         },
         {
             "id": "claude-opus-4-8",
