@@ -27,8 +27,9 @@ load_server_package("jarvis_web_test_server", PROJECT_ROOT / "jarvis-web" / "ser
 
 from jarvis_web_test_server.sockets.chat import ChatHandler
 from jarvis_web_test_server.services import followup_extractor as followup_module
-from jarvis_web_test_server.services.followup_extractor import FOLLOWUP_SUMMARY_MAX_CHARS
 from jarvis_web_test_server.services.followup_extractor import (
+    FOLLOWUP_FETCH_EXCERPT_MAX_CHARS,
+    FOLLOWUP_SUMMARY_MAX_CHARS,
     workflow_result_payload,
     workflow_step_tool_results,
 )
@@ -1160,6 +1161,122 @@ def test_extract_followup_data_preserves_brave_urls_from_raw_text():
     assert brave["urls_seen"] == ["https://news.example/story"]
 
 
+def test_extract_followup_data_compacts_duckduckgo_search_results():
+    handler = _handler()
+    full_text = """Found 2 search results:
+
+1. Alpha Result
+   URL: https://alpha.example/page
+   Summary: Alpha has a useful result.
+
+2. Beta Result
+   URL: https://beta.example/page
+   Summary: Beta has another useful result.
+"""
+    data = {
+        "mcp_duckduckgo_search": {
+            "raw": [{"type": "text", "text": full_text}],
+            "full_text": full_text,
+        },
+        "_tool_trace": [
+            {
+                "tool": "mcp_duckduckgo_search",
+                "ok": True,
+                "arguments": {
+                    "query": "alpha beta",
+                    "region": "us-en",
+                    "max_results": 2,
+                },
+            }
+        ],
+    }
+
+    result = handler._extract_followup_data(data, max_candidates=1)
+    search = result["mcp_duckduckgo_search"]
+
+    assert search["query"] == "alpha beta"
+    assert search["region"] == "us-en"
+    assert search["max_results"] == 2
+    assert search["runs_count"] == 1
+    assert search["results_count"] == 2
+    assert search["top_url"] == "https://alpha.example/page"
+    assert search["urls_seen"] == [
+        "https://alpha.example/page",
+        "https://beta.example/page",
+    ]
+    assert search["candidates"] == [
+        {
+            "title": "Alpha Result",
+            "url": "https://alpha.example/page",
+            "snippet": "Alpha has a useful result.",
+        }
+    ]
+    assert "raw" not in search
+    assert "full_text" not in search
+
+
+def test_extract_followup_data_compacts_mcp_fetch_content():
+    handler = _handler()
+    body = "A" * 2500
+    tail = (
+        "\n\n[Content info: Showing characters 1000-3500 of 9000 total. "
+        "Specify start_index=3500 to continue.]"
+    )
+    full_text = body + tail
+    data = {
+        "mcp_duckduckgo_fetch_content": {
+            "raw": [{"type": "text", "text": full_text}],
+            "full_text": full_text,
+        },
+        "mcp_fetch_fetch": {
+            "full_text": "Fetched article content",
+        },
+        "_tool_trace": [
+            {
+                "tool": "mcp_duckduckgo_fetch_content",
+                "ok": True,
+                "arguments": {
+                    "url": "https://example.com/article",
+                    "start_index": 1000,
+                    "max_length": 2500,
+                    "backend": "auto",
+                },
+            },
+            {
+                "tool": "mcp_fetch_fetch",
+                "ok": True,
+                "arguments": {
+                    "url": "https://example.com/other",
+                    "raw": True,
+                },
+            },
+        ],
+    }
+
+    result = handler._extract_followup_data(data)
+    duck_fetch = result["mcp_duckduckgo_fetch_content"]
+    generic_fetch = result["mcp_fetch_fetch"]
+
+    assert duck_fetch["backend"] == "auto"
+    assert duck_fetch["url"] == "https://example.com/article"
+    assert duck_fetch["fetched_urls"] == ["https://example.com/article"]
+    assert duck_fetch["start_index"] == 1000
+    assert duck_fetch["max_length"] == 2500
+    assert duck_fetch["runs_count"] == 1
+    assert duck_fetch["content_characters"] == len(full_text)
+    assert len(duck_fetch["content_excerpt"]) <= FOLLOWUP_FETCH_EXCERPT_MAX_CHARS
+    assert "content truncated for follow-up context" in duck_fetch["content_excerpt"]
+    assert "Specify start_index=3500 to continue." in duck_fetch["content_excerpt"]
+    assert duck_fetch["content_start"] == 1000
+    assert duck_fetch["content_end"] == 3500
+    assert duck_fetch["content_total"] == 9000
+    assert duck_fetch["has_more"] is True
+
+    assert generic_fetch["url"] == "https://example.com/other"
+    assert generic_fetch["raw"] is True
+    assert generic_fetch["content_excerpt"] == "Fetched article content"
+
+
 def test_extract_followup_data_preserves_brave_llm_context_sources():
     handler = _handler()
     data = {
@@ -1221,6 +1338,39 @@ def test_compute_effective_evidence_tool_turn():
     assert ev["derived_from_prior"] is False
     assert ev["source_message_ids"] == ["msg-web-1"]
     assert "serpapi_yelp_search" in ev["supporting_tool_results"]
+
+
+def test_compute_effective_evidence_includes_duckduckgo_candidates():
+    handler = _handler()
+    full_text = """Found 1 search result:
+
+1. Jarvis
+   URL: https://example.com/jarvis
+   Summary: A relevant source.
+"""
+    save_data = {
+        "mcp_duckduckgo_search": {"full_text": full_text},
+        "_tool_trace": [
+            {
+                "tool": "mcp_duckduckgo_search",
+                "ok": True,
+                "arguments": {"query": "Jarvis"},
+            }
+        ],
+    }
+
+    evidence = handler._compute_effective_evidence(
+        "conv1",
+        save_data,
+        ["mcp_duckduckgo_search"],
+        {},
+        "msg-web-ddg",
+        "search for Jarvis",
+    )
+
+    supporting = evidence["supporting_tool_results"]["mcp_duckduckgo_search"]
+    assert supporting["query"] == "Jarvis"
+    assert supporting["candidates"][0]["url"] == "https://example.com/jarvis"
 
 
 def test_compute_effective_evidence_inherits_when_short_refinement():

@@ -14,10 +14,19 @@ import hashlib
 from datetime import datetime
 from pathlib import Path
 
-# URL extractor for Brave MCP search results whose content is buried inside
-# raw[].text JSON blobs and full_text. We only need the URL list for
-# "already searched" hints on follow-up turns, not the surrounding content.
-_BRAVE_URL_RE = re.compile(r'https?://[^\s"\'<>)]+')
+# URL extractor for text-oriented MCP results whose content is buried inside
+# raw[].text JSON blobs and full_text.
+_MCP_URL_RE = re.compile(r'https?://[^\s"\'<>)]+')
+_DUCKDUCKGO_RESULT_RE = re.compile(
+    r'(?ms)^\s*\d+\.\s+(?P<title>[^\r\n]+)\r?\n'
+    r'\s*URL:\s*(?P<url>\S+)\r?\n'
+    r'\s*Summary:\s*(?P<snippet>.*?)(?=^\s*\d+\.\s+|\Z)'
+)
+_DUCKDUCKGO_RESULT_COUNT_RE = re.compile(r'Found\s+(\d+)\s+search results?:', re.IGNORECASE)
+_MCP_FETCH_CONTENT_INFO_RE = re.compile(
+    r'\[Content info:\s*Showing characters\s+(\d+)-(\d+)\s+of\s+(\d+)\s+total',
+    re.IGNORECASE,
+)
 
 # Tools whose follow-up shape is handled by a dedicated branch below. Listed
 # here so the generic results[]/items[] fallback skips them (otherwise it
@@ -33,6 +42,9 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'mcp_brave_search_brave_web_search',
     'mcp_brave_search_brave_news_search',
     'mcp_brave_search_brave_local_search',
+    'mcp_duckduckgo_search',
+    'mcp_duckduckgo_fetch_content',
+    'mcp_fetch_fetch',
     'brave_llm_context',
 )
 
@@ -41,6 +53,9 @@ _PRESERVE_RUN_LIST_FOR_DEDICATED_BRANCHES = frozenset({
     'mcp_brave_search_brave_web_search',
     'mcp_brave_search_brave_news_search',
     'mcp_brave_search_brave_local_search',
+    'mcp_duckduckgo_search',
+    'mcp_duckduckgo_fetch_content',
+    'mcp_fetch_fetch',
 })
 
 # Follow-up context: keep orchestrator history compact.
@@ -51,6 +66,8 @@ FOLLOWUP_EVIDENCE_MAX_CANDIDATES = 12
 # whole transcript-sized artifacts through every router prompt.
 FOLLOWUP_SUMMARY_MAX_CHARS = 6000
 _FOLLOWUP_TRUNCATION_SUFFIX = "\n...[summary truncated for follow-up context]"
+FOLLOWUP_FETCH_EXCERPT_MAX_CHARS = 2000
+_FOLLOWUP_FETCH_TRUNCATION_MARKER = "\n...[content truncated for follow-up context]...\n"
 MANAGE_INTEL_DIR = Path(__file__).resolve().parents[3] / "jarvis-intel"
 
 GENERIC_FOLLOWUP_LIST_KEYS = (
@@ -594,6 +611,184 @@ def _extract_generic_followup(payload: dict, max_candidates: int) -> dict:
     return extracted
 
 
+def _successful_tool_trace_arguments(data: dict, tool_name: str) -> list[dict]:
+    """Return successful argument payloads for one tool in execution order."""
+    trace = data.get('_tool_trace')
+    if not isinstance(trace, list):
+        return []
+
+    arguments = []
+    for entry in trace:
+        if not isinstance(entry, dict) or entry.get('tool') != tool_name:
+            continue
+        if entry.get('ok') is False:
+            continue
+        entry_arguments = entry.get('arguments')
+        arguments.append(entry_arguments if isinstance(entry_arguments, dict) else {})
+    return arguments
+
+
+def _mcp_text_runs(value: dict) -> list[dict]:
+    """Normalize one or repeated text-oriented MCP results into runs."""
+    results = value.get('results')
+    if isinstance(results, list):
+        return [run for run in results if isinstance(run, dict)]
+    return [value]
+
+
+def _mcp_text_from_run(run: dict) -> str:
+    """Prefer normalized MCP full_text, falling back to raw text parts."""
+    full_text = run.get('full_text')
+    if isinstance(full_text, str) and full_text:
+        return full_text
+
+    raw = run.get('raw')
+    if not isinstance(raw, list):
+        return ''
+    return '\n'.join(
+        part['text']
+        for part in raw
+        if isinstance(part, dict) and isinstance(part.get('text'), str)
+    )
+
+
+def _bounded_fetch_excerpt(text: str) -> str:
+    """Keep the useful beginning and pagination-bearing tail of fetched text."""
+    text = text.strip()
+    if len(text) <= FOLLOWUP_FETCH_EXCERPT_MAX_CHARS:
+        return text
+
+    marker_length = len(_FOLLOWUP_FETCH_TRUNCATION_MARKER)
+    remaining = FOLLOWUP_FETCH_EXCERPT_MAX_CHARS - marker_length
+    if remaining <= 0:
+        return text[:FOLLOWUP_FETCH_EXCERPT_MAX_CHARS]
+    head_length = remaining * 3 // 4
+    tail_length = remaining - head_length
+    return (
+        text[:head_length].rstrip()
+        + _FOLLOWUP_FETCH_TRUNCATION_MARKER
+        + text[-tail_length:].lstrip()
+    )
+
+
+def _extract_duckduckgo_search_followup(
+    data: dict,
+    value: dict,
+    max_candidates: int,
+) -> dict:
+    """Compact DuckDuckGo's numbered text results into durable candidates."""
+    runs = _mcp_text_runs(value)
+    arguments = _successful_tool_trace_arguments(data, 'mcp_duckduckgo_search')
+    extracted = {'runs_count': len(runs)}
+
+    if arguments:
+        latest = arguments[-1]
+        for field in ('query', 'region', 'max_results'):
+            if latest.get(field) not in (None, '', [], {}):
+                extracted[field] = latest[field]
+        queries = []
+        for argument in arguments:
+            query = argument.get('query')
+            if isinstance(query, str) and query and query not in queries:
+                queries.append(query)
+        if len(queries) > 1:
+            extracted['queries'] = queries
+
+    candidates = []
+    urls_seen = []
+    seen_urls: set[str] = set()
+    advertised_count = 0
+    found_advertised_count = False
+
+    for run in runs:
+        text = _mcp_text_from_run(run)
+        count_match = _DUCKDUCKGO_RESULT_COUNT_RE.search(text)
+        if count_match:
+            advertised_count += int(count_match.group(1))
+            found_advertised_count = True
+
+        parsed_result = False
+        for match in _DUCKDUCKGO_RESULT_RE.finditer(text):
+            parsed_result = True
+            url = match.group('url').rstrip(').,;')
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            if len(urls_seen) < max_candidates * 2:
+                urls_seen.append(url[:2048])
+            if len(candidates) >= max_candidates:
+                continue
+            candidate = {
+                'title': ' '.join(match.group('title').split())[:300],
+                'url': url[:2048],
+            }
+            snippet = ' '.join(match.group('snippet').split())
+            if snippet:
+                candidate['snippet'] = snippet[:500]
+            candidates.append(candidate)
+
+        # Preserve URL grounding if the upstream human-readable format changes.
+        if not parsed_result:
+            for url in _MCP_URL_RE.findall(text):
+                url = url.rstrip(').,;')
+                if not url or url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                if len(urls_seen) < max_candidates * 2:
+                    urls_seen.append(url[:2048])
+
+    if found_advertised_count:
+        extracted['results_count'] = advertised_count
+    elif urls_seen or candidates:
+        extracted['results_count'] = len(seen_urls) or len(candidates)
+    if urls_seen:
+        extracted['top_url'] = urls_seen[0]
+        extracted['urls_seen'] = urls_seen
+    if candidates:
+        extracted['candidates'] = candidates
+    return extracted
+
+
+def _extract_mcp_fetch_followup(data: dict, tool_name: str, value: dict) -> dict:
+    """Compact DuckDuckGo/Fetch page retrieval for persisted follow-up turns."""
+    runs = _mcp_text_runs(value)
+    arguments = _successful_tool_trace_arguments(data, tool_name)
+    extracted = {'runs_count': len(runs)}
+
+    fetched_urls = []
+    for argument in arguments:
+        url = argument.get('url')
+        if isinstance(url, str) and url and url not in fetched_urls:
+            fetched_urls.append(url[:2048])
+    if arguments:
+        latest = arguments[-1]
+        for field in ('url', 'start_index', 'max_length', 'raw', 'backend'):
+            if latest.get(field) not in (None, '', [], {}):
+                extracted[field] = latest[field]
+    if fetched_urls:
+        extracted['fetched_urls'] = fetched_urls
+
+    latest_text = ''
+    for run in runs:
+        text = _mcp_text_from_run(run)
+        if text:
+            latest_text = text
+    if not latest_text:
+        return extracted
+
+    extracted['content_characters'] = len(latest_text)
+    extracted['content_excerpt'] = _bounded_fetch_excerpt(latest_text)
+    content_info = _MCP_FETCH_CONTENT_INFO_RE.search(latest_text)
+    if content_info:
+        start, end, total = (int(value) for value in content_info.groups())
+        extracted['content_start'] = start
+        extracted['content_end'] = end
+        extracted['content_total'] = total
+        if end < total:
+            extracted['has_more'] = True
+    return extracted
+
+
 def truncate_followup_summary(summary: str, max_chars: int = FOLLOWUP_SUMMARY_MAX_CHARS) -> str:
     """Trim stored summaries to a stable prompt-sized excerpt."""
     if not isinstance(summary, str):
@@ -991,6 +1186,13 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             elif key == 'release_watch' and isinstance(field_value, bool):
                 # False is meaningful for change detection and first-run state.
                 extracted[field] = field_value
+
+        if key == 'mcp_duckduckgo_search':
+            extracted.update(
+                _extract_duckduckgo_search_followup(data, value, max_candidates)
+            )
+        elif key in ('mcp_duckduckgo_fetch_content', 'mcp_fetch_fetch'):
+            extracted.update(_extract_mcp_fetch_followup(data, key, value))
 
         if payload.get('runs_count') and 'runs_count' not in extracted:
             extracted['runs_count'] = payload['runs_count']
@@ -1402,7 +1604,7 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                             if isinstance(part, dict) and isinstance(part.get('text'), str):
                                 texts.append(part['text'])
                     for text in texts:
-                        for match in _BRAVE_URL_RE.findall(text):
+                        for match in _MCP_URL_RE.findall(text):
                             match = match.rstrip(').,;')
                             if match in seen_set:
                                 continue

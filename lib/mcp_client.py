@@ -20,7 +20,24 @@ from threading import Event, Lock, RLock, Thread
 from config_loader import get_config_value
 
 
-def _normalize_call_tool_result(tool_name: str, result: dict[str, Any] | None) -> dict[str, Any]:
+def _duckduckgo_text_error(server_name: str, tool_name: str, text: str) -> bool:
+    """Recognize errors that DuckDuckGo returns as successful MCP text content."""
+    if server_name != "duckduckgo":
+        return False
+    normalized = (text or "").lstrip()
+    if tool_name == "fetch_content":
+        return normalized.startswith("Error:")
+    if tool_name == "search":
+        return normalized.startswith("An error occurred while searching:")
+    return False
+
+
+def _normalize_call_tool_result(
+    tool_name: str,
+    result: dict[str, Any] | None,
+    *,
+    server_name: str = "",
+) -> dict[str, Any]:
     """Convert an MCP CallToolResult into Jarvis success/error semantics."""
     if not result:
         return {
@@ -38,7 +55,7 @@ def _normalize_call_tool_result(tool_name: str, result: dict[str, Any] | None) -
             text_parts.append(item)
     combined_text = "\n".join(text_parts) if text_parts else (str(content) if content else "")
 
-    if result.get("isError") is True:
+    if result.get("isError") is True or _duckduckgo_text_error(server_name, tool_name, combined_text):
         error_text = combined_text or str(result.get("error") or f"MCP tool {tool_name} failed")
         return {
             "ok": False,
@@ -521,7 +538,11 @@ class MCPClient:
                     self._force_restart(f"tools/call error timeout: {err_text[:120]}")
                 raise err
 
-            return _normalize_call_tool_result(tool_name, response_holder.get("result"))
+            return _normalize_call_tool_result(
+                tool_name,
+                response_holder.get("result"),
+                server_name=self.name,
+            )
             
         except Exception as e:
             import traceback
@@ -1062,7 +1083,11 @@ class MCPRemoteClient:
                     self._force_restart(f"remote tools/call error timeout: {err_text[:120]}")
                 raise err
 
-            return _normalize_call_tool_result(tool_name, response_holder.get("result"))
+            return _normalize_call_tool_result(
+                tool_name,
+                response_holder.get("result"),
+                server_name=self.name,
+            )
             
         except Exception as e:
             import traceback
