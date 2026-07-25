@@ -64,7 +64,7 @@ Added comprehensive documentation to `get_mcp_info()`:
 
 2. **Automated test**: Focused MCP tests pass
    ```bash
-   ~/jarvis-venv/bin/python -m pytest -q \
+   .venv/bin/python -m pytest -q \
      tests/test_mcp_discovery_graceful.py \
      tests/test_mcp_env_substitution.py
    ```

@@ -83,7 +83,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
 ### Intelligence & Self-Learning
 - **Intelligence Layer**: Self-learning system that improves over time
   - Records interactions and reflects on them into reusable procedural insights
-  - **Positive constraints**: "Use mcp_fetch for server status checks"
+  - **Positive constraints**: "Use mcp_fetch_fetch for server status checks"
   - **Negative constraints**: "Avoid search_memory for real-time data"
   - **Tool provenance**: Source experience, web conversation ID, source tool sequence, and evidence trail for insight audits
   - **Preferred sequences**: Stores advisory multi-tool sequences plus primary intent/supporting tools without forcing rigid workflows
@@ -1465,10 +1465,13 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 ## 🎯 Roadmap
 
-**Completed (July 2026) — Web retention and Canvas Gallery polish:**
+**Completed (July 2026) — Web retention, Canvas Gallery, and MCP:**
 - ✅ **Pinned-safe Web conversation cleanup** — `cleanup-all` prunes unpinned Web UI conversations after 90 days while preserving pinned conversations
 - ✅ **Canvas Gallery favorites** — Generated images can be favorited, filtered, and protected from generated-image cleanup
 - ✅ **CDN-aware Gallery sorting** — Images can be sorted by cached Cloudflare URL status without contacting Cloudflare; uncached upload actions ask for confirmation
+- ✅ **Credential-free DuckDuckGo MCP** — Hardened Docker search/fetch defaults,
+  provider-scoped error normalization, and compact persisted Web follow-up
+  evidence for candidates, URLs, pagination, and bounded page excerpts
 
 **Completed (June 2026) — v2.52.0 mode plumbing and OpenCode hardening:**
 - ✅ **Predictable cloud/local startup** — Shared mode resolution keeps cloud as the default while `./bin/start --local` and per-service launchers load `config/local.env` explicitly

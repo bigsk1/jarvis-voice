@@ -699,7 +699,7 @@ sequenceDiagram
 
     Note over O: Turn 2: Process results
     O->>R: Continue with search results
-    R-->>O: Intent: tool_call (mcp_fetch_fetch)
+    R-->>O: Intent: tool_call (mcp_duckduckgo_fetch_content or mcp_fetch_fetch)
     O->>E: Fetch page content from top result
     E-->>O: Page content
 
@@ -942,6 +942,7 @@ graph TB
 
 **MCP Server Tools:**
 - `mcp_duckduckgo_search` - Web search
+- `mcp_duckduckgo_fetch_content` - Fetch a public page through the DuckDuckGo server
 - `mcp_fetch_fetch` - HTTP fetch
 - Auto-discovered on startup
 - Prefixed with `mcp_<server>_<tool>`

@@ -58,8 +58,10 @@ The comprehensive test suite (`tests/comprehensive_test.py`) is a "burn test" th
 - `search_conversations` - Search past conversations
 
 ### 7. MCP Tools
-- `mcp_fetch` - HTTP fetch via MCP
-- `mcp_brave_search` - Web search (if enabled)
+- `mcp_duckduckgo_search` - Credential-free web search
+- `mcp_duckduckgo_fetch_content` - Public-page extraction with pagination
+- `mcp_fetch_fetch` - HTTP fetch via MCP
+- `mcp_brave_search_brave_web_search` - Brave web search (if configured)
 - **Graceful skipping** - Disabled tools don't fail tests
 
 ### 8. Database Mode Isolation

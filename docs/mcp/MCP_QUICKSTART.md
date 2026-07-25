@@ -1,4 +1,4 @@
-#MCP Integration - Quick Start
+# MCP Integration - Quick Start
 
 ## What Was Added
 
@@ -40,6 +40,7 @@ MCP (Model Context Protocol) servers are **pre-built tools** you can add to Jarv
 **Shipped enabled servers** (`config/mcp-servers.json`):
 - **`mcp/fetch`** - Fetch URL content as markdown
 - **`mcp/brave-search`** - Web search (requires `BRAVE_API_KEY`)
+- **`mcp/duckduckgo`** - Credential-free web search and public-page extraction
 
 Optional (present but disabled by default): `sequentialthinking`, `playwright`.
 
@@ -59,6 +60,7 @@ Optional (present but disabled by default): `sequentialthinking`, `playwright`.
 # Pull the shipped images
 docker pull mcp/fetch
 docker pull mcp/brave-search
+docker pull mcp/duckduckgo
 # Enable in config/mcp-servers.json — tools appear in Jarvis (voice, web, CLI)
 ```
 
@@ -71,13 +73,14 @@ docker pull mcp/brave-search
 ```bash
 docker pull mcp/fetch
 docker pull mcp/brave-search
+docker pull mcp/duckduckgo
 ```
 
 ### Test MCP Server
 
 ```bash
 cd ~/jarvis-voice
-source ~/jarvis-venv/bin/activate
+source .venv/bin/activate
 ./bin/test-mcp --discover
 ```
 
@@ -99,10 +102,23 @@ source ~/jarvis-venv/bin/activate
 🔧 fetch [stdio]
 ----------------------------------------------------------------------
 
-  Tool: mcp_fetch_...
+  Tool: mcp_fetch_fetch
 ```
 
 Use `./bin/test-mcp --list` to list configured servers, or `./bin/test-mcp --all` for list + discover + audit.
+
+Exercise the new tools directly:
+
+```bash
+./bin/test-mcp --test duckduckgo search \
+  '{"query":"official Python documentation","max_results":3}'
+
+./bin/test-mcp --test duckduckgo fetch_content \
+  '{"url":"http://127.0.0.1:1/private"}'
+```
+
+The search should return candidates. The loopback fetch is a negative test and
+should return Jarvis `ok: false` with the server's refusal message.
 
 ## 4. Adding MCP Servers
 
@@ -125,10 +141,33 @@ Edit `config/mcp-servers.json` (shipped shape):
       "env": { "BRAVE_API_KEY": "${BRAVE_API_KEY}" },
       "description": "Web search via Brave",
       "enabled": true
+    },
+    "duckduckgo": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "--user", "65534:65534",
+        "--read-only",
+        "--cap-drop", "ALL",
+        "--security-opt", "no-new-privileges",
+        "-e", "DDG_REGION",
+        "-e", "DDG_SAFE_SEARCH",
+        "mcp/duckduckgo"
+      ],
+      "env": {
+        "DDG_REGION": "us-en",
+        "DDG_SAFE_SEARCH": "STRICT"
+      },
+      "description": "Credential-free web search and public-page extraction",
+      "enabled": true
     }
   }
 }
 ```
+
+Jarvis passes only the two explicitly listed DuckDuckGo variables. The tracked
+configuration runs the container as an unprivileged user with a read-only
+filesystem, drops Linux capabilities, and enables `no-new-privileges`.
 
 ### Option B: Native MCP (npm)
 
@@ -156,21 +195,40 @@ MCP tools are already integrated into voice, web, and CLI once servers are enabl
 "Hey Jarvis"
 "Search the web for bitcoin news"
   ↓
-Jarvis: [Uses mcp_brave_search_...]
+Jarvis: [Uses mcp_duckduckgo_search or a configured Brave tool]
 "Here are the latest bitcoin news..."
 
 "Hey Jarvis"
 "Fetch content from https://example.com"
   ↓
-Jarvis: [Uses mcp_fetch_...]
+Jarvis: [Uses mcp_duckduckgo_fetch_content or mcp_fetch_fetch]
 "The page contains..."
 ```
+
+In the Web UI, the same orchestration run receives the full MCP result. Later
+turns receive a compact saved projection:
+
+- DuckDuckGo search: query, counts, URLs, titles, and bounded snippets
+- DuckDuckGo/Fetch page retrieval: requested URL, pagination arguments, and a
+  bounded content excerpt
+
+This lets requests such as “which of those was official?” or “continue from the
+next character position” work without replaying the full raw payload into every
+prompt. Search results and fetched text remain untrusted external input.
 
 ## 6. Available MCP Servers (Shipped Config)
 
 ### Enabled by default
 - **`fetch`** (`mcp/fetch`) — URL content as markdown
 - **`brave_search`** (`mcp/brave-search`) — Web search (needs `BRAVE_API_KEY`)
+- **`duckduckgo`** (`mcp/duckduckgo`) — Credential-free web search and public
+  page extraction; defaults to `us-en` and Strict SafeSearch
+
+Important registered tool names:
+
+- `mcp_duckduckgo_search`
+- `mcp_duckduckgo_fetch_content`
+- `mcp_fetch_fetch`
 
 ### Present but disabled by default
 - **`sequentialthinking`** — Step-by-step reasoning
@@ -186,13 +244,15 @@ You can add other community MCP servers to `config/mcp-servers.json` the same wa
 - [x] MCP configuration format (`config/mcp-servers.json`)
 - [x] Test script for validation (`./bin/test-mcp`)
 - [x] Voice / Web / CLI integration (tools appear in the router catalog)
+- [x] MCP execution errors normalized to Jarvis `ok: false`
+- [x] Compact DuckDuckGo/Fetch context for persisted Web follow-ups
 - [x] Documentation
 
 
 ## 8. Architecture
 
 ```
-Voice: "Hey Jarvis, search for bitcoin news"
+Voice: "Hey Jarvis, search DuckDuckGo for bitcoin news"
   ↓
 STT → Transcript
   ↓
@@ -201,8 +261,9 @@ Routing LLM (configured provider/model)
 ┌─────────────┬─────────────┐
 ↓             ↓
 Local Tools   MCP Tools
-get_time      mcp_brave_search_...  ← Uses MCP client
-crypto_price  mcp_fetch_...         ← Via Docker
+get_time      mcp_duckduckgo_search         ← Uses MCP client
+crypto_price  mcp_duckduckgo_fetch_content  ← Via Docker
+              mcp_fetch_fetch               ← Via Docker
 execute_bash
   ↓
 Execute & Return Result
@@ -219,12 +280,20 @@ TTS → Voice Response
 
 ### Performance
 - ✅ Docker MCP servers are isolated
-- ✅ Fast enough for voice interaction (~100-300ms)
+- ✅ Containers stay alive for the Jarvis session instead of restarting for
+  every tool call
 
 ### Security
-- ✅ MCP servers are sandboxed in Docker
-- ✅ Explicit volume mounts only
+- ✅ Containers provide a separate process/filesystem boundary
+- ✅ The tracked DuckDuckGo container uses an unprivileged user, read-only
+  filesystem, dropped capabilities, and `no-new-privileges`
+- ✅ Only explicitly configured environment variables are passed
 - ✅ Can review MCP server code before using
+
+Containerization does not make web results trustworthy. Search indexes can
+surface typosquats, phishing pages, SEO spam, and prompt injection. Verify
+claimed official domains independently and never send secrets to a result just
+because an MCP search returned it.
 
 ### Extensibility
 - ✅ Anyone can create MCP servers
@@ -236,7 +305,8 @@ TTS → Voice Response
 Before using MCP in production:
 
 - [ ] Docker is installed and running
-- [ ] Pull shipped images: `docker pull mcp/fetch` and `docker pull mcp/brave-search`
+- [ ] Pull shipped images: `docker pull mcp/fetch`, `docker pull mcp/brave-search`,
+  and `docker pull mcp/duckduckgo`
 - [ ] Test connectivity: `./bin/test-mcp --discover`
 - [ ] Check config: `cat config/mcp-servers.json`
 - [ ] Verify tools appear: start Jarvis (should show MCP tools in the catalog)
@@ -276,12 +346,13 @@ cat config/mcp-servers.json
 ```bash
 docker pull mcp/fetch
 docker pull mcp/brave-search
+docker pull mcp/duckduckgo
 ```
 
 **Step 2:** Confirm enabled in config
 ```bash
 # Edit config/mcp-servers.json if needed
-# fetch and brave_search should have "enabled": true
+# fetch, brave_search, and duckduckgo should have "enabled": true
 ```
 
 **Step 3:** Test
@@ -298,8 +369,9 @@ docker pull mcp/brave-search
 ## 13. Recommendations
 
 ### Start With
-1. **fetch + brave_search** — shipped defaults (set `BRAVE_API_KEY` for search)
-2. **playwright** — enable only when you need JS-heavy browsing
+1. **duckduckgo + fetch** — credential-free search plus URL extraction
+2. **brave_search** — optional second search source; set `BRAVE_API_KEY`
+3. **playwright** — enable only when you need JS-heavy browsing
 
 ### Avoid Initially
 - Broad filesystem mounts until you understand volume security
@@ -312,8 +384,10 @@ docker pull mcp/brave-search
 3. Use specific volume mounts, not full filesystem
 4. Review MCP server docs before using
 5. Monitor logs for unusual activity
+6. Treat tool output as data, never as trusted instructions
+7. For official-source requests, verify the registrable domain (for example,
+   `developers.openai.com` is under `openai.com`; `developers-openai.com` is not)
 
 ---
 
 MCP tools are live in the orchestrator once enabled — no separate voice-integration step.
-

@@ -21,6 +21,7 @@
 ### 1. Pull a Docker MCP Server
 
 ```bash
+docker pull mcp/duckduckgo
 docker pull mcp/brave-search
 docker pull mcp/fetch
 ```
@@ -30,10 +31,22 @@ docker pull mcp/fetch
 ```json
 {
   "mcpServers": {
-    "brave_search": {
+    "duckduckgo": {
       "command": "docker",
-      "args": ["run", "-e", "BRAVE_API_KEY", "-i", "--rm", "--network", "host", "mcp/brave-search"],
-      "env": { "BRAVE_API_KEY": "${BRAVE_API_KEY}" },
+      "args": [
+        "run", "-i", "--rm",
+        "--user", "65534:65534",
+        "--read-only",
+        "--cap-drop", "ALL",
+        "--security-opt", "no-new-privileges",
+        "-e", "DDG_REGION",
+        "-e", "DDG_SAFE_SEARCH",
+        "mcp/duckduckgo"
+      ],
+      "env": {
+        "DDG_REGION": "us-en",
+        "DDG_SAFE_SEARCH": "STRICT"
+      },
       "enabled": true
     }
   }
@@ -70,6 +83,8 @@ mcp_{server_name}_{tool_name}
 
 Examples:
 - `mcp_brave_search_brave_web_search`
+- `mcp_duckduckgo_search`
+- `mcp_duckduckgo_fetch_content`
 - `mcp_fetch_fetch`
 
 ---
@@ -122,6 +137,26 @@ server's text for diagnostics but reports `ok: false` to the orchestrator so
 workflows and the routing model cannot mistake the error payload for valid
 tool data. This behavior is shared by stdio, SSE, and Streamable HTTP clients.
 
+The community DuckDuckGo server currently reports some failures as ordinary
+text while leaving MCP `isError` false. Jarvis narrowly recognizes its known
+`search` and `fetch_content` error prefixes and also reports those as
+`ok: false`; other MCP servers are not reclassified from arbitrary `Error:`
+text.
+
+### Persisted Web Follow-ups
+
+The active orchestration run receives the complete MCP result. Saved Web
+conversation context is intentionally smaller:
+
+- DuckDuckGo search retains queries, result counts, URLs, titles, and snippets.
+- DuckDuckGo and Fetch retrieval retain the URL, pagination/backend arguments,
+  and at most a 2,000-character head/tail excerpt.
+- Completion Guard receives the same compact search candidates as grounding
+  evidence.
+
+The original tool result remains in the saved message data for inspection; the
+compact projection is what is replayed into later routing prompts.
+
 **Console output**:
 ```
 ⚠️ MCP brave_search crashed (exit code: 137)
@@ -155,6 +190,20 @@ MCP servers only receive **explicitly configured** environment variables:
 
 See [MCP_SECURITY_AUDIT.md](./MCP_SECURITY_AUDIT.md) for full checklist.
 
+### External-Content Trust Boundary
+
+Search and fetch tools return untrusted Internet content. SafeSearch reduces
+adult-content exposure; it does not verify ownership, prevent search poisoning,
+or certify that a result is not a typosquat or phishing page. For claimed
+official sources, verify the registrable domain independently before trusting
+instructions, downloads, login forms, or API-key requests.
+
+The tracked DuckDuckGo configuration adds container hardening (`65534:65534`,
+read-only root filesystem, all capabilities dropped, and
+`no-new-privileges`). Its fetch tool also blocks private/loopback targets and
+re-validates redirects upstream. These controls reduce local and SSRF risk but
+do not make fetched content authoritative.
+
 ---
 
 ## 🐳 Container Management
@@ -162,12 +211,15 @@ See [MCP_SECURITY_AUDIT.md](./MCP_SECURITY_AUDIT.md) for full checklist.
 ### View Running MCP Containers
 
 ```bash
-docker ps --filter "ancestor=mcp/brave-search" --filter "ancestor=mcp/fetch"
+docker ps --filter "ancestor=mcp/duckduckgo" \
+  --filter "ancestor=mcp/brave-search" \
+  --filter "ancestor=mcp/fetch"
 ```
 
 ### Update MCP Images
 
 ```bash
+docker pull mcp/duckduckgo
 docker pull mcp/brave-search
 docker pull mcp/fetch
 # Restart jarvis-web to pick up new images
@@ -177,6 +229,7 @@ docker pull mcp/fetch
 
 ```bash
 # Stop all MCP containers
+docker ps --filter "ancestor=mcp/duckduckgo" -q | xargs -r docker stop
 docker ps --filter "ancestor=mcp/brave-search" -q | xargs -r docker stop
 docker ps --filter "ancestor=mcp/fetch" -q | xargs -r docker stop
 ```
@@ -188,6 +241,7 @@ docker ps --filter "ancestor=mcp/fetch" -q | xargs -r docker stop
 | Server | Docker Image | Tools |
 |--------|--------------|-------|
 | `brave_search` | `mcp/brave-search` | Web, local, image, and video search (`brave_news_search` is disabled in the tracked config) |
+| `duckduckgo` | `mcp/duckduckgo` | `search`, `fetch_content` (credential-free; US English + Strict SafeSearch defaults) |
 | `fetch` | `mcp/fetch` | URL content extraction |
 
 ### Disabled (Available)
@@ -204,10 +258,11 @@ docker ps --filter "ancestor=mcp/fetch" -q | xargs -r docker stop
 ### Containers Not Starting
 
 ```bash
-# Test manually
-docker run -i --rm mcp/brave-search
+# Exercise one tool through Jarvis's MCP client
+./bin/test-mcp --test duckduckgo search \
+  '{"query":"official Python documentation","max_results":3}'
 
-# Check if API key is set
+# Brave only: check if its API key is set
 echo $BRAVE_API_KEY
 ```
 
@@ -230,6 +285,7 @@ jq '.mcpServers | keys' config/mcp-servers.json
 If you see duplicate containers:
 ```bash
 # Stop all
+docker ps --filter "ancestor=mcp/duckduckgo" -q | xargs -r docker stop
 docker ps --filter "ancestor=mcp/brave-search" -q | xargs -r docker stop
 docker ps --filter "ancestor=mcp/fetch" -q | xargs -r docker stop
 
@@ -245,7 +301,10 @@ docker ps --filter "ancestor=mcp/fetch" -q | xargs -r docker stop
 | `config/mcp-servers.json` | Server configuration |
 | `lib/mcp_client.py` | MCP client (stdio, SSE, HTTP transports) |
 | `lib/tool_schema.py` | Tool discovery, singleton registry |
+| `jarvis-web/server/services/followup_extractor.py` | Compact persisted follow-up/evidence projection |
 | `bin/test-mcp` | Testing and debugging script |
+| `tests/test_mcp_tool_errors.py` | Standard and DuckDuckGo MCP error semantics |
+| `tests/test_chat_followup_serpapi.py` | Persisted search/fetch follow-up and evidence regression coverage |
 
 ---
 
@@ -254,8 +313,11 @@ docker ps --filter "ancestor=mcp/fetch" -q | xargs -r docker stop
 - [MCP Specification](https://spec.modelcontextprotocol.io/)
 - [Anthropic MCP Guide](https://docs.anthropic.com/en/docs/agents-and-tools/mcp)
 - [Docker MCP Images](https://hub.docker.com/u/mcp)
+- [Docker `mcp/duckduckgo` image](https://hub.docker.com/r/mcp/duckduckgo)
+- [DuckDuckGo MCP upstream source](https://github.com/nickclyde/duckduckgo-mcp-server)
 
 ---
 
-*Last verified: June 29, 2026 against `config/mcp-servers.json`,
-`lib/mcp_client.py`, and `lib/tool_schema.py`.*
+*Last verified: July 25, 2026 against `config/mcp-servers.json`,
+`lib/mcp_client.py`, `lib/tool_schema.py`, and
+`jarvis-web/server/services/followup_extractor.py`.*

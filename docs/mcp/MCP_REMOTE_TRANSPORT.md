@@ -97,6 +97,12 @@ Client                                 Server
   |<-- 200 SSE stream with result -------|
 ```
 
+For every transport, Jarvis maps an MCP `CallToolResult` with `isError: true`
+to `ok: false` while retaining the server's text for diagnostics. A narrow
+DuckDuckGo compatibility rule also recognizes that server's known
+text-encoded `search`/`fetch_content` errors when `isError` is incorrectly
+false; arbitrary `Error:` text from other servers is not globally reclassified.
+
 ## Available Remote MCP Servers
 
 ### CoinGecko

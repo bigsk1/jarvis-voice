@@ -335,6 +335,17 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-07-25 (unreleased):**
+- ✅ **Credential-free DuckDuckGo MCP search/fetch**
+  - Added the Docker MCP Catalog `mcp/duckduckgo` server with US English,
+    Strict SafeSearch, an unprivileged/read-only/capability-dropped container,
+    and no API key.
+  - Normalized the server's text-encoded failures to Jarvis `ok: false`.
+  - Added compact persisted Web follow-up and Completion Guard evidence for
+    DuckDuckGo search candidates and bounded DuckDuckGo/Fetch page excerpts.
+  - Documented the image-provenance, SSRF, search-poisoning, typosquat, and
+    prompt-injection trust boundaries under [`docs/mcp/`](mcp/README.md).
+
 **2026-07-23 (unreleased):**
 - ✅ **Autonomous deterministic workflows**
   - Added the compact `workflow(search|describe|run)` Tool RAG helper for shared and personal recipes, with strict active-mode/profile/surface admission.

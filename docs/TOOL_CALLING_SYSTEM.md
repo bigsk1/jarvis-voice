@@ -272,7 +272,11 @@ When adding a new tool, don't forget these steps beyond the script + schema:
    This is what lets the LLM act on previous results across separate API calls (e.g.,
    "email that PDF" after a `pdf_create`, or "cancel that reminder" after `create_reminder`).
 
-   Only extract identifiers and references — not content. The LLM already sees the speech text.
+   Prefer identifiers and references over content. If later turns genuinely
+   need source text, keep a deliberately bounded excerpt rather than the raw
+   payload. DuckDuckGo/Fetch retrieval, for example, retains a 2,000-character
+   head/tail excerpt so pagination metadata survives without replaying a full
+   page.
 
    ```python
    # In followup_extractor.py:
@@ -280,8 +284,10 @@ When adding a new tool, don't forget these steps beyond the script + schema:
    ```
 
    Dedicated extraction branches also live in `followup_extractor.py` for tools with nested
-   or non-standard output shapes, such as `crawl_url` and MCP Brave search results. The
-   `ChatHandler` methods in `jarvis-web/server/sockets/chat.py` are compatibility delegates.
+   or non-standard output shapes, such as `crawl_url`, MCP Brave URLs,
+   DuckDuckGo search candidates, and DuckDuckGo/Fetch page retrieval. The
+   `ChatHandler` methods in `jarvis-web/server/sockets/chat.py` are
+   compatibility delegates.
 
 2. **Memory entry** — If the tool creates a stash artifact, save a memory entry pointing
    to it (see `generate_image.py` for the pattern). This enables cross-session discovery.
