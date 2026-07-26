@@ -454,6 +454,7 @@ body {
 
 .conv-id-badge:hover {
   opacity: 1;
+  color: var(--text-primary, #e2e8f0);
   background: var(--bg-secondary, rgba(255,255,255,0.1));
 }
 

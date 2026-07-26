@@ -861,6 +861,13 @@ body {
   margin-bottom: var(--space-md);
 }
 
+.form-fieldset {
+  min-width: 0;
+  margin-inline: 0;
+  padding: 0;
+  border: 0;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -915,6 +922,10 @@ body {
   font-size: var(--text-sm);
   font-family: inherit;
   transition: border-color var(--transition-fast);
+}
+
+.form-input[type="datetime-local"] {
+  color-scheme: dark;
 }
 
 .form-input:focus {
