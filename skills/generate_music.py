@@ -36,6 +36,8 @@ AUDIO_CATALOG_FILE = GENERATED_MUSIC_DIR / 'audio_catalog.json'
 # ElevenLabs Music API Configuration
 # =============================================================================
 ELEVENLABS_API_BASE = "https://api.elevenlabs.io/v1/music"
+DEFAULT_MUSIC_PROVIDER = "elevenlabs"
+SUPPORTED_MUSIC_PROVIDERS = (DEFAULT_MUSIC_PROVIDER,)
 
 # Output format options
 OUTPUT_FORMATS = {
@@ -74,12 +76,30 @@ GENRE_HINTS = {
 }
 
 
+def resolve_music_provider(provider: str | None = None) -> str:
+    """Resolve and validate the configured or per-request music provider."""
+    selected = (
+        provider
+        or get_config_value("MUSIC_TOOL_PROVIDER", DEFAULT_MUSIC_PROVIDER)
+        or DEFAULT_MUSIC_PROVIDER
+    )
+    selected = str(selected).strip().lower()
+    if selected not in SUPPORTED_MUSIC_PROVIDERS:
+        supported = ", ".join(SUPPORTED_MUSIC_PROVIDERS)
+        raise ValueError(
+            f"Unsupported music provider '{selected}'. "
+            f"Currently supported: {supported}"
+        )
+    return selected
+
+
 def generate_music(prompt: str, duration_seconds: int = 60, 
                    genre: str = None, mood: str = None,
                    instrumental: bool = False, 
                    tempo: str = None, 
                    output_format: str = "mp3_medium",
-                   use_detailed_api: bool = False) -> dict:
+                   use_detailed_api: bool = False,
+                   provider: str = None) -> dict:
     """
     Generate music using ElevenLabs Music API.
     
@@ -92,7 +112,9 @@ def generate_music(prompt: str, duration_seconds: int = 60,
         tempo: Optional tempo hint (slow, medium, fast, or BPM like "120 BPM")
         output_format: Audio format (mp3_low/medium/high, opus_*, pcm_*)
         use_detailed_api: Use /detailed endpoint for more metadata
+        provider: Music provider override (currently elevenlabs)
     """
+    provider = resolve_music_provider(provider)
     
     api_key = get_config_value('ELEVENLABS_API_KEY')
     if not api_key:
@@ -212,14 +234,15 @@ def generate_music(prompt: str, duration_seconds: int = 60,
         "output_format": format_code,
         "song_id": song_id,
         "size_bytes": len(audio_bytes),
-        "provider": "ElevenLabs",
+        "provider": "ElevenLabs" if provider == "elevenlabs" else provider,
         "model": "music_v1",
     }
 
 
 def generate_with_composition_plan(title: str, sections: list, 
                                    global_styles: list = None,
-                                   output_format: str = "mp3_medium") -> dict:
+                                   output_format: str = "mp3_medium",
+                                   provider: str = None) -> dict:
     """
     Generate music with a detailed composition plan (sections with lyrics).
     
@@ -232,7 +255,9 @@ def generate_with_composition_plan(title: str, sections: list,
             - lyrics: List of lyric lines (optional)
         global_styles: Overall style directions for the whole song
         output_format: Audio format
+        provider: Music provider override (currently elevenlabs)
     """
+    provider = resolve_music_provider(provider)
     
     api_key = get_config_value('ELEVENLABS_API_KEY')
     if not api_key:
@@ -304,7 +329,7 @@ def generate_with_composition_plan(title: str, sections: list,
         "song_id": song_id,
         "size_bytes": len(audio_bytes),
         "has_composition_plan": True,
-        "provider": "ElevenLabs",
+        "provider": "ElevenLabs" if provider == "elevenlabs" else provider,
         "model": "music_v1",
     }
 
@@ -421,6 +446,7 @@ def main():
         output_format = args.get('output_format', 'mp3_medium')
         save = args.get('save', True)
         title = args.get('title', prompt[:50] if prompt else 'Untitled Song')
+        provider = resolve_music_provider(args.get('provider'))
         
         # Generate music
         if composition_plan:
@@ -429,7 +455,8 @@ def main():
                 title=title,
                 sections=composition_plan.get('sections', []),
                 global_styles=composition_plan.get('global_styles'),
-                output_format=output_format
+                output_format=output_format,
+                provider=provider,
             )
         else:
             # Use simple prompt API
@@ -440,7 +467,8 @@ def main():
                 mood=mood,
                 instrumental=instrumental,
                 tempo=tempo,
-                output_format=output_format
+                output_format=output_format,
+                provider=provider,
             )
         
         # Save to stash
@@ -499,7 +527,10 @@ def main():
                 "tempo": tempo,
                 "mime_type": result.get('mime_type'),
                 "size_bytes": result.get('size_bytes'),
-                "song_id": result.get('song_id')
+                "song_id": result.get('song_id'),
+                "provider": result.get('provider'),
+                "model": result.get('model'),
+                "output_format": result.get('output_format'),
             }
         }
         

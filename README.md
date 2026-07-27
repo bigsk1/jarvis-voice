@@ -209,6 +209,13 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - CDN catalog (`cdn_catalog.json`) caches URLs - no re-uploads needed
   - API: `/api/generated-images/*`
   - See [`docs/api/GENERATED_IMAGES.md`](docs/api/GENERATED_IMAGES.md)
+- **Generated Music API**: Provider-ready AI music generation
+  - Generate songs, instrumentals, jingles, and soundtracks with duration,
+    genre, mood, tempo, quality, and structured composition options
+  - ElevenLabs is the current adapter; `MUSIC_TOOL_PROVIDER` and per-request
+    `provider` overrides preserve the boundary for future providers
+  - API: `POST /api/generated-music/generate`
+  - See [`docs/api/GENERATED_MUSIC.md`](docs/api/GENERATED_MUSIC.md)
 - **Feedback System**: LLM self-critique for continuous improvement
   - Per-query feedback: `--feedback` flag on orchestrator
   - Batch testing: `./bin/jarvis-feedback batch tests/queries.txt`

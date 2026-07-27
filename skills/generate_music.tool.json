@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "generate_music",
-  "description": "\ud83c\udfb5 Generate AI music with ElevenLabs. Create songs, instrumentals, jingles, soundtracks. Use when user says 'make music', 'create a song', 'compose', 'generate a beat', 'make a jingle'. Supports genres (pop, rock, jazz, electronic, ambient, cinematic), moods (happy, sad, energetic, calm), and tempos. Can create instrumental or vocal tracks. Output saves to stash for playback in web UI. Duration 3 seconds to 10 minutes.",
+  "description": "\ud83c\udfb5 Generate AI music (currently ElevenLabs). Create songs, instrumentals, jingles, soundtracks. Use when user says 'make music', 'create a song', 'compose', 'generate a beat', 'make a jingle'. Supports genres (pop, rock, jazz, electronic, ambient, cinematic), moods (happy, sad, energetic, calm), and tempos. Can create instrumental or vocal tracks. Output saves to stash for playback in web UI. Duration 3 seconds to 10 minutes.",
   "script": "generate_music.py",
   "parameters": {
     "type": "object",
@@ -61,6 +61,13 @@
           "opus_high"
         ],
         "description": "Audio quality: mp3_low (fast), mp3_medium (default), mp3_high (best). Opus formats for smaller files."
+      },
+      "provider": {
+        "type": "string",
+        "enum": [
+          "elevenlabs"
+        ],
+        "description": "Music provider override. Currently supports elevenlabs; defaults to MUSIC_TOOL_PROVIDER."
       },
       "composition_plan": {
         "type": "object",
@@ -122,9 +129,15 @@
     "auto_approve": true
   },
   "availability": {
-    "all_of_env": [
-      "ELEVENLABS_API_KEY"
-    ],
+    "provider_setting": "MUSIC_TOOL_PROVIDER",
+    "provider_default": "elevenlabs",
+    "provider_requirements": {
+      "elevenlabs": {
+        "all_of_env": [
+          "ELEVENLABS_API_KEY"
+        ]
+      }
+    },
     "setup_hint": "Set ELEVENLABS_API_KEY in the active mode env file."
   }
 }

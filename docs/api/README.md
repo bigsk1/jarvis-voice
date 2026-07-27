@@ -28,6 +28,8 @@ Comprehensive REST API for Jarvis Voice Assistant - includes proactive webhooks,
 | **Stash** | [STASH.md](STASH.md) | Access stored artifacts and files |
 | **Canvas** | [CANVAS.md](CANVAS.md) | Browse visual knowledge pages |
 | **Generated Images** | [GENERATED_IMAGES.md](GENERATED_IMAGES.md) | List, download, delete, generate AI images |
+| **Generated Videos** | [GENERATED_VIDEOS.md](GENERATED_VIDEOS.md) | List, download, delete, generate AI videos |
+| **Generated Music** | [GENERATED_MUSIC.md](GENERATED_MUSIC.md) | Generate AI music and stream saved tracks |
 | **Images (CDN)** | [IMAGES.md](IMAGES.md) | Upload to Cloudflare CDN (public URLs) |
 
 ### Quick Reference - Core Endpoints
@@ -81,6 +83,15 @@ GET  /api/generated-images/{filename}/base64  # Get as base64
 DELETE /api/generated-images/{filename} # Delete image
 POST /api/generated-images/generate     # Generate new image
 GET  /api/generated-images/health       # Status check
+
+# Generated Videos (Local)
+GET  /api/generated-videos              # List videos
+POST /api/generated-videos/generate     # Generate new video
+
+# Generated Music (Local)
+POST /api/generated-music/generate      # Generate a new track
+GET  /api/generated-music/health        # Provider and storage readiness
+GET  /api/generated-music/{filename}    # Stream or download a saved track
 ```
 
 ### Intelligence API
