@@ -225,3 +225,4 @@ Brave MCP remains enabled and uses the corrected client synchronization.
 - [FIXED 2026-07-19 | 95824fd | bh_20260719_012740_f76eabcc] FEEDBACK_SYSTEM.md openai default gpt-5.4-nano; corrected to gpt-5.6-luna code default.
 - [FIXED 2026-07-19 | 95824fd | bh_20260719_135508_e8190eb5] docs/README.md LLM_PROVIDER omitted xai; added xai.
 - [FIXED 2026-07-19 | 95824fd | bh_20260719_135924_c43456b1] TOOL_MANAGEMENT.md 17 tools+2 MCP vs coverage; aligned token example and live recount.
+- [FIXED 2026-07-26 | 46e5a77 | bh_20260726_182613_52399b46] Video-to-OGG conversion failed because extract_audio_from_video defaulted to AAC, which FFmpeg rejects for Ogg; explicitly select libvorbis for advertised video-to-OGG extraction with regression coverage.
