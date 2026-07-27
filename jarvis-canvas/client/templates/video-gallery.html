@@ -8,7 +8,7 @@
 {% endblock %}
 
 {% block body %}
-    <header class="header">
+    <header class="header media-gallery-header video-gallery-header">
         <div class="logo">
             <div class="logo-icon jarvis-hud-logo online" aria-hidden="true"></div>
             <span>Videos</span>
@@ -18,9 +18,10 @@
             <span id="totalSize">0 MB</span>
         </div>
         <div class="header-links">
-            <a href="/" class="header-link" title="Back to Canvas">📝 Canvas</a>
-            <a href="/gallery" class="header-link" title="Image Gallery">🖼️ Images</a>
-            <a href="#" class="header-link" onclick="window.open('http://' + window.location.hostname + ':5001', '_blank'); return false;"><img src="/static/assets/jarvis-voice.png" alt="" class="jarvis-mark" aria-hidden="true"> Jarvis</a>
+            <a href="/" class="header-link" title="Back to Canvas">📝 <span>Canvas</span></a>
+            <a href="/gallery" class="header-link" title="Image Gallery">🖼️ <span>Images</span></a>
+            <a href="/audio-gallery" class="header-link audio-nav-link" title="Audio Gallery">🎵 <span class="audio-mobile-label">Audio</span></a>
+            <a href="#" class="header-link" onclick="window.open('http://' + window.location.hostname + ':5001', '_blank'); return false;"><img src="/static/assets/jarvis-voice.png" alt="" class="jarvis-mark" aria-hidden="true"> <span>Jarvis</span></a>
         </div>
     </header>
 

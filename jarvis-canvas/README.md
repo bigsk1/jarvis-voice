@@ -2,7 +2,7 @@
 
 A visual viewer for rich content that Jarvis populates. Think of it as a personal wiki/knowledge canvas that Jarvis writes to when displaying complex information.
 
-**Includes:** Canvas Pages + Image Gallery + Video Gallery
+**Includes:** Canvas Pages + Image Gallery + Video Gallery + Audio Gallery
 
 ## Overview
 
@@ -240,6 +240,43 @@ GET /api/gallery/videos          # List all videos
 GET /api/gallery/videos/<name>   # Get video file
 DELETE /api/gallery/videos/<name> # Delete video
 ```
+
+---
+
+## Audio Gallery
+
+### Access
+- **URL:** `http://localhost:8890/audio-gallery`
+- **Navigation:** Click **Audio** in any Canvas media header. The mobile label remains **Audio**.
+
+### Features
+- Native audio playback with one active track at a time
+- Search by title, filename, genre, mood, tempo, or tags
+- Filter by provider or favorites
+- Sort by date, title, size, or duration
+- Provider, format, and duration badges
+- Favorite, download, and confirmed delete actions
+- Responsive single-column mobile layout
+
+Generated audio lives in `data/generated_music/`. Durable provider and generation
+metadata is stored in `data/generated_music/audio_catalog.json`; existing files
+without catalog entries are backfilled from their filename, timestamp, and
+format. Gallery responses are enriched with duration and stream details from
+`ffprobe` when it is available.
+
+### API Endpoints
+
+```bash
+GET /api/gallery/audio                    # List all audio
+GET /api/gallery/audio/<name>             # Stream an audio file
+GET /api/gallery/audio/<name>/download    # Download an audio file
+PATCH /api/gallery/audio/<name>/favorite  # Set or clear favorite state
+DELETE /api/gallery/audio/<name>          # Delete audio and its catalog row
+```
+
+Audio-to-video handoff and editing operations such as conversion, trimming,
+splicing, fades, and soundtrack mixing are intentionally reserved for a later
+media-workflow phase.
 
 ---
 

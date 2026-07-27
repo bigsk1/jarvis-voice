@@ -24,8 +24,13 @@ from pathlib import Path
 from datetime import datetime
 
 # Add lib to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / 'lib'))
+from audio_catalog import upsert_audio_catalog_entry
 from config_loader import load_config, get_config_value
+
+GENERATED_MUSIC_DIR = PROJECT_ROOT / 'data' / 'generated_music'
+AUDIO_CATALOG_FILE = GENERATED_MUSIC_DIR / 'audio_catalog.json'
 
 # =============================================================================
 # ElevenLabs Music API Configuration
@@ -206,7 +211,9 @@ def generate_music(prompt: str, duration_seconds: int = 60,
         "tempo": tempo,
         "output_format": format_code,
         "song_id": song_id,
-        "size_bytes": len(audio_bytes)
+        "size_bytes": len(audio_bytes),
+        "provider": "ElevenLabs",
+        "model": "music_v1",
     }
 
 
@@ -296,7 +303,9 @@ def generate_with_composition_plan(title: str, sections: list,
         "output_format": format_code,
         "song_id": song_id,
         "size_bytes": len(audio_bytes),
-        "has_composition_plan": True
+        "has_composition_plan": True,
+        "provider": "ElevenLabs",
+        "model": "music_v1",
     }
 
 
@@ -312,22 +321,27 @@ def save_to_stash(music_data: dict, title: str) -> dict:
     filename = f"music_{safe_title}_{timestamp}.{ext}"
     
     # Also save to generated_music directory
-    music_dir = Path(__file__).parent.parent / 'data' / 'generated_music'
-    music_dir.mkdir(exist_ok=True)
-    music_path = music_dir / filename
+    GENERATED_MUSIC_DIR.mkdir(parents=True, exist_ok=True)
+    music_path = GENERATED_MUSIC_DIR / filename
     music_path.write_bytes(music_data['audio_bytes'])
-    
+
+    save_result = {
+        "saved": True,
+        "path": str(music_path),
+        "filename": filename,
+        "stash": False,
+    }
+    tags = ['ai_generated', 'music', 'elevenlabs']
+    if music_data.get('genre'):
+        tags.append(music_data['genre'])
+    if music_data.get('instrumental'):
+        tags.append('instrumental')
+
     # Save to stash
     try:
         space, _ = open_space(scope='session', labels=['generated_music', 'audio'])
         stash_file = StashFile(space)
-        
-        tags = ['ai_generated', 'music', 'elevenlabs']
-        if music_data.get('genre'):
-            tags.append(music_data['genre'])
-        if music_data.get('instrumental'):
-            tags.append('instrumental')
-        
+
         result = stash_file.save_binary(
             data=music_data['audio_bytes'],
             name=filename,
@@ -337,7 +351,7 @@ def save_to_stash(music_data: dict, title: str) -> dict:
             tool_origin='generate_music'
         )
         
-        return {
+        save_result.update({
             "saved": True,
             "stash_ref": result.get('ref'),
             "space_id": space.space_id,
@@ -345,15 +359,41 @@ def save_to_stash(music_data: dict, title: str) -> dict:
             "stash_path": result.get('path'),
             "filename": filename,
             "stash": True
-        }
+        })
     except Exception as e:
-        return {
-            "saved": True,
-            "path": str(music_path),
-            "filename": filename,
-            "stash": False,
-            "note": f"File saved but stash failed: {e}"
-        }
+        save_result["note"] = f"File saved but stash failed: {e}"
+
+    catalog_metadata = {
+        "title": title,
+        "prompt": music_data.get("prompt"),
+        "provider": music_data.get("provider", "ElevenLabs"),
+        "model": music_data.get("model", "music_v1"),
+        "genre": music_data.get("genre"),
+        "mood": music_data.get("mood"),
+        "tempo": music_data.get("tempo"),
+        "instrumental": bool(music_data.get("instrumental", False)),
+        "duration_seconds": music_data.get("duration_ms", 0) / 1000,
+        "format": ext,
+        "output_format": music_data.get("output_format"),
+        "mime_type": music_data.get("mime_type"),
+        "size_bytes": len(music_data["audio_bytes"]),
+        "song_id": music_data.get("song_id"),
+        "tool_origin": "generate_music",
+        "tags": tags,
+        "created_at": datetime.now().isoformat(),
+        "stash_ref": save_result.get("stash_ref"),
+        "space_id": save_result.get("space_id"),
+    }
+    try:
+        upsert_audio_catalog_entry(
+            AUDIO_CATALOG_FILE,
+            filename,
+            catalog_metadata,
+        )
+    except Exception as e:
+        save_result["catalog_note"] = f"Audio catalog update failed: {e}"
+
+    return save_result
 
 
 def main():

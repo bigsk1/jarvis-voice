@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Audio Gallery{% endblock %}
+
+{% block head %}
+    <link rel="stylesheet" href="/static/css/audio-gallery.css">
+{% endblock %}
+
+{% block body %}
+    <header class="header media-gallery-header audio-gallery-header">
+        <div class="logo">
+            <div class="logo-icon jarvis-hud-logo online" aria-hidden="true"></div>
+            <span>Audio</span>
+        </div>
+        <div class="header-stats">
+            <span id="audioCount">0 tracks</span>
+            <span id="totalSize">0 MB</span>
+        </div>
+        <div class="header-links">
+            <a href="/" class="header-link" title="Back to Canvas">📝 <span>Canvas</span></a>
+            <a href="/gallery" class="header-link" title="Image Gallery">🖼️ <span>Images</span></a>
+            <a href="/video-gallery" class="header-link" title="Video Gallery">🎬 <span>Videos</span></a>
+            <a href="#" class="header-link" onclick="window.open('http://' + window.location.hostname + ':5001', '_blank'); return false;" title="Jarvis Web"><img src="/static/assets/jarvis-voice.png" alt="" class="jarvis-mark" aria-hidden="true"> <span>Jarvis</span></a>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="controls">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search audio..." oninput="filterAudio()">
+            </div>
+            <select class="filter-select" id="providerFilter" onchange="filterAudio()">
+                <option value="all">All Providers</option>
+            </select>
+            <select class="filter-select" id="favoriteFilter" onchange="filterAudio()">
+                <option value="all">All Audio</option>
+                <option value="favorites">Favorites</option>
+            </select>
+            <select class="sort-select" id="sortSelect" onchange="sortAudio()">
+                <option value="date-desc">Newest First</option>
+                <option value="date-asc">Oldest First</option>
+                <option value="name-asc">Title A-Z</option>
+                <option value="name-desc">Title Z-A</option>
+                <option value="size-desc">Largest First</option>
+                <option value="size-asc">Smallest First</option>
+                <option value="duration-desc">Longest First</option>
+                <option value="duration-asc">Shortest First</option>
+            </select>
+            <button type="button" class="btn btn-secondary refresh-btn" id="refreshBtn" onclick="refreshGallery()">
+                <span class="refresh-btn-icon" aria-hidden="true">↻</span>
+                <span class="refresh-btn-label">Refresh</span>
+            </button>
+        </div>
+
+        <div class="audio-gallery" id="audioGallery"></div>
+
+        <div class="empty-state" id="emptyState" style="display: none;">
+            <div class="empty-state-icon">🎵</div>
+            <h3>No audio found</h3>
+            <p>Generated audio will appear here</p>
+        </div>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="/static/js/audio-gallery.js"></script>
+{% endblock %}
