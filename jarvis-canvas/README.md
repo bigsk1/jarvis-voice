@@ -177,6 +177,7 @@ The canvas server includes an integrated image gallery for browsing generated im
 - Lightbox view with click-to-enlarge
 - Search by filename
 - Filter favorites and sort by date, name, size, or CDN cached status
+- Provider and model badges for newly generated images
 - Mark favorite images so cleanup preserves them
 - Download images locally
 - CDN Upload for Cloudflare CDN URL sharing; uncached uploads require confirmation, cached URLs copy without re-uploading
@@ -226,7 +227,7 @@ Images are served from: `data/generated_images/`
 - Search by filename
 - Sort by date, name, size, or duration
 - Download and delete
-- Provider badges (xAI/Gemini)
+- Provider and model badges for newly generated videos
 - Duration display
 - Keyboard shortcuts: `Escape` close, `←` / `→` navigate, `Space` play/pause
 

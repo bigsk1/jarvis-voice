@@ -162,10 +162,20 @@ body {
     object-fit: cover;
 }
 
-.image-provider {
+.image-badges {
     position: absolute;
     top: 8px;
     left: 8px;
+    right: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    z-index: 1;
+}
+
+.image-provider {
+    flex: 0 0 auto;
     padding: 4px 8px;
     border-radius: 4px;
     font-size: 0.7rem;
@@ -173,8 +183,21 @@ body {
     color: white;
     text-transform: uppercase;
     background: var(--accent);
-    pointer-events: none;
-    z-index: 1;
+}
+
+.image-model {
+    min-width: 0;
+    overflow: hidden;
+    padding: 4px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.78);
+    color: white;
+    font-size: 0.68rem;
+    font-weight: 600;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .image-info {

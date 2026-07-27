@@ -30,8 +30,13 @@ from datetime import datetime
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
+from image_catalog import upsert_image_catalog_entry
 from model_catalog import get_media_model_env_key, resolve_media_model
 from paths import assert_not_restricted_read_path
+
+PROJECT_ROOT = Path(__file__).parent.parent
+GENERATED_IMAGES_DIR = PROJECT_ROOT / 'data' / 'generated_images'
+IMAGE_CATALOG_FILE = GENERATED_IMAGES_DIR / 'image_catalog.json'
 
 # =============================================================================
 # Provider: Google Gemini
@@ -814,10 +819,21 @@ def save_to_stash(image_data: dict, prompt: str) -> dict:
     
     # Save directly to generated_images (always as primary storage)
     # This ensures we always have the file, and stash becomes an index
-    images_dir = Path(__file__).parent.parent / 'data' / 'generated_images'
-    images_dir.mkdir(exist_ok=True)
-    image_path = images_dir / filename
+    GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
+    image_path = GENERATED_IMAGES_DIR / filename
     image_path.write_bytes(image_bytes)
+
+    provider = image_data.get('provider', 'gemini')
+    model = str(image_data.get('model') or '').strip()
+    is_edit = image_data.get('is_edit', False)
+    base_tag = 'image_edited' if is_edit else 'ai_generated'
+    tags = [base_tag, provider, image_data.get('aspect_ratio', 'square')]
+    save_info = {
+        "saved": True,
+        "path": str(image_path),
+        "filename": filename,
+        "stash": False,
+    }
     
     # Also create a stash reference for discoverability
     # Use stash helper directly to avoid subprocess overhead
@@ -828,44 +844,64 @@ def save_to_stash(image_data: dict, prompt: str) -> dict:
         space, _ = open_space(scope='session', labels=['generated_images'])
         stash_file = StashFile(space)
         
-        # Get provider tag
-        provider = image_data.get('provider', 'gemini')
-        is_edit = image_data.get('is_edit', False)
-        
-        # Tag differently for edited vs generated
-        base_tag = 'image_edited' if is_edit else 'ai_generated'
-        
         # Save as binary to stash
         result = stash_file.save_binary(
             data=image_bytes,
             name=filename,
             mime_type=mime,
             on_conflict='overwrite',
-            tags=[base_tag, provider, image_data.get('aspect_ratio', 'square')],
+            tags=tags,
             tool_origin='generate_image'
         )
-        
-        return {
-            "saved": True,
+
+        if model:
+            file_id = result.get('file_id')
+            for file_info in space.meta.get('files', []):
+                if file_info.get('file_id') == file_id:
+                    file_info['model'] = model
+                    space._save_meta()
+                    break
+
+        save_info.update({
             "stash_ref": result.get('ref'),
             "space_id": space.space_id,
-            "path": str(image_path),
             "stash_path": result.get('path'),
-            "filename": filename,
             "stash": True
-        }
+        })
     except Exception as e:
-        # Stash failed but file is saved
-        return {
-            "saved": True,
-            "path": str(image_path),
-            "filename": filename,
-            "stash": False,
-            "note": f"File saved but stash indexing failed: {e}"
-        }
+        save_info["note"] = f"File saved but stash indexing failed: {e}"
+
+    provider_name = {
+        'xai': 'xAI',
+        'gemini': 'Gemini',
+        'openai': 'OpenAI',
+    }.get(str(provider).lower(), str(provider))
+    try:
+        upsert_image_catalog_entry(
+            IMAGE_CATALOG_FILE,
+            filename,
+            {
+                "provider": provider_name,
+                "model": model or None,
+                "aspect": image_data.get('aspect_ratio'),
+                "tags": tags,
+                "tool_origin": "generate_image",
+                "created_at": datetime.now().isoformat(),
+            },
+        )
+    except Exception as e:
+        save_info["catalog_note"] = f"Image catalog update failed: {e}"
+
+    return save_info
 
 
-def save_additional_images(all_images: list, prompt: str, provider: str, space_id: str = None) -> list:
+def save_additional_images(
+    all_images: list,
+    prompt: str,
+    provider: str,
+    space_id: str = None,
+    model: str = None,
+) -> list:
     """Save additional images when n > 1 (xAI batch generation).
     
     Args:
@@ -880,8 +916,7 @@ def save_additional_images(all_images: list, prompt: str, provider: str, space_i
     if len(all_images) <= 1:
         return saved_files
     
-    images_dir = Path(__file__).parent.parent / 'data' / 'generated_images'
-    images_dir.mkdir(exist_ok=True)
+    GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
     
     safe_prompt = "".join(c if c.isalnum() or c in ' -_' else '' for c in prompt[:40])
     safe_prompt = safe_prompt.replace(' ', '_').lower()
@@ -903,7 +938,7 @@ def save_additional_images(all_images: list, prompt: str, provider: str, space_i
         image_bytes = base64.b64decode(img_b64)
         
         # Save to generated_images
-        image_path = images_dir / filename
+        image_path = GENERATED_IMAGES_DIR / filename
         image_path.write_bytes(image_bytes)
         
         file_info = {
@@ -923,8 +958,35 @@ def save_additional_images(all_images: list, prompt: str, provider: str, space_i
                     tool_origin='generate_image'
                 )
                 file_info["stash_ref"] = result.get('ref')
+                if model:
+                    file_id = result.get('file_id')
+                    for stash_entry in stash_file.space.meta.get('files', []):
+                        if stash_entry.get('file_id') == file_id:
+                            stash_entry['model'] = model
+                            stash_file.space._save_meta()
+                            break
             except Exception:
                 pass
+
+        provider_name = {
+            'xai': 'xAI',
+            'gemini': 'Gemini',
+            'openai': 'OpenAI',
+        }.get(str(provider).lower(), str(provider))
+        try:
+            upsert_image_catalog_entry(
+                IMAGE_CATALOG_FILE,
+                filename,
+                {
+                    "provider": provider_name,
+                    "model": model,
+                    "tags": ['ai_generated', provider, 'batch'],
+                    "tool_origin": "generate_image",
+                    "created_at": datetime.now().isoformat(),
+                },
+            )
+        except Exception:
+            pass
         
         saved_files.append(file_info)
     
@@ -1061,7 +1123,8 @@ def main():
                         result['all_images'], 
                         prompt, 
                         provider_used,
-                        space_id
+                        space_id,
+                        result.get('model'),
                     )
                     if additional:
                         response["data"]["additional_images"] = additional

@@ -17,6 +17,7 @@ def _write_stash_metadata(stash_dir, filename, *, created):
                         "file_id": "f_video",
                         "stored_name": filename,
                         "tags": ["ai_generated", "video", "xai", "16:9"],
+                        "model": "grok-imagine-video",
                         "tool_origin": "generate_video",
                         "created_at": created.isoformat(),
                         "source_url": "https://example.test/video.mp4",
@@ -62,6 +63,7 @@ def test_sync_enriches_an_existing_incomplete_shared_catalog_entry(tmp_path):
     )
 
     assert catalog[filename]["stash_ref"] == "stash://space_video/f_video"
+    assert catalog[filename]["model"] == "grok-imagine-video"
     assert catalog[filename]["space_id"] == "space_video"
     assert catalog[filename]["source_url"] == "https://example.test/video.mp4"
     assert catalog[filename]["source_url_created"] == created.isoformat()

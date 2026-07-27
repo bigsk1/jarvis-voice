@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -34,6 +35,14 @@ def test_gallery_favorite_endpoint_updates_catalog_and_list_response(tmp_path, m
 
     image = tmp_path / "generated_example_20260711_120000.png"
     image.write_bytes(b"fake-png")
+    (tmp_path / "image_catalog.json").write_text(
+        json.dumps({
+            image.name: {
+                "provider": "OpenAI",
+                "model": "gpt-image-2",
+            }
+        })
+    )
     (tmp_path / "cdn_catalog.json").write_text(
         json.dumps({image.name: {"url": "https://cdn.example/image"}})
     )
@@ -56,6 +65,8 @@ def test_gallery_favorite_endpoint_updates_catalog_and_list_response(tmp_path, m
     assert list_response.status_code == 200
     listed = list_response.get_json()["images"][0]
     assert listed["name"] == image.name
+    assert listed["provider"] == "OpenAI"
+    assert listed["model"] == "gpt-image-2"
     assert listed["favorite"] is True
     assert listed["cdn_cached"] is True
     assert listed["favorited_at"] == catalog[image.name]["favorited_at"]
@@ -85,3 +96,63 @@ def test_gallery_can_sort_by_cached_cdn_status():
     assert "case 'cdn-desc':" in GALLERY_JS
     assert "case 'cdn-asc':" in GALLERY_JS
     assert "Copy cached CDN URL" in GALLERY_JS
+
+
+def test_gallery_renders_model_badges_only_for_cataloged_models():
+    gallery_css = (
+        CANVAS_ROOT / "client" / "static" / "css" / "gallery.css"
+    ).read_text()
+
+    assert "const model = String(img.model || '').trim();" in GALLERY_JS
+    assert 'class="image-badges"' in GALLERY_JS
+    assert 'class="image-model"' in GALLERY_JS
+    assert "${model ?" in GALLERY_JS
+    assert ".image-model" in gallery_css
+    model_rule = re.search(r"\.image-model\s*\{([^}]+)\}", gallery_css)
+    assert model_rule
+    assert "pointer-events: none" not in model_rule.group(1)
+    assert "top: 38px" not in model_rule.group(1)
+    assert ".image-badges" in gallery_css
+
+
+def test_image_catalog_sync_backfills_model_into_existing_rows(tmp_path, monkeypatch):
+    gallery = _load_gallery_module()
+    generated_dir = tmp_path / "generated_images"
+    stash_dir = tmp_path / "stash"
+    generated_dir.mkdir()
+    image = generated_dir / "generated_existing.png"
+    image.write_bytes(b"fake-png")
+    (generated_dir / "image_catalog.json").write_text(
+        json.dumps({
+            image.name: {
+                "provider": "OpenAI",
+                "favorite": True,
+            }
+        })
+    )
+
+    space = stash_dir / "space_image"
+    space.mkdir(parents=True)
+    (space / "meta.json").write_text(
+        json.dumps({
+            "labels": ["generated_images"],
+            "files": [{
+                "stored_name": image.name,
+                "tags": ["ai_generated", "openai", "16:9"],
+                "model": "gpt-image-2",
+                "tool_origin": "generate_image",
+            }],
+        })
+    )
+    monkeypatch.setattr(gallery, "GENERATED_IMAGES_DIR", generated_dir)
+    monkeypatch.setattr(
+        gallery,
+        "IMAGE_CATALOG_FILE",
+        generated_dir / "image_catalog.json",
+    )
+    monkeypatch.setattr(gallery, "get_stash_dir", lambda: stash_dir)
+
+    catalog = gallery.sync_image_catalog()
+
+    assert catalog[image.name]["model"] == "gpt-image-2"
+    assert catalog[image.name]["favorite"] is True

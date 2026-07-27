@@ -109,6 +109,8 @@ def list_gallery_videos():
             meta = catalog.get(f.name, {})
             if meta.get('provider'):
                 video_info['provider'] = meta['provider']
+            if meta.get('model'):
+                video_info['model'] = meta['model']
             if meta.get('aspect'):
                 video_info['aspect'] = meta['aspect']
             if meta.get('tags'):

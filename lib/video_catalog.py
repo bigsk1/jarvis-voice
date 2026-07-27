@@ -1,9 +1,13 @@
 """Shared persistence and stash enrichment for generated-video catalogs."""
 
+from __future__ import annotations
+
 import json
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 
 VIDEO_EXTENSIONS = {'.mp4', '.webm', '.mov', '.avi', '.mkv'}
@@ -28,12 +32,41 @@ def load_video_catalog(catalog_file: Path) -> dict:
 
 
 def save_video_catalog(catalog_file: Path, catalog: dict) -> None:
-    """Persist a catalog without taking down a gallery on a write failure."""
+    """Atomically persist a catalog without taking down the gallery."""
+    catalog_file.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Optional[Path] = None
     try:
-        with open(catalog_file, 'w') as handle:
+        with tempfile.NamedTemporaryFile(
+            mode='w',
+            encoding='utf-8',
+            dir=catalog_file.parent,
+            prefix=f'.{catalog_file.name}.',
+            suffix='.tmp',
+            delete=False,
+        ) as handle:
             json.dump(catalog, handle, indent=2)
+            handle.write('\n')
+            temporary_path = Path(handle.name)
+        os.replace(temporary_path, catalog_file)
     except Exception as exc:
         print(f"⚠️  Failed to save video catalog: {exc}")
+    finally:
+        if temporary_path and temporary_path.exists():
+            temporary_path.unlink()
+
+
+def upsert_video_catalog_entry(
+    catalog_file: Path,
+    filename: str,
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    """Merge durable generation metadata for a video."""
+    catalog = load_video_catalog(catalog_file)
+    updated = dict(catalog.get(filename) or {})
+    updated.update({key: value for key, value in metadata.items() if value is not None})
+    catalog[filename] = updated
+    save_video_catalog(catalog_file, catalog)
+    return updated
 
 
 def _provider_from_tags(tags: list) -> Optional[str]:
@@ -119,6 +152,7 @@ def lookup_stash_metadata(
                 file_id = file_info.get('file_id')
                 metadata = {
                     'provider': _provider_from_tags(tags),
+                    'model': file_info.get('model'),
                     'aspect': _aspect_from_tags(tags),
                     'tags': tags,
                     'tool_origin': file_info.get('tool_origin'),

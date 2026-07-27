@@ -35,6 +35,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
 from model_catalog import get_media_model_env_key, get_media_model_metadata, resolve_media_model
 from paths import assert_not_restricted_read_path
+from video_catalog import upsert_video_catalog_entry
+
+PROJECT_ROOT = Path(__file__).parent.parent
+GENERATED_VIDEOS_DIR = PROJECT_ROOT / 'data' / 'generated_videos'
+VIDEO_CATALOG_FILE = GENERATED_VIDEOS_DIR / 'video_catalog.json'
 
 # =============================================================================
 # Provider: xAI Grok Video
@@ -953,6 +958,17 @@ def save_to_stash(video_path: Path, prompt: str, video_data: dict) -> dict:
     
     # Read video bytes
     video_bytes = video_path.read_bytes()
+    provider = video_data.get('provider', 'xai')
+    model = str(video_data.get('model') or '').strip()
+    tags = ['ai_generated', 'video', provider, video_data.get('aspect_ratio', '16:9')]
+    source_url = video_data.get('video_url')
+    save_info = {
+        "saved": True,
+        "path": str(video_path),
+        "filename": filename,
+        "size_bytes": len(video_bytes),
+        "stash": False,
+    }
     
     # Create stash reference for discoverability
     try:
@@ -961,16 +977,6 @@ def save_to_stash(video_path: Path, prompt: str, video_data: dict) -> dict:
         
         space, _ = open_space(scope='session', labels=['generated_videos'])
         stash_file = StashFile(space)
-        
-        # Get provider tag
-        provider = video_data.get('provider', 'xai')
-        
-        # Build tags with original URL (for video editing capability)
-        tags = ['ai_generated', 'video', provider, video_data.get('aspect_ratio', '16:9')]
-        
-        # Store original xAI/Gemini URL for potential video editing
-        # These URLs may expire but are valid for some time after generation
-        source_url = video_data.get('video_url')
         
         # Save as binary to stash
         result = stash_file.save_binary(
@@ -982,37 +988,62 @@ def save_to_stash(video_path: Path, prompt: str, video_data: dict) -> dict:
             tool_origin='generate_video'
         )
         
-        # Add source_url to the file metadata for video editing
-        if source_url and source_url.startswith('http'):
-            file_id = result.get('file_id')
-            for f in space.meta.get('files', []):
-                if f.get('file_id') == file_id:
-                    f['source_url'] = source_url  # xAI/Gemini public URL
-                    f['source_url_created'] = datetime.now().isoformat()
-                    break
+        # Add generation metadata used to recover the shared video catalog.
+        metadata_changed = False
+        file_id = result.get('file_id')
+        for file_info in space.meta.get('files', []):
+            if file_info.get('file_id') == file_id:
+                if model:
+                    file_info['model'] = model
+                    metadata_changed = True
+                if source_url and source_url.startswith('http'):
+                    file_info['source_url'] = source_url  # xAI/Gemini public URL
+                    file_info['source_url_created'] = datetime.now().isoformat()
+                    metadata_changed = True
+                break
+        if metadata_changed:
             space._save_meta()
         
-        return {
-            "saved": True,
+        save_info.update({
             "stash_ref": result.get('ref'),
             "space_id": space.space_id,
-            "path": str(video_path),
             "stash_path": result.get('path'),
-            "filename": filename,
-            "size_bytes": len(video_bytes),
             "stash": True,
             "source_url": source_url if source_url and source_url.startswith('http') else None
-        }
+        })
     except Exception as e:
-        # Stash failed but file is saved
-        return {
-            "saved": True,
-            "path": str(video_path),
-            "filename": filename,
-            "size_bytes": video_path.stat().st_size,
-            "stash": False,
-            "note": f"File saved but stash indexing failed: {e}"
-        }
+        save_info["note"] = f"File saved but stash indexing failed: {e}"
+
+    provider_name = {
+        'xai': 'xAI',
+        'gemini': 'Gemini',
+        'openai': 'OpenAI',
+    }.get(str(provider).lower(), str(provider))
+    try:
+        upsert_video_catalog_entry(
+            VIDEO_CATALOG_FILE,
+            filename,
+            {
+                "provider": provider_name,
+                "model": model or None,
+                "aspect": video_data.get('aspect_ratio'),
+                "tags": tags,
+                "tool_origin": "generate_video",
+                "created_at": datetime.now().isoformat(),
+                "stash_ref": save_info.get("stash_ref"),
+                "space_id": save_info.get("space_id"),
+                "source_url": save_info.get("source_url"),
+                "source_url_created": (
+                    datetime.now().isoformat()
+                    if save_info.get("source_url")
+                    else None
+                ),
+            },
+        )
+    except Exception as e:
+        save_info["catalog_note"] = f"Video catalog update failed: {e}"
+
+    return save_info
 
 
 def main():

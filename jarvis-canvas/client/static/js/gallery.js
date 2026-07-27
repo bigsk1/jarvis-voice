@@ -90,6 +90,7 @@ function renderGallery() {
     gallery.innerHTML = filteredImages.map((img, index) => {
         // Use provider from API if available, otherwise detect from filename
         const provider = img.provider || detectProvider(img.name);
+        const model = String(img.model || '').trim();
         const favorite = Boolean(img.favorite);
         
         return `
@@ -98,7 +99,12 @@ function renderGallery() {
                 <img src="/api/gallery/images/${encodeURIComponent(img.name)}" 
                      alt="${escapeHtml(img.name)}" 
                      loading="lazy">
-                ${provider ? `<span class="image-provider">${provider}</span>` : ''}
+                ${provider || model ? `
+                    <div class="image-badges">
+                        ${provider ? `<span class="image-provider">${escapeHtml(provider)}</span>` : ''}
+                        ${model ? `<span class="image-model" title="${escapeHtml(model)}">${escapeHtml(model)}</span>` : ''}
+                    </div>
+                ` : ''}
             </div>
             <div class="image-info">
                 <div class="image-name" title="${escapeHtml(img.name)}">${escapeHtml(formatImageName(img.name))}</div>

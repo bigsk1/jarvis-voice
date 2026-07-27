@@ -79,6 +79,7 @@ function renderGallery() {
     gallery.innerHTML = filteredVideos.map((vid, index) => {
         // Use provider from API if available, otherwise detect from tags/filename
         const provider = vid.provider || detectProvider(vid.name, vid.tags);
+        const model = String(vid.model || '').trim();
         const duration = vid.duration ? formatDuration(vid.duration) : '';
         
         return `
@@ -91,7 +92,12 @@ function renderGallery() {
                 <div class="video-play-overlay">
                     <div class="video-play-icon">▶</div>
                 </div>
-                ${provider ? `<span class="video-provider">${provider}</span>` : ''}
+                ${provider || model ? `
+                    <div class="video-badges">
+                        ${provider ? `<span class="video-provider">${escapeHtml(provider)}</span>` : ''}
+                        ${model ? `<span class="video-model" title="${escapeHtml(model)}">${escapeHtml(model)}</span>` : ''}
+                    </div>
+                ` : ''}
                 ${duration ? `<span class="video-duration">${duration}</span>` : ''}
             </div>
             <div class="video-info">

@@ -14,6 +14,10 @@ try:
 except ImportError:
     from lib.stash_helper import get_stash_dir
 from internal_api import get_internal_api_base_url, get_internal_api_headers
+from image_catalog import (
+    load_image_catalog as _load_image_catalog,
+    save_image_catalog as _save_image_catalog,
+)
 
 gallery_bp = Blueprint('gallery', __name__)
 
@@ -25,20 +29,13 @@ IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif', '.webp')
 
 def load_image_catalog():
     """Load the image catalog from disk."""
-    if IMAGE_CATALOG_FILE.exists():
-        try:
-            with open(IMAGE_CATALOG_FILE) as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {}
+    return _load_image_catalog(IMAGE_CATALOG_FILE)
 
 
 def save_image_catalog(catalog):
     """Save the image catalog to disk."""
     try:
-        with open(IMAGE_CATALOG_FILE, 'w') as f:
-            json.dump(catalog, f, indent=2)
+        _save_image_catalog(IMAGE_CATALOG_FILE, catalog)
     except Exception as e:
         print(f"⚠️  Failed to save image catalog: {e}")
 
@@ -109,14 +106,12 @@ def update_image_favorite(filename, favorite):
     return meta
 
 
-def lookup_image_stash_metadata(filename):
-    """
-    Look up metadata for an image file from stash.
-    Returns dict with provider, tags, aspect if found.
-    """
+def load_image_stash_metadata():
+    """Build one filename-indexed view of generated-image stash metadata."""
+    metadata_by_filename = {}
     stash_dir = get_stash_dir()
     if not stash_dir.exists():
-        return None
+        return metadata_by_filename
     
     for space_dir in stash_dir.iterdir():
         if not space_dir.is_dir():
@@ -136,7 +131,7 @@ def lookup_image_stash_metadata(filename):
             
             for file_info in meta.get('files', []):
                 stored_name = file_info.get('stored_name') or file_info.get('name')
-                if stored_name != filename:
+                if not stored_name or stored_name in metadata_by_filename:
                     continue
                 
                 tags = file_info.get('tags', [])
@@ -161,8 +156,9 @@ def lookup_image_stash_metadata(filename):
                         aspect = tag
                         break
                 
-                return {
+                metadata_by_filename[stored_name] = {
                     'provider': provider,
+                    'model': file_info.get('model'),
                     'aspect': aspect,
                     'tags': tags,
                     'tool_origin': file_info.get('tool_origin'),
@@ -171,7 +167,15 @@ def lookup_image_stash_metadata(filename):
         except Exception:
             pass
     
-    return None
+    return metadata_by_filename
+
+
+def lookup_image_stash_metadata(filename):
+    """
+    Look up metadata for an image file from stash.
+    Returns dict with provider, model, tags, and aspect if found.
+    """
+    return load_image_stash_metadata().get(filename)
 
 
 def sync_image_catalog():
@@ -198,11 +202,25 @@ def sync_image_catalog():
         del catalog[name]
         changed = True
     
-    # Add new images (lookup stash metadata)
+    # Add new images and repair incomplete existing entries. Build the stash
+    # index at most once so legacy rows do not cause one full scan per image.
+    stash_metadata = None
     for filename in actual_files:
-        if filename not in catalog:
-            meta = lookup_image_stash_metadata(filename)
-            catalog[filename] = meta or {}
+        existing = catalog.get(filename)
+        if existing is not None and existing.get('model'):
+            continue
+
+        if stash_metadata is None:
+            stash_metadata = load_image_stash_metadata()
+        meta = stash_metadata.get(filename)
+        updated = dict(existing or {})
+        if meta:
+            for key, value in meta.items():
+                if value is not None and not updated.get(key):
+                    updated[key] = value
+
+        if existing != updated:
+            catalog[filename] = updated
             changed = True
             if meta and meta.get('provider'):
                 print(f"📝 Image catalog: {filename} ({meta.get('provider')})")
@@ -327,6 +345,8 @@ def list_gallery_images():
                 meta = catalog.get(f.name, {})
                 if meta.get('provider'):
                     image_info['provider'] = meta['provider']
+                if meta.get('model'):
+                    image_info['model'] = meta['model']
                 if meta.get('aspect'):
                     image_info['aspect'] = meta['aspect']
                 if meta.get('tags'):
