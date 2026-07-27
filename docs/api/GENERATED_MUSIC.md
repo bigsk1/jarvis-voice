@@ -3,6 +3,9 @@
 Generate AI music through Jarvis and stream the durable files saved in
 `data/generated_music/`.
 
+For tool behavior, provider integration, storage, and Audio Gallery details, see
+the [`generate_music` tool guide](../tools/generate-music-tool/README.md).
+
 ## Base URL
 
 ```text
@@ -32,9 +35,10 @@ Content-Type: application/json
 
 This is a synchronous generation request. Short tracks may still take several
 minutes. The API timeout scales with the requested or composition-plan duration.
-The generated-music API has a separate per-IP limit of 10 requests per minute by
+When global API rate limiting is enabled, non-loopback requests to the
+generated-music API have a separate limit of 10 requests per minute per IP by
 default. Set `API_RATE_LIMIT_GENERATED_MUSIC_PER_MINUTE` to override it, or set
-it to `0` to disable this bucket.
+it to `0` to disable this bucket. Loopback requests are trusted and exempt.
 
 ### Request fields
 
@@ -176,3 +180,9 @@ curl http://localhost:8880/api/generated-music/music_deep_orbit_20260726_230000.
 
 Only recognized audio filenames inside `data/generated_music/` are served.
 Path traversal and symlink escapes are rejected.
+
+## Related documentation
+
+- [`generate_music` tool guide](../tools/generate-music-tool/README.md)
+- [Stash API](STASH.md)
+- [Canvas API](CANVAS.md)

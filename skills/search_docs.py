@@ -25,7 +25,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 TOPIC_PATHS = {
     "video": ["video", "api/generated-videos"],
     "image": ["api/generated-images", "CANVAS_SYSTEM"],
-    "music": ["api/generated-music", "11labs"],
+    "music": ["tools/generate-music-tool", "api/generated-music", "11labs"],
     "memory": ["MEMORY_SYSTEM", "MEMORY_INTELLIGENCE"],
     "api": ["api"],
     "tools": ["TOOL_CALLING_SYSTEM", "TOOL_MANAGEMENT"],

@@ -866,6 +866,9 @@ Action keywords: "create", "save", "canvas", "generate", "similar", "search"
 
 ElevenLabs music generation integrated into Jarvis with automatic stash storage and web UI playback:
 
+See the canonical [`generate_music` tool guide](tools/generate-music-tool/README.md)
+for the current provider, storage, Audio Gallery, and FastAPI boundaries.
+
 **How It Works:**
 1. User requests music generation (e.g., "Create an epic intro for my podcast")
 2. Tool calls ElevenLabs Music API with prompt, genre, mood, tempo, duration

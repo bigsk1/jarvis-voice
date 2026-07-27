@@ -1371,6 +1371,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 **2025-12-31:**
 - ✅ **Deep Memory Search** - Unified multi-source search (memory, conversations, intel, canvas, stash)
 - ✅ **ElevenLabs Music Generation** - AI music creation with stash integration and web playback
+  - See: [`docs/tools/generate-music-tool/README.md`](tools/generate-music-tool/README.md)
 - ✅ **Audio Playback Controls** - Enhanced TTS controls with pause/resume/stop
 - ✅ **Prompt System Enhancements** - Context-first injection, new prompts (email, daily, music)
 

@@ -233,7 +233,7 @@ JSON object printed to stdout:
 |------|-------------|
 | `generate_image` | AI image generation (Gemini) |
 | `analyze_image` | Vision analysis (Grok/Claude/GPT-4o) |
-| `generate_music` | AI music creation (ElevenLabs) |
+| [`generate_music`](../docs/tools/generate-music-tool/README.md) | Provider-ready AI music creation (currently ElevenLabs) |
 | `pdf_create` | Generate PDFs from content |
 | `pdf_read` | Extract text/images from PDFs |
 | `screenshot_url` | Full-page screenshots with AI analysis |

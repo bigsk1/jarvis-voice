@@ -4,6 +4,10 @@
 > **Added**: December 2025  
 > **API**: ElevenLabs Music API
 
+This is the provider-specific ElevenLabs reference. For the current
+provider-neutral tool, storage, Audio Gallery, and FastAPI behavior, see the
+canonical [`generate_music` tool guide](../tools/generate-music-tool/README.md).
+
 ## Overview
 
 The `generate_music` tool uses ElevenLabs' AI music generation API to create original songs, instrumentals, jingles, and soundtracks from text prompts.
@@ -154,8 +158,8 @@ The web UI automatically detects music generation results and shows an audio pla
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /v1/music/generate` | Simple generation |
-| `POST /v1/music/generate-with-plan` | Detailed composition |
+| `POST /v1/music` | Simple generation or a structured composition plan |
+| `POST /v1/music/detailed` | Simple generation with a detailed response |
 
 ### Rate Limits
 

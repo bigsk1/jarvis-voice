@@ -215,6 +215,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - ElevenLabs is the current adapter; `MUSIC_TOOL_PROVIDER` and per-request
     `provider` overrides preserve the boundary for future providers
   - API: `POST /api/generated-music/generate`
+  - See [`docs/tools/generate-music-tool/README.md`](docs/tools/generate-music-tool/README.md)
   - See [`docs/api/GENERATED_MUSIC.md`](docs/api/GENERATED_MUSIC.md)
 - **Feedback System**: LLM self-critique for continuous improvement
   - Per-query feedback: `--feedback` flag on orchestrator
@@ -791,7 +792,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `status_recap` - **Daily status**: aggregates weather, crypto, stocks, alerts, reminders, system health → Canvas + Stash
 - `schedule_task` - **Scheduled tasks**: create/list/update/cancel/delete future query or workflow runs, inspect run history, and queue `run_now`
 - `workflow` - **Deterministic workflow discovery**: search/describe eligible shared or personal recipes and synchronously run one in the current orchestration turn
-- `generate_music` - **AI Music**: ElevenLabs music generation with genres, moods, tempo, stash integration
+- [`generate_music`](docs/tools/generate-music-tool/README.md) - **AI Music**: provider-ready music generation with genres, moods, tempo, stash integration
 - `generate_password` - **Password generation**: Secure passwords with length, complexity, memorable options
 - `samantha` - **Multi-agent**: Chat with Samantha (moltbot) AI, delegate tasks, fire-and-forget webhooks
 - `deep_memory_search` - **Comprehensive search**: Multi-source search across memory, conversations, intel, canvas, stash
@@ -1240,6 +1241,7 @@ LIMIT 7;"
 - [`docs/api/API_OVERVIEW.md`](docs/api/API_OVERVIEW.md) - **FastAPI** (Memory, Query, Workflows, Stash, Canvas, Intel, Images, Conversations) ⭐ ENHANCED
 - [`docs/api/INTEL.md`](docs/api/INTEL.md) - **Intel API** (CRUD for jarvis-intel files, ingestion, stats)
 - [`docs/api/IMAGES.md`](docs/api/IMAGES.md) - **Images API** (Cloudflare CDN upload, multi-agent image sharing)
+- [`docs/api/GENERATED_MUSIC.md`](docs/api/GENERATED_MUSIC.md) - **Generated Music API** (generation, readiness, saved-track streaming)
 - [`docs/api/WORKFLOWS.md`](docs/api/WORKFLOWS.md) - **Workflows API** (list, execute, history)
 - [`docs/service/`](docs/service/) - **Background Services** documentation (daemons, auto-resolve)
 - [`docs/tools/scheduled-tasks/scheduled-tasks.md`](docs/tools/scheduled-tasks/scheduled-tasks.md) - **Scheduled Tasks** (scheduler, parser, API, runner, Memory UI)
@@ -1254,6 +1256,7 @@ LIMIT 7;"
 **Core System:**
 - [`docs/tools/phone/PHONE_CALLS.md`](docs/tools/phone/PHONE_CALLS.md) - **AI Phone Calls** (Vapi.ai, personas, transcripts, contacts)
 - [`docs/tools/spotify/SPOTIFY.md`](docs/tools/spotify/SPOTIFY.md) - **Spotify Integration** (playback control, search, multi-device)
+- [`docs/tools/generate-music-tool/README.md`](docs/tools/generate-music-tool/README.md) - **Music Generation** (providers, parameters, storage, Audio Gallery, FastAPI)
 - [`docs/STASH_SYSTEM.md`](docs/STASH_SYSTEM.md) - **Artifact storage** (multi-step workflows, URL downloads, SSRF protection)
 - [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md) - **Self-learning system** (Phase 1: positive/negative constraints)
 - [`docs/AUTO_CONTEXT_SYSTEM.md`](docs/AUTO_CONTEXT_SYSTEM.md) - Short-term conversation memory
