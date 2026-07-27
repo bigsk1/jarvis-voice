@@ -683,9 +683,10 @@ def get_system_config():
         'config': {
             **config,
             
-            # Image
+            # Media providers
             'IMAGE_TOOL_PROVIDER': get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini'),
             'VIDEO_TOOL_PROVIDER': get_jarvis_setting('VIDEO_TOOL_PROVIDER', 'xai'),
+            'MUSIC_TOOL_PROVIDER': get_jarvis_setting('MUSIC_TOOL_PROVIDER', 'elevenlabs'),
             'JARVIS_RESPONSE_STYLE': get_jarvis_setting('JARVIS_RESPONSE_STYLE', 'auto'),
             'JARVIS_QA_WORD_LIMIT': get_jarvis_setting('JARVIS_QA_WORD_LIMIT', str(DEFAULT_JARVIS_QA_WORD_LIMIT)),
             'JARVIS_MULTI_TURN_WORD_LIMIT': get_jarvis_setting('JARVIS_MULTI_TURN_WORD_LIMIT', str(DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT)),
@@ -732,6 +733,7 @@ def update_web_settings():
 
     structured = any(k in data for k in [
         'llm_provider', 'llm_model', 'router_prompt_version', 'image_provider', 'video_provider',
+        'music_provider',
         'response_style', 'tool_rag_limit', 'qa_word_limit', 'multi_turn_word_limit',
         'completion_guard_enabled', 'completion_guard_mode',
         'completion_guard_ticket_on_fail', 'completion_guard_show_ui_prompt',
@@ -3081,12 +3083,49 @@ User instruction: {user_input}"""
         # Filter to only available tools
         available_tools = [
             t for t in tools 
-            if t.get('enabled', True) and not t.get('blocked', False)
+            if (
+                t.get('enabled', True)
+                and t.get('available', True)
+                and not t.get('blocked', False)
+            )
         ]
+        available_tools_by_name = {
+            str(tool.get('name') or ''): tool
+            for tool in available_tools
+            if tool.get('name')
+        }
+        requested_tool_hints = data.get('tool_hints')
+        if not isinstance(requested_tool_hints, list):
+            requested_tool_hints = []
+        selected_tool_hints = []
+        for name in requested_tool_hints:
+            if (
+                isinstance(name, str)
+                and name in available_tools_by_name
+                and name not in selected_tool_hints
+            ):
+                selected_tool_hints.append(name)
+            if len(selected_tool_hints) >= 3:
+                break
+
         tool_descriptions = "\n".join([
             f"- {t['name']}: {t.get('description', 'No description')[:100]}"
             for t in available_tools[:100]  # Limit to 100 tools, lists them A-Z , not smart but currently at 70 tools 4/6/26 is 1,900 token context window
         ])
+        selected_tool_context = ""
+        if selected_tool_hints:
+            selected_descriptions = "\n".join(
+                f"- {name}: "
+                f"{available_tools_by_name[name].get('description', 'No description')[:280]}"
+                for name in selected_tool_hints
+            )
+            selected_tool_context = f"""
+## User-Selected Tool Context
+The user explicitly selected these capabilities. Use them to understand the
+target task, but do not mention their names or internal parameters in the
+enhanced prompt:
+{selected_descriptions}
+"""
         
         # Build the enhancement system prompt
         system_prompt = f"""You are a prompt enhancement assistant for Jarvis, an AI voice assistant.
@@ -3099,6 +3138,8 @@ Your job is to take a rough, casual user input and transform it into an optimal,
 - **Native Web Search**: Jarvis has built-in web search that provides comprehensive, real-time information. This is BETTER than external search tools.
 - **Tools Available**:
 {tool_descriptions}
+
+{selected_tool_context}
 
 ## Enhancement Guidelines
 1. **Be Specific**: Add details about what information is wanted
@@ -3113,6 +3154,9 @@ Your job is to take a rough, casual user input and transform it into an optimal,
 10. **Reduce distracting nouns**: If the query includes domain words that could pull retrieval the wrong way, rewrite so the real action is clearer than the background topic
 11. **Express desired outcome**: State what a successful answer should deliver, such as a compatible product, a verified recommendation, a short comparison, or a direct answer
 12. **Stay provider/tool agnostic**: Do not mention tool names, APIs, or internal system behavior
+13. **Do not invent operational parameters**: Tool hints are routing preferences, not permission to add model names, providers, durations, dimensions, aspect ratios, resolutions, file types, output formats, filenames, or schema fields unless the user supplied them
+14. **Enhance media creatively, not mechanically**: For music, develop useful creative direction such as mood, genre family, instrumentation, energy, arrangement, vocal intent, and an original lyrical theme. Use qualitative tempo language rather than inventing an exact BPM. Do not introduce artist/band names, copyrighted songs or lyrics, or voice imitation. For visual media, improve scene, composition, motion, camera, lighting, and atmosphere without inventing operational parameters
+15. **Preserve user choices**: If the user supplied an operational value, keep it exactly; otherwise leave that choice to Jarvis and the selected tool
 
 ## Examples
 Input: "bitcoin news"
@@ -3211,6 +3255,7 @@ Rules:
             'enhanced': enhanced,
             'mode': current_mode,
             'provider': provider_type,
+            'tool_hints': selected_tool_hints,
             'vision_grounded': False,
             'vision_warning': vision_warning,
         })

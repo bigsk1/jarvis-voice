@@ -529,6 +529,10 @@ MEDIA_MODEL_ENV_KEYS: dict[str, dict[str, str]] = {
         "gemini": "GEMINI_VIDEO_MODEL",
         "openai": "OPENAI_VIDEO_MODEL",
     },
+    "music": {
+        "elevenlabs": "ELEVENLABS_MUSIC_MODEL",
+        "gemini": "GEMINI_MUSIC_MODEL",
+    },
 }
 
 
@@ -728,6 +732,96 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
                     "pricing": {
                         "unit": "second",
                         "usd_by_resolution": {"720p": 0.30, "1080p": 0.50},
+                    },
+                },
+            ],
+        },
+    },
+    "music": {
+        "elevenlabs": {
+            "name": "ElevenLabs",
+            "models": [
+                {
+                    "id": "music_v1",
+                    "name": "Eleven Music v1",
+                    "default": True,
+                    "api": "compose",
+                    "capabilities": [
+                        "text_to_music",
+                        "composition_plan",
+                        "instrumental",
+                        "vocals",
+                        "lyrics",
+                    ],
+                    "duration_seconds": {"min": 3, "max": 600},
+                    "output_formats": ["mp3", "opus", "wav"],
+                },
+                {
+                    "id": "music_v2",
+                    "name": "Eleven Music v2",
+                    "api": "compose",
+                    "capabilities": [
+                        "text_to_music",
+                        "chunk_composition_plan",
+                        "instrumental",
+                        "vocals",
+                        "lyrics",
+                        "multilingual",
+                        "audio_reference",
+                        "inpainting",
+                    ],
+                    "duration_seconds": {"min": 3, "max": 600},
+                    "output_formats": ["mp3", "opus", "wav"],
+                },
+            ],
+        },
+        "gemini": {
+            "name": "Google Gemini",
+            "models": [
+                {
+                    "id": "lyria-3-clip-preview",
+                    "name": "Lyria 3 Clip Preview",
+                    "default": True,
+                    "api": "interactions",
+                    "preview": True,
+                    "capabilities": [
+                        "text_to_music",
+                        "image_to_music",
+                        "instrumental",
+                        "vocals",
+                        "lyrics",
+                        "multilingual",
+                        "synthid",
+                    ],
+                    "duration_seconds": {"fixed": 30},
+                    "output_formats": ["mp3"],
+                    "pricing": {
+                        "unit": "request",
+                        "usd": 0.04,
+                    },
+                },
+                {
+                    "id": "lyria-3-pro-preview",
+                    "name": "Lyria 3 Pro Preview",
+                    "api": "interactions",
+                    "preview": True,
+                    "capabilities": [
+                        "text_to_music",
+                        "image_to_music",
+                        "full_length",
+                        "prompt_controlled_duration",
+                        "complex_song_structure",
+                        "instrumental",
+                        "vocals",
+                        "lyrics",
+                        "multilingual",
+                        "synthid",
+                    ],
+                    "duration_seconds": {"prompt_controlled": True},
+                    "output_formats": ["mp3", "wav"],
+                    "pricing": {
+                        "unit": "request",
+                        "usd": 0.08,
                     },
                 },
             ],

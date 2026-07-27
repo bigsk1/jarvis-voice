@@ -160,6 +160,7 @@ body {
 }
 
 .audio-provider,
+.audio-model,
 .audio-format,
 .audio-duration {
     position: absolute;
@@ -178,6 +179,18 @@ body {
     top: 10px;
     left: 10px;
     background: var(--audio-accent);
+}
+
+.audio-model {
+    top: 38px;
+    left: 10px;
+    max-width: calc(100% - 20px);
+    overflow: hidden;
+    background: rgba(13, 17, 23, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    text-overflow: ellipsis;
+    text-transform: none;
+    white-space: nowrap;
 }
 
 .audio-format {

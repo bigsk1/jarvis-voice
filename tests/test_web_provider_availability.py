@@ -75,6 +75,11 @@ class SettingsAvailabilityTests(unittest.TestCase):
             availability["image"]["gemini"]["reason"],
             "Gemini API key missing",
         )
+        self.assertEqual(availability["music"]["gemini"]["status"], "unavailable")
+        self.assertEqual(
+            availability["music"]["elevenlabs"]["reason"],
+            "ElevenLabs API key missing",
+        )
         # TTS: local engines available without keys
         self.assertEqual(availability["tts"]["qwen3-tts"]["status"], "available")
         self.assertEqual(availability["tts"]["elevenlabs"]["status"], "unavailable")
@@ -146,6 +151,63 @@ class SettingsAvailabilityTests(unittest.TestCase):
         self.assertIn("provider_availability", result)
         self.assertEqual(result["provider_availability"]["llm"]["openai"]["status"], "available")
 
+    def test_music_provider_inherits_env_and_reports_web_override(self):
+        env = {
+            "MUSIC_TOOL_PROVIDER": "elevenlabs",
+            "ELEVENLABS_MUSIC_MODEL": "music_v1",
+            "GEMINI_MUSIC_MODEL": "lyria-3-pro-preview",
+            "ELEVENLABS_API_KEY": "eleven-key",
+            "GEMINI_API_KEY": "gemini-key",
+        }
+        manager, patches = self._manager("cloud", env)
+        web_config = {
+            "cloud": {"music_provider": "gemini"},
+            "audio": {},
+            "ui": {},
+            "conversation": {},
+            "tools": {},
+        }
+        with (
+            patches[0], patches[1],
+            patch.object(self.settings_module, "load_web_config", return_value=web_config),
+            patch.object(manager, "_get_provider_models", return_value={}),
+        ):
+            result = manager.get_settings_for_ui()
+
+        self.assertEqual(result["music"]["provider"], {
+            "value": "gemini",
+            "default": "elevenlabs",
+            "is_override": True,
+            "options": ["elevenlabs", "gemini"],
+        })
+        self.assertEqual(
+            result["music_providers"]["gemini"]["model"],
+            "lyria-3-pro-preview",
+        )
+        self.assertEqual(
+            result["provider_availability"]["music"]["gemini"]["status"],
+            "available",
+        )
+
+    def test_music_provider_override_is_saved_per_mode(self):
+        env = {
+            "MUSIC_TOOL_PROVIDER": "elevenlabs",
+            "ELEVENLABS_API_KEY": "eleven-key",
+            "GEMINI_API_KEY": "gemini-key",
+        }
+        manager, patches = self._manager("cloud", env)
+        web_config = {"cloud": {}}
+        with (
+            patches[0], patches[1],
+            patch.object(self.settings_module, "load_web_config", return_value=web_config),
+            patch.object(self.settings_module, "save_web_config", return_value=True),
+        ):
+            self.assertTrue(
+                manager.save_web_overrides({"music_provider": "gemini"})
+            )
+
+        self.assertEqual(web_config["cloud"]["music_provider"], "gemini")
+
     def test_save_rejects_newly_selected_unavailable_provider(self):
         from server.services.settings_manager import SettingsValidationError
 
@@ -207,6 +269,21 @@ class SettingsAvailabilityTests(unittest.TestCase):
             with self.assertRaises(SettingsValidationError) as ctx:
                 manager.save_web_overrides({"image_provider": "gemini"})
         self.assertEqual(ctx.exception.field, "image_provider")
+
+        env = {
+            "MUSIC_TOOL_PROVIDER": "elevenlabs",
+            "ELEVENLABS_API_KEY": "k",
+        }
+        manager, patches = self._manager("cloud", env)
+        web_config = {"cloud": {}}
+        with (
+            patches[0], patches[1],
+            patch.object(self.settings_module, "load_web_config", return_value=web_config),
+            patch.object(self.settings_module, "save_web_config", return_value=True),
+        ):
+            with self.assertRaises(SettingsValidationError) as ctx:
+                manager.save_web_overrides({"music_provider": "gemini"})
+        self.assertEqual(ctx.exception.field, "music_provider")
 
     def test_clearing_override_is_always_allowed(self):
         env = {"LLM_PROVIDER": "anthropic"}

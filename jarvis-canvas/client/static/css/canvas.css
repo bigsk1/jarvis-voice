@@ -551,6 +551,70 @@
     text-decoration: underline;
 }
 
+.canvas-audio-embeds {
+    display: grid;
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.canvas-audio-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 14px;
+}
+
+.canvas-audio-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    color: var(--text-primary);
+}
+
+.canvas-audio-icon {
+    font-size: 1.15rem;
+}
+
+.canvas-audio-title {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.canvas-audio-badge {
+    margin-left: auto;
+    padding: 3px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.canvas-audio-player {
+    display: block;
+    width: 100%;
+}
+
+.canvas-audio-actions {
+    margin-top: 10px;
+    font-size: 0.9rem;
+}
+
+.canvas-audio-actions a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.canvas-audio-actions a:hover {
+    text-decoration: underline;
+}
+
 .tag {
     padding: 4px 10px;
     background: var(--bg-tertiary);

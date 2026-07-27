@@ -256,7 +256,7 @@ DELETE /api/gallery/videos/<name> # Delete video
 - Search by title, filename, genre, mood, tempo, or tags
 - Filter by provider or favorites
 - Sort by date, title, size, or duration
-- Provider, format, and duration badges
+- Provider, model, format, and duration badges
 - Favorite, download, and confirmed delete actions
 - Responsive single-column mobile layout
 
@@ -474,7 +474,7 @@ Pages are grouped into folders by splitting their title on `/`:
 ### Page View
 - Breadcrumb path above the title (e.g., `Workflows / Research`)
 - Markdown rendering with syntax highlighting
-- Embedded playback for YouTube links and direct or stashed video files
+- Embedded playback for YouTube links plus direct or stashed video/audio files
 - Source query display
 - Edit, delete, pin, download, print buttons
 - Image lightbox on click
@@ -665,7 +665,7 @@ Canvas pages can include stash-hosted media:
 
 The canvas server resolves `stash://` URLs to **API** endpoints at render time (`GET /api/stash/<space_id>/<file_id>`). Pinning a page pins its stash references to prevent TTL expiration.
 
-For video files, Canvas inspects `GET /api/stash/<space_id>/<file_id>/metadata` and renders a native player from the same-origin stash file. Detection is based on MIME type or file extension, not the tool that created the video. If the page contains both a remote source URL and the matching stash artifact, Canvas prefers the durable stash copy.
+For video and audio files, Canvas inspects `GET /api/stash/<space_id>/<file_id>/metadata` and renders a native player from the same-origin stash file. Detection is based on MIME type or file extension, not the tool that created the media. If the page contains both a remote source URL and the matching stash artifact, Canvas prefers the durable stash copy.
 
 ### Stash viewer (transcripts and text artifacts)
 

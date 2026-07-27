@@ -209,11 +209,11 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - CDN catalog (`cdn_catalog.json`) caches URLs - no re-uploads needed
   - API: `/api/generated-images/*`
   - See [`docs/api/GENERATED_IMAGES.md`](docs/api/GENERATED_IMAGES.md)
-- **Generated Music API**: Provider-ready AI music generation
+- **Generated Music API**: Catalog-backed AI music generation
   - Generate songs, instrumentals, jingles, and soundtracks with duration,
     genre, mood, tempo, quality, and structured composition options
-  - ElevenLabs is the current adapter; `MUSIC_TOOL_PROVIDER` and per-request
-    `provider` overrides preserve the boundary for future providers
+  - ElevenLabs (`music_v1` or `music_v2`) and Google Gemini Lyria Clip/Pro
+    adapters; `MUSIC_TOOL_PROVIDER` and per-request `provider` choose the provider
   - API: `POST /api/generated-music/generate`
   - See [`docs/tools/generate-music-tool/README.md`](docs/tools/generate-music-tool/README.md)
   - See [`docs/api/GENERATED_MUSIC.md`](docs/api/GENERATED_MUSIC.md)
@@ -1735,7 +1735,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Progress animation, 10-second visibility after playback
   - Auto-hides when typing new message
 - ✅ **New @prompts** - Context-first prompt injection
-  - `@generate_music` - ElevenLabs best practices for music prompts
+  - `@generate_music` - Provider-safe best practices for music prompts
   - `@email` - Professional email composition with send_email format
   - `@daily` - Daily briefing (time, weather, reminders, crypto)
   - Prompts now inject BEFORE user message for better LLM context
@@ -1764,7 +1764,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - ✅ **Canvas Mobile Responsive** - Hamburger menu and slide-out sidebar at ≤730px
 - ✅ **Jarvis Web UI v2.0** - Full-featured web interface
   - **Audio playback controls**: Speaker button with pause/resume/stop
-  - **Music playback**: ElevenLabs generated music plays inline
+  - **Music playback**: Generated music plays inline
   - **New @prompts**: `@generate_music`, `@email`, `@daily` with context-first injection
   - **Server Logs Panel**: Real-time LLM + Tool streaming at bottom of UI
   - **`/logs` Log Viewer**: Dedicated read-only log browser with auth protection, mobile drill-down navigation, folder/file search, lazy loading, YAML-style JSONL rendering, and markdown viewing
@@ -1946,7 +1946,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.55.0 (July 2026)
+**Current Version:** v2.55.1 (July 2026)
 **Status:** Production Ready ✅
 **Latest Features:** v2.54.1 adds Grok 4.5 catalog/default support, xAI
 OAuth/API-key routing clarity, Web xAI quota status, versioned router prompts

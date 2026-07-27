@@ -106,11 +106,13 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
         child = export_config_environment(mode)
         return {
             "image": get_config_value("IMAGE_TOOL_PROVIDER"),
+            "music": get_config_value("MUSIC_TOOL_PROVIDER"),
             "tts": get_config_value("TTS_PROVIDER"),
             "tool_rag": get_config_value("CLOUD_TOOL_RAG_LIMIT"),
             "analyze_provider": get_config_value("ANALYZE_IMAGE_LLM_PROVIDER"),
             "analyze_model": get_config_value("ANALYZE_IMAGE_LLM_MODEL"),
             "child_image": child.get("JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER"),
+            "child_music": child.get("JARVIS_OVERRIDE_MUSIC_TOOL_PROVIDER"),
             "child_tts": child.get("JARVIS_OVERRIDE_TTS_PROVIDER"),
             "child_tool_rag": child.get("JARVIS_OVERRIDE_CLOUD_TOOL_RAG_LIMIT"),
             "child_analyze_provider": child.get(
@@ -124,6 +126,7 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
     web_config = {
         "cloud": {
             "image_provider": "gemini",
+            "music_provider": "gemini",
             "tts_provider": "elevenlabs",
             "tool_rag_limit": 9,
             "llm_provider": "xai",
@@ -137,11 +140,13 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
 
     assert result == {
         "image": "openai",
+        "music": "gemini",
         "tts": "elevenlabs",
         "tool_rag": "9",
         "analyze_provider": "xai",
         "analyze_model": "grok-4.5",
         "child_image": "openai",
+        "child_music": "gemini",
         "child_tts": "elevenlabs",
         "child_tool_rag": "9",
         "child_analyze_provider": "xai",

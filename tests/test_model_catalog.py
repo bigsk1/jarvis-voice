@@ -42,10 +42,14 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(get_default_media_model_id("video", "gemini"), "veo-3.1-fast-generate-preview")
         self.assertEqual(get_default_media_model_id("video", "openai"), "sora-2")
         self.assertEqual(get_default_media_model_id("video", "xai"), "grok-imagine-video")
+        self.assertEqual(get_default_media_model_id("music", "elevenlabs"), "music_v1")
+        self.assertEqual(get_default_media_model_id("music", "gemini"), "lyria-3-clip-preview")
 
     def test_media_env_keys_and_ui_provider_metadata_come_from_catalog(self):
         self.assertEqual(get_media_model_env_key("image", "gemini"), "GEMINI_IMAGE_MODEL")
         self.assertEqual(get_media_model_env_key("video", "openai"), "OPENAI_VIDEO_MODEL")
+        self.assertEqual(get_media_model_env_key("music", "elevenlabs"), "ELEVENLABS_MUSIC_MODEL")
+        self.assertEqual(get_media_model_env_key("music", "gemini"), "GEMINI_MUSIC_MODEL")
         self.assertEqual(get_media_provider_options("image")["gemini"]["model"], "gemini-3.1-flash-image")
         self.assertEqual(get_media_provider_options("image")["gemini"]["model_name"], "Gemini 3.1 Flash Image")
         self.assertEqual(get_media_provider_options("video")["xai"]["model"], "grok-imagine-video")
@@ -53,6 +57,18 @@ class ModelCatalogTests(unittest.TestCase):
             get_media_provider_options("video")["gemini"]["resolutions"],
             ["720p", "1080p", "4k"],
         )
+        music_options = get_media_provider_options("music")
+        self.assertEqual(music_options["elevenlabs"]["model"], "music_v1")
+        self.assertEqual(music_options["gemini"]["model"], "lyria-3-clip-preview")
+        self.assertIn("synthid", music_options["gemini"]["capabilities"])
+        lyria_pro = get_media_model_metadata(
+            "music",
+            "gemini",
+            "lyria-3-pro-preview",
+        )
+        self.assertIn("full_length", lyria_pro["capabilities"])
+        self.assertEqual(lyria_pro["output_formats"], ["mp3", "wav"])
+        self.assertFalse(lyria_pro.get("default", False))
 
     def test_media_provider_options_follow_explicit_model_pin_capabilities(self):
         options = get_media_provider_options(
@@ -83,6 +99,7 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(resolve_media_model("image", "openai"), "gpt-image-2")
         self.assertEqual(resolve_media_model("image", "openai", ""), "gpt-image-2")
         self.assertEqual(resolve_media_model("image", "openai", "future-image-model"), "future-image-model")
+        self.assertEqual(resolve_media_model("music", "elevenlabs", "music_v2"), "music_v2")
 
     def test_retired_media_models_resolve_to_replacements(self):
         with self.assertLogs("lib.model_catalog", level="WARNING") as captured:
@@ -103,6 +120,10 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(xai_video["usd_by_resolution"]["720p"], 0.07)
         omni_video = get_media_model_pricing("video", "gemini", "gemini-omni-flash-preview")
         self.assertEqual(omni_video["usd_by_resolution"]["720p"], 0.10)
+        lyria = get_media_model_pricing("music", "gemini", "lyria-3-clip-preview")
+        self.assertEqual(lyria, {"unit": "request", "usd": 0.04})
+        lyria_pro = get_media_model_pricing("music", "gemini", "lyria-3-pro-preview")
+        self.assertEqual(lyria_pro, {"unit": "request", "usd": 0.08})
 
     def test_openai_options_are_newest_first(self):
         models = [entry["id"] for entry in get_provider_model_options("openai")]

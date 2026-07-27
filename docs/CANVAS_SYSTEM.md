@@ -411,6 +411,7 @@ Pages are grouped into folders by splitting their title on `/`:
 ### Page View
 - Breadcrumb path above the title (e.g., `Workflows / Research`)
 - Markdown rendering with syntax highlighting
+- Embedded playback for YouTube links plus direct or stashed video/audio files
 - Source query display
 - Edit, delete, pin, download, print buttons
 - Image lightbox on click
@@ -595,13 +596,19 @@ jarvis-canvas/
 
 ## Stash Integration
 
-Canvas pages can include stash-hosted images:
+Canvas pages can include stash-hosted media:
 
 ```markdown
 ![Uploaded Image](stash://space_xxx/file_id)
 ```
 
 The canvas server resolves `stash://` URLs to **API** endpoints at render time (`GET /api/stash/<space_id>/<file_id>`). Pinning a page pins its stash references to prevent TTL expiration.
+
+For video and audio files, Canvas inspects
+`GET /api/stash/<space_id>/<file_id>/metadata` and renders a native player from
+the same-origin stash file. Detection is based on MIME type or file extension,
+not the tool that created the media. If a page contains both a remote source URL
+and its matching stash artifact, Canvas prefers the durable stash copy.
 
 ### Stash viewer (transcripts and text artifacts)
 

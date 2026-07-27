@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import sys
 from pathlib import Path
@@ -183,11 +184,226 @@ def test_music_provider_resolution_is_explicit(monkeypatch):
         generate_music_tool.resolve_music_provider("ELEVENLABS")
         == "elevenlabs"
     )
+    assert generate_music_tool.resolve_music_provider("GEMINI") == "gemini"
     with pytest.raises(
         ValueError,
         match="Unsupported music provider 'suno'",
     ):
         generate_music_tool.resolve_music_provider("suno")
+
+
+def test_jarvis_web_music_provider_override_outranks_tool_argument(
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "JARVIS_OVERRIDE_MUSIC_TOOL_PROVIDER",
+        "gemini",
+    )
+    monkeypatch.setattr(
+        generate_music_tool,
+        "get_config_value",
+        lambda key, default=None: (
+            "elevenlabs" if key == "MUSIC_TOOL_PROVIDER" else default
+        ),
+    )
+
+    assert generate_music_tool.resolve_music_provider("elevenlabs") == "gemini"
+
+
+def test_gemini_adapter_normalizes_fixed_clip_contract(monkeypatch):
+    audio_bytes = b"ID3" + (b"music" * 300)
+    captured = {}
+
+    class FakeInteractions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                id="interaction-123",
+                status="completed",
+                output_audio=SimpleNamespace(
+                    data=base64.b64encode(audio_bytes).decode(),
+                    mime_type="audio/mpeg",
+                ),
+                output_text="Original instrumental",
+            )
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured["client"] = kwargs
+            self.interactions = FakeInteractions()
+
+    monkeypatch.setattr(
+        generate_music_tool,
+        "get_config_value",
+        lambda key, default=None: {
+            "GEMINI_API_KEY": "test-key",
+            "GEMINI_MUSIC_MODEL": "lyria-3-clip-preview",
+        }.get(key, default),
+    )
+    import google
+
+    monkeypatch.setattr(
+        google,
+        "genai",
+        SimpleNamespace(Client=FakeClient),
+        raising=False,
+    )
+
+    result = generate_music_tool.generate_music(
+        prompt="A bright synthwave drive through a neon city",
+        duration_seconds=75,
+        genre="electronic",
+        mood="hopeful",
+        instrumental=True,
+        tempo="120 BPM",
+        output_format="mp3_high",
+        provider="gemini",
+    )
+
+    assert captured["client"] == {"api_key": "test-key"}
+    assert captured["model"] == "lyria-3-clip-preview"
+    assert captured["timeout"] == 300
+    assert "Instrumental only, no vocals." in captured["input"]
+    assert result["audio_bytes"] == audio_bytes
+    assert result["provider"] == "Google Gemini"
+    assert result["duration_ms"] == 30000
+    assert result["requested_duration_ms"] == 75000
+    assert result["output_format"] == "mp3"
+    assert result["requested_output_format"] == "mp3_high"
+    assert result["synthid_watermarked"] is True
+
+
+def test_gemini_adapter_rejects_unsupported_contract_options(monkeypatch):
+    monkeypatch.setattr(
+        generate_music_tool,
+        "get_config_value",
+        lambda key, default=None: {
+            "GEMINI_API_KEY": "test-key",
+        }.get(key, default),
+    )
+
+    with pytest.raises(ValueError, match="returns MP3 only"):
+        generate_music_tool.generate_music(
+            prompt="Original ambient music",
+            output_format="opus_high",
+            provider="gemini",
+        )
+    with pytest.raises(ValueError, match="only by the ElevenLabs"):
+        generate_music_tool.generate_with_composition_plan(
+            title="Structured song",
+            sections=[{"section_name": "intro", "duration_seconds": 30}],
+            provider="gemini",
+        )
+
+
+def test_gemini_pro_adapter_prompts_for_approximate_full_song_duration(
+    monkeypatch,
+):
+    captured = {}
+    audio_bytes = b"ID3" + (b"full-song" * 200)
+
+    class FakeInteractions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                id="interaction-pro-123",
+                status="completed",
+                output_audio=SimpleNamespace(
+                    data=base64.b64encode(audio_bytes).decode(),
+                    mime_type="audio/mpeg",
+                ),
+                output_text="Verse, chorus, bridge",
+            )
+
+    class FakeClient:
+        def __init__(self, **_kwargs):
+            self.interactions = FakeInteractions()
+
+    monkeypatch.setattr(
+        generate_music_tool,
+        "get_config_value",
+        lambda key, default=None: {
+            "GEMINI_API_KEY": "test-key",
+            "GEMINI_MUSIC_MODEL": "lyria-3-pro-preview",
+        }.get(key, default),
+    )
+    import google
+
+    monkeypatch.setattr(
+        google,
+        "genai",
+        SimpleNamespace(Client=FakeClient),
+        raising=False,
+    )
+
+    result = generate_music_tool.generate_music(
+        prompt="An original pop song with two verses, choruses, and a bridge",
+        duration_seconds=150,
+        provider="gemini",
+    )
+
+    assert captured["model"] == "lyria-3-pro-preview"
+    assert "approximately 150 seconds" in captured["input"]
+    assert "coherent musical ending" in captured["input"]
+    assert result["duration_ms"] == 150000
+    assert result["duration_is_estimate"] is True
+    assert result["requested_duration_ms"] == 150000
+
+
+def test_elevenlabs_v2_uses_catalog_pin_and_chunk_plan(monkeypatch):
+    calls = []
+
+    class FakeResponse:
+        status_code = 200
+        content = b"generated-audio" * 100
+        headers = {"x-song-id": "song-123"}
+
+    def fake_post(url, **kwargs):
+        calls.append((url, kwargs))
+        return FakeResponse()
+
+    monkeypatch.setattr(
+        generate_music_tool,
+        "get_config_value",
+        lambda key, default=None: {
+            "ELEVENLABS_API_KEY": "test-key",
+            "ELEVENLABS_MUSIC_MODEL": "music_v2",
+        }.get(key, default),
+    )
+    monkeypatch.setattr(generate_music_tool.requests, "post", fake_post)
+
+    simple = generate_music_tool.generate_music(
+        prompt="Original cinematic theme",
+        provider="elevenlabs",
+    )
+    planned = generate_music_tool.generate_with_composition_plan(
+        title="New Dawn",
+        sections=[{
+            "section_name": "verse",
+            "duration_seconds": 20,
+            "styles": ["warm strings"],
+            "avoid_styles": ["distorted"],
+            "lyrics": ["A new day begins"],
+        }],
+        global_styles=["cinematic"],
+        provider="elevenlabs",
+    )
+
+    assert calls[0][1]["json"]["model_id"] == "music_v2"
+    plan_payload = calls[1][1]["json"]
+    assert plan_payload["model_id"] == "music_v2"
+    assert "respect_sections_durations" not in plan_payload
+    assert plan_payload["composition_plan"] == {
+        "chunks": [{
+            "text": "[verse]\nA new day begins",
+            "duration_ms": 20000,
+            "positive_styles": ["cinematic", "warm strings"],
+            "negative_styles": ["distorted"],
+            "context_adherence": "high",
+        }],
+    }
+    assert simple["model"] == "music_v2"
+    assert planned["model"] == "music_v2"
 
 
 def test_generated_music_health_and_file_serving(tmp_path, monkeypatch):
@@ -202,6 +418,11 @@ def test_generated_music_health_and_file_serving(tmp_path, monkeypatch):
             "ELEVENLABS_API_KEY": "configured",
         }.get(key, default),
     )
+    monkeypatch.setattr(
+        generated_music,
+        "resolve_music_model",
+        lambda provider: "music_v1" if provider == "elevenlabs" else None,
+    )
 
     health = asyncio.run(generated_music.generated_music_health())
     response = asyncio.run(
@@ -212,7 +433,9 @@ def test_generated_music_health_and_file_serving(tmp_path, monkeypatch):
     assert health["configured_provider"] == "elevenlabs"
     assert health["provider_supported"] is True
     assert health["credential_configured"] is True
-    assert health["supported_providers"] == ["elevenlabs"]
+    assert health["configured_model"] == "music_v1"
+    assert health["model_metadata"]["id"] == "music_v1"
+    assert health["supported_providers"] == ["elevenlabs", "gemini"]
     assert response.path == track
     assert response.media_type == "audio/mpeg"
     assert response.headers["content-disposition"].startswith("inline;")
@@ -224,6 +447,37 @@ def test_generated_music_health_and_file_serving(tmp_path, monkeypatch):
     with pytest.raises(HTTPException) as error:
         asyncio.run(generated_music.get_generated_music(linked.name))
     assert error.value.status_code == 404
+
+
+def test_generated_music_health_reports_gemini_pro_catalog_metadata(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(generated_music, "GENERATED_MUSIC_DIR", tmp_path)
+    monkeypatch.setattr(
+        generated_music,
+        "get_config_value",
+        lambda key, default=None: {
+            "MUSIC_TOOL_PROVIDER": "gemini",
+            "GEMINI_API_KEY": "configured",
+        }.get(key, default),
+    )
+    monkeypatch.setattr(
+        generated_music,
+        "resolve_music_model",
+        lambda provider: "lyria-3-pro-preview",
+    )
+
+    health = asyncio.run(generated_music.generated_music_health())
+
+    assert health["configured_provider"] == "gemini"
+    assert health["configured_model"] == "lyria-3-pro-preview"
+    assert health["credential_configured"] is True
+    assert health["model_metadata"]["pricing"] == {
+        "unit": "request",
+        "usd": 0.08,
+    }
+    assert "full_length" in health["model_metadata"]["capabilities"]
 
 
 def test_generated_music_router_exposes_expected_routes():
@@ -273,7 +527,11 @@ def test_generated_music_router_is_registered_and_manifest_is_provider_ready():
     assert "generated_music_router" in routes_source
     assert "app.include_router(generated_music_router)" in server_source
     assert manifest["parameters"]["properties"]["provider"]["enum"] == [
-        "elevenlabs"
+        "elevenlabs",
+        "gemini",
     ]
     assert manifest["availability"]["provider_setting"] == "MUSIC_TOOL_PROVIDER"
     assert manifest["availability"]["provider_default"] == "elevenlabs"
+    assert manifest["availability"]["provider_requirements"]["gemini"] == {
+        "all_of_env": ["GEMINI_API_KEY"]
+    }

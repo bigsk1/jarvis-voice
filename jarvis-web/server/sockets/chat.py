@@ -142,6 +142,7 @@ def _scoped_by_mode(method):
             'router_prompt_version': 'JARVIS_ROUTER_PROMPT_VERSION',
             'image_provider': 'IMAGE_TOOL_PROVIDER',
             'video_provider': 'VIDEO_TOOL_PROVIDER',
+            'music_provider': 'MUSIC_TOOL_PROVIDER',
             'tts_provider': 'TTS_PROVIDER',
             'response_style': 'JARVIS_RESPONSE_STYLE',
             'qa_word_limit': 'JARVIS_QA_WORD_LIMIT',
@@ -3178,6 +3179,7 @@ Previous structured data:
             # These per-mode values are already in the request config scope.
             image_provider_override = mode_overrides.get('image_provider')
             video_provider_override = mode_overrides.get('video_provider')
+            music_provider_override = mode_overrides.get('music_provider')
             tts_provider_override = mode_overrides.get('tts_provider')
             allowed_tts_providers = LOCAL_TTS_PROVIDER_OPTIONS if mode == 'local' else CLOUD_TTS_PROVIDER_OPTIONS
             if tts_provider_override not in (None, *allowed_tts_providers):
@@ -3190,6 +3192,7 @@ Previous structured data:
                 "[CHAT] Provider overrides - "
                 f"image: {image_provider_override or '(env default)'}, "
                 f"video: {video_provider_override or '(env default)'}, "
+                f"music: {music_provider_override or '(env default)'}, "
                 f"tts: {tts_provider_override or '(env default)'}, "
                 f"response_style: {response_style_override or '(env default)'}, "
                 f"qa_limit: {qa_word_limit_override if qa_word_limit_override is not None else '(env default)'}, "

@@ -1,14 +1,14 @@
 {
   "enabled": true,
   "name": "generate_music",
-  "description": "\ud83c\udfb5 Generate AI music (currently ElevenLabs). Create songs, instrumentals, jingles, soundtracks. Use when user says 'make music', 'create a song', 'compose', 'generate a beat', 'make a jingle'. Supports genres (pop, rock, jazz, electronic, ambient, cinematic), moods (happy, sad, energetic, calm), and tempos. Can create instrumental or vocal tracks. Output saves to stash for playback in web UI. Duration 3 seconds to 10 minutes.",
+  "description": "\ud83c\udfb5 Generate AI music with ElevenLabs or Google Gemini Lyria. Create songs, instrumentals, jingles, beats, and soundtracks. Describe musical characteristics instead of naming artists, bands, copyrighted songs or lyrics, or requesting voice imitation; those requests can be rejected by provider safety filters. ElevenLabs supports 3-second to 10-minute tracks and structured composition plans. Gemini defaults to Lyria 3 Clip (one 30-second MP3); the optional Lyria 3 Pro model creates full songs with prompt-controlled duration and complex structure. Gemini outputs include SynthID. Output saves to the audio gallery and stash for playback.",
   "script": "generate_music.py",
   "parameters": {
     "type": "object",
     "properties": {
       "prompt": {
         "type": "string",
-        "description": "Describe the music: mood, instruments, style. Example: 'An upbeat summer pop song with catchy guitar riffs and positive lyrics about adventure'"
+        "description": "Describe mood, instruments, genre, arrangement, and an original lyric theme. Do not name artists or bands, copy copyrighted songs or lyrics, or request voice imitation. Example: 'An upbeat summer pop song with catchy guitar riffs and original positive lyrics about adventure'."
       },
       "title": {
         "type": "string",
@@ -16,7 +16,7 @@
       },
       "duration_seconds": {
         "type": "integer",
-        "description": "Length in seconds: 3-600 (10 min max). Default 60. Short jingles: 10-30s, full songs: 120-240s."
+        "description": "Requested length in seconds. ElevenLabs supports 3-600 seconds. Gemini Lyria Clip ignores this value and always returns 30 seconds; Lyria Pro treats it as an approximate prompt target."
       },
       "genre": {
         "type": "string",
@@ -60,18 +60,19 @@
           "opus_medium",
           "opus_high"
         ],
-        "description": "Audio quality: mp3_low (fast), mp3_medium (default), mp3_high (best). Opus formats for smaller files."
+        "description": "ElevenLabs accepts MP3 and Opus presets. The Gemini adapter accepts only an MP3 preset and controls the resulting MP3 encoding."
       },
       "provider": {
         "type": "string",
         "enum": [
-          "elevenlabs"
+          "elevenlabs",
+          "gemini"
         ],
-        "description": "Music provider override. Currently supports elevenlabs; defaults to MUSIC_TOOL_PROVIDER."
+        "description": "Music provider override. Supports elevenlabs and gemini; defaults to MUSIC_TOOL_PROVIDER."
       },
       "composition_plan": {
         "type": "object",
-        "description": "Advanced: Detailed composition with sections. Has 'global_styles' array and 'sections' array. Each section: {section_name, duration_seconds, styles[], lyrics[]}. Use for songs with specific structure/lyrics.",
+        "description": "Advanced ElevenLabs-only composition plan. Has 'global_styles' and 'sections'. Each section: {section_name, duration_seconds, styles[], avoid_styles[], lyrics[]}.",
         "properties": {
           "global_styles": {
             "type": "array",
@@ -136,8 +137,13 @@
         "all_of_env": [
           "ELEVENLABS_API_KEY"
         ]
+      },
+      "gemini": {
+        "all_of_env": [
+          "GEMINI_API_KEY"
+        ]
       }
     },
-    "setup_hint": "Set ELEVENLABS_API_KEY in the active mode env file."
+    "setup_hint": "Set MUSIC_TOOL_PROVIDER and the matching ELEVENLABS_API_KEY or GEMINI_API_KEY in the active mode env file."
   }
 }

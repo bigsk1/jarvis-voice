@@ -918,6 +918,7 @@ class ChatUI {
         body: JSON.stringify({
           input: inputToEnhance,
           mode: activeMode,
+          tool_hints: toolHints,
           image_action: imagePayload?.action || null,
           image: imagePayload?.images?.[0] || null
         })

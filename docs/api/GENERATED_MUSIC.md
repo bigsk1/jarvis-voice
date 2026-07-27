@@ -46,14 +46,14 @@ it to `0` to disable this bucket. Loopback requests are trusted and exempt.
 |-------|------|----------|---------|-------------|
 | `prompt` | string | Yes | — | Song, instrumental, jingle, or soundtrack description |
 | `title` | string | No | Prompt excerpt | Display title and filename basis |
-| `duration_seconds` | integer | No | `60` | 3–600 seconds; ignored when a composition plan supplies section durations |
+| `duration_seconds` | integer | No | `60` | ElevenLabs: 3–600 seconds; Lyria Clip: fixed 30 seconds; Lyria Pro: approximate prompt target |
 | `genre` | string | No | — | Genre such as ambient, cinematic, pop, rock, or lo-fi |
 | `mood` | string | No | — | Emotional direction such as calm, energetic, dark, or hopeful |
 | `instrumental` | boolean | No | `false` | Generate without vocals |
 | `tempo` | string | No | — | `slow`, `medium`, `fast`, or a value such as `120 BPM` |
-| `output_format` | string | No | `mp3_medium` | MP3 or Opus quality preset |
-| `composition_plan` | object | No | — | Advanced sections, styles, and lyrics |
-| `provider` | string | No | `MUSIC_TOOL_PROVIDER` | Provider override; currently `elevenlabs` |
+| `output_format` | string | No | `mp3_medium` | ElevenLabs accepts MP3/Opus; Gemini Lyria Clip accepts MP3 only |
+| `composition_plan` | object | No | — | ElevenLabs-only advanced sections, styles, and lyrics |
+| `provider` | string | No | `MUSIC_TOOL_PROVIDER` | `elevenlabs` or `gemini` |
 | `save` | boolean | No | `true` | Save to `data/generated_music/` and stash |
 | `mode` | string | No | `cloud` | `cloud` or `local` configuration |
 
@@ -71,6 +71,7 @@ curl -X POST http://localhost:8880/api/generated-music/generate \
     "prompt": "Warm cinematic ambient music for a space documentary",
     "title": "Deep Orbit",
     "duration_seconds": 45,
+    "duration_is_estimate": false,
     "genre": "cinematic",
     "mood": "hopeful",
     "instrumental": true,
@@ -107,7 +108,8 @@ curl -X POST http://localhost:8880/api/generated-music/generate \
 ```
 
 Composition plans may contain up to 20 sections. Each section must be 3–120
-seconds, and the total cannot exceed 600 seconds.
+seconds, and the total cannot exceed 600 seconds. Gemini does not accept this
+field.
 
 ### Successful response
 
@@ -148,12 +150,28 @@ because no durable file is retained.
 ```bash
 MUSIC_TOOL_PROVIDER="elevenlabs"
 ELEVENLABS_API_KEY="..."
+ELEVENLABS_MUSIC_MODEL="music_v1"
+
+# Or:
+MUSIC_TOOL_PROVIDER="gemini"
+GEMINI_API_KEY="..."
+GEMINI_MUSIC_MODEL="lyria-3-clip-preview"
 ```
 
-The request and route are provider-neutral, but ElevenLabs is the only
-implemented adapter today. Unknown providers return an explicit error and never
-fall back to ElevenLabs. Future providers can be added behind the same
-`provider` field and response contract.
+Defaults and known models come from `lib/model_catalog.py`. ElevenLabs defaults
+to `music_v1`; `music_v2` is available as an environment pin. Gemini defaults
+to the economical preview `lyria-3-clip-preview` model, which always returns a
+30-second MP3. Pin `lyria-3-pro-preview` for full songs with prompt-controlled
+duration and complex structure. Both use the existing Gemini key. Unknown
+providers return an explicit error and never fall back.
+
+Current catalog pricing is `$0.04` per Clip request and `$0.08` per Pro request.
+The Gemini adapter returns MP3; ElevenLabs supports the documented MP3 and Opus
+presets.
+
+Prompts should describe musical characteristics without naming artists or
+bands, copying copyrighted songs or lyrics, or requesting voice imitation.
+Those requests can be rejected by provider safety filters.
 
 ## Health
 
@@ -165,6 +183,7 @@ The response includes:
 
 - Configured and supported providers
 - Configured model
+- Selected model capabilities and pricing metadata when cataloged
 - Whether the selected provider's credential is configured
 - Supported output presets
 - Durable track count and storage directory

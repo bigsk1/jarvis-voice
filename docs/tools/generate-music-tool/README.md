@@ -4,9 +4,9 @@ AI music generation for Jarvis. The tool creates songs, instrumentals, jingles,
 beats, and soundtracks, then makes saved tracks available to chat, stash, the
 Canvas Audio Gallery, and the generated-music FastAPI.
 
-ElevenLabs is the only implemented provider today. Provider selection is kept
-behind a stable `provider` contract so additional music services can be added
-without changing callers.
+The implemented providers are ElevenLabs and Google Gemini Lyria. Both use the
+same provider-neutral request and saved-audio contract; provider-specific
+limits are surfaced explicitly.
 
 ## Files
 
@@ -28,20 +28,39 @@ Add the provider and its credential to the active mode file:
 # config/cloud.env or config/local.env
 MUSIC_TOOL_PROVIDER="elevenlabs"
 ELEVENLABS_API_KEY="..."
+ELEVENLABS_MUSIC_MODEL="music_v1"
+
+# Or:
+MUSIC_TOOL_PROVIDER="gemini"
+GEMINI_API_KEY="..."
+GEMINI_MUSIC_MODEL="lyria-3-clip-preview"
 ```
 
 Provider resolution order:
 
-1. Per-call `provider`
-2. `MUSIC_TOOL_PROVIDER` in the active mode configuration
-3. `elevenlabs`
+1. Jarvis Web's per-mode `JARVIS_OVERRIDE_MUSIC_TOOL_PROVIDER`
+2. Per-call `provider`
+3. `MUSIC_TOOL_PROVIDER` in the active mode configuration
+4. `elevenlabs`
 
 An unknown provider returns an explicit error. It does not silently fall back
 to ElevenLabs.
 
+Jarvis Web exposes this in **Settings → AI Config → Music Provider**. The
+selection is saved per cloud/local mode and takes effect on the next chat
+request without restarting the server. Choosing **Use env default** returns to
+that mode's `MUSIC_TOOL_PROVIDER`. Model selection remains controlled by the
+provider-specific model environment pin and `lib/model_catalog.py`.
+
 The tool availability manifest also uses `MUSIC_TOOL_PROVIDER` to apply the
-credential requirements for the selected adapter. Currently, `elevenlabs`
-requires `ELEVENLABS_API_KEY`.
+selected adapter's credential requirement: `ELEVENLABS_API_KEY` or
+`GEMINI_API_KEY`.
+
+Model defaults come from `lib/model_catalog.py`. The model environment
+variables are optional pins. ElevenLabs remains on `music_v1` by default for
+compatibility; set `ELEVENLABS_MUSIC_MODEL="music_v2"` to use the current model.
+Gemini remains on the economical clip model by default; set
+`GEMINI_MUSIC_MODEL="lyria-3-pro-preview"` for full songs.
 
 ## Usage
 
@@ -98,13 +117,13 @@ request, response, health, authentication, rate-limit, and streaming contract.
 |-----------|------|----------|---------|-------------|
 | `prompt` | string | Yes | — | Description of the desired music |
 | `title` | string | No | Prompt excerpt | Display title and filename basis |
-| `duration_seconds` | integer | No | `60` | Length from 3 to 600 seconds |
+| `duration_seconds` | integer | No | `60` | ElevenLabs: 3–600 seconds; Lyria Clip: fixed 30 seconds; Lyria Pro: approximate prompt target |
 | `genre` | string | No | — | Genre or production style |
 | `mood` | string | No | — | Emotional direction |
 | `instrumental` | boolean | No | `false` | Exclude vocals |
 | `tempo` | string | No | — | `slow`, `medium`, `fast`, or a BPM value |
-| `output_format` | string | No | `mp3_medium` | MP3 or Opus quality preset |
-| `composition_plan` | object | No | — | Structured sections, styles, and lyrics |
+| `output_format` | string | No | `mp3_medium` | ElevenLabs: MP3 or Opus; Lyria Clip: MP3 only |
+| `composition_plan` | object | No | — | ElevenLabs-only structured sections, styles, and lyrics |
 | `provider` | string | No | Configured provider | Per-call provider override |
 | `save` | boolean | No | `true` | Keep durable, stash, catalog, and memory records |
 
@@ -126,7 +145,8 @@ The simple path adds structured hints to the supplied prompt:
 - A known `genre` expands to a production-oriented genre hint.
 - `mood` is added as an emotional direction.
 - `tempo` is added as a speed direction.
-- `instrumental=true` is sent as the provider's force-instrumental option.
+- `instrumental=true` uses ElevenLabs' force-instrumental option or adds an
+  explicit no-vocals instruction for Lyria.
 
 Example:
 
@@ -143,12 +163,14 @@ Example:
 ```
 
 Good prompts name the intended use, instrumentation, energy, musical arc, and
-whether vocals are wanted. Describe musical characteristics directly instead
-of using an artist name as the only style description.
+whether vocals are wanted. Describe musical characteristics directly. Do not
+name artists or bands, copy copyrighted songs or lyrics, or request voice
+imitation; provider safety filters can reject those requests.
 
 ## Composition plans
 
-Use `composition_plan` when the track needs explicit sections or lyrics:
+Use `composition_plan` with ElevenLabs when the track needs explicit sections
+or lyrics:
 
 ```json
 {
@@ -181,16 +203,40 @@ the generated length instead of `duration_seconds`.
 
 ## Provider implementation
 
-The current ElevenLabs adapter:
+Both provider and model resolution come from the shared media model catalog.
 
-- Uses model `music_v1`
+The ElevenLabs adapter:
+
+- Defaults to `music_v1`; `music_v2` is available through
+  `ELEVENLABS_MUSIC_MODEL`
 - Sends simple generation to `POST /v1/music`
 - Sends detailed-response generation to `POST /v1/music/detailed`
-- Sends structured composition plans through the composition-plan payload on
-  `POST /v1/music`
+- Translates the common composition plan into the v1 section schema or v2
+  chunk schema
 - Uses a provider timeout of at least five minutes and scales it to three times
   the requested duration
 - Returns provider, model, format, song ID, MIME type, and byte size metadata
+
+The Gemini adapter:
+
+- Defaults to the preview model `lyria-3-clip-preview`
+- Uses the Gemini Interactions API and the existing `GEMINI_API_KEY`
+- Offers non-default `lyria-3-pro-preview` for full songs with complex
+  verse/chorus/bridge structure
+- Clip always returns one 30-second MP3; Pro uses requested duration as an
+  approximate prompt target
+- Returns MP3 and lets Gemini control the actual encoding despite the common
+  MP3 quality-preset names
+- Catalog pricing is `$0.04` per Clip request and `$0.08` per Pro request
+- Rejects Opus and structured composition plans instead of silently changing
+  them
+- Records the interaction ID, generation text, requested values, and SynthID
+  status in saved metadata
+
+Google also exposes WAV for Lyria Pro through `generateContent`; this first
+Interactions-based adapter intentionally keeps the common Jarvis contract at
+MP3. WAV can be added as a separate public format without pretending the
+existing MP3 quality presets control Gemini's encoding.
 
 The FastAPI wrapper is synchronous and invokes the tool in a subprocess with the
 requested `JARVIS_MODE`. Its timeout is at least ten minutes and scales for
@@ -236,7 +282,7 @@ The Canvas Audio Gallery provides:
 - Audio playback with exclusive-playback behavior
 - Search and sorting
 - Provider and favorites filters
-- Provider, format, duration, and size metadata
+- Provider, model, format, duration, and size metadata
 - Favorite, download, and delete actions
 - Responsive navigation with the music-note icon on narrow screens
 
@@ -272,7 +318,8 @@ symlinks.
 
 Keep the external tool and FastAPI contract stable:
 
-1. Add the provider name to `SUPPORTED_MUSIC_PROVIDERS`.
+1. Add the provider, models, default, capabilities, and model environment key
+   to `lib/model_catalog.py`; `SUPPORTED_MUSIC_PROVIDERS` derives from it.
 2. Implement a provider adapter that returns the existing normalized result
    fields: audio bytes, MIME type, extension, duration, provider, model, format,
    and provider track ID when available.
@@ -280,7 +327,8 @@ Keep the external tool and FastAPI contract stable:
    provider.
 4. Add the provider to the tool manifest enum and
    `availability.provider_requirements`.
-5. Map the common MP3/Opus presets to provider-specific formats.
+5. Map or explicitly reject common format and duration options that the
+   provider cannot honor.
 6. Extend health reporting with the selected model and credential readiness.
 7. Add route, adapter, failure, and catalog tests.
 
@@ -312,19 +360,28 @@ Focused tests mock provider generation and do not incur API charges.
 
 ### Tool is unavailable
 
-Confirm that the active mode file contains both:
+Confirm that the active mode file contains a supported provider and its key:
 
 ```bash
 MUSIC_TOOL_PROVIDER="elevenlabs"
 ELEVENLABS_API_KEY="..."
+# or
+MUSIC_TOOL_PROVIDER="gemini"
+GEMINI_API_KEY="..."
 ```
 
 Then restart or resync the process that loaded tool availability.
 
 ### Unsupported music provider
 
-The configured or per-call provider is not implemented. Use `elevenlabs` until
-the new adapter, manifest entry, and credential requirements are added.
+The configured or per-call provider is not implemented. Use `elevenlabs` or
+`gemini`.
+
+### Gemini request returns a safety error
+
+Remove artist, band, copyrighted song or lyric references, and voice imitation.
+Describe the intended genre, instruments, rhythm, arrangement, mood, and
+original lyrical theme instead.
 
 ### Generation times out
 
@@ -347,6 +404,8 @@ Confirm that the file has a supported audio extension and exists in
 
 - [Generated Music FastAPI](../../api/GENERATED_MUSIC.md)
 - [ElevenLabs-specific music notes](../../11labs/MUSIC_GENERATION.md)
+- [Google Lyria music generation](https://ai.google.dev/gemini-api/docs/music-generation)
+- [Google Lyria 3 Pro model](https://ai.google.dev/gemini-api/docs/models/lyria-3-pro-preview)
 - [Stash system](../../STASH_SYSTEM.md)
 - [Jarvis Web UI](../../JARVIS_WEB_UI.md)
 - [Background service cleanup](../../service/README.md)

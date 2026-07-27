@@ -738,6 +738,164 @@ async function hydratePageVideoEmbeds(page, pageView) {
     mount.style.display = embeds.length ? 'grid' : 'none';
 }
 
+function inferAudioMimeType(urlOrName = '', declaredMime = '') {
+    if (String(declaredMime).toLowerCase().startsWith('audio/')) {
+        return String(declaredMime).toLowerCase();
+    }
+
+    let candidate = String(urlOrName || '').toLowerCase();
+    try {
+        candidate = new URL(candidate, window.location.origin).pathname.toLowerCase();
+    } catch (err) {
+        // Keep the original candidate for relative or partially encoded paths.
+    }
+
+    if (candidate.endsWith('.wav')) return 'audio/wav';
+    if (candidate.endsWith('.flac')) return 'audio/flac';
+    if (candidate.endsWith('.m4a')) return 'audio/mp4';
+    if (candidate.endsWith('.aac')) return 'audio/aac';
+    if (candidate.endsWith('.opus')) return 'audio/opus';
+    if (candidate.endsWith('.oga')) return 'audio/ogg';
+    return 'audio/mpeg';
+}
+
+function isDirectAudioUrl(rawUrl) {
+    try {
+        const parsed = new URL(rawUrl, window.location.origin);
+        return /\.(?:mp3|wav|flac|m4a|aac|opus|oga)$/i.test(parsed.pathname);
+    } catch (err) {
+        return false;
+    }
+}
+
+function collectPageAudioCandidates(content, sourceQuery = '') {
+    const directUrls = [];
+    const stashRefs = [];
+    const seenDirect = new Set();
+    const seenStash = new Set();
+    const sources = [content, sourceQuery];
+    const urlRegex = /https?:\/\/[^\s<>"')\]]+/gi;
+    const stashRegex = /stash:\/\/([^/\s)`"']+)\/([^\s)`"']+)/gi;
+    const stashPathRegex = /\/(?:stash\/view|api\/stash)\/([^/\s)`"']+)\/([^/\s)`"']+)/gi;
+
+    for (const source of sources) {
+        if (!source) continue;
+        const text = String(source);
+
+        for (const rawUrl of text.match(urlRegex) || []) {
+            const cleaned = rawUrl.replace(/[.,;:!?]+$/, '');
+            if (!isDirectAudioUrl(cleaned) || seenDirect.has(cleaned)) continue;
+            seenDirect.add(cleaned);
+            directUrls.push(cleaned);
+        }
+
+        for (const regex of [stashRegex, stashPathRegex]) {
+            regex.lastIndex = 0;
+            let match;
+            while ((match = regex.exec(text)) !== null) {
+                const spaceId = String(cleanStashFileIdSegment(match[1]) || '').replace(/[.,;:!?\]]+$/, '');
+                const fileId = String(cleanStashFileIdSegment(match[2]) || '').replace(/[.,;:!?\]]+$/, '');
+                const key = `${spaceId}/${fileId}`;
+                if (!spaceId || !fileId || seenStash.has(key)) continue;
+                seenStash.add(key);
+                stashRefs.push({ spaceId, fileId });
+            }
+        }
+    }
+
+    return { directUrls, stashRefs };
+}
+
+function audioTitleFromUrl(rawUrl) {
+    try {
+        const name = decodeURIComponent(new URL(rawUrl, window.location.origin).pathname.split('/').pop() || 'Audio');
+        return name.replace(/[_-]+/g, ' ').replace(/\.[^.]+$/, '').trim() || 'Audio';
+    } catch (err) {
+        return 'Audio';
+    }
+}
+
+async function resolveStashAudioCandidate(candidate) {
+    const spaceId = encodeURIComponent(candidate.spaceId);
+    const fileId = encodeURIComponent(candidate.fileId);
+    const metadataUrl = `/api/stash/${spaceId}/${fileId}/metadata`;
+
+    try {
+        const response = await fetch(metadataUrl);
+        if (!response.ok) return null;
+        const metadata = await response.json();
+        const name = metadata.name || candidate.fileId;
+        const mimeType = String(metadata.mime_type || '').toLowerCase();
+        if (!mimeType.startsWith('audio/') && !isDirectAudioUrl(name)) return null;
+
+        return {
+            playbackUrl: `/api/stash/${spaceId}/${fileId}`,
+            sourceUrl: metadata.source_url || null,
+            title: audioTitleFromUrl(name),
+            mimeType: inferAudioMimeType(name, mimeType),
+            stashed: true
+        };
+    } catch (err) {
+        console.warn('Failed to inspect Canvas stash audio:', err);
+        return null;
+    }
+}
+
+async function collectPageAudioEmbeds(content, sourceQuery = '') {
+    const candidates = collectPageAudioCandidates(content, sourceQuery);
+    const stashAudio = (await Promise.all(
+        candidates.stashRefs.map(resolveStashAudioCandidate)
+    )).filter(Boolean);
+    const stashedSourceUrls = new Set(stashAudio.map(audio => audio.sourceUrl).filter(Boolean));
+    const directAudio = candidates.directUrls
+        .filter(url => !stashedSourceUrls.has(url))
+        .map(url => ({
+            playbackUrl: url,
+            sourceUrl: url,
+            title: audioTitleFromUrl(url),
+            mimeType: inferAudioMimeType(url),
+            stashed: false
+        }));
+
+    return [...stashAudio, ...directAudio].slice(0, 5);
+}
+
+function renderNativeAudioEmbeds(embeds) {
+    if (!embeds || embeds.length === 0) return '';
+
+    return embeds.map((embed, index) => {
+        const title = embed.title || (embeds.length === 1 ? 'Audio' : `Audio ${index + 1}`);
+        const playbackUrl = escapeHtml(embed.playbackUrl);
+        const mimeType = escapeHtml(embed.mimeType || 'audio/mpeg');
+        return `
+            <div class="canvas-audio-card">
+                <div class="canvas-audio-header">
+                    <span class="canvas-audio-icon">🎵</span>
+                    <span class="canvas-audio-title">${escapeHtml(title)}</span>
+                    ${embed.stashed ? '<span class="canvas-audio-badge">Stash</span>' : ''}
+                </div>
+                <audio class="canvas-audio-player" controls preload="metadata">
+                    <source src="${playbackUrl}" type="${mimeType}">
+                    Your browser does not support audio playback.
+                </audio>
+                <div class="canvas-audio-actions">
+                    <a href="${playbackUrl}" target="_blank" rel="noopener noreferrer">Open audio</a>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function hydratePageAudioEmbeds(page, pageView) {
+    const mount = pageView.querySelector('[data-canvas-native-audio]');
+    if (!mount) return;
+
+    const embeds = await collectPageAudioEmbeds(page.content || '', page.source_query || '');
+    if (currentPage !== page.id || !pageView.contains(mount)) return;
+    mount.innerHTML = renderNativeAudioEmbeds(embeds);
+    mount.style.display = embeds.length ? 'grid' : 'none';
+}
+
 function getFilteredPages() {
     const q = currentSearchQuery.trim().toLowerCase();
     if (!q) return pages;
@@ -1297,6 +1455,7 @@ function selectPage(id) {
         </div>
         ${youtubeEmbedsHtml}
         <div class="canvas-video-embeds canvas-native-video-embeds" data-canvas-native-videos style="display: none;"></div>
+        <div class="canvas-audio-embeds" data-canvas-native-audio style="display: none;"></div>
         <div class="page-content">${content}</div>
         ${sourceHtml}
     `;
@@ -1315,6 +1474,7 @@ function selectPage(id) {
     });
     hydrateCryptoCharts(pageView);
     hydratePageVideoEmbeds(page, pageView);
+    hydratePageAudioEmbeds(page, pageView);
 
     // Setup content interaction handlers
     setupImageHandlers();

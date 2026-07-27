@@ -425,7 +425,7 @@ class JarvisApp {
       );
     });
 
-    for (const mediaType of ['image', 'video']) {
+    for (const mediaType of ['image', 'video', 'music']) {
       document.getElementById(`setting-${mediaType}-provider`)?.addEventListener('change', () => {
         this._updateMediaProviderDetail(mediaType);
       });
@@ -1641,6 +1641,18 @@ class JarvisApp {
         }
         this._updateMediaProviderDetail('video');
 
+        // Populate Music Provider
+        this._populateMediaProviderDropdown('music');
+        const musicSelect = document.getElementById('setting-music-provider');
+        musicSelect.value = s.music?.provider?.is_override ? s.music.provider.value : '';
+        const musicDefault = document.getElementById('music-provider-default');
+        musicDefault.textContent = `(${envFile}: ${s.music?.provider?.default || 'elevenlabs'})`;
+        musicDefault.className = s.music?.provider?.is_override ? 'setting-default setting-override' : 'setting-default';
+        if (s.music?.provider?.is_override) {
+          musicDefault.textContent = `⚡ override: ${s.music.provider.value}`;
+        }
+        this._updateMediaProviderDetail('music');
+
         // Populate TTS Provider
         const ttsSelect = document.getElementById('setting-tts-provider');
         ttsSelect.value = s.tts?.provider?.is_override ? s.tts.provider.value : '';
@@ -1657,6 +1669,7 @@ class JarvisApp {
         this._applyProviderAvailability('setting-llm-provider', 'llm');
         this._applyProviderAvailability('setting-image-provider', 'image');
         this._applyProviderAvailability('setting-video-provider', 'video');
+        this._applyProviderAvailability('setting-music-provider', 'music');
         this._applyProviderAvailability('setting-tts-provider', 'tts');
 
         // Populate Response Style
@@ -2103,6 +2116,10 @@ class JarvisApp {
               <span class="config-label">VIDEO_TOOL_PROVIDER</span>
               <span class="config-value">${c.VIDEO_TOOL_PROVIDER}</span>
             </div>
+            <div class="config-item">
+              <span class="config-label">MUSIC_TOOL_PROVIDER</span>
+              <span class="config-value">${c.MUSIC_TOOL_PROVIDER}</span>
+            </div>
           </div>
           
           <div class="config-section">
@@ -2503,6 +2520,17 @@ class JarvisApp {
       reference_to_video: 'reference→video',
       video_editing: 'edit',
       conversational_editing: 'conversational edit',
+      text_to_music: 'text→music',
+      composition_plan: 'composition plan',
+      chunk_composition_plan: 'chunk plan',
+      full_length: 'full songs',
+      prompt_controlled_duration: 'prompt duration',
+      complex_song_structure: 'song structure',
+      instrumental: 'instrumental',
+      vocals: 'vocals',
+      lyrics: 'lyrics',
+      multilingual: 'multilingual',
+      synthid: 'SynthID',
       transparent_background: 'transparent background',
       audio: 'audio',
     };
@@ -2546,6 +2574,11 @@ class JarvisApp {
       const amount = `$${minimum.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}`;
       const suffix = pricing.unit === 'second' ? '/s' : '/image';
       return `${new Set(values).size > 1 ? 'from ' : ''}${amount}${suffix}`;
+    }
+    const flatAmount = Number(pricing.usd);
+    if (Number.isFinite(flatAmount)) {
+      const amount = `$${flatAmount.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}`;
+      return `${amount}/${pricing.unit === 'request' ? 'request' : pricing.unit}`;
     }
     if (pricing.note) return 'variable pricing';
     return '';
@@ -3470,6 +3503,7 @@ class JarvisApp {
         router_prompt_version: document.getElementById('setting-router-prompt-version').value || null,
         image_provider: document.getElementById('setting-image-provider').value || null,
         video_provider: document.getElementById('setting-video-provider').value || null,
+        music_provider: document.getElementById('setting-music-provider').value || null,
         tts_provider: document.getElementById('setting-tts-provider').value || null,
         response_style: responseStyleInput.value || null,
         tool_rag_limit: toolRagLimitRaw === '' ? null : parseInt(toolRagLimitRaw, 10),

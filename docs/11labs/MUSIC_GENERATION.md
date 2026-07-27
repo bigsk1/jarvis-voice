@@ -21,9 +21,15 @@ Add to `config/cloud.env`:
 ```bash
 # ElevenLabs API (also used for TTS)
 ELEVENLABS_API_KEY=your_api_key_here
+ELEVENLABS_MUSIC_MODEL=music_v1
 ```
 
 Get your API key from: https://elevenlabs.io/app/settings/api-keys
+
+`music_v1` remains the Jarvis and ElevenLabs transition default.
+Set `ELEVENLABS_MUSIC_MODEL=music_v2` for the newer model's improved vocals,
+arrangement, multilingual generation, and structure control. Jarvis translates
+the common structured plan to the model's chunk-based composition schema.
 
 ### Timeout Configuration
 
@@ -77,11 +83,14 @@ elif tool_name == "generate_music":
 
 **Good**: "An upbeat summer pop song with catchy guitar riffs, bright synths, and a driving drum beat. Energetic and optimistic, perfect for a beach party or road trip montage."
 
-### 2. Reference Styles and Eras
+### 2. Describe Styles and Eras
 
 - "80s synthwave with retro drums and analog synths"
 - "Modern trap beat with heavy 808s"
-- "Classical orchestral piece in the style of Hans Zimmer"
+- "Dark modern cinematic orchestra with pulsing low strings and huge brass"
+
+Avoid artist, band, copyrighted song or lyric references, and voice imitation.
+Describe the musical traits directly to avoid provider safety rejections.
 
 ### 3. Set the Scene
 

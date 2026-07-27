@@ -30,7 +30,9 @@ from generate_music import (  # noqa: E402
     DEFAULT_MUSIC_PROVIDER,
     OUTPUT_FORMATS,
     SUPPORTED_MUSIC_PROVIDERS,
+    resolve_music_model,
 )
+from model_catalog import get_media_model_metadata  # noqa: E402
 
 
 load_config()
@@ -84,16 +86,25 @@ class CompositionPlan(BaseModel):
 class GenerateRequest(BaseModel):
     """Request to generate a new music track."""
 
-    prompt: str = Field(..., min_length=1, description="Describe the desired song, instrumental, jingle, or soundtrack")
+    prompt: str = Field(
+        ...,
+        min_length=1,
+        description="Describe original music without named artists, copyrighted songs or lyrics, or voice imitation.",
+    )
     title: Optional[str] = Field(None, description="Display title and filename basis")
-    duration_seconds: int = Field(60, ge=3, le=600, description="Track length from 3 seconds to 10 minutes")
+    duration_seconds: int = Field(
+        60,
+        ge=3,
+        le=600,
+        description="Requested track length. ElevenLabs supports 3-600 seconds; Lyria Clip is fixed at 30 seconds; Lyria Pro treats it as an approximate prompt target.",
+    )
     genre: Optional[str] = Field(None, description="Genre such as ambient, pop, rock, cinematic, or lo-fi")
     mood: Optional[str] = Field(None, description="Emotional tone such as calm, energetic, dark, or hopeful")
     instrumental: bool = Field(False, description="Generate without vocals")
     tempo: Optional[str] = Field(None, description="slow, medium, fast, or a BPM value such as 120 BPM")
     output_format: str = Field(
         "mp3_medium",
-        description="Current presets: mp3_low/medium/high or opus_low/medium/high",
+        description="ElevenLabs accepts MP3 or Opus presets. The Gemini adapter returns MP3 only.",
     )
     composition_plan: Optional[CompositionPlan] = Field(
         None,
@@ -101,7 +112,7 @@ class GenerateRequest(BaseModel):
     )
     provider: Optional[str] = Field(
         None,
-        description="Provider override. Currently elevenlabs; otherwise MUSIC_TOOL_PROVIDER is used",
+        description="Provider override: elevenlabs or gemini. Otherwise MUSIC_TOOL_PROVIDER is used.",
     )
     save: bool = Field(True, description="Save to data/generated_music and stash")
     mode: Literal["cloud", "local"] = Field("cloud", description="Configuration mode")
@@ -182,10 +193,20 @@ async def generated_music_health():
             and path.suffix.lower() in AUDIO_EXTENSIONS
         )
     )
-    credential_configured = (
-        bool(get_config_value("ELEVENLABS_API_KEY"))
-        if configured_provider == "elevenlabs"
-        else False
+    credential_env = {
+        "elevenlabs": "ELEVENLABS_API_KEY",
+        "gemini": "GEMINI_API_KEY",
+    }.get(configured_provider)
+    provider_supported = configured_provider in SUPPORTED_MUSIC_PROVIDERS
+    configured_model = (
+        resolve_music_model(configured_provider)
+        if provider_supported
+        else None
+    )
+    model_metadata = (
+        get_media_model_metadata("music", configured_provider, configured_model)
+        if configured_model
+        else None
     )
     return {
         "ok": True,
@@ -193,9 +214,14 @@ async def generated_music_health():
         "exists": GENERATED_MUSIC_DIR.exists(),
         "audio_count": audio_count,
         "configured_provider": configured_provider,
-        "configured_model": "music_v1" if configured_provider == "elevenlabs" else None,
-        "provider_supported": configured_provider in SUPPORTED_MUSIC_PROVIDERS,
-        "credential_configured": credential_configured,
+        "configured_model": configured_model,
+        "model_metadata": model_metadata,
+        "provider_supported": provider_supported,
+        "credential_configured": (
+            bool(get_config_value(credential_env))
+            if credential_env
+            else False
+        ),
         "supported_providers": list(SUPPORTED_MUSIC_PROVIDERS),
         "supported_output_formats": list(PUBLIC_OUTPUT_FORMATS),
     }

@@ -106,6 +106,30 @@ class WebSettingsModeTests(unittest.TestCase):
         settings.validate_web_overrides.assert_called_once_with({"router_prompt_version": "v1"})
         settings.save_web_overrides.assert_called_once_with({"router_prompt_version": "v1"})
 
+    def test_save_routes_music_provider_through_structured_overrides(self):
+        settings = MagicMock()
+        settings.set_mode.return_value = True
+        settings.save_web_overrides.return_value = True
+
+        with (
+            self.app.test_request_context(
+                "/api/settings/web",
+                method="PUT",
+                json={"mode": "cloud", "music_provider": "gemini"},
+            ),
+            patch.object(self.api, "get_settings_manager", return_value=settings),
+            patch.object(self.api, "reload_web_config"),
+        ):
+            response = self.api.update_web_settings()
+
+        self.assertEqual(response.status_code, 200)
+        settings.validate_web_overrides.assert_called_once_with(
+            {"music_provider": "gemini"}
+        )
+        settings.save_web_overrides.assert_called_once_with(
+            {"music_provider": "gemini"}
+        )
+
     def test_settings_reject_invalid_mode(self):
         with self.app.test_request_context("/api/settings?mode=hybrid"):
             response, status = self.api.get_settings()

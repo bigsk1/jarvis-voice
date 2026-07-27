@@ -77,7 +77,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Settings persistence | ✅ | `web_config.json` with per-mode overrides |
 | Reset to defaults | ✅ | Button to clear web overrides for current mode |
 | Dynamic LLM switching | ✅ | Change provider/model on-the-fly, takes effect immediately |
-| Dynamic image/video provider | ✅ | Switch image (xAI/Gemini/OpenAI) and video (xAI/Gemini) providers on-the-fly |
+| Dynamic media provider | ✅ | Switch image, video, and music providers on-the-fly |
 | Response style overrides | ✅ | Per-mode overrides for response style, Q&A word limit, and multi-turn word limit |
 | MCP tool discovery | ✅ | Reads from memory_db, shows in Tools tab |
 | System config view | ✅ | Mode-specific .env values in Settings → System |
@@ -439,6 +439,7 @@ socket.on('feedback:complete', {
 | LLM Model | AI Config → Model | Dynamic per provider |
 | Image Provider | AI Config → Image Provider | xAI Grok, Google Gemini, OpenAI DALL-E |
 | Video Provider | AI Config → Video Provider | xAI Grok, Google Gemini Veo |
+| Music Provider | AI Config → Music Provider | ElevenLabs Music, Google Gemini Lyria |
 
 **Credential-aware provider availability:** dropdown options for providers
 whose API key is missing/blank in the active mode's env file are annotated
@@ -448,6 +449,10 @@ provider returns HTTP 400 with `{field, provider, reason}` and nothing is
 persisted, while unrelated settings still save normally. Ollama in cloud mode
 is reported as `unknown` until the live Ollama Cloud sign-in check runs. Key
 *values* are never sent to the client — only configured/missing status.
+
+The System tab's read-only **Features** section shows the active mode's startup
+`IMAGE_TOOL_PROVIDER`, `VIDEO_TOOL_PROVIDER`, and `MUSIC_TOOL_PROVIDER` env
+values. AI Config separately shows whether a per-mode Web override is active.
 
 ### web_config.json
 
@@ -470,6 +475,7 @@ is reported as `unknown` until the live Ollama Cloud sign-in check runs. Key
     "router_prompt_version": null,
     "image_provider": null,  // null = use cloud.env IMAGE_TOOL_PROVIDER
     "video_provider": null,  // null = use cloud.env VIDEO_TOOL_PROVIDER
+    "music_provider": null,  // null = use cloud.env MUSIC_TOOL_PROVIDER
     "tts_provider": null,
     "response_style": null,
     "tool_rag_limit": null,
@@ -482,6 +488,7 @@ is reported as `unknown` until the live Ollama Cloud sign-in check runs. Key
     "router_prompt_version": null,
     "image_provider": null,  // null = use local.env IMAGE_TOOL_PROVIDER
     "video_provider": null,  // null = use local.env VIDEO_TOOL_PROVIDER
+    "music_provider": null,  // null = use local.env MUSIC_TOOL_PROVIDER
     "tts_provider": null,
     "response_style": null,
     "tool_rag_limit": null,
@@ -517,10 +524,12 @@ authoritative child-export form.
 ```
 chat.py scope:    IMAGE_TOOL_PROVIDER=gemini
                   VIDEO_TOOL_PROVIDER=gemini
+                  MUSIC_TOOL_PROVIDER=gemini
         ↓
 executor.py:      export_config_environment() builds child-only env
                   JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER=gemini
                   JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER=gemini
+                  JARVIS_OVERRIDE_MUSIC_TOOL_PROVIDER=gemini
         ↓
 tool main():      load_config() → skips IMAGE_TOOL_PROVIDER because
                   JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER exists
@@ -540,6 +549,7 @@ tool reads:       get_config_value('IMAGE_TOOL_PROVIDER')
 | Router Prompt Version | `JARVIS_ROUTER_PROMPT_VERSION` | `JARVIS_OVERRIDE_JARVIS_ROUTER_PROMPT_VERSION` | v1, v2, … |
 | Image Provider | `IMAGE_TOOL_PROVIDER` | `JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER` | xai, gemini, openai |
 | Video Provider | `VIDEO_TOOL_PROVIDER` | `JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER` | xai, gemini |
+| Music Provider | `MUSIC_TOOL_PROVIDER` | `JARVIS_OVERRIDE_MUSIC_TOOL_PROVIDER` | elevenlabs, gemini |
 | TTS Provider | `TTS_PROVIDER` | `JARVIS_OVERRIDE_TTS_PROVIDER` | cloud: openai, elevenlabs, xai, qwen3-tts; local: kokoro, qwen3-tts |
 | Response Style | `JARVIS_RESPONSE_STYLE` | `JARVIS_OVERRIDE_JARVIS_RESPONSE_STYLE` | auto, casual, detailed |
 | QA Word Limit | `JARVIS_QA_WORD_LIMIT` | `JARVIS_OVERRIDE_JARVIS_QA_WORD_LIMIT` | integer |
@@ -599,7 +609,7 @@ not keep showing the startup mode's catalog.
 
 ### Settings Panel (5 Tabs)
 - **General Tab**: Mode (cloud/local), TTS toggle, mode-aware help text
-- **AI Config Tab**: LLM provider/model dropdowns (per-mode), Image provider, Video provider, History limit, Reset button
+- **AI Config Tab**: LLM provider/model dropdowns (per-mode), Image provider, Video provider, Music provider, History limit, Reset button
 - **Tools Tab**: Blocked tools list, add/remove UI, blocked/MCP visual indicators
 - **System Tab**: Mode-specific .env values (thresholds, TTS settings, features) - shows cloud.env OR local.env
 - **API Keys Tab**: Status indicators (configured/missing)
@@ -687,6 +697,11 @@ normal per-tool follow-up adapters. Repeated component tools remain lists of
 runs/candidates. This preserves Canvas page ids, Stash refs, source URLs, and
 bounded summaries so a later turn can update an artifact or call an individual
 tool without rerunning the recipe.
+
+Generated-music follow-up data keeps the provider, model, title, duration and
+format metadata, plus the durable Stash/file references. ElevenLabs and Gemini
+therefore use the same compact follow-up contract, and a later Send to Canvas
+turn can carry the saved audio reference into a Canvas page.
 
 This means the LLM sees previous messages like:
 ```
@@ -1199,7 +1214,11 @@ User's request: ethereum
 ```
 
 **Enhance compatibility:**
-The ✨ Enhance button preserves tool hints by enhancing only the clean task text, then keeping the selected hints as chips beside the rewritten input.
+The ✨ Enhance button sends validated tool hints as separate enhancement
+context, enhances only the clean task text, and then keeps the selected hints as
+chips beside the rewritten input. Hints help the enhancer understand the target
+capability without placing internal tool names or parameters in the rewritten
+prompt.
 
 ---
 
@@ -1214,7 +1233,8 @@ User types: "bitcoin news"
 Clicks ✨ button
        ↓
 LLM enhances with Jarvis context:
-  - Available tools (100+)
+  - Up to 100 available tool names and concise descriptions
+  - Any explicitly selected tool hints
   - Native search capabilities
   - Best practices
        ↓
@@ -1229,9 +1249,13 @@ Replaces input field text
 **Key Points:**
 - Uses direct LLM call (fast, ~1-2 seconds)
 - Does NOT go through orchestrator (no tool execution)
+- Receives descriptions, not tool parameter schemas
 - Only enhances text - the SEND goes through full orchestrator
 - Won't enhance if input starts with `/` or `@` (those are explicit)
-- Preserves `#tool` hints by stripping them before enhancement and keeping selected hints as chips afterward
+- Validates and prioritizes `#tool` hints while keeping them separate from the clean task text
+- For media requests, enriches creative direction without inventing provider,
+  model, duration, dimensions, file type, output format, or other operational
+  values the user did not supply
 
 **API Endpoint:** `POST /api/enhance-prompt`
 
@@ -1292,7 +1316,7 @@ Replaces input field text
 │  ┌─────────────────────────────────────────┐                    │
 │  │   POST /api/enhance-prompt              │                    │
 │  │  • Direct LLM call (bypasses orchestr.) │                    │
-│  │  • System prompt with tool knowledge    │                    │
+│  │  • Tool descriptions + validated hints  │                    │
 │  │  • Returns enhanced text only           │                    │
 │  └─────────────────────────────────────────┘                    │
 │                 │                                                │

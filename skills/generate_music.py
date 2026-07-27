@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
 """
 Music Generation Tool for Jarvis
-Uses ElevenLabs Music API to compose AI-generated music.
+Uses ElevenLabs Music or Google Gemini Lyria to compose AI-generated music.
 
 Features:
   - Simple prompt-based generation
-  - Detailed composition plans with sections and lyrics
+  - ElevenLabs composition plans with sections and lyrics
   - Multiple genres, moods, and styles
   - Instrumental or vocal options
-  - Multiple output formats (mp3, opus, pcm)
+  - Provider-specific MP3 and Opus output
   - Saves to stash for playback in web UI and other tools
 
 API Reference: https://elevenlabs.io/docs/api-reference/music/compose
-Best Practices: https://elevenlabs.io/docs/overview/capabilities/music/best-practices
+Gemini Reference: https://ai.google.dev/gemini-api/docs/music-generation
 
-Configure via ELEVENLABS_API_KEY in cloud.env
+Configure with MUSIC_TOOL_PROVIDER and the selected provider's API key.
 """
 
 import sys
 import json
+import base64
+import os
 import requests
 from pathlib import Path
 from datetime import datetime
@@ -28,16 +30,22 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / 'lib'))
 from audio_catalog import upsert_audio_catalog_entry
 from config_loader import load_config, get_config_value
+from model_catalog import (
+    get_media_catalog_providers,
+    get_media_model_env_key,
+    get_media_model_metadata,
+    resolve_media_model,
+)
 
 GENERATED_MUSIC_DIR = PROJECT_ROOT / 'data' / 'generated_music'
 AUDIO_CATALOG_FILE = GENERATED_MUSIC_DIR / 'audio_catalog.json'
 
 # =============================================================================
-# ElevenLabs Music API Configuration
+# Music Provider Configuration
 # =============================================================================
 ELEVENLABS_API_BASE = "https://api.elevenlabs.io/v1/music"
 DEFAULT_MUSIC_PROVIDER = "elevenlabs"
-SUPPORTED_MUSIC_PROVIDERS = (DEFAULT_MUSIC_PROVIDER,)
+SUPPORTED_MUSIC_PROVIDERS = tuple(get_media_catalog_providers("music"))
 
 # Output format options
 OUTPUT_FORMATS = {
@@ -78,8 +86,10 @@ GENRE_HINTS = {
 
 def resolve_music_provider(provider: str | None = None) -> str:
     """Resolve and validate the configured or per-request music provider."""
+    web_override = os.environ.get("JARVIS_OVERRIDE_MUSIC_TOOL_PROVIDER")
     selected = (
-        provider
+        web_override
+        or provider
         or get_config_value("MUSIC_TOOL_PROVIDER", DEFAULT_MUSIC_PROVIDER)
         or DEFAULT_MUSIC_PROVIDER
     )
@@ -93,16 +103,53 @@ def resolve_music_provider(provider: str | None = None) -> str:
     return selected
 
 
-def generate_music(prompt: str, duration_seconds: int = 60, 
-                   genre: str = None, mood: str = None,
-                   instrumental: bool = False, 
-                   tempo: str = None, 
-                   output_format: str = "mp3_medium",
-                   use_detailed_api: bool = False,
-                   provider: str = None) -> dict:
+def resolve_music_model(provider: str) -> str:
+    """Resolve the configured model pin or catalog default for a provider."""
+    env_key = get_media_model_env_key("music", provider)
+    configured = get_config_value(env_key, "") if env_key else ""
+    model = resolve_media_model("music", provider, configured)
+    if not model:
+        raise ValueError(f"No music model is configured for provider '{provider}'")
+    return model
+
+
+def _enhance_music_prompt(
+    prompt: str,
+    genre: str | None,
+    mood: str | None,
+    tempo: str | None,
+    instrumental: bool,
+) -> str:
+    """Build the common provider-neutral prompt from structured hints."""
+    full_prompt = prompt
+    if genre:
+        genre_lower = genre.lower()
+        if genre_lower in GENRE_HINTS:
+            full_prompt = f"{GENRE_HINTS[genre_lower]}: {prompt}"
+        else:
+            full_prompt = f"{genre} style: {prompt}"
+    if mood:
+        full_prompt = f"{mood} mood, {full_prompt}"
+    if tempo:
+        full_prompt = f"{full_prompt}, {tempo} tempo"
+    if instrumental:
+        full_prompt = f"{full_prompt}. Instrumental only, no vocals."
+    return full_prompt
+
+
+def generate_music_elevenlabs(
+    prompt: str,
+    duration_seconds: int = 60,
+    genre: str = None,
+    mood: str = None,
+    instrumental: bool = False,
+    tempo: str = None,
+    output_format: str = "mp3_medium",
+    use_detailed_api: bool = False,
+) -> dict:
     """
     Generate music using ElevenLabs Music API.
-    
+
     Args:
         prompt: Description of the music to generate
         duration_seconds: Length in seconds (3-600)
@@ -112,36 +159,23 @@ def generate_music(prompt: str, duration_seconds: int = 60,
         tempo: Optional tempo hint (slow, medium, fast, or BPM like "120 BPM")
         output_format: Audio format (mp3_low/medium/high, opus_*, pcm_*)
         use_detailed_api: Use /detailed endpoint for more metadata
-        provider: Music provider override (currently elevenlabs)
     """
-    provider = resolve_music_provider(provider)
-    
     api_key = get_config_value('ELEVENLABS_API_KEY')
     if not api_key:
         raise ValueError("ELEVENLABS_API_KEY not configured. Add it to config/cloud.env")
+    model = resolve_music_model("elevenlabs")
     
     # Convert duration to milliseconds
     duration_ms = duration_seconds * 1000
     duration_ms = max(MIN_DURATION_MS, min(MAX_DURATION_MS, duration_ms))
     
-    # Build enhanced prompt
-    full_prompt = prompt
-    
-    # Add genre context
-    if genre:
-        genre_lower = genre.lower()
-        if genre_lower in GENRE_HINTS:
-            full_prompt = f"{GENRE_HINTS[genre_lower]}: {prompt}"
-        else:
-            full_prompt = f"{genre} style: {prompt}"
-    
-    # Add mood
-    if mood:
-        full_prompt = f"{mood} mood, {full_prompt}"
-    
-    # Add tempo
-    if tempo:
-        full_prompt = f"{full_prompt}, {tempo} tempo"
+    full_prompt = _enhance_music_prompt(
+        prompt,
+        genre,
+        mood,
+        tempo,
+        instrumental=False,
+    )
     
     # Get output format
     format_code = OUTPUT_FORMATS.get(output_format, OUTPUT_FORMATS["mp3_medium"])
@@ -158,7 +192,7 @@ def generate_music(prompt: str, duration_seconds: int = 60,
     payload = {
         "prompt": full_prompt,
         "music_length_ms": duration_ms,
-        "model_id": "music_v1",
+        "model_id": model,
         "force_instrumental": instrumental,
         "respect_sections_durations": True,
         "store_for_inpainting": False,
@@ -234,9 +268,131 @@ def generate_music(prompt: str, duration_seconds: int = 60,
         "output_format": format_code,
         "song_id": song_id,
         "size_bytes": len(audio_bytes),
-        "provider": "ElevenLabs" if provider == "elevenlabs" else provider,
-        "model": "music_v1",
+        "provider": "ElevenLabs",
+        "model": model,
     }
+
+
+def generate_music_gemini(
+    prompt: str,
+    duration_seconds: int = 60,
+    genre: str = None,
+    mood: str = None,
+    instrumental: bool = False,
+    tempo: str = None,
+    output_format: str = "mp3_medium",
+) -> dict:
+    """Generate Lyria music through Gemini Interactions."""
+    api_key = get_config_value("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY not configured. Add it to the active mode env file")
+    if not output_format.startswith("mp3_"):
+        raise ValueError(
+            "The Gemini Lyria adapter returns MP3 only; choose mp3_low, "
+            "mp3_medium, or mp3_high"
+        )
+
+    try:
+        from google import genai
+    except ImportError:
+        raise ValueError("google-genai not installed. Run: uv sync --dev")
+
+    model = resolve_music_model("gemini")
+    model_metadata = get_media_model_metadata("music", "gemini", model) or {}
+    full_prompt = _enhance_music_prompt(
+        prompt,
+        genre,
+        mood,
+        tempo,
+        instrumental,
+    )
+    duration_metadata = model_metadata.get("duration_seconds", {})
+    fixed_duration_seconds = duration_metadata.get("fixed")
+    if fixed_duration_seconds is None:
+        full_prompt = (
+            f"{full_prompt} Target a duration of approximately "
+            f"{duration_seconds} seconds, with a coherent musical ending."
+        )
+    client = genai.Client(api_key=api_key)
+    interaction = client.interactions.create(
+        model=model,
+        input=full_prompt,
+        timeout=300,
+    )
+
+    status = getattr(interaction, "status", "completed")
+    status_value = getattr(status, "value", status)
+    if str(status_value).strip().lower() == "failed":
+        raise Exception("Gemini Lyria interaction failed")
+
+    audio = getattr(interaction, "output_audio", None)
+    encoded_audio = getattr(audio, "data", None) if audio else None
+    if not encoded_audio:
+        raise Exception("No audio generated - empty Gemini Lyria response")
+    try:
+        audio_bytes = base64.b64decode(encoded_audio)
+    except (TypeError, ValueError) as exc:
+        raise Exception("Gemini Lyria returned invalid audio data") from exc
+    if len(audio_bytes) < 1000:
+        raise Exception("No audio data received from Gemini Lyria")
+
+    return {
+        "audio_bytes": audio_bytes,
+        "mime_type": getattr(audio, "mime_type", None) or "audio/mpeg",
+        "extension": "mp3",
+        "prompt": prompt,
+        "full_prompt": full_prompt,
+        "duration_ms": (
+            fixed_duration_seconds * 1000
+            if fixed_duration_seconds is not None
+            else duration_seconds * 1000
+        ),
+        "duration_is_estimate": fixed_duration_seconds is None,
+        "requested_duration_ms": duration_seconds * 1000,
+        "instrumental": instrumental,
+        "genre": genre,
+        "mood": mood,
+        "tempo": tempo,
+        "output_format": "mp3",
+        "requested_output_format": output_format,
+        "song_id": getattr(interaction, "id", None),
+        "size_bytes": len(audio_bytes),
+        "provider": "Google Gemini",
+        "model": model,
+        "generation_text": getattr(interaction, "output_text", None),
+        "synthid_watermarked": True,
+    }
+
+
+def generate_music(prompt: str, duration_seconds: int = 60,
+                   genre: str = None, mood: str = None,
+                   instrumental: bool = False,
+                   tempo: str = None,
+                   output_format: str = "mp3_medium",
+                   use_detailed_api: bool = False,
+                   provider: str = None) -> dict:
+    """Generate music through the selected catalog-backed provider adapter."""
+    provider = resolve_music_provider(provider)
+    if provider == "gemini":
+        return generate_music_gemini(
+            prompt=prompt,
+            duration_seconds=duration_seconds,
+            genre=genre,
+            mood=mood,
+            instrumental=instrumental,
+            tempo=tempo,
+            output_format=output_format,
+        )
+    return generate_music_elevenlabs(
+        prompt=prompt,
+        duration_seconds=duration_seconds,
+        genre=genre,
+        mood=mood,
+        instrumental=instrumental,
+        tempo=tempo,
+        output_format=output_format,
+        use_detailed_api=use_detailed_api,
+    )
 
 
 def generate_with_composition_plan(title: str, sections: list, 
@@ -255,31 +411,60 @@ def generate_with_composition_plan(title: str, sections: list,
             - lyrics: List of lyric lines (optional)
         global_styles: Overall style directions for the whole song
         output_format: Audio format
-        provider: Music provider override (currently elevenlabs)
+        provider: Music provider override (composition plans currently ElevenLabs)
     """
     provider = resolve_music_provider(provider)
-    
+    if provider != "elevenlabs":
+        raise ValueError(
+            "Structured composition plans are currently supported only by "
+            "the ElevenLabs music provider"
+        )
+
     api_key = get_config_value('ELEVENLABS_API_KEY')
     if not api_key:
         raise ValueError("ELEVENLABS_API_KEY not configured")
-    
-    # Build composition plan
-    plan_sections = []
-    for section in sections:
-        plan_section = {
-            "section_name": section.get("section_name", "section"),
-            "positive_local_styles": section.get("styles", []),
-            "negative_local_styles": section.get("avoid_styles", []),
-            "duration_ms": section.get("duration_seconds", 30) * 1000,
-            "lines": section.get("lyrics", [])
+    model = resolve_music_model(provider)
+
+    if model == "music_v2":
+        chunks = []
+        for section in sections:
+            section_name = section.get("section_name", "section")
+            lyrics = section.get("lyrics", [])
+            text = f"[{section_name}]"
+            if lyrics:
+                text = f"{text}\n" + "\n".join(str(line) for line in lyrics)
+            positive_styles = list(dict.fromkeys([
+                *(global_styles or []),
+                *section.get("styles", []),
+            ]))
+            if not positive_styles:
+                positive_styles = ["professional production", "high quality"]
+            chunks.append({
+                "text": text,
+                "duration_ms": section.get("duration_seconds", 30) * 1000,
+                "positive_styles": positive_styles,
+                "negative_styles": section.get("avoid_styles", []),
+                "context_adherence": "high",
+            })
+        composition_plan = {"chunks": chunks}
+    else:
+        plan_sections = []
+        for section in sections:
+            plan_sections.append({
+                "section_name": section.get("section_name", "section"),
+                "positive_local_styles": section.get("styles", []),
+                "negative_local_styles": section.get("avoid_styles", []),
+                "duration_ms": section.get("duration_seconds", 30) * 1000,
+                "lines": section.get("lyrics", []),
+            })
+        composition_plan = {
+            "positive_global_styles": global_styles or [
+                "professional production",
+                "high quality",
+            ],
+            "negative_global_styles": ["amateur", "low quality", "distorted"],
+            "sections": plan_sections,
         }
-        plan_sections.append(plan_section)
-    
-    composition_plan = {
-        "positive_global_styles": global_styles or ["professional production", "high quality"],
-        "negative_global_styles": ["amateur", "low quality", "distorted"],
-        "sections": plan_sections
-    }
     
     format_code = OUTPUT_FORMATS.get(output_format, OUTPUT_FORMATS["mp3_medium"])
     url = f"{ELEVENLABS_API_BASE}?output_format={format_code}"
@@ -291,9 +476,10 @@ def generate_with_composition_plan(title: str, sections: list,
     
     payload = {
         "composition_plan": composition_plan,
-        "model_id": "music_v1",
-        "respect_sections_durations": True
+        "model_id": model,
     }
+    if model == "music_v1":
+        payload["respect_sections_durations"] = True
     
     # Calculate total duration for timeout
     total_duration_ms = sum(s.get("duration_seconds", 30) * 1000 for s in sections)
@@ -329,8 +515,8 @@ def generate_with_composition_plan(title: str, sections: list,
         "song_id": song_id,
         "size_bytes": len(audio_bytes),
         "has_composition_plan": True,
-        "provider": "ElevenLabs" if provider == "elevenlabs" else provider,
-        "model": "music_v1",
+        "provider": "ElevenLabs",
+        "model": model,
     }
 
 
@@ -356,7 +542,10 @@ def save_to_stash(music_data: dict, title: str) -> dict:
         "filename": filename,
         "stash": False,
     }
-    tags = ['ai_generated', 'music', 'elevenlabs']
+    provider_tag = str(
+        music_data.get("provider", "unknown")
+    ).strip().lower().replace(" ", "_")
+    tags = ['ai_generated', 'music', provider_tag]
     if music_data.get('genre'):
         tags.append(music_data['genre'])
     if music_data.get('instrumental'):
@@ -398,11 +587,20 @@ def save_to_stash(music_data: dict, title: str) -> dict:
         "tempo": music_data.get("tempo"),
         "instrumental": bool(music_data.get("instrumental", False)),
         "duration_seconds": music_data.get("duration_ms", 0) / 1000,
+        "duration_is_estimate": music_data.get("duration_is_estimate", False),
         "format": ext,
         "output_format": music_data.get("output_format"),
+        "requested_output_format": music_data.get("requested_output_format"),
+        "requested_duration_seconds": (
+            music_data.get("requested_duration_ms") / 1000
+            if music_data.get("requested_duration_ms") is not None
+            else None
+        ),
         "mime_type": music_data.get("mime_type"),
         "size_bytes": len(music_data["audio_bytes"]),
         "song_id": music_data.get("song_id"),
+        "generation_text": music_data.get("generation_text"),
+        "synthid_watermarked": music_data.get("synthid_watermarked"),
         "tool_origin": "generate_music",
         "tags": tags,
         "created_at": datetime.now().isoformat(),
@@ -510,7 +708,16 @@ def main():
         
         # Build response
         duration_sec = result.get('duration_ms', 0) // 1000
-        speech = f"Generated {duration_sec} second {'instrumental ' if instrumental else ''}music"
+        if result.get("duration_is_estimate"):
+            speech = (
+                f"Generated approximately {duration_sec} seconds of "
+                f"{'instrumental ' if instrumental else ''}music"
+            )
+        else:
+            speech = (
+                f"Generated {duration_sec} second "
+                f"{'instrumental ' if instrumental else ''}music"
+            )
         if genre:
             speech += f" in {genre} style"
         speech += f": {title[:40]}"
@@ -521,6 +728,7 @@ def main():
             "data": {
                 "title": title,
                 "duration_seconds": duration_sec,
+                "duration_is_estimate": result.get("duration_is_estimate", False),
                 "genre": genre,
                 "mood": mood,
                 "instrumental": instrumental,
@@ -531,6 +739,14 @@ def main():
                 "provider": result.get('provider'),
                 "model": result.get('model'),
                 "output_format": result.get('output_format'),
+                "requested_output_format": result.get('requested_output_format'),
+                "requested_duration_seconds": (
+                    result.get("requested_duration_ms", 0) // 1000
+                    if result.get("requested_duration_ms") is not None
+                    else None
+                ),
+                "generation_text": result.get("generation_text"),
+                "synthid_watermarked": result.get("synthid_watermarked"),
             }
         }
         

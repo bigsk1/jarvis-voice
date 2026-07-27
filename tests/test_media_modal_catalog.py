@@ -36,9 +36,16 @@ def test_enhance_sends_pending_image_and_active_mode_for_multimodal_context():
 def test_settings_media_providers_show_catalog_capabilities_and_pricing():
     assert "_populateMediaProviderDropdown('image')" in APP_JS
     assert "_populateMediaProviderDropdown('video')" in APP_JS
+    assert "_populateMediaProviderDropdown('music')" in APP_JS
     assert "_formatMediaProviderPrice(metadata.pricing)" in APP_JS
     assert 'id="image-provider-capabilities"' in INDEX_HTML
     assert 'id="video-provider-capabilities"' in INDEX_HTML
+    assert 'id="music-provider-capabilities"' in INDEX_HTML
+    assert "music_provider: document.getElementById('setting-music-provider')" in APP_JS
+
+
+def test_system_features_show_music_env_provider():
+    assert "<span class=\"config-label\">MUSIC_TOOL_PROVIDER</span>" in APP_JS
 
 
 def test_image_modal_loads_and_displays_effective_model_capabilities():

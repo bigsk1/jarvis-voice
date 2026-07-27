@@ -97,6 +97,7 @@ function renderGallery() {
     gallery.innerHTML = filteredAudio.map((item, index) => {
         const title = getTrackTitle(item);
         const provider = item.provider || 'Unknown';
+        const model = String(item.model || '').trim();
         const format = (item.format || extensionFromName(item.name) || 'audio').toUpperCase();
         const duration = item.duration_seconds ? formatDuration(item.duration_seconds) : '';
         const detailParts = [item.genre, item.mood, item.instrumental ? 'Instrumental' : null].filter(Boolean);
@@ -111,6 +112,7 @@ function renderGallery() {
                 <div class="audio-art" aria-hidden="true">
                     <div class="audio-wave">${bars}</div>
                     <span class="audio-provider">${escapeHtml(provider)}</span>
+                    ${model ? `<span class="audio-model" title="${escapeHtml(model)}">${escapeHtml(model)}</span>` : ''}
                     <span class="audio-format">${escapeHtml(format)}</span>
                     ${duration ? `<span class="audio-duration">${duration}</span>` : ''}
                     <button

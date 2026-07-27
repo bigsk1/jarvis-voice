@@ -217,7 +217,13 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'provider', 'model', 'aspect_ratio', 'image_size', 'size', 'quality',
         'style', 'is_edit', 'mime_type', 'filename',
     ],
-    'generate_music': ['provider', 'model', 'duration'],
+    'generate_music': [
+        'provider', 'model', 'title', 'duration_seconds',
+        'duration_is_estimate', 'requested_duration_seconds', 'genre', 'mood',
+        'instrumental', 'tempo', 'mime_type', 'size_bytes', 'song_id',
+        'output_format', 'requested_output_format', 'synthid_watermarked',
+        'file_path',
+    ],
     # --- File/artifact producers ---
     'pdf_create': ['ref', 'name', 'size_bytes'],
     'pdf_read': ['page_count', 'stash_ref'],
@@ -1183,8 +1189,9 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             field_value = payload.get(field)
             if field_value:
                 extracted[field] = field_value
-            elif key == 'release_watch' and isinstance(field_value, bool):
-                # False is meaningful for change detection and first-run state.
+            elif key in {'release_watch', 'generate_music'} and isinstance(field_value, bool):
+                # False is meaningful for release state and music attributes
+                # such as instrumental/SynthID/duration-estimate flags.
                 extracted[field] = field_value
 
         if key == 'mcp_duckduckgo_search':

@@ -362,6 +362,7 @@ class SettingsManager:
         'TTS_PROVIDER',
         'IMAGE_TOOL_PROVIDER',
         'VIDEO_TOOL_PROVIDER',
+        'MUSIC_TOOL_PROVIDER',
         'TOOL_SIMILARITY_THRESHOLD',
         'TOOL_SIMILARITY_THRESHOLD_FULL',
         'SEMANTIC_SIMILARITY_THRESHOLD',
@@ -551,6 +552,7 @@ class SettingsManager:
             'LLM_MODEL': ('llm', 'model'),
             'IMAGE_TOOL_PROVIDER': ('image', 'provider'),
             'VIDEO_TOOL_PROVIDER': ('video', 'provider'),
+            'MUSIC_TOOL_PROVIDER': ('music', 'provider'),
             'TTS_PROVIDER': ('tts', 'provider'),
             'JARVIS_RESPONSE_STYLE': ('response', 'style'),
             'JARVIS_QA_WORD_LIMIT': ('response', 'qa_word_limit'),
@@ -585,6 +587,7 @@ class SettingsManager:
         )
         env_image_provider = get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini')
         env_video_provider = get_jarvis_setting('VIDEO_TOOL_PROVIDER', 'xai')
+        env_music_provider = get_jarvis_setting('MUSIC_TOOL_PROVIDER', 'elevenlabs')
         env_tts_provider = get_jarvis_setting('TTS_PROVIDER', 'qwen3-tts' if self.mode == 'local' else 'elevenlabs')
         env_response_style = get_jarvis_setting('JARVIS_RESPONSE_STYLE', 'auto')
         env_tool_rag_key = 'LOCAL_TOOL_RAG_LIMIT' if self.mode == 'local' else 'CLOUD_TOOL_RAG_LIMIT'
@@ -614,6 +617,7 @@ class SettingsManager:
         llm_provider_options = self._get_llm_provider_options()
         image_providers = self._get_effective_media_providers('image')
         video_providers = self._get_effective_media_providers('video')
+        music_providers = self._get_effective_media_providers('music')
         web_provider = mode_overrides.get('llm_provider')
         provider_invalid = False
         if web_provider not in (None, *llm_provider_options):
@@ -627,6 +631,7 @@ class SettingsManager:
             web_router_prompt_version = None
         web_image = mode_overrides.get('image_provider')
         web_video = mode_overrides.get('video_provider')
+        web_music = mode_overrides.get('music_provider')
         web_tts = mode_overrides.get('tts_provider')
         tts_provider_options = self._get_tts_provider_options(env_tts_provider)
         if web_tts not in (None, *tts_provider_options):
@@ -653,6 +658,7 @@ class SettingsManager:
         effective_router_prompt_version = web_router_prompt_version or env_router_prompt_version
         effective_image = web_image or env_image_provider
         effective_video = web_video or env_video_provider
+        effective_music = web_music or env_music_provider
         effective_tts = web_tts or env_tts_provider
         effective_response_style = web_response_style or env_response_style
         effective_tool_rag_limit = (
@@ -768,6 +774,16 @@ class SettingsManager:
                     'default': env_video_provider,
                     'is_override': web_video is not None,
                     'options': list(video_providers.keys())
+                }
+            },
+
+            # Music Settings
+            'music': {
+                'provider': {
+                    'value': effective_music,
+                    'default': env_music_provider,
+                    'is_override': web_music is not None,
+                    'options': list(music_providers.keys())
                 }
             },
 
@@ -895,6 +911,7 @@ class SettingsManager:
             'provider_models': self._get_provider_models(),
             'image_providers': image_providers,
             'video_providers': video_providers,
+            'music_providers': music_providers,
             'tts_providers': TTS_PROVIDERS,
             'response_style_options': RESPONSE_STYLE_OPTIONS,
             
@@ -1091,11 +1108,13 @@ class SettingsManager:
         guard_options = ['ollama'] if self.mode == 'local' else get_catalog_providers()
         image_options = list(get_media_catalog_providers('image'))
         video_options = list(get_media_catalog_providers('video'))
+        music_options = list(get_media_catalog_providers('music'))
         tts_options = self._get_tts_provider_options()
         return {
             'llm': {p: self._provider_availability_entry(p, 'llm') for p in llm_options},
             'image': {p: self._provider_availability_entry(p, 'image') for p in image_options},
             'video': {p: self._provider_availability_entry(p, 'video') for p in video_options},
+            'music': {p: self._provider_availability_entry(p, 'music') for p in music_options},
             'tts': {p: self._provider_availability_entry(p, 'tts') for p in tts_options},
             'completion_guard': {
                 p: self._provider_availability_entry(p, 'completion_guard')
@@ -1121,6 +1140,7 @@ class SettingsManager:
             ),
             'image_provider': mode_config.get('image_provider') or get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini'),
             'video_provider': mode_config.get('video_provider') or get_jarvis_setting('VIDEO_TOOL_PROVIDER', 'xai'),
+            'music_provider': mode_config.get('music_provider') or get_jarvis_setting('MUSIC_TOOL_PROVIDER', 'elevenlabs'),
             'tts_provider': (
                 mode_config.get('tts_provider')
                 or get_jarvis_setting('TTS_PROVIDER', 'qwen3-tts' if self.mode == 'local' else 'elevenlabs')
@@ -1135,7 +1155,7 @@ class SettingsManager:
         }
 
         for field in (
-            'llm_provider', 'image_provider', 'video_provider',
+            'llm_provider', 'image_provider', 'video_provider', 'music_provider',
             'tts_provider', 'completion_guard_eval_provider',
         ):
             if field not in overrides:
@@ -1151,6 +1171,7 @@ class SettingsManager:
                 'llm_provider': 'llm',
                 'image_provider': 'image',
                 'video_provider': 'video',
+                'music_provider': 'music',
                 'tts_provider': 'tts',
                 'completion_guard_eval_provider': 'completion_guard',
             }[field]
@@ -1233,7 +1254,7 @@ class SettingsManager:
                 )
 
     def save_web_overrides(self, overrides: dict[str, Any]) -> bool:
-        """Save web UI overrides (per-mode for LLM/image).
+        """Save per-mode Web UI overrides.
 
         Raises SettingsValidationError (mapped to HTTP 400 by the route)
         BEFORE any mutation when the request newly selects a provider whose
@@ -1276,6 +1297,10 @@ class SettingsManager:
         # Handle video overrides (per-mode)
         if 'video_provider' in overrides:
             mode_config['video_provider'] = overrides['video_provider'] or None
+
+        # Handle music overrides (per-mode)
+        if 'music_provider' in overrides:
+            mode_config['music_provider'] = overrides['music_provider'] or None
 
         # Handle TTS overrides (per-mode)
         if 'tts_provider' in overrides:
@@ -1403,6 +1428,7 @@ class SettingsManager:
             'router_prompt_version': None,
             'image_provider': None,
             'video_provider': None,
+            'music_provider': None,
             'tts_provider': None,
             'response_style': None,
             'tool_rag_limit': None,

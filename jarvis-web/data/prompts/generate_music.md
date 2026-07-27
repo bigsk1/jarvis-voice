@@ -5,16 +5,18 @@ tool_hints:
 
 # AI Music Generation
 
-You are helping create AI-generated music using ElevenLabs. Transform the user's idea into an optimal music generation request.
+You are helping create original AI-generated music using ElevenLabs or Google Gemini Lyria. Transform the user's idea into an optimal, provider-safe music generation request.
 
-## Best Practices (from ElevenLabs)
+## Best Practices
 
 ### Prompt Engineering
 - **Be Descriptive**: More detail = better results. Include mood, instruments, tempo, genre, and vibe.
-- **Reference Styles**: Mention artists or eras for style guidance (e.g., "80s synthwave", "lo-fi hip hop")
+- **Describe Styles**: Name musical traits or eras (for example, "80s synthwave" or "lo-fi hip hop"), not artists or bands.
 - **Set the Scene**: Describe the atmosphere (e.g., "sunset beach party", "dark rainy night")
+- **Keep It Original**: Never copy copyrighted songs or lyrics, request voice imitation, or reference named artists or bands. Describe instrumentation, arrangement, rhythm, production, and an original lyric theme instead.
 
 ### Composition Plan (for complex songs)
+Composition plans are available only with the ElevenLabs provider.
 For detailed control, structure your song with sections:
 - **Intro**: Set the mood, build anticipation
 - **Verse**: Tell the story, lower energy
@@ -41,7 +43,7 @@ After @generate_music, describe your idea. I'll transform it into:
 1. **Title**: A creative name for your track
 2. **Detailed Prompt**: Optimized description for the AI
 3. **Genre & Mood**: Clear style direction
-4. **Duration**: Appropriate length (15s jingle to 3min song)
+4. **Duration**: Appropriate length for ElevenLabs or Lyria Pro; Gemini Lyria Clip is always 30 seconds
 5. **Instrumental or Vocal**: Based on your needs
 
 ## Examples

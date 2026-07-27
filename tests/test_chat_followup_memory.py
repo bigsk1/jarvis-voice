@@ -30,6 +30,53 @@ def _handler():
     return ChatHandler.__new__(ChatHandler)
 
 
+def test_extract_followup_data_preserves_generated_music_artifact_and_provider_metadata():
+    for provider, model, synthid in (
+        ("ElevenLabs", "music_v1", False),
+        ("Google Gemini", "lyria-3-pro-preview", True),
+    ):
+        data = {
+            "generate_music": {
+                "title": "Midnight Drive",
+                "duration_seconds": 90,
+                "duration_is_estimate": provider == "Google Gemini",
+                "requested_duration_seconds": 90,
+                "genre": "electronic",
+                "mood": "hopeful",
+                "instrumental": False,
+                "tempo": "120 BPM",
+                "mime_type": "audio/mpeg",
+                "size_bytes": 123456,
+                "song_id": "song_123",
+                "provider": provider,
+                "model": model,
+                "output_format": "mp3",
+                "requested_output_format": "mp3_high",
+                "synthid_watermarked": synthid,
+                "saved": {
+                    "filename": "music_midnight_drive.mp3",
+                    "stash_ref": "stash://space_music/f_music",
+                },
+                "file_path": "/tmp/generated_music/music_midnight_drive.mp3",
+                "stash_ref": "stash://space_music/f_music",
+            }
+        }
+
+        result = _handler()._extract_followup_data(data)
+        music = result["generate_music"]
+
+        assert music["provider"] == provider
+        assert music["model"] == model
+        assert music["duration_seconds"] == 90
+        assert music["duration_is_estimate"] is (provider == "Google Gemini")
+        assert music["instrumental"] is False
+        assert music["synthid_watermarked"] is synthid
+        assert music["mime_type"] == "audio/mpeg"
+        assert music["filename"] == "music_midnight_drive.mp3"
+        assert music["file_path"].endswith("/music_midnight_drive.mp3")
+        assert music["stash_ref"] == "stash://space_music/f_music"
+
+
 def test_extract_followup_data_preserves_search_memory_candidates():
     handler = _handler()
     data = {

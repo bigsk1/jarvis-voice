@@ -92,6 +92,13 @@ def test_audio_gallery_lists_favorites_downloads_and_deletes(tmp_path, monkeypat
     )
     audio_file = tmp_path / "music_deep_orbit_20260726_214737.mp3"
     audio_file.write_bytes(b"fake-mp3")
+    (tmp_path / "audio_catalog.json").write_text(json.dumps({
+        audio_file.name: {
+            "title": "Deep Orbit",
+            "provider": "Google Gemini",
+            "model": "lyria-3-pro-preview",
+        }
+    }))
     client = _client(audio_gallery)
 
     listed_response = client.get("/api/gallery/audio")
@@ -107,7 +114,8 @@ def test_audio_gallery_lists_favorites_downloads_and_deletes(tmp_path, monkeypat
     listed = listed_response.get_json()["audio"][0]
     assert listed["name"] == audio_file.name
     assert listed["title"] == "Deep Orbit"
-    assert listed["provider"] == "ElevenLabs"
+    assert listed["provider"] == "Google Gemini"
+    assert listed["model"] == "lyria-3-pro-preview"
     assert listed["duration_seconds"] == 29.99
     assert listed["codec"] == "mp3"
     assert favorite_response.status_code == 200
@@ -187,9 +195,13 @@ def test_generate_music_persists_provider_neutral_catalog_on_stash_failure(
             "tempo": "slow",
             "instrumental": True,
             "duration_ms": 30000,
-            "output_format": "mp3_44100_128",
-            "provider": "ElevenLabs",
-            "model": "music_v1",
+            "output_format": "mp3",
+            "requested_output_format": "mp3_high",
+            "requested_duration_ms": 75000,
+            "provider": "Google Gemini",
+            "model": "lyria-3-clip-preview",
+            "generation_text": "Original instrumental",
+            "synthid_watermarked": True,
         },
         "Deep Orbit",
     )
@@ -200,11 +212,16 @@ def test_generate_music_persists_provider_neutral_catalog_on_stash_failure(
     catalog = json.loads((tmp_path / "audio_catalog.json").read_text())
     entry = catalog[result["filename"]]
     assert entry["title"] == "Deep Orbit"
-    assert entry["provider"] == "ElevenLabs"
-    assert entry["model"] == "music_v1"
+    assert entry["provider"] == "Google Gemini"
+    assert entry["model"] == "lyria-3-clip-preview"
     assert entry["genre"] == "ambient"
     assert entry["instrumental"] is True
     assert entry["duration_seconds"] == 30
+    assert entry["requested_duration_seconds"] == 75
+    assert entry["requested_output_format"] == "mp3_high"
+    assert entry["generation_text"] == "Original instrumental"
+    assert entry["synthid_watermarked"] is True
+    assert "google_gemini" in entry["tags"]
 
 
 def test_audio_gallery_ui_keeps_audio_label_and_first_version_actions():
@@ -213,6 +230,9 @@ def test_audio_gallery_ui_keeps_audio_label_and_first_version_actions():
     assert 'id="favoriteFilter"' in AUDIO_HTML
     assert 'id="sortSelect"' in AUDIO_HTML
     assert "class=\"audio-player\"" in AUDIO_JS
+    assert "class=\"audio-model\"" in AUDIO_JS
+    assert "const model = String(item.model || '').trim();" in AUDIO_JS
+    assert "${model ?" in AUDIO_JS
     assert "setupExclusivePlayback" in AUDIO_JS
     assert "/api/gallery/audio/" in AUDIO_JS
     assert "toggleFavoriteByIndex" in AUDIO_JS
@@ -220,6 +240,7 @@ def test_audio_gallery_ui_keeps_audio_label_and_first_version_actions():
     assert "deleteByIndex" in AUDIO_JS
     assert "'&quot;'" in AUDIO_JS
     assert "@media (max-width: 768px)" in AUDIO_CSS
+    assert ".audio-model" in AUDIO_CSS
     assert ".audio-gallery-header .logo span" in AUDIO_CSS
     assert ".header-link span" in BASE_CSS
     assert ".audio-mobile-label" not in BASE_CSS
