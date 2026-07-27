@@ -73,6 +73,7 @@ class RateLimiter:
 # Prefix match order: longest first (see _bucket_for_path).
 _PREFIX_BUCKETS: list[tuple[str, str]] = [
     ("/api/generated-videos", "generated-videos"),
+    ("/api/generated-music", "generated-music"),
     ("/api/generated-images", "generated-images"),
     ("/api/scheduled-tasks", "scheduled-tasks"),
     ("/api/conversations", "conversations"),
@@ -110,6 +111,7 @@ _BUCKET_DEFAULTS: dict[str, int] = {
     "workflows": 60,
     "images": 30,
     "generated-images": 20,
+    "generated-music": 10,
     "generated-videos": 10,
     "scheduled-tasks": 60,
     "default": 120,

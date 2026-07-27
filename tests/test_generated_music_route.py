@@ -14,6 +14,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from api.routes import generated_music
+from lib import rate_limiter
 from skills import generate_music as generate_music_tool
 
 
@@ -243,6 +244,23 @@ def test_generated_music_router_exposes_expected_routes():
         "/api/generated-music/{filename}",
         ("GET",),
     ) in routes
+
+
+def test_generated_music_has_dedicated_rate_limit_bucket(monkeypatch):
+    calls = []
+
+    def fake_get_int(key, default):
+        calls.append((key, default))
+        return default
+
+    monkeypatch.setattr("lib.config_loader.get_int", fake_get_int)
+
+    assert (
+        rate_limiter._bucket_for_path("/api/generated-music/generate")
+        == "generated-music"
+    )
+    assert rate_limiter._rpm_for_bucket("generated-music") == 10
+    assert calls == [("API_RATE_LIMIT_GENERATED_MUSIC_PER_MINUTE", -1)]
 
 
 def test_generated_music_router_is_registered_and_manifest_is_provider_ready():

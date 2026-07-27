@@ -32,6 +32,9 @@ Content-Type: application/json
 
 This is a synchronous generation request. Short tracks may still take several
 minutes. The API timeout scales with the requested or composition-plan duration.
+The generated-music API has a separate per-IP limit of 10 requests per minute by
+default. Set `API_RATE_LIMIT_GENERATED_MUSIC_PER_MINUTE` to override it, or set
+it to `0` to disable this bucket.
 
 ### Request fields
 
