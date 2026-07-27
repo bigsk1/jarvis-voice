@@ -21,7 +21,7 @@
 ### 1. Pull a Docker MCP Server
 
 ```bash
-docker pull mcp/duckduckgo
+docker pull ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0
 docker pull mcp/brave-search
 docker pull mcp/fetch
 ```
@@ -41,17 +41,24 @@ docker pull mcp/fetch
         "--security-opt", "no-new-privileges",
         "-e", "DDG_REGION",
         "-e", "DDG_SAFE_SEARCH",
-        "mcp/duckduckgo"
+        "ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0"
       ],
       "env": {
         "DDG_REGION": "us-en",
         "DDG_SAFE_SEARCH": "STRICT"
       },
+      "proxy_policy": "prefer",
       "enabled": true
     }
   }
 }
 ```
+
+`proxy_policy: "prefer"` makes Jarvis choose the first reachable
+`LOCAL_PROXY` / `LOCAL_PROXY2` listener and pass only derived conventional
+proxy variables into the DuckDuckGo container. Omit the field to preserve an
+MCP server's existing behavior; use `off` for direct-only or `require` to fail
+closed without direct fallback. See [Network proxy](../NETWORK_PROXY.md).
 
 > ⚠️ **Critical**: Server names MUST use `snake_case` (e.g., `brave_search`, not `brave-search`). See [MCP_NAMING_CONVENTIONS.md](./MCP_NAMING_CONVENTIONS.md).
 
@@ -180,6 +187,8 @@ MCP servers only receive **explicitly configured** environment variables:
 
 - ✅ Only `BRAVE_API_KEY` is passed
 - ❌ `SSH_AUTH_SOCK`, `AWS_SECRET_KEY`, etc. are **never exposed**
+- ✅ `proxy_policy=prefer|require` adds only conventional proxy names derived
+  from `LOCAL_PROXY` / `LOCAL_PROXY2`; it does not copy the host environment
 
 ### Auditing New Servers
 
@@ -211,7 +220,7 @@ do not make fetched content authoritative.
 ### View Running MCP Containers
 
 ```bash
-docker ps --filter "ancestor=mcp/duckduckgo" \
+docker ps --filter "ancestor=ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0" \
   --filter "ancestor=mcp/brave-search" \
   --filter "ancestor=mcp/fetch"
 ```
@@ -219,7 +228,7 @@ docker ps --filter "ancestor=mcp/duckduckgo" \
 ### Update MCP Images
 
 ```bash
-docker pull mcp/duckduckgo
+docker pull ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0
 docker pull mcp/brave-search
 docker pull mcp/fetch
 # Restart jarvis-web to pick up new images
@@ -229,7 +238,7 @@ docker pull mcp/fetch
 
 ```bash
 # Stop all MCP containers
-docker ps --filter "ancestor=mcp/duckduckgo" -q | xargs -r docker stop
+docker ps --filter "ancestor=ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0" -q | xargs -r docker stop
 docker ps --filter "ancestor=mcp/brave-search" -q | xargs -r docker stop
 docker ps --filter "ancestor=mcp/fetch" -q | xargs -r docker stop
 ```
@@ -241,7 +250,7 @@ docker ps --filter "ancestor=mcp/fetch" -q | xargs -r docker stop
 | Server | Docker Image | Tools |
 |--------|--------------|-------|
 | `brave_search` | `mcp/brave-search` | Web, local, image, and video search (`brave_news_search` is disabled in the tracked config) |
-| `duckduckgo` | `mcp/duckduckgo` | `search`, `fetch_content` (credential-free; US English + Strict SafeSearch defaults) |
+| `duckduckgo` | `ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0` | `search`, `fetch_content` (credential-free; US English + Strict SafeSearch defaults; `proxy_policy=prefer`) |
 | `fetch` | `mcp/fetch` | URL content extraction |
 
 ### Disabled (Available)
@@ -285,7 +294,7 @@ jq '.mcpServers | keys' config/mcp-servers.json
 If you see duplicate containers:
 ```bash
 # Stop all
-docker ps --filter "ancestor=mcp/duckduckgo" -q | xargs -r docker stop
+docker ps --filter "ancestor=ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0" -q | xargs -r docker stop
 docker ps --filter "ancestor=mcp/brave-search" -q | xargs -r docker stop
 docker ps --filter "ancestor=mcp/fetch" -q | xargs -r docker stop
 
@@ -313,11 +322,12 @@ docker ps --filter "ancestor=mcp/fetch" -q | xargs -r docker stop
 - [MCP Specification](https://spec.modelcontextprotocol.io/)
 - [Anthropic MCP Guide](https://docs.anthropic.com/en/docs/agents-and-tools/mcp)
 - [Docker MCP Images](https://hub.docker.com/u/mcp)
-- [Docker `mcp/duckduckgo` image](https://hub.docker.com/r/mcp/duckduckgo)
+- [Upstream DuckDuckGo MCP container](https://github.com/nickclyde/duckduckgo-mcp-server/pkgs/container/duckduckgo-mcp-server)
 - [DuckDuckGo MCP upstream source](https://github.com/nickclyde/duckduckgo-mcp-server)
 
 ---
 
-*Last verified: July 25, 2026 against `config/mcp-servers.json`,
-`lib/mcp_client.py`, `lib/tool_schema.py`, and
-`jarvis-web/server/services/followup_extractor.py`.*
+*Last verified: July 27, 2026 against `config/mcp-servers.json`,
+`lib/mcp_client.py`, `lib/tool_schema.py`,
+`jarvis-web/server/services/followup_extractor.py`, and the upstream v0.6.0
+container metadata.*

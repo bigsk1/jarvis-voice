@@ -107,6 +107,15 @@ def main():
         summary = f"{tool} {status} in {duration:.0f}ms"
         if log.get("fallback_embeddings"):
             summary += " - fallback embeddings used"
+        proxy = log.get("proxy")
+        if isinstance(proxy, dict):
+            if proxy.get("used") is True:
+                summary += f" - proxy {proxy.get('slot', 'configured')}"
+            elif proxy.get("used") is False:
+                reason = proxy.get("direct_reason")
+                summary += f" - no proxy{f' ({reason})' if reason else ''}"
+            else:
+                summary += " - proxy use unknown"
         
         if not log["result"]["ok"]:
             error = log["result"].get("error", "unknown error")
@@ -141,6 +150,7 @@ def main():
             "tool": log["tool"],
             "arguments": log["arguments"],
             "fallback_embeddings": log.get("fallback_embeddings"),
+            "proxy": log.get("proxy"),
             "ok": log["result"]["ok"],
             "speech": log["result"]["speech"],
             "error": log["result"].get("error"),

@@ -327,9 +327,20 @@ This file is **committed to git**, so:
     "duckduckgo": {
       "command": "docker",
       "args": [
-        "run", "-i", "--rm", "--network", "host",
-        "mcp/duckduckgo"
+        "run", "-i", "--rm",
+        "--user", "65534:65534",
+        "--read-only",
+        "--cap-drop", "ALL",
+        "--security-opt", "no-new-privileges",
+        "-e", "DDG_REGION",
+        "-e", "DDG_SAFE_SEARCH",
+        "ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0"
       ],
+      "env": {
+        "DDG_REGION": "us-en",
+        "DDG_SAFE_SEARCH": "STRICT"
+      },
+      "proxy_policy": "prefer",
       "description": "Web search via DuckDuckGo",
       "enabled": true
     },
@@ -347,7 +358,27 @@ This file is **committed to git**, so:
 }
 ```
 
-**Security Note**: If you omit the `"env"` key or use `"env": {}`, **no environment variables** are passed to the MCP server. This is secure by default—the server won't have access to your API keys or secrets.
+**Security Note**: If you omit the `"env"` key or use `"env": {}`, **no
+ordinary environment variables** are passed to the MCP server. This is secure
+by default—the server won't have access to your API keys or secrets. An
+explicit `proxy_policy: "prefer"` or `"require"` permits only the conventional
+proxy names Jarvis derives from `LOCAL_PROXY` / `LOCAL_PROXY2`; it does not
+broaden the allowlist or pass the source variable names.
+
+### Proxy Policy
+
+Both native `*.tool.json` files and MCP server entries support top-level
+`proxy_policy` runtime metadata:
+
+- Omitted / `"inherit"` preserves existing behavior.
+- `"off"` forces direct networking.
+- `"prefer"` uses `LOCAL_PROXY`, then `LOCAL_PROXY2`, with direct fallback.
+- `"require"` uses the proxy chain and fails closed without a direct fallback.
+
+For a Docker MCP server, Jarvis selects the first reachable proxy listener and
+forwards only derived `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` names (plus
+lowercase equivalents) with explicit `docker run -e` arguments. See
+[`docs/NETWORK_PROXY.md`](../docs/NETWORK_PROXY.md).
 
 ### MCP Server with API Key (Secure Pattern)
 

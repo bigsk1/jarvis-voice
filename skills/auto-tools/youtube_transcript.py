@@ -15,7 +15,7 @@ from pathlib import Path
 # IMPORTANT: This tool lives in skills/auto-tools/, so go up 2 levels to reach lib/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lib'))
 from config_loader import load_config, get_config_value
-from http_client import get_proxy_url_chain
+from http_client import build_proxy_url_attempts
 from stash_helper import open_space, StashFile
 from memory_db import MemoryDB
 
@@ -224,9 +224,7 @@ def main():
             }))
             sys.exit(1)
         
-        proxy_attempts = get_proxy_url_chain()
-        if not proxy_attempts:
-            proxy_attempts = [None]
+        proxy_attempts = build_proxy_url_attempts(direct_fallback_default=False)
 
         srt_content, video_title, error = None, None, None
         for proxy in proxy_attempts:

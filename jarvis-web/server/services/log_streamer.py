@@ -301,6 +301,9 @@ class LogStreamer:
 
             duration = data.get('duration_ms', 0)
             error = data.get('error', '') or result_obj.get('error', '')
+            proxy = data.get('proxy', {})
+            if not isinstance(proxy, dict):
+                proxy = {}
             
             level = 'success' if success else 'error'
             
@@ -328,7 +331,16 @@ class LogStreamer:
                     'action': args.get('action') if isinstance(args, dict) else None,
                     'result_preview': (result_obj.get('speech') or str(result_obj))[:300],
                     'error': error,
-                    'mode': data.get('mode', 'unknown')
+                    'mode': data.get('mode', 'unknown'),
+                    'proxy_policy': proxy.get('policy'),
+                    'proxy_used': (
+                        proxy.get('used')
+                        if proxy.get('used') is not None
+                        else ('unknown' if proxy else None)
+                    ),
+                    'proxy_slot': proxy.get('slot'),
+                    'proxy_direct_reason': proxy.get('direct_reason'),
+                    'proxy_basis': proxy.get('basis'),
                 },
                 raw=line
             )

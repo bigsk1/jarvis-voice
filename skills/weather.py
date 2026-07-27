@@ -40,7 +40,6 @@ def normalize_location(location: str) -> str:
     
     Converts "City, STATE" to "City,US" since OWM doesn't understand US state codes.
     Examples:
-        "Hillsboro, OR" -> "Hillsboro,US"
         "Portland, OR" -> "Portland,US"
         "London, UK" -> "London,UK" (unchanged)
         "Seattle" -> "Seattle" (unchanged)

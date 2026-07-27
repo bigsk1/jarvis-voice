@@ -40,7 +40,7 @@ MCP (Model Context Protocol) servers are **pre-built tools** you can add to Jarv
 **Shipped enabled servers** (`config/mcp-servers.json`):
 - **`mcp/fetch`** - Fetch URL content as markdown
 - **`mcp/brave-search`** - Web search (requires `BRAVE_API_KEY`)
-- **`mcp/duckduckgo`** - Credential-free web search and public-page extraction
+- **`ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0`** - Credential-free web search and public-page extraction
 
 Optional (present but disabled by default): `sequentialthinking`, `playwright`.
 
@@ -60,7 +60,7 @@ Optional (present but disabled by default): `sequentialthinking`, `playwright`.
 # Pull the shipped images
 docker pull mcp/fetch
 docker pull mcp/brave-search
-docker pull mcp/duckduckgo
+docker pull ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0
 # Enable in config/mcp-servers.json — tools appear in Jarvis (voice, web, CLI)
 ```
 
@@ -73,7 +73,7 @@ docker pull mcp/duckduckgo
 ```bash
 docker pull mcp/fetch
 docker pull mcp/brave-search
-docker pull mcp/duckduckgo
+docker pull ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0
 ```
 
 ### Test MCP Server
@@ -152,12 +152,13 @@ Edit `config/mcp-servers.json` (shipped shape):
         "--security-opt", "no-new-privileges",
         "-e", "DDG_REGION",
         "-e", "DDG_SAFE_SEARCH",
-        "mcp/duckduckgo"
+        "ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0"
       ],
       "env": {
         "DDG_REGION": "us-en",
         "DDG_SAFE_SEARCH": "STRICT"
       },
+      "proxy_policy": "prefer",
       "description": "Credential-free web search and public-page extraction",
       "enabled": true
     }
@@ -165,9 +166,13 @@ Edit `config/mcp-servers.json` (shipped shape):
 }
 ```
 
-Jarvis passes only the two explicitly listed DuckDuckGo variables. The tracked
-configuration runs the container as an unprivileged user with a read-only
-filesystem, drops Linux capabilities, and enables `no-new-privileges`.
+Jarvis passes the two explicitly listed DuckDuckGo variables. Because this
+server also opts into `proxy_policy: "prefer"`, Jarvis may additionally pass
+only conventional proxy names derived from the first reachable `LOCAL_PROXY`
+or `LOCAL_PROXY2`; it never passes those source names or unrelated secrets.
+The tracked configuration runs the container as an unprivileged user with a
+read-only filesystem, drops Linux capabilities, and enables
+`no-new-privileges`. See [Network proxy](../NETWORK_PROXY.md).
 
 ### Option B: Native MCP (npm)
 
@@ -221,7 +226,7 @@ prompt. Search results and fetched text remain untrusted external input.
 ### Enabled by default
 - **`fetch`** (`mcp/fetch`) — URL content as markdown
 - **`brave_search`** (`mcp/brave-search`) — Web search (needs `BRAVE_API_KEY`)
-- **`duckduckgo`** (`mcp/duckduckgo`) — Credential-free web search and public
+- **`duckduckgo`** (`ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0`) — Credential-free web search and public
   page extraction; defaults to `us-en` and Strict SafeSearch
 
 Important registered tool names:
@@ -306,7 +311,7 @@ Before using MCP in production:
 
 - [ ] Docker is installed and running
 - [ ] Pull shipped images: `docker pull mcp/fetch`, `docker pull mcp/brave-search`,
-  and `docker pull mcp/duckduckgo`
+  and `docker pull ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0`
 - [ ] Test connectivity: `./bin/test-mcp --discover`
 - [ ] Check config: `cat config/mcp-servers.json`
 - [ ] Verify tools appear: start Jarvis (should show MCP tools in the catalog)
@@ -346,7 +351,7 @@ cat config/mcp-servers.json
 ```bash
 docker pull mcp/fetch
 docker pull mcp/brave-search
-docker pull mcp/duckduckgo
+docker pull ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0
 ```
 
 **Step 2:** Confirm enabled in config

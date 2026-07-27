@@ -317,6 +317,21 @@ Many networks require proxy for external API access. The Tool Builder now automa
 
 Canonical reference: **[NETWORK_PROXY.md](NETWORK_PROXY.md)** (`LOCAL_PROXY`, optional `LOCAL_PROXY2`, `lib/http_client.py` chain, direct fallback).
 
+### Manifest Policy
+
+A generated native tool may optionally set top-level runtime metadata in its
+`.tool.json`:
+
+```json
+"proxy_policy": "prefer"
+```
+
+Allowed values are `inherit`, `off`, `prefer`, and `require`. Omit the field to
+preserve existing code-controlled behavior. `require` is fail-closed and must
+be used only with the shared proxy helpers (or an equivalent implementation
+that never retries directly). The field is not exposed to the LLM as a
+function parameter.
+
 ### How It Works
 
 ```
@@ -865,4 +880,3 @@ Python can:
 - Connect to databases
 
 Most "tools" are really just API wrappers or CLI utilities - Python handles these perfectly.
-

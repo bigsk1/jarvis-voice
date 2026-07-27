@@ -15,6 +15,7 @@ from typing import Any
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, export_config_environment
+from http_client import PROXY_POLICY_ENV, STANDARD_PROXY_ENV_KEYS
 from tool_logger import get_logger
 from tool_search_runtime import search_tools_runtime
 try:
@@ -235,6 +236,21 @@ class ToolExecutor:
             # chat provider. Starts from the current environment, so per-request
             # JARVIS_OVERRIDE_* values and session context still propagate.
             tool_env = export_config_environment(self.mode)
+            proxy_policy = getattr(tool_schema, "proxy_policy", "inherit")
+            if proxy_policy != "inherit":
+                tool_env[PROXY_POLICY_ENV] = proxy_policy
+                tool_env[f"JARVIS_OVERRIDE_{PROXY_POLICY_ENV}"] = proxy_policy
+            if proxy_policy == "off":
+                # Child tools commonly call load_config(), so blank override
+                # values prevent LOCAL_PROXY* from being rehydrated. Remove
+                # conventional variables too so non-Jarvis HTTP libraries do
+                # not silently pick up a host proxy.
+                for key in ("LOCAL_PROXY", "LOCAL_PROXY2"):
+                    tool_env[key] = ""
+                    tool_env[f"JARVIS_OVERRIDE_{key}"] = ""
+                for key in STANDARD_PROXY_ENV_KEYS:
+                    tool_env.pop(key, None)
+                    tool_env[f"JARVIS_OVERRIDE_{key}"] = ""
             if self.jarvis_session_id:
                 tool_env['JARVIS_SESSION_ID'] = str(self.jarvis_session_id)
             if self.web_conversation_id:
@@ -499,7 +515,12 @@ class ToolExecutor:
                 arguments=args,
                 result=result,
                 duration_ms=duration_ms,
-                mode=self.mode
+                mode=self.mode,
+                proxy=(
+                    mcp_client.get_proxy_log_metadata()
+                    if hasattr(mcp_client, "get_proxy_log_metadata")
+                    else None
+                ),
             )
             
             return result
@@ -516,7 +537,13 @@ class ToolExecutor:
                 arguments=args,
                 result=output,
                 duration_ms=duration_ms,
-                mode=self.mode
+                mode=self.mode,
+                proxy=(
+                    mcp_client.get_proxy_log_metadata()
+                    if "mcp_client" in locals()
+                    and hasattr(mcp_client, "get_proxy_log_metadata")
+                    else None
+                ),
             )
             return output
 

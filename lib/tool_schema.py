@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
+from http_client import normalize_proxy_policy
 
 _logger = logging.getLogger(__name__)
 _MANDATORY_GHOST_TOOLS = ("tool_search", "workflow")
@@ -163,6 +164,7 @@ class ToolSchema:
         script_path: str,
         permissions: dict[str, Any] | None = None,
         deterministic_routing: dict[str, Any] | None = None,
+        proxy_policy: str = "inherit",
     ):
         """
         Initialize a tool schema.
@@ -181,6 +183,7 @@ class ToolSchema:
                     "auto_approve": bool # Skip confirmation (for safe tools)
                 }
             deterministic_routing: Optional metadata for non-LLM fallback routing.
+            proxy_policy: Runtime network policy: inherit, off, prefer, or require.
         """
         self.name = name
         self.description = description
@@ -194,6 +197,7 @@ class ToolSchema:
             "auto_approve": True
         }
         self.deterministic_routing = deterministic_routing or {}
+        self.proxy_policy = normalize_proxy_policy(proxy_policy)
     
     def to_openai_format(self) -> dict[str, Any]:
         """Convert to OpenAI function calling format."""
@@ -299,6 +303,7 @@ Parameters:
             script_path=script_path,
             permissions=data.get("permissions", None),
             deterministic_routing=data.get("deterministic_routing", None),
+            proxy_policy=data.get("proxy_policy", "inherit"),
         )
 
 
@@ -567,7 +572,8 @@ class ToolRegistry:
                                 "network": True,
                                 "filesystem": False,
                                 "auto_approve": True
-                            }
+                            },
+                            proxy_policy=getattr(client, "proxy_policy", "inherit"),
                         )
                         
                         self.tools[tool_name] = schema

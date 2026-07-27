@@ -12,7 +12,8 @@ import json
 
 # Add lib to path for config_loader
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config
+from http_client import get_proxy_policy, get_proxy_url_chain, proxy_policy_allows_direct_fallback
 
 # yfinance for Yahoo Finance API
 import yfinance as yf
@@ -144,12 +145,7 @@ STOCK_MAP = {
 
 def _proxy_url_chain() -> list[str]:
     """LOCAL_PROXY then LOCAL_PROXY2 (non-empty), matching lib/http_client."""
-    urls: list[str] = []
-    for key in ('LOCAL_PROXY', 'LOCAL_PROXY2'):
-        u = (get_config_value(key, '') or '').strip()
-        if u:
-            urls.append(u)
-    return urls
+    return get_proxy_url_chain()
 
 
 def apply_proxy_env(proxy_url: str) -> None:
@@ -247,6 +243,9 @@ def main():
         
         proxy_chain = _proxy_url_chain()
         proxy_enabled = bool(proxy_chain)
+        if get_proxy_policy() == "require" and not proxy_chain:
+            return_error("proxy_policy=require but LOCAL_PROXY and LOCAL_PROXY2 are not configured.")
+            return 1
         
         # Read input from command line argument
         try:
@@ -299,7 +298,11 @@ def main():
                     return_error(f"Failed to fetch stock data: {error_str}")
                     return 1
 
-            if stock_data is None and tunnel_exhausted:
+            if (
+                stock_data is None
+                and tunnel_exhausted
+                and proxy_policy_allows_direct_fallback(default=True)
+            ):
                 try:
                     clear_proxy()
                     stock_data = fetch_stock_snapshot(ticker, symbol)
@@ -312,6 +315,9 @@ def main():
                     else:
                         return_error(f"Failed to fetch stock data: {retry_error_str}")
                     return 1
+            elif stock_data is None and tunnel_exhausted:
+                return_error("Proxy chain failed and proxy_policy=require forbids a direct fallback.")
+                return 1
 
         current_price = stock_data["price_usd"]
         day_change = stock_data["change_today_usd"]

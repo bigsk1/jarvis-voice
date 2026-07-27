@@ -18,6 +18,13 @@ from typing import Any, Union
 from threading import Event, Lock, RLock, Thread
 
 from config_loader import get_config_value
+from http_client import (
+    STANDARD_PROXY_ENV_KEYS,
+    get_proxy_url_chain,
+    normalize_proxy_policy,
+    select_reachable_proxy_url,
+    standard_proxy_environment,
+)
 
 
 def _duckduckgo_text_error(server_name: str, tool_name: str, text: str) -> bool:
@@ -98,7 +105,14 @@ class MCPClient:
     MAX_RESTART_ATTEMPTS = 3
     RESTART_COOLDOWN_SECONDS = 60  # After max restarts, wait before allowing more
     
-    def __init__(self, name: str, command: str, args: list[str], env: dict[str, str] | None = None):
+    def __init__(
+        self,
+        name: str,
+        command: str,
+        args: list[str],
+        env: dict[str, str] | None = None,
+        proxy_policy: str = "inherit",
+    ):
         """
         Initialize MCP client.
         
@@ -107,11 +121,13 @@ class MCPClient:
             command: Command to start server (e.g., "docker")
             args: Arguments for command
             env: Environment variables
+            proxy_policy: inherit, off, prefer, or require
         """
         self.name = name
         self.command = command
         self.args = args
         self.env = env or {}
+        self.proxy_policy = normalize_proxy_policy(proxy_policy)
         self.process = None
         self.lock = Lock()
         self.request_id = 0
@@ -123,6 +139,8 @@ class MCPClient:
         self._in_cooldown = False
         # Runtime tool calls auto-restart crashed servers; discovery/sync must fail fast.
         self._auto_restart = True
+        self._selected_proxy_url: str | None = None
+        self._selected_proxy_slot: str | None = None
 
     def _force_restart(self, reason: str = "unknown"):
         """
@@ -219,6 +237,8 @@ class MCPClient:
         
         # Build environment with substitution
         # SECURITY: Only pass explicitly listed env vars, not the entire os.environ
+        self._selected_proxy_url = None
+        self._selected_proxy_slot = None
         mcp_env = self._build_env_with_substitution()
         
         # Expand ${VAR} in args as well
@@ -247,6 +267,8 @@ class MCPClient:
                     print(f"[MCP DEBUG] Container check failed: {e}", file=sys.stderr)
             
             # Inject --name after "run" in args
+            run_idx = expanded_args.index("run")
+            expanded_args = self._inject_docker_proxy_env(expanded_args, mcp_env)
             run_idx = expanded_args.index("run")
             expanded_args = (
                 expanded_args[:run_idx + 1] + 
@@ -297,6 +319,35 @@ class MCPClient:
             else:
                 expanded.append(arg)
         return expanded
+
+    @staticmethod
+    def _declared_docker_env_names(args: list[str]) -> set[str]:
+        """Return env names already forwarded by docker run arguments."""
+        names: set[str] = set()
+        for index, arg in enumerate(args):
+            if arg in {"-e", "--env"} and index + 1 < len(args):
+                names.add(str(args[index + 1]).split("=", 1)[0])
+            elif arg.startswith("--env="):
+                names.add(arg.split("=", 1)[1].split("=", 1)[0])
+        return names
+
+    def _inject_docker_proxy_env(
+        self,
+        args: list[str],
+        child_env: dict[str, str],
+    ) -> list[str]:
+        """Forward only policy-derived proxy variables into a Docker MCP."""
+        if self.proxy_policy not in {"prefer", "require"}:
+            return args
+        declared = self._declared_docker_env_names(args)
+        additions: list[str] = []
+        for key in STANDARD_PROXY_ENV_KEYS:
+            if key in child_env and key not in declared:
+                additions.extend(["-e", key])
+        if not additions:
+            return args
+        run_idx = args.index("run")
+        return args[: run_idx + 1] + additions + args[run_idx + 1 :]
     
     def _build_env_with_substitution(self) -> dict[str, str]:
         """
@@ -327,6 +378,28 @@ class MCPClient:
                 result[key] = substituted_value
             else:
                 result[key] = str(value)
+
+        if self.proxy_policy == "off":
+            for key in STANDARD_PROXY_ENV_KEYS:
+                result.pop(key, None)
+        elif self.proxy_policy in {"prefer", "require"}:
+            proxy_urls = get_proxy_url_chain(respect_policy=False)
+            selected = select_reachable_proxy_url(proxy_urls)
+            if selected is None:
+                if self.proxy_policy == "require":
+                    raise RuntimeError(
+                        f"MCP server {self.name} requires a proxy, but no configured proxy listener is reachable"
+                    )
+            else:
+                proxy_url, proxy_slot = selected
+                self._selected_proxy_url = proxy_url
+                self._selected_proxy_slot = proxy_slot
+                result.update(standard_proxy_environment(proxy_url))
+                print(
+                    f"[MCP PROXY] server={self.name} policy={self.proxy_policy} "
+                    f"proxy_slot={proxy_slot}",
+                    file=sys.stderr,
+                )
         
         return result
     
@@ -493,7 +566,46 @@ class MCPClient:
         except Exception as e:
             print(f"Error listing tools from MCP server {self.name}: {e}", file=sys.stderr)
             return []
-    
+
+    def _ensure_proxy_listener(self) -> None:
+        """Fast-fail a dead selected proxy before an upstream 30s timeout."""
+        if self.proxy_policy not in {"prefer", "require"} or not self._selected_proxy_url:
+            return
+        if select_reachable_proxy_url([self._selected_proxy_url], timeout=0.35) is not None:
+            return
+        failed_slot = self._selected_proxy_slot or "configured_proxy"
+        self._force_restart(f"{failed_slot} listener unavailable before tools/call")
+
+    def get_proxy_log_metadata(self) -> dict[str, Any]:
+        """Return credential-free proxy state for the current MCP process.
+
+        For MCP servers, ``used`` means the process handling this call was
+        launched with Jarvis-derived conventional proxy variables. It never
+        includes the proxy URL, host, port, username, or password.
+        """
+        metadata: dict[str, Any] = {
+            "policy": self.proxy_policy,
+            "used": None,
+            "basis": "mcp_environment",
+        }
+        if self.proxy_policy == "inherit":
+            metadata["direct_reason"] = "unmanaged"
+        elif self.proxy_policy == "off":
+            metadata.update({"used": False, "direct_reason": "policy_off"})
+        elif self._selected_proxy_slot:
+            metadata.update({"used": True, "slot": self._selected_proxy_slot})
+        elif self.proxy_policy == "prefer":
+            metadata.update({
+                "used": False,
+                "direct_reason": "no_reachable_proxy",
+            })
+        else:
+            metadata.update({
+                "used": False,
+                "direct_reason": "required_proxy_unavailable",
+            })
+        return metadata
+
     def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Call a tool on the MCP server.
@@ -505,6 +617,7 @@ class MCPClient:
         Returns:
             Tool result
         """
+        self._ensure_proxy_listener()
         timeout_seconds = int(os.environ.get("MCP_TOOL_CALL_TIMEOUT_SECONDS", "35"))
         response_holder: dict[str, Any] = {}
 
@@ -1196,7 +1309,14 @@ class MCPManager:
                 args = server_config.get("args", [])
                 env = server_config.get("env", {})
                 
-                self.servers[name] = MCPClient(name, command, args, env)
+                proxy_policy = server_config.get("proxy_policy", "inherit")
+                self.servers[name] = MCPClient(
+                    name,
+                    command,
+                    args,
+                    env,
+                    proxy_policy=proxy_policy,
+                )
                 
                 if os.environ.get("MCP_DEBUG", "").lower() == "true":
                     print(f"[MCP DEBUG] Loaded stdio server: {name} -> {command}", file=sys.stderr)

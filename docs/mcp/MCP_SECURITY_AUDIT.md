@@ -274,7 +274,11 @@ the server's Jarvis `env` object; do not use broad host-environment passthrough.
 
 **Why Safe:** Values become command-line arguments, not container environment. The MCP server cannot enumerate other env vars - it only sees the final value in the arg string.
 
-**Jarvis proxy note:** Chromium accepts one `--proxy-server` URL. Use `LOCAL_PROXY` there; optional `LOCAL_PROXY2` is for the Python/HTTP client chain (see `docs/NETWORK_PROXY.md`), not a second MCP expansion.
+**Jarvis proxy note:** Chromium accepts one `--proxy-server` URL. For MCP
+servers whose HTTP clients honor conventional proxy variables, prefer
+top-level `proxy_policy`: Jarvis selects `LOCAL_PROXY` then `LOCAL_PROXY2` by
+listener reachability without exposing either source variable to the
+container. See `docs/NETWORK_PROXY.md`.
 
 ### ✅ Empty Env (Still Secure!)
 
@@ -282,7 +286,10 @@ the server's Jarvis `env` object; do not use broad host-environment passthrough.
 "env": {}  // Or omit "env" entirely
 ```
 
-**Why Safe:** Jarvis passes **ZERO** environment variables by default (least privilege).
+**Why Safe:** Jarvis passes **ZERO** environment variables by default (least
+privilege). If the same server explicitly sets
+`proxy_policy: "prefer"` or `"require"`, the only automatic additions are the
+conventional proxy names derived from the selected configured proxy.
 
 ### ❌ OLD INSECURE WAY (Not used in Jarvis)
 
@@ -300,7 +307,7 @@ Before trusting a community image:
 1. Confirm the image is in the expected registry/publisher namespace.
 2. Record `RepoDigests` and the source revision:
    ```bash
-   docker image inspect mcp/duckduckgo \
+   docker image inspect ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0 \
      --format '{{json .RepoDigests}} {{json .Config.Labels}}'
    ```
 3. Compare the digest and source revision with the publisher's catalog page.
@@ -314,9 +321,9 @@ Provenance answers “what was built and by whom,” not “is every behavior sa
 
 ## Real Security Audit: DuckDuckGo
 
-The tracked `duckduckgo` entry uses Docker's
-[`mcp/duckduckgo`](https://hub.docker.com/r/mcp/duckduckgo) catalog image,
-which packages the community
+The tracked `duckduckgo` entry pins the upstream
+[`ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.0`](https://github.com/nickclyde/duckduckgo-mcp-server/pkgs/container/duckduckgo-mcp-server)
+image published by the community
 [`nickclyde/duckduckgo-mcp-server`](https://github.com/nickclyde/duckduckgo-mcp-server)
 project. It is not published by or affiliated with DuckDuckGo.
 
@@ -332,7 +339,10 @@ project. It is not published by or affiliated with DuckDuckGo.
 - Drops all Linux capabilities
 - Enables `no-new-privileges`
 - No host volume mounts or Docker socket
-- Receives only `DDG_REGION=us-en` and `DDG_SAFE_SEARCH=STRICT`
+- Receives `DDG_REGION=us-en` and `DDG_SAFE_SEARCH=STRICT`
+- `proxy_policy=prefer` permits only conventional proxy variables derived from
+  the first reachable `LOCAL_PROXY` / `LOCAL_PROXY2`; source proxy variable
+  names and unrelated secrets remain unavailable
 
 **Upstream fetch controls:**
 

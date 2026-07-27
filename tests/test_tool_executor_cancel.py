@@ -21,16 +21,17 @@ from executor import ToolExecutor
 
 
 class FakeToolSchema:
-    def __init__(self, script_path):
+    def __init__(self, script_path, proxy_policy="inherit"):
         self.script_path = script_path
+        self.proxy_policy = proxy_policy
 
     def requires_confirmation(self):
         return False
 
 
 class FakeRegistry:
-    def __init__(self, script_path):
-        self._schema = FakeToolSchema(script_path)
+    def __init__(self, script_path, proxy_policy="inherit"):
+        self._schema = FakeToolSchema(script_path, proxy_policy=proxy_policy)
 
     def get_tool(self, tool_name):
         return self._schema if tool_name == "fake_long_tool" else None
@@ -54,6 +55,22 @@ class FakeMcpClient:
     def call_tool(self, name, args):
         self.calls.append((name, args))
         return {"ok": True, "speech": "mcp ok", "data": {"name": name, "args": args}}
+
+    def get_proxy_log_metadata(self):
+        return {
+            "policy": "prefer",
+            "used": True,
+            "slot": "LOCAL_PROXY2",
+            "basis": "mcp_environment",
+        }
+
+
+class RecordingLogger:
+    def __init__(self):
+        self.calls = []
+
+    def log_tool_call(self, **kwargs):
+        self.calls.append(kwargs)
 
 
 class FakeMcpRegistry:
@@ -147,6 +164,38 @@ class ToolExecutorCancelTests(unittest.TestCase):
         self.assertEqual(result["data"]["jarvis_session"], "20260404_123456")
         self.assertEqual(result["data"]["web_conversation_id"], "6dbf22ca")
 
+    def test_off_proxy_policy_reaches_child_without_proxy_secrets(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            script_path = Path(tmpdir) / "fake_long_tool.py"
+            script_path.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os\n"
+                "print(json.dumps({\n"
+                "  'ok': True,\n"
+                "  'speech': 'done',\n"
+                "  'data': {\n"
+                "    'policy': os.environ.get('JARVIS_TOOL_PROXY_POLICY'),\n"
+                "    'local_proxy': os.environ.get('LOCAL_PROXY'),\n"
+                "    'local_proxy2': os.environ.get('LOCAL_PROXY2'),\n"
+                "    'http_proxy_present': 'HTTP_PROXY' in os.environ,\n"
+                "    'https_proxy_present': 'HTTPS_PROXY' in os.environ\n"
+                "  }\n"
+                "} ))\n"
+            )
+
+            executor = ToolExecutor(
+                mode="cloud",
+                registry=FakeRegistry(str(script_path), proxy_policy="off"),
+            )
+            result = executor.execute("fake_long_tool", {})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["data"]["policy"], "off")
+        self.assertEqual(result["data"]["local_proxy"], "")
+        self.assertEqual(result["data"]["local_proxy2"], "")
+        self.assertFalse(result["data"]["http_proxy_present"])
+        self.assertFalse(result["data"]["https_proxy_present"])
+
     def test_missing_mcp_tool_recovers_from_shared_registry(self):
         shared_registry = FakeMcpRegistry(FakeToolSchema("__mcp__brave_search__brave_web_search"))
         executor = ToolExecutor(mode="cloud", registry=EmptyRegistry())
@@ -168,6 +217,28 @@ class ToolExecutorCancelTests(unittest.TestCase):
         self.assertEqual(
             shared_registry.client.calls,
             [("brave_web_search", {"query": "github trending"})],
+        )
+
+    def test_mcp_tool_log_records_proxy_route_for_that_call(self):
+        registry = FakeMcpRegistry(FakeToolSchema("__mcp__brave_search__brave_web_search"))
+        executor = ToolExecutor(mode="cloud", registry=registry)
+        executor.logger = RecordingLogger()
+
+        result = executor.execute(
+            "mcp_brave_search_brave_web_search",
+            {"query": "github trending"},
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(executor.logger.calls), 1)
+        self.assertEqual(
+            executor.logger.calls[0]["proxy"],
+            {
+                "policy": "prefer",
+                "used": True,
+                "slot": "LOCAL_PROXY2",
+                "basis": "mcp_environment",
+            },
         )
 
 

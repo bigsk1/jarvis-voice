@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 # IMPORTANT: This tool lives in skills/auto-tools/, so go up 2 levels to reach lib/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 from config_loader import load_config, get_config_value
-from http_client import get_proxy_url_chain
+from http_client import build_proxy_url_attempts
 from stash_helper import open_space, StashFile
 from memory_db import MemoryDB
 
@@ -379,8 +379,7 @@ def main():
             sys.exit(1)
 
         url = normalize_youtube_url(url)
-        proxy_urls = get_proxy_url_chain()
-        proxy_attempts: list[str | None] = proxy_urls if proxy_urls else [None]
+        proxy_attempts = build_proxy_url_attempts(direct_fallback_default=False)
 
         if not format_selector:
             format_selector = derive_format_selector(quality, audio_only)

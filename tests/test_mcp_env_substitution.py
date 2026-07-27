@@ -5,11 +5,15 @@ Test MCP environment variable substitution
 import os
 import sys
 
+import pytest
+
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 import config_loader
 from config_loader import config_scope
 from mcp_client import MCPClient, MCPManager
+import mcp_client
+from http_client import STANDARD_PROXY_ENV_KEYS
 
 
 def test_env_substitution():
@@ -178,6 +182,129 @@ def test_remote_headers_follow_request_config_scope(tmp_path, monkeypatch):
         assert local_manager.servers["remote"].headers == {
             "Authorization": "Bearer local-header"
         }
+
+
+def test_prefer_policy_passes_only_declared_and_derived_proxy_env(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "must-not-leak")
+    monkeypatch.setattr(
+        mcp_client,
+        "get_proxy_url_chain",
+        lambda respect_policy=False: [
+            "http://proxy-one.test:8001",
+            "http://proxy-two.test:8002",
+        ],
+    )
+    monkeypatch.setattr(
+        mcp_client,
+        "select_reachable_proxy_url",
+        lambda urls: (urls[1], "LOCAL_PROXY2"),
+    )
+    client = MCPClient(
+        "duckduckgo",
+        "docker",
+        ["run", "-i", "image"],
+        {"DDG_REGION": "us-en"},
+        proxy_policy="prefer",
+    )
+
+    child_env = client._build_env_with_substitution()
+
+    assert child_env["DDG_REGION"] == "us-en"
+    assert set(child_env) == {"DDG_REGION", *STANDARD_PROXY_ENV_KEYS}
+    assert all(
+        child_env[key] == "http://proxy-two.test:8002"
+        for key in STANDARD_PROXY_ENV_KEYS
+    )
+    assert "LOCAL_PROXY" not in child_env
+    assert "LOCAL_PROXY2" not in child_env
+    assert "ANTHROPIC_API_KEY" not in child_env
+    assert client._selected_proxy_slot == "LOCAL_PROXY2"
+
+
+def test_docker_proxy_forwarding_is_limited_to_standard_proxy_env():
+    client = MCPClient(
+        "duckduckgo",
+        "docker",
+        ["run", "-i", "-e", "DDG_REGION", "image"],
+        proxy_policy="prefer",
+    )
+    child_env = {
+        "DDG_REGION": "us-en",
+        "UNRELATED_SECRET": "no",
+        **{key: "http://proxy.test:8080" for key in STANDARD_PROXY_ENV_KEYS},
+    }
+
+    args = client._inject_docker_proxy_env(client.args, child_env)
+    declared = client._declared_docker_env_names(args)
+
+    assert set(STANDARD_PROXY_ENV_KEYS).issubset(declared)
+    assert "DDG_REGION" in declared
+    assert "UNRELATED_SECRET" not in declared
+
+
+def test_require_policy_rejects_unreachable_proxy_chain(monkeypatch):
+    monkeypatch.setattr(
+        mcp_client,
+        "get_proxy_url_chain",
+        lambda respect_policy=False: ["http://proxy.test:8080"],
+    )
+    monkeypatch.setattr(mcp_client, "select_reachable_proxy_url", lambda urls: None)
+    client = MCPClient("required", "echo", [], proxy_policy="require")
+
+    with pytest.raises(RuntimeError, match="requires a proxy"):
+        client._build_env_with_substitution()
+
+
+def test_proxy_log_metadata_reports_route_without_proxy_url():
+    client = MCPClient("ddg", "echo", [], proxy_policy="prefer")
+    client._selected_proxy_url = "http://user:secret@proxy.test:8080"
+    client._selected_proxy_slot = "LOCAL_PROXY2"
+
+    metadata = client.get_proxy_log_metadata()
+
+    assert metadata == {
+        "policy": "prefer",
+        "used": True,
+        "basis": "mcp_environment",
+        "slot": "LOCAL_PROXY2",
+    }
+    assert "secret" not in str(metadata)
+    assert "proxy.test" not in str(metadata)
+
+
+def test_proxy_log_metadata_reports_prefer_direct_fallback():
+    client = MCPClient("ddg", "echo", [], proxy_policy="prefer")
+
+    assert client.get_proxy_log_metadata() == {
+        "policy": "prefer",
+        "used": False,
+        "basis": "mcp_environment",
+        "direct_reason": "no_reachable_proxy",
+    }
+
+
+def test_dead_selected_proxy_is_restarted_before_tool_timeout(monkeypatch):
+    client = MCPClient("ddg", "echo", [], proxy_policy="prefer")
+    client._selected_proxy_url = "http://proxy-one.test:8001"
+    client._selected_proxy_slot = "LOCAL_PROXY"
+    monkeypatch.setattr(mcp_client, "select_reachable_proxy_url", lambda urls, timeout: None)
+    restarted = []
+    monkeypatch.setattr(client, "_force_restart", lambda reason: restarted.append(reason))
+
+    client._ensure_proxy_listener()
+
+    assert restarted == ["LOCAL_PROXY listener unavailable before tools/call"]
+
+
+def test_manager_parses_proxy_policy(tmp_path):
+    config_path = tmp_path / "mcp-servers.json"
+    config_path.write_text(
+        '{"mcpServers":{"ddg":{"command":"echo","proxy_policy":"prefer"}}}\n'
+    )
+
+    manager = MCPManager(str(config_path))
+
+    assert manager.servers["ddg"].proxy_policy == "prefer"
 
 
 if __name__ == "__main__":

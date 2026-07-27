@@ -275,7 +275,8 @@ def audit_tools(mode='cloud'):
                     server_name,
                     server_config.get("command"),
                     server_config.get("args", []),
-                    server_config.get("env", {})
+                    server_config.get("env", {}),
+                    proxy_policy=server_config.get("proxy_policy", "inherit"),
                 )
             
             tools = client.list_tools()

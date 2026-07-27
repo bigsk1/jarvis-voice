@@ -41,6 +41,36 @@ class ToolLoggerFallbackTests(unittest.TestCase):
             raw_entry = json.loads(Path(logger.log_file).read_text().strip())
             self.assertTrue(raw_entry["fallback_embeddings"])
 
+    def test_log_tool_call_persists_sanitized_proxy_metadata(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logger = ToolLogger(log_dir=tmpdir)
+            logger.log_tool_call(
+                tool_name="mcp_duckduckgo_search",
+                arguments={"query": "jarvis"},
+                result={"ok": True, "speech": "Found results"},
+                duration_ms=12.0,
+                mode="cloud",
+                proxy={
+                    "policy": "prefer",
+                    "used": True,
+                    "slot": "LOCAL_PROXY",
+                    "basis": "mcp_environment",
+                    "url": "http://user:secret@proxy.test:8080",
+                },
+            )
+
+            entry = logger.get_recent_logs(limit=1)[0]
+            self.assertEqual(
+                entry["proxy"],
+                {
+                    "policy": "prefer",
+                    "used": True,
+                    "slot": "LOCAL_PROXY",
+                    "basis": "mcp_environment",
+                },
+            )
+            self.assertNotIn("secret", Path(logger.log_file).read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

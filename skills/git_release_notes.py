@@ -29,7 +29,11 @@ import requests
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from config_loader import load_config, get_config_value
-from http_client import get_proxy_chain, proxy_response_indicates_tunnel_failure
+from http_client import (
+    get_proxy_chain,
+    proxy_policy_allows_direct_fallback,
+    proxy_response_indicates_tunnel_failure,
+)
 from stash_helper import open_space, StashFile
 from memory_db import MemoryDB
 
@@ -170,6 +174,13 @@ class GitHubClient:
             except requests.RequestException as e:
                 last_err = e
                 continue
+
+        if not proxy_policy_allows_direct_fallback(default=True):
+            if last_err:
+                raise last_err
+            raise requests.exceptions.ProxyError(
+                "proxy_policy=require but no configured proxy completed the request"
+            )
 
         try:
             resp = self.session.get(url, params=params, timeout=timeout, proxies=None)

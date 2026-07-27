@@ -4,9 +4,36 @@ Tool Call Logger
 Tracks all tool executions for debugging and auditing.
 """
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+
+_PROXY_POLICIES = {"inherit", "off", "prefer", "require"}
+_SAFE_PROXY_TOKEN = re.compile(r"^[A-Za-z0-9_.-]{1,80}$")
+
+
+def _sanitize_proxy_metadata(proxy: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Keep only credential-free proxy fields suitable for persistent logs."""
+    if not isinstance(proxy, dict):
+        return None
+
+    sanitized: dict[str, Any] = {}
+    policy = proxy.get("policy")
+    if policy in _PROXY_POLICIES:
+        sanitized["policy"] = policy
+
+    used = proxy.get("used")
+    if isinstance(used, bool) or used is None:
+        sanitized["used"] = used
+
+    for key in ("slot", "direct_reason", "basis"):
+        value = proxy.get(key)
+        if isinstance(value, str) and _SAFE_PROXY_TOKEN.fullmatch(value):
+            sanitized[key] = value
+
+    return sanitized or None
 
 
 class ToolLogger:
@@ -40,7 +67,8 @@ class ToolLogger:
         user_query: str | None = None,
         mode: str = "cloud",
         workflow_id: str | None = None,
-        workflow_step: int | None = None
+        workflow_step: int | None = None,
+        proxy: dict[str, Any] | None = None,
     ):
         """
         Log a tool execution.
@@ -54,6 +82,7 @@ class ToolLogger:
             mode: cloud or local
             workflow_id: ID of the workflow (if executed as part of workflow)
             workflow_step: Step number within workflow (if applicable)
+            proxy: Credential-free proxy route metadata for this invocation
         """
         result_summary = {
             "ok": result.get("ok", False),
@@ -106,6 +135,9 @@ class ToolLogger:
             log_entry["workflow_id"] = workflow_id
         if workflow_step is not None:
             log_entry["workflow_step"] = workflow_step
+        proxy_metadata = _sanitize_proxy_metadata(proxy)
+        if proxy_metadata:
+            log_entry["proxy"] = proxy_metadata
         
         # Write as JSON lines (one JSON object per line)
         with open(self.log_file, 'a') as f:

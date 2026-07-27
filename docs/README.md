@@ -335,6 +335,18 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-07-27 (unreleased):**
+- ✅ **Per-tool and MCP proxy policy**
+  - Added runtime `proxy_policy` metadata with migration-safe `inherit`,
+    direct-only `off`, proxy-first `prefer`, and fail-closed `require`.
+  - Preserved the existing `LOCAL_PROXY` → `LOCAL_PROXY2` → optional direct
+    behavior for native HTTP helpers and proxy-aware subprocess tools.
+  - MCP Docker servers still receive only explicit environment values;
+    `prefer` / `require` add only conventional proxy names derived from the
+    first reachable configured proxy, with a fast listener check before calls.
+  - Upgraded the tracked DuckDuckGo MCP image to upstream v0.6.0 and enabled
+    `proxy_policy: "prefer"`.
+
 **2026-07-25 (unreleased):**
 - ✅ **Credential-free DuckDuckGo MCP search/fetch**
   - Added the Docker MCP Catalog `mcp/duckduckgo` server with US English,

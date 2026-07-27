@@ -8,6 +8,7 @@ Run:
 
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -98,6 +99,31 @@ class OpenAIToolSchemaTests(unittest.TestCase):
         prop = params["properties"]["hd_filter_tokens"]
         self.assertEqual(prop["type"], ["string", "array"])
         self.assertEqual(prop["items"], {})
+
+    def test_proxy_policy_is_runtime_metadata_not_model_input(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "sample.tool.json"
+            path.write_text(json.dumps({
+                "name": "sample",
+                "description": "Sample tool",
+                "script": "sample.py",
+                "proxy_policy": "off",
+                "parameters": {"type": "object", "properties": {}},
+            }))
+            schema = ToolSchema.from_json_file(str(path))
+
+        self.assertEqual(schema.proxy_policy, "off")
+        self.assertNotIn("proxy_policy", schema.to_openai_format()["function"]["parameters"])
+
+    def test_invalid_proxy_policy_is_rejected(self):
+        with self.assertRaises(ValueError):
+            ToolSchema(
+                name="sample",
+                description="Sample",
+                parameters={"type": "object", "properties": {}},
+                script_path="sample.py",
+                proxy_policy="sometimes",
+            )
 
 
 if __name__ == "__main__":

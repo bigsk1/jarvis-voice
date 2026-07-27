@@ -115,6 +115,7 @@ Each `*.tool.json` file now has an `enabled` field:
   "name": "crypto_price",
   "description": "Get cryptocurrency prices",
   "script": "crypto_price.py",
+  "proxy_policy": "prefer",
   "parameters": { ... },
   "permissions": { ... }
 }
@@ -122,10 +123,14 @@ Each `*.tool.json` file now has an `enabled` field:
 
 - **`enabled: true`** → Tool loads normally
 - **`enabled: false`** → Tool skipped at startup (no memory/token usage)
+- **`proxy_policy`** → Optional runtime-only network policy: `inherit`, `off`,
+  `prefer`, or fail-closed `require`; see
+  [`NETWORK_PROXY.md`](NETWORK_PROXY.md)
 
 ### Backward Compatibility
 
 - Tools without `enabled` field default to `true`
+- Tools without `proxy_policy` preserve their existing proxy behavior
 - All existing tools have been migrated automatically
 - No breaking changes to existing code
 
