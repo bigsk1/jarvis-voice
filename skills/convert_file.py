@@ -270,6 +270,8 @@ def extract_audio_from_video(input_path: str, output_path: str, options: dict = 
         cmd.extend(['-c:a', 'flac'])
     elif output_format == 'wav':
         cmd.extend(['-c:a', 'pcm_s16le'])
+    elif output_format == 'ogg':
+        cmd.extend(['-c:a', 'libvorbis'])
     else:
         cmd.extend(['-c:a', 'aac'])
     
