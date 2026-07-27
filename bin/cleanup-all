@@ -4,11 +4,15 @@
 #
 # Runs all cleanup tasks with appropriate retention periods:
 #   - Logs: 60 days
-#   - Audio: 30 days  
+#   - Runtime audio under audio/ (TTS, mic, QA): 30 days
 #   - Generated images: 120 days, favorites preserved
 #   - Web conversations: 90 days, pinned conversations preserved
 #   - Web uploads: 60 days when unreferenced; saved-conversation assets are preserved
 #   - Stash spaces: Uses built-in TTL (via Python)
+#
+# Not cleaned here:
+#   - Generated music/audio gallery: data/generated_music/
+#   - Generated videos/video gallery: data/generated_videos/
 #
 # Usage:
 #   ./bin/cleanup-all              # Run all cleanups
@@ -33,8 +37,8 @@ fi
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║             Jarvis Master Cleanup                            ║"
 echo "║                                                              ║"
-echo "║ Logs: 60d | Audio: 30d | Images: 120d | Web chats: 90d*         ║"
-echo "║ Uploads: 60d* | Stash TTL                                       ║"
+echo "║ Logs: 60d | TTS/STT audio: 30d | Images: 120d | Chats: 90d*  ║"
+echo "║ Uploads: 60d* | Stash TTL                                    ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -43,7 +47,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 "$SCRIPT_DIR/cleanup-logs" --days 60 $DRY_RUN
 echo ""
 
-# 2. Cleanup audio (30 days)
+# 2. Cleanup runtime TTS/STT audio (30 days; not generated music)
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 "$SCRIPT_DIR/cleanup-audio" --days 30 $DRY_RUN
 echo ""

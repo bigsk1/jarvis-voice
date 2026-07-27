@@ -316,10 +316,15 @@ The `cleanup-all` script handles everything with appropriate retention:
 | Directory | Retention | Purpose |
 |-----------|-----------|---------|
 | `logs/` | 60 days | LLM calls, services, API, tools |
-| `audio/` | 30 days | TTS output, mic recordings |
+| `audio/` | 30 days | Runtime TTS output, mic recordings, and QA audio/logs |
 | `data/generated_images/` | 120 days | Primary AI-generated image files |
 | `jarvis-web/data/uploads/` | 60 days if unreferenced | Saved-conversation attachments are preserved |
 | `data/stash/` | 7/30/120 days by policy | Temporary/generated-media/source artifacts; pins and saved-conversation references are preserved |
+
+`cleanup-audio` is intentionally scoped to `audio/`; it does not scan the Canvas
+Audio Gallery in `data/generated_music/`. `cleanup-all` currently has no local
+file cleanup for generated music or `data/generated_videos/`. A generated
+music stash copy remains subject to its separate stash retention policy.
 
 ### Individual Cleanup Scripts
 
@@ -327,7 +332,7 @@ The `cleanup-all` script handles everything with appropriate retention:
 # Logs only
 ./bin/cleanup-logs [--days N] [--dry-run]
 
-# Audio only
+# Runtime TTS/STT audio only (not data/generated_music/)
 ./bin/cleanup-audio [--days N] [--dry-run]
 ```
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# cleanup-audio - Remove old audio files from Jarvis
+# cleanup-audio - Remove old TTS/STT runtime audio files from Jarvis
 #
 # Usage:
 #   ./bin/cleanup-audio              # Delete audio older than 30 days
@@ -13,6 +13,8 @@
 #   - audio/local/tts/         - TTS output (local mode)
 #   - audio/local/mic/         - Microphone recordings (local mode)
 #   - audio/local/logs/        - QA log text files
+#
+# This script does NOT clean generated music in data/generated_music/.
 #
 # File types:
 #   - *.wav  - Audio recordings
@@ -56,9 +58,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-echo "🎵 Jarvis Audio Cleanup"
+echo "🎵 Jarvis Runtime Audio Cleanup (TTS/STT)"
 echo "   Retention: $RETENTION_DAYS days"
 echo "   Audio dir: $AUDIO_DIR"
+echo "   Excludes:  data/generated_music/ (Canvas Audio Gallery)"
 if $DRY_RUN; then
     echo "   Mode:      DRY RUN (no files will be deleted)"
 fi

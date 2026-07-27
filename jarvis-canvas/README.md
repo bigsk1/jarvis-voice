@@ -264,6 +264,19 @@ without catalog entries are backfilled from their filename, timestamp, and
 format. Gallery responses are enriched with duration and stream details from
 `ffprobe` when it is available.
 
+### Favorites and Cleanup
+
+- `./bin/cleanup-audio` only cleans TTS, microphone, and QA files under
+  `audio/`; it does not scan `data/generated_music/`.
+- `./bin/cleanup-all` currently does not delete local Audio Gallery files or
+  local Video Gallery files.
+- Audio favorites are therefore browsing metadata today, not a cleanup
+  exemption. If generated-music cleanup is added later, it must explicitly
+  preserve catalog entries whose `favorite` value is `true`.
+- The separate stash copy created during music generation follows stash
+  retention independently; expiration of that copy does not remove the durable
+  Audio Gallery file.
+
 ### API Endpoints
 
 ```bash
