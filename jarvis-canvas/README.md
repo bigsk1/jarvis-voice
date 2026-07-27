@@ -247,7 +247,9 @@ DELETE /api/gallery/videos/<name> # Delete video
 
 ### Access
 - **URL:** `http://localhost:8890/audio-gallery`
-- **Navigation:** Click **Audio** in any Canvas media header. The mobile label remains **Audio**.
+- **Navigation:** Click **Audio** in any Canvas media header. At the existing
+  mobile breakpoint, the link compacts to its music-note icon like Images and
+  Videos.
 
 ### Features
 - Native audio playback with one active track at a time

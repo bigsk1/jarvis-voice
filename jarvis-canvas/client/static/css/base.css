@@ -414,10 +414,6 @@ img.logo-icon {
     .header-link span {
         display: none;
     }
-
-    .header-link .audio-mobile-label {
-        display: inline;
-    }
 }
 
 @media (max-width: 480px) {

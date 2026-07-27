@@ -221,9 +221,11 @@ def test_audio_gallery_ui_keeps_audio_label_and_first_version_actions():
     assert "'&quot;'" in AUDIO_JS
     assert "@media (max-width: 768px)" in AUDIO_CSS
     assert ".audio-gallery-header .logo span" in AUDIO_CSS
-    assert ".header-link .audio-mobile-label" in BASE_CSS
+    assert ".header-link span" in BASE_CSS
+    assert ".audio-mobile-label" not in BASE_CSS
 
     for template_name in ("canvas.html", "gallery.html", "video-gallery.html"):
         template = (CANVAS_ROOT / "client" / "templates" / template_name).read_text()
         assert 'href="/audio-gallery"' in template
-        assert '<span class="audio-mobile-label">Audio</span>' in template
+        assert "🎵 <span>Audio</span>" in template
+        assert "audio-mobile-label" not in template
