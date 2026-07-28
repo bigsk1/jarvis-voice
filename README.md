@@ -967,21 +967,24 @@ picker for the authoritative current surface.
 
 | Command | Description | Tools Used |
 |---------|-------------|------------|
-| `* [query]` | Search Firefox bookmarks (like * in address bar) | bookmark_search | place bookmarks.html in data/
+| `* [query]` | Search Firefox bookmarks (like * in address bar) | bookmark_search (requires `data/bookmarks.html`) |
 | `/archive <url>` | Archive webpage to stash with Canvas summary | crawl_url, stash, canvas |
 | `/crypto [coins]` | Crypto prices, news, analysis, email report | get_time, crypto_price, brave_search, crawl_url, stash, canvas, send_email |
-| `/deep-dive <url>` | Screenshot + crawl URL, comprehensive canvas summary | screenshot_url, crawl_url, stash, text_summarizer, canvas |
+| `/deep_dive <url>`, `/dive <url>` | Screenshot + crawl URL, comprehensive canvas summary | screenshot_url, crawl_url, stash, text_summarizer, canvas |
+| `/github_ai_radar` | Find current GitHub AI project signals and refresh a rolling Canvas report | Brave search, Brave LLM Context, optional YouTube search, crawl_url, stash, canvas |
 | `/health [host]` | SSH health check (default: vps2) | get_time, ssh_remote, stash, canvas |
+| `/jarvis_self_check` | Check local Jarvis health, refresh its Canvas report, and create a deduplicated alert for problems | get_time, system_monitor, check_tool_logs, query_service_logs, create_alert, canvas |
 | `/memory_scan` | Run memory dedupe analysis, save reports to stash + canvas | memory_deduper |
 | `/note <text>` | Save note to memory + Canvas | get_time, remember, canvas |
 | `/research <topic>` | Multi-source research with Brave + crawling | brave_search, crawl_url, stash, remember, canvas |
 | `/serpapi <query>` | SerpApi workflow: search + stash export + canvas report | serpapi_search, stash, canvas |
 | `/status` | Daily status briefing (weather, crypto, stocks, alerts) | get_time, weather, crypto_price, crypto_chart, stock_price, list_alerts, list_reminders, system_monitor, canvas |
-| `/status-visual` | Status briefing + AI-generated dashboard image + same Canvas crypto charts as `/status` | get_time, weather, crypto_price, crypto_chart, stock_price, list_alerts, list_reminders, system_monitor, generate_image, canvas |
+| `/status_visual` | Status briefing + AI-generated dashboard image + same Canvas crypto charts as `/status` | get_time, weather, crypto_price, crypto_chart, stock_price, list_alerts, list_reminders, system_monitor, generate_image, canvas |
 | `/weather_watch`, `/garden_watch` | Weather watch for default location (`JARVIS_DEFAULT_LOCATION`); alerts for cold, wind, heat, or severe conditions | get_time, weather, create_alert, canvas |
 | `/url_ingest <url>` | Crawl URL, create intel file, ingest to memory | crawl_url, stash, text_summarizer, manage_intel, ingest_intel |
 | `/youtube_ingest <url>` | Download video + transcript, summarize, create study brief | youtube_transcript, youtube_video, stash, text_summarizer, canvas |
 | `/youtube_research <url>` | Download transcript, summarize, create study notes | youtube_transcript, stash, text_summarizer, canvas |
+| `/yt_dlp_release_watch` | Check for a stable yt-dlp release, create Canvas release notes, alert once, and acknowledge it | release_watch, git_release_notes, create_alert |
 
 ### Workflow Features
 

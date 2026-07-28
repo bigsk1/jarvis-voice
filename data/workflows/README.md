@@ -271,22 +271,24 @@ the same orchestration turn; it is not a durable background run.
 
 | File | Command | Description |
 |------|---------|-------------|
-| `web_archive.json` | `/archive <url>` | Fetch URL, save to stash, create canvas summary |
-| `deep_research.json` | `/research <topic>` | Multi-source research with validation |
-| `quick_note.json` | `/note <text>` | Quick note to memory and canvas |
-| `server_health_check.json` | `/health <host>` | SSH health check on remote server |
-| `daily_status.json` | `/status` | Weather, crypto (7d charts on Canvas), stocks, alerts, system health dashboard |
-| `daily_status_visual.json` | `/status_visual` (also `/status-visual`, `/status-image`, `/daily-visual`) | Same as `/status` (including crypto charts) plus `generate_image` and dashboard image at top of Canvas |
-| `weather_watch.json` | `/weather_watch` | Default-location weather watch with canvas report and condition-specific alerts |
+| `bookmark_search.json` | `* <query>` | Search Firefox bookmarks using the same prefix as the Firefox address bar |
 | `crypto_market_report.json` | `/crypto [coins]` | Crypto prices with canvas report |
-| `jarvis_self_check.json` | `/jarvis_self_check` (also `/self_check`, `/jarvis_health`) | Local Jarvis host health check with deduped alerts and one refreshed Canvas health page |
-| `youtube_research.json` | `/youtube_research <url> [notes]` | Download transcript, summarize, keywords, canvas study notes |
-| `youtube_ingest.json` | `/youtube_ingest <url>` | Download video + transcript, extract important facts/keywords, create canvas briefing |
-| `url_ingest.json` | `/url_ingest <url>` | Fetch any URL, create intel file, ingest to memory for RAG queries |
-| `memory_scan.json` | `/memory_scan` | Run memory_deduper against the active cloud/local memory DB and save a labeled report to stash + canvas |
-| `deep_dive.json` | `/deep_dive <topic or url>` | Screenshot + crawl + comprehensive canvas analysis with pros/cons, links |
+| `daily_status.json` | `/status` | Weather, crypto (7d charts on Canvas), stocks, alerts, system health dashboard |
+| `daily_status_visual.json` | `/status_visual` (also `/status_image`, `/daily_visual`) | Same as `/status` (including crypto charts) plus `generate_image` and dashboard image at top of Canvas |
+| `deep_dive.json` | `/deep_dive <url>` (also `/dive`) | Screenshot + crawl + comprehensive canvas analysis with pros/cons and links |
+| `deep_research.json` | `/research <topic>` | Multi-source research with validation |
 | `github_ai_radar_daily.json` | `/github_ai_radar` (also `/ai_radar`, `/ai-radar`) | Search for current GitHub AI project signals with Brave MCP, optionally feature a YouTube result, gather Brave LLM Context, and keep one current Canvas page refreshed |
+| `jarvis_self_check.json` | `/jarvis_self_check` (also `/self_check`, `/jarvis_health`) | Local Jarvis host health check with deduped alerts and one refreshed Canvas health page |
+| `memory_scan.json` | `/memory_scan` (also `/dedupe_memory`) | Run memory_deduper against the active cloud/local memory DB and save a labeled report to stash + canvas |
+| `quick_note.json` | `/note <text>` | Quick note to memory and canvas |
 | `serpapi_search.json` | `/serpapi <query>` | Run SerpApi search, save `.txt` export to stash, create canvas summary report |
+| `server_health_check.json` | `/health <host>` | SSH health check on remote server |
+| `url_ingest.json` | `/url_ingest <url>` | Fetch any URL, create intel file, ingest to memory for RAG queries |
+| `weather_watch.json` | `/weather_watch` (also `/garden_watch`) | Default-location weather watch with canvas report and condition-specific alerts |
+| `web_archive.json` | `/archive <url>` | Fetch URL, save to stash, create canvas summary |
+| `youtube_ingest.json` | `/youtube_ingest <url>` | Download video + transcript, extract important facts/keywords, create canvas briefing |
+| `youtube_research.json` | `/youtube_research <url> [notes]` | Download transcript, summarize, extract keywords, create canvas study notes |
+| `yt_dlp_release_watch.json` | `/yt_dlp_release_watch` (also `/yt-dlp-release-watch`) | Check for a stable yt-dlp release, create Canvas release notes, alert once, and acknowledge the handled version |
 
 ---
 

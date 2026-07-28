@@ -768,16 +768,24 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 
 | Workflow | Command | Key patterns |
 |----------|---------|--------------|
-| `web_archive.json` | `/archive <url>` | URL extraction, crawl_url transform, stash save |
-| `server_health_check.json` | `/health [host]` | Default value, ssh_remote, get_time |
-| `quick_note.json` | `/note <text>` | Simple text capture, remember, canvas |
-| `deep_research.json` | `/research <topic>` | Search, for_each crawl, validation |
-| `daily_status.json` | `/status` | Static variables, nested extracts, multi-tool dashboard |
-| `daily_status_visual.json` | `/status-visual` | Same crypto pipeline as `daily_status` (`crypto_chart`, fenced `crypto-chart` blocks); `generate_image` + `image_ref` at top of canvas |
+| `bookmark_search.json` | `* <query>` | Explicit prefix trigger, Firefox bookmark lookup |
 | `crypto_market_report.json` | `/crypto [coins]` | Multiple crypto_price calls, LLM formatting |
-| `youtube_research.json` | `/youtube_research <url> [notes]` | youtube_transcript, stash read, text_summarizer, canvas |
-| `url_ingest.json` | `/url_ingest <url>` | crawl_url, stash, text_summarizer, manage_intel (auto_ingest), search_memory |
+| `daily_status.json` | `/status` | Static variables, nested extracts, multi-tool dashboard |
+| `daily_status_visual.json` | `/status_visual` | Same crypto pipeline as `daily_status` (`crypto_chart`, fenced `crypto-chart` blocks); `generate_image` + `image_ref` at top of canvas |
 | `deep_dive.json` | `/dive <url>` | screenshot_url, stash file kind, vision as primary source, resilient crawl, url_domain transform, folder-structured canvas |
+| `deep_research.json` | `/research <topic>` | Search, for_each crawl, validation |
+| `github_ai_radar_daily.json` | `/github_ai_radar` | Brave search and LLM context, optional YouTube result, rolling Canvas update |
+| `jarvis_self_check.json` | `/jarvis_self_check` | Local system health, deduplicated alerts, full Canvas update |
+| `memory_scan.json` | `/memory_scan` | Mode-aware memory dedupe, stash report, labeled Canvas report |
+| `quick_note.json` | `/note <text>` | Simple text capture, remember, canvas |
+| `serpapi_search.json` | `/serpapi <query>` | SerpApi search, stash text export, Canvas summary |
+| `server_health_check.json` | `/health [host]` | Default value, ssh_remote, get_time |
+| `url_ingest.json` | `/url_ingest <url>` | crawl_url, stash, text_summarizer, manage_intel (auto_ingest), search_memory |
+| `weather_watch.json` | `/weather_watch` | Environment-backed default location, condition branching, alerts, Canvas |
+| `web_archive.json` | `/archive <url>` | URL extraction, crawl_url transform, stash save |
+| `youtube_ingest.json` | `/youtube_ingest <url>` | Video and transcript ingestion, fact extraction, keywords, Canvas briefing |
+| `youtube_research.json` | `/youtube_research <url> [notes]` | youtube_transcript, stash read, text_summarizer, canvas |
+| `yt_dlp_release_watch.json` | `/yt_dlp_release_watch` | release_watch state, git_release_notes, deduplicated alert, acknowledgement |
 
 ### Best Practice Example: deep_dive.json
 
