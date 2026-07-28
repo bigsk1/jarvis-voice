@@ -48,7 +48,7 @@ def main():
                 workflow_id=args.get('workflow_id'),
                 when=when,
                 timezone_name=args.get('timezone'),
-                mode=args.get('mode', 'cloud'),
+                mode=args.get('mode') or manager.mode,
                 enabled=args.get('enabled', True),
                 allow_overlap=args.get('allow_overlap', False),
                 max_retries=args.get('max_retries', 1),

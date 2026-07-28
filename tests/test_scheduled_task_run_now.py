@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
+from api.managers import scheduled_task_manager as scheduled_task_manager_module
 from api.managers.scheduled_task_manager import ScheduledTaskManager
 
 
@@ -121,3 +123,71 @@ def test_re_enable_after_run_once_recalculates_next_run(tmp_path):
     assert task["enabled"] == 1
     assert task["next_run_at"] is not None
     assert task["last_status"] == "success"
+
+
+def test_skip_missed_occurrences_without_replaying_or_touching_other_mode(
+    tmp_path,
+    monkeypatch,
+):
+    manager = _manager(tmp_path)
+    once_id = _insert_daily_task(manager, next_run_at="2026-07-28T14:00:00")
+    recurring_id = _insert_daily_task(manager, next_run_at="2026-07-28T15:00:00")
+    recent_id = _insert_daily_task(manager, next_run_at="2026-07-28T15:57:00")
+    manual_id = _insert_daily_task(
+        manager,
+        enabled=0,
+        last_status=ScheduledTaskManager.RUN_ONCE_PENDING_STATUS,
+        next_run_at="2026-07-28T14:00:00",
+    )
+
+    conn = sqlite3.connect(manager.db.db_path)
+    conn.execute(
+        "UPDATE scheduled_tasks SET schedule_type = 'once' WHERE id = ?",
+        (once_id,),
+    )
+    conn.execute(
+        """
+        INSERT INTO scheduled_tasks (
+            name, enabled, task_type, task_payload, schedule_type, schedule_expr,
+            timezone, mode, next_run_at
+        ) VALUES ('Other mode', 1, 'query', '{}', 'daily',
+                  '{"hour": 9, "minute": 0}', 'America/Los_Angeles', 'local',
+                  '2026-07-28T14:00:00')
+        """
+    )
+    other_mode_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    fixed_now = datetime(2026, 7, 28, 16, 0, tzinfo=timezone.utc)
+    skipped = manager.skip_missed_tasks(
+        now_utc_value=fixed_now,
+        grace_seconds=300,
+    )
+
+    assert {item["task_id"] for item in skipped} == {once_id, recurring_id}
+    once = manager.get_task(once_id)
+    assert once["enabled"] == 0
+    assert once["next_run_at"] is None
+    assert once["last_status"] == "missed"
+
+    recurring = manager.get_task(recurring_id)
+    assert recurring["enabled"] == 1
+    assert recurring["next_run_at"] == "2026-07-29T16:00:00"
+    assert recurring["last_status"] == "missed"
+
+    assert manager.get_task(recent_id)["next_run_at"] == "2026-07-28T15:57:00"
+    assert manager.get_task(manual_id)["last_status"] == ScheduledTaskManager.RUN_ONCE_PENDING_STATUS
+    monkeypatch.setattr(scheduled_task_manager_module, "now_utc", lambda: fixed_now)
+    assert {task["id"] for task in manager.get_due_tasks()} == {recent_id, manual_id}
+
+    conn = sqlite3.connect(manager.db.db_path)
+    try:
+        other = conn.execute(
+            "SELECT next_run_at, last_status FROM scheduled_tasks WHERE id = ?",
+            (other_mode_id,),
+        ).fetchone()
+        assert other == ("2026-07-28T14:00:00", None)
+        assert conn.execute("SELECT COUNT(*) FROM scheduled_task_runs").fetchone()[0] == 0
+    finally:
+        conn.close()

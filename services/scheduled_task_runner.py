@@ -441,7 +441,12 @@ def main():
     mode = _load_mode()
     manager = ScheduledTaskManager(mode=mode)
     logger = ServiceLogger('scheduled_task_runner')
-    logger.log_startup(mode, {"check_interval": 60, "database": manager.db.db_path})
+    missed_grace_seconds = max(0, get_int("SCHEDULED_TASK_MISSED_GRACE_SECONDS", 300))
+    logger.log_startup(mode, {
+        "check_interval": 60,
+        "database": manager.db.db_path,
+        "missed_grace_seconds": missed_grace_seconds,
+    })
 
     project_root = Path(__file__).parent.parent
     owner = f"{mode}:{os.getpid()}:{uuid4().hex[:12]}"
@@ -456,12 +461,21 @@ def main():
     print(f"   Mode: {mode}")
     print(f"   Database: {manager.db.db_path}")
     print(f"   Check interval: 60 seconds")
+    print(f"   Missed occurrence grace: {missed_grace_seconds} seconds")
     if recovered_locks:
         print(f"   Recovered abandoned task locks: {', '.join(map(str, recovered_locks))}")
     print()
 
     try:
         while True:
+            skipped_tasks = manager.skip_missed_tasks(
+                grace_seconds=missed_grace_seconds,
+            )
+            if skipped_tasks:
+                logger.log_action("skip_missed_tasks", {
+                    "count": len(skipped_tasks),
+                    "tasks": skipped_tasks,
+                })
             due_tasks = manager.get_due_tasks(limit=20)
             logger.log_check(len(due_tasks), {"due_tasks": len(due_tasks)})
 

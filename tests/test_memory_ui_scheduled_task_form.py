@@ -25,3 +25,10 @@ def test_datetime_input_uses_dark_native_browser_controls():
 
     assert '.form-input[type="datetime-local"]' in css
     assert "color-scheme: dark;" in css
+
+
+def test_execution_mode_is_display_only_and_explains_mode_ownership():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+
+    assert 'id="scheduledTaskExecutionMode" disabled' in html
+    assert "Schedules belong to the currently selected Jarvis mode." in html

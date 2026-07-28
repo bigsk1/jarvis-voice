@@ -26,8 +26,12 @@ Synchronizes **memories** (`knowledge_base`), **conversations**, and the structu
 - ✅ User model traits (compact behavioral profile, no embeddings)
 - ✅ Alerts (proactive system notifications)
 - ✅ Reminders
-- ✅ Scheduled tasks and recent scheduled-task runs
+- ❌ Scheduled tasks and run history (owned by the mode that created them)
 - ❌ Tool definitions (synced separately by `sync-tools.py`)
+
+Scheduled tasks stay mode-local because cloud and local modes can expose
+different providers, tools, credentials, and workflows. Switching modes does not
+copy, merge, or replay the other mode's schedules.
 
 ### Key Feature: Embedding Regeneration
 
@@ -90,9 +94,12 @@ cursor.execute("INSERT OR REPLACE INTO knowledge_base (..., embedding) VALUES (.
 ### Fresh-Install Behavior
 
 `sync-memory-db.py` now doubles as a repair step for newly recreated local databases:
-- Creates missing target tables for `conversations`, `alerts`, `reminders`, `scheduled_tasks`, and `scheduled_task_runs`
+- Creates missing target tables for `conversations`, `alerts`, and `reminders`
 - Backfills missing `conversations.metadata` on target DBs created from older schemas
 - Reads conversation metadata from the source DB when present, or safely substitutes `NULL` for older source databases
+
+The scheduled-task manager creates its own mode-local task and run tables when
+that mode starts.
 
 This means a clean local rebuild can usually be repopulated with:
 

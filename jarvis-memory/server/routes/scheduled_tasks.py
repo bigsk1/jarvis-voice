@@ -128,7 +128,7 @@ def create_scheduled_task():
             workflow_id=(data.get('workflow_id') or '').strip() or None,
             when=when,
             timezone_name=(data.get('timezone') or '').strip() or None,
-            mode=(data.get('execution_mode') or get_mode()),
+            mode=get_mode(),
             enabled=bool(data.get('enabled', True)),
             allow_overlap=bool(data.get('allow_overlap', False)),
             max_retries=int(data.get('max_retries', 1)),
@@ -166,8 +166,6 @@ def update_scheduled_task(task_id: int):
         updates['when'] = (data.get('when') or '').strip()
     if 'timezone' in data:
         updates['timezone'] = (data.get('timezone') or '').strip() or None
-    if 'execution_mode' in data:
-        updates['mode'] = data.get('execution_mode')
     if 'enabled' in data:
         updates['enabled'] = bool(data.get('enabled'))
     if 'allow_overlap' in data:

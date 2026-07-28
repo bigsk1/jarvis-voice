@@ -24,7 +24,10 @@ class ScheduledTaskCreate(BaseModel):
     workflow_id: str | None = Field(None, description="Workflow ID for workflow tasks")
     when: str = Field(..., description="Natural schedule expression")
     timezone: str | None = Field(None, description="IANA timezone name")
-    mode: Literal["cloud", "local"] = Field("cloud", description="Execution mode: cloud or local")
+    mode: Literal["cloud", "local"] | None = Field(
+        None,
+        description="Execution mode; defaults to the active scheduler mode",
+    )
     enabled: bool = Field(True, description="Whether the task is enabled")
     allow_overlap: bool = Field(False, description="Allow overlapping runs")
     max_retries: int = Field(1, description="Maximum retry attempts")

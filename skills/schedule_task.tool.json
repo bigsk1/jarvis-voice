@@ -43,7 +43,7 @@
       "mode": {
         "type": "string",
         "enum": ["cloud", "local"],
-        "description": "Execution mode for the future task. Defaults to cloud."
+        "description": "Execution mode for the future task. Defaults to the active Jarvis mode; tasks stay in that mode's database."
       },
       "enabled": {
         "type": "boolean",

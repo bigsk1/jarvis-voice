@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -132,9 +132,14 @@ class ScheduledTaskManager:
 
     def create_task(self, *, name: str, task_type: str, query: str | None = None,
                     workflow_id: str | None = None, when: str, timezone_name: str | None = None,
-                    mode: str = 'cloud', enabled: bool = True, allow_overlap: bool = False,
+                    mode: str | None = None, enabled: bool = True, allow_overlap: bool = False,
                     max_retries: int = 1, timeout_seconds: int = 300,
                     metadata: dict[str, Any] | None = None) -> int:
+        mode = mode or self.mode
+        if mode != self.mode:
+            raise ValueError(
+                f"This scheduler belongs to {self.mode} mode and cannot create a {mode} task"
+            )
         timezone_name = timezone_name or get_config_value("JARVIS_TIMEZONE", "America/Los_Angeles")
         schedule = parse_schedule_expression(when, tz_name=timezone_name)
 
@@ -188,7 +193,10 @@ class ScheduledTaskManager:
         conn = sqlite3.connect(self.db.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        row = cursor.execute("SELECT * FROM scheduled_tasks WHERE id = ?", (task_id,)).fetchone()
+        row = cursor.execute(
+            "SELECT * FROM scheduled_tasks WHERE id = ? AND mode = ?",
+            (task_id, self.mode),
+        ).fetchone()
         conn.close()
         return dict(row) if row else None
 
@@ -196,8 +204,8 @@ class ScheduledTaskManager:
         conn = sqlite3.connect(self.db.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        query = "SELECT * FROM scheduled_tasks WHERE 1=1"
-        params: list[Any] = []
+        query = "SELECT * FROM scheduled_tasks WHERE mode = ?"
+        params: list[Any] = [self.mode]
         if status == 'enabled':
             query += " AND enabled = 1"
         elif status == 'disabled':
@@ -239,8 +247,10 @@ class ScheduledTaskManager:
             fields['max_retries'] = updates['max_retries']
         if updates.get('timeout_seconds') is not None:
             fields['timeout_seconds'] = updates['timeout_seconds']
-        if updates.get('mode') is not None:
-            fields['mode'] = updates['mode']
+        if updates.get('mode') is not None and updates['mode'] != self.mode:
+            raise ValueError(
+                f"This scheduler belongs to {self.mode} mode and cannot move a task to {updates['mode']}"
+            )
 
         if updates.get('timezone') is not None:
             fields['timezone'] = timezone_name
@@ -320,6 +330,9 @@ class ScheduledTaskManager:
         return updated
 
     def delete_task(self, task_id: int) -> bool:
+        if not self.get_task(task_id):
+            return False
+
         conn = sqlite3.connect(self.db.db_path)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM scheduled_task_runs WHERE task_id = ?", (task_id,))
@@ -362,6 +375,79 @@ class ScheduledTaskManager:
         conn.close()
         return updated
 
+    def skip_missed_tasks(
+        self,
+        *,
+        now_utc_value: datetime | None = None,
+        grace_seconds: int = 300,
+    ) -> list[dict[str, Any]]:
+        """Skip overdue scheduled occurrences instead of replaying them after downtime."""
+        current_utc = now_utc_value or now_utc()
+        grace_seconds = max(0, int(grace_seconds))
+        cutoff = format_utc_db(current_utc - timedelta(seconds=grace_seconds))
+        current_text = format_utc_db(current_utc)
+        updated_at = datetime.now().isoformat()
+
+        conn = sqlite3.connect(self.db.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        rows = cursor.execute("""
+            SELECT * FROM scheduled_tasks
+            WHERE mode = ?
+              AND enabled = 1
+              AND next_run_at IS NOT NULL
+              AND next_run_at < ?
+              AND (lock_owner IS NULL OR lock_owner = '')
+              AND (last_status IS NULL OR last_status != ?)
+            ORDER BY next_run_at ASC
+        """, (self.mode, cutoff, self.RUN_ONCE_PENDING_STATUS)).fetchall()
+
+        skipped: list[dict[str, Any]] = []
+        for row in rows:
+            task = dict(row)
+            if task['schedule_type'] == 'once':
+                next_run_at = None
+                enabled = 0
+            else:
+                expr = json.loads(task['schedule_expr'])
+                next_run_at = calculate_next_run(
+                    task['schedule_type'],
+                    expr,
+                    from_utc=current_text,
+                    tz_name=task['timezone'],
+                )
+                enabled = 1
+
+            cursor.execute("""
+                UPDATE scheduled_tasks
+                SET enabled = ?,
+                    next_run_at = ?,
+                    last_status = 'missed',
+                    last_error = NULL,
+                    updated_at = ?
+                WHERE id = ?
+                  AND mode = ?
+                  AND next_run_at = ?
+            """, (
+                enabled,
+                next_run_at,
+                updated_at,
+                task['id'],
+                self.mode,
+                task['next_run_at'],
+            ))
+            if cursor.rowcount:
+                skipped.append({
+                    "task_id": task['id'],
+                    "name": task['name'],
+                    "scheduled_for": task['next_run_at'],
+                    "next_run_at": next_run_at,
+                })
+
+        conn.commit()
+        conn.close()
+        return skipped
+
     def get_due_tasks(self, limit: int = 20) -> list[dict[str, Any]]:
         conn = sqlite3.connect(self.db.db_path)
         conn.row_factory = sqlite3.Row
@@ -387,8 +473,10 @@ class ScheduledTaskManager:
         cursor.execute("""
             UPDATE scheduled_tasks
             SET lock_owner = ?, lock_acquired_at = ?, last_status = 'running', updated_at = ?
-            WHERE id = ? AND (lock_owner IS NULL OR lock_owner = '')
-        """, (owner, now, now, task_id))
+            WHERE id = ?
+              AND mode = ?
+              AND (lock_owner IS NULL OR lock_owner = '')
+        """, (owner, now, now, task_id, self.mode))
         conn.commit()
         ok = cursor.rowcount > 0
         conn.close()
@@ -520,6 +608,9 @@ class ScheduledTaskManager:
         conn.close()
 
     def list_runs(self, task_id: int, limit: int = 20) -> list[dict[str, Any]]:
+        if not self.get_task(task_id):
+            return []
+
         conn = sqlite3.connect(self.db.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()

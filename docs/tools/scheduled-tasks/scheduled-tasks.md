@@ -33,11 +33,12 @@ What works now:
 - durable `scheduled_tasks` and `scheduled_task_runs` tables
 - API routes for scheduled-task CRUD and run history
 - runner service scaffold that executes due `query` and `workflow` tasks
-- each task runs inside its own immutable cloud/local config scope, even when
-  the long-lived runner itself started in the other mode
+- each runner sees and executes only the schedules owned by its startup mode
 - run history records the provider and provider-specific model resolved from
   the task's mode rather than the runner process environment
-- sync support for scheduled-task tables across cloud/local memory DBs
+- scheduled tasks and run history remain independent across cloud/local memory DBs
+- occurrences older than the configured grace window are marked missed; one-time
+  tasks are disabled and recurring tasks advance directly to their next future slot
 - Jarvis Memory UI tab for:
   - list / inspect
   - create / update
@@ -308,7 +309,8 @@ Build a first-class scheduled-task system with:
 
 ## Mode and Database Model
 
-Scheduled tasks should follow the same cloud/local database split as reminders and alerts.
+Scheduled tasks follow the cloud/local database split, but unlike portable
+memory, each schedule belongs to the mode that created it.
 
 Recommended storage model:
 
@@ -317,17 +319,21 @@ Recommended storage model:
 
 Why:
 
-- keeps behavior aligned with existing reminders and alerts
-- lets local mode benefit from scheduled tasks without a second storage concept
-- supports switching modes cleanly as long as sync includes scheduled-task tables
+- cloud and local modes can have different tool profiles, providers, credentials,
+  MCP servers, and workflow availability
+- a local runner must not execute a cloud schedule whose dependencies are unavailable
+- independent integer IDs and run histories cannot safely be merged by the
+  general memory sync
 
 Important implication:
 
-- `bin/sync-memory-db.py` will need to sync:
-  - `scheduled_tasks`
-  - `scheduled_task_runs`
-
-That should be treated the same way reminders and alerts are already treated during cross-mode sync.
+- `bin/sync-memory-db.py` does not copy `scheduled_tasks` or
+  `scheduled_task_runs`
+- creating, listing, updating, running, and deleting a task are scoped to the
+  active scheduler mode
+- switching modes pauses the schedules owned by the inactive mode; when its
+  runner starts again, occurrences older than the grace window are skipped
+  rather than replayed
 
 ## Recommended Implementation Shape
 
@@ -755,16 +761,19 @@ The user-facing tool should not require cron syntax for common schedules.
 
 1. On startup, `scheduled_task_runner` recovers locks owned by runner processes that no longer exist and marks their unfinished run records as failed
 2. `scheduled_task_runner` wakes up on a fixed interval
-3. It fetches due tasks where:
+3. It skips occurrences older than `SCHEDULED_TASK_MISSED_GRACE_SECONDS`
+   (default `300`, or five minutes). This lets normal polling and short service
+   restarts execute slightly late without replaying work after longer downtime.
+4. It fetches due tasks where:
    - `enabled = true`
    - `next_run_at <= now`
    - not currently locked/running
-4. It marks the task as running
-5. It executes either in an isolated worker process, enforcing the task's `timeout_seconds` deadline:
+5. It marks the task as running
+6. It executes either in an isolated worker process, enforcing the task's `timeout_seconds` deadline:
    - orchestrator query mode, or
    - workflow executor mode
-6. It stores run history, status, timing, and outputs
-7. It calculates the next run or disables/completes the task
+7. It stores run history, status, timing, and outputs
+8. It calculates the next run or disables/completes the task
 
 ### Inspect
 
@@ -1173,7 +1182,7 @@ Why this fits:
 
 - it is already the place where durable data is inspected and managed
 - scheduled tasks are DB-backed operational records, more like reminders/alerts than live chat
-- the same mode selector can manage cloud/local scheduled tasks cleanly
+- the global mode selector manages each mode's independent scheduled tasks cleanly
 
 ## Recommended Phase 2
 

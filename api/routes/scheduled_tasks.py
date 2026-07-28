@@ -32,7 +32,7 @@ async def create_scheduled_task(task: ScheduledTaskCreate):
             workflow_id=task.workflow_id,
             when=task.when,
             timezone_name=task.timezone,
-            mode=task.mode,
+            mode=task.mode or scheduled_task_manager.mode,
             enabled=task.enabled,
             allow_overlap=task.allow_overlap,
             max_retries=task.max_retries,
