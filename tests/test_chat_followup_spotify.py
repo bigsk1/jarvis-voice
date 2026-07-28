@@ -154,3 +154,128 @@ def test_spotify_scalar_playback_payload_stays_available_to_followups():
         "duration": "3:57",
         "device": "Office Echo",
     }
+
+
+def test_spotify_followup_preserves_exact_device_id_for_later_playback():
+    result = extract_followup_data({
+        "spotify": {
+            "ok": True,
+            "data": {
+                "uri": "spotify:episode:2531",
+                "type": "episode",
+            },
+        },
+        "_tool_trace": _trace(
+            "play",
+            query="spotify:episode:2531",
+            device_id="office-tv-id",
+        ),
+    })["spotify"]
+
+    assert result["device_id"] == "office-tv-id"
+
+
+def test_spotify_real_multi_run_payload_keeps_nested_episode_candidates():
+    data = {
+        "spotify": [
+            {
+                "uri": "spotify:track:bigfoot",
+                "name": "Bigfoot",
+                "artist": "Joe Rogan",
+                "type": "track",
+            },
+            {
+                "show": "The Joe Rogan Experience",
+                "show_uri": "spotify:show:jre",
+                "episodes": [
+                    {
+                        "number": 1,
+                        "name": "#2531 - Forrest Galante",
+                        "date": "2026-07-28",
+                        "duration_min": 176,
+                        "uri": "spotify:episode:2531",
+                    },
+                    {
+                        "number": 2,
+                        "name": "#2530 - Timothy Alberino",
+                        "date": "2026-07-23",
+                        "duration_min": 160,
+                        "uri": "spotify:episode:2530",
+                    },
+                ],
+            },
+            {
+                "uri": "spotify:episode:2531",
+                "type": "episode",
+            },
+        ],
+        "_tool_trace": [
+            {
+                "tool": "spotify",
+                "ok": True,
+                "arguments": {
+                    "action": "play",
+                    "query": "Joe Rogan Experience latest",
+                    "device": "Office Fire TV",
+                },
+            },
+            {
+                "tool": "spotify",
+                "ok": True,
+                "arguments": {
+                    "action": "episodes",
+                    "query": "Joe Rogan Experience",
+                    "limit": 5,
+                },
+            },
+            {
+                "tool": "spotify",
+                "ok": False,
+                "arguments": {
+                    "action": "play",
+                    "query": "spotify:episode:2531",
+                    "device": "Office Fire TV",
+                },
+            },
+            {
+                "tool": "spotify",
+                "ok": True,
+                "arguments": {
+                    "action": "play",
+                    "query": "spotify:episode:2531",
+                    "device": "Office Fire TV",
+                },
+            },
+        ],
+    }
+
+    result = extract_followup_data(data)["spotify"]
+
+    assert result == {
+        "action": "play",
+        "query": "spotify:episode:2531",
+        "device": "Office Fire TV",
+        "show": "The Joe Rogan Experience",
+        "show_uri": "spotify:show:jre",
+        "candidate_source": "episodes",
+        "candidates": [
+            {
+                "number": 1,
+                "name": "#2531 - Forrest Galante",
+                "uri": "spotify:episode:2531",
+                "date": "2026-07-28",
+                "duration_min": 176,
+            },
+            {
+                "number": 2,
+                "name": "#2530 - Timothy Alberino",
+                "uri": "spotify:episode:2530",
+                "date": "2026-07-23",
+                "duration_min": 160,
+            },
+        ],
+        "count": 2,
+        "runs_count": 3,
+        "uri": "spotify:episode:2531",
+        "type": "episode",
+    }

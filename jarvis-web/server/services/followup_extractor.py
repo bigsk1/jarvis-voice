@@ -639,6 +639,7 @@ _SPOTIFY_ARGUMENT_FIELDS = (
     'query',
     'type',
     'device',
+    'device_id',
     'level',
     'state',
     'mood',
@@ -765,6 +766,52 @@ def _extract_spotify_followup(
             extracted['candidates'] = candidates
             extracted.setdefault('count', len(items))
             break
+
+    return extracted
+
+
+def _extract_spotify_runs_followup(
+    data: dict,
+    runs: list[dict],
+    max_candidates: int,
+) -> dict:
+    """Preserve the useful browse result and final reference from a Spotify tool loop."""
+    extracted = _extract_spotify_followup(data, {}, max_candidates)
+    extracted['runs_count'] = len(runs)
+
+    # Work backward so a later corrective browse supersedes an earlier wrong result.
+    for run in reversed(runs):
+        payload = run.get('data') if isinstance(run.get('data'), dict) else run
+        if not isinstance(payload, dict):
+            continue
+        browse = _extract_spotify_followup({}, payload, max_candidates)
+        if not browse.get('candidates'):
+            continue
+        for field in (
+            'show',
+            'show_uri',
+            'count',
+            'candidate_source',
+            'candidates',
+        ):
+            if field in browse:
+                extracted[field] = browse[field]
+        break
+
+    # Successful result aggregation is chronological, so retain the final played
+    # URI/type without replacing the richer episode/track browse candidates.
+    if runs:
+        final_run = runs[-1]
+        final_payload = (
+            final_run.get('data')
+            if isinstance(final_run.get('data'), dict)
+            else final_run
+        )
+        if isinstance(final_payload, dict):
+            for field in ('uri', 'type'):
+                value = final_payload.get(field)
+                if value not in (None, '', [], {}):
+                    extracted[field] = value
 
     return extracted
 
@@ -1389,6 +1436,16 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
 
     for key, value in data.items():
         if key in FOLLOWUP_DATA_SKIP_KEYS:
+            continue
+        if (
+            key == 'spotify'
+            and isinstance(value, list)
+            and value
+            and all(isinstance(run, dict) for run in value)
+        ):
+            extracted = _extract_spotify_runs_followup(data, value, max_candidates)
+            if extracted:
+                followup[key] = extracted
             continue
         if key == 'manage_intel':
             extracted = _extract_manage_intel_followup(data, max_candidates)

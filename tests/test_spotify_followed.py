@@ -146,3 +146,13 @@ def test_spotify_manifest_exposes_followed_and_bounded_list_limit():
     assert "followed" in action["enum"]
     assert limit["minimum"] == 1
     assert limit["maximum"] == 50
+
+
+def test_spotify_manifest_teaches_latest_podcast_sequence_and_exact_device_ids():
+    manifest = json.loads((ROOT / "skills" / "spotify.tool.json").read_text())
+    properties = manifest["parameters"]["properties"]
+
+    assert "episodes" in manifest["description"]
+    assert "returned episode URI" in manifest["description"]
+    assert "device_id" in properties
+    assert "trusted memory" in properties["device_id"]["description"]

@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "spotify",
-  "description": "🎵 Spotify control. Actions: play (music/podcasts), pause, next, current, search, volume, devices, shuffle, share, recommend (personalized), top (top tracks), followed (list or filter followed artists), episodes (LIST PODCAST EPISODES - use for 'what are recent Joe Rogan episodes?'), suggest (music suggestions). For podcasts: 'list Joe Rogan episodes' → action=episodes query='Joe Rogan'. For music: 'play jazz' → action=play query=jazz.",
+  "description": "🎵 Spotify control. Actions: play (music/podcasts), pause, next, current, search, volume, devices, shuffle, share, recommend (personalized), top (top tracks), followed (list or filter followed artists), episodes (LIST PODCAST EPISODES), suggest (music suggestions). Latest podcast playback protocol: first call action=episodes with the show name, then call action=play with the returned episode URI and requested device/device_id. Never synthesize '<show> latest' as a generic play query because it can match a track. For music: 'play jazz' → action=play query=jazz.",
   "script": "spotify.py",
   "parameters": {
     "type": "object",
@@ -18,6 +18,10 @@
       "device": {
         "type": "string",
         "description": "For play and transfer: target device name as shown in Spotify Connect (e.g. 'Office Fire TV', 'Living Room'). Required when the user names a TV or speaker."
+      },
+      "device_id": {
+        "type": "string",
+        "description": "For play: exact Spotify Connect device ID from trusted memory or a prior devices result. Prefer this over device name when available; never speak the ID aloud."
       },
       "level": {
         "type": "integer",

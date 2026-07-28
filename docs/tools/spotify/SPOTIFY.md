@@ -153,6 +153,15 @@ Jarvis: "Playing #2425 - Ethan Hawke"
 | "Switch to Office Echo" | Moves playback to Echo |
 | "Play on the TV" | Jarvis picks a TV device |
 
+When a trusted memory or a prior `devices` result contains the exact Spotify
+Connect device ID, Jarvis can pass that ID internally instead of relying on a
+fresh name lookup. The ID is not spoken to the user. Name lookup retries one
+read-only device-list request before reporting that a requested device is
+unavailable; playback itself is still attempted only once.
+
+If no device is named, Spotify currently prefers an already-active device, then
+`SPOTIFY_DEFAULT_DEVICE`, then the first available device.
+
 ### 🎙️ Podcasts
 
 Jarvis can play podcasts and automatically gets the **latest episode**:
@@ -382,7 +391,7 @@ server-side prompt.
 
 | Action | Description | Required Params |
 |--------|-------------|-----------------|
-| `play` | Resume or play content (music, podcasts, Discover Weekly, etc.) | `query` (optional) |
+| `play` | Resume or play content (music, podcasts, Discover Weekly, etc.) | `query` (optional), `device`/`device_id` (optional) |
 | `pause` | Pause playback | - |
 | `next` | Skip track | - |
 | `previous` | Previous track | - |
@@ -401,6 +410,10 @@ server-side prompt.
 | `episodes` | List podcast episodes | `query` (show name) |
 | `suggest` | Get music suggestions (no auto-play) | `mood` (optional) |
 | `made_for_you` | List personalized playlists (Discover Weekly, etc.) | - |
+
+For "play the latest episode" requests, Jarvis first lists the show's current
+episodes and then plays the returned episode URI. It does not turn the show name
+plus the word "latest" into a general music search.
 
 ### Search Types
 

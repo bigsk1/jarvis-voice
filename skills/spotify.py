@@ -22,6 +22,8 @@ Run ./bin/spotify-auth first to authenticate.
 
 import sys
 import json
+import re
+import time
 from pathlib import Path
 
 # Add lib to path
@@ -53,6 +55,8 @@ PERSONALIZED_PLAYLIST_KEYWORDS = [
     'on repeat', 'repeat rewind', 'your top songs',
     'time capsule', 'your summer rewind', 'your year'
 ]
+
+SPOTIFY_DEVICE_RETRY_SECONDS = 0.5
 
 
 def get_spotify_client():
@@ -116,14 +120,17 @@ def resolve_device_id_by_name(sp, device_name: str) -> tuple[str | None, str | N
     if not device_name or not str(device_name).strip():
         return None, None
     needle = device_name.lower().strip()
-    try:
-        result = sp.devices()
-        for dev in result.get('devices', []):
-            name = (dev.get('name') or '').lower()
-            if needle in name:
-                return dev.get('id'), dev.get('name')
-    except Exception:
-        return None, None
+    for attempt in range(2):
+        try:
+            result = sp.devices()
+            for dev in result.get('devices', []):
+                name = (dev.get('name') or '').lower()
+                if needle in name:
+                    return dev.get('id'), dev.get('name')
+        except Exception:
+            pass
+        if attempt == 0:
+            time.sleep(SPOTIFY_DEVICE_RETRY_SECONDS)
     return None, None
 
 
@@ -500,6 +507,76 @@ def _search_user_playlists(sp, query: str) -> dict | None:
         return None
 
 
+def _normalized_show_name(value: str) -> str:
+    """Normalize harmless show-name variants for an exact confidence check."""
+    filler = {'the', 'podcast', 'show', 'with', 'w'}
+    return ' '.join(
+        word
+        for word in re.findall(r'[a-z0-9]+', value.lower())
+        if word not in filler
+    )
+
+
+def _try_play_trailing_latest_show(sp, query: str, device_id: str) -> dict | None:
+    """Resolve '<show name> latest' without falling through to track search."""
+    words = re.findall(r'[a-z0-9]+', query.lower())
+    if not {'latest', 'newest'} & set(words):
+        return None
+
+    # Existing explicit podcast phrases are handled by the established branch below.
+    explicit_phrases = (
+        'podcast',
+        'latest episode',
+        'latest from',
+        'newest episode',
+    )
+    if any(phrase in query.lower() for phrase in explicit_phrases):
+        return None
+
+    search_query = re.sub(
+        r'\b(?:play|latest|newest|episode|of|from)\b',
+        ' ',
+        query,
+        flags=re.IGNORECASE,
+    )
+    search_query = ' '.join(search_query.split())
+    target_name = _normalized_show_name(search_query)
+    if not target_name:
+        return None
+
+    results = sp.search(q=search_query, type='show', limit=5)
+    shows = [show for show in results.get('shows', {}).get('items', []) if show]
+    show = next(
+        (
+            candidate
+            for candidate in shows
+            if _normalized_show_name(candidate.get('name', '')) == target_name
+        ),
+        None,
+    )
+    if not show:
+        return None
+
+    episodes = sp.show_episodes(show['id'], limit=5)
+    episode_items = [episode for episode in episodes.get('items', []) if episode]
+    if not episode_items:
+        return None
+
+    latest_episode = episode_items[0]
+    sp.start_playback(uris=[latest_episode['uri']], device_id=device_id)
+    return {
+        "ok": True,
+        "speech": f"Playing latest episode of {show['name']}: {latest_episode['name']}",
+        "data": {
+            "uri": latest_episode['uri'],
+            "name": latest_episode['name'],
+            "show": show['name'],
+            "publisher": show.get('publisher', 'Unknown'),
+            "type": "episode",
+        },
+    }
+
+
 def action_play(args: dict) -> dict:
     """Resume playback or play specific content."""
     sp = get_spotify_client()
@@ -590,6 +667,10 @@ def action_play(args: dict) -> dict:
                     "speech": f"Failed to play: {e}",
                     "error": str(e)
                 }
+
+        trailing_latest = _try_play_trailing_latest_show(sp, query, device_id)
+        if trailing_latest:
+            return trailing_latest
         
         # Determine search type based on explicit type hint OR keywords
         
