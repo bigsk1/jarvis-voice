@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
 
 import spotipy
-from spotipy.oauth2 import SpotifyOAuth
+from spotipy.oauth2 import SpotifyOAuth, SpotifyOauthError
 
 # Load config
 load_config('cloud')
@@ -40,6 +40,9 @@ SCOPES = [
     'playlist-read-private',         # Access private playlists
     'playlist-read-collaborative',   # Access collaborative playlists
     'user-library-read',             # Access liked songs
+    'user-read-recently-played',     # Recently played tracks/playlists
+    'user-top-read',                  # Top tracks and artists
+    'user-follow-read',               # Followed playlists/artists
 ]
 
 def main():
@@ -78,7 +81,13 @@ def main():
     )
     
     # Check for existing valid token
-    token_info = sp_oauth.get_cached_token()
+    try:
+        token_info = sp_oauth.get_cached_token()
+    except SpotifyOauthError as exc:
+        if 'invalid_grant' not in str(exc).lower():
+            raise
+        print("\n⚠️  Spotify revoked the cached refresh token; starting fresh authorization.")
+        token_info = None
     
     if token_info and not sp_oauth.is_token_expired(token_info):
         print("✅ Already authenticated! Token is valid.")
@@ -131,4 +140,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

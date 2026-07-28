@@ -355,7 +355,10 @@ If you get auth errors after a long time:
 ```bash
 ./bin/spotify-auth
 ```
-Then re-authorize in browser.
+Then re-authorize in a browser. On a headless server, open the printed URL on
+your laptop or phone. The final `127.0.0.1:8888` page is expected not to load;
+copy its complete URL from the browser address bar and paste it into the
+server-side prompt.
 
 ---
 

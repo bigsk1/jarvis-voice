@@ -16,11 +16,11 @@ from spotipy.oauth2 import SpotifyOAuth
 
 client_id = get_config_value('SPOTIFY_CLIENT_ID')
 client_secret = get_config_value('SPOTIFY_CLIENT_SECRET')
-redirect_uri = 'http://127.0.0.1:8888/callback'
+redirect_uri = get_config_value('SPOTIFY_REDIRECT_URI', 'http://127.0.0.1:8888/callback')
 cache_path = os.path.join(os.path.dirname(__file__), '..', 'data', '.spotify_cache')
 
 # Updated scopes
-SCOPES = ' '.join([
+SCOPES = [
     'user-read-playback-state',
     'user-modify-playback-state',
     'user-read-currently-playing',
@@ -29,7 +29,8 @@ SCOPES = ' '.join([
     'user-library-read',
     'user-read-recently-played',
     'user-top-read',
-])
+    'user-follow-read',
+]
 
 print("=" * 60)
 print("Spotify Re-Authentication")
@@ -40,7 +41,7 @@ sp_oauth = SpotifyOAuth(
     client_id=client_id,
     client_secret=client_secret,
     redirect_uri=redirect_uri,
-    scope=SCOPES,
+    scope=' '.join(SCOPES),
     cache_path=cache_path,
     open_browser=False
 )
@@ -52,7 +53,7 @@ print()
 print(auth_url)
 print()
 print("2. Click 'Agree' to authorize")
-print("3. You'll be redirected to a page that won't load (that's OK!)")
+print("3. On a headless server, the localhost redirect page won't load (that's OK!)")
 print("4. Copy the FULL URL from your browser address bar")
 print("5. Paste it below:")
 print()
@@ -73,4 +74,3 @@ except KeyboardInterrupt:
     print("\nCancelled.")
 except Exception as e:
     print(f"❌ Error: {e}")
-
