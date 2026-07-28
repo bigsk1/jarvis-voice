@@ -3,6 +3,7 @@
   "name": "GitHub AI Radar Daily",
   "description": "Daily AI project radar: search the web for notable GitHub AI projects, gather Brave LLM context, and maintain one rolling Canvas page.",
   "enabled": true,
+  "allow_workflow_tool": false,
   "version": "1.0",
   "disable_server_side_tools": true,
 

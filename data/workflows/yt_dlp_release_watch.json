@@ -4,6 +4,7 @@
   "description": "Check PyPI for a new stable yt-dlp release, create GitHub release notes in Canvas, alert once, and acknowledge the handled version.",
   "version": "1.0",
   "enabled": true,
+  "allow_workflow_tool": false,
   "triggers": {
     "explicit": ["/yt_dlp_release_watch", "/yt-dlp-release-watch"],
     "patterns": [],
