@@ -759,6 +759,7 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 - [ ] `llm_prompt` includes all needed `${variables}` for context
 - [ ] `llm_prompt` instructs LLM to use actual values, not output `${var}` syntax
 - [ ] Canvas title uses folder structure (e.g., `Workflows/Category/${topic}`)
+- [ ] Set `"allow_workflow_tool": false` for explicit/API/scheduled-only workflows that Jarvis must not choose through the `workflow` meta-tool
 - [ ] Tested full workflow via CLI
 - [ ] Checked final output (canvas, stash, etc.)
 

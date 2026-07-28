@@ -169,12 +169,18 @@ def _resolve_workflow(loader: WorkflowLoader, workflow_id: Any) -> dict[str, Any
     )
 
 
+def _allows_workflow_tool(workflow: dict[str, Any]) -> bool:
+    """Return False only for an explicit workflow meta-tool opt-out."""
+    return workflow.get("allow_workflow_tool", True) is not False
+
+
 def _available_workflows(loader: WorkflowLoader, registry, excluded_tools) -> list[dict[str, Any]]:
     loader.reload()
     return [
         workflow
         for workflow in loader.workflows.values()
-        if check_workflow_registry_availability(
+        if _allows_workflow_tool(workflow)
+        and check_workflow_registry_availability(
             workflow,
             registry,
             excluded_tools=excluded_tools,
@@ -206,8 +212,9 @@ def execute_workflow_tool(
     Search, describe, or synchronously run a workflow.
 
     Discovery is rebuilt from shared plus personal workflow files for every
-    call, and every returned workflow must pass the same effective-registry
-    availability gate used by slash commands and scheduled workflows.
+    call. Every returned workflow must allow the workflow meta-tool and pass
+    the same effective-registry availability gate used by slash commands and
+    scheduled workflows.
     """
     loader = loader or WorkflowLoader(explicit_only=True)
     action = str(args.get("action") or "").strip().lower()
@@ -279,6 +286,14 @@ def execute_workflow_tool(
             "That workflow was not found.",
             action=action,
             workflow_id=str(args.get("workflow_id") or ""),
+        )
+    if not _allows_workflow_tool(workflow):
+        return _error(
+            "That workflow is not available through the workflow tool. "
+            "Use its explicit command, API endpoint, or scheduled task instead.",
+            action=action,
+            workflow_id=workflow.get("id"),
+            allow_workflow_tool=False,
         )
 
     availability = check_workflow_registry_availability(

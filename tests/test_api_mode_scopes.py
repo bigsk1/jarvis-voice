@@ -102,6 +102,7 @@ def test_workflow_route_resolves_personal_trigger_alias():
             self.workflows = {
                 "private_radar": {
                     "id": "private_radar",
+                    "allow_workflow_tool": False,
                     "triggers": {"explicit": ["/private_radar", "/secret_radar"]},
                     "steps": [{"step": 1, "tool": "get_time"}],
                 }
@@ -249,6 +250,7 @@ def test_scheduled_workflow_uses_shared_tool_registry(tmp_path, monkeypatch):
         def get_workflow(self, workflow_id):
             return {
                 "id": workflow_id,
+                "allow_workflow_tool": False,
                 "triggers": {"explicit": [f"/{workflow_id}"]},
                 "steps": [{"step": 1, "tool": "get_time"}],
             }

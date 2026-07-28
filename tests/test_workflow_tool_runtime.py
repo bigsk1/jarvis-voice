@@ -74,6 +74,53 @@ def test_search_uses_personal_override_and_omits_unavailable(tmp_path):
     assert "blocked" not in result["data"]["selected_workflow_hints"]
 
 
+def test_allow_workflow_tool_false_hides_workflow_from_search(tmp_path):
+    allowed = _workflow("allowed")
+    restricted = _workflow("restricted")
+    restricted["allow_workflow_tool"] = False
+    _write_workflow(tmp_path / "allowed.json", allowed)
+    _write_workflow(tmp_path / "restricted.json", restricted)
+
+    loader = WorkflowLoader(str(tmp_path))
+    result = execute_workflow_tool(
+        registry=FakeRegistry({"workflow", "get_time"}),
+        args={"action": "search", "query": "research report"},
+        mode="cloud",
+        loader=loader,
+    )
+
+    assert result["data"]["selected_workflow_hints"] == ["allowed"]
+    assert loader.match("/restricted private report")["id"] == "restricted"
+
+
+def test_allow_workflow_tool_false_rejects_describe_and_run(tmp_path):
+    restricted = _workflow("restricted")
+    restricted["allow_workflow_tool"] = False
+    _write_workflow(tmp_path / "restricted.json", restricted)
+    loader = WorkflowLoader(str(tmp_path))
+
+    for action in ("describe", "run"):
+        result = execute_workflow_tool(
+            registry=FakeRegistry({"workflow", "get_time"}),
+            args={
+                "action": action,
+                "workflow_id": "restricted",
+                "query": "private report",
+            },
+            mode="cloud",
+            loader=loader,
+            pipeline_executor=SimpleNamespace(
+                execute=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                    AssertionError("restricted workflow must not execute")
+                )
+            ),
+        )
+
+        assert result["ok"] is False
+        assert result["data"]["workflow_id"] == "restricted"
+        assert "workflow tool" in result["error"].lower()
+
+
 def test_describe_is_compact_and_does_not_expose_component_schemas(tmp_path):
     _write_workflow(tmp_path / "report.json", _workflow("report"))
 

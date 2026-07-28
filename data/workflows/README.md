@@ -18,6 +18,7 @@ Private workflows can live in `data/workflows/personal/*.json`. That folder is g
 | `name` | string | Display / documentation. |
 | `description` | string | Display / documentation. |
 | `version` | string | Optional; informational. |
+| `allow_workflow_tool` | boolean | Optional; defaults to `true`. Set `false` to block Jarvis from discovering, describing, or running this recipe through the autonomous `workflow` meta-tool while preserving explicit commands, API execution, and scheduled tasks. |
 | `triggers` | object | At minimum use `explicit`: list of command strings (e.g. `"/archive"`). |
 | `variables` | object | Optional; see **Variables** below. |
 | `success_speech` | string | Resolved with `${variables}` when workflow completes. |
@@ -35,6 +36,13 @@ same-id overrides.
 Disabling the `workflow` tool in its manifest, the active tool profile, or the
 Web blocked-tools list disables this **autonomous meta-tool path** for that
 surface. It does not disable direct slash commands or scheduled workflow tasks.
+
+For a per-workflow boundary, set top-level `"allow_workflow_tool": false`.
+The recipe remains enabled for deliberate execution through an explicit slash
+command, the workflow API, or a scheduled task, but the `workflow` meta-tool
+will not return it from search and will reject exact describe/run attempts.
+This is appropriate for personal or side-effecting recipes that Jarvis should
+never choose on its own.
 
 ---
 
@@ -212,7 +220,8 @@ Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
 10. For single URL crawl workflows, use **`output_var: "article"`** when later steps need `${article.content}`, `${article.url}`, or `${article.title}`.
 11. For mode-scoped data such as memory or intelligence, expose the active mode/source in the workflow output and in saved Canvas/stash reports.
 12. Assume autonomous foreground execution may select the recipe: keep `name`, `description`, explicit triggers, and query-derived variables clear enough for compact metadata search.
-13. Make side effects and repeat behavior safe. Autonomous orchestration permits only one started workflow run per request, but scheduled or later explicit runs are independent.
+13. Set `"allow_workflow_tool": false` when the recipe must remain explicit, API-only, or scheduled-only—especially for personal workflows with sensitive side effects.
+14. Make side effects and repeat behavior safe. Autonomous orchestration permits only one started workflow run per request, but scheduled or later explicit runs are independent.
 
 ---
 

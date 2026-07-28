@@ -2,7 +2,7 @@
 
 > **Status**: Implemented
 > **Purpose**: Deterministic multi-tool workflow execution for repeatable Jarvis tasks
-> **Last Updated**: July 23, 2026
+> **Last Updated**: July 28, 2026
 
 ---
 
@@ -15,6 +15,12 @@ Workflows are Jarvis recipes: JSON pipelines that run known tool steps in a fixe
 They are not a second chat system. Chat, the API, scheduled tasks, direct slash
 commands, and the autonomous `workflow` meta-tool share the same workflow
 loader, effective tool registry, and pipeline executor.
+
+In this document, **autonomous** has a narrow meaning: Jarvis decides during a
+normal chat or voice turn to call the `workflow` meta-tool and select a recipe.
+A scheduled workflow is automated, but it is deliberate—the user chose the
+workflow and schedule ahead of time. Explicit slash commands and workflow API
+calls are deliberate entry points too.
 
 ## Why Workflows Matter
 
@@ -83,7 +89,7 @@ recipes by metadata and requires an exact workflow id before execution.
 | Explicit slash command | `WorkflowLoader.match()` before normal router turns | Disable the workflow JSON or make any component tool unavailable/excluded |
 | Workflow API | Exact workflow id/trigger | Disable the workflow JSON or make any component tool unavailable for that API mode |
 | Scheduled workflow | Stored workflow id | Disable the task/workflow or make any component tool unavailable at run time |
-| Autonomous chat/voice | `workflow(search → describe? → run)` selected through Tool RAG | Disable/block the `workflow` meta-tool, or make any component tool unavailable |
+| Jarvis-chosen chat/voice | `workflow(search → describe? → run)` selected through Tool RAG | Set `"allow_workflow_tool": false` on that workflow; disable/block the `workflow` meta-tool globally; or make a component tool unavailable |
 
 The `workflow` tool is a feature switch for **autonomous workflow selection**,
 not a master switch for the entire workflow subsystem. For example, a profile
@@ -100,6 +106,18 @@ containing:
 removes autonomous `workflow` calls from the effective registry after restart,
 while `/research` and an existing scheduled `deep_research` task remain
 available if all of their component tools are still allowed.
+
+For a per-workflow boundary, use:
+
+```json
+"allow_workflow_tool": false
+```
+
+This removes the recipe from `workflow(search)` and rejects exact
+`workflow(describe)` or `workflow(run)` calls. It does not disable the workflow:
+explicit slash commands, `POST /api/workflows/{workflow_id}/execute`, and
+scheduled workflow tasks can still run it. The field defaults to `true`, so
+existing workflow JSON keeps its current behavior when the field is omitted.
 
 Jarvis Web's Settings → Tools blocked list is request/surface-specific. Blocking
 `workflow` prevents Web chat from discovering or calling the autonomous
@@ -138,7 +156,7 @@ Tool RAG sync-status JSON files are health markers, not capability catalogs.
 Admission uses the live registry/surface view rather than
 `data/.tool_sync_status_<mode>.json`.
 
-## Autonomous Foreground Execution
+## Jarvis-Chosen Foreground Execution (`workflow` Meta-Tool)
 
 The meta-tool exposes three actions:
 
@@ -156,8 +174,11 @@ run. It may still use a direct tool for a simple action where no recipe adds
 needed work. v1 remains the immutable comparison baseline.
 
 Search reads both shared and personal folders, respects personal same-id
-overrides, and returns compact metadata without component schemas. `run`
-revalidates availability and waits synchronously for `PipelineExecutor`.
+overrides, omits recipes with `"allow_workflow_tool": false`, and returns
+compact metadata without component schemas. Exact `describe` and `run` calls
+recheck that boundary so a known or hallucinated workflow id cannot bypass
+search filtering. `run` then revalidates component availability and waits
+synchronously for `PipelineExecutor`.
 
 The outer `workflow` call runs in-process, before `ToolExecutor` enters its
 subprocess path. Therefore the generic 60-second cloud / 75-second local
@@ -275,6 +296,7 @@ source ~/jarvis-venv/bin/activate
 | `name` | Recommended | Display name in UI. |
 | `description` | Recommended | Shown in workflow dropdowns and docs. |
 | `enabled` | Recommended | `false` disables the workflow without deleting it. Missing is treated as enabled. |
+| `allow_workflow_tool` | No | Defaults to `true`. Set `false` to prevent Jarvis from choosing this recipe through `workflow(search/describe/run)` while preserving explicit slash, API, and scheduled execution. |
 | `version` | No | Informational. |
 | `triggers.explicit` | Recommended | Slash commands such as `["/research"]`. |
 | `variables` | No | Query/env/static values used by steps. |
@@ -454,11 +476,12 @@ Workflow scheduled tasks are first-class:
 The scheduled runner executes workflows through `WorkflowLoader`, `ToolExecutor`, and `PipelineExecutor`. MCP tools are available through the shared MCP-aware registry used by orchestration, so a workflow run after server start should not need a prior chat message to initialize MCP tools.
 
 Scheduled workflows do not call the autonomous `workflow` meta-tool. Disabling
-or Web-blocking that meta-tool therefore does not cancel or suppress scheduled
-tasks. At execution time, the scheduled runner independently validates every
-component against its own mode/profile registry. The scheduled task's stored
-`timeout_seconds` wraps the complete worker run even though interactive
-`PipelineExecutor` execution has no global wall-clock timeout.
+or Web-blocking that meta-tool—or setting `"allow_workflow_tool": false` on the
+recipe—therefore does not cancel or suppress scheduled tasks. At execution
+time, the scheduled runner independently validates every component against its
+own mode/profile registry. The scheduled task's stored `timeout_seconds` wraps
+the complete worker run even though interactive `PipelineExecutor` execution
+has no global wall-clock timeout.
 
 Notification behavior:
 
@@ -529,26 +552,31 @@ The authoritative list is `data/workflows/*.json` plus any private `data/workflo
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
-| `quick_note.json` | `/note` | Save a note to memory and Canvas. |
-| `web_archive.json` | `/archive` | Fetch a URL, stash content, and create a Canvas summary. |
-| `deep_dive.json` | `/deep_dive` | Research a URL or topic with validated source gathering. |
+| `bookmark_search.json` | `*` | Search the local Firefox bookmark export. |
+| `crypto_market_report.json` | `/crypto` | Crypto prices with Canvas report. |
+| `daily_status.json` | `/status` | Weather, crypto, stocks, alerts, and system health dashboard. |
+| `daily_status_visual.json` | `/status_visual` | Daily status with generated dashboard image. |
+| `deep_dive.json` | `/deep_dive` | Screenshot and analyze a URL with resilient crawl fallback. |
 | `deep_research.json` | `/research` | Multi-source research with validation and Canvas output. |
 | `github_ai_radar_daily.json` | `/github_ai_radar` | Refresh one rolling GitHub AI Radar Canvas page with search, YouTube, and Brave context. |
 | `jarvis_self_check.json` | `/jarvis_self_check` | Check host health, create alerts on problems, and update one Canvas health page. |
-| `yt_dlp_release_watch.json` | `/yt_dlp_release_watch` | Detect new stable yt-dlp releases, create a Canvas release report, and raise one deduplicated alert. |
-| `daily_status.json` | `/status` | Weather, crypto, stocks, alerts, and system health dashboard. |
-| `daily_status_visual.json` | `/status_visual` | Daily status with generated dashboard image. |
-| `weather_watch.json` | `/weather_watch` | Default-location weather watch with Canvas and alerts. |
-| `crypto_market_report.json` | `/crypto` | Crypto prices with Canvas report. |
+| `memory_scan.json` | `/memory_scan` | Analyze the active memory database and save labeled Stash and Canvas reports. |
+| `quick_note.json` | `/note` | Save a note to memory and Canvas. |
+| `serpapi_search.json` | `/serpapi` | Search through SerpApi and save Stash and Canvas reports. |
 | `server_health_check.json` | `/health` | SSH health check for a remote server. |
-| `youtube_research.json` | `/youtube_research` | Transcript-based YouTube study notes. |
+| `url_ingest.json` | `/url_ingest` | Crawl a URL, create an Intelligence file, and ingest it for RAG queries. |
+| `weather_watch.json` | `/weather_watch` | Default-location weather watch with Canvas and alerts. |
+| `web_archive.json` | `/archive` | Fetch a URL, stash content, and create a Canvas summary. |
 | `youtube_ingest.json` | `/youtube_ingest` | Download video/transcript and create a briefing. |
+| `youtube_research.json` | `/youtube_research` | Transcript-based YouTube study notes. |
+| `yt_dlp_release_watch.json` | `/yt_dlp_release_watch` | Detect new stable yt-dlp releases, create a Canvas release report, and raise one deduplicated alert. |
 
 ## Authoring Checklist
 
 - Use valid JSON only; no comments.
 - Prefer explicit slash triggers.
 - Put private local recipes in `data/workflows/personal/*.json`.
+- Set `"allow_workflow_tool": false` when a recipe must remain explicit, API-only, or scheduled-only.
 - Keep shared workflows portable by reading user-specific defaults from env.
 - Use deterministic tool steps before adding `llm_prompt`.
 - Validate LLM-generated Canvas content.
