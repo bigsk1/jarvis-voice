@@ -634,6 +634,141 @@ def _successful_tool_trace_arguments(data: dict, tool_name: str) -> list[dict]:
     return arguments
 
 
+_SPOTIFY_ARGUMENT_FIELDS = (
+    'action',
+    'query',
+    'type',
+    'device',
+    'level',
+    'state',
+    'mood',
+    'genre',
+    'time_range',
+    'limit',
+)
+
+_SPOTIFY_SCALAR_FIELDS = (
+    'action',
+    'query',
+    'type',
+    'time_range',
+    'count',
+    'total_followed',
+    'has_more',
+    'playing',
+    'name',
+    'artist',
+    'album',
+    'progress',
+    'duration',
+    'device',
+    'volume',
+    'shuffle',
+    'device_id',
+    'device_name',
+    'uri',
+    'spotify_url',
+    'show',
+    'show_uri',
+    'source',
+    'publisher',
+)
+
+_SPOTIFY_LIST_FIELDS = (
+    'results',
+    'items',
+    'artists',
+    'devices',
+    'playlists',
+    'tracks',
+    'episodes',
+    'suggestions',
+)
+
+_SPOTIFY_CANDIDATE_FIELDS = (
+    'id',
+    'number',
+    'name',
+    'artist',
+    'uri',
+    'spotify_url',
+    'type',
+    'owner',
+    'publisher',
+    'show',
+    'show_uri',
+    'date',
+    'duration',
+    'duration_min',
+    'release_date',
+    'total_episodes',
+    'active',
+    'volume',
+    'why',
+    'followers',
+    'popularity',
+)
+
+
+def _extract_spotify_followup(
+    data: dict,
+    payload: dict,
+    max_candidates: int,
+) -> dict:
+    """Project Spotify's varied action payloads into durable chat references."""
+    extracted = {}
+
+    arguments = _successful_tool_trace_arguments(data, 'spotify')
+    if arguments:
+        latest_arguments = arguments[-1]
+        for field in _SPOTIFY_ARGUMENT_FIELDS:
+            value = latest_arguments.get(field)
+            if value not in (None, '', [], {}):
+                extracted[field] = value
+
+    for field in _SPOTIFY_SCALAR_FIELDS:
+        if field in extracted:
+            continue
+        value = payload.get(field)
+        if value not in (None, '', [], {}):
+            extracted[field] = value
+
+    for list_field in _SPOTIFY_LIST_FIELDS:
+        items = payload.get(list_field)
+        if not isinstance(items, list) or not items:
+            continue
+
+        # Recommendation playback returns artist names rather than result rows.
+        if all(isinstance(item, str) for item in items):
+            extracted[f'{list_field}_names'] = items[:max_candidates]
+            continue
+
+        candidates = []
+        for item in items[:max_candidates]:
+            if not isinstance(item, dict):
+                continue
+            candidate = {}
+            for field in _SPOTIFY_CANDIDATE_FIELDS:
+                value = item.get(field)
+                if value not in (None, '', [], {}):
+                    candidate[field] = value
+            genres = item.get('genres')
+            if isinstance(genres, list) and genres:
+                candidate['genres'] = [
+                    genre for genre in genres[:5] if isinstance(genre, str) and genre
+                ]
+            if candidate:
+                candidates.append(candidate)
+
+        if candidates:
+            extracted['candidate_source'] = list_field
+            extracted['candidates'] = candidates
+            extracted.setdefault('count', len(items))
+            break
+
+    return extracted
+
+
 def _mcp_text_runs(value: dict) -> list[dict]:
     """Normalize one or repeated text-oriented MCP results into runs."""
     results = value.get('results')
@@ -1378,7 +1513,11 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 # such as instrumental/SynthID/duration-estimate flags.
                 extracted[field] = field_value
 
-        if key == 'mcp_duckduckgo_search':
+        if key == 'spotify':
+            extracted.update(
+                _extract_spotify_followup(data, payload, max_candidates)
+            )
+        elif key == 'mcp_duckduckgo_search':
             extracted.update(
                 _extract_duckduckgo_search_followup(data, value, max_candidates)
             )

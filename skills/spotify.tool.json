@@ -1,19 +1,19 @@
 {
   "enabled": true,
   "name": "spotify",
-  "description": "🎵 Spotify control. Actions: play (music/podcasts), pause, next, current, search, volume, devices, shuffle, share, recommend (personalized), top (top tracks), episodes (LIST PODCAST EPISODES - use for 'what are recent Joe Rogan episodes?'), suggest (music suggestions). For podcasts: 'list Joe Rogan episodes' → action=episodes query='Joe Rogan'. For music: 'play jazz' → action=play query=jazz.",
+  "description": "🎵 Spotify control. Actions: play (music/podcasts), pause, next, current, search, volume, devices, shuffle, share, recommend (personalized), top (top tracks), followed (list or filter followed artists), episodes (LIST PODCAST EPISODES - use for 'what are recent Joe Rogan episodes?'), suggest (music suggestions). For podcasts: 'list Joe Rogan episodes' → action=episodes query='Joe Rogan'. For music: 'play jazz' → action=play query=jazz.",
   "script": "spotify.py",
   "parameters": {
     "type": "object",
     "properties": {
       "action": {
         "type": "string",
-        "enum": ["play", "pause", "next", "previous", "current", "search", "volume", "devices", "transfer", "shuffle", "queue", "share", "recent", "recommend", "top", "episodes", "suggest", "made_for_you"],
-        "description": "Action: 'play' plays music/podcast (supports Discover Weekly, Daily Mix, etc.), 'episodes' LISTS podcast episodes, 'suggest' lists music suggestions, 'recommend' plays personalized music, 'made_for_you' lists your personalized Spotify playlists, 'top' shows most played."
+        "enum": ["play", "pause", "next", "previous", "current", "search", "volume", "devices", "transfer", "shuffle", "queue", "share", "recent", "recommend", "top", "followed", "episodes", "suggest", "made_for_you"],
+        "description": "Action: 'play' plays music/podcast (supports Discover Weekly, Daily Mix, etc.), 'episodes' LISTS podcast episodes, 'suggest' lists music suggestions, 'recommend' plays personalized music, 'made_for_you' lists your personalized Spotify playlists, 'top' shows most played, and 'followed' lists or filters followed artists."
       },
       "query": {
         "type": "string",
-        "description": "For play/search/queue: what to play or search for. Can be artist, track, album, or playlist name."
+        "description": "For play/search/queue: what to play or search for. For followed: an optional artist-name filter."
       },
       "device": {
         "type": "string",
@@ -40,6 +40,12 @@
         "type": "string",
         "enum": ["short_term", "medium_term", "long_term"],
         "description": "For top: time range. short_term=last 4 weeks, medium_term=last 6 months, long_term=all time."
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50,
+        "description": "Maximum number of results for supported listing and search actions."
       }
     },
     "required": ["action"]

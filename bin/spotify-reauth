@@ -11,7 +11,6 @@ from config_loader import load_config, get_config_value
 
 load_config('cloud')
 
-import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
 client_id = get_config_value('SPOTIFY_CLIENT_ID')

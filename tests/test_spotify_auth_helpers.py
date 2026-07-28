@@ -34,3 +34,15 @@ def test_auth_helpers_request_every_scope_used_by_spotify_tool():
 
     assert set(_declared_scopes(ROOT / "bin" / "spotify-auth")) == expected
     assert set(_declared_scopes(ROOT / "bin" / "spotify-reauth")) == expected
+
+
+def test_reauth_helper_has_no_unused_spotipy_module_import():
+    tree = ast.parse((ROOT / "bin" / "spotify-reauth").read_text(encoding="utf-8"))
+    imported_modules = {
+        alias.name
+        for node in tree.body
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+
+    assert "spotipy" not in imported_modules

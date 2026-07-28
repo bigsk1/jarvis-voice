@@ -1460,6 +1460,89 @@ def action_top(args: dict) -> dict:
     }
 
 
+def _compact_followed_artist(artist: dict) -> dict:
+    """Keep stable identifiers and useful browsing metadata for one artist."""
+    return {
+        "id": artist.get("id"),
+        "name": artist.get("name"),
+        "uri": artist.get("uri"),
+        "spotify_url": (artist.get("external_urls") or {}).get("spotify"),
+        "genres": (artist.get("genres") or [])[:5],
+        "followers": (artist.get("followers") or {}).get("total", 0),
+        "popularity": artist.get("popularity", 0),
+    }
+
+
+def action_followed(args: dict) -> dict:
+    """List followed artists, optionally filtering across cursor pages."""
+    sp = get_spotify_client()
+
+    try:
+        limit = max(1, min(50, int(args.get("limit", 20))))
+    except (TypeError, ValueError):
+        limit = 20
+
+    query = str(args.get("query") or "").strip()
+    query_folded = query.casefold()
+    matches = []
+    after = None
+    seen_cursors = set()
+    total_followed = 0
+    has_more = False
+
+    while True:
+        page_limit = 50 if query else limit
+        response = sp.current_user_followed_artists(limit=page_limit, after=after)
+        page = response.get("artists") or {}
+        total_followed = int(page.get("total") or total_followed)
+
+        for artist in page.get("items") or []:
+            name = str(artist.get("name") or "")
+            if query_folded and query_folded not in name.casefold():
+                continue
+            matches.append(_compact_followed_artist(artist))
+            if len(matches) >= limit:
+                break
+
+        next_cursor = (page.get("cursors") or {}).get("after") if page.get("next") else None
+        if len(matches) >= limit:
+            has_more = bool(next_cursor)
+            break
+        if not query or not next_cursor or next_cursor in seen_cursors:
+            break
+
+        seen_cursors.add(next_cursor)
+        after = next_cursor
+
+    data = {
+        "artists": matches,
+        "count": len(matches),
+        "total_followed": total_followed,
+        "query": query,
+        "has_more": has_more,
+    }
+    if not matches:
+        if query:
+            return {
+                "ok": True,
+                "speech": f"No followed artists matched '{query}'.",
+                "data": data,
+            }
+        return {
+            "ok": True,
+            "speech": "You are not following any artists on Spotify.",
+            "data": data,
+        }
+
+    names = ", ".join(artist["name"] for artist in matches[:5] if artist.get("name"))
+    if query:
+        count_label = "artist" if len(matches) == 1 else "artists"
+        speech = f"Found {len(matches)} followed {count_label} matching '{query}': {names}."
+    else:
+        speech = f"Your followed artists include {names}."
+    return {"ok": True, "speech": speech, "data": data}
+
+
 def action_episodes(args: dict) -> dict:
     """List recent episodes of a podcast/show. Great for browsing before playing."""
     sp = get_spotify_client()
@@ -1540,6 +1623,19 @@ def action_suggest(args: dict) -> dict:
         # No mood - suggest based on top artists + some discovery
         top = sp.current_user_top_artists(limit=3, time_range='short_term')
         top_artists = [a['name'] for a in top.get('items', []) if a]
+        basis = ""
+
+        if top_artists:
+            basis = top_artists[0]
+        else:
+            followed = sp.current_user_followed_artists(limit=3)
+            top_artists = [
+                artist['name']
+                for artist in (followed.get('artists') or {}).get('items', [])
+                if artist and artist.get('name')
+            ]
+            if top_artists:
+                basis = f"followed artist {top_artists[0]}"
         
         # Get related playlists
         if top_artists:
@@ -1553,7 +1649,7 @@ def action_suggest(args: dict) -> dict:
                     "name": p.get('name', 'Unknown'),
                     "type": "playlist",
                     "uri": p.get('uri', ''),
-                    "why": f"Based on {top_artists[0]}"
+                    "why": f"Based on {basis}"
                 })
     
     if not suggestions:
@@ -1622,6 +1718,7 @@ ACTIONS = {
     'recent': action_recent,
     'recommend': action_recommend,
     'top': action_top,
+    'followed': action_followed,
     'episodes': action_episodes,
     'suggest': action_suggest,
     'made_for_you': action_made_for_you,  # Personalized playlists (Discover Weekly, etc.)
@@ -1679,4 +1776,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

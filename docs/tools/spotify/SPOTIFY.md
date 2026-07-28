@@ -76,6 +76,8 @@ Jarvis can play artists, songs, albums, playlists, or just vibe-based requests:
 |--------------|--------------|
 | "What are my top songs?" | Shows your most played tracks |
 | "Who are my top artists?" | Shows your most played artists |
+| "Who do I follow on Spotify?" | Lists followed artists |
+| "Do I follow Primus?" | Filters followed artists by name |
 | "Play my recommendations" | Plays personalized mix based on your taste |
 | "Recommend something energetic" | Upbeat recommendations for workouts |
 | "Recommend chill music" | Relaxed recommendations |
@@ -180,6 +182,18 @@ Jarvis can play podcasts and automatically gets the **latest episode**:
 | "Find playlist workout" | Searches playlists |
 | "Look up album Thriller" | Searches albums |
 | "Search podcast comedy" | Searches podcasts/shows |
+
+### 👥 Followed Artists
+
+| What You Say | What Happens |
+|--------------|--------------|
+| "List my followed artists" | Lists followed artists with playable Spotify references |
+| "Who do I follow on Spotify?" | Shows the first followed artists |
+| "Search my followed artists for Primus" | Filters across the followed-artist list |
+| "Play the second one" | Uses the prior list result in a conversational follow-up |
+
+Followed artists remain separate from general catalog search. Listing or filtering
+does not start playback; you can choose one in a later turn.
 
 ### 📝 Queue
 
@@ -364,7 +378,7 @@ server-side prompt.
 
 ## Technical Details
 
-### Actions Available (18 total)
+### Actions Available (19 total)
 
 | Action | Description | Required Params |
 |--------|-------------|-----------------|
@@ -383,6 +397,7 @@ server-side prompt.
 | `recent` | Recently played playlists | - |
 | `recommend` | Play personalized recommendations | `mood` (optional) |
 | `top` | Show top tracks/artists | `type` (track/artist) |
+| `followed` | List or filter followed artists | `query` (optional), `limit` (optional) |
 | `episodes` | List podcast episodes | `query` (show name) |
 | `suggest` | Get music suggestions (no auto-play) | `mood` (optional) |
 | `made_for_you` | List personalized playlists (Discover Weekly, etc.) | - |
@@ -438,7 +453,7 @@ The tool requests these Spotify scopes:
 - `user-library-read` - Access Liked Songs
 - `user-read-recently-played` - Recently played tracks/playlists
 - `user-top-read` - Top tracks and artists
-- `user-follow-read` - Followed playlists/artists
+- `user-follow-read` - Followed artists
 
 ---
 
@@ -511,4 +526,4 @@ At least one device must have Spotify running for the API to control it. If you 
 
 ---
 
-**Last Updated:** 2025-12-23
+**Last Updated:** 2026-07-28
