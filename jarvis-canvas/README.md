@@ -254,6 +254,10 @@ DELETE /api/gallery/videos/<name> # Delete video
 
 ### Features
 - Native audio playback with one active track at a time
+- Real-time Web Audio spectrum with peak hold, bass-reactive artwork glow, and
+  an in-artwork playback-progress wash
+- Pointer, touch, and keyboard seeking from the artwork waveform; the static
+  waveform remains available when Web Audio or motion is unavailable
 - Search by title, filename, genre, mood, tempo, or tags
 - Filter by provider or favorites
 - Sort by date, title, size, or duration

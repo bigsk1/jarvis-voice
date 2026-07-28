@@ -123,7 +123,23 @@ body {
     border-color: rgba(210, 153, 34, 0.72);
 }
 
+.audio-card.is-playing {
+    border-color: rgba(57, 197, 207, 0.88);
+    box-shadow:
+        0 14px 36px rgba(0, 0, 0, 0.36),
+        0 0 0 1px rgba(163, 113, 247, 0.18);
+}
+
+.audio-card.is-playing.is-favorite {
+    border-color: rgba(210, 153, 34, 0.82);
+    box-shadow:
+        0 14px 36px rgba(0, 0, 0, 0.36),
+        0 0 0 1px rgba(57, 197, 207, 0.42);
+}
+
 .audio-art {
+    --audio-glow-opacity: 0.08;
+    --audio-glow-scale: 1;
     position: relative;
     height: 126px;
     overflow: hidden;
@@ -132,9 +148,24 @@ body {
         var(--bg-tertiary);
 }
 
+.audio-art::before {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    inset: -24%;
+    background:
+        radial-gradient(circle at 44% 58%, rgba(57, 197, 207, 0.78), transparent 32%),
+        radial-gradient(circle at 62% 42%, rgba(163, 113, 247, 0.72), transparent 38%);
+    opacity: var(--audio-glow-opacity);
+    transform: scale(var(--audio-glow-scale));
+    transition: opacity 0.16s linear, transform 0.16s linear;
+    pointer-events: none;
+}
+
 .audio-art::after {
     content: "";
     position: absolute;
+    z-index: 1;
     inset: 0;
     background: linear-gradient(to top, rgba(13, 17, 23, 0.74), transparent 70%);
     pointer-events: none;
@@ -148,6 +179,7 @@ body {
     justify-content: center;
     gap: 7px;
     opacity: 0.88;
+    transition: opacity 0.18s ease;
 }
 
 .audio-wave span {
@@ -157,6 +189,60 @@ body {
     border-radius: 999px;
     background: linear-gradient(to top, var(--audio-cyan), #d7b7ff);
     box-shadow: 0 0 16px rgba(57, 197, 207, 0.28);
+}
+
+.audio-art.has-visualizer .audio-wave {
+    opacity: 0;
+}
+
+.audio-visualizer {
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    border-radius: inherit;
+    cursor: pointer;
+    outline: none;
+    touch-action: manipulation;
+}
+
+.audio-visualizer[aria-disabled="true"] {
+    cursor: default;
+}
+
+.audio-visualizer:focus-visible {
+    box-shadow: inset 0 0 0 3px rgba(215, 183, 255, 0.92);
+}
+
+.audio-viz {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.audio-seek-time {
+    position: absolute;
+    z-index: 4;
+    top: 68px;
+    min-width: 42px;
+    padding: 4px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    background: rgba(13, 17, 23, 0.94);
+    color: white;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+    opacity: 0;
+    transform: translate(-50%, 5px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.audio-seek-time.is-visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
 }
 
 .audio-provider,
@@ -203,7 +289,54 @@ body {
 .audio-duration {
     right: 10px;
     bottom: 10px;
+    display: flex;
+    align-items: center;
     background: rgba(13, 17, 23, 0.82);
+}
+
+.audio-play-status {
+    width: 0;
+    height: 7px;
+    margin-right: 0;
+    border-radius: 50%;
+    background: var(--audio-cyan);
+    box-shadow: 0 0 0 rgba(57, 197, 207, 0);
+    opacity: 0;
+    transition: width 0.16s ease, margin-right 0.16s ease, opacity 0.16s ease;
+}
+
+.audio-card.is-playing .audio-play-status,
+.audio-card.is-loading .audio-play-status {
+    width: 7px;
+    margin-right: 5px;
+    opacity: 1;
+}
+
+.audio-card.is-playing .audio-play-status {
+    animation: audio-playing-pulse 1.25s ease-out infinite;
+}
+
+.audio-card.is-loading .audio-play-status {
+    background: #ffd166;
+    animation: audio-loading-pulse 0.8s ease-in-out infinite alternate;
+}
+
+.audio-card.has-audio-error .audio-play-status {
+    width: 7px;
+    margin-right: 5px;
+    background: var(--danger);
+    opacity: 1;
+}
+
+@keyframes audio-playing-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(57, 197, 207, 0.55); }
+    70% { box-shadow: 0 0 0 5px rgba(57, 197, 207, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(57, 197, 207, 0); }
+}
+
+@keyframes audio-loading-pulse {
+    from { opacity: 0.45; }
+    to { opacity: 1; }
 }
 
 .audio-favorite {
@@ -313,6 +446,22 @@ body {
 
 .toast.error {
     background: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .audio-card,
+    .audio-art::before,
+    .audio-wave,
+    .audio-play-status,
+    .audio-seek-time {
+        animation: none !important;
+        transition: none !important;
+    }
+
+    .audio-card:hover,
+    .audio-card:focus-within {
+        transform: none;
+    }
 }
 
 @media (max-width: 768px) {

@@ -224,7 +224,7 @@ def test_generate_music_persists_provider_neutral_catalog_on_stash_failure(
     assert "google_gemini" in entry["tags"]
 
 
-def test_audio_gallery_ui_keeps_audio_label_and_first_version_actions():
+def test_audio_gallery_ui_keeps_actions_and_adds_live_visualizer():
     assert "<span>Audio</span>" in AUDIO_HTML
     assert 'id="providerFilter"' in AUDIO_HTML
     assert 'id="favoriteFilter"' in AUDIO_HTML
@@ -234,6 +234,13 @@ def test_audio_gallery_ui_keeps_audio_label_and_first_version_actions():
     assert "const model = String(item.model || '').trim();" in AUDIO_JS
     assert "${model ?" in AUDIO_JS
     assert "setupExclusivePlayback" in AUDIO_JS
+    assert "class AudioGalleryVisualizer" in AUDIO_JS
+    assert "createMediaElementSource" in AUDIO_JS
+    assert "getByteFrequencyData" in AUDIO_JS
+    assert "requestAnimationFrame" in AUDIO_JS
+    assert "role=\"slider\"" in AUDIO_JS
+    assert "audio-seek-time" in AUDIO_JS
+    assert "prefers-reduced-motion: reduce" in AUDIO_JS
     assert "/api/gallery/audio/" in AUDIO_JS
     assert "toggleFavoriteByIndex" in AUDIO_JS
     assert "downloadByIndex" in AUDIO_JS
@@ -241,6 +248,10 @@ def test_audio_gallery_ui_keeps_audio_label_and_first_version_actions():
     assert "'&quot;'" in AUDIO_JS
     assert "@media (max-width: 768px)" in AUDIO_CSS
     assert ".audio-model" in AUDIO_CSS
+    assert ".audio-card.is-playing" in AUDIO_CSS
+    assert ".audio-visualizer:focus-visible" in AUDIO_CSS
+    assert ".audio-play-status" in AUDIO_CSS
+    assert "@media (prefers-reduced-motion: reduce)" in AUDIO_CSS
     assert ".audio-gallery-header .logo span" in AUDIO_CSS
     assert ".header-link span" in BASE_CSS
     assert ".audio-mobile-label" not in BASE_CSS
