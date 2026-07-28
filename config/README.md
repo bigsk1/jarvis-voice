@@ -368,17 +368,46 @@ broaden the allowlist or pass the source variable names.
 ### Proxy Policy
 
 Both native `*.tool.json` files and MCP server entries support top-level
-`proxy_policy` runtime metadata:
+`proxy_policy` runtime metadata, but Jarvis applies it differently for the two
+execution paths.
+
+The policy values express the same intent in both places:
 
 - Omitted / `"inherit"` preserves existing behavior.
 - `"off"` forces direct networking.
 - `"prefer"` uses `LOCAL_PROXY`, then `LOCAL_PROXY2`, with direct fallback.
 - `"require"` uses the proxy chain and fails closed without a direct fallback.
 
-For a Docker MCP server, Jarvis selects the first reachable proxy listener and
-forwards only derived `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` names (plus
-lowercase equivalents) with explicit `docker run -e` arguments. See
-[`docs/NETWORK_PROXY.md`](../docs/NETWORK_PROXY.md).
+#### MCP server entries: automatic proxy environment
+
+For an MCP server, setting `"proxy_policy": "prefer"` or `"require"` is the
+Jarvis-side configuration needed to use `LOCAL_PROXY` / `LOCAL_PROXY2`. Jarvis
+selects the first reachable proxy listener and launches the server with derived
+`HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` variables (plus lowercase
+equivalents). Docker MCP servers receive those names through explicit
+`docker run -e` arguments.
+
+The MCP server's HTTP client must honor these conventional proxy variables.
+Most standard clients do, but a server that ignores them needs its own
+server-specific proxy configuration. A TLS-intercepting proxy may also require
+the server to trust its CA certificate.
+
+#### Native `*.tool.json` manifests: policy delivered to tool code
+
+For a native tool, the manifest policy is passed to the subprocess as
+`JARVIS_TOOL_PROXY_POLICY`. `"off"` also strips Jarvis and conventional proxy
+variables, but `"prefer"` and `"require"` do not transparently reroute arbitrary
+socket or third-party-library traffic.
+
+The native tool must use Jarvis's proxy-aware helpers in `lib/http_client.py`
+(or implement equivalent policy-aware logic). Tools already using helpers such
+as `http_request()`, `build_proxy_url_attempts()`, or
+`proxy_policy_allows_direct_fallback()` need no additional per-tool wiring;
+adding the manifest field alone is not sufficient for unrelated networking
+code.
+
+See [`docs/NETWORK_PROXY.md`](../docs/NETWORK_PROXY.md) for the complete
+transport behavior and current tool coverage.
 
 ### MCP Server with API Key (Secure Pattern)
 
