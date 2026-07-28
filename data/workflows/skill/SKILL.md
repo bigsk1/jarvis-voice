@@ -22,6 +22,7 @@ Use this repo-tracked skill when a future agent needs to create or repair a Jarv
 2. Add variables only when steps actually need extracted or defaulted values.
 3. Prefer deterministic tool steps over helper LLM calls when a value can be derived from prior tool output.
 4. For helper LLM steps, add `llm_output_validation` with `min_length`, `reject_patterns`, and `required_patterns` when structure matters.
+   - Structured `${...}` values are capped at 3,000 characters by default. Set per-step `llm_variable_max_chars` only when a bounded collection must be passed intact.
 5. For workflows that must not use provider-native search inside helper LLM calls, set `disable_server_side_tools: true`. This does not disable explicit workflow search/MCP steps.
 6. Use `mcp_*` tools directly when the workflow needs MCP. FastAPI, scheduled tasks, and CLI execution use the shared MCP-aware registry.
 7. For Canvas:

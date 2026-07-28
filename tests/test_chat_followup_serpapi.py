@@ -55,6 +55,12 @@ def test_extract_followup_data_includes_focused_serpapi_product_fields():
                     "price": "$17.79",
                     "rating": 4.4,
                     "reviews": 10873,
+                    "prime": True,
+                    "prime_eligible": True,
+                    "delivery": ["FREE Prime delivery Tomorrow"],
+                    "stock": "In Stock",
+                    "badges": ["Amazon's Choice"],
+                    "bought_last_month": "10K+ bought in past month",
                 }
             ],
         }
@@ -71,6 +77,11 @@ def test_extract_followup_data_includes_focused_serpapi_product_fields():
     assert serp["price"] == "$17.79"
     assert serp["rating"] == 4.4
     assert serp["reviews"] == 10873
+    assert serp["prime_eligible"] is True
+    assert serp["delivery"] == ["FREE Prime delivery Tomorrow"]
+    assert serp["stock"] == "In Stock"
+    assert serp["badges"] == ["Amazon's Choice"]
+    assert serp["bought_last_month"] == "10K+ bought in past month"
 
 
 def test_extract_followup_data_preserves_compact_candidate_list():
@@ -89,6 +100,9 @@ def test_extract_followup_data_preserves_compact_candidate_list():
                     "rating": 4.2,
                     "reviews": 64800,
                     "thumbnail": "https://m.media-amazon.com/images/I/echo.jpg",
+                    "prime": False,
+                    "prime_eligible": False,
+                    "shipping": "Ships from Example Seller",
                 },
                 {
                     "title": "Aura Carver HD WiFi Digital Picture Frame, 10.1",
@@ -112,6 +126,166 @@ def test_extract_followup_data_preserves_compact_candidate_list():
     assert candidates[1]["asin"] == "B09X1XN3FZ"
     assert candidates[1]["url"] == "https://www.amazon.com/dp/B09X1XN3FZ/"
     assert candidates[1]["thumbnail"] == "https://m.media-amazon.com/images/I/aura.jpg"
+    assert candidates[0]["prime"] is False
+    assert candidates[0]["prime_eligible"] is False
+    assert candidates[0]["shipping"] == "Ships from Example Seller"
+
+
+def test_extract_followup_data_merges_amazon_workflow_search_and_detail_runs():
+    workflow = {
+        "action": "run",
+        "workflow_id": "amazon_value_search",
+        "workflow_name": "Amazon Value Search",
+        "workflow_completed": True,
+        "results": [
+            {
+                "step": 1,
+                "tool": "serpapi_search",
+                "data": {
+                    "engine": "amazon",
+                    "query": "usb c charger 65w under 40",
+                    "query_effective": "usb c charger 65w 40",
+                    "delivery_localized": True,
+                    "delivery_location_source": "jarvis_default",
+                    "results_count": 2,
+                    "results": [
+                        {
+                            "title": "Anker 65W Charger",
+                            "asin": "B09C5RG6KV",
+                            "url": "https://www.amazon.com/dp/B09C5RG6KV/",
+                            "price": "$24.99",
+                            "rating": 4.7,
+                            "reviews": 21600,
+                        },
+                        {
+                            "title": "INIU 65W Charger",
+                            "asin": "B0DN6VXM61",
+                            "url": "https://www.amazon.com/dp/B0DN6VXM61/",
+                            "price": "$19.77",
+                            "rating": 4.7,
+                            "reviews": 1200,
+                        },
+                    ],
+                },
+            },
+            {
+                "step": 2,
+                "tool": "serpapi_search",
+                "outputs": [
+                    {
+                        "ok": True,
+                        "data": {
+                            "engine": "amazon_product",
+                            "asin": "B09C5RG6KV",
+                            "delivery_localized": True,
+                            "results": [
+                                {
+                                    "title": "Anker 65W Charger",
+                                    "asin": "B09C5RG6KV",
+                                    "url": "https://www.amazon.com/dp/B09C5RG6KV/",
+                                    "prime_eligible": True,
+                                    "delivery": ["Prime members get FREE delivery Today"],
+                                    "stock": "In Stock",
+                                    "badges": ["Overall Pick"],
+                                }
+                            ],
+                        },
+                    },
+                    {
+                        "ok": True,
+                        "data": {
+                            "engine": "amazon_product",
+                            "asin": "B0DN6VXM61",
+                            "delivery_localized": True,
+                            "results": [
+                                {
+                                    "title": "INIU 65W Charger",
+                                    "asin": "B0DN6VXM61",
+                                    "url": "https://www.amazon.com/dp/B0DN6VXM61/",
+                                    "prime": False,
+                                    "prime_eligible": False,
+                                    "delivery": ["FREE delivery Sunday"],
+                                    "stock": "Only 4 left in stock",
+                                    "save_with_coupon": "Save 10% with coupon",
+                                }
+                            ],
+                        },
+                    },
+                ],
+            },
+        ],
+    }
+
+    followup = _handler()._extract_followup_data({"workflow": workflow})
+    serp = followup["serpapi_search"]
+
+    assert serp["engine"] == "amazon"
+    assert serp["query"] == "usb c charger 65w under 40"
+    assert serp["query_effective"] == "usb c charger 65w 40"
+    assert serp["delivery_localized"] is True
+    assert serp["delivery_location_source"] == "jarvis_default"
+    assert serp["runs_count"] == 3
+    assert len(serp["candidates"]) == 2
+    assert serp["candidates"][0]["asin"] == "B09C5RG6KV"
+    assert serp["candidates"][0]["prime_eligible"] is True
+    assert serp["candidates"][0]["stock"] == "In Stock"
+    assert serp["candidates"][0]["badges"] == ["Overall Pick"]
+    assert serp["candidates"][1]["asin"] == "B0DN6VXM61"
+    assert serp["candidates"][1]["prime"] is False
+    assert serp["candidates"][1]["prime_eligible"] is False
+    assert serp["candidates"][1]["delivery"] == ["FREE delivery Sunday"]
+    assert serp["candidates"][1]["save_with_coupon"] == "Save 10% with coupon"
+
+
+def test_extract_followup_data_merges_flattened_amazon_workflow_runs():
+    data = {
+        "serpapi_search": [
+            {
+                "engine": "amazon",
+                "query": "portable monitor",
+                "results_count": 1,
+                "results": [
+                    {
+                        "title": "Example Portable Monitor",
+                        "asin": "B0EXAMPLE1",
+                        "url": "https://www.amazon.com/dp/B0EXAMPLE1/",
+                        "price": "$99.99",
+                    }
+                ],
+            },
+            {
+                "engine": "amazon_product",
+                "asin": "B0EXAMPLE1",
+                "results_count": 1,
+                "results": [
+                    {
+                        "title": "Example Portable Monitor",
+                        "asin": "B0EXAMPLE1",
+                        "url": "https://www.amazon.com/dp/B0EXAMPLE1/",
+                        "prime_eligible": True,
+                        "delivery": ["Prime members get FREE delivery Tomorrow"],
+                        "stock": "In Stock",
+                    }
+                ],
+            },
+        ]
+    }
+
+    serp = _handler()._extract_followup_data(data)["serpapi_search"]
+
+    assert serp["runs_count"] == 2
+    assert serp["results_count"] == 1
+    assert serp["candidates"] == [
+        {
+            "title": "Example Portable Monitor",
+            "asin": "B0EXAMPLE1",
+            "url": "https://www.amazon.com/dp/B0EXAMPLE1/",
+            "price": "$99.99",
+            "prime_eligible": True,
+            "delivery": ["Prime members get FREE delivery Tomorrow"],
+            "stock": "In Stock",
+        }
+    ]
 
 
 def test_extract_followup_data_includes_serpapi_youtube_fields():

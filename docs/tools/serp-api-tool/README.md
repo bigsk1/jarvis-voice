@@ -35,7 +35,7 @@ The base tool is generic by design, and Jarvis now also includes thin SerpApi wr
 
 1. Add your key in env:
    - `SERP_API_KEY` in `config/cloud.env` and/or `config/local.env`
-   - Optional: `JARVIS_DEFAULT_POSTAL_CODE` for tools that need a ZIP/postal code, such as Home Depot US availability
+   - Optional: `JARVIS_DEFAULT_POSTAL_CODE` for localized Amazon delivery and Home Depot US availability
 2. Sync tools:
    - `./bin/sync-tools.py cloud`
    - `./bin/sync-tools.py local` (if you use local mode)
@@ -59,7 +59,10 @@ Standard tool contract:
         "asin": "...",
         "price": "...",
         "rating": 4.6,
-        "reviews": 1234
+        "reviews": 1234,
+        "prime_eligible": true,
+        "delivery": ["..."],
+        "stock": "In Stock"
       }
     ]
   }
@@ -78,6 +81,10 @@ Standard tool contract:
 | `device` | string | no | `desktop`, `mobile`, `tablet` |
 | `page` | integer | no | Default `1` |
 | `num_results` | integer | no | Clamped to `1..10`, default `5` |
+| `delivery_zip` | string | no | Amazon delivery ZIP/postal code; defaults to `JARVIS_DEFAULT_POSTAL_CODE` |
+| `shipping_location` | string | no | Optional Amazon shipping country code, such as `US` |
+| `include_product_details` | boolean | no | For Amazon search, merge localized product details into the first candidates |
+| `product_details_limit` | integer | no | Product-detail enrichments to request (`1..5`, default `5`) |
 | `no_cache` | boolean | no | Force fresh fetch |
 | `extra_params` | object | no | Pass-through engine params |
 | `include_raw` | boolean | no | Include full payload in `data.raw` |
@@ -110,12 +117,29 @@ This keeps broad comparison and focused product inspection separate:
 - `amazon` is better for candidate discovery and ranking
 - `amazon_product` is better for one final item with richer details, direct link, and thumbnail/image
 
+For a bounded comparison that needs reliable Prime, delivery, and stock columns,
+set `include_product_details=true`. The tool makes up to
+`product_details_limit` localized product calls and deterministically merges
+their fields back into the original search rows by ASIN. This avoids handing an
+LLM separate discovery/detail payloads and asking it to reconcile them.
+
+Both Amazon engines default `delivery_zip` from `JARVIS_DEFAULT_POSTAL_CODE`.
+Normalized results preserve SerpApi's price, rating, reviews, Prime, delivery,
+shipping, stock, availability, badge, recent-purchase, and coupon signals when
+present. `prime_eligible` is true when SerpApi explicitly marks Prime or its
+delivery text explicitly offers a Prime-member delivery option. Missing fields
+remain unknown.
+
 Jarvis now also preserves a compact shortlist of prior Amazon candidates in follow-up context, so later turns like:
 - `tell me more about the Aura frame`
 - `save that one to canvas`
 - `show the dog bed again`
 
-have a much better chance of resolving to the right prior ASIN, link, and thumbnail instead of forcing a fresh guess.
+can resolve to the right prior ASIN, link, and thumbnail instead of forcing a
+fresh guess. When a workflow combines Amazon discovery and product-detail
+lookups, the follow-up extractor joins those runs by ASIN and also keeps bounded
+price, rating/review, Prime, delivery, shipping, stock/availability, badge,
+recent-purchase, and coupon signals.
 
 ### Amazon product lookup by ASIN
 

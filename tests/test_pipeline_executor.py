@@ -770,6 +770,38 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
         self.assertIn("[No articles gathered]", provider.prompts[0])
         self.assertNotIn("${validated_articles}", provider.prompts[0])
 
+    def test_llm_prompt_structured_variable_limit_can_be_raised_per_step(self):
+        provider = PromptCapturingProvider(response="rendered report")
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(execute=lambda *_args, **_kwargs: {"ok": True}),
+            provider=provider,
+        )
+        variables = {"products": [{"description": "x" * 4_000}]}
+
+        executor._llm_fill_params(
+            {
+                "tool": "canvas",
+                "llm_prompt": "Products:\n${products}",
+            },
+            variables,
+        )
+        default_prompt = provider.prompts[-1]
+
+        executor._llm_fill_params(
+            {
+                "tool": "canvas",
+                "llm_variable_max_chars": 5_000,
+                "llm_prompt": "Products:\n${products}",
+            },
+            variables,
+        )
+        expanded_prompt = provider.prompts[-1]
+
+        self.assertLess(len(default_prompt), len(expanded_prompt))
+        self.assertNotIn("x" * 3_200, default_prompt)
+        self.assertIn("x" * 3_200, expanded_prompt)
+
     def test_builtin_research_workflows_declare_validated_article_ownership(self):
         workflows_dir = PROJECT_ROOT / "data" / "workflows"
         deep = json.loads((workflows_dir / "deep_research.json").read_text())

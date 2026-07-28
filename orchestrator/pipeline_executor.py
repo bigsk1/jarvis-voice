@@ -1600,6 +1600,11 @@ class PipelineExecutor:
         
         prompt = step.get("llm_prompt", "")
         tool_name = step.get("tool", "")
+        try:
+            variable_max_chars = int(step.get("llm_variable_max_chars", 3000))
+        except (TypeError, ValueError):
+            variable_max_chars = 3000
+        variable_max_chars = max(500, min(variable_max_chars, 50_000))
         
         # Find all ${...} patterns in the prompt and resolve them
         import re
@@ -1622,7 +1627,10 @@ class PipelineExecutor:
                 articles_text = self._format_articles_for_llm(value)
                 prompt = prompt.replace(placeholder, articles_text)
             else:
-                prompt = prompt.replace(placeholder, self._format_template_value(value)[:3000])
+                prompt = prompt.replace(
+                    placeholder,
+                    self._format_template_value(value)[:variable_max_chars],
+                )
         
         try:
             # Use appropriate system prompt based on tool type

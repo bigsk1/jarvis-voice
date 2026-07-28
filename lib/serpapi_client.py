@@ -23,6 +23,8 @@ GENERIC_RESERVED_KEYS = {
     "no_cache",
     "amazon_domain",
     "language",
+    "delivery_zip",
+    "shipping_location",
 }
 
 AMAZON_QUERY_STOPWORDS = {
@@ -126,22 +128,45 @@ def request_serpapi(
 def extract_generic_results(payload: dict[str, Any], engine: str, limit: int) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
 
+    def prime_eligibility(item: dict[str, Any]) -> bool | None:
+        prime = item.get("prime")
+        if isinstance(prime, bool):
+            return prime
+
+        delivery = item.get("delivery")
+        delivery_text = " ".join(str(value) for value in delivery) if isinstance(delivery, list) else str(delivery or "")
+        if "prime member" in delivery_text.lower() or "prime delivery" in delivery_text.lower():
+            return True
+        return None
+
+    def normalize_item(item: dict[str, Any], source: str) -> dict[str, Any]:
+        return {
+            "title": item.get("title"),
+            "url": item.get("link_clean") or item.get("link") or item.get("source"),
+            "asin": item.get("asin"),
+            "price": item.get("price"),
+            "extracted_price": item.get("extracted_price"),
+            "old_price": item.get("old_price"),
+            "extracted_old_price": item.get("extracted_old_price"),
+            "rating": item.get("rating"),
+            "reviews": item.get("reviews"),
+            "prime": item.get("prime"),
+            "prime_eligible": prime_eligibility(item),
+            "delivery": item.get("delivery"),
+            "shipping": item.get("shipping"),
+            "stock": item.get("stock"),
+            "availability": item.get("availability"),
+            "bought_last_month": item.get("bought_last_month"),
+            "badges": item.get("badges"),
+            "save_with_coupon": item.get("save_with_coupon"),
+            "thumbnail": item.get("thumbnail"),
+            "source": source,
+        }
+
     if engine == "amazon_product":
         product = payload.get("product_results") or {}
         if product:
-            results.append(
-                {
-                    "title": product.get("title"),
-                    "url": product.get("link_clean") or product.get("link"),
-                    "asin": product.get("asin"),
-                    "price": product.get("price"),
-                    "extracted_price": product.get("extracted_price"),
-                    "rating": product.get("rating"),
-                    "reviews": product.get("reviews"),
-                    "thumbnail": product.get("thumbnail"),
-                    "source": "product_results",
-                }
-            )
+            results.append(normalize_item(product, "product_results"))
         return results[:limit]
 
     candidates = []
@@ -151,19 +176,7 @@ def extract_generic_results(payload: dict[str, Any], engine: str, limit: int) ->
             for item in values:
                 if not isinstance(item, dict):
                     continue
-                candidates.append(
-                    {
-                        "title": item.get("title"),
-                        "url": item.get("link_clean") or item.get("link") or item.get("source"),
-                        "asin": item.get("asin"),
-                        "price": item.get("price"),
-                        "extracted_price": item.get("extracted_price"),
-                        "rating": item.get("rating"),
-                        "reviews": item.get("reviews"),
-                        "thumbnail": item.get("thumbnail"),
-                        "source": bucket,
-                    }
-                )
+                candidates.append(normalize_item(item, bucket))
 
     for item in candidates:
         if not item.get("title") and not item.get("url"):

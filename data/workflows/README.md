@@ -193,6 +193,7 @@ Each step typically includes:
 - `required` — default true; if false and step fails, behavior depends on `on_fail`.
 - `on_fail` — e.g. `"continue"` for optional steps.
 - `llm_prompt` — optional; LLM fills params (uses tokens).
+- `llm_variable_max_chars` — optional per-step cap for each structured `${...}` value inserted into `llm_prompt`; defaults to `3000` and is clamped to `500`–`50000`. Raise it only for bounded inputs whose complete rows must reach the helper model.
 - Workflow-level `disable_server_side_tools` — optional boolean; when true, workflow LLM helper calls for `llm_prompt`, validation, branching, or completion speech run without provider-native search/tools. Explicit workflow steps such as Brave search, crawl, or other Jarvis tools still run normally.
 
 Before any execution surface runs the recipe, every step tool must exist in the

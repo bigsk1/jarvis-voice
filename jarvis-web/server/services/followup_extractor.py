@@ -1059,6 +1059,177 @@ def _extract_manage_intel_followup(data: dict, max_candidates: int) -> dict | No
     return extracted
 
 
+_SERPAPI_CANDIDATE_FIELDS = (
+    'title',
+    'asin',
+    'url',
+    'thumbnail',
+    'price',
+    'extracted_price',
+    'old_price',
+    'extracted_old_price',
+    'rating',
+    'reviews',
+    'prime',
+    'prime_eligible',
+    'delivery',
+    'shipping',
+    'stock',
+    'availability',
+    'bought_last_month',
+    'badges',
+    'save_with_coupon',
+)
+
+
+def _compact_serpapi_list(field: str, value: list) -> list:
+    """Bound the few small list fields retained for shopping follow-ups."""
+    limit = 3 if field == 'delivery' else 5
+    max_chars = 500 if field == 'delivery' else 120
+    return [
+        str(item)[:max_chars]
+        for item in value[:limit]
+        if item not in (None, '', [], {})
+    ]
+
+
+def _compact_serpapi_candidate(item: dict) -> dict:
+    """Keep product identity plus decision-relevant shopping signals."""
+    candidate = {}
+    for field in _SERPAPI_CANDIDATE_FIELDS:
+        field_value = item.get(field)
+        if field_value in (None, '', [], {}):
+            continue
+        if isinstance(field_value, list):
+            compact_list = _compact_serpapi_list(field, field_value)
+            if compact_list:
+                candidate[field] = compact_list
+            continue
+        compact_value = _compact_generic_scalar(field, field_value)
+        if compact_value not in (None, '', [], {}):
+            candidate[field] = compact_value
+    return candidate
+
+
+def _serpapi_result_rows(payload: dict) -> list[dict]:
+    rows = payload.get('results') or payload.get('top_results') or []
+    if not isinstance(rows, list):
+        return []
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def _merge_serpapi_candidate(base: dict, detail: dict) -> dict:
+    """Overlay richer detail signals while preserving the discovery identity."""
+    merged = dict(base)
+    for field, field_value in detail.items():
+        if field in {'title', 'url', 'thumbnail'} and merged.get(field):
+            continue
+        merged[field] = field_value
+    return merged
+
+
+def _extract_serpapi_followup(value, max_candidates: int) -> dict:
+    """Join discovery and product-detail runs into one compact shortlist."""
+    raw_runs = value if isinstance(value, list) else [value]
+    runs = []
+    for raw_run in raw_runs:
+        if not isinstance(raw_run, dict):
+            continue
+        payload = (
+            raw_run.get('data')
+            if isinstance(raw_run.get('data'), dict)
+            else raw_run
+        )
+        if isinstance(payload, dict):
+            runs.append(payload)
+
+    if not runs:
+        return {}
+
+    discovery = next(
+        (
+            run for run in runs
+            if run.get('engine') != 'amazon_product'
+            and _serpapi_result_rows(run)
+        ),
+        None,
+    )
+    primary = discovery or runs[0]
+
+    details_by_asin = {}
+    for run in runs:
+        if run.get('engine') != 'amazon_product':
+            continue
+        for row in _serpapi_result_rows(run):
+            candidate = _compact_serpapi_candidate(row)
+            asin = candidate.get('asin') or run.get('asin')
+            if not asin:
+                continue
+            candidate.setdefault('asin', asin)
+            prior = details_by_asin.get(asin, {})
+            details_by_asin[asin] = _merge_serpapi_candidate(prior, candidate)
+
+    candidates = []
+    seen = set()
+    candidate_runs = [discovery] if discovery else runs
+    for run in candidate_runs:
+        if not isinstance(run, dict):
+            continue
+        for row in _serpapi_result_rows(run):
+            candidate = _compact_serpapi_candidate(row)
+            if not candidate:
+                continue
+            if run.get('engine') == 'amazon_product' and run.get('asin'):
+                candidate.setdefault('asin', run['asin'])
+            identity = (
+                candidate.get('asin')
+                or candidate.get('url')
+                or candidate.get('title')
+            )
+            if identity in seen:
+                continue
+            seen.add(identity)
+            detail = details_by_asin.get(candidate.get('asin'))
+            if detail:
+                candidate = _merge_serpapi_candidate(candidate, detail)
+            candidates.append(candidate)
+            if len(candidates) >= max_candidates:
+                break
+        if len(candidates) >= max_candidates:
+            break
+
+    extracted = {}
+    for field in (
+        'engine',
+        'query',
+        'query_effective',
+        'query_was_optimized',
+        'asin',
+        'delivery_localized',
+        'delivery_location_source',
+        'shipping_location',
+    ):
+        field_value = primary.get(field)
+        if field_value not in (None, '', [], {}):
+            extracted[field] = field_value
+
+    extracted['runs_count'] = len(runs)
+    extracted['results_count'] = primary.get('results_count', len(candidates))
+    if primary.get('top_url'):
+        extracted['top_url'] = primary['top_url']
+
+    if candidates:
+        first = candidates[0]
+        for field, field_value in first.items():
+            if field == 'url':
+                extracted.setdefault('top_url', field_value)
+            else:
+                extracted.setdefault(field, field_value)
+        extracted['candidates'] = candidates
+
+    return extracted
+
+
 def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict | None:
     """
     Extract key data from tool results that enables follow-up actions.
@@ -1114,6 +1285,14 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 followup['workflow'] = workflow_meta
             component_results = workflow_step_tool_results(workflow_value)
             for component_name, component_value in component_results.items():
+                if component_name == 'serpapi_search':
+                    component_followup = extract_followup_data(
+                        {component_name: component_value},
+                        max_candidates=max_candidates,
+                    )
+                    if component_followup:
+                        followup.update(component_followup)
+                    continue
                 if isinstance(component_value, list) and component_name != 'text_summarizer':
                     runs = []
                     for run_value in component_value[:max_candidates]:
@@ -1136,6 +1315,11 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 )
                 if component_followup:
                     followup.update(component_followup)
+            continue
+        if key == 'serpapi_search':
+            extracted = _extract_serpapi_followup(value, max_candidates)
+            if extracted:
+                followup[key] = extracted
             continue
         # List-shaped tool payloads: normalize to dict with results[] (no per-tool registry).
         if isinstance(value, list):
@@ -1262,56 +1446,6 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
 
                 if payload.get('missing_coins'):
                     extracted['missing_coins'] = payload['missing_coins']
-
-        # Preserve compact focused product details for shopping follow-ups.
-        if key == 'serpapi_search':
-            results = value.get('results') or value.get('top_results') or []
-            if isinstance(results, list) and results:
-                extracted['results_count'] = value.get('results_count', len(results))
-                first = results[0] if isinstance(results[0], dict) else {}
-                if isinstance(first, dict):
-                    if first.get('title'):
-                        extracted['title'] = first['title']
-                    if first.get('url') and 'top_url' not in extracted:
-                        extracted['top_url'] = first['url']
-                    if first.get('thumbnail'):
-                        extracted['thumbnail'] = first['thumbnail']
-                    if first.get('price'):
-                        extracted['price'] = first['price']
-                    if first.get('rating'):
-                        extracted['rating'] = first['rating']
-                    if first.get('reviews'):
-                        extracted['reviews'] = first['reviews']
-                # Preserve a compact shortlist so follow-ups like
-                # "tell me more about the Aura frame" can resolve against
-                # prior candidates instead of guessing a new ASIN.
-                candidates = []
-                for item in results[:max_candidates]:
-                    if not isinstance(item, dict):
-                        continue
-                    title = item.get('title')
-                    asin = item.get('asin')
-                    url = item.get('url')
-                    if not (title or asin or url):
-                        continue
-                    candidate = {}
-                    if title:
-                        candidate['title'] = title
-                    if asin:
-                        candidate['asin'] = asin
-                    if url:
-                        candidate['url'] = url
-                    if item.get('price'):
-                        candidate['price'] = item['price']
-                    if item.get('rating'):
-                        candidate['rating'] = item['rating']
-                    if item.get('reviews'):
-                        candidate['reviews'] = item['reviews']
-                    if item.get('thumbnail'):
-                        candidate['thumbnail'] = item['thumbnail']
-                    candidates.append(candidate)
-                if candidates:
-                    extracted['candidates'] = candidates
 
         if key == 'serpapi_home_depot':
             results = value.get('results') or value.get('top_results') or []
