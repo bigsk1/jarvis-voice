@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -236,7 +237,11 @@ def test_audio_gallery_ui_keeps_actions_and_adds_live_visualizer():
     assert "setupExclusivePlayback" in AUDIO_JS
     assert "class AudioGalleryVisualizer" in AUDIO_JS
     assert "createMediaElementSource" in AUDIO_JS
-    assert "getByteFrequencyData" in AUDIO_JS
+    assert "const VISUALIZER_FFT_SIZE = 1024;" in AUDIO_JS
+    assert "getFloatFrequencyData" in AUDIO_JS
+    assert "buildFrequencyBands" in AUDIO_JS
+    assert "VISUALIZER_TILT_DB_PER_BAND" in AUDIO_JS
+    assert "getByteFrequencyData" not in AUDIO_JS
     assert "requestAnimationFrame" in AUDIO_JS
     assert "role=\"slider\"" in AUDIO_JS
     assert "audio-seek-time" in AUDIO_JS
@@ -261,3 +266,62 @@ def test_audio_gallery_ui_keeps_actions_and_adds_live_visualizer():
         assert 'href="/audio-gallery"' in template
         assert "🎵 <span>Audio</span>" in template
         assert "audio-mobile-label" not in template
+
+
+def test_audio_visualizer_uses_distinct_db_bands_with_bass_headroom():
+    script = r"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync(
+    'jarvis-canvas/client/static/js/audio-gallery.js',
+    'utf8'
+) + '\nglobalThis.ExportedVisualizer = AudioGalleryVisualizer;';
+const sandbox = {
+    console,
+    Float32Array,
+    Map,
+    Math,
+    Number,
+    window: {
+        matchMedia: () => ({matches: false, addEventListener() {}}),
+        addEventListener() {},
+    },
+    document: {addEventListener() {}},
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame() {},
+    performance: {now: () => 0},
+};
+vm.createContext(sandbox);
+vm.runInContext(source, sandbox);
+
+const visualizer = new sandbox.ExportedVisualizer();
+visualizer.audioContext = {sampleRate: 44100};
+visualizer.analyser = {fftSize: 1024};
+visualizer.frequencyData = new Float32Array(512);
+visualizer.frequencyData.fill(-95);
+visualizer.frequencyBands = visualizer.buildFrequencyBands();
+
+if (visualizer.frequencyBands.length !== 16) {
+    throw new Error('Expected 16 frequency bands');
+}
+if (visualizer.frequencyBands.some(([start, end]) => end <= start)) {
+    throw new Error('Every frequency band must contain at least one unique bin');
+}
+if (visualizer.frequencyBands[0][0] === visualizer.frequencyBands[1][0]) {
+    throw new Error('The first two bars must not sample the same bass bin');
+}
+
+const bassDb = [-7, -12, -18];
+bassDb.forEach((value, index) => {
+    const [start, end] = visualizer.frequencyBands[index];
+    visualizer.frequencyData.fill(value, start, end);
+});
+const levels = visualizer.frequencyLevels();
+if (levels.slice(0, 3).some(level => level >= 1)) {
+    throw new Error('Loud bass bands must retain headroom below full scale');
+}
+if (new Set(levels.slice(0, 3).map(level => level.toFixed(4))).size !== 3) {
+    throw new Error('Distinct bass energy should produce distinct bar heights');
+}
+"""
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)

@@ -11,12 +11,18 @@ const STATIC_AUDIO_LEVELS = [
     0.34, 0.68, 0.48, 0.82, 0.56, 0.92, 0.44, 0.74,
     0.52, 0.86, 0.40, 0.64, 0.72, 0.46, 0.76, 0.38,
 ];
+const VISUALIZER_FFT_SIZE = 1024;
+const VISUALIZER_MAX_FREQUENCY = 12000;
+const VISUALIZER_FLOOR_DB = -78;
+const VISUALIZER_CEILING_DB = -2;
+const VISUALIZER_TILT_DB_PER_BAND = 2;
 
 class AudioGalleryVisualizer {
     constructor() {
         this.audioContext = null;
         this.analyser = null;
         this.frequencyData = null;
+        this.frequencyBands = null;
         this.tracks = new Map();
         this.activeTrack = null;
         this.animationFrame = null;
@@ -241,10 +247,13 @@ class AudioGalleryVisualizer {
                 if (!AudioContextClass) return false;
                 this.audioContext = new AudioContextClass();
                 this.analyser = this.audioContext.createAnalyser();
-                this.analyser.fftSize = 256;
+                this.analyser.fftSize = VISUALIZER_FFT_SIZE;
+                this.analyser.minDecibels = -95;
+                this.analyser.maxDecibels = -3;
                 this.analyser.smoothingTimeConstant = 0.76;
                 this.analyser.connect(this.audioContext.destination);
-                this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount);
+                this.frequencyData = new Float32Array(this.analyser.frequencyBinCount);
+                this.frequencyBands = this.buildFrequencyBands();
             }
 
             if (!track.source) {
@@ -267,7 +276,7 @@ class AudioGalleryVisualizer {
             return;
         }
 
-        this.analyser.getByteFrequencyData(this.frequencyData);
+        this.analyser.getFloatFrequencyData(this.frequencyData);
         const levels = this.frequencyLevels();
         const track = this.activeTrack;
         track.levels = levels;
@@ -339,20 +348,43 @@ class AudioGalleryVisualizer {
     }
 
     frequencyLevels() {
-        const levels = [];
-        const maxBin = Math.min(this.frequencyData.length - 1, 84);
-        for (let index = 0; index < STATIC_AUDIO_LEVELS.length; index += 1) {
-            const startRatio = index / STATIC_AUDIO_LEVELS.length;
-            const endRatio = (index + 1) / STATIC_AUDIO_LEVELS.length;
-            const start = Math.max(1, Math.floor(Math.pow(startRatio, 1.7) * maxBin));
-            const end = Math.max(start + 1, Math.floor(Math.pow(endRatio, 1.7) * maxBin));
+        const decibelRange = VISUALIZER_CEILING_DB - VISUALIZER_FLOOR_DB;
+        return this.frequencyBands.map(([start, end], index) => {
             let total = 0;
             for (let bin = start; bin < end; bin += 1) total += this.frequencyData[bin];
-            const average = total / Math.max(1, end - start);
-            const normalized = Math.max(0, Math.min(1, (average - 14) / 210));
-            levels.push(Math.max(0.08, Math.min(1, Math.pow(normalized, 0.72))));
+            const averageDb = total / Math.max(1, end - start);
+
+            // Music naturally carries more energy in its low bands. A gentle
+            // upward spectral tilt keeps treble readable without crushing bass
+            // against the ceiling and hiding its movement.
+            const compensatedDb = averageDb + index * VISUALIZER_TILT_DB_PER_BAND;
+            const normalized = Math.max(
+                0,
+                Math.min(1, (compensatedDb - VISUALIZER_FLOOR_DB) / decibelRange)
+            );
+            return Math.max(0.08, Math.pow(normalized, 0.82));
+        });
+    }
+
+    buildFrequencyBands() {
+        const bandCount = STATIC_AUDIO_LEVELS.length;
+        const binWidth = this.audioContext.sampleRate / this.analyser.fftSize;
+        const maxBin = Math.min(
+            this.frequencyData.length - 1,
+            Math.floor(VISUALIZER_MAX_FREQUENCY / binWidth)
+        );
+        const bands = [];
+        let start = 1;
+
+        for (let index = 0; index < bandCount; index += 1) {
+            const logarithmicEnd = Math.round(
+                Math.exp(Math.log(maxBin) * ((index + 1) / bandCount))
+            );
+            const end = Math.min(maxBin, Math.max(start + 1, logarithmicEnd));
+            bands.push([start, end]);
+            start = end;
         }
-        return levels;
+        return bands;
     }
 
     resizeCanvas(track) {
