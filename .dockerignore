@@ -13,6 +13,7 @@ config/contacts.json
 config/webhook_registry.json
 config/elevenlabs_voices.json
 config/ssh.json
+# Legacy pre-data location; never bake private thresholds into an image.
 config/price-alerts.yaml
 jarvis-monitor/.env
 jarvis-web/config/web_config.json
@@ -40,6 +41,7 @@ data/.webhook_rate_limit
 data/.scheduled_task_notification_rate_limit
 data/.docker_tool_profile_synced
 data/bookmarks.html
+# Runtime file is mounted; data/price-alerts.yaml.example stays in the build context.
 data/price-alerts.yaml
 data/.price-alerts-*.tmp
 jarvis-web/data/uploads/

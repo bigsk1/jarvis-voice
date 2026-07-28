@@ -487,7 +487,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Docker mode and live-config parity**
   - Compose `JARVIS_MODE` reaches every UI; entrypoint validation happens before init and DB checks follow only selected sync modes.
   - Compose mounts `config/` read-only, allowing local-only installs without a `cloud.env` stub and exposing read-only runtime registries without rebuilding.
-  - Mutable price-alert thresholds now live in shared `data/price-alerts.yaml`; existing legacy config migrates on first use and the one-tool Compose override is no longer needed.
+  - Mutable price-alert thresholds live in shared `data/price-alerts.yaml`; fresh installs seed it from tracked `data/price-alerts.yaml.example`, and the one-tool Compose override is no longer needed.
   - See: [`docs/INSTALL_GUIDE.md`](INSTALL_GUIDE.md), [`docs/docker/README.md`](docker/README.md)
 
 **2026-06-24:**

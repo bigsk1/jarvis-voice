@@ -1,6 +1,6 @@
-# Price Alert Configuration
-# ========================
-# Copying is optional; Jarvis creates data/price-alerts.yaml automatically.
+# Price Alert Data Template
+# =========================
+# Jarvis copies this tracked template to data/price-alerts.yaml on first use.
 
 settings:
   check_interval_minutes: 10

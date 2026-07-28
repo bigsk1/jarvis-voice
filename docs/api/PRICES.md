@@ -2,8 +2,8 @@
 
 > Direct price retrieval without LLM routing - fast, free, silent.
 
-**Version**: 1.0  
-**Last Updated**: January 2026
+**Version**: 1.1
+**Last Updated**: July 2026
 
 ---
 
@@ -189,19 +189,22 @@ curl "http://localhost:8880/api/prices/batch?stocks=TSLA,GC=F&crypto=BTC,SOL" | 
 
 ---
 
-## Config API
+## Price Alerts API
 
-The Config API serves the price alert configuration to n8n workflows.
+The Price Alerts API serves live threshold data to n8n workflows.
+
+Non-loopback requests use a dedicated limit of 30 requests per minute per IP
+by default. Set `API_RATE_LIMIT_PRICE_ALERTS_PER_MINUTE` to override it.
 
 ### Get Price Alert Config
 
 ```bash
-GET /api/config/price-alerts
+GET /api/price-alerts
 ```
 
-Returns the live `data/price-alerts.yaml` configuration as JSON. Jarvis creates
-an empty configuration on first use or migrates the legacy
-`config/price-alerts.yaml` file when present.
+Returns the live ignored `data/price-alerts.yaml` document as JSON. On first
+use, Jarvis copies the tracked `data/price-alerts.yaml.example` seed. Runtime
+data and its fresh-clone template therefore share the same data boundary.
 
 **Response:**
 ```json
@@ -241,7 +244,7 @@ an empty configuration on first use or migrates the legacy
 ### Get Thresholds Only
 
 ```bash
-GET /api/config/price-alerts/thresholds
+GET /api/price-alerts/thresholds
 ```
 
 Returns thresholds in a simplified format for n8n Code nodes.

@@ -1,4 +1,4 @@
-"""Config API - Serve configuration files for external systems like n8n"""
+"""Price-alert data API for external systems such as n8n."""
 
 import logging
 
@@ -6,14 +6,14 @@ from fastapi import APIRouter, HTTPException
 
 from lib.price_alert_config import load_price_alert_config
 
-router = APIRouter(prefix="/api/config", tags=["config"])
+router = APIRouter(prefix="/api/price-alerts", tags=["price-alerts"])
 logger = logging.getLogger(__name__)
 
 
-@router.get("/price-alerts")
-async def get_price_alerts_config():
+@router.get("")
+async def get_price_alerts():
     """
-    Get price alert configuration for n8n workflow.
+    Get live price-alert data for the n8n workflow.
     
     Edit data/price-alerts.yaml to change thresholds.
     n8n fetches this at each run for single source of truth.
@@ -32,11 +32,11 @@ async def get_price_alerts_config():
         logger.exception("Unable to load price-alert configuration: %s", e)
         raise HTTPException(
             status_code=500,
-            detail="Unable to load price-alert configuration",
+            detail="Unable to load price-alert data",
         ) from e
 
 
-@router.get("/price-alerts/thresholds")
+@router.get("/thresholds")
 async def get_price_thresholds():
     """
     Get just the thresholds in a format ready for n8n Code node.
@@ -85,5 +85,5 @@ async def get_price_thresholds():
         logger.exception("Unable to load price-alert thresholds: %s", e)
         raise HTTPException(
             status_code=500,
-            detail="Unable to load price-alert configuration",
+            detail="Unable to load price-alert data",
         ) from e

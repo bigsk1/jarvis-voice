@@ -2,8 +2,8 @@
 
 > Monitor crypto and stock prices, send TTS alerts to Jarvis when thresholds are hit.
 
-**Version**: 5.1
-**Last Updated**: June 2026
+**Version**: 5.2
+**Last Updated**: July 2026
 **Workflow File**: `docs/n8n/workflows/Price Alert Monitor.json`
 
 ---
@@ -11,7 +11,7 @@
 ## Overview
 
 The Price Alert Monitor workflow:
-1. Fetches config from Jarvis API (`data/price-alerts.yaml`)
+1. Fetches price-alert data from the Jarvis API (`data/price-alerts.yaml`)
 2. Gets crypto prices from CoinGecko
 3. Gets stock/futures prices from Jarvis `/api/prices`
 4. Compares against YAML thresholds
@@ -30,7 +30,7 @@ The Price Alert Monitor workflow:
          │
          ▼
 ┌─────────────────┐
-│  Fetch Config   │──────────────────────────┐
+│ Fetch Alerts    │──────────────────────────┐
 │  (Jarvis API)   │                          │
 └────────┬────────┘                          │
          │                                   │
@@ -74,8 +74,9 @@ The Price Alert Monitor workflow:
 
 ### YAML Config File: `data/price-alerts.yaml`
 
-Jarvis creates this file with an empty watchlist on first use. Existing installs
-automatically copy a valid legacy `config/price-alerts.yaml` into this location.
+Jarvis creates this ignored runtime file on first use by copying the tracked
+`data/price-alerts.yaml.example` template. Both the live file and its seed
+therefore live beside each other under the Docker-mounted `data/` directory.
 
 ```yaml
 settings:
@@ -362,7 +363,7 @@ const aboveThresh = getThreshold(config.watchlist, 'stocks', 'TSLA', 'above');
 
 ### Config Not Loading
 
-1. Check API endpoint: `curl http://localhost:8880/api/config/price-alerts`
+1. Check API endpoint: `curl http://localhost:8880/api/price-alerts`
 2. If error, sends "Price monitor config error" alert
 
 ### Stock Price Returns Error
@@ -383,10 +384,10 @@ const aboveThresh = getThreshold(config.watchlist, 'stocks', 'TSLA', 'above');
 | File | Purpose |
 |------|---------|
 | `data/price-alerts.yaml` | Live threshold configuration |
-| `config/price-alerts.yaml.example` | Safe empty template |
+| `data/price-alerts.yaml.example` | Tracked safe empty template |
 | `docs/n8n/workflows/Price Alert Monitor.json` | Workflow export |
 | `api/routes/prices.py` | Direct price API |
-| `api/routes/config.py` | Config serving API |
+| `api/routes/price_alerts.py` | Price-alert data API |
 | `skills/stock_price.py` | Stock price tool |
 | `skills/crypto_price.py` | Crypto price tool |
 
@@ -396,6 +397,7 @@ const aboveThresh = getThreshold(config.watchlist, 'stocks', 'TSLA', 'above');
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 5.2 | Jul 2026 | Data-only runtime/template layout and first-class `/api/price-alerts` endpoint |
 | 5.1 | Jun 2026 | Move mutable threshold storage to `data/price-alerts.yaml` |
 | 5.0 | Jan 2026 | TTS-friendly titles, no fallback config |
 | 4.0 | Jan 2026 | Fetch config from YAML API |

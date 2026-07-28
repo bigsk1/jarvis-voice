@@ -1,4 +1,4 @@
-"""Canonical storage and migration helpers for price-alert configuration."""
+"""Canonical storage helpers for price-alert data."""
 
 from __future__ import annotations
 
@@ -16,8 +16,7 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PRICE_ALERT_PATH = PROJECT_ROOT / "data" / "price-alerts.yaml"
-LEGACY_PRICE_ALERT_PATH = PROJECT_ROOT / "config" / "price-alerts.yaml"
-PRICE_ALERT_EXAMPLE_PATH = PROJECT_ROOT / "config" / "price-alerts.yaml.example"
+PRICE_ALERT_EXAMPLE_PATH = PROJECT_ROOT / "data" / "price-alerts.yaml.example"
 
 DEFAULT_PRICE_ALERT_CONFIG: dict[str, Any] = {
     "settings": {
@@ -168,27 +167,27 @@ def _atomic_write_text(path: Path, content: str, *, replace: bool) -> None:
 
 
 def ensure_price_alert_config() -> Path:
-    """Return the canonical path, migrating or safely seeding it when absent."""
+    """Return the canonical data path, safely seeding it when absent."""
     if PRICE_ALERT_PATH.exists():
         _load_and_validate(PRICE_ALERT_PATH)
         return PRICE_ALERT_PATH
 
-    source: Path | None = None
-    if LEGACY_PRICE_ALERT_PATH.exists():
-        source = LEGACY_PRICE_ALERT_PATH
-    elif PRICE_ALERT_EXAMPLE_PATH.exists():
-        source = PRICE_ALERT_EXAMPLE_PATH
-
-    if source is not None:
-        _load_and_validate(source)
+    if PRICE_ALERT_EXAMPLE_PATH.exists():
+        _load_and_validate(PRICE_ALERT_EXAMPLE_PATH)
         try:
-            content = source.read_text(encoding="utf-8")
+            content = PRICE_ALERT_EXAMPLE_PATH.read_text(encoding="utf-8")
         except OSError as exc:
-            raise _config_error("unable to read price-alert configuration", source) from exc
+            raise _config_error(
+                "unable to read price-alert data template",
+                PRICE_ALERT_EXAMPLE_PATH,
+            ) from exc
         _atomic_write_text(PRICE_ALERT_PATH, content, replace=False)
         if PRICE_ALERT_PATH.exists():
             _load_and_validate(PRICE_ALERT_PATH)
-            logger.info("Initialized price-alert configuration from %s", source)
+            logger.info(
+                "Initialized price-alert data from %s",
+                PRICE_ALERT_EXAMPLE_PATH,
+            )
             return PRICE_ALERT_PATH
 
     save_price_alert_config(copy.deepcopy(DEFAULT_PRICE_ALERT_CONFIG))

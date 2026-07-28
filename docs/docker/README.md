@@ -162,9 +162,10 @@ selected by `JARVIS_MODE`. A local-only checkout therefore needs
 `config/local.env` but does not need an empty `config/cloud.env` placeholder.
 
 Mutable price-alert thresholds live in `data/price-alerts.yaml`, which Jarvis
-creates or migrates automatically and the base stack already mounts read-write.
-The Web tool and API therefore share the same file without an additional
-Compose override. MCP still uses its optional override:
+creates from tracked `data/price-alerts.yaml.example` on first use; the base
+stack already mounts that directory read-write. The Web tool and API therefore
+share the same file without an additional Compose override. MCP still uses its
+optional override:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.mcp.yml up -d

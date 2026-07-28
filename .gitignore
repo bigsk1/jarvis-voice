@@ -14,9 +14,11 @@ config/ssh.json
 jarvis-monitor/.env
 jarvis-web/config/web_config.json
 config/webhook_registry.json.template
+# Legacy pre-data location stays ignored so upgrades never expose private alerts.
 config/price-alerts.yaml
 data/secrets/
 data/bookmarks.html
+# Canonical mutable price-alert data; the adjacent .example remains tracked.
 data/price-alerts.yaml
 data/.price-alerts-*.tmp
 

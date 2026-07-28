@@ -16,7 +16,7 @@ from datetime import datetime
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from api.routes import alerts_router, reminders_router, health_router, voice_router, memory_router, query_router, conversations_router, stash_router, canvas_router, prices_router, config_router, workflows_router, intel_router, images_router, generated_images_router, generated_music_router, generated_videos_router, docs_router, scheduled_tasks_router
+from api.routes import alerts_router, reminders_router, health_router, voice_router, memory_router, query_router, conversations_router, stash_router, canvas_router, prices_router, price_alerts_router, workflows_router, intel_router, images_router, generated_images_router, generated_music_router, generated_videos_router, docs_router, scheduled_tasks_router
 from api.routes.intelligence import router as intelligence_router
 from lib.rate_limiter import APIRateLimitMiddleware
 from lib.config_loader import get_config_value, get_active_config_mode
@@ -404,7 +404,7 @@ app.include_router(conversations_router)
 app.include_router(stash_router)
 app.include_router(canvas_router)
 app.include_router(prices_router)
-app.include_router(config_router)
+app.include_router(price_alerts_router)
 app.include_router(workflows_router)
 app.include_router(intel_router)
 app.include_router(intelligence_router)
