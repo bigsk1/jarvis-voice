@@ -4,8 +4,6 @@
 
 ---
 
-![grok-image](images/image.png)
-
 
 ## Table of Contents
 

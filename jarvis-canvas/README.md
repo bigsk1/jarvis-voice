@@ -246,6 +246,8 @@ DELETE /api/gallery/videos/<name> # Delete video
 
 ## Audio Gallery
 
+![jarvis-audio-gallery](../docs/images/jarvis-audio.jpg)
+
 ### Access
 - **URL:** `http://localhost:8890/audio-gallery`
 - **Navigation:** Click **Audio** in any Canvas media header. At the existing

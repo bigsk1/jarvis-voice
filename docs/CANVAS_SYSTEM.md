@@ -2,7 +2,7 @@
 
 A visual viewer for rich content that Jarvis populates. Think of it as a personal wiki/knowledge canvas that Jarvis writes to when displaying complex information.
 
-**Includes:** Canvas Pages + Image Gallery + Video Gallery
+**Includes:** Canvas Pages + Image Gallery + Video Gallery + Audio Gallery
 
 ## Overview
 
@@ -236,6 +236,63 @@ Videos are served from: `data/generated_videos/`
 GET /api/gallery/videos          # List all videos
 GET /api/gallery/videos/<name>   # Get video file
 DELETE /api/gallery/videos/<name> # Delete video
+```
+
+---
+
+## Audio Gallery
+
+![Jarvis Audio Gallery](images/jarvis-audio.jpg)
+
+The Canvas server includes a first-class audio gallery for browsing and playing
+generated music.
+
+### Access
+- **URL:** `http://localhost:8890/audio-gallery`
+- **Navigation:** Click **Audio** in any Canvas media header. On narrow screens,
+  the link compacts to its music-note icon like Images and Videos.
+
+### Features
+- Native playback controls with one active track at a time
+- Live 16-band Web Audio spectrum with peak hold, bass-reactive artwork glow,
+  and an in-artwork playback-progress wash
+- Pointer, touch, and keyboard seeking from the artwork waveform
+- Distinct logarithmic frequency bands with calibrated bass headroom so loud
+  low frequencies remain animated instead of staying pinned at full height
+- Static waveform fallback when Web Audio is unavailable and a non-animated
+  presentation when reduced motion is requested
+- Search by title, filename, genre, mood, tempo, or tags
+- Filter by provider or favorites
+- Sort by date, title, size, or duration
+- Provider, model, format, and duration badges
+- Favorite, download, and confirmed delete actions
+- Responsive single-column mobile layout
+
+### Storage and Catalog
+
+Generated audio is served from `data/generated_music/`. Durable provider and
+generation metadata is stored in
+`data/generated_music/audio_catalog.json`. Music generation writes the durable
+gallery file even when the separate stash copy fails, and catalog updates
+preserve user-managed favorite state.
+
+Existing audio without a catalog entry is backfilled with the metadata that can
+be recovered locally, including its display title, timestamp, and format. The
+gallery list endpoint also uses `ffprobe`, when available, to report duration,
+codec, bitrate, and sample rate.
+
+The generated-music directory is separate from transient TTS, microphone, and
+QA audio under `audio/`. Stash retention for a generated track's separate stash
+copy does not remove its durable Audio Gallery file.
+
+### API Endpoints
+
+```bash
+GET /api/gallery/audio                    # List audio and catalog metadata
+GET /api/gallery/audio/<name>             # Stream with range/conditional support
+GET /api/gallery/audio/<name>/download    # Download with the original filename
+PATCH /api/gallery/audio/<name>/favorite  # Set or clear favorite state
+DELETE /api/gallery/audio/<name>          # Delete audio and its catalog row
 ```
 
 ---
@@ -551,17 +608,20 @@ jarvis-canvas/
 │   │   │   ├── base.css           # Shared styles (dark theme, fonts)
 │   │   │   ├── canvas.css         # Canvas pages + tree view
 │   │   │   ├── gallery.css        # Image gallery
-│   │   │   └── video-gallery.css  # Video gallery
+│   │   │   ├── video-gallery.css  # Video gallery
+│   │   │   └── audio-gallery.css  # Audio gallery + live visualizer
 │   │   ├── stash-viewer.html      # Markdown/text viewer for stash artifacts
 │   │   └── js/
 │   │       ├── canvas.js          # Canvas pages + tree builder
 │   │       ├── gallery.js         # Image gallery logic
-│   │       └── video-gallery.js   # Video gallery logic
+│   │       ├── video-gallery.js   # Video gallery logic
+│   │       └── audio-gallery.js   # Audio gallery + Web Audio spectrum
 │   └── templates/
 │       ├── base.html              # Shared layout (header, nav)
 │       ├── canvas.html            # Canvas pages view
 │       ├── gallery.html           # Image gallery view
-│       └── video-gallery.html     # Video gallery view
+│       ├── video-gallery.html     # Video gallery view
+│       └── audio-gallery.html     # Audio gallery view
 └── server/
     ├── __init__.py
     ├── app.py                     # Flask app factory + run_server()
@@ -574,8 +634,9 @@ jarvis-canvas/
         ├── pages.py               # /api/pages/*
         ├── gallery.py             # /api/gallery/images/*
         ├── video_gallery.py       # /api/gallery/videos/*
+        ├── audio_gallery.py       # /audio-gallery + /api/gallery/audio/*
         ├── stash.py               # /api/stash/*, /stash/view/<space>/<file>
-        └── views.py               # / and /gallery, /video-gallery
+        └── views.py               # Canvas and shared browser views
 ```
 
 ### Related files
@@ -588,6 +649,9 @@ jarvis-canvas/
 | `data/canvas/*.json` | Page storage |
 | `data/generated_images/` | Image gallery source |
 | `data/generated_videos/` | Video gallery source |
+| `data/generated_music/` | Audio gallery source and `audio_catalog.json` |
+| `lib/audio_catalog.py` | Durable generated-audio catalog persistence |
+| `skills/generate_music.py` | Music generation and gallery/stash persistence |
 | `api/routes/canvas.py` | FastAPI routes (port 8880) |
 | `orchestrator/pipeline_executor.py` | Workflow title generation (`short_title`) |
 | `data/workflows/deep_research.json` | Research workflow (uses `short_title`) |
@@ -649,11 +713,12 @@ sqlite3 data/jarvis_memory.db "SELECT * FROM knowledge_base WHERE category='canv
 
 ---
 
-**Version:** 2.4
-**Last Updated:** 2026-06-27
+**Version:** 2.5
+**Last Updated:** 2026-07-27
 
 ### Changelog
 
+- **v2.5** (Jul 2026): First-class Audio Gallery for durable generated music with catalog metadata, provider/model badges, favorites, filtering, download/delete actions, responsive playback, and a live Web Audio spectrum with artwork seeking, calibrated bass headroom, and reduced-motion fallback
 - **v2.4** (Jun 2026): Explicit cloud/local startup env selection and mode-aware health reporting; Canvas page storage remains shared and mode-agnostic
 - **v2.3** (Apr 2026): Stash viewer on Canvas (`/stash/view/...`), markdown pipeline for viewer vs `/api/stash` for media, pin sync recognizes viewer/API paths; see *Stash viewer* under Stash Integration
 - **v2.2** (Apr 2026): Explicit `image_url` support for page create/update plus inline `Image: https://...` auto-conversion so Amazon/product pages can reliably save with embedded images
