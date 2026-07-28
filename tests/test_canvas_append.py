@@ -97,6 +97,41 @@ def test_main_allows_pin_only_updates(monkeypatch, capsys):
     assert [call[1]["pinned"] for call in calls] == [True, False]
 
 
+def test_main_allows_empty_tags_to_clear_page_tags(monkeypatch, capsys):
+    calls = []
+
+    monkeypatch.setattr(canvas_module, "load_config", lambda: None)
+
+    def fake_update_page(page_id, **kwargs):
+        calls.append((page_id, kwargs))
+        return {
+            "ok": True,
+            "data": {"page_id": page_id, "tags": kwargs["tags"]},
+        }
+
+    monkeypatch.setattr(canvas_module, "update_page", fake_update_page)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "canvas.py",
+            json.dumps({
+                "action": "update",
+                "page_id": "page_existing",
+                "tags": [],
+            }),
+        ],
+    )
+
+    canvas_module.main()
+    output = json.loads(capsys.readouterr().out)
+
+    assert output["ok"] is True
+    assert output["data"]["tags"] == []
+    assert calls[0][0] == "page_existing"
+    assert calls[0][1]["tags"] == []
+
+
 def test_server_append_preserves_existing_content():
     assert append_content("# Existing\n", "\n## Added\n") == "# Existing\n\n## Added"
 
