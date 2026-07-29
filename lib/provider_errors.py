@@ -205,7 +205,31 @@ def classify_provider_error(text: str | None) -> ProviderErrorInfo:
             friendly_message="The LLM provider rejected the routing request because the prompt exceeded the model context limit.",
             raw_preview=sanitized,
         )
-    if "insufficient_quota" in lowered or "billing_hard_limit" in lowered:
+    if (
+        "extra usage" in lowered
+        and (
+            "balance is empty" in lowered
+            or "auto reload" in lowered
+            or "auto-reload" in lowered
+        )
+    ):
+        return ProviderErrorInfo(
+            kind="billing",
+            friendly_message=(
+                "Ollama Cloud returned 402 Payment Required: this model uses extra usage, "
+                "but the extra-usage balance is empty. Add extra usage or turn on "
+                "auto-reload at https://ollama.com/settings."
+            ),
+            raw_preview=sanitized,
+        )
+    if (
+        "insufficient_quota" in lowered
+        or "billing_hard_limit" in lowered
+        or (
+            re.search(r"\b402\b", lowered)
+            and "payment required" in lowered
+        )
+    ):
         return ProviderErrorInfo(
             kind="billing",
             friendly_message="The LLM provider rejected the routing request due to quota or billing limits.",

@@ -127,6 +127,25 @@ class ProviderErrorFallbackTests(unittest.TestCase):
         self.assertTrue(is_provider_error_text("Error: invalid_api_key"))
         self.assertEqual(classify_provider_error("Error: invalid_api_key").kind, "authentication")
 
+    def test_ollama_cloud_extra_usage_402_has_specific_billing_message(self):
+        raw = (
+            "Error: 402 Payment Required: this model uses extra usage only "
+            "(not included plan usage) and your extra usage balance is empty, "
+            "add extra usage or turn on auto reload at https://ollama.com/settings "
+            "(ref: 5747d205-73cb-4900-a8e6-0121c97a2be2)"
+        )
+
+        info = classify_provider_error(raw)
+
+        self.assertTrue(is_provider_error_text(raw))
+        self.assertEqual(info.kind, "billing")
+        self.assertEqual(
+            info.friendly_message,
+            "Ollama Cloud returned 402 Payment Required: this model uses extra usage, "
+            "but the extra-usage balance is empty. Add extra usage or turn on "
+            "auto-reload at https://ollama.com/settings.",
+        )
+
     def test_youtube_provider_error_routes_to_transcript_tool(self):
         router = LLMRouter.__new__(LLMRouter)
         router.registry = _Registry()

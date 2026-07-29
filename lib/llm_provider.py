@@ -1751,6 +1751,14 @@ class OllamaProvider(LLMProvider):
                 timeout=180  # 3 minutes for local models (qwen3-vl is heavy)
             )
             self.base_url = used_base_url
+            if response.status_code >= 400:
+                try:
+                    error_detail = response.json().get("error")
+                except (ValueError, AttributeError):
+                    error_detail = None
+                if error_detail:
+                    reason = getattr(response, "reason", "") or "Request Failed"
+                    return f"Error: {response.status_code} {reason}: {error_detail}"
             response.raise_for_status()
             
             result = response.json()
@@ -2029,6 +2037,20 @@ class OllamaProvider(LLMProvider):
                         return self._chat_with_tools_structured(messages, tools, system_prompt, enable_thinking)
                 except json.JSONDecodeError:
                     pass
+
+            if response.status_code >= 400:
+                try:
+                    error_detail = response.json().get("error")
+                except (ValueError, AttributeError):
+                    error_detail = None
+                if error_detail:
+                    reason = getattr(response, "reason", "") or "Request Failed"
+                    return (
+                        f"Error: {response.status_code} {reason}: {error_detail}",
+                        None,
+                        None,
+                        None,
+                    )
             
             response.raise_for_status()
             
@@ -2179,6 +2201,19 @@ CRITICAL RULES:
                 timeout=180
             )
             self.base_url = used_base_url
+            if response.status_code >= 400:
+                try:
+                    error_detail = response.json().get("error")
+                except (ValueError, AttributeError):
+                    error_detail = None
+                if error_detail:
+                    reason = getattr(response, "reason", "") or "Request Failed"
+                    return (
+                        f"Error: {response.status_code} {reason}: {error_detail}",
+                        None,
+                        None,
+                        None,
+                    )
             response.raise_for_status()
             
             result = response.json()

@@ -38,6 +38,28 @@ class _ChatResponse:
         }
 
 
+class _PaymentRequiredResponse:
+    status_code = 402
+    reason = "Payment Required"
+
+    def __init__(self):
+        self.raise_for_status_calls = 0
+
+    def raise_for_status(self):
+        self.raise_for_status_calls += 1
+        raise AssertionError("detailed Ollama errors must be handled before raise_for_status")
+
+    def json(self):
+        return {
+            "error": (
+                "this model uses extra usage only (not included plan usage) and "
+                "your extra usage balance is empty, add extra usage or turn on "
+                "auto reload at https://ollama.com/settings "
+                "(ref: 5747d205-73cb-4900-a8e6-0121c97a2be2)"
+            )
+        }
+
+
 def _provider(model, monkeypatch=None, mode="local"):
     if monkeypatch is not None:
         monkeypatch.setenv("JARVIS_MODE", mode)
@@ -163,6 +185,60 @@ def test_native_tool_q_and_a_path_strips_glm_orphan_reasoning(monkeypatch):
     assert tool_call is None
     assert usage["total_tokens"] == 15
     assert thinking is None
+
+
+def test_native_tool_path_preserves_ollama_cloud_payment_error_body(monkeypatch):
+    provider = _provider("kimi-k3", monkeypatch, mode="cloud")
+    response = _PaymentRequiredResponse()
+
+    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")):
+        text, tool_call, usage, thinking = provider.chat_with_tools(
+            messages=[{"role": "user", "content": "Hey, how are you?"}],
+            tools=[],
+            system_prompt="Answer directly.",
+        )
+
+    assert text == (
+        "Error: 402 Payment Required: this model uses extra usage only "
+        "(not included plan usage) and your extra usage balance is empty, "
+        "add extra usage or turn on auto reload at https://ollama.com/settings "
+        "(ref: 5747d205-73cb-4900-a8e6-0121c97a2be2)"
+    )
+    assert tool_call is None
+    assert usage is None
+    assert thinking is None
+    assert response.raise_for_status_calls == 0
+
+
+def test_simple_chat_path_preserves_ollama_cloud_payment_error_body(monkeypatch):
+    provider = _provider("kimi-k3", monkeypatch, mode="cloud")
+    response = _PaymentRequiredResponse()
+
+    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")):
+        text = provider.chat("Hey, how are you?", system_prompt="Answer directly.")
+
+    assert text.startswith("Error: 402 Payment Required: this model uses extra usage only")
+    assert "https://ollama.com/settings" in text
+    assert response.raise_for_status_calls == 0
+
+
+def test_structured_path_preserves_ollama_cloud_payment_error_body(monkeypatch):
+    provider = _provider("kimi-k3", monkeypatch, mode="cloud")
+    response = _PaymentRequiredResponse()
+
+    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")):
+        text, tool_call, usage, thinking = provider._chat_with_tools_structured(
+            messages=[{"role": "user", "content": "Hey, how are you?"}],
+            tools=[],
+            system_prompt="Answer directly.",
+        )
+
+    assert text.startswith("Error: 402 Payment Required: this model uses extra usage only")
+    assert "https://ollama.com/settings" in text
+    assert tool_call is None
+    assert usage is None
+    assert thinking is None
+    assert response.raise_for_status_calls == 0
 
 
 def test_simple_chat_path_strips_glm_orphan_reasoning(monkeypatch):
