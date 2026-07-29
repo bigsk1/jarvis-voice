@@ -132,7 +132,7 @@ class ProviderErrorFallbackTests(unittest.TestCase):
             "Error: 402 Payment Required: this model uses extra usage only "
             "(not included plan usage) and your extra usage balance is empty, "
             "add extra usage or turn on auto reload at https://ollama.com/settings "
-            "(ref: 5747d205-73cb-4900-a8e6-0121c97a2be2)"
+            "(ref: test-ref-402)"
         )
 
         info = classify_provider_error(raw)

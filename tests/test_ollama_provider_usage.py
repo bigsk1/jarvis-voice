@@ -55,7 +55,7 @@ class _PaymentRequiredResponse:
                 "this model uses extra usage only (not included plan usage) and "
                 "your extra usage balance is empty, add extra usage or turn on "
                 "auto reload at https://ollama.com/settings "
-                "(ref: 5747d205-73cb-4900-a8e6-0121c97a2be2)"
+                "(ref: test-ref-402)"
             )
         }
 
@@ -202,7 +202,7 @@ def test_native_tool_path_preserves_ollama_cloud_payment_error_body(monkeypatch)
         "Error: 402 Payment Required: this model uses extra usage only "
         "(not included plan usage) and your extra usage balance is empty, "
         "add extra usage or turn on auto reload at https://ollama.com/settings "
-        "(ref: 5747d205-73cb-4900-a8e6-0121c97a2be2)"
+        "(ref: test-ref-402)"
     )
     assert tool_call is None
     assert usage is None
