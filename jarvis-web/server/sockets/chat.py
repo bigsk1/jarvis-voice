@@ -39,6 +39,7 @@ from ..services.followup_extractor import (
     FOLLOWUP_EVIDENCE_MAX_CANDIDATES as _FOLLOWUP_EVIDENCE_MAX_CANDIDATES,
     FOLLOWUP_SUMMARY_MAX_CHARS as _FOLLOWUP_SUMMARY_MAX_CHARS,
 )
+from ..services.pdf_upload import PDFUploadError, validate_pdf_attachments
 
 
 _WEB_VISION_GROUNDING_INSTRUCTION = """Perform the visual analysis now using only the attached image pixels.
@@ -314,6 +315,46 @@ class ChatHandler:
             "Ignore a hinted tool only if it clearly does not fit or fails, then use another appropriate tool or answer from gathered results.\n\n"
             "[END CONTEXT]"
         )
+
+    @staticmethod
+    def _format_pdf_attachment_context(attachment: dict) -> str:
+        """Render trusted metadata without implying that PDF contents were read."""
+        filename = str(attachment.get("filename") or "attachment.pdf").replace("\n", " ")
+        stash_ref = str(attachment.get("stash_ref") or "")
+        size_bytes = int(attachment.get("size_bytes") or 0)
+        page_count = int(attachment.get("page_count") or 0)
+        return (
+            "[ATTACHED PDF ARTIFACT]\n"
+            f"Filename: {filename}\n"
+            f"Stash reference: {stash_ref}\n"
+            f"Size: {size_bytes} bytes\n"
+            f"MIME type: application/pdf\n"
+            f"Pages: {page_count}\n"
+            "PDF access rule: This metadata does not reveal the document contents. "
+            "Do not claim to know its contents unless the exact PDF was actually accessed. "
+            "For this local stash:// artifact, use pdf_read or another appropriate local "
+            "tool/workflow with the exact Stash reference when content access is needed. "
+            "A provider-native URL/file tool counts only if it actually receives the PDF bytes "
+            "or retrieves a public PDF URL; providers cannot access stash:// directly.\n"
+            "[END ATTACHED PDF ARTIFACT]"
+        )
+
+    @staticmethod
+    def _stored_pdf_attachments(message_data: object) -> list[dict]:
+        """Return the bounded server-persisted attachment collection for history."""
+        if not isinstance(message_data, dict):
+            return []
+        attachments = message_data.get("attachments")
+        if not isinstance(attachments, list) or len(attachments) != 1:
+            return []
+        attachment = attachments[0]
+        if (
+            not isinstance(attachment, dict)
+            or attachment.get("kind") != "pdf"
+            or not str(attachment.get("stash_ref") or "").startswith("stash://space_web_pdf_")
+        ):
+            return []
+        return [attachment]
 
     def _get_completion_guard_config(self, mode: str) -> dict:
         """Get effective Completion Guard settings for the current mode."""
@@ -2127,7 +2168,7 @@ Previous structured data:
         
         @self.socketio.on('chat:send')
         def handle_chat_send(data):
-            """Handle incoming chat message (with optional image, text file, and command metadata)"""
+            """Handle incoming chat message and its bounded attachment metadata."""
             session_id = request.sid
             message = data.get('message', '').strip()
             mode = data.get('mode', self.sessions.get(session_id, {}).get('mode', 'cloud'))
@@ -2138,6 +2179,20 @@ Previous structured data:
             
             # Text file context (read client-side, no server upload needed)
             file_context = data.get('file_context')  # {name, content, size}
+
+            # PDF attachments are uploaded first through the authenticated HTTP
+            # endpoint. Resolve the client reference back to server-owned Stash
+            # metadata before persisting or exposing it to orchestration.
+            try:
+                pdf_attachments = validate_pdf_attachments(data.get('attachments'))
+            except PDFUploadError as exc:
+                emit('chat:error', {
+                    'error': str(exc),
+                    'error_code': exc.error_code,
+                    'retryable': exc.retryable,
+                    'conversation_id': conversation_id,
+                })
+                return
             
             # Feedback request - either from toggle or --feedback flag in message
             request_feedback = data.get('request_feedback', False)
@@ -2164,7 +2219,7 @@ Previous structured data:
             from vision_multimodal import max_vision_images, normalize_web_image_payload
             normalized_image = normalize_web_image_payload(image_data)
 
-            if not message and not normalized_image and not file_context:
+            if not message and not normalized_image and not file_context and not pdf_attachments:
                 emit('chat:error', {
                     'error': 'Empty message',
                     'conversation_id': conversation_id
@@ -2179,6 +2234,11 @@ Previous structured data:
             # Default message for file-only
             if not message and file_context:
                 message = "Summarize this file."
+
+            # Sending an attached PDF with an empty text box is still an explicit
+            # user action. Selection/upload alone never starts orchestration.
+            if not message and pdf_attachments:
+                message = "What's in this PDF?"
 
             image_limit = max_vision_images(mode)
             if normalized_image:
@@ -2234,6 +2294,9 @@ Previous structured data:
                     user_msg_data['image_action'] = image_data.get('action')
             if file_context:
                 user_msg_data['attached_file'] = file_context.get('name')
+            if pdf_attachments:
+                user_msg_data['attachments'] = pdf_attachments
+                user_msg_data['attached_file'] = pdf_attachments[0]['filename']
             if prompt_meta.get('prompt_name'):
                 user_msg_data['prompt'] = prompt_meta['prompt_name']
             if prompt_meta.get('tool_hints'):
@@ -2272,6 +2335,7 @@ Previous structured data:
                 prompt_meta,
                 request_feedback,
                 file_context,
+                pdf_attachments,
                 name=f"jarvis-chat-{message_id[:8]}",
             )
 
@@ -2823,6 +2887,13 @@ Previous structured data:
             for msg in messages[-history_limit:]:
                 role = msg.get('role', 'user')
                 content = msg.get('content', '')
+                if role == 'user':
+                    attachments = self._stored_pdf_attachments(msg.get('data'))
+                    if attachments:
+                        # Put the compact artifact reference before the user's prose
+                        # so normal history truncation cannot silently drop it.
+                        attachment_context = self._format_pdf_attachment_context(attachments[0])
+                        content = f"{attachment_context}\n\nUser's request: {content}"
                 if content:
                     entry = {'role': role, 'content': content}
                     if msg.get('timestamp'):
@@ -3136,16 +3207,21 @@ Previous structured data:
     def _process_message(self, session_id: str, message: str, mode: str,
                          message_id: str, conversation_id: str, image_data: dict = None,
                          prompt_meta: dict = None, request_feedback: bool = False,
-                         file_context: dict = None):
-        """Process a chat message through the orchestrator (with optional vision, text file, prompt metadata, and feedback)"""
+                         file_context: dict = None, pdf_attachments: list[dict] = None):
+        """Process chat with optional vision, text, or trusted PDF metadata."""
         start_time = time.time()
         delivery_room = self._delivery_room(session_id, conversation_id)
         original_user_message = message
+        pdf_attachments = pdf_attachments or []
         prompt_meta = prompt_meta or {}
         prompt_info = f", prompt={prompt_meta.get('prompt_name')}" if prompt_meta.get('prompt_name') else ""
         hint_info = f", tool_hints={prompt_meta.get('tool_hints')}" if prompt_meta.get('tool_hints') else ""
         feedback_info = f", request_feedback={request_feedback}" if request_feedback else ""
-        print(f"[CHAT] Processing message: {message[:50]}... (mode={mode}, session={session_id[:8]}, has_image={image_data is not None}{prompt_info}{hint_info}{feedback_info})")
+        print(
+            f"[CHAT] Processing message: {message[:50]}... "
+            f"(mode={mode}, session={session_id[:8]}, has_image={image_data is not None}, "
+            f"has_pdf={bool(pdf_attachments)}{prompt_info}{hint_info}{feedback_info})"
+        )
         
         try:
             completion_guard_config = self._get_completion_guard_config(mode)
@@ -3222,6 +3298,17 @@ Previous structured data:
                     f"User's message: {message}"
                 )
                 print(f"[CHAT] Text file attached: {fname} ({char_count} chars)")
+
+            if pdf_attachments:
+                pdf_context = self._format_pdf_attachment_context(pdf_attachments[0])
+                # Keep the original request first so explicit /workflow matching
+                # still sees its trigger. The metadata is a reference, not content.
+                message = f"{message}\n\n{pdf_context}"
+                print(
+                    "[CHAT] PDF attachment available: "
+                    f"{pdf_attachments[0]['stash_ref']} "
+                    f"({pdf_attachments[0]['size_bytes']} bytes)"
+                )
             
             # Handle image if provided - route based on action
             vision_result = None

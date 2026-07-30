@@ -3345,8 +3345,14 @@ class JarvisApp {
         const imageData = imageUrls.length
           ? { images: imageUrls.map((url) => ({ url })) }
           : null;
+        const pdfAttachment = Array.isArray(msg.data?.attachments)
+          ? msg.data.attachments.find((item) => item?.kind === 'pdf' && item?.filename)
+          : null;
+        const userContent = pdfAttachment
+          ? `📄 ${pdfAttachment.filename}${msg.content ? `\n${msg.content}` : ''}`
+          : msg.content;
         const activeBadge = window.commandSystem?.getPersistedDisplay?.(msg.data) || '';
-        this.chat.addUserMessage(msg.content, imageData, activeBadge);
+        this.chat.addUserMessage(userContent, imageData, activeBadge);
       } else if (msg.role === 'assistant') {
         // Pass as separate parameters: text, toolsUsed, data
         this.chat.addAssistantMessage(

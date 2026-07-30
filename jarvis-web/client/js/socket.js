@@ -180,8 +180,16 @@ class JarvisSocket {
    * @param {Object} promptMeta - Optional prompt metadata {system_instruction, prompt_name, tool_hints, request_kind, tool_rag_limit}
    * @param {boolean} requestFeedback - Whether to request feedback analysis after response
    * @param {Object} fileContext - Optional text file data {name, content, size, type}
+   * @param {Array} attachments - Optional server-issued artifact metadata
    */
-  sendMessage(message, imageData = null, promptMeta = null, requestFeedback = false, fileContext = null) {
+  sendMessage(
+    message,
+    imageData = null,
+    promptMeta = null,
+    requestFeedback = false,
+    fileContext = null,
+    attachments = null
+  ) {
     if (!this.connected) {
       console.error('[Socket] Not connected');
       return false;
@@ -205,6 +213,10 @@ class JarvisSocket {
         content: fileContext.content,
         size: fileContext.size
       };
+    }
+
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      payload.attachments = attachments;
     }
     
     // Include prompt metadata if provided (workflows are handled by orchestrator via /trigger)

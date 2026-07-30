@@ -412,7 +412,7 @@ class ChatUI {
     this.enhanceBtn = document.getElementById('enhanceBtn');
     this.stopBtn = document.getElementById('stopBtn');
     
-    // File upload elements (images + text files)
+    // File upload elements (images + text files + one PDF)
     this.uploadBtn = document.getElementById('uploadBtn');
     this.fileInput = document.getElementById('fileInput');
     this.imagePreviewContainer = document.getElementById('imagePreviewContainer');
@@ -420,7 +420,7 @@ class ChatUI {
     this.imageActionBadge = document.getElementById('imageActionBadge');
     this.clearAllImagesBtn = document.getElementById('clearAllImagesBtn');
     
-    // Text file preview elements
+    // Text/PDF preview elements
     this.filePreviewContainer = document.getElementById('filePreviewContainer');
     this.filePreviewName = document.getElementById('filePreviewName');
     this.filePreviewSize = document.getElementById('filePreviewSize');
@@ -1704,8 +1704,11 @@ class ChatUI {
       return;
     }
     
-    // Attached text file state
+    // Attached text/PDF state. PDFs retain one stable upload ID so a retry
+    // after a lost HTTP response resolves to the same Stash artifact.
     this.attachedFile = null;
+    this.attachedPdf = null;
+    this.pdfUploadPromise = null;
     
     // Click upload button -> trigger file input
     this.uploadBtn.addEventListener('click', () => {
@@ -1730,14 +1733,14 @@ class ChatUI {
       });
     }
     
-    // Remove text file button
+    // Remove text/PDF button
     if (this.removeFileBtn) {
       this.removeFileBtn.addEventListener('click', () => {
         this.clearAttachedFile();
       });
     }
     
-    // Drag and drop support (images + text files)
+    // Drag and drop support (images + text files + one PDF)
     const container = document.querySelector('.chat-input-container');
     if (container) {
       container.addEventListener('dragover', (e) => {
@@ -2375,6 +2378,10 @@ class ChatUI {
   }
 
   async attachImageFiles(files) {
+    if (this.pdfUploadPromise) {
+      Utils.toast('Wait for the current PDF upload to finish', 'info');
+      return;
+    }
     const imageFiles = Array.from(files).filter((file) => file.type.startsWith('image/'));
     if (!imageFiles.length) {
       Utils.toast('Please select image files', 'error');
@@ -2430,19 +2437,29 @@ class ChatUI {
   }
 
   async _attachMultipleFiles(files) {
+    if (this.pdfUploadPromise) {
+      Utils.toast('Wait for the current PDF upload to finish', 'info');
+      return;
+    }
     const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+    const pdfFiles = files.filter((file) => this._isPdfFile(file));
     const textFiles = files.filter((file) => {
       const ext = file.name.split('.').pop().toLowerCase();
       return ext === 'md' || ext === 'txt' || file.type === 'text/plain' || file.type === 'text/markdown';
     });
 
-    if (imageFiles.length && !textFiles.length) {
+    if (imageFiles.length && !textFiles.length && !pdfFiles.length) {
       await this.attachImageFiles(imageFiles);
       return;
     }
 
     if (files.length === 1) {
       await this.attachFile(files[0]);
+      return;
+    }
+
+    if (pdfFiles.length) {
+      Utils.toast('Attach one PDF at a time', 'error');
       return;
     }
 
@@ -2821,21 +2838,81 @@ class ChatUI {
   }
   
   /**
-   * Route file attachment by type (images vs text files)
+   * Route file attachment by type.
    */
   async attachFile(file) {
     if (!file) return;
+    if (this.pdfUploadPromise) {
+      Utils.toast('Wait for the current PDF upload to finish', 'info');
+      return;
+    }
     
     const ext = file.name.split('.').pop().toLowerCase();
     const isText = ext === 'md' || ext === 'txt' || file.type === 'text/plain' || file.type === 'text/markdown';
     
     if (file.type.startsWith('image/')) {
       await this.attachImage(file);
+    } else if (this._isPdfFile(file)) {
+      await this.attachPdf(file);
     } else if (isText) {
       await this.attachTextFile(file);
     } else {
-      Utils.toast('Unsupported file type. Use images, .md, or .txt files.', 'error');
+      Utils.toast('Unsupported file type. Use images, PDF, .md, or .txt files.', 'error');
     }
+  }
+
+  _isPdfFile(file) {
+    if (!file) return false;
+    const ext = String(file.name || '').split('.').pop().toLowerCase();
+    const mime = String(file.type || '').toLowerCase();
+    return ext === 'pdf' || mime === 'application/pdf' || mime === 'application/x-pdf';
+  }
+
+  _createPdfUploadId() {
+    if (window.crypto?.randomUUID) {
+      return window.crypto.randomUUID();
+    }
+    if (window.crypto?.getRandomValues) {
+      const bytes = new Uint8Array(16);
+      window.crypto.getRandomValues(bytes);
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    }
+    // UUID shape is required for retry identity, not as an authentication
+    // secret. This keeps older non-secure mobile WebViews functional.
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+      const value = Math.floor(Math.random() * 16);
+      return (char === 'x' ? value : ((value & 0x3) | 0x8)).toString(16);
+    });
+  }
+
+  /**
+   * Select one PDF locally. The HTTP upload is deferred until Send so merely
+   * choosing a file never starts orchestration or creates an unused Stash item.
+   */
+  async attachPdf(file) {
+    const maxBytes = 50 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      Utils.toast('PDF too large (max 50MB)', 'error');
+      return;
+    }
+    if (!String(file.name || '').toLowerCase().endsWith('.pdf')) {
+      Utils.toast('Select a file with a .pdf extension', 'error');
+      return;
+    }
+
+    this.clearAttachedImage();
+    this.clearAttachedFile();
+    this.attachedPdf = {
+      file,
+      uploadId: this._createPdfUploadId(),
+      attachment: null
+    };
+    this._showFilePreview(file.name, file.size);
+    Utils.toast(`Attached ${file.name}`, 'info', 1500);
+    console.log(`[Chat] PDF selected: ${file.name} (${file.size} bytes)`);
   }
   
   /**
@@ -2856,8 +2933,9 @@ class ChatUI {
         reader.readAsText(file);
       });
       
-      // Clear any existing image attachment
+      // Clear any existing image/document attachment
       this.clearAttachedImage();
+      this.clearAttachedFile();
       
       // Store text file data
       this.attachedFile = {
@@ -2880,22 +2958,30 @@ class ChatUI {
   }
   
   /**
-   * Show text file preview indicator
+   * Show text/PDF file preview indicator.
    */
   _showFilePreview(name, size) {
     if (this.filePreviewContainer && this.filePreviewName && this.filePreviewSize) {
       this.filePreviewName.textContent = name;
-      const sizeKb = (size / 1024).toFixed(1);
-      this.filePreviewSize.textContent = `(${sizeKb} KB)`;
+      const sizeLabel = size >= 1024 * 1024
+        ? `${(size / (1024 * 1024)).toFixed(1)} MB`
+        : `${(size / 1024).toFixed(1)} KB`;
+      this.filePreviewSize.textContent = `(${sizeLabel})`;
       this.filePreviewContainer.style.display = 'block';
     }
   }
   
   /**
-   * Clear attached text file
+   * Clear the attached text file or PDF.
    */
   clearAttachedFile() {
+    if (this.pdfUploadPromise) {
+      Utils.toast('Wait for the current PDF upload to finish', 'info');
+      return false;
+    }
     this.attachedFile = null;
+    this.attachedPdf = null;
+    this.pdfUploadPromise = null;
     if (this.filePreviewContainer) {
       this.filePreviewContainer.style.display = 'none';
     }
@@ -2904,6 +2990,48 @@ class ChatUI {
     }
     if (this.filePreviewSize) {
       this.filePreviewSize.textContent = '';
+    }
+    return true;
+  }
+
+  async _uploadAttachedPdf(pdfState) {
+    if (pdfState?.attachment) {
+      return pdfState.attachment;
+    }
+    if (!pdfState?.file || !pdfState?.uploadId) {
+      throw new Error('The selected PDF is no longer available. Please attach it again.');
+    }
+    if (this.pdfUploadPromise) {
+      return this.pdfUploadPromise;
+    }
+
+    const formData = new FormData();
+    formData.append('file', pdfState.file);
+    formData.append('upload_id', pdfState.uploadId);
+
+    const uploadPromise = (async () => {
+      const response = await fetch('/api/upload-pdf', {
+        method: 'POST',
+        body: formData
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.ok || !payload.attachment?.stash_ref) {
+        const error = new Error(payload.error || 'PDF upload failed. Please retry.');
+        error.code = payload.error_code || 'pdf_upload_failed';
+        error.retryable = Boolean(payload.retryable);
+        throw error;
+      }
+      pdfState.attachment = payload.attachment;
+      return payload.attachment;
+    })();
+
+    this.pdfUploadPromise = uploadPromise;
+    try {
+      return await uploadPromise;
+    } finally {
+      if (this.pdfUploadPromise === uploadPromise) {
+        this.pdfUploadPromise = null;
+      }
     }
   }
   
@@ -2928,18 +3056,25 @@ class ChatUI {
   }
 
   /**
-   * Send a message (with optional attached image(s) or text file)
+   * Send a message with optional image(s), browser-read text, or one PDF.
    */
-  sendMessage() {
+  async sendMessage() {
     let rawMessage = this.inputField.value.trim();
     const hasImage = this._hasAttachedImages();
     const imagePayload = this._getImageAttachmentPayload();
-    const hasFile = this.attachedFile !== null;
+    const hasTextFile = this.attachedFile !== null;
+    const pdfState = this.attachedPdf;
+    const hasPdf = pdfState !== null;
+    const hasFile = hasTextFile || hasPdf;
     const hasSelectedToolHints = this.selectedToolHints.length > 0;
     
     // Need either message, image, or file
     if (!rawMessage && !hasImage && !hasFile && !hasSelectedToolHints) return;
     if (this.isProcessing) return;
+    if (!window.jarvisSocket?.connected) {
+      Utils.toast('Jarvis is not connected', 'error');
+      return;
+    }
     
     // Check for --feedback flag in message
     let requestFeedback = this.feedbackEnabled;
@@ -2986,25 +3121,35 @@ class ChatUI {
       activeBadge += (activeBadge ? ' ' : '') + '<span class="badge badge-feedback">📊</span>';
     }
     
-    // Add file attachment indicator to display if text file attached
+    // Add a document indicator without exposing local browser paths.
     if (hasFile) {
-      const fileLabel = `📄 ${this.attachedFile.name}`;
+      const fileLabel = `📄 ${hasPdf ? pdfState.file.name : this.attachedFile.name}`;
       displayMessage = displayMessage ? `${fileLabel}\n${displayMessage}` : fileLabel;
     }
-    
-    // Add user message to UI (with image(s) if attached)
-    this.addUserMessage(displayMessage, imagePayload, activeBadge);
-    
-    // Clear input
-    this.inputField.value = '';
-    this.selectedToolHints = [];
-    this._renderToolHintChips();
-    this._hideAmbientToolSuggestions();
-    Utils.autoResize(this.inputField);
-    
-    // Send via socket (include image data, prompt metadata, and feedback request)
+
+    // Block duplicate sends while the PDF is uploaded. On failure the browser
+    // File, upload ID, and typed message all remain available for a clean retry.
     this.isProcessing = true;
     this.updateSendButton();
+    let pdfAttachment = null;
+    if (hasPdf) {
+      try {
+        Utils.toast('Uploading PDF to Stash…', 'info', 1500);
+        pdfAttachment = await this._uploadAttachedPdf(pdfState);
+      } catch (err) {
+        console.error('[Chat] PDF upload failed:', err);
+        this.isProcessing = false;
+        this.updateSendButton();
+        Utils.toast(err.message || 'PDF upload failed. Please retry.', 'error', 4000);
+        return;
+      }
+      if (this.attachedPdf !== pdfState) {
+        this.isProcessing = false;
+        this.updateSendButton();
+        return;
+      }
+    }
+
     this._resetPendingToolState();
     this.pendingVisionRetryPayload = ['analyze', 'image', 'video'].includes(imagePayload?.action)
       ? {
@@ -3014,12 +3159,26 @@ class ChatUI {
         }
       : null;
     
-    // Pass parsed data to socket (workflows are handled by orchestrator via /trigger)
-    window.jarvisSocket.sendMessage(parsed.message, imagePayload, {
+    // Pass parsed data to socket (workflows are handled by orchestrator via /trigger).
+    const sent = window.jarvisSocket.sendMessage(parsed.message, imagePayload, {
       system_instruction: parsed.instruction,
       prompt_name: parsed.prompt,
       tool_hints: toolHints
-    }, requestFeedback, this.attachedFile);
+    }, requestFeedback, this.attachedFile, pdfAttachment ? [pdfAttachment] : null);
+    if (!sent) {
+      this.isProcessing = false;
+      this.updateSendButton();
+      Utils.toast('Jarvis disconnected before the message was sent. Retry when connected.', 'error');
+      return;
+    }
+
+    // Commit the local UI only after the upload and socket handoff both succeed.
+    this.addUserMessage(displayMessage, imagePayload, activeBadge);
+    this.inputField.value = '';
+    this.selectedToolHints = [];
+    this._renderToolHintChips();
+    this._hideAmbientToolSuggestions();
+    Utils.autoResize(this.inputField);
     
     // Clear attachments after sending
     this.clearAttachedImage({ preserveVisionRetry: true });

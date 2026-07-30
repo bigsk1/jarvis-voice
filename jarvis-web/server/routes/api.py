@@ -14,6 +14,12 @@ import yaml
 from flask import Blueprint, jsonify, request, send_file, send_from_directory, abort
 from werkzeug.datastructures import FileStorage
 from ..services.log_explorer import get_log_explorer, LogExplorerError
+from ..services.pdf_upload import (
+    PDFUploadError,
+    check_pdf_upload_rate,
+    get_pdf_upload_max_bytes,
+    save_pdf_upload,
+)
 from ..services.tool_discovery import get_tool_service
 from ..services.usage_metadata import format_usage_markdown
 from ..services.settings_manager import (
@@ -2810,6 +2816,67 @@ def upload_image():
     if not result.get('ok'):
         return jsonify(result), 400
     return jsonify(result)
+
+
+@api_bp.route('/upload-pdf', methods=['POST'])
+def upload_pdf():
+    """Atomically upload one validated PDF directly into Stash."""
+    allowed, retry_after = check_pdf_upload_rate(request.remote_addr or "unknown")
+    if not allowed:
+        response = jsonify({
+            "ok": False,
+            "error": f"Too many PDF uploads. Try again in {retry_after} seconds.",
+            "error_code": "pdf_upload_rate_limited",
+            "retryable": True,
+        })
+        response.status_code = 429
+        response.headers["Retry-After"] = str(retry_after)
+        return response
+
+    max_bytes = get_pdf_upload_max_bytes()
+    # The streaming limit below is authoritative. This early check avoids parsing
+    # clearly oversized multipart bodies while leaving room for form boundaries.
+    if request.content_length and request.content_length > max_bytes + 1024 * 1024:
+        error = PDFUploadError(
+            f"PDF is too large (max {max_bytes // (1024 * 1024)}MB).",
+            error_code="pdf_upload_too_large",
+            status_code=413,
+        )
+        return jsonify(error.to_payload()), error.status_code
+
+    files = request.files.getlist("file")
+    if len(files) != 1 or not files[0].filename:
+        error = PDFUploadError(
+            "Select exactly one PDF file.",
+            error_code="pdf_upload_missing",
+        )
+        return jsonify(error.to_payload()), error.status_code
+
+    try:
+        attachment, idempotent_replay = save_pdf_upload(
+            files[0],
+            request.form.get("upload_id", ""),
+            max_bytes=max_bytes,
+        )
+        return jsonify({
+            "ok": True,
+            "attachment": attachment,
+            "idempotent_replay": idempotent_replay,
+        })
+    except PDFUploadError as exc:
+        return jsonify(exc.to_payload()), exc.status_code
+    except Exception as exc:
+        print(
+            f"[PDF Upload] Unexpected upload failure: {type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        error = PDFUploadError(
+            "The PDF could not be stored. Please retry.",
+            error_code="pdf_upload_failed",
+            status_code=500,
+            retryable=True,
+        )
+        return jsonify(error.to_payload()), error.status_code
 
 
 @api_bp.route('/upload-images', methods=['POST'])
