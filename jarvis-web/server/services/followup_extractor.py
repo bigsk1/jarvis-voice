@@ -9,8 +9,10 @@ Used in two places:
 - Conversation history context (compact, FOLLOWUP_DEFAULT_MAX_CANDIDATES)
 - Completion Guard effective evidence (richer, FOLLOWUP_EVIDENCE_MAX_CANDIDATES)
 """
-import re
 import hashlib
+import json
+import math
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -68,6 +70,10 @@ FOLLOWUP_SUMMARY_MAX_CHARS = 6000
 _FOLLOWUP_TRUNCATION_SUFFIX = "\n...[summary truncated for follow-up context]"
 FOLLOWUP_FETCH_EXCERPT_MAX_CHARS = 2000
 _FOLLOWUP_FETCH_TRUNCATION_MARKER = "\n...[content truncated for follow-up context]...\n"
+FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS = 2000
+FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS = 3000
+_FOLLOWUP_INLINE_TRUNCATION_SUFFIX = "... [truncated for follow-up context]"
+_FOLLOWUP_STRUCTURAL_TRUNCATION_KEY = "_followup_truncated"
 MANAGE_INTEL_DIR = Path(__file__).resolve().parents[3] / "jarvis-intel"
 
 GENERIC_FOLLOWUP_LIST_KEYS = (
@@ -87,6 +93,28 @@ GENERIC_FOLLOWUP_LIST_KEYS = (
     'events',
     'jobs',
     'outputs',
+    'images',
+    'flat_results',
+    'containers',
+    'spaces',
+    'hosts',
+    'webhooks',
+    'sites',
+    'issues',
+    'processes',
+    'disks',
+    'daily_forecast',
+    'forecast',
+    'keywords',
+)
+
+GENERIC_FOLLOWUP_OBJECT_KEYS = (
+    'session',
+    'top_process',
+    'cpu',
+    'uptime',
+    'statistics',
+    'sentiment',
 )
 
 GENERIC_FOLLOWUP_SCALAR_KEYS = (
@@ -149,6 +177,7 @@ GENERIC_FOLLOWUP_SCALAR_KEYS = (
 )
 
 GENERIC_FOLLOWUP_BULKY_OR_UNSAFE_KEYS = frozenset({
+    'arguments',
     'content',
     'body',
     'html',
@@ -157,6 +186,7 @@ GENERIC_FOLLOWUP_BULKY_OR_UNSAFE_KEYS = frozenset({
     'raw_data',
     'raw_html',
     'raw_text',
+    'raw_output',
     'transcript',
     'headers',
     'payload',
@@ -170,6 +200,10 @@ GENERIC_FOLLOWUP_BULKY_OR_UNSAFE_KEYS = frozenset({
     'stdout',
     'stderr',
     'command',
+    'prompt',
+    'image',
+    'images',
+    'summary_markdown',
 })
 
 GENERIC_FOLLOWUP_SENSITIVE_KEY_PARTS = (
@@ -182,6 +216,15 @@ GENERIC_FOLLOWUP_SENSITIVE_KEY_PARTS = (
     'token',
 )
 
+GENERIC_FOLLOWUP_NOISE_KEYS = frozenset({
+    'ok',
+    'proxy_enabled',
+    'proxy_retry_without_proxy',
+    'authenticated',
+})
+
+GENERIC_FOLLOWUP_MAX_SCALAR_FIELDS = 24
+GENERIC_FOLLOWUP_MAX_CANDIDATE_FIELDS = 18
 GENERIC_FOLLOWUP_STRING_MAX_CHARS = 300
 GENERIC_FOLLOWUP_URL_MAX_CHARS = 2048
 GENERIC_FOLLOWUP_URLISH_KEYS = frozenset({
@@ -246,6 +289,10 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'memory_deduper': ['stash_ref', 'canvas_page_id'],
     'stash': ['space_id', 'file_id', 'name', 'mime_type', 'size_bytes'],
     'screenshot_url': ['url', 'screenshot_path'],
+    'phone_call': [
+        'call_id', 'duration', 'recording_url', 'saved_to_canvas',
+        'canvas_location',
+    ],
     # --- Knowledge/session refs ---
     'canvas': ['page_id', 'title'],
     'crypto_price': [
@@ -264,6 +311,10 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'update_memory': ['memory_id', 'old_value', 'new_value'],
     'forget': ['deleted_id', 'deleted_key', 'deleted_ids', 'deleted_keys', 'missing_ids'],
     'create_reminder': ['reminder_id', 'formatted_time'],
+    'acknowledge_alerts': ['alert_id', 'acknowledged', 'cleared_count'],
+    'acknowledge_reminders': [
+        'acknowledged_count', 'acknowledged_ids', 'already_done',
+    ],
     'send_email': ['to', 'subject', 'status'],
     'api_call': ['url', 'method', 'status_code'],
     'serpapi_search': ['engine', 'query', 'asin', 'results_count', 'top_url'],
@@ -279,9 +330,112 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'brave_llm_context': ['query'],
     'supa_crawl_knowledge': [
         'action', 'query', 'site_id', 'page_id', 'base_url', 'count',
-        'returned', 'sites', 'site_name', 'threshold', 'dedupe',
+        'returned', 'site_name', 'threshold', 'dedupe',
     ],
 }
+
+
+def _truncate_followup_text(
+    value: str,
+    max_chars: int,
+    *,
+    suffix: str = _FOLLOWUP_INLINE_TRUNCATION_SUFFIX,
+) -> str:
+    """Bound text while making every shortened value explicit to the model."""
+    if not isinstance(value, str):
+        value = str(value)
+    if len(value) <= max_chars:
+        return value
+    if max_chars <= len(suffix):
+        # Clarity wins over an unrealistically tiny caller budget. Production
+        # budgets are all larger than the marker.
+        return suffix
+    return value[: max_chars - len(suffix)].rstrip() + suffix
+
+
+def _bounded_head_tail_excerpt(text: str, max_chars: int) -> str:
+    """Keep useful head/tail content with an unmistakable omission marker."""
+    text = text.strip()
+    if len(text) <= max_chars:
+        return text
+
+    marker = _FOLLOWUP_FETCH_TRUNCATION_MARKER
+    remaining = max_chars - len(marker)
+    if remaining <= 0:
+        return marker.strip()
+    head_length = remaining * 3 // 4
+    tail_length = remaining - head_length
+    return (
+        text[:head_length].rstrip()
+        + marker
+        + text[-tail_length:].lstrip()
+    )
+
+
+def _strict_json_text(value) -> str:
+    """Serialize a follow-up value as strict, compact JSON."""
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(',', ':'),
+    )
+
+
+def _normalize_strict_json_value(value):
+    """Normalize legacy/non-standard values before returning follow-up data."""
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return value
+        return (
+            f"{value} "
+            "[non-finite number normalized for follow-up context]"
+        )
+    if isinstance(value, dict):
+        return {
+            str(key): _normalize_strict_json_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_normalize_strict_json_value(item) for item in value]
+    normalized = (
+        f"{value} "
+        "[non-JSON value normalized for follow-up context]"
+    )
+    return _truncate_followup_text(normalized, 300)
+
+
+def _annotate_candidate_truncation(value) -> None:
+    """Make ranked shortlist compaction explicit wherever a total is known."""
+    if isinstance(value, list):
+        for item in value:
+            _annotate_candidate_truncation(item)
+        return
+    if not isinstance(value, dict):
+        return
+
+    candidates = value.get('candidates')
+    if isinstance(candidates, list):
+        total = next(
+            (
+                value.get(field)
+                for field in (
+                    'results_count',
+                    'candidates_count',
+                    'count',
+                    'runs_count',
+                )
+                if isinstance(value.get(field), (int, float))
+            ),
+            None,
+        )
+        if total is not None and total > len(candidates):
+            value['candidates_truncated'] = True
+
+    for item in value.values():
+        _annotate_candidate_truncation(item)
 
 
 def workflow_result_payload(data: dict) -> dict | None:
@@ -339,7 +493,9 @@ def workflow_step_tool_results(workflow_data: dict) -> dict:
         if payload in (None, '', {}):
             error = step.get('error') or step.get('speech')
             if error:
-                payload = {'error': str(error)[:500]}
+                payload = {
+                    'error': _truncate_followup_text(str(error), 500),
+                }
         add(tool_name, payload)
 
     return flattened
@@ -423,8 +579,13 @@ def _extract_memory_mutation_refs(payload: dict, max_candidates: int) -> dict:
 
 
 def _safe_generic_key(key: str) -> bool:
-    lowered = (key or '').lower()
-    if lowered in GENERIC_FOLLOWUP_BULKY_OR_UNSAFE_KEYS:
+    if not isinstance(key, str):
+        return False
+    lowered = key.lower()
+    if (
+        lowered in GENERIC_FOLLOWUP_BULKY_OR_UNSAFE_KEYS
+        or lowered in GENERIC_FOLLOWUP_NOISE_KEYS
+    ):
         return False
     return not any(part in lowered for part in GENERIC_FOLLOWUP_SENSITIVE_KEY_PARTS)
 
@@ -448,20 +609,47 @@ def _compact_generic_scalar(key: str, value):
             if _is_generic_urlish_key(key)
             else GENERIC_FOLLOWUP_STRING_MAX_CHARS
         )
-        if len(value) > limit:
-            suffix = '... [truncated]'
-            value = value[: max(0, limit - len(suffix))].rstrip() + suffix
+        value = _truncate_followup_text(value, limit)
     return value
 
 
-def _generic_candidate_from_item(item: dict) -> dict:
-    candidate = {}
-    for field in GENERIC_FOLLOWUP_SCALAR_KEYS:
-        if field not in item or not _safe_generic_key(field):
+def _compact_generic_scalars(
+    payload: dict,
+    *,
+    max_fields: int,
+    include_dynamic: bool = True,
+) -> dict:
+    """Keep preferred handles first, then bounded safe scalar payload fields."""
+    compacted = {}
+    ordered_fields = list(GENERIC_FOLLOWUP_SCALAR_KEYS)
+    if include_dynamic:
+        ordered_fields.extend(
+            field
+            for field in payload
+            if isinstance(field, str) and field not in GENERIC_FOLLOWUP_SCALAR_KEYS
+        )
+
+    for field in ordered_fields:
+        if (
+            field in compacted
+            or field not in payload
+            or not _safe_generic_key(field)
+        ):
             continue
-        value = _compact_generic_scalar(field, item.get(field))
-        if value not in (None, '', [], {}):
-            candidate[field] = value
+        compact = _compact_generic_scalar(field, payload.get(field))
+        if compact in (None, '', [], {}):
+            continue
+        compacted[field] = compact
+        if len(compacted) >= max_fields:
+            break
+    return compacted
+
+
+def _generic_candidate_from_item(item: dict) -> dict:
+    candidate = _compact_generic_scalars(
+        item,
+        max_fields=GENERIC_FOLLOWUP_MAX_CANDIDATE_FIELDS,
+    )
 
     for field, value in item.items():
         if (
@@ -473,6 +661,8 @@ def _generic_candidate_from_item(item: dict) -> dict:
         compact = _compact_generic_scalar(field, value)
         if compact not in (None, '', [], {}):
             candidate[field] = compact
+            if len(candidate) >= GENERIC_FOLLOWUP_MAX_CANDIDATE_FIELDS:
+                break
 
     return candidate
 
@@ -561,16 +751,18 @@ def _generic_list_count(payload: dict, list_key: str, results: list) -> int:
     return len(results)
 
 
-def _extract_generic_followup(payload: dict, max_candidates: int) -> dict:
+def _extract_generic_followup(
+    payload: dict,
+    max_candidates: int,
+    *,
+    include_dynamic_scalars: bool = True,
+) -> dict:
     """Conservative fallback for tools without dedicated follow-up adapters."""
-    extracted = {}
-
-    for field in GENERIC_FOLLOWUP_SCALAR_KEYS:
-        if field not in payload or not _safe_generic_key(field):
-            continue
-        value = _compact_generic_scalar(field, payload.get(field))
-        if value not in (None, '', [], {}):
-            extracted[field] = value
+    extracted = _compact_generic_scalars(
+        payload,
+        max_fields=GENERIC_FOLLOWUP_MAX_SCALAR_FIELDS,
+        include_dynamic=include_dynamic_scalars,
+    )
 
     for field, value in payload.items():
         if (
@@ -614,6 +806,18 @@ def _extract_generic_followup(payload: dict, max_candidates: int) -> dict:
         extracted['candidates'] = candidates
         break
 
+    if not extracted.get('candidates'):
+        for object_key in GENERIC_FOLLOWUP_OBJECT_KEYS:
+            value = payload.get(object_key)
+            if not isinstance(value, dict):
+                continue
+            candidate = _generic_candidate_from_item(value)
+            if not candidate:
+                continue
+            extracted['candidate_source'] = object_key
+            extracted['candidates'] = [candidate]
+            break
+
     return extracted
 
 
@@ -632,6 +836,49 @@ def _successful_tool_trace_arguments(data: dict, tool_name: str) -> list[dict]:
         entry_arguments = entry.get('arguments')
         arguments.append(entry_arguments if isinstance(entry_arguments, dict) else {})
     return arguments
+
+
+def _compact_request_arguments(arguments: dict) -> dict:
+    """Bound safe request fields so empty/sparse results still retain intent."""
+    if not isinstance(arguments, dict):
+        return {}
+
+    compact = _compact_generic_scalars(
+        arguments,
+        max_fields=GENERIC_FOLLOWUP_MAX_SCALAR_FIELDS,
+    )
+    for field, value in arguments.items():
+        if (
+            field in compact
+            or not _safe_generic_key(field)
+            or not isinstance(value, list)
+            or not value
+        ):
+            continue
+        items = []
+        for item in value[:10]:
+            if not _is_generic_scalar(item):
+                continue
+            item_value = _compact_generic_scalar(field, item)
+            if item_value not in (None, '', [], {}):
+                items.append(item_value)
+        if len(value) > 10:
+            items.append(
+                f"... [{len(value) - 10} items truncated for follow-up context]"
+            )
+        if items:
+            compact[field] = items
+    return compact
+
+
+def _extract_generic_tool_request(data: dict, tool_name: str) -> dict:
+    arguments = _successful_tool_trace_arguments(data, tool_name)
+    if not arguments:
+        return {}
+    request = _compact_request_arguments(arguments[-1])
+    if len(arguments) > 1:
+        request['runs_count'] = len(arguments)
+    return request
 
 
 _SPOTIFY_ARGUMENT_FIELDS = (
@@ -741,7 +988,13 @@ def _extract_spotify_followup(
 
         # Recommendation playback returns artist names rather than result rows.
         if all(isinstance(item, str) for item in items):
-            extracted[f'{list_field}_names'] = items[:max_candidates]
+            extracted[f'{list_field}_names'] = [
+                _truncate_followup_text(item, GENERIC_FOLLOWUP_STRING_MAX_CHARS)
+                for item in items[:max_candidates]
+            ]
+            extracted[f'{list_field}_count'] = len(items)
+            if len(items) > max_candidates:
+                extracted[f'{list_field}_truncated'] = True
             continue
 
         candidates = []
@@ -756,8 +1009,16 @@ def _extract_spotify_followup(
             genres = item.get('genres')
             if isinstance(genres, list) and genres:
                 candidate['genres'] = [
-                    genre for genre in genres[:5] if isinstance(genre, str) and genre
+                    _truncate_followup_text(
+                        genre,
+                        GENERIC_FOLLOWUP_STRING_MAX_CHARS,
+                    )
+                    for genre in genres[:5]
+                    if isinstance(genre, str) and genre
                 ]
+                if len(genres) > 5:
+                    candidate['genres_count'] = len(genres)
+                    candidate['genres_truncated'] = True
             if candidate:
                 candidates.append(candidate)
 
@@ -842,20 +1103,9 @@ def _mcp_text_from_run(run: dict) -> str:
 
 def _bounded_fetch_excerpt(text: str) -> str:
     """Keep the useful beginning and pagination-bearing tail of fetched text."""
-    text = text.strip()
-    if len(text) <= FOLLOWUP_FETCH_EXCERPT_MAX_CHARS:
-        return text
-
-    marker_length = len(_FOLLOWUP_FETCH_TRUNCATION_MARKER)
-    remaining = FOLLOWUP_FETCH_EXCERPT_MAX_CHARS - marker_length
-    if remaining <= 0:
-        return text[:FOLLOWUP_FETCH_EXCERPT_MAX_CHARS]
-    head_length = remaining * 3 // 4
-    tail_length = remaining - head_length
-    return (
-        text[:head_length].rstrip()
-        + _FOLLOWUP_FETCH_TRUNCATION_MARKER
-        + text[-tail_length:].lstrip()
+    return _bounded_head_tail_excerpt(
+        text,
+        FOLLOWUP_FETCH_EXCERPT_MAX_CHARS,
     )
 
 
@@ -903,16 +1153,19 @@ def _extract_duckduckgo_search_followup(
                 continue
             seen_urls.add(url)
             if len(urls_seen) < max_candidates * 2:
-                urls_seen.append(url[:2048])
+                urls_seen.append(_truncate_followup_text(url, 2048))
             if len(candidates) >= max_candidates:
                 continue
             candidate = {
-                'title': ' '.join(match.group('title').split())[:300],
-                'url': url[:2048],
+                'title': _truncate_followup_text(
+                    ' '.join(match.group('title').split()),
+                    300,
+                ),
+                'url': _truncate_followup_text(url, 2048),
             }
             snippet = ' '.join(match.group('snippet').split())
             if snippet:
-                candidate['snippet'] = snippet[:500]
+                candidate['snippet'] = _truncate_followup_text(snippet, 500)
             candidates.append(candidate)
 
         # Preserve URL grounding if the upstream human-readable format changes.
@@ -923,7 +1176,7 @@ def _extract_duckduckgo_search_followup(
                     continue
                 seen_urls.add(url)
                 if len(urls_seen) < max_candidates * 2:
-                    urls_seen.append(url[:2048])
+                    urls_seen.append(_truncate_followup_text(url, 2048))
 
     if found_advertised_count:
         extracted['results_count'] = advertised_count
@@ -937,6 +1190,162 @@ def _extract_duckduckgo_search_followup(
     return extracted
 
 
+_BRAVE_RESULT_LIST_KEYS = (
+    'results',
+    'items',
+    'videos',
+    'locations',
+    'cities',
+    'addresses',
+    'streets',
+)
+
+
+def _mcp_json_values(run: dict) -> list:
+    """Decode JSON-oriented MCP text parts without replaying their raw bodies."""
+    texts = []
+    full_text = run.get('full_text')
+    if isinstance(full_text, str) and full_text.strip():
+        texts.append(full_text)
+    raw = run.get('raw')
+    if isinstance(raw, list):
+        for part in raw:
+            text = part.get('text') if isinstance(part, dict) else None
+            if isinstance(text, str) and text.strip() and text not in texts:
+                texts.append(text)
+
+    decoded = []
+    for text in texts:
+        try:
+            decoded.append(json.loads(text))
+        except (TypeError, ValueError):
+            continue
+    return decoded
+
+
+def _brave_result_rows(value) -> list[dict]:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if not isinstance(value, dict):
+        return []
+    for field in _BRAVE_RESULT_LIST_KEYS:
+        rows = value.get(field)
+        if isinstance(rows, list):
+            return [item for item in rows if isinstance(item, dict)]
+    if any(value.get(field) for field in ('url', 'title', 'name')):
+        return [value]
+    return []
+
+
+def _compact_brave_candidate(item: dict) -> dict:
+    candidate = _generic_candidate_from_item(item)
+
+    description = item.get('description')
+    if isinstance(description, str) and description.strip():
+        candidate['description'] = _truncate_followup_text(
+            description.strip(),
+            500,
+        )
+
+    properties = item.get('properties')
+    if isinstance(properties, dict):
+        image_url = properties.get('url')
+        if isinstance(image_url, str) and image_url:
+            candidate['image_url'] = _truncate_followup_text(
+                image_url,
+                GENERIC_FOLLOWUP_URL_MAX_CHARS,
+            )
+        for field in ('width', 'height'):
+            if properties.get(field) is not None:
+                candidate[field] = properties[field]
+
+    thumbnail = item.get('thumbnail')
+    if isinstance(thumbnail, dict):
+        thumbnail_url = thumbnail.get('src') or thumbnail.get('url')
+        if isinstance(thumbnail_url, str) and thumbnail_url:
+            candidate['thumbnail'] = _truncate_followup_text(
+                thumbnail_url,
+                GENERIC_FOLLOWUP_URL_MAX_CHARS,
+            )
+
+    coordinates = item.get('coordinates')
+    if (
+        isinstance(coordinates, list)
+        and 1 < len(coordinates) <= 3
+        and all(isinstance(part, (int, float)) for part in coordinates)
+    ):
+        candidate['coordinates'] = coordinates
+    return candidate
+
+
+def _extract_brave_search_followup(
+    data: dict,
+    tool_name: str,
+    value: dict,
+    max_candidates: int,
+) -> dict:
+    """Compact every Brave MCP search shape, including newly added tools."""
+    runs = _mcp_text_runs(value)
+    extracted = {'runs_count': len(runs)}
+
+    request = _extract_generic_tool_request(data, tool_name)
+    for field, field_value in request.items():
+        extracted[field] = field_value
+
+    candidates = []
+    urls_seen = []
+    seen_urls: set[str] = set()
+    max_urls = max_candidates * 2
+    parsed_results_count = 0
+
+    def add_url(url):
+        if not isinstance(url, str):
+            return
+        url = url.rstrip(').,;')
+        if not url or url in seen_urls:
+            return
+        seen_urls.add(url)
+        if len(urls_seen) < max_urls:
+            urls_seen.append(
+                _truncate_followup_text(
+                    url,
+                    GENERIC_FOLLOWUP_URL_MAX_CHARS,
+                )
+            )
+
+    for run in runs:
+        parsed_rows = []
+        for decoded in _mcp_json_values(run):
+            parsed_rows.extend(_brave_result_rows(decoded))
+        parsed_results_count += len(parsed_rows)
+
+        for row in parsed_rows:
+            candidate = _compact_brave_candidate(row)
+            for field in (
+                'url', 'image_url', 'thumbnail_url', 'provider_url', 'thumbnail',
+            ):
+                add_url(candidate.get(field))
+            if candidate and len(candidates) < max_candidates:
+                candidates.append(candidate)
+
+        text = _mcp_text_from_run(run)
+        for url in _MCP_URL_RE.findall(text):
+            add_url(url)
+
+    if candidates:
+        extracted['results_count'] = parsed_results_count or len(candidates)
+        extracted['candidates'] = candidates
+        first = candidates[0]
+        if first.get('title'):
+            extracted['title'] = first['title']
+        if first.get('url'):
+            extracted['top_url'] = first['url']
+    if urls_seen:
+        extracted.setdefault('top_url', urls_seen[0])
+        extracted['urls_seen'] = urls_seen
+    return extracted
+
+
 def _extract_mcp_fetch_followup(data: dict, tool_name: str, value: dict) -> dict:
     """Compact DuckDuckGo/Fetch page retrieval for persisted follow-up turns."""
     runs = _mcp_text_runs(value)
@@ -947,7 +1356,7 @@ def _extract_mcp_fetch_followup(data: dict, tool_name: str, value: dict) -> dict
     for argument in arguments:
         url = argument.get('url')
         if isinstance(url, str) and url and url not in fetched_urls:
-            fetched_urls.append(url[:2048])
+            fetched_urls.append(_truncate_followup_text(url, 2048))
     if arguments:
         latest = arguments[-1]
         for field in ('url', 'start_index', 'max_length', 'raw', 'backend'):
@@ -982,30 +1391,33 @@ def truncate_followup_summary(summary: str, max_chars: int = FOLLOWUP_SUMMARY_MA
     if not isinstance(summary, str):
         return ''
     summary = summary.strip()
-    if len(summary) <= max_chars:
-        return summary
-    suffix_budget = len(_FOLLOWUP_TRUNCATION_SUFFIX)
-    if max_chars <= suffix_budget:
-        return summary[:max_chars].rstrip()
-    return summary[:max_chars - suffix_budget].rstrip() + _FOLLOWUP_TRUNCATION_SUFFIX
+    return _truncate_followup_text(
+        summary,
+        max_chars,
+        suffix=_FOLLOWUP_TRUNCATION_SUFFIX,
+    )
 
 
-def compact_text_summarizer_item(item) -> dict | None:
-    """Compact one text_summarizer result for history/evidence storage."""
+def compact_text_summarizer_item(
+    item,
+    max_candidates: int = FOLLOWUP_DEFAULT_MAX_CANDIDATES,
+    summary_max_chars: int = FOLLOWUP_SUMMARY_MAX_CHARS,
+) -> dict | None:
+    """Compact any text_summarizer operation for history/evidence storage."""
     if not isinstance(item, dict):
         return None
 
+    extracted = {}
     summary = item.get('summary')
-    if not isinstance(summary, str) or not summary.strip():
-        return None
-
-    extracted = {
-        'summary': truncate_followup_summary(summary),
-    }
+    if isinstance(summary, str) and summary.strip():
+        extracted['summary'] = truncate_followup_summary(
+            summary,
+            max_chars=summary_max_chars,
+        )
 
     source = item.get('source') if isinstance(item.get('source'), dict) else {}
     for field in ('stash_ref', 'file_id', 'space_id', 'source', 'characters_loaded'):
-        if source.get(field):
+        if source.get(field) not in (None, '', [], {}):
             extracted[field] = source[field]
 
     meta = item.get('summary_meta') if isinstance(item.get('summary_meta'), dict) else {}
@@ -1022,28 +1434,62 @@ def compact_text_summarizer_item(item) -> dict | None:
         if field in meta and meta[field] not in (None, ''):
             extracted[field] = meta[field]
 
-    return extracted
+    keywords = item.get('keywords')
+    if isinstance(keywords, list) and keywords:
+        compact_keywords = []
+        for keyword in keywords[:max_candidates]:
+            if not isinstance(keyword, dict):
+                continue
+            compact = _generic_candidate_from_item(keyword)
+            if compact:
+                compact_keywords.append(compact)
+        if compact_keywords:
+            extracted['keywords_count'] = len(keywords)
+            extracted['keywords'] = compact_keywords
+
+    for field in ('statistics', 'sentiment'):
+        value = item.get(field)
+        if not isinstance(value, dict):
+            continue
+        compact = _generic_candidate_from_item(value)
+        if compact:
+            extracted[field] = compact
+
+    return extracted or None
 
 
 def extract_text_summarizer_followup(value, max_candidates: int) -> dict | None:
-    """Preserve text_summarizer summaries and source refs for follow-up turns."""
+    """Preserve summaries plus keywords/count/sentiment operation results."""
     if isinstance(value, list):
-        items = [compact_text_summarizer_item(item) for item in value[:max_candidates]]
+        selected = value[:max_candidates]
+        summary_max_chars = max(
+            800,
+            FOLLOWUP_SUMMARY_MAX_CHARS // max(1, len(selected)),
+        )
+        items = [
+            compact_text_summarizer_item(
+                item,
+                max_candidates=max_candidates,
+                summary_max_chars=summary_max_chars,
+            )
+            for item in selected
+        ]
         items = [item for item in items if item]
         if not items:
             return None
         latest = items[-1]
-        extracted = {
-            'results_count': len(value),
-            'latest_summary': latest.get('summary'),
-            'summaries': items,
-        }
+        extracted = {'results_count': len(value)}
+        if all(item.get('summary') for item in items):
+            extracted['summaries'] = items
+        else:
+            extracted['latest'] = latest
+            extracted['results'] = items
         if latest.get('stash_ref'):
             extracted['latest_stash_ref'] = latest['stash_ref']
         return extracted
 
     if isinstance(value, dict):
-        return compact_text_summarizer_item(value)
+        return compact_text_summarizer_item(value, max_candidates=max_candidates)
     return None
 
 
@@ -1119,9 +1565,15 @@ def _compact_ingest_summary(ingest: dict) -> dict:
         if ingest.get(field) not in (None, '', [], {}):
             compact[field] = ingest[field]
     if ingest.get('warning'):
-        compact['warning'] = str(ingest['warning'])[:500]
+        compact['warning'] = _truncate_followup_text(
+            str(ingest['warning']),
+            500,
+        )
     if ingest.get('error'):
-        compact['error'] = str(ingest['error'])[:500]
+        compact['error'] = _truncate_followup_text(
+            str(ingest['error']),
+            500,
+        )
     return compact
 
 
@@ -1134,16 +1586,23 @@ def _manage_intel_document_meta(doc: dict) -> dict:
 
 
 def _extract_manage_intel_followup(data: dict, max_candidates: int) -> dict | None:
-    payloads = _manage_intel_payloads(data.get('manage_intel'))
+    all_payloads = _manage_intel_payloads(data.get('manage_intel'))
+    payloads = all_payloads[-max_candidates:]
     if not payloads:
         return None
 
-    trace_args = _manage_intel_trace_arguments(data)
+    trace_args = _manage_intel_trace_arguments(data)[-max_candidates:]
     operations = []
     documents = []
 
+    trace_offset = max(0, len(payloads) - len(trace_args))
     for index, payload in enumerate(payloads):
-        args = trace_args[index] if index < len(trace_args) else {}
+        trace_index = index - trace_offset
+        args = (
+            trace_args[trace_index]
+            if 0 <= trace_index < len(trace_args)
+            else {}
+        )
         action = payload.get('action') or args.get('action')
         file_name = payload.get('file') or args.get('path')
 
@@ -1183,7 +1642,15 @@ def _extract_manage_intel_followup(data: dict, max_candidates: int) -> dict | No
             ]
 
         if isinstance(payload.get('matches'), list):
-            operation['matches'] = payload['matches'][:max_candidates]
+            match_limit = 5 if max_candidates > FOLLOWUP_DEFAULT_MAX_CANDIDATES else 2
+            compact_matches = [
+                _generic_candidate_from_item(item)
+                for item in payload['matches'][:match_limit]
+                if isinstance(item, dict)
+            ]
+            compact_matches = [item for item in compact_matches if item]
+            if compact_matches:
+                operation['matches'] = compact_matches
 
         content = payload.get('content')
         content_source = 'tool_result'
@@ -1195,12 +1662,22 @@ def _extract_manage_intel_followup(data: dict, max_candidates: int) -> dict | No
                 content_source = 'jarvis-intel/current_file'
 
         if isinstance(content, str):
+            compact_content = (
+                content
+                if len(content) <= FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS
+                else truncate_followup_summary(
+                    content,
+                    max_chars=FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS,
+                )
+            )
             doc = {
                 'action': action,
                 'file': file_name,
-                'content': content,
+                'content': compact_content,
                 'content_source': content_source,
                 'size_bytes': payload.get('size_bytes', len(content)),
+                'content_characters': len(content),
+                'content_truncated': len(compact_content) < len(content.strip()),
                 'content_sha256': (
                     payload.get('file_sha256')
                     or (doc_meta or {}).get('content_sha256')
@@ -1208,7 +1685,15 @@ def _extract_manage_intel_followup(data: dict, max_candidates: int) -> dict | No
                 ),
             }
             if isinstance(payload.get('appended_content'), str):
-                doc['appended_content'] = payload['appended_content']
+                appended_content = payload['appended_content']
+                doc['appended_content'] = (
+                    appended_content
+                    if len(appended_content) <= 1000
+                    else truncate_followup_summary(
+                        appended_content,
+                        max_chars=1000,
+                    )
+                )
             documents.append(doc)
             operation['document_available'] = True
             operation['content_source'] = content_source
@@ -1221,8 +1706,11 @@ def _extract_manage_intel_followup(data: dict, max_candidates: int) -> dict | No
 
     extracted = {
         'operation_count': len(operations),
+        'operations_total': len(all_payloads),
         'operations': operations,
     }
+    if len(all_payloads) > len(payloads):
+        extracted['operations_truncated'] = True
     if operations:
         latest = operations[-1]
         for field in ('action', 'file', 'size_bytes', 'created', 'updated', 'appended', 'deleted'):
@@ -1268,11 +1756,16 @@ def _compact_serpapi_list(field: str, value: list) -> list:
     """Bound the few small list fields retained for shopping follow-ups."""
     limit = 3 if field == 'delivery' else 5
     max_chars = 500 if field == 'delivery' else 120
-    return [
-        str(item)[:max_chars]
+    compact = [
+        _truncate_followup_text(str(item), max_chars)
         for item in value[:limit]
         if item not in (None, '', [], {})
     ]
+    if len(value) > limit:
+        compact.append(
+            f"... [{len(value) - limit} items truncated for follow-up context]"
+        )
+    return compact
 
 
 def _compact_serpapi_candidate(item: dict) -> dict:
@@ -1412,6 +1905,330 @@ def _extract_serpapi_followup(value, max_candidates: int) -> dict:
     return extracted
 
 
+def _bounded_content_excerpt(
+    value,
+    *,
+    max_chars: int = FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS,
+) -> str:
+    text = value if isinstance(value, str) else str(value)
+    text = text.strip()
+    if not text:
+        return ''
+    return _bounded_head_tail_excerpt(text, max_chars)
+
+
+def _nested_followup_field_is_sensitive(field: str) -> bool:
+    lowered = field.lower()
+    return (
+        lowered in {'headers', 'cookies', 'set-cookie'}
+        or any(part in lowered for part in GENERIC_FOLLOWUP_SENSITIVE_KEY_PARTS)
+    )
+
+
+def _sanitize_nested_followup_value(
+    value,
+    *,
+    depth: int = 0,
+    max_depth: int = 4,
+    max_fields: int = 30,
+    max_items: int = 10,
+    max_string_chars: int = 1000,
+):
+    """Return a secret-safe, strict-JSON value with explicit compaction sentinels."""
+    if depth > max_depth:
+        return {
+            _FOLLOWUP_STRUCTURAL_TRUNCATION_KEY: True,
+            '_followup_reason': 'depth_limit',
+        }
+    if isinstance(value, dict):
+        compact = {}
+        safe_items = []
+        redacted_fields = 0
+        for field, field_value in value.items():
+            if not isinstance(field, str):
+                continue
+            if _nested_followup_field_is_sensitive(field):
+                redacted_fields += 1
+                continue
+            safe_items.append((field, field_value))
+
+        for field, field_value in safe_items[:max_fields]:
+            sanitized = _sanitize_nested_followup_value(
+                field_value,
+                depth=depth + 1,
+                max_depth=max_depth,
+                max_fields=max_fields,
+                max_items=max_items,
+                max_string_chars=max_string_chars,
+            )
+            if sanitized not in (None, '', [], {}):
+                compact[field] = sanitized
+        omitted_fields = max(0, len(safe_items) - max_fields)
+        if omitted_fields:
+            compact[_FOLLOWUP_STRUCTURAL_TRUNCATION_KEY] = True
+            compact['_followup_omitted_fields'] = omitted_fields
+        if redacted_fields:
+            compact['_followup_redacted_fields'] = redacted_fields
+        return compact
+    if isinstance(value, list):
+        compact = []
+        for item in value[:max_items]:
+            sanitized = _sanitize_nested_followup_value(
+                item,
+                depth=depth + 1,
+                max_depth=max_depth,
+                max_fields=max_fields,
+                max_items=max_items,
+                max_string_chars=max_string_chars,
+            )
+            if sanitized not in (None, '', [], {}):
+                compact.append(sanitized)
+        omitted_items = max(0, len(value) - max_items)
+        if omitted_items:
+            compact.append(
+                {
+                    _FOLLOWUP_STRUCTURAL_TRUNCATION_KEY: True,
+                    '_followup_omitted_items': omitted_items,
+                }
+            )
+        return compact
+    if isinstance(value, str):
+        return _truncate_followup_text(value, max_string_chars)
+    if isinstance(value, float) and not math.isfinite(value):
+        return (
+            f"{value} "
+            "[non-finite number normalized for follow-up context]"
+        )
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    return _truncate_followup_text(str(value), 300)
+
+
+def _bounded_structured_followup_value(
+    value,
+    *,
+    max_chars: int = FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS,
+):
+    """Compact nested data structurally without ever slicing serialized JSON."""
+    profiles = (
+        (30, 10, 1000),
+        (20, 8, 500),
+        (12, 6, 250),
+        (8, 4, 120),
+        (5, 3, 60),
+    )
+    for max_fields, max_items, max_string_chars in profiles:
+        compact = _sanitize_nested_followup_value(
+            value,
+            max_fields=max_fields,
+            max_items=max_items,
+            max_string_chars=max_string_chars,
+        )
+        if len(_strict_json_text(compact)) <= max_chars:
+            return compact
+
+    if isinstance(value, dict):
+        return {
+            _FOLLOWUP_STRUCTURAL_TRUNCATION_KEY: True,
+            '_followup_reason': 'size_limit',
+            '_followup_original_fields': len(value),
+        }
+    if isinstance(value, list):
+        return [
+            {
+                _FOLLOWUP_STRUCTURAL_TRUNCATION_KEY: True,
+                '_followup_reason': 'size_limit',
+                '_followup_original_items': len(value),
+            }
+        ]
+    return _truncate_followup_text(str(value), max_chars)
+
+
+def _extract_query_service_logs_followup(
+    payload: dict,
+    max_candidates: int,
+) -> dict:
+    extracted = {}
+    compact_logs = []
+    logs = payload.get('logs')
+    if isinstance(logs, list):
+        sources = [(None, logs)]
+    elif isinstance(logs, dict):
+        sources = [
+            (service, rows)
+            for service, rows in logs.items()
+            if isinstance(rows, list)
+        ]
+    else:
+        sources = []
+
+    for service, rows in sources:
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            candidate = _generic_candidate_from_item(item)
+            if service:
+                candidate.setdefault('service', service)
+            if candidate:
+                compact_logs.append(candidate)
+            if len(compact_logs) >= max_candidates:
+                break
+        if len(compact_logs) >= max_candidates:
+            break
+    if compact_logs:
+        extracted['logs'] = compact_logs
+        extracted['logs_count'] = sum(len(rows) for _, rows in sources)
+
+    stats = payload.get('stats')
+    if isinstance(stats, dict):
+        compact_stats = _generic_candidate_from_item(stats)
+        if not compact_stats:
+            compact_stats = {}
+            for service, values in stats.items():
+                if not isinstance(values, dict):
+                    continue
+                candidate = _generic_candidate_from_item(values)
+                if candidate:
+                    compact_stats[service] = candidate
+        if compact_stats:
+            extracted['stats'] = compact_stats
+    return extracted
+
+
+def _extract_system_monitor_followup(payload: dict) -> dict:
+    snapshot = {}
+    for field in ('cpu', 'uptime', 'top_process'):
+        value = payload.get(field)
+        if not isinstance(value, dict):
+            continue
+        compact = _generic_candidate_from_item(value)
+        if compact:
+            snapshot[field] = compact
+
+    memory = payload.get('memory')
+    if isinstance(memory, dict):
+        compact_memory = {}
+        for field in ('ram', 'swap'):
+            value = memory.get(field)
+            if not isinstance(value, dict):
+                continue
+            compact = _generic_candidate_from_item(value)
+            if compact:
+                compact_memory[field] = compact
+        if compact_memory:
+            snapshot['memory'] = compact_memory
+    return {'system_snapshot': snapshot} if snapshot else {}
+
+
+def _extract_bounded_content_followup(
+    key: str,
+    payload: dict,
+    max_candidates: int,
+) -> dict:
+    """Dedicated excerpts for result bodies that the scalar fallback omits."""
+    extracted = {}
+
+    text_fields = {
+        'analyze_image': (
+            ('analysis', 'analysis', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+        ),
+        'canvas': (
+            ('content', 'content_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+        ),
+        'stash': (
+            ('content', 'content_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+        ),
+        'pdf_read': (
+            ('text', 'text_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+        ),
+        'execute_bash': (
+            ('stdout', 'stdout_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+            ('stderr', 'stderr_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+        ),
+        'ssh_remote': (
+            ('stdout', 'stdout_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+            ('stderr', 'stderr_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+            ('output', 'output_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+            ('upgrade_output', 'upgrade_output_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+        ),
+        'docker_control': (
+            ('logs', 'logs_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+            ('output', 'output_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+        ),
+        'phone_call': (
+            ('summary', 'summary', 1200),
+            ('transcript', 'transcript_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+            ('follow_up_hints', 'follow_up_hints', 1200),
+        ),
+        'opencode': (
+            ('opencode_result', 'result_preview', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+        ),
+        'api_call': (
+            ('response', 'response_preview', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+        ),
+        'system_monitor': (
+            ('summary_markdown', 'summary_markdown_excerpt', 1200),
+            ('issue_summary', 'issue_summary', 600),
+        ),
+        'search_docs': (
+            ('documentation', 'documentation_excerpt', 1200),
+        ),
+    }
+
+    for source_field, target_field, limit in text_fields.get(key, ()):
+        value = payload.get(source_field)
+        if value in (None, '', [], {}):
+            continue
+        if not isinstance(value, str):
+            preview = _bounded_structured_followup_value(
+                value,
+                max_chars=limit,
+            )
+            if preview not in (None, '', [], {}):
+                extracted[target_field] = preview
+            continue
+        excerpt = _bounded_content_excerpt(value, max_chars=limit)
+        if excerpt:
+            extracted[target_field] = excerpt
+
+    if key == 'api_call' and isinstance(payload.get('response'), dict):
+        response_keys = [
+            field
+            for field in payload['response']
+            if isinstance(field, str)
+            and not _nested_followup_field_is_sensitive(field)
+        ]
+        extracted['response_keys_count'] = len(response_keys)
+        extracted['response_keys'] = response_keys[:20]
+        if len(response_keys) > 20:
+            extracted['response_keys_truncated'] = True
+
+    if key == 'analyze_image':
+        sources = payload.get('sources')
+        if isinstance(sources, list):
+            extracted['sources'] = [
+                _truncate_followup_text(
+                    str(source),
+                    GENERIC_FOLLOWUP_URL_MAX_CHARS,
+                )
+                for source in sources[:max_candidates]
+                if source not in (None, '')
+            ]
+            if len(sources) > max_candidates:
+                extracted['sources_truncated'] = True
+                extracted['sources_count'] = len(sources)
+
+    if key == 'query_service_logs':
+        extracted.update(
+            _extract_query_service_logs_followup(payload, max_candidates)
+        )
+
+    if key == 'system_monitor':
+        extracted.update(_extract_system_monitor_followup(payload))
+
+    return extracted
+
+
 def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict | None:
     """
     Extract key data from tool results that enables follow-up actions.
@@ -1437,6 +2254,7 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
     for key, value in data.items():
         if key in FOLLOWUP_DATA_SKIP_KEYS:
             continue
+        request_context = _extract_generic_tool_request(data, key)
         if (
             key == 'spotify'
             and isinstance(value, list)
@@ -1449,65 +2267,72 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             continue
         if key == 'manage_intel':
             extracted = _extract_manage_intel_followup(data, max_candidates)
+            if request_context:
+                extracted = extracted or {}
+                extracted.setdefault('request', request_context)
             if extracted:
                 followup[key] = extracted
             continue
         if key == 'text_summarizer':
             extracted = extract_text_summarizer_followup(value, max_candidates)
+            if request_context:
+                extracted = extracted or {}
+                extracted.setdefault('request', request_context)
             if extracted:
                 followup[key] = extracted
             continue
         if key == 'workflow':
             workflow_value = workflow_result_payload({'workflow': value})
-            if not workflow_value:
-                continue
-            workflow_meta = {
-                field: workflow_value[field]
-                for field in (
-                    'workflow_id',
-                    'workflow_name',
-                    'execution',
-                    'workflow_started',
-                    'workflow_completed',
-                    'steps_completed',
-                )
-                if workflow_value.get(field) not in (None, '', [], {})
-            }
-            if workflow_meta:
-                followup['workflow'] = workflow_meta
-            component_results = workflow_step_tool_results(workflow_value)
-            for component_name, component_value in component_results.items():
-                if component_name == 'serpapi_search':
+            if workflow_value:
+                workflow_meta = {
+                    field: workflow_value[field]
+                    for field in (
+                        'workflow_id',
+                        'workflow_name',
+                        'execution',
+                        'workflow_started',
+                        'workflow_completed',
+                        'steps_completed',
+                    )
+                    if workflow_value.get(field) not in (None, '', [], {})
+                }
+                if request_context:
+                    workflow_meta['request'] = request_context
+                if workflow_meta:
+                    followup['workflow'] = workflow_meta
+                component_results = workflow_step_tool_results(workflow_value)
+                for component_name, component_value in component_results.items():
+                    if component_name == 'serpapi_search':
+                        component_followup = extract_followup_data(
+                            {component_name: component_value},
+                            max_candidates=max_candidates,
+                        )
+                        if component_followup:
+                            followup.update(component_followup)
+                        continue
+                    if isinstance(component_value, list) and component_name != 'text_summarizer':
+                        runs = []
+                        for run_value in component_value[:max_candidates]:
+                            run_followup = extract_followup_data(
+                                {component_name: run_value},
+                                max_candidates=max_candidates,
+                            ) or {}
+                            compact_run = run_followup.get(component_name)
+                            if isinstance(compact_run, dict) and compact_run:
+                                runs.append(compact_run)
+                        if runs:
+                            combined = dict(runs[-1])
+                            combined['runs_count'] = len(component_value)
+                            combined['candidates'] = runs
+                            followup[component_name] = combined
+                        continue
                     component_followup = extract_followup_data(
                         {component_name: component_value},
                         max_candidates=max_candidates,
                     )
                     if component_followup:
                         followup.update(component_followup)
-                    continue
-                if isinstance(component_value, list) and component_name != 'text_summarizer':
-                    runs = []
-                    for run_value in component_value[:max_candidates]:
-                        run_followup = extract_followup_data(
-                            {component_name: run_value},
-                            max_candidates=max_candidates,
-                        ) or {}
-                        compact_run = run_followup.get(component_name)
-                        if isinstance(compact_run, dict) and compact_run:
-                            runs.append(compact_run)
-                    if runs:
-                        combined = dict(runs[-1])
-                        combined['runs_count'] = len(component_value)
-                        combined['candidates'] = runs
-                        followup[component_name] = combined
-                    continue
-                component_followup = extract_followup_data(
-                    {component_name: component_value},
-                    max_candidates=max_candidates,
-                )
-                if component_followup:
-                    followup.update(component_followup)
-            continue
+                continue
         if key == 'serpapi_search':
             extracted = _extract_serpapi_followup(value, max_candidates)
             if extracted:
@@ -1516,6 +2341,8 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         # List-shaped tool payloads: normalize to dict with results[] (no per-tool registry).
         if isinstance(value, list):
             if not value:
+                if request_context:
+                    followup[key] = {'request': request_context}
                 continue
             if all(isinstance(x, dict) for x in value):
                 if key in _PRESERVE_RUN_LIST_FOR_DEDICATED_BRANCHES:
@@ -1523,39 +2350,53 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 else:
                     value = _collapse_repeated_tool_runs(value) or {'results': value}
             else:
+                if request_context:
+                    followup[key] = {'request': request_context}
                 continue
         if not isinstance(value, dict):
+            if request_context:
+                followup[key] = {'request': request_context}
             continue
 
         payload = value.get('data') if isinstance(value.get('data'), dict) else value
         # Auto-stashed web uploads are also stored under top-level "stash".
         # Keep skipping those lightweight upload refs here, but preserve actual
         # stash tool outputs so later follow-up turns can reference them.
-        if key == 'stash' and value.get('stash_ref') and not any(
-            marker in value for marker in ('ref', 'content', 'mime_type', 'size_bytes', 'name')
+        if key == 'stash' and payload.get('stash_ref') and not any(
+            marker in payload for marker in ('ref', 'content', 'mime_type', 'size_bytes', 'name')
         ):
             continue
-        if key == 'stash' and value.get('stash_ref') and value.get('tool_origin') == 'web_upload':
+        if (
+            key == 'stash'
+            and payload.get('stash_ref')
+            and payload.get('tool_origin') == 'web_upload'
+        ):
             continue
 
         extracted = {}
+        if (
+            request_context
+            and key != 'spotify'
+            and not key.startswith('mcp_')
+        ):
+            extracted['request'] = request_context
 
         # Extract stash_ref from nested 'saved' object (common pattern)
-        if 'saved' in value and isinstance(value['saved'], dict):
-            saved = value['saved']
+        if 'saved' in payload and isinstance(payload['saved'], dict):
+            saved = payload['saved']
             if saved.get('stash_ref'):
                 extracted['stash_ref'] = saved['stash_ref']
             if saved.get('filename'):
                 extracted['filename'] = saved['filename']
 
         # Direct stash_ref on the object
-        if value.get('stash_ref'):
-            extracted['stash_ref'] = value['stash_ref']
+        if payload.get('stash_ref'):
+            extracted['stash_ref'] = payload['stash_ref']
 
         # Some tools use 'ref' instead of 'stash_ref' (e.g. pdf_create, stash)
         # Include it as-is so the LLM sees the actual field name the tool uses
-        if value.get('ref') and 'stash_ref' not in extracted:
-            extracted['ref'] = value['ref']
+        if payload.get('ref') and 'stash_ref' not in extracted:
+            extracted['ref'] = payload['ref']
 
         # Get tool-specific fields
         fields_to_extract = FOLLOWUP_FIELDS.get(key, [])
@@ -1563,16 +2404,21 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             if field in extracted:
                 continue  # Already got it above
             field_value = payload.get(field)
-            if field_value:
-                extracted[field] = field_value
-            elif key in {'release_watch', 'generate_music'} and isinstance(field_value, bool):
-                # False is meaningful for release state and music attributes
-                # such as instrumental/SynthID/duration-estimate flags.
+            if field_value not in (None, '', [], {}):
                 extracted[field] = field_value
 
         if key == 'spotify':
             extracted.update(
                 _extract_spotify_followup(data, payload, max_candidates)
+            )
+        elif key.startswith('mcp_brave_search_'):
+            extracted.update(
+                _extract_brave_search_followup(
+                    data,
+                    key,
+                    value,
+                    max_candidates,
+                )
             )
         elif key == 'mcp_duckduckgo_search':
             extracted.update(
@@ -1592,6 +2438,9 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         # "forget those", "update that birthday memory", or "show me the other one".
         extracted.update(_extract_memory_candidates(payload, max_candidates))
         extracted.update(_extract_memory_mutation_refs(payload, max_candidates))
+        extracted.update(
+            _extract_bounded_content_followup(key, payload, max_candidates)
+        )
 
         if key == 'crypto_chart':
             series = payload.get('series') if isinstance(payload.get('series'), dict) else {}
@@ -1914,55 +2763,12 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                     extracted['runs_count'] = len(runs)
                     extracted['crawled_urls'] = crawled
 
-        # --- Brave MCP search tools: list of runs, each with raw[] + full_text ---
-        # Extract URLs from full_text via regex (fastest, shape-agnostic) so
-        # follow-up turns know which URLs already appeared in prior searches
-        # without carrying multi-KB snippets forward.
-        if key in (
-            'mcp_brave_search_brave_web_search',
-            'mcp_brave_search_brave_news_search',
-            'mcp_brave_search_brave_local_search',
-        ):
-            runs = value.get('results') or []
-            if isinstance(runs, list) and runs:
-                urls_seen: list[str] = []
-                seen_set: set[str] = set()
-                max_urls = max_candidates * 2
-                for run in runs:
-                    if not isinstance(run, dict):
-                        continue
-                    texts = []
-                    full_text = run.get('full_text', '')
-                    if isinstance(full_text, str) and full_text:
-                        texts.append(full_text)
-                    raw = run.get('raw')
-                    if isinstance(raw, list):
-                        for part in raw:
-                            if isinstance(part, dict) and isinstance(part.get('text'), str):
-                                texts.append(part['text'])
-                    for text in texts:
-                        for match in _MCP_URL_RE.findall(text):
-                            match = match.rstrip(').,;')
-                            if match in seen_set:
-                                continue
-                            seen_set.add(match)
-                            urls_seen.append(match)
-                            if len(urls_seen) >= max_urls:
-                                break
-                        if len(urls_seen) >= max_urls:
-                            break
-                    if len(urls_seen) >= max_urls:
-                        break
-                extracted['runs_count'] = len(runs)
-                if urls_seen:
-                    extracted['urls_seen'] = urls_seen
-
         if key == 'brave_llm_context':
             grounding = value.get('grounding') if isinstance(value.get('grounding'), dict) else {}
             sources_meta = value.get('sources') if isinstance(value.get('sources'), dict) else {}
             sources = []
             seen_urls: set[str] = set()
-            source_limit = max(max_candidates, 8)
+            source_limit = max_candidates
 
             def add_source(item):
                 if not isinstance(item, dict):
@@ -1992,12 +2798,15 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                     if isinstance(meta, dict):
                         age = meta.get('age')
                 if isinstance(age, list) and age:
-                    record['age'] = str(age[0])[:120]
+                    record['age'] = _truncate_followup_text(str(age[0]), 120)
                 elif isinstance(age, str) and age.strip():
-                    record['age'] = age.strip()[:120]
+                    record['age'] = _truncate_followup_text(age.strip(), 120)
                 snippets = item.get('snippets')
                 if isinstance(snippets, list) and snippets:
-                    record['snippet'] = str(snippets[0])[:500]
+                    record['snippet'] = _truncate_followup_text(
+                        str(snippets[0]),
+                        500,
+                    )
                 sources.append(record)
 
             for item in grounding.get('generic') or []:
@@ -2022,16 +2831,20 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             not extracted.get('candidates')
             and key not in _DEDICATED_FOLLOWUP_BRANCHES
         ):
-            generic = _extract_generic_followup(payload, max_candidates)
-            for field, value in generic.items():
+            generic = _extract_generic_followup(
+                payload,
+                max_candidates,
+                include_dynamic_scalars=key not in FOLLOWUP_FIELDS,
+            )
+            for field, generic_value in generic.items():
                 if field not in extracted:
-                    extracted[field] = value
+                    extracted[field] = generic_value
 
         # @TOOL_CONFIG: video URL expiration — provider URLs have time limits
         # xAI ~4h, OpenAI 60min
         if key == 'generate_video' and extracted.get('video_url'):
             try:
-                saved = value.get('saved', {})
+                saved = payload.get('saved', {})
                 created_str = saved.get('source_url_created', '')
                 if created_str:
                     created_dt = datetime.fromisoformat(created_str)
@@ -2057,10 +2870,10 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         stash = data['stash']
         uploaded_images = []
         if isinstance(stash.get('uploaded_images'), list):
-            for item in stash['uploaded_images']:
+            for item in stash['uploaded_images'][:max(max_candidates, 6)]:
                 if not isinstance(item, dict) or not item.get('stash_ref'):
                     continue
-                uploaded_images.append({
+                compact_upload = {
                     'stash_ref': item.get('stash_ref'),
                     'space_id': item.get('space_id'),
                     'file_id': item.get('file_id'),
@@ -2076,11 +2889,19 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                     'batch_label': item.get('batch_label'),
                     'vision_analysis_scope': item.get('vision_analysis_scope'),
                     'has_vision_analysis': bool(item.get('has_vision_analysis')),
+                }
+                uploaded_images.append({
+                    field: field_value
+                    for field, field_value in compact_upload.items()
+                    if field_value not in (None, '')
                 })
                 if item.get('vision_analysis'):
-                    uploaded_images[-1]['vision_analysis'] = item.get('vision_analysis')
+                    uploaded_images[-1]['vision_analysis'] = _bounded_content_excerpt(
+                        item.get('vision_analysis'),
+                        max_chars=1200,
+                    )
 
-        followup['uploaded_image'] = {
+        compact_primary = {
             'stash_ref': stash.get('stash_ref'),
             'space_id': stash.get('space_id'),
             'file_id': stash.get('file_id'),
@@ -2090,8 +2911,15 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             'tool_origin': stash.get('tool_origin'),
             'has_vision_analysis': bool(stash.get('has_vision_analysis')),
         }
+        followup['uploaded_image'] = {
+            field: field_value
+            for field, field_value in compact_primary.items()
+            if field_value not in (None, '')
+        }
         if stash.get('vision_analysis'):
-            followup['uploaded_image']['vision_analysis'] = stash.get('vision_analysis')
+            followup['uploaded_image']['vision_analysis'] = _bounded_content_excerpt(
+                stash.get('vision_analysis'),
+            )
         if uploaded_images:
             followup['uploaded_images'] = uploaded_images
 
@@ -2100,12 +2928,20 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         err = data['_error']
         error_info = {
             'tool_failed': err.get('tool_failed'),
-            'message': err.get('message', '')[:500],
+            'message': _truncate_followup_text(
+                str(err.get('message', '')),
+                500,
+            ),
             'retries': err.get('retries', 0),
         }
         # Include tool arguments so LLM can see what was passed when it failed
-        if err.get('tool_args'):
-            error_info['tool_args'] = err['tool_args']
+        if isinstance(err.get('tool_args'), dict):
+            compact_args = _compact_request_arguments(err['tool_args'])
+            if compact_args:
+                error_info['tool_args'] = compact_args
         followup['error'] = error_info
 
-    return followup if followup else None
+    if not followup:
+        return None
+    _annotate_candidate_truncation(followup)
+    return _normalize_strict_json_value(followup)

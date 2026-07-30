@@ -412,8 +412,17 @@ chmod +x skills/mytool.py
 ./bin/sync-tools.py cloud
 ```
 
-## Note 
-If you add a new tool and want to be able to follow up on the result, you need to add it to the `FOLLOWUP_FIELDS` dict in `jarvis-web/server/sockets/chat.py` → `_extract_followup_data()`.
+## Note
+
+Every enabled local tool and every currently discovered MCP tool must have a
+representative result payload in `tests/test_followup_tool_coverage.py`. The
+bounded default extractor handles safe scalar handles and compact result lists.
+Add a dedicated adapter or `FOLLOWUP_FIELDS` entry in
+`jarvis-web/server/services/followup_extractor.py` when a tool returns nested
+artifacts, content bodies, or another shape that needs special compaction.
+Follow-up payloads must round-trip as strict JSON. Shortened text needs an
+explicit `truncated for follow-up context` marker; shortened dictionaries and
+lists need `_followup_truncated` metadata rather than sliced serialized JSON.
 
 Print statements must have in tool *.py files file=sys.stderr so they are not printed to the console.
 

@@ -264,30 +264,34 @@ jarvis
 
 When adding a new tool, don't forget these steps beyond the script + schema:
 
-1. **Follow-up extraction** — If your tool produces artifacts (files, stash refs), entity IDs
-   (memory_id, reminder_id, page_id), or session state (host, container, URL) that a user
-   might reference in follow-up questions, add it to the `FOLLOWUP_FIELDS` dict in
-   `jarvis-web/server/services/followup_extractor.py`.
+1. **Follow-up extraction** — Add a representative result payload for every enabled
+   local tool or currently discovered MCP tool to
+   `tests/test_followup_tool_coverage.py`. The bounded default extractor preserves
+   safe scalar handles and compact candidate lists, so a conventional new tool has
+   useful follow-up context even before it gets a custom adapter.
 
    This is what lets the LLM act on previous results across separate API calls (e.g.,
    "email that PDF" after a `pdf_create`, or "cancel that reminder" after `create_reminder`).
 
-   Prefer identifiers and references over content. If later turns genuinely
-   need source text, keep a deliberately bounded excerpt rather than the raw
-   payload. DuckDuckGo/Fetch retrieval, for example, retains a 2,000-character
-   head/tail excerpt so pagination metadata survives without replaying a full
-   page.
+   Inspect the representative payload rather than assuming its shape. Add a
+   `FOLLOWUP_FIELDS` entry or dedicated adapter in
+   `jarvis-web/server/services/followup_extractor.py` when the default projection
+   misses nested artifacts, content bodies, or tool-specific state. Prefer
+   identifiers and references over content. If later turns genuinely need source
+   text, keep a deliberately bounded excerpt rather than the raw payload.
+   DuckDuckGo/Fetch retrieval, for example, retains a 2,000-character head/tail
+   excerpt so pagination metadata survives without replaying a full page.
 
    ```python
    # In followup_extractor.py:
    'my_new_tool': ['some_id', 'stash_ref', 'relevant_field'],
    ```
 
-   Dedicated extraction branches also live in `followup_extractor.py` for tools with nested
-   or non-standard output shapes, such as `crawl_url`, MCP Brave URLs,
-   DuckDuckGo search candidates, and DuckDuckGo/Fetch page retrieval. The
-   `ChatHandler` methods in `jarvis-web/server/sockets/chat.py` are
-   compatibility delegates.
+   Every saved projection must round-trip as strict JSON. Preserve meaningful
+   `false` and `0` values; shortened text must say `truncated for follow-up
+   context`, while shortened objects and lists use `_followup_truncated` metadata
+   instead of slicing serialized JSON. The `ChatHandler` methods in
+   `jarvis-web/server/sockets/chat.py` remain compatibility delegates.
 
 2. **Memory entry** — If the tool creates a stash artifact, save a memory entry pointing
    to it (see `generate_image.py` for the pattern). This enables cross-session discovery.

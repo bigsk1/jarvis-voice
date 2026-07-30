@@ -1485,6 +1485,10 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - ✅ **Credential-free DuckDuckGo MCP** — Hardened Docker search/fetch defaults,
   provider-scoped error normalization, and compact persisted Web follow-up
   evidence for candidates, URLs, pagination, and bounded page excerpts
+- ✅ **Complete Web tool follow-up coverage** — Every enabled local/current MCP
+  tool has a representative payload test; conventional tools use a bounded
+  fallback, complex tools keep dedicated adapters, and router-facing context
+  remains strict JSON with explicit truncation metadata
 
 **Completed (June 2026) — v2.52.0 mode plumbing and OpenCode hardening:**
 - ✅ **Predictable cloud/local startup** — Shared mode resolution keeps cloud as the default while `./bin/start --local` and per-service launchers load `config/local.env` explicitly
@@ -1949,10 +1953,10 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.55.1 (July 2026)
+**Current Version:** v2.55.2 (July 2026)
 **Status:** Production Ready ✅
-**Latest Features:** v2.54.1 adds Grok 4.5 catalog/default support, xAI
-OAuth/API-key routing clarity, Web xAI quota status, versioned router prompts
-through `v4`, and final Tool RAG schema caps with per-mode Web settings and
-focused Send-to-Canvas narrowing. v2.53 added mode-safe Ollama Cloud,
-request-local cloud/local isolation, and per-mode Intelligence.
+**Latest Features:** v2.55.2 adds complete Web tool follow-up payload coverage,
+bounded fallback extraction, strict-JSON conversation context, and explicit
+truncation metadata. It also includes Grok 4.5 catalog/default support,
+xAI OAuth/API-key routing clarity, versioned router prompts through `v4`, and
+final Tool RAG schema caps with per-mode Web settings.

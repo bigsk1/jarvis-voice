@@ -12,10 +12,42 @@ This module owns the heavy string-building and result-preview logic used to:
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
+
+
+def _json_safe_followup_value(value):
+    """Normalize legacy values so router follow-up blocks are always strict JSON."""
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return value
+        return (
+            f"{value} "
+            "[non-finite number normalized for follow-up context]"
+        )
+    if isinstance(value, dict):
+        return {
+            str(key): _json_safe_followup_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_followup_value(item) for item in value]
+    return str(value)
+
+
+def _followup_json(value) -> str:
+    return json.dumps(
+        _json_safe_followup_value(value),
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+    )
+
 
 class ContextAssembler:
     """Build prompt/context strings while keeping the main orchestrator slimmer."""
@@ -256,7 +288,8 @@ class ContextAssembler:
                 # Keep the display prose as a compact reminder only.
                 cap = min(cap, 1200)
             if len(content) > cap:
-                content = content[:cap] + "... [truncated]"
+                suffix = "... [assistant summary truncated for follow-up context]"
+                content = content[: max(0, cap - len(suffix))].rstrip() + suffix
 
             prefix = "User" if role == "user" else "Jarvis"
             if role == "assistant" and tools_used:
@@ -268,12 +301,15 @@ class ContextAssembler:
 
                     for tool_name, result_data in tool_results.items():
                         if isinstance(result_data, dict):
-                            fields = []
-                            for key, value in result_data.items():
-                                if value:
-                                    fields.append(f"{key}={value}")
+                            fields = {
+                                key: value
+                                for key, value in result_data.items()
+                                if value not in (None, "", [], {})
+                            }
                             if fields:
-                                context_lines.append(f"  └─ {tool_name} data: {', '.join(fields)}")
+                                context_lines.append(
+                                    f"  └─ {tool_name} data: {_followup_json(fields)}"
+                                )
                     if content:
                         context_lines.append(f"  Display summary: {content}")
                 else:

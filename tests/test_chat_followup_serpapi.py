@@ -1177,7 +1177,7 @@ def test_extract_followup_data_generic_fallback_keeps_urlish_candidate_values_in
     assert candidate["href"] == long_href
     assert candidate["image_uri"] == long_image_uri
     assert len(candidate["title"]) <= 300
-    assert candidate["title"].endswith("... [truncated]")
+    assert candidate["title"].endswith("... [truncated for follow-up context]")
 
 
 def test_extract_followup_data_dedicated_branch_skips_generic_candidate_source():

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 import os
 import sys
 import unittest
@@ -203,6 +204,83 @@ class ToolSearchRuntimeTests(unittest.TestCase):
 
         self.assertIn("Selected tool hints: weather, send_email.", context)
         self.assertIn("eligible for direct calls on the next turn", context)
+
+    def test_conversation_context_preserves_false_and_zero_tool_values(self):
+        assembler = ContextAssembler(
+            timezone_obj=ZoneInfo("UTC"),
+            auto_context_window=3,
+            auto_context_minutes=10,
+            safe_iso_to_local_datetime=lambda value: datetime.fromisoformat(value) if value else None,
+            format_age_seconds=lambda value: "0s" if value is not None else "n/a",
+            format_gap_for_prompt=lambda value: "0s" if value is not None else "n/a",
+            conversation_has_text_summary_for_ref=lambda ctx, ref: False,
+            stash_ref_from_result=lambda data, args: "",
+            get_memory_db_fn=lambda: None,
+            now_utc_fn=lambda: datetime.now(ZoneInfo("UTC")),
+            parse_utc_timestamp_fn=lambda value: datetime.fromisoformat(value),
+        )
+
+        context = assembler.format_conversation_context(
+            "What did those checks find?",
+            [
+                {
+                    "role": "assistant",
+                    "content": "The checks completed.",
+                    "tools_used": [
+                        "execute_bash",
+                        "network_tools",
+                        "speaker_volume",
+                        "system_monitor",
+                    ],
+                    "tool_results": {
+                        "execute_bash": {
+                            "exit_code": 0,
+                            "stdout_excerpt": "ok \"quoted\"\nnext line",
+                            "stderr_excerpt": "",
+                        },
+                        "network_tools": {
+                            "packet_loss_percent": 0.0,
+                            "legacy_nan": float("nan"),
+                        },
+                        "speaker_volume": {"volume": 0, "muted": False},
+                        "system_monitor": {
+                            "issue_count": 0,
+                            "issues": [],
+                            "details": {},
+                            "note": None,
+                        },
+                    },
+                }
+            ],
+        )
+
+        serialized_tools = {}
+        for line in context.splitlines():
+            if not line.startswith("  └─ ") or " data: " not in line:
+                continue
+            tool_label, payload = line.removeprefix("  └─ ").split(" data: ", 1)
+            serialized_tools[tool_label] = json.loads(payload)
+
+        self.assertEqual(serialized_tools["execute_bash"]["exit_code"], 0)
+        self.assertEqual(
+            serialized_tools["execute_bash"]["stdout_excerpt"],
+            "ok \"quoted\"\nnext line",
+        )
+        self.assertEqual(
+            serialized_tools["network_tools"]["packet_loss_percent"],
+            0.0,
+        )
+        self.assertIn(
+            "non-finite number normalized for follow-up context",
+            serialized_tools["network_tools"]["legacy_nan"],
+        )
+        self.assertEqual(serialized_tools["speaker_volume"]["volume"], 0)
+        self.assertIs(serialized_tools["speaker_volume"]["muted"], False)
+        self.assertEqual(serialized_tools["system_monitor"]["issue_count"], 0)
+        self.assertNotIn("stderr_excerpt", serialized_tools["execute_bash"])
+        self.assertNotIn("issues", serialized_tools["system_monitor"])
+        self.assertNotIn("details", serialized_tools["system_monitor"])
+        self.assertNotIn("note", serialized_tools["system_monitor"])
 
     def test_turn_context_marks_completed_workflow_recipe_as_authoritative(self):
         assembler = ContextAssembler(

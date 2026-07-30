@@ -715,7 +715,22 @@ User: summarize that transcript
 
 The `[tools: ...]` tag helps the LLM understand what tools were used. The `└─ data:` lines give the LLM actionable references (stash refs, IDs, providers) so follow-up requests like "email that", "edit that video", or "cancel that reminder" work across separate LLM API calls.
 
-**Follow-up data extraction** is defined in `jarvis-web/server/services/followup_extractor.py`. Only identifiers and references are extracted (not content) to keep token cost low. When adding a new tool that produces artifacts, files, URLs, or entity IDs, update `FOLLOWUP_FIELDS` or add a dedicated extraction branch there. `jarvis-web/server/sockets/chat.py` keeps small compatibility delegates for older tests and call sites. See the "New Tool Checklist" in `docs/TOOL_CALLING_SYSTEM.md`.
+**Follow-up data extraction** is defined in
+`jarvis-web/server/services/followup_extractor.py`. It builds a compact,
+strict-JSON projection rather than replaying the raw tool payload. A bounded
+default preserves safe scalar handles and candidate lists for conventional
+results; dedicated adapters retain nested artifacts, source excerpts, and
+tool-specific state where later turns need them. Meaningful `false` and `0`
+values survive, while empty values may be omitted. Intentional text truncation
+is labeled `truncated for follow-up context`, and structural compaction uses
+`_followup_truncated` metadata instead of sliced JSON.
+
+When adding or changing a tool, add its representative payload to
+`tests/test_followup_tool_coverage.py`, then add a `FOLLOWUP_FIELDS` entry or
+dedicated adapter if the default projection is not sufficient.
+`jarvis-web/server/sockets/chat.py` keeps small compatibility delegates for
+older tests and call sites. See the "New Tool Checklist" in
+`docs/TOOL_CALLING_SYSTEM.md`.
 
 See `docs/AUTO_CONTEXT_SYSTEM.md` for full details on CLI/TUI context.
 

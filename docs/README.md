@@ -335,6 +335,12 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 ## 📝 Change Log
 
+**2026-07-29 (v2.55.2):**
+- ✅ **Complete Web tool follow-up context coverage**
+  - Audited every enabled local tool and currently discovered MCP tool against a representative result payload, with regression coverage that fails when the live registries and payload fixtures drift.
+  - Added a bounded default projection for conventional scalar handles and candidate lists while retaining dedicated adapters for nested artifacts, content excerpts, and multi-tool results.
+  - Preserved meaningful `false` and `0` values and switched router-facing history to strict compact JSON; intentional text and structural truncation now carry explicit follow-up markers instead of producing sliced or ambiguous JSON.
+
 **2026-07-27 (unreleased):**
 - ✅ **Per-tool and MCP proxy policy**
   - Added runtime `proxy_policy` metadata with migration-safe `inherit`,
@@ -368,7 +374,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Documented manifest → profile → availability → effective registry → Web/request exclusion → Tool RAG precedence.
   - Clarified that `tool_search` and `workflow` are mandatory candidates only when enabled, and that disabling the workflow meta-tool does not disable direct slash/API/scheduled workflows.
 
-**2026-07-11 (v2.55.1):**
+**2026-07-11 (v2.55.2):**
 - ✅ **Web conversation cleanup**
   - `./bin/cleanup-all` now calls `./bin/cleanup-web-conversations --days 90`.
   - Pinned Web UI conversations are preserved; only old unpinned conversations are eligible for deletion.
@@ -378,7 +384,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Gallery sorting can group images by cached Cloudflare CDN URL status without contacting Cloudflare.
   - Uncached CDN uploads now ask for confirmation; cached URLs still copy directly from `cdn_catalog.json`.
 
-**2026-07-08 (v2.55.1):**
+**2026-07-08 (v2.55.2):**
 - ✅ **Grok 4.5 xAI support**
   - Added `grok-4.5` with `grok-4.5-latest` / `grok-build-latest` aliases, 500K context, text+vision metadata, reasoning support, pricing, rate limits, and regional availability in the shared model catalog.
   - xAI cloud defaults now target Grok 4.5; API-key chat, OAuth-backed Grok CLI chat, usage metadata, prompt-cache affinity, and model prompt overrides all follow the catalog entry instead of hardcoded model IDs.
@@ -392,7 +398,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Ghost tools are prioritized rather than appended outside the budget; cap drops are visible in Tool RAG logs via `dropped_by_cap` and in trace JSON via `final_schema_limit`.
   - Web Settings can tune the per-mode cap, and Send-to-Canvas sends a one-turn cap of `3` to keep export turns focused (`canvas`, `tool_search`, plus one ranked fallback).
 
-**2026-07-04 (v2.55.1):**
+**2026-07-04 (v2.55.2):**
 - ✅ **Latency-aware status updates across Web, CLI, and Wake Word**
   - Status LLM generation moved off the tool critical path; a 250 ms debounce suppresses speech for fast tools and a 1-second deadline selects the static fallback without delaying execution.
   - Status prompts now use a bounded, sanitized snapshot instead of raw tool output or conversation context, with one Status LLM request allowed at a time.
@@ -402,7 +408,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Actual Status LLM calls now use `prompt_type=status_update` in `llm-calls` logs; a separate `status-updates` lifecycle log tracks emitted/discarded/fallback outcomes and Web TTS cache/provider activity without changing conversation usage totals.
   - See: [`STATUS_UPDATES.md`](STATUS_UPDATES.md)
 
-**2026-07-03 (v2.55.1):**
+**2026-07-03 (v2.55.2):**
 - ✅ **xAI Grok CLI OAuth subscription provider**
   - Added `XAI_AUTH_MODE=auto|api_key|oauth`; OAuth uses xAI's documented CLI chat proxy, discovered `grok models` chat IDs, and owner-only `~/.grok/auth.json` credentials without logging or returning tokens.
   - Primary chat, Jarvis function calls, verified `grok-4.5` uploaded-image vision, status summaries, and completion-guard evaluators can use OAuth; xAI server-side search, image/video generation, and TTS remain explicitly API-key-only.
@@ -477,7 +483,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Generated videos in Web chat now use cached ffmpeg first-frame posters, matching the reliable thumbnails already shown by the Canvas video gallery in native and Docker installs.
   - Replaced deprecated eventlet monkey-patching with Flask-SocketIO threading plus `simple-websocket`, eliminating gRPC/subprocess greenlet-finalization tracebacks during Ctrl-C or tmux shutdown while preserving native WebSocket transport.
 
-**2026-06-27 (v2.55.1):**
+**2026-06-27 (v2.55.2):**
 - ✅ **Cloud/local startup mode plumbing**
   - Added one canonical `JARVIS_MODE` resolver with cloud as the backward-compatible default and strict validation for explicit local startup.
   - `./bin/start --local` starts the full local-env stack; the TUI exposes **Start All Services (Local)** and **Start UI Only (Local)** without changing existing cloud actions.
@@ -516,7 +522,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: [`opencode/OPENCODE.md`](opencode/OPENCODE.md), [`opencode/OPENCODE_PLUGINS.md`](opencode/OPENCODE_PLUGINS.md), [`FUTURE_ENHANCEMENTS.md`](FUTURE_ENHANCEMENTS.md)
 
 **2026-06-22:**
-- ✅ **Experimental Docker Web stack (v2.55.1)**
+- ✅ **Experimental Docker Web stack (v2.55.2)**
   - Added root `Dockerfile` and `docker-compose.yml` for the Web UI, API, Canvas, Memory, Intelligence, Docs, and background services using the existing host `data/`, config, logs, and audio bind mounts.
   - Added Docker service DNS/internal API routing with optional Bearer auth, a foreground daemon supervisor, Compose restart policies, crash-safe init locking, and native-watchdog separation.
   - Added the tracked `skills/profiles/docker.json` baseline plus configurable `JARVIS_DOCKER_TOOL_PROFILE`; hybrid installs can use `default` Tool RAG while blocking container-incompatible tools only in Web UI Settings.
@@ -525,7 +531,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: [`docs/docker/README.md`](docker/README.md), [`docs/archive/docker/DOCKER_PLANNING.md`](archive/docker/DOCKER_PLANNING.md)
 
 **2026-05-21:**
-- ✅ **Cross-turn correction learning (v2.55.1)**
+- ✅ **Cross-turn correction learning (v2.55.2)**
   - `USER_CORRECTION_LEARNING_MODE=shadow|apply` — shadow records correction candidates without changing routing; apply downgrades the linked prior experience and can append deduped lessons to `jarvis-learned-lessons.md`.
   - Web UI and wake-word paths pass `experience_id` so turn-2 corrections can reach the prior turn's experience record.
   - Topic-pivot guard skips new questions that look like corrections without an explicit correction cue.
@@ -550,7 +556,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - See: [`docs/XAI_PROVIDER.md`](XAI_PROVIDER.md)
 
 **2026-05-10:**
-- ✅ **OpenAI Responses API routing support (v2.55.1)**
+- ✅ **OpenAI Responses API routing support (v2.55.2)**
   - OpenAI tool-capable router turns can now use `/v1/responses` when `OPENAI_API_MODE=responses` and `OPENAI_RESPONSES_TOOLS=true` are enabled.
   - Optional in-flight continuation supports `previous_response_id` + `function_call_output` for Jarvis client tool loops without making saved Web UI follow-ups depend on provider-side state.
   - Responses tools are converted through a dedicated adapter with non-strict function schemas, usage/cost parsing, cached-input/reasoning token reporting, diagnostics, and safe Chat Completions fallback boundaries.
