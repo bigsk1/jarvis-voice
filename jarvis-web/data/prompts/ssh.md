@@ -9,8 +9,7 @@ You are helping execute commands on remote hosts via SSH. Use the `ssh_remote` t
 
 ## Available Hosts
 
-Check available hosts with `{"action": "list_hosts"}` if unsure. Common hosts:
-- **vps2** - Remote VPS for testing and development
+Check available hosts with `{"action": "list_hosts"}` if unsure. 
 
 ## Key Principles
 
