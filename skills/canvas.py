@@ -35,6 +35,11 @@ _BARE_SOURCE_HOST_PATH = re.compile(
     r"(?<!://)(?<![@\w/\-])((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?:/[^\s\],;)<>\"\']*)?)",
     re.IGNORECASE,
 )
+_SOURCE_LABEL = re.compile(
+    r"^\s*(?:(?:[-*+]|\d+\.)\s+)?(?:#{1,6}\s*)?"
+    r"(?:\*\*|__)?Sources?(?:\*\*|__)?\s*:",
+    re.IGNORECASE,
+)
 
 
 def _clean_base_url(value: str | None, default: str) -> str:
@@ -105,7 +110,7 @@ def _normalize_bare_urls_in_sources_sections(content: str) -> str:
     in_sources = False
     for line in lines:
         stripped = line.strip()
-        if re.search(r"(?i)\bSources?\s*:", line):
+        if _SOURCE_LABEL.match(line):
             in_sources = True
             out.append(fix_line(line))
             continue

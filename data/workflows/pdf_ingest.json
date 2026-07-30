@@ -1,0 +1,222 @@
+{
+  "id": "pdf_ingest",
+  "name": "PDF Knowledge Ingest Workflow",
+  "description": "Turn an attached or remote PDF into durable Jarvis knowledge: securely normalize the source in Stash, extract clean text, create a detailed summary and keywords, write and ingest a structured Intel file, and publish a source-attributed Canvas briefing.",
+  "enabled": true,
+  "version": "1.0",
+  "allow_workflow_tool": true,
+  "disable_server_side_tools": true,
+  "triggers": {
+    "explicit": [
+      "/pdf_ingest"
+    ],
+    "patterns": [
+      "ingest this pdf into memory",
+      "save this pdf to intel",
+      "learn this pdf"
+    ],
+    "keywords": []
+  },
+  "variables": {
+    "url": {
+      "from": "query",
+      "extract": "url",
+      "default": ""
+    },
+    "pdf_stash_ref": {
+      "from": "query",
+      "extract": "stash_ref",
+      "default": ""
+    },
+    "attachment_filename": {
+      "from": "query",
+      "extract": "attachment_filename",
+      "default": "source.pdf"
+    }
+  },
+  "steps": [
+    {
+      "step": 1,
+      "tool": "stash",
+      "action": "save",
+      "condition": {
+        "op": "truthy",
+        "left": "${url}"
+      },
+      "params": {
+        "kind": "url",
+        "url": "${url}",
+        "name": "pdf-ingest-${timestamp}.pdf",
+        "on_conflict": "version",
+        "tags": [
+          "pdf",
+          "ingest",
+          "original",
+          "remote-source"
+        ]
+      },
+      "output_var": "remote_pdf",
+      "extract": {
+        "pdf_stash_ref": "ref",
+        "original_pdf_space_id": "space_id",
+        "original_pdf_file_id": "file_id",
+        "original_pdf_size_bytes": "size_bytes"
+      },
+      "required": true,
+      "description": "Securely download a remote PDF into Stash when a URL was supplied"
+    },
+    {
+      "step": 2,
+      "tool": "pdf_read",
+      "params": {
+        "action": "extract_text",
+        "stash_ref": "${pdf_stash_ref}",
+        "save_to_stash": true,
+        "output_name": "pdf-ingest-${timestamp}-extracted.txt"
+      },
+      "extract": {
+        "pdf_page_count": "page_count",
+        "pdf_character_count": "char_count",
+        "extracted_text_stash_ref": "stash_ref",
+        "extracted_text_space_id": "space_id"
+      },
+      "validation": {
+        "type": "heuristic",
+        "heuristic": {
+          "min_length": 40
+        }
+      },
+      "required": true,
+      "description": "Extract readable text from every PDF page and archive the cleaned text in Stash"
+    },
+    {
+      "step": 3,
+      "tool": "text_summarizer",
+      "params": {
+        "stash_ref": "${extracted_text_stash_ref}",
+        "operation": "summarize",
+        "method": "auto",
+        "num_sentences": 16,
+        "max_words": 900,
+        "summary_style": "detailed",
+        "focus": "Preserve concrete facts, definitions, procedures, specifications, limits, warnings, numeric values, research findings, catalog entries, conclusions, and useful page references. Omit repeated headers, footers, and boilerplate."
+      },
+      "output_var": "summary_result",
+      "extract": {
+        "pdf_summary": "summary",
+        "summary_method": "summary_meta.summary_method",
+        "summary_input_characters": "summary_meta.input_characters",
+        "summary_chunk_limited": "summary_meta.chunk_limited"
+      },
+      "required": true,
+      "description": "Create a compact, detailed summary with factual coverage across the PDF"
+    },
+    {
+      "step": 4,
+      "tool": "text_summarizer",
+      "params": {
+        "stash_ref": "${extracted_text_stash_ref}",
+        "operation": "keywords",
+        "top_n": 25
+      },
+      "output_var": "keywords_result",
+      "extract": {
+        "pdf_keywords": "keywords"
+      },
+      "required": true,
+      "description": "Extract retrieval keywords from the full PDF text"
+    },
+    {
+      "step": 5,
+      "tool": "manage_intel",
+      "action": "create",
+      "params": {
+        "path": "pdf-ingest-${timestamp}.md",
+        "auto_ingest": false
+      },
+      "llm_prompt": "Create a retrieval-friendly Intel Markdown document from this PDF analysis.\n\nOriginal attachment filename: ${attachment_filename}\nOriginal URL (blank for an attached PDF): ${url}\nOriginal PDF stash reference: ${pdf_stash_ref}\nExtracted text stash reference: ${extracted_text_stash_ref}\nPages extracted: ${pdf_page_count}\nCharacters extracted: ${pdf_character_count}\nSummary method: ${summary_method}\nSummary coverage was chunk-limited: ${summary_chunk_limited}\n\nDetailed summary:\n${pdf_summary}\n\nKeywords:\n${pdf_keywords}\n\nReturn raw Markdown only, with this structure:\n\n# [Specific document title inferred from the summary]\nSource: [Use the original URL when present; otherwise use the original PDF stash reference]\nOriginal Filename: ${attachment_filename}\nExtracted Text: ${extracted_text_stash_ref}\nPages: ${pdf_page_count}\nIngested: ${timestamp}\n\n## Overview\nA concise explanation of the document's purpose and scope.\n\n## Important Facts\nUse comprehensive bullets. Prefer `Key: Value` phrasing so facts ingest cleanly. Preserve numbers, units, names, dates, limits, warnings, procedures, and uncertainty exactly as represented in the summary.\n\n## Concepts and Definitions\nDefine the important terms and relationships.\n\n## Procedures or Recommendations\nInclude only procedures or recommendations actually present. If none are present, say so briefly.\n\n## Caveats and Verification Notes\nCapture qualifications, uncertainty, source limitations, whether summary coverage was chunk-limited, and anything that should be checked against the original PDF.\n\n## Keywords\nList the supplied retrieval keywords.\n\n## Source References\nInclude the complete original URL when present, the original PDF stash reference, the extracted-text stash reference, page count, and original filename.\n\nRules:\n1. Do not invent facts or fill gaps from outside knowledge.\n2. Keep important details while removing repetition and boilerplate.\n3. Never output placeholders or a Markdown code fence.\n4. Preserve complete URLs and stash references without shortening them.\n5. Preserve command syntax, filenames, extensions, and placeholders exactly; never convert values such as `file.tar`, `IMAGE:TAG`, or `HOST:PORT` into URLs.",
+      "llm_variable_max_chars": 12000,
+      "llm_output_validation": {
+        "param": "content",
+        "min_length": 300,
+        "required_patterns": [
+          "# ",
+          "source:",
+          "## overview",
+          "## important facts",
+          "## source references"
+        ],
+        "reject_patterns": [
+          "```",
+          "[specific document title",
+          "[use the original url",
+          "https://..."
+        ]
+      },
+      "output_var": "intel_result",
+      "extract": {
+        "intel_file": "file",
+        "intel_size_bytes": "size_bytes"
+      },
+      "required": true,
+      "description": "Create a structured Intel file from the factual PDF summary"
+    },
+    {
+      "step": 6,
+      "tool": "ingest_intel",
+      "params": {
+        "async": false
+      },
+      "output_var": "ingest_result",
+      "extract": {
+        "ingest_changed_files": "new_files",
+        "ingest_fact_count": "total_facts"
+      },
+      "required": true,
+      "description": "Ingest the Intel file now so the processed fact count is known"
+    },
+    {
+      "step": 7,
+      "tool": "canvas",
+      "action": "create",
+      "params": {
+        "title": "Workflows/PDF Ingest/${timestamp}",
+        "tags": [
+          "pdf",
+          "ingest",
+          "intel",
+          "study-notes",
+          "workflow"
+        ]
+      },
+      "llm_prompt": "Create one concise, source-attributed PDF study and fact sheet in raw Markdown.\n\nOriginal filename: ${attachment_filename}\nOriginal URL (blank for an attached PDF): ${url}\nOriginal PDF stash reference: ${pdf_stash_ref}\nExtracted text stash reference: ${extracted_text_stash_ref}\nIntel file: ${intel_file}\nPages: ${pdf_page_count}\nCharacters: ${pdf_character_count}\nFacts processed by ingest: ${ingest_fact_count}\nSummary coverage was chunk-limited: ${summary_chunk_limited}\n\nDetailed summary:\n${pdf_summary}\n\nKeywords:\n${pdf_keywords}\n\nRequired sections:\n# [Specific document title]\n## At a Glance\n## Important Facts\n## Key Terms\n## Procedures or Practical Takeaways\n## Caveats and What to Verify\n## Sources and Artifacts\n\nIn Sources and Artifacts, include every non-blank complete source URL or stash reference plus the Intel filename. State in Caveats when summary coverage was chunk-limited. Do not invent facts. Do not use placeholders, shortened URLs, or Markdown code fences. Preserve command syntax, filenames, extensions, and placeholders exactly in backticks; never convert values such as `file.tar`, `IMAGE:TAG`, or `HOST:PORT` into URLs. Keep the page highly scannable.",
+      "llm_variable_max_chars": 12000,
+      "llm_output_validation": {
+        "param": "content",
+        "min_length": 250,
+        "required_patterns": [
+          "# ",
+          "## at a glance",
+          "## important facts",
+          "## sources and artifacts"
+        ],
+        "reject_patterns": [
+          "```",
+          "[specific document title",
+          "https://...",
+          "<html",
+          "<pre"
+        ]
+      },
+      "output_var": "canvas_result",
+      "extract": {
+        "canvas_page_id": "page_id",
+        "canvas_url": "url"
+      },
+      "required": true,
+      "description": "Publish a concise Canvas briefing with complete source attribution"
+    }
+  ],
+  "success_speech": "PDF ingest complete. I extracted ${pdf_page_count} pages, archived the cleaned text, created ${intel_file}, processed ${ingest_fact_count} facts during ingestion, and published the Canvas briefing.",
+  "abort_speech": "PDF ingest failed at a required step. Attach one readable PDF or provide a direct PDF URL, then retry."
+}

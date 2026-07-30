@@ -105,9 +105,16 @@ Object form:
 "variables": {
   "topic": { "from": "query", "extract": "main_subject" },
   "url": { "from": "query", "extract": "url" },
+  "stash_ref": { "from": "query", "extract": "stash_ref", "default": "" },
+  "attachment_filename": { "from": "query", "extract": "attachment_filename", "default": "" },
   "host": { "from": "query", "extract": "main_subject", "default": "vps2" }
 }
 ```
+
+Query extraction supports `main_subject`, `url`, `stash_ref`,
+`attachment_filename`, `short_title`, and `first_words` (with optional
+`max_words`, default `4`). `stash_ref` accepts a direct `stash://...` value or
+the structured stash reference included with a Web attachment.
 
 Supported **`extract`** values:
 
@@ -115,6 +122,8 @@ Supported **`extract`** values:
 |-----------|---------|
 | `main_subject` | Text after the command (the routed “topic”). |
 | `url` | First URL-like substring in the topic (protocol added if missing). |
+| `stash_ref` | First `stash://space_id/file_id` reference in the topic or structured Web attachment context. |
+| `attachment_filename` | `Filename:` value from a structured Web attachment context block. |
 | `short_title` | Short title derived from topic (may use LLM where configured). |
 | `first_words` | First `max_words` words from topic, joined with `_` (see `max_words`, default 4). |
 

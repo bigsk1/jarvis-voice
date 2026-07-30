@@ -33,8 +33,25 @@ def test_bullet_list_under_sources():
     assert "Next section." in out
 
 
+def test_bullet_source_label_gets_https():
+    raw = "- **Sources:** example.com/reference"
+    assert _normalize_bare_urls_in_sources_sections(raw) == (
+        "- **Sources:** https://example.com/reference"
+    )
+
+
 def test_body_text_outside_sources_not_modified():
     raw = "Visit regmovies.com for showtimes.\n\nSources:\n- ok.com/x\n"
     out = _normalize_bare_urls_in_sources_sections(raw)
     assert "Visit regmovies.com for showtimes." in out
     assert "- https://ok.com/x" in out
+
+
+def test_command_source_placeholder_does_not_start_sources_block():
+    raw = (
+        "## Important Facts\n"
+        "- `docker tag SOURCE:TAG TARGET:TAG`; "
+        "`docker save IMAGE > file.tar`; `docker load < file.tar`.\n"
+    )
+
+    assert _normalize_bare_urls_in_sources_sections(raw) == raw

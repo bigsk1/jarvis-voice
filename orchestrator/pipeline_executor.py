@@ -1214,6 +1214,8 @@ class PipelineExecutor:
         
         Handles variable definitions like:
         - {"from": "query", "extract": "url"}
+        - {"from": "query", "extract": "stash_ref"}
+        - {"from": "query", "extract": "attachment_filename"}
         - {"from": "query", "extract": "main_subject"}
         - {"from": "query", "extract": "main_subject", "default": "vps2"}
         - {"from": "static", "value": "some fixed value"}
@@ -1258,6 +1260,10 @@ class PipelineExecutor:
                 if extract_type == "url":
                     # Extract URL from query
                     extracted_value = self._extract_url_from_text(topic)
+                elif extract_type == "stash_ref":
+                    extracted_value = self._extract_stash_ref_from_text(topic)
+                elif extract_type == "attachment_filename":
+                    extracted_value = self._extract_attachment_filename_from_text(topic)
                 elif extract_type == "main_subject":
                     extracted_value = topic if topic and topic.strip() else None
                 elif extract_type == "short_title":
@@ -1345,10 +1351,18 @@ class PipelineExecutor:
         match = re.search(url_pattern, text)
         if match:
             return match.group(0)
-        
+
+        # Structured Web attachment metadata contains filename extensions such
+        # as "manual.pdf". Do not reinterpret those values as bare domains.
+        domain_text = re.sub(
+            r"(?im)^(?:Filename|MIME type|Size|Stash reference):[^\r\n]*$",
+            "",
+            text or "",
+        )
+
         # Try to find a domain-like pattern (e.g., "bigsk1.com" or "www.example.com")
         domain_pattern = r'(?:www\.)?([a-zA-Z0-9][-a-zA-Z0-9]*\.)+[a-zA-Z]{2,}(?:/[^\s]*)?'
-        match = re.search(domain_pattern, text)
+        match = re.search(domain_pattern, domain_text)
         if match:
             domain = match.group(0)
             # Add https:// if not present
@@ -1357,6 +1371,19 @@ class PipelineExecutor:
             return domain
         
         return None
+
+    def _extract_stash_ref_from_text(self, text: str) -> str | None:
+        """Extract the first stash artifact reference from workflow input."""
+        match = re.search(
+            r"stash://[A-Za-z0-9._-]+/[A-Za-z0-9._-]+",
+            text or "",
+        )
+        return match.group(0) if match else None
+
+    def _extract_attachment_filename_from_text(self, text: str) -> str | None:
+        """Extract the filename from a structured Web attachment context block."""
+        match = re.search(r"(?im)^Filename:\s*(\S[^\r\n]*)$", text or "")
+        return match.group(1).strip() if match else None
     
     def _validate_result(self, result: dict, step: dict, variables: dict) -> bool:
         """Validate step result using configured validation."""

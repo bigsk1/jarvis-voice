@@ -155,6 +155,64 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
             "weather_watch:cold:Portland, Oregon:2026-04-03",
         )
 
+    def test_web_attachment_context_extracts_stash_ref_and_filename(self):
+        topic = """[ATTACHED PDF ARTIFACT]
+Filename: docker-cheatsheet.pdf
+Stash reference: stash://space_web_pdf_123/f_456
+MIME type: application/pdf
+"""
+        workflow = {
+            "id": "pdf_ingest",
+            "variables": {
+                "pdf_stash_ref": {
+                    "from": "query",
+                    "extract": "stash_ref",
+                    "default": "",
+                },
+                "attachment_filename": {
+                    "from": "query",
+                    "extract": "attachment_filename",
+                    "default": "source.pdf",
+                },
+            },
+        }
+
+        variables = self.executor._extract_workflow_variables(
+            f"/pdf_ingest\n\n{topic}",
+            workflow,
+            topic,
+        )
+
+        self.assertEqual(
+            variables["pdf_stash_ref"],
+            "stash://space_web_pdf_123/f_456",
+        )
+        self.assertEqual(
+            variables["attachment_filename"],
+            "docker-cheatsheet.pdf",
+        )
+        self.assertNotIn("url", variables)
+
+    def test_direct_stash_ref_extracts_without_attachment_context(self):
+        topic = "stash://space_manual_123/f_abc"
+        workflow = {
+            "id": "pdf_ingest",
+            "variables": {
+                "pdf_stash_ref": {
+                    "from": "query",
+                    "extract": "stash_ref",
+                },
+            },
+        }
+
+        variables = self.executor._extract_workflow_variables(
+            f"/pdf_ingest {topic}",
+            workflow,
+            topic,
+        )
+
+        self.assertEqual(variables["pdf_stash_ref"], topic)
+
     def test_deterministic_numeric_condition(self):
         variables = {
             "forecast_lows": [34, 41],

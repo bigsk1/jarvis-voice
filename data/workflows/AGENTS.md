@@ -603,7 +603,7 @@ Runtime always includes `query`, `topic`, `content` (alias of `topic`), `workflo
 }
 ```
 
-**`extract` values for `from`: `"query"`:** `main_subject`, `url`, `short_title`, `first_words` (optional `max_words`, default 4).
+**`extract` values for `from`: `"query"`:** `main_subject`, `url`, `stash_ref`, `attachment_filename`, `short_title`, `first_words` (optional `max_words`, default 4). `stash_ref` and `attachment_filename` can consume the structured context added by Web attachments.
 
 **Second-pass transforms** (`transform` + `from` naming another variable): `domain`, `lowercase`, `uppercase`, `strip`.
 
