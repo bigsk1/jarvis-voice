@@ -713,6 +713,40 @@ def test_extract_followup_data_rehydrates_manage_intel_create_from_flat_file(tmp
     assert intel["latest_content_source"] == "jarvis-intel/current_file"
 
 
+def test_extract_followup_data_preserves_semantic_intel_version_identity():
+    handler = _handler()
+    data = {
+        "manage_intel": {
+            "action": "create",
+            "file": "pdf-ingest-docker-commands-cheat-sheet-2.md",
+            "size_bytes": 900,
+            "created": True,
+            "versioned": True,
+            "content": "# Docker Commands Cheat Sheet\n",
+        },
+        "_tool_trace": [
+            {
+                "tool": "manage_intel",
+                "ok": True,
+                "arguments": {
+                    "action": "create",
+                    "filename_from_title": True,
+                    "filename_prefix": "pdf-ingest",
+                    "on_conflict": "version",
+                },
+            }
+        ],
+    }
+
+    result = handler._extract_followup_data(data)
+    intel = result["manage_intel"]
+
+    assert intel["latest_file"] == "pdf-ingest-docker-commands-cheat-sheet-2.md"
+    assert intel["latest_created"] is True
+    assert intel["latest_versioned"] is True
+    assert intel["operations"][0]["versioned"] is True
+
+
 def test_extract_followup_data_generic_fallback_preserves_scalar_handles():
     handler = _handler()
     data = {

@@ -6,7 +6,7 @@ Last updated: 2026-05-21
 
 Jarvis uses a **tiered profile model** — not one blob, not LLM-maintained markdown, not parallel DB trait sliders.
 
-The live contract is the **Profile Card** at the top of `jarvis-intel/user_profile.md`. Code reads it directly and injects it at **user-facing answer boundaries**:
+The live contract is the **Profile Card** at the top of `jarvis-intel/user-profile.md`. Code reads it directly and injects it at **user-facing answer boundaries**:
 
 - **Router** — direct-text answers plus lightweight tool-behavior nudges from profile constraints
 - **ResponseFormatter** — synthesis passes (casual/auto condensation, multi-turn summaries, duplicate-prevented synthesis)
@@ -42,8 +42,8 @@ When guidance conflicts, **higher tier wins**:
 |------|--------|----------|-----------|
 | **0 — Runtime session** | env / web UI | `LLM_PROVIDER`, cloud vs local, `JARVIS_RESPONSE_STYLE`, model prompt overrides | Everything below |
 | **1 — Explicit pinned prefs** | `remember` + auto-memory always-include | "call me sir", addressing, discrete prefs | Profile card, semantic memory |
-| **2 — Profile Card** | `user_profile.md` → `## Profile Card` | execution style, constraints, output contract | Learned lessons, semantic recall |
-| **3 — On-demand depth** | semantic / tools | full `user_profile.md` reference, `network.md`, `jarvis-learned-lessons.md`, `jarvis-tool-knowledge.md` | — |
+| **2 — Profile Card** | `user-profile.md` → `## Profile Card` | execution style, constraints, output contract | Learned lessons, semantic recall |
+| **3 — On-demand depth** | semantic / tools | full `user-profile.md` reference, `network.md`, `jarvis-learned-lessons.md`, `jarvis-tool-knowledge.md` | — |
 
 **Rules:**
 - Profile Card must **not** hardcode "use xAI" or "use Ollama" — say *use configured provider*.
@@ -72,12 +72,12 @@ The Profile Card is a **short, human-edited lens**: who you are to Jarvis, how t
 
 ### Location
 
-`jarvis-intel/user_profile.md` → section `## Profile Card` (~15 lines)
+`jarvis-intel/user-profile.md` → section `## Profile Card` (~15 lines)
 
 **Fresh install:** file is gitignored. Copy the tracked starter and edit:
 
 ```bash
-cp jarvis-intel/user_profile.md.example jarvis-intel/user_profile.md
+cp jarvis-intel/user-profile.md.example jarvis-intel/user-profile.md
 ```
 
 No file → no error; injection is skipped until you create it. The `.example` template is not ingested (`ingest_intel` only picks up `*.md` and `*.txt`).
@@ -106,7 +106,7 @@ Hard isolation (separate final-answer LLM call with zero profile on tool turns) 
 | Who | How |
 |-----|-----|
 | **You** | Edit `## Profile Card` → ingest intel |
-| **You** | "update my profile with X" → `manage_intel` on `user_profile.md` |
+| **You** | "update my profile with X" → `manage_intel` on `user-profile.md` |
 | **Jarvis** | Append **`jarvis-learned-lessons.md`** only (apply-mode corrections, tool discoveries) |
 | **Jarvis** | Suggest profile edits — **never** auto-edit Profile Card |
 
@@ -162,7 +162,7 @@ USER_CORRECTION_APPEND_LESSONS=true    # apply-mode lesson append only
 
 ## What we deliberately do NOT do
 
-- LLM-maintained `user_profile.md` without explicit request
+- LLM-maintained `user-profile.md` without explicit request
 - Parallel `user_model` scalar traits duplicating `JARVIS_RESPONSE_STYLE`
 - Always injecting the full 160-line profile (reference stays Tier 3)
 - Provider-specific stack in Profile Card (runtime + tool-knowledge instead)

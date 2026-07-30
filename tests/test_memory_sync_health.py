@@ -140,20 +140,20 @@ class MemorySyncHealthTests(unittest.TestCase):
             _init_db(cloud_db)
             _init_db(local_db)
 
-            file_path = intel_dir / "user_profile.md"
+            file_path = intel_dir / "user-profile.md"
             file_path.write_text("hello world\n", encoding="utf-8")
             actual_hash = self.module._md5_file(file_path)
 
             _insert_row(
                 cloud_db,
                 category="system",
-                key="intel_hash_user_profile.md",
+                key="intel_hash_user-profile.md",
                 value=actual_hash,
             )
             _insert_row(
                 local_db,
                 category="system",
-                key="intel_hash_user_profile.md",
+                key="intel_hash_user-profile.md",
                 value="deadbeef",
             )
 
@@ -161,7 +161,7 @@ class MemorySyncHealthTests(unittest.TestCase):
 
             self.assertEqual(len(report["intel"]["mismatches"]), 1)
             mismatch = report["intel"]["mismatches"][0]
-            self.assertEqual(mismatch["filename"], "user_profile.md")
+            self.assertEqual(mismatch["filename"], "user-profile.md")
             self.assertEqual(mismatch["disk_hash"], actual_hash)
             self.assertEqual(mismatch["local_hash"], "deadbeef")
 

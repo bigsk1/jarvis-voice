@@ -25,10 +25,12 @@ from manage_intel import (
     auto_ingest,
     create_intel_file,
     delete_intel_file,
+    filename_from_markdown_title,
     format_ingest_summary,
     replace_intel_content,
     search_intel_file,
     update_intel_file,
+    validate_create_filename,
 )
 
 
@@ -40,6 +42,43 @@ def _fake_export_environment(mode):
 
 
 class TestIntelContentNormalization(unittest.TestCase):
+    def test_create_filename_requires_lowercase_kebab_case(self) -> None:
+        validate_create_filename("network-config.md")
+        validate_create_filename("pdf-ingest-docker-cli-2.md")
+
+        for invalid in (
+            "network_config.md",
+            "Network-Config.md",
+            "network config.md",
+            "network.config.md",
+        ):
+            with self.subTest(invalid=invalid):
+                with self.assertRaisesRegex(ValueError, "lowercase kebab-case"):
+                    validate_create_filename(invalid)
+
+    def test_filename_from_markdown_title_is_semantic_and_stable(self) -> None:
+        filename = filename_from_markdown_title(
+            "# Docker CLI Cheat Sheet\n\nIngested: 2026-07-30",
+            prefix="pdf-ingest",
+        )
+
+        self.assertEqual(filename, "pdf-ingest-docker-cli-cheat-sheet.md")
+
+    def test_create_can_version_a_semantic_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel_dir = Path(tmpdir)
+            create_intel_file(intel_dir, "pdf-ingest-docker-cli.md", "# First")
+
+            result = create_intel_file(
+                intel_dir,
+                "pdf-ingest-docker-cli.md",
+                "# Updated",
+                on_conflict="version",
+            )
+
+            self.assertEqual(result["file"], "pdf-ingest-docker-cli-2.md")
+            self.assertTrue(result["versioned"])
+
     def test_delete_intel_file_treats_underscore_as_literal(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             intel_dir = Path(tmpdir)
@@ -139,7 +178,7 @@ class TestIntelContentNormalization(unittest.TestCase):
             "**When to use supa_crawl_knowledge:** Use it for crawled sites."
         )
 
-        facts = extract_facts_from_content(content, "supa_crawl_knowledge.md")
+        facts = extract_facts_from_content(content, "supa-crawl-knowledge.md")
 
         self.assertGreaterEqual(len(facts), 3)
         values = [fact["value"] for fact in facts]

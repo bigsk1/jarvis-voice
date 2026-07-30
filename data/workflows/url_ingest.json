@@ -59,7 +59,7 @@
       "params": {
         "kind": "text",
         "text": "${article.content}",
-        "name": "ingest_${timestamp}.md",
+        "name": "url-ingest-${filename_timestamp}.md",
         "tags": ["ingest", "source", "${url_domain}"]
       },
       "output_var": "stash_result",
@@ -91,10 +91,29 @@
       "tool": "manage_intel",
       "action": "create",
       "params": {
-        "path": "url-ingest-${url_domain}-${timestamp}.md",
-        "auto_ingest": false
+        "auto_ingest": false,
+        "filename_from_title": true,
+        "filename_prefix": "url-ingest",
+        "on_conflict": "version"
       },
       "llm_prompt": "Create an intel file for Jarvis's knowledge base from this URL content.\n\nSource URL: ${article.url}\nPage Title: ${article.title}\nStash Reference: ${stash_ref}\nExtracted Keywords: ${keywords}\nUser Notes: ${user_notes}\n\nFull Content:\n${article.content}\n\n---\n\nGenerate an intel file in this EXACT format for optimal ingestion:\n\n# ${article.title}\nSource: ${article.url}\nStash: ${stash_ref}\nIngested: ${timestamp}\n\n## Overview\n[2-3 sentence summary of what this documentation/page covers]\n\n## Key Concepts\n- [Concept 1]: [Brief explanation]\n- [Concept 2]: [Brief explanation]\n- [Continue for all major concepts, definitions, features]\n\n## Important Facts\n- [Fact 1 as key: value or descriptive bullet]\n- [Fact 2]\n- [Continue for all notable facts, limits, specifications]\n\n## Usage/Examples\n- [If applicable, key usage patterns or examples]\n\n## Related Topics\n- [Keywords and related concepts for search]\n\nIMPORTANT FORMATTING RULES:\n1. Use `Key: Value` format where possible (enables structured extraction)\n2. Use bullet points with `-` for lists\n3. Be comprehensive - extract ALL important facts, concepts, limits, specifications\n4. Keep values concise but complete\n5. Do NOT wrap in markdown code blocks - return raw content only",
+      "llm_output_validation": {
+        "param": "content",
+        "min_length": 200,
+        "required_patterns": [
+          "# ",
+          "source:",
+          "## overview",
+          "## key concepts",
+          "## important facts"
+        ],
+        "reject_patterns": [
+          "```",
+          "[2-3 sentence summary",
+          "[concept 1]",
+          "[fact 1"
+        ]
+      },
       "required": true,
       "description": "Create intel file with structured facts"
     },

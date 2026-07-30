@@ -46,7 +46,7 @@
       "params": {
         "kind": "url",
         "url": "${url}",
-        "name": "pdf-ingest-${timestamp}.pdf",
+        "name": "pdf-ingest-${filename_timestamp}.pdf",
         "on_conflict": "version",
         "tags": [
           "pdf",
@@ -72,7 +72,7 @@
         "action": "extract_text",
         "stash_ref": "${pdf_stash_ref}",
         "save_to_stash": true,
-        "output_name": "pdf-ingest-${timestamp}-extracted.txt"
+        "output_name": "pdf-ingest-${filename_timestamp}-extracted.txt"
       },
       "extract": {
         "pdf_page_count": "page_count",
@@ -131,10 +131,12 @@
       "tool": "manage_intel",
       "action": "create",
       "params": {
-        "path": "pdf-ingest-${timestamp}.md",
-        "auto_ingest": false
+        "auto_ingest": false,
+        "filename_from_title": true,
+        "filename_prefix": "pdf-ingest",
+        "on_conflict": "version"
       },
-      "llm_prompt": "Create a retrieval-friendly Intel Markdown document from this PDF analysis.\n\nOriginal attachment filename: ${attachment_filename}\nOriginal URL (blank for an attached PDF): ${url}\nOriginal PDF stash reference: ${pdf_stash_ref}\nExtracted text stash reference: ${extracted_text_stash_ref}\nPages extracted: ${pdf_page_count}\nCharacters extracted: ${pdf_character_count}\nSummary method: ${summary_method}\nSummary coverage was chunk-limited: ${summary_chunk_limited}\n\nDetailed summary:\n${pdf_summary}\n\nKeywords:\n${pdf_keywords}\n\nReturn raw Markdown only, with this structure:\n\n# [Specific document title inferred from the summary]\nSource: [Use the original URL when present; otherwise use the original PDF stash reference]\nOriginal Filename: ${attachment_filename}\nExtracted Text: ${extracted_text_stash_ref}\nPages: ${pdf_page_count}\nIngested: ${timestamp}\n\n## Overview\nA concise explanation of the document's purpose and scope.\n\n## Important Facts\nUse comprehensive bullets. Prefer `Key: Value` phrasing so facts ingest cleanly. Preserve numbers, units, names, dates, limits, warnings, procedures, and uncertainty exactly as represented in the summary.\n\n## Concepts and Definitions\nDefine the important terms and relationships.\n\n## Procedures or Recommendations\nInclude only procedures or recommendations actually present. If none are present, say so briefly.\n\n## Caveats and Verification Notes\nCapture qualifications, uncertainty, source limitations, whether summary coverage was chunk-limited, and anything that should be checked against the original PDF.\n\n## Keywords\nList the supplied retrieval keywords.\n\n## Source References\nInclude the complete original URL when present, the original PDF stash reference, the extracted-text stash reference, page count, and original filename.\n\nRules:\n1. Do not invent facts or fill gaps from outside knowledge.\n2. Keep important details while removing repetition and boilerplate.\n3. Never output placeholders or a Markdown code fence.\n4. Preserve complete URLs and stash references without shortening them.\n5. Preserve command syntax, filenames, extensions, and placeholders exactly; never convert values such as `file.tar`, `IMAGE:TAG`, or `HOST:PORT` into URLs.",
+      "llm_prompt": "Create a retrieval-friendly Intel Markdown document from this PDF analysis.\n\nOriginal attachment filename: ${attachment_filename}\nOriginal URL (blank for an attached PDF): ${url}\nOriginal PDF stash reference: ${pdf_stash_ref}\nExtracted text stash reference: ${extracted_text_stash_ref}\nPages extracted: ${pdf_page_count}\nCharacters extracted: ${pdf_character_count}\nSummary method: ${summary_method}\nSummary coverage was chunk-limited: ${summary_chunk_limited}\n\nDetailed summary:\n${pdf_summary}\n\nKeywords:\n${pdf_keywords}\n\nReturn raw Markdown only, with this structure:\n\n# [Specific, stable document title inferred from the summary]\nSource: [Use the original URL when present; otherwise use the original PDF stash reference]\nOriginal Filename: ${attachment_filename}\nExtracted Text: ${extracted_text_stash_ref}\nPages: ${pdf_page_count}\nIngested: ${timestamp}\n\n## Overview\nA concise explanation of the document's purpose and scope.\n\n## Important Facts\nUse comprehensive bullets. Prefer `Key: Value` phrasing so facts ingest cleanly. Preserve numbers, units, names, dates, limits, warnings, procedures, and uncertainty exactly as represented in the summary.\n\n## Concepts and Definitions\nDefine the important terms and relationships.\n\n## Procedures or Recommendations\nInclude only procedures or recommendations actually present. If none are present, say so briefly.\n\n## Caveats and Verification Notes\nCapture qualifications, uncertainty, source limitations, whether summary coverage was chunk-limited, and anything that should be checked against the original PDF.\n\n## Keywords\nList the supplied retrieval keywords.\n\n## Source References\nInclude the complete original URL when present, the original PDF stash reference, the extracted-text stash reference, page count, and original filename.\n\nRules:\n1. Do not invent facts or fill gaps from outside knowledge.\n2. Keep important details while removing repetition and boilerplate.\n3. The level-one title must identify the actual subject and stay useful if this Intel file is updated later; do not put an ingestion date or generic label such as `PDF Ingest` in it.\n4. Never output placeholders or a Markdown code fence.\n5. Preserve complete URLs and stash references without shortening them.\n6. Preserve command syntax, filenames, extensions, and placeholders exactly; never convert values such as `file.tar`, `IMAGE:TAG`, or `HOST:PORT` into URLs.",
       "llm_variable_max_chars": 12000,
       "llm_output_validation": {
         "param": "content",

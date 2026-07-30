@@ -24,7 +24,7 @@ class IntelFile(BaseModel):
 
 class IntelCreate(BaseModel):
     """Create a new intel file"""
-    filename: str = Field(..., description="Filename (e.g., 'my-notes.md'). Must end in .md or .txt")
+    filename: str = Field(..., description="Lowercase kebab-case filename (e.g., 'my-notes.md'). Must end in .md or .txt")
     content: str = Field(..., description="File content (markdown or plain text)")
     auto_ingest: bool = Field(False, description="If true, trigger ingestion after creating")
     

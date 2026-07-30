@@ -900,6 +900,17 @@ body {
   margin-bottom: var(--space-xs);
 }
 
+.form-help {
+  margin-top: var(--space-xs);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.form-help code {
+  color: var(--text-secondary);
+}
+
 .intel-form-label-row {
   display: flex;
   align-items: center;

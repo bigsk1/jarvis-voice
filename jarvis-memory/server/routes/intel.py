@@ -18,6 +18,7 @@ if str(SKILLS_PATH) not in sys.path:
 
 from manage_intel import auto_ingest, format_ingest_summary
 from intel_content import normalize_intel_document_eof
+from intel_filename import validate_create_filename
 
 
 @intel_bp.route('/files', methods=['GET'])
@@ -94,6 +95,14 @@ def update_file(filename: str):
         return jsonify({'ok': False, 'error': 'Invalid filename'}), 400
     
     filepath = INTEL_PATH / filename
+
+    # Preserve update access to existing legacy files, but do not let PUT act
+    # as a back door for creating a new noncanonical filename.
+    if not filepath.exists():
+        try:
+            validate_create_filename(filename)
+        except ValueError as exc:
+            return jsonify({'ok': False, 'error': str(exc)}), 400
     
     if filepath.suffix.lower() not in ['.md', '.txt']:
         return jsonify({'ok': False, 'error': 'Only .md and .txt files allowed'}), 400
@@ -136,6 +145,11 @@ def create_file():
     # Security: prevent path traversal
     if '..' in filename or '/' in filename or '\\' in filename:
         return jsonify({'ok': False, 'error': 'Invalid filename'}), 400
+
+    try:
+        validate_create_filename(filename)
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
     
     filepath = INTEL_PATH / filename
     
@@ -208,6 +222,11 @@ def upload_file():
     
     # Handle overwrite option
     overwrite = request.form.get('overwrite', 'false').lower() == 'true'
+    if not filepath.exists():
+        try:
+            validate_create_filename(filename)
+        except ValueError as exc:
+            return jsonify({'ok': False, 'error': str(exc)}), 400
     if filepath.exists() and not overwrite:
         return jsonify({
             'ok': False,

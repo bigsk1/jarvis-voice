@@ -14,10 +14,13 @@ sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
 from memory_db import MemoryDB
 from user_profile import (
+    DEFAULT_PROFILE_REL_PATH,
+    LEGACY_PROFILE_REL_PATH,
     PROFILE_CARD_CACHE_KEY,
     ROUTER_PROFILE_BOUNDARY,
     append_profile_card_for_router_direct_answer,
     append_user_profile_card_to_prompt,
+    default_profile_path,
     extract_profile_card,
     get_cached_profile_card,
     load_profile_card_from_disk,
@@ -52,7 +55,7 @@ class UserProfileTests(unittest.TestCase):
 
     def test_load_profile_card_from_disk(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "user_profile.md"
+            path = Path(tmpdir) / "user-profile.md"
             path.write_text(SAMPLE_PROFILE, encoding="utf-8")
             card, digest, mtime = load_profile_card_from_disk(path)
             self.assertIn("Operator", card)
@@ -62,7 +65,7 @@ class UserProfileTests(unittest.TestCase):
     def test_cached_profile_card_uses_user_model_cache(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "memory.db"
-            profile_path = Path(tmpdir) / "user_profile.md"
+            profile_path = Path(tmpdir) / "user-profile.md"
             profile_path.write_text(SAMPLE_PROFILE, encoding="utf-8")
 
             db = MemoryDB(str(db_path))
@@ -78,6 +81,55 @@ class UserProfileTests(unittest.TestCase):
 
                     card2 = get_cached_profile_card(force_refresh=False, db=db)
                     self.assertEqual(card1, card2)
+            finally:
+                db.close()
+
+    def test_default_profile_path_prefers_canonical_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            canonical = root / DEFAULT_PROFILE_REL_PATH
+            legacy = root / LEGACY_PROFILE_REL_PATH
+            canonical.parent.mkdir()
+            canonical.write_text(SAMPLE_PROFILE, encoding="utf-8")
+            legacy.write_text("legacy", encoding="utf-8")
+
+            self.assertEqual(default_profile_path(root), canonical)
+
+    def test_default_profile_path_falls_back_to_legacy_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            legacy = root / LEGACY_PROFILE_REL_PATH
+            legacy.parent.mkdir()
+            legacy.write_text(SAMPLE_PROFILE, encoding="utf-8")
+
+            self.assertEqual(default_profile_path(root), legacy)
+
+    def test_cache_metadata_refreshes_when_profile_path_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            db_path = root / "memory.db"
+            legacy = root / "user_profile.md"
+            canonical = root / "user-profile.md"
+            legacy.write_text(SAMPLE_PROFILE, encoding="utf-8")
+            canonical.write_text(SAMPLE_PROFILE, encoding="utf-8")
+
+            db = MemoryDB(str(db_path))
+            try:
+                with (
+                    patch(
+                        "user_profile.default_profile_path",
+                        side_effect=[legacy, canonical],
+                    ),
+                    patch("user_profile._profile_card_enabled", return_value=True),
+                ):
+                    get_cached_profile_card(force_refresh=True, db=db)
+                    get_cached_profile_card(force_refresh=False, db=db)
+
+                cached = db.get_user_model_trait(PROFILE_CARD_CACHE_KEY)
+                metadata = cached.get("metadata") or {}
+                self.assertEqual(metadata["source_path"], str(canonical))
+                self.assertEqual(metadata["compiled_from"], "user-profile.md")
+                self.assertEqual(cached["source"], "user-profile.md")
             finally:
                 db.close()
 

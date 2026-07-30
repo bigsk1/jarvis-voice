@@ -53,7 +53,10 @@ def extract_facts_from_content(content: str, filename: str) -> list[dict[str, st
     facts = []
     lines = content.split('\n')
     
-    current_section = filename.replace('.txt', '').replace('.md', '').replace('_', ' ').title()
+    current_section = (
+        filename.replace('.txt', '').replace('.md', '')
+        .replace('_', ' ').replace('-', ' ').title()
+    )
     
     for line in lines:
         line = line.strip()
@@ -254,7 +257,10 @@ def main():
             # If no structured facts extracted, store full content as single fact
             # (handles plain text like "hello world" or unstructured notes)
             if not facts and content.strip():
-                section = filepath.name.replace('.txt', '').replace('.md', '').replace('_', ' ').title()
+                section = (
+                    filepath.name.replace('.txt', '').replace('.md', '')
+                    .replace('_', ' ').replace('-', ' ').title()
+                )
                 facts = [{
                     "key": f"{section} content",
                     "value": content.strip(),

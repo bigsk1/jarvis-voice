@@ -42,6 +42,7 @@ api_bp = Blueprint('api', __name__, url_prefix='/api')
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 sys.path.insert(0, str(JARVIS_ROOT / 'orchestrator'))
 from model_catalog import get_provider_fallback_model
+from intel_filename import validate_create_filename
 from status_activity_logger import log_status_event
 from tool_sync_status import read_tool_sync_status
 from vision_multimodal import max_vision_images
@@ -1742,6 +1743,11 @@ def upload_intel_file():
         return jsonify({'ok': False, 'error': f'Could not read file: {e}'}), 400
     INTEL_DIR.mkdir(parents=True, exist_ok=True)
     filepath = INTEL_DIR / filename
+    if not filepath.exists():
+        try:
+            validate_create_filename(filename)
+        except ValueError as e:
+            return jsonify({'ok': False, 'error': str(e)}), 400
     try:
         filepath.write_text(content, encoding='utf-8')
     except Exception as e:

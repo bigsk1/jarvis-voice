@@ -1222,12 +1222,14 @@ class PipelineExecutor:
         - {"from": "env", "key": "JARVIS_DEFAULT_LOCATION", "default": "Hillsboro, Oregon"}
         - {"from": "url", "transform": "domain"}  # Derive from another variable
         """
+        now = datetime.now()
         variables = {
             "query": query,
             "topic": topic,
             "content": topic,  # Alias for workflows that expect 'content'
             "workflow_id": workflow.get("id", "unknown"),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": now.isoformat(),
+            "filename_timestamp": now.strftime("%Y%m%d-%H%M%S"),
         }
         
         var_defs = workflow.get("variables", {})
@@ -1328,6 +1330,8 @@ class PipelineExecutor:
             return value.upper()
         elif transform == "strip":
             return value.strip()
+        elif transform == "kebab":
+            return re.sub(r"[^a-z0-9]+", "-", str(value).lower()).strip("-") or None
         
         return value
     

@@ -54,7 +54,7 @@ Get intel folder statistics including file counts, sizes, and ingestion status.
   "total_size_human": "14.9 KB",
   "total_facts_ingested": 156,
   "files_pending_ingest": 1,
-  "newest_file": "url-ingest-docs.x.ai-2026-01-25.md",
+  "newest_file": "url-ingest-xai-api-documentation.md",
   "oldest_file": "network.md"
 }
 ```
@@ -89,7 +89,7 @@ List all intel files in the folder.
       "fact_count": 12
     },
     {
-      "filename": "user_profile.md",
+      "filename": "user-profile.md",
       "size_bytes": 5782,
       "modified_at": "2026-01-22T20:52:00",
       "ingested": true,
@@ -107,7 +107,8 @@ List all intel files in the folder.
 POST /api/intel
 ```
 
-Create a new intel file.
+Create a new Intel file. New filenames must use lowercase kebab-case; existing
+legacy filenames remain readable and updateable for migration.
 
 **Request Body:**
 ```json
@@ -120,7 +121,7 @@ Create a new intel file.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `filename` | string | yes | Filename ending in `.md` or `.txt` |
+| `filename` | string | yes | Lowercase kebab-case filename ending in `.md` or `.txt` |
 | `content` | string | yes | File content (markdown recommended) |
 | `auto_ingest` | bool | no | Trigger background ingestion after creating |
 

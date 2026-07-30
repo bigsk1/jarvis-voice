@@ -3,7 +3,9 @@
 import asyncio
 from unittest.mock import patch
 
-from api.models.intel import IntelUpdate
+from fastapi import HTTPException
+
+from api.models.intel import IntelCreate, IntelUpdate
 from api.routes import intel as intel_routes
 from lib.memory_db import MemoryDB
 
@@ -43,6 +45,24 @@ def test_file_info_treats_underscore_as_literal(tmp_path):
         assert info.fact_count == 1
     finally:
         db.close()
+
+
+def test_create_rejects_new_legacy_filename(tmp_path, monkeypatch):
+    intel_dir = tmp_path / "jarvis-intel"
+    intel_dir.mkdir()
+    monkeypatch.setattr(intel_routes, "INTEL_DIR", intel_dir)
+
+    try:
+        asyncio.run(
+            intel_routes.create_intel_file(
+                IntelCreate(filename="new_intel.md", content="# New Intel")
+            )
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert "lowercase kebab-case" in exc.detail
+    else:
+        raise AssertionError("legacy filename was accepted")
 
 
 def test_delete_removes_only_exact_source_and_current_hash(tmp_path, monkeypatch):

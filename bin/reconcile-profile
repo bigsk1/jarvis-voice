@@ -3,7 +3,7 @@
 Suggest profile-card consolidations for human review (no auto-write).
 
 Reads:
-- ## Profile Card from jarvis-intel/user_profile.md
+- ## Profile Card from jarvis-intel/user-profile.md
 - Recent jarvis-learned-lessons.md entries
 - High-importance profile/preference rows from knowledge_base
 
@@ -21,7 +21,7 @@ Usage (run with -h / --help for full flags):
       Emit structured JSON (profile_card, source_hash, full report text).
 
   ./bin/reconcile-profile > /tmp/profile-reconcile.md
-      Save report for offline review before editing user_profile.md.
+      Save report for offline review before editing user-profile.md.
 
 After editing Profile Card, ingest intel so memory stays in sync:
   ./skills/ingest_intel.py '{"path":"jarvis-intel"}'
@@ -94,7 +94,7 @@ def build_reconcile_report(limit: int = 10) -> str:
         "## Current Profile Card",
         "",
         "```text",
-        card_text or "(empty — add ## Profile Card to user_profile.md)",
+        card_text or "(empty — add ## Profile Card to user-profile.md)",
         "```",
         "",
         "## Recent learned-lessons tail (candidates to promote into card or tool-knowledge)",

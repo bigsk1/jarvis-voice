@@ -537,9 +537,9 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Topic-pivot guard skips new questions that look like corrections without an explicit correction cue.
   - See: [`docs/FUTURE_ENHANCEMENTS.md`](FUTURE_ENHANCEMENTS.md), [`docs/USER_PROFILE_SYSTEM.md`](USER_PROFILE_SYSTEM.md)
 - ✅ **Profile Card + `user_model` cache**
-  - `jarvis-intel/user_profile.md` → `## Profile Card` injects a compact operator lens at router and synthesis boundaries without affecting Tool RAG embeddings.
+  - `jarvis-intel/user-profile.md` → `## Profile Card` injects a compact operator lens at router and synthesis boundaries without affecting Tool RAG embeddings.
   - Compiled card text is cached in `user_model.profile_card_cache` (hash + timestamp); `bin/reconcile-profile` prints drift vs memories/lessons for human review.
-  - Git-tracked `jarvis-intel/user_profile.md.example` for first install; copy and edit before ingest.
+  - Git-tracked `jarvis-intel/user-profile.md.example` for first install; copy and edit before ingest.
   - See: [`docs/USER_PROFILE_SYSTEM.md`](USER_PROFILE_SYSTEM.md), [`docs/INSTALL_GUIDE.md`](INSTALL_GUIDE.md)
 - ✅ **Memory type auto-inject filtering**
   - Every `remember()` stamps `memory_type` metadata (`preference`, `fact`, `artifact`, `transient`) with confidence and reason.

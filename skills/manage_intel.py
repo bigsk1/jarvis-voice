@@ -25,6 +25,10 @@ import subprocess
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from intel_content import normalize_intel_content
 from config_loader import export_config_environment
+from intel_filename import (
+    filename_from_markdown_title,
+    validate_create_filename,
+)
 from memory_db import MemoryDB
 from time_utils import now_local
 
@@ -109,18 +113,36 @@ def validate_path(path: str, intel_dir: Path) -> Path:
     return full_path
 
 
-def create_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any]:
+def create_intel_file(
+    intel_dir: Path,
+    path: str,
+    content: str,
+    on_conflict: str = "error",
+) -> dict[str, Any]:
     """Create a new intel file."""
     file_path = validate_path(path, intel_dir)
     content, content_normalized = normalize_intel_content(content)
-    
+
     # Add .md extension if missing
     if not file_path.suffix:
         file_path = file_path.with_suffix('.md')
-    
+    validate_create_filename(file_path.name)
+    requested_file_path = file_path
+
+    if on_conflict not in {"error", "version"}:
+        raise ValueError("'on_conflict' must be 'error' or 'version'")
+
     # Check if file already exists
     if file_path.exists():
-        raise ValueError(f"File already exists: {path}. Use 'update' action instead.")
+        if on_conflict == "error":
+            raise ValueError(f"File already exists: {path}. Use 'update' action instead.")
+        base_path = file_path
+        version = 2
+        while file_path.exists():
+            file_path = base_path.with_name(
+                f"{base_path.stem}-{version}{base_path.suffix}"
+            )
+            version += 1
     
     # Create parent directories if needed
     file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -133,6 +155,7 @@ def create_intel_file(intel_dir: Path, path: str, content: str) -> dict[str, Any
         "content": content,
         "size_bytes": len(content),
         "created": True,
+        "versioned": file_path != requested_file_path,
         "content_normalized": content_normalized
     }
 
@@ -537,10 +560,24 @@ def main():
         if action == 'create':
             path = args.get('path')
             content = args.get('content')
-            if not path or not content:
-                raise ValueError("'path' and 'content' required for create")
-            
-            result_data = create_intel_file(intel_dir, path, content)
+            if not content:
+                raise ValueError("'content' required for create")
+            if args.get('filename_from_title'):
+                path = filename_from_markdown_title(
+                    content,
+                    prefix=args.get('filename_prefix', 'intel'),
+                )
+            if not path:
+                raise ValueError(
+                    "'path' required for create unless filename_from_title=true"
+                )
+
+            result_data = create_intel_file(
+                intel_dir,
+                path,
+                content,
+                on_conflict=args.get('on_conflict', 'error'),
+            )
             speech = f"Created intel file: {result_data['file']}"
         
         elif action == 'read':

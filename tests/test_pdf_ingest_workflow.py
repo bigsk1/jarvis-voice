@@ -176,6 +176,11 @@ MIME type: application/pdf
     assert result["data"]["variables"]["summary_chunk_limited"] is False
     assert result["data"]["variables"]["ingest_fact_count"] == 12
     assert result["data"]["variables"]["canvas_page_id"] == "pdf-test"
+    manage_params = next(params for tool, params in calls if tool == "manage_intel")
+    assert "path" not in manage_params
+    assert manage_params["filename_from_title"] is True
+    assert manage_params["filename_prefix"] == "pdf-ingest"
+    assert manage_params["on_conflict"] == "version"
 
 
 def test_remote_pdf_is_stashed_then_read_from_normalized_reference():

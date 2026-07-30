@@ -1612,6 +1612,7 @@ def _extract_manage_intel_followup(data: dict, max_candidates: int) -> dict | No
             ('file', file_name),
             ('size_bytes', payload.get('size_bytes')),
             ('created', payload.get('created')),
+            ('versioned', payload.get('versioned')),
             ('updated', payload.get('updated')),
             ('appended', payload.get('appended')),
             ('deleted', payload.get('deleted')),
@@ -1713,7 +1714,16 @@ def _extract_manage_intel_followup(data: dict, max_candidates: int) -> dict | No
         extracted['operations_truncated'] = True
     if operations:
         latest = operations[-1]
-        for field in ('action', 'file', 'size_bytes', 'created', 'updated', 'appended', 'deleted'):
+        for field in (
+            'action',
+            'file',
+            'size_bytes',
+            'created',
+            'versioned',
+            'updated',
+            'appended',
+            'deleted',
+        ):
             if latest.get(field) not in (None, '', [], {}):
                 extracted[f'latest_{field}'] = latest[field]
     if documents:

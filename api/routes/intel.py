@@ -21,6 +21,7 @@ SKILLS_DIR = PROJECT_ROOT / "skills"
 
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 from intel_content import normalize_intel_content
+from intel_filename import validate_create_filename
 
 
 def get_db():
@@ -262,6 +263,10 @@ async def create_intel_file(data: IntelCreate):
     """
     try:
         filename = validate_filename(data.filename)
+        try:
+            validate_create_filename(filename)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         filepath = INTEL_DIR / filename
         
         if filepath.exists():

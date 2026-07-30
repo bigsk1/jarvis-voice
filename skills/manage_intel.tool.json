@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "manage_intel",
-  "description": "SAVE TO INTEL FOLDER: Create, read, search, update, replace, append, delete, or list files in jarvis-intel/ directory. This is the ONLY tool that can write to jarvis-intel/ - OpenCode CANNOT access this folder. Use when user says 'save to intel', 'add to my intel', 'save to my knowledge base', or 'create intel file'. IMPORTANT: append can only add content and NEVER satisfies remove, cleanup, deduplicate, correct, or replace requests. For content removal or correction, search for the exact block and then use replace; set new_content to an empty string to remove it. Use expected_replacements and expected_file_sha256 so ambiguous or stale edits fail safely. Use update only when intentionally replacing the full document. Write retrieval-friendly markdown so ingest_intel can extract facts later. Prefer real headings, dated sections, bullets, and 'Key: Value' lines. For existing files, read or search first and preserve the established structure. For logs/timelines/season trackers, append only when the user is adding a new dated observation. SELF-LEARNING: When you discover a critical tool limitation, provider quirk, or recurring failure pattern, use action=append with path=jarvis-learned-lessons.md to save the lesson for future sessions. Format: '- **Topic**: Lesson learned'. Always set auto_ingest=true after create/update/replace/append/delete unless the user explicitly does not want memory updated. Sandboxed to jarvis-intel/ only (FLAT - no subdirs).",
+  "description": "SAVE TO INTEL FOLDER: Create, read, search, update, replace, append, delete, or list files in jarvis-intel/ directory. This is the ONLY tool that can write to jarvis-intel/ - OpenCode CANNOT access this folder. Use when user says 'save to intel', 'add to my intel', 'save to my knowledge base', or 'create intel file'. New files use lowercase kebab-case names. IMPORTANT: append can only add content and NEVER satisfies remove, cleanup, deduplicate, correct, or replace requests. For content removal or correction, search for the exact block and then use replace; set new_content to an empty string to remove it. Use expected_replacements and expected_file_sha256 so ambiguous or stale edits fail safely. Use update only when intentionally replacing the full document. Write retrieval-friendly markdown so ingest_intel can extract facts later. Prefer real headings, dated sections, bullets, and 'Key: Value' lines. For existing files, read or search first and preserve the established structure. For logs/timelines/season trackers, append only when the user is adding a new dated observation. SELF-LEARNING: When you discover a critical tool limitation, provider quirk, or recurring failure pattern, use action=append with path=jarvis-learned-lessons.md to save the lesson for future sessions. Format: '- **Topic**: Lesson learned'. Always set auto_ingest=true after create/update/replace/append/delete unless the user explicitly does not want memory updated. Sandboxed to jarvis-intel/ only (FLAT - no subdirs).",
   "complementary_tools": [
     "ingest_intel"
   ],
@@ -25,7 +25,7 @@
       },
       "path": {
         "type": "string",
-        "description": "Flat filename within jarvis-intel/ (e.g., 'coolify-issue.md' or 'network-config.txt'). Required for create, read, update, append, and delete."
+        "description": "Flat filename within jarvis-intel/ (e.g., 'coolify-issue.md' or 'network-config.txt'). New files must use lowercase kebab-case. Required for create unless filename_from_title=true, and required for read, update, append, and delete."
       },
       "content": {
         "type": "string",
@@ -74,6 +74,24 @@
       "auto_ingest": {
         "type": "boolean",
         "description": "If true, automatically run ingest_intel after create, update, replace, append, or delete so memory stays in sync. Recommended: true unless the user explicitly wants file-only changes."
+      },
+      "filename_from_title": {
+        "type": "boolean",
+        "default": false,
+        "description": "For create, derive a semantic kebab-case filename from the first level-one Markdown heading instead of requiring path."
+      },
+      "filename_prefix": {
+        "type": "string",
+        "description": "Prefix used with filename_from_title, such as 'pdf-ingest'. Defaults to 'intel'."
+      },
+      "on_conflict": {
+        "type": "string",
+        "enum": [
+          "error",
+          "version"
+        ],
+        "default": "error",
+        "description": "For create, fail when the filename exists or create a numbered semantic version such as '-2'."
       }
     },
     "required": [

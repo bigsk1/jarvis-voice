@@ -292,7 +292,7 @@ Current pattern works but could be improved:
 ```
 Query: "What's my preferred tech stack?"
    ↓
-1. semantic_recall → finds "user_profile.md" mention
+1. semantic_recall → finds "user-profile.md" mention
    ↓
 2. manage_intel/read_file → reads full file
 ```

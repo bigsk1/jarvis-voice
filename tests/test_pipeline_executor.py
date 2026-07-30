@@ -138,6 +138,19 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
             "Cold watch for Portland, Oregon: tonight 33F on 2026-04-03",
         )
 
+    def test_filename_timestamp_and_kebab_transform_are_filesystem_safe(self):
+        variables = self.executor._extract_workflow_variables(
+            "test",
+            {"id": "test", "variables": {}},
+            "test",
+        )
+
+        self.assertRegex(variables["filename_timestamp"], r"^\d{8}-\d{6}$")
+        self.assertEqual(
+            self.executor._apply_transform("Example.COM / Docker CLI", "kebab"),
+            "example-com-docker-cli",
+        )
+
     def test_mixed_placeholder_string_starting_with_placeholder_resolves(self):
         variables = {
             "alert_source": "weather_watch",

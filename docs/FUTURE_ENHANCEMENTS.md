@@ -623,18 +623,18 @@ Intel logs: search for `user_correction_shadow_candidate` events.
 **Priority:** High  
 **Status:** Complete (core) — injection, cache, reconcile script, install template
 
-**Source of truth:** `jarvis-intel/user_profile.md` → `## Profile Card` (~4–8 bullets, personal context). `## Profile Reference` below is on-demand only (search/intel).
+**Source of truth:** `jarvis-intel/user-profile.md` → `## Profile Card` (~4–8 bullets, personal context). `## Profile Reference` below is on-demand only (search/intel).
 
 **Cache:** `user_model.profile_card_cache` stores compiled card text + source hash — **not** scalar traits. See [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md).
 
 **Implemented:**
 - `lib/user_profile.py` — extract, cache, router + synthesis append
 - `USER_PROFILE_CARD_ENABLED` — router + `ResponseFormatter.apply_qa_prompt_overrides()`
-- `jarvis-intel/user_profile.md.example` + README first-install notes
+- `jarvis-intel/user-profile.md.example` + README first-install notes
 - `bin/reconcile-profile` — human review report (stdout only; no auto-write)
-- Apply-mode corrections → **`jarvis-learned-lessons.md`**, not `user_profile.md`
+- Apply-mode corrections → **`jarvis-learned-lessons.md`**, not `user-profile.md`
 
-**Deferred:** Web UI “approve profile edit” flow — not needed; edit `user_profile.md` directly or use `manage_intel` when you ask. `reconcile-profile` is the review aid.
+**Deferred:** Web UI “approve profile edit” flow — not needed; edit `user-profile.md` directly or use `manage_intel` when you ask. `reconcile-profile` is the review aid.
 
 **Optional later:** Filter `search_memory` / `semantic_recall` by `memory_type` (Phase 3B) — only if manual search noise becomes a problem.
 

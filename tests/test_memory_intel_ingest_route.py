@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import sys
+import io
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 
@@ -99,6 +101,56 @@ class MemoryIntelIngestRouteTests(unittest.TestCase):
         payload = response.get_json()
         self.assertFalse(payload["ok"])
         self.assertIn("timeout", payload["error"].lower())
+
+    def test_create_requires_lowercase_kebab_case(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            with patch("server.routes.intel.INTEL_PATH", Path(tmpdir)):
+                with self.app.test_client() as client:
+                    response = client.post(
+                        "/api/intel/files",
+                        json={"filename": "new_intel.md", "content": "# New Intel"},
+                    )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("lowercase kebab-case", response.get_json()["error"])
+
+    def test_put_can_update_existing_legacy_file_but_not_create_one(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            intel_dir = Path(tmpdir)
+            legacy = intel_dir / "legacy_notes.md"
+            legacy.write_text("# Legacy\n", encoding="utf-8")
+            with patch("server.routes.intel.INTEL_PATH", intel_dir):
+                with self.app.test_client() as client:
+                    updated = client.put(
+                        "/api/intel/files/legacy_notes.md",
+                        json={"content": "# Updated Legacy"},
+                    )
+                    rejected = client.put(
+                        "/api/intel/files/new_legacy.md",
+                        json={"content": "# New Legacy"},
+                    )
+
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(rejected.status_code, 400)
+        self.assertIn("lowercase kebab-case", rejected.get_json()["error"])
+
+    def test_upload_requires_kebab_case_for_new_file(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            with patch("server.routes.intel.INTEL_PATH", Path(tmpdir)):
+                with self.app.test_client() as client:
+                    response = client.post(
+                        "/api/intel/upload",
+                        data={
+                            "file": (
+                                io.BytesIO(b"# Uploaded Intel\n"),
+                                "uploaded_intel.md",
+                            )
+                        },
+                        content_type="multipart/form-data",
+                    )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("lowercase kebab-case", response.get_json()["error"])
 
 
 if __name__ == "__main__":

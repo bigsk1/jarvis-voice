@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-User profile card: compact synthesis-only context from jarvis-intel/user_profile.md.
+User profile card: compact synthesis-only context from jarvis-intel/user-profile.md.
 
 The user_model table stores a cache of the compiled card (text + source hash),
 not parallel scalar traits like verbosity/technical_depth.
@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 
 PROFILE_CARD_HEADING = "## Profile Card"
 PROFILE_REFERENCE_HEADING = "## Profile Reference"
-DEFAULT_PROFILE_REL_PATH = Path("jarvis-intel") / "user_profile.md"
+DEFAULT_PROFILE_REL_PATH = Path("jarvis-intel") / "user-profile.md"
+LEGACY_PROFILE_REL_PATH = Path("jarvis-intel") / "user_profile.md"
 PROFILE_CARD_CACHE_KEY = "profile_card_cache"
 LEARNED_LESSONS_FILE = "jarvis-learned-lessons.md"
 
@@ -29,7 +30,17 @@ def project_root() -> Path:
 
 
 def default_profile_path(root: Path | None = None) -> Path:
-    return (root or project_root()) / DEFAULT_PROFILE_REL_PATH
+    base = root or project_root()
+    canonical = base / DEFAULT_PROFILE_REL_PATH
+    legacy = base / LEGACY_PROFILE_REL_PATH
+    if canonical.is_file() or not legacy.is_file():
+        return canonical
+    logger.warning(
+        "Using legacy profile path %s; rename it to %s",
+        legacy,
+        canonical,
+    )
+    return legacy
 
 
 def extract_profile_card(markdown: str) -> str:
@@ -117,7 +128,14 @@ def get_cached_profile_card(force_refresh: bool = False, db=None) -> str:
                     metadata = json.loads(metadata)
                 except Exception:
                     metadata = {}
-            if metadata.get("source_hash") == source_hash:
+            try:
+                source_path = str(profile_path.relative_to(project_root()))
+            except ValueError:
+                source_path = str(profile_path)
+            if (
+                metadata.get("source_hash") == source_hash
+                and metadata.get("source_path") == source_path
+            ):
                 return str(cached["value"]).strip()
 
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -136,7 +154,7 @@ def get_cached_profile_card(force_refresh: bool = False, db=None) -> str:
             card_text,
             value_type="text",
             confidence=1.0,
-            source="user_profile.md",
+            source=profile_path.name,
             metadata=metadata,
             last_reconciled_at=now_iso,
         )
@@ -238,7 +256,7 @@ def append_correction_to_learned_lessons(
     """
     Code-triggered append to jarvis-learned-lessons.md (apply mode only).
 
-    Does not modify user_profile.md.
+    Does not modify user-profile.md.
     """
     if not _correction_lessons_enabled():
         return {"appended": False, "reason": "disabled"}

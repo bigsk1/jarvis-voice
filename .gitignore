@@ -132,7 +132,7 @@ logs/auth/
 jarvis-intel/*
 !jarvis-intel/jarvis-tool-knowledge.md
 !jarvis-intel/jarvis-learned-lessons.md
-!jarvis-intel/user_profile.md.example
+!jarvis-intel/user-profile.md.example
 !jarvis-intel/README.md
 
 opencodetmp/

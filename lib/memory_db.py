@@ -253,7 +253,7 @@ class MemoryDB:
         # user-facing synthesis. This is intentionally separate from
         # knowledge_base so scalar traits do not pollute semantic recall.
         #
-        # Primary use: cache compiled Profile Card text from user_profile.md
+        # Primary use: cache compiled Profile Card text from user-profile.md
         # (key profile_card_cache). Not parallel verbosity/technical_depth storage.
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS user_model (

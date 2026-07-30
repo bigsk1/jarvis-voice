@@ -282,7 +282,19 @@
           <div class="modal-body">
             <div class="form-group">
               <label class="form-label" for="intelFilename">Filename *</label>
-              <input type="text" class="form-input" id="intelFilename" placeholder="e.g., network-config.md" required>
+              <input
+                type="text"
+                class="form-input"
+                id="intelFilename"
+                placeholder="e.g., network-config.md"
+                pattern="[a-z0-9]+(-[a-z0-9]+)*(\.(md|txt))?"
+                title="Use lowercase kebab-case with hyphens, not underscores. The .md or .txt extension is optional."
+                aria-describedby="intelFilenameHelp"
+                required
+              >
+              <div class="form-help" id="intelFilenameHelp">
+                Use lowercase kebab-case with hyphens, such as <code>network-config.md</code>. Snake_case underscores are not allowed.
+              </div>
             </div>
             <div class="form-group">
               <div class="intel-form-label-row">

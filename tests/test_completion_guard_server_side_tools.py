@@ -270,11 +270,11 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
             "ok": True,
             "speech": (
                 "REPAIR_STATUS: repaired\n"
-                "Better answer with verified source according to jarvis-intel/user_profile.md"
+                "Better answer with verified source according to jarvis-intel/user-profile.md"
             ),
             "raw_llm_response": (
                 "REPAIR_STATUS: repaired\n"
-                "Better answer with verified source according to jarvis-intel/user_profile.md"
+                "Better answer with verified source according to jarvis-intel/user-profile.md"
             ),
             "tools_used": ["search_memory"],
             "data": {},

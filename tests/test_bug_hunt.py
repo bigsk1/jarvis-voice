@@ -49,7 +49,7 @@ def test_tracked_allowlist_is_fail_closed(tmp_path):
         "docs/README.md",
         "docs/archive/old.md",
         "docs/personal/private.md",
-        "jarvis-intel/user_profile.md",
+        "jarvis-intel/user-profile.md",
     }
     for path in tracked:
         _write(tmp_path, path, "safe test content\n")
@@ -66,7 +66,7 @@ def test_tracked_allowlist_is_fail_closed(tmp_path):
     assert "data/private.txt" not in policy.readable_files
     assert "docs/archive/old.md" not in policy.readable_files
     assert "docs/personal/private.md" not in policy.readable_files
-    assert "jarvis-intel/user_profile.md" not in policy.readable_files
+    assert "jarvis-intel/user-profile.md" not in policy.readable_files
 
     with pytest.raises(PermissionError):
         policy.resolve_read("config/cloud.env")

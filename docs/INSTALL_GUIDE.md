@@ -523,19 +523,19 @@ $HOME/
 | `config/local.env` | Ollama settings for local mode |
 | `config/ssh.json` | SSH hosts for remote command execution |
 | `jarvis-web/config/web_config.json` | Web UI settings (created locally; gitignored) |
-| `jarvis-intel/user_profile.md` | Profile Card (copy from `user_profile.md.example` on first install) |
+| `jarvis-intel/user-profile.md` | Profile Card (copy from `user-profile.md.example` on first install) |
 
 ### Profile Card (first install)
 
-`jarvis-intel/user_profile.md` is gitignored. On a fresh clone Jarvis runs fine without it; Tier 2 profile injection is skipped until you create the file:
+`jarvis-intel/user-profile.md` is gitignored. On a fresh clone Jarvis runs fine without it; Tier 2 profile injection is skipped until you create the file:
 
 ```bash
-cp jarvis-intel/user_profile.md.example jarvis-intel/user_profile.md
+cp jarvis-intel/user-profile.md.example jarvis-intel/user-profile.md
 # Edit ## Profile Card (~15 lines), then optionally ingest reference sections:
 ./skills/ingest_intel.py '{"path":"jarvis-intel"}'
 ```
 
-The tracked `user_profile.md.example` is **not** ingested — `ingest_intel` only scans `*.md` and `*.txt`. See `docs/USER_PROFILE_SYSTEM.md`.
+The tracked `user-profile.md.example` is **not** ingested — `ingest_intel` only scans `*.md` and `*.txt`. See `docs/USER_PROFILE_SYSTEM.md`.
 
 ---
 
