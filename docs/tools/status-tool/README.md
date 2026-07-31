@@ -538,7 +538,6 @@ ls -la data/canvas/
 - [Canvas System](../../CANVAS_SYSTEM.md) - Canvas integration
 - [Stash System](../../STASH_SYSTEM.md) - Stash storage
 - [Tool Builder](../../TOOL_BUILDER.md) - Auto-generating tools
-- [@status_recap Prompt](../../../jarvis-web/data/prompts/status_recap.md) - Web UI prompt
 
 ---
 
