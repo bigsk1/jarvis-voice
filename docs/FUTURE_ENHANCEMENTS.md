@@ -197,7 +197,8 @@ NOTE: The same can be said about xAI and Openai as they also send POST requests 
 
 Jarvis Web currently uses Flask-SocketIO in `threading` mode with `simple-websocket`, served through Werkzeug via `socketio.run(..., allow_unsafe_werkzeug=True)`. This applies to both native and Docker launches.
 
-Closing or replacing a healthy WebSocket connection can produce a false HTTP 500 and traceback:
+Before python-engineio 4.13.4, closing or replacing a healthy WebSocket
+connection produced a false HTTP 500 and traceback:
 
 ```text
 AssertionError: write() before start_response
@@ -209,7 +210,6 @@ The client connection itself works, the server receives the normal Socket.IO dis
 
 **Advantages of Gunicorn:**
 - Removes the known Werkzeug development-server limitation and warning
-- Clean WebSocket teardown and less misleading error logging
 - Better production lifecycle, signal handling, timeouts, and worker supervision
 - More appropriate long-term server for the Docker deployment
 
@@ -221,9 +221,16 @@ The client connection itself works, the server receives the normal Socket.IO dis
 - Keep stdout/stderr logging, Docker health checks, graceful shutdown, and native tmux behavior intact
 - Add `gunicorn` consistently to `pyproject.toml`, `requirements.txt`, `jarvis-web/requirements.txt`, and the uv lock
 
-**Not urgent:** The traceback was noisy but non-breaking, and is now suppressed by the interim mitigation below. If it ever reappears (for example after a python-engineio upgrade), it can still be ignored when it occurs immediately after a normal `[WS] Client disconnected` event and health checks continue returning 200.
+**Not urgent:** The original traceback was noisy but non-breaking and is fixed
+upstream. Gunicorn remains a runtime-hardening option rather than a teardown
+bug fix.
 
-**Interim mitigation (2026-07-03):** the traceback is now suppressed by `jarvis-web/server/werkzeug_ws_compat.py` (applied in `server/app.py`, covered by `tests/test_werkzeug_websocket_teardown.py`). The shim patches a private Engine.IO module and is temporary; remove it when this Gunicorn item lands or when python-engineio fixes the `werkzeug` teardown upstream. Details in `docs/personal/Gunicorn_Upgrade.md`. This item stays open for the lifecycle/supervision benefits, not the traceback.
+**Resolved upstream (2026-07-31):** python-engineio 4.13.4 includes the clean
+Werkzeug WebSocket exit reported in
+[python-engineio #457](https://github.com/miguelgrinberg/python-engineio/issues/457).
+Jarvis now requires that version and has removed its private Engine.IO shim and
+the shim-specific regression tests. This item stays open for the
+lifecycle/supervision benefits only.
 
 **Likely files:** `jarvis-web/server/app.py`, `bin/jarvis-web`, `docker/entrypoint.sh`, `Dockerfile`, dependency manifests, Web runtime tests, and Docker/native deployment docs.
 

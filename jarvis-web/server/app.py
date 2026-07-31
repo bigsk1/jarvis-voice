@@ -34,13 +34,6 @@ def get_startup_mode():
     """Get the mode the server was started with"""
     return _startup_mode
 
-# Werkzeug logs a false HTTP 500 ("write() before start_response") on every
-# normal WebSocket teardown; patch Engine.IO's driver before SocketIO is
-# created. Interim mitigation until the Gunicorn migration
-# (docs/personal/Gunicorn_Upgrade.md).
-from .werkzeug_ws_compat import apply_werkzeug_ws_teardown_shim
-apply_werkzeug_ws_teardown_shim()
-
 # Create Flask app
 app = Flask(__name__,
             static_folder=str(CLIENT_PATH),
