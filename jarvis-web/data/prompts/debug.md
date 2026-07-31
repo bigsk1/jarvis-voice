@@ -67,7 +67,6 @@ Once found:
 
 ## Tools to Use
 - `execute_bash` for checking logs, running tests
-- `opencode` for code fixes
 - `remember` to save the solution for future reference
 
 ## Output
