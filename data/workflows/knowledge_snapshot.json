@@ -1,0 +1,243 @@
+{
+  "id": "knowledge_snapshot",
+  "name": "Topic Knowledge Snapshot",
+  "description": "Create or refresh a source-attributed Canvas briefing from active-mode Memory, Intel, and prior conversations. Run only for an explicit personal stored-knowledge snapshot request. Scope: internal artifacts only, with no external research or remember-based synthesis storage.",
+  "enabled": true,
+  "version": "1.0",
+  "allow_workflow_tool": true,
+  "disable_server_side_tools": true,
+  "triggers": {
+    "explicit": [
+      "/knowledge"
+    ],
+    "patterns": [],
+    "keywords": []
+  },
+  "variables": {
+    "knowledge_topic": {
+      "from": "query",
+      "extract": "main_subject",
+      "default": ""
+    },
+    "topic_slug": {
+      "from": "knowledge_topic",
+      "transform": "kebab",
+      "default": "topic"
+    },
+    "active_mode": {
+      "from": "env",
+      "key": "JARVIS_MODE",
+      "default": "cloud"
+    },
+    "knowledge_result_count": 0,
+    "knowledge_source_counts": "No stored Memory or Intel matches were found.",
+    "conversation_count": 0,
+    "intel_file_count": 0
+  },
+  "validation_policy": {
+    "default_validation": "hybrid",
+    "abort_threshold": 0.5,
+    "max_total_retries": 4,
+    "retry_delay_ms": 300
+  },
+  "steps": [
+    {
+      "step": 1,
+      "tool": "deep_memory_search",
+      "params": {
+        "query": "${knowledge_topic}",
+        "sources": [
+          "memory",
+          "intel"
+        ],
+        "mode": "comprehensive",
+        "limit_per_source": 8
+      },
+      "output_var": "stored_knowledge_search",
+      "extract": {
+        "knowledge_result_count": "summary.total_results",
+        "knowledge_source_counts": "summary.by_source",
+        "knowledge_sources_with_matches": "summary.sources_with_matches",
+        "knowledge_flat_results": "flat_results",
+        "memory_search_diagnostics": "embedding_diagnostics.memory_semantic_search"
+      },
+      "required": true,
+      "description": "Search active-mode Memory and Intel with keyword and semantic retrieval"
+    },
+    {
+      "step": 2,
+      "tool": "search_conversations",
+      "params": {
+        "query": "${knowledge_topic}",
+        "limit": 12,
+        "match_mode": "all_terms"
+      },
+      "output_var": "conversation_search",
+      "extract": {
+        "conversation_count": "count",
+        "conversation_results": "conversations",
+        "conversation_tools_used": "tools_used",
+        "conversation_match_mode": "match_mode"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Search prior terminal and Web conversation history explicitly"
+    },
+    {
+      "step": 3,
+      "tool": "manage_intel",
+      "action": "list",
+      "params": {
+        "pattern": "*${topic_slug}*"
+      },
+      "output_var": "matching_intel_listing",
+      "extract": {
+        "matching_intel_files": "files",
+        "intel_file_count": "count"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Find Intel files whose filenames directly resemble the topic"
+    },
+    {
+      "step": 4,
+      "tool": "manage_intel",
+      "action": "read",
+      "for_each": "${matching_intel_files[:5]}",
+      "process_all": true,
+      "params": {},
+      "output_var": "intel_file_reads",
+      "required": false,
+      "on_all_fail": "continue",
+      "description": "Read up to five filename-matched Intel files for full-file provenance"
+    },
+    {
+      "step": 5,
+      "tool": "canvas",
+      "action": "read",
+      "params": {
+        "search": "Workflows/Knowledge/${knowledge_topic}"
+      },
+      "output_var": "existing_knowledge_page",
+      "extract": {
+        "knowledge_page_id": "page_id"
+      },
+      "required": false,
+      "on_fail": "continue",
+      "description": "Find the durable Canvas page for this topic"
+    },
+    {
+      "step": 6,
+      "tool": "canvas",
+      "action": "create",
+      "condition": {
+        "op": "not_exists",
+        "left": "${knowledge_page_id}"
+      },
+      "params": {
+        "title": "Workflows/Knowledge/${knowledge_topic}",
+        "tags": [
+          "knowledge",
+          "snapshot",
+          "existing-knowledge",
+          "${topic_slug}",
+          "workflow"
+        ],
+        "source_query": "/knowledge ${knowledge_topic}"
+      },
+      "llm_prompt": "Create a concise, evidence-bound snapshot of what Jarvis already has stored about the requested topic. This is an internal-knowledge briefing, not new research.\n\nTOPIC: ${knowledge_topic}\nSNAPSHOT TIME: ${timestamp}\nACTIVE JARVIS MODE: ${active_mode}\nSTORED MEMORY + INTEL CANDIDATE COUNT: ${knowledge_result_count}\nCANDIDATES BY SOURCE: ${knowledge_source_counts}\nMEMORY SEARCH DIAGNOSTICS: ${memory_search_diagnostics}\n\nSOURCE-LABELED MEMORY + INTEL RESULTS:\n${knowledge_flat_results}\n\nPRIOR CONVERSATION MATCH COUNT: ${conversation_count}\nCONVERSATION MATCH MODE: ${conversation_match_mode}\nTOOLS RECORDED IN MATCHING CONVERSATIONS: ${conversation_tools_used}\nPRIOR CONVERSATION RESULTS:\n${conversation_results}\n\nFILENAME-MATCHED INTEL FILE COUNT: ${intel_file_count}\nFULL READS OF UP TO FIVE FILENAME-MATCHED INTEL FILES:\n${intel_file_reads}\n\nEvidence rules:\n1. Use only the supplied Memory, Intel, and conversation evidence. Do not add general knowledge, browse the web, call native tools, or imply that external facts are current.\n2. Treat prior user statements, prior Jarvis answers, and recorded tool activity as different evidence types. A prior Jarvis answer is historical conversation context, not automatically a verified fact.\n3. Prefer direct Memory records and Intel contents for factual claims. Use conversations especially for user intent, decisions, observations, unfinished work, and context that was never saved elsewhere.\n4. Deduplicate repeated facts. If sources disagree, preserve the disagreement and identify each source instead of choosing a winner without evidence.\n5. Treat a Memory artifact whose title is exactly `Workflows/Knowledge/${knowledge_topic}` as this workflow's own Canvas pointer, not as substantive knowledge about the topic. It may be noted once under Scope and Coverage but must not support a topical claim or appear as a substantive source.\n6. Every substantive bullet must end with a compact internal citation using real metadata from the supplied result, such as `[Memory: id 123, key]`, `[Intel: filename.md]`, or `[Conversation: timestamp, session/id]`. Never invent an ID, filename, timestamp, URL, or citation.\n7. Clearly distinguish no match from a failed or unavailable optional source. If evidence is sparse, say so plainly.\n8. State that the snapshot is mode-scoped to `${active_mode}` and reflects stored Jarvis artifacts as of `${timestamp}`; it is not a claim about the latest external state.\n9. Do not save or recommend saving the synthesized snapshot as Memory merely because this workflow ran. Suggestions for deliberate follow-up may appear under Open Questions.\n\nOutput raw Markdown only, with exactly this overall structure:\n# Knowledge Snapshot: ${knowledge_topic}\n\nA two-to-four sentence executive summary.\n\n## Scope and Coverage\nInclude active mode, snapshot time, candidate counts, optional-source failures if any, the no-new-research limitation, and any self-Canvas pointer excluded from substantive evidence.\n\n## What Jarvis Already Knows\nOrganize the strongest non-duplicative points into short thematic subsections or bullets with internal citations.\n\n## Evidence by Source\n### Memory\n### Intel\n### Prior Conversations\nSummarize what each source contributed. If a source had no substantive evidence, state `No matching evidence found.`\n\n## Uncertainty and Conflicts\nList stale-looking claims, contradictions, weakly supported statements, and anything that needs external verification. If none are evident, say so without claiming certainty.\n\n## Open Questions and Next Steps\nList only evidence-driven gaps or sensible next actions, including whether `/research` would add value. Do not pretend those actions already occurred.\n\n## Source Index\nList every distinct internal source actually cited, once, with its real identifying metadata and a brief description. Do not include the self-Canvas pointer unless it was needed to explain coverage.\n\nDo not output HTML, a Markdown code fence, placeholders, shortened URLs, or invented external links. Preserve complete filenames, stash references, commands, and IDs exactly when they appear in evidence.",
+      "llm_variable_max_chars": 16000,
+      "llm_output_validation": {
+        "param": "content",
+        "min_length": 450,
+        "required_patterns": [
+          "# knowledge snapshot:",
+          "## scope and coverage",
+          "## what jarvis already knows",
+          "## evidence by source",
+          "### memory",
+          "### intel",
+          "### prior conversations",
+          "## uncertainty and conflicts",
+          "## open questions and next steps",
+          "## source index"
+        ],
+        "reject_patterns": [
+          "```",
+          "${",
+          "https://...",
+          "unable to create",
+          "<!doctype",
+          "<html",
+          "<body",
+          "<pre"
+        ]
+      },
+      "output_var": "knowledge_canvas_result",
+      "extract": {
+        "knowledge_canvas_page_id": "page_id",
+        "knowledge_canvas_url": "url"
+      },
+      "required": true,
+      "description": "Create the topic's durable knowledge snapshot Canvas page"
+    },
+    {
+      "step": 7,
+      "tool": "canvas",
+      "action": "update",
+      "condition": {
+        "op": "exists",
+        "left": "${knowledge_page_id}"
+      },
+      "params": {
+        "page_id": "${knowledge_page_id}",
+        "title": "Workflows/Knowledge/${knowledge_topic}",
+        "tags": [
+          "knowledge",
+          "snapshot",
+          "existing-knowledge",
+          "${topic_slug}",
+          "workflow"
+        ],
+        "allow_content_shrink": true
+      },
+      "llm_prompt": "Replace the existing topic Canvas with a concise, evidence-bound snapshot of what Jarvis currently has stored. Produce the complete replacement page, not a patch or append. This is an internal-knowledge briefing, not new research.\n\nTOPIC: ${knowledge_topic}\nSNAPSHOT TIME: ${timestamp}\nACTIVE JARVIS MODE: ${active_mode}\nSTORED MEMORY + INTEL CANDIDATE COUNT: ${knowledge_result_count}\nCANDIDATES BY SOURCE: ${knowledge_source_counts}\nMEMORY SEARCH DIAGNOSTICS: ${memory_search_diagnostics}\n\nSOURCE-LABELED MEMORY + INTEL RESULTS:\n${knowledge_flat_results}\n\nPRIOR CONVERSATION MATCH COUNT: ${conversation_count}\nCONVERSATION MATCH MODE: ${conversation_match_mode}\nTOOLS RECORDED IN MATCHING CONVERSATIONS: ${conversation_tools_used}\nPRIOR CONVERSATION RESULTS:\n${conversation_results}\n\nFILENAME-MATCHED INTEL FILE COUNT: ${intel_file_count}\nFULL READS OF UP TO FIVE FILENAME-MATCHED INTEL FILES:\n${intel_file_reads}\n\nEvidence rules:\n1. Use only the supplied Memory, Intel, and conversation evidence. Do not add general knowledge, browse the web, call native tools, or imply that external facts are current.\n2. Treat prior user statements, prior Jarvis answers, and recorded tool activity as different evidence types. A prior Jarvis answer is historical conversation context, not automatically a verified fact.\n3. Prefer direct Memory records and Intel contents for factual claims. Use conversations especially for user intent, decisions, observations, unfinished work, and context that was never saved elsewhere.\n4. Deduplicate repeated facts. If sources disagree, preserve the disagreement and identify each source instead of choosing a winner without evidence.\n5. Treat a Memory artifact whose title is exactly `Workflows/Knowledge/${knowledge_topic}` as this workflow's own Canvas pointer, not as substantive knowledge about the topic. It may be noted once under Scope and Coverage but must not support a topical claim or appear as a substantive source.\n6. Every substantive bullet must end with a compact internal citation using real metadata from the supplied result, such as `[Memory: id 123, key]`, `[Intel: filename.md]`, or `[Conversation: timestamp, session/id]`. Never invent an ID, filename, timestamp, URL, or citation.\n7. Clearly distinguish no match from a failed or unavailable optional source. If evidence is sparse, say so plainly.\n8. State that the snapshot is mode-scoped to `${active_mode}` and reflects stored Jarvis artifacts as of `${timestamp}`; it is not a claim about the latest external state.\n9. Do not save or recommend saving the synthesized snapshot as Memory merely because this workflow ran. Suggestions for deliberate follow-up may appear under Open Questions.\n\nOutput raw Markdown only, with exactly this overall structure:\n# Knowledge Snapshot: ${knowledge_topic}\n\nA two-to-four sentence executive summary.\n\n## Scope and Coverage\nInclude active mode, snapshot time, candidate counts, optional-source failures if any, the no-new-research limitation, and any self-Canvas pointer excluded from substantive evidence.\n\n## What Jarvis Already Knows\nOrganize the strongest non-duplicative points into short thematic subsections or bullets with internal citations.\n\n## Evidence by Source\n### Memory\n### Intel\n### Prior Conversations\nSummarize what each source contributed. If a source had no substantive evidence, state `No matching evidence found.`\n\n## Uncertainty and Conflicts\nList stale-looking claims, contradictions, weakly supported statements, and anything that needs external verification. If none are evident, say so without claiming certainty.\n\n## Open Questions and Next Steps\nList only evidence-driven gaps or sensible next actions, including whether `/research` would add value. Do not pretend those actions already occurred.\n\n## Source Index\nList every distinct internal source actually cited, once, with its real identifying metadata and a brief description. Do not include the self-Canvas pointer unless it was needed to explain coverage.\n\nDo not output HTML, a Markdown code fence, placeholders, shortened URLs, or invented external links. Preserve complete filenames, stash references, commands, and IDs exactly when they appear in evidence.",
+      "llm_variable_max_chars": 16000,
+      "llm_output_validation": {
+        "param": "content",
+        "min_length": 450,
+        "required_patterns": [
+          "# knowledge snapshot:",
+          "## scope and coverage",
+          "## what jarvis already knows",
+          "## evidence by source",
+          "### memory",
+          "### intel",
+          "### prior conversations",
+          "## uncertainty and conflicts",
+          "## open questions and next steps",
+          "## source index"
+        ],
+        "reject_patterns": [
+          "```",
+          "${",
+          "https://...",
+          "unable to update",
+          "<!doctype",
+          "<html",
+          "<body",
+          "<pre"
+        ]
+      },
+      "output_var": "knowledge_canvas_result",
+      "extract": {
+        "knowledge_canvas_page_id": "page_id",
+        "knowledge_canvas_url": "url"
+      },
+      "required": true,
+      "description": "Refresh the topic's durable knowledge snapshot Canvas page"
+    }
+  ],
+  "success_speech": "Knowledge snapshot complete for ${knowledge_topic}. I retrieved ${knowledge_result_count} Memory or Intel candidates and ${conversation_count} matching prior conversations, then refreshed the topic's Canvas briefing without running new research or calling remember.",
+  "abort_speech": "Knowledge snapshot failed. Provide a topic after /knowledge and retry; no new research was performed."
+}

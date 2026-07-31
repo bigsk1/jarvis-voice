@@ -1203,25 +1203,30 @@ class MemoryDB:
 
         return None
     
-    def search_conversations(self, query: str, limit: int = 5, 
-                             web_conversation_id: str = None) -> list[dict]:
+    def search_conversations(self, query: str, limit: int = 5,
+                             web_conversation_id: str = None,
+                             match_mode: str = "broad") -> list[dict]:
         """
         Search conversation history with tiered approach.
         
         Search strategy (similar to fts_search):
         1. Try exact phrase match (original query as-is)
-        2. Try ANY term match (OR logic - finds conversations with any keyword)
+        2. Try ANY term match by default, or require ALL terms when
+           match_mode="all_terms"
         3. Search metadata for web_conversation_id if provided
         
         Args:
             query: Search query (supports multiple words)
             limit: Max results
             web_conversation_id: Optional - filter by web UI conversation ID
+            match_mode: "broad" for OR fallback or "all_terms" for AND fallback
             
         Returns:
             List of matching conversations
         """
         cursor = self.conn.cursor()
+        if match_mode not in {"broad", "all_terms"}:
+            raise ValueError("match_mode must be 'broad' or 'all_terms'")
         
         # If searching by web conversation ID, filter by metadata
         if web_conversation_id:
@@ -1252,7 +1257,7 @@ class MemoryDB:
         if results:
             return [dict(row) for row in results]
         
-        # 2. Extract terms and try ANY match (OR logic)
+        # 2. Extract terms and try the requested fallback match mode.
         # Handle "term1 OR term2" syntax and plain space-separated words
         if ' OR ' in query.upper():
             # Explicit OR syntax: "video OR poster OR pickle"
@@ -1264,14 +1269,17 @@ class MemoryDB:
                      if t.lower() not in stop_words and len(t) > 2]
         
         if terms:
-            # Build OR query: (user_query LIKE '%term1%' OR user_query LIKE '%term2%' ...)
+            # Each term may appear in either side of the exchange. Broad mode
+            # joins terms with OR; all_terms mode joins them with AND so a
+            # distinctive multi-word topic is not crowded out by one noisy term.
             conditions = []
             params = []
             for term in terms:
                 conditions.append("(user_query LIKE ? OR jarvis_response LIKE ?)")
                 params.extend([f"%{term}%", f"%{term}%"])
             
-            where_clause = " OR ".join(conditions)
+            connector = " AND " if match_mode == "all_terms" else " OR "
+            where_clause = connector.join(conditions)
             params.append(limit)
             
             results = cursor.execute(f"""

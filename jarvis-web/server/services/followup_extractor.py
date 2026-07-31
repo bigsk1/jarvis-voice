@@ -307,6 +307,7 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     # --- Entity references (for modify/repeat/cancel follow-ups) ---
     'remember': ['memory_id', 'key', 'category'],
     'search_memory': ['count', 'by_category'],
+    'search_conversations': ['count', 'match_mode'],
     'semantic_recall': ['count'],
     'update_memory': ['memory_id', 'old_value', 'new_value'],
     'forget': ['deleted_id', 'deleted_key', 'deleted_ids', 'deleted_keys', 'missing_ids'],

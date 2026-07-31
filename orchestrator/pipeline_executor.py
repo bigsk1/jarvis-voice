@@ -1173,16 +1173,18 @@ class PipelineExecutor:
         # Handle standard results array format
         if not urls:
             results = search_data.get("results", [])
-            for result in results:
-                if result.get("url"):
-                    urls.append(result["url"])
+            if isinstance(results, list):
+                for result in results:
+                    if isinstance(result, dict) and result.get("url"):
+                        urls.append(result["url"])
         
         # Handle web.results format (Brave API direct)
         if not urls:
             web = search_data.get("web", {})
-            for result in web.get("results", []):
-                if result.get("url"):
-                    urls.append(result["url"])
+            if isinstance(web, dict):
+                for result in web.get("results", []):
+                    if isinstance(result, dict) and result.get("url"):
+                        urls.append(result["url"])
         
         return urls
     

@@ -470,6 +470,7 @@ LOCAL_TOOL_SAMPLES = {
     "search_conversations": _case(
         {
             "count": 1,
+            "match_mode": "all_terms",
             "conversations": [
                 {
                     "conversation_id": "conv_8",
@@ -477,7 +478,8 @@ LOCAL_TOOL_SAMPLES = {
                     "updated_at": "2026-07-29T11:00:00Z",
                 }
             ],
-        }
+        },
+        {"query": "tool follow-up", "match_mode": "all_terms"},
     ),
     "search_docs": _case(
         {
@@ -979,6 +981,26 @@ def test_bounded_default_preserves_live_scalar_payloads_and_false_values():
     assert result["network_tools"]["packet_loss_percent"] == 0.0
     assert result["speaker_volume"]["volume"] == 0
     assert result["speaker_volume"]["muted"] is False
+
+
+def test_search_conversations_preserves_match_mode_with_candidates():
+    payload, arguments = LOCAL_TOOL_SAMPLES["search_conversations"]
+    result = followup.extract_followup_data(
+        {
+            "search_conversations": payload,
+            "_tool_trace": [
+                {
+                    "tool": "search_conversations",
+                    "ok": True,
+                    "arguments": arguments,
+                }
+            ],
+        }
+    )["search_conversations"]
+
+    assert result["match_mode"] == "all_terms"
+    assert result["count"] == 1
+    assert result["candidates"][0]["conversation_id"] == "conv_8"
 
 
 def test_content_adapters_keep_handles_and_bound_large_bodies():

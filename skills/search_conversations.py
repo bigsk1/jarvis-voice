@@ -20,6 +20,7 @@ def main():
         query = args.get('query')
         limit = args.get('limit', 10)
         web_conversation_id = args.get('web_conversation_id')
+        match_mode = args.get('match_mode', 'broad')
         
         if not query:
             result = {
@@ -30,12 +31,14 @@ def main():
             print(json.dumps(result))
             return result
         
-        # Search conversations with tiered approach (exact -> OR terms -> metadata)
+        # Search conversations with exact phrase first, then the selected
+        # broad-OR or all-terms fallback.
         db = get_memory_db()
         conversations = db.search_conversations(
-            query=query, 
+            query=query,
             limit=limit,
-            web_conversation_id=web_conversation_id
+            web_conversation_id=web_conversation_id,
+            match_mode=match_mode,
         )
         db.close()
         
@@ -43,7 +46,12 @@ def main():
             result = {
                 "ok": True,
                 "speech": f"I found no previous conversations about '{query}'",
-                "data": {"conversations": [], "count": 0}
+                "data": {
+                    "conversations": [],
+                    "count": 0,
+                    "tools_used": [],
+                    "match_mode": match_mode,
+                }
             }
         else:
             # Format speech output
@@ -76,7 +84,8 @@ def main():
                 "data": {
                     "conversations": conversations,
                     "count": len(conversations),
-                    "tools_used": unique_tools
+                    "tools_used": unique_tools,
+                    "match_mode": match_mode,
                 }
             }
         
@@ -95,4 +104,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

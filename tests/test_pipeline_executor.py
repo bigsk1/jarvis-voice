@@ -168,6 +168,31 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
             "weather_watch:cold:Portland, Oregon:2026-04-03",
         )
 
+    def test_url_extraction_ignores_grouped_non_web_search_results(self):
+        search_data = {
+            "results": {
+                "memory": [{"id": 1, "value": "stored fact"}],
+                "intel": [{"file": "topic.md", "content": "stored intel"}],
+            }
+        }
+
+        self.assertEqual(self.executor._extract_urls_from_search(search_data), [])
+
+    def test_url_extraction_keeps_standard_result_arrays(self):
+        search_data = {
+            "results": [
+                {"url": "https://example.com/one"},
+                "unexpected scalar",
+                {"title": "No URL"},
+                {"url": "https://example.com/two"},
+            ]
+        }
+
+        self.assertEqual(
+            self.executor._extract_urls_from_search(search_data),
+            ["https://example.com/one", "https://example.com/two"],
+        )
+
     def test_web_attachment_context_extracts_stash_ref_and_filename(self):
         topic = """[ATTACHED PDF ARTIFACT]
 Filename: docker-cheatsheet.pdf

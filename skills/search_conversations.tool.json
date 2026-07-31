@@ -20,6 +20,15 @@
         "description": "Maximum number of conversations to return (default: 10)",
         "default": 10
       },
+      "match_mode": {
+        "type": "string",
+        "enum": [
+          "broad",
+          "all_terms"
+        ],
+        "description": "Fallback used when the exact phrase is absent. broad (default) matches any non-stop query term for maximum recall. all_terms requires every non-stop query term somewhere in the user query or Jarvis response, reducing noisy multi-word topic matches.",
+        "default": "broad"
+      },
       "web_conversation_id": {
         "type": "string",
         "description": "Optional: filter to a specific web UI conversation by its ID (e.g., 'ebf30410')"
