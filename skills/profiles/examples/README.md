@@ -23,7 +23,9 @@ These files are **templates only**. Jarvis loads profiles from `skills/profiles/
 - `canvas` and `stash` are intentionally **not** listed here so they stay on by default; add `"canvas": false` only if you want to hide them.
 - `tool_search` and `workflow` are mandatory discovery candidates only while present in the effective registry. A profile can disable either one normally.
 - `"workflow": false` disables autonomous workflow discovery/execution through the meta-tool, but does not disable direct `/workflow-name` commands or scheduled workflow tasks.
-- After copying, treat the file in `skills/profiles/` as yours (that folder stays gitignored except `default.json` and this `examples/` tree).
+- After copying, treat the file in `skills/profiles/` as yours. Custom names
+  stay gitignored; only the documented ready-to-use baselines and this
+  `examples/` tree are tracked.
 
 ## Local mode (`local.env` + Ollama)
 

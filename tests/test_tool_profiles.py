@@ -81,6 +81,78 @@ class TestToolProfiles(unittest.TestCase):
 
         self.assertNotIn("workflow", registry.list_tools())
 
+    def test_openai_only_profile_covers_non_openai_requirements(self):
+        profile_path = ROOT / "skills" / "profiles" / "openai_only.json"
+        profile = json.loads(profile_path.read_text(encoding="utf-8"))
+        overrides = profile["overrides"]
+
+        self.assertTrue(overrides)
+        self.assertTrue(all(value is False for value in overrides.values()))
+
+        # These tools remain useful with one OpenAI key or no tool-specific key.
+        for tool_name in (
+            "analyze_image",
+            "canvas",
+            "generate_image",
+            "generate_video",
+            "pdf_create",
+            "pdf_read",
+            "stash",
+            "tool_search",
+            "weather",
+            "workflow",
+        ):
+            self.assertNotIn(tool_name, overrides)
+
+        # These legacy/personal integrations are not fully described by
+        # credential availability metadata, so the starter profile gates them.
+        for tool_name in (
+            "check_opencode_sessions",
+            "opencode",
+            "phone_call",
+            "printer",
+            "supa_crawl_knowledge",
+        ):
+            self.assertIs(overrides.get(tool_name), False)
+
+        one_key_environment = {"OPENAI_API_KEY"}
+
+        def available_with_one_openai_key(availability):
+            if not availability:
+                return True
+            if not set(availability.get("all_of_env", ())) <= one_key_environment:
+                return False
+            any_of_env = set(availability.get("any_of_env", ()))
+            if any_of_env and not any_of_env & one_key_environment:
+                return False
+            if availability.get("config_files") or availability.get("webhook_registry"):
+                return False
+
+            providers = availability.get("provider_requirements") or {}
+            if providers:
+                requirements = providers.get("openai")
+                if not isinstance(requirements, dict):
+                    return False
+                if not set(requirements.get("all_of_env", ())) <= one_key_environment:
+                    return False
+                any_provider_env = set(requirements.get("any_of_env", ()))
+                if any_provider_env and not any_provider_env & one_key_environment:
+                    return False
+            return True
+
+        for manifest_path in sorted((ROOT / "skills").glob("*.tool.json")):
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if not manifest.get("enabled", True):
+                continue
+            if available_with_one_openai_key(manifest.get("availability")):
+                continue
+            tool_name = manifest.get("name", manifest_path.stem)
+            self.assertIs(
+                overrides.get(tool_name),
+                False,
+                f"{tool_name} needs non-OpenAI setup but is not disabled",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

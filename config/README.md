@@ -13,7 +13,7 @@ This directory contains configuration files for Jarvis Voice Assistant.
    # For cloud mode (full multi-provider template):
    cp cloud.env.example cloud.env
 
-   # For cloud mode with OpenAI only (minimal — one API key):
+   # For cloud mode with OpenAI as the primary provider:
    cp cloud.openai.env.example cloud.env
 
    # For local mode:
@@ -57,14 +57,14 @@ gitignored, but a one-mode-only install needs only its selected file):
 
 ```bash
 cp cloud.env.example cloud.env    # cloud mode (all providers)
-cp cloud.openai.env.example cloud.env   # cloud mode, OpenAI-only minimum
+cp cloud.openai.env.example cloud.env   # cloud mode, OpenAI primary provider
 cp local.env.example local.env    # local mode
 ```
 
 | File | Role |
 |------|------|
 | `cloud.env.example` / `local.env.example` | Committed templates — safe to browse in git |
-| `cloud.openai.env.example` | Minimal OpenAI-only cloud template (one required secret; other tools gate automatically) |
+| `cloud.openai.env.example` | Concise OpenAI-primary template (one required secret plus optional tool placeholders) |
 | `cloud.env` / `local.env` | Your machine-specific settings and secrets (not committed) |
 | `mcp-servers.json` | Jarvis MCP server definitions (committed; no secrets in git) |
 
@@ -90,12 +90,15 @@ request/browser data or LLM mode selectors after startup.
 See also: [xAI provider guide](../docs/XAI_PROVIDER.md) and
 [Ollama local/cloud guide](../docs/ollama/README.md).
 
-### `cloud.openai.env.example` (OpenAI-only minimum)
+### `cloud.openai.env.example` (OpenAI primary provider)
 
-Trimmed cloud template for users with **one OpenAI API key**. Cloud mode still
-requires OpenAI for embeddings even if chat used another provider elsewhere —
-this file keeps chat, STT, TTS, embeddings, image/video tools, and Responses
-routing on OpenAI.
+Concise cloud template for users with **one required OpenAI API key**. It keeps
+chat, STT, TTS, embeddings, image/video tools, and Responses routing on OpenAI.
+The OpenAI core is grouped at the top; optional tool APIs and self-hosted
+integration settings remain available in a separate section at the bottom.
+For the simplest one-key tool surface, uncomment
+`JARVIS_TOOL_PROFILE=openai_only`; this keeps OpenAI-backed and
+credential-free tools while hiding integrations that need additional setup.
 
 ```bash
 cp cloud.openai.env.example cloud.env
@@ -106,8 +109,9 @@ cp cloud.openai.env.example cloud.env
 
 Tools that need other API keys, OAuth caches, webhooks, or self-hosted URLs
 (SerpApi, Brave, Spotify, Crawl4AI, email webhooks, etc.) stay **unavailable**
-automatically via manifest `availability` blocks — no manual disable list.
-See `docs/FUTURE_ENHANCEMENTS.md` section 9 and `skills/README.md`.
+through manifest availability checks or the template's `BLOCKED_TOOLS` default.
+After configuring a blocklisted integration, remove its tool name from that
+list and re-run `./bin/sync-tools.py cloud`. See `skills/README.md`.
 
 ### `local.env` (Local Mode)
 

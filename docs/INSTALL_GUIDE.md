@@ -172,7 +172,7 @@ cd ~/jarvis-voice
 
 # Copy example configs
 cp config/cloud.env.example config/cloud.env
-# OpenAI-only minimum (one key; other tools gate automatically):
+# OpenAI primary provider (one required key plus optional tool placeholders):
 # cp config/cloud.openai.env.example config/cloud.env
 cp config/local.env.example config/local.env
 
@@ -189,6 +189,8 @@ nano config/local.env
 For a **single OpenAI key**, start from `config/cloud.openai.env.example`
 instead of the full template — set `OPENAI_API_KEY` only, then run
 `./bin/sync-tools.py cloud` and `./bin/manage-tools.py --mode cloud list`.
+OpenAI core settings are near the top; optional tool API keys and self-hosted
+integration settings are grouped at the bottom for later use.
 
 ```bash
 # ===== LLM Provider (pick ONE) =====

@@ -116,5 +116,6 @@ skills/profiles/*
 !skills/profiles/default.json
 !skills/profiles/docker.json
 !skills/profiles/docker-mcp.json
+!skills/profiles/openai_only.json
 !skills/profiles/examples/
 !skills/profiles/examples/**

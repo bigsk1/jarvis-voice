@@ -14,18 +14,33 @@ skills/
 │   ├── *.py
 │   ├── *.tool.json
 │   └── *.report.json # Build audit reports
-└── profiles/         # Tool profile overlays (default.json + profiles/examples/ tracked in git)
+└── profiles/         # Tool profile overlays (tracked baselines + examples/)
 ```
 
 ### Tool profiles (optional)
 
 Each profile is `skills/profiles/<name>.json` with `{"description": "...", "overrides": {"tool_name": false}}`. Keys in `overrides` win over the `enabled` flag in `*.tool.json`. Omit a tool to leave the file’s setting unchanged.
 
-Set **`JARVIS_TOOL_PROFILE`** in `config/local.env` or `config/cloud.env` to the profile **name** (stem of the file under `skills/profiles/`, default: `default`). Custom profile JSON files in `skills/profiles/` are gitignored except **`default.json`** and **`docker.json`**. **Copy-paste templates** live in **`skills/profiles/examples/`** (tracked); copy one to `skills/profiles/<name>.json` and set `JARVIS_TOOL_PROFILE=<name>`. For Docker, see the tracked **`docker.json`** profile and [docs/docker/README.md](../docs/docker/README.md).
+Set **`JARVIS_TOOL_PROFILE`** in `config/local.env` or `config/cloud.env` to the
+profile **name** (stem of the file under `skills/profiles/`, default: `default`).
+Tracked ready-to-use baselines include **`default.json`**, **`openai_only.json`**,
+**`docker.json`**, and **`docker-mcp.json`**. Other custom profile JSON files in
+`skills/profiles/` are gitignored. **Copy-paste templates** live in
+**`skills/profiles/examples/`** (tracked); copy one to
+`skills/profiles/<name>.json` and set `JARVIS_TOOL_PROFILE=<name>`. For Docker,
+see the tracked **`docker.json`** profile and
+[docs/docker/README.md](../docs/docker/README.md).
 
 After changing profile: restart Jarvis services, then run `./bin/sync-tools.py local` or `./bin/sync-tools.py cloud`. Inspect: `./bin/manage-tools.py profile show`.
 
-Example profile you can copy to `skills/profiles/<your_name>.json` and edit (file is gitignored except `default.json`):
+For a new OpenAI cloud install with only `OPENAI_API_KEY`, select
+`JARVIS_TOOL_PROFILE=openai_only`. It keeps OpenAI-backed tools and useful
+credential-free tools, while disabling integrations that need another
+credential, personal configuration, or external service. The profile does not
+select the LLM provider; keep `LLM_PROVIDER=openai` in `config/cloud.env`.
+
+Example custom profile you can copy to `skills/profiles/<your_name>.json` and
+edit (custom names are gitignored; the ready-to-use baselines are listed above):
 
 ```json
 {

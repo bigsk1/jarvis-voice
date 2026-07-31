@@ -563,7 +563,7 @@ Copy and edit the example configs:
 ```bash
 # For cloud mode (xAI/Anthropic/OpenAI or Ollama Cloud)
 cp config/cloud.env.example config/cloud.env
-# OpenAI-only: cp config/cloud.openai.env.example config/cloud.env
+# OpenAI primary provider: cp config/cloud.openai.env.example config/cloud.env
 nano config/cloud.env  # Configure the chosen provider and credentials/daemon
 
 # Recommended cloud provider: xAI Grok
