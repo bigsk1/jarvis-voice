@@ -75,7 +75,7 @@ Simple announce endpoint (auto-detects mode). Easier for external integrations.
 | Provider | Env Var | Voice Env Var | Notes |
 |----------|---------|---------------|-------|
 | `elevenlabs` | `ELEVENLABS_API_KEY` | `ELEVENLABS_TTS_VOICE` | Best quality, paid |
-| `xai` | `XAI_API_KEY` | `XAI_TTS_VOICE` | Native xAI TTS; voices: eve, ara, rex, sal, leo |
+| `xai` | `XAI_API_KEY` | `XAI_TTS_VOICE` | Native xAI TTS; 26 built-in voices plus custom voice IDs |
 | `qwen3-tts` | `QWEN3_TTS_URL` | `QWEN3_TTS_VOICE` | Local network, 28 cloned voices, free |
 | `openai` | `OPENAI_API_KEY` | `VOICE` | alloy, echo, fable, onyx, nova, shimmer |
 | `kokoro` | `KOKORO_TTS_URL` | `KOKORO_TTS_VOICE` | Local, lightweight, free |

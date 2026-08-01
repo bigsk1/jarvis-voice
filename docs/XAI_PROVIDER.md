@@ -273,6 +273,9 @@ XAI_TTS_MAX_CHARS="5000"
 XAI_TTS_TIMEOUT="180"
 ```
 
+The built-in IDs are listed in `config/cloud.env.example`. xAI also accepts
+custom voice IDs; see the current [xAI voice list](https://docs.x.ai/developers/model-capabilities/audio/text-to-speech#voices).
+
 This uses `XAI_API_KEY` and calls xAI's native `/v1/tts` endpoint. It does not reuse OpenAI TTS settings or `TTS_INSTRUCTIONS`.
 
 ### Expressive Speech Tags

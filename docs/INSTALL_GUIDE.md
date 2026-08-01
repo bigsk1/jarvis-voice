@@ -244,7 +244,7 @@ ELEVENLABS_STATUS_TTS_MODEL=eleven_flash_v2_5  # Faster/cheaper progress phrases
 
 # Or if using xAI TTS (uses XAI_API_KEY):
 # TTS_PROVIDER="xai"
-# XAI_TTS_VOICE="eve"  # eve, ara, rex, sal, leo
+# XAI_TTS_VOICE="eve"  # See config/cloud.env.example for all built-in voices.
 # XAI_TTS_LANGUAGE="en"
 
 # ===== Audio Devices (configure after Step 7) =====
