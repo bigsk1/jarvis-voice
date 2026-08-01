@@ -63,7 +63,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Mode-aware TTS | ✅ | Cloud=ElevenLabs, Local=Kokoro or Qwen3-TTS via provider-specific URL settings |
 | Status TTS | ✅ | Cached, cancellable status speech when enabled; final audio has priority |
 | **Push-to-talk STT** | ✅ | Click mic → speak → click again → transcribe → send |
-| **Mode-aware STT** | ✅ | Cloud=OpenAI Whisper, Local=faster-whisper |
+| **Mode-aware STT** | ✅ | Cloud=OpenAI, Local=faster-whisper; compatible endpoint opt-in in either mode |
 | **Audio playback controls** | ✅ | Speaker button with pause/resume/stop, progress animation  |
 | Wake word | ⏳ | Planned - browser-based VAD |
 
@@ -807,10 +807,27 @@ A speaker button appears in the input bar when audio is playing, providing visua
 
 STT provider is determined by the current mode's `.env` file:
 
+See [Speech-to-Text](SPEECH_TO_TEXT.md) for complete provider configuration,
+self-hosted Parakeet setup, fallback behavior, and non-browser microphone paths.
+
 | Mode | Provider | Config |
 |------|----------|--------|
 | **Cloud** | OpenAI Whisper | `STT_PROVIDER=openai` + `STT_MODEL` in cloud.env |
 | **Local** | faster-whisper | `STT_PROVIDER=faster-whisper` in local.env |
+| **Either (opt-in)** | OpenAI-compatible endpoint | `STT_PROVIDER=openai-compatible` + `STT_BASE_URL`, `STT_API_KEY`, and `STT_MODEL` |
+
+The compatible endpoint has its own URL and credential. It does not reuse
+`OPENAI_API_KEY` and may point to a fully local server such as Parakeet on a LAN
+GPU host. `STT_BASE_URL` accepts the server root, its `/v1` base, or the full
+`/v1/audio/transcriptions` URL.
+
+STT is a hard failure by default. Set `STT_FALLBACK_PROVIDER` to a different
+provider to opt into fallback. Fallback is attempted only for connection
+failures, timeouts, HTTP 408/425/429, or upstream 5xx responses. Authentication,
+model, endpoint/configuration errors, and an empty/silent transcript do not
+fall back. `STT_FALLBACK_MODEL` optionally selects the fallback model; otherwise
+the fallback provider's default is used. For cloud mode, `faster-whisper` is the
+safest fallback because it adds no network egress or API billing.
 
 **User Flow:**
 1. Click mic button 🎤 → Blue "preparing" state
@@ -829,12 +846,7 @@ def speech_to_text():
     load_jarvis_config(mode)
 
     provider = get_jarvis_setting('STT_PROVIDER')
-    if provider == 'faster-whisper':
-        # Local: use stt-local.py script
-        return transcribe_local(audio_path)
-    else:
-        # Cloud: OpenAI Whisper API
-        return transcribe_openai(audio_path)
+    return transcribe_configured(audio_path, mode, provider)
 ```
 
 ### Image Upload & Vision Analysis (Built-in, NOT a tool)
@@ -1474,7 +1486,7 @@ Random feedback can also be sampled by the orchestrator when `FEEDBACK_RANDOM_EN
 ### High Priority (Do First)
 - [x] **Browser STT** - Push-to-talk with mic button ✅ DONE
   - Click-to-toggle: click to start, click again to stop
-  - Mode-aware: Cloud=OpenAI Whisper, Local=faster-whisper
+  - Mode-aware defaults plus OpenAI-compatible endpoint opt-in in either mode
   - Visual states: preparing (blue), recording (green), processing (yellow)
   - Auto-sends transcript as chat message
 - [x] **Proactive integration** - Show alerts/reminders in UI ✅ DONE
@@ -1510,7 +1522,7 @@ Random feedback can also be sampled by the orchestrator when `FEEDBACK_RANDOM_EN
 - [x] Dynamic Ollama models - fetches from server in local mode
 - [x] Clean mode switching - resets Intelligence singleton
 - [x] Push-to-talk STT - Click-to-toggle voice input
-- [x] Mode-aware STT - Cloud=OpenAI Whisper, Local=faster-whisper
+- [x] Mode-aware STT - Cloud=OpenAI, Local=faster-whisper, compatible endpoint opt-in
 - [x] Recording visual states - Blue/green/yellow feedback
 - [x] Proactive notifications - Polls jarvis-api for alerts/reminders
 - [x] Browser notifications - Notifications API integration

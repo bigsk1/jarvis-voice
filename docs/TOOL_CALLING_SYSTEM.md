@@ -95,7 +95,7 @@ You say: "Send a webhook to my server with status online"
             ↓
 Wake Word Detection (openwakeword)
             ↓
-Speech-to-Text (OpenAI Whisper / faster-whisper)
+Speech-to-Text (OpenAI / faster-whisper / OpenAI-compatible endpoint)
             ↓
 LLM Provider (xAI/Claude/GPT/Ollama)
   • Understands intent: send_webhook tool

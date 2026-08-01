@@ -1,6 +1,6 @@
 #!/bin/bash
-# Jarvis Voice Assistant - Cloud Q&A from microphone (OpenAI STT + chat + TTS)
-# Loads config/cloud.env — all APIs hardcoded to OpenAI in this script.
+# Jarvis Voice Assistant - Cloud Q&A from microphone (configured STT + chat + TTS)
+# Loads config/cloud.env. Chat remains OpenAI-specific; STT uses STT_PROVIDER.
 # For orchestrator/tools or multi-provider TTS, use question-orchestrator.sh instead.
 #
 # Examples:
@@ -39,14 +39,10 @@ if [ "$BYTES" -lt 20000 ]; then
 fi
 
 echo "📝 Transcribing…"
-QUESTION=$(
-  curl -sS https://api.openai.com/v1/audio/transcriptions \
-    -H "Authorization: Bearer $OPENAI_API_KEY" \
-    -H "Content-Type: multipart/form-data" \
-    -F "file=@$RAW_WAV" \
-    -F "model=$STT_MODEL" \
-  | jq -r '.text // empty'
-)
+if ! QUESTION=$(python3 "$SCRIPT_DIR/stt.py" --mode cloud "$RAW_WAV"); then
+  echo "❌ Transcription failed." >&2
+  exit 1
+fi
 
 if [ -z "$QUESTION" ]; then
   echo "❌ Transcription failed or empty." >&2

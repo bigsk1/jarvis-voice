@@ -1772,10 +1772,10 @@ def upload_intel_file():
 @api_bp.route('/stt', methods=['POST'])
 @_scoped_request_config
 def speech_to_text():
-    """Transcribe audio to text - uses mode-specific provider
-    
-    Cloud mode: OpenAI Whisper API
-    Local mode: faster-whisper (local)
+    """Transcribe audio to text with the mode-specific configured provider.
+
+    Defaults remain OpenAI in cloud mode and faster-whisper in local mode. Both
+    modes may opt into a separate OpenAI-compatible endpoint.
     
     Accepts: multipart/form-data with 'audio' file
     Returns: { ok: true, text: "transcribed text" }
@@ -1802,7 +1802,10 @@ def speech_to_text():
         load_jarvis_config(mode)
         
         provider = get_jarvis_setting('STT_PROVIDER', 'openai' if mode == 'cloud' else 'faster-whisper')
-        stt_model = get_jarvis_setting('STT_MODEL', 'whisper-1')
+        from stt_client import default_model_for_provider, normalize_stt_provider
+
+        provider = normalize_stt_provider(provider)
+        stt_model = get_jarvis_setting('STT_MODEL', '') or default_model_for_provider(provider)
         print(f"[STT] ========================================", flush=True)
         print(f"[STT] Mode: {mode}, Provider: {provider}, Model: {stt_model}", flush=True)
         
@@ -1814,19 +1817,12 @@ def speech_to_text():
         print(f"[STT] Audio saved to: {tmp_path}", flush=True)
         
         try:
-            if provider == 'faster-whisper':
-                # Local: use faster-whisper via stt-local.py
-                print(f"[STT] Using LOCAL faster-whisper...", flush=True)
-                transcript = _transcribe_local(tmp_path)
-            else:
-                # Cloud: use OpenAI Whisper API
-                print(f"[STT] Using CLOUD OpenAI Whisper API...", flush=True)
-                transcript = _transcribe_openai(tmp_path)
+            transcript = _transcribe_configured(tmp_path, mode, provider, stt_model)
             
             if not transcript:
                 return jsonify({'ok': False, 'error': 'No speech detected'}), 400
             
-            print(f"[STT] ✓ Transcript: {transcript}", flush=True)
+            print(f"[STT] Transcription complete ({len(transcript)} characters)", flush=True)
             print(f"[STT] ========================================", flush=True)
             return jsonify({'ok': True, 'text': transcript})
             
@@ -1842,38 +1838,85 @@ def speech_to_text():
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 
-def _transcribe_openai(audio_path: str) -> str:
-    """Transcribe audio using OpenAI Whisper API"""
-    import os
-    import requests
+def _stt_timeout() -> float:
+    from ..config import get_jarvis_setting
+    from stt_client import parse_stt_timeout
+
+    return parse_stt_timeout(get_jarvis_setting('STT_TIMEOUT_SECONDS', '30'))
+
+
+def _transcribe_openai(audio_path: str, model: str) -> str:
+    """Transcribe audio using the OpenAI service."""
+    from stt_client import transcribe_openai_compatible
     from ..config import get_jarvis_setting
     
     api_key = get_jarvis_setting('OPENAI_API_KEY', '')
-    model = get_jarvis_setting('STT_MODEL', 'whisper-1')
-    
     if not api_key:
         raise ValueError('OPENAI_API_KEY not configured')
+
+    return transcribe_openai_compatible(
+        audio_path,
+        base_url='https://api.openai.com/v1',
+        api_key=api_key,
+        model=model,
+        timeout=_stt_timeout(),
+    )
+
+
+def _transcribe_compatible(audio_path: str, model: str) -> str:
+    """Transcribe audio using the separately configured compatible endpoint."""
+    from stt_client import transcribe_openai_compatible
+    from ..config import get_jarvis_setting
+
+    return transcribe_openai_compatible(
+        audio_path,
+        base_url=get_jarvis_setting('STT_BASE_URL', ''),
+        api_key=get_jarvis_setting('STT_API_KEY', ''),
+        model=model,
+        timeout=_stt_timeout(),
+    )
+
+
+def _transcribe_faster_whisper(audio_path: str, mode: str, model: str) -> str:
+    """Transcribe audio using faster-whisper in an isolated process."""
+    import os
+    import subprocess
+    from stt_client import STTProviderError
     
-    # Convert webm to wav if needed (OpenAI prefers wav/mp3)
+    # Convert webm to wav for faster-whisper
     wav_path = _convert_to_wav(audio_path)
     
     try:
-        url = "https://api.openai.com/v1/audio/transcriptions"
+        stt_script = JARVIS_ROOT / 'bin' / 'stt.py'
         
-        with open(wav_path, 'rb') as f:
-            response = requests.post(
-                url,
-                headers={"Authorization": f"Bearer {api_key}"},
-                files={"file": (os.path.basename(wav_path), f, "audio/wav")},
-                data={"model": model},
-                timeout=30
-            )
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(stt_script),
+                '--mode',
+                mode,
+                '--provider',
+                'faster-whisper',
+                '--model',
+                model,
+                wav_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=_stt_timeout(),
+        )
         
-        if response.status_code != 200:
-            raise ValueError(f"OpenAI STT error: {response.status_code} - {response.text}")
+        if result.returncode != 0:
+            detail = result.stderr.strip().replace('\n', ' ')[:300]
+            if result.returncode == 3:
+                raise STTProviderError(
+                    f"faster-whisper process failed: {detail}", retryable=True
+                )
+            raise ValueError(f"faster-whisper configuration failed: {detail}")
         
-        result = response.json()
-        return result.get('text', '').strip()
+        return result.stdout.strip()
+    except subprocess.TimeoutExpired as exc:
+        raise STTProviderError('faster-whisper timed out', retryable=True) from exc
     finally:
         # Clean up converted file
         if wav_path != audio_path and os.path.exists(wav_path):
@@ -1881,33 +1924,50 @@ def _transcribe_openai(audio_path: str) -> str:
 
 
 def _transcribe_local(audio_path: str) -> str:
-    """Transcribe audio using local faster-whisper"""
-    import os
-    import subprocess
-    
-    # Convert webm to wav for faster-whisper
-    wav_path = _convert_to_wav(audio_path)
-    
-    try:
-        # Use the existing stt-local.py script
-        stt_script = JARVIS_ROOT / 'bin' / 'stt-local.py'
-        
-        result = subprocess.run(
-            ['python3', str(stt_script), wav_path],
-            capture_output=True,
-            text=True,
-            timeout=30
+    """Backward-compatible faster-whisper helper for local mode."""
+    from ..config import get_jarvis_setting
+
+    return _transcribe_faster_whisper(
+        audio_path,
+        'local',
+        get_jarvis_setting('STT_MODEL', 'small.en'),
+    )
+
+
+def _transcribe_configured(
+    audio_path: str, mode: str, provider: str, model: str
+) -> str:
+    """Dispatch configured STT and apply only an explicitly enabled fallback."""
+    from ..config import get_jarvis_setting
+    from stt_client import default_model_for_provider, run_with_stt_fallback
+
+    fallback_provider = get_jarvis_setting('STT_FALLBACK_PROVIDER', '').strip()
+    fallback_model = get_jarvis_setting('STT_FALLBACK_MODEL', '').strip()
+
+    def transcribe(selected_provider: str) -> str:
+        selected_model = model
+        if selected_provider != provider:
+            selected_model = fallback_model or default_model_for_provider(selected_provider)
+        if selected_provider == 'faster-whisper':
+            return _transcribe_faster_whisper(audio_path, mode, selected_model)
+        if selected_provider == 'openai':
+            return _transcribe_openai(audio_path, selected_model)
+        if selected_provider == 'openai-compatible':
+            return _transcribe_compatible(audio_path, selected_model)
+        raise ValueError(f"Unsupported STT provider: {selected_provider}")
+
+    def on_fallback(primary, fallback, error):
+        print(
+            f"[STT] {primary} temporarily unavailable; falling back to {fallback}: {error}",
+            flush=True,
         )
-        
-        if result.returncode != 0:
-            print(f"[STT] Local STT error: {result.stderr}", flush=True)
-            raise ValueError(f"Local STT failed: {result.stderr}")
-        
-        return result.stdout.strip()
-    finally:
-        # Clean up converted file
-        if wav_path != audio_path and os.path.exists(wav_path):
-            os.unlink(wav_path)
+
+    return run_with_stt_fallback(
+        provider,
+        fallback_provider,
+        transcribe,
+        on_fallback=on_fallback,
+    )
 
 
 def _convert_to_wav(input_path: str) -> str:

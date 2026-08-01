@@ -46,6 +46,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
 > Full walkthrough: [Install Guide](docs/INSTALL_GUIDE.md)
 > Config details: [config/README.md](config/README.md)
 > Web UI guide: [docs/JARVIS_WEB_UI.md](docs/JARVIS_WEB_UI.md)
+> Speech-to-text guide: [docs/SPEECH_TO_TEXT.md](docs/SPEECH_TO_TEXT.md)
 >
 > **macOS and Windows:** The experimental Docker Desktop path runs the Web UIs without a native Ubuntu or Python installation. See [Mac and Windows Docker Installation](docs/docker/MAC-WINDOWS.md) for Terminal, PowerShell, and Command Prompt steps, limitations, and troubleshooting.
 
@@ -1237,6 +1238,7 @@ LIMIT 7;"
 - [`docs/QUICKSTART.md`](docs/QUICKSTART.md) - Quick setup guide
 - [`docs/TOOL_CALLING_SYSTEM.md`](docs/TOOL_CALLING_SYSTEM.md) - How tools work
 - [`docs/MODEL_PROMPT_OVERRIDES.md`](docs/MODEL_PROMPT_OVERRIDES.md) - Provider/model-specific runtime prompt tuning
+- [`docs/SPEECH_TO_TEXT.md`](docs/SPEECH_TO_TEXT.md) - **Speech-to-text** providers, self-hosted Parakeet, fallback behavior, and browser microphone requirements
 - [`docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md`](docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md) - **Qwen3-TTS** (28 cloned voices, local network)
 
 **Proactive System:**

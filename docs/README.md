@@ -11,6 +11,7 @@
 - **[docker/README.md](docker/README.md)** - 🐳 **Docker guide** — run Web UIs + API in containers (commands, `.env`, hybrid mode)
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
+- **[SPEECH_TO_TEXT.md](SPEECH_TO_TEXT.md)** - **Speech-to-text guide** (OpenAI, Faster-Whisper, self-hosted compatible endpoints, fallback policy, browser mic requirements)
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (`grok-4.5` recommended default; also `grok-4.3`, `grok-build-0.1`, native search/TTS, in-flight continuation) ⭐ RECOMMENDED
 - **[OPENAI_PROVIDER.md](OPENAI_PROVIDER.md)** - 🆕 **OpenAI provider** (Chat Completions default, optional Responses API routing, hosted tools, in-flight continuation)
 - **[ollama/README.md](ollama/README.md)** - **Ollama local + Ollama Cloud guide** (`OLLAMA_MODEL` vs `OLLAMA_CLOUD_MODEL`, vision uses cloud model in cloud mode / `OLLAMA_VISION_MODEL` in local mode, signed-in daemon, Docker addressing, troubleshooting)
@@ -1451,7 +1452,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - **Per-mode settings**: `cloud`/`local` sections in web_config.json
   - **Dynamic Ollama models**: Fetches available models from Ollama server
   - **Clean mode switching**: Intelligence singleton resets on mode change
-  - **STT_PROVIDER config**: Ready for push-to-talk (faster-whisper/openai)
+  - **STT_PROVIDER config**: Push-to-talk via faster-whisper, OpenAI, or a separate OpenAI-compatible endpoint
   - System tab shows mode-specific .env values
   - See: `docs/JARVIS_WEB_UI.md`
 

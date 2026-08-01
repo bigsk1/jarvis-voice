@@ -87,8 +87,9 @@ request/browser data or LLM mode selectors after startup.
 - **Best for**: production use, complex tool calling, providers with large context windows
 - **OpenCode**: can use the same cloud providers (Anthropic or OpenAI recommended for coding tasks)
 
-See also: [xAI provider guide](../docs/XAI_PROVIDER.md) and
-[Ollama local/cloud guide](../docs/ollama/README.md).
+See also: [xAI provider guide](../docs/XAI_PROVIDER.md),
+[Ollama local/cloud guide](../docs/ollama/README.md), and
+[Speech-to-Text guide](../docs/SPEECH_TO_TEXT.md).
 
 ### `cloud.openai.env.example` (OpenAI primary provider)
 

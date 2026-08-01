@@ -215,9 +215,20 @@ XAI_MODEL="grok-4.5"              # recommended default
 # Alternatively set OLLAMA_API_KEY and use an ID from https://ollama.com/api/tags.
 
 # ===== Speech-to-Text (STT) =====
-STT_PROVIDER="openai"  # Options: "openai", "local" (uses faster-whisper)
-STT_MODEL="gpt-4o-mini-transcribe"  # For openai provider
+STT_PROVIDER="openai"  # openai, faster-whisper, or openai-compatible
+STT_MODEL="gpt-4o-mini-transcribe"
 OPENAI_API_KEY=your-openai-key
+
+# Or use a separately hosted OpenAI-compatible STT endpoint in either mode:
+# STT_PROVIDER="openai-compatible"
+# STT_BASE_URL="http://your-stt-host:5092/v1"
+# STT_API_KEY="your-stt-server-key"
+# STT_MODEL="parakeet-en"
+# STT_TIMEOUT_SECONDS="30"
+
+# STT hard-fails by default. To opt into transient-failure fallback:
+# STT_FALLBACK_PROVIDER="faster-whisper"
+# STT_FALLBACK_MODEL="small.en"
 
 # ===== Text-to-Speech (TTS) =====
 TTS_PROVIDER="elevenlabs"  # Options: "elevenlabs", "xai", "openai", "qwen3-tts"
@@ -245,6 +256,10 @@ OUT_DEV="plughw:CARD=Device,DEV=0"
 # IN_DEV="pulse"
 # OUT_DEV="pulse"
 ```
+
+See [Speech-to-Text](SPEECH_TO_TEXT.md) for all provider combinations,
+self-hosted Parakeet setup, fallback rules, privacy boundaries, and browser
+microphone requirements.
 
 > **Important:** Do **not** shrink `cloud.env` down to only the fields shown above.
 > Start by copying the full `config/cloud.env.example` to `config/cloud.env`, then keep the existing defaults unless you have a reason to change them.

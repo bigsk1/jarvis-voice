@@ -106,16 +106,12 @@ else
         exit 1
     fi
     
-    # Transcribe using OpenAI API
+    # Transcribe using the configured cloud-mode STT provider
     echo "📝 Transcribing…"
-    TRANSCRIPT=$(
-        curl -sS https://api.openai.com/v1/audio/transcriptions \
-            -H "Authorization: Bearer $OPENAI_API_KEY" \
-            -H "Content-Type: multipart/form-data" \
-            -F "file=@$MIC_WAV" \
-            -F "model=$STT_MODEL" \
-        | jq -r '.text // empty'
-    )
+    if ! TRANSCRIPT=$(python3 "$PROJECT_ROOT/bin/stt.py" --mode cloud "$MIC_WAV"); then
+        echo "❌ Transcription failed." >&2
+        exit 1
+    fi
     
     if [ -z "$TRANSCRIPT" ]; then
         echo "❌ Transcription failed or empty." >&2

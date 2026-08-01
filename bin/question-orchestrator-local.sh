@@ -16,7 +16,7 @@ source "$PROJECT_ROOT/lib/config_loader.sh"
 load_config "local"
 
 # Script paths
-STT_SCRIPT="$PROJECT_ROOT/bin/stt-local.py"
+STT_SCRIPT="$PROJECT_ROOT/bin/stt.py"
 SAY_SCRIPT="$PROJECT_ROOT/bin/say-local.sh"
 TTS_NORMALIZE="$PROJECT_ROOT/bin/tts-normalize.py"
 ORCHESTRATOR="$PROJECT_ROOT/orchestrator/orchestrator_v2.py"
@@ -84,9 +84,12 @@ else
         trim 0 "$MAX_RECORD_TIME" \
         silence 1 "$PRE_SIL" "$THRESH" 1 "$POST_SIL" "$THRESH"
     
-    # Transcribe with local whisper
+    # Transcribe with the configured local-mode STT provider
     echo "📝 Transcribing…"
-    TRANSCRIPT=$(python3 "$STT_SCRIPT" "$MIC_WAV")
+    if ! TRANSCRIPT=$(python3 "$STT_SCRIPT" --mode local "$MIC_WAV"); then
+        echo "❌ Transcription failed." >&2
+        exit 1
+    fi
     
     if [ -z "$TRANSCRIPT" ]; then
         echo "❌ No speech detected" >&2

@@ -34,6 +34,11 @@ def _fake_project(tmp_path: Path, script_name: str) -> tuple[Path, dict[str, str
         bin_dir / "tts-normalize.py",
         "#!/usr/bin/env python3\nimport sys\nprint(sys.argv[1])\n",
     )
+    if script_name == "question-mic.sh":
+        _write_executable(
+            bin_dir / "stt.py",
+            "#!/usr/bin/env python3\nprint('What does \\\"test\\\" mean?')\n",
+        )
     (root / "config" / "cloud.env").write_text(
         """OPENAI_API_KEY=test-key
 OPENAI_MODEL=test-model

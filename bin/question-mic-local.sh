@@ -1,6 +1,6 @@
 #!/bin/bash
 # Jarvis Voice Assistant - Local Q&A from microphone
-# Loads config/local.env — local STT, then hands off to question-local.sh (Ollama + TTS_PROVIDER).
+# Loads config/local.env — configured STT, then hands off to question-local.sh (Ollama + TTS_PROVIDER).
 #
 # Examples:
 #   ./bin/question-mic-local.sh
@@ -32,10 +32,13 @@ if [ "$BYTES" -lt 20000 ]; then
   exit 1
 fi
 
-# Transcribe locally
-TRANSCRIPT=$("$SCRIPT_DIR/stt-local.py" "$RAW_WAV" || true)
+# Transcribe using the local-mode STT configuration
+if ! TRANSCRIPT=$(python3 "$SCRIPT_DIR/stt.py" --mode local "$RAW_WAV"); then
+  echo "❌ Transcription failed." >&2
+  exit 1
+fi
 if [ -z "$TRANSCRIPT" ]; then
-  echo "❌ Local STT returned empty text." >&2
+  echo "❌ STT returned empty text." >&2
   exit 1
 fi
 
@@ -43,4 +46,3 @@ echo "🙋 You asked: $TRANSCRIPT"
 
 # Hand off to local question flow
 "$SCRIPT_DIR/question-local.sh" "$TRANSCRIPT"
-
