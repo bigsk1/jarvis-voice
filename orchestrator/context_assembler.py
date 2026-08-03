@@ -860,6 +860,7 @@ class ContextAssembler:
             "image_url",
         )
         url_aliases = ("url", "link", "youtube_url", "watch_url", "product_link")
+        is_hotel_search = str(data.get("engine") or "").strip().lower() == "google_hotels"
 
         candidates: list[dict[str, Any]] = []
         for index, item in enumerate(raw_items[:max_items], 1):
@@ -880,6 +881,28 @@ class ContextAssembler:
                     depth=0,
                     max_depth=1,
                 )
+
+            if is_hotel_search:
+                for key in ("price_total", "price_per_night"):
+                    value = item.get(key)
+                    if value not in (None, ""):
+                        candidate[key] = self.build_preview_value(
+                            value,
+                            parent_key=key,
+                            depth=0,
+                            max_depth=1,
+                        )
+
+                amenities = item.get("amenities")
+                if isinstance(amenities, list) and amenities:
+                    normalized_amenities = {
+                        str(amenity).strip().lower().replace("_", "-")
+                        for amenity in amenities
+                    }
+                    candidate["pet_friendly"] = any(
+                        amenity in {"pet-friendly", "pets-allowed", "pets allowed"}
+                        for amenity in normalized_amenities
+                    )
 
             if "url" not in candidate:
                 for alias in url_aliases:

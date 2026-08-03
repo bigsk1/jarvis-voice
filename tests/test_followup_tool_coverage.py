@@ -611,9 +611,18 @@ LOCAL_TOOL_SAMPLES = {
             "engine": "google_hotels",
             "query": "Seattle",
             "destination": "Seattle",
+            "check_in_date": "2026-08-11",
+            "check_out_date": "2026-08-13",
+            "nights": 2,
+            "sort_by": "price",
+            "applied_filters": {"rating": 8, "free_cancellation": True},
+            "currency": "USD",
+            "cheapest_price_total": 400,
+            "price_basis": "lowest_listed_total_for_entire_stay",
             "results": [
                 {
-                    "name": "Harbor Hotel",
+                    "title": "Harbor Hotel",
+                    "property_id": "hotel-harbor-1",
                     "url": "https://example.test/hotel",
                     "price_total": "$400",
                 }
@@ -1012,6 +1021,25 @@ def test_flight_search_followup_keeps_option_identity_without_nested_segments():
         {"flight_search": {"ok": True, "data": payload}}
     )["flight_search"]
     assert wrapped["candidates"] == result["candidates"]
+
+
+def test_hotel_search_followup_keeps_stay_context_and_property_identity():
+    payload, _ = LOCAL_TOOL_SAMPLES["serpapi_hotel_search"]
+
+    result = followup.extract_followup_data(
+        {"serpapi_hotel_search": payload}
+    )["serpapi_hotel_search"]
+
+    assert result["destination"] == "Seattle"
+    assert result["check_in_date"] == "2026-08-11"
+    assert result["check_out_date"] == "2026-08-13"
+    assert result["nights"] == 2
+    assert result["sort_by"] == "price"
+    assert result["applied_filters"] == {"rating": 8, "free_cancellation": True}
+    assert result["cheapest_price_total"] == 400
+    assert result["price_basis"] == "lowest_listed_total_for_entire_stay"
+    assert result["candidates"][0]["property_id"] == "hotel-harbor-1"
+    assert result["candidates"][0]["price_total"] == "$400"
 
 
 def test_bounded_default_preserves_live_scalar_payloads_and_false_values():

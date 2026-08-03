@@ -205,17 +205,55 @@ Use this when you already have a Home Depot product ID and want the focused prod
 
 ### Hotel search
 
+Use `serpapi_hotel_search` for future stays with date-specific Google Hotels
+prices. It requires `SERP_API_KEY`, makes one SerpApi search, and inherits the
+normal Jarvis proxy policy. With the default `proxy_policy=inherit`, configured
+`LOCAL_PROXY` / `LOCAL_PROXY2` values are tried by the shared HTTP client; when
+no proxy is configured, it connects directly.
+
 ```json
 {
-  "destination": "San Diego",
-  "check_in_date": "2026-05-10",
-  "check_out_date": "2026-05-12",
+  "destination": "Phoenix, Arizona",
+  "check_in_date": "2026-08-11",
+  "check_out_date": "2026-08-13",
   "adults": 2,
   "max_price": 300,
   "rating": 8,
   "num_results": 5
 }
 ```
+
+The routing contract expects explicit `YYYY-MM-DD` dates. Jarvis resolves
+phrases such as "next Tuesday" from the runtime-injected current date before it
+calls the tool. For "hotels near me," it may use the injected
+`JARVIS_DEFAULT_LOCATION`; a location named by the user always wins.
+
+The default `sort_by` is `price`. The tool asks Google Hotels for lowest-price
+results, normalizes the whole returned property page, locally sorts by the
+lowest listed total for the complete stay, and only then applies `num_results`.
+This avoids treating Google's relevance order—or small inconsistencies in the
+provider's price order—as a verified cheapest-first list. Other supported sorts
+are `rating`, `reviews`, and `relevance`.
+
+Each response identifies the stay dates, number of nights, guests, currency,
+returned/property counts, and SerpApi search count. Hotel rows preserve an
+opaque `property_id`, property or booking URL when available, nightly and total
+prices, before-tax prices, rating/review counts, star class, amenities,
+cancellation signal, thumbnail, and compact nearby-place/booking options.
+Properties that SerpApi reports only under `non_matching_properties` are not
+presented as matches for active filters.
+
+If child ages are supplied, their count must match `children` and every age must
+be 1 through 17. Ages remain optional because SerpApi also accepts a children
+count without them. Date order, past dates, guest counts, currency, rating,
+class, price range, device, and integer filter IDs are validated before any
+billable request.
+
+Prices are reference quotes and can change. The tool never reserves a room or
+submits payment; use the returned property/provider link to review restrictions
+and book manually. `no_cache` defaults to false so identical searches can use
+SerpApi's cache. Set it only for an explicit fresh refresh. `include_raw` is a
+debug option and is off by default.
 
 ### YouTube video details with transcript fallback
 

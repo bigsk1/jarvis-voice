@@ -152,6 +152,7 @@ GENERIC_FOLLOWUP_SCALAR_KEYS = (
     'space_id',
     'file_id',
     'page_id',
+    'property_id',
     'canvas_id',
     'canvas_page_id',
     'alert_id',
@@ -324,7 +325,11 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'serpapi_ebay_search': ['engine', 'query', 'category_id', 'ebay_domain', 'product_id', 'results_count', 'top_url'],
     'serpapi_ebay_product': ['engine', 'product_id', 'ebay_domain', 'results_count', 'top_url', 'top_image_url'],
     'serpapi_maps_search': ['engine', 'query', 'results_count'],
-    'serpapi_hotel_search': ['engine', 'query', 'destination', 'check_in_date', 'check_out_date', 'results_count'],
+    'serpapi_hotel_search': [
+        'engine', 'provider', 'query', 'destination', 'check_in_date', 'check_out_date',
+        'nights', 'sort_by', 'applied_filters', 'currency', 'results_count', 'cheapest_price_total',
+        'cheapest_price_per_night', 'price_basis',
+    ],
     'flight_search': [
         'provider', 'trip_type', 'departure_id', 'arrival_id', 'outbound_date', 'return_date',
         'travel_class', 'stops_filter', 'sort_by', 'currency', 'results_count', 'cheapest_price',
@@ -676,6 +681,7 @@ def _generic_candidate_from_item(item: dict) -> dict:
 
 def _generic_item_identity(item: dict):
     for field in (
+        'property_id',
         'url',
         'top_url',
         'place_id',

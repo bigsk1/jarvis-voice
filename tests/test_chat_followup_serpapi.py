@@ -941,9 +941,15 @@ def test_extract_followup_data_generic_fallback_keeps_maps_and_hotel_candidate_r
         },
         "serpapi_hotel_search": {
             "destination": "Newport",
+            "check_in_date": "2026-08-11",
+            "check_out_date": "2026-08-13",
+            "nights": 2,
+            "sort_by": "price",
+            "cheapest_price_total": 420,
             "items": [
                 {
                     "name": "Harbor Inn",
+                    "property_id": "hotel-harbor-1",
                     "url": "https://hotels.example/harbor",
                     "rating": 4.4,
                     "reviews": 88,
@@ -968,6 +974,10 @@ def test_extract_followup_data_generic_fallback_keeps_maps_and_hotel_candidate_r
     assert maps["candidates"][0]["reviews"] == 321
     assert hotels["name"] == "Harbor Inn"
     assert hotels["top_url"] == "https://hotels.example/harbor"
+    assert hotels["nights"] == 2
+    assert hotels["sort_by"] == "price"
+    assert hotels["cheapest_price_total"] == 420
+    assert hotels["candidates"][0]["property_id"] == "hotel-harbor-1"
     assert hotels["candidates"][0]["price_total"] == "$420"
     assert hotels["candidates"][0]["price_per_night"] == "$210"
     assert hotels["candidates"][0]["rating"] == 4.4
@@ -1041,10 +1051,16 @@ def test_extract_followup_data_flattens_repeated_hotel_runs_before_generic_candi
                 "destination": "Newport Beach",
                 "check_in_date": "2026-07-17",
                 "check_out_date": "2026-07-19",
+                "nights": 2,
+                "sort_by": "price",
+                "currency": "USD",
+                "cheapest_price_total": 612,
+                "price_basis": "lowest_listed_total_for_entire_stay",
                 "results_count": 2,
                 "results": [
                     {
                         "title": "Newport Beach Marriott Bayview",
+                        "property_id": "hotel-marriott-bayview",
                         "url": "https://www.marriott.com/newport-bayview",
                         "rating": 4.3,
                         "reviews": 1520,
@@ -1055,6 +1071,7 @@ def test_extract_followup_data_flattens_repeated_hotel_runs_before_generic_candi
                     },
                     {
                         "title": "Newport Channel Inn - Family Triple Room",
+                        "property_id": "hotel-channel-inn",
                         "url": "https://www.freecancellations.com/channel-inn",
                         "rating": 5,
                         "reviews": 8,
@@ -1074,7 +1091,8 @@ def test_extract_followup_data_flattens_repeated_hotel_runs_before_generic_candi
                 "results": [
                     {
                         "title": "Newport Beach Marriott Bayview",
-                        "url": "https://www.marriott.com/newport-bayview",
+                        "property_id": "hotel-marriott-bayview",
+                        "url": None,
                         "rating": 4.3,
                         "price_per_night": "$306",
                         "price_total": "$612",
@@ -1091,10 +1109,16 @@ def test_extract_followup_data_flattens_repeated_hotel_runs_before_generic_candi
     assert hotels["results_count"] == 2
     assert hotels["destination"] == "Newport Beach"
     assert hotels["check_in_date"] == "2026-07-17"
+    assert hotels["nights"] == 2
+    assert hotels["sort_by"] == "price"
+    assert hotels["cheapest_price_total"] == 612
+    assert hotels["price_basis"] == "lowest_listed_total_for_entire_stay"
     assert hotels["candidates"][0]["title"] == "Newport Beach Marriott Bayview"
+    assert hotels["candidates"][0]["property_id"] == "hotel-marriott-bayview"
     assert hotels["candidates"][0]["price_per_night"] == "$306"
     assert hotels["candidates"][0]["price_total"] == "$612"
     assert hotels["candidates"][1]["title"] == "Newport Channel Inn - Family Triple Room"
+    assert hotels["candidates"][1]["property_id"] == "hotel-channel-inn"
     assert hotels["candidates"][1]["price_per_night"] == "$330"
     assert hotels["candidates"][1]["price_total"] == "$659"
 

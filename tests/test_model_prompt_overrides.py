@@ -94,7 +94,7 @@ class ModelPromptOverrideTests(unittest.TestCase):
             ["grok-4.20-0309-non-reasoning", "grok-4.20-non-reasoning"],
         )
 
-    def test_grok_4_5_canvas_export_override_loads(self):
+    def test_grok_4_5_tool_calling_override_loads(self):
         override = load_model_prompt_override(
             provider="xai",
             model="grok-4.5",
@@ -106,6 +106,8 @@ class ModelPromptOverrideTests(unittest.TestCase):
         self.assertIn("Canvas export requests", override.get("tool_calling_prepend"))
         self.assertIn("action=create", override.get("tool_calling_prepend"))
         self.assertIn("page link", override.get("tool_calling_prepend"))
+        self.assertIn("serpapi_hotel_search", override.get("tool_calling_prepend"))
+        self.assertIn("one successful structured search", override.get("tool_calling_prepend"))
 
     def test_loads_normalized_alias_when_exact_file_missing(self):
         with tempfile.TemporaryDirectory() as tmpdir:

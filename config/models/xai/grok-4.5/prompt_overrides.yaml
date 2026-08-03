@@ -1,5 +1,5 @@
 enabled: true
-description: "Grok 4.5 Canvas export tool-call reliability nudges"
+description: "Grok 4.5 tool-call reliability nudges"
 applies_to_modes:
   - cloud
 
@@ -8,3 +8,4 @@ tool_calling_prepend: |
   Treat source links, images, videos, audio, and stash references in the request as content to preserve inside the Canvas page, not as reasons to call search, media-generation, or unrelated tools.
   Use the selected response excerpt plus recent conversation context and structured tool_results to build readable Markdown. If some supporting detail is missing, still create the best page possible from the available context instead of returning an empty, generic, or uncertainty-only answer.
   After one successful canvas create, stop tool use and reply with the page link.
+  For flight_search and serpapi_hotel_search, one successful structured search is normally enough: answer from its returned candidates and do not repeat the search merely to recover more detail. Use web search only when the user asks for facts the structured results do not contain, such as a specific property's current pet restrictions or a current flight's operational status.

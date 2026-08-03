@@ -269,43 +269,131 @@ def extract_maps_results(payload: dict[str, Any], limit: int) -> list[dict[str, 
 
 
 def extract_hotel_results(payload: dict[str, Any], limit: int) -> list[dict[str, Any]]:
+    """Normalize Google Hotels properties into compact, follow-up-safe rows.
+
+    `properties` contains the active matches. SerpApi may also return a
+    `non_matching_properties` bucket for properties that fail the requested
+    filters; those are intentionally excluded here.
+    """
+
+    def dict_list(value: Any) -> list[dict[str, Any]]:
+        if isinstance(value, dict):
+            return [value]
+        if not isinstance(value, list):
+            return []
+        return [entry for entry in value if isinstance(entry, dict)]
+
+    def string_list(value: Any, maximum: int) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [str(entry) for entry in value if str(entry).strip()][:maximum]
+
+    def first_image_url(item: dict[str, Any]) -> str | None:
+        if item.get("thumbnail"):
+            return item["thumbnail"]
+        for image in dict_list(item.get("images")):
+            value = image.get("thumbnail") or image.get("original_image")
+            if value:
+                return value
+        return None
+
+    def compact_nearby_places(item: dict[str, Any]) -> list[dict[str, Any]]:
+        nearby: list[dict[str, Any]] = []
+        for place in dict_list(item.get("nearby_places"))[:5]:
+            transport = []
+            for option in dict_list(place.get("transportations"))[:3]:
+                compact = {
+                    "type": option.get("type"),
+                    "duration": option.get("duration"),
+                }
+                if any(value not in (None, "", [], {}) for value in compact.values()):
+                    transport.append(compact)
+            compact_place = {
+                "name": place.get("name"),
+                "transportation": transport,
+            }
+            if compact_place["name"] or transport:
+                nearby.append(compact_place)
+        return nearby
+
+    def compact_booking_options(prices: Any) -> list[dict[str, Any]]:
+        options: list[dict[str, Any]] = []
+        for price in dict_list(prices)[:3]:
+            nightly = price.get("rate_per_night") or {}
+            total = price.get("total_rate") or {}
+            option = {
+                "source": price.get("source"),
+                "url": price.get("link"),
+                "price_per_night": nightly.get("lowest"),
+                "extracted_price_per_night": nightly.get("extracted_lowest"),
+                "price_total": total.get("lowest"),
+                "extracted_price_total": total.get("extracted_lowest"),
+                "free_cancellation": price.get("free_cancellation"),
+            }
+            if any(value not in (None, "", [], {}) for value in option.values()):
+                options.append(option)
+        return options
+
     results: list[dict[str, Any]] = []
-    for item in payload.get("properties") or []:
-        if not isinstance(item, dict):
-            continue
+    for item in dict_list(payload.get("properties")):
 
         rate_per_night = item.get("rate_per_night") or {}
         total_rate = item.get("total_rate") or {}
-        prices = item.get("prices") or []
-        first_price = prices[0] if prices and isinstance(prices[0], dict) else {}
+        prices = dict_list(item.get("prices"))
+        first_price = prices[0] if prices else {}
+        booking_options = compact_booking_options(prices)
+        free_cancellation = item.get("free_cancellation")
+        if free_cancellation is None:
+            cancellation_values = [
+                price.get("free_cancellation")
+                for price in prices
+                if isinstance(price, dict) and "free_cancellation" in price
+            ]
+            free_cancellation = any(cancellation_values) if cancellation_values else None
 
         results.append(
             {
                 "title": item.get("name"),
-                "url": item.get("link"),
+                # property_token is an opaque Google Hotels property handle,
+                # not a credential. Expose it under a neutral name so generic
+                # follow-up extraction does not mistake it for an API secret.
+                "property_id": item.get("property_token"),
+                "url": item.get("link") or first_price.get("link"),
                 "type": item.get("type"),
                 "description": item.get("description"),
+                "address": item.get("address"),
+                "phone": item.get("phone"),
                 "hotel_class": item.get("hotel_class"),
+                "extracted_hotel_class": item.get("extracted_hotel_class"),
                 "rating": item.get("overall_rating"),
                 "reviews": item.get("reviews"),
+                "location_rating": item.get("location_rating"),
                 "price_per_night": rate_per_night.get("lowest"),
                 "price_total": total_rate.get("lowest"),
                 "extracted_price_per_night": rate_per_night.get("extracted_lowest"),
                 "extracted_price_total": total_rate.get("extracted_lowest"),
                 "before_taxes_fees_per_night": rate_per_night.get("before_taxes_fees"),
                 "before_taxes_fees_total": total_rate.get("before_taxes_fees"),
+                "extracted_before_taxes_fees_per_night": rate_per_night.get(
+                    "extracted_before_taxes_fees"
+                ),
+                "extracted_before_taxes_fees_total": total_rate.get(
+                    "extracted_before_taxes_fees"
+                ),
                 "check_in_time": item.get("check_in_time"),
                 "check_out_time": item.get("check_out_time"),
-                "amenities": item.get("amenities"),
-                "free_cancellation": item.get("free_cancellation"),
+                "amenities": string_list(item.get("amenities"), 20),
+                "essential_info": string_list(item.get("essential_info"), 10),
+                "free_cancellation": free_cancellation,
                 "gps_coordinates": item.get("gps_coordinates"),
-                "thumbnail": item.get("thumbnail"),
-                "nearby_places": item.get("nearby_places"),
+                "thumbnail": first_image_url(item),
+                "nearby_places": compact_nearby_places(item),
                 "first_price_source": first_price.get("source"),
+                "booking_options": booking_options,
                 "source": "properties",
             }
         )
-        if len(results) >= limit:
+        if limit and len(results) >= limit:
             break
     return results
 

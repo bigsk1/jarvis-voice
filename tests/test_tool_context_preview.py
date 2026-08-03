@@ -128,6 +128,51 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(candidates[1]["video_id"], "def456")
         self.assertIn("Cheddar factory tour", preview)
 
+    def test_hotel_preview_keeps_compact_prices_pet_status_and_urls(self):
+        result = {
+            "ok": True,
+            "speech": "Found 6 hotel options. Lowest returned price is $113 total.",
+            "data": {
+                "engine": "google_hotels",
+                "destination": "Mesa, Arizona",
+                "raw": {"large_provider_payload": "x" * 12000},
+                "top_results": [
+                    {
+                        "title": f"Mesa Hotel {index}",
+                        "url": f"https://hotels.example/{index}",
+                        "rating": 4.0 + (index / 10),
+                        "price_total": f"${110 + index}",
+                        "price_per_night": f"${55 + index}",
+                        "amenities": (
+                            ["Free Wi-Fi", "Pet-friendly"]
+                            if index % 2
+                            else ["Free Wi-Fi", "Pool"]
+                        ),
+                        "description": "details " * 200,
+                    }
+                    for index in range(1, 7)
+                ],
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_hotel_search",
+            result,
+        )
+
+        parsed = json.loads(preview)
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 6000)
+        self.assertEqual(len(candidates), 5)
+        self.assertEqual(candidates[0]["price_total"], "$111")
+        self.assertEqual(candidates[0]["price_per_night"], "$56")
+        self.assertEqual(candidates[0]["rating"], 4.1)
+        self.assertTrue(candidates[0]["pet_friendly"])
+        self.assertFalse(candidates[1]["pet_friendly"])
+        self.assertEqual(candidates[4]["url"], "https://hotels.example/5")
+        self.assertNotIn("amenities", candidates[0])
+
     def test_turn_context_marks_truncated_arguments_as_display_only(self):
         self.orch.timezone = ZoneInfo("America/Los_Angeles")
         context = self.orch._build_turn_context(

@@ -1,125 +1,171 @@
 {
   "enabled": true,
   "name": "serpapi_hotel_search",
-  "description": "Search hotel options through SerpApi Google Hotels with normalized hotel fields like nightly price, total price, rating, class, and amenities.",
+  "description": "Find future hotel rooms, lodging, motels, inns, resorts, and accommodations with date-specific Google Hotels prices through SerpApi. Use for hotel searches such as 'find a hotel in Phoenix August 11 to 13', 'cheapest hotel near me next weekend', or 'show 4-star Seattle hotels with free cancellation'. Resolve relative dates against the injected current date and pass YYYY-MM-DD. If the user asks for a hotel near them without naming a place, use the injected JARVIS_DEFAULT_LOCATION; never replace a location the user supplied. Results default to lowest stay price and include total/nightly prices, ratings, reviews, class, amenities, and property links when Google returns them. Use sort_by='relevance' only when the user asks for Google's top/best hotel match rather than cheapest. The tool searches once and does not reserve rooms or submit payment.",
   "complementary_tools": [
     "canvas",
     "stash"
   ],
   "script": "serpapi_hotel_search.py",
+  "proxy_policy": "inherit",
   "parameters": {
     "type": "object",
     "properties": {
       "destination": {
         "type": "string",
-        "description": "Destination or city name. Used when query is omitted."
+        "description": "Required destination, city, neighborhood, landmark, or configured default location, for example 'Phoenix, Arizona'."
       },
       "query": {
         "type": "string",
-        "description": "Full Google Hotels query. If omitted, destination is used."
+        "description": "Optional more-specific Google Hotels query, such as 'boutique hotels near Phoenix Convention Center'. If omitted, destination is searched."
       },
       "check_in_date": {
         "type": "string",
-        "description": "Required check-in date in YYYY-MM-DD format."
+        "description": "Required future check-in date as YYYY-MM-DD. Resolve phrases like 'next Tuesday' before calling."
       },
       "check_out_date": {
         "type": "string",
-        "description": "Required check-out date in YYYY-MM-DD format."
+        "description": "Required check-out date as YYYY-MM-DD. It must be after check_in_date."
       },
       "adults": {
         "type": "integer",
-        "description": "Number of adults (default: 2)."
+        "minimum": 1,
+        "description": "Number of adults. Default 2."
       },
       "children": {
         "type": "integer",
-        "description": "Number of children (default: 0)."
+        "minimum": 0,
+        "description": "Number of children. Default 0."
       },
       "children_ages": {
         "type": "array",
         "items": {
-          "type": "integer"
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 17
         },
-        "description": "Optional child ages. Count should match children."
+        "description": "Optional ages for the children. When supplied, every age must be 1-17 and the count must exactly match children."
       },
       "currency": {
         "type": "string",
-        "description": "Currency code for price fields (default: USD)."
+        "description": "Three-letter currency code for prices. Default USD."
       },
       "hl": {
         "type": "string",
-        "description": "Language code for Google Hotels results (default: en)."
+        "description": "Google Hotels result language code. Default en."
       },
       "gl": {
         "type": "string",
-        "description": "Country code for Google Hotels results (default: us)."
+        "description": "Two-letter Google country code used to localize results. Default us."
       },
       "sort_by": {
-        "type": "integer",
-        "description": "Optional sort mode. Examples: 3 lowest price, 8 highest rating, 13 most reviewed."
+        "type": "string",
+        "enum": [
+          "price",
+          "rating",
+          "reviews",
+          "relevance"
+        ],
+        "description": "Result ordering. Default price (lowest total stay price first). rating means highest rating, reviews means most reviewed, and relevance preserves Google's ranking."
       },
       "min_price": {
         "type": "integer",
-        "description": "Optional minimum price filter."
+        "minimum": 0,
+        "description": "Optional Google Hotels minimum-price filter in the selected currency."
       },
       "max_price": {
         "type": "integer",
-        "description": "Optional maximum price filter."
+        "minimum": 0,
+        "description": "Optional Google Hotels maximum-price filter in the selected currency."
       },
       "rating": {
         "type": "integer",
-        "description": "Optional Google Hotels rating filter. Examples: 7 for 3.5+, 8 for 4.0+, 9 for 4.5+."
+        "enum": [
+          7,
+          8,
+          9
+        ],
+        "description": "Optional guest-rating threshold: 7 for 3.5+, 8 for 4.0+, or 9 for 4.5+."
       },
       "hotel_class": {
-        "type": "string",
-        "description": "Optional hotel class filter. Single value or comma-separated values like 3 or 3,4,5."
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "enum": [
+            2,
+            3,
+            4,
+            5
+          ]
+        },
+        "description": "Optional hotel star classes, for example [3, 4]."
       },
       "property_types": {
         "type": "array",
         "items": {
-          "type": "integer"
+          "type": "integer",
+          "minimum": 1
         },
-        "description": "Optional property type IDs."
+        "description": "Optional Google Hotels property-type IDs."
       },
       "amenities": {
         "type": "array",
         "items": {
-          "type": "integer"
+          "type": "integer",
+          "minimum": 1
         },
-        "description": "Optional amenity IDs."
+        "description": "Optional Google Hotels amenity IDs."
       },
       "brands": {
         "type": "array",
         "items": {
-          "type": "integer"
+          "type": "integer",
+          "minimum": 1
         },
-        "description": "Optional hotel brand IDs."
+        "description": "Optional Google Hotels brand IDs."
       },
       "free_cancellation": {
         "type": "boolean",
-        "description": "If true, filter to properties with free cancellation."
+        "description": "If true, require Google Hotels results offering free cancellation."
+      },
+      "special_offers": {
+        "type": "boolean",
+        "description": "If true, require Google Hotels results with special offers."
+      },
+      "eco_certified": {
+        "type": "boolean",
+        "description": "If true, require eco-certified hotel results."
       },
       "device": {
         "type": "string",
-        "description": "desktop, mobile, or tablet. Default: desktop."
+        "enum": [
+          "desktop",
+          "mobile",
+          "tablet"
+        ],
+        "description": "Google device profile. Default desktop."
       },
       "num_results": {
         "type": "integer",
-        "description": "How many normalized hotel results to return (1-10, default: 5)."
+        "minimum": 1,
+        "maximum": 10,
+        "description": "Number of normalized properties to return. Default 5."
       },
       "no_cache": {
         "type": "boolean",
-        "description": "If true, bypass SerpApi cache for fresh fetch."
+        "description": "Bypass SerpApi's cache. Default false; use true only when the user explicitly asks for a fresh refresh."
       },
       "extra_params": {
         "type": "object",
-        "description": "Additional engine-specific query parameters passed through to SerpApi."
+        "description": "Advanced non-reserved Google Hotels parameters passed through to SerpApi."
       },
       "include_raw": {
         "type": "boolean",
-        "description": "If true, include full raw SerpApi payload in data.raw."
+        "description": "Include the full SerpApi response for debugging. Default false."
       }
     },
     "required": [
+      "destination",
       "check_in_date",
       "check_out_date"
     ]
