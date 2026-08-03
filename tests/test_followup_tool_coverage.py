@@ -216,6 +216,37 @@ LOCAL_TOOL_SAMPLES = {
         },
         {"command": "printf smoke"},
     ),
+    "flight_search": _case(
+        {
+            "provider": "serpapi",
+            "trip_type": "round_trip",
+            "departure_id": "PDX",
+            "arrival_id": "PHX",
+            "outbound_date": "2099-09-15",
+            "return_date": "2099-09-20",
+            "travel_class": "economy",
+            "sort_by": "price",
+            "currency": "USD",
+            "results_count": 1,
+            "results": [
+                {
+                    "price": 257,
+                    "airlines": ["Alaska"],
+                    "flight_numbers": ["AS 1234"],
+                    "departure_airport": "PDX",
+                    "departure_time": "2099-09-15 07:03",
+                    "arrival_airport": "PHX",
+                    "arrival_time": "2099-09-15 09:51",
+                    "duration_display": "2h 48m",
+                    "stops_label": "Nonstop",
+                }
+            ],
+            "cheapest_price": 257,
+            "price_basis": "round_trip_total",
+            "booking_url": "https://www.google.com/travel/flights?tfs=abc",
+        },
+        {"departure_id": "PDX", "arrival_id": "PHX", "outbound_date": "2099-09-15"},
+    ),
     "forget": _case(
         {"deleted_ids": [31, 32], "deleted_keys": ["old_a", "old_b"]}
     ),
