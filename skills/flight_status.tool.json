@@ -1,0 +1,56 @@
+{
+  "enabled": true,
+  "name": "flight_status",
+  "description": "Track where an aircraft is RIGHT NOW using live ADS-B transponder data. Use for: 'where is flight UA2056', 'is my flight in the air yet', 'track tail number N86534', 'what planes are flying over Portland right now', 'what's that plane overhead', 'how high is it and how fast'. Accepts a flight number (UA2056, United 2056), a registration/tail number, an ICAO hex code, or a place name to list aircraft overhead. Returns position, altitude, speed, heading, climb or descent, aircraft type, and operator. This reports positions only: it has NO gate, delay, cancellation, or scheduled departure/arrival information, and aircraft that have not taken off yet, have already landed, or do not broadcast ADS-B will not be found. For buying tickets or looking up flight prices and schedules, use flight_search instead.",
+  "script": "flight_status.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "flight": {
+        "type": "string",
+        "description": "Flight number or callsign, e.g. 'UA2056', 'UA 2056', 'United 2056', or the raw callsign 'UAL2056'."
+      },
+      "registration": {
+        "type": "string",
+        "description": "Aircraft registration / tail number, e.g. 'N86534' or 'G-XLEB'."
+      },
+      "hex": {
+        "type": "string",
+        "description": "ICAO 24-bit address in hex, e.g. 'abe448'. Use when a previous result returned one."
+      },
+      "location": {
+        "type": "string",
+        "description": "Place to look overhead, e.g. 'Portland, OR' or 'London'. Use this for 'what is flying over me' questions."
+      },
+      "latitude": {
+        "type": "number",
+        "description": "Latitude for an overhead search. Use with longitude instead of location when exact coordinates are known."
+      },
+      "longitude": {
+        "type": "number",
+        "description": "Longitude for an overhead search. Use with latitude."
+      },
+      "radius_nm": {
+        "type": "integer",
+        "description": "Search radius in nautical miles for an overhead search, 1-250. Default 25."
+      },
+      "include_ground": {
+        "type": "boolean",
+        "description": "Include aircraft parked or taxiing on the ground in an overhead search. Default false, which keeps the answer to aircraft actually flying."
+      },
+      "num_results": {
+        "type": "integer",
+        "description": "How many aircraft to return, 1-20. Default 5."
+      }
+    },
+    "required": []
+  },
+  "permissions": {
+    "dangerous": false,
+    "network": true,
+    "filesystem": false,
+    "bash": false,
+    "auto_approve": true
+  },
+  "complementary_tools": ["flight_search", "weather"]
+}
