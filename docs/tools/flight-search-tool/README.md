@@ -6,6 +6,8 @@ Ask for it the way you would say it out loud:
 
 > "Find me a flight from PDX to PHX leaving September 15th, back on the 20th."
 
+For where an aircraft physically is at this moment, see [`flight_status`](../flight-status-tool/README.md) instead.
+
 ## Files
 
 - Tool: `skills/flight_search.py`

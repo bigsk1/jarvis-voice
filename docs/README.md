@@ -41,6 +41,7 @@
 - **[tools/status-tool/README.md](tools/status-tool/README.md)** - 📊 **Status Recap Tool v1.4** (weather, crypto, stocks/futures, alerts, reminders, system health, canvas + stash)
 - **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** - 🛒 **SerpApi Search Tool** (Amazon + engine-based SerpApi queries)
 - **[tools/flight-search-tool/README.md](tools/flight-search-tool/README.md)** - ✈️ **Flight Search Tool** (prices, times, layovers; SerpApi Google Flights with keyless fallback)
+- **[tools/flight-status-tool/README.md](tools/flight-status-tool/README.md)** - 🛩️ **Flight Status Tool** (live aircraft positions by flight/tail number or overhead; keyless ADS-B)
 
 ### Document Processing
 - **PDF Read Tool** (`skills/pdf_read.py`) - 📄 **PDF reading and manipulation**
@@ -154,6 +155,7 @@
 | **[../skills/README.md](../skills/README.md)** (section *Tool profiles*) | Optional overlay JSON per profile; `JARVIS_TOOL_PROFILE`; `bin/manage-tools.py profile`; re-sync tools DB after changes |
 | **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** | SerpApi search tool guide (setup, params, examples, troubleshooting) |
 | **[tools/flight-search-tool/README.md](tools/flight-search-tool/README.md)** | Flight search tool guide (providers, round-trip pricing, defaults, limits) |
+| **[tools/flight-status-tool/README.md](tools/flight-status-tool/README.md)** | Live flight tracking guide (lookup modes, ADS-B providers, what it cannot answer) |
 | **MULTI_TURN_ORCHESTRATION.md** | Multi-turn tool chaining |
 | **ERROR_RECOVERY.md** | Error handling and retries |
 
