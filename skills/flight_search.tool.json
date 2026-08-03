@@ -1,0 +1,99 @@
+{
+  "enabled": true,
+  "name": "flight_search",
+  "description": "Search real flights with live prices, times, airlines, stops, and layovers for a route and date. Use for anything about flying or airfare: 'find me a flight from PDX to PHX', 'flights to Phoenix on the 15th back on the 20th', 'how much is a round trip to Denver', 'cheapest nonstop to Austin next month', 'what airlines fly LAX to London', 'book a flight' (this returns options and a Google Flights link to finish booking manually). Takes 3-letter IATA airport codes and YYYY-MM-DD dates. Supplying 'return_date' makes it a round trip and prices are the round-trip total; omit it for one way. Results are sorted by best price unless 'sort_by' says otherwise. Prefer this over generic web search for any flight, airfare, or airline itinerary question. This does NOT track live flight status or aircraft positions, and does NOT book or pay for tickets.",
+  "script": "flight_search.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "departure_id": {
+        "type": "string",
+        "description": "Departure airport as a 3-letter IATA code, e.g. 'PDX'. Comma-separate to compare nearby airports, e.g. 'EWR,JFK,LGA'."
+      },
+      "arrival_id": {
+        "type": "string",
+        "description": "Arrival airport as a 3-letter IATA code, e.g. 'PHX'. Comma-separate for multiple options."
+      },
+      "outbound_date": {
+        "type": "string",
+        "description": "Departure date as YYYY-MM-DD. Resolve relative phrasing like 'next Friday' against the current date before calling."
+      },
+      "return_date": {
+        "type": "string",
+        "description": "Return date as YYYY-MM-DD. Include it for a round trip; leave it out for a one-way. Round-trip prices are the total for both legs."
+      },
+      "adults": {
+        "type": "integer",
+        "description": "Number of adult travelers. Default 1. All travelers combined must not exceed 9."
+      },
+      "children": {
+        "type": "integer",
+        "description": "Number of children aged 2-11. Default 0."
+      },
+      "infants_in_seat": {
+        "type": "integer",
+        "description": "Number of infants occupying their own seat. Default 0."
+      },
+      "infants_on_lap": {
+        "type": "integer",
+        "description": "Number of lap infants. Default 0. Cannot exceed the number of adults."
+      },
+      "travel_class": {
+        "type": "string",
+        "enum": ["economy", "premium_economy", "business", "first"],
+        "description": "Cabin class. Default 'economy'."
+      },
+      "stops": {
+        "type": "string",
+        "enum": ["any", "nonstop", "one_stop_or_fewer", "two_stops_or_fewer"],
+        "description": "Stop limit. Use 'nonstop' when the user asks for direct or nonstop flights. Default 'any'."
+      },
+      "sort_by": {
+        "type": "string",
+        "enum": ["price", "top_flights", "departure_time", "arrival_time", "duration", "emissions"],
+        "description": "Result ordering. Default 'price' (cheapest first). Use 'duration' for fastest, 'top_flights' for Google's balanced picks."
+      },
+      "max_price": {
+        "type": "integer",
+        "description": "Only return itineraries at or below this total price, in the selected currency."
+      },
+      "include_airlines": {
+        "type": "string",
+        "description": "Restrict to these 2-letter airline codes or alliances, comma-separated, e.g. 'AS,AA' or 'STAR_ALLIANCE'. Cannot be combined with exclude_airlines."
+      },
+      "exclude_airlines": {
+        "type": "string",
+        "description": "Exclude these 2-letter airline codes or alliances, comma-separated. Ignored when include_airlines is set."
+      },
+      "outbound_times": {
+        "type": "string",
+        "description": "Outbound time window as comma-separated hours: '4,18' means depart between 4 AM and 7 PM; '4,18,3,19' also bounds arrival."
+      },
+      "return_times": {
+        "type": "string",
+        "description": "Return leg time window, same format as outbound_times. Round trips only."
+      },
+      "currency": {
+        "type": "string",
+        "description": "Currency code for prices. Default 'USD'."
+      },
+      "num_results": {
+        "type": "integer",
+        "description": "How many itineraries to return, 1-10. Default 5."
+      },
+      "deep_search": {
+        "type": "boolean",
+        "description": "Slower search that matches the Google Flights website exactly. Default false. Only use when the user questions the accuracy of the prices."
+      }
+    },
+    "required": ["departure_id", "arrival_id", "outbound_date"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "network": true,
+    "filesystem": false,
+    "bash": false,
+    "auto_approve": true
+  },
+  "complementary_tools": ["serpapi_hotel_search", "canvas", "stash"]
+}

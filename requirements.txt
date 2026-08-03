@@ -75,3 +75,5 @@ yt-dlp>=2026.7.4
 paramiko>=3.0.0
 yfinance>=1.1.0
 qrcode==8.2
+# Keyless Google Flights fallback for flight_search when SERP_API_KEY is unset
+fast-flights>=3.0.2
