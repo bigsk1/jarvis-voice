@@ -310,6 +310,146 @@ def extract_hotel_results(payload: dict[str, Any], limit: int) -> list[dict[str,
     return results
 
 
+def format_duration_minutes(minutes: Any) -> str | None:
+    """Render a minute count as compact travel duration text ("2h 48m")."""
+    try:
+        total = int(minutes)
+    except (TypeError, ValueError):
+        return None
+    if total <= 0:
+        return None
+
+    hours, mins = divmod(total, 60)
+    if hours and mins:
+        return f"{hours}h {mins}m"
+    if hours:
+        return f"{hours}h"
+    return f"{mins}m"
+
+
+def _stops_label(stop_count: int) -> str:
+    if stop_count <= 0:
+        return "Nonstop"
+    if stop_count == 1:
+        return "1 stop"
+    return f"{stop_count} stops"
+
+
+def _normalize_flight_itinerary(item: dict[str, Any], source: str) -> dict[str, Any]:
+    """Flatten one Google Flights itinerary into a compact, LLM-friendly shape.
+
+    Airline logo URLs and marketing extensions are dropped: itineraries nest
+    deeply and the tool result budget is shared with the rest of the turn.
+    """
+    segments_raw = [seg for seg in (item.get("flights") or []) if isinstance(seg, dict)]
+    layovers_raw = [lay for lay in (item.get("layovers") or []) if isinstance(lay, dict)]
+
+    segments: list[dict[str, Any]] = []
+    airlines: list[str] = []
+    flight_numbers: list[str] = []
+    for seg in segments_raw:
+        departure = seg.get("departure_airport") or {}
+        arrival = seg.get("arrival_airport") or {}
+        airline = seg.get("airline")
+        flight_number = seg.get("flight_number")
+        if airline and airline not in airlines:
+            airlines.append(airline)
+        if flight_number:
+            flight_numbers.append(flight_number)
+
+        segments.append(
+            {
+                "flight_number": flight_number,
+                "airline": airline,
+                "from": departure.get("id"),
+                "to": arrival.get("id"),
+                "depart": departure.get("time"),
+                "arrive": arrival.get("time"),
+                "duration_minutes": seg.get("duration"),
+                "duration_display": format_duration_minutes(seg.get("duration")),
+                "aircraft": seg.get("airplane"),
+                "travel_class": seg.get("travel_class"),
+                "legroom": seg.get("legroom"),
+                "overnight": seg.get("overnight"),
+                "often_delayed": seg.get("often_delayed_by_over_30_min"),
+            }
+        )
+
+    layovers = [
+        {
+            "airport": lay.get("id"),
+            "airport_name": lay.get("name"),
+            "duration_minutes": lay.get("duration"),
+            "duration_display": format_duration_minutes(lay.get("duration")),
+            "overnight": lay.get("overnight"),
+        }
+        for lay in layovers_raw
+    ]
+
+    first_segment = segments[0] if segments else {}
+    last_segment = segments[-1] if segments else {}
+    carbon = item.get("carbon_emissions") or {}
+    emission_grams = carbon.get("this_flight")
+
+    return {
+        "price": item.get("price"),
+        "airlines": airlines,
+        "flight_numbers": flight_numbers,
+        "departure_airport": first_segment.get("from"),
+        "departure_time": first_segment.get("depart"),
+        "arrival_airport": last_segment.get("to"),
+        "arrival_time": last_segment.get("arrive"),
+        "total_duration_minutes": item.get("total_duration"),
+        "duration_display": format_duration_minutes(item.get("total_duration")),
+        "stops": max(0, len(segments) - 1),
+        "stops_label": _stops_label(max(0, len(segments) - 1)),
+        "travel_class": first_segment.get("travel_class"),
+        "layovers": layovers,
+        "segments": segments,
+        "carbon_kg": round(emission_grams / 1000) if isinstance(emission_grams, (int, float)) else None,
+        "often_delayed": any(seg.get("often_delayed") for seg in segments),
+        "overnight": any(seg.get("overnight") for seg in segments),
+        "source": source,
+    }
+
+
+def extract_flight_results(payload: dict[str, Any], limit: int) -> list[dict[str, Any]]:
+    """Normalize SerpApi google_flights itineraries from both result buckets.
+
+    SerpApi splits itineraries into `best_flights` (Google's own picks) and
+    `other_flights`; when it does not split them, everything lands in
+    `other_flights`. Both are read so a price sort sees the full set.
+    """
+    results: list[dict[str, Any]] = []
+    for bucket in ("best_flights", "other_flights"):
+        values = payload.get(bucket)
+        if not isinstance(values, list):
+            continue
+        for item in values:
+            if not isinstance(item, dict):
+                continue
+            itinerary = _normalize_flight_itinerary(item, bucket)
+            if itinerary.get("price") is None and not itinerary.get("segments"):
+                continue
+            results.append(itinerary)
+
+    return results[:limit] if limit else results
+
+
+def extract_price_insights(payload: dict[str, Any]) -> dict[str, Any]:
+    """Keep the route price context Google returns, minus the history series."""
+    insights = payload.get("price_insights")
+    if not isinstance(insights, dict):
+        return {}
+
+    compact = {
+        "lowest_price": insights.get("lowest_price"),
+        "price_level": insights.get("price_level"),
+        "typical_price_range": insights.get("typical_price_range"),
+    }
+    return {key: value for key, value in compact.items() if value not in (None, "", [])}
+
+
 def build_search_speech(engine: str, query: str, results: list[dict[str, Any]]) -> str:
     if not results:
         if query:
