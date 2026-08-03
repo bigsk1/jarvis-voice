@@ -41,6 +41,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_youtube_search',
     'serpapi_yelp_search',
     'flight_search',
+    'flight_status',
     'crawl_url',
     'mcp_brave_search_brave_web_search',
     'mcp_brave_search_brave_news_search',
@@ -329,6 +330,10 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'provider', 'trip_type', 'departure_id', 'arrival_id', 'outbound_date', 'return_date',
         'travel_class', 'stops_filter', 'sort_by', 'currency', 'results_count', 'cheapest_price',
         'price_basis', 'booking_url',
+    ],
+    'flight_status': [
+        'query_type', 'query', 'location', 'latitude', 'longitude', 'radius_nm',
+        'provider', 'results_count', 'airborne_count', 'map_url',
     ],
     'spotify': ['name', 'artist'],
     'docker_control': ['container', 'status'],
@@ -2770,6 +2775,30 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                     numbers = item.get('flight_numbers')
                     if isinstance(numbers, list) and numbers:
                         candidate['flight_numbers'] = ', '.join(str(num) for num in numbers[:4])
+                    if candidate:
+                        candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
+
+        # --- flight_status: keep the handles needed to re-query one aircraft ---
+        # hex and registration are what a "where is it now" follow-up should
+        # reuse; the raw record carries a lot of transponder telemetry that a
+        # later turn has no use for.
+        if key == 'flight_status':
+            results = value.get('results') or []
+            if isinstance(results, list) and results:
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = {}
+                    for field in (
+                        'callsign', 'registration', 'hex', 'airline', 'aircraft',
+                        'altitude_ft', 'ground_speed_kt', 'heading', 'on_ground', 'distance_nm',
+                    ):
+                        field_value = item.get(field)
+                        if field_value not in (None, '', [], {}):
+                            candidate[field] = field_value
                     if candidate:
                         candidates.append(candidate)
                 if candidates:

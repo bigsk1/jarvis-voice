@@ -247,6 +247,31 @@ LOCAL_TOOL_SAMPLES = {
         },
         {"departure_id": "PDX", "arrival_id": "PHX", "outbound_date": "2099-09-15"},
     ),
+    "flight_status": _case(
+        {
+            "query_type": "callsign",
+            "query": "UA2056",
+            "provider": "airplanes.live",
+            "results_count": 1,
+            "results": [
+                {
+                    "callsign": "UAL2056",
+                    "airline": "United",
+                    "registration": "N86534",
+                    "hex": "abe448",
+                    "aircraft": "BOEING 737-800",
+                    "on_ground": False,
+                    "altitude_ft": 21400,
+                    "ground_speed_kt": 395.8,
+                    "heading": "northwest",
+                    "map_url": "https://globe.airplanes.live/?icao=abe448",
+                }
+            ],
+            "map_url": "https://globe.airplanes.live/?icao=abe448",
+            "limitations": "Live ADS-B transponder positions only.",
+        },
+        {"flight": "UA2056"},
+    ),
     "forget": _case(
         {"deleted_ids": [31, 32], "deleted_keys": ["old_a", "old_b"]}
     ),
