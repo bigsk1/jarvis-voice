@@ -288,6 +288,7 @@ JSON object printed to stdout:
 | `serpapi_home_depot` | SerpApi Home Depot product search with store/ZIP filters |
 | `serpapi_maps_search` | SerpApi Google Maps place and local business search |
 | `serpapi_hotel_search` | SerpApi Google Hotels search with stay filters |
+| `flight_search` | Flight prices, times, and layovers (SerpApi Google Flights, keyless fallback) |
 | `serpapi_youtube` | SerpApi YouTube video details and transcript fallback |
 | `serpapi_youtube_search` | SerpApi YouTube video search by keywords |
 | `serpapi_yelp_search` | SerpApi Yelp place search with attrs and reviews |
