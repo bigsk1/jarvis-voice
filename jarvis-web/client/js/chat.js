@@ -3732,6 +3732,8 @@ class ChatUI {
     const storedSpeech = Utils.stripLlmCitationArtifacts(String(innerData.speech || data.speech || ''));
     text = Utils.stripLlmCitationArtifacts(text);
 
+    // Legacy fallback when the shared structured-results renderer is unavailable.
+    if (!window.structuredResultsRenderer) {
     // Shopping/product preview card for focused SerpApi product lookups
     // and single clear product results where a link + image is helpful.
     const serpapiPayload = toolResultsData.serpapi_search || data.serpapi_search;
@@ -3906,10 +3908,14 @@ class ChatUI {
         }
       }
     }
+    }
 
     const canvasPreview = this._extractCanvasPreview(toolResultsData, data);
     const canvasPreviewHtml = canvasPreview
       ? this._renderCanvasPreviewHtml(canvasPreview)
+      : '';
+    const structuredResultsHtml = window.structuredResultsRenderer
+      ? window.structuredResultsRenderer.render(toolResultsData, data)
       : '';
 
     let chartHtml = '';
@@ -3999,6 +4005,7 @@ class ChatUI {
 
     messageEl.innerHTML = `
       ${toolCardsHtml}
+      ${structuredResultsHtml}
       ${canvasPreviewHtml}
       ${shoppingHtml}
       ${imageHtml}

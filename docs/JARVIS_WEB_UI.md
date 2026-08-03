@@ -179,6 +179,25 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 - Tool cards rendered after a page reload are rebuilt from the saved conversation message, not from the original live WebSocket event stream.
 - Because of that, historical reload is best at restoring successful tool outcomes. Live-only per-call events such as intermediate failures or duplicate-guard status lines are not guaranteed to reappear unless they were explicitly persisted in the saved message data.
 
+### Structured Result Previews
+
+- `client/js/structured-results.js` owns the shared card rail for structured
+  search results. It is separate from execution-status tool cards and from
+  content-native displays such as Canvas, generated media, YouTube embeds, and
+  crypto charts.
+- The renderer uses a registry of tool adapters. Each adapter maps its tool's
+  payload onto the same bounded presentation model; the shared renderer then
+  handles escaping, safe HTTP links, responsive horizontal scrolling, images,
+  metadata chips, and actions. Overflowing rails expose previous/next controls
+  in the preview header without covering card content; touch swiping and the
+  native scrollbar remain available.
+- Current adapters cover focused Amazon, Home Depot, and eBay products plus
+  Google Hotels, Yelp, Google Flights, and Google Maps results.
+- Add a future structured display with
+  `window.structuredResultsRenderer.register(toolName, adapter)`. Keep provider
+  payload parsing inside the adapter and return only the small shared
+  presentation model instead of adding another conditional block to `chat.js`.
+
 ### Large Tool Result Context
 
 - The orchestrator may truncate large prior tool payloads before sending them back to the LLM on later turns.

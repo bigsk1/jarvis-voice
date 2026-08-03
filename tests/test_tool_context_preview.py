@@ -173,6 +173,107 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(candidates[4]["url"], "https://hotels.example/5")
         self.assertNotIn("amenities", candidates[0])
 
+    def test_yelp_preview_keeps_compact_business_identity_and_details(self):
+        result = {
+            "ok": True,
+            "speech": "Found 6 Yelp options.",
+            "data": {
+                "engine": "yelp",
+                "find_desc": "coffee shops",
+                "find_loc": "Hillsboro, OR",
+                "raw": {"large_provider_payload": "x" * 12000},
+                "results": [
+                    {
+                        "title": f"Hillsboro Cafe {index}",
+                        "url": f"https://www.yelp.com/biz/hillsboro-cafe-{index}",
+                        "place_id": f"place-{index}",
+                        "rating": 4.0 + (index / 10),
+                        "reviews": index * 100,
+                        "price": "$$",
+                        "categories": ["Coffee & Tea", "Cafes"],
+                        "neighborhoods": "Hillsboro",
+                        "open_state": "Open until 8:00 PM",
+                        "snippet": "A locally grounded Yelp snippet. " * 20,
+                        "service_options": {"takeout": True},
+                    }
+                    for index in range(1, 7)
+                ],
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_yelp_search",
+            result,
+        )
+
+        parsed = json.loads(preview)
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 6000)
+        self.assertEqual(len(candidates), 5)
+        self.assertEqual(candidates[0]["place_id"], "place-1")
+        self.assertEqual(candidates[0]["reviews"], 100)
+        self.assertEqual(candidates[0]["categories"], ["Coffee & Tea", "Cafes"])
+        self.assertEqual(candidates[0]["neighborhoods"], "Hillsboro")
+        self.assertEqual(candidates[0]["open_state"], "Open until 8:00 PM")
+        self.assertIn("locally grounded", candidates[0]["snippet"])
+        self.assertEqual(
+            candidates[4]["url"],
+            "https://www.yelp.com/biz/hillsboro-cafe-5",
+        )
+        self.assertNotIn("service_options", candidates[0])
+
+    def test_flight_preview_keeps_compact_option_identity_including_flight_numbers(self):
+        result = {
+            "ok": True,
+            "speech": "Found 2 round-trip flight options from PDX to PHX.",
+            "data": {
+                "provider": "serpapi",
+                "trip_type": "round_trip",
+                "departure_id": "PDX",
+                "arrival_id": "PHX",
+                "outbound_date": "2099-09-15",
+                "return_date": "2099-09-20",
+                "currency": "USD",
+                "results_count": 2,
+                "cheapest_price": 257,
+                "price_basis": "round_trip_total",
+                "booking_url": "https://www.google.com/travel/flights",
+                "results": [
+                    {
+                        "price": 257 + index,
+                        "airlines": ["Alaska"],
+                        "flight_numbers": [f"AS {1349 + index}"],
+                        "departure_airport": "PDX",
+                        "departure_time": f"2099-09-15 0{7 + index}:03",
+                        "arrival_airport": "PHX",
+                        "arrival_time": f"2099-09-15 {9 + index:02d}:51",
+                        "duration_display": "2h 48m",
+                        "stops_label": "Nonstop",
+                        "segments": [{"flight_number": f"AS {1349 + index}"}],
+                    }
+                    for index in range(2)
+                ],
+            },
+        }
+
+        preview, total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "flight_search",
+            result,
+        )
+
+        parsed = json.loads(preview)
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        self.assertTrue(truncated)
+        self.assertGreater(total, shown)
+        self.assertEqual(candidates[0]["airlines"], ["Alaska"])
+        self.assertEqual(candidates[0]["departure_time"], "2099-09-15 07:03")
+        self.assertEqual(candidates[0]["arrival_time"], "2099-09-15 09:51")
+        self.assertEqual(candidates[0]["price"], 257)
+        self.assertEqual(candidates[0]["flight_numbers"], ["AS 1349"])
+        self.assertIn("AS 1349", preview)
+        self.assertNotIn("segments", candidates[0])
+
     def test_turn_context_marks_truncated_arguments_as_display_only(self):
         self.orch.timezone = ZoneInfo("America/Los_Angeles")
         context = self.orch._build_turn_context(

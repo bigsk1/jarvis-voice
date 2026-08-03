@@ -403,8 +403,13 @@ def test_extract_followup_data_preserves_serpapi_yelp_candidates():
                     "url": "https://www.yelp.com/biz/pup-cup-coffee",
                     "place_id": "pup-cup-coffee-nyc",
                     "rating": 4.7,
+                    "reviews": 321,
                     "price": "$$",
                     "address": "123 Market St, New York, NY 10001",
+                    "categories": ["Coffee & Tea", "Cafes"],
+                    "neighborhoods": "Chelsea",
+                    "open_state": "Open until 7:00 PM",
+                    "snippet": "Friendly counter-service cafe.",
                     "thumbnail": "https://s3-media.example.com/pup.jpg",
                 },
                 {
@@ -426,7 +431,59 @@ def test_extract_followup_data_preserves_serpapi_yelp_candidates():
     assert yelp["top_url"] == "https://www.yelp.com/biz/pup-cup-coffee"
     assert yelp["place_id"] == "pup-cup-coffee-nyc"
     assert len(yelp["candidates"]) == 2
+    assert yelp["reviews"] == 321
+    assert yelp["categories"] == ["Coffee & Tea", "Cafes"]
+    assert yelp["neighborhoods"] == "Chelsea"
+    assert yelp["open_state"] == "Open until 7:00 PM"
+    assert yelp["candidates"][0]["reviews"] == 321
+    assert yelp["candidates"][0]["snippet"] == "Friendly counter-service cafe."
     assert yelp["candidates"][1]["place_id"] == "dog-park-cafe-nyc"
+
+
+def test_extract_followup_data_preserves_compact_yelp_review_data():
+    handler = _handler()
+    data = {
+        "serpapi_yelp_search": {
+            "engine": "yelp",
+            "find_desc": "Coffee",
+            "find_loc": "Hillsboro, OR",
+            "results": [
+                {
+                    "title": "Cabana do Cafe",
+                    "url": "https://www.yelp.com/biz/cabana-do-cafe-hillsboro",
+                    "place_id": "provider-place-id",
+                }
+            ],
+            "review_data": {
+                "place_id": "provider-place-id",
+                "business": "Cabana do Cafe",
+                "total_results": 24,
+                "results_count": 1,
+                "reviews": [
+                    {
+                        "rating": 5,
+                        "date": "2026-07-15T10:30:00Z",
+                        "user_name": "Sam R.",
+                        "user_location": "Hillsboro, OR",
+                        "text": "Excellent espresso. " + ("Worth a stop. " * 100),
+                        "photos": [{"link": "https://example.test/private-large-photo"}],
+                    }
+                ],
+                "raw": {"large_provider_payload": "x" * 12000},
+            },
+        }
+    }
+
+    yelp = handler._extract_followup_data(data)["serpapi_yelp_search"]
+
+    assert yelp["review_data"]["place_id"] == "provider-place-id"
+    assert yelp["review_data"]["business"] == "Cabana do Cafe"
+    assert yelp["review_data"]["total_results"] == 24
+    review = yelp["review_data"]["reviews"][0]
+    assert review["rating"] == 5
+    assert review["user_name"] == "Sam R."
+    assert len(review["text"]) <= 700
+    assert "photos" not in review
 
 
 def test_extract_followup_data_accepts_list_shaped_yelp_payload():

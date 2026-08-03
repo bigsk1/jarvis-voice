@@ -1,8 +1,9 @@
 {
-  "enabled": false,
+  "enabled": true,
   "name": "serpapi_yelp_search",
-  "description": "Search Yelp places through SerpApi using find_desc and find_loc, with optional attrs filters, sort order, dog-friendly helper, and optional review fetch for a selected or top place. Good for restaurants, coffee shops, bars, and places to eat near a location. Success data includes `results` (place objects with title, rating, address, snippet, url, etc.) and optional `review_data`.",
+  "description": "Find restaurants, coffee shops, bars, and other local businesses using Yelp results through SerpApi. Use when Yelp ratings, review counts, price tiers, categories, review snippets, or Yelp filters such as DogsAllowed and GoodForKids matter. The default is Yelp's recommended order; rating and review_count sort the complete returned page locally because Yelp's explicitly sorted response can omit business details. Results include names, Yelp links, stable place IDs, ratings, review counts, price tiers, neighborhoods, open-state labels, categories, and snippets when Yelp returns them. This search does not guarantee street addresses or full operating hours; use a maps or web search tool for those. One normal search uses one SerpApi request; include_reviews uses one additional request for the selected or top result.",
   "complementary_tools": [
+    "serpapi_maps_search",
     "canvas",
     "stash"
   ],
@@ -30,7 +31,12 @@
       },
       "sort_by": {
         "type": "string",
-        "description": "Optional sort mode. Common values: best_match, rating, review_count, distance."
+        "enum": [
+          "recommended",
+          "rating",
+          "review_count"
+        ],
+        "description": "Result ordering. Defaults to recommended. rating and review_count sort the returned Yelp page locally so business details remain complete."
       },
       "dogs_allowed": {
         "type": "boolean",
@@ -38,11 +44,11 @@
       },
       "place_id": {
         "type": "string",
-        "description": "Optional Yelp place_id for fetching reviews of a specific place."
+        "description": "Optional first Yelp place ID selecting which business to use when include_reviews is true. Search results expose this value."
       },
       "include_reviews": {
         "type": "boolean",
-        "description": "If true, fetch Yelp reviews for place_id or the top result."
+        "description": "Fetch review excerpts for place_id or the top result using one additional paid SerpApi request. Use only when the user asks for actual review content."
       },
       "review_limit": {
         "type": "integer",
@@ -62,7 +68,7 @@
       },
       "include_raw": {
         "type": "boolean",
-        "description": "If true, include raw SerpApi payloads in data.raw and review_data.raw."
+        "description": "Include raw SerpApi payloads for debugging. Default false."
       }
     },
     "required": [

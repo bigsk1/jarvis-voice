@@ -291,7 +291,7 @@ JSON object printed to stdout:
 | `flight_search` | Future flight options and prices via SerpApi Google Flights or a keyless fallback |
 | `serpapi_youtube` | SerpApi YouTube video details and transcript fallback |
 | `serpapi_youtube_search` | SerpApi YouTube video search by keywords |
-| `serpapi_yelp_search` | SerpApi Yelp place search with attrs and reviews |
+| `serpapi_yelp_search` | Yelp place discovery with local rating/review sorting, attrs, links, and optional review excerpts |
 | `spotify` | Music playback control |
 | `opencode` | Autonomous coding agent |
 | `calculator` | Math, stats, unit conversions |

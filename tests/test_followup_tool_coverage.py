@@ -643,6 +643,33 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "serpapi_yelp_search": _case(
+        {
+            "engine": "yelp",
+            "find_desc": "coffee shops",
+            "find_loc": "Hillsboro, OR",
+            "sort_by": "rating",
+            "sort_basis": "local_sort_of_returned_page",
+            "results_count": 1,
+            "provider_results_count": 10,
+            "serpapi_searches_used": 1,
+            "source": "SerpApi Yelp",
+            "results": [
+                {
+                    "title": "Cabana do Cafe",
+                    "url": "https://www.yelp.com/biz/cabana-do-cafe-hillsboro",
+                    "place_id": "provider-place-id",
+                    "rating": 4.8,
+                    "reviews": 24,
+                    "price": "$$",
+                    "categories": ["Cafes", "Coffee & Tea"],
+                    "neighborhoods": "Hillsboro",
+                    "open_state": "Open until 8:00 PM",
+                    "snippet": "Brazilian coffee and pastries.",
+                }
+            ],
+        }
+    ),
     "serpapi_search": _case(
         {
             "engine": "amazon",
@@ -1040,6 +1067,24 @@ def test_hotel_search_followup_keeps_stay_context_and_property_identity():
     assert result["price_basis"] == "lowest_listed_total_for_entire_stay"
     assert result["candidates"][0]["property_id"] == "hotel-harbor-1"
     assert result["candidates"][0]["price_total"] == "$400"
+
+
+def test_yelp_search_followup_keeps_business_identity_and_comparison_fields():
+    payload, _ = LOCAL_TOOL_SAMPLES["serpapi_yelp_search"]
+
+    result = followup.extract_followup_data(
+        {"serpapi_yelp_search": payload}
+    )["serpapi_yelp_search"]
+
+    assert result["find_loc"] == "Hillsboro, OR"
+    assert result["sort_by"] == "rating"
+    assert result["sort_basis"] == "local_sort_of_returned_page"
+    assert result["provider_results_count"] == 10
+    assert result["serpapi_searches_used"] == 1
+    assert result["candidates"][0]["place_id"] == "provider-place-id"
+    assert result["candidates"][0]["reviews"] == 24
+    assert result["candidates"][0]["categories"] == ["Cafes", "Coffee & Tea"]
+    assert result["candidates"][0]["neighborhoods"] == "Hillsboro"
 
 
 def test_bounded_default_preserves_live_scalar_payloads_and_false_values():

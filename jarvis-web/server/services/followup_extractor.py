@@ -279,7 +279,11 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'youtube_video': ['video_title', 'stash_ref', 'filename', 'duration_seconds', 'channel'],
     'serpapi_youtube': ['video_id', 'url', 'title', 'channel', 'duration', 'published_date', 'transcript_api_url'],
     'serpapi_youtube_search': ['search_query', 'top_url', 'title'],
-    'serpapi_yelp_search': ['find_desc', 'find_loc', 'top_url', 'place_id'],
+    'serpapi_yelp_search': [
+        'engine', 'find_desc', 'find_loc', 'attrs', 'sort_by', 'sort_basis',
+        'results_count', 'provider_results_count', 'top_url', 'place_id',
+        'serpapi_searches_used', 'source',
+    ],
     'git_release_notes': ['release_tag', 'release_url', 'stash_ref', 'canvas_page_id', 'repo', 'owner'],
     'release_watch': [
         'watch_id', 'source', 'project', 'initialized', 'changed',
@@ -2723,6 +2727,10 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                         extracted['address'] = first['address']
                     if first.get('thumbnail'):
                         extracted['thumbnail'] = first['thumbnail']
+                    for field in ('reviews', 'categories', 'neighborhoods', 'open_state'):
+                        field_value = first.get(field)
+                        if field_value not in (None, '', [], {}):
+                            extracted[field] = field_value
                 candidates = []
                 for item in results[:max_candidates]:
                     if not isinstance(item, dict):
@@ -2739,17 +2747,54 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                         candidate['url'] = url
                     if place_id:
                         candidate['place_id'] = place_id
-                    if item.get('rating'):
+                    if item.get('rating') is not None:
                         candidate['rating'] = item['rating']
+                    if item.get('reviews') is not None:
+                        candidate['reviews'] = item['reviews']
                     if item.get('price'):
                         candidate['price'] = item['price']
                     if item.get('address'):
                         candidate['address'] = item['address']
+                    if item.get('categories'):
+                        candidate['categories'] = item['categories']
+                    if item.get('neighborhoods'):
+                        candidate['neighborhoods'] = item['neighborhoods']
+                    if item.get('open_state'):
+                        candidate['open_state'] = item['open_state']
+                    if item.get('snippet'):
+                        candidate['snippet'] = _truncate_followup_text(
+                            str(item['snippet']), 500
+                        )
                     if item.get('thumbnail'):
                         candidate['thumbnail'] = item['thumbnail']
                     candidates.append(candidate)
                 if candidates:
                     extracted['candidates'] = candidates
+
+            review_data = value.get('review_data')
+            if isinstance(review_data, dict):
+                compact_reviews = []
+                for review in (review_data.get('reviews') or [])[:max_candidates]:
+                    if not isinstance(review, dict):
+                        continue
+                    compact_review = {}
+                    for field in ('rating', 'date', 'user_name', 'user_location'):
+                        field_value = review.get(field)
+                        if field_value not in (None, ''):
+                            compact_review[field] = field_value
+                    if review.get('text'):
+                        compact_review['text'] = _truncate_followup_text(
+                            str(review['text']), 700
+                        )
+                    if compact_review:
+                        compact_reviews.append(compact_review)
+                extracted['review_data'] = {
+                    field: review_data[field]
+                    for field in ('place_id', 'business', 'total_results', 'results_count')
+                    if review_data.get(field) not in (None, '')
+                }
+                if compact_reviews:
+                    extracted['review_data']['reviews'] = compact_reviews
 
         # --- flight_search: itineraries are deeply nested (segments, layovers) ---
         # Keep the shortlist needed to compare or refer to a specific option on

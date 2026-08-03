@@ -107,6 +107,7 @@ class ModelPromptOverrideTests(unittest.TestCase):
         self.assertIn("action=create", override.get("tool_calling_prepend"))
         self.assertIn("page link", override.get("tool_calling_prepend"))
         self.assertIn("serpapi_hotel_search", override.get("tool_calling_prepend"))
+        self.assertIn("serpapi_yelp_search", override.get("tool_calling_prepend"))
         self.assertIn("one successful structured search", override.get("tool_calling_prepend"))
 
     def test_loads_normalized_alias_when_exact_file_missing(self):

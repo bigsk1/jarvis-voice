@@ -278,7 +278,7 @@ Use this when `yt-dlp`-based tools fail because of cookies, auth, or transcript 
 
 Use this when you want to find candidate YouTube videos first, then pass the chosen URL into `serpapi_youtube`, `youtube_transcript`, or `youtube_video`.
 
-### Yelp search with optional dog-friendly filter and reviews
+### Yelp search with local ranking, filters, and optional reviews
 
 ```json
 {
@@ -290,7 +290,21 @@ Use this when you want to find candidate YouTube videos first, then pass the cho
 }
 ```
 
-Use this when you want restaurants, coffee shops, or other Yelp places near a location, especially when attrs like `DogsAllowed` or `GoodForKids` matter.
+Use this when you want restaurants, coffee shops, or other Yelp places near a
+location, especially when Yelp ratings, review counts, price tiers, or attrs
+like `DogsAllowed` and `GoodForKids` matter. A normal lookup uses one SerpApi
+request. `include_reviews` makes one additional paid request for the supplied
+`place_id` or the top returned result, so enable it only when review excerpts
+are actually needed.
+
+The default preserves Yelp's recommended order. `rating` and `review_count`
+sort the complete returned page locally; this avoids a current Yelp response
+variant where explicitly sorted requests omit names and ratings. The tool
+returns Yelp URLs and place IDs plus ratings, review counts, price tiers,
+categories, neighborhoods, open-state labels, and snippets when available.
+Yelp search results do not consistently include street addresses or full hours,
+so use `serpapi_maps_search` or a generic web search when those exact details are
+required.
 
 ## How to prompt Jarvis
 

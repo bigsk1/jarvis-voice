@@ -806,6 +806,7 @@ class ContextAssembler:
         data: Any,
         *,
         max_items: int = 5,
+        tool_name: str | None = None,
     ) -> list[dict[str, Any]]:
         """
         Lift exact result handles out of bulky search/item arrays.
@@ -861,6 +862,8 @@ class ContextAssembler:
         )
         url_aliases = ("url", "link", "youtube_url", "watch_url", "product_link")
         is_hotel_search = str(data.get("engine") or "").strip().lower() == "google_hotels"
+        is_yelp_search = str(data.get("engine") or "").strip().lower() == "yelp"
+        is_flight_search = str(tool_name or "").strip().lower() == "flight_search"
 
         candidates: list[dict[str, Any]] = []
         for index, item in enumerate(raw_items[:max_items], 1):
@@ -904,6 +907,44 @@ class ContextAssembler:
                         for amenity in normalized_amenities
                     )
 
+            if is_yelp_search:
+                for key in (
+                    "place_id",
+                    "reviews",
+                    "categories",
+                    "neighborhoods",
+                    "open_state",
+                    "snippet",
+                ):
+                    value = item.get(key)
+                    if value not in (None, "", [], {}):
+                        candidate[key] = self.build_preview_value(
+                            value,
+                            parent_key=key,
+                            depth=0,
+                            max_depth=1,
+                        )
+
+            if is_flight_search:
+                for key in (
+                    "airlines",
+                    "flight_numbers",
+                    "departure_airport",
+                    "departure_time",
+                    "arrival_airport",
+                    "arrival_time",
+                    "duration_display",
+                    "stops_label",
+                ):
+                    value = item.get(key)
+                    if value not in (None, "", [], {}):
+                        candidate[key] = self.build_preview_value(
+                            value,
+                            parent_key=key,
+                            depth=0,
+                            max_depth=1,
+                        )
+
             if "url" not in candidate:
                 for alias in url_aliases:
                     value = item.get(alias)
@@ -920,6 +961,92 @@ class ContextAssembler:
                 candidates.append(candidate)
 
         return candidates
+
+    def build_yelp_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep Yelp request context and review excerpts without duplicating result rows."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "engine",
+            "find_desc",
+            "find_loc",
+            "attrs",
+            "sort_by",
+            "sort_basis",
+            "results_count",
+            "provider_results_count",
+            "serpapi_searches_used",
+            "source",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=1,
+                )
+
+        review_data = data.get("review_data")
+        if isinstance(review_data, dict):
+            compact_review_data = {
+                key: review_data[key]
+                for key in ("place_id", "business", "total_results", "results_count")
+                if review_data.get(key) not in (None, "", [], {})
+            }
+            reviews = []
+            for item in (review_data.get("reviews") or [])[:3]:
+                if not isinstance(item, dict):
+                    continue
+                review = {
+                    key: item[key]
+                    for key in ("rating", "date", "user_name", "user_location")
+                    if item.get(key) not in (None, "")
+                }
+                if item.get("text"):
+                    review["text"] = self.truncate_preview_text(item["text"], 300)
+                if review:
+                    reviews.append(review)
+            if reviews:
+                compact_review_data["reviews"] = reviews
+            if compact_review_data:
+                preview["review_data"] = compact_review_data
+
+        return preview
+
+    def build_flight_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep compact flight-search request, route, and pricing context."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "provider",
+            "trip_type",
+            "departure_id",
+            "arrival_id",
+            "outbound_date",
+            "return_date",
+            "travel_class",
+            "stops_filter",
+            "sort_by",
+            "currency",
+            "results_count",
+            "cheapest_price",
+            "price_basis",
+            "booking_url",
+            "price_insights",
+            "source",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=2,
+                )
+        return preview
 
     def build_preview_value(
         self,
@@ -1053,7 +1180,10 @@ class ContextAssembler:
                     max_depth=3,
                 )
                 component_context: dict[str, Any] = {}
-                source_candidates = self.build_source_candidates_preview(component_payload)
+                source_candidates = self.build_source_candidates_preview(
+                    component_payload,
+                    tool_name=raw_step.get("tool"),
+                )
                 if source_candidates:
                     component_context["source_candidates"] = source_candidates
                 component_context["data_preview"] = component_preview
@@ -1098,7 +1228,8 @@ class ContextAssembler:
         result_chars_total = len(full_serialized)
         max_chars = self.tool_context_max_chars(tool_name)
 
-        if result_chars_total <= max_chars:
+        force_compact_projection = (tool_name or "").lower() == "flight_search"
+        if result_chars_total <= max_chars and not force_compact_projection:
             return full_serialized, result_chars_total, result_chars_total, False
 
         data = result.get("data")
@@ -1108,21 +1239,38 @@ class ContextAssembler:
                 max_chars=max_chars,
             )
         else:
+            normalized_tool_name = (tool_name or "").lower()
+            if normalized_tool_name == "serpapi_yelp_search":
+                data_preview = self.build_yelp_data_preview(data)
+            elif normalized_tool_name == "flight_search":
+                data_preview = self.build_flight_data_preview(data)
+            else:
+                data_preview = self.build_preview_value(data, parent_key="data")
             preview_payload = {
                 "ok": result.get("ok", True),
                 "speech": self.truncate_preview_text(result.get("speech", ""), 400),
                 "llm_context_preview": {
                     "tool": tool_name,
-                    "data_preview": self.build_preview_value(data, parent_key="data"),
+                    "data_preview": data_preview,
                 },
             }
-        source_candidates = self.build_source_candidates_preview(data)
+        source_candidates = self.build_source_candidates_preview(
+            data,
+            tool_name=tool_name,
+        )
         if source_candidates and (tool_name or "").lower() != "workflow":
             preview_payload["llm_context_preview"]["source_candidates"] = source_candidates
         if result.get("error"):
             preview_payload["error"] = self.truncate_preview_text(result["error"], 300)
 
-        preview_serialized = json.dumps(preview_payload, indent=2, default=str)
+        if force_compact_projection:
+            preview_serialized = json.dumps(
+                preview_payload,
+                separators=(",", ":"),
+                default=str,
+            )
+        else:
+            preview_serialized = json.dumps(preview_payload, indent=2, default=str)
         if len(preview_serialized) <= max_chars:
             return preview_serialized, result_chars_total, len(preview_serialized), True
 
