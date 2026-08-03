@@ -39,6 +39,7 @@ charset-normalizer==3.4.3
 coloredlogs==15.0.1
 ctranslate2==4.6.0
 faster-whisper==1.2.0
+fast-flights==3.0.2
 filelock==3.19.1
 flatbuffers==25.2.10
 fsspec==2025.9.0

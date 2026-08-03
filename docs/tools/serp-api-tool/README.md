@@ -12,6 +12,10 @@ The base tool is generic by design, and Jarvis now also includes thin SerpApi wr
 - `serpapi_youtube_search` for YouTube video discovery by keyword
 - `serpapi_yelp_search` for Yelp place discovery with attrs and reviews
 
+Future airfare searches use the separate `flight_search` tool. It runs SerpApi
+Google Flights when `SERP_API_KEY` is configured and otherwise uses its
+keyless fallback; see [the flight search guide](../flight-search-tool/README.md).
+
 ## Files
 
 - Shared client: `lib/serpapi_client.py`

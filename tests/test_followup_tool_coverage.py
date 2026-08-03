@@ -216,6 +216,34 @@ LOCAL_TOOL_SAMPLES = {
         },
         {"command": "printf smoke"},
     ),
+    "flight_search": _case(
+        {
+            "provider": "serpapi",
+            "trip_type": "round_trip",
+            "departure_id": "PDX",
+            "arrival_id": "PHX",
+            "outbound_date": "2099-09-15",
+            "return_date": "2099-09-20",
+            "results_count": 1,
+            "cheapest_price": 257,
+            "price_basis": "round_trip_total",
+            "booking_url": "https://www.google.com/travel/flights",
+            "results": [
+                {
+                    "price": 257,
+                    "airlines": ["Alaska"],
+                    "flight_numbers": ["AS 1349"],
+                    "departure_airport": "PDX",
+                    "departure_time": "2099-09-15 07:03",
+                    "arrival_airport": "PHX",
+                    "arrival_time": "2099-09-15 09:51",
+                    "duration_display": "2h 48m",
+                    "stops_label": "Nonstop",
+                    "segments": [{"large": "nested detail not needed in follow-up"}],
+                }
+            ],
+        }
+    ),
     "forget": _case(
         {"deleted_ids": [31, 32], "deleted_keys": ["old_a", "old_b"]}
     ),
@@ -955,6 +983,35 @@ def test_every_current_tool_payload_produces_bounded_followup_context(tool_name,
     assert json.loads(encoded) == compact
     assert "SECRET_SENTINEL" not in encoded
     assert len(encoded) <= 8000
+
+
+def test_flight_search_followup_keeps_option_identity_without_nested_segments():
+    payload, _ = LOCAL_TOOL_SAMPLES["flight_search"]
+
+    result = followup.extract_followup_data({"flight_search": payload})["flight_search"]
+
+    assert result["provider"] == "serpapi"
+    assert result["price_basis"] == "round_trip_total"
+    assert result["booking_url"] == "https://www.google.com/travel/flights"
+    assert result["candidates"] == [
+        {
+            "price": 257,
+            "departure_time": "2099-09-15 07:03",
+            "arrival_time": "2099-09-15 09:51",
+            "duration_display": "2h 48m",
+            "stops_label": "Nonstop",
+            "departure_airport": "PDX",
+            "arrival_airport": "PHX",
+            "airlines": "Alaska",
+            "flight_numbers": "AS 1349",
+        }
+    ]
+    assert "segments" not in result["candidates"][0]
+
+    wrapped = followup.extract_followup_data(
+        {"flight_search": {"ok": True, "data": payload}}
+    )["flight_search"]
+    assert wrapped["candidates"] == result["candidates"]
 
 
 def test_bounded_default_preserves_live_scalar_payloads_and_false_values():

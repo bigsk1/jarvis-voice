@@ -96,6 +96,10 @@ class ToolExecutorCancelTests(unittest.TestCase):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("serpapi_home_depot"), 200)
 
+    def test_flight_search_timeout_allows_deep_search(self):
+        executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
+        self.assertEqual(executor._get_subprocess_timeout("flight_search"), 120)
+
     def test_cancellation_stops_long_running_tool_promptly(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             script_path = Path(tmpdir) / "fake_long_tool.py"

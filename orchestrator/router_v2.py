@@ -927,7 +927,10 @@ UTC:   {now_utc.strftime('%A, %B %d, %Y')} at {now_utc.strftime('%H:%M UTC')}
 Database times are stored in UTC. Convert to local time when presenting to the user.
 Use this for any time-sensitive queries, web searches, or temporal references.
 When searching the web, if needed use the CURRENT YEAR ({now.year}) not past years.
-{native_search_note}{style_note}"""
+{native_search_note}
+LIVE FLIGHT STATUS:
+For a specific flight's current status, delay, gate, cancellation, arrival, or location, use the generic web-search path available in this mode and profile. Search with the airline name, flight number, and current local date; prefer official airline or airport status pages and cross-check a live flight tracker. Do not use flight_search, if enabled which is only for future fare and itinerary options. If no web-search path is available, say so rather than guessing.
+{style_note}"""
         # Default location for weather/location queries only - never override user-specified locations
         location_block = ""
         default_loc = get_config_value("JARVIS_DEFAULT_LOCATION", "").strip()

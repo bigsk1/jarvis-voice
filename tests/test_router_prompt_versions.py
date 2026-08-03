@@ -334,6 +334,36 @@ def test_router_initialization_can_select_v4():
     assert hashlib.sha256(router._system_prompt_base.encode()).hexdigest() == V4_SHA256
 
 
+@pytest.mark.parametrize("version", available_router_prompt_versions())
+def test_runtime_prompt_routes_live_flight_status_through_generic_web_search(version):
+    provider = MagicMock(model="test-model")
+
+    def get_config(key, default=None):
+        return {
+            "JARVIS_ROUTER_PROMPT_VERSION": version,
+            "JARVIS_TIMEZONE": "UTC",
+            "JARVIS_RESPONSE_STYLE": "casual",
+            "LLM_PROVIDER": "openai",
+        }.get(key, default)
+
+    with (
+        patch("router_v2.load_config"),
+        patch("router_v2.get_config_value", side_effect=get_config),
+        patch.object(LLMRouter, "_create_provider", return_value=provider),
+        patch("router_v2.load_model_prompt_override", return_value=None),
+        patch(
+            "router_v2.append_profile_card_for_router_direct_answer",
+            side_effect=lambda prompt: prompt,
+        ),
+    ):
+        prompt = LLMRouter(mode="cloud", registry=MagicMock()).system_prompt
+
+    assert "use the generic web-search path available in this mode and profile" in prompt
+    assert "airline name, flight number, and current local date" in prompt
+    assert "Do not use flight_search" in prompt
+    assert "say so rather than guessing" in prompt
+
+
 def test_web_ui_exposes_and_scopes_router_prompt_override():
     index_html = (ROOT / "jarvis-web" / "client" / "index.html").read_text()
     app_js = (ROOT / "jarvis-web" / "client" / "js" / "app.js").read_text()
