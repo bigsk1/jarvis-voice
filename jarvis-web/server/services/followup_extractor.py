@@ -40,6 +40,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_ebay_product',
     'serpapi_youtube_search',
     'serpapi_yelp_search',
+    'flight_search',
     'crawl_url',
     'mcp_brave_search_brave_web_search',
     'mcp_brave_search_brave_news_search',
@@ -324,6 +325,11 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'serpapi_ebay_product': ['engine', 'product_id', 'ebay_domain', 'results_count', 'top_url', 'top_image_url'],
     'serpapi_maps_search': ['engine', 'query', 'results_count'],
     'serpapi_hotel_search': ['engine', 'query', 'destination', 'check_in_date', 'check_out_date', 'results_count'],
+    'flight_search': [
+        'provider', 'trip_type', 'departure_id', 'arrival_id', 'outbound_date', 'return_date',
+        'travel_class', 'stops_filter', 'sort_by', 'currency', 'results_count', 'cheapest_price',
+        'price_basis', 'booking_url',
+    ],
     'spotify': ['name', 'artist'],
     'docker_control': ['container', 'status'],
     'ssh_remote': ['host'],
@@ -2736,6 +2742,36 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                     if item.get('thumbnail'):
                         candidate['thumbnail'] = item['thumbnail']
                     candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
+
+        # --- flight_search: itineraries are deeply nested (segments, layovers) ---
+        # Keep only what a follow-up turn needs to talk about a specific option
+        # ("book the second one", "what time does the cheapest one land").
+        if key == 'flight_search':
+            results = value.get('results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = value.get('results_count', len(results))
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = {}
+                    for field in (
+                        'price', 'departure_time', 'arrival_time', 'duration_display',
+                        'stops_label', 'departure_airport', 'arrival_airport',
+                    ):
+                        field_value = item.get(field)
+                        if field_value not in (None, '', [], {}):
+                            candidate[field] = field_value
+                    airlines = item.get('airlines')
+                    if isinstance(airlines, list) and airlines:
+                        candidate['airlines'] = ', '.join(str(name) for name in airlines[:3])
+                    numbers = item.get('flight_numbers')
+                    if isinstance(numbers, list) and numbers:
+                        candidate['flight_numbers'] = ', '.join(str(num) for num in numbers[:4])
+                    if candidate:
+                        candidates.append(candidate)
                 if candidates:
                     extracted['candidates'] = candidates
 
