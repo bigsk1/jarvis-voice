@@ -391,6 +391,21 @@ class FlightExtractorTests(unittest.TestCase):
         rows = [{"price": None}, {"price": 300}, {"price": 120}]
         self.assertEqual([row["price"] for row in sort_results(rows, "price")], [120, 300, None])
 
+    def test_every_sort_mode_orders_locally_except_top_flights(self):
+        rows = [
+            {"price": 300, "total_duration_minutes": 100, "departure_time": "2099-09-15 18:00",
+             "arrival_time": "2099-09-15 20:00", "carbon_kg": 200},
+            {"price": 120, "total_duration_minutes": 400, "departure_time": "2099-09-15 06:00",
+             "arrival_time": "2099-09-15 13:00", "carbon_kg": 90},
+        ]
+        self.assertEqual([r["price"] for r in sort_results(rows, "price")], [120, 300])
+        self.assertEqual([r["price"] for r in sort_results(rows, "duration")], [300, 120])
+        self.assertEqual([r["price"] for r in sort_results(rows, "departure_time")], [120, 300])
+        self.assertEqual([r["price"] for r in sort_results(rows, "arrival_time")], [120, 300])
+        self.assertEqual([r["price"] for r in sort_results(rows, "emissions")], [120, 300])
+        # Google's own ranking is the order both providers already return.
+        self.assertEqual([r["price"] for r in sort_results(rows, "top_flights")], [300, 120])
+
 
 class FallbackConversionTests(unittest.TestCase):
     """The keyless provider must land on the same shape as the SerpApi path."""
@@ -428,6 +443,13 @@ class FallbackConversionTests(unittest.TestCase):
         entry.flights[0].departure = SimpleNamespace(date=[2099, 9, 15], time=[9])
         converted = convert_fallback_itinerary(entry, "economy")
         self.assertEqual(converted["departure_time"], "2099-09-15 09:00")
+
+    def test_only_truly_unapplied_filters_are_reported(self):
+        """max_price and include_airlines are filtered locally, so they count as applied."""
+        self.assertNotIn("max_price", flight_search.FALLBACK_UNSUPPORTED)
+        self.assertNotIn("include_airlines", flight_search.FALLBACK_UNSUPPORTED)
+        self.assertIn("exclude_airlines", flight_search.FALLBACK_UNSUPPORTED)
+        self.assertIn("outbound_times", flight_search.FALLBACK_UNSUPPORTED)
 
     def test_layover_duration_is_derived_from_segment_gaps(self):
         entry = self._entry()

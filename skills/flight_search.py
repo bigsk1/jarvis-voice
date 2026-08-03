@@ -73,8 +73,9 @@ SORTS = {
 }
 
 # fast-flights only encodes route, date, cabin, passengers, and max stops into
-# its query. Anything else has to be applied locally or reported as unapplied.
-FALLBACK_UNSUPPORTED = ("max_price", "exclude_airlines", "outbound_times", "return_times", "deep_search")
+# its query. `max_price` and `include_airlines` are applied locally afterward;
+# these have no local equivalent and are reported back as unapplied.
+FALLBACK_UNSUPPORTED = ("exclude_airlines", "outbound_times", "return_times", "deep_search")
 
 
 def return_success(speech: str, data: dict[str, Any] | None = None) -> None:
@@ -133,27 +134,35 @@ def serialize_csv(value: Any) -> str | None:
     return text or None
 
 
+# Field each sort reads, and whether that field is numeric. `top_flights` is
+# Google's own ranking, which is the order both providers return by default.
+SORT_FIELDS = {
+    "price": ("price", True),
+    "duration": ("total_duration_minutes", True),
+    "departure_time": ("departure_time", False),
+    "arrival_time": ("arrival_time", False),
+    "emissions": ("carbon_kg", True),
+}
+
+
 def sort_results(results: list[dict[str, Any]], sort_by: str) -> list[dict[str, Any]]:
-    """Order itineraries locally so every provider honors the requested sort."""
-    def price_key(item: dict[str, Any]) -> tuple[int, float]:
-        price = item.get("price")
-        return (1, 0.0) if price is None else (0, float(price))
+    """Order itineraries locally so every provider honors the requested sort.
 
-    def duration_key(item: dict[str, Any]) -> tuple[int, float]:
-        duration = item.get("total_duration_minutes")
-        return (1, 0.0) if duration is None else (0, float(duration))
+    Itineraries missing the sort field sink to the bottom rather than being
+    dropped or claiming a rank they cannot support.
+    """
+    if sort_by not in SORT_FIELDS:
+        return results
 
-    def departure_key(item: dict[str, Any]) -> tuple[int, str]:
-        depart = item.get("departure_time")
-        return (1, "") if not depart else (0, str(depart))
+    field, numeric = SORT_FIELDS[sort_by]
 
-    if sort_by == "price":
-        return sorted(results, key=price_key)
-    if sort_by == "duration":
-        return sorted(results, key=duration_key)
-    if sort_by == "departure_time":
-        return sorted(results, key=departure_key)
-    return results
+    def key(item: dict[str, Any]) -> tuple[int, float | str]:
+        value = item.get(field)
+        if value in (None, ""):
+            return (1, 0.0 if numeric else "")
+        return (0, float(value)) if numeric else (0, str(value))
+
+    return sorted(results, key=key)
 
 
 def format_clock(value: Any) -> str | None:
