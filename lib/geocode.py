@@ -12,19 +12,33 @@ from http_client import http_request
 
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 
-US_STATE_CODES = {
-    'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
-    'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
-    'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
-    'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
-    'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
+# Abbreviation to full name, because the geocoder reports regions spelled out
+# and prefix matching gets this wrong ("ME" is not a prefix of "Maine").
+US_STATES = {
+    'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas',
+    'CA': 'California', 'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware',
+    'FL': 'Florida', 'GA': 'Georgia', 'HI': 'Hawaii', 'ID': 'Idaho',
+    'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa', 'KS': 'Kansas',
+    'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
+    'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi',
+    'MO': 'Missouri', 'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada',
+    'NH': 'New Hampshire', 'NJ': 'New Jersey', 'NM': 'New Mexico', 'NY': 'New York',
+    'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio', 'OK': 'Oklahoma',
+    'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
+    'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah',
+    'VT': 'Vermont', 'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia',
+    'WI': 'Wisconsin', 'WY': 'Wyoming', 'DC': 'District of Columbia',
 }
+
+US_STATE_CODES = frozenset(US_STATES)
 
 
 def geocode_open_meteo(location: str, timeout: int = 10) -> tuple[float, float, str] | None:
     """Resolve a place name to (latitude, longitude, display_name).
 
-    Returns None when the place cannot be resolved.
+    A trailing US state code is honored ("Portland, OR" must not land in
+    Maine); otherwise the API's own top match wins. Returns None when the
+    place cannot be resolved.
     """
     parts = [part.strip() for part in location.split(',')]
     query = parts[0] if parts else location
@@ -42,23 +56,25 @@ def geocode_open_meteo(location: str, timeout: int = 10) -> tuple[float, float, 
     if not results:
         return None
 
-    target_state = parts[1].upper() if len(parts) >= 2 else None
+    target = parts[1].upper() if len(parts) >= 2 else None
     best = None
-    for item in results:
-        country_code = (item.get("country_code") or "").upper()
-        admin1 = (item.get("admin1") or "")
-        # Prefer US state match when user provided one like "Hillsboro, OR"
-        if target_state and country_code == "US":
-            if target_state in US_STATE_CODES and admin1.upper() == target_state:
+    if target:
+        # A bare two-letter US state also implies the country, which lets
+        # "Portland, OR" beat the more populous Portland, Maine.
+        us_hint = target in US_STATE_CODES
+        region = US_STATES.get(target, target).upper()
+        for item in results:
+            country_code = (item.get("country_code") or "").upper()
+            country = (item.get("country") or "").upper()
+            admin1 = (item.get("admin1") or "").upper()
+            if admin1 and admin1 == region:
                 best = item
                 break
-            # Second best: match expanded state name
-            if target_state in US_STATE_CODES and admin1.lower().startswith(target_state.lower()):
+            if country_code == target or country == region:
                 best = item
                 break
-        # Fallback to first US hit for US-like queries
-        if target_state and target_state in US_STATE_CODES and country_code == "US" and best is None:
-            best = item
+            if us_hint and country_code == "US" and best is None:
+                best = item
     if best is None:
         best = results[0]
 
