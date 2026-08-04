@@ -73,6 +73,16 @@ Standard tool contract:
 }
 ```
 
+### Incident-aware failures
+
+After a final transient SerpApi failure or tool-process timeout, Jarvis makes one
+short, bounded request to SerpApi's public unresolved-incidents JSON endpoint.
+If an active incident specifically matches the engine that failed, the error
+response includes `data.serpapi_incident`, `failure_reason=active_provider_incident`,
+the provider's latest update, its status-page URL, and a recommendation to retry
+later. Unrelated incidents do not replace the original tool error, validation
+errors do not trigger the lookup, and a failed status lookup is ignored.
+
 ## Parameters
 
 | Parameter | Type | Required | Notes |

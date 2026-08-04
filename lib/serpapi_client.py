@@ -10,6 +10,85 @@ from http_client import get_proxy_config, http_request
 
 
 SERPAPI_ENDPOINT = "https://serpapi.com/search.json"
+SERPAPI_STATUS_PAGE_URL = "https://status.serpapi.com/"
+SERPAPI_UNRESOLVED_INCIDENTS_ENDPOINT = (
+    "https://status.serpapi.com/api/v2/incidents/unresolved.json"
+)
+SERPAPI_STATUS_TIMEOUT = 3
+
+SERPAPI_TOOL_ENGINES = {
+    "serpapi_ebay_product": ("ebay_product",),
+    "serpapi_ebay_search": ("ebay",),
+    "serpapi_hotel_search": ("google_hotels",),
+    "serpapi_maps_search": ("google_maps",),
+    "serpapi_youtube_search": ("youtube",),
+}
+
+SERPAPI_ENGINE_LABELS = {
+    "amazon": "Amazon Search",
+    "amazon_product": "Amazon Product",
+    "ebay": "eBay Search",
+    "ebay_product": "eBay Product",
+    "bing": "Bing Search",
+    "google": "Google Search",
+    "google_flights": "Google Flights",
+    "google_hotels": "Google Hotels",
+    "google_light": "Google Light Search",
+    "google_maps": "Google Maps",
+    "google_news": "Google News",
+    "google_shopping": "Google Shopping",
+    "home_depot": "Home Depot Search",
+    "home_depot_product": "Home Depot Product",
+    "yelp": "Yelp Search",
+    "yelp_reviews": "Yelp Reviews",
+    "youtube": "YouTube Search",
+    "youtube_video": "YouTube Video",
+    "youtube_video_transcript": "YouTube Video Transcript",
+    "news": "Google News",
+}
+
+SERPAPI_ENGINE_STATUS_ALIASES = {
+    "amazon": ("amazon search api", "amazon search", "amazon api"),
+    "amazon_product": ("amazon product api", "amazon product"),
+    "ebay": ("ebay search api", "ebay search", "ebay api"),
+    "ebay_product": ("ebay product api", "ebay product"),
+    "bing": ("bing search api", "bing search", "bing api"),
+    "google": ("google search api", "google search"),
+    "google_flights": ("google flights api", "google flights"),
+    "google_hotels": ("google hotels api", "google hotels"),
+    "google_light": ("google light search api", "google light search"),
+    "google_maps": ("google maps api", "google maps"),
+    "google_news": ("google news api", "google news"),
+    "google_shopping": ("google shopping api", "google shopping"),
+    "home_depot": ("home depot search api", "home depot search", "home depot api"),
+    "home_depot_product": ("home depot product api", "home depot product"),
+    "yelp": ("yelp search api", "yelp search", "yelp api"),
+    "yelp_reviews": ("yelp reviews api", "yelp reviews"),
+    "youtube": ("youtube search api", "youtube search", "youtube api"),
+    "youtube_video": ("youtube video api", "youtube video"),
+    "youtube_video_transcript": (
+        "youtube video transcript api",
+        "youtube video transcript",
+        "youtube transcript api",
+        "youtube transcript",
+    ),
+    "news": ("google news api", "google news"),
+}
+
+_TRANSIENT_SERPAPI_ERROR_MARKERS = (
+    "timeout",
+    "timed out",
+    "connection error",
+    "connectionerror",
+    "connection refused",
+    "max retries exceeded",
+    "proxy error",
+    "proxyerror",
+    "service unavailable",
+    "temporarily unavailable",
+    "couldn't get valid results",
+    "please try again later",
+)
 GENERIC_RESERVED_KEYS = {
     "engine",
     "api_key",
@@ -26,6 +105,185 @@ GENERIC_RESERVED_KEYS = {
     "delivery_zip",
     "shipping_location",
 }
+
+
+def _normalize_status_text(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def _serpapi_key_is_configured() -> bool:
+    value = get_config_value("SERP_API_KEY", "").strip()
+    return bool(value and "YOUR_" not in value and "REPLACE" not in value and len(value) >= 16)
+
+
+def serpapi_engines_for_tool(tool_name: str, args: dict[str, Any] | None = None) -> tuple[str, ...]:
+    """Return the SerpApi engines a failed Jarvis tool may have been calling."""
+    options = args if isinstance(args, dict) else {}
+
+    if tool_name == "serpapi_search":
+        engine = str(options.get("engine") or "").strip().lower()
+        return (engine,) if engine else ()
+    if tool_name == "flight_search":
+        return ("google_flights",) if _serpapi_key_is_configured() else ()
+    if tool_name == "serpapi_home_depot":
+        query = str(options.get("query") or options.get("q") or "").strip()
+        product_id = str(options.get("product_id") or "").strip()
+        return ("home_depot_product",) if product_id and not query else ("home_depot",)
+    if tool_name == "serpapi_yelp_search":
+        engines = ["yelp"]
+        if parse_bool(options.get("include_reviews")):
+            engines.append("yelp_reviews")
+        return tuple(engines)
+    if tool_name == "serpapi_youtube":
+        engines = ["youtube_video"]
+        if parse_bool(options.get("include_transcript")):
+            engines.append("youtube_video_transcript")
+        return tuple(engines)
+
+    return SERPAPI_TOOL_ENGINES.get(tool_name, ())
+
+
+def is_transient_serpapi_failure(error_text: Any) -> bool:
+    """Whether a final tool error is worth correlating with provider incidents."""
+    lowered = str(error_text or "").lower()
+    if any(marker in lowered for marker in _TRANSIENT_SERPAPI_ERROR_MARKERS):
+        return True
+    return re.search(r"\b(?:500|502|503|504)\b", lowered) is not None
+
+
+def fetch_serpapi_unresolved_incidents(
+    timeout: int = SERPAPI_STATUS_TIMEOUT,
+) -> list[dict[str, Any]]:
+    """Fetch active SerpApi incidents without extending a failed tool by long."""
+    try:
+        response = http_request(
+            "GET",
+            SERPAPI_UNRESOLVED_INCIDENTS_ENDPOINT,
+            timeout=timeout,
+            use_proxy=False,
+            fallback_on_proxy_fail=False,
+        )
+        if response.status_code != 200:
+            return []
+        payload = response.json()
+    except Exception:
+        return []
+
+    incidents = payload.get("incidents") if isinstance(payload, dict) else None
+    if not isinstance(incidents, list):
+        return []
+    return [incident for incident in incidents if isinstance(incident, dict)]
+
+
+def _status_aliases_for_engine(engine: str) -> tuple[str, ...]:
+    aliases = SERPAPI_ENGINE_STATUS_ALIASES.get(engine)
+    if aliases:
+        return aliases
+    normalized = _normalize_status_text(engine)
+    if not normalized:
+        return ()
+    return (f"{normalized} api", f"{normalized} search api", f"{normalized} search")
+
+
+def find_serpapi_incident(
+    engines: tuple[str, ...],
+    incidents: list[dict[str, Any]],
+) -> tuple[str, dict[str, Any]] | None:
+    """Find an active incident whose title specifically names a requested engine."""
+    for engine in engines:
+        aliases = _status_aliases_for_engine(engine)
+        for incident in incidents:
+            incident_name = _normalize_status_text(incident.get("name"))
+            padded_name = f" {incident_name} "
+            if any(f" {_normalize_status_text(alias)} " in padded_name for alias in aliases):
+                return engine, incident
+    return None
+
+
+def _compact_serpapi_incident(engine: str, incident: dict[str, Any]) -> dict[str, Any]:
+    updates = incident.get("incident_updates")
+    latest_update = updates[0] if isinstance(updates, list) and updates and isinstance(updates[0], dict) else {}
+    body = " ".join(str(latest_update.get("body") or "").split())[:500]
+
+    components: list[dict[str, Any]] = []
+    raw_components = incident.get("components")
+    if isinstance(raw_components, list):
+        for component in raw_components[:8]:
+            if not isinstance(component, dict):
+                continue
+            components.append(
+                {
+                    "name": component.get("name"),
+                    "status": component.get("status"),
+                }
+            )
+
+    return {
+        "engine": engine,
+        "engine_label": SERPAPI_ENGINE_LABELS.get(engine, engine.replace("_", " ").title()),
+        "name": incident.get("name"),
+        "status": incident.get("status"),
+        "impact": incident.get("impact"),
+        "started_at": incident.get("started_at"),
+        "updated_at": incident.get("updated_at"),
+        "latest_update": body or None,
+        "latest_update_status": latest_update.get("status"),
+        "components": components,
+        "incident_url": incident.get("shortlink") or SERPAPI_STATUS_PAGE_URL,
+        "status_page_url": SERPAPI_STATUS_PAGE_URL,
+    }
+
+
+def diagnose_serpapi_tool_failure(
+    tool_name: str,
+    args: dict[str, Any] | None,
+    error_text: Any,
+    *,
+    force: bool = False,
+) -> dict[str, Any] | None:
+    """Correlate a final transient SerpApi tool failure with an active incident."""
+    engines = serpapi_engines_for_tool(tool_name, args)
+    if not engines or (not force and not is_transient_serpapi_failure(error_text)):
+        return None
+
+    match = find_serpapi_incident(engines, fetch_serpapi_unresolved_incidents())
+    if not match:
+        return None
+
+    engine, raw_incident = match
+    incident = _compact_serpapi_incident(engine, raw_incident)
+    label = incident["engine_label"]
+    name = incident.get("name") or "a provider incident"
+    state_parts = [str(incident["status"])] if incident.get("status") else []
+    if incident.get("impact"):
+        state_parts.append(f"{incident['impact']} impact")
+    state = f" ({', '.join(state_parts)})" if state_parts else ""
+
+    latest_update = str(incident.get("latest_update") or "")
+    speech_update = re.sub(r"https?://\S+", "", latest_update).strip(" .")[:220]
+    speech_update = re.sub(
+        r"(?:github\s+issue|issue)\s*:\s*$",
+        "",
+        speech_update,
+        flags=re.IGNORECASE,
+    ).strip(" .")
+    update_sentence = f" Latest update: {speech_update}." if speech_update else ""
+    speech = (
+        f"SerpApi could not complete the {label} request after the configured request path failed. "
+        f"SerpApi is currently reporting {name}{state}, which likely explains the failure."
+        f"{update_sentence} Try this tool again later or check {SERPAPI_STATUS_PAGE_URL}"
+    )
+
+    return {
+        "speech": speech,
+        "data": {
+            "provider": "SerpApi",
+            "failure_reason": "active_provider_incident",
+            "retry_recommended": True,
+            "status_page_url": SERPAPI_STATUS_PAGE_URL,
+            "serpapi_incident": incident,
+        },
+    }
 
 AMAZON_QUERY_STOPWORDS = {
     "a", "an", "and", "are", "around", "best", "can", "for", "find", "from",

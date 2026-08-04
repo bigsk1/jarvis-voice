@@ -2166,6 +2166,24 @@ body {
   background: rgba(255, 255, 255, 0.34);
 }
 
+.structured-results-layout-list .structured-results-track {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 0;
+  overflow: visible;
+  scroll-snap-type: none;
+}
+
+.structured-results-layout-metrics .structured-results-track {
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  grid-auto-flow: row;
+  gap: 8px;
+  padding-bottom: 0;
+  overflow: visible;
+  scroll-snap-type: none;
+}
+
 .structured-result-card {
   display: flex;
   min-width: 0;
@@ -2178,6 +2196,15 @@ body {
 
 .structured-result-card-flight {
   border-top: 2px solid var(--accent-primary, #8ec5ff);
+}
+
+.structured-result-card-video {
+  flex-direction: column;
+}
+
+.structured-result-card-weather {
+  min-height: 118px;
+  border-top: 2px solid #38bdf8;
 }
 
 .structured-result-image {
@@ -2195,6 +2222,19 @@ body {
   display: block;
 }
 
+.structured-result-card-video .structured-result-image {
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: 16 / 9;
+}
+
+.structured-result-card-video .structured-result-image img {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: cover;
+}
+
 .structured-result-body {
   display: flex;
   flex: 1;
@@ -2205,6 +2245,10 @@ body {
 }
 
 .structured-result-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
   color: var(--text-primary);
   font-weight: 700;
   line-height: 1.3;
@@ -2241,6 +2285,17 @@ body {
   line-height: 1.3;
 }
 
+.structured-result-card-video .structured-result-detail {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.structured-result-card-weather .structured-result-detail {
+  text-transform: capitalize;
+}
+
 .structured-result-link {
   margin-top: auto;
   font-size: 0.78rem;
@@ -2263,8 +2318,12 @@ body {
     gap: 10px;
   }
 
-  .structured-results-track {
+  .structured-results-layout-rail .structured-results-track {
     grid-auto-columns: minmax(235px, 82vw);
+  }
+
+  .structured-results-layout-metrics .structured-results-track {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

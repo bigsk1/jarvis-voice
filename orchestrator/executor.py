@@ -16,6 +16,7 @@ from typing import Any
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, export_config_environment
 from http_client import PROXY_POLICY_ENV, STANDARD_PROXY_ENV_KEYS
+from serpapi_client import diagnose_serpapi_tool_failure
 from tool_logger import get_logger
 from tool_search_runtime import search_tools_runtime
 try:
@@ -124,6 +125,48 @@ class ToolExecutor:
         if tool_name == "phone_call":
             return 900  # 15 min — aligns with VAPI_WAIT_TIMEOUT / wait_for_call_completion + Vapi maxDurationSeconds
         return 75 if self.mode == "local" else 60
+
+    @staticmethod
+    def _with_serpapi_incident_context(
+        tool_name: str,
+        args: dict[str, Any],
+        output: dict[str, Any],
+        *,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """Replace a final transient SerpApi failure with matching live incident context."""
+        if output.get("ok") is not False:
+            return output
+
+        error_text = " ".join(
+            str(value)
+            for value in (output.get("speech"), output.get("error"))
+            if value
+        )
+        try:
+            diagnosis = diagnose_serpapi_tool_failure(
+                tool_name,
+                args,
+                error_text,
+                force=force,
+            )
+        except Exception:
+            diagnosis = None
+        if not diagnosis:
+            return output
+
+        enriched = dict(output)
+        speech = str(diagnosis.get("speech") or output.get("speech") or "SerpApi request failed")
+        enriched["speech"] = speech
+        enriched["error"] = speech
+
+        existing_data = output.get("data")
+        data = dict(existing_data) if isinstance(existing_data, dict) else {}
+        diagnosis_data = diagnosis.get("data")
+        if isinstance(diagnosis_data, dict):
+            data.update(diagnosis_data)
+        enriched["data"] = data
+        return enriched
     
     def execute(self, tool_name: str, args: dict[str, Any], skip_permission_check: bool = False) -> dict[str, Any]:
         """
@@ -344,6 +387,8 @@ class ToolExecutor:
                     "speech": f"Tool {tool_name} failed",
                     "error": stderr or stdout or "Unknown error"
                 }
+
+            output = self._with_serpapi_incident_context(tool_name, args, output)
             
             # Note: We don't check returncode because tools write valid JSON even on failure
             
@@ -365,6 +410,12 @@ class ToolExecutor:
                 "speech": f"Tool {tool_name} timed out",
                 "error": "Timeout"
             }
+            output = self._with_serpapi_incident_context(
+                tool_name,
+                args,
+                output,
+                force=True,
+            )
             self.logger.log_tool_call(
                 tool_name=tool_name,
                 arguments=args,

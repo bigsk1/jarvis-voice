@@ -47,17 +47,20 @@ const renderer = sandbox.window.structuredResultsRenderer;
 const expectedTools = [
   'serpapi_search',
   'serpapi_home_depot',
+  'serpapi_ebay_search',
   'serpapi_ebay_product',
   'serpapi_hotel_search',
   'serpapi_yelp_search',
   'flight_search',
-  'serpapi_maps_search'
+  'serpapi_maps_search',
+  'serpapi_youtube_search',
+  'weather'
 ];
 if (JSON.stringify(renderer.registeredTools()) !== JSON.stringify(expectedTools)) process.exit(2);
 
 const html = renderer.render({{
   serpapi_search: {{
-    engine: 'amazon_product',
+    engine: 'amazon',
     query: 'coffee grinder',
     results: [{{
       title: 'Precision Coffee Grinder',
@@ -67,6 +70,12 @@ const html = renderer.render({{
       rating: 4.7,
       reviews: 1200,
       asin: 'B000TEST01'
+    }}, {{
+      title: 'Compact Coffee Grinder',
+      url: 'https://amazon.example/compact-grinder',
+      thumbnail: 'https://images.example/compact-grinder.jpg',
+      price: '$49',
+      asin: 'B000TEST02'
     }}]
   }},
   serpapi_home_depot: {{
@@ -77,6 +86,24 @@ const html = renderer.render({{
       thumbnail: 'https://images.example/drill.jpg',
       price_formatted: '$129',
       product_id: 'HD-7'
+    }}, {{
+      title: 'Compact Drill',
+      url: 'https://homedepot.example/compact-drill',
+      thumbnail: 'https://images.example/compact-drill.jpg',
+      price_formatted: '$89',
+      product_id: 'HD-8'
+    }}]
+  }},
+  serpapi_ebay_search: {{
+    query: 'vintage receiver',
+    results: [{{
+      title: 'Classic Stereo Receiver',
+      url: 'https://ebay.example/classic-receiver',
+      thumbnail: 'https://images.example/classic-receiver.jpg',
+      price: {{from: {{raw: '$180'}}, to: {{raw: '$220'}}}},
+      condition: 'Used',
+      shipping: {{raw: 'Free shipping'}},
+      seller: {{username: 'seller-one', reviews: 42}}
     }}]
   }},
   serpapi_ebay_product: {{
@@ -146,18 +173,51 @@ const html = renderer.render({{
       rating: 4.8,
       address: '123 Market St'
     }}]
+  }},
+  serpapi_youtube_search: {{
+    search_query: 'woodworking basics',
+    results: [{{
+      video_id: 'abc123def45',
+      title: 'Woodworking for Beginners',
+      url: 'https://www.youtube.com/watch?v=abc123def45',
+      thumbnail: 'https://images.example/woodworking.jpg',
+      channel: 'Workshop School',
+      duration: '12:34',
+      views: 1200000,
+      published_date: '2 years ago',
+      description: 'A practical introduction to safe woodworking and essential tools.'
+    }}]
+  }},
+  weather: {{
+    location: 'Hillsboro, Oregon',
+    temperature: 72,
+    feels_like: 71,
+    condition: 'partly cloudy',
+    daily_forecast: [{{
+      day: 'Mon',
+      date: '2099-08-03',
+      high: 78,
+      low: 58,
+      condition: 'partly cloudy',
+      precip_probability: 20,
+      wind_max: 12
+    }}]
   }}
 }});
 
 for (const expected of [
-  'Precision Coffee Grinder', '$99', 'ASIN B000TEST01',
-  'Cordless Drill', '$129', 'Product HD-7',
+  'Precision Coffee Grinder', '$99', 'ASIN B000TEST01', 'Compact Coffee Grinder',
+  'Cordless Drill', '$129', 'Product HD-7', 'Compact Drill',
+  'Classic Stereo Receiver', '$180 – $220', 'Free shipping', 'seller-one',
   'Vintage Receiver', 'USD 299', 'Item EB-9',
   'Desert Hotel', '$120/night', '$240 total', 'Pet-friendly',
   'Society Pie', 'Open until 8:00 PM', 'Pizza · Salad',
   'PDX → PHX', '$257', 'Alaska', 'AS 1349',
   'Departs 09/15/2099 · 7:03 AM', 'Open Google Flights',
-  'Pup Cup Coffee', '123 Market St', 'Previous results', 'Next results'
+  'Pup Cup Coffee', '123 Market St',
+  'Woodworking for Beginners', 'Workshop School', '12:34', '1,200,000 views',
+  'Hillsboro, Oregon', 'Currently 72°', 'Mon · 2099-08-03', '78° / 58°',
+  'Previous results', 'Next results', 'structured-results-layout-metrics'
 ]) {{
   if (!html.includes(expected)) {{
     console.error('Missing expected preview text:', expected, html);
@@ -165,10 +225,11 @@ for (const expected of [
   }}
 }}
 if (html.includes('flight_numbers')) process.exit(4);
-if ((html.match(/structured-results-preview/g) || []).length !== 7) process.exit(5);
+if ((html.match(/structured-results-preview/g) || []).length !== 10) process.exit(5);
 
 if (!renderer.register('custom_demo', payload => ({{
   kind: 'generic',
+  layout: 'list',
   eyebrow: 'Custom',
   heading: payload.heading,
   items: [{{title: payload.title, primary: payload.value}}]
@@ -176,9 +237,10 @@ if (!renderer.register('custom_demo', payload => ({{
 const customHtml = renderer.render({{
   custom_demo: {{heading: 'Extension works', title: 'New adapter', value: 'Ready'}}
 }});
-for (const expected of ['Custom', 'Extension works', 'New adapter', 'Ready']) {{
+for (const expected of ['Custom', 'Extension works', 'New adapter', 'Ready', 'structured-results-layout-list']) {{
   if (!customHtml.includes(expected)) process.exit(7);
 }}
+if (customHtml.includes('structured-results-scroll-button')) process.exit(8);
 """
 
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
@@ -233,6 +295,53 @@ if (!html.includes('&lt;b&gt;Unsafe&lt;/b&gt;')) process.exit(5);
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
 
 
+def test_youtube_search_keeps_one_large_player_and_uses_cards_for_the_full_shortlist():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(CHAT_JS))}, 'utf8');
+const start = source.indexOf('  _extractYouTubeVideoId(');
+const end = source.indexOf('  _shouldPreferRawForDisplay(', start);
+const classSource = `class YouTubeHarness {{\n${{source.slice(start, end)}}\n}}; YouTubeHarness;`;
+const sandbox = {{
+  URL,
+  window: {{location: {{origin: 'https://web.test'}}}}
+}};
+vm.createContext(sandbox);
+const YouTubeHarness = vm.runInContext(classSource, sandbox);
+const harness = new YouTubeHarness();
+const results = [
+  {{video_id: 'abc123def45', title: 'First video', url: 'https://www.youtube.com/watch?v=abc123def45'}},
+  {{video_id: 'def456ghi78', title: 'Second video', url: 'https://www.youtube.com/watch?v=def456ghi78'}},
+  {{video_id: 'ghi789jkl01', title: 'Third video', url: 'https://www.youtube.com/watch?v=ghi789jkl01'}}
+];
+const displayText = results.map(item => item.url).join(' ');
+const searchEmbeds = harness._collectYouTubeEmbeds(displayText, '', {{
+  serpapi_youtube_search: {{
+    top_url: results[0].url,
+    results,
+    top_results: results
+  }}
+}});
+if (searchEmbeds.length !== 1) process.exit(2);
+if (searchEmbeds[0].videoId !== 'abc123def45') process.exit(3);
+if (searchEmbeds[0].title !== 'First video') process.exit(4);
+
+const detailEmbeds = harness._collectYouTubeEmbeds('', '', {{
+  serpapi_youtube: {{
+    title: 'Selected video',
+    video_id: 'selected123',
+    url: 'https://www.youtube.com/watch?v=selected123'
+  }}
+}});
+if (detailEmbeds.length !== 1) process.exit(5);
+if (detailEmbeds[0].videoId !== 'selected123') process.exit(6);
+if (detailEmbeds[0].title !== 'Selected video') process.exit(7);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
 def test_renderer_is_loaded_before_chat_and_uses_shared_responsive_styles():
     index = INDEX_HTML.read_text(encoding="utf-8")
     chat = CHAT_JS.read_text(encoding="utf-8")
@@ -245,6 +354,9 @@ def test_renderer_is_loaded_before_chat_and_uses_shared_responsive_styles():
     assert "grid-auto-flow: column" in css
     assert "scroll-snap-type: inline proximity" in css
     assert "grid-auto-columns: minmax(235px, 82vw)" in css
+    assert ".structured-results-layout-list .structured-results-track" in css
+    assert ".structured-results-layout-metrics .structured-results-track" in css
+    assert ".structured-result-card-video" in css
     assert ".structured-results-scroll-button" in css
     assert "scrollbar-color:" in css
     assert "track.scrollBy({left: direction * distance, behavior: 'smooth'})" in RENDERER_JS.read_text(

@@ -187,12 +187,17 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
   crypto charts.
 - The renderer uses a registry of tool adapters. Each adapter maps its tool's
   payload onto the same bounded presentation model; the shared renderer then
-  handles escaping, safe HTTP links, responsive horizontal scrolling, images,
-  metadata chips, and actions. Overflowing rails expose previous/next controls
-  in the preview header without covering card content; touch swiping and the
-  native scrollbar remain available.
-- Current adapters cover focused Amazon, Home Depot, and eBay products plus
-  Google Hotels, Yelp, Google Flights, and Google Maps results.
+  handles escaping, safe HTTP links, images, metadata chips, and actions. The
+  presentation model supports `rail` for visual browsing, `list` for dense
+  records, and `metrics` for compact measurements. Overflowing rails expose
+  previous/next controls in the preview header without covering card content;
+  touch swiping and the native scrollbar remain available.
+- Current adapters cover Amazon and Google Shopping, Home Depot, eBay search
+  and product details, Google Hotels, Yelp, Google Flights, Google Maps,
+  SerpApi YouTube search, and weather forecasts.
+- YouTube search uses the compact rail for the complete shortlist while Jarvis
+  Web keeps one large playable top-result embed. Direct YouTube detail and
+  downloaded-media results retain their existing specialized players.
 - Add a future structured display with
   `window.structuredResultsRenderer.register(toolName, adapter)`. Keep provider
   payload parsing inside the adapter and return only the small shared

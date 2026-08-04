@@ -30,11 +30,12 @@ class FakeToolSchema:
 
 
 class FakeRegistry:
-    def __init__(self, script_path, proxy_policy="inherit"):
+    def __init__(self, script_path, proxy_policy="inherit", tool_name="fake_long_tool"):
         self._schema = FakeToolSchema(script_path, proxy_policy=proxy_policy)
+        self.tool_name = tool_name
 
     def get_tool(self, tool_name):
-        return self._schema if tool_name == "fake_long_tool" else None
+        return self._schema if tool_name == self.tool_name else None
 
     def is_mcp_tool(self, tool_name):
         return False
@@ -99,6 +100,78 @@ class ToolExecutorCancelTests(unittest.TestCase):
     def test_flight_search_timeout_allows_deep_search(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("flight_search"), 120)
+
+    def test_final_serpapi_failure_adds_matching_incident_context(self):
+        diagnosis = {
+            "speech": "SerpApi is reporting a matching Home Depot incident.",
+            "data": {
+                "failure_reason": "active_provider_incident",
+                "serpapi_incident": {"engine": "home_depot"},
+            },
+        }
+        original = {
+            "ok": False,
+            "speech": "SerpApi Home Depot search timed out.",
+            "error": "Timeout",
+            "data": {"existing": True},
+        }
+
+        with patch("executor.diagnose_serpapi_tool_failure", return_value=diagnosis) as diagnose:
+            result = ToolExecutor._with_serpapi_incident_context(
+                "serpapi_home_depot",
+                {"query": "cordless drill"},
+                original,
+            )
+
+        diagnose.assert_called_once()
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["speech"], diagnosis["speech"])
+        self.assertEqual(result["error"], diagnosis["speech"])
+        self.assertTrue(result["data"]["existing"])
+        self.assertEqual(result["data"]["serpapi_incident"]["engine"], "home_depot")
+
+    def test_successful_tool_does_not_check_serpapi_status(self):
+        output = {"ok": True, "speech": "done"}
+        with patch("executor.diagnose_serpapi_tool_failure") as diagnose:
+            result = ToolExecutor._with_serpapi_incident_context(
+                "serpapi_home_depot",
+                {"query": "cordless drill"},
+                output,
+            )
+
+        self.assertIs(result, output)
+        diagnose.assert_not_called()
+
+    def test_subprocess_timeout_is_diagnosed_before_final_response(self):
+        diagnosis = {
+            "speech": "SerpApi is reporting a matching Home Depot incident.",
+            "data": {"failure_reason": "active_provider_incident"},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            script_path = Path(tmpdir) / "slow_serpapi.py"
+            script_path.write_text("import time\ntime.sleep(10)\n")
+            executor = ToolExecutor(
+                mode="cloud",
+                registry=FakeRegistry(
+                    str(script_path),
+                    tool_name="serpapi_home_depot",
+                ),
+            )
+            executor.logger = RecordingLogger()
+
+            with patch.object(executor, "_get_subprocess_timeout", return_value=1), patch(
+                "executor.diagnose_serpapi_tool_failure",
+                return_value=diagnosis,
+            ) as diagnose:
+                result = executor.execute(
+                    "serpapi_home_depot",
+                    {"query": "cordless drill"},
+                )
+
+        self.assertEqual(result["speech"], diagnosis["speech"])
+        self.assertEqual(result["data"]["failure_reason"], "active_provider_incident")
+        self.assertTrue(diagnose.call_args.kwargs["force"])
+        self.assertEqual(executor.logger.calls[-1]["result"], result)
 
     def test_cancellation_stops_long_running_tool_promptly(self):
         with tempfile.TemporaryDirectory() as tmpdir:

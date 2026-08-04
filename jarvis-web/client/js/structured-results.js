@@ -42,13 +42,16 @@ class StructuredResultsRenderer {
   }
 
   _registerDefaultAdapters() {
-    this.register('serpapi_search', payload => this._adaptAmazonProduct(payload));
+    this.register('serpapi_search', payload => this._adaptShoppingSearch(payload));
     this.register('serpapi_home_depot', payload => this._adaptHomeDepotProduct(payload));
+    this.register('serpapi_ebay_search', payload => this._adaptEbaySearch(payload));
     this.register('serpapi_ebay_product', payload => this._adaptEbayProduct(payload));
     this.register('serpapi_hotel_search', payload => this._adaptHotels(payload));
     this.register('serpapi_yelp_search', payload => this._adaptYelp(payload));
     this.register('flight_search', payload => this._adaptFlights(payload));
     this.register('serpapi_maps_search', payload => this._adaptMaps(payload));
+    this.register('serpapi_youtube_search', payload => this._adaptYouTubeSearch(payload));
+    this.register('weather', payload => this._adaptWeather(payload));
   }
 
   _bindScrollControls() {
@@ -147,6 +150,45 @@ class StructuredResultsRenderer {
     return String(currency || 'USD').toUpperCase() === 'USD'
       ? `$${amount}`
       : `${String(currency).toUpperCase()} ${amount}`;
+  }
+
+  _formatMarketplacePrice(value) {
+    if (value == null || value === '') return '';
+    if (typeof value !== 'object') return String(value);
+    if (value.raw) return String(value.raw);
+    const from = value.from?.raw || value.from?.formatted;
+    const to = value.to?.raw || value.to?.formatted;
+    if (from) return to ? `${from} – ${to}` : String(from);
+    if (value.amount != null) {
+      return value.currency ? `${value.currency} ${value.amount}` : String(value.amount);
+    }
+    return '';
+  }
+
+  _formatCount(value) {
+    if (value == null || value === '') return '';
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toLocaleString('en-US') : String(value);
+  }
+
+  _compactText(value, maxLength = 150) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (text.length <= maxLength) return text;
+    return `${text.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
+  }
+
+  _displayText(value) {
+    if (value == null || value === '') return '';
+    if (Array.isArray(value)) return value.filter(Boolean).map(item => String(item)).join(' · ');
+    if (typeof value !== 'object') return String(value);
+    for (const key of ['raw', 'formatted', 'text', 'label', 'name', 'username', 'status', 'message']) {
+      if (value[key] != null && value[key] !== '') return String(value[key]);
+    }
+    return Object.values(value)
+      .filter(item => ['string', 'number', 'boolean'].includes(typeof item) && item !== '')
+      .slice(0, 3)
+      .map(item => String(item))
+      .join(' · ');
   }
 
   _formatFlightTime(value) {
@@ -273,52 +315,107 @@ class StructuredResultsRenderer {
     };
   }
 
-  _adaptAmazonProduct(payload) {
+  _adaptShoppingSearch(payload) {
     const rows = this._rows(payload);
-    const product = rows[0];
+    const engine = String(payload.engine || '').toLowerCase();
+    if (!['amazon', 'amazon_product', 'google_shopping'].includes(engine)) {
+      return { items: [] };
+    }
     const focused = payload.engine === 'amazon_product'
       || Boolean(payload.asin)
       || (payload.engine === 'amazon' && rows.length === 1);
-    if (!focused || !product?.title || !product?.url) return { items: [] };
-    const chips = [];
-    if (product.rating != null) chips.push(`★ ${product.rating}`);
-    if (product.reviews != null) chips.push(`${product.reviews} reviews`);
-    if (product.asin) chips.push(`ASIN ${product.asin}`);
-    return {
-      kind: 'product',
-      eyebrow: 'Amazon product',
-      heading: payload.query || 'Product result',
-      items: [{
+    const items = rows.filter(product => product?.title && product?.url).map(product => {
+      const chips = [];
+      if (product.rating != null) chips.push(`★ ${product.rating}`);
+      if (product.reviews != null) chips.push(`${product.reviews} reviews`);
+      if (product.asin) chips.push(`ASIN ${product.asin}`);
+      if (product.prime === true || product.is_prime === true) chips.push('Prime');
+      return {
         title: product.title,
         url: product.url,
         image: product.image_url || product.thumbnail,
-        primary: product.price,
+        primary: this._formatMarketplacePrice(product.price),
         chips,
+        details: [
+          this._compactText(this._displayText(product.delivery)),
+          this._compactText(this._displayText(product.availability)),
+          this._compactText(this._displayText(product.stock)),
+          this._compactText(this._displayText(product.condition)),
+        ].filter(Boolean),
         actionLabel: 'Open product',
-      }],
+      };
+    });
+    const isGoogleShopping = engine === 'google_shopping';
+    return {
+      kind: 'product',
+      layout: 'rail',
+      eyebrow: isGoogleShopping
+        ? 'Google Shopping'
+        : (focused ? 'Amazon product' : 'Amazon results'),
+      heading: payload.query || (focused ? 'Product result' : 'Shopping options'),
+      items,
     };
   }
 
   _adaptHomeDepotProduct(payload) {
     const rows = this._rows(payload);
-    const product = payload.product_details || rows[0];
-    if (!product?.title || !product?.url) return { items: [] };
-    const chips = [];
-    if (product.rating != null) chips.push(`★ ${product.rating}`);
-    if (product.reviews != null) chips.push(`${product.reviews} reviews`);
-    if (product.product_id) chips.push(`Product ${product.product_id}`);
-    return {
-      kind: 'product',
-      eyebrow: 'Home Depot product',
-      heading: payload.query || 'Product result',
-      items: [{
+    const products = rows.length ? rows : [payload.product_details].filter(Boolean);
+    const items = products.filter(product => product?.title && product?.url).map(product => {
+      const chips = [];
+      if (product.rating != null) chips.push(`★ ${product.rating}`);
+      if (product.reviews != null) chips.push(`${product.reviews} reviews`);
+      if (product.product_id) chips.push(`Product ${product.product_id}`);
+      return {
         title: product.title,
         url: product.url,
         image: product.image_url || product.thumbnail || payload.top_image_url,
-        primary: product.price_formatted || product.price,
+        primary: this._formatMarketplacePrice(product.price_formatted || product.price),
         chips,
+        details: [
+          this._compactText(this._displayText(product.brand)),
+          this._compactText(this._displayText(product.delivery)),
+          this._compactText(this._displayText(product.pickup)),
+          this._compactText(this._displayText(product.stock)),
+        ].filter(Boolean),
         actionLabel: 'Open product',
-      }],
+      };
+    });
+    return {
+      kind: 'product',
+      layout: 'rail',
+      eyebrow: items.length === 1 ? 'Home Depot product' : 'Home Depot results',
+      heading: payload.query || 'Product result',
+      items,
+    };
+  }
+
+  _adaptEbaySearch(payload) {
+    const items = this._rows(payload).filter(row => row?.title && row?.url).map(row => {
+      const chips = [];
+      if (row.condition) chips.push(String(row.condition));
+      if (row.rating != null) chips.push(`★ ${row.rating}`);
+      if (row.reviews != null) chips.push(`${row.reviews} reviews`);
+      if (row.top_rated === true) chips.push('Top rated');
+      return {
+        title: row.title,
+        url: row.url,
+        image: row.thumbnail || row.image_url,
+        primary: this._formatMarketplacePrice(row.price),
+        chips,
+        details: [
+          this._compactText(this._displayText(row.shipping)),
+          this._compactText(this._displayText(row.seller)),
+          this._compactText(this._displayText(row.subtitle)),
+        ].filter(Boolean),
+        actionLabel: 'Open listing',
+      };
+    });
+    return {
+      kind: 'product',
+      layout: 'rail',
+      eyebrow: 'eBay results',
+      heading: payload.query || 'Listings',
+      items,
     };
   }
 
@@ -335,7 +432,7 @@ class StructuredResultsRenderer {
     if (Array.isArray(summary?.image_urls) && summary.image_urls.length) {
       image = summary.image_urls[summary.image_urls.length - 1] || summary.image_urls[0];
     }
-    let price = product.price || '';
+    let price = this._formatMarketplacePrice(product.price);
     const buy = summary?.buy;
     const buyNow = buy?.buy_it_now?.price;
     const bid = buy?.bid?.price;
@@ -365,6 +462,85 @@ class StructuredResultsRenderer {
     };
   }
 
+  _adaptYouTubeSearch(payload) {
+    const items = this._rows(payload).filter(row => row?.title && (row?.url || row?.video_id)).map(row => {
+      const chips = [];
+      if (row.channel) chips.push(String(row.channel));
+      const views = this._formatCount(row.views ?? row.extracted_views);
+      if (views) chips.push(String(views).toLowerCase().includes('view') ? String(views) : `${views} views`);
+      if (row.published_date) chips.push(String(row.published_date));
+      if (row.live === true) chips.push('Live');
+      return {
+        title: row.title,
+        url: row.url || `https://www.youtube.com/watch?v=${encodeURIComponent(row.video_id)}`,
+        image: row.thumbnail,
+        primary: row.duration || (row.live === true ? 'Live' : ''),
+        chips,
+        details: row.description ? [this._compactText(row.description)] : [],
+        actionLabel: 'Watch on YouTube',
+      };
+    });
+    return {
+      kind: 'video',
+      layout: 'rail',
+      eyebrow: 'YouTube',
+      heading: payload.search_query || 'Video results',
+      subtitle: payload.ranking_mode === 'views_desc' ? 'Sorted by views' : '',
+      items,
+    };
+  }
+
+  _adaptWeather(payload) {
+    const forecast = Array.isArray(payload.daily_forecast) && payload.daily_forecast.length
+      ? payload.daily_forecast
+      : (Array.isArray(payload.forecast) ? payload.forecast : []);
+    const degree = value => value != null && value !== '' ? `${value}°` : '';
+    let items = forecast.slice(0, 10).map((row, index) => {
+      const title = row.day
+        ? [row.day, row.date].filter(Boolean).join(' · ')
+        : (row.date || row.time || `Forecast ${index + 1}`);
+      const highLow = row.high != null || row.low != null
+        ? [degree(row.high), degree(row.low)].filter(Boolean).join(' / ')
+        : degree(row.temp);
+      const chips = [];
+      if (row.precip_probability != null) chips.push(`${row.precip_probability}% precipitation`);
+      if (row.humidity != null) chips.push(`${row.humidity}% humidity`);
+      if (row.wind_max != null) chips.push(`Wind ${row.wind_max} mph`);
+      return {
+        title,
+        primary: highLow,
+        chips,
+        details: row.condition ? [row.condition] : [],
+      };
+    });
+    if (!items.length && payload.temperature != null) {
+      items = [{
+        title: 'Current conditions',
+        primary: degree(payload.temperature),
+        chips: [
+          payload.feels_like != null ? `Feels like ${degree(payload.feels_like)}` : '',
+          payload.humidity != null ? `${payload.humidity}% humidity` : '',
+          payload.wind_speed != null ? `Wind ${payload.wind_speed} ${payload.wind_unit || 'mph'}` : '',
+        ].filter(Boolean),
+        details: payload.condition ? [payload.condition] : [],
+      }];
+    }
+    const current = [];
+    if (payload.temperature != null) current.push(`Currently ${degree(payload.temperature)}`);
+    if (payload.condition) current.push(String(payload.condition));
+    if (payload.feels_like != null && payload.feels_like !== payload.temperature) {
+      current.push(`Feels like ${degree(payload.feels_like)}`);
+    }
+    return {
+      kind: 'weather',
+      layout: 'metrics',
+      eyebrow: 'Weather',
+      heading: payload.location || 'Forecast',
+      subtitle: current.join(' · '),
+      items,
+    };
+  }
+
   _safeUrl(value) {
     if (!value) return '';
     try {
@@ -379,16 +555,19 @@ class StructuredResultsRenderer {
   }
 
   _renderCollection(collection) {
-    const kind = ['product', 'hotel', 'local', 'flight'].includes(collection.kind)
+    const kind = ['product', 'hotel', 'local', 'flight', 'video', 'weather'].includes(collection.kind)
       ? collection.kind
       : 'generic';
+    const layout = ['rail', 'list', 'metrics'].includes(collection.layout)
+      ? collection.layout
+      : 'rail';
     const cards = collection.items.map(item => {
       const url = this._safeUrl(item.url);
       const image = this._safeUrl(item.image);
       const title = this._escape(item.title || 'Result');
       const titleHtml = url
-        ? `<a class="structured-result-title" href="${url}" target="_blank" rel="noopener noreferrer">${title}</a>`
-        : `<div class="structured-result-title">${title}</div>`;
+        ? `<a class="structured-result-title" href="${url}" target="_blank" rel="noopener noreferrer" title="${title}">${title}</a>`
+        : `<div class="structured-result-title" title="${title}">${title}</div>`;
       const chips = this._list(item.chips)
         .map(chip => `<span class="structured-result-chip">${this._escape(chip)}</span>`)
         .join('');
@@ -415,8 +594,16 @@ class StructuredResultsRenderer {
     const collectionAction = actionUrl
       ? `<a class="structured-results-action" href="${actionUrl}" target="_blank" rel="noopener noreferrer">${this._escape(collection.actionLabel || 'Open results')}</a>`
       : '';
+    const scrollControls = layout === 'rail'
+      ? `
+        <div class="structured-results-scroll-controls" role="group" aria-label="Scroll results" hidden>
+          <button class="structured-results-scroll-button" type="button" data-direction="previous" aria-label="Previous results" title="Previous results">&#8249;</button>
+          <button class="structured-results-scroll-button" type="button" data-direction="next" aria-label="Next results" title="Next results">&#8250;</button>
+        </div>
+      `
+      : '';
     return `
-      <section class="structured-results-preview structured-results-${kind}" aria-label="${this._escape(collection.eyebrow || 'Structured results')}">
+      <section class="structured-results-preview structured-results-${kind} structured-results-layout-${layout}" aria-label="${this._escape(collection.eyebrow || 'Structured results')}">
         <div class="structured-results-header">
           <div>
             <div class="structured-results-eyebrow">${this._escape(collection.eyebrow || 'Results')}</div>
@@ -426,10 +613,7 @@ class StructuredResultsRenderer {
           <div class="structured-results-header-meta">
             <div class="structured-results-meta-row">
               <span>${collection.items.length} shown</span>
-              <div class="structured-results-scroll-controls" aria-label="Scroll results" hidden>
-                <button class="structured-results-scroll-button" type="button" data-direction="previous" aria-label="Previous results" title="Previous results">&#8249;</button>
-                <button class="structured-results-scroll-button" type="button" data-direction="next" aria-label="Next results" title="Next results">&#8250;</button>
-              </div>
+              ${scrollControls}
             </div>
             ${collectionAction}
           </div>

@@ -4517,7 +4517,7 @@ class ChatUI {
     return null;
   }
 
-  /** Pull SerpApi YouTube tool payloads (possibly arrays) for iframe embedding. */
+  /** Pull SerpApi YouTube payloads with tool provenance for iframe embedding. */
   _youtubeToolPayloadsForEmbeds(toolResultsData = {}) {
     const out = [];
     if (!toolResultsData || typeof toolResultsData !== 'object') return out;
@@ -4526,10 +4526,14 @@ class ChatUI {
       if (!tr) continue;
       if (Array.isArray(tr)) {
         for (const item of tr) {
-          if (item && typeof item === 'object') out.push(item);
+          if (item && typeof item === 'object') {
+            const payload = item.data && typeof item.data === 'object' ? item.data : item;
+            out.push({toolName: key, payload});
+          }
         }
       } else if (typeof tr === 'object') {
-        out.push(tr);
+        const payload = tr.data && typeof tr.data === 'object' ? tr.data : tr;
+        out.push({toolName: key, payload});
       }
     }
     return out;
@@ -4553,6 +4557,7 @@ class ChatUI {
 
     const embeds = [];
     const seenIds = new Set();
+    const youtubeSearchResultIds = new Set();
 
     const pushEmbed = (videoId, titleHint = '') => {
       if (!videoId || seenIds.has(videoId) || downloadedIds.has(videoId)) return;
@@ -4567,18 +4572,26 @@ class ChatUI {
       });
     };
 
-    for (const payload of this._youtubeToolPayloadsForEmbeds(toolResultsData)) {
+    for (const {toolName, payload} of this._youtubeToolPayloadsForEmbeds(toolResultsData)) {
       const primaryTitle = typeof payload.title === 'string' ? payload.title.trim() : '';
+      const candidates = new Map();
+      const addCandidate = (videoId, titleHint = '') => {
+        if (!videoId) return;
+        const id = String(videoId).trim();
+        if (!id) return;
+        const title = typeof titleHint === 'string' ? titleHint.trim() : '';
+        if (!candidates.has(id) || (!candidates.get(id) && title)) candidates.set(id, title);
+      };
       if (payload.top_url) {
         const vid = this._extractYouTubeVideoId(payload.top_url);
-        if (vid) pushEmbed(vid, primaryTitle);
+        if (vid) addCandidate(vid, primaryTitle);
       }
       if (typeof payload.url === 'string') {
         const vid = this._extractYouTubeVideoId(payload.url);
-        if (vid) pushEmbed(vid, primaryTitle);
+        if (vid) addCandidate(vid, primaryTitle);
       }
       if (payload.video_id != null && String(payload.video_id).trim()) {
-        pushEmbed(String(payload.video_id).trim(), primaryTitle);
+        addCandidate(String(payload.video_id).trim(), primaryTitle);
       }
       for (const listKey of ['results', 'top_results', 'candidates']) {
         const list = payload[listKey];
@@ -4589,11 +4602,18 @@ class ChatUI {
           const hint = itemTitle || primaryTitle;
           if (typeof item.url === 'string') {
             const vid = this._extractYouTubeVideoId(item.url);
-            if (vid) pushEmbed(vid, hint);
+            if (vid) addCandidate(vid, hint);
           } else if (item.video_id != null && String(item.video_id).trim()) {
-            pushEmbed(String(item.video_id).trim(), hint);
+            addCandidate(String(item.video_id).trim(), hint);
           }
         }
+      }
+      if (toolName === 'serpapi_youtube_search') {
+        for (const videoId of candidates.keys()) youtubeSearchResultIds.add(videoId);
+        const first = candidates.entries().next().value;
+        if (first) pushEmbed(first[0], first[1]);
+      } else {
+        for (const [videoId, title] of candidates.entries()) pushEmbed(videoId, title);
       }
     }
 
@@ -4607,7 +4627,12 @@ class ChatUI {
         if (embeds.length >= maxEmbeds) break;
 
         const videoId = this._extractYouTubeVideoId(rawUrl);
-        if (!videoId || seenIds.has(videoId) || downloadedIds.has(videoId)) continue;
+        if (
+          !videoId
+          || seenIds.has(videoId)
+          || downloadedIds.has(videoId)
+          || youtubeSearchResultIds.has(videoId)
+        ) continue;
 
         pushEmbed(videoId, '');
       }
