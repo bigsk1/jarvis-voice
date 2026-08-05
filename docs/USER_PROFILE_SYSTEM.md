@@ -155,7 +155,7 @@ Prints:
 ```bash
 USER_PROFILE_CARD_ENABLED=true
 USER_CORRECTION_LEARNING_MODE=shadow   # or apply
-USER_CORRECTION_APPEND_LESSONS=true    # apply-mode lesson append only
+USER_CORRECTION_APPEND_LESSONS=false   # opt in only to tracked system-wide lesson append
 ```
 
 ---

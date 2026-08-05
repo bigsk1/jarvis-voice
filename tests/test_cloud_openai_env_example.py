@@ -53,6 +53,32 @@ def test_openai_only_profile_is_offered_but_not_selected_by_default() -> None:
     assert not re.search(r"(?m)^JARVIS_TOOL_PROFILE=openai_only$", text)
 
 
+def test_intelligence_and_feedback_controls_are_documented() -> None:
+    """Keep the concise template complete for its built-in learning surface."""
+
+    text = OPENAI_TEMPLATE.read_text(encoding="utf-8")
+    required = {
+        "FEEDBACK_PROVIDER",
+        "FEEDBACK_MODEL",
+        "FEEDBACK_RANDOM_ENABLED",
+        "FEEDBACK_RANDOM_CHANCE",
+        "USER_CORRECTION_LEARNING_MODE",
+        "USER_CORRECTION_APPEND_LESSONS",
+        "USER_PROFILE_CARD_ENABLED",
+        "INTELLIGENCE_LEARNING_RATE",
+        "INTELLIGENCE_DECAY_RATE",
+        "INTELLIGENCE_ANOMALY_THRESHOLD",
+        "INTELLIGENCE_MIN_CONFIDENCE",
+        "INTELLIGENCE_NEGATIVE_WEIGHT",
+        "INTELLIGENCE_DECAY_INTERVAL_DAYS",
+    }
+
+    missing = sorted(required - _setting_names(text))
+    assert not missing, f"Learning settings missing from OpenAI template: {missing}"
+    assert re.search(r"(?m)^FEEDBACK_RANDOM_ENABLED=false$", text)
+    assert re.search(r"(?m)^USER_CORRECTION_APPEND_LESSONS=false$", text)
+
+
 def test_optional_tool_settings_track_full_cloud_template() -> None:
     """Do not let tool integration examples silently drift out of this file."""
 
