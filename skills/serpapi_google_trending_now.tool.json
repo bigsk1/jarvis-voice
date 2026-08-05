@@ -1,0 +1,125 @@
+{
+  "enabled": true,
+  "name": "serpapi_google_trending_now",
+  "description": "Get Google's current Trending Now feed through SerpApi without a seed topic. Use for 'what is trending now?', 'latest trends on Google', 'what is trending today?', 'show current search trends', or 'breaking topics in the US'. The trending_now action returns ranked trends by country and a 4/24/48/168-hour window with volume, growth, active state, categories, related searches, Google Trends links, and a news_page_token. It cannot filter by topic; if explicitly selected alongside a topic, run it and explain that scope rather than substitute another tool. Use news with an exact returned token for one trend's articles; it never runs automatically. Use serpapi_google_trends for topic-specific analysis when this tool was not explicitly selected.",
+  "complementary_tools": [
+    "serpapi_google_trends",
+    "serpapi_search_index",
+    "mcp_fetch_fetch",
+    "crawl_url",
+    "workflow",
+    "canvas",
+    "stash"
+  ],
+  "script": "serpapi_google_trending_now.py",
+  "proxy_policy": "off",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "trending_now",
+          "news"
+        ],
+        "description": "trending_now discovers current trends and is the default. news retrieves articles for one news_page_token returned by an earlier trending_now result."
+      },
+      "geo": {
+        "type": "string",
+        "pattern": "^[a-zA-Z]{2}$",
+        "description": "Two-letter supported Trending Now country code. Default US. Used only by trending_now."
+      },
+      "hours": {
+        "type": "integer",
+        "enum": [
+          4,
+          24,
+          48,
+          168
+        ],
+        "description": "How far back to discover trends: 4, 24, 48, or 168 hours. Default 24. Used only by trending_now."
+      },
+      "category_id": {
+        "type": "integer",
+        "enum": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ],
+        "description": "Optional official Trending Now category ID. Examples: 3 business/finance, 7 health, 14 politics, 17 sports, 18 technology, 19 travel, 20 climate."
+      },
+      "only_active": {
+        "type": "boolean",
+        "description": "Return only trends that are currently active. Default false. Used only by trending_now."
+      },
+      "language": {
+        "type": "string",
+        "pattern": "^[a-zA-Z]{2}$",
+        "description": "Optional two-letter interface language such as en or es. Used only by trending_now."
+      },
+      "page_token": {
+        "type": "string",
+        "maxLength": 8192,
+        "description": "Exact news_page_token from a trending_now result. Required only for action=news; do not invent or alter it."
+      },
+      "trend_query": {
+        "type": "string",
+        "maxLength": 100,
+        "description": "Optional label for the selected trend when action=news. It improves output/UI context and is not sent to SerpApi."
+      },
+      "max_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50,
+        "description": "Maximum normalized trends or news articles returned. Default 20; maximum 50."
+      },
+      "max_breakdown_queries": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 25,
+        "description": "Maximum related searches retained per trend. Default 10. Set 0 to omit them."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "Bypass SerpApi's one-hour exact-parameter cache. Default false; cached searches are free."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Advanced non-reserved parameters passed to SerpApi. Engine, location, time, category, activity, language, token, cache, async, and output controls cannot be overridden."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "Include the full SerpApi response for debugging or dataset capture. Default false."
+      }
+    }
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "SERP_API_KEY"
+    ],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file."
+  }
+}

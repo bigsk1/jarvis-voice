@@ -1369,6 +1369,7 @@ class JarvisApp {
       serpapi_yelp_search: '⭐',
       serpapi_search_index: '🌐',
       serpapi_google_trends: '📈',
+      serpapi_google_trending_now: '🔥',
       serpapi_tripadvisor: '🧭',
       serpapi_home_depot: '🛒',
       serpapi_ebay_search: '🛒',

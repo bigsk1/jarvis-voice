@@ -219,6 +219,7 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
 
     def test_google_trends_does_not_use_search_url_fallback(self):
         self.assertFalse(self.executor._is_search_tool("serpapi_google_trends"))
+        self.assertFalse(self.executor._is_search_tool("serpapi_google_trending_now"))
 
     def test_web_attachment_context_extracts_stash_ref_and_filename(self):
         topic = """[ATTACHED PDF ARTIFACT]

@@ -117,6 +117,10 @@ class ToolExecutorCancelTests(unittest.TestCase):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("serpapi_google_trends"), 120)
 
+    def test_google_trending_now_timeout_allows_full_provider_request(self):
+        executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
+        self.assertEqual(executor._get_subprocess_timeout("serpapi_google_trending_now"), 120)
+
     def test_final_serpapi_failure_adds_matching_incident_context(self):
         diagnosis = {
             "speech": "SerpApi is reporting a matching Home Depot incident.",

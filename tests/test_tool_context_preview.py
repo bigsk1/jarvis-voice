@@ -253,6 +253,102 @@ class ToolContextPreviewTests(unittest.TestCase):
         )
         self.assertNotIn("large_provider_payload", preview)
 
+    def test_google_trending_now_preview_keeps_current_rows_under_real_token_sizes(self):
+        result = {
+            "ok": True,
+            "speech": "Found current trends.",
+            "data": {
+                "action": "trending_now",
+                "engine": "google_trends_trending_now",
+                "requested_topic": "agentic ai",
+                "scope_notice": (
+                    "Trending Now is a seedless feed, so the requested topic "
+                    "'agentic ai' was not used as a filter."
+                ),
+                "geo": "US",
+                "hours": 24,
+                "only_active": False,
+                "results_count": 6,
+                "provider_results_count": 50,
+                "active_results_count": 42,
+                "top_query": "trend 1",
+                "raw": {"large_provider_payload": "x" * 12000},
+                "results": [
+                    {
+                        "position": index,
+                        "title": f"trend {index}",
+                        "query": f"trend {index}",
+                        "active": index % 2 == 1,
+                        "search_volume": index * 100000,
+                        "increase_percentage": index * 100,
+                        "category_names": ["Technology"],
+                        "trend_breakdown": [f"related {index}"],
+                        "google_trends_url": f"https://trends.google.com/trends/explore?q=trend+{index}",
+                        "trends_api_url": "https://serpapi.com/search.json?" + "t" * 500,
+                        "news_page_token": f"exact-news-token-{index}-" + "n" * 1200,
+                        "news_api_url": "https://serpapi.com/search.json?" + "a" * 1700,
+                    }
+                    for index in range(1, 7)
+                ],
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_google_trending_now", result
+        )
+
+        parsed = json.loads(preview)
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        data_preview = parsed["llm_context_preview"]["data_preview"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 6000)
+        self.assertEqual(len(candidates), 5)
+        self.assertNotIn("data_preview_text", parsed["llm_context_preview"])
+        self.assertEqual(candidates[0]["query"], "trend 1")
+        self.assertEqual(candidates[0]["search_volume"], 100000)
+        self.assertNotIn("news_page_token", candidates[0])
+        self.assertNotIn("news_api_url", candidates[0])
+        self.assertNotIn("trends_api_url", candidates[0])
+        self.assertFalse(candidates[1]["active"])
+        self.assertEqual(data_preview["hours"], 24)
+        self.assertEqual(data_preview["active_results_count"], 42)
+        self.assertEqual(data_preview["requested_topic"], "agentic ai")
+        self.assertIn("seedless feed", data_preview["scope_notice"])
+        self.assertNotIn("large_provider_payload", preview)
+
+    def test_google_trending_now_news_preview_keeps_article_urls(self):
+        result = {
+            "ok": True,
+            "speech": "Found associated news.",
+            "data": {
+                "action": "news",
+                "engine": "google_trends_news",
+                "trend_query": "agentic ai",
+                "raw": {"large_provider_payload": "x" * 12000},
+                "results": [
+                    {
+                        "title": f"Agentic article {index}",
+                        "url": f"https://news.example/article-{index}",
+                        "source": "Example News",
+                        "date": f"{index} hours ago",
+                        "thumbnail": f"https://images.example/article-{index}.jpg",
+                    }
+                    for index in range(1, 7)
+                ],
+            },
+        }
+
+        preview, _total, _shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_google_trending_now", result
+        )
+
+        parsed = json.loads(preview)
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        self.assertTrue(truncated)
+        self.assertEqual(candidates[0]["url"], "https://news.example/article-1")
+        self.assertEqual(candidates[0]["source"], "Example News")
+        self.assertEqual(candidates[0]["date"], "1 hours ago")
+
     def test_hotel_preview_keeps_compact_prices_pet_status_and_urls(self):
         result = {
             "ok": True,

@@ -695,6 +695,33 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "serpapi_google_trending_now": _case(
+        {
+            "action": "trending_now",
+            "engine": "google_trends_trending_now",
+            "geo": "US",
+            "hours": 24,
+            "only_active": False,
+            "results_count": 1,
+            "provider_results_count": 1,
+            "serpapi_searches_used": 1,
+            "source": "SerpApi Google Trends Trending Now",
+            "results": [
+                {
+                    "position": 1,
+                    "title": "agentic ai",
+                    "query": "agentic ai",
+                    "active": True,
+                    "search_volume": 200000,
+                    "increase_percentage": 1000,
+                    "category_names": ["Technology"],
+                    "trend_breakdown": ["ai agents"],
+                    "google_trends_url": "https://trends.google.com/trends/explore?q=agentic+ai",
+                    "news_page_token": "token-agentic-ai",
+                }
+            ],
+        }
+    ),
     "serpapi_tripadvisor": _case(
         {
             "action": "search",

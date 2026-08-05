@@ -865,6 +865,9 @@ class ContextAssembler:
         is_yelp_search = str(data.get("engine") or "").strip().lower() == "yelp"
         is_search_index = str(tool_name or "").strip().lower() == "serpapi_search_index"
         is_google_trends = str(tool_name or "").strip().lower() == "serpapi_google_trends"
+        is_google_trending_now = (
+            str(tool_name or "").strip().lower() == "serpapi_google_trending_now"
+        )
         is_tripadvisor = str(tool_name or "").strip().lower() == "serpapi_tripadvisor"
         is_flight_search = str(tool_name or "").strip().lower() == "flight_search"
 
@@ -966,6 +969,28 @@ class ContextAssembler:
                     "top_query",
                     "top_value",
                     "values",
+                ):
+                    value = item.get(key)
+                    if value not in (None, "", [], {}):
+                        candidate[key] = self.build_preview_value(
+                            value,
+                            parent_key=key,
+                            depth=0,
+                            max_depth=2,
+                        )
+
+            if is_google_trending_now:
+                for key in (
+                    "position",
+                    "query",
+                    "start_time",
+                    "end_time",
+                    "active",
+                    "search_volume",
+                    "increase_percentage",
+                    "category_names",
+                    "trend_breakdown",
+                    "google_trends_url",
                 ):
                     value = item.get(key)
                     if value not in (None, "", [], {}):
@@ -1283,6 +1308,43 @@ class ContextAssembler:
             )
         return preview
 
+    def build_google_trending_now_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep current-trend filters and news-drill-down provenance compact."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "action",
+            "engine",
+            "requested_topic",
+            "scope_notice",
+            "trend_query",
+            "geo",
+            "language",
+            "hours",
+            "category_id",
+            "only_active",
+            "results_count",
+            "provider_results_count",
+            "active_results_count",
+            "top_query",
+            "top_url",
+            "search_id",
+            "trending_now_url",
+            "trends_news_url",
+            "serpapi_searches_used",
+            "source",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=2,
+                )
+        return preview
+
     def build_flight_data_preview(self, data: Any) -> dict[str, Any]:
         """Keep compact flight-search request, route, and pricing context."""
         if not isinstance(data, dict):
@@ -1514,6 +1576,8 @@ class ContextAssembler:
                 data_preview = self.build_search_index_data_preview(data)
             elif normalized_tool_name == "serpapi_google_trends":
                 data_preview = self.build_google_trends_data_preview(data)
+            elif normalized_tool_name == "serpapi_google_trending_now":
+                data_preview = self.build_google_trending_now_data_preview(data)
             elif normalized_tool_name == "serpapi_tripadvisor":
                 data_preview = self.build_tripadvisor_data_preview(data)
             elif normalized_tool_name == "flight_search":

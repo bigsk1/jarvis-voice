@@ -47,6 +47,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_yelp_search',
     'serpapi_search_index',
     'serpapi_google_trends',
+    'serpapi_google_trending_now',
     'serpapi_tripadvisor',
     'flight_search',
     'crawl_url',
@@ -303,6 +304,14 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'property', 'results_count', 'provider_results_count', 'latest_period',
         'timeline_points_returned', 'timeline_points_original', 'search_id',
         'trends_url', 'serpapi_searches_used', 'source',
+    ],
+    'serpapi_google_trending_now': [
+        'action', 'engine', 'requested_topic', 'scope_notice', 'trend_query',
+        'page_token', 'geo', 'language',
+        'hours', 'category_id', 'only_active', 'results_count',
+        'provider_results_count', 'active_results_count', 'top_query',
+        'top_news_page_token', 'top_url', 'search_id', 'trending_now_url',
+        'trends_news_url', 'serpapi_searches_used', 'source',
     ],
     'serpapi_tripadvisor': [
         'action', 'engine', 'query', 'category', 'tripadvisor_domain',
@@ -2930,6 +2939,43 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                     for point in timeline[-3:]
                     if isinstance(point, dict)
                 ]
+
+        if key == 'serpapi_google_trending_now':
+            action = str(payload.get('action') or 'trending_now').strip().lower()
+            results = payload.get('results') or payload.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = payload.get('results_count', len(results))
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    if action == 'news':
+                        candidate = {
+                            field: item[field]
+                            for field in (
+                                'position', 'title', 'url', 'source', 'date',
+                                'thumbnail',
+                            )
+                            if item.get(field) not in (None, '')
+                        }
+                    else:
+                        candidate = {
+                            field: item[field]
+                            for field in (
+                                'position', 'title', 'query', 'start_timestamp',
+                                'start_time', 'end_timestamp', 'end_time',
+                                'active', 'search_volume', 'increase_percentage',
+                                'categories', 'category_names', 'trend_breakdown',
+                                'google_trends_url', 'trends_api_url',
+                                'news_page_token', 'news_api_url',
+                            )
+                            if item.get(field) not in (None, '', [], {})
+                            or field == 'active' and item.get(field) is False
+                        }
+                    if candidate:
+                        candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
 
         if key == 'serpapi_tripadvisor':
             action = str(payload.get('action') or 'search').strip().lower()

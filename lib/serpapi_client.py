@@ -41,6 +41,8 @@ SERPAPI_ENGINE_LABELS = {
     "google_news": "Google News",
     "google_shopping": "Google Shopping",
     "google_trends": "Google Trends",
+    "google_trends_news": "Google Trends News",
+    "google_trends_trending_now": "Google Trends Trending Now",
     "home_depot": "Home Depot Search",
     "home_depot_product": "Home Depot Product",
     "search_index": "Search Index",
@@ -69,6 +71,11 @@ SERPAPI_ENGINE_STATUS_ALIASES = {
     "google_news": ("google news api", "google news"),
     "google_shopping": ("google shopping api", "google shopping"),
     "google_trends": ("google trends api", "google trends"),
+    "google_trends_news": ("google trends news api", "google trends news"),
+    "google_trends_trending_now": (
+        "google trends trending now api",
+        "google trends trending now",
+    ),
     "home_depot": ("home depot search api", "home depot search", "home depot api"),
     "home_depot_product": ("home depot product api", "home depot product"),
     "search_index": ("search index api", "search index"),
@@ -163,6 +170,11 @@ def serpapi_engines_for_tool(tool_name: str, args: dict[str, Any] | None = None)
         if parse_bool(options.get("include_reviews")):
             engines.append("tripadvisor_reviews")
         return tuple(engines)
+    if tool_name == "serpapi_google_trending_now":
+        action = str(options.get("action") or "trending_now").strip().lower()
+        return ("google_trends_news",) if action in {"news", "articles"} else (
+            "google_trends_trending_now",
+        )
     if tool_name == "serpapi_youtube":
         engines = ["youtube_video"]
         if parse_bool(options.get("include_transcript")):

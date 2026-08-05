@@ -54,6 +54,7 @@ const expectedTools = [
   'serpapi_yelp_search',
   'serpapi_search_index',
   'serpapi_google_trends',
+  'serpapi_google_trending_now',
   'serpapi_tripadvisor',
   'flight_search',
   'serpapi_maps_search',
@@ -185,6 +186,24 @@ const html = renderer.render({{
       change_over_period: 28
     }}]
   }},
+  serpapi_google_trending_now: {{
+    action: 'trending_now',
+    geo: 'US',
+    hours: 24,
+    provider_results_count: 50,
+    active_results_count: 42,
+    trending_now_url: 'https://trends.google.com/trending?geo=US',
+    results: [{{
+      title: 'agentic ai',
+      query: 'agentic ai',
+      active: true,
+      search_volume: 200000,
+      increase_percentage: 1000,
+      category_names: ['Technology', 'Business and Finance'],
+      trend_breakdown: ['ai agents', 'agent frameworks'],
+      google_trends_url: 'https://trends.google.com/trends/explore?q=agentic+ai'
+    }}]
+  }},
   serpapi_tripadvisor: {{
     action: 'search',
     query: 'Rome',
@@ -273,6 +292,10 @@ for (const expected of [
   '314 indexed matches', 'Related: SKIP LOCKED queue · durable job queue',
   'Google Trends', 'AI agents, AI assistants', 'Latest 83', 'Average 61',
   'Peak 83', '+9 from previous', '+28 over period', 'Open Google Trends',
+  'Google Trends · Trending Now', 'Current trends in US', 'Past 24 hours',
+  '42 active · 50 total', 'agentic ai', '200,000 searches', 'Active now',
+  '+1000%', 'Technology · Business and Finance',
+  'Related: ai agents · agent frameworks', 'Open Trending Now',
   'Colosseum', '155000 reviews', 'Rome, Italy', 'Ancient amphitheatre',
   'PDX → PHX', '$257', 'Alaska', 'AS 1349',
   'Departs 09/15/2099 · 7:03 AM', 'Open Google Flights',
@@ -287,7 +310,7 @@ for (const expected of [
   }}
 }}
 if (html.includes('flight_numbers')) process.exit(4);
-if ((html.match(/structured-results-preview/g) || []).length !== 13) process.exit(5);
+if ((html.match(/structured-results-preview/g) || []).length !== 14) process.exit(5);
 
 if (!renderer.register('custom_demo', payload => ({{
   kind: 'generic',
@@ -363,6 +386,23 @@ for (const expected of [
   'related topics', 'Agentic AI', '+1,200%', 'rising', 'Technology',
   '/m/agentic', 'Open trend'
 ]) if (!relatedHtml.includes(expected)) process.exit(3);
+
+const newsHtml = renderer.render({{
+  serpapi_google_trending_now: {{
+    action: 'news', trend_query: 'agentic ai', provider_results_count: 2,
+    results: [{{
+      title: 'Agentic AI moves into enterprise software',
+      url: 'https://news.example/agentic-enterprise',
+      source: 'Example News', date: '2 hours ago',
+      thumbnail: 'https://images.example/agentic.jpg'
+    }}]
+  }}
+}});
+for (const expected of [
+  'Google Trends News', 'agentic ai', '2 articles found',
+  'Agentic AI moves into enterprise software', 'Example News',
+  '2 hours ago', 'Read article'
+]) if (!newsHtml.includes(expected)) process.exit(4);
 """
 
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)

@@ -52,6 +52,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_yelp_search', payload => this._adaptYelp(payload));
     this.register('serpapi_search_index', payload => this._adaptSearchIndex(payload));
     this.register('serpapi_google_trends', payload => this._adaptGoogleTrends(payload));
+    this.register('serpapi_google_trending_now', payload => this._adaptGoogleTrendingNow(payload));
     this.register('serpapi_tripadvisor', payload => this._adaptTripadvisor(payload));
     this.register('flight_search', payload => this._adaptFlights(payload));
     this.register('serpapi_maps_search', payload => this._adaptMaps(payload));
@@ -363,6 +364,63 @@ class StructuredResultsRenderer {
       subtitle: [view, scope].filter(Boolean).join(' · '),
       actionUrl: payload.trends_url,
       actionLabel: 'Open Google Trends',
+      items,
+    };
+  }
+
+  _adaptGoogleTrendingNow(payload) {
+    const action = String(payload.action || 'trending_now').toLowerCase();
+    if (action === 'news') {
+      const items = this._rows(payload).map((row, index) => ({
+        title: row.title || `News article ${index + 1}`,
+        url: row.url || row.link,
+        image: row.thumbnail,
+        primary: row.source || '',
+        chips: row.date ? [String(row.date)] : [],
+        actionLabel: 'Read article',
+      }));
+      return {
+        kind: 'generic',
+        layout: 'rail',
+        eyebrow: 'Google Trends News',
+        heading: payload.trend_query || 'Associated trend news',
+        subtitle: `${payload.provider_results_count ?? items.length} article${Number(payload.provider_results_count ?? items.length) === 1 ? '' : 's'} found`,
+        items,
+      };
+    }
+
+    const items = this._rows(payload).map((row, index) => {
+      const chips = [];
+      if (row.active === true) chips.push('Active now');
+      else if (row.active === false) chips.push('Ended');
+      if (row.increase_percentage != null) chips.push(`+${row.increase_percentage}%`);
+      const categories = this._list(row.category_names).slice(0, 3).join(' · ');
+      if (categories) chips.push(categories);
+      const related = this._list(row.trend_breakdown).slice(0, 4).join(' · ');
+      return {
+        title: row.query || row.title || `Trend ${index + 1}`,
+        url: row.google_trends_url,
+        primary: row.search_volume != null
+          ? `${this._formatCount(row.search_volume)} searches`
+          : '',
+        chips,
+        details: related ? [`Related: ${related}`] : [],
+        actionLabel: 'Explore trend',
+      };
+    });
+    const providerCount = payload.provider_results_count ?? items.length;
+    const activeCount = payload.active_results_count;
+    const countText = activeCount != null
+      ? `${activeCount} active · ${providerCount} total`
+      : `${providerCount} trend${Number(providerCount) === 1 ? '' : 's'} found`;
+    return {
+      kind: 'generic',
+      layout: 'rail',
+      eyebrow: 'Google Trends · Trending Now',
+      heading: `Current trends in ${payload.geo || 'US'}`,
+      subtitle: `Past ${payload.hours || 24} hours · ${countText}`,
+      actionUrl: payload.trending_now_url,
+      actionLabel: 'Open Trending Now',
       items,
     };
   }

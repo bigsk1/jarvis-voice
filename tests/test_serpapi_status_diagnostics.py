@@ -174,6 +174,46 @@ class SerpApiStatusDiagnosticTests(unittest.TestCase):
         self.assertIn("Google Trends API", result["speech"])
         self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
 
+    def test_google_trending_now_actions_match_discovery_and_news_incidents(self):
+        cases = (
+            (
+                {"action": "trending_now", "geo": "US"},
+                "Google Trends Trending Now API",
+                "google_trends_trending_now",
+            ),
+            (
+                {"action": "news", "page_token": "token"},
+                "Google Trends News API",
+                "google_trends_news",
+            ),
+        )
+
+        for arguments, incident_label, expected_engine in cases:
+            with self.subTest(action=arguments["action"]), patch.object(
+                serpapi_client,
+                "fetch_serpapi_unresolved_incidents",
+                return_value=[
+                    incident(
+                        name=f"[{incident_label}] Performance Degradation",
+                        update=f"We are investigating the {incident_label}.",
+                    )
+                ],
+            ):
+                result = serpapi_client.diagnose_serpapi_tool_failure(
+                    "serpapi_google_trending_now",
+                    arguments,
+                    "Tool serpapi_google_trending_now timed out",
+                    force=True,
+                )
+
+            self.assertIsNotNone(result)
+            self.assertEqual(
+                result["data"]["serpapi_incident"]["engine"],
+                expected_engine,
+            )
+            self.assertIn(incident_label, result["speech"])
+            self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
+
     def test_unrelated_incident_does_not_replace_original_failure(self):
         with patch.object(
             serpapi_client,

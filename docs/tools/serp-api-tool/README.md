@@ -17,6 +17,7 @@ discover general public webpages and source URLs.
 | `serpapi_amazon_search` | `amazon`, `amazon_product` | Amazon listing discovery, ASIN details, prices, ratings, Prime, delivery, stock, and product comparison |
 | `serpapi_search_index` | `search_index` | Ranked indexed-web sources for grounding, datasets, and workflows; fetch returned URLs separately |
 | `serpapi_google_trends` | `google_trends` | Interest over time for named topics, comparisons by region, and rising/top related queries or topics for monitoring and workflows |
+| `serpapi_google_trending_now` | `google_trends_trending_now`, `google_trends_news` | Discover current trends without a seed topic, then retrieve associated news for one selected trend token |
 | `serpapi_ebay_search` | `ebay` | eBay listing discovery with price, condition, seller, shipping, images, and product IDs |
 | `serpapi_ebay_product` | `ebay_product` | One eBay listing's focused details by numeric product ID |
 | `serpapi_home_depot` | `home_depot`, `home_depot_product` | Home Depot products, price/rating comparison, store or ZIP availability, and focused details |
@@ -47,8 +48,8 @@ The family uses these common layers:
 - `jarvis-web/server/services/followup_extractor.py` preserves bounded result
   identity for later turns.
 - `jarvis-web/client/js/structured-results.js` renders focused product, place,
-  hotel, flight, Tripadvisor, Google Trends, Search Index, eBay, Yelp, Maps,
-  and YouTube cards.
+  hotel, flight, Tripadvisor, Google Trends, Trending Now, Search Index, eBay,
+  Yelp, Maps, and YouTube cards.
 
 Raw provider JSON is available only through each tool's `include_raw` debug
 option. Normal conversational and workflow calls should leave it off.
@@ -66,7 +67,7 @@ Use `config/cloud.env` for cloud mode and `config/local.env` for local mode.
 `JARVIS_DEFAULT_POSTAL_CODE` is optional and localizes Amazon delivery and Home
 Depot availability where supported.
 
-The twelve `serpapi_*` manifests declare:
+The thirteen `serpapi_*` manifests declare:
 
 ```json
 "availability": {
@@ -145,7 +146,7 @@ additional searches:
 
 | Tool or option | SerpApi searches |
 |---|---:|
-| eBay search/product, Maps, Hotels, Search Index, Google Trends, YouTube search | 1 |
+| eBay search/product, Maps, Hotels, Search Index, Google Trends, Trending Now discovery, Trending Now news drill-down, YouTube search | 1 |
 | Amazon listing or product call | 1 base call |
 | Amazon empty-result query normalization | Up to 2 bounded retry calls |
 | Amazon `include_product_details=true` | Up to `product_details_limit` additional product calls, maximum 5 |
@@ -249,9 +250,44 @@ Regional views use `compared_by_region` for two to five terms or
 `interest_by_region` for one term. The tool also supports `related_topics`,
 hour/day/month/year windows, custom historical ranges, Google properties such
 as News or YouTube, and an evenly bounded timeline suitable for workflow
-inputs. It is query-driven: use it when the topic is already known. A future
-Trending Now tool would be the better surface for discovering trends without
-a seed topic.
+inputs. It is query-driven: use it when the topic is already known. Use
+`serpapi_google_trending_now` instead to discover trends without a seed topic.
+
+### Google Trends Trending Now
+
+Discover current trends without supplying a topic:
+
+```json
+{
+  "action": "trending_now",
+  "geo": "US",
+  "hours": 24,
+  "only_active": true,
+  "max_results": 20
+}
+```
+
+Optional `category_id` values include `3` for business and finance, `7` for
+health, `14` for politics, `17` for sports, `18` for technology, `19` for
+travel, and `20` for climate. The discovery response includes search volume,
+percentage growth, active state, category names, related searches, a public
+Google Trends link, and an exact `news_page_token` for each result.
+
+Retrieve articles only after selecting one trend:
+
+```json
+{
+  "action": "news",
+  "page_token": "<exact news_page_token from a trending_now result>",
+  "trend_query": "selected trend label",
+  "max_results": 10
+}
+```
+
+News is deliberately not fetched automatically. Discovery costs one SerpApi
+search; drilling into one selected trend's news costs one additional search.
+The follow-up extractor preserves the exact token so requests such as “show me
+the news behind the second trend” do not require another discovery call.
 
 ### eBay discovery and detail
 
@@ -402,6 +438,7 @@ reuse the correct item or place instead of guessing:
 - Maps, Yelp, and Tripadvisor place IDs;
 - Google Trends summaries, regional values, recent timeline points, and
   related links;
+- Trending Now volume/growth signals and exact selected-trend news tokens;
 - Search Index source URLs and pagination metadata;
 - hotel property IDs and stay context; and
 - YouTube video IDs and URLs.

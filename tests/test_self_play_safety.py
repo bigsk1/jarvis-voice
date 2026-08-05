@@ -44,6 +44,7 @@ def test_default_exclusions_cover_persistent_and_external_actions():
 
 def test_google_trends_is_reviewed_for_read_only_self_play():
     assert "serpapi_google_trends" in self_play.DEFAULT_ALLOWED_TOOLS
+    assert "serpapi_google_trending_now" in self_play.DEFAULT_ALLOWED_TOOLS
 
 
 def test_registry_is_fail_closed_for_new_or_unreviewed_tools():

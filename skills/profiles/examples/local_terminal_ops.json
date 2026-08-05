@@ -19,6 +19,7 @@
     "serpapi_amazon_search": false,
     "serpapi_search_index": false,
     "serpapi_google_trends": false,
+    "serpapi_google_trending_now": false,
     "serpapi_tripadvisor": false,
     "serpapi_yelp_search": false,
     "serpapi_youtube": false,

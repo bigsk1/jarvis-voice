@@ -686,6 +686,85 @@ def test_extract_followup_data_preserves_google_trends_related_links():
     assert candidate["url"].startswith("https://trends.google.com/")
 
 
+def test_extract_followup_data_preserves_trending_now_news_tokens_and_signals():
+    handler = _handler()
+    data = {
+        "serpapi_google_trending_now": {
+            "action": "trending_now",
+            "engine": "google_trends_trending_now",
+            "geo": "US",
+            "hours": 24,
+            "only_active": False,
+            "results_count": 2,
+            "provider_results_count": 2,
+            "results": [
+                {
+                    "position": 1,
+                    "title": "agentic ai",
+                    "query": "agentic ai",
+                    "active": True,
+                    "search_volume": 200000,
+                    "increase_percentage": 1000,
+                    "category_names": ["Technology"],
+                    "trend_breakdown": ["ai agents", "agent frameworks"],
+                    "google_trends_url": "https://trends.google.com/trends/explore?q=agentic+ai",
+                    "news_page_token": "token-agentic-ai",
+                },
+                {
+                    "position": 2,
+                    "title": "summer travel",
+                    "query": "summer travel",
+                    "active": False,
+                    "search_volume": 50000,
+                    "increase_percentage": 300,
+                    "news_page_token": "token-summer-travel",
+                },
+            ],
+        }
+    }
+
+    trends = handler._extract_followup_data(data)["serpapi_google_trending_now"]
+
+    assert trends["geo"] == "US"
+    assert trends["hours"] == 24
+    assert trends["candidates"][0]["news_page_token"] == "token-agentic-ai"
+    assert trends["candidates"][0]["search_volume"] == 200000
+    assert trends["candidates"][0]["trend_breakdown"] == [
+        "ai agents",
+        "agent frameworks",
+    ]
+    assert trends["candidates"][1]["active"] is False
+
+
+def test_extract_followup_data_preserves_selected_trend_news_articles():
+    handler = _handler()
+    data = {
+        "serpapi_google_trending_now": {
+            "action": "news",
+            "engine": "google_trends_news",
+            "trend_query": "agentic ai",
+            "page_token": "token-agentic-ai",
+            "results": [
+                {
+                    "position": 1,
+                    "title": "Agentic AI moves into enterprise software",
+                    "url": "https://news.example/agentic-enterprise",
+                    "source": "Example News",
+                    "date": "2 hours ago",
+                    "thumbnail": "https://images.example/agentic.jpg",
+                }
+            ],
+        }
+    }
+
+    news = handler._extract_followup_data(data)["serpapi_google_trending_now"]
+
+    assert news["action"] == "news"
+    assert news["trend_query"] == "agentic ai"
+    assert news["candidates"][0]["source"] == "Example News"
+    assert news["candidates"][0]["url"] == "https://news.example/agentic-enterprise"
+
+
 def test_extract_followup_data_preserves_tripadvisor_search_candidates():
     handler = _handler()
     data = {
