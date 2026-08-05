@@ -200,6 +200,32 @@ class SerpApiStatusDiagnosticTests(unittest.TestCase):
         self.assertIn("Google News Light API", result["speech"])
         self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
 
+    def test_google_local_timeout_matches_google_local_incident(self):
+        with patch.object(
+            serpapi_client,
+            "fetch_serpapi_unresolved_incidents",
+            return_value=[
+                incident(
+                    name="[Google Local API] Performance Degradation",
+                    update="We are investigating Google Local API latency.",
+                )
+            ],
+        ):
+            result = serpapi_client.diagnose_serpapi_tool_failure(
+                "serpapi_google_local",
+                {"query": "coffee", "location": "Portland"},
+                "Tool serpapi_google_local timed out",
+                force=True,
+            )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            result["data"]["serpapi_incident"]["engine"],
+            "google_local",
+        )
+        self.assertIn("Google Local API", result["speech"])
+        self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
+
     def test_google_trending_now_actions_match_discovery_and_news_incidents(self):
         cases = (
             (

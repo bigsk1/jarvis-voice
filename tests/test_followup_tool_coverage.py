@@ -643,6 +643,36 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "serpapi_google_local": _case(
+        {
+            "engine": "google_local",
+            "query": "coffee",
+            "location": "Portland, Oregon",
+            "location_source": "jarvis_default_location",
+            "results_count": 1,
+            "provider_results_count": 10,
+            "source": "SerpApi Google Local",
+            "results": [
+                {
+                    "position": 1,
+                    "title": "North Star Coffee",
+                    "url": "https://northstar.example/",
+                    "place_id": "15667002398697190332",
+                    "rating": 4.8,
+                    "reviews": 321,
+                    "address": "123 Market St",
+                    "service_options": {"dine_in": True, "takeout": True},
+                }
+            ],
+            "ads": [
+                {
+                    "title": "Sponsored Coffee",
+                    "url": "https://sponsor.example/",
+                    "sponsored": True,
+                }
+            ],
+        }
+    ),
     "serpapi_search_index": _case(
         {
             "engine": "search_index",

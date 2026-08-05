@@ -257,6 +257,83 @@ class ToolContextPreviewTests(unittest.TestCase):
         )
         self.assertNotIn("large_provider_payload", preview)
 
+    def test_google_local_preview_keeps_places_provenance_ads_and_related_searches(self):
+        result = {
+            "ok": True,
+            "speech": "Found local coffee shops.",
+            "data": {
+                "engine": "google_local",
+                "query": "coffee",
+                "location": "Portland, Oregon",
+                "location_source": "jarvis_default_location",
+                "provider_location_used": "Portland,Oregon,United States",
+                "results_count": 6,
+                "provider_results_count": 20,
+                "ads_count": 1,
+                "discover_more_count": 1,
+                "search_id": "google-local-123",
+                "has_more": True,
+                "next_start": 20,
+                "pagination": {
+                    "current": 1,
+                    "start": 0,
+                    "has_more": True,
+                    "next_start": 20,
+                },
+                "raw": {"large_provider_payload": "x" * 12000},
+                "results": [
+                    {
+                        "position": index,
+                        "title": f"Coffee Shop {index}",
+                        "url": f"https://coffee.example/{index}",
+                        "website": f"https://coffee.example/{index}",
+                        "place_id": str(1000 + index),
+                        "rating": 4.8,
+                        "reviews": 100 + index,
+                        "type": "Coffee shop",
+                        "address": f"{index} Market St",
+                        "hours": "Open until 8 PM",
+                        "description": "Independent neighborhood coffee shop. " * 20,
+                        "gps_coordinates": {"latitude": 45.5, "longitude": -122.6},
+                        "service_options": {"dine_in": True, "takeout": True},
+                    }
+                    for index in range(1, 7)
+                ],
+                "ads": [
+                    {
+                        "title": "Sponsored Coffee",
+                        "url": "https://sponsor.example/",
+                        "sponsored": True,
+                    }
+                ],
+                "discover_more_places": [
+                    {
+                        "title": "Best coffee",
+                        "url": "https://www.google.com/search?q=best+coffee&tbm=lcl",
+                    }
+                ],
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_google_local", result
+        )
+
+        parsed = json.loads(preview)
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        data_preview = parsed["llm_context_preview"]["data_preview"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 6000)
+        self.assertEqual(len(candidates), 5)
+        self.assertEqual(candidates[0]["url"], "https://coffee.example/1")
+        self.assertEqual(candidates[0]["place_id"], "1001")
+        self.assertEqual(candidates[0]["service_options"]["dine_in"], True)
+        self.assertEqual(data_preview["location_source"], "jarvis_default_location")
+        self.assertEqual(data_preview["pagination"]["next_start"], 20)
+        self.assertIn("Sponsored Coffee", json.dumps(data_preview["ads"]))
+        self.assertIn("Best coffee", json.dumps(data_preview["discover_more_places"]))
+        self.assertNotIn("large_provider_payload", preview)
+
     def test_google_trends_preview_keeps_trend_summaries_and_recent_timeline(self):
         result = {
             "ok": True,

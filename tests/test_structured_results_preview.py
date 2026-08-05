@@ -58,6 +58,7 @@ const expectedTools = [
   'serpapi_google_trending_now',
   'serpapi_tripadvisor',
   'flight_search',
+  'serpapi_google_local',
   'serpapi_maps_search',
   'serpapi_youtube_search',
   'weather'
@@ -265,6 +266,38 @@ const html = renderer.render({{
       stops_label: 'Nonstop'
     }}]
   }},
+  serpapi_google_local: {{
+    query: 'coffee',
+    location: 'Portland, Oregon',
+    provider_location_used: 'Portland,Oregon,United States',
+    provider_results_count: 10,
+    google_local_url: 'https://www.google.com/search?q=coffee&tbm=lcl',
+    results: [{{
+      title: 'North Star Coffee',
+      url: 'https://northstar.example/',
+      website: 'https://northstar.example/',
+      thumbnail: 'https://images.example/northstar.jpg',
+      rating: 4.8,
+      reviews: 321,
+      price: '$$',
+      type: 'Coffee shop',
+      address: '123 Market St',
+      hours: 'Open until 8 PM',
+      description: 'Independent neighborhood coffee shop',
+      service_options: {{dine_in: true, takeout: true}}
+    }}],
+    ads: [{{
+      title: 'Sponsored Coffee',
+      url: 'https://sponsor.example/',
+      rating: 4.1,
+      sponsored: true
+    }}],
+    discover_more_places: [{{
+      title: 'Best coffee',
+      url: 'https://www.google.com/search?q=best+coffee&tbm=lcl',
+      places: ['North Star Coffee', 'River Coffee']
+    }}]
+  }},
   serpapi_maps_search: {{
     query: 'coffee',
     results: [{{
@@ -330,6 +363,10 @@ for (const expected of [
   'Colosseum', '155000 reviews', 'Rome, Italy', 'Ancient amphitheatre',
   'PDX → PHX', '$257', 'Alaska', 'AS 1349',
   'Departs 09/15/2099 · 7:03 AM', 'Open Google Flights',
+  'Google Local', 'Portland,Oregon,United States', '10 local results',
+  'North Star Coffee', '321 reviews', 'Dine In', 'Takeout',
+  'Open website', 'Sponsored Coffee', 'Sponsored',
+  'Best coffee', 'Related search', 'Explore nearby', 'Open Google Local',
   'Pup Cup Coffee', '123 Market St',
   'Woodworking for Beginners', 'Workshop School', '12:34', '1,200,000 views',
   'Hillsboro, Oregon', 'Currently 72°', 'Mon · 2099-08-03', '78° / 58°',
@@ -341,7 +378,7 @@ for (const expected of [
   }}
 }}
 if (html.includes('flight_numbers')) process.exit(4);
-if ((html.match(/structured-results-preview/g) || []).length !== 15) process.exit(5);
+if ((html.match(/structured-results-preview/g) || []).length !== 16) process.exit(5);
 
 if (!renderer.register('custom_demo', payload => ({{
   kind: 'generic',

@@ -20,6 +20,7 @@ SERPAPI_TOOL_ENGINES = {
     "serpapi_ebay_product": ("ebay_product",),
     "serpapi_ebay_search": ("ebay",),
     "serpapi_hotel_search": ("google_hotels",),
+    "serpapi_google_local": ("google_local",),
     "serpapi_maps_search": ("google_maps",),
     "serpapi_google_news_light": ("google_news_light",),
     "serpapi_google_trends": ("google_trends",),
@@ -38,6 +39,7 @@ SERPAPI_ENGINE_LABELS = {
     "google_flights": "Google Flights",
     "google_hotels": "Google Hotels",
     "google_light": "Google Light Search",
+    "google_local": "Google Local",
     "google_maps": "Google Maps",
     "google_news": "Google News",
     "google_news_light": "Google News Light",
@@ -69,6 +71,7 @@ SERPAPI_ENGINE_STATUS_ALIASES = {
     "google_flights": ("google flights api", "google flights"),
     "google_hotels": ("google hotels api", "google hotels"),
     "google_light": ("google light search api", "google light search"),
+    "google_local": ("google local api", "google local"),
     "google_maps": ("google maps api", "google maps"),
     "google_news": ("google news api", "google news"),
     "google_news_light": (

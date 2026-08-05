@@ -1,0 +1,120 @@
+{
+  "enabled": true,
+  "name": "serpapi_google_local",
+  "description": "Find Google Local business listings through SerpApi. Use for phrases such as 'near me', 'nearby restaurants', 'local coffee shops', 'businesses around here', 'find a plumber near me', or Google local results for a supplied topic. Returns ratings, reviews, prices, hours, addresses, business types, descriptions, service options, action links, coordinates, sponsored listings, related place searches, and pagination. When location is omitted, it uses JARVIS_DEFAULT_LOCATION and then JARVIS_DEFAULT_POSTAL_CODE from the active mode env; it never silently inherits proxy geography. Use serpapi_maps_search instead for map-centered coordinate/radius exploration and serpapi_yelp_search when Yelp-specific ratings, filters, or reviews are requested.",
+  "complementary_tools": [
+    "serpapi_maps_search",
+    "serpapi_yelp_search",
+    "serpapi_tripadvisor",
+    "canvas",
+    "stash",
+    "workflow"
+  ],
+  "script": "serpapi_google_local.py",
+  "proxy_policy": "off",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "maxLength": 500,
+        "description": "Required business, place category, or Google-style local query such as coffee, dog-friendly restaurants, or emergency plumber. Do not add a location when the user intends Jarvis's configured default location."
+      },
+      "location": {
+        "type": "string",
+        "maxLength": 200,
+        "description": "Optional city-level search origin such as Austin, Texas, United States. When omitted, the active mode's JARVIS_DEFAULT_LOCATION is used, followed by JARVIS_DEFAULT_POSTAL_CODE. Cannot be combined with uule."
+      },
+      "uule": {
+        "type": "string",
+        "maxLength": 500,
+        "description": "Advanced Google-encoded location. Cannot be combined with location; coordinate-based values should also supply a matching country."
+      },
+      "country": {
+        "type": "string",
+        "pattern": "^[a-zA-Z]{2}$",
+        "description": "Optional two-letter Google country code such as us, uk, or fr."
+      },
+      "language": {
+        "type": "string",
+        "pattern": "^[a-zA-Z]{2}$",
+        "description": "Optional two-letter result language such as en, es, or fr."
+      },
+      "google_domain": {
+        "type": "string",
+        "description": "Google domain such as google.com or google.co.uk. Default google.com."
+      },
+      "place_id": {
+        "type": "string",
+        "pattern": "^[0-9]+$",
+        "description": "Optional Google CID from a prior local result for a focused place search. The query is still required."
+      },
+      "tbs": {
+        "type": "string",
+        "maxLength": 1000,
+        "description": "Advanced Google Local filter expression for provider-supported filters."
+      },
+      "device": {
+        "type": "string",
+        "enum": [
+          "desktop",
+          "tablet",
+          "mobile"
+        ],
+        "description": "Google client device. Default desktop."
+      },
+      "start": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1000,
+        "description": "Result offset for pagination. Use next_start from a prior response. Default 0."
+      },
+      "max_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20,
+        "description": "Maximum normalized non-sponsored local results to return. Default 10."
+      },
+      "max_ads": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 10,
+        "description": "Maximum sponsored local results to retain separately. Use 0 to omit them. Default 3."
+      },
+      "max_discover_more": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 10,
+        "description": "Maximum related Discover More Places searches to retain. Use 0 to omit them. Default 5."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "Bypass SerpApi's one-hour exact-parameter cache. Default false; cached searches are free."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Advanced non-reserved Google Local parameters passed through to SerpApi. Core query, location, localization, place, filter, device, pagination, cache, and output controls cannot be overridden."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "Include the full SerpApi JSON response for debugging. Default false."
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "SERP_API_KEY"
+    ],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file. For location-free prompts, also set JARVIS_DEFAULT_LOCATION or JARVIS_DEFAULT_POSTAL_CODE."
+  }
+}

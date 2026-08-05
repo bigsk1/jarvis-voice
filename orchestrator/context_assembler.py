@@ -864,6 +864,9 @@ class ContextAssembler:
         is_hotel_search = str(data.get("engine") or "").strip().lower() == "google_hotels"
         is_yelp_search = str(data.get("engine") or "").strip().lower() == "yelp"
         is_search_index = str(tool_name or "").strip().lower() == "serpapi_search_index"
+        is_google_local = (
+            str(tool_name or "").strip().lower() == "serpapi_google_local"
+        )
         is_google_news_light = (
             str(tool_name or "").strip().lower() == "serpapi_google_news_light"
         )
@@ -940,6 +943,32 @@ class ContextAssembler:
                     "snippet",
                     "language",
                     "sitelinks",
+                ):
+                    value = item.get(key)
+                    if value not in (None, "", [], {}):
+                        candidate[key] = self.build_preview_value(
+                            value,
+                            parent_key=key,
+                            depth=0,
+                            max_depth=2,
+                        )
+
+            if is_google_local:
+                for key in (
+                    "place_id",
+                    "website",
+                    "directions_url",
+                    "google_maps_url",
+                    "place_id_search",
+                    "reviews",
+                    "reviews_original",
+                    "type",
+                    "address",
+                    "hours",
+                    "description",
+                    "gps_coordinates",
+                    "service_options",
+                    "sponsored",
                 ):
                     value = item.get(key)
                     if value not in (None, "", [], {}):
@@ -1412,6 +1441,82 @@ class ContextAssembler:
             preview["top_stories"] = groups
         return preview
 
+    def build_google_local_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep Google Local provenance, pagination, ads, and related searches compact."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "engine",
+            "query",
+            "location",
+            "location_source",
+            "uule_used",
+            "provider_location_requested",
+            "provider_location_used",
+            "country",
+            "language",
+            "google_domain",
+            "device",
+            "start",
+            "place_id",
+            "tbs",
+            "max_results",
+            "results_count",
+            "provider_results_count",
+            "ads_count",
+            "provider_ads_count",
+            "discover_more_count",
+            "provider_discover_more_count",
+            "local_map_image",
+            "top_url",
+            "search_id",
+            "google_local_url",
+            "has_more",
+            "next_start",
+            "serpapi_searches_used",
+            "source",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=2,
+                )
+
+        pagination = data.get("pagination")
+        if isinstance(pagination, dict):
+            preview["pagination"] = {
+                key: pagination[key]
+                for key in (
+                    "current",
+                    "start",
+                    "has_more",
+                    "next_start",
+                    "previous_start",
+                )
+                if pagination.get(key) not in (None, "") or key == "has_more"
+            }
+
+        ads = data.get("ads")
+        if isinstance(ads, list) and ads:
+            preview["ads"] = self.build_preview_value(
+                ads[:3],
+                parent_key="ads",
+                max_depth=2,
+            )
+
+        discover_more = data.get("discover_more_places")
+        if isinstance(discover_more, list) and discover_more:
+            preview["discover_more_places"] = self.build_preview_value(
+                discover_more[:5],
+                parent_key="discover_more_places",
+                max_depth=2,
+            )
+        return preview
+
     def build_google_trending_now_data_preview(self, data: Any) -> dict[str, Any]:
         """Keep current-trend filters and news-drill-down provenance compact."""
         if not isinstance(data, dict):
@@ -1678,6 +1783,8 @@ class ContextAssembler:
                 data_preview = self.build_yelp_data_preview(data)
             elif normalized_tool_name == "serpapi_search_index":
                 data_preview = self.build_search_index_data_preview(data)
+            elif normalized_tool_name == "serpapi_google_local":
+                data_preview = self.build_google_local_data_preview(data)
             elif normalized_tool_name == "serpapi_google_news_light":
                 data_preview = self.build_google_news_light_data_preview(data)
             elif normalized_tool_name == "serpapi_google_trends":

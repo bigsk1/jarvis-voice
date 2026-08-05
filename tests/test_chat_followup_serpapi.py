@@ -1455,6 +1455,86 @@ def test_extract_followup_data_generic_fallback_keeps_maps_and_hotel_candidate_r
     assert hotels["candidates"][0]["rating"] == 4.4
 
 
+def test_extract_followup_data_preserves_google_local_provenance_and_place_actions():
+    handler = _handler()
+    data = {
+        "serpapi_google_local": {
+            "engine": "google_local",
+            "query": "coffee",
+            "location": "Portland, Oregon",
+            "location_source": "jarvis_default_location",
+            "provider_location_used": "Portland,Oregon,United States",
+            "results_count": 1,
+            "provider_results_count": 10,
+            "ads_count": 1,
+            "discover_more_count": 1,
+            "top_url": "https://northstar.example/",
+            "has_more": True,
+            "next_start": 20,
+            "results": [
+                {
+                    "position": 1,
+                    "title": "North Star Coffee",
+                    "url": "https://northstar.example/",
+                    "website": "https://northstar.example/",
+                    "directions_url": "https://maps.google.com/north-star",
+                    "google_maps_url": "https://www.google.com/maps?cid=15667002398697190332",
+                    "place_id": "15667002398697190332",
+                    "rating": 4.8,
+                    "reviews": 321,
+                    "type": "Coffee shop",
+                    "address": "123 Market St",
+                    "hours": "Open until 8 PM",
+                    "description": "Independent neighborhood coffee shop",
+                    "gps_coordinates": {"latitude": 45.52, "longitude": -122.68},
+                    "service_options": {"dine_in": True, "takeout": True},
+                }
+            ],
+            "ads": [
+                {
+                    "title": "Sponsored Coffee",
+                    "url": "https://sponsor.example/",
+                    "sponsored": True,
+                    "ad_title": "Fresh coffee all day",
+                }
+            ],
+            "discover_more_places": [
+                {
+                    "title": "Best coffee",
+                    "url": "https://www.google.com/search?q=best+coffee&tbm=lcl",
+                    "places": ["North Star Coffee", "River Coffee"],
+                }
+            ],
+            "pagination": {
+                "current": 1,
+                "start": 0,
+                "has_more": True,
+                "next_start": 20,
+                "next": "https://serpapi.com/search.json?api_key=secret",
+            },
+        }
+    }
+
+    local = handler._extract_followup_data(data)["serpapi_google_local"]
+
+    assert local["location_source"] == "jarvis_default_location"
+    assert local["provider_location_used"] == "Portland,Oregon,United States"
+    assert local["candidates"][0]["website"] == "https://northstar.example/"
+    assert local["candidates"][0]["google_maps_url"].startswith(
+        "https://www.google.com/maps?cid="
+    )
+    assert local["candidates"][0]["place_id"] == "15667002398697190332"
+    assert local["candidates"][0]["service_options"]["dine_in"] is True
+    assert local["ads"][0]["sponsored"] is True
+    assert local["discover_more_places"][0]["title"] == "Best coffee"
+    assert local["pagination"] == {
+        "current": 1,
+        "start": 0,
+        "has_more": True,
+        "next_start": 20,
+    }
+
+
 def test_extract_followup_data_flattens_repeated_maps_runs_before_generic_candidates():
     handler = _handler()
     data = {

@@ -56,6 +56,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_google_trending_now', payload => this._adaptGoogleTrendingNow(payload));
     this.register('serpapi_tripadvisor', payload => this._adaptTripadvisor(payload));
     this.register('flight_search', payload => this._adaptFlights(payload));
+    this.register('serpapi_google_local', payload => this._adaptGoogleLocal(payload));
     this.register('serpapi_maps_search', payload => this._adaptMaps(payload));
     this.register('serpapi_youtube_search', payload => this._adaptYouTubeSearch(payload));
     this.register('weather', payload => this._adaptWeather(payload));
@@ -646,6 +647,68 @@ class StructuredResultsRenderer {
       heading: payload.query || 'Map results',
       subtitle: payload.location || '',
       items,
+    };
+  }
+
+  _adaptGoogleLocal(payload) {
+    const placeItem = (row, index, sponsored = false) => {
+      const serviceOptions = row.service_options && typeof row.service_options === 'object'
+        ? Object.entries(row.service_options)
+          .filter(([, enabled]) => enabled === true)
+          .slice(0, 3)
+          .map(([name]) => name.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase()))
+        : [];
+      const chips = [];
+      if (sponsored || row.sponsored === true) chips.push('Sponsored');
+      if (row.reviews != null) chips.push(`${row.reviews} reviews`);
+      if (row.price) chips.push(String(row.price));
+      chips.push(...serviceOptions);
+      return {
+        title: row.title || `Local result ${index + 1}`,
+        url: row.url || row.website || row.directions_url || row.google_maps_url || row.place_id_search,
+        image: row.thumbnail || row.thumbnail_small,
+        primary: row.rating != null ? `★ ${row.rating}` : row.type || '',
+        chips,
+        details: [
+          row.address,
+          row.type,
+          row.hours,
+          this._compactText(row.description, 220),
+        ].filter(Boolean),
+        actionLabel: row.website ? 'Open website' : 'Open place',
+      };
+    };
+
+    const resultItems = this._rows(payload).map((row, index) => placeItem(row, index));
+    const adRows = Array.isArray(payload.ads)
+      ? payload.ads.filter(row => row && typeof row === 'object').slice(0, 3)
+      : [];
+    const adItems = adRows.map((row, index) => placeItem(row, index, true));
+    const discoverRows = Array.isArray(payload.discover_more_places)
+      ? payload.discover_more_places.filter(row => row && typeof row === 'object').slice(0, 3)
+      : [];
+    const discoverItems = discoverRows.map((row, index) => ({
+      title: row.title || `Related local search ${index + 1}`,
+      url: row.url,
+      image: row.thumbnail,
+      primary: 'Related search',
+      details: [this._compactText(this._displayText(row.places), 220)].filter(Boolean),
+      actionLabel: 'Explore nearby',
+    }));
+    const location = payload.provider_location_used || payload.location || '';
+    const providerCount = payload.provider_results_count ?? resultItems.length;
+    return {
+      kind: 'local',
+      layout: 'rail',
+      eyebrow: 'Google Local',
+      heading: payload.query || 'Local places',
+      subtitle: [
+        location,
+        `${providerCount} local result${Number(providerCount) === 1 ? '' : 's'}`,
+      ].filter(Boolean).join(' · '),
+      actionUrl: payload.google_local_url,
+      actionLabel: 'Open Google Local',
+      items: [...resultItems, ...adItems, ...discoverItems],
     };
   }
 

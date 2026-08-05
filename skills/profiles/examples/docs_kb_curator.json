@@ -36,6 +36,7 @@
     "serpapi_home_depot": false,
     "serpapi_hotel_search": false,
     "serpapi_maps_search": false,
+    "serpapi_google_local": false,
     "serpapi_amazon_search": false,
     "serpapi_search_index": false,
     "serpapi_google_news_light": false,

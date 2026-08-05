@@ -46,6 +46,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_youtube_search',
     'serpapi_yelp_search',
     'serpapi_search_index',
+    'serpapi_google_local',
     'serpapi_google_news_light',
     'serpapi_google_trends',
     'serpapi_google_trending_now',
@@ -298,6 +299,16 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'engine', 'query', 'mode', 'safe', 'start', 'num_results',
         'results_count', 'provider_results_count', 'total_results', 'top_url',
         'search_id', 'has_more', 'next_start', 'serpapi_searches_used', 'source',
+    ],
+    'serpapi_google_local': [
+        'engine', 'query', 'location', 'location_source', 'uule_used',
+        'provider_location_requested', 'provider_location_used', 'country',
+        'language', 'google_domain', 'device', 'start', 'place_id', 'tbs',
+        'max_results', 'results_count', 'provider_results_count', 'ads_count',
+        'provider_ads_count', 'discover_more_count',
+        'provider_discover_more_count', 'local_map_image', 'top_url',
+        'search_id', 'google_local_url', 'has_more', 'next_start',
+        'serpapi_searches_used', 'source',
     ],
     'serpapi_google_news_light': [
         'engine', 'query', 'query_displayed', 'news_results_state', 'location',
@@ -2957,6 +2968,84 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                         compact_groups.append(compact_group)
                 if compact_groups:
                     extracted['top_stories'] = compact_groups
+
+            pagination = payload.get('pagination')
+            if isinstance(pagination, dict):
+                compact_pagination = {
+                    field: pagination[field]
+                    for field in (
+                        'current', 'start', 'has_more', 'next_start',
+                        'previous_start',
+                    )
+                    if pagination.get(field) not in (None, '')
+                    or field == 'has_more'
+                }
+                if compact_pagination:
+                    extracted['pagination'] = compact_pagination
+
+        if key == 'serpapi_google_local':
+            results = payload.get('results') or payload.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = payload.get('results_count', len(results))
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = {
+                        field: item[field]
+                        for field in (
+                            'position', 'title', 'url', 'website',
+                            'directions_url', 'google_maps_url',
+                            'place_id_search', 'place_id',
+                            'provider_id', 'rating', 'reviews',
+                            'reviews_original', 'price', 'type', 'address',
+                            'hours', 'description', 'gps_coordinates',
+                            'thumbnail', 'thumbnail_small', 'extensions',
+                            'links', 'service_options', 'sponsored',
+                        )
+                        if item.get(field) not in (None, '', [], {})
+                    }
+                    if candidate.get('title') or candidate.get('url'):
+                        candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
+
+            ads = payload.get('ads')
+            if isinstance(ads, list) and ads:
+                compact_ads = []
+                for item in ads[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    ad = {
+                        field: item[field]
+                        for field in (
+                            'position', 'title', 'url', 'website',
+                            'directions_url', 'google_maps_url', 'place_id',
+                            'rating', 'reviews',
+                            'price', 'type', 'address', 'hours', 'description',
+                            'gps_coordinates', 'thumbnail', 'links',
+                            'service_options', 'sponsored', 'ad_title',
+                            'displayed_link',
+                        )
+                        if item.get(field) not in (None, '', [], {})
+                    }
+                    if ad.get('title') or ad.get('url'):
+                        compact_ads.append(ad)
+                if compact_ads:
+                    extracted['ads'] = compact_ads
+
+            discover_more = payload.get('discover_more_places')
+            if isinstance(discover_more, list) and discover_more:
+                extracted['discover_more_places'] = [
+                    {
+                        field: item[field]
+                        for field in ('title', 'url', 'thumbnail', 'places', 'images')
+                        if item.get(field) not in (None, '', [], {})
+                    }
+                    for item in discover_more[:max_candidates]
+                    if isinstance(item, dict)
+                    and (item.get('title') or item.get('url'))
+                ]
 
             pagination = payload.get('pagination')
             if isinstance(pagination, dict):

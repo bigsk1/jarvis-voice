@@ -22,6 +22,7 @@ discover general public webpages and source URLs.
 | `serpapi_ebay_search` | `ebay` | eBay listing discovery with price, condition, seller, shipping, images, and product IDs |
 | `serpapi_ebay_product` | `ebay_product` | One eBay listing's focused details by numeric product ID |
 | `serpapi_home_depot` | `home_depot`, `home_depot_product` | Home Depot products, price/rating comparison, store or ZIP availability, and focused details |
+| `serpapi_google_local` | `google_local` | Google Local business listings near an explicit or mode-default location, with ratings, hours, service options, ads, related place searches, and pagination |
 | `serpapi_maps_search` | `google_maps` | Places and local businesses with addresses, ratings, hours, phones, and websites |
 | `serpapi_hotel_search` | `google_hotels` | Future lodging with stay dates, guests, prices, ratings, amenities, and property links |
 | `serpapi_tripadvisor` | `tripadvisor`, `tripadvisor_place`, `tripadvisor_reviews` | Destination, hotel, restaurant, attraction, and forum discovery plus place details, nearby suggestions, and reviews |
@@ -49,8 +50,8 @@ The family uses these common layers:
 - `jarvis-web/server/services/followup_extractor.py` preserves bounded result
   identity for later turns.
 - `jarvis-web/client/js/structured-results.js` renders focused product, place,
-  hotel, flight, Tripadvisor, Google News Light, Google Trends, Trending Now,
-  Search Index, eBay, Yelp, Maps, and YouTube cards.
+  hotel, flight, Tripadvisor, Google Local, Google News Light, Google Trends,
+  Trending Now, Search Index, eBay, Yelp, Maps, and YouTube cards.
 
 Raw provider JSON is available only through each tool's `include_raw` debug
 option. Normal conversational and workflow calls should leave it off.
@@ -68,7 +69,7 @@ Use `config/cloud.env` for cloud mode and `config/local.env` for local mode.
 `JARVIS_DEFAULT_POSTAL_CODE` is optional and localizes Amazon delivery and Home
 Depot availability where supported.
 
-The fourteen `serpapi_*` manifests declare:
+The fifteen `serpapi_*` manifests declare:
 
 ```json
 "availability": {
@@ -147,7 +148,7 @@ additional searches:
 
 | Tool or option | SerpApi searches |
 |---|---:|
-| eBay search/product, Maps, Hotels, Search Index, Google News Light, Google Trends, Trending Now discovery, Trending Now news drill-down, YouTube search | 1 |
+| eBay search/product, Google Local, Maps, Hotels, Search Index, Google News Light, Google Trends, Trending Now discovery, Trending Now news drill-down, YouTube search | 1 |
 | Amazon listing or product call | 1 base call |
 | Amazon empty-result query normalization | Up to 2 bounded retry calls |
 | Amazon `include_product_details=true` | Up to `product_details_limit` additional product calls, maximum 5 |
@@ -342,7 +343,26 @@ Pass `product_id` without a query for a focused product lookup. Set
 `include_product_details=true` on a search only when full descriptions,
 specifications, or larger images are needed.
 
-### Maps and local places
+### Google Local and Maps
+
+Use Google Local for nearby business discovery using the active mode's
+configured location:
+
+```json
+{
+  "query": "dog-friendly coffee shops",
+  "max_results": 10
+}
+```
+
+When neither `location` nor `uule` is supplied, the tool resolves
+`JARVIS_DEFAULT_LOCATION` first and then `JARVIS_DEFAULT_POSTAL_CODE`. If all
+four inputs are empty, it fails clearly instead of allowing proxy geography to
+choose the search origin. An explicit `location` always wins. Results keep
+ordinary and sponsored listings separate, label service options, preserve
+Discover More Places suggestions, and return a numeric `next_start`.
+
+Use Google Maps when a map-centered coordinate bias is more useful:
 
 ```json
 {
@@ -351,8 +371,8 @@ specifications, or larger images are needed.
 }
 ```
 
-Use Maps when address, phone, website, or hours matter. Use Yelp when Yelp
-ratings, price tiers, attributes, or review excerpts are the primary signal.
+Use Yelp when Yelp ratings, price tiers, attributes, or review excerpts are the
+primary signal.
 
 ### Hotels
 

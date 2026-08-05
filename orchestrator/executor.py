@@ -118,6 +118,8 @@ class ToolExecutor:
             return 120  # One Trending Now or selected-trend News request
         if tool_name == "serpapi_google_news_light":
             return 120  # One Google News Light request with a 90s HTTP allowance
+        if tool_name == "serpapi_google_local":
+            return 120  # One Google Local request with a 90s HTTP allowance
         if tool_name == "serpapi_tripadvisor":
             return 160  # Up to three sequential 45s calls for search + optional place details + reviews
         if tool_name == "status_recap":
