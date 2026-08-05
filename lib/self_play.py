@@ -97,6 +97,7 @@ DEFAULT_ALLOWED_TOOLS = {
     "serpapi_home_depot",
     "serpapi_hotel_search",
     "serpapi_google_local",
+    "serpapi_google_local_services",
     "serpapi_google_news_light",
     "serpapi_google_trends",
     "serpapi_google_trending_now",

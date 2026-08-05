@@ -44,6 +44,7 @@ def test_default_exclusions_cover_persistent_and_external_actions():
 
 def test_google_trends_is_reviewed_for_read_only_self_play():
     assert "serpapi_google_local" in self_play.DEFAULT_ALLOWED_TOOLS
+    assert "serpapi_google_local_services" in self_play.DEFAULT_ALLOWED_TOOLS
     assert "serpapi_google_news_light" in self_play.DEFAULT_ALLOWED_TOOLS
     assert "serpapi_google_trends" in self_play.DEFAULT_ALLOWED_TOOLS
     assert "serpapi_google_trending_now" in self_play.DEFAULT_ALLOWED_TOOLS

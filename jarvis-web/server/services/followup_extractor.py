@@ -47,6 +47,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_yelp_search',
     'serpapi_search_index',
     'serpapi_google_local',
+    'serpapi_google_local_services',
     'serpapi_google_news_light',
     'serpapi_google_trends',
     'serpapi_google_trending_now',
@@ -309,6 +310,13 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'provider_discover_more_count', 'local_map_image', 'top_url',
         'search_id', 'google_local_url', 'has_more', 'next_start',
         'serpapi_searches_used', 'source',
+    ],
+    'serpapi_google_local_services': [
+        'engine', 'mode', 'query', 'provider_query', 'location', 'location_source',
+        'resolved_location', 'data_cid', 'data_cid_source', 'language',
+        'job_type', 'cid', 'bid', 'pid', 'max_results', 'results_count',
+        'provider_results_count', 'top_url', 'google_local_services_url',
+        'search_id', 'serpapi_searches_used', 'us_only', 'source',
     ],
     'serpapi_google_news_light': [
         'engine', 'query', 'query_displayed', 'news_results_state', 'location',
@@ -3060,6 +3068,48 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 }
                 if compact_pagination:
                     extracted['pagination'] = compact_pagination
+
+        if key == 'serpapi_google_local_services':
+            results = payload.get('results') or payload.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = payload.get('results_count', len(results))
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = {
+                        field: item[field]
+                        for field in (
+                            'position', 'title', 'url', 'website', 'rating',
+                            'reviews', 'rating_stars', 'phone', 'badge', 'type',
+                            'address', 'service_area', 'years_in_business',
+                            'bookings_nearby', 'thumbnail', 'images',
+                            'hours_current', 'hours_week', 'checks',
+                            'description', 'services', 'covid_measures',
+                            'at_this_place', 'cid', 'bid', 'pid',
+                        )
+                        if item.get(field) not in (None, '', [], {})
+                    }
+                    if candidate.get('title') or candidate.get('url'):
+                        candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
+
+            detail = payload.get('detail')
+            if isinstance(detail, dict) and detail:
+                extracted['detail'] = {
+                    field: detail[field]
+                    for field in (
+                        'position', 'title', 'url', 'website', 'rating',
+                        'reviews', 'rating_stars', 'phone', 'badge', 'type',
+                        'address', 'service_area', 'years_in_business',
+                        'bookings_nearby', 'thumbnail', 'images',
+                        'hours_current', 'hours_week', 'checks',
+                        'description', 'services', 'covid_measures',
+                        'at_this_place', 'cid', 'bid', 'pid',
+                    )
+                    if detail.get(field) not in (None, '', [], {})
+                }
 
         if key == 'serpapi_google_trends':
             results = payload.get('results') or payload.get('top_results') or []

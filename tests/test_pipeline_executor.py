@@ -265,6 +265,32 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
             ],
         )
 
+    def test_google_local_services_uses_workflow_search_url_extraction(self):
+        variables = {}
+        result = {
+            "ok": True,
+            "data": {
+                "results": [
+                    {"url": "https://services.example/provider-one"},
+                    {"url": "https://services.example/provider-two"},
+                ]
+            },
+        }
+
+        self.assertTrue(
+            self.executor._is_search_tool("serpapi_google_local_services")
+        )
+        self.executor._apply_output_transforms(
+            {}, result, variables, "serpapi_google_local_services", None
+        )
+        self.assertEqual(
+            variables["search_results"]["urls"],
+            [
+                "https://services.example/provider-one",
+                "https://services.example/provider-two",
+            ],
+        )
+
     def test_google_trends_does_not_use_search_url_fallback(self):
         self.assertFalse(self.executor._is_search_tool("serpapi_google_trends"))
         self.assertFalse(self.executor._is_search_tool("serpapi_google_trending_now"))

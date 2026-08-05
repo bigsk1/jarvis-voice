@@ -21,6 +21,7 @@ SERPAPI_TOOL_ENGINES = {
     "serpapi_ebay_search": ("ebay",),
     "serpapi_hotel_search": ("google_hotels",),
     "serpapi_google_local": ("google_local",),
+    "serpapi_google_local_services": ("google_local_services",),
     "serpapi_maps_search": ("google_maps",),
     "serpapi_google_news_light": ("google_news_light",),
     "serpapi_google_trends": ("google_trends",),
@@ -40,6 +41,7 @@ SERPAPI_ENGINE_LABELS = {
     "google_hotels": "Google Hotels",
     "google_light": "Google Light Search",
     "google_local": "Google Local",
+    "google_local_services": "Google Local Services",
     "google_maps": "Google Maps",
     "google_news": "Google News",
     "google_news_light": "Google News Light",
@@ -72,6 +74,10 @@ SERPAPI_ENGINE_STATUS_ALIASES = {
     "google_hotels": ("google hotels api", "google hotels"),
     "google_light": ("google light search api", "google light search"),
     "google_local": ("google local api", "google local"),
+    "google_local_services": (
+        "google local services api",
+        "google local services",
+    ),
     "google_maps": ("google maps api", "google maps"),
     "google_news": ("google news api", "google news"),
     "google_news_light": (
@@ -184,6 +190,10 @@ def serpapi_engines_for_tool(tool_name: str, args: dict[str, Any] | None = None)
         return ("google_trends_news",) if action in {"news", "articles"} else (
             "google_trends_trending_now",
         )
+    if tool_name == "serpapi_google_local_services":
+        if str(options.get("data_cid") or "").strip():
+            return ("google_local_services",)
+        return ("google_maps", "google_local_services")
     if tool_name == "serpapi_youtube":
         engines = ["youtube_video"]
         if parse_bool(options.get("include_transcript")):

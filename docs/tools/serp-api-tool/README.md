@@ -23,6 +23,7 @@ discover general public webpages and source URLs.
 | `serpapi_ebay_product` | `ebay_product` | One eBay listing's focused details by numeric product ID |
 | `serpapi_home_depot` | `home_depot`, `home_depot_product` | Home Depot products, price/rating comparison, store or ZIP availability, and focused details |
 | `serpapi_google_local` | `google_local` | Google Local business listings near an explicit or mode-default location, with ratings, hours, service options, ads, related place searches, and pagination |
+| `serpapi_google_local_services` | `google_local_services` plus conditional `google_maps` resolver | Screened US professional-service providers, Google badges, contact and availability details, and provider drill-down |
 | `serpapi_maps_search` | `google_maps` | Places and local businesses with addresses, ratings, hours, phones, and websites |
 | `serpapi_hotel_search` | `google_hotels` | Future lodging with stay dates, guests, prices, ratings, amenities, and property links |
 | `serpapi_tripadvisor` | `tripadvisor`, `tripadvisor_place`, `tripadvisor_reviews` | Destination, hotel, restaurant, attraction, and forum discovery plus place details, nearby suggestions, and reviews |
@@ -50,7 +51,7 @@ The family uses these common layers:
 - `jarvis-web/server/services/followup_extractor.py` preserves bounded result
   identity for later turns.
 - `jarvis-web/client/js/structured-results.js` renders focused product, place,
-  hotel, flight, Tripadvisor, Google Local, Google News Light, Google Trends,
+  hotel, flight, Tripadvisor, Google Local, Google Local Services, Google News Light, Google Trends,
   Trending Now, Search Index, eBay, Yelp, Maps, and YouTube cards.
 
 Raw provider JSON is available only through each tool's `include_raw` debug
@@ -69,7 +70,7 @@ Use `config/cloud.env` for cloud mode and `config/local.env` for local mode.
 `JARVIS_DEFAULT_POSTAL_CODE` is optional and localizes Amazon delivery and Home
 Depot availability where supported.
 
-The fifteen `serpapi_*` manifests declare:
+The sixteen `serpapi_*` manifests declare:
 
 ```json
 "availability": {
@@ -149,6 +150,8 @@ additional searches:
 | Tool or option | SerpApi searches |
 |---|---:|
 | eBay search/product, Google Local, Maps, Hotels, Search Index, Google News Light, Google Trends, Trending Now discovery, Trending Now news drill-down, YouTube search | 1 |
+| Google Local Services with explicit `data_cid` or a built-in New York, Austin, or Portland alias | 1 |
+| Google Local Services with any other explicit or mode-default location | 2: Google Maps CID resolution plus Local Services |
 | Amazon listing or product call | 1 base call |
 | Amazon empty-result query normalization | Up to 2 bounded retry calls |
 | Amazon `include_product_details=true` | Up to `product_details_limit` additional product calls, maximum 5 |
@@ -373,6 +376,42 @@ Use Google Maps when a map-centered coordinate bias is more useful:
 
 Use Yelp when Yelp ratings, price tiers, attributes, or review excerpts are the
 primary signal.
+
+### Google Local Services
+
+Use Google Local Services for screened US professional-service providers rather
+than ordinary nearby businesses:
+
+```json
+{
+  "query": "electrician",
+  "location": "Austin, Texas",
+  "max_results": 10
+}
+```
+
+The provider requires a numeric city or district `data_cid`; the discontinued
+Google `place_id` parameter is not used. Supplying `data_cid` directly takes one
+SerpApi search. New York, Austin, Portland, and their documented
+built-in ZIP aliases are resolved locally and also take one search. Every other
+location uses a bounded Google Maps lookup followed by Local Services and
+returns `serpapi_searches_used: 2`. When both `data_cid` and `location` are
+omitted, Jarvis uses `JARVIS_DEFAULT_LOCATION` and then
+`JARVIS_DEFAULT_POSTAL_CODE`.
+
+Google Local Services returns empty results outside the United States. Its
+`query` must also describe a supported professional service, not a general
+restaurant, store, or named-business query. The tool converts common natural
+phrases to SerpApi's required identifier—for example, `car repair shop` becomes
+`auto_repair_shop` and `house cleaner` becomes `cleaning_service`—and reports
+that identifier as `provider_query`. Unsupported categories fail before using a
+SerpApi search. The current canonical list is maintained on SerpApi's
+[supported Google Local Services queries](https://serpapi.com/google-local-services-queries)
+page.
+
+Search results preserve the `cid`, `bid`, and `pid` tuple; pass all three with
+the same query and city `data_cid` to retrieve the provider's checks, services,
+description, website, images, and detailed hours.
 
 ### Hotels
 

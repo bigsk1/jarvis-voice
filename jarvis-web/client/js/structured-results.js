@@ -57,6 +57,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_tripadvisor', payload => this._adaptTripadvisor(payload));
     this.register('flight_search', payload => this._adaptFlights(payload));
     this.register('serpapi_google_local', payload => this._adaptGoogleLocal(payload));
+    this.register('serpapi_google_local_services', payload => this._adaptGoogleLocalServices(payload));
     this.register('serpapi_maps_search', payload => this._adaptMaps(payload));
     this.register('serpapi_youtube_search', payload => this._adaptYouTubeSearch(payload));
     this.register('weather', payload => this._adaptWeather(payload));
@@ -709,6 +710,58 @@ class StructuredResultsRenderer {
       actionUrl: payload.google_local_url,
       actionLabel: 'Open Google Local',
       items: [...resultItems, ...adItems, ...discoverItems],
+    };
+  }
+
+  _adaptGoogleLocalServices(payload) {
+    const rows = this._rows(payload);
+    const items = rows.map((row, index) => {
+      const chips = [];
+      if (row.badge) chips.push(String(row.badge).replace(/_/g, ' '));
+      if (row.reviews != null) chips.push(`${row.reviews} reviews`);
+      if (row.years_in_business != null) {
+        chips.push(`${row.years_in_business} year${Number(row.years_in_business) === 1 ? '' : 's'} in business`);
+      }
+      if (row.bookings_nearby != null) chips.push(`${row.bookings_nearby} bookings nearby`);
+      const services = Array.isArray(row.services)
+        ? row.services.slice(0, 3).join(' · ')
+        : '';
+      return {
+        title: row.title || `Service provider ${index + 1}`,
+        url: row.url || row.website,
+        image: row.thumbnail || (Array.isArray(row.images) ? row.images[0] : ''),
+        primary: row.rating != null ? `★ ${row.rating}` : row.type || '',
+        chips,
+        details: [
+          row.service_area,
+          row.type,
+          row.hours_current,
+          row.phone,
+          services,
+        ].filter(Boolean),
+        actionLabel: row.website && !row.url ? 'Open website' : 'View provider',
+      };
+    });
+    const location = payload.resolved_location || payload.location || '';
+    const providerCount = payload.provider_results_count ?? items.length;
+    const searchesUsed = Number(payload.serpapi_searches_used);
+    return {
+      kind: 'local',
+      layout: 'rail',
+      eyebrow: payload.mode === 'provider_details'
+        ? 'Google Local Services · Provider details'
+        : 'Google Local Services',
+      heading: payload.query || 'Local service providers',
+      subtitle: [
+        location,
+        `${providerCount} provider${Number(providerCount) === 1 ? '' : 's'}`,
+        Number.isFinite(searchesUsed)
+          ? `${searchesUsed} SerpApi search${searchesUsed === 1 ? '' : 'es'}`
+          : '',
+      ].filter(Boolean).join(' · '),
+      actionUrl: payload.google_local_services_url,
+      actionLabel: 'Open Google Local Services',
+      items,
     };
   }
 

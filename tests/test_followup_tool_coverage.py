@@ -673,6 +673,39 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "serpapi_google_local_services": _case(
+        {
+            "engine": "google_local_services",
+            "mode": "search",
+            "query": "electrician",
+            "location": "Portland, Oregon",
+            "location_source": "jarvis_default_location",
+            "resolved_location": "Portland, Oregon",
+            "data_cid": "2033016683438900625",
+            "data_cid_source": "common_location",
+            "results_count": 1,
+            "provider_results_count": 7,
+            "serpapi_searches_used": 1,
+            "source": "SerpApi Google Local Services",
+            "results": [
+                {
+                    "position": 1,
+                    "title": "North Star Electric",
+                    "url": "https://www.google.com/localservices/profile?north-star",
+                    "rating": 4.9,
+                    "reviews": 321,
+                    "phone": "+15035550101",
+                    "badge": "GOOGLE GUARANTEED",
+                    "type": "Electrician",
+                    "service_area": "Portland",
+                    "hours_current": "Open 24 hours",
+                    "cid": "327189293",
+                    "bid": "2517727928",
+                    "pid": "2521525020",
+                }
+            ],
+        }
+    ),
     "serpapi_search_index": _case(
         {
             "engine": "search_index",

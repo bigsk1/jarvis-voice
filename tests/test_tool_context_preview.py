@@ -334,6 +334,63 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertIn("Best coffee", json.dumps(data_preview["discover_more_places"]))
         self.assertNotIn("large_provider_payload", preview)
 
+    def test_google_local_services_preview_keeps_provider_ids_and_resolution_cost(self):
+        result = {
+            "ok": True,
+            "speech": "Found Local Services providers.",
+            "data": {
+                "engine": "google_local_services",
+                "mode": "search",
+                "query": "car repair shop",
+                "provider_query": "auto_repair_shop",
+                "location": "Phoenix, Arizona",
+                "resolved_location": "Phoenix",
+                "data_cid": "112233445566",
+                "data_cid_source": "google_maps_resolver",
+                "results_count": 6,
+                "provider_results_count": 20,
+                "serpapi_searches_used": 2,
+                "raw": {"large_provider_payload": "x" * 12000},
+                "results": [
+                    {
+                        "position": index,
+                        "title": f"Electrician {index}",
+                        "url": f"https://services.example/{index}",
+                        "rating": 4.9,
+                        "reviews": 100 + index,
+                        "phone": f"+16025550{index:03d}",
+                        "badge": "GOOGLE GUARANTEED",
+                        "service_area": "Phoenix",
+                        "hours_current": "Open 24 hours",
+                        "services": ["Restore power", "Repair panel"],
+                        "cid": str(1000 + index),
+                        "bid": str(2000 + index),
+                        "pid": str(3000 + index),
+                    }
+                    for index in range(1, 7)
+                ],
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_google_local_services", result
+        )
+
+        parsed = json.loads(preview)
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        data_preview = parsed["llm_context_preview"]["data_preview"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 6000)
+        self.assertEqual(len(candidates), 5)
+        self.assertEqual(candidates[0]["cid"], "1001")
+        self.assertEqual(candidates[0]["bid"], "2001")
+        self.assertEqual(candidates[0]["pid"], "3001")
+        self.assertEqual(candidates[0]["services"], ["Restore power", "Repair panel"])
+        self.assertEqual(data_preview["data_cid_source"], "google_maps_resolver")
+        self.assertEqual(data_preview["provider_query"], "auto_repair_shop")
+        self.assertEqual(data_preview["serpapi_searches_used"], 2)
+        self.assertNotIn("large_provider_payload", preview)
+
     def test_google_trends_preview_keeps_trend_summaries_and_recent_timeline(self):
         result = {
             "ok": True,

@@ -291,6 +291,7 @@ JSON object printed to stdout:
 | `serpapi_google_trending_now` | Seedless current-trend discovery with volume/growth signals and explicit selected-trend news drill-down |
 | `serpapi_home_depot` | SerpApi Home Depot product search with store/ZIP filters |
 | `serpapi_google_local` | Google Local business discovery using explicit or mode-default location, with ratings, hours, service options, sponsored listings, related searches, and pagination |
+| `serpapi_google_local_services` | Screened US professional-service providers from Google Local Services, with Google badges, contact/availability data, provider detail drill-down, and visible one- or two-search CID resolution |
 | `serpapi_maps_search` | SerpApi Google Maps place and local business search |
 | `serpapi_hotel_search` | Future Google Hotels options, cheapest-first stay pricing, and filters |
 | `flight_search` | Future flight options and prices via SerpApi Google Flights or a keyless fallback |

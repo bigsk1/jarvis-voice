@@ -1364,6 +1364,7 @@ class JarvisApp {
       serpapi_search: '🔎', // Historical saved tool calls only.
       serpapi_maps_search: '🗺️',
       serpapi_google_local: '📍',
+      serpapi_google_local_services: '🛠️',
       serpapi_hotel_search: '🏨',
       serpapi_youtube: '▶️',
       serpapi_youtube_search: '▶️',

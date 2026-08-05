@@ -59,6 +59,7 @@ const expectedTools = [
   'serpapi_tripadvisor',
   'flight_search',
   'serpapi_google_local',
+  'serpapi_google_local_services',
   'serpapi_maps_search',
   'serpapi_youtube_search',
   'weather'
@@ -298,6 +299,30 @@ const html = renderer.render({{
       places: ['North Star Coffee', 'River Coffee']
     }}]
   }},
+  serpapi_google_local_services: {{
+    mode: 'search',
+    query: 'electrician',
+    location: 'Portland, Oregon',
+    resolved_location: 'Portland, Oregon',
+    provider_results_count: 7,
+    serpapi_searches_used: 1,
+    google_local_services_url: 'https://www.google.com/localservices/prolist?scp=public',
+    results: [{{
+      title: 'North Star Electric',
+      url: 'https://www.google.com/localservices/profile?north-star',
+      thumbnail: 'https://images.example/electrician.jpg',
+      rating: 4.9,
+      reviews: 321,
+      badge: 'GOOGLE GUARANTEED',
+      type: 'Electrician',
+      service_area: 'Portland and nearby areas',
+      years_in_business: 12,
+      bookings_nearby: 8,
+      hours_current: 'Open 24 hours',
+      phone: '+15035550101',
+      services: ['Restore power', 'Repair panel']
+    }}]
+  }},
   serpapi_maps_search: {{
     query: 'coffee',
     results: [{{
@@ -367,6 +392,11 @@ for (const expected of [
   'North Star Coffee', '321 reviews', 'Dine In', 'Takeout',
   'Open website', 'Sponsored Coffee', 'Sponsored',
   'Best coffee', 'Related search', 'Explore nearby', 'Open Google Local',
+  'Google Local Services', 'electrician', '7 providers', '1 SerpApi search',
+  'North Star Electric', 'GOOGLE GUARANTEED', '321 reviews',
+  '12 years in business', '8 bookings nearby', 'Portland and nearby areas',
+  'Open 24 hours', '+15035550101', 'Restore power · Repair panel',
+  'View provider', 'Open Google Local Services',
   'Pup Cup Coffee', '123 Market St',
   'Woodworking for Beginners', 'Workshop School', '12:34', '1,200,000 views',
   'Hillsboro, Oregon', 'Currently 72°', 'Mon · 2099-08-03', '78° / 58°',
@@ -378,7 +408,7 @@ for (const expected of [
   }}
 }}
 if (html.includes('flight_numbers')) process.exit(4);
-if ((html.match(/structured-results-preview/g) || []).length !== 16) process.exit(5);
+if ((html.match(/structured-results-preview/g) || []).length !== 17) process.exit(5);
 
 if (!renderer.register('custom_demo', payload => ({{
   kind: 'generic',

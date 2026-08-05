@@ -1535,6 +1535,63 @@ def test_extract_followup_data_preserves_google_local_provenance_and_place_actio
     }
 
 
+def test_extract_followup_data_preserves_local_services_provider_identity_and_cost():
+    handler = _handler()
+    data = {
+        "serpapi_google_local_services": {
+            "engine": "google_local_services",
+            "mode": "search",
+            "query": "car repair shop",
+            "provider_query": "auto_repair_shop",
+            "location": "Phoenix, Arizona",
+            "location_source": "explicit",
+            "resolved_location": "Phoenix",
+            "data_cid": "112233445566",
+            "data_cid_source": "google_maps_resolver",
+            "results_count": 1,
+            "provider_results_count": 8,
+            "serpapi_searches_used": 2,
+            "google_local_services_url": "https://www.google.com/localservices/prolist?scp=public",
+            "results": [
+                {
+                    "position": 1,
+                    "title": "North Star Electric",
+                    "url": "https://www.google.com/localservices/profile?north-star",
+                    "rating": 4.9,
+                    "reviews": 321,
+                    "phone": "+16025550101",
+                    "badge": "GOOGLE GUARANTEED",
+                    "type": "Electrician",
+                    "service_area": "Phoenix",
+                    "years_in_business": 12,
+                    "hours_current": "Open 24 hours",
+                    "services": ["Restore power", "Repair panel"],
+                    "cid": "327189293",
+                    "bid": "2517727928",
+                    "pid": "2521525020",
+                }
+            ],
+        }
+    }
+
+    local_services = handler._extract_followup_data(data)[
+        "serpapi_google_local_services"
+    ]
+
+    assert local_services["data_cid"] == "112233445566"
+    assert local_services["data_cid_source"] == "google_maps_resolver"
+    assert local_services["provider_query"] == "auto_repair_shop"
+    assert local_services["serpapi_searches_used"] == 2
+    provider = local_services["candidates"][0]
+    assert provider["badge"] == "GOOGLE GUARANTEED"
+    assert provider["services"] == ["Restore power", "Repair panel"]
+    assert (provider["cid"], provider["bid"], provider["pid"]) == (
+        "327189293",
+        "2517727928",
+        "2521525020",
+    )
+
+
 def test_extract_followup_data_flattens_repeated_maps_runs_before_generic_candidates():
     handler = _handler()
     data = {

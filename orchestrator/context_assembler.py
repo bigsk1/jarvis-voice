@@ -867,6 +867,9 @@ class ContextAssembler:
         is_google_local = (
             str(tool_name or "").strip().lower() == "serpapi_google_local"
         )
+        is_google_local_services = (
+            str(tool_name or "").strip().lower() == "serpapi_google_local_services"
+        )
         is_google_news_light = (
             str(tool_name or "").strip().lower() == "serpapi_google_news_light"
         )
@@ -969,6 +972,36 @@ class ContextAssembler:
                     "gps_coordinates",
                     "service_options",
                     "sponsored",
+                ):
+                    value = item.get(key)
+                    if value not in (None, "", [], {}):
+                        candidate[key] = self.build_preview_value(
+                            value,
+                            parent_key=key,
+                            depth=0,
+                            max_depth=2,
+                        )
+
+            if is_google_local_services:
+                for key in (
+                    "website",
+                    "phone",
+                    "badge",
+                    "reviews",
+                    "rating_stars",
+                    "type",
+                    "address",
+                    "service_area",
+                    "years_in_business",
+                    "bookings_nearby",
+                    "hours_current",
+                    "hours_week",
+                    "checks",
+                    "description",
+                    "services",
+                    "cid",
+                    "bid",
+                    "pid",
                 ):
                     value = item.get(key)
                     if value not in (None, "", [], {}):
@@ -1517,6 +1550,54 @@ class ContextAssembler:
             )
         return preview
 
+    def build_google_local_services_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep Local Services location cost, provider IDs, and details compact."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "engine",
+            "mode",
+            "query",
+            "provider_query",
+            "location",
+            "location_source",
+            "resolved_location",
+            "data_cid",
+            "data_cid_source",
+            "language",
+            "job_type",
+            "cid",
+            "bid",
+            "pid",
+            "max_results",
+            "results_count",
+            "provider_results_count",
+            "top_url",
+            "google_local_services_url",
+            "search_id",
+            "serpapi_searches_used",
+            "us_only",
+            "source",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=2,
+                )
+
+        detail = data.get("detail")
+        if isinstance(detail, dict) and detail:
+            preview["detail"] = self.build_preview_value(
+                detail,
+                parent_key="detail",
+                max_depth=2,
+            )
+        return preview
+
     def build_google_trending_now_data_preview(self, data: Any) -> dict[str, Any]:
         """Keep current-trend filters and news-drill-down provenance compact."""
         if not isinstance(data, dict):
@@ -1785,6 +1866,8 @@ class ContextAssembler:
                 data_preview = self.build_search_index_data_preview(data)
             elif normalized_tool_name == "serpapi_google_local":
                 data_preview = self.build_google_local_data_preview(data)
+            elif normalized_tool_name == "serpapi_google_local_services":
+                data_preview = self.build_google_local_services_data_preview(data)
             elif normalized_tool_name == "serpapi_google_news_light":
                 data_preview = self.build_google_news_light_data_preview(data)
             elif normalized_tool_name == "serpapi_google_trends":

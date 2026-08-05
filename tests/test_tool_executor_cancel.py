@@ -123,6 +123,12 @@ class ToolExecutorCancelTests(unittest.TestCase):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("serpapi_google_local"), 120)
 
+    def test_google_local_services_timeout_allows_cid_resolution_and_provider_request(self):
+        executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
+        self.assertEqual(
+            executor._get_subprocess_timeout("serpapi_google_local_services"), 200
+        )
+
     def test_google_trends_timeout_allows_full_provider_request(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("serpapi_google_trends"), 120)

@@ -226,6 +226,44 @@ class SerpApiStatusDiagnosticTests(unittest.TestCase):
         self.assertIn("Google Local API", result["speech"])
         self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
 
+    def test_google_local_services_timeout_matches_direct_or_resolver_incident(self):
+        cases = (
+            (
+                {"query": "plumber", "data_cid": "123"},
+                "[Google Local Services API] Performance Degradation",
+                "google_local_services",
+            ),
+            (
+                {"query": "plumber", "location": "Phoenix"},
+                "[Google Maps API] Performance Degradation",
+                "google_maps",
+            ),
+        )
+        for arguments, incident_name, expected_engine in cases:
+            with self.subTest(engine=expected_engine), patch.object(
+                serpapi_client,
+                "fetch_serpapi_unresolved_incidents",
+                return_value=[
+                    incident(
+                        name=incident_name,
+                        update=f"We are investigating {incident_name} latency.",
+                    )
+                ],
+            ):
+                result = serpapi_client.diagnose_serpapi_tool_failure(
+                    "serpapi_google_local_services",
+                    arguments,
+                    "Tool serpapi_google_local_services timed out",
+                    force=True,
+                )
+
+            self.assertIsNotNone(result)
+            self.assertEqual(
+                result["data"]["serpapi_incident"]["engine"],
+                expected_engine,
+            )
+            self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
+
     def test_google_trending_now_actions_match_discovery_and_news_incidents(self):
         cases = (
             (
