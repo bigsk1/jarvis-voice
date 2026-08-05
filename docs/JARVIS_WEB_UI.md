@@ -175,7 +175,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 - `tool:start`, `tool:complete`, and `tool:error` drive the live tool cards shown during a request.
 - Real tool failures show a red tool card because the tool actually executed and returned an error.
 - Duplicate-guard blocks are different: the repeated tool call is stopped before execution, so the UI shows a red status/progress message instead of a failed tool card.
-- Routing status text can include turn-aware messages like `Turn 3: using serpapi_search...`, which follow the orchestrator's `MAX_TOOL_TURNS` loop.
+- Routing status text can include turn-aware messages like `Turn 3: using serpapi_amazon_search...`, which follow the orchestrator's `MAX_TOOL_TURNS` loop.
 - Tool cards rendered after a page reload are rebuilt from the saved conversation message, not from the original live WebSocket event stream.
 - Because of that, historical reload is best at restoring successful tool outcomes. Live-only per-call events such as intermediate failures or duplicate-guard status lines are not guaranteed to reappear unless they were explicitly persisted in the saved message data.
 

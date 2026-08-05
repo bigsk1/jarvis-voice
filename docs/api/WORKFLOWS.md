@@ -291,7 +291,7 @@ HTTP Status: 404
 | `jarvis_self_check` | `/jarvis_self_check`, `/self_check`, `/jarvis_health` | Self health / diagnostics workflow |
 | `memory_scan` | `/memory_scan`, `/dedupe_memory` | Scan/dedupe memory |
 | `quick_note` | `/note`, `/quicknote`, `/remember_this` | Save note to memory + Canvas |
-| `serpapi_search` | `/serpapi` | SerpAPI search workflow |
+| `serpapi_amazon_search` | `/serpapi_amazon`, `/amazon_search`, `/serpapi` | Amazon listing search, Stash export, and Canvas comparison |
 | `server_health_check` | `/health`, `/server_check` | SSH health check using hosts from config/ssh.json |
 | `url_ingest` | `/url_ingest`, `/ingest_url`, `/learn_url` | Fetch URL, extract facts, create intel file, ingest to memory for RAG |
 | `weather_watch` | `/weather_watch`, `/garden_watch` | Weather / garden watch |

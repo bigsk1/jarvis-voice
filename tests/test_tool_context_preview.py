@@ -128,6 +128,58 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(candidates[1]["video_id"], "def456")
         self.assertIn("Cheddar factory tour", preview)
 
+    def test_search_index_preview_keeps_fetchable_sources_and_grounding_fields(self):
+        result = {
+            "ok": True,
+            "speech": "Found indexed sources.",
+            "data": {
+                "engine": "search_index",
+                "query": "PostgreSQL queue patterns",
+                "mode": "deep",
+                "results_count": 6,
+                "total_results": 314,
+                "search_id": "search-index-123",
+                "related_searches": ["SKIP LOCKED queue", "durable job queue"],
+                "raw": {"large_provider_payload": "x" * 12000},
+                "results": [
+                    {
+                        "position": index,
+                        "title": f"PostgreSQL source {index}",
+                        "url": f"https://example.test/postgres/{index}",
+                        "displayed_link": f"example.test/postgres/{index}",
+                        "snippet": "Grounded source summary. " * 30,
+                        "date": "Aug 1, 2026",
+                        "language": "en",
+                        "image_url": f"https://images.example/{index}.jpg",
+                        "sitelinks": [
+                            {
+                                "title": "Schema",
+                                "url": f"https://example.test/postgres/{index}/schema",
+                            }
+                        ],
+                    }
+                    for index in range(1, 7)
+                ],
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_search_index", result
+        )
+
+        parsed = json.loads(preview)
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        data_preview = parsed["llm_context_preview"]["data_preview"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 6000)
+        self.assertEqual(len(candidates), 5)
+        self.assertEqual(candidates[0]["url"], "https://example.test/postgres/1")
+        self.assertEqual(candidates[0]["language"], "en")
+        self.assertIn("Grounded source summary", candidates[0]["snippet"])
+        self.assertEqual(candidates[0]["sitelinks"][0]["title"], "Schema")
+        self.assertEqual(data_preview["search_id"], "search-index-123")
+        self.assertNotIn("large_provider_payload", preview)
+
     def test_hotel_preview_keeps_compact_prices_pet_status_and_urls(self):
         result = {
             "ok": True,

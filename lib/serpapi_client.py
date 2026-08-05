@@ -21,6 +21,7 @@ SERPAPI_TOOL_ENGINES = {
     "serpapi_ebay_search": ("ebay",),
     "serpapi_hotel_search": ("google_hotels",),
     "serpapi_maps_search": ("google_maps",),
+    "serpapi_search_index": ("search_index",),
     "serpapi_tripadvisor": ("tripadvisor",),
     "serpapi_youtube_search": ("youtube",),
 }
@@ -40,6 +41,7 @@ SERPAPI_ENGINE_LABELS = {
     "google_shopping": "Google Shopping",
     "home_depot": "Home Depot Search",
     "home_depot_product": "Home Depot Product",
+    "search_index": "Search Index",
     "tripadvisor": "Tripadvisor Search",
     "tripadvisor_place": "Tripadvisor Place",
     "tripadvisor_reviews": "Tripadvisor Reviews",
@@ -66,6 +68,7 @@ SERPAPI_ENGINE_STATUS_ALIASES = {
     "google_shopping": ("google shopping api", "google shopping"),
     "home_depot": ("home depot search api", "home depot search", "home depot api"),
     "home_depot_product": ("home depot product api", "home depot product"),
+    "search_index": ("search index api", "search index"),
     "tripadvisor": (
         "tripadvisor search api",
         "tripadvisor search",
@@ -131,7 +134,7 @@ def serpapi_engines_for_tool(tool_name: str, args: dict[str, Any] | None = None)
     """Return the SerpApi engines a failed Jarvis tool may have been calling."""
     options = args if isinstance(args, dict) else {}
 
-    if tool_name == "serpapi_search":
+    if tool_name == "serpapi_amazon_search":
         engine = str(options.get("engine") or "").strip().lower()
         return (engine,) if engine else ()
     if tool_name == "flight_search":

@@ -42,12 +42,15 @@ class StructuredResultsRenderer {
   }
 
   _registerDefaultAdapters() {
+    this.register('serpapi_amazon_search', payload => this._adaptShoppingSearch(payload));
+    // Saved conversations may still contain the pre-rename result key.
     this.register('serpapi_search', payload => this._adaptShoppingSearch(payload));
     this.register('serpapi_home_depot', payload => this._adaptHomeDepotProduct(payload));
     this.register('serpapi_ebay_search', payload => this._adaptEbaySearch(payload));
     this.register('serpapi_ebay_product', payload => this._adaptEbayProduct(payload));
     this.register('serpapi_hotel_search', payload => this._adaptHotels(payload));
     this.register('serpapi_yelp_search', payload => this._adaptYelp(payload));
+    this.register('serpapi_search_index', payload => this._adaptSearchIndex(payload));
     this.register('serpapi_tripadvisor', payload => this._adaptTripadvisor(payload));
     this.register('flight_search', payload => this._adaptFlights(payload));
     this.register('serpapi_maps_search', payload => this._adaptMaps(payload));
@@ -258,6 +261,40 @@ class StructuredResultsRenderer {
       eyebrow: 'Yelp',
       heading: `${description}${location}`,
       subtitle: payload.sort_by ? `Sorted by ${payload.sort_by.replace(/_/g, ' ')}` : '',
+      items,
+    };
+  }
+
+  _adaptSearchIndex(payload) {
+    const items = this._rows(payload).map(row => {
+      const chips = [];
+      if (row.date) chips.push(String(row.date));
+      if (row.language) chips.push(String(row.language).toUpperCase());
+      const sitelinks = this._list(row.sitelinks);
+      if (sitelinks.length) chips.push(`${sitelinks.length} related links`);
+      return {
+        title: row.title || 'Indexed webpage',
+        url: row.url || row.link,
+        image: row.image_url || row.thumbnail,
+        primary: row.displayed_link || row.source || '',
+        chips,
+        details: row.snippet ? [this._compactText(row.snippet, 280)] : [],
+        actionLabel: 'Open source',
+      };
+    });
+    const mode = String(payload.mode || 'standard').toLowerCase();
+    const resultCount = payload.results_count ?? items.length;
+    const total = payload.total_results;
+    const countText = total != null
+      ? `${this._formatCount(total)} indexed matches`
+      : `${resultCount} source${Number(resultCount) === 1 ? '' : 's'} shown`;
+    const related = this._list(payload.related_searches).slice(0, 3).join(' · ');
+    return {
+      kind: 'generic',
+      layout: 'rail',
+      eyebrow: mode === 'deep' ? 'Search Index · Deep recall' : 'Search Index',
+      heading: payload.query || 'Indexed web sources',
+      subtitle: related ? `${countText} · Related: ${related}` : countText,
       items,
     };
   }

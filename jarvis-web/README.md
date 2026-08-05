@@ -293,7 +293,7 @@ Workflows are deterministic pipelines defined at the **repository root**: `data/
 | `/archive` | `web_archive.json` |
 | `/note`, `/quicknote` | `quick_note.json` |
 | `/health`, `/server_check` | `server_health_check.json` |
-| `/serpapi` | `serpapi_search.json` |
+| `/serpapi_amazon`, `/amazon_search`, `/serpapi` | `serpapi_amazon_search.json` |
 | `/youtube_research`, `/yt_research` | `youtube_research.json` |
 | `/youtube_ingest`, `/yt_ingest` | `youtube_ingest.json` |
 | `/url_ingest`, `/learn_url` | `url_ingest.json` |

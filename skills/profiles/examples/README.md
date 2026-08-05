@@ -38,12 +38,12 @@ Files named `local_*.json` target **small-context** setups (often ~32k); the rou
 | `offline_lan_first.json` | Airplane / lab box: drop internet-ish tools; align with `config/offline.json.example`. |
 | `memory_and_artifacts.json` | Stored knowledge + canvas/stash; no web stack or generators. |
 | `docs_kb_curator.json` | Docs/PDF/bookmarks/intel/`deep_memory_search` + summarizer; still no SerpAPI/MCP/crawl. |
-| `research_pipeline.json` | Research chain (`crawl_url`, SerpAPI core search, Brave, supa crawl, PDFs, YouTube transcript); trims dev/ops and niche SerpAPI. |
+| `research_pipeline.json` | Research chain (`crawl_url`, SerpApi Search Index, Brave, supa crawl, PDFs, YouTube transcript); disables Amazon/vertical SerpApi tools and trims dev/ops. |
 | `workstation_ops.json` | Shell/SSH/Docker/monitoring/OpenCode; trims web search and media. |
-| `creative_media_lab.json` | Image/video/music + YouTube helpers + stash/canvas; leaves `serpapi_youtube` on for video lookup. |
+| `creative_media_lab.json` | Image/video/music + non-SerpApi YouTube helpers + stash/canvas; disables the SerpApi family. |
 | `home_routines.json` | Reminders, alerts, weather, speaker, memory, canvas/stash; no research/ops/generation stack. |
-| `local_minimal_assistant.json` | Tight general pool: SerpAPI “web” search stays on; niche SerpAPI, Playwright, OpenCode, generators, supa crawl, Spotify, screenshot_url off. |
-| `local_daily_driver.json` | Like minimal but leaves **Spotify** and **screenshot_url** on if your `.tool.json` already enables them—still drops OpenCode, gens, Playwright, supa. |
-| `local_research_lite.json` | Slim research: crawl + search + summarizer + docs paths; ops tools off. |
+| `local_minimal_assistant.json` | Tight general pool: SerpApi family, Playwright, OpenCode, generators, supa crawl, Spotify, and screenshot_url off. |
+| `local_daily_driver.json` | Like minimal but leaves **Spotify** and **screenshot_url** on if their manifests enable them; disables the SerpApi family plus OpenCode, generators, Playwright, and supa. |
+| `local_research_lite.json` | Slim research through fetch/crawl/Brave context + summarizer and docs paths; SerpApi and ops tools off. |
 | `local_terminal_ops.json` | SSH/docker/monitor/network/bash focus; broad web research tools off. |
-| `local_home_voice.json` | Room/voice: reminders, weather, logs, vision; MCP browse + crawl + niche SerpAPI off; core `serpapi_search` can stay on via tool file if you want quick facts. |
+| `local_home_voice.json` | Room/voice: reminders, weather, logs, vision; MCP browse, crawl, and the complete SerpApi family off. |

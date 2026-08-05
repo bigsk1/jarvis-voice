@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Jarvis Skill: SerpApi Search
-Generic SerpApi search tool for Amazon and other engines.
+Jarvis Skill: SerpApi Amazon Search
+Amazon listing discovery and product details through SerpApi.
 
 Input examples:
   {"engine": "amazon", "query": "usb c hub"}
   {"engine": "amazon_product", "asin": "B08N5WRWNW"}
-  {"engine": "google", "query": "latest ai news"}
 """
 import json
 import os
@@ -135,7 +134,11 @@ def main() -> int:
         extra_params = input_data.get("extra_params", {}) or {}
 
         if not engine:
-            return_error("Parameter 'engine' is required (example: amazon, amazon_product, google).")
+            return_error("Parameter 'engine' is required (amazon or amazon_product).")
+            return 1
+
+        if engine not in {"amazon", "amazon_product"}:
+            return_error("Unsupported engine. serpapi_amazon_search accepts only amazon or amazon_product.")
             return 1
 
         num_results = clamp_results_count(num_results, default=5)
@@ -192,8 +195,7 @@ def main() -> int:
             params["node"] = node
         if rh is not None:
             params["rh"] = rh
-        # Generic passthrough convenience for engines that support direct price filters.
-        # For Amazon specifically, query/rh may still be the primary filtering path.
+        # Amazon may still rely primarily on query/rh for price filtering.
         if min_price is not None:
             params["min_price"] = min_price
         if max_price is not None:

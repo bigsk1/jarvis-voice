@@ -193,6 +193,30 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
             ["https://example.com/one", "https://example.com/two"],
         )
 
+    def test_search_index_name_uses_workflow_search_url_extraction(self):
+        variables = {}
+        result = {
+            "ok": True,
+            "data": {
+                "results": [
+                    {"url": "https://example.test/source-one"},
+                    {"url": "https://example.test/source-two"},
+                ]
+            },
+        }
+
+        self.assertTrue(self.executor._is_search_tool("serpapi_search_index"))
+        self.executor._apply_output_transforms(
+            {}, result, variables, "serpapi_search_index", None
+        )
+        self.assertEqual(
+            variables["search_results"]["urls"],
+            [
+                "https://example.test/source-one",
+                "https://example.test/source-two",
+            ],
+        )
+
     def test_web_attachment_context_extracts_stash_ref_and_filename(self):
         topic = """[ATTACHED PDF ARTIFACT]
 Filename: docker-cheatsheet.pdf

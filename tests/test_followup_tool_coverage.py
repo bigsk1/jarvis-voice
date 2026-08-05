@@ -643,6 +643,27 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "serpapi_search_index": _case(
+        {
+            "engine": "search_index",
+            "query": "payload adapters",
+            "mode": "standard",
+            "results_count": 1,
+            "total_results": 9,
+            "search_id": "search-index-coverage",
+            "source": "SerpApi Search Index",
+            "results": [
+                {
+                    "position": 1,
+                    "title": "Payload adapters",
+                    "url": "https://example.test/search-index-result",
+                    "displayed_link": "example.test/search-index-result",
+                    "snippet": "A source candidate with a fetchable URL.",
+                    "language": "en",
+                }
+            ],
+        }
+    ),
     "serpapi_tripadvisor": _case(
         {
             "action": "search",
@@ -693,7 +714,7 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
-    "serpapi_search": _case(
+    "serpapi_amazon_search": _case(
         {
             "engine": "amazon",
             "query": "headphones",

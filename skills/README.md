@@ -48,7 +48,7 @@ edit (custom names are gitignored; the ready-to-use baselines are listed above):
   "overrides": {
     "workflow": false,
     "weather": false,
-    "serpapi_search": false,
+    "serpapi_amazon_search": false,
     "mcp_fetch_fetch": false,
     "mcp_brave_search_brave_web_search": false
   }
@@ -284,7 +284,8 @@ JSON object printed to stdout:
 | `weather` | Weather forecasts (OpenWeatherMap) |
 | `crypto_price` | Cryptocurrency prices |
 | `stock_price` | Stock/futures/forex prices |
-| `serpapi_search` | Generic SerpApi search (Amazon + other engines) |
+| `serpapi_amazon_search` | Amazon listing discovery and focused ASIN/product details through SerpApi |
+| `serpapi_search_index` | Structured indexed-web source discovery with standard/deep recall, snippets, exact URLs, and workflow-ready pagination |
 | `serpapi_home_depot` | SerpApi Home Depot product search with store/ZIP filters |
 | `serpapi_maps_search` | SerpApi Google Maps place and local business search |
 | `serpapi_hotel_search` | Future Google Hotels options, cheapest-first stay pricing, and filters |

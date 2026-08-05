@@ -303,7 +303,7 @@ the same orchestration turn; it is not a durable background run.
 | `memory_scan.json` | `/memory_scan` (also `/dedupe_memory`) | Run memory_deduper against the active cloud/local memory DB and save a labeled report to stash + canvas |
 | `pdf_ingest.json` | `/pdf_ingest <attached PDF, stash ref, or URL>` | Extract a PDF, create a semantic Intel file, ingest it synchronously, and publish a source-attributed Canvas briefing |
 | `quick_note.json` | `/note <text>` | Quick note to memory and canvas |
-| `serpapi_search.json` | `/serpapi <query>` | Run SerpApi search, save `.txt` export to stash, create canvas summary report |
+| `serpapi_amazon_search.json` | `/serpapi_amazon <query>` (also `/amazon_search`, `/serpapi`) | Search Amazon, save a normalized Stash export, and create a Canvas comparison report |
 | `server_health_check.json` | `/health <host>` | SSH health check on remote server |
 | `url_ingest.json` | `/url_ingest <url>` | Fetch any URL, create intel file, ingest to memory for RAG queries |
 | `weather_watch.json` | `/weather_watch` (also `/garden_watch`) | Default-location weather watch with canvas report and condition-specific alerts |

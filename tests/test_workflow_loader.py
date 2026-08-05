@@ -27,6 +27,18 @@ def _write_workflow(path: Path, workflow_id: str, trigger: str, tool: str = "get
     )
 
 
+def test_serpapi_amazon_workflow_uses_renamed_tool_and_compatibility_trigger():
+    loader = WorkflowLoader(str(ROOT / "data" / "workflows"), explicit_only=True)
+    workflow = loader.get_workflow("serpapi_amazon_search")
+
+    assert workflow is not None
+    assert loader.get_workflow("serpapi_search") is None
+    assert workflow["steps"][0]["tool"] == "serpapi_amazon_search"
+    assert loader.match("/serpapi_amazon usb c charger")["id"] == "serpapi_amazon_search"
+    assert loader.match("/amazon_search usb c charger")["id"] == "serpapi_amazon_search"
+    assert loader.match("/serpapi usb c charger")["id"] == "serpapi_amazon_search"
+
+
 def test_workflow_loader_includes_gitignored_personal_workflows(tmp_path):
     _write_workflow(tmp_path / "shared.json", "shared_workflow", "/shared")
     _write_workflow(

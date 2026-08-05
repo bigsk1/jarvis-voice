@@ -108,6 +108,8 @@ class ToolExecutor:
             return 120  # SerpApi deep search can take up to 90 seconds
         if tool_name == "serpapi_home_depot":
             return 200  # Direct SerpApi only; up to two sequential 90s HTTP calls if include_product_details
+        if tool_name == "serpapi_search_index":
+            return 120  # One Search Index request; deep recall may use the full 90s HTTP allowance
         if tool_name == "serpapi_tripadvisor":
             return 160  # Up to three sequential 45s calls for search + optional place details + reviews
         if tool_name == "status_recap":

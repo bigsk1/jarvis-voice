@@ -42,7 +42,7 @@ def _handler():
 def test_extract_followup_data_includes_focused_serpapi_product_fields():
     handler = _handler()
     data = {
-        "serpapi_search": {
+        "serpapi_amazon_search": {
             "engine": "amazon_product",
             "query": None,
             "asin": "B072MQ5BRX",
@@ -67,7 +67,7 @@ def test_extract_followup_data_includes_focused_serpapi_product_fields():
     }
 
     result = handler._extract_followup_data(data)
-    serp = result["serpapi_search"]
+    serp = result["serpapi_amazon_search"]
 
     assert serp["engine"] == "amazon_product"
     assert serp["asin"] == "B072MQ5BRX"
@@ -84,10 +84,27 @@ def test_extract_followup_data_includes_focused_serpapi_product_fields():
     assert serp["bought_last_month"] == "10K+ bought in past month"
 
 
+def test_extract_legacy_serpapi_search_followup_under_renamed_key():
+    result = _handler()._extract_followup_data({
+        "serpapi_search": {
+            "engine": "amazon_product",
+            "asin": "B000LEGACY",
+            "results": [{
+                "title": "Saved legacy product",
+                "asin": "B000LEGACY",
+                "url": "https://amazon.example/legacy",
+            }],
+        }
+    })
+
+    assert "serpapi_search" not in result
+    assert result["serpapi_amazon_search"]["asin"] == "B000LEGACY"
+
+
 def test_extract_followup_data_preserves_compact_candidate_list():
     handler = _handler()
     data = {
-        "serpapi_search": {
+        "serpapi_amazon_search": {
             "engine": "amazon",
             "query": "interesting tech gift over 100 no logo",
             "results_count": 2,
@@ -118,7 +135,7 @@ def test_extract_followup_data_preserves_compact_candidate_list():
     }
 
     result = handler._extract_followup_data(data)
-    serp = result["serpapi_search"]
+    serp = result["serpapi_amazon_search"]
     candidates = serp["candidates"]
 
     assert len(candidates) == 2
@@ -140,7 +157,7 @@ def test_extract_followup_data_merges_amazon_workflow_search_and_detail_runs():
         "results": [
             {
                 "step": 1,
-                "tool": "serpapi_search",
+                "tool": "serpapi_amazon_search",
                 "data": {
                     "engine": "amazon",
                     "query": "usb c charger 65w under 40",
@@ -170,7 +187,7 @@ def test_extract_followup_data_merges_amazon_workflow_search_and_detail_runs():
             },
             {
                 "step": 2,
-                "tool": "serpapi_search",
+                "tool": "serpapi_amazon_search",
                 "outputs": [
                     {
                         "ok": True,
@@ -217,7 +234,7 @@ def test_extract_followup_data_merges_amazon_workflow_search_and_detail_runs():
     }
 
     followup = _handler()._extract_followup_data({"workflow": workflow})
-    serp = followup["serpapi_search"]
+    serp = followup["serpapi_amazon_search"]
 
     assert serp["engine"] == "amazon"
     assert serp["query"] == "usb c charger 65w under 40"
@@ -239,7 +256,7 @@ def test_extract_followup_data_merges_amazon_workflow_search_and_detail_runs():
 
 def test_extract_followup_data_merges_flattened_amazon_workflow_runs():
     data = {
-        "serpapi_search": [
+        "serpapi_amazon_search": [
             {
                 "engine": "amazon",
                 "query": "portable monitor",
@@ -271,7 +288,7 @@ def test_extract_followup_data_merges_flattened_amazon_workflow_runs():
         ]
     }
 
-    serp = _handler()._extract_followup_data(data)["serpapi_search"]
+    serp = _handler()._extract_followup_data(data)["serpapi_amazon_search"]
 
     assert serp["runs_count"] == 2
     assert serp["results_count"] == 1
@@ -523,6 +540,68 @@ def test_extract_followup_data_yelp_candidates_respect_evidence_max():
     evidence = handler._extract_followup_data(data, max_candidates=12)
     assert len(evidence["serpapi_yelp_search"]["candidates"]) == 12
     assert evidence["serpapi_yelp_search"]["results_count"] == 15
+
+
+def test_extract_followup_data_preserves_search_index_sources_and_pagination():
+    handler = _handler()
+    data = {
+        "serpapi_search_index": {
+            "engine": "search_index",
+            "query": "PostgreSQL queues",
+            "mode": "deep",
+            "results_count": 2,
+            "total_results": 314,
+            "search_id": "search-index-123",
+            "has_more": True,
+            "next_start": 10,
+            "related_searches": ["SKIP LOCKED queues", "durable job queues"],
+            "pagination": {
+                "start": 0,
+                "num_results": 10,
+                "has_more": True,
+                "next_start": 10,
+            },
+            "results": [
+                {
+                    "position": 1,
+                    "title": "PostgreSQL as a durable queue",
+                    "url": "https://example.test/postgres-queue",
+                    "displayed_link": "example.test/postgres-queue",
+                    "snippet": "A practical guide. " * 100,
+                    "date": "Aug 1, 2026",
+                    "language": "en",
+                    "image_url": "https://images.example/postgres.jpg",
+                    "sitelinks": [
+                        {
+                            "title": "Queue schema",
+                            "url": "https://example.test/postgres-queue/schema",
+                        }
+                    ],
+                },
+                {
+                    "position": 2,
+                    "title": "SKIP LOCKED worker patterns",
+                    "url": "https://docs.example.test/skip-locked",
+                },
+            ],
+        }
+    }
+
+    search_index = handler._extract_followup_data(data)["serpapi_search_index"]
+
+    assert search_index["query"] == "PostgreSQL queues"
+    assert search_index["mode"] == "deep"
+    assert search_index["search_id"] == "search-index-123"
+    assert search_index["pagination"]["next_start"] == 10
+    assert search_index["related_searches"] == [
+        "SKIP LOCKED queues",
+        "durable job queues",
+    ]
+    assert len(search_index["candidates"][0]["snippet"]) <= 700
+    assert search_index["candidates"][0]["sitelinks"][0]["url"].endswith(
+        "/schema"
+    )
+    assert search_index["candidates"][1]["url"].endswith("/skip-locked")
 
 
 def test_extract_followup_data_preserves_tripadvisor_search_candidates():
@@ -1286,7 +1365,7 @@ def test_extract_followup_data_flattens_repeated_hotel_runs_before_generic_candi
 def test_extract_followup_data_flattens_repeated_serpapi_product_runs_for_dedicated_branch():
     handler = _handler()
     data = {
-        "serpapi_search": [
+        "serpapi_amazon_search": [
             {
                 "engine": "amazon",
                 "query": "coffee",
@@ -1320,7 +1399,7 @@ def test_extract_followup_data_flattens_repeated_serpapi_product_runs_for_dedica
     }
 
     result = handler._extract_followup_data(data)
-    serp = result["serpapi_search"]
+    serp = result["serpapi_amazon_search"]
 
     assert serp["runs_count"] == 2
     assert serp["results_count"] == 1

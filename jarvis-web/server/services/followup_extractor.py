@@ -33,13 +33,19 @@ _MCP_FETCH_CONTENT_INFO_RE = re.compile(
 # Tools whose follow-up shape is handled by a dedicated branch below. Listed
 # here so the generic results[]/items[] fallback skips them (otherwise it
 # would overwrite or duplicate what the dedicated branch produced).
+_AMAZON_FOLLOWUP_TOOL_NAMES = frozenset({
+    'serpapi_amazon_search',
+    'serpapi_search',  # Read-only compatibility for saved pre-rename turns.
+})
 _DEDICATED_FOLLOWUP_BRANCHES = (
+    'serpapi_amazon_search',
     'serpapi_search',
     'serpapi_home_depot',
     'serpapi_ebay_search',
     'serpapi_ebay_product',
     'serpapi_youtube_search',
     'serpapi_yelp_search',
+    'serpapi_search_index',
     'serpapi_tripadvisor',
     'flight_search',
     'crawl_url',
@@ -285,6 +291,11 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'results_count', 'provider_results_count', 'top_url', 'place_id',
         'serpapi_searches_used', 'source',
     ],
+    'serpapi_search_index': [
+        'engine', 'query', 'mode', 'safe', 'start', 'num_results',
+        'results_count', 'provider_results_count', 'total_results', 'top_url',
+        'search_id', 'has_more', 'next_start', 'serpapi_searches_used', 'source',
+    ],
     'serpapi_tripadvisor': [
         'action', 'engine', 'query', 'category', 'tripadvisor_domain',
         'place_id', 'results_count', 'total_reviews', 'review_sort_by',
@@ -330,6 +341,7 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     ],
     'send_email': ['to', 'subject', 'status'],
     'api_call': ['url', 'method', 'status_code'],
+    'serpapi_amazon_search': ['engine', 'query', 'asin', 'results_count', 'top_url'],
     'serpapi_search': ['engine', 'query', 'asin', 'results_count', 'top_url'],
     'serpapi_home_depot': ['engine', 'query', 'country', 'product_id', 'results_count', 'top_url', 'top_image_url'],
     'serpapi_ebay_search': ['engine', 'query', 'category_id', 'ebay_domain', 'product_id', 'results_count', 'top_url'],
@@ -2335,13 +2347,16 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                     followup['workflow'] = workflow_meta
                 component_results = workflow_step_tool_results(workflow_value)
                 for component_name, component_value in component_results.items():
-                    if component_name == 'serpapi_search':
+                    if component_name in _AMAZON_FOLLOWUP_TOOL_NAMES:
                         component_followup = extract_followup_data(
                             {component_name: component_value},
                             max_candidates=max_candidates,
                         )
                         if component_followup:
-                            followup.update(component_followup)
+                            followup['serpapi_amazon_search'] = component_followup.get(
+                                component_name,
+                                component_followup.get('serpapi_amazon_search'),
+                            )
                         continue
                     if isinstance(component_value, list) and component_name != 'text_summarizer':
                         runs = []
@@ -2366,10 +2381,10 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                     if component_followup:
                         followup.update(component_followup)
                 continue
-        if key == 'serpapi_search':
+        if key in _AMAZON_FOLLOWUP_TOOL_NAMES:
             extracted = _extract_serpapi_followup(value, max_candidates)
             if extracted:
-                followup[key] = extracted
+                followup['serpapi_amazon_search'] = extracted
             continue
         # List-shaped tool payloads: normalize to dict with results[] (no per-tool registry).
         if isinstance(value, list):
@@ -2801,6 +2816,62 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 }
                 if compact_reviews:
                     extracted['review_data']['reviews'] = compact_reviews
+
+        if key == 'serpapi_search_index':
+            results = payload.get('results') or payload.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = payload.get('results_count', len(results))
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = {
+                        field: item[field]
+                        for field in (
+                            'position', 'title', 'url', 'displayed_link',
+                            'date', 'language', 'image_url', 'source',
+                        )
+                        if item.get(field) not in (None, '', [], {})
+                    }
+                    if item.get('snippet'):
+                        candidate['snippet'] = _truncate_followup_text(
+                            str(item['snippet']), 700
+                        )
+                    sitelinks = item.get('sitelinks')
+                    if isinstance(sitelinks, list) and sitelinks:
+                        candidate['sitelinks'] = [
+                            {
+                                field: link[field]
+                                for field in ('title', 'url', 'date')
+                                if link.get(field) not in (None, '')
+                            }
+                            for link in sitelinks[:5]
+                            if isinstance(link, dict)
+                            and (link.get('title') or link.get('url'))
+                        ]
+                    if candidate.get('title') or candidate.get('url'):
+                        candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
+
+            related = payload.get('related_searches')
+            if isinstance(related, list) and related:
+                extracted['related_searches'] = [
+                    _truncate_followup_text(str(query), 300)
+                    for query in related[:max_candidates]
+                    if str(query).strip()
+                ]
+
+            pagination = payload.get('pagination')
+            if isinstance(pagination, dict):
+                compact_pagination = {
+                    field: pagination[field]
+                    for field in ('start', 'num_results', 'has_more', 'next_start')
+                    if pagination.get(field) not in (None, '')
+                    or field == 'has_more'
+                }
+                if compact_pagination:
+                    extracted['pagination'] = compact_pagination
 
         if key == 'serpapi_tripadvisor':
             action = str(payload.get('action') or 'search').strip().lower()

@@ -260,7 +260,7 @@ jq 'select(.ok == false)' logs/tools/tool-calls-$(date +%F).jsonl
 jq -r '[.duration_ms, .tool_name] | @tsv' logs/tools/tool-calls-$(date +%F).jsonl | sort -rn | head -20
 
 # Exact calls to one tool
-jq 'select(.tool_name == "serpapi_search")' logs/tools/tool-calls-$(date +%F).jsonl
+jq 'select(.tool_name == "serpapi_amazon_search")' logs/tools/tool-calls-$(date +%F).jsonl
 ```
 
 Tool subprocess stderr is captured on failures. MCP server stderr usually appears in the parent service/tmux output.

@@ -40,7 +40,7 @@
 - **[TOOL_MANAGEMENT.md](TOOL_MANAGEMENT.md)** - Manifest/profile/mode/Web precedence; enabled vs credential **available** status (`--mode`)
 - **[../skills/README.md](../skills/README.md)** - **Tool profile overlays** (`JARVIS_TOOL_PROFILE`, `skills/profiles/<name>.json`, `bin/manage-tools.py profile …`); git tracks `default.json` and `skills/profiles/examples/*.json` (copy to `profiles/<name>.json` for use). After changing profile: restart services, then `./bin/sync-tools.py local` or `cloud`
 - **[tools/status-tool/README.md](tools/status-tool/README.md)** - 📊 **Status Recap Tool v1.4** (weather, crypto, stocks/futures, alerts, reminders, system health, canvas + stash)
-- **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** - 🛒 **SerpApi Search Tool** (Amazon + engine-based SerpApi queries)
+- **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** - 🔎 **SerpApi Tools** (Amazon, Search Index, marketplaces, local places, travel, and YouTube)
 - **[tools/flight-search-tool/README.md](tools/flight-search-tool/README.md)** - ✈️ **Flight Search Tool** (future options, prices, dates, and times)
 
 ### Document Processing
@@ -692,7 +692,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 **2026-04-07:**
 - ✅ **Amazon product follow-up + Canvas improvements**
-  - `serpapi_search` now supports stronger Amazon shopping flows with top-level sort and price fields, better Amazon sort mapping, and improved focused-product handling
+  - `serpapi_amazon_search` now supports stronger Amazon shopping flows with top-level sort and price fields, better Amazon sort mapping, and improved focused-product handling
   - Jarvis WebUI can now render a single Amazon product preview card with image, title, price, rating, review count, ASIN, and direct link for `amazon_product` lookups
   - Amazon search follow-up context now preserves a compact shortlist of prior product candidates so later turns like "tell me more about the Aura frame" or "save that one to canvas" have the right ASIN, URL, and thumbnail available
   - Canvas page creation/update now supports explicit embedded images and also auto-recovers inline `Image: https://...` product-image lines into a real embedded image block
@@ -716,7 +716,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Context-window hover now resolves model-specific limits correctly, including GPT-5.4 Nano at 400K
 - ✅ **Prompt enhancer + shopping/tool guidance**
   - The `✨` prompt enhancer now emphasizes the user's primary intent, preserves exact entities like model numbers, reduces distracting context, and stays tool/provider agnostic
-  - Strengthened `serpapi_search` descriptions for Amazon-style product lookup, comparison, and purchase intent
+  - Strengthened `serpapi_amazon_search` descriptions for Amazon-style product lookup, comparison, and purchase intent
 - ✅ **Model prompt overrides implemented**
   - Added runtime model/provider-specific prompt overrides with YAML config loading for routing, QA synthesis, and Completion Guard evaluation
   - Override resolution now supports exact model folders plus deterministic aliases for dated model names and runtime suffixes like `:latest` and `:cloud`
@@ -873,7 +873,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 **2026-03-21:**
 - ✅ **SerpApi query optimization** - Conversational prompts can be compacted to keyword-style queries before search
   - Tool output includes `query_was_optimized`; `query` (original) and `query_effective` (optimized) for transparency
-  - `optimize_query` in `serpapi_search.tool.json` (default on) to disable when needed
+  - `optimize_query` in `serpapi_amazon_search.tool.json` (default on) to disable when needed
 - ✅ **Canvas & workflows** - Workflows pass `source_query` into canvas create (fixes `source_query: null`)
   - Trimmed payloads sent to the canvas LLM so long Amazon-style results do not truncate mid-list
 - ✅ **Canvas URLs** - Rejects truncated URL patterns (`https://...`, tokens with `...`); tool guidance requires full resolvable links
@@ -890,7 +890,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Dependencies & models** - yt-dlp update; Qwen model config refresh; Anthropic web search integration version bump
 
 **2026-03-13:**
-- ✅ **SerpApi Search Tool** - New generic `serpapi_search` tool (Amazon + engine-based search)
+- ✅ **SerpApi Amazon Search Tool** - Added the original Amazon-focused tool now named `serpapi_amazon_search`
   - Supports `amazon` listings and `amazon_product` ASIN lookups
   - Uses `SERP_API_KEY` with proxy-aware HTTP requests
   - Normalized output for cleaner WebUI/CLI synthesis

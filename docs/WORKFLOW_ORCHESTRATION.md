@@ -562,7 +562,7 @@ The authoritative list is `data/workflows/*.json` plus any private `data/workflo
 | `jarvis_self_check.json` | `/jarvis_self_check` | Check host health, create alerts on problems, and update one Canvas health page. |
 | `memory_scan.json` | `/memory_scan` | Analyze the active memory database and save labeled Stash and Canvas reports. |
 | `quick_note.json` | `/note` | Save a note to memory and Canvas. |
-| `serpapi_search.json` | `/serpapi` | Search through SerpApi and save Stash and Canvas reports. |
+| `serpapi_amazon_search.json` | `/serpapi_amazon` (also `/amazon_search`, `/serpapi`) | Search Amazon through SerpApi and save Stash and Canvas reports. |
 | `server_health_check.json` | `/health` | SSH health check for a remote server. |
 | `url_ingest.json` | `/url_ingest` | Crawl a URL, create an Intelligence file, and ingest it for RAG queries. |
 | `weather_watch.json` | `/weather_watch` | Default-location weather watch with Canvas and alerts. |

@@ -124,6 +124,31 @@ class SerpApiStatusDiagnosticTests(unittest.TestCase):
             self.assertIn(incident_label, result["speech"])
             self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
 
+    def test_search_index_timeout_matches_search_index_incident(self):
+        with patch.object(
+            serpapi_client,
+            "fetch_serpapi_unresolved_incidents",
+            return_value=[
+                incident(
+                    name="[Search Index API] Performance Degradation",
+                    update="We are investigating Search Index API latency.",
+                )
+            ],
+        ):
+            result = serpapi_client.diagnose_serpapi_tool_failure(
+                "serpapi_search_index",
+                {"query": "PostgreSQL queues", "mode": "deep"},
+                "Tool serpapi_search_index timed out",
+                force=True,
+            )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            result["data"]["serpapi_incident"]["engine"], "search_index"
+        )
+        self.assertIn("Search Index API", result["speech"])
+        self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
+
     def test_unrelated_incident_does_not_replace_original_failure(self):
         with patch.object(
             serpapi_client,

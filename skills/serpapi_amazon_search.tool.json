@@ -1,23 +1,24 @@
 {
   "enabled": true,
-  "name": "serpapi_search",
-  "description": "Structured shopping and search lookup via SerpApi across engines like amazon, amazon_product, google, google_shopping, and news. Best tool for Amazon product search, ASIN lookup, bestseller/listing checks, prices, ratings, reviews, Prime eligibility, delivery/stock signals, product comparisons, and finding products to buy when the user asks about Amazon items or shopping results. Amazon searches default delivery_zip from JARVIS_DEFAULT_POSTAL_CODE when omitted. Recommended shopping pattern: use engine=amazon first to gather and compare multiple candidate listings, then use engine=amazon_product with a chosen ASIN when you want one focused product page with richer details, direct link, image/thumbnail, and a cleaner final recommendation. If saving that focused product to Canvas, preserve the thumbnail by passing it to the canvas tool as image_url.",
+  "name": "serpapi_amazon_search",
+  "description": "Search Amazon listings or retrieve one Amazon product page through SerpApi. Use for Amazon product discovery, ASIN lookup, bestseller/listing checks, prices, ratings, reviews, Prime eligibility, delivery and stock signals, product comparisons, and purchase research. Amazon searches default delivery_zip from JARVIS_DEFAULT_POSTAL_CODE when omitted. Recommended pattern: use engine=amazon first to gather and compare candidates, then use engine=amazon_product with a chosen ASIN for richer details, a direct link, and an image. If saving a focused product to Canvas, preserve its thumbnail by passing it as image_url.",
   "complementary_tools": [
     "canvas",
     "stash"
   ],
-  "script": "serpapi_search.py",
+  "script": "serpapi_amazon_search.py",
   "proxy_policy": "off",
   "parameters": {
     "type": "object",
     "properties": {
       "engine": {
         "type": "string",
-        "description": "SerpApi engine. Use amazon for Amazon listing/product searches, amazon_product for a specific Amazon ASIN/product page, google_shopping for shopping comparisons, google for general web search, bing, or youtube."
+        "enum": ["amazon", "amazon_product"],
+        "description": "Amazon SerpApi engine: amazon for listing discovery or amazon_product for one specific ASIN/product page."
       },
       "query": {
         "type": "string",
-        "description": "Search text. For amazon this is the Amazon product/listing query (maps to 'k'); for most others it maps to 'q'. Good for product names, shopping phrases, bestseller/category searches, and buyer-intent queries like 'best weather station under 300'."
+        "description": "Amazon product/listing query. Good for product names, shopping phrases, bestseller/category searches, and buyer-intent requests like 'best weather station under 300'."
       },
       "asin": {
         "type": "string",
@@ -29,7 +30,7 @@
       },
       "language": {
         "type": "string",
-        "description": "Locale for engines that support it (default: en_US)."
+        "description": "Amazon locale (default: en_US)."
       },
       "device": {
         "type": "string",
@@ -57,11 +58,11 @@
       },
       "min_price": {
         "type": "number",
-        "description": "Optional generic minimum price passthrough for engines that support it directly. For Amazon, keep the price range in the query and use rh when known."
+        "description": "Optional Amazon minimum-price passthrough. Keep the price range in the query and use rh when a precise Amazon filter is known."
       },
       "max_price": {
         "type": "number",
-        "description": "Optional generic maximum price passthrough for engines that support it directly. For Amazon, keep the price range in the query and use rh when known."
+        "description": "Optional Amazon maximum-price passthrough. Keep the price range in the query and use rh when a precise Amazon filter is known."
       },
       "delivery_zip": {
         "type": "string",
@@ -89,7 +90,7 @@
       },
       "extra_params": {
         "type": "object",
-        "description": "Additional engine-specific query parameters passed through to SerpApi."
+        "description": "Additional Amazon engine parameters passed through to SerpApi."
       },
       "include_raw": {
         "type": "boolean",

@@ -13,6 +13,64 @@ sys.path.insert(0, str(ROOT / "lib"))
 
 
 class TestToolProfiles(unittest.TestCase):
+    def test_example_profiles_explicitly_gate_serpapi_tools(self):
+        """Keep new SerpApi verticals out of intentionally narrow profiles."""
+        serpapi_tools = set()
+        skills_dir = ROOT / "skills"
+        for manifest_path in skills_dir.glob("*.tool.json"):
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            script_name = manifest.get("script")
+            if not script_name:
+                continue
+            script_path = skills_dir / script_name
+            if (
+                script_path.is_file()
+                and "request_serpapi(" in script_path.read_text(encoding="utf-8")
+            ):
+                serpapi_tools.add(manifest["name"])
+
+        self.assertIn("serpapi_tripadvisor", serpapi_tools)
+        self.assertIn("serpapi_search_index", serpapi_tools)
+
+        # Most examples remove the whole SerpApi family. The research pipeline
+        # retains only Search Index source discovery; Amazon remains shopping-only.
+        allowed_by_profile = {
+            "creative_media_lab.json": set(),
+            "docs_kb_curator.json": set(),
+            "home_routines.json": set(),
+            "local_daily_driver.json": set(),
+            "local_home_voice.json": set(),
+            "local_minimal_assistant.json": set(),
+            "local_research_lite.json": set(),
+            "local_terminal_ops.json": set(),
+            "memory_and_artifacts.json": set(),
+            "offline.json": set(),
+            "offline_lan_first.json": set(),
+            "research_pipeline.json": {
+                "serpapi_search_index",
+            },
+            "workstation_ops.json": set(),
+        }
+        examples_dir = skills_dir / "profiles" / "examples"
+
+        for profile_name, allowed in allowed_by_profile.items():
+            profile = json.loads(
+                (examples_dir / profile_name).read_text(encoding="utf-8")
+            )
+            overrides = profile["overrides"]
+            for tool_name in serpapi_tools - allowed:
+                self.assertIs(
+                    overrides.get(tool_name),
+                    False,
+                    f"{profile_name} must explicitly disable {tool_name}",
+                )
+            for tool_name in allowed:
+                self.assertIsNot(
+                    overrides.get(tool_name),
+                    False,
+                    f"{profile_name} is intended to retain {tool_name}",
+                )
+
     def test_effective_enabled_missing_uses_base(self):
         from tool_profiles import effective_enabled
 

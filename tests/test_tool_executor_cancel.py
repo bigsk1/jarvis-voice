@@ -105,6 +105,10 @@ class ToolExecutorCancelTests(unittest.TestCase):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("serpapi_tripadvisor"), 160)
 
+    def test_search_index_timeout_allows_deep_recall_request(self):
+        executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
+        self.assertEqual(executor._get_subprocess_timeout("serpapi_search_index"), 120)
+
     def test_final_serpapi_failure_adds_matching_incident_context(self):
         diagnosis = {
             "speech": "SerpApi is reporting a matching Home Depot incident.",

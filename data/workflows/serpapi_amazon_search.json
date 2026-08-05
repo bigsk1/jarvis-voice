@@ -1,0 +1,92 @@
+{
+  "id": "serpapi_amazon_search",
+  "name": "SerpApi Amazon Search Workflow",
+  "description": "Search Amazon through SerpApi, store the normalized listings in Stash, and create a Canvas comparison report.",
+  "enabled": true,
+  "version": "2.0",
+  "disable_server_side_tools": true,
+
+  "triggers": {
+    "explicit": ["/serpapi_amazon", "/amazon_search", "/serpapi"],
+    "patterns": [],
+    "keywords": []
+  },
+
+  "variables": {
+    "task": {"from": "query", "extract": "main_subject"},
+    "engine": "amazon"
+  },
+
+  "steps": [
+    {
+      "step": 1,
+      "tool": "serpapi_amazon_search",
+      "params": {
+        "engine": "${engine}",
+        "query": "${task}",
+        "num_results": 10
+      },
+      "output_var": "serp_result",
+      "extract": {
+        "results_count": "results_count",
+        "query_used": "query_effective",
+        "query_original": "query"
+      },
+      "required": true,
+      "description": "Search Amazon listings through SerpApi"
+    },
+    {
+      "step": 2,
+      "tool": "stash",
+      "action": "save",
+      "params": {
+        "kind": "text",
+        "name": "serpapi_amazon_${filename_timestamp}.txt",
+        "tags": ["workflow", "serpapi", "amazon", "shopping"],
+        "text": "SerpApi Amazon Search Export\n\nOriginal Query: ${query_original}\nEffective Query: ${query_used}\nEngine: ${engine}\nResults Count: ${results_count}\nTop URL: ${serp_result.top_url}\n\nTop 5 Rows:\n${serp_result.top_results}\n"
+      },
+      "output_var": "stash_result",
+      "extract": {
+        "stash_ref": "ref"
+      },
+      "required": true,
+      "description": "Save normalized Amazon results to Stash"
+    },
+    {
+      "step": 3,
+      "tool": "canvas",
+      "action": "create",
+      "params": {
+        "title": "Workflows/SerpApi Amazon/${query_used}",
+        "tags": ["workflow", "serpapi", "amazon", "shopping"],
+        "source_query": "${task}"
+      },
+      "llm_variable_max_chars": 8000,
+      "llm_prompt": "Create a concise Markdown Amazon shopping report from only the SerpApi data below.\n\nINPUT DATA:\n- User task: ${task}\n- Original query: ${query_original}\n- Effective Amazon query: ${query_used}\n- Results count: ${results_count}\n- Stash reference: ${stash_ref}\n- Top URL: ${serp_result.top_url}\n- Top 5 rows: ${serp_result.top_results}\n\nIMPORTANT:\n- Use only facts and exact URLs from Top 5 rows and Top URL.\n- Never shorten URLs and never output placeholder links like `https://www.amazon.com/...`.\n- If a row has no URL, skip that row.\n- Treat missing price, rating, Prime, delivery, or stock fields as unknown.\n- Use the actual values above; do not output placeholder syntax like ${var}.\n- Output raw Markdown only with no code fence or HTML wrapper.\n\nUse this exact structure:\n# Amazon Search: ${query_used}\n\nOne-line shopping summary.\n\n## Top Amazon Options\n- If results_count >= 5, list exactly 5 items.\n- If results_count < 5, list all available items and say why fewer exist.\n- Each item must include title, one short reason, and a Markdown link using the exact row URL.\n\n## Data\nInclude original query, effective query, and count.\n\n## References\nInclude the Stash reference and exact top URL.",
+      "llm_output_validation": {
+        "param": "content",
+        "min_length": 250,
+        "reject_patterns": [
+          "https://...",
+          "```",
+          "<!doctype",
+          "<html",
+          "<body",
+          "<pre",
+          "${"
+        ],
+        "required_patterns": [
+          "# Amazon Search:",
+          "## Top Amazon Options",
+          "## Data",
+          "## References"
+        ]
+      },
+      "required": true,
+      "description": "Create a Canvas Amazon shopping report"
+    }
+  ],
+
+  "success_speech": "SerpApi Amazon search complete. I saved the listings to Stash and created a Canvas report with the top options.",
+  "abort_speech": "I couldn't complete the SerpApi Amazon search workflow."
+}

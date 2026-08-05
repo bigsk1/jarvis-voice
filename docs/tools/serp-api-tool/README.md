@@ -1,182 +1,190 @@
-# SerpApi Search Tool
+# SerpApi Tools
 
-Use the SerpApi tools to run web, marketplace, maps, and travel lookups through SerpApi from Jarvis.
+Jarvis provides a family of focused SerpApi tools for shopping, indexed-web
+source discovery, local places, travel, and YouTube. Each tool has its own
+schema and normalized result shape so Tool RAG can select a narrow capability
+instead of routing every request through one ambiguous search tool.
 
-The base tool is generic by design, and Jarvis now also includes thin SerpApi wrappers for common domains:
+`serpapi_amazon_search` is the renamed Amazon tool. Despite its former generic
+name, its implemented product experience was Amazon-focused. It now accepts
+only the `amazon` and `amazon_product` engines. Use `serpapi_search_index` to
+discover general public webpages and source URLs.
 
-- `serpapi_search` for generic engine-based search
-- `serpapi_ebay_search` and `serpapi_ebay_product` for eBay discovery and details
-- `serpapi_home_depot` for The Home Depot product searches
-- `serpapi_maps_search` for Google Maps place and local business lookups
-- `serpapi_hotel_search` for Google Hotels searches
-- `serpapi_tripadvisor` for Tripadvisor search, place details, nearby suggestions, and reviews
-- `serpapi_youtube` for YouTube video detail lookup with transcript fallback
-- `serpapi_youtube_search` for YouTube video discovery by keyword
-- `serpapi_yelp_search` for Yelp place discovery with attrs and reviews
+## Tool catalog
 
-Future airfare searches use the separate `flight_search` tool. It runs SerpApi
-Google Flights when `SERP_API_KEY` is configured and otherwise uses its
-keyless fallback; see [the flight search guide](../flight-search-tool/README.md).
+| Tool | Provider engine(s) | Best use |
+|---|---|---|
+| `serpapi_amazon_search` | `amazon`, `amazon_product` | Amazon listing discovery, ASIN details, prices, ratings, Prime, delivery, stock, and product comparison |
+| `serpapi_search_index` | `search_index` | Ranked indexed-web sources for grounding, datasets, and workflows; fetch returned URLs separately |
+| `serpapi_ebay_search` | `ebay` | eBay listing discovery with price, condition, seller, shipping, images, and product IDs |
+| `serpapi_ebay_product` | `ebay_product` | One eBay listing's focused details by numeric product ID |
+| `serpapi_home_depot` | `home_depot`, `home_depot_product` | Home Depot products, price/rating comparison, store or ZIP availability, and focused details |
+| `serpapi_maps_search` | `google_maps` | Places and local businesses with addresses, ratings, hours, phones, and websites |
+| `serpapi_hotel_search` | `google_hotels` | Future lodging with stay dates, guests, prices, ratings, amenities, and property links |
+| `serpapi_tripadvisor` | `tripadvisor`, `tripadvisor_place`, `tripadvisor_reviews` | Destination, hotel, restaurant, attraction, and forum discovery plus place details, nearby suggestions, and reviews |
+| `serpapi_yelp_search` | `yelp`, `yelp_reviews` | Restaurants and local businesses with Yelp ratings, filters, price tiers, and optional review excerpts |
+| `serpapi_youtube_search` | `youtube` | YouTube video discovery by keyword |
+| `serpapi_youtube` | `youtube_video`, `youtube_video_transcript` | Video details and optional transcript fallback by URL or video ID |
+| `flight_search` | `google_flights` or keyless `fast-flights` | Future airfare and itinerary options; see the [flight search guide](../flight-search-tool/README.md) |
 
-## Files
+There is no catch-all SerpApi live-web tool in this family. Search Index is for
+source discovery; MCP Fetch or `crawl_url` is the normal follow-up when Jarvis
+needs the contents of a returned page.
 
-- Shared client: `lib/serpapi_client.py`
-- Generic tool: `skills/serpapi_search.py`
-- eBay wrappers: `skills/serpapi_ebay_search.py`, `skills/serpapi_ebay_product.py`
-- Home Depot wrapper: `skills/serpapi_home_depot.py`
-- Maps wrapper: `skills/serpapi_maps_search.py`
-- Hotels wrapper: `skills/serpapi_hotel_search.py`
-- Tripadvisor wrapper: `skills/serpapi_tripadvisor.py`
-- YouTube wrapper: `skills/serpapi_youtube.py`
-- YouTube search wrapper: `skills/serpapi_youtube_search.py`
-- Yelp wrapper: `skills/serpapi_yelp_search.py`
-- Tool definitions:
-  - `skills/serpapi_search.tool.json`
-  - `skills/serpapi_ebay_search.tool.json`
-  - `skills/serpapi_ebay_product.tool.json`
-  - `skills/serpapi_home_depot.tool.json`
-  - `skills/serpapi_maps_search.tool.json`
-  - `skills/serpapi_hotel_search.tool.json`
-  - `skills/serpapi_tripadvisor.tool.json`
-  - `skills/serpapi_youtube.tool.json`
-  - `skills/serpapi_youtube_search.tool.json`
-  - `skills/serpapi_yelp_search.tool.json`
+## Shared architecture
 
-## Setup
+The family uses these common layers:
 
-1. Add your key in env:
-   - `SERP_API_KEY` in `config/cloud.env` and/or `config/local.env`
-   - Optional: `JARVIS_DEFAULT_POSTAL_CODE` for localized Amazon delivery and Home Depot US availability
-2. Sync tools:
-   - `./bin/sync-tools.py cloud`
-   - `./bin/sync-tools.py local` (if you use local mode)
+- `skills/*.tool.json` declares Tool RAG descriptions, schemas, availability,
+  permissions, and the per-tool proxy policy.
+- `skills/*.py` validates inputs, calls the appropriate SerpApi engine, and
+  returns compact normalized JSON rather than raw provider payloads by default.
+- `lib/serpapi_client.py` owns the HTTP request path, proxy integration,
+  normalization helpers, and incident-aware provider diagnostics.
+- `orchestrator/executor.py` owns subprocess timeouts and attaches bounded
+  SerpApi status-page context after qualifying final failures.
+- `jarvis-web/server/services/followup_extractor.py` preserves bounded result
+  identity for later turns.
+- `jarvis-web/client/js/structured-results.js` renders focused product, place,
+  hotel, flight, Tripadvisor, Search Index, eBay, Yelp, Maps, and YouTube cards.
 
-## Proxy policy
+Raw provider JSON is available only through each tool's `include_raw` debug
+option. Normal conversational and workflow calls should leave it off.
 
-Every shipped SerpApi-backed tool manifest, including `flight_search`,
-explicitly defaults to `"proxy_policy": "off"`. Jarvis therefore suppresses
-`LOCAL_PROXY`, `LOCAL_PROXY2`, and conventional proxy variables for normal tool
-execution even when those values are configured for other tools in the active
-mode.
+## Setup and mode-aware availability
 
-The implementations all keep using the shared proxy-aware SerpApi client. To
-opt one tool into the configured proxy chain later, change only its manifest:
-`inherit` uses the helper's normal proxy-first behavior, `prefer` explicitly
-uses proxy-first with direct fallback, and `require` uses the proxy chain and
-fails closed. See [HTTP proxy configuration](../../NETWORK_PROXY.md).
+Add the same credential independently to each mode that should expose the
+tools:
 
-## What it returns
+```dotenv
+SERP_API_KEY=your-key
+```
 
-Standard tool contract:
+Use `config/cloud.env` for cloud mode and `config/local.env` for local mode.
+`JARVIS_DEFAULT_POSTAL_CODE` is optional and localizes Amazon delivery and Home
+Depot availability where supported.
+
+The eleven `serpapi_*` manifests declare:
 
 ```json
-{
-  "ok": true,
-  "speech": "Found 5 result(s) on 'amazon'...",
-  "data": {
-    "engine": "amazon",
-    "query": "wireless mouse",
-    "results_count": 5,
-    "results": [
-      {
-        "title": "...",
-        "url": "...",
-        "asin": "...",
-        "price": "...",
-        "rating": 4.6,
-        "reviews": 1234,
-        "prime_eligible": true,
-        "delivery": ["..."],
-        "stock": "In Stock"
-      }
-    ]
-  }
+"availability": {
+  "all_of_env": ["SERP_API_KEY"],
+  "setup_hint": "Set SERP_API_KEY in the active mode env file."
 }
 ```
 
-### Incident-aware failures
+When the resolved mode has no nonblank key:
 
-After a final transient SerpApi failure or tool-process timeout, Jarvis makes one
-short, bounded request to SerpApi's public unresolved-incidents JSON endpoint.
-If an active incident specifically matches the engine that failed, the error
-response includes `data.serpapi_incident`, `failure_reason=active_provider_incident`,
-the provider's latest update, its status-page URL, and a recommendation to retry
-later. Unrelated incidents do not replace the original tool error, validation
-errors do not trigger the lookup, and a failed status lookup is ignored.
+- the tools are absent from the callable registry;
+- Tool RAG sync excludes them and disables stale enabled database rows;
+- a profile cannot force-enable them past the hard credential requirement;
+- the Web Tools inventory may still show them disabled with a `needs config`
+  badge; and
+- verbose registry or sync output lists only the missing requirement name,
+  never the secret value.
 
-## Parameters
+`flight_search` is the exception. It uses SerpApi Google Flights when the key
+exists and a keyless `fast-flights` fallback otherwise, so its manifest is not
+hard-gated by `SERP_API_KEY`.
 
-| Parameter | Type | Required | Notes |
-|---|---|---:|---|
-| `engine` | string | yes | Examples: `amazon`, `amazon_product`, `google` |
-| `query` | string | no* | Required for most engines |
-| `asin` | string | no* | Best for `engine=amazon_product` |
-| `amazon_domain` | string | no | Default `amazon.com` |
-| `language` | string | no | Default `en_US` |
-| `device` | string | no | `desktop`, `mobile`, `tablet` |
-| `page` | integer | no | Default `1` |
-| `num_results` | integer | no | Clamped to `1..10`, default `5` |
-| `delivery_zip` | string | no | Amazon delivery ZIP/postal code; defaults to `JARVIS_DEFAULT_POSTAL_CODE` |
-| `shipping_location` | string | no | Optional Amazon shipping country code, such as `US` |
-| `include_product_details` | boolean | no | For Amazon search, merge localized product details into the first candidates |
-| `product_details_limit` | integer | no | Product-detail enrichments to request (`1..5`, default `5`) |
-| `no_cache` | boolean | no | Force fresh fetch |
-| `extra_params` | object | no | Pass-through engine params |
-| `include_raw` | boolean | no | Include full payload in `data.raw` |
+After adding the key or changing manifests, sync each affected mode from the
+operator environment used for Tool RAG embeddings:
 
-\*Validation rules:
-- `amazon_product`: provide `asin` (preferred) or `query`
-- other engines: provide `query` or `asin`
+```bash
+cd ~/jarvis-voice
+source "$HOME/jarvis-venv/bin/activate"
+./bin/sync-tools.py cloud
+./bin/sync-tools.py local
+```
+
+Restart or refresh the relevant Jarvis service after changing mode env files.
+
+## Tool profiles
+
+Profile overrides are a separate policy layer from credential availability.
+The tracked examples under `skills/profiles/examples/` explicitly disable
+SerpApi tools that do not fit the profile's purpose. In particular:
+
+- local daily/minimal/research-lite profiles disable
+  `serpapi_amazon_search`; Amazon shopping is not their general search route;
+- offline, home, docs, creative, memory, and ops profiles disable the complete
+  SerpApi family plus `flight_search` where public-network access is unwanted;
+  and
+- `research_pipeline` retains `serpapi_search_index` for source discovery but
+  disables Amazon and the vertical tools.
+
+Example profiles are templates. An already copied ignored runtime profile does
+not automatically inherit later example changes, so merge or recopy it when
+the profile policy changes.
+
+## Proxy policy
+
+Every SerpApi-backed manifest, including `flight_search`, explicitly defaults
+to:
+
+```json
+"proxy_policy": "off"
+```
+
+Normal calls therefore run directly even if `LOCAL_PROXY`, `LOCAL_PROXY2`, or
+conventional proxy variables are configured for other tools. The shared client
+remains proxy-capable. A deliberate manifest change can opt one tool into:
+
+- `inherit` — follow the configured shared proxy behavior;
+- `prefer` — try the proxy chain and allow direct fallback; or
+- `require` — require the proxy chain and fail closed.
+
+See [HTTP proxy configuration](../../NETWORK_PROXY.md).
+
+## Requests, cache, and quota
+
+Most calls use one SerpApi search. Options that enrich results can consume
+additional searches:
+
+| Tool or option | SerpApi searches |
+|---|---:|
+| eBay search/product, Maps, Hotels, Search Index, YouTube search | 1 |
+| Amazon listing or product call | 1 base call |
+| Amazon empty-result query normalization | Up to 2 bounded retry calls |
+| Amazon `include_product_details=true` | Up to `product_details_limit` additional product calls, maximum 5 |
+| Home Depot `include_product_details=true` | 1 additional product call |
+| Tripadvisor search with details and reviews | Up to 3 total calls |
+| Tripadvisor details-only or reviews-only action | 1 |
+| Yelp `include_reviews=true` | 2 total calls |
+| YouTube `include_transcript=true` | 2 total calls |
+| Flight search with SerpApi | 1 |
+| Flight search keyless fallback | 0 |
+
+Cached responses are allowed by default for the tools that expose `no_cache`.
+Set `no_cache=true` only when the user explicitly needs a fresh provider scrape.
+Home Depot intentionally stays on the cached path. Enrichment flags should be
+enabled only when the extra detail is needed.
 
 ## Common usage
 
-### Amazon listing search
+### Amazon listing discovery
 
 ```json
 {
   "engine": "amazon",
-  "query": "gift ideas for 25-year-old tech enthusiast $50-$150 -Apple",
-  "num_results": 10
+  "query": "65W USB-C charger under $40",
+  "num_results": 5
 }
 ```
 
-### Recommended Amazon pattern
+For a bounded value comparison with Prime, delivery, and stock signals:
 
-For shopping requests, the best flow is usually:
+```json
+{
+  "engine": "amazon",
+  "query": "65W USB-C charger under $40",
+  "num_results": 5,
+  "include_product_details": true,
+  "product_details_limit": 5
+}
+```
 
-1. Use `engine=amazon` to gather multiple candidate listings.
-2. Compare price, rating, reviews, and fit for the request.
-3. If the user wants one best item or a deeper look at a chosen candidate, follow with `engine=amazon_product` using the ASIN.
-
-This keeps broad comparison and focused product inspection separate:
-- `amazon` is better for candidate discovery and ranking
-- `amazon_product` is better for one final item with richer details, direct link, and thumbnail/image
-
-For a bounded comparison that needs reliable Prime, delivery, and stock columns,
-set `include_product_details=true`. The tool makes up to
-`product_details_limit` localized product calls and deterministically merges
-their fields back into the original search rows by ASIN. This avoids handing an
-LLM separate discovery/detail payloads and asking it to reconcile them.
-
-Both Amazon engines default `delivery_zip` from `JARVIS_DEFAULT_POSTAL_CODE`.
-Normalized results preserve SerpApi's price, rating, reviews, Prime, delivery,
-shipping, stock, availability, badge, recent-purchase, and coupon signals when
-present. `prime_eligible` is true when SerpApi explicitly marks Prime or its
-delivery text explicitly offers a Prime-member delivery option. Missing fields
-remain unknown.
-
-Jarvis now also preserves a compact shortlist of prior Amazon candidates in follow-up context, so later turns like:
-- `tell me more about the Aura frame`
-- `save that one to canvas`
-- `show the dog bed again`
-
-can resolve to the right prior ASIN, link, and thumbnail instead of forcing a
-fresh guess. When a workflow combines Amazon discovery and product-detail
-lookups, the follow-up extractor joins those runs by ASIN and also keeps bounded
-price, rating/review, Prime, delivery, shipping, stock/availability, badge,
-recent-purchase, and coupon signals.
-
-### Amazon product lookup by ASIN
+### Amazon product details
 
 ```json
 {
@@ -185,17 +193,45 @@ recent-purchase, and coupon signals.
 }
 ```
 
-### Generic search engine example
+The recommended flow is listing discovery first, then a focused ASIN lookup.
+The tool preserves discovery URLs and merges detail rows by ASIN. Price,
+rating, reviews, Prime, delivery, shipping, stock, availability, badges,
+recent-purchase signals, and coupons remain unknown when SerpApi omits them.
+
+### Search Index source discovery
 
 ```json
 {
-  "engine": "google",
-  "query": "best usb c hub 2026",
+  "query": "PostgreSQL durable job queues",
+  "mode": "standard",
+  "num_results": 10
+}
+```
+
+Use `mode=deep` when a workflow needs broader recall. Search Index returns
+ranked titles, snippets, dates, languages, images, sitelinks, related queries,
+pagination metadata, and exact URLs. It does not fetch page bodies. Pass a
+chosen URL to MCP Fetch, `crawl_url`, a summarizer, Stash, or Canvas.
+
+### eBay discovery and detail
+
+```json
+{
+  "query": "ThinkPad X1 Carbon Gen 11",
+  "buying_format": "BIN",
   "num_results": 5
 }
 ```
 
-### Home Depot product search
+Reuse a returned numeric `product_id` with `serpapi_ebay_product`:
+
+```json
+{
+  "product_id": "123456789012"
+}
+```
+
+### Home Depot
 
 ```json
 {
@@ -206,39 +242,23 @@ recent-purchase, and coupon signals.
 }
 ```
 
-Use this when you want Home Depot product options, store/ZIP-specific availability, or price/rating comparisons. Jarvis preserves a compact shortlist of prior Home Depot candidates in follow-up context so turns like `show me the Milwaukee one` or `save that drill to canvas` can reuse the product ID, link, thumbnail, and price.
+Pass `product_id` without a query for a focused product lookup. Set
+`include_product_details=true` on a search only when full descriptions,
+specifications, or larger images are needed.
 
-For US searches, `delivery_zip` defaults to `JARVIS_DEFAULT_POSTAL_CODE` when omitted. Keep that postal code separate from `JARVIS_DEFAULT_LOCATION` so tools do not need to parse a city/state string.
-
-Home Depot search results include `thumbnail`, `image_url`, and top-level `top_image_url` when SerpApi returns product images. Keep normal searches lightweight: `include_product_details` defaults to false because it makes a second `home_depot_product` request. Use `include_product_details=true` only when the user asks for full product-page details, larger images, bullets, specifications, or similar focused detail.
-
-The `serpapi_home_depot` tool always uses SerpApi's cached responses (`no_cache=false`) and connects directly under the shared default `proxy_policy=off`, which avoids slow proxy timeouts on this engine. Its request path remains proxy-capable if that manifest policy is deliberately changed later. Product `url` / `top_url` values rewrite `apionline.homedepot.com` (SerpApi/API host) to `www.homedepot.com` or `www.homedepot.ca` so links open in a normal browser instead of Akamai "Access Denied".
-
-### Home Depot product details by product ID
-
-```json
-{
-  "product_id": "341725053"
-}
-```
-
-Use this when you already have a Home Depot product ID and want the focused product page details, including `image_url`, description, highlights, bullets, specifications, rating, reviews, and price.
-
-### Maps place search
+### Maps and local places
 
 ```json
 {
   "query": "coffee shops in Austin",
-  "hl": "en",
   "num_results": 5
 }
 ```
 
-### Hotel search
+Use Maps when address, phone, website, or hours matter. Use Yelp when Yelp
+ratings, price tiers, attributes, or review excerpts are the primary signal.
 
-Use `serpapi_hotel_search` for future stays with date-specific Google Hotels
-prices. It requires `SERP_API_KEY`, makes one SerpApi search, and connects
-directly under the shared `proxy_policy=off` default.
+### Hotels
 
 ```json
 {
@@ -252,62 +272,43 @@ directly under the shared `proxy_policy=off` default.
 }
 ```
 
-The routing contract expects explicit `YYYY-MM-DD` dates. Jarvis resolves
-phrases such as "next Tuesday" from the runtime-injected current date before it
-calls the tool. For "hotels near me," it may use the injected
-`JARVIS_DEFAULT_LOCATION`; a location named by the user always wins.
+Dates must be `YYYY-MM-DD`. Jarvis resolves relative dates before calling the
+tool. The default is lowest complete-stay price; results are reference quotes
+and the tool never books or pays.
 
-The default `sort_by` is `price`. The tool asks Google Hotels for lowest-price
-results, normalizes the whole returned property page, locally sorts by the
-lowest listed total for the complete stay, and only then applies `num_results`.
-This avoids treating Google's relevance order—or small inconsistencies in the
-provider's price order—as a verified cheapest-first list. Other supported sorts
-are `rating`, `reviews`, and `relevance`.
+### Tripadvisor
 
-Each response identifies the stay dates, number of nights, guests, currency,
-returned/property counts, and SerpApi search count. Hotel rows preserve an
-opaque `property_id`, property or booking URL when available, nightly and total
-prices, before-tax prices, rating/review counts, star class, amenities,
-cancellation signal, thumbnail, and compact nearby-place/booking options.
-Properties that SerpApi reports only under `non_matching_properties` are not
-presented as matches for active filters.
-
-If child ages are supplied, their count must match `children` and every age must
-be 1 through 17. Ages remain optional because SerpApi also accepts a children
-count without them. Date order, past dates, guest counts, currency, rating,
-class, price range, device, and integer filter IDs are validated before any
-billable request.
-
-Prices are reference quotes and can change. The tool never reserves a room or
-submits payment; use the returned property/provider link to review restrictions
-and book manually. `no_cache` defaults to false so identical searches can use
-SerpApi's cache. Set it only for an explicit fresh refresh. `include_raw` is a
-debug option and is off by default.
-
-### YouTube video details with transcript fallback
+Discovery:
 
 ```json
 {
-  "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-  "include_transcript": true,
-  "language_code": "en"
+  "action": "search",
+  "query": "things to do in Rome",
+  "category": "things_to_do",
+  "num_results": 8
 }
 ```
 
-Use this when `yt-dlp`-based tools fail because of cookies, auth, or transcript availability issues but you still want structured video details and any transcript SerpApi can expose.
+Focused follow-ups reuse the returned `place_id`:
 
-### YouTube search
+```json
+{"action": "details", "place_id": "187791"}
+```
 
 ```json
 {
-  "search_query": "pepper fermenting hot sauce",
-  "num_results": 5
+  "action": "reviews",
+  "place_id": "187791",
+  "review_sort_by": "most_recent",
+  "review_limit": 10
 }
 ```
 
-Use this when you want to find candidate YouTube videos first, then pass the chosen URL into `serpapi_youtube`, `youtube_transcript`, or `youtube_video`.
+Search can set `include_details` and `include_reviews`, but each enrichment is
+an additional paid request. Vacation Rentals are intentionally unsupported
+because Tripadvisor discontinued that API surface.
 
-### Yelp search with local ranking, filters, and optional reviews
+### Yelp
 
 ```json
 {
@@ -319,69 +320,98 @@ Use this when you want to find candidate YouTube videos first, then pass the cho
 }
 ```
 
-Use this when you want restaurants, coffee shops, or other Yelp places near a
-location, especially when Yelp ratings, review counts, price tiers, or attrs
-like `DogsAllowed` and `GoodForKids` matter. A normal lookup uses one SerpApi
-request. `include_reviews` makes one additional paid request for the supplied
-`place_id` or the top returned result, so enable it only when review excerpts
-are actually needed.
+Yelp does not consistently return full addresses or hours; use Maps when those
+fields are required.
 
-The default preserves Yelp's recommended order. `rating` and `review_count`
-sort the complete returned page locally; this avoids a current Yelp response
-variant where explicitly sorted requests omit names and ratings. The tool
-returns Yelp URLs and place IDs plus ratings, review counts, price tiers,
-categories, neighborhoods, open-state labels, and snippets when available.
-Yelp search results do not consistently include street addresses or full hours,
-so use `serpapi_maps_search` or a generic web search when those exact details are
-required.
+### YouTube
 
-## How to prompt Jarvis
+Discover videos:
 
-Natural prompt:
+```json
+{
+  "search_query": "pepper fermenting hot sauce",
+  "num_results": 5
+}
+```
 
-`Hey Jarvis, find 5 Amazon gift ideas for a 25-year-old tech enthusiast, budget $50-$150, avoid Apple accessories, include links and why each is good.`
+Then pass a selected URL to `serpapi_youtube`, `youtube_transcript`, or
+`youtube_video`. SerpApi detail/transcript fallback is useful when yt-dlp is
+blocked by cookies, authentication, or transcript availability.
 
-Tool-forced follow-up:
+## Amazon workflow
 
-`Use serpapi_search with the same query and return 5 options with links.`
+The shared `data/workflows/serpapi_amazon_search.json` recipe runs
+`serpapi_amazon_search`, saves a normalized text export to Stash, and creates a
+Canvas comparison report. Supported explicit commands are:
 
-Focused follow-up:
+- `/serpapi_amazon <query>`
+- `/amazon_search <query>`
+- `/serpapi <query>` for compatibility
 
-`Take the best ASIN from those options, use serpapi_search with engine=amazon_product, and give me the direct product details and link.`
+The workflow helper model receives only the normalized Amazon rows and has
+server-side tools disabled, so it cannot silently replace the deterministic
+source step with another search provider.
 
-## Known behavior and troubleshooting
+## Follow-up context and Web UI
 
-### "It used Brave MCP instead"
+Jarvis keeps bounded identifiers from recent SerpApi results so follow-ups can
+reuse the correct item or place instead of guessing:
 
-Tool choice is a routing decision. If you need this tool specifically, ask explicitly:
+- Amazon ASINs, links, images, prices, ratings, Prime, delivery, and stock;
+- eBay and Home Depot product IDs;
+- Maps, Yelp, and Tripadvisor place IDs;
+- Search Index source URLs and pagination metadata;
+- hotel property IDs and stay context; and
+- YouTube video IDs and URLs.
 
-`Use serpapi_search for this query.`
+The Web UI renders structured cards for result types that have dedicated
+adapters. Links and image URLs remain available to later Stash and Canvas
+actions.
 
-### "It called tools too many times"
+## Incident-aware failures
 
-This is usually orchestration loop behavior, not a SerpApi request failure.
+After a final transient SerpApi failure or a tool-process timeout, Jarvis makes
+one short, bounded request to SerpApi's public unresolved-incidents JSON
+endpoint. If an unresolved incident matches the engine that failed, the result
+includes `data.serpapi_incident`,
+`failure_reason=active_provider_incident`, the latest provider update, the
+status-page URL, and a recommendation to retry later.
 
-In recent testing, repeated calls were caused by follow-up canvas actions after a failed canvas update, while `serpapi_search` itself returned `ok: true`.
+Unrelated incidents do not replace the original error. Validation failures do
+not trigger the status lookup, and status lookup failure is ignored.
 
-### First-turn error
+## Troubleshooting
 
-If first call fails, check:
+If a tool is missing or marked `needs config`:
 
-- `SERP_API_KEY` exists and is not a placeholder
-- proxy/network path is healthy (`LOCAL_PROXY` / `LOCAL_PROXY2`: see [`docs/NETWORK_PROXY.md`](../../NETWORK_PROXY.md))
-- `logs/tools/tool-calls-YYYY-MM-DD.jsonl` for exact failing tool
+1. Confirm `SERP_API_KEY` is nonblank in the active mode's env file.
+2. Confirm the active tool profile does not set that tool to `false`.
+3. Re-run `./bin/sync-tools.py <mode>` from `~/jarvis-venv`.
+4. Restart or refresh the Jarvis service for that mode.
 
-### Results not matching budget
+For request failures, inspect:
 
-Amazon search quality depends on query wording. Add stronger constraints:
+```bash
+jq 'select((.tool_name // "") | startswith("serpapi_"))' \
+  logs/tools/tool-calls-$(date +%F).jsonl
+```
 
-- include budget in query (`$50-$150`)
-- exclude brand terms (`-Apple`)
-- use `extra_params` for engine-specific filters when needed
+For flights, include `or .tool_name == "flight_search"` in the filter. Provider
+status context appears only for qualifying transient failures and timeouts.
 
-## Notes
+## Adding another SerpApi tool
 
-- Links in `data.results[].url` can be rendered in WebUI and shown in CLI output.
-- For focused Amazon product lookups, Jarvis WebUI can now render a single product preview card with image, title, price, rating, reviews, ASIN, and direct link when the tool returns one clear item.
-- If a focused Amazon product result is later saved to Canvas, the thumbnail/image URL can now be embedded on the page instead of only appearing as plain text.
-- For cleaner gift recommendations, pair this tool with one synthesis step that filters out low-quality matches.
+An end-to-end addition should include:
+
+1. A focused `skills/<name>.py` wrapper using `request_serpapi`.
+2. A `.tool.json` manifest with an accurate Tool RAG description,
+   `SERP_API_KEY` availability, and explicit `proxy_policy`.
+3. Engine registration for incident matching in `lib/serpapi_client.py`.
+4. A subprocess timeout when the tool can make multiple sequential calls.
+5. Follow-up extraction and a structured-results adapter when results benefit
+   from persistent identity or visual cards.
+6. Explicit entries in narrow profile examples.
+7. Focused tests plus `tests/test_serpapi_proxy_policy.py` coverage.
+
+Keep each wrapper narrow. A provider's ability to accept many engines is not a
+reason to expose an ambiguously named catch-all tool to Tool RAG.

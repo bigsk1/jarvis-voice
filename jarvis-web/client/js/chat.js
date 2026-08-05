@@ -3736,7 +3736,10 @@ class ChatUI {
     if (!window.structuredResultsRenderer) {
     // Shopping/product preview card for focused SerpApi product lookups
     // and single clear product results where a link + image is helpful.
-    const serpapiPayload = toolResultsData.serpapi_search || data.serpapi_search;
+    const serpapiPayload = toolResultsData.serpapi_amazon_search
+      || data.serpapi_amazon_search
+      || toolResultsData.serpapi_search
+      || data.serpapi_search;
     const latestSerpapi = Array.isArray(serpapiPayload)
       ? serpapiPayload[serpapiPayload.length - 1]
       : serpapiPayload;

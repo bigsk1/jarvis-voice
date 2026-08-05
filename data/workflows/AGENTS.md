@@ -779,7 +779,7 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 | `jarvis_self_check.json` | `/jarvis_self_check` | Local system health, deduplicated alerts, full Canvas update |
 | `memory_scan.json` | `/memory_scan` | Mode-aware memory dedupe, stash report, labeled Canvas report |
 | `quick_note.json` | `/note <text>` | Simple text capture, remember, canvas |
-| `serpapi_search.json` | `/serpapi <query>` | SerpApi search, stash text export, Canvas summary |
+| `serpapi_amazon_search.json` | `/serpapi_amazon <query>` (also `/amazon_search`, `/serpapi`) | SerpApi Amazon listings, Stash export, Canvas comparison |
 | `server_health_check.json` | `/health [host]` | Default value, ssh_remote, get_time |
 | `url_ingest.json` | `/url_ingest <url>` | crawl_url, stash, text_summarizer, manage_intel (auto_ingest), search_memory |
 | `weather_watch.json` | `/weather_watch` | Environment-backed default location, condition branching, alerts, Canvas |

@@ -80,7 +80,7 @@ def test_status_context_truncation_is_explicit_not_empty_fallback():
 
 def test_build_prompt_keeps_long_context_with_truncation_marker():
     summarizer = status_llm.StatusSummarizer()
-    prompt = summarizer._build_prompt("y" * 600, "serpapi_search", "progress")
+    prompt = summarizer._build_prompt("y" * 600, "serpapi_amazon_search", "progress")
     assert "... [truncated]" in prompt
     assert "Working on task" not in prompt.split("Current state:")[1]
 

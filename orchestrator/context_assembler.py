@@ -863,6 +863,7 @@ class ContextAssembler:
         url_aliases = ("url", "link", "youtube_url", "watch_url", "product_link")
         is_hotel_search = str(data.get("engine") or "").strip().lower() == "google_hotels"
         is_yelp_search = str(data.get("engine") or "").strip().lower() == "yelp"
+        is_search_index = str(tool_name or "").strip().lower() == "serpapi_search_index"
         is_tripadvisor = str(tool_name or "").strip().lower() == "serpapi_tripadvisor"
         is_flight_search = str(tool_name or "").strip().lower() == "flight_search"
 
@@ -924,6 +925,22 @@ class ContextAssembler:
                             parent_key=key,
                             depth=0,
                             max_depth=1,
+                        )
+
+            if is_search_index:
+                for key in (
+                    "displayed_link",
+                    "snippet",
+                    "language",
+                    "sitelinks",
+                ):
+                    value = item.get(key)
+                    if value not in (None, "", [], {}):
+                        candidate[key] = self.build_preview_value(
+                            value,
+                            parent_key=key,
+                            depth=0,
+                            max_depth=2,
                         )
 
             if is_tripadvisor:
@@ -1128,6 +1145,54 @@ class ContextAssembler:
             if compact_reviews:
                 preview["reviews"] = compact_reviews
 
+        return preview
+
+    def build_search_index_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep Search Index request, pagination, and related-query context."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "engine",
+            "query",
+            "mode",
+            "safe",
+            "start",
+            "num_results",
+            "results_count",
+            "provider_results_count",
+            "total_results",
+            "top_url",
+            "search_id",
+            "has_more",
+            "next_start",
+            "serpapi_searches_used",
+            "source",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=1,
+                )
+
+        related_searches = data.get("related_searches")
+        if isinstance(related_searches, list) and related_searches:
+            preview["related_searches"] = self.build_preview_value(
+                related_searches[:8],
+                parent_key="related_searches",
+                max_depth=1,
+            )
+
+        pagination = data.get("pagination")
+        if isinstance(pagination, dict):
+            preview["pagination"] = self.build_preview_value(
+                pagination,
+                parent_key="pagination",
+                max_depth=1,
+            )
         return preview
 
     def build_flight_data_preview(self, data: Any) -> dict[str, Any]:
@@ -1357,6 +1422,8 @@ class ContextAssembler:
             normalized_tool_name = (tool_name or "").lower()
             if normalized_tool_name == "serpapi_yelp_search":
                 data_preview = self.build_yelp_data_preview(data)
+            elif normalized_tool_name == "serpapi_search_index":
+                data_preview = self.build_search_index_data_preview(data)
             elif normalized_tool_name == "serpapi_tripadvisor":
                 data_preview = self.build_tripadvisor_data_preview(data)
             elif normalized_tool_name == "flight_search":

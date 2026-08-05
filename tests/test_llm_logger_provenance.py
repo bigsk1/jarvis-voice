@@ -63,7 +63,7 @@ class LLMLoggerProvenanceTests(unittest.TestCase):
                 "learning_insights": {
                     "injected": True,
                     "insight_count": 2,
-                    "insight_descriptions": ["Prefer serpapi_search first."],
+                    "insight_descriptions": ["Prefer serpapi_amazon_search first."],
                 },
             }
             logger.log_llm_call(

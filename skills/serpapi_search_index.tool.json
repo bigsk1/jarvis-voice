@@ -1,0 +1,83 @@
+{
+  "enabled": true,
+  "name": "serpapi_search_index",
+  "description": "Discover public webpages and source URLs through SerpApi's structured Search Index for research grounding, reference discovery, reproducible datasets, and workflow pipelines. Use it to find relevant articles, documentation, guides, reports, websites, and other indexed pages about a topic, then pass returned URLs to MCP Fetch, crawl_url, summarizers, Canvas, Stash, or later workflow steps. Standard mode returns ranked indexed sources; deep mode expands recall by decomposing the query into parallel aspects. Results preserve exact URLs, titles, snippets, dates, languages, images, sitelinks, related queries, pagination, and a SerpApi search ID. Cached results are allowed by default.",
+  "complementary_tools": [
+    "mcp_fetch_fetch",
+    "crawl_url",
+    "workflow",
+    "canvas",
+    "stash"
+  ],
+  "script": "serpapi_search_index.py",
+  "proxy_policy": "off",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Web index query describing the pages or sources to find. Examples: PostgreSQL queue implementations, primary sources about Roman concrete, or residential heat-pump installation guides."
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "standard",
+          "deep"
+        ],
+        "description": "Search strategy. standard returns ranked indexed sources. deep expands recall through parallel query decomposition. Default standard."
+      },
+      "num_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20,
+        "description": "Number of normalized source candidates to return. Default 10; maximum 20."
+      },
+      "start": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Zero-based result offset for pagination. Use next_start from a prior result to request the next batch. Default 0."
+      },
+      "safe": {
+        "type": "string",
+        "enum": [
+          "active",
+          "off"
+        ],
+        "description": "Adult-content filtering. Default active."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "Bypass SerpApi's one-hour exact-parameter cache. Default false."
+      },
+      "json_restrictor": {
+        "type": "string",
+        "maxLength": 500,
+        "description": "Advanced SerpApi JSON Restrictor expression for smaller responses. Preserve organic_results title and link fields when the returned URLs will feed later tools."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Advanced non-reserved Search Index parameters passed through to SerpApi. Core query, pagination, safety, cache, mode, and output controls cannot be overridden."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "Include the full SerpApi response for debugging or dataset capture. Default false."
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "SERP_API_KEY"
+    ],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file."
+  }
+}

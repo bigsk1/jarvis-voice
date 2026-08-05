@@ -45,12 +45,14 @@ vm.createContext(sandbox);
 vm.runInContext(source, sandbox);
 const renderer = sandbox.window.structuredResultsRenderer;
 const expectedTools = [
+  'serpapi_amazon_search',
   'serpapi_search',
   'serpapi_home_depot',
   'serpapi_ebay_search',
   'serpapi_ebay_product',
   'serpapi_hotel_search',
   'serpapi_yelp_search',
+  'serpapi_search_index',
   'serpapi_tripadvisor',
   'flight_search',
   'serpapi_maps_search',
@@ -60,7 +62,7 @@ const expectedTools = [
 if (JSON.stringify(renderer.registeredTools()) !== JSON.stringify(expectedTools)) process.exit(2);
 
 const html = renderer.render({{
-  serpapi_search: {{
+  serpapi_amazon_search: {{
     engine: 'amazon',
     query: 'coffee grinder',
     results: [{{
@@ -147,6 +149,23 @@ const html = renderer.render({{
       categories: ['Pizza', 'Salad']
     }}]
   }},
+  serpapi_search_index: {{
+    query: 'PostgreSQL queue patterns',
+    mode: 'deep',
+    results_count: 1,
+    total_results: 314,
+    related_searches: ['SKIP LOCKED queue', 'durable job queue'],
+    results: [{{
+      title: 'PostgreSQL as a durable queue',
+      url: 'https://example.test/postgres-queue',
+      displayed_link: 'example.test/postgres-queue',
+      snippet: 'A practical guide to durable workers backed by PostgreSQL.',
+      date: 'Aug 1, 2026',
+      language: 'en',
+      image_url: 'https://images.example/postgres.jpg',
+      sitelinks: [{{title: 'Queue schema', url: 'https://example.test/schema'}}]
+    }}]
+  }},
   serpapi_tripadvisor: {{
     action: 'search',
     query: 'Rome',
@@ -229,6 +248,10 @@ for (const expected of [
   'Vintage Receiver', 'USD 299', 'Item EB-9',
   'Desert Hotel', '$120/night', '$240 total', 'Pet-friendly',
   'Society Pie', 'Open until 8:00 PM', 'Pizza · Salad',
+  'Search Index · Deep recall', 'PostgreSQL queue patterns',
+  'PostgreSQL as a durable queue', 'example.test/postgres-queue',
+  'A practical guide to durable workers', 'Aug 1, 2026', '1 related links',
+  '314 indexed matches', 'Related: SKIP LOCKED queue · durable job queue',
   'Colosseum', '155000 reviews', 'Rome, Italy', 'Ancient amphitheatre',
   'PDX → PHX', '$257', 'Alaska', 'AS 1349',
   'Departs 09/15/2099 · 7:03 AM', 'Open Google Flights',
@@ -243,7 +266,7 @@ for (const expected of [
   }}
 }}
 if (html.includes('flight_numbers')) process.exit(4);
-if ((html.match(/structured-results-preview/g) || []).length !== 11) process.exit(5);
+if ((html.match(/structured-results-preview/g) || []).length !== 12) process.exit(5);
 
 if (!renderer.register('custom_demo', payload => ({{
   kind: 'generic',

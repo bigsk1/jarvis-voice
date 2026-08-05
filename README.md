@@ -807,7 +807,8 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `supa_crawl_knowledge` - **Supa-Crawl-Chat corpus**: read-only search and site/page inspection over your self-hosted Supabase/pgvector index (configure `SUPA_CRAWL_CHAT_URL`; optional API auth via `SUPA_API_KEY` / `SUPA_API_KEY_STYLE`)
 - `brave_llm_context` - **Brave LLM Context API**: compact source snippets for LLM grounding (retrieval/context, not a final-answer generator)
 - `screenshot_url` - **Screenshot + vision**: Full-page capture with AI analysis (bypasses anti-bot)
-- `serpapi_search` - **SerpApi search**: Engine-based search (Amazon listings, Amazon product ASIN lookup, and other SerpApi engines)
+- `serpapi_amazon_search` - **SerpApi Amazon Search**: Amazon listing discovery and focused ASIN/product details with price, rating, Prime, delivery, stock, images, and links
+- `serpapi_search_index` - **SerpApi Search Index**: Structured indexed-web source discovery with exact URLs, snippets, standard/deep recall, and workflow-ready pagination for later fetch/crawl steps
 - `serpapi_ebay_search` - **SerpApi eBay**: Marketplace keyword or category search; compact listings with price, condition, listing URL, product ID hints for follow-up
 - `serpapi_ebay_product` - **SerpApi eBay product**: Single listing detail by item ID or product URL—price, condition, seller, media/images—for drill-down after search
 - `serpapi_home_depot` - **SerpApi Home Depot**: Product search with price, rating, product ID, store/ZIP availability, and follow-up candidate context
@@ -979,7 +980,7 @@ picker for the authoritative current surface.
 | `/memory_scan` | Run memory dedupe analysis, save reports to stash + canvas | memory_deduper |
 | `/note <text>` | Save note to memory + Canvas | get_time, remember, canvas |
 | `/research <topic>` | Multi-source research with Brave + crawling | brave_search, crawl_url, stash, remember, canvas |
-| `/serpapi <query>` | SerpApi workflow: search + stash export + canvas report | serpapi_search, stash, canvas |
+| `/serpapi_amazon <query>` (also `/amazon_search`, `/serpapi`) | SerpApi Amazon workflow: listings + Stash export + Canvas comparison | serpapi_amazon_search, stash, canvas |
 | `/status` | Daily status briefing (weather, crypto, stocks, alerts) | get_time, weather, crypto_price, crypto_chart, stock_price, list_alerts, list_reminders, system_monitor, canvas |
 | `/status_visual` | Status briefing + AI-generated dashboard image + same Canvas crypto charts as `/status` | get_time, weather, crypto_price, crypto_chart, stock_price, list_alerts, list_reminders, system_monitor, generate_image, canvas |
 | `/weather_watch`, `/garden_watch` | Weather watch for default location (`JARVIS_DEFAULT_LOCATION`); alerts for cold, wind, heat, or severe conditions | get_time, weather, create_alert, canvas |
@@ -1539,7 +1540,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - ✅ **Orchestrator: duplicate tools & follow-ups** — Repeated identical tool calls no longer end the turn immediately; bounded recovery with duplicate-guard context; better duplicate-prevention synthesis for transcript/stash-style answers; prior tool results carry `result_truncated` / char-count metadata; retries preserve tool cards and orchestrator state
 - ✅ **Stash & model overrides** — Conversation follow-ups keep real `stash` tool payloads (not upload-only); model prompt overrides strip `-latest` / `-cloud` suffixes for folder matching
 - ✅ **Ollama & install sync** — `OLLAMA_CONTEXT_WINDOW` applied broadly; explicit tool-contract guidance and retries; thinking disabled unless intended; `sync-memory-db` / `sync-evolution-db` repair paths for fresh targets and older DBs
-- ✅ **SerpAPI / Amazon / Canvas** — Stronger Amazon shopping in `serpapi_search`; Web UI product preview cards; shortlist context for “tell me more” follow-ups; Canvas supports embedded images and recovers inline `Image: https://…` product lines
+- ✅ **SerpAPI / Amazon / Canvas** — Stronger Amazon shopping in `serpapi_amazon_search`; Web UI product preview cards; shortlist context for “tell me more” follow-ups; Canvas supports embedded images and recovers inline `Image: https://…` product lines
 - ✅ **Embeddings & routing hygiene** — Embedding fallback surfaced in tool results/logs (`fallback_embeddings`); OpenAI tool schemas sanitized for cross-provider compatibility; shared cloud model catalog; Web UI defaults follow env-configured models; prompt enhancer + shopping guidance tightened
 - ✅ **Scheduled task notifications** — Email, alerts, and webhooks on success/failure (deduped per run); run history shows delivery outcomes; notification UX polish
 - ✅ **Alerts & Weather Watch** — `create_alert` as a first-class tool; Memory UI **Alerts** tab; **Weather Watch** workflow (`/weather_watch`, `/garden_watch`) with Canvas report and condition-based alerts (`create_alert`)
