@@ -1,0 +1,132 @@
+{
+  "enabled": true,
+  "name": "serpapi_google_news_light",
+  "description": "Search recent Google News quickly through SerpApi's lightweight structured engine. Use for 'latest news about...', 'Google News for...', 'recent headlines on...', 'news coverage of...', or fast topic-specific news discovery. Returns ranked articles with exact URLs, sources, dates, snippets, thumbnails, optional grouped Top Stories, localization, safety controls, and pagination for follow-up research or workflows. It searches a supplied topic; use serpapi_google_trending_now to discover seedless current trends, serpapi_google_trends for interest analysis, and MCP Fetch or crawl_url to read a selected article.",
+  "complementary_tools": [
+    "serpapi_google_trending_now",
+    "serpapi_google_trends",
+    "serpapi_search_index",
+    "mcp_fetch_fetch",
+    "crawl_url",
+    "workflow",
+    "canvas",
+    "stash"
+  ],
+  "script": "serpapi_google_news_light.py",
+  "proxy_policy": "off",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "maxLength": 500,
+        "description": "Required topic or Google-style news query. Supports operators such as site:, inurl:, and intitle:."
+      },
+      "location": {
+        "type": "string",
+        "maxLength": 200,
+        "description": "Optional city-level origin such as Austin, Texas, United States. Cannot be combined with uule."
+      },
+      "uule": {
+        "type": "string",
+        "maxLength": 500,
+        "description": "Advanced Google-encoded location. Cannot be combined with location; coordinates-based values should also supply a matching country."
+      },
+      "country": {
+        "type": "string",
+        "pattern": "^[a-zA-Z]{2}$",
+        "description": "Optional two-letter Google country code such as us, uk, or fr."
+      },
+      "language": {
+        "type": "string",
+        "pattern": "^[a-zA-Z]{2}$",
+        "description": "Optional two-letter interface language such as en, es, or fr."
+      },
+      "language_restrict": {
+        "type": "string",
+        "description": "Optional result-language restriction such as lang_en or lang_fr|lang_de."
+      },
+      "google_domain": {
+        "type": "string",
+        "description": "Google domain such as google.com or google.co.uk. Default google.com."
+      },
+      "safe": {
+        "type": "string",
+        "enum": [
+          "active",
+          "off"
+        ],
+        "description": "Adult-content filtering. Default active."
+      },
+      "exclude_autocorrected": {
+        "type": "boolean",
+        "description": "Request exclusion of results derived from an auto-corrected spelling. Default false; Google may still correct when no alternatives exist."
+      },
+      "filter_similar": {
+        "type": "boolean",
+        "description": "Filter similar or omitted results. Default true."
+      },
+      "device": {
+        "type": "string",
+        "enum": [
+          "desktop",
+          "tablet",
+          "mobile"
+        ],
+        "description": "Google client device. Default desktop."
+      },
+      "start": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1000,
+        "description": "Result offset for pagination. Use next_start from a prior response. Default 0."
+      },
+      "max_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20,
+        "description": "Maximum normalized news results to return. Default 10."
+      },
+      "max_top_story_groups": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "description": "Maximum grouped Top Stories sections to retain. Default 5."
+      },
+      "max_stories_per_group": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "description": "Maximum articles retained inside each Top Stories group. Default 5."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "Bypass SerpApi's one-hour exact-parameter cache. Default false; cached searches are free."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Advanced non-reserved Google News Light parameters passed through to SerpApi. Core query, location, localization, filtering, device, pagination, cache, and output controls cannot be overridden."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "Include the full SerpApi JSON response for debugging. Default false."
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "SERP_API_KEY"
+    ],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file."
+  }
+}

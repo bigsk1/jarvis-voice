@@ -864,6 +864,9 @@ class ContextAssembler:
         is_hotel_search = str(data.get("engine") or "").strip().lower() == "google_hotels"
         is_yelp_search = str(data.get("engine") or "").strip().lower() == "yelp"
         is_search_index = str(tool_name or "").strip().lower() == "serpapi_search_index"
+        is_google_news_light = (
+            str(tool_name or "").strip().lower() == "serpapi_google_news_light"
+        )
         is_google_trends = str(tool_name or "").strip().lower() == "serpapi_google_trends"
         is_google_trending_now = (
             str(tool_name or "").strip().lower() == "serpapi_google_trending_now"
@@ -946,6 +949,16 @@ class ContextAssembler:
                             depth=0,
                             max_depth=2,
                         )
+
+            if is_google_news_light:
+                snippet = item.get("snippet")
+                if snippet not in (None, ""):
+                    candidate["snippet"] = self.build_preview_value(
+                        snippet,
+                        parent_key="snippet",
+                        depth=0,
+                        max_depth=1,
+                    )
 
             if is_google_trends:
                 for key in (
@@ -1308,6 +1321,97 @@ class ContextAssembler:
             )
         return preview
 
+    def build_google_news_light_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep Google News request context and bounded grouped Top Stories."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "engine",
+            "query",
+            "query_displayed",
+            "news_results_state",
+            "location",
+            "country",
+            "language",
+            "language_restrict",
+            "google_domain",
+            "safe",
+            "exclude_autocorrected",
+            "filter_similar",
+            "device",
+            "start",
+            "max_results",
+            "results_count",
+            "provider_results_count",
+            "top_stories_count",
+            "provider_top_story_groups_count",
+            "top_story_articles_count",
+            "provider_top_story_articles_count",
+            "top_url",
+            "search_id",
+            "google_news_light_url",
+            "has_more",
+            "next_start",
+            "serpapi_searches_used",
+            "source",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=1,
+                )
+
+        pagination = data.get("pagination")
+        if isinstance(pagination, dict):
+            preview["pagination"] = {
+                key: pagination[key]
+                for key in (
+                    "current",
+                    "start",
+                    "has_more",
+                    "next_start",
+                    "previous_start",
+                )
+                if pagination.get(key) not in (None, "") or key == "has_more"
+            }
+
+        groups = []
+        for group in (data.get("top_stories") or [])[:3]:
+            if not isinstance(group, dict):
+                continue
+            compact_group = {
+                key: group[key]
+                for key in (
+                    "position",
+                    "title",
+                    "stories_count",
+                    "provider_stories_count",
+                )
+                if group.get(key) not in (None, "")
+            }
+            stories = []
+            for story in (group.get("stories") or [])[:3]:
+                if not isinstance(story, dict):
+                    continue
+                compact_story = {
+                    key: story[key]
+                    for key in ("position", "title", "url", "source", "date")
+                    if story.get(key) not in (None, "")
+                }
+                if compact_story:
+                    stories.append(compact_story)
+            if stories:
+                compact_group["stories"] = stories
+            if compact_group:
+                groups.append(compact_group)
+        if groups:
+            preview["top_stories"] = groups
+        return preview
+
     def build_google_trending_now_data_preview(self, data: Any) -> dict[str, Any]:
         """Keep current-trend filters and news-drill-down provenance compact."""
         if not isinstance(data, dict):
@@ -1574,6 +1678,8 @@ class ContextAssembler:
                 data_preview = self.build_yelp_data_preview(data)
             elif normalized_tool_name == "serpapi_search_index":
                 data_preview = self.build_search_index_data_preview(data)
+            elif normalized_tool_name == "serpapi_google_news_light":
+                data_preview = self.build_google_news_light_data_preview(data)
             elif normalized_tool_name == "serpapi_google_trends":
                 data_preview = self.build_google_trends_data_preview(data)
             elif normalized_tool_name == "serpapi_google_trending_now":

@@ -46,6 +46,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_youtube_search',
     'serpapi_yelp_search',
     'serpapi_search_index',
+    'serpapi_google_news_light',
     'serpapi_google_trends',
     'serpapi_google_trending_now',
     'serpapi_tripadvisor',
@@ -297,6 +298,16 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'engine', 'query', 'mode', 'safe', 'start', 'num_results',
         'results_count', 'provider_results_count', 'total_results', 'top_url',
         'search_id', 'has_more', 'next_start', 'serpapi_searches_used', 'source',
+    ],
+    'serpapi_google_news_light': [
+        'engine', 'query', 'query_displayed', 'news_results_state', 'location',
+        'country', 'language', 'language_restrict', 'google_domain', 'safe',
+        'exclude_autocorrected', 'filter_similar', 'device', 'start',
+        'max_results', 'results_count', 'provider_results_count',
+        'top_stories_count', 'provider_top_story_groups_count',
+        'top_story_articles_count', 'provider_top_story_articles_count',
+        'top_url', 'search_id', 'has_more', 'next_start',
+        'google_news_light_url', 'serpapi_searches_used', 'source',
     ],
     'serpapi_google_trends': [
         'engine', 'query', 'queries', 'data_type', 'provider_data_type',
@@ -2884,6 +2895,77 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 compact_pagination = {
                     field: pagination[field]
                     for field in ('start', 'num_results', 'has_more', 'next_start')
+                    if pagination.get(field) not in (None, '')
+                    or field == 'has_more'
+                }
+                if compact_pagination:
+                    extracted['pagination'] = compact_pagination
+
+        if key == 'serpapi_google_news_light':
+            results = payload.get('results') or payload.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = payload.get('results_count', len(results))
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = {
+                        field: item[field]
+                        for field in (
+                            'position', 'title', 'url', 'source', 'date',
+                            'thumbnail',
+                        )
+                        if item.get(field) not in (None, '', [], {})
+                    }
+                    if item.get('snippet'):
+                        candidate['snippet'] = _truncate_followup_text(
+                            str(item['snippet']), 700
+                        )
+                    if candidate.get('title') or candidate.get('url'):
+                        candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
+
+            top_story_groups = payload.get('top_stories')
+            if isinstance(top_story_groups, list) and top_story_groups:
+                compact_groups = []
+                for group in top_story_groups[:max_candidates]:
+                    if not isinstance(group, dict):
+                        continue
+                    compact_group = {
+                        field: group[field]
+                        for field in (
+                            'position', 'title', 'stories_count',
+                            'provider_stories_count',
+                        )
+                        if group.get(field) not in (None, '')
+                    }
+                    stories = []
+                    for story in (group.get('stories') or [])[:max_candidates]:
+                        if not isinstance(story, dict):
+                            continue
+                        compact_story = {
+                            field: story[field]
+                            for field in ('position', 'title', 'url', 'source', 'date')
+                            if story.get(field) not in (None, '')
+                        }
+                        if compact_story.get('title') or compact_story.get('url'):
+                            stories.append(compact_story)
+                    if stories:
+                        compact_group['stories'] = stories
+                    if compact_group:
+                        compact_groups.append(compact_group)
+                if compact_groups:
+                    extracted['top_stories'] = compact_groups
+
+            pagination = payload.get('pagination')
+            if isinstance(pagination, dict):
+                compact_pagination = {
+                    field: pagination[field]
+                    for field in (
+                        'current', 'start', 'has_more', 'next_start',
+                        'previous_start',
+                    )
                     if pagination.get(field) not in (None, '')
                     or field == 'has_more'
                 }

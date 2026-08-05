@@ -174,6 +174,32 @@ class SerpApiStatusDiagnosticTests(unittest.TestCase):
         self.assertIn("Google Trends API", result["speech"])
         self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
 
+    def test_google_news_light_timeout_matches_news_light_incident(self):
+        with patch.object(
+            serpapi_client,
+            "fetch_serpapi_unresolved_incidents",
+            return_value=[
+                incident(
+                    name="[Google News Light API] Performance Degradation",
+                    update="We are investigating Google News Light API latency.",
+                )
+            ],
+        ):
+            result = serpapi_client.diagnose_serpapi_tool_failure(
+                "serpapi_google_news_light",
+                {"query": "agentic AI"},
+                "Tool serpapi_google_news_light timed out",
+                force=True,
+            )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            result["data"]["serpapi_incident"]["engine"],
+            "google_news_light",
+        )
+        self.assertIn("Google News Light API", result["speech"])
+        self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
+
     def test_google_trending_now_actions_match_discovery_and_news_incidents(self):
         cases = (
             (

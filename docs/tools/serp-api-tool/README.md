@@ -1,7 +1,7 @@
 # SerpApi Tools
 
 Jarvis provides a family of focused SerpApi tools for shopping, indexed-web
-source discovery, trend analysis, local places, travel, and YouTube. Each tool
+source discovery, news, trend analysis, local places, travel, and YouTube. Each tool
 has its own schema and normalized result shape so Tool RAG can select a narrow
 capability instead of routing every request through one ambiguous search tool.
 
@@ -16,6 +16,7 @@ discover general public webpages and source URLs.
 |---|---|---|
 | `serpapi_amazon_search` | `amazon`, `amazon_product` | Amazon listing discovery, ASIN details, prices, ratings, Prime, delivery, stock, and product comparison |
 | `serpapi_search_index` | `search_index` | Ranked indexed-web sources for grounding, datasets, and workflows; fetch returned URLs separately |
+| `serpapi_google_news_light` | `google_news_light` | Fast topic-specific recent news, grouped Top Stories, source URLs, localization, and result-offset pagination |
 | `serpapi_google_trends` | `google_trends` | Interest over time for named topics, comparisons by region, and rising/top related queries or topics for monitoring and workflows |
 | `serpapi_google_trending_now` | `google_trends_trending_now`, `google_trends_news` | Discover current trends without a seed topic, then retrieve associated news for one selected trend token |
 | `serpapi_ebay_search` | `ebay` | eBay listing discovery with price, condition, seller, shipping, images, and product IDs |
@@ -48,8 +49,8 @@ The family uses these common layers:
 - `jarvis-web/server/services/followup_extractor.py` preserves bounded result
   identity for later turns.
 - `jarvis-web/client/js/structured-results.js` renders focused product, place,
-  hotel, flight, Tripadvisor, Google Trends, Trending Now, Search Index, eBay,
-  Yelp, Maps, and YouTube cards.
+  hotel, flight, Tripadvisor, Google News Light, Google Trends, Trending Now,
+  Search Index, eBay, Yelp, Maps, and YouTube cards.
 
 Raw provider JSON is available only through each tool's `include_raw` debug
 option. Normal conversational and workflow calls should leave it off.
@@ -67,7 +68,7 @@ Use `config/cloud.env` for cloud mode and `config/local.env` for local mode.
 `JARVIS_DEFAULT_POSTAL_CODE` is optional and localizes Amazon delivery and Home
 Depot availability where supported.
 
-The thirteen `serpapi_*` manifests declare:
+The fourteen `serpapi_*` manifests declare:
 
 ```json
 "availability": {
@@ -146,7 +147,7 @@ additional searches:
 
 | Tool or option | SerpApi searches |
 |---|---:|
-| eBay search/product, Maps, Hotels, Search Index, Google Trends, Trending Now discovery, Trending Now news drill-down, YouTube search | 1 |
+| eBay search/product, Maps, Hotels, Search Index, Google News Light, Google Trends, Trending Now discovery, Trending Now news drill-down, YouTube search | 1 |
 | Amazon listing or product call | 1 base call |
 | Amazon empty-result query normalization | Up to 2 bounded retry calls |
 | Amazon `include_product_details=true` | Up to `product_details_limit` additional product calls, maximum 5 |
@@ -221,6 +222,25 @@ Use `mode=deep` when a workflow needs broader recall. Search Index returns
 ranked titles, snippets, dates, languages, images, sitelinks, related queries,
 pagination metadata, and exact URLs. It does not fetch page bodies. Pass a
 chosen URL to MCP Fetch, `crawl_url`, a summarizer, Stash, or Canvas.
+
+### Google News Light
+
+Find recent news coverage for a supplied topic:
+
+```json
+{
+  "query": "agentic AI funding",
+  "country": "us",
+  "language": "en",
+  "max_results": 10
+}
+```
+
+Google News Light returns article headlines, snippets, dates, sources, exact
+URLs, optional grouped Top Stories, and a safe numeric `next_start` for a later
+page. Use `location` for a city or region, or `uule` for an encoded location,
+but not both. The result is discovery metadata rather than full article text;
+pass a chosen URL to MCP Fetch or `crawl_url` when a workflow needs the page.
 
 ### Google Trends analysis
 

@@ -604,6 +604,78 @@ def test_extract_followup_data_preserves_search_index_sources_and_pagination():
     assert search_index["candidates"][1]["url"].endswith("/skip-locked")
 
 
+def test_extract_followup_data_preserves_google_news_articles_and_top_stories():
+    handler = _handler()
+    data = {
+        "serpapi_google_news_light": {
+            "engine": "google_news_light",
+            "query": "agentic AI",
+            "country": "us",
+            "results_count": 1,
+            "provider_results_count": 12,
+            "top_stories_count": 1,
+            "top_story_articles_count": 1,
+            "google_news_light_url": "https://www.google.com/search?q=agentic+AI&tbm=nws",
+            "has_more": True,
+            "next_start": 10,
+            "results": [
+                {
+                    "position": 1,
+                    "title": "Agentic AI attracts new funding",
+                    "url": "https://news.example/agentic-funding",
+                    "source": "Example News",
+                    "thumbnail": "https://images.example/funding.jpg",
+                    "snippet": "Several agent startups announced new rounds. " * 40,
+                    "date": "2 hours ago",
+                }
+            ],
+            "top_stories": [
+                {
+                    "position": 1,
+                    "title": "AI funding",
+                    "stories_count": 1,
+                    "provider_stories_count": 3,
+                    "stories": [
+                        {
+                            "position": 1,
+                            "title": "Investors return to AI agents",
+                            "url": "https://finance.example/ai-agents",
+                            "source": "Finance Example",
+                            "date": "1 hour ago",
+                        }
+                    ],
+                }
+            ],
+            "pagination": {
+                "current": 1,
+                "start": 0,
+                "has_more": True,
+                "next_start": 10,
+                "previous_start": None,
+                "next": "https://serpapi.com/search?api_key=secret",
+            },
+        }
+    }
+
+    news = handler._extract_followup_data(data)["serpapi_google_news_light"]
+
+    assert news["query"] == "agentic AI"
+    assert news["country"] == "us"
+    assert news["google_news_light_url"].startswith("https://www.google.com/")
+    assert news["candidates"][0]["url"] == "https://news.example/agentic-funding"
+    assert len(news["candidates"][0]["snippet"]) <= 700
+    assert news["top_stories"][0]["title"] == "AI funding"
+    assert news["top_stories"][0]["stories"][0]["url"] == (
+        "https://finance.example/ai-agents"
+    )
+    assert news["pagination"] == {
+        "current": 1,
+        "start": 0,
+        "has_more": True,
+        "next_start": 10,
+    }
+
+
 def test_extract_followup_data_preserves_google_trends_series_and_latest_points():
     handler = _handler()
     data = {

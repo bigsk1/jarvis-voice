@@ -51,6 +51,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_hotel_search', payload => this._adaptHotels(payload));
     this.register('serpapi_yelp_search', payload => this._adaptYelp(payload));
     this.register('serpapi_search_index', payload => this._adaptSearchIndex(payload));
+    this.register('serpapi_google_news_light', payload => this._adaptGoogleNewsLight(payload));
     this.register('serpapi_google_trends', payload => this._adaptGoogleTrends(payload));
     this.register('serpapi_google_trending_now', payload => this._adaptGoogleTrendingNow(payload));
     this.register('serpapi_tripadvisor', payload => this._adaptTripadvisor(payload));
@@ -298,6 +299,58 @@ class StructuredResultsRenderer {
       heading: payload.query || 'Indexed web sources',
       subtitle: related ? `${countText} · Related: ${related}` : countText,
       items,
+    };
+  }
+
+  _adaptGoogleNewsLight(payload) {
+    const resultItems = this._rows(payload).map((row, index) => {
+      const chips = [];
+      if (row.date) chips.push(String(row.date));
+      return {
+        title: row.title || `News article ${index + 1}`,
+        url: row.url || row.link,
+        image: row.thumbnail,
+        primary: row.source || '',
+        chips,
+        details: row.snippet ? [this._compactText(row.snippet, 280)] : [],
+        actionLabel: 'Read article',
+      };
+    });
+    const topStoryGroups = Array.isArray(payload.top_stories)
+      ? payload.top_stories.filter(group => group && typeof group === 'object').slice(0, 5)
+      : [];
+    const topStoryItems = topStoryGroups.flatMap(group => {
+      const groupTitle = group && group.title ? String(group.title) : 'Top Stories';
+      const stories = Array.isArray(group.stories)
+        ? group.stories.filter(story => story && typeof story === 'object').slice(0, 5)
+        : [];
+      return stories.map((story, index) => ({
+        title: story.title || `Top story ${index + 1}`,
+        url: story.url || story.link,
+        primary: story.source || '',
+        chips: [story.date, 'Top story'].filter(Boolean).map(String),
+        details: [groupTitle],
+        actionLabel: 'Read article',
+      }));
+    });
+    const resultCount = payload.provider_results_count ?? resultItems.length;
+    const storyCount = payload.provider_top_story_articles_count ?? topStoryItems.length;
+    const scope = [payload.location, payload.country && String(payload.country).toUpperCase()]
+      .filter(Boolean)
+      .join(' · ');
+    return {
+      kind: 'generic',
+      layout: 'rail',
+      eyebrow: 'Google News Light',
+      heading: payload.query_displayed || payload.query || 'Recent news',
+      subtitle: [
+        `${resultCount} news result${Number(resultCount) === 1 ? '' : 's'}`,
+        storyCount ? `${storyCount} top-story article${Number(storyCount) === 1 ? '' : 's'}` : '',
+        scope,
+      ].filter(Boolean).join(' · '),
+      actionUrl: payload.google_news_light_url,
+      actionLabel: 'Open Google News',
+      items: [...topStoryItems, ...resultItems],
     };
   }
 

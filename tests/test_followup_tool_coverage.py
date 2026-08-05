@@ -664,6 +664,37 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "serpapi_google_news_light": _case(
+        {
+            "engine": "google_news_light",
+            "query": "agentic AI",
+            "results_count": 1,
+            "provider_results_count": 1,
+            "source": "SerpApi Google News Light",
+            "results": [
+                {
+                    "position": 1,
+                    "title": "Agentic AI attracts new funding",
+                    "url": "https://news.example/agentic-funding",
+                    "source": "Example News",
+                    "snippet": "Several agent startups announced new rounds.",
+                    "date": "2 hours ago",
+                }
+            ],
+            "top_stories": [
+                {
+                    "title": "AI funding",
+                    "stories": [
+                        {
+                            "title": "Investors return to AI agents",
+                            "url": "https://finance.example/ai-agents",
+                            "source": "Finance Example",
+                        }
+                    ],
+                }
+            ],
+        }
+    ),
     "serpapi_google_trends": _case(
         {
             "engine": "google_trends",

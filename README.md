@@ -809,6 +809,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `screenshot_url` - **Screenshot + vision**: Full-page capture with AI analysis (bypasses anti-bot)
 - `serpapi_amazon_search` - **SerpApi Amazon Search**: Amazon listing discovery and focused ASIN/product details with price, rating, Prime, delivery, stock, images, and links
 - `serpapi_search_index` - **SerpApi Search Index**: Structured indexed-web source discovery with exact URLs, snippets, standard/deep recall, and workflow-ready pagination for later fetch/crawl steps
+- `serpapi_google_news_light` - **SerpApi Google News Light**: Fast topic-specific recent-news discovery with headlines, sources, snippets, grouped Top Stories, and exact article URLs
 - `serpapi_google_trends` - **SerpApi Google Trends**: Analyze supplied topics over time, compare regional interest, and discover rising or top related queries/topics for monitoring and workflows
 - `serpapi_google_trending_now` - **SerpApi Google Trends Trending Now**: Discover current trends without a seed topic, then explicitly retrieve associated news for a selected trend token
 - `serpapi_ebay_search` - **SerpApi eBay**: Marketplace keyword or category search; compact listings with price, condition, listing URL, product ID hints for follow-up

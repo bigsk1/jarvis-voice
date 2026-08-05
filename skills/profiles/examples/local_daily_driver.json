@@ -21,6 +21,7 @@
     "serpapi_hotel_search": false,
     "serpapi_maps_search": false,
     "serpapi_search_index": false,
+    "serpapi_google_news_light": false,
     "serpapi_google_trends": false,
     "serpapi_google_trending_now": false,
     "serpapi_tripadvisor": false,

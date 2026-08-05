@@ -180,6 +180,83 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(data_preview["search_id"], "search-index-123")
         self.assertNotIn("large_provider_payload", preview)
 
+    def test_google_news_light_preview_keeps_articles_and_grouped_top_stories(self):
+        result = {
+            "ok": True,
+            "speech": "Found recent Google News results.",
+            "data": {
+                "engine": "google_news_light",
+                "query": "agentic AI",
+                "query_displayed": "agentic AI news",
+                "country": "us",
+                "results_count": 6,
+                "provider_results_count": 42,
+                "top_stories_count": 1,
+                "top_story_articles_count": 4,
+                "search_id": "news-light-123",
+                "has_more": True,
+                "next_start": 10,
+                "pagination": {
+                    "current": 1,
+                    "start": 0,
+                    "has_more": True,
+                    "next_start": 10,
+                },
+                "raw": {"large_provider_payload": "x" * 12000},
+                "results": [
+                    {
+                        "position": index,
+                        "title": f"Agentic AI article {index}",
+                        "url": f"https://news.example/agentic-ai/{index}",
+                        "source": f"News Source {index}",
+                        "thumbnail": f"https://images.example/{index}.jpg",
+                        "snippet": "Grounded recent-news summary. " * 30,
+                        "date": f"{index} hours ago",
+                    }
+                    for index in range(1, 7)
+                ],
+                "top_stories": [
+                    {
+                        "position": 1,
+                        "title": "AI funding",
+                        "stories_count": 4,
+                        "provider_stories_count": 4,
+                        "stories": [
+                            {
+                                "position": index,
+                                "title": f"Top funding story {index}",
+                                "url": f"https://finance.example/story/{index}",
+                                "source": "Finance Example",
+                                "date": f"{index} hours ago",
+                            }
+                            for index in range(1, 5)
+                        ],
+                    }
+                ],
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_google_news_light", result
+        )
+
+        parsed = json.loads(preview)
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        data_preview = parsed["llm_context_preview"]["data_preview"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 6000)
+        self.assertEqual(len(candidates), 5)
+        self.assertEqual(candidates[0]["url"], "https://news.example/agentic-ai/1")
+        self.assertIn("Grounded recent-news summary", candidates[0]["snippet"])
+        self.assertEqual(data_preview["search_id"], "news-light-123")
+        self.assertEqual(data_preview["pagination"]["next_start"], 10)
+        self.assertEqual(data_preview["top_stories"][0]["title"], "AI funding")
+        self.assertEqual(
+            data_preview["top_stories"][0]["stories"][0]["url"],
+            "https://finance.example/story/1",
+        )
+        self.assertNotIn("large_provider_payload", preview)
+
     def test_google_trends_preview_keeps_trend_summaries_and_recent_timeline(self):
         result = {
             "ok": True,

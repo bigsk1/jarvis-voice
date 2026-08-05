@@ -53,6 +53,7 @@ const expectedTools = [
   'serpapi_hotel_search',
   'serpapi_yelp_search',
   'serpapi_search_index',
+  'serpapi_google_news_light',
   'serpapi_google_trends',
   'serpapi_google_trending_now',
   'serpapi_tripadvisor',
@@ -166,6 +167,31 @@ const html = renderer.render({{
       language: 'en',
       image_url: 'https://images.example/postgres.jpg',
       sitelinks: [{{title: 'Queue schema', url: 'https://example.test/schema'}}]
+    }}]
+  }},
+  serpapi_google_news_light: {{
+    query: 'agentic AI',
+    query_displayed: 'agentic AI news',
+    country: 'us',
+    provider_results_count: 2,
+    provider_top_story_articles_count: 1,
+    google_news_light_url: 'https://www.google.com/search?q=agentic+AI&tbm=nws',
+    top_stories: [{{
+      title: 'AI funding',
+      stories: [{{
+        title: 'Investors return to AI agents',
+        url: 'https://finance.example/ai-agents',
+        source: 'Finance Example',
+        date: '1 hour ago'
+      }}]
+    }}],
+    results: [{{
+      title: 'Agentic AI attracts new funding',
+      url: 'https://news.example/agentic-funding',
+      source: 'Example News',
+      thumbnail: 'https://images.example/funding.jpg',
+      snippet: 'Several agent startups announced new funding rounds.',
+      date: '2 hours ago'
     }}]
   }},
   serpapi_google_trends: {{
@@ -290,6 +316,11 @@ for (const expected of [
   'PostgreSQL as a durable queue', 'example.test/postgres-queue',
   'A practical guide to durable workers', 'Aug 1, 2026', '1 related links',
   '314 indexed matches', 'Related: SKIP LOCKED queue · durable job queue',
+  'Google News Light', 'agentic AI news', '2 news results',
+  '1 top-story article', 'US', 'Investors return to AI agents',
+  'Finance Example', 'Top story', 'AI funding',
+  'Agentic AI attracts new funding', 'Example News',
+  'Several agent startups announced new funding rounds', 'Open Google News',
   'Google Trends', 'AI agents, AI assistants', 'Latest 83', 'Average 61',
   'Peak 83', '+9 from previous', '+28 over period', 'Open Google Trends',
   'Google Trends · Trending Now', 'Current trends in US', 'Past 24 hours',
@@ -310,7 +341,7 @@ for (const expected of [
   }}
 }}
 if (html.includes('flight_numbers')) process.exit(4);
-if ((html.match(/structured-results-preview/g) || []).length !== 14) process.exit(5);
+if ((html.match(/structured-results-preview/g) || []).length !== 15) process.exit(5);
 
 if (!renderer.register('custom_demo', payload => ({{
   kind: 'generic',
