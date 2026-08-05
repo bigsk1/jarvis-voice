@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from config_loader import load_config, get_config_value
 from serpapi_client import (
     clamp_results_count,
+    get_proxy_enabled,
     merge_extra_params,
     parse_bool,
     request_serpapi,
@@ -75,9 +76,10 @@ CA_SORT_MAP = {
 
 HOME_DEPOT_SERPAPI_TIMEOUT = 90
 
-# Home Depot SerpApi is slow; avoid LOCAL_PROXY — it burns full TCP timeouts per hop.
+# The manifest is direct by default, while the shared helper keeps this request
+# proxy-capable if the manifest policy is deliberately changed later.
 def _home_depot_serpapi(params: dict[str, Any], timeout: int = HOME_DEPOT_SERPAPI_TIMEOUT) -> dict[str, Any]:
-    return request_serpapi(params, timeout=timeout, use_proxy=False, fallback_on_proxy_fail=False)
+    return request_serpapi(params, timeout=timeout)
 
 
 def return_success(speech: str, data: dict[str, Any] | None = None) -> None:
@@ -352,7 +354,7 @@ def main() -> int:
                 "product_details": product,
                 "search_metadata": product_payload.get("search_metadata", {}),
                 "search_information": product_payload.get("search_information", {}),
-                "proxy_enabled": False,
+                "proxy_enabled": get_proxy_enabled(),
                 "source": "SerpApi",
             }
             if include_raw:
@@ -435,7 +437,7 @@ def main() -> int:
             "serpapi_pagination": payload.get("serpapi_pagination", {}),
             "search_metadata": payload.get("search_metadata", {}),
             "search_information": payload.get("search_information", {}),
-            "proxy_enabled": False,
+            "proxy_enabled": get_proxy_enabled(),
             "source": "SerpApi",
         }
         if product_details_error:

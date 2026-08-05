@@ -86,13 +86,19 @@ Central API: **`http_request()`**, **`get_proxy_chain()`**, **`get_proxy_config(
 
 | Area | Mechanism |
 |------|-----------|
-| Weather, SerpApi helpers, stash URL downloads, crypto/HTTP-using paths | `http_request()` → full chain + tunnel status handling |
+| Weather, SerpApi helpers, stash URL downloads, crypto/HTTP-using paths | `http_request()` → policy-aware chain + tunnel status handling |
 | **yfinance** (`skills/stock_price.py`) | Sets `http_proxy` / `https_proxy` env per proxy in order, then clears and retries direct on tunnel-style failures |
 | **GitHub** (`skills/git_release_notes.py`) | Session GETs with each proxy in chain, then direct |
 | **yt-dlp** (`youtube_video`, `youtube_transcript`) | Tries each URL from `get_proxy_url_chain()` in order |
 
 Tools without `proxy_policy` keep these existing behaviors. Adding a policy is
 only necessary when a tool needs to override its current default.
+
+All shipped SerpApi-backed tools, including `flight_search`, explicitly use
+`proxy_policy: "off"` so their normal Jarvis execution is direct and
+consistent. Their requests still use the shared proxy-aware helpers. Changing
+one manifest to `inherit` restores that tool's normal configured proxy chain;
+`prefer` forces proxy-first with direct fallback, and `require` fails closed.
 
 ## MCP proxy translation
 

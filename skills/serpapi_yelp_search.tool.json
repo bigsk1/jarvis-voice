@@ -8,6 +8,7 @@
     "stash"
   ],
   "script": "serpapi_yelp_search.py",
+  "proxy_policy": "off",
   "parameters": {
     "type": "object",
     "properties": {

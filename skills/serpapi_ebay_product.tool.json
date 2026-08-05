@@ -1,13 +1,14 @@
 {
   "enabled": true,
   "name": "serpapi_ebay_product",
-  "description": "Fetch one eBay product page via SerpApi (engine ebay_product) by numeric product_id from listing URLs (/itm/{id}). Returns product_summary (title, prices buy/bid, shipping to/from, quantity, images, variation counts), seller_summary, and related_products. Full JSON is optional via include_raw. Prefer no_cache=false unless you truly need bypassing SerpApi cache \u2014 Home Depot timeouts were traced to abusive no_cache/proxy combos; proxy is OK for ebay engines. Docs: https://serpapi.com/ebay-product-api",
+  "description": "Fetch one eBay product page via SerpApi (engine ebay_product) by numeric product_id from listing URLs (/itm/{id}). Returns product_summary (title, prices buy/bid, shipping to/from, quantity, images, variation counts), seller_summary, and related_products. Full JSON is optional via include_raw. Prefer no_cache=false unless you truly need bypassing SerpApi cache. Docs: https://serpapi.com/ebay-product-api",
   "complementary_tools": [
     "canvas",
     "stash",
     "serpapi_ebay_search"
   ],
   "script": "serpapi_ebay_product.py",
+  "proxy_policy": "off",
   "parameters": {
     "type": "object",
     "properties": {

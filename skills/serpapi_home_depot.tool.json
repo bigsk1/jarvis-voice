@@ -1,12 +1,13 @@
 {
   "enabled": true,
   "name": "serpapi_home_depot",
-  "description": "Search The Home Depot products through SerpApi with normalized product fields like product_id, brand, model_number, price, rating, reviews, thumbnail, image_url, delivery, pickup, and stock information. Use this for Home Depot product searches, focused product details by product_id, store/ZIP-specific availability, price-sorted comparisons, and follow-up product references. For US searches, delivery_zip defaults to JARVIS_DEFAULT_POSTAL_CODE when omitted. In detailed/display mode, show product images from image_url/top_image_url when present. Uses SerpApi cached results only (fast path) and always calls SerpApi directly (no HTTP proxy). Use include_product_details when the user needs full product-page detail (adds a second cached request).",
+  "description": "Search The Home Depot products through SerpApi with normalized product fields like product_id, brand, model_number, price, rating, reviews, thumbnail, image_url, delivery, pickup, and stock information. Use this for Home Depot product searches, focused product details by product_id, store/ZIP-specific availability, price-sorted comparisons, and follow-up product references. For US searches, delivery_zip defaults to JARVIS_DEFAULT_POSTAL_CODE when omitted. In detailed/display mode, show product images from image_url/top_image_url when present. Uses SerpApi cached results only (fast path) and is direct by default through the manifest proxy policy. Use include_product_details when the user needs full product-page detail (adds a second cached request).",
   "complementary_tools": [
     "canvas",
     "stash"
   ],
   "script": "serpapi_home_depot.py",
+  "proxy_policy": "off",
   "parameters": {
     "type": "object",
     "properties": {

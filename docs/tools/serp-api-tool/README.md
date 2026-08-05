@@ -5,9 +5,11 @@ Use the SerpApi tools to run web, marketplace, maps, and travel lookups through 
 The base tool is generic by design, and Jarvis now also includes thin SerpApi wrappers for common domains:
 
 - `serpapi_search` for generic engine-based search
+- `serpapi_ebay_search` and `serpapi_ebay_product` for eBay discovery and details
 - `serpapi_home_depot` for The Home Depot product searches
 - `serpapi_maps_search` for Google Maps place and local business lookups
 - `serpapi_hotel_search` for Google Hotels searches
+- `serpapi_tripadvisor` for Tripadvisor search, place details, nearby suggestions, and reviews
 - `serpapi_youtube` for YouTube video detail lookup with transcript fallback
 - `serpapi_youtube_search` for YouTube video discovery by keyword
 - `serpapi_yelp_search` for Yelp place discovery with attrs and reviews
@@ -20,17 +22,22 @@ keyless fallback; see [the flight search guide](../flight-search-tool/README.md)
 
 - Shared client: `lib/serpapi_client.py`
 - Generic tool: `skills/serpapi_search.py`
+- eBay wrappers: `skills/serpapi_ebay_search.py`, `skills/serpapi_ebay_product.py`
 - Home Depot wrapper: `skills/serpapi_home_depot.py`
 - Maps wrapper: `skills/serpapi_maps_search.py`
 - Hotels wrapper: `skills/serpapi_hotel_search.py`
+- Tripadvisor wrapper: `skills/serpapi_tripadvisor.py`
 - YouTube wrapper: `skills/serpapi_youtube.py`
 - YouTube search wrapper: `skills/serpapi_youtube_search.py`
 - Yelp wrapper: `skills/serpapi_yelp_search.py`
 - Tool definitions:
   - `skills/serpapi_search.tool.json`
+  - `skills/serpapi_ebay_search.tool.json`
+  - `skills/serpapi_ebay_product.tool.json`
   - `skills/serpapi_home_depot.tool.json`
   - `skills/serpapi_maps_search.tool.json`
   - `skills/serpapi_hotel_search.tool.json`
+  - `skills/serpapi_tripadvisor.tool.json`
   - `skills/serpapi_youtube.tool.json`
   - `skills/serpapi_youtube_search.tool.json`
   - `skills/serpapi_yelp_search.tool.json`
@@ -43,6 +50,20 @@ keyless fallback; see [the flight search guide](../flight-search-tool/README.md)
 2. Sync tools:
    - `./bin/sync-tools.py cloud`
    - `./bin/sync-tools.py local` (if you use local mode)
+
+## Proxy policy
+
+Every shipped SerpApi-backed tool manifest, including `flight_search`,
+explicitly defaults to `"proxy_policy": "off"`. Jarvis therefore suppresses
+`LOCAL_PROXY`, `LOCAL_PROXY2`, and conventional proxy variables for normal tool
+execution even when those values are configured for other tools in the active
+mode.
+
+The implementations all keep using the shared proxy-aware SerpApi client. To
+opt one tool into the configured proxy chain later, change only its manifest:
+`inherit` uses the helper's normal proxy-first behavior, `prefer` explicitly
+uses proxy-first with direct fallback, and `require` uses the proxy chain and
+fails closed. See [HTTP proxy configuration](../../NETWORK_PROXY.md).
 
 ## What it returns
 
@@ -191,7 +212,7 @@ For US searches, `delivery_zip` defaults to `JARVIS_DEFAULT_POSTAL_CODE` when om
 
 Home Depot search results include `thumbnail`, `image_url`, and top-level `top_image_url` when SerpApi returns product images. Keep normal searches lightweight: `include_product_details` defaults to false because it makes a second `home_depot_product` request. Use `include_product_details=true` only when the user asks for full product-page details, larger images, bullets, specifications, or similar focused detail.
 
-The `serpapi_home_depot` tool always uses SerpApi's cached responses (`no_cache=false`) and always connects to SerpApi directly (it does not use `LOCAL_PROXY` / `LOCAL_PROXY2`), which avoids slow proxy timeouts on this engine. Product `url` / `top_url` values rewrite `apionline.homedepot.com` (SerpApi/API host) to `www.homedepot.com` or `www.homedepot.ca` so links open in a normal browser instead of Akamai "Access Denied".
+The `serpapi_home_depot` tool always uses SerpApi's cached responses (`no_cache=false`) and connects directly under the shared default `proxy_policy=off`, which avoids slow proxy timeouts on this engine. Its request path remains proxy-capable if that manifest policy is deliberately changed later. Product `url` / `top_url` values rewrite `apionline.homedepot.com` (SerpApi/API host) to `www.homedepot.com` or `www.homedepot.ca` so links open in a normal browser instead of Akamai "Access Denied".
 
 ### Home Depot product details by product ID
 
@@ -216,10 +237,8 @@ Use this when you already have a Home Depot product ID and want the focused prod
 ### Hotel search
 
 Use `serpapi_hotel_search` for future stays with date-specific Google Hotels
-prices. It requires `SERP_API_KEY`, makes one SerpApi search, and inherits the
-normal Jarvis proxy policy. With the default `proxy_policy=inherit`, configured
-`LOCAL_PROXY` / `LOCAL_PROXY2` values are tried by the shared HTTP client; when
-no proxy is configured, it connects directly.
+prices. It requires `SERP_API_KEY`, makes one SerpApi search, and connects
+directly under the shared `proxy_policy=off` default.
 
 ```json
 {

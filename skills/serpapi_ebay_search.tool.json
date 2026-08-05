@@ -8,6 +8,7 @@
     "serpapi_ebay_product"
   ],
   "script": "serpapi_ebay_search.py",
+  "proxy_policy": "off",
   "parameters": {
     "type": "object",
     "properties": {

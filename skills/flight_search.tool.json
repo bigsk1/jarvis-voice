@@ -3,6 +3,7 @@
   "name": "flight_search",
   "description": "Search future, bookable flight options with current prices, dates, times, airlines, stops, and layovers. Use for airfare and itinerary planning: 'find me a flight from PDX to PHX', 'flights to Phoenix on the 15th back on the 20th', 'how much is a round trip to Denver', or 'cheapest nonstop to Austin next month'. Takes 3-letter IATA airport codes and YYYY-MM-DD dates. Supplying 'return_date' makes it a round trip and prices are the round-trip total; omit it for one way. Results are sorted by price unless 'sort_by' says otherwise and include a Google Flights link for manual booking. Do not use this for the current status, delay, gate, cancellation, or location of a specific flight; use normal web search for those. This tool does not book or pay for tickets.",
   "script": "flight_search.py",
+  "proxy_policy": "off",
   "parameters": {
     "type": "object",
     "properties": {
