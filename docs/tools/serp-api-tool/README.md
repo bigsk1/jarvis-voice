@@ -154,11 +154,17 @@ additional searches:
 | YouTube `include_transcript=true` | 2 total calls |
 | Flight search with SerpApi | 1 |
 | Flight search keyless fallback | 0 |
+| Settings → System Account API quota lookup | 0 |
 
 Cached responses are allowed by default for the tools that expose `no_cache`.
 Set `no_cache=true` only when the user explicitly needs a fresh provider scrape.
 Home Depot intentionally stays on the cached path. Enrichment flags should be
 enabled only when the extra detail is needed.
+
+Jarvis Web calls SerpApi's free Account API only when Settings → System is
+opened. A sanitized plan/monthly/hourly quota card is shown only after the
+selected mode's `SERP_API_KEY` validates successfully; the response never
+exposes the key, account ID, or email. Missing or invalid keys leave no card.
 
 ## Common usage
 

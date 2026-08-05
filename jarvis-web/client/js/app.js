@@ -33,6 +33,7 @@ class JarvisApp {
     this._conversations = [];
     this._archivedExpanded = false;
     this._toolsRequestId = 0;
+    this._serpApiAccountRequestId = 0;
     
     // Audio playback state
     this.currentAudio = null;
@@ -379,6 +380,10 @@ class JarvisApp {
         // Load tools tab content
         if (tabName === 'tools') {
           this._loadBlockedTools();
+        }
+        // SerpApi's Account API is called only when the System tab is opened.
+        if (tabName === 'system') {
+          this._loadSerpApiAccount();
         }
       });
     });
@@ -1849,6 +1854,14 @@ class JarvisApp {
    * Load system config (read-only values from current mode's env)
    */
   async _loadSystemConfig() {
+    this._serpApiAccountRequestId = (this._serpApiAccountRequestId || 0) + 1;
+    const serpApiSection = document.getElementById('serpapi-account-section');
+    if (serpApiSection) {
+      // Never retain quota from a previously selected mode.
+      serpApiSection.hidden = true;
+      serpApiSection.innerHTML = '';
+    }
+
     try {
       const mode = this._settingsData?.mode || this.socket.mode;
       const response = await fetch(`/api/settings/system?mode=${encodeURIComponent(mode)}`);
@@ -2204,6 +2217,112 @@ class JarvisApp {
     }
   }
   
+  /**
+   * Lazily load sanitized SerpApi quota data for the current mode.
+   * Missing, invalid, and unreachable accounts intentionally leave no UI behind.
+   */
+  async _loadSerpApiAccount() {
+    const section = document.getElementById('serpapi-account-section');
+    if (!section) return;
+
+    const requestId = (this._serpApiAccountRequestId || 0) + 1;
+    this._serpApiAccountRequestId = requestId;
+    section.hidden = true;
+    section.innerHTML = '';
+
+    try {
+      const mode = this._settingsData?.mode || this.socket.mode;
+      const response = await fetch(`/api/serpapi/account?mode=${encodeURIComponent(mode)}`);
+      const data = await response.json();
+      if (requestId !== this._serpApiAccountRequestId) return;
+      if (!data.ok || !data.configured || !data.valid) return;
+
+      const account = data.account || {};
+      const quota = data.quota || {};
+      const formatNumber = value => {
+        if (value === null || value === undefined || value === '') return null;
+        return Number.isFinite(Number(value)) ? Number(value).toLocaleString() : null;
+      };
+      const rows = [];
+
+      const accountParts = [account.status, account.plan_name]
+        .filter(Boolean)
+        .map(value => Utils.escapeHtml(value));
+      accountParts.push('<a href="https://serpapi.com/dashboard" target="_blank" rel="noopener">Manage</a>');
+      const accountClass = String(account.status || '').toLowerCase() === 'active'
+        ? 'usage-ok'
+        : 'usage-warning';
+      rows.push(`
+        <div class="config-item">
+          <span class="config-label">Account</span>
+          <span class="config-value ${accountClass}">${accountParts.join(' · ')}</span>
+        </div>
+      `);
+
+      const monthlyUsed = formatNumber(quota.monthly_used);
+      const monthlyLimit = formatNumber(quota.monthly_limit);
+      const monthlyRemaining = formatNumber(quota.monthly_remaining);
+      if (monthlyUsed !== null || monthlyLimit !== null || monthlyRemaining !== null) {
+        const monthlyParts = [];
+        if (monthlyUsed !== null && monthlyLimit !== null) {
+          monthlyParts.push(`${monthlyUsed} / ${monthlyLimit}`);
+        } else if (monthlyUsed !== null) {
+          monthlyParts.push(`${monthlyUsed} used`);
+        }
+        if (quota.percentage_used !== null && quota.percentage_used !== undefined) {
+          monthlyParts.push(`${Number(quota.percentage_used).toLocaleString()}%`);
+        }
+        if (monthlyRemaining !== null) monthlyParts.push(`${monthlyRemaining} left`);
+
+        let usageClass = 'usage-ok';
+        const percentage = Number(quota.percentage_used);
+        if (Number.isFinite(percentage) && percentage >= 90) {
+          usageClass = 'usage-critical';
+        } else if (Number.isFinite(percentage) && percentage >= 75) {
+          usageClass = 'usage-warning';
+        }
+        rows.push(`
+          <div class="config-item">
+            <span class="config-label">Monthly searches</span>
+            <span class="config-value ${usageClass}">${monthlyParts.join(' · ')}</span>
+          </div>
+        `);
+      }
+
+      const hourlyUsed = formatNumber(quota.this_hour_searches);
+      const hourlyLimit = formatNumber(quota.hourly_limit);
+      if (hourlyUsed !== null || hourlyLimit !== null) {
+        const hourlyLabel = hourlyUsed !== null && hourlyLimit !== null
+          ? `${hourlyUsed} / ${hourlyLimit}`
+          : `${hourlyUsed ?? hourlyLimit}`;
+        rows.push(`
+          <div class="config-item">
+            <span class="config-label">This hour</span>
+            <span class="config-value">${hourlyLabel}</span>
+          </div>
+        `);
+      }
+
+      if (account.renewal_date) {
+        rows.push(`
+          <div class="config-item">
+            <span class="config-label">Plan renewal</span>
+            <span class="config-value">${Utils.escapeHtml(account.renewal_date)}</span>
+          </div>
+        `);
+      }
+
+      section.innerHTML = `
+        <div class="config-section-title">🔎 SerpApi Quota</div>
+        ${rows.join('')}
+      `;
+      section.hidden = false;
+    } catch (err) {
+      // This is optional status UI; keep it absent when validation cannot finish.
+      console.error('[App] Failed to load SerpApi account quota:', err);
+    }
+  }
+
   /**
    * Update the profile section with current settings
    */

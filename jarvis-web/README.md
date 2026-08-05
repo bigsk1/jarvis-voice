@@ -25,6 +25,7 @@ A modern, feature-rich web interface for Jarvis with real-time streaming, voice 
   - Cloud: ElevenLabs, **xAI TTS**, or others as configured in `config/cloud.env`
   - Local: **Qwen3-TTS** via `QWEN3_TTS_URL`, or Kokoro via `KOKORO_TTS_URL`, per `config/local.env`
   - ElevenLabs character quota surfaced in Settings when relevant (`GET /api/tts/usage`)
+- **SerpApi quota** - Settings → System lazily shows sanitized plan, monthly, and hourly usage only when the selected mode has a valid `SERP_API_KEY`; the free Account API lookup does not consume search quota
 - **Audio Toggle** - Enable/disable voice responses with pause/resume/stop on playback
 
 ### 🖼️ Vision & Images
@@ -156,6 +157,7 @@ Saved Web UI conversations live under `data/web_conversations/`. The normal cron
 | `/api/settings/reset` | POST | Reset to cloud.env defaults |
 | `/api/settings/models/:provider` | GET | Models for provider (`openai`, `anthropic`, `xai`, `ollama`, …) |
 | `/api/tts/usage` | GET | ElevenLabs subscription usage (when that provider is active) |
+| `/api/serpapi/account` | GET | Sanitized SerpApi plan/quota status for the requested mode |
 | `/api/settings/blocked-tools` | GET/PUT | Manage blocked tools |
 | `/api/mode` | GET/PUT | Get/set current mode |
 

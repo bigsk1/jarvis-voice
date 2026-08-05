@@ -80,7 +80,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Dynamic media provider | ✅ | Switch image, video, and music providers on-the-fly |
 | Response style overrides | ✅ | Per-mode overrides for response style, Q&A word limit, and multi-turn word limit |
 | MCP tool discovery | ✅ | Reads from memory_db, shows in Tools tab |
-| System config view | ✅ | Mode-specific .env values in Settings → System |
+| System config view | ✅ | Mode-specific .env values plus lazy SerpApi quota in Settings → System |
 | Per-mode settings | ✅ | `cloud`/`local` sections in web_config.json |
 | Dynamic Ollama models | ✅ | Fetches available models from Ollama server |
 | Clean mode switching | ✅ | Resets Intelligence singleton on mode change |
@@ -635,7 +635,7 @@ not keep showing the startup mode's catalog.
 - **General Tab**: Mode (cloud/local), TTS toggle, mode-aware help text
 - **AI Config Tab**: LLM provider/model dropdowns (per-mode), Image provider, Video provider, Music provider, History limit, Reset button
 - **Tools Tab**: Blocked tools list, add/remove UI, blocked/MCP visual indicators
-- **System Tab**: Mode-specific .env values (thresholds, TTS settings, features) - shows cloud.env OR local.env
+- **System Tab**: Mode-specific .env values (thresholds, TTS settings, features), plus a SerpApi quota card fetched only when the tab is opened. The card stays absent when the selected mode has no valid `SERP_API_KEY`; SerpApi does not count Account API lookups against monthly search quota.
 - **API Keys Tab**: Status indicators (configured/missing)
 
 ---

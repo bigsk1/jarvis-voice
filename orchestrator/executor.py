@@ -106,6 +106,8 @@ class ToolExecutor:
             return 90  # Weather API can be slow with proxy fallback
         if tool_name == "flight_search":
             return 120  # SerpApi deep search can take up to 90 seconds
+        if tool_name == "serpapi_amazon_search":
+            return 90  # SerpApi include product details can take up to 90 seconds
         if tool_name == "serpapi_home_depot":
             return 200  # Direct SerpApi only; up to two sequential 90s HTTP calls if include_product_details
         if tool_name == "serpapi_search_index":

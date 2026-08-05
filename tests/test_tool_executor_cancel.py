@@ -93,6 +93,10 @@ class FakeMcpRegistry:
 
 
 class ToolExecutorCancelTests(unittest.TestCase):
+    def test_amazon_timeout_allows_product_detail_enrichment(self):
+        executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
+        self.assertEqual(executor._get_subprocess_timeout("serpapi_amazon_search"), 90)
+
     def test_home_depot_timeout_allows_two_sequential_http_calls(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("serpapi_home_depot"), 200)

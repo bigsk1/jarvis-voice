@@ -939,6 +939,95 @@ def get_tts_usage():
         })
 
 
+@api_bp.route('/serpapi/account', methods=['GET'])
+@_scoped_request_config
+def get_serpapi_account():
+    """Return sanitized SerpApi quota data for the selected mode."""
+    import requests as http_requests
+    from ..config import get_jarvis_setting
+
+    api_key = str(get_jarvis_setting('SERP_API_KEY', '') or '').strip()
+    configured = bool(api_key)
+    base_payload = {
+        'ok': False,
+        'provider': 'serpapi',
+        'configured': configured,
+        'valid': False,
+    }
+
+    # Do not make an outbound request for a missing or obvious example value.
+    normalized_key = api_key.upper()
+    if (
+        not api_key
+        or len(api_key) < 16
+        or 'YOUR_' in normalized_key
+        or 'REPLACE' in normalized_key
+    ):
+        return jsonify(base_payload)
+
+    try:
+        response = http_requests.get(
+            'https://serpapi.com/account.json',
+            params={'api_key': api_key},
+            timeout=10,
+        )
+    except http_requests.exceptions.Timeout:
+        return jsonify({**base_payload, 'reason': 'timeout'})
+    except http_requests.exceptions.RequestException:
+        return jsonify({**base_payload, 'reason': 'unavailable'})
+
+    if response.status_code != 200:
+        return jsonify({**base_payload, 'reason': 'validation_failed'})
+
+    try:
+        account = response.json()
+    except (TypeError, ValueError):
+        return jsonify({**base_payload, 'reason': 'invalid_response'})
+
+    if not isinstance(account, dict) or not str(account.get('account_status') or '').strip():
+        return jsonify({**base_payload, 'reason': 'invalid_response'})
+
+    def safe_int(value):
+        if isinstance(value, bool) or value in (None, ''):
+            return None
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    monthly_limit = safe_int(account.get('searches_per_month'))
+    monthly_used = safe_int(account.get('this_month_usage'))
+    plan_remaining = safe_int(account.get('plan_searches_left'))
+    extra_credits = safe_int(account.get('extra_credits'))
+    total_remaining = safe_int(account.get('total_searches_left'))
+    if total_remaining is None and (plan_remaining is not None or extra_credits is not None):
+        total_remaining = (plan_remaining or 0) + (extra_credits or 0)
+
+    percentage_used = None
+    if monthly_limit and monthly_used is not None:
+        percentage_used = round(monthly_used / monthly_limit * 100, 1)
+
+    return jsonify({
+        **base_payload,
+        'ok': True,
+        'valid': True,
+        'account': {
+            'status': str(account.get('account_status') or '').strip()[:64],
+            'plan_name': str(account.get('plan_name') or '').strip()[:128] or None,
+            'renewal_date': str(account.get('plan_renewal_date') or '').strip()[:64] or None,
+        },
+        'quota': {
+            'monthly_used': monthly_used,
+            'monthly_limit': monthly_limit,
+            'monthly_remaining': total_remaining,
+            'percentage_used': percentage_used,
+            'extra_credits': extra_credits,
+            'this_hour_searches': safe_int(account.get('this_hour_searches')),
+            'hourly_limit': safe_int(account.get('account_rate_limit_per_hour')),
+        },
+    })
+
+
 _OLLAMA_CLOUD_STATUS_CACHE = {}
 _OLLAMA_CLOUD_STATUS_TTL_SECONDS = 45
 
