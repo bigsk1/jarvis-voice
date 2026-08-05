@@ -51,6 +51,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_hotel_search', payload => this._adaptHotels(payload));
     this.register('serpapi_yelp_search', payload => this._adaptYelp(payload));
     this.register('serpapi_search_index', payload => this._adaptSearchIndex(payload));
+    this.register('serpapi_google_trends', payload => this._adaptGoogleTrends(payload));
     this.register('serpapi_tripadvisor', payload => this._adaptTripadvisor(payload));
     this.register('flight_search', payload => this._adaptFlights(payload));
     this.register('serpapi_maps_search', payload => this._adaptMaps(payload));
@@ -295,6 +296,73 @@ class StructuredResultsRenderer {
       eyebrow: mode === 'deep' ? 'Search Index · Deep recall' : 'Search Index',
       heading: payload.query || 'Indexed web sources',
       subtitle: related ? `${countText} · Related: ${related}` : countText,
+      items,
+    };
+  }
+
+  _adaptGoogleTrends(payload) {
+    const dataType = String(payload.data_type || 'interest_over_time').toLowerCase();
+    const items = this._rows(payload).map((row, index) => {
+      if (dataType === 'interest_over_time') {
+        const chips = [];
+        if (row.direction) chips.push(String(row.direction));
+        if (row.average_value != null) chips.push(`Average ${row.average_value}`);
+        if (row.peak_value != null) chips.push(`Peak ${row.peak_value}`);
+        const changes = [];
+        if (row.change_from_previous != null) {
+          const prefix = Number(row.change_from_previous) > 0 ? '+' : '';
+          changes.push(`${prefix}${row.change_from_previous} from previous`);
+        }
+        if (row.change_over_period != null) {
+          const prefix = Number(row.change_over_period) > 0 ? '+' : '';
+          changes.push(`${prefix}${row.change_over_period} over period`);
+        }
+        return {
+          title: row.query || row.title || `Trend ${index + 1}`,
+          primary: row.latest_value != null ? `Latest ${row.latest_value}` : '',
+          chips,
+          details: [row.latest_date, ...changes].filter(Boolean),
+        };
+      }
+
+      if (dataType === 'compared_by_region' || dataType === 'interest_by_region') {
+        const values = Array.isArray(row.values) ? row.values : [];
+        const comparison = values.slice(0, 5).map(value => {
+          const score = value.extracted_value ?? value.value;
+          return [value.query, score].filter(part => part != null && part !== '').join(' ');
+        }).filter(Boolean).join(' · ');
+        return {
+          title: row.location || row.title || `Region ${index + 1}`,
+          primary: row.top_query
+            ? `${row.top_query} · ${row.top_value ?? ''}`.trim()
+            : (row.extracted_value ?? row.value ?? ''),
+          chips: row.geo ? [String(row.geo)] : [],
+          details: comparison ? [comparison] : [],
+        };
+      }
+
+      const chips = [];
+      if (row.trend_type) chips.push(String(row.trend_type));
+      if (row.topic_type) chips.push(String(row.topic_type));
+      return {
+        title: row.title || row.query || `Related trend ${index + 1}`,
+        url: row.url,
+        primary: row.value ?? row.extracted_value ?? '',
+        chips,
+        details: row.topic_id ? [String(row.topic_id)] : [],
+        actionLabel: 'Open trend',
+      };
+    });
+    const view = dataType.replace(/_/g, ' ');
+    const scope = [payload.date, payload.geo].filter(Boolean).join(' · ');
+    return {
+      kind: 'generic',
+      layout: 'rail',
+      eyebrow: 'Google Trends',
+      heading: payload.query || this._list(payload.queries).join(', ') || 'Trend analysis',
+      subtitle: [view, scope].filter(Boolean).join(' · '),
+      actionUrl: payload.trends_url,
+      actionLabel: 'Open Google Trends',
       items,
     };
   }

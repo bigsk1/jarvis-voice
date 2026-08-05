@@ -1087,8 +1087,10 @@ class PipelineExecutor:
     
     def _is_search_tool(self, tool_name: str) -> bool:
         """Check if a tool is a search tool."""
-        search_indicators = ["search", "brave", "serp", "google", "bing", "duckduckgo"]
         tool_lower = tool_name.lower()
+        if tool_lower == "serpapi_google_trends":
+            return False
+        search_indicators = ["search", "brave", "serp", "google", "bing", "duckduckgo"]
         return any(ind in tool_lower for ind in search_indicators)
     
     def _extract_by_path(self, data: dict, path: str) -> Any:

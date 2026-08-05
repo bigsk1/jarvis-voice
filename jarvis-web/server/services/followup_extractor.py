@@ -46,6 +46,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_youtube_search',
     'serpapi_yelp_search',
     'serpapi_search_index',
+    'serpapi_google_trends',
     'serpapi_tripadvisor',
     'flight_search',
     'crawl_url',
@@ -295,6 +296,13 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'engine', 'query', 'mode', 'safe', 'start', 'num_results',
         'results_count', 'provider_results_count', 'total_results', 'top_url',
         'search_id', 'has_more', 'next_start', 'serpapi_searches_used', 'source',
+    ],
+    'serpapi_google_trends': [
+        'engine', 'query', 'queries', 'data_type', 'provider_data_type',
+        'date', 'geo', 'region', 'language', 'timezone_offset', 'category',
+        'property', 'results_count', 'provider_results_count', 'latest_period',
+        'timeline_points_returned', 'timeline_points_original', 'search_id',
+        'trends_url', 'serpapi_searches_used', 'source',
     ],
     'serpapi_tripadvisor': [
         'action', 'engine', 'query', 'category', 'tripadvisor_domain',
@@ -2872,6 +2880,56 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 }
                 if compact_pagination:
                     extracted['pagination'] = compact_pagination
+
+        if key == 'serpapi_google_trends':
+            results = payload.get('results') or payload.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = payload.get('results_count', len(results))
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = {
+                        field: item[field]
+                        for field in (
+                            'title', 'query', 'url', 'trend_type', 'topic_id',
+                            'topic_type', 'location', 'geo', 'latest_date',
+                            'latest_value', 'previous_value',
+                            'change_from_previous', 'change_over_period',
+                            'direction', 'average_value', 'peak_value',
+                            'peak_date', 'value', 'extracted_value', 'top_query',
+                            'top_value', 'values',
+                        )
+                        if item.get(field) not in (None, '', [], {})
+                    }
+                    if candidate:
+                        candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
+
+            averages = payload.get('averages')
+            if isinstance(averages, list) and averages:
+                extracted['averages'] = [
+                    {
+                        field: item[field]
+                        for field in ('query', 'value')
+                        if item.get(field) not in (None, '')
+                    }
+                    for item in averages[:max_candidates]
+                    if isinstance(item, dict)
+                ]
+
+            timeline = payload.get('timeline_data')
+            if isinstance(timeline, list) and timeline:
+                extracted['latest_timeline'] = [
+                    {
+                        field: point[field]
+                        for field in ('date', 'timestamp', 'values')
+                        if point.get(field) not in (None, '', [], {})
+                    }
+                    for point in timeline[-3:]
+                    if isinstance(point, dict)
+                ]
 
         if key == 'serpapi_tripadvisor':
             action = str(payload.get('action') or 'search').strip().lower()

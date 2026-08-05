@@ -53,6 +53,7 @@ const expectedTools = [
   'serpapi_hotel_search',
   'serpapi_yelp_search',
   'serpapi_search_index',
+  'serpapi_google_trends',
   'serpapi_tripadvisor',
   'flight_search',
   'serpapi_maps_search',
@@ -166,6 +167,24 @@ const html = renderer.render({{
       sitelinks: [{{title: 'Queue schema', url: 'https://example.test/schema'}}]
     }}]
   }},
+  serpapi_google_trends: {{
+    query: 'AI agents, AI assistants',
+    data_type: 'interest_over_time',
+    date: 'now 7-d',
+    geo: 'US',
+    trends_url: 'https://trends.google.com/trends/explore?q=AI+agents,AI+assistants',
+    results: [{{
+      title: 'AI agents',
+      query: 'AI agents',
+      latest_date: 'Aug 5, 2026',
+      latest_value: 83,
+      direction: 'rising',
+      average_value: 61,
+      peak_value: 83,
+      change_from_previous: 9,
+      change_over_period: 28
+    }}]
+  }},
   serpapi_tripadvisor: {{
     action: 'search',
     query: 'Rome',
@@ -252,6 +271,8 @@ for (const expected of [
   'PostgreSQL as a durable queue', 'example.test/postgres-queue',
   'A practical guide to durable workers', 'Aug 1, 2026', '1 related links',
   '314 indexed matches', 'Related: SKIP LOCKED queue · durable job queue',
+  'Google Trends', 'AI agents, AI assistants', 'Latest 83', 'Average 61',
+  'Peak 83', '+9 from previous', '+28 over period', 'Open Google Trends',
   'Colosseum', '155000 reviews', 'Rome, Italy', 'Ancient amphitheatre',
   'PDX → PHX', '$257', 'Alaska', 'AS 1349',
   'Departs 09/15/2099 · 7:03 AM', 'Open Google Flights',
@@ -266,7 +287,7 @@ for (const expected of [
   }}
 }}
 if (html.includes('flight_numbers')) process.exit(4);
-if ((html.match(/structured-results-preview/g) || []).length !== 12) process.exit(5);
+if ((html.match(/structured-results-preview/g) || []).length !== 13) process.exit(5);
 
 if (!renderer.register('custom_demo', payload => ({{
   kind: 'generic',
@@ -282,6 +303,66 @@ for (const expected of ['Custom', 'Extension works', 'New adapter', 'Ready', 'st
   if (!customHtml.includes(expected)) process.exit(7);
 }}
 if (customHtml.includes('structured-results-scroll-button')) process.exit(8);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
+def test_google_trends_renderer_formats_regional_and_related_views():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const escapeHtml = value => String(value)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const sandbox = {{
+  URL, window: {{}}, console,
+  Utils: {{
+    escapeHtml,
+    safeHttpUrlForAttr: value => {{
+      try {{
+        const parsed = new URL(String(value));
+        return ['http:', 'https:'].includes(parsed.protocol) ? escapeHtml(parsed.href) : '';
+      }} catch (_error) {{ return ''; }}
+    }}
+  }}
+}};
+vm.createContext(sandbox);
+vm.runInContext(source, sandbox);
+const renderer = sandbox.window.structuredResultsRenderer;
+
+const regionHtml = renderer.render({{
+  serpapi_google_trends: {{
+    query: 'coffee, tea', data_type: 'compared_by_region', date: 'today 3-m', geo: 'US',
+    results: [{{
+      title: 'Oregon', location: 'Oregon', geo: 'US-OR',
+      top_query: 'coffee', top_value: 70,
+      values: [
+        {{query: 'coffee', extracted_value: 70}},
+        {{query: 'tea', extracted_value: 30}}
+      ]
+    }}]
+  }}
+}});
+for (const expected of [
+  'compared by region', 'Oregon', 'US-OR', 'coffee · 70', 'coffee 70 · tea 30'
+]) if (!regionHtml.includes(expected)) process.exit(2);
+
+const relatedHtml = renderer.render({{
+  serpapi_google_trends: {{
+    query: 'AI agents', data_type: 'related_topics', date: 'now 7-d', geo: 'US',
+    results: [{{
+      title: 'Agentic AI', topic_id: '/m/agentic', topic_type: 'Technology',
+      trend_type: 'rising', value: '+1,200%',
+      url: 'https://trends.google.com/trends/explore?q=agentic+AI'
+    }}]
+  }}
+}});
+for (const expected of [
+  'related topics', 'Agentic AI', '+1,200%', 'rising', 'Technology',
+  '/m/agentic', 'Open trend'
+]) if (!relatedHtml.includes(expected)) process.exit(3);
 """
 
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)

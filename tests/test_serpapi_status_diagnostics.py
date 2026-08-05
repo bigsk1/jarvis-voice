@@ -149,6 +149,31 @@ class SerpApiStatusDiagnosticTests(unittest.TestCase):
         self.assertIn("Search Index API", result["speech"])
         self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
 
+    def test_google_trends_timeout_matches_google_trends_incident(self):
+        with patch.object(
+            serpapi_client,
+            "fetch_serpapi_unresolved_incidents",
+            return_value=[
+                incident(
+                    name="[Google Trends API] Performance Degradation",
+                    update="We are investigating Google Trends API latency.",
+                )
+            ],
+        ):
+            result = serpapi_client.diagnose_serpapi_tool_failure(
+                "serpapi_google_trends",
+                {"query": "AI agents", "data_type": "interest_over_time"},
+                "Tool serpapi_google_trends timed out",
+                force=True,
+            )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            result["data"]["serpapi_incident"]["engine"], "google_trends"
+        )
+        self.assertIn("Google Trends API", result["speech"])
+        self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
+
     def test_unrelated_incident_does_not_replace_original_failure(self):
         with patch.object(
             serpapi_client,

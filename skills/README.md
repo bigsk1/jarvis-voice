@@ -286,6 +286,7 @@ JSON object printed to stdout:
 | `stock_price` | Stock/futures/forex prices |
 | `serpapi_amazon_search` | Amazon listing discovery and focused ASIN/product details through SerpApi |
 | `serpapi_search_index` | Structured indexed-web source discovery with standard/deep recall, snippets, exact URLs, and workflow-ready pagination |
+| `serpapi_google_trends` | Query-driven Google Trends time series, regional comparisons, and rising/top related queries or topics |
 | `serpapi_home_depot` | SerpApi Home Depot product search with store/ZIP filters |
 | `serpapi_maps_search` | SerpApi Google Maps place and local business search |
 | `serpapi_hotel_search` | Future Google Hotels options, cheapest-first stay pricing, and filters |

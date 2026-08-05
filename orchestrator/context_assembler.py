@@ -864,6 +864,7 @@ class ContextAssembler:
         is_hotel_search = str(data.get("engine") or "").strip().lower() == "google_hotels"
         is_yelp_search = str(data.get("engine") or "").strip().lower() == "yelp"
         is_search_index = str(tool_name or "").strip().lower() == "serpapi_search_index"
+        is_google_trends = str(tool_name or "").strip().lower() == "serpapi_google_trends"
         is_tripadvisor = str(tool_name or "").strip().lower() == "serpapi_tripadvisor"
         is_flight_search = str(tool_name or "").strip().lower() == "flight_search"
 
@@ -933,6 +934,38 @@ class ContextAssembler:
                     "snippet",
                     "language",
                     "sitelinks",
+                ):
+                    value = item.get(key)
+                    if value not in (None, "", [], {}):
+                        candidate[key] = self.build_preview_value(
+                            value,
+                            parent_key=key,
+                            depth=0,
+                            max_depth=2,
+                        )
+
+            if is_google_trends:
+                for key in (
+                    "query",
+                    "trend_type",
+                    "topic_id",
+                    "topic_type",
+                    "location",
+                    "geo",
+                    "latest_date",
+                    "latest_value",
+                    "previous_value",
+                    "change_from_previous",
+                    "change_over_period",
+                    "direction",
+                    "average_value",
+                    "peak_value",
+                    "peak_date",
+                    "value",
+                    "extracted_value",
+                    "top_query",
+                    "top_value",
+                    "values",
                 ):
                     value = item.get(key)
                     if value not in (None, "", [], {}):
@@ -1195,6 +1228,61 @@ class ContextAssembler:
             )
         return preview
 
+    def build_google_trends_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep trend request context plus bounded averages and recent timeline data."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "engine",
+            "query",
+            "queries",
+            "data_type",
+            "provider_data_type",
+            "date",
+            "geo",
+            "region",
+            "language",
+            "timezone_offset",
+            "category",
+            "property",
+            "results_count",
+            "provider_results_count",
+            "latest_period",
+            "timeline_points_returned",
+            "timeline_points_original",
+            "search_id",
+            "trends_url",
+            "serpapi_searches_used",
+            "source",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=2,
+                )
+
+        averages = data.get("averages")
+        if isinstance(averages, list) and averages:
+            preview["averages"] = self.build_preview_value(
+                averages[:5],
+                parent_key="averages",
+                max_depth=2,
+            )
+
+        timeline = data.get("timeline_data")
+        if isinstance(timeline, list) and timeline:
+            selected = timeline if len(timeline) <= 4 else [timeline[0], *timeline[-3:]]
+            preview["timeline_sample"] = self.build_preview_value(
+                selected,
+                parent_key="timeline_sample",
+                max_depth=3,
+            )
+        return preview
+
     def build_flight_data_preview(self, data: Any) -> dict[str, Any]:
         """Keep compact flight-search request, route, and pricing context."""
         if not isinstance(data, dict):
@@ -1424,6 +1512,8 @@ class ContextAssembler:
                 data_preview = self.build_yelp_data_preview(data)
             elif normalized_tool_name == "serpapi_search_index":
                 data_preview = self.build_search_index_data_preview(data)
+            elif normalized_tool_name == "serpapi_google_trends":
+                data_preview = self.build_google_trends_data_preview(data)
             elif normalized_tool_name == "serpapi_tripadvisor":
                 data_preview = self.build_tripadvisor_data_preview(data)
             elif normalized_tool_name == "flight_search":

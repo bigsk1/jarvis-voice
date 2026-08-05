@@ -26,6 +26,7 @@
     "serpapi_ebay_search": false,
     "serpapi_home_depot": false,
     "serpapi_hotel_search": false,
+    "serpapi_google_trends": false,
     "serpapi_maps_search": false,
     "serpapi_tripadvisor": false,
     "serpapi_yelp_search": false,

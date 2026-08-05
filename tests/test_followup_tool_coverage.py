@@ -664,6 +664,37 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "serpapi_google_trends": _case(
+        {
+            "engine": "google_trends",
+            "query": "AI agents",
+            "queries": ["AI agents"],
+            "data_type": "interest_over_time",
+            "date": "now 7-d",
+            "geo": "US",
+            "results_count": 1,
+            "latest_period": "Aug 5, 2026",
+            "serpapi_searches_used": 1,
+            "source": "SerpApi Google Trends",
+            "results": [
+                {
+                    "title": "AI agents",
+                    "query": "AI agents",
+                    "latest_date": "Aug 5, 2026",
+                    "latest_value": 83,
+                    "direction": "rising",
+                    "average_value": 61,
+                    "peak_value": 83,
+                }
+            ],
+            "timeline_data": [
+                {
+                    "date": "Aug 5, 2026",
+                    "values": [{"query": "AI agents", "extracted_value": 83}],
+                }
+            ],
+        }
+    ),
     "serpapi_tripadvisor": _case(
         {
             "action": "search",

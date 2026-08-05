@@ -180,6 +180,79 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(data_preview["search_id"], "search-index-123")
         self.assertNotIn("large_provider_payload", preview)
 
+    def test_google_trends_preview_keeps_trend_summaries_and_recent_timeline(self):
+        result = {
+            "ok": True,
+            "speech": "Analyzed Google Trends interest for two topics.",
+            "data": {
+                "engine": "google_trends",
+                "query": "AI agents, AI assistants",
+                "queries": ["AI agents", "AI assistants"],
+                "data_type": "interest_over_time",
+                "provider_data_type": "TIMESERIES",
+                "date": "now 7-d",
+                "geo": "US",
+                "results_count": 2,
+                "latest_period": "Aug 5, 2026",
+                "timeline_points_returned": 5,
+                "timeline_points_original": 5,
+                "search_id": "trends-123",
+                "averages": [
+                    {"query": "AI agents", "value": 61},
+                    {"query": "AI assistants", "value": 48},
+                ],
+                "raw": {"large_provider_payload": "x" * 12000},
+                "results": [
+                    {
+                        "title": "AI agents",
+                        "query": "AI agents",
+                        "latest_date": "Aug 5, 2026",
+                        "latest_value": 83,
+                        "previous_value": 74,
+                        "change_from_previous": 9,
+                        "change_over_period": 28,
+                        "direction": "rising",
+                        "average_value": 61,
+                        "peak_value": 83,
+                        "peak_date": "Aug 5, 2026",
+                    },
+                    {
+                        "title": "AI assistants",
+                        "query": "AI assistants",
+                        "latest_value": 47,
+                        "direction": "falling",
+                    },
+                ],
+                "timeline_data": [
+                    {
+                        "date": f"Aug {day}, 2026",
+                        "values": [
+                            {"query": "AI agents", "extracted_value": value}
+                        ],
+                    }
+                    for day, value in ((1, 55), (2, 60), (3, 68), (4, 74), (5, 83))
+                ],
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_google_trends", result
+        )
+
+        parsed = json.loads(preview)
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        data_preview = parsed["llm_context_preview"]["data_preview"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 6000)
+        self.assertEqual(candidates[0]["direction"], "rising")
+        self.assertEqual(candidates[0]["change_over_period"], 28)
+        self.assertEqual(data_preview["averages"][0]["value"], 61)
+        self.assertEqual(
+            [point["date"] for point in data_preview["timeline_sample"]],
+            ["Aug 1, 2026", "Aug 3, 2026", "Aug 4, 2026", "Aug 5, 2026"],
+        )
+        self.assertNotIn("large_provider_payload", preview)
+
     def test_hotel_preview_keeps_compact_prices_pet_status_and_urls(self):
         result = {
             "ok": True,

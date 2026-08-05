@@ -604,6 +604,88 @@ def test_extract_followup_data_preserves_search_index_sources_and_pagination():
     assert search_index["candidates"][1]["url"].endswith("/skip-locked")
 
 
+def test_extract_followup_data_preserves_google_trends_series_and_latest_points():
+    handler = _handler()
+    data = {
+        "serpapi_google_trends": {
+            "engine": "google_trends",
+            "query": "AI agents, AI assistants",
+            "queries": ["AI agents", "AI assistants"],
+            "data_type": "interest_over_time",
+            "date": "now 7-d",
+            "geo": "US",
+            "results_count": 2,
+            "latest_period": "Aug 5, 2026",
+            "averages": [
+                {"query": "AI agents", "value": 61},
+                {"query": "AI assistants", "value": 48},
+            ],
+            "results": [
+                {
+                    "title": "AI agents",
+                    "query": "AI agents",
+                    "latest_date": "Aug 5, 2026",
+                    "latest_value": 83,
+                    "previous_value": 74,
+                    "change_from_previous": 9,
+                    "change_over_period": 28,
+                    "direction": "rising",
+                    "average_value": 61,
+                    "peak_value": 83,
+                    "peak_date": "Aug 5, 2026",
+                }
+            ],
+            "timeline_data": [
+                {
+                    "date": f"Aug {day}, 2026",
+                    "values": [
+                        {"query": "AI agents", "extracted_value": value}
+                    ],
+                }
+                for day, value in ((1, 55), (2, 60), (3, 68), (4, 74), (5, 83))
+            ],
+        }
+    }
+
+    trends = handler._extract_followup_data(data)["serpapi_google_trends"]
+
+    assert trends["data_type"] == "interest_over_time"
+    assert trends["candidates"][0]["direction"] == "rising"
+    assert trends["candidates"][0]["change_over_period"] == 28
+    assert trends["averages"][0] == {"query": "AI agents", "value": 61}
+    assert [point["date"] for point in trends["latest_timeline"]] == [
+        "Aug 3, 2026",
+        "Aug 4, 2026",
+        "Aug 5, 2026",
+    ]
+
+
+def test_extract_followup_data_preserves_google_trends_related_links():
+    handler = _handler()
+    data = {
+        "serpapi_google_trends": {
+            "query": "AI agents",
+            "data_type": "related_queries",
+            "results": [
+                {
+                    "title": "AI agent frameworks",
+                    "query": "AI agent frameworks",
+                    "trend_type": "rising",
+                    "value": "+1,200%",
+                    "extracted_value": 1200,
+                    "url": "https://trends.google.com/trends/explore?q=AI+agent+frameworks",
+                }
+            ],
+        }
+    }
+
+    candidate = handler._extract_followup_data(data)["serpapi_google_trends"]["candidates"][0]
+
+    assert candidate["trend_type"] == "rising"
+    assert candidate["extracted_value"] == 1200
+    assert candidate["url"].startswith("https://trends.google.com/")
+
+
 def test_extract_followup_data_preserves_tripadvisor_search_candidates():
     handler = _handler()
     data = {

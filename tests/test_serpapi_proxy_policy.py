@@ -20,6 +20,7 @@ EXPECTED_SERPAPI_TOOLS = {
     "serpapi_ebay_search",
     "serpapi_home_depot",
     "serpapi_hotel_search",
+    "serpapi_google_trends",
     "serpapi_maps_search",
     "serpapi_amazon_search",
     "serpapi_search_index",

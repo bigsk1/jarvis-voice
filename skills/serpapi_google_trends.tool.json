@@ -1,0 +1,133 @@
+{
+  "enabled": true,
+  "name": "serpapi_google_trends",
+  "description": "Analyze Google Trends interest for one to five supplied topics through SerpApi. Use it to measure whether named terms are rising or falling over time, compare specific terms by country/region/city, find locations where one topic is strongest, or discover rising and top related queries or topics. It is well suited to workflow inputs for content planning, demand signals, market monitoring, topic prioritization, and comparing attention across brands, products, technologies, people, or events. The default window is the past 7 days; date supports hour/day/month/year and custom historical ranges. Results include compact trend summaries, bounded timeline points, regional rankings, related-term links, provider metadata, and the Google Trends URL. Cached results are allowed by default.",
+  "complementary_tools": [
+    "serpapi_search_index",
+    "mcp_fetch_fetch",
+    "crawl_url",
+    "workflow",
+    "canvas",
+    "stash"
+  ],
+  "script": "serpapi_google_trends.py",
+  "proxy_policy": "off",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": [
+          "string",
+          "array"
+        ],
+        "items": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "description": "One topic or a list/comma-separated comparison of up to 5 topics. Related and single-region views accept exactly one topic; compared_by_region requires at least two."
+      },
+      "data_type": {
+        "type": "string",
+        "enum": [
+          "interest_over_time",
+          "compared_by_region",
+          "interest_by_region",
+          "related_topics",
+          "related_queries"
+        ],
+        "description": "Trend view. interest_over_time is the default and accepts 1-5 topics. compared_by_region accepts 2-5. Other views accept one topic."
+      },
+      "date": {
+        "type": "string",
+        "description": "Trend window. Default now 7-d. Common values: now 1-H, now 4-H, now 1-d, now 7-d, today 1-m, today 3-m, today 12-m, today 5-y, or all. Custom ranges use YYYY-MM-DD YYYY-MM-DD."
+      },
+      "geo": {
+        "type": "string",
+        "maxLength": 24,
+        "description": "Google Trends location code such as US, GB, CA, or US-OR. Omit for Worldwide."
+      },
+      "region": {
+        "type": "string",
+        "enum": [
+          "country",
+          "region",
+          "dma",
+          "city"
+        ],
+        "description": "Regional granularity for compared_by_region or interest_by_region when supported by geo."
+      },
+      "language": {
+        "type": "string",
+        "pattern": "^[a-zA-Z]{2}$",
+        "description": "Two-letter Google Trends interface language, such as en or es."
+      },
+      "timezone_offset": {
+        "type": "integer",
+        "minimum": -1439,
+        "maximum": 1439,
+        "description": "Minutes from the selected timezone back to UTC using Google Trends' sign convention. Default 420 (Pacific daylight time). Tokyo UTC+9 is -540."
+      },
+      "category": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9999,
+        "description": "Optional numeric Google Trends category ID. Default 0 (all categories)."
+      },
+      "property": {
+        "type": "string",
+        "enum": [
+          "web",
+          "images",
+          "news",
+          "shopping",
+          "youtube"
+        ],
+        "description": "Google search property to analyze. Default web."
+      },
+      "include_low_search_volume": {
+        "type": "boolean",
+        "description": "Include low-volume locations for regional views. Default false."
+      },
+      "max_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50,
+        "description": "Maximum regional or related results to normalize. Default 20; maximum 50."
+      },
+      "max_timeline_points": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200,
+        "description": "Maximum evenly sampled timeline points returned while summaries still use the full provider series. Default 60; maximum 200."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "Bypass SerpApi's one-hour exact-parameter cache. Default false; cached searches are free."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Advanced non-reserved Google Trends parameters passed to SerpApi. Core query, view, date, geography, property, cache, async, and output controls cannot be overridden."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "Include the full SerpApi response for debugging or dataset capture. Default false."
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "SERP_API_KEY"
+    ],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file."
+  }
+}

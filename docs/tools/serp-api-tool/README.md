@@ -1,9 +1,9 @@
 # SerpApi Tools
 
 Jarvis provides a family of focused SerpApi tools for shopping, indexed-web
-source discovery, local places, travel, and YouTube. Each tool has its own
-schema and normalized result shape so Tool RAG can select a narrow capability
-instead of routing every request through one ambiguous search tool.
+source discovery, trend analysis, local places, travel, and YouTube. Each tool
+has its own schema and normalized result shape so Tool RAG can select a narrow
+capability instead of routing every request through one ambiguous search tool.
 
 `serpapi_amazon_search` is the renamed Amazon tool. Despite its former generic
 name, its implemented product experience was Amazon-focused. It now accepts
@@ -16,6 +16,7 @@ discover general public webpages and source URLs.
 |---|---|---|
 | `serpapi_amazon_search` | `amazon`, `amazon_product` | Amazon listing discovery, ASIN details, prices, ratings, Prime, delivery, stock, and product comparison |
 | `serpapi_search_index` | `search_index` | Ranked indexed-web sources for grounding, datasets, and workflows; fetch returned URLs separately |
+| `serpapi_google_trends` | `google_trends` | Interest over time for named topics, comparisons by region, and rising/top related queries or topics for monitoring and workflows |
 | `serpapi_ebay_search` | `ebay` | eBay listing discovery with price, condition, seller, shipping, images, and product IDs |
 | `serpapi_ebay_product` | `ebay_product` | One eBay listing's focused details by numeric product ID |
 | `serpapi_home_depot` | `home_depot`, `home_depot_product` | Home Depot products, price/rating comparison, store or ZIP availability, and focused details |
@@ -46,7 +47,8 @@ The family uses these common layers:
 - `jarvis-web/server/services/followup_extractor.py` preserves bounded result
   identity for later turns.
 - `jarvis-web/client/js/structured-results.js` renders focused product, place,
-  hotel, flight, Tripadvisor, Search Index, eBay, Yelp, Maps, and YouTube cards.
+  hotel, flight, Tripadvisor, Google Trends, Search Index, eBay, Yelp, Maps,
+  and YouTube cards.
 
 Raw provider JSON is available only through each tool's `include_raw` debug
 option. Normal conversational and workflow calls should leave it off.
@@ -64,7 +66,7 @@ Use `config/cloud.env` for cloud mode and `config/local.env` for local mode.
 `JARVIS_DEFAULT_POSTAL_CODE` is optional and localizes Amazon delivery and Home
 Depot availability where supported.
 
-The eleven `serpapi_*` manifests declare:
+The twelve `serpapi_*` manifests declare:
 
 ```json
 "availability": {
@@ -143,7 +145,7 @@ additional searches:
 
 | Tool or option | SerpApi searches |
 |---|---:|
-| eBay search/product, Maps, Hotels, Search Index, YouTube search | 1 |
+| eBay search/product, Maps, Hotels, Search Index, Google Trends, YouTube search | 1 |
 | Amazon listing or product call | 1 base call |
 | Amazon empty-result query normalization | Up to 2 bounded retry calls |
 | Amazon `include_product_details=true` | Up to `product_details_limit` additional product calls, maximum 5 |
@@ -218,6 +220,38 @@ Use `mode=deep` when a workflow needs broader recall. Search Index returns
 ranked titles, snippets, dates, languages, images, sitelinks, related queries,
 pagination metadata, and exact URLs. It does not fetch page bodies. Pass a
 chosen URL to MCP Fetch, `crawl_url`, a summarizer, Stash, or Canvas.
+
+### Google Trends analysis
+
+Compare supplied topics over a current window:
+
+```json
+{
+  "query": ["AI agents", "AI assistants"],
+  "data_type": "interest_over_time",
+  "date": "now 7-d",
+  "geo": "US"
+}
+```
+
+Find rising related searches for a topic:
+
+```json
+{
+  "query": "AI agents",
+  "data_type": "related_queries",
+  "date": "now 7-d",
+  "geo": "US"
+}
+```
+
+Regional views use `compared_by_region` for two to five terms or
+`interest_by_region` for one term. The tool also supports `related_topics`,
+hour/day/month/year windows, custom historical ranges, Google properties such
+as News or YouTube, and an evenly bounded timeline suitable for workflow
+inputs. It is query-driven: use it when the topic is already known. A future
+Trending Now tool would be the better surface for discovering trends without
+a seed topic.
 
 ### eBay discovery and detail
 
@@ -366,6 +400,8 @@ reuse the correct item or place instead of guessing:
 - Amazon ASINs, links, images, prices, ratings, Prime, delivery, and stock;
 - eBay and Home Depot product IDs;
 - Maps, Yelp, and Tripadvisor place IDs;
+- Google Trends summaries, regional values, recent timeline points, and
+  related links;
 - Search Index source URLs and pagination metadata;
 - hotel property IDs and stay context; and
 - YouTube video IDs and URLs.
