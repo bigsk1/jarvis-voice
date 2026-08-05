@@ -643,6 +643,29 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "serpapi_tripadvisor": _case(
+        {
+            "action": "search",
+            "engine": "tripadvisor",
+            "query": "Rome",
+            "category": "all",
+            "tripadvisor_domain": "www.tripadvisor.com",
+            "place_id": "187791",
+            "results_count": 1,
+            "serpapi_searches_used": 1,
+            "source": "SerpApi Tripadvisor",
+            "results": [
+                {
+                    "title": "Rome",
+                    "place_id": "187791",
+                    "place_type": "GEO",
+                    "url": "https://www.tripadvisor.com/Tourism-g187791-Rome.html",
+                    "location": "Lazio, Italy",
+                    "description": "Historic city with museums, food, and monuments.",
+                }
+            ],
+        }
+    ),
     "serpapi_yelp_search": _case(
         {
             "engine": "yelp",

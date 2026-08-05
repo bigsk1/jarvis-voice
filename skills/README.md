@@ -292,6 +292,7 @@ JSON object printed to stdout:
 | `serpapi_youtube` | SerpApi YouTube video details and transcript fallback |
 | `serpapi_youtube_search` | SerpApi YouTube video search by keywords |
 | `serpapi_yelp_search` | Yelp place discovery with local rating/review sorting, attrs, links, and optional review excerpts |
+| `serpapi_tripadvisor` | Tripadvisor discovery plus place details, nearby suggestions, and filtered review drill-down by place ID |
 | `spotify` | Music playback control |
 | `opencode` | Autonomous coding agent |
 | `calculator` | Math, stats, unit conversions |

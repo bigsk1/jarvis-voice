@@ -101,6 +101,10 @@ class ToolExecutorCancelTests(unittest.TestCase):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("flight_search"), 120)
 
+    def test_tripadvisor_timeout_allows_three_sequential_http_calls(self):
+        executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
+        self.assertEqual(executor._get_subprocess_timeout("serpapi_tripadvisor"), 160)
+
     def test_final_serpapi_failure_adds_matching_incident_context(self):
         diagnosis = {
             "speech": "SerpApi is reporting a matching Home Depot incident.",

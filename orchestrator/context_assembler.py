@@ -863,6 +863,7 @@ class ContextAssembler:
         url_aliases = ("url", "link", "youtube_url", "watch_url", "product_link")
         is_hotel_search = str(data.get("engine") or "").strip().lower() == "google_hotels"
         is_yelp_search = str(data.get("engine") or "").strip().lower() == "yelp"
+        is_tripadvisor = str(tool_name or "").strip().lower() == "serpapi_tripadvisor"
         is_flight_search = str(tool_name or "").strip().lower() == "flight_search"
 
         candidates: list[dict[str, Any]] = []
@@ -915,6 +916,28 @@ class ContextAssembler:
                     "neighborhoods",
                     "open_state",
                     "snippet",
+                ):
+                    value = item.get(key)
+                    if value not in (None, "", [], {}):
+                        candidate[key] = self.build_preview_value(
+                            value,
+                            parent_key=key,
+                            depth=0,
+                            max_depth=1,
+                        )
+
+            if is_tripadvisor:
+                for key in (
+                    "place_id",
+                    "place_type",
+                    "review_id",
+                    "reviews",
+                    "location",
+                    "address",
+                    "description",
+                    "text",
+                    "author_name",
+                    "trip_type",
                 ):
                     value = item.get(key)
                     if value not in (None, "", [], {}):
@@ -1012,6 +1035,98 @@ class ContextAssembler:
                 compact_review_data["reviews"] = reviews
             if compact_review_data:
                 preview["review_data"] = compact_review_data
+
+        return preview
+
+    def build_tripadvisor_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep Tripadvisor action context and bounded enrichment data."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "action",
+            "engine",
+            "query",
+            "category",
+            "tripadvisor_domain",
+            "place_id",
+            "results_count",
+            "total_reviews",
+            "review_sort_by",
+            "review_filters",
+            "serpapi_searches_used",
+            "source",
+            "enrichment_errors",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=2,
+                )
+
+        place = data.get("place")
+        if isinstance(place, dict):
+            preview["place"] = self.build_preview_value(
+                place,
+                parent_key="place",
+                max_depth=2,
+            )
+
+        interesting = data.get("interesting_places")
+        if isinstance(interesting, list) and interesting:
+            preview["interesting_places"] = self.build_preview_value(
+                interesting[:5],
+                parent_key="interesting_places",
+                max_depth=2,
+            )
+
+        detail_data = data.get("detail_data")
+        if isinstance(detail_data, dict):
+            compact_detail = {}
+            if isinstance(detail_data.get("place"), dict):
+                compact_detail["place"] = self.build_preview_value(
+                    detail_data["place"],
+                    parent_key="place",
+                    max_depth=2,
+                )
+            if isinstance(detail_data.get("interesting_places"), list):
+                compact_detail["interesting_places"] = self.build_preview_value(
+                    detail_data["interesting_places"][:5],
+                    parent_key="interesting_places",
+                    max_depth=2,
+                )
+            if compact_detail:
+                preview["detail_data"] = compact_detail
+
+        review_data = data.get("review_data")
+        review_source = review_data if isinstance(review_data, dict) else data
+        reviews = review_source.get("reviews") if isinstance(review_source, dict) else None
+        if isinstance(reviews, list) and reviews:
+            compact_reviews = []
+            for item in reviews[:3]:
+                if not isinstance(item, dict):
+                    continue
+                review = {
+                    key: item[key]
+                    for key in (
+                        "title",
+                        "rating",
+                        "date",
+                        "trip_type",
+                        "author_name",
+                        "url",
+                    )
+                    if item.get(key) not in (None, "")
+                }
+                if item.get("text"):
+                    review["text"] = self.truncate_preview_text(item["text"], 300)
+                if review:
+                    compact_reviews.append(review)
+            if compact_reviews:
+                preview["reviews"] = compact_reviews
 
         return preview
 
@@ -1242,6 +1357,8 @@ class ContextAssembler:
             normalized_tool_name = (tool_name or "").lower()
             if normalized_tool_name == "serpapi_yelp_search":
                 data_preview = self.build_yelp_data_preview(data)
+            elif normalized_tool_name == "serpapi_tripadvisor":
+                data_preview = self.build_tripadvisor_data_preview(data)
             elif normalized_tool_name == "flight_search":
                 data_preview = self.build_flight_data_preview(data)
             else:

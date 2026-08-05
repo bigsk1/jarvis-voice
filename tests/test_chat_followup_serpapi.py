@@ -525,6 +525,109 @@ def test_extract_followup_data_yelp_candidates_respect_evidence_max():
     assert evidence["serpapi_yelp_search"]["results_count"] == 15
 
 
+def test_extract_followup_data_preserves_tripadvisor_search_candidates():
+    handler = _handler()
+    data = {
+        "serpapi_tripadvisor": {
+            "action": "search",
+            "query": "Rome",
+            "category": "things_to_do",
+            "place_id": "187791",
+            "results": [
+                {
+                    "title": "Rome",
+                    "place_id": "187791",
+                    "place_type": "GEO",
+                    "url": "https://www.tripadvisor.com/Tourism-g187791-Rome.html",
+                    "location": "Lazio, Italy",
+                    "description": "Historic city with museums, food, and monuments.",
+                },
+                {
+                    "title": "Colosseum",
+                    "place_id": "192285",
+                    "place_type": "ATTRACTION",
+                    "rating": 4.7,
+                    "reviews": 155000,
+                },
+            ],
+        }
+    }
+
+    tripadvisor = handler._extract_followup_data(data)["serpapi_tripadvisor"]
+
+    assert tripadvisor["query"] == "Rome"
+    assert tripadvisor["place_id"] == "187791"
+    assert tripadvisor["results_count"] == 2
+    assert tripadvisor["candidates"][0]["location"] == "Lazio, Italy"
+    assert tripadvisor["candidates"][1]["place_type"] == "ATTRACTION"
+    assert tripadvisor["candidates"][1]["reviews"] == 155000
+
+
+def test_extract_followup_data_preserves_tripadvisor_details_and_nearby_places():
+    handler = _handler()
+    data = {
+        "serpapi_tripadvisor": {
+            "action": "details",
+            "place_id": "187791",
+            "place": {
+                "title": "Rome, Italy",
+                "place_id": "187791",
+                "place_type": "destination",
+                "description": "Ancient sites and lively neighborhoods. " * 50,
+                "categories": ["Destination"],
+            },
+            "interesting_places": [
+                {
+                    "title": "Colosseum",
+                    "place_id": "192285",
+                    "place_type": "attraction",
+                    "rating": 4.7,
+                    "distance": "1.2 mi",
+                    "group": "attraction_suggestions",
+                }
+            ],
+        }
+    }
+
+    tripadvisor = handler._extract_followup_data(data)["serpapi_tripadvisor"]
+
+    assert tripadvisor["place"]["title"] == "Rome, Italy"
+    assert len(tripadvisor["place"]["description"]) <= 700
+    assert tripadvisor["interesting_places"][0]["place_id"] == "192285"
+    assert tripadvisor["interesting_places"][0]["distance"] == "1.2 mi"
+
+
+def test_extract_followup_data_preserves_tripadvisor_review_evidence():
+    handler = _handler()
+    data = {
+        "serpapi_tripadvisor": {
+            "action": "reviews",
+            "place_id": "187791",
+            "total_reviews": 47,
+            "reviews": [
+                {
+                    "title": "Wonderful history and food",
+                    "rating": 5,
+                    "date": "2026-07-20",
+                    "trip_type": "FAMILY",
+                    "author_name": "Traveler Seven",
+                    "review_id": "review-1",
+                    "url": "https://www.tripadvisor.com/ShowUserReviews-r1.html",
+                    "text": "We loved walking the old streets. " * 60,
+                }
+            ],
+        }
+    }
+
+    tripadvisor = handler._extract_followup_data(data)["serpapi_tripadvisor"]
+    review = tripadvisor["reviews"][0]
+
+    assert tripadvisor["total_reviews"] == 47
+    assert review["author_name"] == "Traveler Seven"
+    assert review["trip_type"] == "FAMILY"
+    assert len(review["text"]) <= 700
+
+
 def test_extract_followup_data_preserves_text_summarizer_summary_and_refs():
     handler = _handler()
     data = {

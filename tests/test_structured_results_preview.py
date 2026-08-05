@@ -51,6 +51,7 @@ const expectedTools = [
   'serpapi_ebay_product',
   'serpapi_hotel_search',
   'serpapi_yelp_search',
+  'serpapi_tripadvisor',
   'flight_search',
   'serpapi_maps_search',
   'serpapi_youtube_search',
@@ -146,6 +147,22 @@ const html = renderer.render({{
       categories: ['Pizza', 'Salad']
     }}]
   }},
+  serpapi_tripadvisor: {{
+    action: 'search',
+    query: 'Rome',
+    category: 'things_to_do',
+    results: [{{
+      title: 'Colosseum',
+      url: 'https://www.tripadvisor.com/Attraction_Review-d192285.html',
+      thumbnail: 'https://images.example/colosseum.jpg',
+      place_id: '192285',
+      place_type: 'ATTRACTION',
+      rating: 4.7,
+      reviews: 155000,
+      location: 'Rome, Italy',
+      description: 'Ancient amphitheatre in the center of Rome.'
+    }}]
+  }},
   flight_search: {{
     departure_id: 'PDX',
     arrival_id: 'PHX',
@@ -212,6 +229,7 @@ for (const expected of [
   'Vintage Receiver', 'USD 299', 'Item EB-9',
   'Desert Hotel', '$120/night', '$240 total', 'Pet-friendly',
   'Society Pie', 'Open until 8:00 PM', 'Pizza · Salad',
+  'Colosseum', '155000 reviews', 'Rome, Italy', 'Ancient amphitheatre',
   'PDX → PHX', '$257', 'Alaska', 'AS 1349',
   'Departs 09/15/2099 · 7:03 AM', 'Open Google Flights',
   'Pup Cup Coffee', '123 Market St',
@@ -225,7 +243,7 @@ for (const expected of [
   }}
 }}
 if (html.includes('flight_numbers')) process.exit(4);
-if ((html.match(/structured-results-preview/g) || []).length !== 10) process.exit(5);
+if ((html.match(/structured-results-preview/g) || []).length !== 11) process.exit(5);
 
 if (!renderer.register('custom_demo', payload => ({{
   kind: 'generic',
@@ -241,6 +259,93 @@ for (const expected of ['Custom', 'Extension works', 'New adapter', 'Ready', 'st
   if (!customHtml.includes(expected)) process.exit(7);
 }}
 if (customHtml.includes('structured-results-scroll-button')) process.exit(8);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
+def test_tripadvisor_renderer_formats_details_nearby_places_and_reviews():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const escapeHtml = value => String(value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+const sandbox = {{
+  URL,
+  window: {{}},
+  console,
+  Utils: {{
+    escapeHtml,
+    safeHttpUrlForAttr: value => {{
+      try {{
+        const parsed = new URL(String(value));
+        return ['http:', 'https:'].includes(parsed.protocol) ? escapeHtml(parsed.href) : '';
+      }} catch (_error) {{
+        return '';
+      }}
+    }}
+  }}
+}};
+vm.createContext(sandbox);
+vm.runInContext(source, sandbox);
+const renderer = sandbox.window.structuredResultsRenderer;
+const detailsHtml = renderer.render({{
+  serpapi_tripadvisor: {{
+    action: 'details',
+    place: {{
+      title: 'Rome, Italy',
+      url: 'https://www.tripadvisor.com/Tourism-g187791-Rome.html',
+      rating: 4.8,
+      reviews: 245000,
+      address: 'Lazio, Italy',
+      categories: ['Destination'],
+      description: 'Ancient sites and lively neighborhoods.'
+    }},
+    interesting_places: [{{
+      title: 'Roman Table',
+      url: 'https://www.tripadvisor.com/Restaurant_Review-d7.html',
+      rating: 4.6,
+      distance: '0.2 mi',
+      group: 'restaurants',
+      categories: ['Italian', 'Roman']
+    }}]
+  }}
+}});
+for (const expected of [
+  'Tripadvisor details', 'Rome, Italy', '245000 reviews',
+  'Roman Table', '0.2 mi', 'Italian · Roman', '1 nearby suggestions shown'
+]) {{
+  if (!detailsHtml.includes(expected)) process.exit(2);
+}}
+
+const reviewsHtml = renderer.render({{
+  serpapi_tripadvisor: {{
+    action: 'reviews',
+    place_id: '187791',
+    total_reviews: 47,
+    reviews: [{{
+      title: 'Wonderful history and food',
+      url: 'https://www.tripadvisor.com/ShowUserReviews-r1.html',
+      rating: 5,
+      date: '2026-07-20',
+      author_name: 'Traveler Seven',
+      trip_type: 'FAMILY',
+      text: 'We loved walking the old streets and finding neighborhood restaurants.'
+    }}]
+  }}
+}});
+for (const expected of [
+  'Tripadvisor reviews', 'Place 187791', '47 total reviews',
+  'Wonderful history and food', 'Traveler Seven', 'family',
+  'We loved walking the old streets'
+]) {{
+  if (!reviewsHtml.includes(expected)) process.exit(3);
+}}
 """
 
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)

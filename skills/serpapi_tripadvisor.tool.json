@@ -1,0 +1,187 @@
+{
+  "enabled": true,
+  "name": "serpapi_tripadvisor",
+  "description": "Search Tripadvisor destinations, hotels, restaurants, attractions, and forums; fetch one place's details and nearby suggestions; or retrieve actual Tripadvisor reviews through SerpApi. Use action=search with a query for discovery, then reuse the returned place_id with action=details or action=reviews for focused follow-ups. Search can optionally include details and/or reviews for the selected or top result, but each enrichment uses one additional paid SerpApi request. Place details can include ratings, ranking, address, images, amenities, prices, travel advice, and interesting nearby restaurants, hotels, or attractions when Tripadvisor returns them. Reviews support rating, month, visit-type, language, translation, sorting, and pagination filters. Vacation Rentals are intentionally omitted because Tripadvisor discontinued support. Cached results are allowed by default. This tool is direct-by-default; its implementation remains compatible with Jarvis proxy policies if proxy_policy is changed later.",
+  "complementary_tools": [
+    "serpapi_hotel_search",
+    "serpapi_maps_search",
+    "canvas",
+    "stash"
+  ],
+  "script": "serpapi_tripadvisor.py",
+  "proxy_policy": "off",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "search",
+          "details",
+          "reviews"
+        ],
+        "description": "Operation to perform. search is the default. details and reviews require place_id from a prior search result."
+      },
+      "query": {
+        "type": "string",
+        "description": "Tripadvisor search query. Required for action=search. Examples: Rome, beaches in Maui, family attractions in Tokyo, or restaurants in Paris."
+      },
+      "category": {
+        "type": "string",
+        "enum": [
+          "all",
+          "restaurants",
+          "things_to_do",
+          "hotels",
+          "destinations",
+          "forums"
+        ],
+        "description": "Optional Tripadvisor search category. Default all."
+      },
+      "place_id": {
+        "type": "string",
+        "description": "Tripadvisor place ID returned by search. Required for action=details or action=reviews; with search, selects which result to enrich."
+      },
+      "lat": {
+        "type": "number",
+        "minimum": -90,
+        "maximum": 90,
+        "description": "Optional search-origin latitude. Supply together with lon. Tripadvisor may ignore coordinates for some queries."
+      },
+      "lon": {
+        "type": "number",
+        "minimum": -180,
+        "maximum": 180,
+        "description": "Optional search-origin longitude. Supply together with lat. Tripadvisor may ignore coordinates for some queries."
+      },
+      "tripadvisor_domain": {
+        "type": "string",
+        "description": "Localized Tripadvisor hostname such as www.tripadvisor.com. Default www.tripadvisor.com."
+      },
+      "num_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "description": "Number of normalized search results to return. Default 5."
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Search-result offset for action=search. Default 0."
+      },
+      "include_details": {
+        "type": "boolean",
+        "description": "With action=search, fetch details for place_id or the top result using one additional paid SerpApi request."
+      },
+      "include_reviews": {
+        "type": "boolean",
+        "description": "With action=search, fetch reviews for place_id or the top result using one additional paid SerpApi request. Use only when actual review content is requested."
+      },
+      "review_limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20,
+        "description": "Reviews to return for action=reviews or include_reviews. Default 10; maximum 20."
+      },
+      "review_offset": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Review offset in increments supported by Tripadvisor. Default 0."
+      },
+      "review_sort_by": {
+        "type": "string",
+        "enum": [
+          "most_recent",
+          "detailed_review"
+        ],
+        "description": "Review ordering. Default most_recent."
+      },
+      "language": {
+        "type": "string",
+        "description": "Language for review output, especially when translate is true."
+      },
+      "translate": {
+        "type": "boolean",
+        "description": "Translate reviews into language. Default false."
+      },
+      "rating": {
+        "type": [
+          "integer",
+          "string",
+          "array"
+        ],
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "description": "Review rating filter from 1 to 5. Accepts one value, a comma-separated string, or a list."
+      },
+      "month": {
+        "type": [
+          "integer",
+          "string",
+          "array"
+        ],
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "description": "Review month filter from 1 to 12. Accepts one value, a comma-separated string, or a list."
+      },
+      "type_of_visit": {
+        "type": [
+          "string",
+          "array"
+        ],
+        "items": {
+          "type": "string",
+          "enum": [
+            "Business",
+            "Couples",
+            "Family",
+            "Friends",
+            "Solo"
+          ]
+        },
+        "description": "Review visit-type filter. Accepts one value, a comma-separated string, or a list."
+      },
+      "original_language": {
+        "type": [
+          "string",
+          "array"
+        ],
+        "items": {
+          "type": "string"
+        },
+        "description": "Original review-language codes such as en or en,fr,es."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "Bypass SerpApi's one-hour cache. Default false; use true only when the user explicitly requests a fresh scrape."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Advanced non-reserved parameters passed through to the selected Tripadvisor SerpApi engine."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "Include full SerpApi payloads for debugging. Default false."
+      }
+    }
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "SERP_API_KEY"
+    ],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file."
+  }
+}

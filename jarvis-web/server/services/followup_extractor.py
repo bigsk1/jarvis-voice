@@ -40,6 +40,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_ebay_product',
     'serpapi_youtube_search',
     'serpapi_yelp_search',
+    'serpapi_tripadvisor',
     'flight_search',
     'crawl_url',
     'mcp_brave_search_brave_web_search',
@@ -283,6 +284,11 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'engine', 'find_desc', 'find_loc', 'attrs', 'sort_by', 'sort_basis',
         'results_count', 'provider_results_count', 'top_url', 'place_id',
         'serpapi_searches_used', 'source',
+    ],
+    'serpapi_tripadvisor': [
+        'action', 'engine', 'query', 'category', 'tripadvisor_domain',
+        'place_id', 'results_count', 'total_reviews', 'review_sort_by',
+        'review_filters', 'top_url', 'serpapi_searches_used', 'source',
     ],
     'git_release_notes': ['release_tag', 'release_url', 'stash_ref', 'canvas_page_id', 'repo', 'owner'],
     'release_watch': [
@@ -2795,6 +2801,158 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 }
                 if compact_reviews:
                     extracted['review_data']['reviews'] = compact_reviews
+
+        if key == 'serpapi_tripadvisor':
+            action = str(payload.get('action') or 'search').strip().lower()
+            results = payload.get('results') or payload.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = payload.get('results_count', len(results))
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    if action == 'reviews':
+                        candidate = {
+                            field: item[field]
+                            for field in (
+                                'title', 'rating', 'date', 'trip_type',
+                                'author_name', 'review_id', 'url',
+                            )
+                            if item.get(field) not in (None, '')
+                        }
+                        if item.get('text'):
+                            candidate['text'] = _truncate_followup_text(
+                                str(item['text']), 700
+                            )
+                    else:
+                        candidate = {
+                            field: item[field]
+                            for field in (
+                                'title', 'place_id', 'place_type', 'url',
+                                'rating', 'reviews', 'location', 'address',
+                                'thumbnail',
+                            )
+                            if item.get(field) not in (None, '', [], {})
+                        }
+                        if item.get('description'):
+                            candidate['description'] = _truncate_followup_text(
+                                str(item['description']), 500
+                            )
+                    if candidate:
+                        candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
+
+            place = payload.get('place')
+            if isinstance(place, dict):
+                compact_place = {
+                    field: place[field]
+                    for field in (
+                        'title', 'place_id', 'place_type', 'url', 'rating',
+                        'reviews', 'ranking', 'address', 'phone', 'website',
+                        'price_level', 'categories', 'amenities',
+                        'gps_coordinates', 'thumbnail',
+                    )
+                    if place.get(field) not in (None, '', [], {})
+                }
+                if place.get('description'):
+                    compact_place['description'] = _truncate_followup_text(
+                        str(place['description']), 700
+                    )
+                if compact_place:
+                    extracted['place'] = compact_place
+
+            interesting = payload.get('interesting_places')
+            if isinstance(interesting, list) and interesting:
+                compact_interesting = []
+                for item in interesting[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    compact = {
+                        field: item[field]
+                        for field in (
+                            'title', 'place_id', 'place_type', 'url', 'rating',
+                            'reviews', 'distance', 'address', 'categories',
+                            'additional_info', 'price', 'group', 'thumbnail',
+                        )
+                        if item.get(field) not in (None, '', [], {})
+                    }
+                    if compact:
+                        compact_interesting.append(compact)
+                if compact_interesting:
+                    extracted['interesting_places'] = compact_interesting
+
+            detail_data = payload.get('detail_data')
+            if isinstance(detail_data, dict):
+                compact_detail = {
+                    field: detail_data[field]
+                    for field in ('place_id', 'interesting_places_count')
+                    if detail_data.get(field) not in (None, '')
+                }
+                detail_place = detail_data.get('place')
+                if isinstance(detail_place, dict):
+                    compact_detail['place'] = {
+                        field: detail_place[field]
+                        for field in (
+                            'title', 'place_id', 'place_type', 'url', 'rating',
+                            'reviews', 'ranking', 'address', 'price_level',
+                            'categories', 'amenities', 'thumbnail',
+                        )
+                        if detail_place.get(field) not in (None, '', [], {})
+                    }
+                    if detail_place.get('description'):
+                        compact_detail['place']['description'] = _truncate_followup_text(
+                            str(detail_place['description']), 700
+                        )
+                detail_interesting = detail_data.get('interesting_places')
+                if isinstance(detail_interesting, list) and detail_interesting:
+                    compact_detail['interesting_places'] = [
+                        {
+                            field: item[field]
+                            for field in (
+                                'title', 'place_id', 'place_type', 'url',
+                                'rating', 'reviews', 'distance', 'group',
+                            )
+                            if item.get(field) not in (None, '', [], {})
+                        }
+                        for item in detail_interesting[:max_candidates]
+                        if isinstance(item, dict)
+                    ]
+                if compact_detail:
+                    extracted['detail_data'] = compact_detail
+
+            review_data = payload.get('review_data')
+            review_source = review_data if isinstance(review_data, dict) else payload
+            review_rows = review_source.get('reviews') if isinstance(review_source, dict) else None
+            if isinstance(review_rows, list) and review_rows:
+                compact_reviews = []
+                for item in review_rows[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    compact = {
+                        field: item[field]
+                        for field in (
+                            'title', 'rating', 'date', 'trip_type',
+                            'author_name', 'review_id', 'url',
+                        )
+                        if item.get(field) not in (None, '')
+                    }
+                    if item.get('text'):
+                        compact['text'] = _truncate_followup_text(
+                            str(item['text']), 700
+                        )
+                    if compact:
+                        compact_reviews.append(compact)
+                if compact_reviews:
+                    if isinstance(review_data, dict):
+                        extracted['review_data'] = {
+                            field: review_data[field]
+                            for field in ('place_id', 'total_reviews', 'results_count')
+                            if review_data.get(field) not in (None, '')
+                        }
+                        extracted['review_data']['reviews'] = compact_reviews
+                    else:
+                        extracted['reviews'] = compact_reviews
 
         # --- flight_search: itineraries are deeply nested (segments, layovers) ---
         # Keep the shortlist needed to compare or refer to a specific option on

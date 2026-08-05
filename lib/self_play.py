@@ -98,6 +98,7 @@ DEFAULT_ALLOWED_TOOLS = {
     "serpapi_hotel_search",
     "serpapi_maps_search",
     "serpapi_search",
+    "serpapi_tripadvisor",
     "serpapi_yelp_search",
     "serpapi_youtube",
     "serpapi_youtube_search",

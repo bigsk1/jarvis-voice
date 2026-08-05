@@ -223,6 +223,50 @@ class ToolContextPreviewTests(unittest.TestCase):
         )
         self.assertNotIn("service_options", candidates[0])
 
+    def test_tripadvisor_preview_keeps_place_ids_and_followup_evidence(self):
+        result = {
+            "ok": True,
+            "speech": "Found 6 Tripadvisor options.",
+            "data": {
+                "action": "search",
+                "engine": "tripadvisor",
+                "query": "Rome",
+                "category": "things_to_do",
+                "raw": {"large_provider_payload": "x" * 12000},
+                "results": [
+                    {
+                        "title": f"Rome attraction {index}",
+                        "url": f"https://www.tripadvisor.com/Attraction-d{index}.html",
+                        "place_id": str(190000 + index),
+                        "place_type": "ATTRACTION",
+                        "rating": 4.0 + (index / 10),
+                        "reviews": index * 1000,
+                        "location": "Rome, Italy",
+                        "description": "Historically grounded attraction details. " * 20,
+                        "provider_only": {"large": "omit me"},
+                    }
+                    for index in range(1, 7)
+                ],
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_tripadvisor",
+            result,
+        )
+
+        parsed = json.loads(preview)
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 6000)
+        self.assertEqual(len(candidates), 5)
+        self.assertEqual(candidates[0]["place_id"], "190001")
+        self.assertEqual(candidates[0]["place_type"], "ATTRACTION")
+        self.assertEqual(candidates[0]["location"], "Rome, Italy")
+        self.assertEqual(candidates[0]["reviews"], 1000)
+        self.assertIn("Historically grounded", candidates[0]["description"])
+        self.assertNotIn("provider_only", candidates[0])
+
     def test_flight_preview_keeps_compact_option_identity_including_flight_numbers(self):
         result = {
             "ok": True,

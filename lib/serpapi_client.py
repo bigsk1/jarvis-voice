@@ -21,6 +21,7 @@ SERPAPI_TOOL_ENGINES = {
     "serpapi_ebay_search": ("ebay",),
     "serpapi_hotel_search": ("google_hotels",),
     "serpapi_maps_search": ("google_maps",),
+    "serpapi_tripadvisor": ("tripadvisor",),
     "serpapi_youtube_search": ("youtube",),
 }
 
@@ -39,6 +40,9 @@ SERPAPI_ENGINE_LABELS = {
     "google_shopping": "Google Shopping",
     "home_depot": "Home Depot Search",
     "home_depot_product": "Home Depot Product",
+    "tripadvisor": "Tripadvisor Search",
+    "tripadvisor_place": "Tripadvisor Place",
+    "tripadvisor_reviews": "Tripadvisor Reviews",
     "yelp": "Yelp Search",
     "yelp_reviews": "Yelp Reviews",
     "youtube": "YouTube Search",
@@ -62,6 +66,13 @@ SERPAPI_ENGINE_STATUS_ALIASES = {
     "google_shopping": ("google shopping api", "google shopping"),
     "home_depot": ("home depot search api", "home depot search", "home depot api"),
     "home_depot_product": ("home depot product api", "home depot product"),
+    "tripadvisor": (
+        "tripadvisor search api",
+        "tripadvisor search",
+        "tripadvisor api",
+    ),
+    "tripadvisor_place": ("tripadvisor place api", "tripadvisor place"),
+    "tripadvisor_reviews": ("tripadvisor reviews api", "tripadvisor reviews"),
     "yelp": ("yelp search api", "yelp search", "yelp api"),
     "yelp_reviews": ("yelp reviews api", "yelp reviews"),
     "youtube": ("youtube search api", "youtube search", "youtube api"),
@@ -133,6 +144,18 @@ def serpapi_engines_for_tool(tool_name: str, args: dict[str, Any] | None = None)
         engines = ["yelp"]
         if parse_bool(options.get("include_reviews")):
             engines.append("yelp_reviews")
+        return tuple(engines)
+    if tool_name == "serpapi_tripadvisor":
+        action = str(options.get("action") or "search").strip().lower()
+        if action in {"details", "detail", "place"}:
+            return ("tripadvisor_place",)
+        if action in {"reviews", "review"}:
+            return ("tripadvisor_reviews",)
+        engines = ["tripadvisor"]
+        if parse_bool(options.get("include_details")):
+            engines.append("tripadvisor_place")
+        if parse_bool(options.get("include_reviews")):
+            engines.append("tripadvisor_reviews")
         return tuple(engines)
     if tool_name == "serpapi_youtube":
         engines = ["youtube_video"]

@@ -48,6 +48,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_ebay_product', payload => this._adaptEbayProduct(payload));
     this.register('serpapi_hotel_search', payload => this._adaptHotels(payload));
     this.register('serpapi_yelp_search', payload => this._adaptYelp(payload));
+    this.register('serpapi_tripadvisor', payload => this._adaptTripadvisor(payload));
     this.register('flight_search', payload => this._adaptFlights(payload));
     this.register('serpapi_maps_search', payload => this._adaptMaps(payload));
     this.register('serpapi_youtube_search', payload => this._adaptYouTubeSearch(payload));
@@ -257,6 +258,123 @@ class StructuredResultsRenderer {
       eyebrow: 'Yelp',
       heading: `${description}${location}`,
       subtitle: payload.sort_by ? `Sorted by ${payload.sort_by.replace(/_/g, ' ')}` : '',
+      items,
+    };
+  }
+
+  _adaptTripadvisor(payload) {
+    const action = String(payload.action || 'search').toLowerCase();
+    if (action === 'reviews') {
+      const reviewData = payload.review_data && typeof payload.review_data === 'object'
+        ? payload.review_data
+        : payload;
+      const rows = Array.isArray(reviewData.reviews) ? reviewData.reviews.slice(0, 5) : [];
+      const items = rows.map((row, index) => {
+        const chips = [];
+        if (row.date) chips.push(String(row.date));
+        if (row.author_name) chips.push(String(row.author_name));
+        if (row.trip_type) chips.push(String(row.trip_type).toLowerCase().replace(/_/g, ' '));
+        return {
+          title: row.title || `Review ${index + 1}`,
+          url: row.url,
+          image: row.author_avatar,
+          primary: row.rating != null ? `★ ${row.rating}` : '',
+          chips,
+          details: row.text ? [this._compactText(row.text, 260)] : [],
+          actionLabel: 'Read review',
+        };
+      });
+      return {
+        kind: 'local',
+        layout: 'rail',
+        eyebrow: 'Tripadvisor reviews',
+        heading: payload.place?.title || `Place ${payload.place_id || ''}`.trim(),
+        subtitle: reviewData.total_reviews != null
+          ? `${reviewData.total_reviews} total reviews`
+          : '',
+        items,
+      };
+    }
+
+    const detailData = payload.detail_data && typeof payload.detail_data === 'object'
+      ? payload.detail_data
+      : payload;
+    if (action === 'details' || detailData.place) {
+      const place = detailData.place || {};
+      const interesting = Array.isArray(detailData.interesting_places)
+        ? detailData.interesting_places.slice(0, 4)
+        : [];
+      const placeChips = [];
+      if (place.reviews != null) placeChips.push(`${place.reviews} reviews`);
+      if (place.ranking) placeChips.push(String(place.ranking));
+      if (place.price_level) placeChips.push(String(place.price_level));
+      const mainItem = {
+        title: place.title || place.name || 'Tripadvisor place',
+        url: place.url || place.website,
+        image: place.thumbnail || this._list(place.images)[0],
+        primary: place.rating != null ? `★ ${place.rating}` : '',
+        chips: placeChips,
+        details: [
+          place.address,
+          this._list(place.categories).slice(0, 3).join(' · '),
+          place.description ? this._compactText(place.description, 220) : '',
+        ].filter(Boolean),
+        actionLabel: 'View on Tripadvisor',
+      };
+      const nearbyItems = interesting.map(row => {
+        const chips = [];
+        if (row.reviews != null) chips.push(`${row.reviews} reviews`);
+        if (row.distance != null) chips.push(String(row.distance));
+        if (row.group) chips.push(String(row.group));
+        return {
+          title: row.title || row.name || 'Nearby place',
+          url: row.url || row.link,
+          image: row.thumbnail,
+          primary: row.rating != null ? `★ ${row.rating}` : row.price,
+          chips,
+          details: [
+            row.address,
+            this._list(row.categories).slice(0, 3).join(' · '),
+            row.additional_info ? this._compactText(row.additional_info, 180) : '',
+          ].filter(Boolean),
+          actionLabel: 'View nearby place',
+        };
+      });
+      return {
+        kind: 'local',
+        layout: 'rail',
+        eyebrow: 'Tripadvisor details',
+        heading: mainItem.title,
+        subtitle: nearbyItems.length ? `${nearbyItems.length} nearby suggestions shown` : '',
+        items: [mainItem, ...nearbyItems],
+      };
+    }
+
+    const items = this._rows(payload).map(row => {
+      const chips = [];
+      if (row.place_type) chips.push(String(row.place_type).toLowerCase().replace(/_/g, ' '));
+      if (row.reviews != null) chips.push(`${row.reviews} reviews`);
+      return {
+        title: row.title || row.name || 'Tripadvisor result',
+        url: row.url || row.link,
+        image: row.thumbnail || row.image_url,
+        primary: row.rating != null ? `★ ${row.rating}` : '',
+        chips,
+        details: [
+          row.location,
+          row.description ? this._compactText(row.description, 220) : '',
+        ].filter(Boolean),
+        actionLabel: 'View on Tripadvisor',
+      };
+    });
+    return {
+      kind: 'local',
+      layout: 'rail',
+      eyebrow: 'Tripadvisor',
+      heading: payload.query || 'Travel ideas',
+      subtitle: payload.category && payload.category !== 'all'
+        ? String(payload.category).replace(/_/g, ' ')
+        : '',
       items,
     };
   }

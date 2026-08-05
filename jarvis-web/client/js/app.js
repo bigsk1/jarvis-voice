@@ -1361,6 +1361,7 @@ class JarvisApp {
       serpapi_youtube: '▶️',
       serpapi_youtube_search: '▶️',
       serpapi_yelp_search: '⭐',
+      serpapi_tripadvisor: '🧭',
       serpapi_home_depot: '🛒',
       serpapi_ebay_search: '🛒',
       serpapi_ebay_product: '🛒',
@@ -1417,6 +1418,7 @@ class JarvisApp {
     if (n.startsWith('serpapi_')) {
       if (n.includes('maps')) return '🗺️';
       if (n.includes('hotel')) return '🏨';
+      if (n.includes('tripadvisor')) return '🧭';
       if (n.includes('youtube')) return '▶️';
       if (n.includes('yelp')) return '⭐';
       if (n.includes('ebay') || n.includes('home_depot')) return '🛒';
