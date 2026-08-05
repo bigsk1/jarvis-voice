@@ -90,6 +90,40 @@ class SerpApiStatusDiagnosticTests(unittest.TestCase):
             "home_depot_product",
         )
 
+    def test_tripadvisor_actions_match_search_place_and_reviews_incidents(self):
+        cases = (
+            ({"action": "search"}, "Tripadvisor Search API", "tripadvisor"),
+            ({"action": "details"}, "Tripadvisor Place API", "tripadvisor_place"),
+            ({"action": "reviews"}, "Tripadvisor Reviews API", "tripadvisor_reviews"),
+        )
+
+        for arguments, incident_label, expected_engine in cases:
+            with self.subTest(action=arguments["action"]), patch.object(
+                serpapi_client,
+                "fetch_serpapi_unresolved_incidents",
+                return_value=[
+                    incident(
+                        name=f"[{incident_label}] Performance Degradation",
+                        update=f"We are investigating the {incident_label}.",
+                    )
+                ],
+            ):
+                result = serpapi_client.diagnose_serpapi_tool_failure(
+                    "serpapi_tripadvisor",
+                    arguments,
+                    "Tool serpapi_tripadvisor timed out",
+                    force=True,
+                )
+
+            self.assertIsNotNone(result)
+            self.assertEqual(
+                result["data"]["serpapi_incident"]["engine"],
+                expected_engine,
+            )
+            self.assertEqual(result["data"]["failure_reason"], "active_provider_incident")
+            self.assertIn(incident_label, result["speech"])
+            self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
+
     def test_unrelated_incident_does_not_replace_original_failure(self):
         with patch.object(
             serpapi_client,
