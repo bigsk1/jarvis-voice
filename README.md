@@ -1983,7 +1983,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.55.2 (July 2026)
+**Current Version:** v2.55.3 (July 2026)
 **Status:** Production Ready ✅
 **Latest Features:** v2.55.2 adds complete Web tool follow-up payload coverage,
 bounded fallback extraction, strict-JSON conversation context, and explicit
