@@ -1370,6 +1370,7 @@ class JarvisApp {
       serpapi_youtube_search: '▶️',
       serpapi_yelp_search: '⭐',
       serpapi_search_index: '🌐',
+      serpapi_google_images_light: '🖼️',
       serpapi_google_news_light: '📰',
       serpapi_google_trends: '📈',
       serpapi_google_trending_now: '🔥',

@@ -36,6 +36,21 @@ class _FakeStashFile:
             "ref": "stash://space_test/file_test",
         }
 
+    def save_image_from_url(self, url, name, on_conflict="error", tags=None, tool_origin="stash"):
+        type(self).saved = {
+            "url": url,
+            "name": name,
+            "on_conflict": on_conflict,
+            "tags": tags,
+            "tool_origin": tool_origin,
+        }
+        return {
+            "file_id": "file_image",
+            "name": name,
+            "size_bytes": 123,
+            "ref": "stash://space_test/file_image",
+        }
+
 
 def test_file_save_allows_source_under_resolved_temp_symlink(monkeypatch, tmp_path):
     real_tmp = tmp_path / "private_tmp"
@@ -69,3 +84,18 @@ def test_file_source_prefix_check_does_not_use_raw_string_prefix(tmp_path):
 
     assert stash._path_is_under_prefix(allowed / "file.txt", allowed)
     assert not stash._path_is_under_prefix(sibling / "file.txt", allowed)
+
+
+def test_image_url_save_uses_strict_stash_path(monkeypatch):
+    monkeypatch.setattr(stash, "open_space", lambda scope="session": (_FakeSpace(), True))
+    monkeypatch.setattr(stash, "StashFile", _FakeStashFile)
+
+    result = stash.action_save({
+        "kind": "image_url",
+        "url": "https://images.example/reference.png",
+        "name": "reference.jpg",
+    })
+
+    assert result["ok"] is True
+    assert result["data"]["ref"] == "stash://space_test/file_image"
+    assert _FakeStashFile.saved["url"] == "https://images.example/reference.png"

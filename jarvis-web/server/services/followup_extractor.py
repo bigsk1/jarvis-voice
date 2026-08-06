@@ -48,6 +48,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_search_index',
     'serpapi_google_local',
     'serpapi_google_local_services',
+    'serpapi_google_images_light',
     'serpapi_google_news_light',
     'serpapi_google_trends',
     'serpapi_google_trending_now',
@@ -317,6 +318,18 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'job_type', 'cid', 'bid', 'pid', 'max_results', 'results_count',
         'provider_results_count', 'top_url', 'google_local_services_url',
         'search_id', 'serpapi_searches_used', 'us_only', 'source',
+    ],
+    'serpapi_google_images_light': [
+        'engine', 'query', 'query_displayed', 'image_results_state',
+        'location', 'country', 'language', 'country_restrict', 'google_domain', 'period_unit',
+        'period_value', 'start_date', 'end_date', 'aspect_ratio', 'image_size',
+        'image_color', 'image_type', 'license', 'safe', 'device', 'start',
+        'max_results', 'results_count', 'provider_results_count', 'top_url',
+        'top_source_url', 'stash_after', 'stash_ref', 'stash_error',
+        'stashed_image', 'search_id', 'has_more', 'next_start',
+        'google_images_light_url', 'serpapi_searches_used',
+        'external_content_trust', 'untrusted_external_content',
+        'handling_note', 'source',
     ],
     'serpapi_google_news_light': [
         'engine', 'query', 'query_displayed', 'news_results_state', 'location',
@@ -2914,6 +2927,45 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 compact_pagination = {
                     field: pagination[field]
                     for field in ('start', 'num_results', 'has_more', 'next_start')
+                    if pagination.get(field) not in (None, '')
+                    or field == 'has_more'
+                }
+                if compact_pagination:
+                    extracted['pagination'] = compact_pagination
+
+        if key == 'serpapi_google_images_light':
+            results = payload.get('results') or payload.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = payload.get('results_count', len(results))
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = {
+                        field: item[field]
+                        for field in (
+                            'position', 'title', 'url', 'original', 'image_url',
+                            'thumbnail', 'serpapi_thumbnail', 'source',
+                            'source_url', 'license_details_url', 'source_logo',
+                            'original_width', 'original_height',
+                            'related_content_id', 'is_product', 'in_stock', 'unsafe',
+                            'untrusted_external_content',
+                        )
+                        if item.get(field) not in (None, '', [], {})
+                    }
+                    if candidate.get('image_url') or candidate.get('url'):
+                        candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
+
+            pagination = payload.get('pagination')
+            if isinstance(pagination, dict):
+                compact_pagination = {
+                    field: pagination[field]
+                    for field in (
+                        'current', 'start', 'has_more', 'next_start',
+                        'previous_start',
+                    )
                     if pagination.get(field) not in (None, '')
                     or field == 'has_more'
                 }

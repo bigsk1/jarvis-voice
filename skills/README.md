@@ -1,6 +1,8 @@
 # Skills / Tools
 
-This directory contains 50+ executable tools that Jarvis can invoke. Each tool is a Python script paired with a JSON definition file.
+This directory contains 80+ built-in executable tools, plus Tool Builder output
+under `auto-tools/`. Each tool is a Python script paired with a JSON definition
+file.
 
 ---
 
@@ -224,7 +226,7 @@ JSON object printed to stdout:
 
 ---
 
-## Available Tools (50+)
+## Available Tools (80+)
 
 ### Memory
 | Tool | Description |
@@ -246,7 +248,7 @@ JSON object printed to stdout:
 ### Media & Content
 | Tool | Description |
 |------|-------------|
-| `generate_image` | AI image generation (Gemini) |
+| `generate_image` | AI image generation and editing with Gemini, OpenAI, or xAI |
 | `analyze_image` | Vision analysis (Grok/Claude/GPT-4o) |
 | [`generate_music`](../docs/tools/generate-music-tool/README.md) | Catalog-backed AI music creation with ElevenLabs or Gemini Lyria |
 | `pdf_create` | Generate PDFs from content |
@@ -257,7 +259,7 @@ JSON object printed to stdout:
 ### Storage & Output
 | Tool | Description |
 |------|-------------|
-| `stash` | Artifact storage (temp files, 7-day TTL) |
+| `stash` | Artifact storage, including strict `image_url` ingestion for untrusted public raster images |
 | `canvas` | Visual knowledge pages |
 | `printer` | Print from stash/files (CUPS) |
 
@@ -286,9 +288,12 @@ JSON object printed to stdout:
 | `stock_price` | Stock/futures/forex prices |
 | `serpapi_amazon_search` | Amazon listing discovery and focused ASIN/product details through SerpApi |
 | `serpapi_search_index` | Structured indexed-web source discovery with standard/deep recall, snippets, exact URLs, and workflow-ready pagination |
+| `serpapi_google_images_light` | Existing web-image discovery with full-size URLs, thumbnails, source pages, dimensions, filters, follow-up references, and optional strict top-result Stash download |
 | `serpapi_google_news_light` | Fast topic-specific Google News discovery with headlines, sources, snippets, grouped Top Stories, and exact article URLs |
 | `serpapi_google_trends` | Query-driven Google Trends time series, regional comparisons, and rising/top related queries or topics |
 | `serpapi_google_trending_now` | Seedless current-trend discovery with volume/growth signals and explicit selected-trend news drill-down |
+| `serpapi_ebay_search` | eBay listing discovery with prices, condition, shipping, images, and product IDs |
+| `serpapi_ebay_product` | Focused eBay listing details by numeric product ID |
 | `serpapi_home_depot` | SerpApi Home Depot product search with store/ZIP filters |
 | `serpapi_google_local` | Google Local business discovery using explicit or mode-default location, with ratings, hours, service options, sponsored listings, related searches, and pagination |
 | `serpapi_google_local_services` | Screened US professional-service providers from Google Local Services, with Google badges, contact/availability data, provider detail drill-down, and visible one- or two-search CID resolution |
@@ -302,6 +307,11 @@ JSON object printed to stdout:
 | `spotify` | Music playback control |
 | `opencode` | Autonomous coding agent |
 | `calculator` | Math, stats, unit conversions |
+
+All 17 `serpapi_*` tools require `SERP_API_KEY` in the active mode env and are
+excluded from that mode's callable registry and Tool RAG sync when it is absent.
+`flight_search` can instead use its keyless fallback. See the full
+[SerpApi tools guide](../docs/tools/serp-api-tool/README.md).
 
 ### Proactive System
 | Tool | Description |

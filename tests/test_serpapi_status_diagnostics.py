@@ -200,6 +200,32 @@ class SerpApiStatusDiagnosticTests(unittest.TestCase):
         self.assertIn("Google News Light API", result["speech"])
         self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
 
+    def test_google_images_light_timeout_matches_images_light_incident(self):
+        with patch.object(
+            serpapi_client,
+            "fetch_serpapi_unresolved_incidents",
+            return_value=[
+                incident(
+                    name="[Google Images Light API] Performance Degradation",
+                    update="We are investigating Google Images Light API latency.",
+                )
+            ],
+        ):
+            result = serpapi_client.diagnose_serpapi_tool_failure(
+                "serpapi_google_images_light",
+                {"query": "red Mustang"},
+                "Tool serpapi_google_images_light timed out",
+                force=True,
+            )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            result["data"]["serpapi_incident"]["engine"],
+            "google_images_light",
+        )
+        self.assertIn("Google Images Light API", result["speech"])
+        self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
+
     def test_google_local_timeout_matches_google_local_incident(self):
         with patch.object(
             serpapi_client,

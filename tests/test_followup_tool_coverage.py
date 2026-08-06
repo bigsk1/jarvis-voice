@@ -727,6 +727,32 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "serpapi_google_images_light": _case(
+        {
+            "engine": "google_images_light",
+            "query": "red 1967 Ford Mustang",
+            "results_count": 1,
+            "provider_results_count": 100,
+            "external_content_trust": "untrusted",
+            "untrusted_external_content": True,
+            "source": "SerpApi Google Images Light",
+            "results": [
+                {
+                    "position": 1,
+                    "title": "Red 1967 Ford Mustang",
+                    "url": "https://images.example/mustang-full.jpg",
+                    "original": "https://images.example/mustang-full.jpg",
+                    "image_url": "https://images.example/mustang-full.jpg",
+                    "serpapi_thumbnail": "https://serpapi.example/mustang-thumb.jpg",
+                    "source": "Example Motors",
+                    "source_url": "https://motors.example/1967-mustang",
+                    "original_width": 2400,
+                    "original_height": 1600,
+                    "untrusted_external_content": True,
+                }
+            ],
+        }
+    ),
     "serpapi_google_news_light": _case(
         {
             "engine": "google_news_light",

@@ -292,6 +292,12 @@ def action_save(args: dict) -> dict:
         if not url:
             raise ValueError("url is required for kind='url'")
         result = stash_file.save_from_url(url, name, on_conflict, tags, tool_origin)
+
+    elif kind == 'image_url':
+        url = args.get('url')
+        if not url:
+            raise ValueError("url is required for kind='image_url'")
+        result = stash_file.save_image_from_url(url, name, on_conflict, tags, tool_origin)
     
     elif kind == 'file':
         file_path = args.get('file_path')
@@ -324,7 +330,9 @@ def action_save(args: dict) -> dict:
                                         on_conflict, tags, tool_origin)
         
     else:
-        raise ValueError(f"Unknown kind: {kind}. Use: text, json, base64, url, file")
+        raise ValueError(
+            f"Unknown kind: {kind}. Use: text, json, base64, url, image_url, file"
+        )
     
     size_str = format_size(result['size_bytes'])
     

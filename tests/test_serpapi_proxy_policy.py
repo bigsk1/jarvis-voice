@@ -22,6 +22,7 @@ EXPECTED_SERPAPI_TOOLS = {
     "serpapi_hotel_search",
     "serpapi_google_local",
     "serpapi_google_local_services",
+    "serpapi_google_images_light",
     "serpapi_google_news_light",
     "serpapi_google_trends",
     "serpapi_google_trending_now",

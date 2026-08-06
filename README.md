@@ -75,6 +75,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - **Conversation search/export**: Filter, deep search, JSON/Markdown export, pinned-safe 90-day cleanup via `cleanup-all`
   - **Completion Guard**: Manual `Completed correctly?` card plus auto-evaluator mode, one bounded repair pass, stop/cancel support for repair runs, follow-up tickets, workflow/fire-and-forget exclusions, exported metadata, and intelligence-layer corrected-path learning
   - **Image upload**: Drag-drop/paste/click with multi-image vision analysis (up to 6 cloud / 2 local)
+  - **Structured result previews**: Focused cards, lists, metrics, and image galleries for search, shopping, local, travel, trends, and news tools
   - **Mode-aware TTS/STT**: Cloud vs Local providers
   - Dynamic LLM/model switching on-the-fly
   - Launch: `./bin/jarvis-web`
@@ -807,8 +808,12 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `supa_crawl_knowledge` - **Supa-Crawl-Chat corpus**: read-only search and site/page inspection over your self-hosted Supabase/pgvector index (configure `SUPA_CRAWL_CHAT_URL`; optional API auth via `SUPA_API_KEY` / `SUPA_API_KEY_STYLE`)
 - `brave_llm_context` - **Brave LLM Context API**: compact source snippets for LLM grounding (retrieval/context, not a final-answer generator)
 - `screenshot_url` - **Screenshot + vision**: Full-page capture with AI analysis (bypasses anti-bot)
+
+**Optional [SerpApi tool suite](docs/tools/serp-api-tool/README.md) (`SERP_API_KEY`):**
+
 - `serpapi_amazon_search` - **SerpApi Amazon Search**: Amazon listing discovery and focused ASIN/product details with price, rating, Prime, delivery, stock, images, and links
 - `serpapi_search_index` - **SerpApi Search Index**: Structured indexed-web source discovery with exact URLs, snippets, standard/deep recall, and workflow-ready pagination for later fetch/crawl steps
+- `serpapi_google_images_light` - **SerpApi Google Images Light**: Search existing web images with full-size URLs, thumbnails, source pages, dimensions, filters, workflow-ready references, and optional strict top-result Stash download
 - `serpapi_google_news_light` - **SerpApi Google News Light**: Fast topic-specific recent-news discovery with headlines, sources, snippets, grouped Top Stories, and exact article URLs
 - `serpapi_google_trends` - **SerpApi Google Trends**: Analyze supplied topics over time, compare regional interest, and discover rising or top related queries/topics for monitoring and workflows
 - `serpapi_google_trending_now` - **SerpApi Google Trends Trending Now**: Discover current trends without a seed topic, then explicitly retrieve associated news for a selected trend token
@@ -823,6 +828,15 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `serpapi_yelp_search` - **SerpApi Yelp**: Local places (restaurants, coffee, bars) by description + location; filters, sort, optional reviews
 - `serpapi_youtube_search` - **SerpApi YouTube search**: Keyword search with video-first results (title, channel, views, duration, thumbnails)
 - `serpapi_youtube` - **SerpApi YouTube details**: Video metadata and transcript by URL or `video_id` (useful when `youtube_video` / yt-dlp hits auth or cookie limits)
+
+The 17 `serpapi_*` tools require a nonblank key in the active mode's env file.
+Without it they are not callable or included in that mode's Tool RAG sync. Jarvis
+Web shows the free Account API quota card only when Settings → System is opened
+and the selected mode has a valid key.
+
+**Related flight tool:**
+
+- `flight_search` - **Flight search**: Future airfare and itinerary options through SerpApi Google Flights when configured, with a keyless `fast-flights` fallback
 
 **Artifact & Output Tools:**
 - `convert_file` - **Local media conversion**: ImageMagick, FFmpeg, Potrace
@@ -840,7 +854,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
   - **Batch generation**: xAI `n=1-10` for multiple variations in one request
   - Supports aspect ratios (1:1, 16:9, 9:16, etc.), styles, negative prompts
   - **Gemini Search Grounding** - Real-time data in images (weather, crypto prices, news)
-  - Auto-saves to stash + memory for cross-session recall
+  - Auto-saves original provider bytes to Generated Images storage and an unchanged Stash copy, with catalog metadata; public-URL reference inputs are strictly validated and bounded before provider upload
 - `generate_video` - **AI video generation**: xAI Grok, OpenAI Sora, or Gemini Veo
   - xAI: 1-15s duration, 7 aspect ratios, video editing ($0.05/s)
   - OpenAI: 4/8/12s, native audio, image-to-video, remix ($0.10-0.50/s)
@@ -860,6 +874,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `stash` - **Artifact storage**: download URLs, store files/images/JSON for multi-step workflows
   - Central workshop for temporary files (7-day TTL)
   - `stash://` references work across tools (printer, email, pdf_create, analyze_image)
+  - `kind=image_url` strictly validates, bounds, and records provenance for untrusted public raster images
 - `pdf_create` - **PDF generation**: create PDFs from stash files, images, or text
   - Now auto-saves to memory with stash reference for recall
 - `pdf_read` - **PDF reading**: extract text, images, merge, split, search PDFs

@@ -51,6 +51,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_hotel_search', payload => this._adaptHotels(payload));
     this.register('serpapi_yelp_search', payload => this._adaptYelp(payload));
     this.register('serpapi_search_index', payload => this._adaptSearchIndex(payload));
+    this.register('serpapi_google_images_light', payload => this._adaptGoogleImagesLight(payload));
     this.register('serpapi_google_news_light', payload => this._adaptGoogleNewsLight(payload));
     this.register('serpapi_google_trends', payload => this._adaptGoogleTrends(payload));
     this.register('serpapi_google_trending_now', payload => this._adaptGoogleTrendingNow(payload));
@@ -353,6 +354,56 @@ class StructuredResultsRenderer {
       actionUrl: payload.google_news_light_url,
       actionLabel: 'Open Google News',
       items: [...topStoryItems, ...resultItems],
+    };
+  }
+
+  _adaptGoogleImagesLight(payload) {
+    const items = this._rows(payload).map((row, index) => {
+      const width = Number(row.original_width);
+      const height = Number(row.original_height);
+      const dimensions = Number.isFinite(width) && width > 0
+        && Number.isFinite(height) && height > 0
+        ? `${width} × ${height}`
+        : '';
+      const chips = [
+        dimensions,
+        row.is_product === true ? 'Product' : '',
+        row.in_stock === true ? 'In stock' : '',
+        row.unsafe === true ? 'Unsafe' : '',
+      ]
+        .filter(Boolean);
+      return {
+        title: row.title || `Image result ${index + 1}`,
+        url: row.source_url,
+        // Only auto-load provider/Google thumbnails. The untrusted original is
+        // available as an explicit click target, never an automatic page load.
+        image: row.unsafe === true ? '' : (row.serpapi_thumbnail || row.thumbnail),
+        imageUrl: row.image_url || row.original,
+        primary: row.source || '',
+        chips,
+        actionLabel: 'Open source',
+      };
+    });
+    const providerCount = payload.provider_results_count ?? items.length;
+    const filters = [
+      payload.image_type,
+      payload.image_size,
+      payload.aspect_ratio,
+      payload.image_color,
+    ].filter(Boolean).map(value => String(value).replace(/_/g, ' '));
+    return {
+      kind: 'image',
+      layout: 'gallery',
+      eyebrow: 'Google Images Light · Untrusted web content',
+      heading: payload.query_displayed || payload.query || 'Image results',
+      subtitle: [
+        `${providerCount} image${Number(providerCount) === 1 ? '' : 's'} found`,
+        filters.join(' · '),
+        'Open the source page to verify rights',
+      ].filter(Boolean).join(' · '),
+      actionUrl: payload.google_images_light_url,
+      actionLabel: 'Open Google Images',
+      items,
     };
   }
 
@@ -1005,15 +1056,16 @@ class StructuredResultsRenderer {
   }
 
   _renderCollection(collection) {
-    const kind = ['product', 'hotel', 'local', 'flight', 'video', 'weather'].includes(collection.kind)
+    const kind = ['product', 'hotel', 'local', 'flight', 'video', 'weather', 'image'].includes(collection.kind)
       ? collection.kind
       : 'generic';
-    const layout = ['rail', 'list', 'metrics'].includes(collection.layout)
+    const layout = ['rail', 'list', 'metrics', 'gallery'].includes(collection.layout)
       ? collection.layout
       : 'rail';
     const cards = collection.items.map(item => {
       const url = this._safeUrl(item.url);
       const image = this._safeUrl(item.image);
+      const imageUrl = this._safeUrl(item.imageUrl);
       const title = this._escape(item.title || 'Result');
       const titleHtml = url
         ? `<a class="structured-result-title" href="${url}" target="_blank" rel="noopener noreferrer" title="${title}">${title}</a>`
@@ -1029,7 +1081,7 @@ class StructuredResultsRenderer {
         : '';
       return `
         <article class="structured-result-card structured-result-card-${kind}">
-          ${image ? `<a class="structured-result-image" href="${url || image}" target="_blank" rel="noopener noreferrer"><img src="${image}" alt="${title}" loading="lazy" referrerpolicy="no-referrer"></a>` : ''}
+          ${image ? `<a class="structured-result-image" href="${imageUrl || url || image}" target="_blank" rel="noopener noreferrer"><img src="${image}" alt="${title}" loading="lazy" referrerpolicy="no-referrer"></a>` : ''}
           <div class="structured-result-body">
             ${titleHtml}
             ${item.primary ? `<div class="structured-result-primary">${this._escape(item.primary)}</div>` : ''}

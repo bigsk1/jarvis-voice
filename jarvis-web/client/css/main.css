@@ -831,6 +831,14 @@ body {
   color: var(--text-link-chat-hover);
 }
 
+/* Keep images rendered from assistant Markdown inside the chat column. */
+.message.assistant .message-bubble img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  box-sizing: border-box;
+}
+
 /* Markdown tables in chat responses */
 .message-bubble .markdown-table-wrap {
   max-width: 100%;
@@ -2184,6 +2192,15 @@ body {
   scroll-snap-type: none;
 }
 
+.structured-results-layout-gallery .structured-results-track {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-auto-flow: row;
+  gap: 10px;
+  padding-bottom: 0;
+  overflow: visible;
+  scroll-snap-type: none;
+}
+
 .structured-result-card {
   display: flex;
   min-width: 0;
@@ -2199,6 +2216,10 @@ body {
 }
 
 .structured-result-card-video {
+  flex-direction: column;
+}
+
+.structured-result-card-image {
   flex-direction: column;
 }
 
@@ -2229,6 +2250,19 @@ body {
 }
 
 .structured-result-card-video .structured-result-image img {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: cover;
+}
+
+.structured-result-card-image .structured-result-image {
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: 4 / 3;
+}
+
+.structured-result-card-image .structured-result-image img {
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -2323,6 +2357,10 @@ body {
   }
 
   .structured-results-layout-metrics .structured-results-track {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .structured-results-layout-gallery .structured-results-track {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

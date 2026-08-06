@@ -35,6 +35,7 @@
     "serpapi_google_local_services": false,
     "serpapi_amazon_search": false,
     "serpapi_search_index": false,
+    "serpapi_google_images_light": false,
     "serpapi_google_news_light": false,
     "serpapi_google_trends": false,
     "serpapi_google_trending_now": false,

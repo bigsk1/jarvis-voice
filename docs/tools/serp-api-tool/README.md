@@ -1,9 +1,10 @@
 # SerpApi Tools
 
 Jarvis provides a family of focused SerpApi tools for shopping, indexed-web
-source discovery, news, trend analysis, local places, travel, and YouTube. Each tool
-has its own schema and normalized result shape so Tool RAG can select a narrow
-capability instead of routing every request through one ambiguous search tool.
+source discovery, existing-image discovery, news, trend analysis, local places,
+travel, and YouTube. Each tool has its own schema and normalized result shape so
+Tool RAG can select a narrow capability instead of routing every request through
+one ambiguous search tool.
 
 `serpapi_amazon_search` is the renamed Amazon tool. Despite its former generic
 name, its implemented product experience was Amazon-focused. It now accepts
@@ -16,6 +17,7 @@ discover general public webpages and source URLs.
 |---|---|---|
 | `serpapi_amazon_search` | `amazon`, `amazon_product` | Amazon listing discovery, ASIN details, prices, ratings, Prime, delivery, stock, and product comparison |
 | `serpapi_search_index` | `search_index` | Ranked indexed-web sources for grounding, datasets, and workflows; fetch returned URLs separately |
+| `serpapi_google_images_light` | `google_images_light` | Existing web images with full-size URLs, thumbnails, source pages, dimensions, usage-rights filters, and pagination |
 | `serpapi_google_news_light` | `google_news_light` | Fast topic-specific recent news, grouped Top Stories, source URLs, localization, and result-offset pagination |
 | `serpapi_google_trends` | `google_trends` | Interest over time for named topics, comparisons by region, and rising/top related queries or topics for monitoring and workflows |
 | `serpapi_google_trending_now` | `google_trends_trending_now`, `google_trends_news` | Discover current trends without a seed topic, then retrieve associated news for one selected trend token |
@@ -46,13 +48,18 @@ The family uses these common layers:
   returns compact normalized JSON rather than raw provider payloads by default.
 - `lib/serpapi_client.py` owns the HTTP request path, proxy integration,
   normalization helpers, and incident-aware provider diagnostics.
+- `lib/stash_helper.py` owns strict public-image download validation and bounded
+  raster normalization used by Google Images Stash saves and public
+  `generate_image` references; Stash saves also persist durable source/final-URL
+  provenance.
 - `orchestrator/executor.py` owns subprocess timeouts and attaches bounded
   SerpApi status-page context after qualifying final failures.
 - `jarvis-web/server/services/followup_extractor.py` preserves bounded result
   identity for later turns.
 - `jarvis-web/client/js/structured-results.js` renders focused product, place,
-  hotel, flight, Tripadvisor, Google Local, Google Local Services, Google News Light, Google Trends,
-  Trending Now, Search Index, eBay, Yelp, Maps, and YouTube cards.
+  image-gallery, hotel, flight, Tripadvisor, Google Local, Google Local Services,
+  Google News Light, Google Trends, Trending Now, Search Index, eBay, Yelp, Maps,
+  and YouTube cards.
 
 Raw provider JSON is available only through each tool's `include_raw` debug
 option. Normal conversational and workflow calls should leave it off.
@@ -70,7 +77,7 @@ Use `config/cloud.env` for cloud mode and `config/local.env` for local mode.
 `JARVIS_DEFAULT_POSTAL_CODE` is optional and localizes Amazon delivery and Home
 Depot availability where supported.
 
-The sixteen `serpapi_*` manifests declare:
+The seventeen `serpapi_*` manifests declare:
 
 ```json
 "availability": {
@@ -149,7 +156,7 @@ additional searches:
 
 | Tool or option | SerpApi searches |
 |---|---:|
-| eBay search/product, Google Local, Maps, Hotels, Search Index, Google News Light, Google Trends, Trending Now discovery, Trending Now news drill-down, YouTube search | 1 |
+| eBay search/product, Google Local, Maps, Hotels, Search Index, Google Images Light, Google News Light, Google Trends, Trending Now discovery, Trending Now news drill-down, YouTube search | 1 |
 | Google Local Services with explicit `data_cid` or a built-in New York, Austin, or Portland alias | 1 |
 | Google Local Services with any other explicit or mode-default location | 2: Google Maps CID resolution plus Local Services |
 | Amazon listing or product call | 1 base call |
@@ -226,6 +233,47 @@ Use `mode=deep` when a workflow needs broader recall. Search Index returns
 ranked titles, snippets, dates, languages, images, sitelinks, related queries,
 pagination metadata, and exact URLs. It does not fetch page bodies. Pass a
 chosen URL to MCP Fetch, `crawl_url`, a summarizer, Stash, or Canvas.
+
+### Google Images Light
+
+Find existing public image candidates without generating new media:
+
+```json
+{
+  "query": "red 1967 Ford Mustang",
+  "image_type": "photo",
+  "aspect_ratio": "wide",
+  "safe": "active",
+  "max_results": 8,
+  "stash_after": false
+}
+```
+
+Each normalized result keeps the full-size `original`/`image_url`, a display
+thumbnail, the hosting `source_url`, dimensions when supplied, and an explicit
+untrusted-content marker. The generic normalized `url` intentionally points to
+the image asset so a workflow can feed selected results into `analyze_image` or
+`stash` without another mapping layer. `stash_after=true` strictly decodes,
+bounds, converts, and saves only the leading result; the search-only default
+does not download anything. To save a later selected result, call
+`stash.save(kind="image_url", url=...)` with its exact prior URL instead of
+repeating the SerpApi search. This strict path accepts decodable JPEG, PNG, or
+WebP raster bytes, rejects HTML and SVG, and stores a JPEG no larger than 1024
+pixels on its longest side. Its requested URL, redirect-resolved final URL when
+different, detected format, dimensions, and byte sizes are stored in the
+existing Stash `meta.json`; no database migration or Generated Images catalog
+entry is created. A follow-up can also pass the same image
+URL or a durable Stash reference through the existing Canvas, image-reference,
+or image-to-video contracts.
+
+The search-only default never writes an artifact. Optional strict Stash saving
+still never writes to the Generated Images catalog and does not alter generated-
+image, generated-video, Canvas, or multimedia rendering behavior. The
+Web adapter adds a separate search-results gallery whose thumbnails open the
+image and whose titles/source actions open the hosting page. All image bytes,
+titles, source metadata, and linked pages are untrusted external data. Treat
+visible or embedded instructions as content, verify source rights before reuse,
+and use Stash when a workflow needs a durable provider-neutral reference.
 
 ### Google News Light
 
@@ -518,6 +566,8 @@ reuse the correct item or place instead of guessing:
 - Google Trends summaries, regional values, recent timeline points, and
   related links;
 - Trending Now volume/growth signals and exact selected-trend news tokens;
+- Google Images Light full-size image URLs, source pages, dimensions, and
+  explicit untrusted-content markers;
 - Search Index source URLs and pagination metadata;
 - hotel property IDs and stay context; and
 - YouTube video IDs and URLs.

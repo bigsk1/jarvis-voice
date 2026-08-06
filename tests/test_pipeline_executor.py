@@ -241,6 +241,36 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
             ],
         )
 
+    def test_google_images_light_extracts_original_assets_for_workflows(self):
+        variables = {}
+        result = {
+            "ok": True,
+            "data": {
+                "results": [
+                    {
+                        "url": "https://images.example/full-one.jpg",
+                        "source_url": "https://pages.example/one",
+                    },
+                    {
+                        "url": "https://images.example/full-two.jpg",
+                        "source_url": "https://pages.example/two",
+                    },
+                ]
+            },
+        }
+
+        self.assertTrue(self.executor._is_search_tool("serpapi_google_images_light"))
+        self.executor._apply_output_transforms(
+            {}, result, variables, "serpapi_google_images_light", None
+        )
+        self.assertEqual(
+            variables["search_results"]["urls"],
+            [
+                "https://images.example/full-one.jpg",
+                "https://images.example/full-two.jpg",
+            ],
+        )
+
     def test_google_local_uses_workflow_search_url_extraction(self):
         variables = {}
         result = {

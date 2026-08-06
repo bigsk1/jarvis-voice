@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "stash",
-  "description": "Temporary artifact storage for multi-step workflows. Store files, images, JSON, or downloaded data that tools need to share.\n\nUse this when:\n- Downloading images/files from URLs for later use\n- Storing intermediate data between tool calls\n- Preparing artifacts for pdf_create or printer\n- Caching API responses or web search results\n- SAVING STASH DATA TO MEMORY → use action='remember'\n\nDo NOT use for:\n- Permanent memory (user preferences, facts) → use remember tool instead (unless saving stash content)\n- Building software → use opencode instead\n- One-off text notes → use canvas instead\n\nWorkflow patterns:\n- stash.save(download URL) → pdf_create(stash files) → printer.print()\n- crawl_url → stash.save → stash.remember (save important findings to memory)\n\nActions:\n- open_space: Create/resume a task bucket\n- save: Store text, JSON, base64, or download from URL (kind='url')\n- list: List files or spaces\n- read: Get file content or path\n- remember: Save stash artifact to PERMANENT MEMORY (text content or metadata for binary)\n- cleanup: Delete expired spaces\n\nExamples:\n- 'Download this image' → save with kind='url', url='https://...'\n- 'Save that stash data to memory' → remember with search='keyword' or space_id+file_id\n- 'What files do I have?' → list\n- 'Get that file' → read with file_id",
+  "description": "Temporary artifact storage for multi-step workflows. Store files, images, JSON, or downloaded data that tools need to share.\n\nUse this when:\n- Downloading images/files from URLs for later use\n- Storing intermediate data between tool calls\n- Preparing artifacts for pdf_create or printer\n- Caching API responses or web search results\n- SAVING STASH DATA TO MEMORY → use action='remember'\n\nDo NOT use for:\n- Permanent memory (user preferences, facts) → use remember tool instead (unless saving stash content)\n- Building software → use opencode instead\n- One-off text notes → use canvas instead\n\nWorkflow patterns:\n- stash.save(download URL) → pdf_create(stash files) → printer.print()\n- crawl_url → stash.save → stash.remember (save important findings to memory)\n\nActions:\n- open_space: Create/resume a task bucket\n- save: Store text, JSON, base64, download a generic URL with kind='url', or strictly validate and bound a public raster image with kind='image_url'\n- list: List files or spaces\n- read: Get file content or path\n- remember: Save stash artifact to PERMANENT MEMORY (text content or metadata for binary)\n- cleanup: Delete expired spaces\n\nExamples:\n- 'Download this image' → save with kind='image_url', url='https://...'\n- 'Save that stash data to memory' → remember with search='keyword' or space_id+file_id\n- 'What files do I have?' → list\n- 'Get that file' → read with file_id",
   "complementary_tools": [
     "canvas"
   ],
@@ -38,8 +38,8 @@
       },
       "kind": {
         "type": "string",
-        "description": "Content type for save: text, json, base64, url, or file (copy local file)",
-        "enum": ["text", "json", "base64", "url", "file"]
+        "description": "Content type for save: text, json, base64, url (generic download), image_url (strict raster validation and bounding), or file (copy local file)",
+        "enum": ["text", "json", "base64", "url", "image_url", "file"]
       },
       "file_path": {
         "type": "string",
@@ -59,7 +59,7 @@
       },
       "url": {
         "type": "string",
-        "description": "URL to download (for kind=url). Includes SSRF protection."
+        "description": "URL to download. kind=url permits supported generic artifacts; kind=image_url additionally requires decodable JPEG, PNG, or WebP bytes and stores a bounded JPEG."
       },
       "on_conflict": {
         "type": "string",

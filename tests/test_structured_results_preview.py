@@ -53,6 +53,7 @@ const expectedTools = [
   'serpapi_hotel_search',
   'serpapi_yelp_search',
   'serpapi_search_index',
+  'serpapi_google_images_light',
   'serpapi_google_news_light',
   'serpapi_google_trends',
   'serpapi_google_trending_now',
@@ -169,6 +170,33 @@ const html = renderer.render({{
       language: 'en',
       image_url: 'https://images.example/postgres.jpg',
       sitelinks: [{{title: 'Queue schema', url: 'https://example.test/schema'}}]
+    }}]
+  }},
+  serpapi_google_images_light: {{
+    query: 'red 1967 Ford Mustang',
+    query_displayed: 'red 1967 Ford Mustang',
+    provider_results_count: 100,
+    image_type: 'photo',
+    aspect_ratio: 'wide',
+    google_images_light_url: 'https://www.google.com/search?q=red+1967+Ford+Mustang&tbm=isch',
+    external_content_trust: 'untrusted',
+    results: [{{
+      title: 'Red 1967 Ford Mustang',
+      image_url: 'https://images.example/mustang-full.jpg',
+      serpapi_thumbnail: 'https://serpapi.example/mustang-thumb.jpg',
+      source: 'Example Motors',
+      source_url: 'https://motors.example/1967-mustang',
+      original_width: 2400,
+      original_height: 1600,
+      in_stock: true,
+      unsafe: false
+    }}, {{
+      title: 'Unsafe candidate',
+      image_url: 'https://images.example/unsafe-full.jpg',
+      serpapi_thumbnail: 'https://serpapi.example/unsafe-thumb.jpg',
+      source: 'Untrusted Example',
+      source_url: 'https://source.example/unsafe',
+      unsafe: true
     }}]
   }},
   serpapi_google_news_light: {{
@@ -374,6 +402,13 @@ for (const expected of [
   'PostgreSQL as a durable queue', 'example.test/postgres-queue',
   'A practical guide to durable workers', 'Aug 1, 2026', '1 related links',
   '314 indexed matches', 'Related: SKIP LOCKED queue · durable job queue',
+  'Google Images Light · Untrusted web content', 'red 1967 Ford Mustang',
+  '100 images found', 'photo · wide', 'Open the source page to verify rights',
+  'Red 1967 Ford Mustang', 'Example Motors', '2400 × 1600',
+  'In stock', 'Unsafe candidate', 'Unsafe',
+  'Open source', 'Open Google Images', 'structured-results-layout-gallery',
+  'https://images.example/mustang-full.jpg',
+  'https://motors.example/1967-mustang',
   'Google News Light', 'agentic AI news', '2 news results',
   '1 top-story article', 'US', 'Investors return to AI agents',
   'Finance Example', 'Top story', 'AI funding',
@@ -408,7 +443,8 @@ for (const expected of [
   }}
 }}
 if (html.includes('flight_numbers')) process.exit(4);
-if ((html.match(/structured-results-preview/g) || []).length !== 17) process.exit(5);
+if (html.includes('https://serpapi.example/unsafe-thumb.jpg')) process.exit(9);
+if ((html.match(/structured-results-preview/g) || []).length !== 18) process.exit(5);
 
 if (!renderer.register('custom_demo', payload => ({{
   kind: 'generic',

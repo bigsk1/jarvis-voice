@@ -12,7 +12,7 @@
       },
       "reference_image": {
         "type": "string",
-        "description": "Source image to edit. Accepts: stash:// ref (e.g. stash://space_xxx/file_id), local file path, public URL, or base64 data URI. When provided, the tool EDITS this image based on the prompt instead of generating from scratch. All 3 providers (Gemini, OpenAI, xAI) support image editing."
+        "description": "Source image to edit. Accepts: stash:// ref (e.g. stash://space_xxx/file_id), local file path, public URL, or base64 data URI. Public URLs are SSRF-checked, strictly decoded as JPEG/PNG/WebP, and bounded before provider upload. When provided, the tool EDITS this image based on the prompt instead of generating from scratch. All 3 providers (Gemini, OpenAI, xAI) support image editing."
       },
       "provider": {
         "type": "string",

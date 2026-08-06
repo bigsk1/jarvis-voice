@@ -36,6 +36,26 @@ class _FakeClient:
 
 
 class GenerateImageAspectTests(unittest.TestCase):
+    def test_public_reference_image_uses_strict_shared_downloader(self):
+        with patch.object(
+            generate_image,
+            "safe_download_image",
+            return_value=(
+                b"bounded-jpeg",
+                "image/jpeg",
+                "https://cdn.example/reference.jpg",
+                {"processed_width": 1024, "processed_height": 768},
+            ),
+        ) as strict_download, patch.object(generate_image.requests, "get") as raw_get:
+            encoded, mime_type = generate_image._resolve_image_to_base64(
+                "https://images.example/reference.png"
+            )
+
+        self.assertEqual(base64.b64decode(encoded), b"bounded-jpeg")
+        self.assertEqual(mime_type, "image/jpeg")
+        strict_download.assert_called_once_with("https://images.example/reference.png")
+        raw_get.assert_not_called()
+
     def test_commented_out_model_env_uses_catalog_default(self):
         with patch.object(generate_image, "get_config_value", side_effect=lambda _key, default=None: default):
             model = generate_image._resolve_configured_image_model("gemini")

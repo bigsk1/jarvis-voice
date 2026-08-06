@@ -33,6 +33,7 @@ from config_loader import load_config, get_config_value
 from image_catalog import upsert_image_catalog_entry
 from model_catalog import get_media_model_env_key, resolve_media_model
 from paths import assert_not_restricted_read_path
+from stash_helper import safe_download_image
 
 PROJECT_ROOT = Path(__file__).parent.parent
 GENERATED_IMAGES_DIR = PROJECT_ROOT / 'data' / 'generated_images'
@@ -241,10 +242,10 @@ def _resolve_image_to_base64(image_source: str) -> tuple[str, str]:
     
     # HTTP/HTTPS URL - download it
     if image_source.startswith(('http://', 'https://')):
-        resp = requests.get(image_source, timeout=60)
-        resp.raise_for_status()
-        content_type = resp.headers.get('Content-Type', 'image/jpeg').split(';')[0]
-        return base64.b64encode(resp.content).decode('utf-8'), content_type
+        image_bytes, content_type, _final_url, _metadata = safe_download_image(
+            image_source
+        )
+        return base64.b64encode(image_bytes).decode('utf-8'), content_type
     
     # Stash reference
     local_path = None

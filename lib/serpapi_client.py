@@ -23,6 +23,7 @@ SERPAPI_TOOL_ENGINES = {
     "serpapi_google_local": ("google_local",),
     "serpapi_google_local_services": ("google_local_services",),
     "serpapi_maps_search": ("google_maps",),
+    "serpapi_google_images_light": ("google_images_light",),
     "serpapi_google_news_light": ("google_news_light",),
     "serpapi_google_trends": ("google_trends",),
     "serpapi_search_index": ("search_index",),
@@ -39,6 +40,7 @@ SERPAPI_ENGINE_LABELS = {
     "google": "Google Search",
     "google_flights": "Google Flights",
     "google_hotels": "Google Hotels",
+    "google_images_light": "Google Images Light",
     "google_light": "Google Light Search",
     "google_local": "Google Local",
     "google_local_services": "Google Local Services",
@@ -72,6 +74,10 @@ SERPAPI_ENGINE_STATUS_ALIASES = {
     "google": ("google search api", "google search"),
     "google_flights": ("google flights api", "google flights"),
     "google_hotels": ("google hotels api", "google hotels"),
+    "google_images_light": (
+        "google images light api",
+        "google images light",
+    ),
     "google_light": ("google light search api", "google light search"),
     "google_local": ("google local api", "google local"),
     "google_local_services": (

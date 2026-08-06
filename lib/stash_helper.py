@@ -11,10 +11,12 @@ import os
 import sys
 import json
 import hashlib
+import io
 import re
 import shutil
 import socket
 import ipaddress
+import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -48,6 +50,11 @@ ALLOWED_SCHEMES = ['http', 'https']
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 MAX_REDIRECTS = 3
 DOWNLOAD_TIMEOUT = 30
+STRICT_IMAGE_MAX_FILE_SIZE = 20 * 1024 * 1024
+STRICT_IMAGE_MAX_DIMENSION = 1024
+STRICT_IMAGE_MAX_PIXELS = 40_000_000
+STRICT_IMAGE_MAX_OUTPUT_SIZE = 4 * 1024 * 1024
+STRICT_RASTER_FORMATS = {'JPEG', 'PNG', 'WEBP'}
 
 # Allowed MIME types for downloads
 ALLOWED_MIME_TYPES = [
@@ -243,6 +250,96 @@ def safe_download(url: str, max_size: int = None) -> tuple[bytes, str, str]:
         raise SecurityError(f"Content type '{content_type}' not allowed")
     
     return data, content_type, current_url
+
+
+def safe_download_image(
+    url: str,
+    *,
+    max_size: int = STRICT_IMAGE_MAX_FILE_SIZE,
+    max_dimension: int = STRICT_IMAGE_MAX_DIMENSION,
+    max_output_size: int = STRICT_IMAGE_MAX_OUTPUT_SIZE,
+) -> tuple[bytes, str, str, dict[str, Any]]:
+    """Download, decode, and bound an untrusted public raster image.
+
+    The generic downloader intentionally accepts several artifact MIME types.
+    This stricter path additionally requires Pillow to decode JPEG, PNG, or
+    WebP bytes, rejects oversized pixel canvases, applies EXIF orientation,
+    and emits a bounded RGB JPEG suitable for Stash and provider uploads.
+    """
+    data, declared_type, final_url = safe_download(url, max_size=max_size)
+
+    try:
+        from PIL import Image, ImageOps, UnidentifiedImageError
+    except ImportError as exc:
+        raise SecurityError("Pillow is required for strict image validation") from exc
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data)) as source:
+                detected_format = str(source.format or '').upper()
+                if detected_format not in STRICT_RASTER_FORMATS:
+                    raise SecurityError(
+                        "Downloaded content is not a supported JPEG, PNG, or WebP raster image"
+                    )
+
+                original_width, original_height = source.size
+                if original_width < 1 or original_height < 1:
+                    raise SecurityError("Downloaded image has invalid dimensions")
+                if original_width * original_height > STRICT_IMAGE_MAX_PIXELS:
+                    raise SecurityError(
+                        f"Downloaded image exceeds the {STRICT_IMAGE_MAX_PIXELS:,}-pixel safety limit"
+                    )
+
+                image = ImageOps.exif_transpose(source)
+                image.load()
+                if image.mode not in {'RGB', 'L'}:
+                    background = Image.new('RGB', image.size, (255, 255, 255))
+                    if 'A' in image.getbands():
+                        background.paste(image, mask=image.getchannel('A'))
+                    else:
+                        background.paste(image.convert('RGB'))
+                    image = background
+                elif image.mode == 'L':
+                    image = image.convert('RGB')
+
+                resized = max(image.size) > max_dimension
+                if resized:
+                    image.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
+
+                quality = 90
+                while True:
+                    output = io.BytesIO()
+                    image.save(output, format='JPEG', quality=quality, optimize=True)
+                    processed = output.getvalue()
+                    if len(processed) <= max_output_size or quality <= 58:
+                        break
+                    quality -= 8
+                if len(processed) > max_output_size:
+                    raise SecurityError(
+                        f"Processed image exceeds the {max_output_size}-byte safety limit"
+                    )
+    except SecurityError:
+        raise
+    except (Image.DecompressionBombWarning, Image.DecompressionBombError) as exc:
+        raise SecurityError("Downloaded image exceeds Pillow's decompression safety limit") from exc
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise SecurityError(
+            "Downloaded content is not a valid JPEG, PNG, or WebP raster image"
+        ) from exc
+
+    return processed, 'image/jpeg', final_url, {
+        'declared_mime_type': declared_type,
+        'detected_format': detected_format.lower(),
+        'original_width': original_width,
+        'original_height': original_height,
+        'processed_width': image.size[0],
+        'processed_height': image.size[1],
+        'original_size_bytes': len(data),
+        'processed_size_bytes': len(processed),
+        'resized_for_safety': resized,
+        'recompressed_for_safety': True,
+    }
 
 
 # ============================================================================
@@ -603,12 +700,60 @@ class StashFile:
         
         # Save the data
         result = self._save_data(data, name, content_type, on_conflict, tags, tool_origin)
-        
+
+        # Keep download provenance with the durable file record as well as the
+        # immediate tool result. Other save kinds remain unchanged.
+        for file_meta in self.space.meta.get('files', []):
+            if file_meta.get('file_id') == result.get('file_id'):
+                file_meta['source_url'] = url
+                if final_url != url:
+                    file_meta['final_url'] = final_url
+                break
+        self.space._save_meta()
+
         # Add source URL to result
         result['source_url'] = url
         if final_url != url:
             result['final_url'] = final_url
         
+        return result
+
+    def save_image_from_url(self, url: str, name: str = None,
+                            on_conflict: str = 'error', tags: list[str] = None,
+                            tool_origin: str = None) -> dict:
+        """Strictly validate, bound, and save a public raster image URL."""
+        data, content_type, final_url, image_meta = safe_download_image(url)
+
+        if name:
+            base_name = os.path.splitext(name)[0] or 'downloaded_image'
+        else:
+            parsed = urlparse(final_url)
+            base_name = os.path.splitext(os.path.basename(parsed.path))[0]
+            if not base_name:
+                base_name = f"downloaded_image_{datetime.now(timezone.utc).strftime('%H%M%S')}"
+        output_name = f"{base_name}.jpg"
+
+        result = self._save_data(
+            data,
+            output_name,
+            content_type,
+            on_conflict,
+            tags,
+            tool_origin,
+        )
+
+        durable_meta = {
+            'source_url': url,
+            **({'final_url': final_url} if final_url != url else {}),
+            **image_meta,
+        }
+        for file_meta in self.space.meta.get('files', []):
+            if file_meta.get('file_id') == result.get('file_id'):
+                file_meta.update(durable_meta)
+                break
+        self.space._save_meta()
+
+        result.update(durable_meta)
         return result
     
     def _save_data(self, data: bytes, name: str, mime_type: str,

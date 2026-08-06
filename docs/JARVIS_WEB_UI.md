@@ -194,7 +194,14 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
   touch swiping and the native scrollbar remain available.
 - Current adapters cover Amazon and Google Shopping, Home Depot, eBay search
   and product details, Google Hotels, Yelp, Google Flights, Google Maps,
-  SerpApi YouTube search, and weather forecasts.
+  Tripadvisor, Google Local and Local Services, Search Index, Google News Light,
+  Google Trends and Trending Now, SerpApi Google Images Light and YouTube search,
+  and weather forecasts.
+- Google Images Light uses a dedicated remote-results gallery. It remains
+  separate from generated-media catalogs and treats all image URLs and metadata
+  as untrusted. Assistant Markdown images are independently constrained to the
+  chat bubble width, so detailed responses cannot widen the conversation column;
+  structured card rails retain their own bounded horizontal navigation.
 - YouTube search uses the compact rail for the complete shortlist while Jarvis
   Web keeps one large playable top-result embed. Direct YouTube detail and
   downloaded-media results retain their existing specialized players.

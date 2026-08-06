@@ -963,7 +963,7 @@ results = web_search("french bulldog images")
 # → {"images": [{"url": "https://...", "title": "..."}]}
 
 # Agent materializes URL to stash
-stash.save(kind="url", url=results["images"][0]["url"], name="bulldog.jpg")
+stash.save(kind="image_url", url=results["images"][0]["url"], name="bulldog.jpg")
 # → {"file_id": "f_abc123", "ref": "stash://space_.../f_abc123"}
 
 # Downstream tools use stash reference
@@ -1261,7 +1261,7 @@ See also: [TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md) for full pattern docu
 2. web_search("french bulldog tricolor black nails")
    → image_url: "https://..."
 
-3. stash.save(space_id, kind="url", url=image_url, name="bulldog.jpg")
+3. stash.save(space_id, kind="image_url", url=image_url, name="bulldog.jpg")
    → file_id: "bulldog.jpg"
 
 4. [Agent generates schedule text]

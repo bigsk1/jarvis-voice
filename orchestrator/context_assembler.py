@@ -870,6 +870,9 @@ class ContextAssembler:
         is_google_local_services = (
             str(tool_name or "").strip().lower() == "serpapi_google_local_services"
         )
+        is_google_images_light = (
+            str(tool_name or "").strip().lower() == "serpapi_google_images_light"
+        )
         is_google_news_light = (
             str(tool_name or "").strip().lower() == "serpapi_google_news_light"
         )
@@ -889,7 +892,12 @@ class ContextAssembler:
                 "rank": index,
                 "source_list": source_key,
             }
-            for key in exact_fields:
+            candidate_fields = (
+                ("position", "title", "source")
+                if is_google_images_light
+                else exact_fields
+            )
+            for key in candidate_fields:
                 value = item.get(key)
                 if value in (None, ""):
                     continue
@@ -1012,6 +1020,37 @@ class ContextAssembler:
                             max_depth=2,
                         )
 
+            if is_google_images_light:
+                original = (
+                    item.get("original")
+                    or item.get("image_url")
+                    or item.get("url")
+                )
+                if original not in (None, ""):
+                    candidate["original"] = self.build_preview_value(
+                        original,
+                        parent_key="image_url",
+                        depth=0,
+                        max_depth=1,
+                    )
+                for key in (
+                    "source_url",
+                    "original_width",
+                    "original_height",
+                    "is_product",
+                    "in_stock",
+                    "unsafe",
+                    "untrusted_external_content",
+                ):
+                    value = item.get(key)
+                    if value not in (None, "", [], {}):
+                        candidate[key] = self.build_preview_value(
+                            value,
+                            parent_key=key,
+                            depth=0,
+                            max_depth=1,
+                        )
+
             if is_google_news_light:
                 snippet = item.get("snippet")
                 if snippet not in (None, ""):
@@ -1118,7 +1157,7 @@ class ContextAssembler:
                             max_depth=1,
                         )
 
-            if "url" not in candidate:
+            if "url" not in candidate and not is_google_images_light:
                 for alias in url_aliases:
                     value = item.get(alias)
                     if value not in (None, ""):
@@ -1472,6 +1511,83 @@ class ContextAssembler:
                 groups.append(compact_group)
         if groups:
             preview["top_stories"] = groups
+        return preview
+
+    def build_google_images_light_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep bounded image candidates, provenance, and trust markers."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "engine",
+            "query",
+            "query_displayed",
+            "image_results_state",
+            "location",
+            "country",
+            "language",
+            "country_restrict",
+            "google_domain",
+            "period_unit",
+            "period_value",
+            "start_date",
+            "end_date",
+            "aspect_ratio",
+            "image_size",
+            "image_color",
+            "image_type",
+            "license",
+            "safe",
+            "device",
+            "start",
+            "max_results",
+            "results_count",
+            "provider_results_count",
+            "top_url",
+            "top_source_url",
+            "stash_after",
+            "stash_ref",
+            "stash_error",
+            "search_id",
+            "google_images_light_url",
+            "has_more",
+            "next_start",
+            "serpapi_searches_used",
+            "external_content_trust",
+            "untrusted_external_content",
+            "handling_note",
+            "source",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=1,
+                )
+
+        stashed_image = data.get("stashed_image")
+        if isinstance(stashed_image, dict):
+            preview["stashed_image"] = self.build_preview_value(
+                stashed_image,
+                parent_key="stashed_image",
+                max_depth=2,
+            )
+
+        pagination = data.get("pagination")
+        if isinstance(pagination, dict):
+            preview["pagination"] = {
+                key: pagination[key]
+                for key in (
+                    "current",
+                    "start",
+                    "has_more",
+                    "next_start",
+                    "previous_start",
+                )
+                if pagination.get(key) not in (None, "") or key == "has_more"
+            }
         return preview
 
     def build_google_local_data_preview(self, data: Any) -> dict[str, Any]:
@@ -1868,6 +1984,8 @@ class ContextAssembler:
                 data_preview = self.build_google_local_data_preview(data)
             elif normalized_tool_name == "serpapi_google_local_services":
                 data_preview = self.build_google_local_services_data_preview(data)
+            elif normalized_tool_name == "serpapi_google_images_light":
+                data_preview = self.build_google_images_light_data_preview(data)
             elif normalized_tool_name == "serpapi_google_news_light":
                 data_preview = self.build_google_news_light_data_preview(data)
             elif normalized_tool_name == "serpapi_google_trends":
