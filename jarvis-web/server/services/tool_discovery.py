@@ -109,14 +109,25 @@ class ToolDiscoveryService:
                     # DB says enabled=1; still respect profile overrides (same as ToolRegistry)
                     if not effective_enabled(tool_name, True, profile_overrides):
                         continue
-                    # Get tool details from db
-                    tool_info = db.get_tool_info(tool_name) if hasattr(db, 'get_tool_info') else None
+                    # Get the persisted Tool RAG definition without creating a
+                    # second MCP connection just to populate Web UI metadata.
+                    # Keep the legacy getter as a compatibility fallback for
+                    # older/custom MemoryDB implementations.
+                    tool_info = None
+                    for getter_name in ('get_tool_definition', 'get_tool_info'):
+                        getter = getattr(db, getter_name, None)
+                        if not callable(getter):
+                            continue
+                        candidate = getter(tool_name)
+                        if isinstance(candidate, dict):
+                            tool_info = candidate
+                            break
                     is_blocked = tool_name in blocked_tools
                     is_mcp = tool_name.startswith('mcp_')
 
                     description = ''
                     if tool_info and isinstance(tool_info, dict):
-                        description = tool_info.get('description', '')
+                        description = tool_info.get('description') or ''
 
                     self.tools[tool_name] = {
                         'name': tool_name,

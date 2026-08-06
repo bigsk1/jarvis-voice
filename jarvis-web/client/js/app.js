@@ -1251,43 +1251,67 @@ class JarvisApp {
   }
   
   _setupToolHoverTooltips(container) {
+    document.getElementById('toolItemTooltipPortal')?.remove();
     if (!window.matchMedia('(hover: hover)').matches) return;
     const gap = 4;
+    const viewportPadding = 8;
+    const portal = document.createElement('div');
+    portal.id = 'toolItemTooltipPortal';
+    portal.className = 'tool-item-tooltip tool-item-tooltip-portal';
+    portal.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(portal);
+    let hideTimeout = null;
+    const hide = () => {
+      portal.style.display = 'none';
+      portal.setAttribute('aria-hidden', 'true');
+      hideTimeout = null;
+    };
+    const scheduleHide = () => {
+      if (hideTimeout) clearTimeout(hideTimeout);
+      hideTimeout = setTimeout(hide, 150);
+    };
+    const cancelHide = () => {
+      if (hideTimeout) clearTimeout(hideTimeout);
+      hideTimeout = null;
+    };
+
     container.querySelectorAll('.tool-item').forEach(item => {
       const tooltip = item.querySelector('.tool-item-tooltip');
       if (!tooltip) return;
       item.removeAttribute('title');
-      let hideTimeout = null;
-      const scheduleHide = () => {
-        if (hideTimeout) clearTimeout(hideTimeout);
-        hideTimeout = setTimeout(() => {
-          tooltip.style.display = 'none';
-          hideTimeout = null;
-        }, 150);
-      };
-      const cancelHide = () => {
-        if (hideTimeout) clearTimeout(hideTimeout);
-        hideTimeout = null;
-      };
       const show = () => {
         cancelHide();
         const rect = item.getBoundingClientRect();
-        tooltip.style.display = 'block';
-        tooltip.style.left = `${rect.right + gap}px`;
-        tooltip.style.top = `${rect.top}px`;
-        const tooltipRect = tooltip.getBoundingClientRect();
-        if (tooltipRect.right > window.innerWidth) {
-          tooltip.style.left = `${Math.max(8, rect.left - tooltipRect.width - gap)}px`;
+        portal.textContent = tooltip.textContent || '';
+        portal.style.display = 'block';
+        portal.style.left = '0px';
+        portal.style.top = '0px';
+        portal.setAttribute('aria-hidden', 'false');
+        const portalRect = portal.getBoundingClientRect();
+        let left = rect.right + gap;
+        if (left + portalRect.width > window.innerWidth - viewportPadding) {
+          left = rect.left - portalRect.width - gap;
         }
-        if (tooltipRect.bottom > window.innerHeight) {
-          tooltip.style.top = `${window.innerHeight - tooltipRect.height - 8}px`;
-        }
+        left = Math.max(
+          viewportPadding,
+          Math.min(left, window.innerWidth - portalRect.width - viewportPadding)
+        );
+        const top = Math.max(
+          viewportPadding,
+          Math.min(
+            rect.top,
+            window.innerHeight - portalRect.height - viewportPadding
+          )
+        );
+        portal.style.left = `${left}px`;
+        portal.style.top = `${top}px`;
       };
       item.addEventListener('mouseenter', show);
       item.addEventListener('mouseleave', scheduleHide);
-      tooltip.addEventListener('mouseenter', show);
-      tooltip.addEventListener('mouseleave', scheduleHide);
     });
+    portal.addEventListener('mouseenter', cancelHide);
+    portal.addEventListener('mouseleave', scheduleHide);
+    container.onscroll = hide;
   }
   
   /**
@@ -1315,7 +1339,7 @@ class JarvisApp {
       tooltipText = `Needs configuration${missing ? ` (missing: ${missing})` : ''}. ` +
         `${tool.setup_hint || ''} ${desc}`.trim();
     }
-    const tooltipDesc = Utils.escapeHtml(Utils.truncate(tooltipText, 2000));
+    const tooltipDesc = Utils.escapeHtml(Utils.truncate(tooltipText || tool.name, 2000));
     
     return `
       <div class="${classes.join(' ')}" title="${Utils.escapeHtml(tooltipText || tool.name)}">

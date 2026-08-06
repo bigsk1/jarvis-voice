@@ -475,6 +475,7 @@ class ToolDiscoveryAvailabilityTests(unittest.TestCase):
 
         fake_db = MagicMock()
         fake_db.get_enabled_tool_names.return_value = db_enabled_names
+        fake_db.get_tool_definition.return_value = {"description": "from db"}
         fake_db.get_tool_info.return_value = {"description": "from db"}
 
         os.environ["JARVIS_TOOL_PROFILE"] = "default"
@@ -516,6 +517,15 @@ class ToolDiscoveryAvailabilityTests(unittest.TestCase):
             self.assertTrue(entry["enabled"])
             self.assertTrue(entry["available"])
             self.assertEqual(entry["missing"], [])
+
+    def test_database_mcp_tool_uses_persisted_definition_description(self):
+        with TemporaryDirectory() as tmp:
+            service = self._service(Path(tmp), ["mcp_example_lookup"])
+
+            tool = service.get_tool("mcp_example_lookup")
+            self.assertIsNotNone(tool)
+            self.assertEqual(tool["source"], "mcp")
+            self.assertEqual(tool["description"], "from db")
 
     def test_stats_count_unavailable(self):
         with TemporaryDirectory() as tmp:

@@ -324,6 +324,11 @@ body {
   word-break: break-word;
 }
 
+/* Escape sidebar scroll/opacity stacking contexts while a tool tooltip is open. */
+.tool-item-tooltip-portal {
+  z-index: 10050;
+}
+
 /* Blocked tools */
 .tool-item.tool-blocked {
   opacity: 0.5;
