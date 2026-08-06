@@ -290,6 +290,7 @@ HTTP Status: 404
 | `deep_research` | `/research` | Multi-source research with Brave + crawling, validates sources |
 | `github_ai_radar_daily` | `/github_ai_radar`, `/ai_radar`, `/ai-radar` | Daily GitHub AI radar report |
 | `jarvis_self_check` | `/jarvis_self_check`, `/self_check`, `/jarvis_health` | Self health / diagnostics workflow |
+| `local_services_compare` | `/local_services_compare`, `/service_compare` | Active-mode local provider comparison using Google Local Services, Google Local, bounded Yelp review evidence, optional Stash, and Canvas |
 | `memory_scan` | `/memory_scan`, `/dedupe_memory` | Scan/dedupe memory |
 | `quick_note` | `/note`, `/quicknote`, `/remember_this` | Save note to memory + Canvas |
 | `serpapi_amazon_search` | `/serpapi_amazon`, `/amazon_search`, `/serpapi` | Amazon listing search, Stash export, and Canvas comparison |

@@ -589,7 +589,7 @@ The workflow helper model receives only the normalized Amazon rows and has
 server-side tools disabled, so it cannot silently replace the deterministic
 source step with another search provider.
 
-Two additional shared recipes combine bounded SerpApi results without crawling
+Three additional shared recipes combine bounded SerpApi results without crawling
 source pages:
 
 - `/buying_brief <product>` (also `/price_compare`) compares Google Shopping
@@ -606,11 +606,20 @@ source pages:
   News Light, and Google Images Light. It makes five normal SerpApi searches,
   does not request Tripadvisor enrichment, does not download images, optionally
   saves bounded evidence to Stash, and creates a dated Canvas report.
+- `/local_services_compare <service>` (also `/service_compare`) uses the active
+  mode's configured location to compare five bounded results each from Google
+  Local Services, Google Local, and Yelp. Yelp adds up to three review excerpts
+  for one selected result. The normal budget is four or five SerpApi searches,
+  depending on whether Google Local Services can use a built-in city CID; it
+  can be one lower when Yelp returns no selected result for review enrichment.
+  The recipe does not crawl provider websites or contact businesses, optionally
+  saves bounded evidence to Stash, and creates a dated Canvas shortlist and
+  verification checklist.
 
-Both recipes set `disable_server_side_tools: true`, so their Canvas helper calls
-can synthesize only the explicit workflow results. They remain usable through
-their slash triggers, the workflow meta-tool, APIs, and scheduled tasks; the
-required product or location is the normal workflow query argument.
+All three recipes set `disable_server_side_tools: true`, so their Canvas helper
+calls can synthesize only the explicit workflow results. They remain usable
+through their slash triggers, the workflow meta-tool, APIs, and scheduled tasks;
+the required product, location, or service is the normal workflow query argument.
 
 ## Follow-up context and Web UI
 

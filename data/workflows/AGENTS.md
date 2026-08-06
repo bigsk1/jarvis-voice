@@ -778,6 +778,7 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 | `deep_research.json` | `/research <topic>` | Search, for_each crawl, validation |
 | `github_ai_radar_daily.json` | `/github_ai_radar` | Brave search and LLM context, optional YouTube result, rolling Canvas update |
 | `jarvis_self_check.json` | `/jarvis_self_check` | Local system health, deduplicated alerts, full Canvas update |
+| `local_services_compare.json` | `/local_services_compare <service>` | Active-mode Google Local Services + Google Local + bounded Yelp review evidence, optional Stash, validated Canvas; no crawl |
 | `memory_scan.json` | `/memory_scan` | Mode-aware memory dedupe, stash report, labeled Canvas report |
 | `quick_note.json` | `/note <text>` | Simple text capture, remember, canvas |
 | `serpapi_amazon_search.json` | `/serpapi_amazon <query>` (also `/amazon_search`, `/serpapi`) | SerpApi Amazon listings, Stash export, Canvas comparison |

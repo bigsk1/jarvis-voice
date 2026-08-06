@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_google_local_services",
-  "description": "Find screened professional service providers in Google Local Services Ads through SerpApi. Use for phrases such as 'Google Guaranteed plumber', 'screened electrician', 'car repair shop', 'house cleaner', 'local service professional', 'book a nearby contractor', or verified home-service businesses. Returns ratings, reviews, phone numbers, Google badges, service areas, years in business, availability, booking activity, provider IDs, public profiles, and focused provider details. This engine supports US locations only. An explicit data_cid uses one SerpApi search; New York, Austin, and Portland aliases also use one search; other supplied or mode-default locations use one Google Maps CID-resolution search plus one Local Services search. Use serpapi_google_local for ordinary nearby businesses such as restaurants or stores, and serpapi_maps_search for map-centered exploration.",
+  "description": "Find screened professional service providers in Google Local Services Ads through SerpApi. Use for phrases such as 'AC repair', 'Google Guaranteed plumber', 'screened electrician', 'car repair shop', 'house cleaner', 'local service professional', 'book a nearby contractor', or verified home-service businesses. Returns ratings, reviews, phone numbers, Google badges, service areas, years in business, availability, booking activity, provider IDs, public profiles, and focused provider details. This engine supports US locations only. An explicit data_cid uses one SerpApi search; New York, Austin, and Portland aliases also use one search; other supplied or mode-default locations use one Google Maps CID-resolution search plus one Local Services search. Use serpapi_google_local for ordinary nearby businesses such as restaurants or stores, and serpapi_maps_search for map-centered exploration.",
   "complementary_tools": [
     "serpapi_google_local",
     "serpapi_maps_search",
@@ -18,7 +18,7 @@
       "query": {
         "type": "string",
         "maxLength": 300,
-        "description": "Required Local Services profession such as plumber, electrician, HVAC, house cleaner, or car repair shop. Common natural phrases are normalized to SerpApi's supported category identifier. This is not a free-form business-name search."
+        "description": "Required Local Services profession such as AC repair, plumber, electrician, HVAC, house cleaner, or car repair shop. Common natural phrases are normalized to SerpApi's supported category identifier. This is not a free-form business-name search."
       },
       "data_cid": {
         "type": "string",

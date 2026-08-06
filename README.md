@@ -999,6 +999,7 @@ picker for the authoritative current surface.
 | `/github_ai_radar` | Find current GitHub AI project signals and refresh a rolling Canvas report | Brave search, Brave LLM Context, optional YouTube search, crawl_url, stash, canvas |
 | `/health [host]` | SSH health check (default: vps2) | get_time, ssh_remote, stash, canvas |
 | `/jarvis_self_check` | Check local Jarvis health, refresh its Canvas report, and create a deduplicated alert for problems | get_time, system_monitor, check_tool_logs, query_service_logs, create_alert, canvas |
+| `/local_services_compare <service>` (also `/service_compare`) | Compare local providers, screening signals, business details, ratings, and bounded Yelp review excerpts using the active mode location | serpapi_google_local_services, serpapi_google_local, serpapi_yelp_search, stash, canvas |
 | `/memory_scan` | Run memory dedupe analysis, save reports to stash + canvas | memory_deduper |
 | `/note <text>` | Save note to memory + Canvas | get_time, remember, canvas |
 | `/research <topic>` | Multi-source research with Brave + crawling | brave_search, crawl_url, stash, remember, canvas |

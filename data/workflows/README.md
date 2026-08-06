@@ -301,6 +301,7 @@ the same orchestration turn; it is not a durable background run.
 | `github_ai_radar_daily.json` | `/github_ai_radar` (also `/ai_radar`, `/ai-radar`) | Search for current GitHub AI project signals with Brave MCP, optionally feature a YouTube result, gather Brave LLM Context, and keep one current Canvas page refreshed |
 | `jarvis_self_check.json` | `/jarvis_self_check` (also `/self_check`, `/jarvis_health`) | Local Jarvis host health check with deduped alerts and one refreshed Canvas health page |
 | `knowledge_snapshot.json` | `/knowledge <topic>` | Search active-mode Memory, Intel, and prior conversations without new web research, then create or refresh one source-attributed Canvas briefing per topic |
+| `local_services_compare.json` | `/local_services_compare <service>` (also `/service_compare`) | Compare Google Local Services, Google Local, and bounded Yelp review evidence using the active mode's configured location, optional Stash evidence, and a dated Canvas shortlist |
 | `memory_scan.json` | `/memory_scan` (also `/dedupe_memory`) | Run memory_deduper against the active cloud/local memory DB and save a labeled report to stash + canvas |
 | `pdf_ingest.json` | `/pdf_ingest <attached PDF, stash ref, or URL>` | Extract a PDF, create a semantic Intel file, ingest it synchronously, and publish a source-attributed Canvas briefing |
 | `quick_note.json` | `/note <text>` | Quick note to memory and canvas |

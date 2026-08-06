@@ -213,6 +213,11 @@ def test_natural_car_repair_query_uses_provider_slug_after_default_location_reso
 
 
 def test_query_normalization_accepts_supported_phrases_and_rejects_unknown_categories():
+    assert normalize_service_query("AC repair") == ("AC repair", "hvac")
+    assert normalize_service_query("air conditioning repair") == (
+        "air conditioning repair",
+        "hvac",
+    )
     assert normalize_service_query("Auto Repair Shop") == (
         "Auto Repair Shop",
         "auto_repair_shop",

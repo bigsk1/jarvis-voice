@@ -561,6 +561,7 @@ The authoritative list is `data/workflows/*.json` plus any private `data/workflo
 | `deep_research.json` | `/research` | Multi-source research with validation and Canvas output. |
 | `github_ai_radar_daily.json` | `/github_ai_radar` | Refresh one rolling GitHub AI Radar Canvas page with search, YouTube, and Brave context. |
 | `jarvis_self_check.json` | `/jarvis_self_check` | Check host health, create alerts on problems, and update one Canvas health page. |
+| `local_services_compare.json` | `/local_services_compare` | Compare local service providers from Google Local Services, Google Local, and bounded Yelp review evidence using the active mode location. |
 | `memory_scan.json` | `/memory_scan` | Analyze the active memory database and save labeled Stash and Canvas reports. |
 | `quick_note.json` | `/note` | Save a note to memory and Canvas. |
 | `serpapi_amazon_search.json` | `/serpapi_amazon` (also `/amazon_search`, `/serpapi`) | Search Amazon through SerpApi and save Stash and Canvas reports. |

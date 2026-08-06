@@ -79,8 +79,51 @@ def test_buying_brief_uses_three_bounded_searches_and_env_localization():
     assert ebay_step["params"]["_stpos"] == "${shipping_postal_code}"
 
 
+def test_local_services_compare_uses_required_service_and_mode_location_defaults():
+    workflow = _load_workflow("local_services_compare")
+    tools = [step["tool"] for step in workflow["steps"]]
+
+    assert workflow["disable_server_side_tools"] is True
+    assert workflow["triggers"] == {
+        "explicit": ["/local_services_compare", "/service_compare"],
+        "patterns": [],
+        "keywords": [],
+    }
+    assert workflow["variables"]["service"] == {
+        "from": "query",
+        "extract": "main_subject",
+    }
+    assert "crawl_url" not in tools
+    assert sum(tool.startswith("serpapi_") for tool in tools) == 3
+
+    local_services_step = _step(workflow, "serpapi_google_local_services")
+    assert local_services_step["params"] == {
+        "query": "${service}",
+        "max_results": 5,
+        "no_cache": False,
+    }
+    assert local_services_step["required"] is True
+
+    google_local_step = _step(workflow, "serpapi_google_local")
+    assert "location" not in google_local_step["params"]
+    assert google_local_step["params"]["max_results"] == 5
+    assert google_local_step["params"]["max_ads"] == 0
+
+    yelp_step = _step(workflow, "serpapi_yelp_search")
+    assert "find_loc" not in yelp_step["params"]
+    assert yelp_step["params"]["include_reviews"] is True
+    assert yelp_step["params"]["review_limit"] == 3
+    assert yelp_step["params"]["num_results"] == 5
+    assert yelp_step["required"] is False
+    assert yelp_step["on_fail"] == "continue"
+
+
 def test_new_serpapi_workflows_keep_stash_optional_and_canvas_validated():
-    for workflow_name in ("vacation_reconnaissance", "buying_brief"):
+    for workflow_name in (
+        "vacation_reconnaissance",
+        "buying_brief",
+        "local_services_compare",
+    ):
         workflow = _load_workflow(workflow_name)
         stash_step = _step(workflow, "stash")
         canvas_step = _step(workflow, "canvas")

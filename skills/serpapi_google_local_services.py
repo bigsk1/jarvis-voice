@@ -161,6 +161,9 @@ SUPPORTED_SERVICE_QUERIES = frozenset({
 # SerpApi's canonical identifier. Most supported phrases need no entry because
 # spaces and punctuation normalize directly to underscores.
 SERVICE_QUERY_ALIASES = {
+    "ac_repair": "hvac",
+    "air_conditioner_repair": "hvac",
+    "air_conditioning_repair": "hvac",
     "arborist": "tree_service",
     "auto_detailing": "car_wash_and_detailing",
     "auto_mechanic": "auto_repair_shop",
