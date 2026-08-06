@@ -1,0 +1,117 @@
+{
+  "enabled": true,
+  "name": "serpapi_google_shopping_light",
+  "description": "Search Google Shopping across multiple retailers through SerpApi's fast lightweight structured engine. Use for 'shop for...', 'compare prices for...', 'find the best price on...', 'Google Shopping for...', 'where can I buy...', 'show products under...', sale checks, free-shipping offers, and multi-store purchase research. Returns merchant, current and prior price, rating, review count, delivery, direct or Google product link, thumbnail, sale tags, and pagination. It can use JARVIS_DEFAULT_LOCATION or JARVIS_DEFAULT_POSTAL_CODE when location is omitted. Prefer this for broad retailer price discovery; use serpapi_amazon_search for Amazon-specific Prime, delivery, stock, or ASIN details. Prices may describe different variants or seller terms, so verify the selected offer before purchase.",
+  "complementary_tools": [
+    "serpapi_amazon_search",
+    "serpapi_ebay_search",
+    "serpapi_home_depot",
+    "workflow",
+    "canvas",
+    "stash"
+  ],
+  "script": "serpapi_google_shopping_light.py",
+  "proxy_policy": "off",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "maxLength": 500,
+        "description": "Required Google Shopping query. Include product, model, size, color, or other variant details needed for a fair price comparison."
+      },
+      "location": {
+        "type": "string",
+        "maxLength": 200,
+        "description": "Optional city-level search origin such as Austin, Texas, United States. Defaults to the current mode's Jarvis location or postal code when configured. Cannot be combined with uule."
+      },
+      "uule": {
+        "type": "string",
+        "maxLength": 500,
+        "description": "Advanced Google-encoded location. Cannot be combined with location."
+      },
+      "country": {
+        "type": "string",
+        "pattern": "^[a-zA-Z]{2}$",
+        "description": "Optional two-letter Google Shopping country code such as us, uk, or fr."
+      },
+      "language": {
+        "type": "string",
+        "pattern": "^[a-zA-Z]{2}$",
+        "description": "Optional two-letter interface language such as en, es, or fr."
+      },
+      "google_domain": {
+        "type": "string",
+        "description": "Google domain such as google.com or google.co.uk. Default google.com."
+      },
+      "min_price": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Optional lower price bound in the selected market's currency."
+      },
+      "max_price": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Optional upper price bound in the selected market's currency."
+      },
+      "sort_by": {
+        "type": "string",
+        "enum": ["relevance", "price_low_to_high", "price_high_to_low"],
+        "description": "Result order. Default relevance. Price sorting compares the returned listings, which may represent different variants."
+      },
+      "free_shipping": {
+        "type": "boolean",
+        "description": "Return only offers marked with free shipping. Default false."
+      },
+      "on_sale": {
+        "type": "boolean",
+        "description": "Return only offers marked on sale. Default false."
+      },
+      "small_business": {
+        "type": "boolean",
+        "description": "Return only products from sellers Google identifies as small businesses. Default false."
+      },
+      "device": {
+        "type": "string",
+        "enum": ["desktop", "tablet", "mobile"],
+        "description": "Google client device. Default desktop."
+      },
+      "start": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1000,
+        "description": "Result offset for pagination. Use next_start from a prior response. Default 0."
+      },
+      "max_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20,
+        "description": "Maximum normalized offers to return across regular, inline, and categorized shopping sections. Default 10."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "Bypass SerpApi's one-hour exact-parameter cache. Default false; cached searches are free."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Advanced non-reserved Google Shopping Light parameters passed through to SerpApi. Core query, location, price, sort, seller filters, pagination, cache, and output controls cannot be overridden."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "Include the full SerpApi JSON response for debugging. Default false."
+      }
+    },
+    "required": ["query"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": ["SERP_API_KEY"],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file."
+  }
+}

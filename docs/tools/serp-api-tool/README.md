@@ -16,6 +16,7 @@ discover general public webpages and source URLs.
 | Tool | Provider engine(s) | Best use |
 |---|---|---|
 | `serpapi_amazon_search` | `amazon`, `amazon_product` | Amazon listing discovery, ASIN details, prices, ratings, Prime, delivery, stock, and product comparison |
+| `serpapi_google_shopping_light` | `google_shopping_light` | Fast multi-retailer product discovery and price comparison with merchant, delivery, rating, sale, thumbnail, and offer links |
 | `serpapi_search_index` | `search_index` | Ranked indexed-web sources for grounding, datasets, and workflows; fetch returned URLs separately |
 | `serpapi_google_images_light` | `google_images_light` | Existing web images with full-size URLs, thumbnails, source pages, dimensions, usage-rights filters, and pagination |
 | `serpapi_google_news_light` | `google_news_light` | Fast topic-specific recent news, grouped Top Stories, source URLs, localization, and result-offset pagination |
@@ -57,9 +58,9 @@ The family uses these common layers:
 - `jarvis-web/server/services/followup_extractor.py` preserves bounded result
   identity for later turns.
 - `jarvis-web/client/js/structured-results.js` renders focused product, place,
-  image-gallery, hotel, flight, Tripadvisor, Google Local, Google Local Services,
-  Google News Light, Google Trends, Trending Now, Search Index, eBay, Yelp, Maps,
-  and YouTube cards.
+  image-gallery, multi-retailer shopping, hotel, flight, Tripadvisor, Google
+  Local, Google Local Services, Google News Light, Google Trends, Trending Now,
+  Search Index, eBay, Yelp, Maps, and YouTube cards.
 
 Raw provider JSON is available only through each tool's `include_raw` debug
 option. Normal conversational and workflow calls should leave it off.
@@ -74,10 +75,11 @@ SERP_API_KEY=your-key
 ```
 
 Use `config/cloud.env` for cloud mode and `config/local.env` for local mode.
-`JARVIS_DEFAULT_POSTAL_CODE` is optional and localizes Amazon delivery and Home
-Depot availability where supported.
+`JARVIS_DEFAULT_LOCATION` and `JARVIS_DEFAULT_POSTAL_CODE` can localize Google
+Shopping Light when no location is supplied. The postal code also localizes
+Amazon delivery and Home Depot availability where supported.
 
-The seventeen `serpapi_*` manifests declare:
+The eighteen `serpapi_*` manifests declare:
 
 ```json
 "availability": {
@@ -156,7 +158,7 @@ additional searches:
 
 | Tool or option | SerpApi searches |
 |---|---:|
-| eBay search/product, Google Local, Maps, Hotels, Search Index, Google Images Light, Google News Light, Google Trends, Trending Now discovery, Trending Now news drill-down, YouTube search | 1 |
+| eBay search/product, Google Shopping Light, Google Local, Maps, Hotels, Search Index, Google Images Light, Google News Light, Google Trends, Trending Now discovery, Trending Now news drill-down, YouTube search | 1 |
 | Google Local Services with explicit `data_cid` or a built-in New York, Austin, or Portland alias | 1 |
 | Google Local Services with any other explicit or mode-default location | 2: Google Maps CID resolution plus Local Services |
 | Amazon listing or product call | 1 base call |
@@ -218,6 +220,38 @@ The recommended flow is listing discovery first, then a focused ASIN lookup.
 The tool preserves discovery URLs and merges detail rows by ASIN. Price,
 rating, reviews, Prime, delivery, shipping, stock, availability, badges,
 recent-purchase signals, and coupons remain unknown when SerpApi omits them.
+
+### Google Shopping Light
+
+Search multiple retailers for current offers without the slower rich Google
+Shopping response:
+
+```json
+{
+  "query": "Sony WH-1000XM6 headphones",
+  "country": "us",
+  "max_price": 450,
+  "sort_by": "price_low_to_high",
+  "max_results": 10
+}
+```
+
+The tool combines regular, inline, and categorized shopping sections into one
+deduplicated shortlist. Each offer can retain its merchant, current and prior
+price, numeric price, rating and review count, delivery, sale tag, installment
+summary, thumbnail, product ID, and direct merchant or Google product link.
+`location` defaults to `JARVIS_DEFAULT_LOCATION`, then
+`JARVIS_DEFAULT_POSTAL_CODE`, when either is configured in the active mode. If
+neither exists, SerpApi's provider location is used.
+
+Use `on_sale=true`, `free_shipping=true`, or price bounds for a narrow search.
+The returned `lowest_returned_price` is only the lowest listing in the bounded
+result set—not proof that differently configured products are equivalent.
+Verify model, size, condition, seller, shipping, tax, and availability before
+calling an offer the best deal. Comparison workflows can pass the compact
+candidate rows directly to later ranking, Canvas, or reporting steps. Use
+`serpapi_amazon_search` instead when Amazon-specific Prime, delivery, stock, or
+ASIN detail is required.
 
 ### Search Index source discovery
 

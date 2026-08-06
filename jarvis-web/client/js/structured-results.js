@@ -53,6 +53,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_search_index', payload => this._adaptSearchIndex(payload));
     this.register('serpapi_google_images_light', payload => this._adaptGoogleImagesLight(payload));
     this.register('serpapi_google_news_light', payload => this._adaptGoogleNewsLight(payload));
+    this.register('serpapi_google_shopping_light', payload => this._adaptGoogleShoppingLight(payload));
     this.register('serpapi_google_trends', payload => this._adaptGoogleTrends(payload));
     this.register('serpapi_google_trending_now', payload => this._adaptGoogleTrendingNow(payload));
     this.register('serpapi_tripadvisor', payload => this._adaptTripadvisor(payload));
@@ -403,6 +404,60 @@ class StructuredResultsRenderer {
       ].filter(Boolean).join(' · '),
       actionUrl: payload.google_images_light_url,
       actionLabel: 'Open Google Images',
+      items,
+    };
+  }
+
+  _adaptGoogleShoppingLight(payload) {
+    const items = this._rows(payload).map((row, index) => {
+      const chips = [];
+      if (row.old_price) chips.push(`Was ${row.old_price}`);
+      if (row.rating != null) chips.push(`★ ${row.rating}`);
+      if (row.reviews != null) chips.push(`${this._formatCount(row.reviews)} reviews`);
+      if (row.tag) chips.push(String(row.tag));
+      if (row.multiple_sources === true) chips.push('Multiple stores');
+      const installment = row.installment && typeof row.installment === 'object'
+        ? [row.installment.price, row.installment.period ? `${row.installment.period} months` : '']
+          .filter(Boolean).join(' for ')
+        : '';
+      const extensions = this._list(row.extensions).slice(0, 4).join(' · ');
+      return {
+        title: row.title || `Shopping result ${index + 1}`,
+        url: row.url || row.merchant_url || row.product_link,
+        image: row.serpapi_thumbnail || row.thumbnail,
+        primary: this._formatMarketplacePrice(row.price ?? row.extracted_price),
+        chips,
+        details: [
+          row.source,
+          row.delivery,
+          installment ? `Installment: ${installment}` : '',
+          extensions,
+        ].filter(Boolean),
+        actionLabel: 'View offer',
+      };
+    });
+    const providerCount = payload.provider_results_count ?? items.length;
+    const filters = [
+      payload.sort_by && payload.sort_by !== 'relevance'
+        ? String(payload.sort_by).replace(/_/g, ' ')
+        : '',
+      payload.on_sale === true ? 'On sale' : '',
+      payload.free_shipping === true ? 'Free shipping' : '',
+      payload.small_business === true ? 'Small business' : '',
+    ].filter(Boolean);
+    const location = payload.provider_location_used || payload.location || '';
+    return {
+      kind: 'product',
+      layout: 'rail',
+      eyebrow: 'Google Shopping Light',
+      heading: payload.query_displayed || payload.query || 'Shopping offers',
+      subtitle: [
+        `${providerCount} offer${Number(providerCount) === 1 ? '' : 's'} found`,
+        location,
+        filters.join(' · '),
+      ].filter(Boolean).join(' · '),
+      actionUrl: payload.google_shopping_light_url,
+      actionLabel: 'Open Google Shopping',
       items,
     };
   }

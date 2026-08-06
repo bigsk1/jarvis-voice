@@ -241,6 +241,32 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
             ],
         )
 
+    def test_google_shopping_light_uses_workflow_offer_url_extraction(self):
+        variables = {}
+        result = {
+            "ok": True,
+            "data": {
+                "results": [
+                    {"url": "https://shop.example/offer-one"},
+                    {"url": "https://shop.example/offer-two"},
+                ]
+            },
+        }
+
+        self.assertTrue(
+            self.executor._is_search_tool("serpapi_google_shopping_light")
+        )
+        self.executor._apply_output_transforms(
+            {}, result, variables, "serpapi_google_shopping_light", None
+        )
+        self.assertEqual(
+            variables["search_results"]["urls"],
+            [
+                "https://shop.example/offer-one",
+                "https://shop.example/offer-two",
+            ],
+        )
+
     def test_google_images_light_extracts_original_assets_for_workflows(self):
         variables = {}
         result = {

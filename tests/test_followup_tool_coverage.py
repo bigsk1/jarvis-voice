@@ -784,6 +784,51 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "serpapi_google_shopping_light": _case(
+        {
+            "engine": "google_shopping_light",
+            "query": "noise cancelling headphones",
+            "sort_by": "price_low_to_high",
+            "results_count": 1,
+            "provider_results_count": 20,
+            "merchants_count": 1,
+            "merchants": ["Audio Shop"],
+            "top_url": "https://shop.example/quiet-5",
+            "comparison_note": "Verify the exact product variant and seller terms.",
+            "serpapi_searches_used": 1,
+            "source": "SerpApi Google Shopping Light",
+            "results": [
+                {
+                    "position": 1,
+                    "provider_position": 3,
+                    "section": "shopping",
+                    "title": "Acme Quiet 5 Wireless Headphones",
+                    "url": "https://shop.example/quiet-5",
+                    "merchant_url": "https://shop.example/quiet-5",
+                    "product_link": "https://www.google.com/shopping/product/quiet-5",
+                    "product_id": "quiet-5",
+                    "source": "Audio Shop",
+                    "price": "$199.99",
+                    "extracted_price": 199.99,
+                    "old_price": "$249.99",
+                    "extracted_old_price": 249.99,
+                    "rating": 4.8,
+                    "reviews": 1500,
+                    "delivery": "Free delivery",
+                    "tag": "20% OFF",
+                    "extensions": ["Black", "Bluetooth"],
+                }
+            ],
+            "lowest_returned_price": {
+                "position": 1,
+                "title": "Acme Quiet 5 Wireless Headphones",
+                "url": "https://shop.example/quiet-5",
+                "source": "Audio Shop",
+                "price": "$199.99",
+                "extracted_price": 199.99,
+            },
+        }
+    ),
     "serpapi_google_trends": _case(
         {
             "engine": "google_trends",

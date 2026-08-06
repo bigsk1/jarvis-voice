@@ -50,6 +50,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_google_local_services',
     'serpapi_google_images_light',
     'serpapi_google_news_light',
+    'serpapi_google_shopping_light',
     'serpapi_google_trends',
     'serpapi_google_trending_now',
     'serpapi_tripadvisor',
@@ -340,6 +341,18 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'top_story_articles_count', 'provider_top_story_articles_count',
         'top_url', 'search_id', 'has_more', 'next_start',
         'google_news_light_url', 'serpapi_searches_used', 'source',
+    ],
+    'serpapi_google_shopping_light': [
+        'engine', 'query', 'query_displayed', 'shopping_results_state',
+        'location', 'location_source', 'uule_used', 'provider_location_used',
+        'country', 'language', 'google_domain', 'device', 'sort_by',
+        'min_price', 'max_price', 'free_shipping', 'on_sale', 'small_business',
+        'start', 'max_results', 'results_count', 'provider_results_count',
+        'provider_shopping_results_count', 'provider_inline_results_count',
+        'provider_category_groups_count', 'provider_categorized_results_count',
+        'merchants_count', 'merchants', 'top_url', 'comparison_note',
+        'search_id', 'has_more', 'next_start', 'google_shopping_light_url',
+        'serpapi_searches_used', 'source',
     ],
     'serpapi_google_trends': [
         'engine', 'query', 'queries', 'data_type', 'provider_data_type',
@@ -3028,6 +3041,74 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                         compact_groups.append(compact_group)
                 if compact_groups:
                     extracted['top_stories'] = compact_groups
+
+            pagination = payload.get('pagination')
+            if isinstance(pagination, dict):
+                compact_pagination = {
+                    field: pagination[field]
+                    for field in (
+                        'current', 'start', 'has_more', 'next_start',
+                        'previous_start',
+                    )
+                    if pagination.get(field) not in (None, '')
+                    or field == 'has_more'
+                }
+                if compact_pagination:
+                    extracted['pagination'] = compact_pagination
+
+        if key == 'serpapi_google_shopping_light':
+            results = payload.get('results') or payload.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = payload.get('results_count', len(results))
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = {
+                        field: item[field]
+                        for field in (
+                            'position', 'provider_position', 'section', 'category',
+                            'title', 'url', 'merchant_url', 'product_link',
+                            'product_id', 'source', 'price', 'extracted_price',
+                            'old_price', 'extracted_old_price', 'rating', 'reviews',
+                            'delivery', 'thumbnail', 'serpapi_thumbnail', 'tag',
+                            'block_position', 'multiple_sources',
+                        )
+                        if item.get(field) not in (None, '', [], {})
+                    }
+                    extensions = item.get('extensions')
+                    if isinstance(extensions, list) and extensions:
+                        candidate['extensions'] = [
+                            _truncate_followup_text(str(extension), 200)
+                            for extension in extensions[:8]
+                            if str(extension).strip()
+                        ]
+                    installment = item.get('installment')
+                    if isinstance(installment, dict):
+                        compact_installment = {
+                            field: installment[field]
+                            for field in ('price', 'extracted_price', 'period')
+                            if installment.get(field) not in (None, '')
+                        }
+                        if compact_installment:
+                            candidate['installment'] = compact_installment
+                    if candidate.get('title') or candidate.get('url'):
+                        candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
+
+            lowest = payload.get('lowest_returned_price')
+            if isinstance(lowest, dict):
+                compact_lowest = {
+                    field: lowest[field]
+                    for field in (
+                        'position', 'title', 'url', 'source', 'price',
+                        'extracted_price',
+                    )
+                    if lowest.get(field) not in (None, '')
+                }
+                if compact_lowest:
+                    extracted['lowest_returned_price'] = compact_lowest
 
             pagination = payload.get('pagination')
             if isinstance(pagination, dict):

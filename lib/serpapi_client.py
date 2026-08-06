@@ -25,6 +25,7 @@ SERPAPI_TOOL_ENGINES = {
     "serpapi_maps_search": ("google_maps",),
     "serpapi_google_images_light": ("google_images_light",),
     "serpapi_google_news_light": ("google_news_light",),
+    "serpapi_google_shopping_light": ("google_shopping_light",),
     "serpapi_google_trends": ("google_trends",),
     "serpapi_search_index": ("search_index",),
     "serpapi_tripadvisor": ("tripadvisor",),
@@ -48,6 +49,7 @@ SERPAPI_ENGINE_LABELS = {
     "google_news": "Google News",
     "google_news_light": "Google News Light",
     "google_shopping": "Google Shopping",
+    "google_shopping_light": "Google Shopping Light",
     "google_trends": "Google Trends",
     "google_trends_news": "Google Trends News",
     "google_trends_trending_now": "Google Trends Trending Now",
@@ -91,6 +93,10 @@ SERPAPI_ENGINE_STATUS_ALIASES = {
         "google news light",
     ),
     "google_shopping": ("google shopping api", "google shopping"),
+    "google_shopping_light": (
+        "google shopping light api",
+        "google shopping light",
+    ),
     "google_trends": ("google trends api", "google trends"),
     "google_trends_news": ("google trends news api", "google trends news"),
     "google_trends_trending_now": (

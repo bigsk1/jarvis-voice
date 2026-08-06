@@ -55,6 +55,7 @@ const expectedTools = [
   'serpapi_search_index',
   'serpapi_google_images_light',
   'serpapi_google_news_light',
+  'serpapi_google_shopping_light',
   'serpapi_google_trends',
   'serpapi_google_trending_now',
   'serpapi_tripadvisor',
@@ -222,6 +223,30 @@ const html = renderer.render({{
       thumbnail: 'https://images.example/funding.jpg',
       snippet: 'Several agent startups announced new funding rounds.',
       date: '2 hours ago'
+    }}]
+  }},
+  serpapi_google_shopping_light: {{
+    query: 'noise cancelling headphones',
+    provider_results_count: 24,
+    provider_location_used: 'Portland, Oregon, United States',
+    sort_by: 'price_low_to_high',
+    on_sale: true,
+    free_shipping: true,
+    google_shopping_light_url: 'https://www.google.com/search?udm=28&q=headphones',
+    results: [{{
+      title: 'Acme Quiet 5 Wireless Headphones',
+      url: 'https://shop.example/quiet-5',
+      serpapi_thumbnail: 'https://serpapi.example/quiet-5.jpg',
+      source: 'Audio Shop',
+      price: '$199.99',
+      old_price: '$249.99',
+      rating: 4.8,
+      reviews: 1500,
+      delivery: 'Free delivery',
+      tag: '20% OFF',
+      multiple_sources: true,
+      extensions: ['Black', 'Bluetooth'],
+      installment: {{price: '$33.33', period: 6}}
     }}]
   }},
   serpapi_google_trends: {{
@@ -414,6 +439,12 @@ for (const expected of [
   'Finance Example', 'Top story', 'AI funding',
   'Agentic AI attracts new funding', 'Example News',
   'Several agent startups announced new funding rounds', 'Open Google News',
+  'Google Shopping Light', 'noise cancelling headphones', '24 offers found',
+  'Portland, Oregon, United States', 'price low to high · On sale · Free shipping',
+  'Acme Quiet 5 Wireless Headphones', '$199.99', 'Was $249.99',
+  '1,500 reviews', '20% OFF', 'Multiple stores', 'Audio Shop',
+  'Free delivery', 'Installment: $33.33 for 6 months', 'Black · Bluetooth',
+  'View offer', 'Open Google Shopping',
   'Google Trends', 'AI agents, AI assistants', 'Latest 83', 'Average 61',
   'Peak 83', '+9 from previous', '+28 over period', 'Open Google Trends',
   'Google Trends · Trending Now', 'Current trends in US', 'Past 24 hours',
@@ -444,7 +475,7 @@ for (const expected of [
 }}
 if (html.includes('flight_numbers')) process.exit(4);
 if (html.includes('https://serpapi.example/unsafe-thumb.jpg')) process.exit(9);
-if ((html.match(/structured-results-preview/g) || []).length !== 18) process.exit(5);
+if ((html.match(/structured-results-preview/g) || []).length !== 19) process.exit(5);
 
 if (!renderer.register('custom_demo', payload => ({{
   kind: 'generic',

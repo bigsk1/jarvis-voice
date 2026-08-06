@@ -876,6 +876,9 @@ class ContextAssembler:
         is_google_news_light = (
             str(tool_name or "").strip().lower() == "serpapi_google_news_light"
         )
+        is_google_shopping_light = (
+            str(tool_name or "").strip().lower() == "serpapi_google_shopping_light"
+        )
         is_google_trends = str(tool_name or "").strip().lower() == "serpapi_google_trends"
         is_google_trending_now = (
             str(tool_name or "").strip().lower() == "serpapi_google_trending_now"
@@ -1060,6 +1063,32 @@ class ContextAssembler:
                         depth=0,
                         max_depth=1,
                     )
+
+            if is_google_shopping_light:
+                for key in (
+                    "provider_position",
+                    "section",
+                    "category",
+                    "merchant_url",
+                    "product_link",
+                    "old_price",
+                    "extracted_price",
+                    "extracted_old_price",
+                    "reviews",
+                    "delivery",
+                    "tag",
+                    "extensions",
+                    "installment",
+                    "multiple_sources",
+                ):
+                    value = item.get(key)
+                    if value not in (None, "", [], {}):
+                        candidate[key] = self.build_preview_value(
+                            value,
+                            parent_key=key,
+                            depth=0,
+                            max_depth=2,
+                        )
 
             if is_google_trends:
                 for key in (
@@ -1590,6 +1619,81 @@ class ContextAssembler:
             }
         return preview
 
+    def build_google_shopping_light_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep Google Shopping filters, counts, price summary, and pagination."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "engine",
+            "query",
+            "query_displayed",
+            "shopping_results_state",
+            "location",
+            "location_source",
+            "uule_used",
+            "provider_location_used",
+            "country",
+            "language",
+            "google_domain",
+            "device",
+            "sort_by",
+            "min_price",
+            "max_price",
+            "free_shipping",
+            "on_sale",
+            "small_business",
+            "start",
+            "max_results",
+            "results_count",
+            "provider_results_count",
+            "provider_shopping_results_count",
+            "provider_inline_results_count",
+            "provider_category_groups_count",
+            "provider_categorized_results_count",
+            "merchants_count",
+            "merchants",
+            "top_url",
+            "comparison_note",
+            "search_id",
+            "google_shopping_light_url",
+            "has_more",
+            "next_start",
+            "serpapi_searches_used",
+            "source",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=1,
+                )
+
+        lowest = data.get("lowest_returned_price")
+        if isinstance(lowest, dict):
+            preview["lowest_returned_price"] = self.build_preview_value(
+                lowest,
+                parent_key="lowest_returned_price",
+                max_depth=2,
+            )
+
+        pagination = data.get("pagination")
+        if isinstance(pagination, dict):
+            preview["pagination"] = {
+                key: pagination[key]
+                for key in (
+                    "current",
+                    "start",
+                    "has_more",
+                    "next_start",
+                    "previous_start",
+                )
+                if pagination.get(key) not in (None, "") or key == "has_more"
+            }
+        return preview
+
     def build_google_local_data_preview(self, data: Any) -> dict[str, Any]:
         """Keep Google Local provenance, pagination, ads, and related searches compact."""
         if not isinstance(data, dict):
@@ -1988,6 +2092,8 @@ class ContextAssembler:
                 data_preview = self.build_google_images_light_data_preview(data)
             elif normalized_tool_name == "serpapi_google_news_light":
                 data_preview = self.build_google_news_light_data_preview(data)
+            elif normalized_tool_name == "serpapi_google_shopping_light":
+                data_preview = self.build_google_shopping_light_data_preview(data)
             elif normalized_tool_name == "serpapi_google_trends":
                 data_preview = self.build_google_trends_data_preview(data)
             elif normalized_tool_name == "serpapi_google_trending_now":

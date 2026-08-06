@@ -751,6 +751,90 @@ def test_extract_followup_data_preserves_google_news_articles_and_top_stories():
     }
 
 
+def test_extract_followup_data_preserves_google_shopping_offer_comparison():
+    handler = _handler()
+    data = {
+        "serpapi_google_shopping_light": {
+            "engine": "google_shopping_light",
+            "query": "noise cancelling headphones",
+            "location_source": "jarvis_default_location",
+            "sort_by": "price_low_to_high",
+            "results_count": 2,
+            "provider_results_count": 24,
+            "merchants_count": 2,
+            "merchants": ["Audio Shop", "Retailer Example"],
+            "top_url": "https://shop.example/quiet-5",
+            "comparison_note": "Verify the exact product variant and seller terms.",
+            "google_shopping_light_url": "https://www.google.com/search?udm=28&q=headphones",
+            "has_more": True,
+            "next_start": 10,
+            "results": [
+                {
+                    "position": 1,
+                    "provider_position": 3,
+                    "section": "shopping",
+                    "title": "Acme Quiet 5 Wireless Headphones",
+                    "url": "https://shop.example/quiet-5",
+                    "merchant_url": "https://shop.example/quiet-5",
+                    "product_link": "https://www.google.com/shopping/product/quiet-5",
+                    "product_id": "quiet-5",
+                    "source": "Audio Shop",
+                    "price": "$199.99",
+                    "extracted_price": 199.99,
+                    "old_price": "$249.99",
+                    "extracted_old_price": 249.99,
+                    "rating": 4.8,
+                    "reviews": 1500,
+                    "delivery": "Free delivery",
+                    "tag": "20% OFF",
+                    "extensions": ["Black", "Bluetooth"],
+                    "installment": {
+                        "price": "$33.33",
+                        "extracted_price": 33.33,
+                        "period": 6,
+                    },
+                }
+            ],
+            "lowest_returned_price": {
+                "position": 1,
+                "title": "Acme Quiet 5 Wireless Headphones",
+                "url": "https://shop.example/quiet-5",
+                "source": "Audio Shop",
+                "price": "$199.99",
+                "extracted_price": 199.99,
+            },
+            "pagination": {
+                "current": 1,
+                "start": 0,
+                "has_more": True,
+                "next_start": 10,
+                "next": "https://serpapi.com/search?api_key=secret",
+            },
+        }
+    }
+
+    shopping = handler._extract_followup_data(data)[
+        "serpapi_google_shopping_light"
+    ]
+
+    assert shopping["query"] == "noise cancelling headphones"
+    assert shopping["sort_by"] == "price_low_to_high"
+    assert shopping["merchants"] == ["Audio Shop", "Retailer Example"]
+    assert shopping["candidates"][0]["product_id"] == "quiet-5"
+    assert shopping["candidates"][0]["extracted_price"] == 199.99
+    assert shopping["candidates"][0]["old_price"] == "$249.99"
+    assert shopping["candidates"][0]["delivery"] == "Free delivery"
+    assert shopping["candidates"][0]["installment"]["period"] == 6
+    assert shopping["lowest_returned_price"]["source"] == "Audio Shop"
+    assert shopping["pagination"] == {
+        "current": 1,
+        "start": 0,
+        "has_more": True,
+        "next_start": 10,
+    }
+    assert "api_key" not in json.dumps(shopping)
+
+
 def test_extract_followup_data_preserves_google_trends_series_and_latest_points():
     handler = _handler()
     data = {

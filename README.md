@@ -812,6 +812,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 **Optional [SerpApi tool suite](docs/tools/serp-api-tool/README.md) (`SERP_API_KEY`):**
 
 - `serpapi_amazon_search` - **SerpApi Amazon Search**: Amazon listing discovery and focused ASIN/product details with price, rating, Prime, delivery, stock, images, and links
+- `serpapi_google_shopping_light` - **SerpApi Google Shopping Light**: Fast multi-retailer shopping results with current and prior prices, merchants, ratings, delivery, sale/free-shipping filters, thumbnails, and offer links
 - `serpapi_search_index` - **SerpApi Search Index**: Structured indexed-web source discovery with exact URLs, snippets, standard/deep recall, and workflow-ready pagination for later fetch/crawl steps
 - `serpapi_google_images_light` - **SerpApi Google Images Light**: Search existing web images with full-size URLs, thumbnails, source pages, dimensions, filters, workflow-ready references, and optional strict top-result Stash download
 - `serpapi_google_news_light` - **SerpApi Google News Light**: Fast topic-specific recent-news discovery with headlines, sources, snippets, grouped Top Stories, and exact article URLs
@@ -829,7 +830,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `serpapi_youtube_search` - **SerpApi YouTube search**: Keyword search with video-first results (title, channel, views, duration, thumbnails)
 - `serpapi_youtube` - **SerpApi YouTube details**: Video metadata and transcript by URL or `video_id` (useful when `youtube_video` / yt-dlp hits auth or cookie limits)
 
-The 17 `serpapi_*` tools require a nonblank key in the active mode's env file.
+The 18 `serpapi_*` tools require a nonblank key in the active mode's env file.
 Without it they are not callable or included in that mode's Tool RAG sync. Jarvis
 Web shows the free Account API quota card only when Settings → System is opened
 and the selected mode has a valid key.

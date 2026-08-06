@@ -257,6 +257,86 @@ class ToolContextPreviewTests(unittest.TestCase):
         )
         self.assertNotIn("large_provider_payload", preview)
 
+    def test_google_shopping_light_preview_keeps_offer_prices_and_links(self):
+        result = {
+            "ok": True,
+            "speech": "Found Google Shopping offers.",
+            "data": {
+                "engine": "google_shopping_light",
+                "query": "noise cancelling headphones",
+                "location_source": "jarvis_default_location",
+                "sort_by": "price_low_to_high",
+                "results_count": 6,
+                "provider_results_count": 80,
+                "merchants_count": 6,
+                "merchants": [f"Audio Shop {index}" for index in range(1, 7)],
+                "search_id": "shopping-light-123",
+                "comparison_note": "Verify the exact product variant and seller terms.",
+                "lowest_returned_price": {
+                    "position": 1,
+                    "title": "Quiet Headphones 1",
+                    "url": "https://shop.example/headphones/1",
+                    "source": "Audio Shop 1",
+                    "price": "$151.00",
+                    "extracted_price": 151,
+                },
+                "has_more": True,
+                "next_start": 10,
+                "pagination": {
+                    "current": 1,
+                    "start": 0,
+                    "has_more": True,
+                    "next_start": 10,
+                },
+                "raw": {"large_provider_payload": "x" * 12000},
+                "results": [
+                    {
+                        "position": index,
+                        "provider_position": index + 2,
+                        "section": "shopping",
+                        "title": f"Quiet Headphones {index}",
+                        "url": f"https://shop.example/headphones/{index}",
+                        "merchant_url": f"https://shop.example/headphones/{index}",
+                        "product_link": f"https://www.google.com/shopping/product/{index}",
+                        "product_id": f"quiet-{index}",
+                        "source": f"Audio Shop {index}",
+                        "price": f"${150 + index}.00",
+                        "extracted_price": 150 + index,
+                        "old_price": f"${200 + index}.00",
+                        "extracted_old_price": 200 + index,
+                        "rating": 4.8,
+                        "reviews": 1000 + index,
+                        "delivery": "Free delivery",
+                        "tag": "Sale",
+                        "extensions": ["Black", "Bluetooth"],
+                    }
+                    for index in range(1, 7)
+                ],
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_google_shopping_light", result
+        )
+
+        parsed = json.loads(preview)
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        data_preview = parsed["llm_context_preview"]["data_preview"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 6000)
+        self.assertEqual(len(candidates), 5)
+        self.assertEqual(candidates[0]["url"], "https://shop.example/headphones/1")
+        self.assertEqual(candidates[0]["product_id"], "quiet-1")
+        self.assertEqual(candidates[0]["price"], "$151.00")
+        self.assertEqual(candidates[0]["old_price"], "$201.00")
+        self.assertEqual(candidates[0]["delivery"], "Free delivery")
+        self.assertEqual(data_preview["search_id"], "shopping-light-123")
+        self.assertEqual(data_preview["pagination"]["next_start"], 10)
+        self.assertEqual(
+            data_preview["lowest_returned_price"]["source"], "Audio Shop 1"
+        )
+        self.assertNotIn("large_provider_payload", preview)
+
     def test_google_images_light_preview_keeps_assets_sources_and_trust_markers(self):
         result = {
             "ok": True,
