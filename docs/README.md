@@ -344,7 +344,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Added a bounded default projection for conventional scalar handles and candidate lists while retaining dedicated adapters for nested artifacts, content excerpts, and multi-tool results.
   - Preserved meaningful `false` and `0` values and switched router-facing history to strict compact JSON; intentional text and structural truncation now carry explicit follow-up markers instead of producing sliced or ambiguous JSON.
 
-**2026-07-27 (unreleased):**
+**2026-07-27:**
 - ✅ **Per-tool and MCP proxy policy**
   - Added runtime `proxy_policy` metadata with migration-safe `inherit`,
     direct-only `off`, proxy-first `prefer`, and fail-closed `require`.
@@ -356,7 +356,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Upgraded the tracked DuckDuckGo MCP image to upstream v0.6.0 and enabled
     `proxy_policy: "prefer"`.
 
-**2026-07-25 (unreleased):**
+**2026-07-25:**
 - ✅ **Credential-free DuckDuckGo MCP search/fetch**
   - Added the Docker MCP Catalog `mcp/duckduckgo` server with US English,
     Strict SafeSearch, an unprivileged/read-only/capability-dropped container,
@@ -367,7 +367,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Documented the image-provenance, SSRF, search-poisoning, typosquat, and
     prompt-injection trust boundaries under [`docs/mcp/`](mcp/README.md).
 
-**2026-07-23 (unreleased):**
+**2026-07-23:**
 - ✅ **Autonomous deterministic workflows**
   - Added the compact `workflow(search|describe|run)` Tool RAG helper for shared and personal recipes, with strict active-mode/profile/surface admission.
   - Foreground execution waits for the complete pipeline result, preserves component usage, supports cancellation, and exposes bounded step-aware context for final synthesis and later Web follow-ups.
