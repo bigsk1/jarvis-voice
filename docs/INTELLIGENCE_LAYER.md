@@ -213,11 +213,13 @@ semantic fields replace the legacy workflow wording; ordinary non-workflow
 insight merges retain their existing blend-without-replace behavior.
 
 Before injection, Jarvis verifies that the `workflow` meta-tool, the named
-workflow, and every component tool remain in the effective registry for the
-current mode/profile/request surface. The prompt presents the recipe as a
-candidate that must still be confirmed through workflow discovery. If that
-specific workflow does not run successfully, the insight is not counted as
-helpful merely because some other workflow ran.
+workflow, and every required component tool remain in the effective registry
+for the current mode/profile/request surface. Explicit `required: false`
+components may be unavailable and will be skipped and reported as degraded at
+execution. The prompt presents the recipe as a candidate that must still be
+confirmed through workflow discovery. If that specific workflow does not run
+successfully, the insight is not counted as helpful merely because some other
+workflow ran.
 
 Reflections already queued before this field existed reconstruct the same
 summary from their stored workflow result and tool trace when possible.

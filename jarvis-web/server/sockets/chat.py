@@ -3741,6 +3741,8 @@ Previous structured data:
                 step_results = (workflow_data or data).get('results', [])
                 emit_index = 0
                 for step_data in step_results:
+                    if step_data.get('skip_kind') == 'optional_tool_unavailable':
+                        continue
                     tool = step_data.get('tool', 'unknown')
                     step_ok = step_data.get('ok', True)
                     step_num = step_data.get('step')

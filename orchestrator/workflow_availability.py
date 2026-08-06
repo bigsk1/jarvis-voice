@@ -1,4 +1,4 @@
-"""Shared strict availability checks for deterministic workflows."""
+"""Shared availability checks for deterministic workflows."""
 
 from __future__ import annotations
 
@@ -19,6 +19,35 @@ def workflow_tool_names(workflow: dict[str, Any]) -> list[str]:
     return names
 
 
+def workflow_tool_requirements(
+    workflow: dict[str, Any],
+) -> tuple[list[str], list[str]]:
+    """Return required and explicitly optional tools in declaration order.
+
+    A tool used by any required step remains required even when another step
+    marks the same tool optional. Recursive ``workflow`` steps are always
+    treated as required so the existing recursion guard cannot be bypassed.
+    """
+    required: list[str] = []
+    optional: list[str] = []
+    for step in workflow.get("steps", []):
+        name = str(step.get("tool") or "").strip()
+        if not name:
+            continue
+        is_required = (
+            name in _WORKFLOW_META_TOOLS
+            or step.get("required", True) is not False
+        )
+        if is_required:
+            if name not in required:
+                required.append(name)
+            if name in optional:
+                optional.remove(name)
+        elif name not in required and name not in optional:
+            optional.append(name)
+    return required, optional
+
+
 def check_workflow_availability(
     workflow: dict[str, Any],
     *,
@@ -26,13 +55,14 @@ def check_workflow_availability(
     excluded_tools: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     """
-    Resolve whether every workflow tool is callable in the current context.
+    Resolve whether every required workflow tool is callable in this context.
 
-    This is intentionally strict: optional and conditional steps still count.
-    A workflow is unavailable when any declared step tool is missing from the
-    effective registry or blocked for the originating request surface.
+    Required and conditional-required steps remain strict. A step explicitly
+    marked ``required: false`` may be unavailable or blocked without making the
+    whole workflow unavailable; the pipeline records and skips it at runtime.
     """
     tools = workflow_tool_names(workflow)
+    required_tools, optional_tools = workflow_tool_requirements(workflow)
     available = {
         str(name).strip()
         for name in available_tools
@@ -43,17 +73,35 @@ def check_workflow_availability(
         for name in (excluded_tools or [])
         if str(name).strip()
     }
-    blocked = [name for name in tools if name in excluded]
+    blocked = [name for name in required_tools if name in excluded]
     unavailable = [
-        name for name in tools
-        if (name not in available or name in _WORKFLOW_META_TOOLS) and name not in excluded
+        name for name in required_tools
+        if (name not in available or name in _WORKFLOW_META_TOOLS)
+        and name not in excluded
+    ]
+    optional_blocked = [name for name in optional_tools if name in excluded]
+    optional_unavailable = [
+        name for name in optional_tools
+        if name not in available and name not in excluded
+    ]
+    skipped_optional_set = set(optional_blocked + optional_unavailable)
+    skipped_optional = [
+        name
+        for name in tools
+        if name in skipped_optional_set
     ]
     return {
         "available": not blocked and not unavailable,
+        "degraded": bool(skipped_optional),
         "workflow_id": workflow.get("id"),
         "tools": tools,
+        "required_tools": required_tools,
+        "optional_tools": optional_tools,
         "blocked_tools": blocked,
         "unavailable_tools": unavailable,
+        "optional_blocked_tools": optional_blocked,
+        "optional_unavailable_tools": optional_unavailable,
+        "optional_tools_skipped": skipped_optional,
     }
 
 

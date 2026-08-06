@@ -200,18 +200,26 @@ Each step typically includes:
 - `required_success_count` — for a `for_each` producer, stop after this many successful/validated results (default `1`).
 - `process_all` — for a `for_each` consumer, process every input item instead of stopping after one success.
 - `validated_output_var` — stores the successful/validated outputs from a `for_each` producer under an explicit semantic variable such as `validated_articles`.
-- `required` — default true; if false and step fails, behavior depends on `on_fail`.
+- `required` — default true. If explicitly false, an unavailable tool does not
+  block workflow admission: the step is recorded as skipped and the run is
+  marked degraded. If the available tool executes and fails, behavior depends
+  on `on_fail`.
 - `on_fail` — e.g. `"continue"` for optional steps.
 - `llm_prompt` — optional; LLM fills params (uses tokens).
 - `llm_variable_max_chars` — optional per-step cap for each structured `${...}` value inserted into `llm_prompt`; defaults to `3000` and is clamped to `500`–`50000`. Raise it only for bounded inputs whose complete rows must reach the helper model.
 - Workflow-level `disable_server_side_tools` — optional boolean; when true, workflow LLM helper calls for `llm_prompt`, validation, branching, or completion speech run without provider-native search/tools. Explicit workflow steps such as Brave search, crawl, or other Jarvis tools still run normally.
 
-Before any execution surface runs the recipe, every step tool must exist in the
-effective active-mode registry and must not be excluded for that surface.
-Optional and conditional steps count. If any component is manifest-disabled,
-profile-disabled, unavailable because of configuration, or Web/request-blocked,
-the entire workflow is unavailable; workflows never force-enable tools or run
-in a degraded mode. Recursive steps with `"tool": "workflow"` are rejected.
+Before any execution surface runs the recipe, every required step tool must
+exist in the effective active-mode registry and must not be excluded for that
+surface. Conditional steps remain required unless they explicitly set
+`"required": false`. A manifest-disabled, profile-disabled,
+configuration-unavailable, or Web/request-blocked optional tool is skipped
+without being called; the workflow result reports `degraded: true` and lists it
+under `optional_tools_skipped`, and completion speech names the skipped tools.
+Required tools remain strict, workflows never
+force-enable or substitute tools, and recursive steps with `"tool": "workflow"`
+are always rejected. If one tool appears in both required and optional steps,
+it remains required.
 
 Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
 
@@ -233,6 +241,9 @@ Authoritative step recipes and tool return shapes: **[AGENTS.md](AGENTS.md)**.
 12. Assume autonomous foreground execution may select the recipe: keep `name`, `description`, explicit triggers, and query-derived variables clear enough for compact metadata search.
 13. Set `"allow_workflow_tool": false` when the recipe must remain explicit, API-only, or scheduled-only—especially for personal workflows with sensitive side effects.
 14. Make side effects and repeat behavior safe. Autonomous orchestration permits only one started workflow run per request, but scheduled or later explicit runs are independent.
+15. Give downstream prompts and artifact steps truthful defaults for values
+    produced by optional tools, because an unavailable optional tool can be
+    skipped before execution.
 
 ---
 

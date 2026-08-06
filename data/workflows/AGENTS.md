@@ -703,7 +703,12 @@ The LLM receives resolved values but may echo the placeholder syntax if instruct
 "required": false,
 "on_fail": "continue"
 ```
-Use `required: false` for steps that may fail (crawling protected sites, screenshots blocked by bot protection).
+Use `required: false` for steps that may fail (crawling protected sites,
+screenshots blocked by bot protection). It also makes tool availability
+optional: when that tool is disabled, unavailable, or surface-blocked, the
+pipeline skips the step and marks the successful run degraded. Give downstream
+variables safe defaults for that case. A tool used by any required step remains
+required everywhere in the recipe.
 
 ---
 
@@ -755,6 +760,7 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 - [ ] Used `url_domain` transform for folder paths (e.g., `Workflows/Type/${url_domain}`)
 - [ ] Required steps will abort on failure
 - [ ] Optional steps have `"required": false` and `"on_fail": "continue"`
+- [ ] Downstream variables have truthful defaults when an optional tool is skipped as unavailable
 - [ ] Steps that may fail (crawl, screenshot) are optional with fallback data
 - [ ] `llm_prompt` includes all needed `${variables}` for context
 - [ ] `llm_prompt` instructs LLM to use actual values, not output `${var}` syntax

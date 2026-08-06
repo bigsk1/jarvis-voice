@@ -330,6 +330,7 @@ class PipelineExecutor:
                 "tools_used": [...]
             }
         """
+        optional_tools_skipped: set[str] = set()
         registry = getattr(self.executor, "registry", None)
         if registry is not None:
             availability = check_workflow_registry_availability(
@@ -351,6 +352,9 @@ class PipelineExecutor:
                     "tools_used": [],
                     "steps_completed": 0,
                 }
+            optional_tools_skipped = set(
+                availability.get("optional_tools_skipped") or []
+            )
 
         # Reset usage tracking for this workflow
         self._total_usage = {
@@ -429,6 +433,25 @@ class PipelineExecutor:
                     "skipped": True,
                     "reason": skip_reason or "Condition evaluated to false"
                 })
+                continue
+
+            if tool_name in optional_tools_skipped:
+                self._apply_variable_assignments(
+                    step.get("set_variables_on_skip"), variables
+                )
+                reason = (
+                    f"Optional tool '{tool_name}' is unavailable in the active "
+                    "registry or blocked for this execution surface"
+                )
+                results.append({
+                    "step": step_num,
+                    "tool": tool_name,
+                    "skipped": True,
+                    "skip_kind": "optional_tool_unavailable",
+                    "reason": reason,
+                })
+                if status_callback:
+                    status_callback(f"Step {step_num} skipped: {reason}")
                 continue
             
             # Handle for_each loops
@@ -1721,6 +1744,12 @@ class PipelineExecutor:
         # Count successful articles
         article_count = len(variables.get("validated_articles", []))
         variables["article_count"] = article_count  # Make available for speech
+        optional_tools_skipped = list(dict.fromkeys(
+            str(result.get("tool") or "")
+            for result in results
+            if result.get("skip_kind") == "optional_tool_unavailable"
+            and str(result.get("tool") or "")
+        ))
         
         # Build speech from template - resolve all ${variables}
         speech_prompt = workflow.get("success_speech_llm_prompt")
@@ -1741,7 +1770,12 @@ class PipelineExecutor:
         # If still has unresolved vars, they stay as-is (shouldn't happen normally)
         if not isinstance(speech, str):
             speech = str(speech)
-        
+        if optional_tools_skipped:
+            speech = (
+                f"{speech.rstrip()} Optional unavailable tools skipped: "
+                f"{', '.join(optional_tools_skipped)}."
+            )
+
         response = {
             "ok": True,
             "speech": speech,
@@ -1749,6 +1783,8 @@ class PipelineExecutor:
                 "workflow_id": workflow.get("id"),
                 "workflow_name": workflow.get("name"),
                 "steps_completed": len(results),
+                "degraded": bool(optional_tools_skipped),
+                "optional_tools_skipped": optional_tools_skipped,
                 "results": results,
                 "variables": {k: v for k, v in variables.items() if not k.startswith("_")}
             },

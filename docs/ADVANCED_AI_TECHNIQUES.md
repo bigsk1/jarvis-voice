@@ -366,10 +366,11 @@ This should preserve the current workflow advantage: the JSON definition owns to
 
 ### Current Safety Prerequisite
 
-Workflow availability is strict and runtime-aware:
+Workflow availability is strict for required components and runtime-aware:
 
-- Every tool named by every workflow step must exist in the effective tool registry.
-- Optional and conditional steps count; there is no degraded workflow mode.
+- Every tool used by a required workflow step must exist in the effective tool registry.
+- An explicit `required: false` step may be unavailable or surface-blocked; it is skipped without a call and reported as degraded.
+- Conditional steps remain required unless explicitly optional, and a tool used by any required step remains required.
 - Active tool-profile overrides, per-tool `enabled` state, missing configuration, and mode-specific availability are inherited from `ToolRegistry`.
 - Web-blocked or request-excluded tools make the workflow unavailable for that surface.
 - Unavailable workflows are omitted from normal workflow lists and slash-command suggestions.
@@ -447,8 +448,8 @@ Only workflows runnable in the active mode, profile, and request surface are ret
 
 That switch applies to autonomous orchestration only. Explicit slash commands,
 workflow APIs, and scheduled workflow tasks invoke the loader/pipeline directly
-and remain available when their workflow JSON and every component tool pass
-their own execution-surface checks. Likewise, a Web block on `workflow` stops
+and remain available when their workflow JSON and every required component tool
+pass their own execution-surface checks. Likewise, a Web block on `workflow` stops
 autonomous Web calls but does not currently hide direct slash workflows.
 
 `run` is synchronous. The Web chat worker waits, but Socket.IO remains responsive and receives the existing workflow status callbacks (`Starting workflow` and step progress). The CLI/voice request likewise remains active until a final workflow result or failure is available.

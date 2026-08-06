@@ -143,10 +143,15 @@ Web or request exclusions
 workflow admission
 ```
 
-Workflow admission is strict:
+Workflow admission is strict for required components:
 
-- Every step tool must exist in the effective registry.
-- Optional and conditional steps still count; there is no degraded recipe mode.
+- Every required step tool must exist in the effective registry.
+- A step explicitly marked `required: false` may be unavailable or
+  surface-blocked. It is skipped without a tool call, and the successful result
+  reports `degraded: true` plus `optional_tools_skipped`; completion speech also
+  names the skipped tools.
+- Conditional steps remain required unless they also set `required: false`.
+- If the same tool appears in required and optional steps, required wins.
 - A workflow never force-enables a component or substitutes a different tool.
 - Search/list surfaces omit ineligible workflows.
 - Slash, API, scheduled, autonomous `run`, and `PipelineExecutor` recheck before execution.

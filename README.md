@@ -1019,7 +1019,7 @@ picker for the authoritative current surface.
 - **LLM Parameter Filling**: Dynamic parameter resolution via `llm_prompt`
 - **Content Validation**: Heuristic validation with min_length, reject_patterns
 - **Retry Logic**: Automatic retries with configurable limits
-- **Strict Availability**: Any disabled, unavailable, or surface-blocked component makes the complete recipe unavailable
+- **Required-Tool Availability**: Disabled, unavailable, or surface-blocked required tools block the recipe; explicit `required: false` tools are skipped and reported as degraded
 - **Autonomous Foreground Runs**: Normal orchestration can search compact workflow metadata and wait for one deterministic recipe to finish
 - **Safe Follow-Ups**: Web history preserves component Canvas/Stash handles and bounded summaries for later edits or individual tool calls
 - **Loop Protection**: One workflow run may start per user request, and Completion Guard does not replay workflow turns

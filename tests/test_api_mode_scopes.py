@@ -202,6 +202,79 @@ def test_workflow_route_rejects_unavailable_tool_before_pipeline_creation():
     assert "disabled_tool" in str(exc.value.detail)
 
 
+def test_workflow_route_allows_unavailable_optional_tool():
+    observed = {}
+
+    class FakeWorkflowLoader:
+        def __init__(self, explicit_only=True):
+            self.workflows = {
+                "degraded_report": {
+                    "id": "degraded_report",
+                    "name": "Degraded Report",
+                    "triggers": {"explicit": ["/degraded_report"]},
+                    "steps": [
+                        {"step": 1, "tool": "get_time"},
+                        {
+                            "step": 2,
+                            "tool": "send_email",
+                            "required": False,
+                            "on_fail": "continue",
+                        },
+                    ],
+                }
+            }
+
+        def get_workflow(self, workflow_id):
+            return self.workflows.get(workflow_id)
+
+    class FakeToolExecutor:
+        def __init__(self, mode, registry=None):
+            observed["executor_mode"] = mode
+            observed["registry"] = registry
+
+    class FakePipelineExecutor:
+        def __init__(self, mode, _executor):
+            observed["pipeline_mode"] = mode
+
+        def execute(self, workflow, transcript):
+            observed["workflow_id"] = workflow["id"]
+            observed["transcript"] = transcript
+            return {
+                "ok": True,
+                "speech": "Degraded report complete.",
+                "tools_used": ["get_time"],
+                "data": {
+                    "steps_completed": 2,
+                    "degraded": True,
+                    "optional_tools_skipped": ["send_email"],
+                },
+            }
+
+    registry = SimpleNamespace(list_tools=lambda: ["get_time"])
+    modules = {
+        "workflow_loader": SimpleNamespace(WorkflowLoader=FakeWorkflowLoader),
+        "executor": SimpleNamespace(ToolExecutor=FakeToolExecutor),
+        "pipeline_executor": SimpleNamespace(PipelineExecutor=FakePipelineExecutor),
+        "tool_schema": SimpleNamespace(get_tool_registry=lambda mode=None: registry),
+    }
+    request = WorkflowExecuteRequest(mode="local")
+
+    with patch.dict(sys.modules, modules):
+        result = asyncio.run(execute_workflow("degraded_report", request))
+
+    assert result.ok is True
+    assert result.tools_used == ["get_time"]
+    assert result.data["degraded"] is True
+    assert result.data["optional_tools_skipped"] == ["send_email"]
+    assert observed == {
+        "executor_mode": "local",
+        "registry": registry,
+        "pipeline_mode": "local",
+        "workflow_id": "degraded_report",
+        "transcript": "/degraded_report",
+    }
+
+
 def test_scheduled_query_uses_task_scope_not_runner_mode(tmp_path, monkeypatch):
     config_dir = tmp_path / "config"
     config_dir.mkdir()

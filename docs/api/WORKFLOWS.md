@@ -24,10 +24,13 @@ slash-command, or scheduled execution.
 ## Availability
 
 List/detail use the API's active mode; execute uses the `mode` in the request
-body. In either case, a workflow is available only when every component tool is
-enabled by its manifest and profile, available with current
-configuration/credentials, and allowed for the execution surface. Optional and
-conditional steps count; workflows do not run in a degraded mode.
+body. In either case, a workflow is available only when every required
+component tool is enabled by its manifest and profile, available with current
+configuration/credentials, and allowed for the execution surface. A component
+step explicitly marked `required: false` may be unavailable or blocked: the
+pipeline skips it without a tool call and returns `degraded: true` with
+`optional_tools_skipped`. Conditional steps remain required unless explicitly
+optional, and a tool used by any required step remains required.
 
 ```text
 tool manifest
@@ -35,7 +38,8 @@ tool manifest
     → mode/config availability
     → effective registry
     → surface exclusions
-    → workflow available
+    → required tools admit workflow
+    → unavailable optional tools skipped and reported
 ```
 
 In Jarvis Web, `/api/workflows` and workflow detail responses omit or reject a

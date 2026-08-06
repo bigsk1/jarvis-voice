@@ -74,6 +74,29 @@ def test_search_uses_personal_override_and_omits_unavailable(tmp_path):
     assert "blocked" not in result["data"]["selected_workflow_hints"]
 
 
+def test_search_includes_workflow_when_only_optional_tool_is_unavailable(tmp_path):
+    workflow = _workflow("degraded")
+    workflow["steps"].append(
+        {
+            "step": 2,
+            "tool": "send_email",
+            "required": False,
+            "on_fail": "continue",
+        }
+    )
+    _write_workflow(tmp_path / "degraded.json", workflow)
+
+    result = execute_workflow_tool(
+        registry=FakeRegistry({"workflow", "get_time"}),
+        args={"action": "search", "query": "research report"},
+        mode="cloud",
+        loader=WorkflowLoader(str(tmp_path)),
+    )
+
+    assert result["ok"] is True
+    assert result["data"]["selected_workflow_hints"] == ["degraded"]
+
+
 def test_allow_workflow_tool_false_hides_workflow_from_search(tmp_path):
     allowed = _workflow("allowed")
     restricted = _workflow("restricted")
