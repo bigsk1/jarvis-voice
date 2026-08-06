@@ -1,0 +1,101 @@
+{
+  "enabled": true,
+  "name": "serpapi_google_sports",
+  "description": "Get current Google Sports schedules, scores, direct-game box scores, line or period scoring, returned viewing options, official recap links, standings, rosters, brackets, league statistics, and rankings through SerpApi. Use for 'when do the Lakers play next?', 'what was the latest score?', 'what happened in the latest Dodgers game?', 'where can I watch this game?', 'show Premier League standings', 'who is on the roster?', 'show the playoff bracket', 'league leaders', or 'Google Sports for...'. Unbounded team and league game views return a current-centered window with the most recent games first, followed by nearby upcoming games. Supports football or soccer, basketball, baseball, cricket, American football, ice hockey, and rugby. Provide a normal team, league, or matchup query and Jarvis can resolve the required Google entity ID internally; provide kgmid directly for a deterministic one-search workflow. The query resolver may use one additional billable or cached SerpApi Google search. Game detail availability varies by sport and game state. This is structured sports data, not general sports news; use serpapi_google_news_light for news coverage.",
+  "complementary_tools": [
+    "serpapi_google_news_light",
+    "serpapi_google_trending_now",
+    "workflow",
+    "canvas",
+    "stash"
+  ],
+  "script": "serpapi_google_sports.py",
+  "proxy_policy": "off",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "maxLength": 500,
+        "description": "Team, league, or matchup to resolve, such as Los Angeles Lakers, Premier League, or Lakers vs Celtics August 2026. Required when kgmid is omitted. A resolver search may add one SerpApi search."
+      },
+      "kgmid": {
+        "type": "string",
+        "pattern": "^/(m|g)/[A-Za-z0-9_-]+$",
+        "description": "Known Google Knowledge Graph ID for the selected team, league, or game. Use this instead of query for a direct one-search call."
+      },
+      "sport": {
+        "type": "string",
+        "enum": ["football", "basketball", "baseball", "cricket", "american_football", "ice_hockey", "rugby"],
+        "description": "Required sport. Use football for association football or soccer, and american_football for NFL-style football."
+      },
+      "entity_type": {
+        "type": "string",
+        "enum": ["game", "league", "team"],
+        "description": "Required entity represented by query or kgmid."
+      },
+      "tab": {
+        "type": "string",
+        "enum": ["games", "standings", "players", "brackets", "stats", "rankings", "overview"],
+        "description": "View to return. Defaults to games for league and team. Stats and rankings are league-only. For a game, omit this except overview is allowed for American football."
+      },
+      "country": {
+        "type": "string",
+        "pattern": "^[a-zA-Z]{2}$",
+        "description": "Two-letter Google country code. Default us."
+      },
+      "language": {
+        "type": "string",
+        "pattern": "^[a-zA-Z]{2}$",
+        "description": "Two-letter Google interface language. Default en."
+      },
+      "middle_time": {
+        "type": "string",
+        "description": "For league or team games, return games around this UTC instant in YYYY-MM-DDTHH:mm:ssZ format. Cannot be combined with after_time or before_time."
+      },
+      "after_time": {
+        "type": "string",
+        "description": "For league or team games, return games after this UTC instant in YYYY-MM-DDTHH:mm:ssZ format. May be combined with before_time."
+      },
+      "before_time": {
+        "type": "string",
+        "description": "For league or team games, return games before this UTC instant in YYYY-MM-DDTHH:mm:ssZ format. May be combined with after_time."
+      },
+      "season_kgmid": {
+        "type": "string",
+        "pattern": "^/(m|g)/[A-Za-z0-9_-]+$",
+        "description": "Optional season Knowledge Graph ID returned by a prior standings response."
+      },
+      "max_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 30,
+        "description": "Maximum normalized games, teams, players, stats, or ranking rows to return. Default 12."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "Bypass SerpApi's one-hour exact-parameter cache. Default false; cached searches are free."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Advanced non-reserved Google Sports parameters passed to SerpApi. Core identity, sport, entity, tab, time, locale, cache, and output controls cannot be overridden."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "Include full Google Sports JSON, plus resolver JSON when used, for debugging. Default false."
+      }
+    },
+    "required": ["sport", "entity_type"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": ["SERP_API_KEY"],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file."
+  }
+}

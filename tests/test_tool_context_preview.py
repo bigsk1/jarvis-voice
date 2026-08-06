@@ -31,6 +31,7 @@ class ToolContextPreviewTests(unittest.TestCase):
     def test_bookmark_search_gets_larger_preview_budget(self):
         self.assertEqual(self.orch._tool_context_max_chars("bookmark_search"), 5000)
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_web_search"), 6000)
+        self.assertEqual(self.orch._tool_context_max_chars("serpapi_google_sports"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("workflow"), 8000)
 
     def test_workflow_preview_keeps_late_step_handles_and_omits_variables_graph(self):
@@ -428,6 +429,163 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(data_preview["pagination"]["next_start"], 100)
         self.assertNotIn("image_urls", data_preview)
         self.assertNotIn("large_provider_payload", preview)
+
+    def test_google_sports_preview_keeps_all_matchups_scores_and_followup_ids(self):
+        result = {
+            "ok": True,
+            "speech": "Found twelve Google Sports games.",
+            "data": {
+                "engine": "google_sports",
+                "query": "Los Angeles Lakers",
+                "kgmid": "/m/0jmk7",
+                "kgmid_source": "google_knowledge_graph",
+                "sport": "basketball",
+                "sport_code": "bs",
+                "entity_type": "team",
+                "tab": "games",
+                "tab_code": "gm",
+                "selection_mode": "around_now",
+                "selection_anchor": "2026-08-05T12:00:00Z",
+                "results_kind": "game",
+                "results_count": 12,
+                "provider_results_count": 20,
+                "serpapi_searches_used": 2,
+                "search_id": "sports-123",
+                "google_sports_url": "https://www.google.com/search?kgmid=/m/0jmk7",
+                "seasons": [
+                    {"name": "2025-26", "kgmid": "/g/11season", "selected": True}
+                ],
+                "raw": {"large_provider_payload": "x" * 12000},
+                "results": [
+                    {
+                        "kind": "game",
+                        "position": index,
+                        "group": "Regular season",
+                        "title": f"Lakers vs Opponent {index}",
+                        "status": "scheduled",
+                        "start_time": f"2026-08-{index:02d}T02:00:00Z",
+                        "kgmid": f"/g/11game{index}",
+                        "url": f"https://serpapi.com/search.json?game={index}",
+                        "teams": [
+                            {"name": "Lakers", "score": 110 + index, "kgmid": "/m/0jmk7"},
+                            {"name": f"Opponent {index}", "score": 100 + index},
+                        ],
+                        "league": {"name": "NBA", "kgmid": "/m/05jvx"},
+                        "venue": {
+                            "name": f"Arena {index}",
+                            "location": f"City {index}",
+                            "kgmid": f"/g/11arena{index}",
+                        },
+                        "highlights": [
+                            {
+                                "title": "Game recap",
+                                "url": f"https://video.example/game-{index}",
+                                "thumbnail": "https://images.example/" + ("x" * 300),
+                            }
+                        ],
+                    }
+                    for index in range(1, 13)
+                ],
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_google_sports", result
+        )
+        parsed = json.loads(preview)
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        data_preview = parsed["llm_context_preview"]["data_preview"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 10000)
+        self.assertNotIn("preview_notice", parsed)
+        self.assertEqual(len(candidates), 12)
+        self.assertEqual(candidates[0]["kgmid"], "/g/11game1")
+        self.assertEqual(candidates[0]["teams"][0]["score"], 111)
+        self.assertEqual(candidates[-1]["title"], "Lakers vs Opponent 12")
+        self.assertEqual(candidates[-1]["start_time"], "2026-08-12T02:00:00Z")
+        self.assertEqual(candidates[-1]["venue"]["name"], "Arena 12")
+        self.assertEqual(data_preview["kgmid"], "/m/0jmk7")
+        self.assertEqual(data_preview["selection_mode"], "around_now")
+        self.assertEqual(data_preview["selection_anchor"], "2026-08-05T12:00:00Z")
+        self.assertEqual(data_preview["serpapi_searches_used"], 2)
+        self.assertEqual(data_preview["seasons"][0]["kgmid"], "/g/11season")
+        self.assertNotIn("thumbnail", preview)
+        self.assertNotIn("highlights", preview)
+        self.assertNotIn("large_provider_payload", preview)
+
+    def test_google_sports_game_preview_keeps_watch_and_box_score_highlights(self):
+        game = {
+            "kind": "game",
+            "position": 1,
+            "title": "Dodgers vs Cubs",
+            "kgmid": "/g/11game",
+            "start_time": "2026-08-05T18:20:00Z",
+            "status_original": "Final",
+            "teams": [
+                {
+                    "name": "Dodgers",
+                    "short_code": "LAD",
+                    "score": 6,
+                    "season_record": {"wins": 69, "losses": 46},
+                    "linescore": [
+                        {"short_title": "R", "score": "6"},
+                        {"short_title": "H", "score": "14"},
+                    ],
+                },
+                {"name": "Cubs", "short_code": "CHC", "score": 7},
+            ],
+            "watch": {
+                "groups": [
+                    {"title": "TV options", "sources": [{"title": "FOX"}]}
+                ]
+            },
+            "more_info": [
+                {"title": "MLB Gameday", "url": "https://www.mlb.com/game/1"}
+            ],
+        }
+        result = {
+            "ok": True,
+            "speech": "Found one game.",
+            "data": {
+                "engine": "google_sports",
+                "query": "latest Dodgers game",
+                "kgmid": "/g/11game",
+                "sport": "baseball",
+                "entity_type": "game",
+                "results_kind": "game",
+                "results_count": 1,
+                "results": [game],
+                "watch": game["watch"],
+                "more_info": game["more_info"],
+                "box_score_highlights": [
+                    {
+                        "team": "Dodgers",
+                        "category": "Batting",
+                        "name": "Shohei Ohtani",
+                        "position": "DH",
+                        "stats": [
+                            {"type": "home_runs", "short_title": "HR", "value": "2"},
+                            {"type": "rbi", "short_title": "RBI", "value": "3"},
+                        ],
+                    }
+                ],
+                "box_score": {"large_full_box_score": "x" * 20000},
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_google_sports", result
+        )
+        parsed = json.loads(preview)
+        data_preview = parsed["llm_context_preview"]["data_preview"]
+        candidate = parsed["llm_context_preview"]["source_candidates"][0]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 10000)
+        self.assertEqual(data_preview["watch"]["groups"][0]["sources"][0]["title"], "FOX")
+        self.assertEqual(data_preview["box_score_highlights"][0]["name"], "Shohei Ohtani")
+        self.assertEqual(candidate["teams"][0]["season_record"]["wins"], 69)
+        self.assertEqual(candidate["teams"][0]["linescore"][1]["score"], "14")
+        self.assertNotIn("large_full_box_score", preview)
 
     def test_google_local_preview_keeps_places_provenance_ads_and_related_searches(self):
         result = {

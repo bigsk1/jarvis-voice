@@ -2220,6 +2220,43 @@ body {
   border-top: 2px solid var(--accent-primary, #8ec5ff);
 }
 
+.structured-result-card-sport {
+  border-left: 3px solid var(--accent-primary, #8ec5ff);
+}
+
+.structured-result-card-sport .structured-result-body {
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.structured-result-card-sport .structured-result-title {
+  -webkit-line-clamp: 2;
+}
+
+.structured-result-card-sport .structured-result-primary {
+  font-size: 1.05rem;
+}
+
+.structured-result-card-sport .structured-result-image {
+  display: grid;
+  width: 72px;
+  min-width: 72px;
+  padding: 8px;
+  place-items: center;
+}
+
+.structured-result-card-sport .structured-result-image img {
+  height: 56px;
+  min-height: 0;
+  object-fit: contain;
+}
+
+.structured-result-card-sport .structured-result-details {
+  flex-direction: row;
+  flex-wrap: wrap;
+  column-gap: 12px;
+}
+
 .structured-result-card-video {
   flex-direction: column;
 }

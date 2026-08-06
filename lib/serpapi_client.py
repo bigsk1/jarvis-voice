@@ -26,6 +26,7 @@ SERPAPI_TOOL_ENGINES = {
     "serpapi_google_images_light": ("google_images_light",),
     "serpapi_google_news_light": ("google_news_light",),
     "serpapi_google_shopping_light": ("google_shopping_light",),
+    "serpapi_google_sports": ("google_sports",),
     "serpapi_google_trends": ("google_trends",),
     "serpapi_search_index": ("search_index",),
     "serpapi_tripadvisor": ("tripadvisor",),
@@ -50,6 +51,7 @@ SERPAPI_ENGINE_LABELS = {
     "google_news_light": "Google News Light",
     "google_shopping": "Google Shopping",
     "google_shopping_light": "Google Shopping Light",
+    "google_sports": "Google Sports",
     "google_trends": "Google Trends",
     "google_trends_news": "Google Trends News",
     "google_trends_trending_now": "Google Trends Trending Now",
@@ -97,6 +99,7 @@ SERPAPI_ENGINE_STATUS_ALIASES = {
         "google shopping light api",
         "google shopping light",
     ),
+    "google_sports": ("google sports api", "google sports"),
     "google_trends": ("google trends api", "google trends"),
     "google_trends_news": ("google trends news api", "google trends news"),
     "google_trends_trending_now": (
@@ -206,6 +209,10 @@ def serpapi_engines_for_tool(tool_name: str, args: dict[str, Any] | None = None)
         if str(options.get("data_cid") or "").strip():
             return ("google_local_services",)
         return ("google_maps", "google_local_services")
+    if tool_name == "serpapi_google_sports":
+        if str(options.get("kgmid") or "").strip():
+            return ("google_sports",)
+        return ("google", "google_sports")
     if tool_name == "serpapi_youtube":
         engines = ["youtube_video"]
         if parse_bool(options.get("include_transcript")):

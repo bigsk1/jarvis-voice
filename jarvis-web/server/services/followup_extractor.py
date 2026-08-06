@@ -51,6 +51,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_google_images_light',
     'serpapi_google_news_light',
     'serpapi_google_shopping_light',
+    'serpapi_google_sports',
     'serpapi_google_trends',
     'serpapi_google_trending_now',
     'serpapi_tripadvisor',
@@ -353,6 +354,16 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'merchants_count', 'merchants', 'top_url', 'comparison_note',
         'search_id', 'has_more', 'next_start', 'google_shopping_light_url',
         'serpapi_searches_used', 'source',
+    ],
+    'serpapi_google_sports': [
+        'engine', 'query', 'resolver_query', 'kgmid', 'kgmid_source',
+        'sport', 'sport_code', 'entity_type', 'tab', 'tab_code',
+        'country', 'language', 'middle_time', 'after_time', 'before_time',
+        'selection_mode', 'selection_anchor', 'season_kgmid', 'max_results',
+        'results_kind', 'results_count',
+        'provider_results_count', 'top_url', 'search_id',
+        'google_sports_url', 'serpapi_searches_used', 'available_sections',
+        'watch', 'more_info', 'box_score_highlights', 'source',
     ],
     'serpapi_google_trends': [
         'engine', 'query', 'queries', 'data_type', 'provider_data_type',
@@ -3123,6 +3134,69 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 }
                 if compact_pagination:
                     extracted['pagination'] = compact_pagination
+
+        if key == 'serpapi_google_sports':
+            results = payload.get('results') or payload.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = payload.get('results_count', len(results))
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = {
+                        field: item[field]
+                        for field in (
+                            'kind', 'position', 'group', 'division', 'rank',
+                            'title', 'name', 'url', 'serpapi_link', 'kgmid', 'thumbnail',
+                            'status', 'status_original', 'date', 'time',
+                            'start_time', 'end_time', 'tournament', 'stadium',
+                            'league_movement', 'highlighted', 'player_position',
+                            'jersey_number', 'team', 'value',
+                        )
+                        if item.get(field) not in (None, '', [], {})
+                    }
+                    for nested_field, nested_limit in (
+                        ('teams', 4),
+                        ('stats', 12),
+                        ('highlights', 4),
+                        ('more_info', 8),
+                    ):
+                        nested = item.get(nested_field)
+                        if isinstance(nested, list) and nested:
+                            candidate[nested_field] = nested[:nested_limit]
+                    for nested_field in ('league', 'venue'):
+                        nested = item.get(nested_field)
+                        if isinstance(nested, dict) and nested:
+                            candidate[nested_field] = nested
+                    watch = item.get('watch')
+                    if isinstance(watch, dict) and watch:
+                        candidate['watch'] = watch
+                    if candidate.get('title') or candidate.get('name') or candidate.get('kgmid'):
+                        candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
+
+            seasons = payload.get('seasons')
+            if isinstance(seasons, list) and seasons:
+                extracted['seasons'] = [
+                    {
+                        field: item[field]
+                        for field in ('name', 'kgmid', 'url', 'selected', 'league')
+                        if item.get(field) not in (None, '', [], {})
+                    }
+                    for item in seasons[:12]
+                    if isinstance(item, dict)
+                ]
+
+            team_stats = payload.get('team_stats')
+            if isinstance(team_stats, dict):
+                extracted['team_stats'] = {
+                    str(field): value
+                    for field, value in list(team_stats.items())[:20]
+                    if value not in (None, '', [], {})
+                }
+            elif isinstance(team_stats, list):
+                extracted['team_stats'] = team_stats[:12]
 
         if key == 'serpapi_google_local':
             results = payload.get('results') or payload.get('top_results') or []

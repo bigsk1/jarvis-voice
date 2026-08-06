@@ -835,6 +835,90 @@ def test_extract_followup_data_preserves_google_shopping_offer_comparison():
     assert "api_key" not in json.dumps(shopping)
 
 
+def test_extract_followup_data_preserves_google_sports_ids_scores_and_seasons():
+    handler = _handler()
+    data = {
+        "serpapi_google_sports": {
+            "engine": "google_sports",
+            "query": "Los Angeles Lakers",
+            "kgmid": "/m/0jmk7",
+            "kgmid_source": "google_knowledge_graph",
+            "sport": "basketball",
+            "sport_code": "bs",
+            "entity_type": "team",
+            "tab": "games",
+            "tab_code": "gm",
+            "selection_mode": "around_now",
+            "selection_anchor": "2026-08-05T12:00:00Z",
+            "results_kind": "game",
+            "results_count": 1,
+            "provider_results_count": 12,
+            "serpapi_searches_used": 2,
+            "google_sports_url": "https://www.google.com/search?kgmid=/m/0jmk7",
+            "watch": {
+                "groups": [
+                    {"title": "TV options", "sources": [{"title": "ESPN"}]}
+                ]
+            },
+            "box_score_highlights": [
+                {
+                    "team": "Lakers",
+                    "category": "Scoring",
+                    "name": "Example Player",
+                    "stats": [{"type": "points", "value": "32"}],
+                }
+            ],
+            "results": [
+                {
+                    "kind": "game",
+                    "position": 1,
+                    "group": "Regular season",
+                    "title": "Los Angeles Lakers vs Boston Celtics",
+                    "url": "https://serpapi.com/search.json?game=1",
+                    "kgmid": "/g/11game1",
+                    "status": "finished",
+                    "status_original": "Final",
+                    "teams": [
+                        {"name": "Los Angeles Lakers", "score": 112, "kgmid": "/m/0jmk7"},
+                        {"name": "Boston Celtics", "score": 108, "kgmid": "/m/0jm3v"},
+                    ],
+                    "league": {"name": "NBA", "kgmid": "/m/05jvx"},
+                    "highlights": [
+                        {"title": "Game recap", "url": "https://video.example/recap"}
+                    ],
+                    "watch": {
+                        "groups": [
+                            {"title": "TV options", "sources": [{"title": "ESPN"}]}
+                        ]
+                    },
+                }
+            ],
+            "seasons": [
+                {
+                    "name": "2025-26",
+                    "kgmid": "/g/11season",
+                    "selected": True,
+                    "league": {"name": "NBA", "kgmid": "/m/05jvx"},
+                }
+            ],
+        }
+    }
+
+    sports = handler._extract_followup_data(data)["serpapi_google_sports"]
+    assert sports["kgmid"] == "/m/0jmk7"
+    assert sports["selection_mode"] == "around_now"
+    assert sports["selection_anchor"] == "2026-08-05T12:00:00Z"
+    assert sports["serpapi_searches_used"] == 2
+    assert sports["watch"]["groups"][0]["sources"][0]["title"] == "ESPN"
+    assert sports["box_score_highlights"][0]["name"] == "Example Player"
+    assert sports["candidates"][0]["kgmid"] == "/g/11game1"
+    assert sports["candidates"][0]["teams"][0]["score"] == 112
+    assert sports["candidates"][0]["league"]["kgmid"] == "/m/05jvx"
+    assert sports["candidates"][0]["highlights"][0]["url"] == "https://video.example/recap"
+    assert sports["candidates"][0]["watch"]["groups"][0]["sources"][0]["title"] == "ESPN"
+    assert sports["seasons"][0]["kgmid"] == "/g/11season"
+
+
 def test_extract_followup_data_preserves_google_trends_series_and_latest_points():
     handler = _handler()
     data = {

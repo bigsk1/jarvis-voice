@@ -54,6 +54,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_google_images_light', payload => this._adaptGoogleImagesLight(payload));
     this.register('serpapi_google_news_light', payload => this._adaptGoogleNewsLight(payload));
     this.register('serpapi_google_shopping_light', payload => this._adaptGoogleShoppingLight(payload));
+    this.register('serpapi_google_sports', payload => this._adaptGoogleSports(payload));
     this.register('serpapi_google_trends', payload => this._adaptGoogleTrends(payload));
     this.register('serpapi_google_trending_now', payload => this._adaptGoogleTrendingNow(payload));
     this.register('serpapi_tripadvisor', payload => this._adaptTripadvisor(payload));
@@ -180,6 +181,25 @@ class StructuredResultsRenderer {
     if (value == null || value === '') return '';
     const number = Number(value);
     return Number.isFinite(number) ? number.toLocaleString('en-US') : String(value);
+  }
+
+  _formatDateTime(value) {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    const date = new Date(text);
+    if (Number.isNaN(date.getTime())) return text;
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZoneName: 'short',
+      }).format(date);
+    } catch (_error) {
+      return text;
+    }
   }
 
   _compactText(value, maxLength = 150) {
@@ -525,6 +545,117 @@ class StructuredResultsRenderer {
       subtitle: [view, scope].filter(Boolean).join(' · '),
       actionUrl: payload.trends_url,
       actionLabel: 'Open Google Trends',
+      items,
+    };
+  }
+
+  _adaptGoogleSports(payload) {
+    const resultKind = String(payload.results_kind || '').toLowerCase();
+    const items = this._rows(payload).map((row, index) => {
+      const kind = String(row.kind || resultKind || '').toLowerCase();
+      const teams = Array.isArray(row.teams) ? row.teams.slice(0, 4) : [];
+      const chips = [];
+      const details = [];
+      let primary = '';
+      let image = row.thumbnail || '';
+
+      if (kind === 'game') {
+        const score = teams.map(team => {
+          const name = team.short_code || team.short_name || team.name;
+          const value = team.score_original ?? team.score;
+          return [name, value].filter(part => part != null && part !== '').join(' ');
+        }).filter(Boolean).join(' · ');
+        primary = score || row.status_original || row.status || '';
+        // A single team logo reads as a matchup thumbnail and stretches poorly.
+        // Game rows use the score/date hierarchy instead; non-game views may
+        // still show a player or team image when the provider supplies one.
+        image = '';
+        if (row.status_original || row.status) chips.push(String(row.status_original || row.status));
+        if (row.start_time || row.date || row.time) {
+          const dateTime = row.start_time
+            ? this._formatDateTime(row.start_time)
+            : [row.date, row.time].filter(Boolean).join(' · ');
+          if (dateTime) chips.push(dateTime);
+        }
+        const league = row.league && typeof row.league === 'object'
+          ? (row.league.short_name || row.league.name)
+          : row.league;
+        if (league || row.tournament) chips.push(String(league || row.tournament));
+        if (row.group) chips.push(String(row.group));
+        const venue = row.venue && typeof row.venue === 'object'
+          ? [row.venue.name, row.venue.location].filter(Boolean).join(' · ')
+          : '';
+        if (venue || row.stadium) details.push(venue || String(row.stadium));
+        const highlight = Array.isArray(row.highlights) ? row.highlights[0] : null;
+        if (highlight?.title) details.push(`Highlight: ${highlight.title}`);
+      } else if (kind === 'standing' || kind === 'ranking') {
+        primary = row.rank != null ? `#${row.rank}` : '';
+        if (row.group) chips.push(String(row.group));
+        if (row.division) chips.push(String(row.division));
+        if (row.league_movement) details.push(String(row.league_movement));
+        const stats = Array.isArray(row.stats) ? row.stats.slice(0, 5) : [];
+        const statLine = stats.map(stat => {
+          const label = stat.short_title || stat.title;
+          const value = stat.value ?? (Array.isArray(stat.values) ? stat.values.join('-') : '');
+          return [label, value].filter(part => part != null && part !== '').join(' ');
+        }).filter(Boolean).join(' · ');
+        if (statLine) details.push(statLine);
+      } else {
+        const stats = Array.isArray(row.stats) ? row.stats.slice(0, 5) : [];
+        primary = row.value ?? row.player_position ?? stats[0]?.value ?? '';
+        if (row.rank != null) chips.push(`#${row.rank}`);
+        if (row.player_position) chips.push(String(row.player_position));
+        if (row.jersey_number) chips.push(`#${row.jersey_number}`);
+        if (row.team) {
+          chips.push(String(
+            row.team && typeof row.team === 'object'
+              ? (row.team.short_name || row.team.name || '')
+              : row.team
+          ));
+        }
+        if (row.group) chips.push(String(row.group));
+        const statLine = stats.map(stat => {
+          const label = stat.short_title || stat.title;
+          const value = stat.value ?? (Array.isArray(stat.values) ? stat.values.join('-') : '');
+          return [label, value].filter(part => part != null && part !== '').join(' ');
+        }).filter(Boolean).join(' · ');
+        if (statLine) details.push(statLine);
+      }
+
+      return {
+        title: row.title || row.name || `Sports result ${index + 1}`,
+        url: row.url,
+        image,
+        primary,
+        chips,
+        details,
+        actionLabel: 'Open sports result',
+      };
+    });
+    const view = String(payload.tab || payload.results_kind || 'game details').replace(/_/g, ' ');
+    const scope = [
+      String(payload.sport || '').replace(/_/g, ' '),
+      String(payload.entity_type || '').replace(/_/g, ' '),
+      view,
+    ].filter(Boolean).join(' · ');
+    const resultCount = payload.results_count ?? items.length;
+    const providerCount = payload.provider_results_count;
+    const searches = payload.serpapi_searches_used;
+    return {
+      kind: 'sport',
+      layout: 'list',
+      eyebrow: 'Google Sports',
+      heading: payload.query || payload.kgmid || 'Sports results',
+      subtitle: [
+        scope,
+        `${resultCount} result${Number(resultCount) === 1 ? '' : 's'} returned`,
+        providerCount != null && Number(providerCount) !== Number(resultCount)
+          ? `${providerCount} available from Google`
+          : '',
+        searches != null ? `${searches} SerpApi search${Number(searches) === 1 ? '' : 'es'}` : '',
+      ].filter(Boolean).join(' · '),
+      actionUrl: payload.google_sports_url,
+      actionLabel: 'Open Google Sports',
       items,
     };
   }
@@ -1111,7 +1242,7 @@ class StructuredResultsRenderer {
   }
 
   _renderCollection(collection) {
-    const kind = ['product', 'hotel', 'local', 'flight', 'video', 'weather', 'image'].includes(collection.kind)
+    const kind = ['product', 'hotel', 'local', 'flight', 'video', 'weather', 'image', 'sport'].includes(collection.kind)
       ? collection.kind
       : 'generic';
     const layout = ['rail', 'list', 'metrics', 'gallery'].includes(collection.layout)

@@ -56,6 +56,7 @@ const expectedTools = [
   'serpapi_google_images_light',
   'serpapi_google_news_light',
   'serpapi_google_shopping_light',
+  'serpapi_google_sports',
   'serpapi_google_trends',
   'serpapi_google_trending_now',
   'serpapi_tripadvisor',
@@ -247,6 +248,31 @@ const html = renderer.render({{
       multiple_sources: true,
       extensions: ['Black', 'Bluetooth'],
       installment: {{price: '$33.33', period: 6}}
+    }}]
+  }},
+  serpapi_google_sports: {{
+    query: 'Los Angeles Lakers',
+    sport: 'basketball',
+    entity_type: 'team',
+    tab: 'games',
+    results_count: 12,
+    provider_results_count: 12,
+    serpapi_searches_used: 2,
+    google_sports_url: 'https://www.google.com/search?kgmid=/m/0jmk7',
+    results: [{{
+      kind: 'game',
+      title: 'Los Angeles Lakers vs Boston Celtics',
+      url: 'https://serpapi.com/search.json?game=1',
+      group: 'Regular season',
+      status_original: 'Final',
+      start_time: '2026-08-04T02:00:00Z',
+      teams: [
+        {{name: 'Los Angeles Lakers', short_code: 'LAL', score: 112, thumbnail: 'https://images.example/lakers.png'}},
+        {{name: 'Boston Celtics', short_code: 'BOS', score: 108}}
+      ],
+      league: {{name: 'NBA'}},
+      venue: {{name: 'Example Arena', location: 'Los Angeles'}},
+      highlights: [{{title: 'Game recap', url: 'https://video.example/recap'}}]
     }}]
   }},
   serpapi_google_trends: {{
@@ -445,6 +471,10 @@ for (const expected of [
   '1,500 reviews', '20% OFF', 'Multiple stores', 'Audio Shop',
   'Free delivery', 'Installment: $33.33 for 6 months', 'Black · Bluetooth',
   'View offer', 'Open Google Shopping',
+  'Google Sports', 'Los Angeles Lakers', 'basketball · team · games',
+  '12 results returned', '2 SerpApi searches', 'Los Angeles Lakers vs Boston Celtics',
+  'LAL 112 · BOS 108', 'Final', 'NBA', 'Regular season',
+  'Example Arena · Los Angeles', 'Highlight: Game recap', 'Open Google Sports',
   'Google Trends', 'AI agents, AI assistants', 'Latest 83', 'Average 61',
   'Peak 83', '+9 from previous', '+28 over period', 'Open Google Trends',
   'Google Trends · Trending Now', 'Current trends in US', 'Past 24 hours',
@@ -475,7 +505,7 @@ for (const expected of [
 }}
 if (html.includes('flight_numbers')) process.exit(4);
 if (html.includes('https://serpapi.example/unsafe-thumb.jpg')) process.exit(9);
-if ((html.match(/structured-results-preview/g) || []).length !== 19) process.exit(5);
+if ((html.match(/structured-results-preview/g) || []).length !== 20) process.exit(5);
 
 if (!renderer.register('custom_demo', payload => ({{
   kind: 'generic',
@@ -491,6 +521,95 @@ for (const expected of ['Custom', 'Extension works', 'New adapter', 'Ready', 'st
   if (!customHtml.includes(expected)) process.exit(7);
 }}
 if (customHtml.includes('structured-results-scroll-button')) process.exit(8);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
+def test_google_sports_renderer_formats_standings_and_league_stats():
+    script = f"""
+process.env.TZ = 'America/Los_Angeles';
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const escapeHtml = value => String(value)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const sandbox = {{
+  URL, window: {{}}, console,
+  Utils: {{
+    escapeHtml,
+    safeHttpUrlForAttr: value => {{
+      try {{
+        const parsed = new URL(String(value));
+        return ['http:', 'https:'].includes(parsed.protocol) ? escapeHtml(parsed.href) : '';
+      }} catch (_error) {{ return ''; }}
+    }}
+  }}
+}};
+vm.createContext(sandbox);
+vm.runInContext(source, sandbox);
+const renderer = sandbox.window.structuredResultsRenderer;
+
+const gamesHtml = renderer.render({{
+  serpapi_google_sports: {{
+    query: 'Los Angeles Dodgers', sport: 'baseball', entity_type: 'team',
+    tab: 'games', results_kind: 'game', results_count: 12, provider_results_count: 40,
+    results: [{{
+      kind: 'game', title: 'Arizona Diamondbacks vs Los Angeles Dodgers',
+      status_original: 'Final', start_time: '2026-07-12T20:10:00Z',
+      teams: [
+        {{name: 'Arizona Diamondbacks', short_code: 'AZ', score: 5, thumbnail: 'https://images.example/diamondbacks.png'}},
+        {{name: 'Los Angeles Dodgers', short_code: 'LAD', score: 3, thumbnail: 'https://images.example/dodgers.png'}}
+      ],
+      league: {{name: 'MLB'}},
+      venue: {{name: 'Dodger Stadium', location: 'Los Angeles'}}
+    }}]
+  }}
+}});
+for (const expected of [
+  'structured-results-sport', 'structured-results-layout-list',
+  'structured-result-card-sport', 'Arizona Diamondbacks vs Los Angeles Dodgers',
+  'AZ 5 · LAD 3', 'Final', 'Jul 12, 2026', '1:10 PM PDT',
+  'Dodger Stadium · Los Angeles', '12 results returned', '40 available from Google'
+]) if (!gamesHtml.includes(expected)) process.exit(1);
+if (gamesHtml.includes('2026-07-12T20:10:00Z')) process.exit(4);
+if (gamesHtml.includes('structured-results-scroll-button')) process.exit(5);
+if (gamesHtml.includes('diamondbacks.png') || gamesHtml.includes('dodgers.png')) process.exit(6);
+
+const standingsHtml = renderer.render({{
+  serpapi_google_sports: {{
+    query: 'Los Angeles Lakers', sport: 'basketball', entity_type: 'team',
+    tab: 'standings', results_kind: 'standing', provider_results_count: 30,
+    results: [{{
+      kind: 'standing', title: 'Lakers', rank: 4, group: 'Western Conference',
+      league_movement: 'Clinched playoff berth', thumbnail: 'https://images.example/lakers.png',
+      stats: [
+        {{title: 'Wins', short_title: 'W', value: '53'}},
+        {{title: 'Losses', short_title: 'L', value: '29'}}
+      ]
+    }}]
+  }}
+}});
+for (const expected of [
+  'Google Sports', 'standings', 'Lakers', '#4', 'Western Conference',
+  'Clinched playoff berth', 'W 53 · L 29'
+]) if (!standingsHtml.includes(expected)) process.exit(2);
+
+const statsHtml = renderer.render({{
+  serpapi_google_sports: {{
+    query: 'NBA', sport: 'basketball', entity_type: 'league',
+    tab: 'stats', results_kind: 'stat', provider_results_count: 40,
+    results: [{{
+      kind: 'stat', title: 'Luka Doncic', rank: 1, group: 'Points per game',
+      team: {{name: 'Lakers'}}, stats: [{{title: 'PPG', value: '33.5'}}]
+    }}]
+  }}
+}});
+for (const expected of [
+  'NBA', 'league · stats', 'Luka Doncic', '33.5', '#1', 'Lakers',
+  'Points per game', 'PPG 33.5'
+]) if (!statsHtml.includes(expected)) process.exit(3);
 """
 
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)

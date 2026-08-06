@@ -292,6 +292,7 @@ JSON object printed to stdout:
 | `serpapi_google_news_light` | Fast topic-specific Google News discovery with headlines, sources, snippets, grouped Top Stories, and exact article URLs |
 | `serpapi_google_trends` | Query-driven Google Trends time series, regional comparisons, and rising/top related queries or topics |
 | `serpapi_google_trending_now` | Seedless current-trend discovery with volume/growth signals and explicit selected-trend news drill-down |
+| `serpapi_google_sports` | Google Sports schedules, scores, direct-game line or period scores, box scores, viewing options, recap links, standings, players, brackets, league stats, and rankings with optional query-to-KGMID resolution |
 | `serpapi_ebay_search` | eBay listing discovery with prices, condition, shipping, images, and product IDs |
 | `serpapi_ebay_product` | Focused eBay listing details by numeric product ID |
 | `serpapi_home_depot` | SerpApi Home Depot product search with store/ZIP filters |

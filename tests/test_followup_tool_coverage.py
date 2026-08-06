@@ -829,6 +829,43 @@ LOCAL_TOOL_SAMPLES = {
             },
         }
     ),
+    "serpapi_google_sports": _case(
+        {
+            "engine": "google_sports",
+            "query": "Los Angeles Lakers",
+            "kgmid": "/m/0jmk7",
+            "kgmid_source": "google_knowledge_graph",
+            "sport": "basketball",
+            "sport_code": "bs",
+            "entity_type": "team",
+            "tab": "games",
+            "tab_code": "gm",
+            "results_kind": "game",
+            "results_count": 1,
+            "provider_results_count": 12,
+            "serpapi_searches_used": 2,
+            "source": "SerpApi Google Sports",
+            "results": [
+                {
+                    "kind": "game",
+                    "position": 1,
+                    "group": "Regular season",
+                    "title": "Los Angeles Lakers vs Boston Celtics",
+                    "url": "https://serpapi.com/search.json?game=1",
+                    "kgmid": "/g/11game1",
+                    "status_original": "Final",
+                    "teams": [
+                        {"name": "Los Angeles Lakers", "score": 112, "kgmid": "/m/0jmk7"},
+                        {"name": "Boston Celtics", "score": 108, "kgmid": "/m/0jm3v"},
+                    ],
+                    "league": {"name": "NBA", "kgmid": "/m/05jvx"},
+                }
+            ],
+            "seasons": [
+                {"name": "2025-26", "kgmid": "/g/11season", "selected": True}
+            ],
+        }
+    ),
     "serpapi_google_trends": _case(
         {
             "engine": "google_trends",

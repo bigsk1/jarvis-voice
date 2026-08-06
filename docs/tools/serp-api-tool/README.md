@@ -2,7 +2,7 @@
 
 Jarvis provides a family of focused SerpApi tools for shopping, indexed-web
 source discovery, existing-image discovery, news, trend analysis, local places,
-travel, and YouTube. Each tool has its own schema and normalized result shape so
+sports, travel, and YouTube. Each tool has its own schema and normalized result shape so
 Tool RAG can select a narrow capability instead of routing every request through
 one ambiguous search tool.
 
@@ -17,6 +17,7 @@ discover general public webpages and source URLs.
 |---|---|---|
 | `serpapi_amazon_search` | `amazon`, `amazon_product` | Amazon listing discovery, ASIN details, prices, ratings, Prime, delivery, stock, and product comparison |
 | `serpapi_google_shopping_light` | `google_shopping_light` | Fast multi-retailer product discovery and price comparison with merchant, delivery, rating, sale, thumbnail, and offer links |
+| `serpapi_google_sports` | `google_sports` plus conditional `google` resolver | Current game schedules and scores, game details, standings, players, brackets, league statistics, and rankings |
 | `serpapi_search_index` | `search_index` | Ranked indexed-web sources for grounding, datasets, and workflows; fetch returned URLs separately |
 | `serpapi_google_images_light` | `google_images_light` | Existing web images with full-size URLs, thumbnails, source pages, dimensions, usage-rights filters, and pagination |
 | `serpapi_google_news_light` | `google_news_light` | Fast topic-specific recent news, grouped Top Stories, source URLs, localization, and result-offset pagination |
@@ -60,7 +61,7 @@ The family uses these common layers:
 - `jarvis-web/client/js/structured-results.js` renders focused product, place,
   image-gallery, multi-retailer shopping, hotel, flight, Tripadvisor, Google
   Local, Google Local Services, Google News Light, Google Trends, Trending Now,
-  Search Index, eBay, Yelp, Maps, and YouTube cards.
+  Google Sports, Search Index, eBay, Yelp, Maps, and YouTube cards.
 
 Raw provider JSON is available only through each tool's `include_raw` debug
 option. Normal conversational and workflow calls should leave it off.
@@ -252,6 +253,57 @@ calling an offer the best deal. Comparison workflows can pass the compact
 candidate rows directly to later ranking, Canvas, or reporting steps. Use
 `serpapi_amazon_search` instead when Amazon-specific Prime, delivery, stock, or
 ASIN detail is required.
+
+### Google Sports
+
+Ask for a team or league schedule with a normal query:
+
+```json
+{
+  "query": "Los Angeles Lakers",
+  "sport": "basketball",
+  "entity_type": "team",
+  "tab": "games",
+  "max_results": 10
+}
+```
+
+The Google Sports engine requires a Google Knowledge Graph ID. When `kgmid` is
+omitted, Jarvis performs one bounded `google` resolver request and then the
+`google_sports` request, so `serpapi_searches_used` is normally `2`. A workflow
+can pass a known `kgmid` directly for a deterministic one-search call.
+
+League and team views support `games`, `standings`, `players`, and `brackets`;
+league views additionally support `stats` and `rankings`. Game entities need no
+tab except the optional American-football `overview`. Returned rows normalize
+matchups, scores, status and dates, team and game KGMIDs, league/venue details,
+standings statistics, players, highlights, and season KGMIDs. Follow-ups can use
+those exact IDs to switch views or seasons without repeating entity discovery.
+
+A direct game result also preserves returned season records and line or period
+scores, normalized full `box_score` rows, compact `box_score_highlights`, official
+`more_info` links, and `watch` choices for upcoming or ongoing games. Availability
+depends on the sport, game state, market, and Google's response. Treat the compact
+highlight list as a ranking aid and use the full player rows when explaining why a
+performance mattered.
+
+Without a time filter, team and league game results are selected around the
+current UTC time instead of taking the oldest edge of Google's returned
+schedule. The normalized list puts recent games newest-first, then fills the
+remaining result budget with the nearest upcoming games. `selection_mode` and
+`selection_anchor` make that choice explicit in tool and follow-up context.
+
+For bounded game windows, use `middle_time`, or combine `after_time` and
+`before_time`, with UTC values such as `2026-08-05T12:30:00Z`. Results are live
+sports data, while general coverage and commentary belong in
+`serpapi_google_news_light`.
+
+For a readable drill-down, use `/game_brief <sport> <team>`, such as
+`/game_brief baseball Los Angeles Dodgers`. The recipe makes Google Sports the
+required factual source and can optionally use Brave LLM Context, Brave MCP
+search, and provider-native server-side search for recap narrative. Missing
+optional search tools do not hide or fail the workflow. Use `football` for soccer
+and `american_football` for NFL-style football.
 
 ### Search Index source discovery
 
@@ -589,7 +641,7 @@ The workflow helper model receives only the normalized Amazon rows and has
 server-side tools disabled, so it cannot silently replace the deterministic
 source step with another search provider.
 
-Three additional shared recipes combine bounded SerpApi results without crawling
+Four additional shared recipes combine bounded SerpApi results without crawling
 source pages:
 
 - `/buying_brief <product>` (also `/price_compare`) compares Google Shopping
@@ -614,12 +666,20 @@ source pages:
   can be one lower when Yelp returns no selected result for review enrichment.
   The recipe does not crawl provider websites or contact businesses, optionally
   saves bounded evidence to Stash, and creates a dated Canvas shortlist and
-  verification checklist.
+  recommendation.
+- `/game_brief <sport> <team>` (also `/game_recap` and `/sports_brief`) resolves
+  the latest game directly, builds a concise score, status, line or period score,
+  player-performance, and watch-or-recap report, and publishes it to Canvas.
+  Google Sports is required; Brave LLM Context and Brave MCP search are optional,
+  and provider-native server-side search remains available to the Canvas helper.
 
-All three recipes set `disable_server_side_tools: true`, so their Canvas helper
-calls can synthesize only the explicit workflow results. They remain usable
-through their slash triggers, the workflow meta-tool, APIs, and scheduled tasks;
-the required product, location, or service is the normal workflow query argument.
+The buying, vacation, and local-services recipes set
+`disable_server_side_tools: true`, so their Canvas helper calls can synthesize
+only the explicit workflow results. Game Brief deliberately leaves optional
+provider-native search available for current recap context while keeping Google
+Sports authoritative. All four remain usable through slash triggers, the
+workflow meta-tool, APIs, and scheduled tasks; their required product, location,
+service, or sport-and-team input is the normal workflow query argument.
 
 ## Follow-up context and Web UI
 

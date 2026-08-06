@@ -309,6 +309,7 @@ the same orchestration turn; it is not a durable background run.
 | `daily_status_visual.json` | `/status_visual` (also `/status_image`, `/daily_visual`) | Same as `/status` (including crypto charts) plus `generate_image` and dashboard image at top of Canvas |
 | `deep_dive.json` | `/deep_dive <url>` (also `/dive`) | Screenshot + crawl + comprehensive canvas analysis with pros/cons and links |
 | `deep_research.json` | `/research <topic>` | Multi-source research with validation |
+| `game_brief.json` | `/game_brief <sport> <team>` (also `/game_recap`, `/sports_brief`) | Create a current game Canvas brief from structured Google Sports details, with optional Brave narrative enrichment |
 | `github_ai_radar_daily.json` | `/github_ai_radar` (also `/ai_radar`, `/ai-radar`) | Search for current GitHub AI project signals with Brave MCP, optionally feature a YouTube result, gather Brave LLM Context, and keep one current Canvas page refreshed |
 | `jarvis_self_check.json` | `/jarvis_self_check` (also `/self_check`, `/jarvis_health`) | Local Jarvis host health check with deduped alerts and one refreshed Canvas health page |
 | `knowledge_snapshot.json` | `/knowledge <topic>` | Search active-mode Memory, Intel, and prior conversations without new web research, then create or refresh one source-attributed Canvas briefing per topic |

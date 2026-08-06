@@ -564,6 +564,7 @@ The authoritative list is `data/workflows/*.json` plus any private `data/workflo
 | `daily_status_visual.json` | `/status_visual` | Daily status with generated dashboard image. |
 | `deep_dive.json` | `/deep_dive` | Screenshot and analyze a URL with resilient crawl fallback. |
 | `deep_research.json` | `/research` | Multi-source research with validation and Canvas output. |
+| `game_brief.json` | `/game_brief` | Build a current game brief from required Google Sports facts and optional Brave narrative evidence. |
 | `github_ai_radar_daily.json` | `/github_ai_radar` | Refresh one rolling GitHub AI Radar Canvas page with search, YouTube, and Brave context. |
 | `jarvis_self_check.json` | `/jarvis_self_check` | Check host health, create alerts on problems, and update one Canvas health page. |
 | `local_services_compare.json` | `/local_services_compare` | Compare local service providers from Google Local Services, Google Local, and bounded Yelp review evidence using the active mode location. |

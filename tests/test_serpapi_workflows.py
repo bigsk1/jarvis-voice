@@ -118,6 +118,60 @@ def test_local_services_compare_uses_required_service_and_mode_location_defaults
     assert yelp_step["on_fail"] == "continue"
 
 
+def test_game_brief_uses_structured_sports_with_optional_web_enrichment():
+    workflow = _load_workflow("game_brief")
+    tools = [step["tool"] for step in workflow["steps"]]
+
+    assert workflow["disable_server_side_tools"] is False
+    assert workflow["triggers"] == {
+        "explicit": ["/game_brief", "/game_recap", "/sports_brief"],
+        "patterns": [],
+        "keywords": [],
+    }
+    assert workflow["variables"]["subject"] == {
+        "from": "query",
+        "extract": "main_subject",
+    }
+    assert workflow["variables"]["sport"] == {
+        "from": "query",
+        "extract": "first_words",
+        "max_words": 1,
+    }
+    assert "crawl_url" not in tools
+    assert "stash" not in tools
+
+    sports_step = _step(workflow, "serpapi_google_sports")
+    assert sports_step["params"] == {
+        "query": "latest ${subject} game",
+        "sport": "${sport}",
+        "entity_type": "game",
+        "max_results": 1,
+        "no_cache": False,
+    }
+    assert sports_step["required"] is True
+
+    for optional_tool in (
+        "brave_llm_context",
+        "mcp_brave_search_brave_web_search",
+    ):
+        step = _step(workflow, optional_tool)
+        assert step["required"] is False
+        assert step["on_fail"] == "continue"
+
+    canvas_step = _step(workflow, "canvas")
+    assert canvas_step["required"] is True
+    assert canvas_step["action"] == "create"
+    assert canvas_step["llm_variable_max_chars"] == 30000
+    assert canvas_step["llm_output_validation"]["required_patterns"] == [
+        "# Game Brief:",
+        "## At a Glance",
+        "## Game Story",
+        "## Key Performers",
+        "## Watch or Recap",
+        "## Sources and Confidence",
+    ]
+
+
 def test_new_serpapi_workflows_keep_stash_optional_and_canvas_validated():
     for workflow_name in (
         "vacation_reconnaissance",

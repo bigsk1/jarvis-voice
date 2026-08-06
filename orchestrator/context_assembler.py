@@ -744,6 +744,12 @@ class ContextAssembler:
             return 8000
         if "bookmark" in lowered:
             return 5000
+        if lowered == "serpapi_google_sports":
+            # A direct game lookup may add a compact box-score highlight set
+            # and viewing options. Team schedule previews remain well below
+            # this cap, while game details need more than the generic search
+            # budget to stay useful to the response model.
+            return 10000
         if "search" in lowered or "fetch" in lowered:
             return 6000
         if lowered.startswith("serpapi_"):
@@ -1694,6 +1700,186 @@ class ContextAssembler:
             }
         return preview
 
+    def build_google_sports_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep sports identity, view, counts, and durable follow-up IDs compact."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "engine",
+            "query",
+            "resolver_query",
+            "kgmid",
+            "kgmid_source",
+            "sport",
+            "sport_code",
+            "entity_type",
+            "tab",
+            "tab_code",
+            "country",
+            "language",
+            "middle_time",
+            "after_time",
+            "before_time",
+            "selection_mode",
+            "selection_anchor",
+            "season_kgmid",
+            "results_kind",
+            "results_count",
+            "provider_results_count",
+            "max_results",
+            "top_url",
+            "search_id",
+            "google_sports_url",
+            "serpapi_searches_used",
+            "available_sections",
+            "source",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=2,
+                )
+
+        seasons = data.get("seasons")
+        if isinstance(seasons, list) and seasons:
+            preview["seasons"] = self.build_preview_value(
+                seasons[:8], parent_key="seasons", max_depth=3
+            )
+        team_stats = data.get("team_stats")
+        if isinstance(team_stats, (dict, list)):
+            preview["team_stats"] = self.build_preview_value(
+                team_stats, parent_key="team_stats", max_depth=3
+            )
+        for key in ("watch", "more_info"):
+            value = data.get(key)
+            if isinstance(value, (dict, list)) and value:
+                preview[key] = self.build_preview_value(
+                    value, parent_key=key, max_depth=5
+                )
+        box_score_highlights = data.get("box_score_highlights")
+        if isinstance(box_score_highlights, list) and box_score_highlights:
+            preview["box_score_highlights"] = [
+                self.build_preview_value(
+                    item,
+                    parent_key="box_score_highlights",
+                    max_depth=5,
+                )
+                for item in box_score_highlights[:16]
+                if isinstance(item, dict)
+            ]
+        return preview
+
+    def build_google_sports_source_candidates_preview(
+        self,
+        data: Any,
+        *,
+        max_items: int = 12,
+    ) -> list[dict[str, Any]]:
+        """Keep complete sports rows without bulky logos, thumbnails, or raw data."""
+        if not isinstance(data, dict):
+            return []
+        results = data.get("results")
+        if not isinstance(results, list):
+            return []
+
+        candidates: list[dict[str, Any]] = []
+        for index, item in enumerate(results[:max_items], 1):
+            if not isinstance(item, dict):
+                continue
+
+            item_kind = str(item.get("kind") or data.get("results_kind") or "").lower()
+            candidate: dict[str, Any] = {"position": item.get("position", index)}
+            if item_kind and item_kind != str(data.get("results_kind") or "").lower():
+                candidate["kind"] = item_kind
+            for key in (
+                "title",
+                "name",
+                "kgmid",
+                "group",
+                "division",
+                "rank",
+                "date",
+                "time",
+                "start_time",
+                "end_time",
+                "tournament",
+                "stadium",
+                "league_movement",
+                "player_position",
+                "jersey_number",
+                "value",
+            ):
+                value = item.get(key)
+                if value not in (None, "", [], {}):
+                    candidate[key] = value
+
+            status = item.get("status_original") or item.get("status")
+            if status not in (None, ""):
+                candidate["status"] = status
+
+            teams = item.get("teams")
+            if isinstance(teams, list):
+                compact_teams = []
+                for team in teams[:4]:
+                    if not isinstance(team, dict):
+                        continue
+                    compact_team = {
+                        key: team[key]
+                        for key in (
+                            "name",
+                            "short_code",
+                            "score",
+                            "win",
+                        )
+                        if team.get(key) not in (None, "")
+                    }
+                    if "score" not in compact_team and team.get("score_original") not in (None, ""):
+                        compact_team["score"] = team["score_original"]
+                    for key in ("season_record", "linescore"):
+                        value = team.get(key)
+                        if value not in (None, "", [], {}):
+                            compact_team[key] = value
+                    if compact_team:
+                        compact_teams.append(compact_team)
+                if compact_teams:
+                    candidate["teams"] = compact_teams
+
+            for key in ("league", "venue", "team"):
+                value = item.get(key)
+                if isinstance(value, dict):
+                    compact_value = {
+                        field: value[field]
+                        for field in ("name", "short_name", "short_code", "location")
+                        if value.get(field) not in (None, "")
+                    }
+                    if compact_value:
+                        candidate[key] = compact_value
+                elif value not in (None, "", [], {}):
+                    candidate[key] = value
+
+            stats = item.get("stats")
+            if isinstance(stats, list):
+                compact_stats = []
+                for stat in stats[:8]:
+                    if not isinstance(stat, dict):
+                        continue
+                    compact_stat = {
+                        key: stat[key]
+                        for key in ("title", "short_title", "value", "values")
+                        if stat.get(key) not in (None, "", [], {})
+                    }
+                    if compact_stat:
+                        compact_stats.append(compact_stat)
+                if compact_stats:
+                    candidate["stats"] = compact_stats
+
+            candidates.append(candidate)
+        return candidates
+
     def build_google_local_data_preview(self, data: Any) -> dict[str, Any]:
         """Keep Google Local provenance, pagination, ads, and related searches compact."""
         if not isinstance(data, dict):
@@ -2094,6 +2280,8 @@ class ContextAssembler:
                 data_preview = self.build_google_news_light_data_preview(data)
             elif normalized_tool_name == "serpapi_google_shopping_light":
                 data_preview = self.build_google_shopping_light_data_preview(data)
+            elif normalized_tool_name == "serpapi_google_sports":
+                data_preview = self.build_google_sports_data_preview(data)
             elif normalized_tool_name == "serpapi_google_trends":
                 data_preview = self.build_google_trends_data_preview(data)
             elif normalized_tool_name == "serpapi_google_trending_now":
@@ -2112,10 +2300,13 @@ class ContextAssembler:
                     "data_preview": data_preview,
                 },
             }
-        source_candidates = self.build_source_candidates_preview(
-            data,
-            tool_name=tool_name,
-        )
+        if (tool_name or "").lower() == "serpapi_google_sports":
+            source_candidates = self.build_google_sports_source_candidates_preview(data)
+        else:
+            source_candidates = self.build_source_candidates_preview(
+                data,
+                tool_name=tool_name,
+            )
         if source_candidates and (tool_name or "").lower() != "workflow":
             preview_payload["llm_context_preview"]["source_candidates"] = source_candidates
         if result.get("error"):

@@ -120,6 +120,8 @@ class ToolExecutor:
             return 120  # One Google News Light request with a 90s HTTP allowance
         if tool_name == "serpapi_google_shopping_light":
             return 120  # One Google Shopping Light request with a 90s HTTP allowance
+        if tool_name == "serpapi_google_sports":
+            return 200  # Optional Google resolver plus a Google Sports request
         if tool_name == "serpapi_google_images_light":
             return 160  # Search plus optional strict 30s top-image Stash download
         if tool_name == "serpapi_google_local":
