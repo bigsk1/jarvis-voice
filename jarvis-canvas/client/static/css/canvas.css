@@ -395,6 +395,7 @@
 .page-view {
     max-width: 900px;
     margin: 0 auto;
+    min-width: 0;
 }
 
 .page-header {
@@ -641,6 +642,9 @@
 .page-content {
     font-size: 1rem;
     line-height: 1.8;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .page-content h1, .page-content h2, .page-content h3,
@@ -665,6 +669,8 @@
 .page-content a {
     color: var(--accent);
     text-decoration: none;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .page-content a:hover {
@@ -717,6 +723,48 @@
     border: 1px solid var(--border-color);
     border-radius: 8px;
     overflow: hidden;
+}
+
+.page-content .canvas-table-scroll {
+    width: 100%;
+    max-width: 100%;
+    margin: 1.5em 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--text-muted) var(--bg-secondary);
+}
+
+.page-content .canvas-table-scroll::-webkit-scrollbar {
+    height: 10px;
+}
+
+.page-content .canvas-table-scroll::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+}
+
+.page-content .canvas-table-scroll::-webkit-scrollbar-thumb {
+    background: var(--text-muted);
+    border: 2px solid var(--bg-secondary);
+    border-radius: 999px;
+}
+
+.page-content .canvas-table-scroll table {
+    width: max-content;
+    min-width: 100%;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+}
+
+.page-content .canvas-table-scroll a {
+    overflow-wrap: normal;
+    word-break: normal;
 }
 
 .page-content th, .page-content td {
@@ -1027,6 +1075,18 @@
     .page-content pre {
         border: 1px solid #ccc !important;
         background: #f5f5f5 !important;
+    }
+    .page-content .canvas-table-scroll {
+        overflow: visible !important;
+        border: 0 !important;
+    }
+    .page-content .canvas-table-scroll table {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+    .page-content .canvas-table-scroll a {
+        overflow-wrap: anywhere;
+        word-break: break-word;
     }
     .page-view-title {
         color: black !important;

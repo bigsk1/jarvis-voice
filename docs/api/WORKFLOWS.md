@@ -282,6 +282,7 @@ HTTP Status: 404
 | Workflow ID | Triggers | Description |
 |-------------|----------|-------------|
 | `bookmark_search` | `*` | Search bookmarks (catch-all style trigger) |
+| `buying_brief` | `/buying_brief`, `/price_compare` | Google Shopping Light + Amazon + eBay comparison with optional Stash evidence and Canvas recommendation |
 | `crypto_market_report` | `/crypto` | Crypto prices, news, analysis, email report (default: BTC, SOL) |
 | `daily_status` | `/status`, `/daily`, `/briefing`, `/recap` | Weather, crypto (+ 7d `crypto_chart` embeds), stocks, alerts, reminders, health → Canvas report |
 | `daily_status_visual` | `/status_visual`, `/status_image`, `/daily_visual` | Same as `daily_status` (including Canvas crypto charts) plus AI-generated dashboard image |
@@ -294,6 +295,7 @@ HTTP Status: 404
 | `serpapi_amazon_search` | `/serpapi_amazon`, `/amazon_search`, `/serpapi` | Amazon listing search, Stash export, and Canvas comparison |
 | `server_health_check` | `/health`, `/server_check` | SSH health check using hosts from config/ssh.json |
 | `url_ingest` | `/url_ingest`, `/ingest_url`, `/learn_url` | Fetch URL, extract facts, create intel file, ingest to memory for RAG |
+| `vacation_reconnaissance` | `/vacation_reconnaissance`, `/vacation_recon`, `/destination_scout` | Required-location, crawl-free weather and destination reconnaissance with optional Stash evidence and Canvas |
 | `weather_watch` | `/weather_watch`, `/garden_watch` | Weather / garden watch |
 | `web_archive` | `/archive` | Archive webpage to stash with Canvas summary |
 | `youtube_ingest` | `/youtube_ingest`, `/yt_ingest`, `/ingest_video` | Ingest YouTube video content |

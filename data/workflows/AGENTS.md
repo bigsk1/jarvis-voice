@@ -770,6 +770,7 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 | Workflow | Command | Key patterns |
 |----------|---------|--------------|
 | `bookmark_search.json` | `* <query>` | Explicit prefix trigger, Firefox bookmark lookup |
+| `buying_brief.json` | `/buying_brief <product>` | Google Shopping Light + Amazon + eBay, optional Stash evidence, validated Canvas recommendation |
 | `crypto_market_report.json` | `/crypto [coins]` | Multiple crypto_price calls, LLM formatting |
 | `daily_status.json` | `/status` | Static variables, nested extracts, multi-tool dashboard |
 | `daily_status_visual.json` | `/status_visual` | Same crypto pipeline as `daily_status` (`crypto_chart`, fenced `crypto-chart` blocks); `generate_image` + `image_ref` at top of canvas |
@@ -782,6 +783,7 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 | `serpapi_amazon_search.json` | `/serpapi_amazon <query>` (also `/amazon_search`, `/serpapi`) | SerpApi Amazon listings, Stash export, Canvas comparison |
 | `server_health_check.json` | `/health [host]` | Default value, ssh_remote, get_time |
 | `url_ingest.json` | `/url_ingest <url>` | crawl_url, stash, text_summarizer, manage_intel (auto_ingest), search_memory |
+| `vacation_reconnaissance.json` | `/vacation_reconnaissance <location>` | Required-location weather + bounded Tripadvisor, Google Local, News Light, Images Light, optional Stash, and Canvas; no crawl |
 | `weather_watch.json` | `/weather_watch` | Environment-backed default location, condition branching, alerts, Canvas |
 | `web_archive.json` | `/archive <url>` | URL extraction, crawl_url transform, stash save |
 | `youtube_ingest.json` | `/youtube_ingest <url>` | Video and transcript ingestion, fact extraction, keywords, Canvas briefing |

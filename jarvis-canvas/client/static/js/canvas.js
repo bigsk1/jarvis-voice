@@ -267,6 +267,27 @@ function renderMarkdown(content) {
     return DOMPurify.sanitize(marked.parse(resolved));
 }
 
+/**
+ * Keep wide Markdown tables inside the Canvas content column. The table keeps
+ * its natural width while this focusable region owns horizontal scrolling.
+ */
+function setupScrollableTables(root = document) {
+    const tables = root?.querySelectorAll?.('.page-content table') || [];
+
+    tables.forEach(table => {
+        if (table.closest('.canvas-table-scroll')) return;
+
+        const scroll = document.createElement('div');
+        scroll.className = 'canvas-table-scroll';
+        scroll.setAttribute('role', 'region');
+        scroll.setAttribute('aria-label', 'Scrollable table');
+        scroll.tabIndex = 0;
+
+        table.parentNode.insertBefore(scroll, table);
+        scroll.appendChild(table);
+    });
+}
+
 function inferCryptoChartConfigFromPage(page) {
     const title = String(page?.title || '').trim();
     if (!title) return null;
@@ -1467,6 +1488,7 @@ function selectPage(id) {
             pageContentEl.insertAdjacentHTML('afterbegin', buildCryptoChartEmbedHtml(inferredChart));
         }
     }
+    setupScrollableTables(pageView);
     
     // Re-highlight code blocks
     pageView.querySelectorAll('pre code').forEach(block => {

@@ -575,7 +575,7 @@ Then pass a selected URL to `serpapi_youtube`, `youtube_transcript`, or
 `youtube_video`. SerpApi detail/transcript fallback is useful when yt-dlp is
 blocked by cookies, authentication, or transcript availability.
 
-## Amazon workflow
+## Shared SerpApi workflows
 
 The shared `data/workflows/serpapi_amazon_search.json` recipe runs
 `serpapi_amazon_search`, saves a normalized text export to Stash, and creates a
@@ -588,6 +588,29 @@ Canvas comparison report. Supported explicit commands are:
 The workflow helper model receives only the normalized Amazon rows and has
 server-side tools disabled, so it cannot silently replace the deterministic
 source step with another search provider.
+
+Two additional shared recipes combine bounded SerpApi results without crawling
+source pages:
+
+- `/buying_brief <product>` (also `/price_compare`) compares Google Shopping
+  Light, Amazon, and eBay. Google Shopping and Amazon use their existing
+  active-mode location/postal defaults; eBay receives
+  `JARVIS_DEFAULT_POSTAL_CODE` as a shipping-area bias when configured. The
+  workflow makes three normal SerpApi searches, does not fan out into Amazon
+  product details, optionally saves a compact Stash snapshot, and creates a
+  dated Canvas recommendation.
+- `/vacation_reconnaissance <location>` (also `/vacation_recon` and
+  `/destination_scout`) requires an explicit destination and does not fall back
+  to Jarvis's configured home location. It combines a seven-day weather
+  forecast with Tripadvisor attractions and restaurants, Google Local, Google
+  News Light, and Google Images Light. It makes five normal SerpApi searches,
+  does not request Tripadvisor enrichment, does not download images, optionally
+  saves bounded evidence to Stash, and creates a dated Canvas report.
+
+Both recipes set `disable_server_side_tools: true`, so their Canvas helper calls
+can synthesize only the explicit workflow results. They remain usable through
+their slash triggers, the workflow meta-tool, APIs, and scheduled tasks; the
+required product or location is the normal workflow query argument.
 
 ## Follow-up context and Web UI
 

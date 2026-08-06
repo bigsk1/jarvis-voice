@@ -292,6 +292,7 @@ the same orchestration turn; it is not a durable background run.
 | File | Command | Description |
 |------|---------|-------------|
 | `bookmark_search.json` | `* <query>` | Search Firefox bookmarks using the same prefix as the Firefox address bar |
+| `buying_brief.json` | `/buying_brief <product>` (also `/price_compare`) | Compare Google Shopping Light, Amazon, and eBay results with configured localization, optional Stash evidence, and a Canvas recommendation |
 | `crypto_market_report.json` | `/crypto [coins]` | Crypto prices with canvas report |
 | `daily_status.json` | `/status` | Weather, crypto (7d charts on Canvas), stocks, alerts, system health dashboard |
 | `daily_status_visual.json` | `/status_visual` (also `/status_image`, `/daily_visual`) | Same as `/status` (including crypto charts) plus `generate_image` and dashboard image at top of Canvas |
@@ -306,6 +307,7 @@ the same orchestration turn; it is not a durable background run.
 | `serpapi_amazon_search.json` | `/serpapi_amazon <query>` (also `/amazon_search`, `/serpapi`) | Search Amazon, save a normalized Stash export, and create a Canvas comparison report |
 | `server_health_check.json` | `/health <host>` | SSH health check on remote server |
 | `url_ingest.json` | `/url_ingest <url>` | Fetch any URL, create intel file, ingest to memory for RAG queries |
+| `vacation_reconnaissance.json` | `/vacation_reconnaissance <location>` (also `/vacation_recon`, `/destination_scout`) | Create a crawl-free weather, attractions, dining, local pulse, image, Stash, and Canvas destination report for a required location |
 | `weather_watch.json` | `/weather_watch` (also `/garden_watch`) | Default-location weather watch with canvas report and condition-specific alerts |
 | `web_archive.json` | `/archive <url>` | Fetch URL, save to stash, create canvas summary |
 | `youtube_ingest.json` | `/youtube_ingest <url>` | Download video + transcript, extract important facts/keywords, create canvas briefing |

@@ -553,6 +553,7 @@ The authoritative list is `data/workflows/*.json` plus any private `data/workflo
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | `bookmark_search.json` | `*` | Search the local Firefox bookmark export. |
+| `buying_brief.json` | `/buying_brief` | Compare Google Shopping Light, Amazon, and eBay with configured localization and create a Canvas buying recommendation. |
 | `crypto_market_report.json` | `/crypto` | Crypto prices with Canvas report. |
 | `daily_status.json` | `/status` | Weather, crypto, stocks, alerts, and system health dashboard. |
 | `daily_status_visual.json` | `/status_visual` | Daily status with generated dashboard image. |
@@ -565,6 +566,7 @@ The authoritative list is `data/workflows/*.json` plus any private `data/workflo
 | `serpapi_amazon_search.json` | `/serpapi_amazon` (also `/amazon_search`, `/serpapi`) | Search Amazon through SerpApi and save Stash and Canvas reports. |
 | `server_health_check.json` | `/health` | SSH health check for a remote server. |
 | `url_ingest.json` | `/url_ingest` | Crawl a URL, create an Intelligence file, and ingest it for RAG queries. |
+| `vacation_reconnaissance.json` | `/vacation_reconnaissance` | Create a crawl-free vacation report for a required location from weather, Tripadvisor, Google Local, News Light, and Images Light results. |
 | `weather_watch.json` | `/weather_watch` | Default-location weather watch with Canvas and alerts. |
 | `web_archive.json` | `/archive` | Fetch a URL, stash content, and create a Canvas summary. |
 | `youtube_ingest.json` | `/youtube_ingest` | Download video/transcript and create a briefing. |

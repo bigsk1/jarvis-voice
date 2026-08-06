@@ -9,7 +9,7 @@ import os
 import re
 import sys
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse, urlsplit, urlunsplit
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
@@ -132,10 +132,24 @@ def _http_url(value: Any) -> str | None:
     url = str(value or "").strip()
     if not url:
         return None
-    parsed = urlparse(url)
-    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+    parsed = urlsplit(url)
+    if (
+        parsed.scheme.lower() not in {"http", "https"}
+        or not parsed.netloc
+        or any(character.isspace() for character in parsed.netloc)
+    ):
         return None
-    return url
+
+    def encode_component(component: str, *, safe: str) -> str:
+        # Preserve valid provider escapes such as %20, but repair a literal
+        # percent sign before quoting other illegal URL characters.
+        protected = re.sub(r"%(?![0-9A-Fa-f]{2})", "%25", component)
+        return quote(protected, safe=safe)
+
+    path = encode_component(parsed.path, safe="/%:@!$&'()*+,;=-._~")
+    query = encode_component(parsed.query, safe="=&?/:;,+%@!$'()*[]-._~")
+    fragment = encode_component(parsed.fragment, safe="=&?/:;,+%@!$'()*[]-._~")
+    return urlunsplit((parsed.scheme.lower(), parsed.netloc, path, query, fragment))
 
 
 def normalize_locale(value: Any, label: str) -> str | None:

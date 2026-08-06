@@ -993,6 +993,7 @@ picker for the authoritative current surface.
 |---------|-------------|------------|
 | `* [query]` | Search Firefox bookmarks (like * in address bar) | bookmark_search (requires `data/bookmarks.html`) |
 | `/archive <url>` | Archive webpage to stash with Canvas summary | crawl_url, stash, canvas |
+| `/buying_brief <product>` (also `/price_compare`) | Compare Google Shopping Light, Amazon, and eBay and create a localized buying recommendation | serpapi_google_shopping_light, serpapi_amazon_search, serpapi_ebay_search, stash, canvas |
 | `/crypto [coins]` | Crypto prices, news, analysis, email report | get_time, crypto_price, brave_search, crawl_url, stash, canvas, send_email |
 | `/deep_dive <url>`, `/dive <url>` | Screenshot + crawl URL, comprehensive canvas summary | screenshot_url, crawl_url, stash, text_summarizer, canvas |
 | `/github_ai_radar` | Find current GitHub AI project signals and refresh a rolling Canvas report | Brave search, Brave LLM Context, optional YouTube search, crawl_url, stash, canvas |
@@ -1006,6 +1007,7 @@ picker for the authoritative current surface.
 | `/status_visual` | Status briefing + AI-generated dashboard image + same Canvas crypto charts as `/status` | get_time, weather, crypto_price, crypto_chart, stock_price, list_alerts, list_reminders, system_monitor, generate_image, canvas |
 | `/weather_watch`, `/garden_watch` | Weather watch for default location (`JARVIS_DEFAULT_LOCATION`); alerts for cold, wind, heat, or severe conditions | get_time, weather, create_alert, canvas |
 | `/url_ingest <url>` | Crawl URL, create intel file, ingest to memory | crawl_url, stash, text_summarizer, manage_intel, ingest_intel |
+| `/vacation_reconnaissance <location>` (also `/vacation_recon`, `/destination_scout`) | Required-location vacation reconnaissance with forecast, attractions, food, local pulse, images, optional Stash evidence, and Canvas | weather, serpapi_tripadvisor, serpapi_google_local, serpapi_google_news_light, serpapi_google_images_light, stash, canvas |
 | `/youtube_ingest <url>` | Download video + transcript, summarize, create study brief | youtube_transcript, youtube_video, stash, text_summarizer, canvas |
 | `/youtube_research <url>` | Download transcript, summarize, create study notes | youtube_transcript, stash, text_summarizer, canvas |
 | `/yt_dlp_release_watch` | Check for a stable yt-dlp release, create Canvas release notes, alert once, and acknowledge it | release_watch, git_release_notes, create_alert |

@@ -166,6 +166,34 @@ def test_normalization_combines_sections_and_deduplicates_products():
     }
 
 
+def test_normalization_encodes_illegal_spaces_without_double_encoding_urls():
+    payload = {
+        "shopping_results": [
+            {
+                "title": "NVIDIA RTX 4090",
+                "product_link": (
+                    "https://www.google.com/search?ibp=oshop&q=nvidia rtx 4090"
+                    "&prds=productid:11568490360883240100,headlineOfferDocid:11568490360883240100"
+                    "&hl=en&coupon=save%20now&label=50% off"
+                ),
+                "source": "Example Retailer",
+                "price": "$1,999.99",
+            }
+        ]
+    }
+
+    results, _counts = extract_shopping_results(payload, max_results=5)
+
+    assert results[0]["url"] == (
+        "https://www.google.com/search?ibp=oshop&q=nvidia%20rtx%204090"
+        "&prds=productid:11568490360883240100,headlineOfferDocid:11568490360883240100"
+        "&hl=en&coupon=save%20now&label=50%25%20off"
+    )
+    assert results[0]["product_link"] == results[0]["url"]
+    assert " " not in results[0]["url"]
+    assert "%2520" not in results[0]["url"]
+
+
 def test_search_uses_documented_filters_and_mode_default_location():
     exit_code, result, request = run_main(
         {
