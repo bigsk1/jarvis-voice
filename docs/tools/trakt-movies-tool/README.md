@@ -61,10 +61,12 @@ only the stable genre filter is sent to current list endpoints.
 ## Movie Night workflow
 
 `/movie_night <mood, constraints, or favorite movies>` requires
-`trakt_movies`, then optionally uses `serpapi_youtube_search` for a visible
-trailer rail and `brave_llm_context` for current US provider evidence. Missing
-optional tools degrade the run rather than hiding the recipe. The Canvas report
-must keep unconfirmed provider availability clearly labeled.
+`trakt_movies`, then optionally uses `tmdb_movies` for a bounded poster,
+backdrop, and logo bundle for the leading recommendation,
+`serpapi_youtube_search` for a visible trailer rail, and `brave_llm_context`
+for current US provider evidence. Missing optional tools degrade the run rather
+than hiding the recipe. The Canvas report must keep unconfirmed provider
+availability clearly labeled and omit artwork cleanly when TMDB is unavailable.
 
 Example:
 

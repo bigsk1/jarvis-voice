@@ -892,7 +892,7 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 | `jarvis_self_check.json` | `/jarvis_self_check` | Local system health, deduplicated alerts, full Canvas update |
 | `local_services_compare.json` | `/local_services_compare <service>` | Active-mode Google Local Services + Google Local + bounded Yelp review evidence, optional Stash, validated Canvas; no crawl |
 | `memory_scan.json` | `/memory_scan` | Mode-aware memory dedupe, stash report, labeled Canvas report |
-| `movie_night.json` | `/movie_night <request>` | Required public Trakt recommendation set, optional YouTube trailer rail and Brave availability context, validated Canvas; no account OAuth or Trakt image hotlinking |
+| `movie_night.json` | `/movie_night <request>` | Required public Trakt recommendation set, optional TMDB artwork, YouTube trailer rail, and Brave availability context, validated Canvas; no account OAuth or Trakt image hotlinking |
 | `night_out.json` | `/night_out <occasion or preference>` | Explicit-or-mode-default location, parsed target date, conditional 10-day weather, run-time-only open-state handling, bounded local/dining/activity evidence, validated Canvas; no crawl |
 | `quick_note.json` | `/note <text>` | Simple text capture, remember, canvas |
 | `serpapi_amazon_search.json` | `/serpapi_amazon <query>` (also `/amazon_search`, `/serpapi`) | SerpApi Amazon listings, Stash export, Canvas comparison |

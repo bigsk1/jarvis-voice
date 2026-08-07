@@ -84,6 +84,14 @@ generated-image/video catalogs. A later follow-up may save a selected exact URL
 through the existing strict Stash image-download path. Image bytes and all
 external metadata remain untrusted content.
 
+## Movie Night workflow
+
+When enabled, `data/workflows/movie_night.json` makes one optional `images`
+call for the leading Trakt candidate and requests at most six mixed artwork
+results. Canvas may use one display-size poster and one display-size backdrop
+when the TMDB title and year match. If TMDB is disabled, unavailable, empty, or
+mismatched, the workflow remains runnable and omits the artwork section.
+
 ## Network routing
 
 The manifest sets `proxy_policy` to `prefer`. Requests use the shared Jarvis
