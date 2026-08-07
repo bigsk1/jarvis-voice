@@ -227,6 +227,71 @@ if (entries[1].result.error !== 'No results') process.exit(4);
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
 
 
+def test_workflow_results_reconcile_cards_in_step_order_with_duplicates_and_skips():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(CHAT_JS))}, 'utf8');
+const start = source.indexOf('  _reconcilePendingToolsWithFinalList(');
+const end = source.indexOf('  /**\\n   * Show feedback card', start);
+const classSource = `class WorkflowOrderHarness {{\\n${{source.slice(start, end)}}\\n}}; WorkflowOrderHarness;`;
+const sandbox = {{ console }};
+vm.createContext(sandbox);
+const WorkflowOrderHarness = vm.runInContext(classSource, sandbox);
+const harness = new WorkflowOrderHarness();
+harness.pendingToolMessageId = 'message-a';
+harness.pendingToolsByMessage = new Map();
+harness.pendingTools = {{
+  get_time_step1: {{ toolName: 'get_time', status: 'success', result: {{}} }},
+  serpapi_google_local_step3: {{ toolName: 'serpapi_google_local', status: 'success', result: {{}} }},
+  serpapi_yelp_search_step5: {{ toolName: 'serpapi_yelp_search', status: 'success', result: {{}} }},
+  serpapi_tripadvisor_step6: {{ toolName: 'serpapi_tripadvisor', status: 'success', result: {{}} }},
+  canvas_step7: {{ toolName: 'canvas', status: 'success', result: {{}} }},
+  weather_step2: {{ toolName: 'weather', status: 'success', result: {{}} }},
+  serpapi_google_local_step4: {{ toolName: 'serpapi_google_local', status: 'success', result: {{}} }}
+}};
+
+const workflowData = {{
+  workflow_id: 'night_out',
+  results: [
+    {{ step: 1, tool: 'get_time', ok: true, duration_ms: 10 }},
+    {{ step: 2, tool: 'weather', skipped: true, reason: 'Condition evaluated to false' }},
+    {{ step: 3, tool: 'serpapi_google_local', ok: true, duration_ms: 20 }},
+    {{ step: 4, tool: 'serpapi_google_local', ok: true, duration_ms: 30 }},
+    {{ step: 5, tool: 'serpapi_yelp_search', ok: true, duration_ms: 40 }},
+    {{ step: 6, tool: 'serpapi_tripadvisor', ok: true, duration_ms: 50 }},
+    {{ step: 7, tool: 'canvas', ok: true, duration_ms: 60 }}
+  ]
+}};
+const trace = harness._getToolTraceEntries(workflowData);
+harness._reconcilePendingToolsWithFinalList(
+  ['get_time', 'serpapi_google_local', 'serpapi_yelp_search', 'serpapi_tripadvisor', 'canvas'],
+  trace
+);
+
+const names = Object.values(harness.pendingTools).map(entry => entry.toolName);
+const expected = [
+  'get_time',
+  'weather',
+  'serpapi_google_local',
+  'serpapi_google_local',
+  'serpapi_yelp_search',
+  'serpapi_tripadvisor',
+  'canvas'
+];
+if (names.join(',') !== expected.join(',')) process.exit(2);
+if (trace.length !== 7) process.exit(3);
+if (trace[1].speech !== 'Condition evaluated to false') process.exit(4);
+
+const ordinaryTrace = harness._getToolTraceEntries({{
+  _tool_trace: [{{ tool: 'weather', ok: true, duration_ms: 70 }}]
+}});
+if (ordinaryTrace.length !== 1 || ordinaryTrace[0].tool !== 'weather') process.exit(5);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
 def test_live_pending_tool_cards_skip_failures_when_indexing_success_results():
     script = f"""
 const fs = require('fs');

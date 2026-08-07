@@ -5721,9 +5721,60 @@ class ChatUI {
   }
 
   _getToolTraceEntries(toolResultsData = {}) {
+    const workflowEntries = this._getWorkflowStepTraceEntries(toolResultsData);
+    if (workflowEntries.length > 0) return workflowEntries;
+
     const trace = toolResultsData?._tool_trace || toolResultsData?.data?._tool_trace;
     if (!Array.isArray(trace)) return [];
     return trace.filter(entry => entry && typeof entry === 'object' && entry.tool);
+  }
+
+  _getWorkflowStepTraceEntries(toolResultsData = {}) {
+    let workflowData = null;
+    if (toolResultsData?.workflow_id && Array.isArray(toolResultsData?.results)) {
+      workflowData = toolResultsData;
+    } else {
+      const nested = toolResultsData?.workflow;
+      const candidates = Array.isArray(nested) ? [...nested].reverse() : [nested];
+      workflowData = candidates.find(candidate => (
+        candidate
+        && typeof candidate === 'object'
+        && candidate.action === 'run'
+        && Array.isArray(candidate.results)
+      )) || null;
+    }
+    if (!workflowData) return [];
+
+    const entries = [];
+    for (const step of workflowData.results) {
+      if (!step || typeof step !== 'object' || !step.tool) continue;
+      // Optional unavailable tools intentionally have no execution card.
+      if (step.skip_kind === 'optional_tool_unavailable') continue;
+
+      const outputs = Array.isArray(step.outputs) ? step.outputs : [];
+      if (outputs.length > 0) {
+        for (const output of outputs) {
+          const outputData = output && typeof output === 'object' ? output : {};
+          entries.push({
+            tool: step.tool,
+            ok: outputData.ok !== false,
+            duration_ms: outputData.duration_ms ?? step.duration_ms ?? null,
+            error: outputData.error || null,
+            speech: outputData.speech || null
+          });
+        }
+        continue;
+      }
+
+      entries.push({
+        tool: step.tool,
+        ok: step.ok !== false,
+        duration_ms: step.duration_ms ?? null,
+        error: step.error || null,
+        speech: step.speech || step.reason || null
+      });
+    }
+    return entries;
   }
 
   _getToolTraceFailureResult(entry = {}) {
