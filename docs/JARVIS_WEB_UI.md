@@ -192,6 +192,12 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
   records, and `metrics` for compact measurements. Overflowing rails expose
   previous/next controls in the preview header without covering card content;
   touch swiping and the native scrollbar remain available.
+- When the response is a completed workflow, the same adapters are composed
+  into one workflow result surface in workflow step order. Each tool keeps its
+  own heading, metadata, safe links, and layout inside that surface. A section
+  containing one result uses a compact non-scrolling layout instead of an
+  otherwise empty rail. Standalone and ordinary multi-tool responses keep the
+  existing independent adapter cards.
 - Current adapters cover Amazon and Google Shopping, Home Depot, eBay search
   and product details, Google Hotels, Yelp, Google Flights, Google Maps,
   Tripadvisor, Google Local and Local Services, Search Index, Google News Light,
@@ -202,8 +208,10 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
   as untrusted. Assistant Markdown images are independently constrained to the
   chat bubble width, so detailed responses cannot widen the conversation column;
   structured card rails retain their own bounded horizontal navigation.
-- YouTube search uses the compact rail for the complete shortlist while Jarvis
-  Web keeps one large playable top-result embed. Direct YouTube detail and
+- Standalone YouTube search uses the compact rail for the complete shortlist
+  while Jarvis Web keeps one large playable top-result embed. In workflows the
+  duplicate search rail is suppressed and the large playable top-result embed
+  remains independent below the composite. Direct YouTube detail and
   downloaded-media results retain their existing specialized players.
 - Add a future structured display with
   `window.structuredResultsRenderer.register(toolName, adapter)`. Keep provider

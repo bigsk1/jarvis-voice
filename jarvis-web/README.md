@@ -287,6 +287,12 @@ Event names below are what the **server** emits / the **client** sends (see `cli
 
 Workflows are deterministic pipelines defined at the **repository root**: `data/workflows/*.json` (same files the CLI orchestrator uses). The Web UI lists them via `/api/workflows`; slash commands autocomplete from each workflow's `triggers`.
 
+Completed workflows compose all supported structured tool adapters into one
+step-ordered result surface. This changes presentation only: execution cards,
+follow-up payloads, the full-size YouTube player, the terminal Canvas preview,
+and the final assistant response remain independent. Standalone tool calls keep
+their existing individual structured-result cards.
+
 **Examples of explicit slash triggers** (see each JSON for full patterns/keywords):
 
 | Slash (examples) | Workflow file |

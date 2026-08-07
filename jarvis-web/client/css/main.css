@@ -2050,6 +2050,54 @@ body {
   overflow: hidden;
 }
 
+.structured-results-workflow-preview {
+  margin: 12px 0 10px;
+  padding: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.structured-results-workflow-header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.structured-results-workflow-sections {
+  display: flex;
+  flex-direction: column;
+}
+
+.structured-results-workflow-section {
+  margin: 0;
+  padding: 14px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.structured-results-workflow-section + .structured-results-workflow-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.structured-results-workflow-section:last-child {
+  padding-bottom: 0;
+}
+
+.structured-results-workflow-section.structured-results-single .structured-results-track {
+  display: grid;
+  grid-template-columns: minmax(0, min(100%, 420px));
+  grid-auto-flow: row;
+  padding-bottom: 0;
+  overflow: visible;
+  scroll-snap-type: none;
+}
+
+.structured-results-workflow-section.structured-results-single .structured-result-card-featured {
+  grid-column: auto;
+}
+
 .structured-results-header {
   display: flex;
   align-items: flex-start;
@@ -2402,8 +2450,14 @@ body {
 }
 
 @media (max-width: 640px) {
+  .structured-results-workflow-preview,
   .structured-results-preview {
     padding: 12px;
+  }
+
+  .structured-results-workflow-section {
+    padding-right: 0;
+    padding-left: 0;
   }
 
   .structured-results-header {

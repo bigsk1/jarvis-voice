@@ -23,23 +23,166 @@ class StructuredResultsRenderer {
   }
 
   render(toolResultsData = {}, data = {}) {
+    const workflow = this._workflowPayload(toolResultsData, data);
+    if (workflow) {
+      const sections = this._workflowCollections(workflow, toolResultsData, data);
+      const html = sections.length ? this._renderWorkflow(workflow, sections) : '';
+      if (html) this._scheduleScrollControlsRefresh();
+      return html;
+    }
+
     const collections = [];
     for (const [toolName, adapter] of this.adapters.entries()) {
       const rawPayload = toolResultsData?.[toolName] ?? data?.[toolName];
-      const payload = toolName === 'tmdb_movies'
-        ? this._tmdbDisplayPayload(rawPayload)
-        : this._latestPayload(rawPayload);
-      if (!payload) continue;
-      try {
-        const collection = adapter(payload);
-        if (collection?.items?.length) collections.push(collection);
-      } catch (error) {
-        console.warn(`[StructuredResults] Could not render ${toolName}:`, error);
-      }
+      const collection = this._adaptCollection(toolName, rawPayload, adapter);
+      if (collection) collections.push(collection);
     }
     const html = collections.map(collection => this._renderCollection(collection)).join('');
     if (html) this._scheduleScrollControlsRefresh();
     return html;
+  }
+
+  _adaptCollection(toolName, rawPayload, adapter = this.adapters.get(toolName)) {
+    if (!adapter) return null;
+    const payload = toolName === 'tmdb_movies'
+      ? this._tmdbDisplayPayload(rawPayload)
+      : this._latestPayload(rawPayload);
+    if (!payload) return null;
+    try {
+      const collection = adapter(payload);
+      return collection?.items?.length ? collection : null;
+    } catch (error) {
+      console.warn(`[StructuredResults] Could not render ${toolName}:`, error);
+      return null;
+    }
+  }
+
+  _workflowPayload(toolResultsData = {}, data = {}) {
+    const directCandidates = [
+      toolResultsData,
+      data,
+      toolResultsData?.data,
+      data?.data,
+    ];
+    for (const candidate of directCandidates) {
+      if (
+        candidate
+        && typeof candidate === 'object'
+        && candidate.workflow_id
+        && Array.isArray(candidate.results)
+      ) return candidate;
+    }
+
+    for (const container of directCandidates) {
+      if (!container || typeof container !== 'object') continue;
+      const rawWorkflow = container.workflow;
+      const candidates = Array.isArray(rawWorkflow)
+        ? [...rawWorkflow].reverse()
+        : [rawWorkflow];
+      const workflow = candidates.find(candidate => (
+        candidate
+        && typeof candidate === 'object'
+        && Array.isArray(candidate.results)
+        && (candidate.action === 'run' || candidate.workflow_id)
+      ));
+      if (workflow) return workflow;
+    }
+    return null;
+  }
+
+  _workflowStepPayload(step) {
+    const outputs = Array.isArray(step?.outputs) ? step.outputs : [];
+    if (outputs.length) {
+      return outputs.map(output => (
+        output?.data && typeof output.data === 'object'
+          ? output.data
+          : (output ?? {})
+      ));
+    }
+    return step?.data ?? null;
+  }
+
+  _workflowUsesDedicatedSurface(toolName) {
+    // The chat renderer already turns the leading YouTube search result into a
+    // full-size playable embed. Keep that richer surface instead of duplicating
+    // the same result as a compact workflow section.
+    return toolName === 'serpapi_youtube_search';
+  }
+
+  _workflowCollections(workflow, toolResultsData = {}, data = {}) {
+    const sections = [];
+    const representedTools = new Set();
+    const steps = Array.isArray(workflow?.results) ? workflow.results : [];
+
+    for (const step of steps) {
+      const toolName = String(step?.tool || '').trim();
+      if (!toolName) continue;
+      representedTools.add(toolName);
+      if (step.skipped === true || step.ok === false) continue;
+      if (this._workflowUsesDedicatedSurface(toolName)) continue;
+
+      const collection = this._adaptCollection(
+        toolName,
+        this._workflowStepPayload(step)
+      );
+      if (collection) {
+        sections.push({
+          toolName,
+          step: step.step,
+          collection,
+        });
+      }
+    }
+
+    // Preserve supported payloads that came back beside the explicit step
+    // envelopes, but keep them inside the same workflow surface. This is the
+    // compatibility fallback for older or provider-specific workflow results.
+    for (const [toolName, adapter] of this.adapters.entries()) {
+      if (representedTools.has(toolName) || this._workflowUsesDedicatedSurface(toolName)) continue;
+      const rawPayload = toolResultsData?.[toolName]
+        ?? workflow?.[toolName]
+        ?? data?.[toolName];
+      const collection = this._adaptCollection(toolName, rawPayload, adapter);
+      if (collection) sections.push({toolName, step: null, collection});
+    }
+    return sections;
+  }
+
+  _workflowTitle(workflow) {
+    const raw = String(workflow?.workflow_name || workflow?.name || workflow?.workflow_id || 'Workflow');
+    return raw
+      .replace(/[_-]+/g, ' ')
+      .replace(/\b\w/g, letter => letter.toUpperCase());
+  }
+
+  _renderWorkflow(workflow, sections) {
+    const workflowId = String(workflow?.workflow_id || workflow?.id || 'workflow');
+    const skipped = Array.isArray(workflow?.optional_tools_skipped)
+      ? workflow.optional_tools_skipped.filter(Boolean).length
+      : 0;
+    const subtitle = [
+      `${sections.length} tool section${sections.length === 1 ? '' : 's'} combined`,
+      skipped ? `${skipped} optional source${skipped === 1 ? '' : 's'} unavailable` : '',
+    ].filter(Boolean).join(' · ');
+    const sectionHtml = sections.map(section => this._renderCollection(
+      section.collection,
+      {
+        embedded: true,
+        toolName: section.toolName,
+        step: section.step,
+      }
+    )).join('');
+
+    return `
+      <section class="structured-results-workflow-preview" data-workflow-id="${this._escape(workflowId)}" aria-label="Workflow results: ${this._escape(this._workflowTitle(workflow))}">
+        <div class="structured-results-workflow-header">
+          <div class="structured-results-eyebrow">Workflow results</div>
+          <div class="structured-results-heading">${this._escape(this._workflowTitle(workflow))}</div>
+          <div class="structured-results-subtitle">${this._escape(subtitle)}</div>
+        </div>
+        <div class="structured-results-workflow-sections">${sectionHtml}</div>
+      </section>
+    `;
   }
 
   _registerDefaultAdapters() {
@@ -1440,13 +1583,15 @@ class StructuredResultsRenderer {
     return Utils.escapeHtml(String(value ?? ''));
   }
 
-  _renderCollection(collection) {
+  _renderCollection(collection, options = {}) {
     const kind = ['product', 'hotel', 'local', 'flight', 'video', 'weather', 'image', 'sport'].includes(collection.kind)
       ? collection.kind
       : 'generic';
     const layout = ['rail', 'list', 'metrics', 'gallery'].includes(collection.layout)
       ? collection.layout
       : 'rail';
+    const embedded = options.embedded === true;
+    const single = collection.items.length === 1;
     const cards = collection.items.map(item => {
       const url = this._safeUrl(item.url);
       const image = this._safeUrl(item.image);
@@ -1485,7 +1630,7 @@ class StructuredResultsRenderer {
     const collectionAction = actionUrl
       ? `<a class="structured-results-action" href="${actionUrl}" target="_blank" rel="noopener noreferrer">${this._escape(collection.actionLabel || 'Open results')}</a>`
       : '';
-    const scrollControls = layout === 'rail'
+    const scrollControls = layout === 'rail' && !single
       ? `
         <div class="structured-results-scroll-controls" role="group" aria-label="Scroll results" hidden>
           <button class="structured-results-scroll-button" type="button" data-direction="previous" aria-label="Previous results" title="Previous results">&#8249;</button>
@@ -1493,8 +1638,16 @@ class StructuredResultsRenderer {
         </div>
       `
       : '';
+    const workflowTool = embedded && options.toolName
+      ? ` data-workflow-tool="${this._escape(options.toolName)}"`
+      : '';
+    const workflowStep = embedded && options.step != null
+      ? ` data-workflow-step="${this._escape(options.step)}"`
+      : '';
+    const embeddedClass = embedded ? ' structured-results-workflow-section' : '';
+    const singleClass = single ? ' structured-results-single' : '';
     return `
-      <section class="structured-results-preview structured-results-${kind} structured-results-layout-${layout}" aria-label="${this._escape(collection.eyebrow || 'Structured results')}">
+      <section class="structured-results-preview structured-results-${kind} structured-results-layout-${layout}${embeddedClass}${singleClass}"${workflowTool}${workflowStep} aria-label="${this._escape(collection.eyebrow || 'Structured results')}">
         <div class="structured-results-header">
           <div>
             <div class="structured-results-eyebrow">${this._escape(collection.eyebrow || 'Results')}</div>

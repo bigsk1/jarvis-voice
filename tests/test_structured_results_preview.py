@@ -978,6 +978,118 @@ if (html.includes('Redundant logo-only result')) process.exit(11);
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
 
 
+def test_workflow_renderer_composes_supported_tools_in_step_order_without_youtube_rail():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const escapeHtml = value => String(value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+const sandbox = {{
+  URL,
+  window: {{}},
+  console,
+  Utils: {{
+    escapeHtml,
+    safeHttpUrlForAttr: value => {{
+      try {{
+        const parsed = new URL(String(value));
+        return ['http:', 'https:'].includes(parsed.protocol) ? escapeHtml(parsed.href) : '';
+      }} catch (_error) {{
+        return '';
+      }}
+    }}
+  }}
+}};
+vm.createContext(sandbox);
+vm.runInContext(source, sandbox);
+const renderer = sandbox.window.structuredResultsRenderer;
+const tmdbPayload = {{
+  action: 'images',
+  image_type: 'all',
+  results_count: 1,
+  attribution_notice: 'This product uses the TMDB API but is not endorsed or certified by TMDB.',
+  movie: {{title: 'Project Hail Mary', tmdb_url: 'https://www.themoviedb.org/movie/123'}},
+  results: [{{
+    title: 'Project Hail Mary poster',
+    image_type: 'poster',
+    thumbnail: 'https://image.tmdb.org/t/p/w342/poster.jpg',
+    image_url: 'https://image.tmdb.org/t/p/w500/poster.jpg',
+    original_url: 'https://image.tmdb.org/t/p/original/poster.jpg',
+    source_url: 'https://www.themoviedb.org/movie/123'
+  }}]
+}};
+const traktPayload = {{
+  action: 'recommend',
+  request: 'thoughtful science fiction',
+  results: [{{
+    title: 'Project Hail Mary',
+    year: 2026,
+    runtime_minutes: 140,
+    rating: 8.4,
+    trakt_url: 'https://trakt.tv/movies/project-hail-mary-2026'
+  }}]
+}};
+const youtubePayload = {{
+  search_query: 'Project Hail Mary official trailer',
+  results: [{{
+    title: 'Project Hail Mary Official Trailer',
+    video_id: 'abc123def45',
+    url: 'https://www.youtube.com/watch?v=abc123def45'
+  }}]
+}};
+const workflowHtml = renderer.render({{
+  workflow_id: 'movie_night',
+  workflow_name: 'Movie Night',
+  optional_tools_skipped: ['brave_llm_context'],
+  results: [
+    {{step: 2, tool: 'tmdb_movies', ok: true, data: tmdbPayload}},
+    {{step: 3, tool: 'trakt_movies', ok: true, data: traktPayload}},
+    {{step: 4, tool: 'serpapi_youtube_search', ok: true, data: youtubePayload}}
+  ],
+  weather: {{location: 'Portland, Oregon', temperature: 71, condition: 'Clear'}}
+}});
+if (!workflowHtml.includes('structured-results-workflow-preview')) process.exit(2);
+if (!workflowHtml.includes('data-workflow-id="movie_night"')) process.exit(3);
+if (!workflowHtml.includes('Movie Night')) process.exit(4);
+if (!workflowHtml.includes('1 optional source unavailable')) process.exit(5);
+if (!workflowHtml.includes('3 tool sections combined')) process.exit(15);
+const tmdbIndex = workflowHtml.indexOf('data-workflow-tool="tmdb_movies"');
+const traktIndex = workflowHtml.indexOf('data-workflow-tool="trakt_movies"');
+const weatherIndex = workflowHtml.indexOf('data-workflow-tool="weather"');
+if (!(tmdbIndex >= 0 && tmdbIndex < traktIndex && traktIndex < weatherIndex)) process.exit(6);
+if (workflowHtml.includes('data-workflow-tool="serpapi_youtube_search"')) process.exit(7);
+if (workflowHtml.includes('Project Hail Mary official trailer')) process.exit(8);
+if (!workflowHtml.includes('structured-results-single')) process.exit(9);
+
+const standaloneHtml = renderer.render({{
+  tmdb_movies: tmdbPayload,
+  trakt_movies: traktPayload,
+  serpapi_youtube_search: youtubePayload
+}});
+if (standaloneHtml.includes('structured-results-workflow-preview')) process.exit(10);
+if (!standaloneHtml.includes('Project Hail Mary official trailer')) process.exit(11);
+if (!(standaloneHtml.indexOf('Trakt movies') < standaloneHtml.indexOf('TMDB movie artwork'))) process.exit(12);
+
+const nestedHtml = renderer.render({{
+  workflow: {{
+    action: 'run',
+    workflow_id: 'nested_example',
+    workflow_name: 'Nested Example',
+    results: [{{step: 1, tool: 'trakt_movies', ok: true, data: traktPayload}}]
+  }}
+}});
+if (!nestedHtml.includes('data-workflow-id="nested_example"')) process.exit(13);
+if (!nestedHtml.includes('Nested Example')) process.exit(14);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
 def test_youtube_search_keeps_one_large_player_and_uses_cards_for_the_full_shortlist():
     script = f"""
 const fs = require('fs');
@@ -1034,6 +1146,8 @@ def test_renderer_is_loaded_before_chat_and_uses_shared_responsive_styles():
     assert "window.structuredResultsRenderer.render(toolResultsData, data)" in chat
     assert "${structuredResultsHtml}" in chat
     assert ".structured-results-track" in css
+    assert ".structured-results-workflow-preview" in css
+    assert ".structured-results-workflow-section.structured-results-single" in css
     assert "grid-auto-flow: column" in css
     assert "scroll-snap-type: inline proximity" in css
     assert "grid-auto-columns: minmax(235px, 82vw)" in css

@@ -211,6 +211,15 @@ repeated component tools remain candidate/run lists rather than overwriting one
 another. A later user message can therefore read/update a Canvas page or call an
 individual follow-up tool without rerunning the recipe.
 
+For presentation, registered structured-result adapters are composed into one
+workflow result surface in step order. This is a client-only projection: it
+does not change the canonical workflow result, follow-up data, or model context.
+Single-result sections become compact non-scrolling blocks, and supported
+payloads outside older step envelopes remain inside the same composite. The
+full-size YouTube player, terminal Canvas preview, and final assistant response
+remain separate content-native surfaces. Ordinary non-workflow tool results
+continue to use independent adapter cards.
+
 Workflow-internal LLM usage is merged into the parent turn, including parameter
 filling, validation, generated titles/speech, and component tools such as
 `text_summarizer` or Stash auto-summary. Component provider/model identity is
