@@ -989,6 +989,39 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "trakt_tv_shows": _case(
+        {
+            "action": "recommend",
+            "request": "Thoughtful mysteries like Severance",
+            "results_count": 1,
+            "top_url": "https://trakt.tv/shows/dark",
+            "resolved_references": [{"title": "Severance", "year": 2022}],
+            "genre_hints": ["mystery"],
+            "filters_used": {"runtimes": "1-60"},
+            "runtime_scope": "episode",
+            "public_metadata_only": True,
+            "streaming_provider_data": "not returned",
+            "external_content_trust": "untrusted",
+            "source": "Trakt API",
+            "candidates": [
+                {
+                    "title": "Dark",
+                    "year": 2017,
+                    "ids": {"trakt": 113440, "slug": "dark"},
+                    "trakt_url": "https://trakt.tv/shows/dark",
+                    "episode_runtime_minutes": 53,
+                    "network": "Netflix",
+                    "status": "ended",
+                    "show_type": "scripted",
+                    "overview": "Families uncover a mystery spanning generations.",
+                    "rating": 8.8,
+                    "votes": 40000,
+                    "genres": ["drama", "mystery", "science-fiction"],
+                    "source_signals": ["related:Severance", "popular"],
+                }
+            ],
+        }
+    ),
     "tmdb_movies": _case(
         {
             "action": "images",
@@ -1022,6 +1055,51 @@ LOCAL_TOOL_SAMPLES = {
                     "original_url": "https://image.tmdb.org/t/p/original/poster.jpg",
                     "source_url": "https://www.themoviedb.org/movie/329865",
                 }
+            ],
+        }
+    ),
+    "tmdb_tv_shows": _case(
+        {
+            "action": "images",
+            "query": "Severance",
+            "image_type": "all",
+            "results_count": 1,
+            "top_url": "https://www.themoviedb.org/tv/95396",
+            "attribution_notice": "This product uses the TMDB API but is not endorsed or certified by TMDB.",
+            "attribution_url": "https://www.themoviedb.org",
+            "runtime_scope": "episode",
+            "external_content_trust": "untrusted",
+            "source": "TMDB API",
+            "show": {
+                "id": 95396,
+                "tmdb_id": 95396,
+                "title": "Severance",
+                "year": 2022,
+                "first_air_date": "2022-02-18",
+                "episode_runtime_minutes": 50,
+                "number_of_seasons": 2,
+                "number_of_episodes": 19,
+                "created_by": ["Dan Erickson"],
+                "networks": ["Apple TV+"],
+                "content_rating": "TV-MA",
+                "tmdb_url": "https://www.themoviedb.org/tv/95396",
+                "poster_url": "https://image.tmdb.org/t/p/w500/poster.jpg",
+                "poster_original_url": "https://image.tmdb.org/t/p/original/poster.jpg",
+            },
+            "results": [
+                {
+                    "title": "Severance poster",
+                    "image_type": "poster",
+                    "width": 1000,
+                    "height": 1500,
+                    "thumbnail": "https://image.tmdb.org/t/p/w342/poster.jpg",
+                    "image_url": "https://image.tmdb.org/t/p/w500/poster.jpg",
+                    "original_url": "https://image.tmdb.org/t/p/original/poster.jpg",
+                    "source_url": "https://www.themoviedb.org/tv/95396",
+                }
+            ],
+            "seasons": [
+                {"season_number": 1, "name": "Season 1", "episode_count": 9}
             ],
         }
     ),
@@ -1777,6 +1855,39 @@ def test_tmdb_followup_preserves_movie_id_and_artwork_size_variants():
     assert compact["candidates"][0]["thumbnail"].endswith("/w342/poster.jpg")
     assert compact["candidates"][0]["original_url"].endswith("/original/poster.jpg")
     assert compact["attribution_notice"].endswith("certified by TMDB.")
+
+
+def test_trakt_tv_followup_preserves_episode_runtime_and_show_handles():
+    payload, arguments = LOCAL_TOOL_SAMPLES["trakt_tv_shows"]
+    data = {"trakt_tv_shows": payload}
+    if arguments is not None:
+        data["_tool_trace"] = [
+            {"tool": "trakt_tv_shows", "ok": True, "arguments": arguments}
+        ]
+
+    compact = followup.extract_followup_data(data)["trakt_tv_shows"]
+
+    assert compact["runtime_scope"] == "episode"
+    assert compact["candidates"][0]["ids"]["slug"] == "dark"
+    assert compact["candidates"][0]["episode_runtime_minutes"] == 53
+    assert compact["candidates"][0]["network"] == "Netflix"
+
+
+def test_tmdb_tv_followup_preserves_series_identity_artwork_and_seasons():
+    payload, arguments = LOCAL_TOOL_SAMPLES["tmdb_tv_shows"]
+    data = {"tmdb_tv_shows": payload}
+    if arguments is not None:
+        data["_tool_trace"] = [
+            {"tool": "tmdb_tv_shows", "ok": True, "arguments": arguments}
+        ]
+
+    compact = followup.extract_followup_data(data)["tmdb_tv_shows"]
+
+    assert compact["show"]["tmdb_id"] == 95396
+    assert compact["show"]["episode_runtime_minutes"] == 50
+    assert compact["show"]["number_of_seasons"] == 2
+    assert compact["candidates"][0]["image_type"] == "poster"
+    assert compact["seasons"][0]["episode_count"] == 9
 
 
 def test_request_context_is_bounded_and_drops_secret_or_bulky_arguments():

@@ -62,6 +62,8 @@ const expectedTools = [
   'serpapi_tripadvisor',
   'trakt_movies',
   'tmdb_movies',
+  'trakt_tv_shows',
+  'tmdb_tv_shows',
   'flight_search',
   'serpapi_google_local',
   'serpapi_google_local_services',
@@ -973,6 +975,84 @@ if (!html.includes('structured-result-image-poster')) process.exit(8);
 if (!html.includes('structured-result-image-backdrop')) process.exit(9);
 if (!html.includes('structured-result-card-featured')) process.exit(10);
 if (html.includes('Redundant logo-only result')) process.exit(11);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
+def test_tv_show_renderers_distinguish_episode_runtime_and_tmdb_artwork():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const escapeHtml = value => String(value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+const sandbox = {{
+  URL,
+  window: {{}},
+  console,
+  Utils: {{
+    escapeHtml,
+    safeHttpUrlForAttr: value => {{
+      try {{
+        const parsed = new URL(String(value));
+        return ['http:', 'https:'].includes(parsed.protocol) ? escapeHtml(parsed.href) : '';
+      }} catch (_error) {{
+        return '';
+      }}
+    }}
+  }}
+}};
+vm.createContext(sandbox);
+vm.runInContext(source, sandbox);
+const renderer = sandbox.window.structuredResultsRenderer;
+const traktHtml = renderer.render({{
+  trakt_tv_shows: {{
+    action: 'recommend',
+    request: 'a thoughtful workplace mystery',
+    runtime_scope: 'episode',
+    candidates: [{{
+      title: 'Severance',
+      year: 2022,
+      episode_runtime_minutes: 50,
+      network: 'Apple TV+',
+      status: 'returning series',
+      rating: 8.7,
+      votes: 32000,
+      genres: ['drama', 'mystery'],
+      trakt_url: 'https://trakt.tv/shows/severance'
+    }}]
+  }}
+}});
+if (!traktHtml.includes('Trakt TV shows')) process.exit(2);
+if (!traktHtml.includes('50 min/episode')) process.exit(3);
+if (!traktHtml.includes('Apple TV+')) process.exit(4);
+
+const tmdbHtml = renderer.render({{
+  tmdb_tv_shows: {{
+    action: 'images',
+    image_type: 'all',
+    results_count: 1,
+    attribution_notice: 'This product uses the TMDB API but is not endorsed or certified by TMDB.',
+    show: {{title: 'Severance', tmdb_url: 'https://www.themoviedb.org/tv/95396'}},
+    results: [{{
+      title: 'Severance poster',
+      image_type: 'poster',
+      width: 1000,
+      height: 1500,
+      image_url: 'https://image.tmdb.org/t/p/w500/poster.jpg',
+      original_url: 'https://image.tmdb.org/t/p/original/poster.jpg',
+      source_url: 'https://www.themoviedb.org/tv/95396'
+    }}]
+  }}
+}});
+if (!tmdbHtml.includes('TMDB TV artwork')) process.exit(5);
+if (!tmdbHtml.includes('Severance poster')) process.exit(6);
+if (!tmdbHtml.includes('not endorsed or certified by TMDB')) process.exit(7);
 """
 
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)

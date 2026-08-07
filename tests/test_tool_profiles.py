@@ -13,6 +13,25 @@ sys.path.insert(0, str(ROOT / "lib"))
 
 
 class TestToolProfiles(unittest.TestCase):
+    def test_narrow_example_profiles_explicitly_gate_optional_media_tools(self):
+        media_tools = {
+            "trakt_movies",
+            "trakt_tv_shows",
+            "tmdb_movies",
+            "tmdb_tv_shows",
+        }
+        examples_dir = ROOT / "skills" / "profiles" / "examples"
+        for profile_path in sorted(examples_dir.glob("*.json")):
+            if profile_path.name == "docker.json":
+                continue
+            overrides = json.loads(profile_path.read_text(encoding="utf-8"))["overrides"]
+            for tool_name in media_tools:
+                self.assertIs(
+                    overrides.get(tool_name),
+                    False,
+                    f"{profile_path.name} must explicitly disable {tool_name}",
+                )
+
     def test_example_profiles_explicitly_gate_serpapi_tools(self):
         """Keep new SerpApi verticals out of intentionally narrow profiles."""
         serpapi_tools = set()

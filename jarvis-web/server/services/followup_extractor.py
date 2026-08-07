@@ -56,7 +56,9 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_google_trending_now',
     'serpapi_tripadvisor',
     'trakt_movies',
+    'trakt_tv_shows',
     'tmdb_movies',
+    'tmdb_tv_shows',
     'flight_search',
     'crawl_url',
     'mcp_brave_search_brave_web_search',
@@ -394,11 +396,25 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'api_requests', 'public_metadata_only', 'streaming_provider_data',
         'external_content_trust', 'source',
     ],
+    'trakt_tv_shows': [
+        'action', 'request', 'query', 'results_count', 'top_url',
+        'reference_titles_requested', 'resolved_references', 'genre_hints',
+        'filters_used', 'trailers', 'sources_queried', 'warnings',
+        'api_requests', 'public_metadata_only', 'runtime_scope',
+        'streaming_provider_data', 'external_content_trust', 'source',
+    ],
     'tmdb_movies': [
         'action', 'query', 'image_type', 'image_languages', 'results_count',
         'provider_results_count', 'page', 'total_pages', 'top_url',
         'filters_used', 'api_requests', 'auth_method', 'public_metadata_only',
         'attribution_notice', 'attribution_url', 'external_content_trust', 'source',
+    ],
+    'tmdb_tv_shows': [
+        'action', 'query', 'image_type', 'image_languages', 'results_count',
+        'provider_results_count', 'page', 'total_pages', 'top_url',
+        'filters_used', 'selection_criteria', 'api_requests', 'auth_method',
+        'public_metadata_only', 'runtime_scope', 'attribution_notice',
+        'attribution_url', 'external_content_trust', 'source',
     ],
     'git_release_notes': ['release_tag', 'release_url', 'stash_ref', 'canvas_page_id', 'repo', 'owner'],
     'release_watch': [
@@ -3213,7 +3229,7 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             elif isinstance(team_stats, list):
                 extracted['team_stats'] = team_stats[:12]
 
-        if key == 'trakt_movies':
+        if key in {'trakt_movies', 'trakt_tv_shows'}:
             results = payload.get('candidates') or payload.get('results') or payload.get('top_results') or []
             if isinstance(results, list) and results:
                 extracted['results_count'] = payload.get('results_count', len(results))
@@ -3226,6 +3242,8 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                         for field in (
                             'title', 'year', 'ids', 'trakt_url', 'imdb_url',
                             'tagline', 'runtime_minutes', 'rating', 'votes',
+                            'episode_runtime_minutes', 'network', 'status',
+                            'show_type', 'aired_episodes', 'first_aired', 'airs',
                             'genres', 'subgenres', 'certification', 'trailer_url',
                             'source_signals', 'related_to', 'match_score',
                             'streaming_signal', 'videos',
@@ -3241,20 +3259,26 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 if candidates:
                     extracted['candidates'] = candidates
 
-        if key == 'tmdb_movies':
-            movie = payload.get('movie')
-            if isinstance(movie, dict):
-                extracted['movie'] = {
-                    field: movie[field]
+        if key in {'tmdb_movies', 'tmdb_tv_shows'}:
+            media_key = 'show' if key == 'tmdb_tv_shows' else 'movie'
+            media = payload.get(media_key)
+            if isinstance(media, dict):
+                extracted[media_key] = {
+                    field: media[field]
                     for field in (
                         'id', 'tmdb_id', 'title', 'original_title', 'release_date',
-                        'year', 'overview', 'tagline', 'runtime_minutes', 'rating',
-                        'votes', 'genres', 'certification', 'status', 'collection',
+                        'first_air_date', 'last_air_date', 'year', 'overview',
+                        'tagline', 'runtime_minutes', 'episode_runtime_minutes',
+                        'episode_run_times', 'rating', 'votes', 'genres',
+                        'certification', 'content_rating', 'status', 'show_type',
+                        'number_of_seasons', 'number_of_episodes', 'created_by',
+                        'networks', 'origin_countries', 'next_episode', 'last_episode',
+                        'collection',
                         'tmdb_url', 'imdb_id', 'imdb_url', 'poster_url',
                         'poster_thumbnail', 'poster_original_url', 'backdrop_url',
                         'backdrop_thumbnail', 'backdrop_original_url',
                     )
-                    if movie.get(field) not in (None, '', [], {})
+                    if media.get(field) not in (None, '', [], {})
                 }
 
             results = payload.get('results') or payload.get('top_results') or []
@@ -3268,8 +3292,11 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                         field: item[field]
                         for field in (
                             'id', 'tmdb_id', 'title', 'name', 'year', 'release_date',
-                            'runtime_minutes', 'rating', 'votes', 'genres',
-                            'certification', 'tmdb_url', 'imdb_url', 'source_signal',
+                            'first_air_date', 'runtime_minutes',
+                            'episode_runtime_minutes', 'rating', 'votes', 'genres',
+                            'certification', 'content_rating', 'status', 'show_type',
+                            'number_of_seasons', 'number_of_episodes', 'networks',
+                            'tmdb_url', 'imdb_url', 'source_signal',
                             'image_type', 'width', 'height', 'language',
                             'thumbnail', 'image_url', 'original_url', 'source_url',
                             'character', 'job', 'profile_thumbnail', 'profile_url',
@@ -3286,7 +3313,9 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 if candidates:
                     extracted['candidates'] = candidates
 
-            for source_key in ('images', 'cast', 'crew', 'videos', 'recommendations', 'similar'):
+            for source_key in (
+                'images', 'cast', 'crew', 'videos', 'recommendations', 'similar', 'seasons'
+            ):
                 rows = payload.get(source_key)
                 if isinstance(rows, list) and rows:
                     extracted[source_key] = rows[:max_candidates]

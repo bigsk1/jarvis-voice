@@ -183,6 +183,12 @@ def _infer_runtime_filter(request: str) -> str | None:
     )
     if minute_match:
         return f"1-{max(10, min(int(minute_match.group(1)), 240))}"
+    if re.search(
+        r"(?:episodes?\s+)?(?:under|less than|max(?:imum)?(?: of)?)\s+"
+        r"(?:an?|one)\s+hours?",
+        lowered,
+    ):
+        return "1-60"
     if any(term in lowered for term in ("short episodes", "quick episodes", "half hour show")):
         return "1-35"
     if "not too long" in lowered:
@@ -198,6 +204,18 @@ def _clean_reference_fragment(value: str) -> str:
         flags=re.IGNORECASE,
     )[0]
     return cleaned.strip(" \t\r\n.;:-\"")
+
+
+def _is_reference_constraint(value: str) -> bool:
+    return bool(
+        re.match(
+            r"^(?:episodes?|episode\s+(?:length|runtime)|runtime|under|over|"
+            r"less\s+than|preferably|completed|finished|ongoing|returning|"
+            r"available|streaming|on\s+\w+)\b",
+            value.strip(),
+            flags=re.IGNORECASE,
+        )
+    )
 
 
 def extract_reference_candidates(request: str) -> list[str]:
@@ -221,7 +239,16 @@ def extract_reference_candidates(request: str) -> list[str]:
             comma_parts = [_clean_reference_fragment(part) for part in segment.split(",")]
             comma_parts = [part for part in comma_parts if part]
             if len(comma_parts) > 1:
-                candidates.extend(comma_parts)
+                for part in comma_parts:
+                    if _is_reference_constraint(part):
+                        break
+                    candidates.append(part)
+                    and_parts = [
+                        _clean_reference_fragment(value)
+                        for value in re.split(r"\s+(?:and|&)\s+", part)
+                    ]
+                    if len(and_parts) > 1:
+                        candidates.extend(value for value in and_parts if value)
             else:
                 candidates.append(segment)
                 and_parts = [

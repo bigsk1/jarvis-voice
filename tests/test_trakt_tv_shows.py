@@ -77,6 +77,14 @@ def test_reference_parser_understands_favorite_shows_and_series():
     assert extract_reference_candidates(
         "My favorite shows are The Expanse, Silo; I want thoughtful science fiction"
     )[:2] == ["The Expanse", "Silo"]
+    parsed = extract_reference_candidates(
+        "thoughtful mystery like Severance and Dark, episodes under an hour, "
+        "preferably a completed series"
+    )
+    assert "Severance" in parsed
+    assert "Dark" in parsed
+    assert "episodes under an hour" not in parsed
+    assert "preferably a completed series" not in parsed
 
 
 def test_recommend_blends_related_and_public_show_lists_with_videos():
@@ -153,14 +161,14 @@ def test_recommend_applies_episode_runtime_locally():
             client,
             {
                 "action": "recommend",
-                "request": "Science fiction with short episodes",
+                "request": "Science fiction with episodes under an hour",
                 "max_results": 5,
                 "include_videos": False,
             },
         )
 
     assert [show["title"] for show in data["results"]] == ["Short Episodes"]
-    assert data["filters_used"]["runtimes"] == "1-35"
+    assert data["filters_used"]["runtimes"] == "1-60"
     assert all("runtimes" not in params for _, params in calls)
 
 

@@ -34,7 +34,103 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_google_sports"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("trakt_movies"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("tmdb_movies"), 10000)
+        self.assertEqual(self.orch._tool_context_max_chars("trakt_tv_shows"), 10000)
+        self.assertEqual(self.orch._tool_context_max_chars("tmdb_tv_shows"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("workflow"), 8000)
+
+    def test_trakt_tv_preview_keeps_episode_runtime_and_show_handles(self):
+        candidates = [
+            {
+                "title": f"Show {index}",
+                "year": 2020 + index,
+                "ids": {"trakt": index, "slug": f"show-{index}"},
+                "trakt_url": f"https://trakt.tv/shows/show-{index}",
+                "episode_runtime_minutes": 40 + index,
+                "network": "Example TV",
+                "status": "returning series",
+                "rating": 8.0,
+                "votes": 1000 * index,
+                "genres": ["drama", "mystery"],
+                "overview": f"Bounded TV overview {index}. " * 12,
+                "source_signals": ["related:Severance", "trending"],
+            }
+            for index in range(1, 9)
+        ]
+        result = {
+            "ok": True,
+            "speech": "Found eight TV shows.",
+            "data": {
+                "action": "recommend",
+                "request": "Mysteries like Severance with short episodes",
+                "filters_used": {"runtimes": "1-60"},
+                "runtime_scope": "episode",
+                "results_count": 8,
+                "candidates": candidates,
+                "raw": "do not expose " * 5000,
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "trakt_tv_shows", result
+        )
+
+        compact = json.loads(preview)["llm_context_preview"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 10000)
+        self.assertEqual(compact["data_preview"]["runtime_scope"], "episode")
+        self.assertEqual(len(compact["source_candidates"]), 8)
+        self.assertEqual(compact["source_candidates"][7]["episode_runtime_minutes"], 48)
+        self.assertEqual(compact["source_candidates"][7]["network"], "Example TV")
+        self.assertNotIn("do not expose", preview)
+
+    def test_tmdb_tv_details_preview_keeps_series_fields_and_seasons(self):
+        result = {
+            "ok": True,
+            "speech": "Retrieved bundled TMDB TV details.",
+            "data": {
+                "action": "details",
+                "query": "Severance",
+                "show": {
+                    "id": 95396,
+                    "tmdb_id": 95396,
+                    "title": "Severance",
+                    "first_air_date": "2022-02-18",
+                    "episode_runtime_minutes": 50,
+                    "number_of_seasons": 2,
+                    "number_of_episodes": 19,
+                    "created_by": ["Dan Erickson"],
+                    "networks": ["Apple TV+"],
+                    "content_rating": "TV-MA",
+                    "tmdb_url": "https://www.themoviedb.org/tv/95396",
+                },
+                "details_included": ["series_metadata", "seasons", "aggregate_cast"],
+                "cast": [{"id": 1, "name": "Adam Scott", "character": "Mark Scout"}],
+                "seasons": [
+                    {
+                        "season_number": 1,
+                        "name": "Season 1",
+                        "episode_count": 9,
+                        "air_date": "2022-02-18",
+                    }
+                ],
+                "results_count": 1,
+                "results": [{"id": 95396, "title": "Severance"}],
+                "raw": "do not expose " * 5000,
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "tmdb_tv_shows", result
+        )
+
+        details = json.loads(preview)["llm_context_preview"]["data_preview"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 10000)
+        self.assertEqual(details["show"]["content_rating"], "TV-MA")
+        self.assertEqual(details["show"]["number_of_seasons"], 2)
+        self.assertEqual(details["seasons"][0]["episode_count"], 9)
+        self.assertEqual(details["bundled_result_counts"]["seasons"], 1)
+        self.assertNotIn("do not expose", preview)
 
     def test_trakt_preview_keeps_shortlist_constraints_and_trailer_handles(self):
         candidates = [

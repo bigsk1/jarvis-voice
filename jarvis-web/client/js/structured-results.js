@@ -44,7 +44,7 @@ class StructuredResultsRenderer {
 
   _adaptCollection(toolName, rawPayload, adapter = this.adapters.get(toolName)) {
     if (!adapter) return null;
-    const payload = toolName === 'tmdb_movies'
+    const payload = ['tmdb_movies', 'tmdb_tv_shows'].includes(toolName)
       ? this._tmdbDisplayPayload(rawPayload)
       : this._latestPayload(rawPayload);
     if (!payload) return null;
@@ -204,6 +204,8 @@ class StructuredResultsRenderer {
     this.register('serpapi_tripadvisor', payload => this._adaptTripadvisor(payload));
     this.register('trakt_movies', payload => this._adaptTraktMovies(payload));
     this.register('tmdb_movies', payload => this._adaptTmdbMovies(payload));
+    this.register('trakt_tv_shows', payload => this._adaptTraktMovies(payload, 'show'));
+    this.register('tmdb_tv_shows', payload => this._adaptTmdbMovies(payload, 'show'));
     this.register('flight_search', payload => this._adaptFlights(payload));
     this.register('serpapi_google_local', payload => this._adaptGoogleLocal(payload));
     this.register('serpapi_google_local_services', payload => this._adaptGoogleLocalServices(payload));
@@ -999,12 +1001,16 @@ class StructuredResultsRenderer {
     };
   }
 
-  _adaptTraktMovies(payload) {
+  _adaptTraktMovies(payload, mediaType = 'movie') {
+    const isShow = mediaType === 'show';
     const items = this._rows(payload).map((row, index) => {
       const chips = [];
       if (row.year) chips.push(String(row.year));
-      if (row.runtime_minutes) chips.push(`${row.runtime_minutes} min`);
+      const runtime = isShow ? row.episode_runtime_minutes : row.runtime_minutes;
+      if (runtime) chips.push(`${runtime} min${isShow ? '/episode' : ''}`);
       if (row.certification) chips.push(String(row.certification));
+      if (isShow && row.network) chips.push(String(row.network));
+      if (isShow && row.status) chips.push(String(row.status));
       const signals = this._list(row.source_signals)
         .slice(0, 3)
         .map(signal => String(signal).replace(/^related:/, 'Like '));
@@ -1019,12 +1025,12 @@ class StructuredResultsRenderer {
         ? `★ ${rating.toFixed(1)}${row.votes ? ` · ${this._formatCount(row.votes)} votes` : ''}`
         : '';
       return {
-        title: row.title || `Movie ${index + 1}`,
+        title: row.title || `${isShow ? 'Show' : 'Movie'} ${index + 1}`,
         url: row.trakt_url || row.imdb_url || row.trailer_url,
         primary,
         chips,
         details,
-        actionLabel: row.trakt_url ? 'Open on Trakt' : 'Open movie',
+        actionLabel: row.trakt_url ? 'Open on Trakt' : `Open ${isShow ? 'show' : 'movie'}`,
       };
     });
     const action = String(payload.action || 'recommend').replace(/_/g, ' ');
@@ -1041,18 +1047,21 @@ class StructuredResultsRenderer {
     return {
       kind: 'generic',
       layout: 'rail',
-      eyebrow: 'Trakt movies',
-      heading: payload.request || payload.query || 'Movie ideas',
+      eyebrow: isShow ? 'Trakt TV shows' : 'Trakt movies',
+      heading: payload.request || payload.query || (isShow ? 'TV-show ideas' : 'Movie ideas'),
       subtitle,
       actionUrl: payload.top_url,
-      actionLabel: 'Open top movie',
+      actionLabel: `Open top ${isShow ? 'show' : 'movie'}`,
       items,
     };
   }
 
-  _adaptTmdbMovies(payload) {
+  _adaptTmdbMovies(payload, mediaType = 'movie') {
+    const isShow = mediaType === 'show';
     const action = String(payload.action || 'search').replace(/_/g, ' ');
-    const movie = payload.movie && typeof payload.movie === 'object' ? payload.movie : null;
+    const media = payload[isShow ? 'show' : 'movie'];
+    const movie = media && typeof media === 'object' ? media : null;
+    const mediaLabel = isShow ? 'TV show' : 'Movie';
     const attribution = payload.attribution_notice
       || 'This product uses the TMDB API but is not endorsed or certified by TMDB.';
 
@@ -1065,7 +1074,7 @@ class StructuredResultsRenderer {
           ? `${width} × ${height}`
           : '';
         return {
-          title: row.title || `${movie?.title || 'Movie'} artwork ${index + 1}`,
+          title: row.title || `${movie?.title || mediaLabel} artwork ${index + 1}`,
           url: row.source_url || movie?.tmdb_url || payload.top_url,
           image: index === 0
             ? (row.image_url || row.thumbnail)
@@ -1082,8 +1091,8 @@ class StructuredResultsRenderer {
       return {
         kind: 'image',
         layout: 'gallery',
-        eyebrow: 'TMDB movie artwork · External content',
-        heading: movie?.title || payload.query || 'Movie artwork',
+        eyebrow: `TMDB ${isShow ? 'TV' : 'movie'} artwork · External content`,
+        heading: movie?.title || payload.query || `${mediaLabel} artwork`,
         subtitle: [
           `${payload.results_count ?? items.length} image${Number(payload.results_count ?? items.length) === 1 ? '' : 's'}`,
           payload.image_type && payload.image_type !== 'all' ? payload.image_type : '',
@@ -1109,7 +1118,7 @@ class StructuredResultsRenderer {
         kind: 'generic',
         layout: 'rail',
         eyebrow: 'TMDB cast and crew',
-        heading: movie?.title || payload.query || 'Movie credits',
+        heading: movie?.title || payload.query || `${mediaLabel} credits`,
         subtitle: attribution,
         actionUrl: movie?.tmdb_url || payload.top_url || payload.attribution_url,
         actionLabel: 'Open on TMDB',
@@ -1119,7 +1128,7 @@ class StructuredResultsRenderer {
 
     if (payload.action === 'videos') {
       const items = this._rows(payload).map((row, index) => ({
-        title: row.title || `${movie?.title || 'Movie'} video ${index + 1}`,
+        title: row.title || `${movie?.title || mediaLabel} video ${index + 1}`,
         url: row.url,
         primary: row.site || '',
         chips: [row.type, row.official === true ? 'Official' : '', row.published_at]
@@ -1129,8 +1138,8 @@ class StructuredResultsRenderer {
       return {
         kind: 'video',
         layout: 'rail',
-        eyebrow: 'TMDB movie videos',
-        heading: movie?.title || payload.query || 'Movie videos',
+        eyebrow: `TMDB ${isShow ? 'TV' : 'movie'} videos`,
+        heading: movie?.title || payload.query || `${mediaLabel} videos`,
         subtitle: attribution,
         actionUrl: movie?.tmdb_url || payload.top_url || payload.attribution_url,
         actionLabel: 'Open on TMDB',
@@ -1141,7 +1150,7 @@ class StructuredResultsRenderer {
     const items = this._rows(payload).map((row, index) => {
       const rating = row.rating != null ? Number(row.rating) : null;
       return {
-        title: row.title || `Movie ${index + 1}`,
+        title: row.title || `${mediaLabel} ${index + 1}`,
         url: row.tmdb_url || row.imdb_url,
         image: row.poster_thumbnail || row.poster_url,
         imageUrl: row.poster_original_url || row.backdrop_original_url || row.poster_url,
@@ -1150,12 +1159,17 @@ class StructuredResultsRenderer {
           : '',
         chips: [
           row.year,
-          row.runtime_minutes ? `${row.runtime_minutes} min` : '',
-          row.certification,
+          (isShow ? row.episode_runtime_minutes : row.runtime_minutes)
+            ? `${isShow ? row.episode_runtime_minutes : row.runtime_minutes} min${isShow ? '/episode' : ''}`
+            : '',
+          isShow ? row.content_rating : row.certification,
+          isShow && row.number_of_seasons ? `${row.number_of_seasons} season${Number(row.number_of_seasons) === 1 ? '' : 's'}` : '',
+          isShow ? row.status : '',
           row.source_signal ? String(row.source_signal).replace(/_/g, ' ') : '',
         ].filter(Boolean).map(String),
         details: [
           this._list(row.genres).slice(0, 4).join(' · '),
+          isShow ? this._list(row.networks).slice(0, 3).join(' · ') : '',
           row.overview ? this._compactText(row.overview, 260) : '',
         ].filter(Boolean),
         actionLabel: 'Open on TMDB',
@@ -1164,8 +1178,8 @@ class StructuredResultsRenderer {
     return {
       kind: 'generic',
       layout: 'rail',
-      eyebrow: 'TMDB movies · External content',
-      heading: movie?.title || payload.query || `${action.charAt(0).toUpperCase()}${action.slice(1)} movies`,
+      eyebrow: `TMDB ${isShow ? 'TV shows' : 'movies'} · External content`,
+      heading: movie?.title || payload.query || `${action.charAt(0).toUpperCase()}${action.slice(1)} ${isShow ? 'TV shows' : 'movies'}`,
       subtitle: [
         `${payload.results_count ?? items.length} result${Number(payload.results_count ?? items.length) === 1 ? '' : 's'}`,
         attribution,

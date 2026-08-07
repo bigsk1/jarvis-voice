@@ -112,10 +112,12 @@ class ToolExecutorCancelTests(unittest.TestCase):
     def test_trakt_timeout_allows_bounded_related_and_video_calls(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("trakt_movies"), 300)
+        self.assertEqual(executor._get_subprocess_timeout("trakt_tv_shows"), 300)
 
     def test_tmdb_timeout_allows_proxy_chain_and_metadata_helpers(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("tmdb_movies"), 300)
+        self.assertEqual(executor._get_subprocess_timeout("tmdb_tv_shows"), 300)
 
     def test_search_index_timeout_allows_deep_recall_request(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))

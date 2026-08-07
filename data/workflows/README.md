@@ -353,6 +353,7 @@ the same orchestration turn; it is not a durable background run.
 | `server_health_check.json` | `/health <host>` | SSH health check on remote server |
 | `team_outlook.json` | `/team_outlook <sport> <team>` (also `/season_outlook`) | Resolve one team ID for current games, focused team standings, and roster views, then add optional current news and a Canvas outlook; `football` means American football and `soccer` means association football |
 | `trend_reality_check.json` | `/trend_reality_check <topic>` (also `/trend_check`) | Compare topic-specific Google Trends with the seedless Trending Now feed, optional current news, indexed source candidates, and a Canvas assessment |
+| `tv_night.json` | `/tv_night <mood, constraints, or favorite shows>` (also `/what_show_to_watch`, `/tv_picker`) | Use required public Trakt TV metadata plus optional TMDB artwork/series commitment facts, YouTube trailers, and Brave streaming context to create a dated Canvas shortlist; episode runtime remains distinct from total commitment |
 | `url_ingest.json` | `/url_ingest <url>` | Fetch any URL, create intel file, ingest to memory for RAG queries |
 | `vacation_reconnaissance.json` | `/vacation_reconnaissance <location>` (also `/vacation_recon`, `/destination_scout`) | Create a crawl-free weather, attractions, dining, local pulse, image, Stash, and Canvas destination report for a required location |
 | `weather_watch.json` | `/weather_watch` (also `/garden_watch`) | Default-location weather watch with canvas report and condition-specific alerts |

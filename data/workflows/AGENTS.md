@@ -608,6 +608,91 @@ streaming-list signal is not provider availability.
 or as optional enrichment beside `trakt_movies`. TMDB CDN URLs are external,
 untrusted content and must retain the returned attribution notice.
 
+### trakt_tv_shows
+```python
+# Params: action="recommend", request="mysteries like Severance, episodes under an hour"
+{
+  "ok": true,
+  "data": {
+    "action": "recommend",
+    "resolved_references": [{"title": "Severance", "ids": {"slug": "severance"}}],
+    "genre_hints": ["mystery"],
+    "filters_used": {"genres": "mystery", "runtimes": "1-60"},
+    "runtime_scope": "episode",
+    "candidates": [
+      {
+        "title": "Example Show",
+        "year": 2025,
+        "episode_runtime_minutes": 52,
+        "status": "returning series",
+        "network": "Example TV",
+        "trakt_url": "https://trakt.tv/shows/example-show",
+        "source_signals": ["related:Severance", "trending"]
+      }
+    ],
+    "trailers": [],
+    "public_metadata_only": true,
+    "streaming_provider_data": "not returned"
+  }
+}
+```
+**Extract rules:**
+```json
+"extract": {
+  "show_candidates": "candidates",
+  "show_references": "resolved_references",
+  "show_filters": "filters_used",
+  "show_trailers": "trailers",
+  "top_title": "candidates[0].title"
+}
+```
+**Notes**: Runtime fields are typical episode length, never total series
+duration. Trakt image fields remain omitted. The streaming-list signal does not
+identify a service or prove current availability.
+
+### tmdb_tv_shows
+```python
+# Params: action="images", query="Severance", image_type="all", max_results=6
+{
+  "ok": true,
+  "data": {
+    "action": "images",
+    "show": {
+      "tmdb_id": 95396,
+      "title": "Severance",
+      "year": 2022,
+      "episode_runtime_minutes": 50,
+      "number_of_seasons": 2,
+      "tmdb_url": "https://www.themoviedb.org/tv/95396"
+    },
+    "images": [
+      {
+        "image_type": "poster",
+        "thumbnail": "https://image.tmdb.org/t/p/w342/example.jpg",
+        "image_url": "https://image.tmdb.org/t/p/w500/example.jpg",
+        "original_url": "https://image.tmdb.org/t/p/original/example.jpg",
+        "source_url": "https://www.themoviedb.org/tv/95396"
+      }
+    ],
+    "results_count": 1,
+    "attribution_notice": "This product uses the TMDB API but is not endorsed or certified by TMDB."
+  }
+}
+```
+**Extract rules:**
+```json
+"extract": {
+  "tmdb_show": "show",
+  "tmdb_images": "images",
+  "tmdb_top_poster": "images[0].image_url",
+  "tmdb_source_url": "show.tmdb_url"
+}
+```
+**Notes**: `tmdb_tv_shows` is independently gated by either TMDB credential.
+Use `details` once for combined series metadata, aggregate credits, seasons,
+content rating, and artwork; use `images` once for a bounded mixed artwork set.
+TMDB content is external and must retain the attribution notice.
+
 ---
 
 ## Step 3: Workflow JSON Structure
@@ -899,6 +984,7 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 | `server_health_check.json` | `/health [host]` | Default value, ssh_remote, get_time |
 | `team_outlook.json` | `/team_outlook <sport> <team>` | Resolve one team KGMID, prioritize its standings division before bounding, add direct roster/current-news context, and create validated Canvas; `football` means American football and `soccer` means association football |
 | `trend_reality_check.json` | `/trend_reality_check <topic>` | Topic-specific Trends plus seedless Trending Now cross-check, optional News Light and Search Index, validated Canvas |
+| `tv_night.json` | `/tv_night <request>` | Required public Trakt TV recommendations, optional TMDB artwork/commitment metadata, YouTube trailer rail, and Brave availability context; episode runtime is not total-series duration |
 | `url_ingest.json` | `/url_ingest <url>` | crawl_url, stash, text_summarizer, manage_intel (auto_ingest), search_memory |
 | `vacation_reconnaissance.json` | `/vacation_reconnaissance <location>` | Required-location weather + bounded Tripadvisor, Google Local, News Light, Images Light, optional Stash, and Canvas; no crawl |
 | `weather_watch.json` | `/weather_watch` | Environment-backed default location, condition branching, alerts, Canvas |

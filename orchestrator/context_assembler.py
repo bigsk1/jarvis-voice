@@ -750,11 +750,11 @@ class ContextAssembler:
             # this cap, while game details need more than the generic search
             # budget to stay useful to the response model.
             return 10000
-        if lowered == "trakt_movies":
-            # Preserve a useful movie-night shortlist, exact links, constraints,
+        if lowered in {"trakt_movies", "trakt_tv_shows"}:
+            # Preserve a useful movie/TV shortlist, exact links, constraints,
             # and trailer handles without passing the full provider payload.
             return 10000
-        if lowered == "tmdb_movies":
+        if lowered in {"tmdb_movies", "tmdb_tv_shows"}:
             # Retain bounded artwork variants, exact TMDB IDs, credits, and
             # production metadata for visual follow-ups and workflow reuse.
             return 10000
@@ -833,7 +833,8 @@ class ContextAssembler:
         if not isinstance(data, dict):
             return []
 
-        if str(tool_name or "").strip().lower() == "tmdb_movies":
+        normalized_tool_name = str(tool_name or "").strip().lower()
+        if normalized_tool_name in {"tmdb_movies", "tmdb_tv_shows"}:
             # TMDB already returns a bounded results list; prefer it over the
             # five-row UI-oriented top_results slice for LLM follow-ups.
             candidate_keys = (
@@ -908,9 +909,9 @@ class ContextAssembler:
             str(tool_name or "").strip().lower() == "serpapi_google_trending_now"
         )
         is_tripadvisor = str(tool_name or "").strip().lower() == "serpapi_tripadvisor"
-        is_trakt_movies = str(tool_name or "").strip().lower() == "trakt_movies"
-        is_tmdb_movies = str(tool_name or "").strip().lower() == "tmdb_movies"
-        tmdb_action = str(data.get("action") or "").strip().lower() if is_tmdb_movies else ""
+        is_trakt_media = normalized_tool_name in {"trakt_movies", "trakt_tv_shows"}
+        is_tmdb_media = normalized_tool_name in {"tmdb_movies", "tmdb_tv_shows"}
+        tmdb_action = str(data.get("action") or "").strip().lower() if is_tmdb_media else ""
         is_flight_search = str(tool_name or "").strip().lower() == "flight_search"
 
         candidates: list[dict[str, Any]] = []
@@ -1193,7 +1194,7 @@ class ContextAssembler:
                             max_depth=1,
                         )
 
-            if is_trakt_movies:
+            if is_trakt_media:
                 for key in (
                     "year",
                     "ids",
@@ -1202,10 +1203,17 @@ class ContextAssembler:
                     "tagline",
                     "overview",
                     "runtime_minutes",
+                    "episode_runtime_minutes",
                     "votes",
                     "genres",
                     "subgenres",
                     "certification",
+                    "network",
+                    "status",
+                    "show_type",
+                    "aired_episodes",
+                    "first_aired",
+                    "airs",
                     "trailer_url",
                     "source_signals",
                     "related_to",
@@ -1222,18 +1230,26 @@ class ContextAssembler:
                             max_depth=3,
                         )
 
-            if is_tmdb_movies:
+            if is_tmdb_media:
                 compact_list_fields = (
                     "id",
                     "tmdb_id",
                     "original_title",
                     "release_date",
+                    "first_air_date",
                     "year",
                     "overview",
                     "runtime_minutes",
+                    "episode_runtime_minutes",
                     "votes",
                     "genres",
                     "certification",
+                    "content_rating",
+                    "status",
+                    "show_type",
+                    "number_of_seasons",
+                    "number_of_episodes",
+                    "networks",
                     "tmdb_url",
                     "poster_thumbnail",
                     "source_signal",
@@ -1306,9 +1322,9 @@ class ContextAssembler:
 
             if "url" not in candidate and not is_google_images_light:
                 aliases = url_aliases
-                if is_trakt_movies:
+                if is_trakt_media:
                     aliases = (*aliases, "trakt_url")
-                if is_tmdb_movies:
+                if is_tmdb_media:
                     aliases = (*aliases, "tmdb_url", "source_url")
                 for alias in aliases:
                     value = item.get(alias)
@@ -1365,12 +1381,13 @@ class ContextAssembler:
                 preview[key] = [str(item) for item in value[:12] if item]
 
         action = str(data.get("action") or "")
-        movie = data.get("movie")
-        if isinstance(movie, dict) and movie:
+        media_key = "show" if isinstance(data.get("show"), dict) else "movie"
+        media = data.get(media_key)
+        if isinstance(media, dict) and media:
             if action == "details":
-                preview["movie"] = {
+                preview[media_key] = {
                     key: self.build_preview_value(
-                        movie[key],
+                        media[key],
                         parent_key=key,
                         max_depth=2,
                     )
@@ -1380,15 +1397,28 @@ class ContextAssembler:
                         "title",
                         "original_title",
                         "release_date",
+                        "first_air_date",
+                        "last_air_date",
                         "year",
                         "overview",
                         "tagline",
                         "runtime_minutes",
+                        "episode_runtime_minutes",
+                        "episode_run_times",
                         "rating",
                         "votes",
                         "genres",
                         "certification",
+                        "content_rating",
                         "status",
+                        "show_type",
+                        "number_of_seasons",
+                        "number_of_episodes",
+                        "created_by",
+                        "networks",
+                        "origin_countries",
+                        "next_episode",
+                        "last_episode",
                         "budget",
                         "revenue",
                         "production_companies",
@@ -1400,12 +1430,12 @@ class ContextAssembler:
                         "poster_url",
                         "backdrop_url",
                     )
-                    if movie.get(key) not in (None, "", [], {})
+                    if media.get(key) not in (None, "", [], {})
                 }
             else:
-                preview["movie"] = self.build_preview_value(
-                    movie,
-                    parent_key="movie",
+                preview[media_key] = self.build_preview_value(
+                    media,
+                    parent_key=media_key,
                     max_depth=3,
                 )
 
@@ -1458,6 +1488,24 @@ class ContextAssembler:
                 if isinstance(item, dict)
             ]
 
+        seasons = data.get("seasons")
+        if isinstance(seasons, list) and seasons:
+            preview["seasons"] = [
+                {
+                    key: item[key]
+                    for key in (
+                        "season_number",
+                        "name",
+                        "episode_count",
+                        "air_date",
+                        "poster_url",
+                    )
+                    if item.get(key) not in (None, "")
+                }
+                for item in seasons[:8]
+                if isinstance(item, dict)
+            ]
+
         for key in ("external_ids", "keywords"):
             if data.get(key) not in (None, "", [], {}):
                 preview[key] = self.build_preview_value(
@@ -1475,6 +1523,7 @@ class ContextAssembler:
                 "videos",
                 "recommendations",
                 "similar",
+                "seasons",
             )
             if isinstance((value := data.get(key)), list)
         }
@@ -2559,7 +2608,7 @@ class ContextAssembler:
                 data_preview = self.build_google_trending_now_data_preview(data)
             elif normalized_tool_name == "serpapi_tripadvisor":
                 data_preview = self.build_tripadvisor_data_preview(data)
-            elif normalized_tool_name == "trakt_movies":
+            elif normalized_tool_name in {"trakt_movies", "trakt_tv_shows"}:
                 data_preview = {
                     key: self.build_preview_value(data[key], parent_key=key, max_depth=3)
                     for key in (
@@ -2578,6 +2627,7 @@ class ContextAssembler:
                         "api_requests",
                         "oauth_used",
                         "public_metadata_only",
+                        "runtime_scope",
                         "streaming_provider_data",
                         "external_content_trust",
                         "source",
@@ -2585,7 +2635,7 @@ class ContextAssembler:
                     if isinstance(data, dict)
                     and data.get(key) not in (None, "", [], {})
                 }
-            elif normalized_tool_name == "tmdb_movies":
+            elif normalized_tool_name in {"tmdb_movies", "tmdb_tv_shows"}:
                 data_preview = self.build_tmdb_data_preview(data)
             elif normalized_tool_name == "flight_search":
                 data_preview = self.build_flight_data_preview(data)
@@ -2607,14 +2657,14 @@ class ContextAssembler:
                 max_items=(
                     6
                     if (
-                        (tool_name or "").lower() == "tmdb_movies"
+                        (tool_name or "").lower() in {"tmdb_movies", "tmdb_tv_shows"}
                         and isinstance(data, dict)
                         and data.get("action") == "images"
                     )
                     else 8
-                    if (tool_name or "").lower() == "tmdb_movies"
+                    if (tool_name or "").lower() in {"tmdb_movies", "tmdb_tv_shows"}
                     else 8
-                    if (tool_name or "").lower() == "trakt_movies"
+                    if (tool_name or "").lower() in {"trakt_movies", "trakt_tv_shows"}
                     else 5
                 ),
                 tool_name=tool_name,

@@ -809,13 +809,15 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `brave_llm_context` - **Brave LLM Context API**: compact source snippets for LLM grounding (retrieval/context, not a final-answer generator)
 - `screenshot_url` - **Screenshot + vision**: Full-page capture with AI analysis (bypasses anti-bot)
 
-**Optional [Trakt movie tool](docs/tools/trakt-movies-tool/README.md) (`TRAKT_API_KEY` Client ID):**
+**Optional Trakt movie and TV tools (`TRAKT_API_KEY` Client ID):**
 
-- `trakt_movies` - **Public movie discovery**: Mood-aware and related-title recommendations, search/details, trending/popular/anticipated/streaming-ranked/box-office lists, and public trailer/video metadata without account OAuth
+- [`trakt_movies`](docs/tools/trakt-movies-tool/README.md) - **Public movie discovery**: Mood-aware and related-title recommendations, search/details, trending/popular/anticipated/streaming-ranked/box-office lists, and public trailer/video metadata without account OAuth
+- [`trakt_tv_shows`](docs/tools/trakt-tv-shows-tool/README.md) - **Public TV-show discovery**: Mood-aware and related-series recommendations, search/details, trending/popular/anticipated/streaming-ranked lists, typical episode runtime, and public trailer/video metadata without account OAuth
 
-**Optional [TMDB movie tool](docs/tools/tmdb-movies-tool/README.md) (`TMDB_ACCESS_TOKEN` or `TMDB_API_KEY`):**
+**Optional TMDB movie and TV tools (`TMDB_ACCESS_TOKEN` or `TMDB_API_KEY`):**
 
-- `tmdb_movies` - **Standalone movie discovery + artwork**: Search/details, posters/backdrops/logos, cast/crew, collections, certifications, videos, recommendations/similar titles, filtered discovery, and current TMDB lists without user OAuth or a Trakt dependency
+- [`tmdb_movies`](docs/tools/tmdb-movies-tool/README.md) - **Standalone movie discovery + artwork**: Search/details, posters/backdrops/logos, cast/crew, collections, certifications, videos, recommendations/similar titles, filtered discovery, and current TMDB lists without user OAuth or a Trakt dependency
+- [`tmdb_tv_shows`](docs/tools/tmdb-tv-shows-tool/README.md) - **Standalone TV discovery + artwork**: Search/details, posters/backdrops/logos, aggregate cast/crew, creators, networks, seasons, content ratings, recommendations/similar shows, filtered discovery, and current TMDB TV lists
 
 **Optional [SerpApi tool suite](docs/tools/serp-api-tool/README.md) (`SERP_API_KEY`):**
 
@@ -1020,6 +1022,7 @@ picker for the authoritative current surface.
 | `/status_visual` | Status briefing + AI-generated dashboard image + same Canvas crypto charts as `/status` | get_time, weather, crypto_price, crypto_chart, stock_price, list_alerts, list_reminders, system_monitor, generate_image, canvas |
 | `/team_outlook <sport> <team>` (also `/season_outlook`) | Create a current-centered team outlook with recent and upcoming games, standings, roster context, and optional current news | serpapi_google_sports, optional serpapi_google_news_light, canvas |
 | `/trend_reality_check <topic>` (also `/trend_check`) | Test whether a topic shows sustained interest, a transient spike, or weak evidence using topic trends, the seedless current feed, news, and indexed source discovery | serpapi_google_trends, optional serpapi_google_trending_now, optional serpapi_google_news_light, optional serpapi_search_index, canvas |
+| `/tv_night <mood, constraints, or favorite shows>` (also `/what_show_to_watch`, `/tv_picker`) | Build a decisive Trakt-based TV shortlist with related-series signals, optional TMDB artwork/commitment metadata, trailers, current streaming evidence, and a dated Canvas recommendation | trakt_tv_shows, optional tmdb_tv_shows, optional serpapi_youtube_search, optional brave_llm_context, canvas |
 | `/weather_watch`, `/garden_watch` | Weather watch for default location (`JARVIS_DEFAULT_LOCATION`); alerts for cold, wind, heat, or severe conditions | get_time, weather, create_alert, canvas |
 | `/url_ingest <url>` | Crawl URL, create intel file, ingest to memory | crawl_url, stash, text_summarizer, manage_intel, ingest_intel |
 | `/vacation_reconnaissance <location>` (also `/vacation_recon`, `/destination_scout`) | Required-location vacation reconnaissance with forecast, attractions, food, local pulse, images, optional Stash evidence, and Canvas | weather, serpapi_tripadvisor, serpapi_google_local, serpapi_google_news_light, serpapi_google_images_light, stash, canvas |
