@@ -353,9 +353,23 @@ Variables can come from the query:
   "url": { "from": "query", "extract": "url" },
   "topic": { "from": "query", "extract": "main_subject" },
   "title": { "from": "query", "extract": "short_title" },
-  "slug": { "from": "query", "extract": "first_words", "max_words": 4 }
+  "slug": { "from": "query", "extract": "first_words", "max_words": 4 },
+  "planning_context": {
+    "from": "query",
+    "extract": "location_date_context",
+    "allow_default_location": true,
+    "forecast_horizon_days": 10
+  }
 }
 ```
+
+`location_date_context` returns a nested object for reuse through references
+such as `${planning_context.location}` and
+`${planning_context.target_date}`. `allow_default_location` is opt-in; omit it
+when the workflow requires an explicit destination. Supplying
+`forecast_horizon_days` adds deterministic forecast eligibility/window fields
+and clamps the horizon to the weather tool's 1–10 day range. Omit the horizon
+for non-weather workflows that only need location/date parsing.
 
 Variables can come from environment:
 
@@ -569,9 +583,12 @@ The authoritative list is `data/workflows/*.json` plus any private `data/workflo
 | `jarvis_self_check.json` | `/jarvis_self_check` | Check host health, create alerts on problems, and update one Canvas health page. |
 | `local_services_compare.json` | `/local_services_compare` | Compare local service providers from Google Local Services, Google Local, and bounded Yelp review evidence using the active mode location. |
 | `memory_scan.json` | `/memory_scan` | Analyze the active memory database and save labeled Stash and Canvas reports. |
+| `night_out.json` | `/night_out` | Build a date-aware evening plan from an explicit destination or the active mode default location/postal code and bounded local sources; run weather only when the parsed outing date fits its 10-day horizon. |
 | `quick_note.json` | `/note` | Save a note to memory and Canvas. |
 | `serpapi_amazon_search.json` | `/serpapi_amazon` (also `/amazon_search`, `/serpapi`) | Search Amazon through SerpApi and save Stash and Canvas reports. |
 | `server_health_check.json` | `/health` | SSH health check for a remote server. |
+| `team_outlook.json` | `/team_outlook` | Resolve one team ID, prioritize its standings division before result bounding, and add direct roster plus optional current-news context. Jarvis-facing `football` means American football; `soccer` means association football. |
+| `trend_reality_check.json` | `/trend_reality_check` | Compare topic-specific Google Trends with seedless Trending Now, recent news, and indexed source candidates. |
 | `url_ingest.json` | `/url_ingest` | Crawl a URL, create an Intelligence file, and ingest it for RAG queries. |
 | `vacation_reconnaissance.json` | `/vacation_reconnaissance` | Create a crawl-free vacation report for a required location from weather, Tripadvisor, Google Local, News Light, and Images Light results. |
 | `weather_watch.json` | `/weather_watch` | Default-location weather watch with Canvas and alerts. |

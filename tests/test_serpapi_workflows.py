@@ -172,6 +172,200 @@ def test_game_brief_uses_structured_sports_with_optional_web_enrichment():
     ]
 
 
+def test_night_out_uses_explicit_or_mode_default_location_without_generic_images():
+    workflow = _load_workflow("night_out")
+    tools = [step["tool"] for step in workflow["steps"]]
+
+    assert workflow["disable_server_side_tools"] is True
+    assert workflow["triggers"] == {
+        "explicit": ["/night_out", "/date_night"],
+        "patterns": [],
+        "keywords": [],
+    }
+    assert workflow["variables"]["request"] == {
+        "from": "query",
+        "extract": "main_subject",
+    }
+    assert workflow["variables"]["planning_context"] == {
+        "from": "query",
+        "extract": "location_date_context",
+        "allow_default_location": True,
+        "forecast_horizon_days": 10,
+    }
+    assert "crawl_url" not in tools
+    assert "stash" not in tools
+    assert "serpapi_google_images_light" not in tools
+
+    weather_step = _step(workflow, "weather")
+    assert weather_step["params"] == {
+        "location": "${planning_context.location}",
+        "forecast": True,
+        "days": 10,
+    }
+    assert weather_step["condition"] == {
+        "op": "eq",
+        "left": "${planning_context.forecast_eligible}",
+        "right": True,
+    }
+    assert weather_step["required"] is False
+    assert weather_step["on_fail"] == "continue"
+
+    for optional_tool in (
+        "serpapi_yelp_search",
+        "serpapi_tripadvisor",
+    ):
+        step = _step(workflow, optional_tool)
+        assert step["required"] is False
+        assert step["on_fail"] == "continue"
+
+    tripadvisor_step = _step(workflow, "serpapi_tripadvisor")
+    assert (
+        tripadvisor_step["params"]["query"]
+        == "things to do in ${planning_context.location}"
+    )
+    assert "${request}" not in tripadvisor_step["params"]["query"]
+
+    canvas_step = _step(workflow, "canvas")
+    assert "exact matching date" in canvas_step["llm_prompt"]
+    assert "do not assume the outing is today" in canvas_step["llm_prompt"]
+    assert "Closes in 23 min" in canvas_step["llm_prompt"]
+    assert "current research snapshot that remains usable" in canvas_step["llm_prompt"]
+    assert "availability at the planned visit time" in canvas_step["llm_prompt"]
+    assert "otherwise keep the candidate" in canvas_step["llm_prompt"]
+    assert "future-date recommendations" not in canvas_step["llm_prompt"]
+    assert "weather was intentionally skipped" in canvas_step["llm_prompt"]
+    assert canvas_step["llm_output_validation"]["required_patterns"] == [
+        "# Night Out:",
+        "## Request and Location",
+        "## Best-Fit Shortlist",
+        "## Suggested Plans",
+        "## Weather and Timing",
+        "## Verification Notes",
+        "## Sources",
+    ]
+
+
+def test_trend_reality_check_keeps_trending_now_seedless_and_optional():
+    workflow = _load_workflow("trend_reality_check")
+    tools = [step["tool"] for step in workflow["steps"]]
+
+    assert workflow["disable_server_side_tools"] is True
+    assert workflow["triggers"] == {
+        "explicit": ["/trend_reality_check", "/trend_check"],
+        "patterns": [],
+        "keywords": [],
+    }
+    assert workflow["variables"]["topic_name"] == {
+        "from": "query",
+        "extract": "main_subject",
+    }
+    assert "crawl_url" not in tools
+
+    trends_steps = [
+        step for step in workflow["steps"] if step["tool"] == "serpapi_google_trends"
+    ]
+    assert len(trends_steps) == 2
+    assert trends_steps[0]["params"]["data_type"] == "interest_over_time"
+    assert trends_steps[0]["params"]["date"] == "today 3-m"
+    assert trends_steps[0]["required"] is True
+    assert trends_steps[1]["params"]["data_type"] == "related_queries"
+    assert trends_steps[1]["required"] is False
+
+    trending_step = _step(workflow, "serpapi_google_trending_now")
+    assert "query" not in trending_step["params"]
+    assert trending_step["params"]["action"] == "trending_now"
+    assert trending_step["required"] is False
+    assert trending_step["on_fail"] == "continue"
+
+    for optional_tool in (
+        "serpapi_google_news_light",
+        "serpapi_search_index",
+    ):
+        step = _step(workflow, optional_tool)
+        assert step["required"] is False
+        assert step["on_fail"] == "continue"
+
+    canvas_step = _step(workflow, "canvas")
+    assert "relative indices" in canvas_step["llm_prompt"]
+    assert "seedless US feed" in canvas_step["llm_prompt"]
+    assert "provider contamination" in canvas_step["llm_prompt"]
+    assert "## Confidence and Caveats" in canvas_step["llm_output_validation"][
+        "required_patterns"
+    ]
+
+
+def test_team_outlook_reuses_resolved_team_kgmid_for_optional_views():
+    workflow = _load_workflow("team_outlook")
+    tools = [step["tool"] for step in workflow["steps"]]
+
+    assert workflow["disable_server_side_tools"] is True
+    assert workflow["triggers"] == {
+        "explicit": ["/team_outlook", "/season_outlook"],
+        "patterns": [],
+        "keywords": [],
+    }
+    assert workflow["variables"]["subject"] == {
+        "from": "query",
+        "extract": "main_subject",
+    }
+    assert workflow["variables"]["sport"] == {
+        "from": "query",
+        "extract": "first_words",
+        "max_words": 1,
+    }
+    assert "crawl_url" not in tools
+    assert tools.count("serpapi_google_sports") == 3
+
+    sports_steps = [
+        step for step in workflow["steps"] if step["tool"] == "serpapi_google_sports"
+    ]
+    assert sports_steps[0]["params"] == {
+        "query": "${subject}",
+        "sport": "${sport}",
+        "entity_type": "team",
+        "tab": "games",
+        "max_results": 12,
+        "no_cache": False,
+    }
+    assert sports_steps[0]["extract"]["team_kgmid"] == "kgmid"
+    assert sports_steps[0]["required"] is True
+
+    standings_step, players_step = sports_steps[1:]
+    assert standings_step["params"]["kgmid"] == "${team_kgmid}"
+    assert standings_step["params"]["entity_type"] == "team"
+    assert standings_step["params"]["tab"] == "standings"
+    assert standings_step["extract"]["selected_standing"] == "selected_standing"
+    assert standings_step["extract"]["standings_context"] == "standings_context"
+    assert standings_step["required"] is False
+    assert standings_step["on_fail"] == "continue"
+
+    assert players_step["params"]["kgmid"] == "${team_kgmid}"
+    assert players_step["params"]["entity_type"] == "team"
+    assert players_step["params"]["tab"] == "players"
+    for step in sports_steps[1:]:
+        assert "query" not in step["params"]
+        assert step["required"] is False
+        assert step["on_fail"] == "continue"
+
+    news_step = _step(workflow, "serpapi_google_news_light")
+    assert news_step["required"] is False
+    assert news_step["on_fail"] == "continue"
+
+    canvas_step = _step(workflow, "canvas")
+    assert "bounded current-centered window" in canvas_step["llm_prompt"]
+    assert canvas_step["llm_output_validation"]["required_patterns"] == [
+        "# Team Outlook:",
+        "## Snapshot",
+        "## Recent Form",
+        "## Upcoming Schedule",
+        "## Standings Context",
+        "## Roster Context",
+        "## Current Storylines",
+        "## What Matters Next",
+        "## Sources and Limits",
+    ]
+
+
 def test_new_serpapi_workflows_keep_stash_optional_and_canvas_validated():
     for workflow_name in (
         "vacation_reconnaissance",

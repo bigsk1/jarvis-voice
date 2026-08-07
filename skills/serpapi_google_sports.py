@@ -29,8 +29,10 @@ KGMID_RE = re.compile(r"^/(?:m|g)/[A-Za-z0-9_\-]+$")
 UTC_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
 SPORTS = {
-    "football": ("football", "ft"),
+    "football": ("american_football", "af"),
     "soccer": ("football", "ft"),
+    "association_football": ("football", "ft"),
+    "association football": ("football", "ft"),
     "ft": ("football", "ft"),
     "basketball": ("basketball", "bs"),
     "nba": ("basketball", "bs"),
@@ -166,7 +168,7 @@ def normalize_sport(value: Any) -> tuple[str, str]:
     normalized = str(value or "").strip().lower().replace("-", "_")
     if normalized not in SPORTS:
         raise ValueError(
-            "'sport' must be football, basketball, baseball, cricket, "
+            "'sport' must be football, soccer, basketball, baseball, cricket, "
             "american_football, ice_hockey, or rugby."
         )
     return SPORTS[normalized]
@@ -656,6 +658,48 @@ def _standing_rows(root: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def _prioritize_team_standings(
+    rows: list[dict[str, Any]], team_kgmid: str | None
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None, list[dict[str, Any]]]:
+    """Put the requested team's standings context ahead of bounded league rows."""
+    selected = next(
+        (
+            row
+            for row in rows
+            if team_kgmid and row.get("kgmid") == team_kgmid
+        ),
+        None,
+    )
+    if selected is None:
+        selected = next((row for row in rows if row.get("highlighted") is True), None)
+    if selected is None:
+        return rows, None, []
+
+    selected_group = selected.get("group")
+    selected_division = selected.get("division")
+    if selected_division:
+        peers = [
+            row
+            for row in rows
+            if row is not selected
+            and row.get("group") == selected_group
+            and row.get("division") == selected_division
+        ]
+    elif selected_group:
+        peers = [
+            row
+            for row in rows
+            if row is not selected and row.get("group") == selected_group
+        ]
+    else:
+        peers = []
+
+    context = [selected, *peers]
+    context_ids = {id(row) for row in context}
+    prioritized = [*context, *(row for row in rows if id(row) not in context_ids)]
+    return prioritized, selected, context
+
+
 def _person_rows(value: Any, *, kind: str, group: str | None = None) -> list[dict[str, Any]]:
     rows = []
     for item in _dicts(value):
@@ -1016,6 +1060,13 @@ def main() -> int:
             payload, entity_type=entity_type, tab=tab
         )
         provider_results_count = len(rows)
+        if results_kind == "standing" and entity_type == "team":
+            rows, selected_standing, standings_context = _prioritize_team_standings(
+                rows, kgmid
+            )
+            if selected_standing:
+                extras["selected_standing"] = selected_standing
+                extras["standings_context"] = standings_context
         selection_mode = None
         selection_anchor = None
         if results_kind == "game" and entity_type != "game":

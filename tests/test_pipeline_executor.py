@@ -10,8 +10,10 @@ import json
 import os
 import sys
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -150,6 +152,160 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
             self.executor._apply_transform("Example.COM / Docker CLI", "kebab"),
             "example-com-docker-cli",
         )
+
+    def test_location_date_context_is_nested_and_prefers_explicit_location(self):
+        target_date = (datetime.now().date() + timedelta(days=4)).isoformat()
+        workflow = {
+            "id": "reusable_planning_workflow",
+            "variables": {
+                "planning_context": {
+                    "from": "query",
+                    "extract": "location_date_context",
+                    "allow_default_location": True,
+                    "forecast_horizon_days": 10,
+                },
+            },
+        }
+
+        with patch.object(
+            self.executor,
+            "_chat_with_usage",
+            return_value=json.dumps(
+                {"location": "Seaside, Oregon", "target_date": target_date}
+            ),
+        ):
+            variables = self.executor._extract_workflow_variables(
+                "/night_out Seaside Oregon August 25 anniversary",
+                workflow,
+                "Seaside Oregon August 25 anniversary",
+            )
+
+        context = variables["planning_context"]
+        self.assertEqual(context["location"], "Seaside, Oregon")
+        self.assertEqual(context["location_source"], "query")
+        self.assertEqual(context["target_date"], target_date)
+        self.assertTrue(context["forecast_eligible"])
+        self.assertNotIn("location", variables)
+
+    def test_location_date_context_uses_default_only_when_enabled(self):
+        workflow = {
+            "id": "reusable_planning_workflow",
+            "variables": {
+                "planning_context": {
+                    "from": "query",
+                    "extract": "location_date_context",
+                    "allow_default_location": True,
+                    "forecast_horizon_days": 10,
+                },
+            },
+        }
+
+        def config_value(key, default=None):
+            return {
+                "JARVIS_DEFAULT_LOCATION": "Portland, Oregon",
+                "JARVIS_DEFAULT_POSTAL_CODE": "97205",
+            }.get(key, default)
+
+        with (
+            patch.object(
+                self.executor,
+                "_chat_with_usage",
+                return_value='{"location": null, "target_date": null}',
+            ),
+            patch(
+                "orchestrator.pipeline_executor.get_config_value",
+                side_effect=config_value,
+            ),
+        ):
+            variables = self.executor._extract_workflow_variables(
+                "/night_out anniversary dinner",
+                workflow,
+                "anniversary dinner",
+            )
+
+        context = variables["planning_context"]
+        self.assertEqual(context["location"], "Portland, Oregon")
+        self.assertEqual(context["location_source"], "jarvis_default_location")
+        self.assertEqual(context["target_date"], "not specified")
+        self.assertTrue(context["forecast_eligible"])
+
+    def test_location_date_context_skips_forecast_beyond_configured_horizon(self):
+        target_date = (datetime.now().date() + timedelta(days=20)).isoformat()
+        with patch.object(
+            self.executor,
+            "_chat_with_usage",
+            return_value=json.dumps(
+                {"location": "Newport, Oregon", "target_date": target_date}
+            ),
+        ):
+            context = self.executor._extract_location_date_context(
+                "Newport Oregon anniversary dinner in three weeks",
+                forecast_horizon_days=10,
+            )
+
+        self.assertEqual(context["location"], "Newport, Oregon")
+        self.assertEqual(context["target_date"], target_date)
+        self.assertFalse(context["forecast_eligible"])
+        self.assertIn("beyond the 10-day forecast window", context["forecast_skip_reason"])
+        should_execute, _reason = self.executor._should_execute_step(
+            {
+                "step": 2,
+                "condition": {
+                    "op": "eq",
+                    "left": "${planning_context.forecast_eligible}",
+                    "right": True,
+                },
+            },
+            {"planning_context": context},
+        )
+        self.assertFalse(should_execute)
+
+    def test_location_date_context_defaults_are_opt_in_and_forecast_is_optional(self):
+        def config_value(key, default=None):
+            return {
+                "JARVIS_DEFAULT_LOCATION": "Portland, Oregon",
+                "JARVIS_DEFAULT_POSTAL_CODE": "97205",
+            }.get(key, default)
+
+        with (
+            patch.object(
+                self.executor,
+                "_chat_with_usage",
+                return_value='{"location": null, "target_date": null}',
+            ),
+            patch(
+                "orchestrator.pipeline_executor.get_config_value",
+                side_effect=config_value,
+            ),
+        ):
+            context = self.executor._extract_location_date_context(
+                "anniversary dinner"
+            )
+
+        self.assertIsNone(context["location"])
+        self.assertEqual(context["location_source"], "unresolved")
+        self.assertNotIn("forecast_eligible", context)
+
+    def test_location_or_default_falls_back_to_active_mode_postal_code(self):
+        def config_value(key, default=None):
+            return {
+                "JARVIS_DEFAULT_LOCATION": "",
+                "JARVIS_DEFAULT_POSTAL_CODE": "10001",
+            }.get(key, default)
+
+        with (
+            patch.object(self.executor, "_chat_with_usage", return_value="NONE"),
+            patch(
+                "orchestrator.pipeline_executor.get_config_value",
+                side_effect=config_value,
+            ),
+        ):
+            location, source = self.executor._extract_location_or_default(
+                "quiet rooftop dinner"
+            )
+
+        self.assertEqual(location, "10001")
+        self.assertEqual(source, "jarvis_default_postal_code")
 
     def test_mixed_placeholder_string_starting_with_placeholder_resolves(self):
         variables = {

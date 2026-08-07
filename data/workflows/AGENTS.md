@@ -603,7 +603,28 @@ Runtime always includes `query`, `topic`, `content` (alias of `topic`), `workflo
 }
 ```
 
-**`extract` values for `from`: `"query"`:** `main_subject`, `url`, `stash_ref`, `attachment_filename`, `short_title`, `first_words` (optional `max_words`, default 4). `stash_ref` and `attachment_filename` can consume the structured context added by Web attachments.
+**`extract` values for `from`: `"query"`:** `main_subject`, `url`, `stash_ref`, `attachment_filename`, `short_title`, `first_words` (optional `max_words`, default 4), and `location_date_context`. `stash_ref` and `attachment_filename` can consume the structured context added by Web attachments.
+
+Use `location_date_context` when a recipe needs reusable location/date parsing:
+
+```json
+"planning_context": {
+  "from": "query",
+  "extract": "location_date_context",
+  "allow_default_location": true,
+  "forecast_horizon_days": 10
+}
+```
+
+The result is a nested object; reference fields such as
+`${planning_context.location}`, `${planning_context.target_date}`, and
+`${planning_context.forecast_eligible}`. Default-location fallback is disabled
+unless `allow_default_location` is the JSON boolean `true`.
+`forecast_horizon_days` is optional; when omitted, no forecast eligibility
+fields are added. When present, it is clamped to 1–10 days and adds
+`forecast_eligible`, `forecast_skip_reason`, and forecast-window fields. Keep
+explicit-destination workflows fail-closed by omitting
+`allow_default_location`.
 
 **Second-pass transforms** (`transform` + `from` naming another variable): `domain`, `lowercase`, `uppercase`, `strip`.
 
@@ -786,9 +807,12 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 | `jarvis_self_check.json` | `/jarvis_self_check` | Local system health, deduplicated alerts, full Canvas update |
 | `local_services_compare.json` | `/local_services_compare <service>` | Active-mode Google Local Services + Google Local + bounded Yelp review evidence, optional Stash, validated Canvas; no crawl |
 | `memory_scan.json` | `/memory_scan` | Mode-aware memory dedupe, stash report, labeled Canvas report |
+| `night_out.json` | `/night_out <occasion or preference>` | Explicit-or-mode-default location, parsed target date, conditional 10-day weather, run-time-only open-state handling, bounded local/dining/activity evidence, validated Canvas; no crawl |
 | `quick_note.json` | `/note <text>` | Simple text capture, remember, canvas |
 | `serpapi_amazon_search.json` | `/serpapi_amazon <query>` (also `/amazon_search`, `/serpapi`) | SerpApi Amazon listings, Stash export, Canvas comparison |
 | `server_health_check.json` | `/health [host]` | Default value, ssh_remote, get_time |
+| `team_outlook.json` | `/team_outlook <sport> <team>` | Resolve one team KGMID, prioritize its standings division before bounding, add direct roster/current-news context, and create validated Canvas; `football` means American football and `soccer` means association football |
+| `trend_reality_check.json` | `/trend_reality_check <topic>` | Topic-specific Trends plus seedless Trending Now cross-check, optional News Light and Search Index, validated Canvas |
 | `url_ingest.json` | `/url_ingest <url>` | crawl_url, stash, text_summarizer, manage_intel (auto_ingest), search_memory |
 | `vacation_reconnaissance.json` | `/vacation_reconnaissance <location>` | Required-location weather + bounded Tripadvisor, Google Local, News Light, Images Light, optional Stash, and Canvas; no crawl |
 | `weather_watch.json` | `/weather_watch` | Environment-backed default location, condition branching, alerts, Canvas |

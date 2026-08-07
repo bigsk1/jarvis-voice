@@ -302,8 +302,9 @@ For a readable drill-down, use `/game_brief <sport> <team>`, such as
 `/game_brief baseball Los Angeles Dodgers`. The recipe makes Google Sports the
 required factual source and can optionally use Brave LLM Context, Brave MCP
 search, and provider-native server-side search for recap narrative. Missing
-optional search tools do not hide or fail the workflow. Use `football` for soccer
-and `american_football` for NFL-style football.
+optional search tools do not hide or fail the workflow. Jarvis-facing
+`football` means American football and is translated to SerpApi `af`; `soccer`
+means association football and is translated to `ft`.
 
 ### Search Index source discovery
 
@@ -641,7 +642,7 @@ The workflow helper model receives only the normalized Amazon rows and has
 server-side tools disabled, so it cannot silently replace the deterministic
 source step with another search provider.
 
-Four additional shared recipes combine bounded SerpApi results without crawling
+Seven additional shared recipes combine bounded SerpApi results without crawling
 source pages:
 
 - `/buying_brief <product>` (also `/price_compare`) compares Google Shopping
@@ -672,14 +673,41 @@ source pages:
   player-performance, and watch-or-recap report, and publishes it to Canvas.
   Google Sports is required; Brave LLM Context and Brave MCP search are optional,
   and provider-native server-side search remains available to the Canvas helper.
+- `/night_out <occasion or preference>` (also `/date_night`) extracts an
+  explicitly stated destination or falls back to the active mode's
+  `JARVIS_DEFAULT_LOCATION` and then `JARVIS_DEFAULT_POSTAL_CODE`. It combines a
+  ten-day weather window with two bounded Google Local searches and optional
+  Yelp and destination-anchored Tripadvisor evidence. Canvas preserves the
+  requested occasion and date. Weather is an optional conditional step: it is
+  skipped before execution when the parsed outing date exceeds the ten-day
+  horizon, and current conditions are only a run-time planning snapshot when no
+  date is supplied. Provider text such as `Open now` or `Closes in 23 min` is
+  likewise treated as run-time-only and never as future-date availability.
+  Generic image search is intentionally omitted because unspecific food and
+  atmosphere images do not reliably represent a recommended venue.
+- `/trend_reality_check <topic>` (also `/trend_check`) measures a topic's
+  three-month interest curve and related searches, then uses the seedless US
+  Trending Now feed, recent Google News Light, and Search Index results as
+  optional cross-checks. The report treats Trends values as relative indices,
+  not search counts, and absence from Trending Now as weak evidence rather than
+  proof that a topic is not trending.
+- `/team_outlook <sport> <team>` (also `/season_outlook`) resolves the team once,
+  then uses direct team-games, team-standings, and team-roster calls before
+  optionally adding Google News Light storylines. Team standings promote the
+  selected team and its division or conference ahead of the general result
+  bound, so a late provider-order position is not lost. The Canvas report
+  separates the bounded completed-game sample from upcoming games and does not
+  infer player availability, playoff odds, or a full-season record from
+  incomplete data.
 
-The buying, vacation, and local-services recipes set
-`disable_server_side_tools: true`, so their Canvas helper calls can synthesize
-only the explicit workflow results. Game Brief deliberately leaves optional
-provider-native search available for current recap context while keeping Google
-Sports authoritative. All four remain usable through slash triggers, the
-workflow meta-tool, APIs, and scheduled tasks; their required product, location,
-service, or sport-and-team input is the normal workflow query argument.
+The buying, vacation, local-services, night-out, trend-check, and team-outlook
+recipes set `disable_server_side_tools: true`, so their Canvas helper calls can
+synthesize only the explicit workflow results. Game Brief deliberately leaves
+optional provider-native search available for current recap context while
+keeping Google Sports authoritative. All seven remain usable through slash
+triggers, the workflow meta-tool, APIs, and scheduled tasks; their required
+product, location, service, preference, topic, or sport-and-team input is the
+normal workflow query argument.
 
 ## Follow-up context and Web UI
 

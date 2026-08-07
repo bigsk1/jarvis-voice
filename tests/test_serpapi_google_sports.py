@@ -17,10 +17,12 @@ sys.path.insert(0, str(ROOT / "lib"))
 import serpapi_client
 from serpapi_google_sports import (
     GOOGLE_SPORTS_TIMEOUT,
+    _prioritize_team_standings,
     _select_game_rows,
     _serpapi_request,
     extract_results,
     main,
+    normalize_sport,
     resolve_kgmid,
 )
 
@@ -434,6 +436,100 @@ def test_standings_normalization_preserves_stats_and_season_followup_ids():
     }
     assert extras["seasons"][0]["kgmid"] == "/g/11season"
     assert extras["seasons"][0]["league"]["kgmid"] == "/m/05jvx"
+
+
+def test_team_standings_prioritize_selected_division_before_bounding():
+    rows = [
+        {
+            "kind": "standing",
+            "position": 1,
+            "group": "American League",
+            "division": "AL East",
+            "name": "Rays",
+            "kgmid": "/m/rays",
+        },
+        {
+            "kind": "standing",
+            "position": 26,
+            "group": "National League",
+            "division": "NL West",
+            "name": "Dodgers",
+            "kgmid": "/m/dodgers",
+            "highlighted": True,
+        },
+        {
+            "kind": "standing",
+            "position": 27,
+            "group": "National League",
+            "division": "NL West",
+            "name": "Padres",
+            "kgmid": "/m/padres",
+        },
+    ]
+
+    prioritized, selected, context = _prioritize_team_standings(
+        rows, "/m/dodgers"
+    )
+
+    assert selected == rows[1]
+    assert context == [rows[1], rows[2]]
+    assert prioritized == [rows[1], rows[2], rows[0]]
+
+
+def test_team_standings_main_exposes_selected_context_outside_original_bound():
+    payload = standings_payload()
+    western = payload["team_results"]["standings"]["groups"][0]
+    western["teams"].insert(
+        0,
+        {
+            "rank": 1,
+            "name": "Oklahoma City Thunder",
+            "kgmid": "/m/thunder",
+            "stats": [{"title": "Wins", "short_title": "W", "value": "60"}],
+        },
+    )
+    exit_code, result, _request = run_main(
+        {
+            "kgmid": "/m/0jmk7",
+            "sport": "basketball",
+            "entity_type": "team",
+            "tab": "standings",
+            "max_results": 1,
+        },
+        payload,
+    )
+
+    assert exit_code == 0
+    data = result["data"]
+    assert data["provider_results_count"] == 2
+    assert data["results_count"] == 1
+    assert data["results"][0]["name"] == "Los Angeles Lakers"
+    assert data["selected_standing"]["kgmid"] == "/m/0jmk7"
+    assert [row["name"] for row in data["standings_context"]] == [
+        "Los Angeles Lakers",
+        "Oklahoma City Thunder",
+    ]
+
+
+def test_jarvis_sport_names_translate_to_serpapi_codes():
+    assert normalize_sport("football") == ("american_football", "af")
+    assert normalize_sport("american_football") == ("american_football", "af")
+    assert normalize_sport("soccer") == ("football", "ft")
+    assert normalize_sport("association football") == ("football", "ft")
+
+    for jarvis_sport, expected_code in (("football", "af"), ("soccer", "ft")):
+        exit_code, _result, request = run_main(
+            {
+                "kgmid": "/m/0jmk7",
+                "sport": jarvis_sport,
+                "entity_type": "team",
+                "tab": "games",
+                "max_results": 1,
+            },
+            games_payload(),
+        )
+        assert exit_code == 0
+        assert request.call_args.args[0]["sp"] == expected_code
 
 
 def test_game_detail_normalizes_watch_linescore_and_box_score_highlights():

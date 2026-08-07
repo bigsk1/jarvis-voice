@@ -112,9 +112,10 @@ Object form:
 ```
 
 Query extraction supports `main_subject`, `url`, `stash_ref`,
-`attachment_filename`, `short_title`, and `first_words` (with optional
-`max_words`, default `4`). `stash_ref` accepts a direct `stash://...` value or
-the structured stash reference included with a Web attachment.
+`attachment_filename`, `short_title`, `first_words` (with optional `max_words`,
+default `4`), and `location_date_context`. `stash_ref` accepts a direct
+`stash://...` value or the structured stash reference included with a Web
+attachment.
 
 Supported **`extract`** values:
 
@@ -126,8 +127,37 @@ Supported **`extract`** values:
 | `attachment_filename` | `Filename:` value from a structured Web attachment context block. |
 | `short_title` | Short title derived from topic (may use LLM where configured). |
 | `first_words` | First `max_words` words from topic, joined with `_` (see `max_words`, default 4). |
+| `location_date_context` | Reusable nested planning context containing an explicit location, normalized optional target date, and their sources. Default-location fallback and forecast-window fields are opt-in. |
 
 If extraction yields empty and **`default`** is set, `default` is used.
+
+For a reusable location/date context, keep the result nested instead of
+injecting workflow-specific top-level variables:
+
+```json
+"variables": {
+  "planning_context": {
+    "from": "query",
+    "extract": "location_date_context",
+    "allow_default_location": true,
+    "forecast_horizon_days": 10
+  }
+}
+```
+
+Use `${planning_context.location}`, `${planning_context.location_source}`,
+`${planning_context.target_date}`, and `${planning_context.target_date_source}`
+in later steps. When `forecast_horizon_days` is present, the context also
+contains `forecast_eligible`, `forecast_skip_reason`, `forecast_window_start`,
+`forecast_window_end`, and the bounded `forecast_horizon_days` value. The
+forecast horizon is clamped to the weather tool's supported 1–10 day range.
+
+`allow_default_location` defaults to `false`. Set it to JSON boolean `true`
+only when the recipe is intentionally allowed to fall back to the active
+mode's `JARVIS_DEFAULT_LOCATION`, then `JARVIS_DEFAULT_POSTAL_CODE`. Workflows
+that require an explicit destination should omit it. Omitting
+`forecast_horizon_days` keeps the helper reusable for non-weather workflows and
+returns only location/date context fields.
 
 ### 3. From environment (`from`: `"env"`)
 
@@ -315,10 +345,13 @@ the same orchestration turn; it is not a durable background run.
 | `knowledge_snapshot.json` | `/knowledge <topic>` | Search active-mode Memory, Intel, and prior conversations without new web research, then create or refresh one source-attributed Canvas briefing per topic |
 | `local_services_compare.json` | `/local_services_compare <service>` (also `/service_compare`) | Compare Google Local Services, Google Local, and bounded Yelp review evidence using the active mode's configured location, optional Stash evidence, and a dated Canvas shortlist |
 | `memory_scan.json` | `/memory_scan` (also `/dedupe_memory`) | Run memory_deduper against the active cloud/local memory DB and save a labeled report to stash + canvas |
+| `night_out.json` | `/night_out <occasion or preference>` (also `/date_night`) | Build a date-aware evening plan from an explicit destination or the active mode default location/postal code and bounded local sources; weather runs only when no outing date is given or the parsed date fits the 10-day horizon |
 | `pdf_ingest.json` | `/pdf_ingest <attached PDF, stash ref, or URL>` | Extract a PDF, create a semantic Intel file, ingest it synchronously, and publish a source-attributed Canvas briefing |
 | `quick_note.json` | `/note <text>` | Quick note to memory and canvas |
 | `serpapi_amazon_search.json` | `/serpapi_amazon <query>` (also `/amazon_search`, `/serpapi`) | Search Amazon, save a normalized Stash export, and create a Canvas comparison report |
 | `server_health_check.json` | `/health <host>` | SSH health check on remote server |
+| `team_outlook.json` | `/team_outlook <sport> <team>` (also `/season_outlook`) | Resolve one team ID for current games, focused team standings, and roster views, then add optional current news and a Canvas outlook; `football` means American football and `soccer` means association football |
+| `trend_reality_check.json` | `/trend_reality_check <topic>` (also `/trend_check`) | Compare topic-specific Google Trends with the seedless Trending Now feed, optional current news, indexed source candidates, and a Canvas assessment |
 | `url_ingest.json` | `/url_ingest <url>` | Fetch any URL, create intel file, ingest to memory for RAG queries |
 | `vacation_reconnaissance.json` | `/vacation_reconnaissance <location>` (also `/vacation_recon`, `/destination_scout`) | Create a crawl-free weather, attractions, dining, local pulse, image, Stash, and Canvas destination report for a required location |
 | `weather_watch.json` | `/weather_watch` (also `/garden_watch`) | Default-location weather watch with canvas report and condition-specific alerts |

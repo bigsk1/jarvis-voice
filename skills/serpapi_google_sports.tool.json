@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_google_sports",
-  "description": "Get current Google Sports schedules, scores, direct-game box scores, line or period scoring, returned viewing options, official recap links, standings, rosters, brackets, league statistics, and rankings through SerpApi. Use for 'when do the Lakers play next?', 'what was the latest score?', 'what happened in the latest Dodgers game?', 'where can I watch this game?', 'show Premier League standings', 'who is on the roster?', 'show the playoff bracket', 'league leaders', or 'Google Sports for...'. Unbounded team and league game views return a current-centered window with the most recent games first, followed by nearby upcoming games. Supports football or soccer, basketball, baseball, cricket, American football, ice hockey, and rugby. Provide a normal team, league, or matchup query and Jarvis can resolve the required Google entity ID internally; provide kgmid directly for a deterministic one-search workflow. The query resolver may use one additional billable or cached SerpApi Google search. Game detail availability varies by sport and game state. This is structured sports data, not general sports news; use serpapi_google_news_light for news coverage.",
+  "description": "Get current Google Sports schedules, scores, direct-game box scores, line or period scoring, returned viewing options, official recap links, standings, rosters, brackets, league statistics, and rankings through SerpApi. Use for 'when do the Lakers play next?', 'what was the latest score?', 'what happened in the latest Dodgers game?', 'where can I watch this game?', 'show Premier League standings', 'who is on the roster?', 'show the playoff bracket', 'league leaders', or 'Google Sports for...'. Unbounded team and league game views return a current-centered window with the most recent games first, followed by nearby upcoming games. In Jarvis-facing input, football means American football and soccer means association football; the tool translates both to SerpApi's provider codes. Also supports basketball, baseball, cricket, ice hockey, and rugby. Provide a normal team, league, or matchup query and Jarvis can resolve the required Google entity ID internally; provide kgmid directly for a deterministic one-search workflow. The query resolver may use one additional billable or cached SerpApi Google search. Team standings prioritize the requested team and its division or conference before applying the result bound. Game detail availability varies by sport and game state. This is structured sports data, not general sports news; use serpapi_google_news_light for news coverage.",
   "complementary_tools": [
     "serpapi_google_news_light",
     "serpapi_google_trending_now",
@@ -26,8 +26,8 @@
       },
       "sport": {
         "type": "string",
-        "enum": ["football", "basketball", "baseball", "cricket", "american_football", "ice_hockey", "rugby"],
-        "description": "Required sport. Use football for association football or soccer, and american_football for NFL-style football."
+        "enum": ["football", "soccer", "basketball", "baseball", "cricket", "american_football", "ice_hockey", "rugby"],
+        "description": "Required Jarvis-facing sport. football means American football and is sent to SerpApi as af; soccer means association football and is sent as ft. american_football remains accepted as a compatibility alias."
       },
       "entity_type": {
         "type": "string",

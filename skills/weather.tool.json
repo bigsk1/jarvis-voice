@@ -8,7 +8,7 @@
     "properties": {
       "location": {
         "type": "string",
-        "description": "City name, optionally with country code. Examples: 'Seattle', 'London, UK', 'Tokyo, JP', 'New York'"
+        "description": "City name with state/region or country when ambiguity is possible. Full US state names and two-letter codes are preserved for geocoding. Examples: 'Newport, Oregon', 'Portland, OR', 'London, UK', 'Tokyo, JP'."
       },
       "forecast": {
         "type": "boolean",

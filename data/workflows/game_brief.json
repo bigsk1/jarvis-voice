@@ -1,7 +1,7 @@
 {
   "id": "game_brief",
   "name": "Current Game Brief",
-  "description": "Create a concise Canvas brief for the latest game involving a requested team. The command requires the sport first, followed by the team, for example /game_brief baseball Los Angeles Dodgers or /game_brief basketball Los Angeles Lakers. Google Sports supplies the required score, status, game identity, line score, box score, viewing options, and recap links when available. Brave LLM Context and Brave MCP search are optional enrichment sources, so the workflow remains runnable when either or both are unavailable. Use football for soccer and american_football for NFL-style football.",
+  "description": "Create a concise Canvas brief for the latest game involving a requested team. The command requires the sport first, followed by the team, for example /game_brief baseball Los Angeles Dodgers, /game_brief football Seattle Seahawks, or /game_brief soccer Portland Timbers. Google Sports supplies the required score, status, game identity, line score, box score, viewing options, and recap links when available. Brave LLM Context and Brave MCP search are optional enrichment sources, so the workflow remains runnable when either or both are unavailable. Jarvis translates football to SerpApi American football and soccer to SerpApi association football.",
   "version": "1.0",
   "enabled": true,
   "disable_server_side_tools": false,
@@ -90,7 +90,7 @@
         "sports_searches_used": "serpapi_searches_used"
       },
       "required": true,
-      "abort_speech": "Game brief requires the sport followed by a team, for example /game_brief baseball Los Angeles Dodgers. Use football for soccer or american_football for NFL-style football.",
+      "abort_speech": "Game brief requires the sport followed by a team, for example /game_brief football Seattle Seahawks or /game_brief soccer Portland Timbers.",
       "description": "Resolve and retrieve the latest game with structured game details"
     },
     {

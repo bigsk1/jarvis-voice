@@ -34,13 +34,48 @@ US_STATE_CODES = {
     'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
 }
 
+US_STATE_NAMES = {
+    'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas',
+    'CA': 'California', 'CO': 'Colorado', 'CT': 'Connecticut',
+    'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia', 'HI': 'Hawaii',
+    'ID': 'Idaho', 'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa',
+    'KS': 'Kansas', 'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine',
+    'MD': 'Maryland', 'MA': 'Massachusetts', 'MI': 'Michigan',
+    'MN': 'Minnesota', 'MS': 'Mississippi', 'MO': 'Missouri',
+    'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada',
+    'NH': 'New Hampshire', 'NJ': 'New Jersey', 'NM': 'New Mexico',
+    'NY': 'New York', 'NC': 'North Carolina', 'ND': 'North Dakota',
+    'OH': 'Ohio', 'OK': 'Oklahoma', 'OR': 'Oregon',
+    'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
+    'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah',
+    'VT': 'Vermont', 'VA': 'Virginia', 'WA': 'Washington',
+    'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming',
+    'DC': 'District of Columbia',
+}
+US_STATE_NAME_TO_CODE = {
+    state_name.upper(): state_code
+    for state_code, state_name in US_STATE_NAMES.items()
+}
+
+
+def resolve_us_state(region: str) -> tuple[str, str] | None:
+    """Return canonical (state code, state name) for a US state input."""
+    normalized = " ".join(str(region or "").replace(".", "").split()).upper()
+    if normalized in US_STATE_CODES:
+        return normalized, US_STATE_NAMES[normalized]
+    state_code = US_STATE_NAME_TO_CODE.get(normalized)
+    if state_code:
+        return state_code, US_STATE_NAMES[state_code]
+    return None
+
 def normalize_location(location: str) -> str:
     """
     Normalize location string for OpenWeatherMap API.
     
-    Converts "City, STATE" to "City,US" since OWM doesn't understand US state codes.
+    Canonicalizes US state names/codes and adds the US country qualifier.
     Examples:
-        "Portland, OR" -> "Portland,US"
+        "Portland, OR" -> "Portland,OR,US"
+        "Newport, Oregon" -> "Newport,OR,US"
         "London, UK" -> "London,UK" (unchanged)
         "Seattle" -> "Seattle" (unchanged)
     """
@@ -49,9 +84,10 @@ def normalize_location(location: str) -> str:
     
     if len(parts) == 2:
         city, region = parts
-        # Check if region is a US state code
-        if region.upper() in US_STATE_CODES:
-            return f"{city},US"
+        state = resolve_us_state(region)
+        if state:
+            state_code, _state_name = state
+            return f"{city},{state_code},US"
         # Otherwise keep as-is (might be country code)
         return f"{city},{region}"
     
@@ -75,9 +111,10 @@ def geocode_location(location: str, api_key: str) -> tuple[float, float, str, st
     
     if len(parts) == 2:
         city, region = parts
-        if region.upper() in US_STATE_CODES:
-            # Add US country code for US states
-            query = f"{city},{region},US"
+        state = resolve_us_state(region)
+        if state:
+            state_code, _state_name = state
+            query = f"{city},{state_code},US"
         else:
             query = f"{city},{region}"
     else:
@@ -253,7 +290,7 @@ def geocode_open_meteo(location: str) -> tuple[float, float, str] | None:
     geo_url = "https://geocoding-api.open-meteo.com/v1/search"
     params = {
         "name": query,
-        "count": 5,
+        "count": 10,
         "language": "en",
         "format": "json"
     }
@@ -272,23 +309,24 @@ def geocode_open_meteo(location: str) -> tuple[float, float, str] | None:
     if not results:
         return None
 
-    target_state = parts[1].upper() if len(parts) >= 2 else None
+    target_region = parts[1] if len(parts) >= 2 else None
+    target_state = resolve_us_state(target_region) if target_region else None
     best = None
     for item in results:
         country_code = (item.get("country_code") or "").upper()
-        admin1 = (item.get("admin1") or "")
-        # Prefer US state match when user provided one like "Hillsboro, OR"
+        admin1 = " ".join(str(item.get("admin1") or "").split())
         if target_state and country_code == "US":
-            if target_state in US_STATE_CODES and admin1.upper() == target_state:
+            state_code, state_name = target_state
+            if admin1.upper() in {state_code, state_name.upper()}:
                 best = item
                 break
-            # Second best: match expanded state name
-            if target_state in US_STATE_CODES and admin1.lower().startswith(target_state.lower()):
-                best = item
-                break
-        # Fallback to first US hit for US-like queries
-        if target_state and target_state in US_STATE_CODES and country_code == "US" and best is None:
-            best = item
+    if target_state and best is None:
+        requested_state = target_state[1]
+        print(
+            f"[Weather] Geocoder returned no exact match for {query}, {requested_state}",
+            file=sys.stderr,
+        )
+        return None
     if best is None:
         best = results[0]
 

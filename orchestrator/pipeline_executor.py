@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -285,6 +285,230 @@ class PipelineExecutor:
         except Exception as e:
             print(f"Warning: short title generation failed: {e}", file=sys.stderr)
             return None
+
+    def _extract_explicit_location(self, query: str) -> str | None:
+        """Extract only a location explicitly stated in a workflow query."""
+        if not query or not query.strip():
+            return None
+
+        system_prompt = (
+            "Extract a geographic destination explicitly stated in the user request. "
+            "Return only the shortest useful city/state, city/country, region, landmark, "
+            "or postal-code text. Do not infer a location from the occasion, date, user "
+            "identity, or prior context. If no location is explicitly stated, reply NONE."
+        )
+        try:
+            result = self._chat_with_usage(
+                query.strip(),
+                system_prompt=system_prompt,
+                max_tokens=80,
+            )
+        except Exception as e:
+            print(f"Warning: workflow location extraction failed: {e}", file=sys.stderr)
+            return None
+
+        candidate = " ".join(str(result or "").strip().strip('"\'').split())
+        if candidate.lower().startswith("location:"):
+            candidate = candidate.split(":", 1)[1].strip()
+        candidate = candidate.rstrip(".")
+        if candidate.lower() in {
+            "",
+            "none",
+            "no location",
+            "not specified",
+            "unknown",
+        }:
+            return None
+        if not candidate or len(candidate) > 200:
+            return None
+        return candidate
+
+    def _extract_location_or_default(self, query: str) -> tuple[str | None, str]:
+        """Resolve an explicit query location, then active-mode Jarvis defaults."""
+        explicit = self._extract_explicit_location(query)
+        if explicit:
+            return explicit, "query"
+
+        return self._configured_default_location()
+
+    @staticmethod
+    def _configured_default_location() -> tuple[str | None, str]:
+        """Resolve the active-mode Jarvis location without parsing a query."""
+
+        for env_key, source in (
+            ("JARVIS_DEFAULT_LOCATION", "jarvis_default_location"),
+            ("JARVIS_DEFAULT_POSTAL_CODE", "jarvis_default_postal_code"),
+        ):
+            value = str(get_config_value(env_key, "") or "").strip()
+            if value:
+                return value, source
+        return None, "unresolved"
+
+    @staticmethod
+    def _evaluate_forecast_eligibility(
+        *,
+        location: str | None,
+        target_date: date | None,
+        parse_succeeded: bool,
+        invalid_target_date: bool,
+        forecast_horizon_days: int,
+        today: date,
+    ) -> dict[str, Any]:
+        """Build deterministic forecast-window fields for a parsed context."""
+        forecast_end = today + timedelta(days=forecast_horizon_days - 1)
+
+        if not location:
+            forecast_eligible = False
+            forecast_reason = "Forecast skipped because no location could be resolved."
+        elif not parse_succeeded:
+            forecast_eligible = False
+            forecast_reason = (
+                "Forecast skipped because the location/date context could not be parsed safely."
+            )
+        elif invalid_target_date:
+            forecast_eligible = False
+            forecast_reason = (
+                "Forecast skipped because the requested date could not be normalized safely."
+            )
+        elif target_date is None:
+            forecast_eligible = True
+            forecast_reason = (
+                "No target date was supplied; weather is a current planning snapshot only."
+            )
+        elif target_date < today:
+            forecast_eligible = False
+            forecast_reason = (
+                f"Forecast skipped because requested date {target_date.isoformat()} is in the past."
+            )
+        elif target_date > forecast_end:
+            forecast_eligible = False
+            forecast_reason = (
+                f"Forecast skipped because requested date {target_date.isoformat()} is "
+                f"beyond the {forecast_horizon_days}-day forecast window ending "
+                f"{forecast_end.isoformat()}."
+            )
+        else:
+            forecast_eligible = True
+            forecast_reason = (
+                f"Requested date {target_date.isoformat()} is within the available "
+                f"forecast window ending {forecast_end.isoformat()}."
+            )
+
+        return {
+            "forecast_eligible": forecast_eligible,
+            "forecast_skip_reason": forecast_reason,
+            "forecast_window_start": today.isoformat(),
+            "forecast_window_end": forecast_end.isoformat(),
+            "forecast_horizon_days": forecast_horizon_days,
+        }
+
+    def _extract_location_date_context(
+        self,
+        query: str,
+        *,
+        allow_default_location: bool = False,
+        forecast_horizon_days: int | None = None,
+    ) -> dict[str, Any]:
+        """Extract reusable location/date context with optional forecast policy."""
+        today = datetime.now().date()
+        system_prompt = (
+            "Extract planning location and date fields from the user request. "
+            f"The current local date is {today.isoformat()}. "
+            "Return JSON only with exactly these keys: "
+            '{"location": string_or_null, "target_date": "YYYY-MM-DD"_or_null}. '
+            "Location must be explicitly stated in the request; never infer a home "
+            "location. Resolve relative dates and spoken ordinals. For a month/day "
+            "without a year, choose the next occurrence on or after the current date. "
+            "If no date is stated, target_date must be null."
+        )
+
+        parsed: dict[str, Any] = {}
+        parse_succeeded = False
+        try:
+            raw = self._chat_with_usage(
+                query.strip(),
+                system_prompt=system_prompt,
+                max_tokens=140,
+            )
+            text = str(raw or "").strip()
+            if "{" in text and "}" in text:
+                text = text[text.find("{") : text.rfind("}") + 1]
+            candidate = json.loads(text)
+            if isinstance(candidate, dict):
+                parsed = candidate
+                parse_succeeded = True
+        except Exception as e:
+            print(f"Warning: workflow location/date extraction failed: {e}", file=sys.stderr)
+
+        explicit_location = " ".join(
+            str(parsed.get("location") or "").strip().strip('"\'').split()
+        ).rstrip(".")
+        if explicit_location.lower() in {
+            "",
+            "none",
+            "null",
+            "no location",
+            "not specified",
+            "unknown",
+        } or len(explicit_location) > 200:
+            explicit_location = ""
+
+        if not parse_succeeded:
+            if allow_default_location:
+                resolved_location, location_source = self._extract_location_or_default(query)
+            else:
+                resolved_location = self._extract_explicit_location(query)
+                location_source = "query" if resolved_location else "unresolved"
+        elif explicit_location:
+            resolved_location, location_source = explicit_location, "query"
+        elif allow_default_location:
+            resolved_location, location_source = self._configured_default_location()
+        else:
+            resolved_location, location_source = None, "unresolved"
+
+        raw_target_date = str(parsed.get("target_date") or "").strip()
+        target_date = None
+        invalid_target_date = False
+        if raw_target_date:
+            try:
+                target_date = datetime.strptime(raw_target_date, "%Y-%m-%d").date()
+            except ValueError:
+                invalid_target_date = True
+
+        context = {
+            "location": resolved_location,
+            "location_source": location_source,
+            "target_date": (
+                target_date.isoformat()
+                if target_date
+                else "unresolved" if invalid_target_date or not parse_succeeded
+                else "not specified"
+            ),
+            "target_date_source": (
+                "query"
+                if target_date
+                else "unresolved" if invalid_target_date or not parse_succeeded
+                else "not_specified"
+            ),
+        }
+
+        if forecast_horizon_days is not None:
+            try:
+                bounded_horizon = max(1, min(int(forecast_horizon_days), 10))
+            except (TypeError, ValueError):
+                bounded_horizon = 10
+            context.update(
+                self._evaluate_forecast_eligibility(
+                    location=resolved_location,
+                    target_date=target_date,
+                    parse_succeeded=parse_succeeded,
+                    invalid_target_date=invalid_target_date,
+                    forecast_horizon_days=bounded_horizon,
+                    today=today,
+                )
+            )
+
+        return context
     
     def _create_provider(self):
         """Create LLM provider for parameter filling and validation."""
@@ -1246,7 +1470,8 @@ class PipelineExecutor:
         - {"from": "query", "extract": "main_subject"}
         - {"from": "query", "extract": "main_subject", "default": "vps2"}
         - {"from": "static", "value": "some fixed value"}
-        - {"from": "env", "key": "JARVIS_DEFAULT_LOCATION", "default": "Hillsboro, Oregon"}
+        - {"from": "env", "key": "JARVIS_DEFAULT_LOCATION", "default": "City, Region"}
+        - {"from": "query", "extract": "location_date_context"}
         - {"from": "url", "transform": "domain"}  # Derive from another variable
         """
         now = datetime.now()
@@ -1295,6 +1520,14 @@ class PipelineExecutor:
                     extracted_value = self._extract_attachment_filename_from_text(topic)
                 elif extract_type == "main_subject":
                     extracted_value = topic if topic and topic.strip() else None
+                elif extract_type == "location_date_context":
+                    extracted_value = self._extract_location_date_context(
+                        topic or "",
+                        allow_default_location=(
+                            var_def.get("allow_default_location") is True
+                        ),
+                        forecast_horizon_days=var_def.get("forecast_horizon_days"),
+                    )
                 elif extract_type == "short_title":
                     # Use LLM to generate a concise title from the query
                     if topic and topic.strip():
