@@ -1,0 +1,115 @@
+{
+  "enabled": true,
+  "proxy_policy": "prefer",
+  "name": "trakt_tv_shows",
+  "description": "Build taste-oriented public TV-show discovery through Trakt. Use for 'what TV show should I start?', 'find shows like Severance and Dark', 'I want a funny mystery with short episodes', 'what TV shows are trending or popular on Trakt?', related series, show details, or official trailer/video links. The recommend action blends bounded current Trakt show lists with related shows from up to three supplied favorites, then returns a source-ranked candidate set. Runtime means typical episode runtime, not total series length. This public Client-ID integration does not read a Trakt account's history, ratings, watchlist, or personalized recommendations. A streaming-list signal does not identify a provider or prove current availability.",
+  "complementary_tools": [
+    "tmdb_tv_shows",
+    "serpapi_youtube_search",
+    "brave_llm_context",
+    "workflow",
+    "canvas"
+  ],
+  "script": "trakt_tv_shows.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "recommend",
+          "search",
+          "details",
+          "related",
+          "videos",
+          "trending",
+          "popular",
+          "anticipated",
+          "streaming"
+        ],
+        "description": "Public Trakt TV operation. Use recommend for a mood/preferences request; search for title or overview lookup; details, related, or videos for one show; or a named discovery list."
+      },
+      "request": {
+        "type": "string",
+        "maxLength": 800,
+        "description": "Natural-language TV-viewing mood, constraints, and optional favorite shows. Used by recommend. Quoted titles or phrases such as 'shows I loved: Severance, Dark' improve deterministic reference extraction."
+      },
+      "query": {
+        "type": "string",
+        "maxLength": 300,
+        "description": "TV-show title or text query for search, or a title fallback for details, related, and videos when show_id is omitted."
+      },
+      "show_id": {
+        "type": "string",
+        "maxLength": 160,
+        "description": "Trakt show slug or supported external ID for details, related, or videos. Prefer the ids.slug returned by an earlier result."
+      },
+      "reference_titles": {
+        "type": "array",
+        "maxItems": 3,
+        "items": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "description": "Up to three favorite TV-show titles used as similarity anchors by recommend."
+      },
+      "genres": {
+        "type": "array",
+        "maxItems": 6,
+        "items": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "description": "Optional Trakt genre slugs such as comedy, thriller, mystery, horror, reality, or science-fiction. Recommend infers common genre hints from request when omitted."
+      },
+      "years": {
+        "type": "string",
+        "maxLength": 30,
+        "description": "Optional Trakt premiere year or year range filter, for example 2010-2026."
+      },
+      "runtimes": {
+        "type": "string",
+        "maxLength": 30,
+        "description": "Optional typical episode-runtime range in minutes, for example 20-60. This is not total series length."
+      },
+      "ratings": {
+        "type": "string",
+        "maxLength": 30,
+        "description": "Optional Trakt rating percentage range, for example 70-100."
+      },
+      "period": {
+        "type": "string",
+        "enum": ["daily", "weekly", "monthly"],
+        "description": "Streaming discovery period. Default weekly."
+      },
+      "max_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20,
+        "description": "Maximum normalized shows. Recommend clamps this to at least 3 and at most 15; default 8. Other actions default 10."
+      },
+      "include_videos": {
+        "type": "boolean",
+        "description": "For recommend, fetch bounded public video metadata for top candidates. Default true."
+      },
+      "video_limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 5,
+        "description": "How many top recommendation candidates receive video lookup. Default 3."
+      }
+    },
+    "required": ["action"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": ["TRAKT_API_KEY"],
+    "setup_hint": "Set TRAKT_API_KEY to the Trakt application Client ID in the active mode env file. Public TV metadata actions do not require a Client Secret or OAuth token."
+  }
+}

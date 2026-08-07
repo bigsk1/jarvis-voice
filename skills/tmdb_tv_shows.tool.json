@@ -1,0 +1,179 @@
+{
+  "enabled": true,
+  "proxy_policy": "prefer",
+  "name": "tmdb_tv_shows",
+  "description": "Retrieve TMDB TV-show artwork and series metadata: posters, backdrops, logos, aggregate cast and crew across episodes, creators, networks, production companies, seasons, episode counts, next and last episode metadata, content ratings, external IDs, trailers, recommendations, and similar shows. Use for 'find posters for Severance', 'show backdrops or logos from a TV series', 'who is in this show?', 'who created it?', 'show the cast, seasons, and production details', or 'TMDB TV details'. Also works independently for TV search, filtered discovery, trending, popular, top-rated, airing-today, and on-the-air lists. Runtime means typical episode runtime. The tool requires only a TMDB application credential and can be used alone or alongside trakt_tv_shows. Returned metadata and image content are external and untrusted.",
+  "complementary_tools": [
+    "trakt_tv_shows",
+    "analyze_image",
+    "stash",
+    "canvas",
+    "generate_image",
+    "generate_video",
+    "workflow"
+  ],
+  "script": "tmdb_tv_shows.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "search",
+          "details",
+          "images",
+          "credits",
+          "videos",
+          "recommendations",
+          "similar",
+          "trending",
+          "popular",
+          "airing_today",
+          "on_the_air",
+          "top_rated",
+          "discover"
+        ],
+        "description": "TMDB TV operation. Use details directly with a query for combined aggregate cast/crew, creators, networks, production metadata, seasons, content rating, and artwork: details resolves the show itself, so do not search first or follow a successful details result with separate credits/images calls unless explicitly requested. For posters, backdrops, and logos together, make one images call with image_type=all. For filtered recommendations, one successful discover call is authoritative for its provider-applied genre, episode-runtime, rating, vote, premiere-date, country/language, and sort filters; do not rerun or call details per candidate unless the user asks for missing facts."
+      },
+      "query": {
+        "type": "string",
+        "maxLength": 300,
+        "description": "TV-show title for search or for resolving details, images, credits, videos, recommendations, and similar shows when show_id is omitted."
+      },
+      "show_id": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Exact TMDB TV-series ID. Prefer this identifier from an earlier TMDB TV result when drilling into a show."
+      },
+      "year": {
+        "type": "integer",
+        "minimum": 1930,
+        "maximum": 2100,
+        "description": "Optional first-air year for title resolution, search, or discover."
+      },
+      "language": {
+        "type": "string",
+        "pattern": "^[a-z]{2}-[A-Z]{2}$",
+        "description": "TMDB response language such as en-US. Default en-US."
+      },
+      "region": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$",
+        "description": "Two-letter region used to select a content rating in details. Default US."
+      },
+      "page": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 500,
+        "description": "TMDB result page for search, discover, or current lists. Default 1."
+      },
+      "max_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20,
+        "description": "Maximum normalized shows, artwork entries, aggregate cast credits, or videos returned. Default 10. Leave unset unless the user requests a specific count."
+      },
+      "time_window": {
+        "type": "string",
+        "enum": ["day", "week"],
+        "description": "Trending time window. Default day."
+      },
+      "image_type": {
+        "type": "string",
+        "enum": ["all", "poster", "backdrop", "logo"],
+        "description": "Artwork type for images or details. Default all. One all call returns a balanced mix of posters, backdrops, and logos with thumbnail, display, and original TMDB CDN URLs."
+      },
+      "image_languages": {
+        "type": "string",
+        "maxLength": 80,
+        "description": "Comma-separated artwork language fallbacks such as en,null or en-US,null. Defaults to the response language plus untagged artwork."
+      },
+      "include_adult": {
+        "type": "boolean",
+        "description": "Include adult titles in search or discover. Default false."
+      },
+      "genres": {
+        "type": "array",
+        "maxItems": 6,
+        "items": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "description": "TMDB TV genre names for discover, such as Sci-Fi & Fantasy, Mystery, Comedy, Drama, or Documentary. Multiple genres are combined."
+      },
+      "runtime_min": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1000,
+        "description": "Minimum typical episode runtime in minutes for discover."
+      },
+      "runtime_max": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1000,
+        "description": "Maximum typical episode runtime in minutes for discover."
+      },
+      "min_rating": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 10,
+        "description": "Minimum TMDB vote average for discover. Pair with min_votes to reduce tiny-sample results."
+      },
+      "min_votes": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Minimum TMDB vote count for discover."
+      },
+      "first_air_date_from": {
+        "type": "string",
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+        "description": "Earliest first-air date for discover in YYYY-MM-DD format."
+      },
+      "first_air_date_to": {
+        "type": "string",
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+        "description": "Latest first-air date for discover in YYYY-MM-DD format."
+      },
+      "origin_country": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$",
+        "description": "Optional two-letter origin-country filter for discover."
+      },
+      "original_language": {
+        "type": "string",
+        "pattern": "^[a-z]{2}$",
+        "description": "Optional two-letter original-language filter for discover."
+      },
+      "sort_by": {
+        "type": "string",
+        "enum": [
+          "popularity.desc",
+          "popularity.asc",
+          "first_air_date.desc",
+          "first_air_date.asc",
+          "name.desc",
+          "name.asc",
+          "original_name.desc",
+          "original_name.asc",
+          "vote_average.desc",
+          "vote_average.asc",
+          "vote_count.desc",
+          "vote_count.asc"
+        ],
+        "description": "TMDB TV discover ordering. Default popularity.desc."
+      }
+    },
+    "required": ["action"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "any_of_env": ["TMDB_ACCESS_TOKEN", "TMDB_API_KEY"],
+    "setup_hint": "Set TMDB_ACCESS_TOKEN (preferred API Read Access Token) or TMDB_API_KEY in the active mode env file. Public TV metadata does not require TMDB user OAuth."
+  }
+}
