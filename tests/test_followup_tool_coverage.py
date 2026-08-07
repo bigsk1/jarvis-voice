@@ -947,6 +947,48 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "trakt_movies": _case(
+        {
+            "action": "recommend",
+            "request": "Mind-bending science fiction like Inception",
+            "results_count": 1,
+            "top_url": "https://trakt.tv/movies/arrival-2016",
+            "resolved_references": [{"title": "Inception", "year": 2010}],
+            "genre_hints": ["science-fiction"],
+            "filters_used": {"genres": "science-fiction", "runtimes": "1-120"},
+            "trailers": [
+                {
+                    "movie_title": "Arrival",
+                    "title": "Official Trailer",
+                    "url": "https://www.youtube.com/watch?v=arrival",
+                    "official": True,
+                }
+            ],
+            "public_metadata_only": True,
+            "streaming_provider_data": "not returned",
+            "external_content_trust": "untrusted",
+            "source": "Trakt API",
+            "candidates": [
+                {
+                    "title": "Arrival",
+                    "year": 2016,
+                    "ids": {"trakt": 168930, "slug": "arrival-2016"},
+                    "trakt_url": "https://trakt.tv/movies/arrival-2016",
+                    "imdb_url": "https://www.imdb.com/title/tt2543164/",
+                    "overview": "A linguist works to understand visitors from another world.",
+                    "runtime_minutes": 116,
+                    "rating": 8.0,
+                    "votes": 15000,
+                    "genres": ["science-fiction", "drama"],
+                    "certification": "PG-13",
+                    "trailer_url": "https://www.youtube.com/watch?v=arrival",
+                    "source_signals": ["related:Inception", "popular"],
+                    "related_to": ["Inception"],
+                    "match_score": 20.5,
+                }
+            ],
+        }
+    ),
     "serpapi_yelp_search": _case(
         {
             "engine": "yelp",
@@ -1665,6 +1707,23 @@ def test_artifact_and_entity_tools_preserve_their_followup_handles():
             ]
         compact = followup.extract_followup_data(data)[tool_name]
         assert fields <= set(compact), (tool_name, compact)
+
+
+def test_trakt_followup_preserves_movie_ids_constraints_and_trailer_handles():
+    payload, arguments = LOCAL_TOOL_SAMPLES["trakt_movies"]
+    data = {"trakt_movies": payload}
+    if arguments is not None:
+        data["_tool_trace"] = [
+            {"tool": "trakt_movies", "ok": True, "arguments": arguments}
+        ]
+
+    compact = followup.extract_followup_data(data)["trakt_movies"]
+
+    assert compact["filters_used"]["runtimes"] == "1-120"
+    assert compact["resolved_references"][0]["title"] == "Inception"
+    assert compact["trailers"][0]["url"].startswith("https://www.youtube.com/")
+    assert compact["candidates"][0]["ids"]["slug"] == "arrival-2016"
+    assert compact["candidates"][0]["trakt_url"].startswith("https://trakt.tv/")
 
 
 def test_request_context_is_bounded_and_drops_secret_or_bulky_arguments():

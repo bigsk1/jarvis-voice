@@ -750,6 +750,10 @@ class ContextAssembler:
             # this cap, while game details need more than the generic search
             # budget to stay useful to the response model.
             return 10000
+        if lowered == "trakt_movies":
+            # Preserve a useful movie-night shortlist, exact links, constraints,
+            # and trailer handles without passing the full provider payload.
+            return 10000
         if "search" in lowered or "fetch" in lowered:
             return 6000
         if lowered.startswith("serpapi_"):
@@ -890,6 +894,7 @@ class ContextAssembler:
             str(tool_name or "").strip().lower() == "serpapi_google_trending_now"
         )
         is_tripadvisor = str(tool_name or "").strip().lower() == "serpapi_tripadvisor"
+        is_trakt_movies = str(tool_name or "").strip().lower() == "trakt_movies"
         is_flight_search = str(tool_name or "").strip().lower() == "flight_search"
 
         candidates: list[dict[str, Any]] = []
@@ -1172,6 +1177,35 @@ class ContextAssembler:
                             max_depth=1,
                         )
 
+            if is_trakt_movies:
+                for key in (
+                    "year",
+                    "ids",
+                    "trakt_url",
+                    "imdb_url",
+                    "tagline",
+                    "overview",
+                    "runtime_minutes",
+                    "votes",
+                    "genres",
+                    "subgenres",
+                    "certification",
+                    "trailer_url",
+                    "source_signals",
+                    "related_to",
+                    "match_score",
+                    "streaming_signal",
+                    "videos",
+                ):
+                    value = item.get(key)
+                    if value not in (None, "", [], {}):
+                        candidate[key] = self.build_preview_value(
+                            value,
+                            parent_key=key,
+                            depth=0,
+                            max_depth=3,
+                        )
+
             if is_flight_search:
                 for key in (
                     "airlines",
@@ -1193,7 +1227,8 @@ class ContextAssembler:
                         )
 
             if "url" not in candidate and not is_google_images_light:
-                for alias in url_aliases:
+                aliases = (*url_aliases, "trakt_url") if is_trakt_movies else url_aliases
+                for alias in aliases:
                     value = item.get(alias)
                     if value not in (None, ""):
                         candidate["url"] = self.build_preview_value(
@@ -2288,6 +2323,32 @@ class ContextAssembler:
                 data_preview = self.build_google_trending_now_data_preview(data)
             elif normalized_tool_name == "serpapi_tripadvisor":
                 data_preview = self.build_tripadvisor_data_preview(data)
+            elif normalized_tool_name == "trakt_movies":
+                data_preview = {
+                    key: self.build_preview_value(data[key], parent_key=key, max_depth=3)
+                    for key in (
+                        "action",
+                        "request",
+                        "query",
+                        "results_count",
+                        "top_url",
+                        "reference_titles_requested",
+                        "resolved_references",
+                        "genre_hints",
+                        "filters_used",
+                        "trailers",
+                        "sources_queried",
+                        "warnings",
+                        "api_requests",
+                        "oauth_used",
+                        "public_metadata_only",
+                        "streaming_provider_data",
+                        "external_content_trust",
+                        "source",
+                    )
+                    if isinstance(data, dict)
+                    and data.get(key) not in (None, "", [], {})
+                }
             elif normalized_tool_name == "flight_search":
                 data_preview = self.build_flight_data_preview(data)
             else:
@@ -2305,6 +2366,7 @@ class ContextAssembler:
         else:
             source_candidates = self.build_source_candidates_preview(
                 data,
+                max_items=8 if (tool_name or "").lower() == "trakt_movies" else 5,
                 tool_name=tool_name,
             )
         if source_candidates and (tool_name or "").lower() != "workflow":

@@ -33,6 +33,7 @@
     "serpapi_yelp_search": false,
     "serpapi_youtube": false,
     "serpapi_youtube_search": false,
+    "trakt_movies": false,
     "spotify": false,
     "ssh_remote": false,
     "status_recap": false,

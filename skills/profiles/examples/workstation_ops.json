@@ -41,6 +41,7 @@
     "serpapi_yelp_search": false,
     "serpapi_youtube": false,
     "serpapi_youtube_search": false,
+    "trakt_movies": false,
     "spotify": false,
     "status_recap": false,
     "stock_price": false,

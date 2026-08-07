@@ -523,6 +523,49 @@ Note: The LLM will generate a text description for the image, NOT ASCII art.
 ```
 **Note**: Useful as a final verification step to confirm ingestion worked.
 
+### trakt_movies
+```python
+# Params: action="recommend", request="thoughtful sci-fi like Arrival, under two hours"
+{
+  "ok": true,
+  "data": {
+    "action": "recommend",
+    "resolved_references": [{"title": "Arrival", "ids": {"slug": "arrival-2016"}}],
+    "genre_hints": ["science-fiction"],
+    "filters_used": {"genres": "science-fiction", "runtimes": "1-120"},
+    "candidates": [
+      {
+        "title": "Example Movie",
+        "year": 2025,
+        "runtime_minutes": 110,
+        "rating": 7.8,
+        "genres": ["science-fiction"],
+        "trakt_url": "https://trakt.tv/movies/example-movie-2025",
+        "trailer_url": "https://www.youtube.com/watch?v=example",
+        "source_signals": ["related:Arrival", "trending"]
+      }
+    ],
+    "trailers": [],
+    "warnings": [],
+    "public_metadata_only": true,
+    "streaming_provider_data": "not returned"
+  }
+}
+```
+**Extract rules:**
+```json
+"extract": {
+  "movie_candidates": "candidates",
+  "movie_references": "resolved_references",
+  "movie_filters": "filters_used",
+  "movie_trailers": "trailers",
+  "top_title": "candidates[0].title"
+}
+```
+**Notes**: `TRAKT_API_KEY` is the Trakt application Client ID. Public metadata
+does not require OAuth. Trakt image fields are intentionally omitted, and a
+streaming-list signal is not provider availability.
+
 ---
 
 ## Step 3: Workflow JSON Structure
@@ -807,6 +850,7 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 | `jarvis_self_check.json` | `/jarvis_self_check` | Local system health, deduplicated alerts, full Canvas update |
 | `local_services_compare.json` | `/local_services_compare <service>` | Active-mode Google Local Services + Google Local + bounded Yelp review evidence, optional Stash, validated Canvas; no crawl |
 | `memory_scan.json` | `/memory_scan` | Mode-aware memory dedupe, stash report, labeled Canvas report |
+| `movie_night.json` | `/movie_night <request>` | Required public Trakt recommendation set, optional YouTube trailer rail and Brave availability context, validated Canvas; no account OAuth or Trakt image hotlinking |
 | `night_out.json` | `/night_out <occasion or preference>` | Explicit-or-mode-default location, parsed target date, conditional 10-day weather, run-time-only open-state handling, bounded local/dining/activity evidence, validated Canvas; no crawl |
 | `quick_note.json` | `/note <text>` | Simple text capture, remember, canvas |
 | `serpapi_amazon_search.json` | `/serpapi_amazon <query>` (also `/amazon_search`, `/serpapi`) | SerpApi Amazon listings, Stash export, Canvas comparison |

@@ -55,6 +55,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_google_trends',
     'serpapi_google_trending_now',
     'serpapi_tripadvisor',
+    'trakt_movies',
     'flight_search',
     'crawl_url',
     'mcp_brave_search_brave_web_search',
@@ -384,6 +385,13 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'action', 'engine', 'query', 'category', 'tripadvisor_domain',
         'place_id', 'results_count', 'total_reviews', 'review_sort_by',
         'review_filters', 'top_url', 'serpapi_searches_used', 'source',
+    ],
+    'trakt_movies': [
+        'action', 'request', 'query', 'results_count', 'top_url',
+        'reference_titles_requested', 'resolved_references', 'genre_hints',
+        'filters_used', 'trailers', 'sources_queried', 'warnings',
+        'api_requests', 'public_metadata_only', 'streaming_provider_data',
+        'external_content_trust', 'source',
     ],
     'git_release_notes': ['release_tag', 'release_url', 'stash_ref', 'canvas_page_id', 'repo', 'owner'],
     'release_watch': [
@@ -3197,6 +3205,34 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 }
             elif isinstance(team_stats, list):
                 extracted['team_stats'] = team_stats[:12]
+
+        if key == 'trakt_movies':
+            results = payload.get('candidates') or payload.get('results') or payload.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = payload.get('results_count', len(results))
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = {
+                        field: item[field]
+                        for field in (
+                            'title', 'year', 'ids', 'trakt_url', 'imdb_url',
+                            'tagline', 'runtime_minutes', 'rating', 'votes',
+                            'genres', 'subgenres', 'certification', 'trailer_url',
+                            'source_signals', 'related_to', 'match_score',
+                            'streaming_signal', 'videos',
+                        )
+                        if item.get(field) not in (None, '', [], {})
+                    }
+                    if item.get('overview'):
+                        candidate['overview'] = _truncate_followup_text(
+                            str(item['overview']), 700
+                        )
+                    if candidate.get('title') or candidate.get('trakt_url'):
+                        candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
 
         if key == 'serpapi_google_local':
             results = payload.get('results') or payload.get('top_results') or []

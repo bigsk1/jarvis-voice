@@ -32,7 +32,56 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(self.orch._tool_context_max_chars("bookmark_search"), 5000)
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_web_search"), 6000)
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_google_sports"), 10000)
+        self.assertEqual(self.orch._tool_context_max_chars("trakt_movies"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("workflow"), 8000)
+
+    def test_trakt_preview_keeps_shortlist_constraints_and_trailer_handles(self):
+        candidates = [
+            {
+                "title": f"Movie {index}",
+                "year": 2020 + index,
+                "ids": {"trakt": index, "slug": f"movie-{index}"},
+                "trakt_url": f"https://trakt.tv/movies/movie-{index}",
+                "runtime_minutes": 90 + index,
+                "rating": 7.0 + index / 10,
+                "votes": 1000 * index,
+                "genres": ["science-fiction", "thriller"],
+                "overview": f"Bounded overview for movie {index}. " * 12,
+                "trailer_url": f"https://www.youtube.com/watch?v=movie{index}",
+                "source_signals": ["related:Inception", "trending"],
+            }
+            for index in range(1, 9)
+        ]
+        result = {
+            "ok": True,
+            "speech": "Found eight movie candidates.",
+            "data": {
+                "action": "recommend",
+                "request": "Mind-bending science fiction under two hours",
+                "filters_used": {"genres": "science-fiction", "runtimes": "1-120"},
+                "results_count": 8,
+                "candidates": candidates,
+                "results": candidates,
+                "top_results": candidates[:5],
+                "raw": "do not expose " * 5000,
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "trakt_movies", result
+        )
+
+        parsed = json.loads(preview)
+        compact = parsed["llm_context_preview"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 10000)
+        self.assertEqual(compact["data_preview"]["filters_used"]["runtimes"], "1-120")
+        self.assertEqual(len(compact["source_candidates"]), 8)
+        self.assertEqual(
+            compact["source_candidates"][7]["trailer_url"],
+            "https://www.youtube.com/watch?v=movie8",
+        )
+        self.assertNotIn("do not expose", preview)
 
     def test_workflow_preview_keeps_late_step_handles_and_omits_variables_graph(self):
         steps = []

@@ -305,6 +305,7 @@ JSON object printed to stdout:
 | `serpapi_youtube_search` | SerpApi YouTube video search by keywords |
 | `serpapi_yelp_search` | Yelp place discovery with local rating/review sorting, attrs, links, and optional review excerpts |
 | `serpapi_tripadvisor` | Tripadvisor discovery plus place details, nearby suggestions, and filtered review drill-down by place ID |
+| `trakt_movies` | Public Trakt movie discovery, related-title recommendations, current lists, metadata, and trailer/video links; requires a Trakt application Client ID |
 | `spotify` | Music playback control |
 | `opencode` | Autonomous coding agent |
 | `calculator` | Math, stats, unit conversions |

@@ -809,6 +809,10 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `brave_llm_context` - **Brave LLM Context API**: compact source snippets for LLM grounding (retrieval/context, not a final-answer generator)
 - `screenshot_url` - **Screenshot + vision**: Full-page capture with AI analysis (bypasses anti-bot)
 
+**Optional [Trakt movie tool](docs/tools/trakt-movies-tool/README.md) (`TRAKT_API_KEY` Client ID):**
+
+- `trakt_movies` - **Public movie discovery**: Mood-aware and related-title recommendations, search/details, trending/popular/anticipated/streaming-ranked/box-office lists, and public trailer/video metadata without account OAuth
+
 **Optional [SerpApi tool suite](docs/tools/serp-api-tool/README.md) (`SERP_API_KEY`):**
 
 - `serpapi_amazon_search` - **SerpApi Amazon Search**: Amazon listing discovery and focused ASIN/product details with price, rating, Prime, delivery, stock, images, and links
@@ -1003,6 +1007,7 @@ picker for the authoritative current surface.
 | `/jarvis_self_check` | Check local Jarvis health, refresh its Canvas report, and create a deduplicated alert for problems | get_time, system_monitor, check_tool_logs, query_service_logs, create_alert, canvas |
 | `/local_services_compare <service>` (also `/service_compare`) | Compare local providers, screening signals, business details, ratings, and bounded Yelp review excerpts using the active mode location | serpapi_google_local_services, serpapi_google_local, serpapi_yelp_search, stash, canvas |
 | `/memory_scan` | Run memory dedupe analysis, save reports to stash + canvas | memory_deduper |
+| `/movie_night <mood, constraints, or favorite movies>` (also `/what_to_watch`, `/movie_picker`) | Build a decisive Trakt-based movie shortlist with related-title signals, trailers, optional current streaming evidence, and a dated Canvas recommendation | trakt_movies, optional serpapi_youtube_search, optional brave_llm_context, canvas |
 | `/night_out <occasion or preference>` (also `/date_night`) | Build a date-aware local evening plan; an explicit destination wins, otherwise use the active mode default location/postal code, and weather is skipped when the requested date exceeds the 10-day horizon | optional weather, serpapi_google_local, optional serpapi_yelp_search, optional serpapi_tripadvisor, canvas |
 | `/note <text>` | Save note to memory + Canvas | get_time, remember, canvas |
 | `/research <topic>` | Multi-source research with Brave + crawling | brave_search, crawl_url, stash, remember, canvas |

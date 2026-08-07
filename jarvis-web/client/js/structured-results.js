@@ -58,6 +58,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_google_trends', payload => this._adaptGoogleTrends(payload));
     this.register('serpapi_google_trending_now', payload => this._adaptGoogleTrendingNow(payload));
     this.register('serpapi_tripadvisor', payload => this._adaptTripadvisor(payload));
+    this.register('trakt_movies', payload => this._adaptTraktMovies(payload));
     this.register('flight_search', payload => this._adaptFlights(payload));
     this.register('serpapi_google_local', payload => this._adaptGoogleLocal(payload));
     this.register('serpapi_google_local_services', payload => this._adaptGoogleLocalServices(payload));
@@ -830,6 +831,57 @@ class StructuredResultsRenderer {
       subtitle: payload.category && payload.category !== 'all'
         ? String(payload.category).replace(/_/g, ' ')
         : '',
+      items,
+    };
+  }
+
+  _adaptTraktMovies(payload) {
+    const items = this._rows(payload).map((row, index) => {
+      const chips = [];
+      if (row.year) chips.push(String(row.year));
+      if (row.runtime_minutes) chips.push(`${row.runtime_minutes} min`);
+      if (row.certification) chips.push(String(row.certification));
+      const signals = this._list(row.source_signals)
+        .slice(0, 3)
+        .map(signal => String(signal).replace(/^related:/, 'Like '));
+      chips.push(...signals);
+      const genres = this._list(row.genres).slice(0, 4).join(' · ');
+      const details = [];
+      if (genres) details.push(genres);
+      if (row.overview) details.push(this._compactText(row.overview, 260));
+      if (row.trailer_url) details.push('Trailer available');
+      const rating = row.rating != null ? Number(row.rating) : null;
+      const primary = Number.isFinite(rating)
+        ? `★ ${rating.toFixed(1)}${row.votes ? ` · ${this._formatCount(row.votes)} votes` : ''}`
+        : '';
+      return {
+        title: row.title || `Movie ${index + 1}`,
+        url: row.trakt_url || row.imdb_url || row.trailer_url,
+        primary,
+        chips,
+        details,
+        actionLabel: row.trakt_url ? 'Open on Trakt' : 'Open movie',
+      };
+    });
+    const action = String(payload.action || 'recommend').replace(/_/g, ' ');
+    const references = (Array.isArray(payload.resolved_references) ? payload.resolved_references : [])
+      .map(item => item && typeof item === 'object' ? item.title : item)
+      .filter(Boolean)
+      .slice(0, 3)
+      .join(', ');
+    const subtitle = [
+      action,
+      references ? `Inspired by ${references}` : '',
+      payload.streaming_provider_data === 'not returned' ? 'Provider availability not included' : '',
+    ].filter(Boolean).join(' · ');
+    return {
+      kind: 'generic',
+      layout: 'rail',
+      eyebrow: 'Trakt movies',
+      heading: payload.request || payload.query || 'Movie ideas',
+      subtitle,
+      actionUrl: payload.top_url,
+      actionLabel: 'Open top movie',
       items,
     };
   }

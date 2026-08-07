@@ -60,6 +60,7 @@ const expectedTools = [
   'serpapi_google_trends',
   'serpapi_google_trending_now',
   'serpapi_tripadvisor',
+  'trakt_movies',
   'flight_search',
   'serpapi_google_local',
   'serpapi_google_local_services',
@@ -823,6 +824,71 @@ if (html.includes('<script>') || html.includes('<img src=x')) process.exit(2);
 if (html.includes('javascript:') || html.includes('data:text/html')) process.exit(3);
 if (!html.includes('&lt;script&gt;alert(1)&lt;/script&gt;')) process.exit(4);
 if (!html.includes('&lt;b&gt;Unsafe&lt;/b&gt;')) process.exit(5);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
+def test_trakt_renderer_shows_metadata_without_hotlinking_provider_images():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const escapeHtml = value => String(value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+const sandbox = {{
+  URL,
+  window: {{}},
+  console,
+  Utils: {{
+    escapeHtml,
+    safeHttpUrlForAttr: value => {{
+      try {{
+        const parsed = new URL(String(value));
+        return ['http:', 'https:'].includes(parsed.protocol) ? escapeHtml(parsed.href) : '';
+      }} catch (_error) {{
+        return '';
+      }}
+    }}
+  }}
+}};
+vm.createContext(sandbox);
+vm.runInContext(source, sandbox);
+const html = sandbox.window.structuredResultsRenderer.render({{
+  trakt_movies: {{
+    action: 'recommend',
+    request: 'thoughtful science fiction under two hours',
+    top_url: 'https://trakt.tv/movies/arrival-2016',
+    streaming_provider_data: 'not returned',
+    resolved_references: [{{title: 'Inception'}}],
+    candidates: [{{
+      title: 'Arrival',
+      year: 2016,
+      runtime_minutes: 116,
+      certification: 'PG-13',
+      rating: 8.0,
+      votes: 15000,
+      genres: ['science-fiction', 'drama'],
+      overview: 'A linguist works to understand visitors from another world.',
+      trakt_url: 'https://trakt.tv/movies/arrival-2016',
+      trailer_url: 'https://www.youtube.com/watch?v=arrival',
+      source_signals: ['related:Inception', 'popular'],
+      images: {{poster: ['https://walter-r2.trakt.tv/not-for-hotlinking.webp']}}
+    }}]
+  }}
+}});
+if (!html.includes('Trakt movies')) process.exit(2);
+if (!html.includes('Arrival')) process.exit(3);
+if (!html.includes('116 min')) process.exit(4);
+if (!html.includes('Provider availability not included')) process.exit(5);
+if (!html.includes('Inspired by Inception')) process.exit(6);
+if (!html.includes('https://trakt.tv/movies/arrival-2016')) process.exit(7);
+if (html.includes('walter-r2.trakt.tv')) process.exit(8);
+if (html.includes('structured-result-image')) process.exit(9);
 """
 
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
