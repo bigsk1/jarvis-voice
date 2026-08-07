@@ -1,0 +1,94 @@
+{
+  "id": "amazon_value_search",
+  "name": "Amazon Value Search",
+  "description": "Compare Amazon listings for overall value using price, review confidence, Prime eligibility, delivery, and availability signals.",
+  "enabled": true,
+  "allow_workflow_tool": false,
+  "version": "1.0",
+  "disable_server_side_tools": true,
+
+  "triggers": {
+    "explicit": ["/amazon_value"],
+    "patterns": [],
+    "keywords": []
+  },
+
+  "variables": {
+    "task": {
+      "from": "query",
+      "extract": "main_subject"
+    }
+  },
+
+  "steps": [
+    {
+      "step": 1,
+      "tool": "serpapi_amazon_search",
+      "params": {
+        "engine": "amazon",
+        "query": "${task}",
+        "num_results": 10,
+        "no_cache": false,
+        "optimize_query": true,
+        "include_product_details": true,
+        "product_details_limit": 5,
+        "include_raw": false
+      },
+      "output_var": "amazon_search",
+      "extract": {
+        "results_count": "results_count",
+        "query_used": "query_effective",
+        "delivery_localized": "delivery_localized",
+        "delivery_location_source": "delivery_location_source",
+        "product_details_requested": "product_details_requested",
+        "product_details_succeeded": "product_details_succeeded"
+      },
+      "validation": {
+        "type": "heuristic",
+        "min_results": 1
+      },
+      "required": true,
+      "description": "Gather candidates and deterministically merge localized details into the first five"
+    },
+    {
+      "step": 2,
+      "tool": "canvas",
+      "action": "create",
+      "params": {
+        "title": "Workflows/Amazon Value/${query_used}",
+        "tags": ["workflow", "amazon", "shopping", "value-search"],
+        "source_query": "${task}"
+      },
+      "llm_variable_max_chars": 8000,
+      "llm_prompt": "Create a concise Amazon value-shopping report from only the normalized data below.\n\nSEARCH CONTEXT:\n- User request: ${task}\n- Effective Amazon query: ${query_used}\n- Candidate count: ${results_count}\n- Delivery localized with a postal code: ${delivery_localized}\n- Location source: ${delivery_location_source}\n- Product details requested: ${product_details_requested}\n- Product details successfully merged: ${product_details_succeeded}\n\nNORMALIZED CANDIDATES:\n${amazon_search.top_results}\n\nThe candidates below are the bounded top-five set selected for comparison. Their search and localized product-detail fields have already been merged deterministically by ASIN. A row with `detail_enriched: true` must use its own `prime_eligible`, `delivery`, `shipping`, `stock`, and `availability` fields; do not label those fields unknown when values are present.\n\nRANKING RULES:\n- Use each candidate's exact `url` for the final product link.\n- Judge overall value, not merely the lowest price.\n- Balance relevance to the request, current price, rating, review-count confidence, Prime eligibility, delivery timing, shipping, stock/availability, useful badges, recent purchase signal, and coupons when those fields exist.\n- Prefer well-supported ratings over a tiny review sample.\n- Treat missing fields as unknown, never as favorable evidence.\n- Do not claim the user owns Prime. Say Prime-eligible when `prime_eligible` is true; exact delivery wording may explain the Prime option.\n- Delivery and availability can change. Preserve the exact wording from the rows when useful.\n- Use only facts and complete URLs present in NORMALIZED CANDIDATES. Never invent a product, price, delivery date, stock status, ASIN, or URL.\n- The Comparison table must include every candidate in source order. If five details were successfully merged, include exactly all five rows.\n\nOutput raw Markdown only, with no code fence or HTML wrapper. Use this exact structure:\n# Amazon Value Search: ${query_used}\n\nA two-sentence buying summary.\n\n## Best Overall Value\nName one product, explain the tradeoff in 2-4 bullets, and include its exact markdown link.\n\n## Strong Alternatives\nInclude Best Budget and Best Reviewed only when the data supports those labels. Do not force distinct winners.\n\n## Comparison\nA markdown table with columns: Product, Price, Rating, Reviews, Prime, Delivery / Availability, Why It Stands Out. Link each product name with its exact URL.\n\n## Buying Notes\nState whether delivery was localized, call out missing or ambiguous fields, and remind the reader to confirm the live Amazon listing before purchase.\n\n## Source\nState that the comparison used SerpApi Amazon results and include the effective query. Do not add URLs that were not in the candidate rows.",
+      "llm_output_validation": {
+        "param": "content",
+        "min_length": 400,
+        "reject_patterns": [
+          "unable to create",
+          "no candidate data",
+          "https://...",
+          "```",
+          "<!doctype",
+          "<html",
+          "<body",
+          "<pre",
+          "${"
+        ],
+        "required_patterns": [
+          "# Amazon Value Search:",
+          "## Best Overall Value",
+          "## Comparison",
+          "## Buying Notes",
+          "## Source"
+        ]
+      },
+      "abort_speech": "I found Amazon candidates, but the value report failed validation, so I did not create a misleading Canvas page.",
+      "required": true,
+      "description": "Create a bounded value comparison in Canvas"
+    }
+  ],
+
+  "success_speech": "Amazon value search complete. I compared ${results_count} localized candidates and created a Canvas report.",
+  "abort_speech": "I couldn't complete the Amazon value search."
+}
