@@ -344,6 +344,12 @@ def test_canvas_preview_keeps_assistant_reply_bubble():
     assert "const messageBubbleHtml = `" in chat_js
     assert "${canvasPreviewHtml}" in chat_js
     assert "${messageBubbleHtml}" in chat_js
+    bubble_start = chat_js.index("const messageBubbleHtml = `")
+    render_start = chat_js.index("messageEl.innerHTML = `", bubble_start)
+    render_end = chat_js.index("`;", render_start)
+    render_order = chat_js[render_start:render_end]
+    assert render_order.index("${youtubeEmbedsHtml}") < render_order.index("${canvasPreviewHtml}")
+    assert render_order.index("${canvasPreviewHtml}") < render_order.index("${messageBubbleHtml}")
     assert "hideCanvasReceipt" not in chat_js
     assert "_isCanvasReceiptOnly" not in chat_js
 

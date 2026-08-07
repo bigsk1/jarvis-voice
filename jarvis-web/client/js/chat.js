@@ -4009,13 +4009,13 @@ class ChatUI {
     messageEl.innerHTML = `
       ${toolCardsHtml}
       ${structuredResultsHtml}
-      ${canvasPreviewHtml}
       ${shoppingHtml}
       ${imageHtml}
       ${convertedFileHtml}
       ${audioHtml}
       ${videoHtml}
       ${youtubeEmbedsHtml}
+      ${canvasPreviewHtml}
       ${messageBubbleHtml}
     `;
     
