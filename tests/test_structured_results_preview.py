@@ -1150,7 +1150,10 @@ def test_renderer_is_loaded_before_chat_and_uses_shared_responsive_styles():
     assert ".structured-results-workflow-section.structured-results-single" in css
     assert "grid-auto-flow: column" in css
     assert "scroll-snap-type: inline proximity" in css
-    assert "grid-auto-columns: minmax(235px, 82vw)" in css
+    assert "grid-auto-columns: minmax(380px, 440px)" in css
+    assert "grid-auto-columns: minmax(300px, 92vw)" in css
+    assert "width: 168px" in css
+    assert "width: 132px" in css
     assert ".structured-results-layout-list .structured-results-track" in css
     assert ".structured-results-layout-metrics .structured-results-track" in css
     assert ".structured-result-card-video" in css

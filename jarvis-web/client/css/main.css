@@ -2087,7 +2087,7 @@ body {
 
 .structured-results-workflow-section.structured-results-single .structured-results-track {
   display: grid;
-  grid-template-columns: minmax(0, min(100%, 420px));
+  grid-template-columns: minmax(0, min(100%, 440px));
   grid-auto-flow: row;
   padding-bottom: 0;
   overflow: visible;
@@ -2199,7 +2199,7 @@ body {
 
 .structured-results-track {
   display: grid;
-  grid-auto-columns: minmax(240px, 300px);
+  grid-auto-columns: minmax(380px, 440px);
   grid-auto-flow: column;
   gap: 10px;
   padding-bottom: 5px;
@@ -2320,8 +2320,8 @@ body {
 
 .structured-result-image {
   display: block;
-  width: 96px;
-  min-width: 96px;
+  width: 168px;
+  min-width: 168px;
   background: var(--bg-tertiary);
 }
 
@@ -2473,7 +2473,12 @@ body {
   }
 
   .structured-results-layout-rail .structured-results-track {
-    grid-auto-columns: minmax(235px, 82vw);
+    grid-auto-columns: minmax(300px, 92vw);
+  }
+
+  .structured-result-image {
+    width: 132px;
+    min-width: 132px;
   }
 
   .structured-results-layout-metrics .structured-results-track {
