@@ -2311,6 +2311,30 @@ body {
   object-fit: cover;
 }
 
+.structured-result-card-image.structured-result-image-poster .structured-result-image {
+  aspect-ratio: 2 / 3;
+}
+
+.structured-result-card-image.structured-result-image-backdrop .structured-result-image,
+.structured-result-card-image.structured-result-image-logo .structured-result-image {
+  aspect-ratio: 16 / 9;
+}
+
+.structured-result-card-image.structured-result-image-poster .structured-result-image img,
+.structured-result-card-image.structured-result-image-backdrop .structured-result-image img,
+.structured-result-card-image.structured-result-image-logo .structured-result-image img {
+  object-fit: contain;
+}
+
+.structured-results-layout-gallery .structured-result-card-featured {
+  grid-column: span 2;
+}
+
+.structured-results-layout-gallery .structured-result-card-featured.structured-result-image-poster .structured-result-image {
+  height: clamp(320px, 46vw, 460px);
+  aspect-ratio: auto;
+}
+
 .structured-result-body {
   display: flex;
   flex: 1;

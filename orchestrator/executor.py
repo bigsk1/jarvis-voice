@@ -132,6 +132,8 @@ class ToolExecutor:
             return 160  # Up to three sequential 45s calls for search + optional place details + reviews
         if tool_name == "trakt_movies":
             return 300  # Bounded public list, related-title, and trailer lookups may be sequential
+        if tool_name == "tmdb_movies":
+            return 300  # Configuration/genre helpers plus proxy-aware movie or artwork lookup
         if tool_name == "status_recap":
             return 180  # 3 minutes - calls multiple tools including generate_image
         if tool_name == "crawl_url":

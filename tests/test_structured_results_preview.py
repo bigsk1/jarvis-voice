@@ -61,6 +61,7 @@ const expectedTools = [
   'serpapi_google_trending_now',
   'serpapi_tripadvisor',
   'trakt_movies',
+  'tmdb_movies',
   'flight_search',
   'serpapi_google_local',
   'serpapi_google_local_services',
@@ -889,6 +890,89 @@ if (!html.includes('Inspired by Inception')) process.exit(6);
 if (!html.includes('https://trakt.tv/movies/arrival-2016')) process.exit(7);
 if (html.includes('walter-r2.trakt.tv')) process.exit(8);
 if (html.includes('structured-result-image')) process.exit(9);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
+def test_tmdb_renderer_uses_tmdb_gallery_and_required_attribution():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const escapeHtml = value => String(value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+const sandbox = {{
+  URL,
+  window: {{}},
+  console,
+  Utils: {{
+    escapeHtml,
+    safeHttpUrlForAttr: value => {{
+      try {{
+        const parsed = new URL(String(value));
+        return ['http:', 'https:'].includes(parsed.protocol) ? escapeHtml(parsed.href) : '';
+      }} catch (_error) {{
+        return '';
+      }}
+    }}
+  }}
+}};
+vm.createContext(sandbox);
+vm.runInContext(source, sandbox);
+const html = sandbox.window.structuredResultsRenderer.render({{
+  tmdb_movies: [{{
+    action: 'images',
+    image_type: 'all',
+    results_count: 3,
+    attribution_notice: 'This product uses the TMDB API but is not endorsed or certified by TMDB.',
+    attribution_url: 'https://www.themoviedb.org',
+    top_url: 'https://www.themoviedb.org/movie/329865',
+    movie: {{title: 'Arrival', tmdb_url: 'https://www.themoviedb.org/movie/329865'}},
+    results: [{{
+      title: 'Arrival poster',
+      image_type: 'poster',
+      width: 1000,
+      height: 1500,
+      language: 'en',
+      rating: 5.4,
+      thumbnail: 'https://image.tmdb.org/t/p/w342/poster.jpg',
+      image_url: 'https://image.tmdb.org/t/p/w500/poster.jpg',
+      original_url: 'https://image.tmdb.org/t/p/original/poster.jpg',
+      source_url: 'https://www.themoviedb.org/movie/329865'
+    }}, {{
+      title: 'Arrival backdrop',
+      image_type: 'backdrop',
+      image_url: 'https://image.tmdb.org/t/p/w1280/backdrop.jpg',
+      original_url: 'https://image.tmdb.org/t/p/original/backdrop.jpg',
+      source_url: 'https://www.themoviedb.org/movie/329865'
+    }}]
+  }}, {{
+    action: 'images',
+    image_type: 'logo',
+    results_count: 1,
+    movie: {{title: 'Arrival'}},
+    results: [{{
+      title: 'Redundant logo-only result',
+      image_type: 'logo',
+      image_url: 'https://image.tmdb.org/t/p/w500/logo.png'
+    }}]
+  }}]
+}});
+if (!html.includes('TMDB movie artwork')) process.exit(2);
+if (!html.includes('Arrival poster')) process.exit(3);
+if (!html.includes('image.tmdb.org/t/p/w500/poster.jpg')) process.exit(4);
+if (!html.includes('image.tmdb.org/t/p/original/poster.jpg')) process.exit(5);
+if (!html.includes('not endorsed or certified by TMDB')) process.exit(6);
+if (!html.includes('structured-results-layout-gallery')) process.exit(7);
+if (!html.includes('structured-result-image-poster')) process.exit(8);
+if (!html.includes('structured-result-image-backdrop')) process.exit(9);
+if (!html.includes('structured-result-card-featured')) process.exit(10);
+if (html.includes('Redundant logo-only result')) process.exit(11);
 """
 
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)

@@ -566,6 +566,48 @@ Note: The LLM will generate a text description for the image, NOT ASCII art.
 does not require OAuth. Trakt image fields are intentionally omitted, and a
 streaming-list signal is not provider availability.
 
+### tmdb_movies
+```python
+# Params: action="images", query="Arrival", image_type="all", max_results=6
+{
+  "ok": true,
+  "data": {
+    "action": "images",
+    "movie": {
+      "tmdb_id": 329865,
+      "title": "Arrival",
+      "year": 2016,
+      "tmdb_url": "https://www.themoviedb.org/movie/329865",
+      "poster_url": "https://image.tmdb.org/t/p/w500/example.jpg"
+    },
+    "images": [
+      {
+        "image_type": "poster",
+        "thumbnail": "https://image.tmdb.org/t/p/w342/example.jpg",
+        "image_url": "https://image.tmdb.org/t/p/w500/example.jpg",
+        "original_url": "https://image.tmdb.org/t/p/original/example.jpg",
+        "source_url": "https://www.themoviedb.org/movie/329865"
+      }
+    ],
+    "results_count": 1,
+    "attribution_notice": "This product uses the TMDB API but is not endorsed or certified by TMDB."
+  }
+}
+```
+**Extract rules:**
+```json
+"extract": {
+  "tmdb_movie": "movie",
+  "tmdb_images": "images",
+  "tmdb_top_poster": "images[0].image_url",
+  "tmdb_source_url": "movie.tmdb_url"
+}
+```
+**Notes**: `tmdb_movies` is independently available when either
+`TMDB_ACCESS_TOKEN` or `TMDB_API_KEY` is configured. Workflows may use it alone
+or as optional enrichment beside `trakt_movies`. TMDB CDN URLs are external,
+untrusted content and must retain the returned attribution notice.
+
 ---
 
 ## Step 3: Workflow JSON Structure

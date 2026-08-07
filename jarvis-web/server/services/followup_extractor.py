@@ -56,6 +56,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_google_trending_now',
     'serpapi_tripadvisor',
     'trakt_movies',
+    'tmdb_movies',
     'flight_search',
     'crawl_url',
     'mcp_brave_search_brave_web_search',
@@ -392,6 +393,12 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'filters_used', 'trailers', 'sources_queried', 'warnings',
         'api_requests', 'public_metadata_only', 'streaming_provider_data',
         'external_content_trust', 'source',
+    ],
+    'tmdb_movies': [
+        'action', 'query', 'image_type', 'image_languages', 'results_count',
+        'provider_results_count', 'page', 'total_pages', 'top_url',
+        'filters_used', 'api_requests', 'auth_method', 'public_metadata_only',
+        'attribution_notice', 'attribution_url', 'external_content_trust', 'source',
     ],
     'git_release_notes': ['release_tag', 'release_url', 'stash_ref', 'canvas_page_id', 'repo', 'owner'],
     'release_watch': [
@@ -3233,6 +3240,56 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                         candidates.append(candidate)
                 if candidates:
                     extracted['candidates'] = candidates
+
+        if key == 'tmdb_movies':
+            movie = payload.get('movie')
+            if isinstance(movie, dict):
+                extracted['movie'] = {
+                    field: movie[field]
+                    for field in (
+                        'id', 'tmdb_id', 'title', 'original_title', 'release_date',
+                        'year', 'overview', 'tagline', 'runtime_minutes', 'rating',
+                        'votes', 'genres', 'certification', 'status', 'collection',
+                        'tmdb_url', 'imdb_id', 'imdb_url', 'poster_url',
+                        'poster_thumbnail', 'poster_original_url', 'backdrop_url',
+                        'backdrop_thumbnail', 'backdrop_original_url',
+                    )
+                    if movie.get(field) not in (None, '', [], {})
+                }
+
+            results = payload.get('results') or payload.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = payload.get('results_count', len(results))
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = {
+                        field: item[field]
+                        for field in (
+                            'id', 'tmdb_id', 'title', 'name', 'year', 'release_date',
+                            'runtime_minutes', 'rating', 'votes', 'genres',
+                            'certification', 'tmdb_url', 'imdb_url', 'source_signal',
+                            'image_type', 'width', 'height', 'language',
+                            'thumbnail', 'image_url', 'original_url', 'source_url',
+                            'character', 'job', 'profile_thumbnail', 'profile_url',
+                            'url', 'site', 'type', 'official', 'published_at',
+                        )
+                        if item.get(field) not in (None, '', [], {})
+                    }
+                    if item.get('overview'):
+                        candidate['overview'] = _truncate_followup_text(
+                            str(item['overview']), 700
+                        )
+                    if candidate.get('title') or candidate.get('name') or candidate.get('image_url'):
+                        candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
+
+            for source_key in ('images', 'cast', 'crew', 'videos', 'recommendations', 'similar'):
+                rows = payload.get(source_key)
+                if isinstance(rows, list) and rows:
+                    extracted[source_key] = rows[:max_candidates]
 
         if key == 'serpapi_google_local':
             results = payload.get('results') or payload.get('top_results') or []

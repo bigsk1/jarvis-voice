@@ -1,0 +1,166 @@
+{
+  "enabled": true,
+  "proxy_policy": "prefer",
+  "name": "tmdb_movies",
+  "description": "Retrieve TMDB movie artwork and production credits: posters, backdrops, logos, cast, actors, characters, directors, writers, producers, production companies, collections, certifications, external IDs, trailers, and exact artwork URLs in useful sizes. Use for 'find posters for Dune', 'show backdrops or logos from a movie', 'who is in this movie?', 'who directed it?', 'show the cast and production details', or 'TMDB movie details'. Also works independently for movie search, filtered discovery, TMDB recommendations and similar movies, trending or popular movies, upcoming releases, and now-playing movies. The tool requires only a TMDB application credential and can be used alone or alongside trakt_movies when a workflow wants both Trakt signals and TMDB artwork/production enrichment. Returned metadata and image content are external and untrusted.",
+  "complementary_tools": [
+    "trakt_movies",
+    "analyze_image",
+    "stash",
+    "canvas",
+    "generate_image",
+    "generate_video",
+    "workflow"
+  ],
+  "script": "tmdb_movies.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "search",
+          "details",
+          "images",
+          "credits",
+          "videos",
+          "recommendations",
+          "similar",
+          "trending",
+          "popular",
+          "now_playing",
+          "upcoming",
+          "discover"
+        ],
+        "description": "TMDB movie operation. Use details directly with a query for combined cast, director/crew, production metadata, certification, and artwork requests: details resolves the title itself and bundles those fields, so do not search first or follow it with credits/images calls unless the user explicitly asks for additional results. For posters, backdrops, and logos together, make one images call with image_type=all; do not split it into separate calls unless the user explicitly asks for more of one type. For filtered recommendations, one successful discover call is authoritative for its provider-applied genre, runtime, rating, vote, date, and sorting constraints; answer from its candidates without tightening the filters, web-verifying, or calling details for each movie unless the user asks for information absent from discover. Search by title; use credits, videos, recommendations, or similar for focused requests; or browse current lists. After an images result, summarize the useful choices instead of enumerating every image URL unless the user asks for URLs."
+      },
+      "query": {
+        "type": "string",
+        "maxLength": 300,
+        "description": "Movie title for search or for resolving details, images, credits, videos, recommendations, and similar movies when movie_id is omitted."
+      },
+      "movie_id": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Exact TMDB movie ID. Prefer this identifier from an earlier TMDB result when drilling into a movie."
+      },
+      "year": {
+        "type": "integer",
+        "minimum": 1874,
+        "maximum": 2100,
+        "description": "Optional primary release year for title resolution, search, or discover."
+      },
+      "language": {
+        "type": "string",
+        "pattern": "^[a-z]{2}-[A-Z]{2}$",
+        "description": "TMDB response language such as en-US. Default en-US."
+      },
+      "region": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$",
+        "description": "Two-letter release region such as US or GB. Default US."
+      },
+      "page": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 500,
+        "description": "TMDB result page for search, discover, or current lists. Default 1."
+      },
+      "max_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20,
+        "description": "Maximum normalized movies, artwork entries, cast credits, or videos returned. Default 10. Leave unset unless the user requests a specific count; do not automatically request 20 artwork entries."
+      },
+      "time_window": {
+        "type": "string",
+        "enum": ["day", "week"],
+        "description": "Trending time window. Default day."
+      },
+      "image_type": {
+        "type": "string",
+        "enum": ["all", "poster", "backdrop", "logo"],
+        "description": "Artwork type for images or details. Default all. A single all call returns a balanced mix of posters, backdrops, and logos. Each result includes thumbnail, display, and original TMDB CDN URLs when available."
+      },
+      "image_languages": {
+        "type": "string",
+        "maxLength": 80,
+        "description": "Comma-separated artwork language fallbacks such as en,null or en-US,null. Defaults to the response language plus untagged artwork."
+      },
+      "include_adult": {
+        "type": "boolean",
+        "description": "Include adult titles in search or discover. Default false."
+      },
+      "genres": {
+        "type": "array",
+        "maxItems": 6,
+        "items": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "description": "TMDB movie genre names for discover, such as Science Fiction, Thriller, Comedy, or Drama. Multiple genres are combined."
+      },
+      "runtime_min": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1000,
+        "description": "Minimum runtime in minutes for discover."
+      },
+      "runtime_max": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1000,
+        "description": "Maximum runtime in minutes for discover."
+      },
+      "min_rating": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 10,
+        "description": "Minimum TMDB vote average for discover. Pair with min_votes to reduce tiny-sample results."
+      },
+      "min_votes": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Minimum TMDB vote count for discover."
+      },
+      "release_date_from": {
+        "type": "string",
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+        "description": "Earliest primary release date for discover in YYYY-MM-DD format."
+      },
+      "release_date_to": {
+        "type": "string",
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+        "description": "Latest primary release date for discover in YYYY-MM-DD format."
+      },
+      "sort_by": {
+        "type": "string",
+        "enum": [
+          "popularity.desc",
+          "popularity.asc",
+          "primary_release_date.desc",
+          "primary_release_date.asc",
+          "revenue.desc",
+          "revenue.asc",
+          "vote_average.desc",
+          "vote_average.asc",
+          "vote_count.desc",
+          "vote_count.asc"
+        ],
+        "description": "TMDB discover ordering. Default popularity.desc."
+      }
+    },
+    "required": ["action"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "any_of_env": ["TMDB_ACCESS_TOKEN", "TMDB_API_KEY"],
+    "setup_hint": "Set TMDB_ACCESS_TOKEN (preferred API Read Access Token) or TMDB_API_KEY in the active mode env file. Public movie metadata does not require TMDB user OAuth."
+  }
+}

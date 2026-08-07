@@ -33,6 +33,7 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_web_search"), 6000)
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_google_sports"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("trakt_movies"), 10000)
+        self.assertEqual(self.orch._tool_context_max_chars("tmdb_movies"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("workflow"), 8000)
 
     def test_trakt_preview_keeps_shortlist_constraints_and_trailer_handles(self):
@@ -81,6 +82,194 @@ class ToolContextPreviewTests(unittest.TestCase):
             compact["source_candidates"][7]["trailer_url"],
             "https://www.youtube.com/watch?v=movie8",
         )
+        self.assertNotIn("do not expose", preview)
+
+    def test_tmdb_preview_keeps_ids_and_artwork_variants_without_raw_payload(self):
+        candidates = [
+            {
+                "id": index,
+                "tmdb_id": index,
+                "title": f"Movie {index}",
+                "year": 2020 + index,
+                "overview": f"Bounded overview {index}. " * 12,
+                "runtime_minutes": 90 + index,
+                "rating": 7.0 + index / 10,
+                "votes": 1000 * index,
+                "genres": ["Science Fiction", "Thriller"],
+                "tmdb_url": f"https://www.themoviedb.org/movie/{index}",
+                "poster_thumbnail": f"https://image.tmdb.org/t/p/w342/poster{index}.jpg",
+                "poster_original_url": f"https://image.tmdb.org/t/p/original/poster{index}.jpg",
+                "backdrop_original_url": f"https://image.tmdb.org/t/p/original/backdrop{index}.jpg",
+            }
+            for index in range(1, 11)
+        ]
+        result = {
+            "ok": True,
+            "speech": "Found ten TMDB movies.",
+            "data": {
+                "action": "discover",
+                "filters_used": {"with_genres": "878", "with_runtime.lte": 120},
+                "selection_criteria": {
+                    "genres": ["Science Fiction"],
+                    "runtime_max_minutes": 120,
+                    "minimum_rating": 7.0,
+                    "minimum_votes": 500,
+                    "provider_filters_applied": True,
+                    "all_returned_results_match": True,
+                },
+                "results_count": 10,
+                "results": candidates,
+                "top_results": candidates[:5],
+                "attribution_notice": "This product uses the TMDB API but is not endorsed or certified by TMDB.",
+                "raw": "do not expose " * 5000,
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "tmdb_movies", result
+        )
+
+        parsed = json.loads(preview)
+        compact = parsed["llm_context_preview"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 10000)
+        self.assertEqual(compact["data_preview"]["filters_used"]["with_genres"], "878")
+        self.assertEqual(len(compact["source_candidates"]), 8)
+        self.assertEqual(compact["source_candidates"][7]["tmdb_id"], 8)
+        self.assertIn("poster8.jpg", compact["source_candidates"][7]["poster_thumbnail"])
+        self.assertNotIn("poster_original_url", compact["source_candidates"][7])
+        self.assertTrue(
+            compact["data_preview"]["selection_criteria"]["all_returned_results_match"]
+        )
+        self.assertNotIn("do not expose", preview)
+
+    def test_tmdb_images_preview_uses_six_candidates_without_duplicate_image_array(self):
+        images = [
+            {
+                "title": f"Arrival {kind}",
+                "image_type": kind,
+                "width": 1000,
+                "height": 1500,
+                "image_url": f"https://image.tmdb.org/t/p/w500/{kind}{index}.jpg",
+                "original_url": f"https://image.tmdb.org/t/p/original/{kind}{index}.jpg",
+            }
+            for index, kind in enumerate(("poster", "backdrop", "logo") * 4, 1)
+        ]
+        result = {
+            "ok": True,
+            "speech": "Found mixed TMDB artwork.",
+            "data": {
+                "action": "images",
+                "image_type": "all",
+                "artwork_counts": {"poster": 4, "backdrop": 4, "logo": 4},
+                "artwork_types_returned": ["poster", "backdrop", "logo"],
+                "results_count": 12,
+                "images": images,
+                "results": images,
+                "top_results": images[:5],
+                "raw": "do not expose " * 5000,
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "tmdb_movies", result
+        )
+
+        compact = json.loads(preview)["llm_context_preview"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 10000)
+        self.assertNotIn("images", compact["data_preview"])
+        self.assertEqual(
+            compact["data_preview"]["artwork_counts"],
+            {"poster": 4, "backdrop": 4, "logo": 4},
+        )
+        self.assertEqual(len(compact["source_candidates"]), 6)
+        self.assertEqual(
+            [item["image_type"] for item in compact["source_candidates"][:3]],
+            ["poster", "backdrop", "logo"],
+        )
+
+    def test_tmdb_details_preview_exposes_bundled_coverage_without_tail_truncation(self):
+        images = [
+            {
+                "title": f"Arrival {kind}",
+                "image_type": kind,
+                "width": 1000,
+                "height": 1500,
+                "image_url": f"https://image.tmdb.org/t/p/w500/{kind}{index}.jpg",
+                "original_url": f"https://image.tmdb.org/t/p/original/{kind}{index}.jpg",
+            }
+            for index, kind in enumerate(("poster", "backdrop", "logo") * 4, 1)
+        ]
+        result = {
+            "ok": True,
+            "speech": "Retrieved bundled TMDB details for Arrival.",
+            "data": {
+                "action": "details",
+                "query": "Arrival",
+                "movie": {
+                    "id": 329865,
+                    "title": "Arrival",
+                    "certification": "PG-13",
+                    "production_companies": ["FilmNation Entertainment"],
+                    "tmdb_url": "https://www.themoviedb.org/movie/329865",
+                },
+                "details_included": [
+                    "movie_metadata",
+                    "production_details",
+                    "certification",
+                    "cast",
+                    "director_and_crew",
+                    "artwork",
+                ],
+                "artwork_counts": {"poster": 4, "backdrop": 4, "logo": 4},
+                "cast": [
+                    {
+                        "id": index,
+                        "name": f"Actor {index}",
+                        "character": f"Role {index}",
+                        "profile_url": "https://image.tmdb.org/t/p/h632/profile.jpg",
+                    }
+                    for index in range(1, 11)
+                ],
+                "crew": [
+                    {
+                        "id": index,
+                        "name": "Denis Villeneuve" if index == 1 else f"Crew {index}",
+                        "job": "Director" if index == 1 else "Producer",
+                        "department": "Directing" if index == 1 else "Production",
+                    }
+                    for index in range(1, 11)
+                ],
+                "images": images,
+                "videos": [{"title": f"Trailer {index}"} for index in range(4)],
+                "recommendations": [{"title": f"Movie {index}"} for index in range(10)],
+                "similar": [{"title": f"Similar {index}"} for index in range(10)],
+                "results_count": 1,
+                "results": [{"id": 329865, "title": "Arrival"}],
+                "raw": "do not expose " * 5000,
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "tmdb_movies", result
+        )
+
+        compact = json.loads(preview)["llm_context_preview"]
+        details = compact["data_preview"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 10000)
+        self.assertNotIn("data_preview_text", compact)
+        self.assertEqual(details["movie"]["certification"], "PG-13")
+        self.assertEqual(
+            details["movie"]["production_companies"],
+            ["FilmNation Entertainment"],
+        )
+        self.assertEqual(details["crew"][0]["name"], "Denis Villeneuve")
+        self.assertEqual(len(details["cast"]), 6)
+        self.assertEqual(len(details["images"]), 6)
+        self.assertEqual(details["bundled_result_counts"]["recommendations"], 10)
+        self.assertIn("director_and_crew", details["details_included"])
         self.assertNotIn("do not expose", preview)
 
     def test_workflow_preview_keeps_late_step_handles_and_omits_variables_graph(self):

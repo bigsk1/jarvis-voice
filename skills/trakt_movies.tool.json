@@ -2,8 +2,9 @@
   "enabled": true,
   "proxy_policy": "prefer",
   "name": "trakt_movies",
-  "description": "Discover public movie metadata and movie-night ideas through Trakt. Use for 'what should I watch tonight?', 'find movies like Inception and Interstellar', 'I want a funny thriller under two hours', 'what movies are trending or popular on Trakt?', 'show related movies', movie details, or official trailer/video links. The recommend action blends bounded current Trakt lists with related movies from up to three supplied favorites, then returns a source-ranked candidate set for Jarvis to assess against the user's mood. This public Client-ID integration does not read a Trakt account's history, ratings, watchlist, or personalized recommendations. A streaming-list signal means recently ranked as streaming; it does not identify a provider or prove current availability in the user's subscriptions.",
+  "description": "Build taste-oriented public movie discovery and movie-night ideas through Trakt. Use for 'what should I watch tonight?', 'find movies like Inception and Interstellar', 'I want a funny thriller under two hours', 'what movies are trending or popular on Trakt?', 'show related movies', movie details, or official trailer/video links. The recommend action blends bounded current Trakt lists with related movies from up to three supplied favorites, then returns a source-ranked candidate set for Jarvis to assess against the user's mood. This public Client-ID integration does not read a Trakt account's history, ratings, watchlist, or personalized recommendations. A streaming-list signal means recently ranked as streaming; it does not identify a provider or prove current availability in the user's subscriptions.",
   "complementary_tools": [
+    "tmdb_movies",
     "serpapi_youtube_search",
     "brave_llm_context",
     "workflow",

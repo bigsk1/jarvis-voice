@@ -109,6 +109,19 @@ class ModelPromptOverrideTests(unittest.TestCase):
         self.assertIn("serpapi_hotel_search", override.get("tool_calling_prepend"))
         self.assertIn("serpapi_yelp_search", override.get("tool_calling_prepend"))
         self.assertIn("one successful structured search", override.get("tool_calling_prepend"))
+        self.assertIn(
+            "trakt_movies and tmdb_movies are independent",
+            override.get("tool_calling_prepend"),
+        )
+        self.assertIn("image_type=all", override.get("tool_calling_prepend"))
+        self.assertIn(
+            "do not follow it with separate poster",
+            override.get("tool_calling_prepend"),
+        )
+        self.assertIn("action=details once", override.get("tool_calling_prepend"))
+        self.assertIn("do not call search first", override.get("tool_calling_prepend"))
+        self.assertIn("one action=discover call", override.get("tool_calling_prepend"))
+        self.assertIn("do not silently tighten", override.get("tool_calling_prepend"))
 
     def test_loads_normalized_alias_when_exact_file_missing(self):
         with tempfile.TemporaryDirectory() as tmpdir:

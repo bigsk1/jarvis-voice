@@ -25,9 +25,10 @@ class StructuredResultsRenderer {
   render(toolResultsData = {}, data = {}) {
     const collections = [];
     for (const [toolName, adapter] of this.adapters.entries()) {
-      const payload = this._latestPayload(
-        toolResultsData?.[toolName] ?? data?.[toolName]
-      );
+      const rawPayload = toolResultsData?.[toolName] ?? data?.[toolName];
+      const payload = toolName === 'tmdb_movies'
+        ? this._tmdbDisplayPayload(rawPayload)
+        : this._latestPayload(rawPayload);
       if (!payload) continue;
       try {
         const collection = adapter(payload);
@@ -59,6 +60,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_google_trending_now', payload => this._adaptGoogleTrendingNow(payload));
     this.register('serpapi_tripadvisor', payload => this._adaptTripadvisor(payload));
     this.register('trakt_movies', payload => this._adaptTraktMovies(payload));
+    this.register('tmdb_movies', payload => this._adaptTmdbMovies(payload));
     this.register('flight_search', payload => this._adaptFlights(payload));
     this.register('serpapi_google_local', payload => this._adaptGoogleLocal(payload));
     this.register('serpapi_google_local_services', payload => this._adaptGoogleLocalServices(payload));
@@ -139,6 +141,25 @@ class StructuredResultsRenderer {
       raw = raw.data;
     }
     return raw;
+  }
+
+  _tmdbDisplayPayload(raw) {
+    if (!Array.isArray(raw)) return this._latestPayload(raw);
+    const looksLikeRepeatedRuns = raw.some(item => item && typeof item === 'object' && (
+      item.data || item.action || item.results || item.top_results
+    ));
+    if (!looksLikeRepeatedRuns) return this._latestPayload(raw);
+    const payloads = raw
+      .map(item => this._latestPayload(item))
+      .filter(item => item && typeof item === 'object');
+    if (!payloads.length) return null;
+
+    // A complete mixed artwork call is more representative than a provider's
+    // redundant poster/backdrop/logo drill-down that follows it.
+    const mixedArtwork = [...payloads].reverse().find(item => (
+      item.action === 'images' && item.image_type === 'all'
+    ));
+    return mixedArtwork || payloads[payloads.length - 1];
   }
 
   _rows(payload) {
@@ -886,6 +907,132 @@ class StructuredResultsRenderer {
     };
   }
 
+  _adaptTmdbMovies(payload) {
+    const action = String(payload.action || 'search').replace(/_/g, ' ');
+    const movie = payload.movie && typeof payload.movie === 'object' ? payload.movie : null;
+    const attribution = payload.attribution_notice
+      || 'This product uses the TMDB API but is not endorsed or certified by TMDB.';
+
+    if (payload.action === 'images') {
+      const items = this._rows(payload).map((row, index) => {
+        const width = Number(row.width);
+        const height = Number(row.height);
+        const dimensions = Number.isFinite(width) && width > 0
+          && Number.isFinite(height) && height > 0
+          ? `${width} × ${height}`
+          : '';
+        return {
+          title: row.title || `${movie?.title || 'Movie'} artwork ${index + 1}`,
+          url: row.source_url || movie?.tmdb_url || payload.top_url,
+          image: index === 0
+            ? (row.image_url || row.thumbnail)
+            : (row.thumbnail || row.image_url),
+          imageUrl: row.original_url || row.image_url,
+          imageVariant: row.image_type,
+          featured: index === 0,
+          primary: row.image_type ? String(row.image_type) : '',
+          chips: [dimensions, row.language || 'No language', row.rating != null ? `★ ${row.rating}` : '']
+            .filter(Boolean),
+          actionLabel: 'Open on TMDB',
+        };
+      });
+      return {
+        kind: 'image',
+        layout: 'gallery',
+        eyebrow: 'TMDB movie artwork · External content',
+        heading: movie?.title || payload.query || 'Movie artwork',
+        subtitle: [
+          `${payload.results_count ?? items.length} image${Number(payload.results_count ?? items.length) === 1 ? '' : 's'}`,
+          payload.image_type && payload.image_type !== 'all' ? payload.image_type : '',
+          attribution,
+        ].filter(Boolean).join(' · '),
+        actionUrl: movie?.tmdb_url || payload.top_url || payload.attribution_url,
+        actionLabel: 'Open on TMDB',
+        items,
+      };
+    }
+
+    if (payload.action === 'credits') {
+      const items = this._rows(payload).map((row, index) => ({
+        title: row.name || `Cast member ${index + 1}`,
+        url: row.tmdb_url,
+        image: row.profile_thumbnail || row.profile_url,
+        imageUrl: row.profile_url,
+        primary: row.character ? `as ${row.character}` : '',
+        chips: [row.known_for_department].filter(Boolean),
+        actionLabel: 'Open person',
+      }));
+      return {
+        kind: 'generic',
+        layout: 'rail',
+        eyebrow: 'TMDB cast and crew',
+        heading: movie?.title || payload.query || 'Movie credits',
+        subtitle: attribution,
+        actionUrl: movie?.tmdb_url || payload.top_url || payload.attribution_url,
+        actionLabel: 'Open on TMDB',
+        items,
+      };
+    }
+
+    if (payload.action === 'videos') {
+      const items = this._rows(payload).map((row, index) => ({
+        title: row.title || `${movie?.title || 'Movie'} video ${index + 1}`,
+        url: row.url,
+        primary: row.site || '',
+        chips: [row.type, row.official === true ? 'Official' : '', row.published_at]
+          .filter(Boolean),
+        actionLabel: 'Watch video',
+      }));
+      return {
+        kind: 'video',
+        layout: 'rail',
+        eyebrow: 'TMDB movie videos',
+        heading: movie?.title || payload.query || 'Movie videos',
+        subtitle: attribution,
+        actionUrl: movie?.tmdb_url || payload.top_url || payload.attribution_url,
+        actionLabel: 'Open on TMDB',
+        items,
+      };
+    }
+
+    const items = this._rows(payload).map((row, index) => {
+      const rating = row.rating != null ? Number(row.rating) : null;
+      return {
+        title: row.title || `Movie ${index + 1}`,
+        url: row.tmdb_url || row.imdb_url,
+        image: row.poster_thumbnail || row.poster_url,
+        imageUrl: row.poster_original_url || row.backdrop_original_url || row.poster_url,
+        primary: Number.isFinite(rating)
+          ? `★ ${rating.toFixed(1)}${row.votes ? ` · ${this._formatCount(row.votes)} votes` : ''}`
+          : '',
+        chips: [
+          row.year,
+          row.runtime_minutes ? `${row.runtime_minutes} min` : '',
+          row.certification,
+          row.source_signal ? String(row.source_signal).replace(/_/g, ' ') : '',
+        ].filter(Boolean).map(String),
+        details: [
+          this._list(row.genres).slice(0, 4).join(' · '),
+          row.overview ? this._compactText(row.overview, 260) : '',
+        ].filter(Boolean),
+        actionLabel: 'Open on TMDB',
+      };
+    });
+    return {
+      kind: 'generic',
+      layout: 'rail',
+      eyebrow: 'TMDB movies · External content',
+      heading: movie?.title || payload.query || `${action.charAt(0).toUpperCase()}${action.slice(1)} movies`,
+      subtitle: [
+        `${payload.results_count ?? items.length} result${Number(payload.results_count ?? items.length) === 1 ? '' : 's'}`,
+        attribution,
+      ].filter(Boolean).join(' · '),
+      actionUrl: payload.top_url || movie?.tmdb_url || payload.attribution_url,
+      actionLabel: 'Open on TMDB',
+      items,
+    };
+  }
+
   _adaptFlights(payload) {
     const currency = payload.currency || 'USD';
     const items = this._rows(payload).map((row, index) => {
@@ -1317,8 +1464,12 @@ class StructuredResultsRenderer {
       const action = url
         ? `<a class="structured-result-link" href="${url}" target="_blank" rel="noopener noreferrer">${this._escape(item.actionLabel || 'Open')}</a>`
         : '';
+      const imageVariant = ['poster', 'backdrop', 'logo'].includes(item.imageVariant)
+        ? ` structured-result-image-${item.imageVariant}`
+        : '';
+      const featured = item.featured === true ? ' structured-result-card-featured' : '';
       return `
-        <article class="structured-result-card structured-result-card-${kind}">
+        <article class="structured-result-card structured-result-card-${kind}${imageVariant}${featured}">
           ${image ? `<a class="structured-result-image" href="${imageUrl || url || image}" target="_blank" rel="noopener noreferrer"><img src="${image}" alt="${title}" loading="lazy" referrerpolicy="no-referrer"></a>` : ''}
           <div class="structured-result-body">
             ${titleHtml}

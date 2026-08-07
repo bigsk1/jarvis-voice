@@ -1400,6 +1400,7 @@ class JarvisApp {
       serpapi_google_trending_now: '🔥',
       serpapi_google_sports: '🏈',
       trakt_movies: '🎬',
+      tmdb_movies: '🎥',
       serpapi_tripadvisor: '🧭',
       serpapi_home_depot: '🛒',
       serpapi_ebay_search: '🛒',

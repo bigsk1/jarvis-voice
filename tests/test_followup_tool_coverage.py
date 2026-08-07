@@ -989,6 +989,42 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "tmdb_movies": _case(
+        {
+            "action": "images",
+            "query": "Arrival",
+            "image_type": "poster",
+            "results_count": 1,
+            "top_url": "https://www.themoviedb.org/movie/329865",
+            "attribution_notice": "This product uses the TMDB API but is not endorsed or certified by TMDB.",
+            "attribution_url": "https://www.themoviedb.org",
+            "external_content_trust": "untrusted",
+            "source": "TMDB API",
+            "movie": {
+                "id": 329865,
+                "tmdb_id": 329865,
+                "title": "Arrival",
+                "year": 2016,
+                "overview": "A linguist works to understand visitors from another world.",
+                "tmdb_url": "https://www.themoviedb.org/movie/329865",
+                "poster_url": "https://image.tmdb.org/t/p/w500/poster.jpg",
+                "poster_original_url": "https://image.tmdb.org/t/p/original/poster.jpg",
+            },
+            "results": [
+                {
+                    "title": "Arrival poster",
+                    "image_type": "poster",
+                    "width": 1000,
+                    "height": 1500,
+                    "language": "en",
+                    "thumbnail": "https://image.tmdb.org/t/p/w342/poster.jpg",
+                    "image_url": "https://image.tmdb.org/t/p/w500/poster.jpg",
+                    "original_url": "https://image.tmdb.org/t/p/original/poster.jpg",
+                    "source_url": "https://www.themoviedb.org/movie/329865",
+                }
+            ],
+        }
+    ),
     "serpapi_yelp_search": _case(
         {
             "engine": "yelp",
@@ -1724,6 +1760,23 @@ def test_trakt_followup_preserves_movie_ids_constraints_and_trailer_handles():
     assert compact["trailers"][0]["url"].startswith("https://www.youtube.com/")
     assert compact["candidates"][0]["ids"]["slug"] == "arrival-2016"
     assert compact["candidates"][0]["trakt_url"].startswith("https://trakt.tv/")
+
+
+def test_tmdb_followup_preserves_movie_id_and_artwork_size_variants():
+    payload, arguments = LOCAL_TOOL_SAMPLES["tmdb_movies"]
+    data = {"tmdb_movies": payload}
+    if arguments is not None:
+        data["_tool_trace"] = [
+            {"tool": "tmdb_movies", "ok": True, "arguments": arguments}
+        ]
+
+    compact = followup.extract_followup_data(data)["tmdb_movies"]
+
+    assert compact["movie"]["tmdb_id"] == 329865
+    assert compact["candidates"][0]["image_type"] == "poster"
+    assert compact["candidates"][0]["thumbnail"].endswith("/w342/poster.jpg")
+    assert compact["candidates"][0]["original_url"].endswith("/original/poster.jpg")
+    assert compact["attribution_notice"].endswith("certified by TMDB.")
 
 
 def test_request_context_is_bounded_and_drops_secret_or_bulky_arguments():

@@ -754,6 +754,10 @@ class ContextAssembler:
             # Preserve a useful movie-night shortlist, exact links, constraints,
             # and trailer handles without passing the full provider payload.
             return 10000
+        if lowered == "tmdb_movies":
+            # Retain bounded artwork variants, exact TMDB IDs, credits, and
+            # production metadata for visual follow-ups and workflow reuse.
+            return 10000
         if "search" in lowered or "fetch" in lowered:
             return 6000
         if lowered.startswith("serpapi_"):
@@ -829,15 +833,25 @@ class ContextAssembler:
         if not isinstance(data, dict):
             return []
 
-        candidate_keys = (
-            "candidates",
-            "top_results",
-            "results",
-            "video_results",
-            "organic_results",
-            "shopping_results",
-            "items",
-        )
+        if str(tool_name or "").strip().lower() == "tmdb_movies":
+            # TMDB already returns a bounded results list; prefer it over the
+            # five-row UI-oriented top_results slice for LLM follow-ups.
+            candidate_keys = (
+                "candidates",
+                "results",
+                "top_results",
+                "items",
+            )
+        else:
+            candidate_keys = (
+                "candidates",
+                "top_results",
+                "results",
+                "video_results",
+                "organic_results",
+                "shopping_results",
+                "items",
+            )
         source_key = ""
         raw_items: Any = None
         for key in candidate_keys:
@@ -895,6 +909,8 @@ class ContextAssembler:
         )
         is_tripadvisor = str(tool_name or "").strip().lower() == "serpapi_tripadvisor"
         is_trakt_movies = str(tool_name or "").strip().lower() == "trakt_movies"
+        is_tmdb_movies = str(tool_name or "").strip().lower() == "tmdb_movies"
+        tmdb_action = str(data.get("action") or "").strip().lower() if is_tmdb_movies else ""
         is_flight_search = str(tool_name or "").strip().lower() == "flight_search"
 
         candidates: list[dict[str, Any]] = []
@@ -1206,6 +1222,68 @@ class ContextAssembler:
                             max_depth=3,
                         )
 
+            if is_tmdb_movies:
+                compact_list_fields = (
+                    "id",
+                    "tmdb_id",
+                    "original_title",
+                    "release_date",
+                    "year",
+                    "overview",
+                    "runtime_minutes",
+                    "votes",
+                    "genres",
+                    "certification",
+                    "tmdb_url",
+                    "poster_thumbnail",
+                    "source_signal",
+                )
+                rich_fields = compact_list_fields + (
+                    "tagline",
+                    "imdb_url",
+                    "poster_url",
+                    "poster_original_url",
+                    "backdrop_url",
+                    "backdrop_thumbnail",
+                    "backdrop_original_url",
+                    "image_type",
+                    "width",
+                    "height",
+                    "language",
+                    "thumbnail",
+                    "original_url",
+                    "source_url",
+                    "character",
+                    "profile_url",
+                    "official",
+                )
+                tmdb_fields = (
+                    compact_list_fields
+                    if tmdb_action in {
+                        "search",
+                        "discover",
+                        "trending",
+                        "popular",
+                        "now_playing",
+                        "upcoming",
+                        "recommendations",
+                        "similar",
+                    }
+                    else rich_fields
+                )
+                for key in tmdb_fields:
+                    value = item.get(key)
+                    if value not in (None, "", [], {}):
+                        if key == "genres" and isinstance(value, list):
+                            candidate[key] = [str(name) for name in value[:8] if name]
+                        else:
+                            candidate[key] = self.build_preview_value(
+                                value,
+                                parent_key=key,
+                                depth=0,
+                                max_depth=2,
+                            )
+
             if is_flight_search:
                 for key in (
                     "airlines",
@@ -1227,7 +1305,11 @@ class ContextAssembler:
                         )
 
             if "url" not in candidate and not is_google_images_light:
-                aliases = (*url_aliases, "trakt_url") if is_trakt_movies else url_aliases
+                aliases = url_aliases
+                if is_trakt_movies:
+                    aliases = (*aliases, "trakt_url")
+                if is_tmdb_movies:
+                    aliases = (*aliases, "tmdb_url", "source_url")
                 for alias in aliases:
                     value = item.get(alias)
                     if value not in (None, ""):
@@ -1243,6 +1325,160 @@ class ContextAssembler:
                 candidates.append(candidate)
 
         return candidates
+
+    def build_tmdb_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep one TMDB details call visibly complete without its bulky arrays."""
+        if not isinstance(data, dict):
+            return {}
+
+        common_keys = (
+            "action",
+            "query",
+            "image_type",
+            "image_languages",
+            "artwork_counts",
+            "artwork_types_returned",
+            "details_included",
+            "results_count",
+            "provider_results_count",
+            "page",
+            "total_pages",
+            "top_url",
+            "filters_used",
+            "selection_criteria",
+            "api_requests",
+            "auth_method",
+            "public_metadata_only",
+            "attribution_notice",
+            "attribution_url",
+            "external_content_trust",
+            "source",
+        )
+        preview = {
+            key: self.build_preview_value(data[key], parent_key=key, max_depth=3)
+            for key in common_keys
+            if data.get(key) not in (None, "", [], {})
+        }
+        for key in ("artwork_types_returned", "details_included"):
+            value = data.get(key)
+            if isinstance(value, list) and value:
+                preview[key] = [str(item) for item in value[:12] if item]
+
+        action = str(data.get("action") or "")
+        movie = data.get("movie")
+        if isinstance(movie, dict) and movie:
+            if action == "details":
+                preview["movie"] = {
+                    key: self.build_preview_value(
+                        movie[key],
+                        parent_key=key,
+                        max_depth=2,
+                    )
+                    for key in (
+                        "id",
+                        "tmdb_id",
+                        "title",
+                        "original_title",
+                        "release_date",
+                        "year",
+                        "overview",
+                        "tagline",
+                        "runtime_minutes",
+                        "rating",
+                        "votes",
+                        "genres",
+                        "certification",
+                        "status",
+                        "budget",
+                        "revenue",
+                        "production_companies",
+                        "production_countries",
+                        "collection",
+                        "tmdb_url",
+                        "imdb_id",
+                        "imdb_url",
+                        "poster_url",
+                        "backdrop_url",
+                    )
+                    if movie.get(key) not in (None, "", [], {})
+                }
+            else:
+                preview["movie"] = self.build_preview_value(
+                    movie,
+                    parent_key="movie",
+                    max_depth=3,
+                )
+
+        if action != "details":
+            # Images are lifted as exact source_candidates; other focused
+            # actions use their own results list through the same projection.
+            return preview
+
+        cast = data.get("cast")
+        if isinstance(cast, list) and cast:
+            preview["cast"] = [
+                {
+                    key: item[key]
+                    for key in ("id", "name", "character", "order")
+                    if item.get(key) not in (None, "")
+                }
+                for item in cast[:6]
+                if isinstance(item, dict)
+            ]
+
+        crew = data.get("crew")
+        if isinstance(crew, list) and crew:
+            preview["crew"] = [
+                {
+                    key: item[key]
+                    for key in ("id", "name", "job", "department")
+                    if item.get(key) not in (None, "")
+                }
+                for item in crew[:10]
+                if isinstance(item, dict)
+            ]
+
+        images = data.get("images")
+        if isinstance(images, list) and images:
+            preview["images"] = [
+                {
+                    key: item[key]
+                    for key in (
+                        "image_type",
+                        "title",
+                        "width",
+                        "height",
+                        "language",
+                        "image_url",
+                        "original_url",
+                    )
+                    if item.get(key) not in (None, "")
+                }
+                for item in images[:6]
+                if isinstance(item, dict)
+            ]
+
+        for key in ("external_ids", "keywords"):
+            if data.get(key) not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    data[key],
+                    parent_key=key,
+                    max_depth=2,
+                )
+
+        preview["bundled_result_counts"] = {
+            key: len(value)
+            for key in (
+                "cast",
+                "crew",
+                "images",
+                "videos",
+                "recommendations",
+                "similar",
+            )
+            if isinstance((value := data.get(key)), list)
+        }
+        return preview
 
     def build_yelp_data_preview(self, data: Any) -> dict[str, Any]:
         """Keep Yelp request context and review excerpts without duplicating result rows."""
@@ -2349,6 +2585,8 @@ class ContextAssembler:
                     if isinstance(data, dict)
                     and data.get(key) not in (None, "", [], {})
                 }
+            elif normalized_tool_name == "tmdb_movies":
+                data_preview = self.build_tmdb_data_preview(data)
             elif normalized_tool_name == "flight_search":
                 data_preview = self.build_flight_data_preview(data)
             else:
@@ -2366,7 +2604,19 @@ class ContextAssembler:
         else:
             source_candidates = self.build_source_candidates_preview(
                 data,
-                max_items=8 if (tool_name or "").lower() == "trakt_movies" else 5,
+                max_items=(
+                    6
+                    if (
+                        (tool_name or "").lower() == "tmdb_movies"
+                        and isinstance(data, dict)
+                        and data.get("action") == "images"
+                    )
+                    else 8
+                    if (tool_name or "").lower() == "tmdb_movies"
+                    else 8
+                    if (tool_name or "").lower() == "trakt_movies"
+                    else 5
+                ),
                 tool_name=tool_name,
             )
         if source_candidates and (tool_name or "").lower() != "workflow":
