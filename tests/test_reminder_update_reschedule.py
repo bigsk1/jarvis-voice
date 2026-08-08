@@ -6,6 +6,12 @@ from types import SimpleNamespace
 from api.managers.reminder_manager import ReminderManager
 
 
+def _manager_for(db_path):
+    manager = ReminderManager.__new__(ReminderManager)
+    manager.db = SimpleNamespace(db_path=str(db_path))
+    return manager
+
+
 def test_update_can_reactivate_triggered_reminder(tmp_path):
     db_path = tmp_path / "reminders.db"
     conn = sqlite3.connect(db_path)
@@ -40,8 +46,7 @@ def test_update_can_reactivate_triggered_reminder(tmp_path):
     conn.commit()
     conn.close()
 
-    manager = ReminderManager.__new__(ReminderManager)
-    manager.db = SimpleNamespace(db_path=str(db_path))
+    manager = _manager_for(db_path)
 
     assert manager.update_reminder(
         reminder_id=1,
@@ -60,3 +65,74 @@ def test_update_can_reactivate_triggered_reminder(tmp_path):
     conn.close()
 
     assert row == ("2026-07-07T16:00:00Z", "scheduled", None, None, 0, None)
+
+
+def test_acknowledge_does_not_revive_canceled_reminder(tmp_path):
+    db_path = tmp_path / "reminders.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE reminders (
+            id INTEGER PRIMARY KEY,
+            trigger_time TEXT NOT NULL,
+            status TEXT,
+            acknowledged_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO reminders (id, trigger_time, status)
+        VALUES (1, '2026-07-07T14:00:00Z', 'canceled')
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    manager = _manager_for(db_path)
+
+    assert manager.acknowledge_reminder(1) is False
+
+    conn = sqlite3.connect(db_path)
+    row = conn.execute(
+        "SELECT status, acknowledged_at FROM reminders WHERE id = 1"
+    ).fetchone()
+    conn.close()
+
+    assert row == ("canceled", None)
+
+
+def test_acknowledge_triggered_reminder_still_succeeds(tmp_path):
+    db_path = tmp_path / "reminders.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE reminders (
+            id INTEGER PRIMARY KEY,
+            trigger_time TEXT NOT NULL,
+            status TEXT,
+            acknowledged_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO reminders (id, trigger_time, status)
+        VALUES (1, '2026-07-07T14:00:00Z', 'triggered')
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    manager = _manager_for(db_path)
+
+    assert manager.acknowledge_reminder(1) is True
+
+    conn = sqlite3.connect(db_path)
+    row = conn.execute(
+        "SELECT status, acknowledged_at FROM reminders WHERE id = 1"
+    ).fetchone()
+    conn.close()
+
+    assert row[0] == "acknowledged"
+    assert row[1] is not None

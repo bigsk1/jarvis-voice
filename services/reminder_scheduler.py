@@ -147,35 +147,45 @@ def speak_reminder(reminder: Dict[str, Any], mode: str, project_root: Path) -> b
         return False
 
 
-def calculate_next_occurrence(current_trigger: str, recurrence_rule: str) -> str:
-    """Calculate next occurrence for recurring reminder.
+def calculate_next_occurrence(
+    current_trigger: str,
+    recurrence_rule: str,
+    reference_time: datetime | None = None,
+) -> str | None:
+    """Calculate the first recurring occurrence after ``reference_time``.
     
     Args:
         current_trigger: Current trigger time (ISO format UTC)
         recurrence_rule: "DAILY", "WEEKLY:X", or "MONTHLY:X"
+        reference_time: Time that the next occurrence must be later than;
+            defaults to the current occurrence for backward compatibility
     
     Returns:
         Next trigger time (ISO format UTC)
     """
     local_tz = get_app_timezone()
     current = parse_utc_timestamp(current_trigger).astimezone(local_tz)
-    
-    if recurrence_rule == "DAILY":
-        next_trigger = add_days_local(current, 1)
-        return format_utc_db(next_trigger)
+    reference = reference_time.astimezone(local_tz) if reference_time else current
 
-    if recurrence_rule.startswith("WEEKLY:"):
-        # Add 7 days in local time to preserve wall-clock scheduling across DST.
-        next_trigger = add_days_local(current, 7)
-        return format_utc_db(next_trigger)
-    
-    elif recurrence_rule.startswith("MONTHLY:"):
-        # Add 1 month for monthly recurrence
-        target_day = int(recurrence_rule.split(':')[1])
-        next_trigger = replace_day_safe(add_months_local(current, 1), target_day)
-        return format_utc_db(next_trigger)
-    
-    return None
+    def _advance(trigger: datetime) -> datetime | None:
+        if recurrence_rule == "DAILY":
+            return add_days_local(trigger, 1)
+
+        if recurrence_rule.startswith("WEEKLY:"):
+            # Advance in local time to preserve wall-clock scheduling across DST.
+            return add_days_local(trigger, 7)
+
+        if recurrence_rule.startswith("MONTHLY:"):
+            target_day = int(recurrence_rule.split(':')[1])
+            return replace_day_safe(add_months_local(trigger, 1), target_day)
+
+        return None
+
+    next_trigger = _advance(current)
+    while next_trigger is not None and next_trigger <= reference:
+        next_trigger = _advance(next_trigger)
+
+    return format_utc_db(next_trigger) if next_trigger is not None else None
 
 
 def mark_reminder_triggered(
@@ -184,21 +194,26 @@ def mark_reminder_triggered(
     recurrence_rule: str = None,
     current_trigger: str = None,
     spoken: bool = True,
-):
-    """Mark reminder as triggered, or reschedule if recurring."""
+) -> bool:
+    """Mark or reschedule a due reminder if its scheduled state is unchanged."""
     def _update():
         conn = sqlite3.connect(db_path, timeout=30)  # 30 second timeout
         cursor = conn.cursor()
-        
+
         # Use UTC time for consistency
-        now = now_utc().isoformat()
+        current_time = now_utc()
+        now = current_time.isoformat()
         
         spoken_value = 1 if spoken else 0
         spoken_at = now if spoken else None
 
         if recurrence_rule and spoken:
-            # Recurring reminder - calculate next occurrence and reschedule
-            next_trigger = calculate_next_occurrence(current_trigger, recurrence_rule)
+            # Skip missed intervals and reschedule at the first future occurrence.
+            next_trigger = calculate_next_occurrence(
+                current_trigger,
+                recurrence_rule,
+                reference_time=current_time,
+            )
             
             if next_trigger:
                 cursor.execute("""
@@ -209,7 +224,16 @@ def mark_reminder_triggered(
                         spoken = 1,
                         spoken_at = ?
                     WHERE id = ?
-                """, (next_trigger, now, spoken_at, reminder_id))
+                      AND status = 'scheduled'
+                      AND (? IS NULL OR trigger_time = ?)
+                """, (
+                    next_trigger,
+                    now,
+                    spoken_at,
+                    reminder_id,
+                    current_trigger,
+                    current_trigger,
+                ))
             else:
                 # Fallback: just mark as triggered if calculation fails
                 cursor.execute("""
@@ -219,7 +243,16 @@ def mark_reminder_triggered(
                         spoken = 1,
                         spoken_at = ?
                     WHERE id = ?
-                """, (now, spoken_value, spoken_at, reminder_id))
+                      AND status = 'scheduled'
+                      AND (? IS NULL OR trigger_time = ?)
+                """, (
+                    now,
+                    spoken_value,
+                    spoken_at,
+                    reminder_id,
+                    current_trigger,
+                    current_trigger,
+                ))
         else:
             # One-time reminder, or recurring reminder whose speech failed.
             # Keep failed speech visible as triggered + spoken=0 instead of
@@ -231,12 +264,23 @@ def mark_reminder_triggered(
                     spoken = ?,
                     spoken_at = ?
                 WHERE id = ?
-            """, (now, spoken_value, spoken_at, reminder_id))
-        
+                  AND status = 'scheduled'
+                  AND (? IS NULL OR trigger_time = ?)
+            """, (
+                now,
+                spoken_value,
+                spoken_at,
+                reminder_id,
+                current_trigger,
+                current_trigger,
+            ))
+
+        updated = cursor.rowcount > 0
         conn.commit()
         conn.close()
-    
-    retry_on_db_lock(_update)
+        return updated
+
+    return retry_on_db_lock(_update)
 
 
 def call_callback_url(url: str):
@@ -308,13 +352,24 @@ def main():
                             speech_ok = speak_reminder(reminder, mode, project_root)
                             
                             # Mark as triggered or reschedule if recurring
-                            mark_reminder_triggered(
+                            state_updated = mark_reminder_triggered(
                                 db_path, 
                                 reminder_id,
                                 recurrence_rule=reminder.get('recurrence_rule'),
                                 current_trigger=reminder['trigger_time'],
                                 spoken=speech_ok
                             )
+                            if not state_updated:
+                                print(
+                                    f"    State changed while reminder {reminder_id} was playing; "
+                                    "leaving the newer state unchanged"
+                                )
+                                logger.log_action("preserve_reminder_state", {
+                                    "reminder_id": reminder_id,
+                                    "title": title,
+                                    "trigger_time": trigger_time,
+                                })
+                                continue
                             if not speech_ok:
                                 print(f"    TTS failed; reminder {reminder_id} marked triggered but unspoken")
                                 logger.log_error(f"TTS failed for reminder {reminder_id}; marked unspoken", {

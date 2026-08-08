@@ -151,7 +151,7 @@ class ReminderManager:
         return success
     
     def acknowledge_reminder(self, reminder_id: int) -> bool:
-        """Mark a reminder as acknowledged"""
+        """Mark a triggered reminder as acknowledged."""
         conn = sqlite3.connect(self.db.db_path)
         cursor = conn.cursor()
         
@@ -159,7 +159,7 @@ class ReminderManager:
             UPDATE reminders 
             SET status = 'acknowledged',
                 acknowledged_at = ?
-            WHERE id = ?
+            WHERE id = ? AND status = 'triggered'
         """, (datetime.now().isoformat(), reminder_id))
         
         success = cursor.rowcount > 0
