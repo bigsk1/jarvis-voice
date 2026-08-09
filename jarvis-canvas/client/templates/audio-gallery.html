@@ -61,6 +61,40 @@
         </div>
     </main>
 
+    <div class="audio-share-modal" id="audioShareModal" onclick="closeAudioShareDialog(event)">
+        <section class="audio-share-dialog" role="dialog" aria-modal="true" aria-labelledby="audioShareTitle" onclick="event.stopPropagation()">
+            <button class="audio-share-close" type="button" aria-label="Close" onclick="closeAudioShareDialog()">&times;</button>
+            <h2 id="audioShareTitle">Share Audio Publicly</h2>
+            <p class="audio-share-filename" id="audioShareFilename"></p>
+            <p class="audio-share-warning">
+                Anyone with the URL can play or download the complete track. Jarvis will convert it to an animated waveform MP4 because xAI public URLs do not accept native audio. Audio content is not scanned for secrets.
+            </p>
+
+            <div class="audio-share-preview" id="audioSharePreview">Checking the retained audio…</div>
+
+            <div class="audio-share-controls">
+                <label for="audioShareTtl">Expires after</label>
+                <select id="audioShareTtl"></select>
+            </div>
+            <label class="audio-share-confirm">
+                <input type="checkbox" id="audioShareConfirm" onchange="updateAudioSharePublishState()">
+                I reviewed the complete track and understand the waveform MP4 will be public.
+            </label>
+
+            <div class="audio-share-dialog-actions">
+                <button class="btn btn-secondary" type="button" onclick="closeAudioShareDialog()">Cancel</button>
+                <button class="btn btn-public" type="button" id="publishAudioShareBtn" onclick="publishAudioShare()" disabled>Publish Audio</button>
+            </div>
+
+            <div class="audio-share-result" id="audioShareResult" hidden></div>
+
+            <div class="audio-share-history">
+                <h3>Share History</h3>
+                <div id="audioShareHistory">Loading…</div>
+            </div>
+        </section>
+    </div>
+
     <div class="toast" id="toast"></div>
 
     <script src="/static/js/audio-gallery.js"></script>

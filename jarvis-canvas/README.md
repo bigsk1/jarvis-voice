@@ -90,6 +90,9 @@ Canvas works with defaults, but headless/LAN installs should set the public URL 
 | `CANVAS_XAI_VIDEO_SHARE` | `false` | Show the authenticated xAI public-video flow when `XAI_API_KEY` is configured |
 | `CANVAS_XAI_VIDEO_SHARE_DEFAULT_TTL_DAYS` | `7` | Default retained-video share lifetime; the UI supports 1, 7, or 30 days |
 | `CANVAS_XAI_VIDEO_SHARE_MAX_BYTES` | `48000000` | Maximum retained MP4 size accepted for public upload |
+| `CANVAS_XAI_AUDIO_SHARE` | `false` | Show the authenticated public-audio flow; FastAPI converts reviewed audio to a temporary waveform MP4 for xAI |
+| `CANVAS_XAI_AUDIO_SHARE_DEFAULT_TTL_DAYS` | `7` | Default waveform-MP4 share lifetime; the UI supports 1, 7, or 30 days |
+| `CANVAS_XAI_AUDIO_SHARE_MAX_BYTES` | `48000000` | Maximum converted waveform MP4 size accepted for public upload |
 
 Canvas page links use `CANVAS_PUBLIC_URL/{page_id}`, for example `http://192.168.70.228:8890/page_20260331_121401`. The Canvas UI serves direct `/page_...` links and selects that page after login.
 
@@ -103,6 +106,11 @@ The Video Gallery can also publish any retained MP4 through FastAPI and xAI
 Files, regardless of which provider generated it. See
 [Canvas xAI Video Sharing](../docs/CANVAS_VIDEO_SHARING.md) for lifecycle,
 configuration, and deletion behavior.
+
+The Audio Gallery can publish any retained track as a temporary animated
+waveform MP4 containing the complete audio. See
+[Canvas xAI Audio Sharing](../docs/CANVAS_AUDIO_SHARING.md) for conversion,
+lifecycle, configuration, and deletion behavior.
 
 ---
 

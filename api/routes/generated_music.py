@@ -3,7 +3,10 @@
 Endpoints:
 - POST /api/generated-music/generate     - Generate a new track
 - GET  /api/generated-music/health       - Provider and storage status
+- POST /api/generated-music/xai-shares/publish - Publish a waveform MP4
+- DELETE /api/generated-music/xai-shares/revoke - Revoke a waveform MP4
 - GET  /api/generated-music/{filename}   - Download or stream a generated track
+- DELETE /api/generated-music/{filename} - Delete retained audio
 """
 
 from __future__ import annotations
@@ -15,16 +18,20 @@ import sys
 from pathlib import Path
 from typing import Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, model_validator
-
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 sys.path.insert(0, str(PROJECT_ROOT / "skills"))
 
-from audio_catalog import AUDIO_EXTENSIONS  # noqa: E402
+from audio_catalog import (  # noqa: E402
+    AUDIO_EXTENSIONS,
+    load_audio_catalog,
+    save_audio_catalog,
+    sync_audio_catalog,
+)
 from config_loader import get_config_value, load_config  # noqa: E402
 from generate_music import (  # noqa: E402
     DEFAULT_MUSIC_PROVIDER,
@@ -34,6 +41,15 @@ from generate_music import (  # noqa: E402
 )
 from model_catalog import get_media_model_metadata  # noqa: E402
 
+from api.services.xai_audio_share import (  # noqa: E402
+    ALLOWED_TTL_DAYS,
+    XaiAudioShareConflict,
+    XaiAudioShareDisabled,
+    XaiAudioShareError,
+    XaiAudioShareService,
+    XaiAudioShareValidationError,
+    get_xai_audio_share_status,
+)
 
 load_config()
 
@@ -41,6 +57,8 @@ router = APIRouter(prefix="/api/generated-music", tags=["generated-music"])
 
 GENERATED_MUSIC_DIR = PROJECT_ROOT / "data" / "generated_music"
 GENERATED_MUSIC_DIR.mkdir(parents=True, exist_ok=True)
+AUDIO_CATALOG_FILE = GENERATED_MUSIC_DIR / "audio_catalog.json"
+audio_share_service = XaiAudioShareService(GENERATED_MUSIC_DIR)
 
 PUBLIC_OUTPUT_FORMATS = tuple(
     name
@@ -133,6 +151,26 @@ class GenerateResponse(BaseModel):
     error: Optional[str] = None
     data: Optional[dict] = None
     audio_url: Optional[str] = None
+
+
+class AudioShareFilenameRequest(BaseModel):
+    """Identify retained audio without putting its extension in a Canvas route."""
+
+    filename: str
+
+
+class AudioSharePublishRequest(AudioShareFilenameRequest):
+    """Publish a waveform MP4 made from the exact audio the user reviewed."""
+
+    ttl_days: int = 7
+    expected_audio_sha256: str
+    confirmed: bool = False
+
+
+class AudioShareRevokeRequest(BaseModel):
+    """Identify one cataloged public waveform MP4."""
+
+    share_id: str
 
 
 def _tool_output(stdout: str) -> dict | None:
@@ -312,6 +350,87 @@ async def generate_music(request: GenerateRequest):
     )
 
 
+def _raise_audio_share_http_error(exc: XaiAudioShareError) -> None:
+    if isinstance(exc, XaiAudioShareDisabled):
+        status_code = 503
+    elif isinstance(exc, XaiAudioShareConflict):
+        status_code = 409
+    elif isinstance(exc, XaiAudioShareValidationError):
+        status_code = 422
+    else:
+        status_code = 502
+    raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.get("/xai-shares/status")
+def xai_audio_share_status():
+    """Return non-secret xAI waveform-share availability and limits."""
+    return {"ok": True, **get_xai_audio_share_status()}
+
+
+@router.post("/xai-shares/preview")
+def preview_xai_audio_share(request: AudioShareFilenameRequest):
+    """Validate and fingerprint retained audio before user confirmation."""
+    try:
+        preview = audio_share_service.inspect_audio(request.filename)
+    except XaiAudioShareError as exc:
+        _raise_audio_share_http_error(exc)
+    return {"ok": True, "preview": preview}
+
+
+@router.get("/xai-shares")
+def list_xai_audio_shares(filename: str = Query(...)):
+    """List local lifecycle history for one retained audio filename."""
+    try:
+        shares = audio_share_service.list_for_audio(filename)
+    except XaiAudioShareError as exc:
+        _raise_audio_share_http_error(exc)
+    return {"ok": True, "shares": shares}
+
+
+@router.post("/xai-shares/publish", status_code=201)
+def publish_xai_audio_share(request: AudioSharePublishRequest):
+    """Convert reviewed audio to a waveform MP4 and publish it through xAI."""
+    if request.confirmed is not True:
+        raise HTTPException(
+            status_code=400,
+            detail="Confirm that this audio card will be public before publishing.",
+        )
+    if request.ttl_days not in ALLOWED_TTL_DAYS:
+        raise HTTPException(
+            status_code=400,
+            detail="Expiration must be 1, 7, or 30 days.",
+        )
+
+    catalog = sync_audio_catalog(GENERATED_MUSIC_DIR, AUDIO_CATALOG_FILE)
+    provider = (
+        str((catalog.get(request.filename) or {}).get("provider") or "").strip()
+        or None
+    )
+    try:
+        record = audio_share_service.publish(
+            filename=request.filename,
+            ttl_days=request.ttl_days,
+            expected_audio_sha256=request.expected_audio_sha256.strip().lower(),
+            provider=provider,
+        )
+    except XaiAudioShareError as exc:
+        _raise_audio_share_http_error(exc)
+    return {"ok": True, "share": record}
+
+
+@router.delete("/xai-shares/revoke")
+def revoke_xai_audio_share(request: AudioShareRevokeRequest):
+    """Revoke a public waveform URL and delete its xAI file."""
+    if not request.share_id or len(request.share_id) != 32:
+        raise HTTPException(status_code=400, detail="Invalid share identifier.")
+    try:
+        record = audio_share_service.revoke(request.share_id)
+    except XaiAudioShareError as exc:
+        _raise_audio_share_http_error(exc)
+    return {"ok": True, "share": record}
+
+
 @router.get("/{filename}")
 async def get_generated_music(filename: str):
     """Stream or download one durable generated-music file."""
@@ -322,3 +441,62 @@ async def get_generated_music(filename: str):
         filename=filename,
         content_disposition_type="inline",
     )
+
+
+@router.delete("/{filename}")
+def delete_generated_music(
+    filename: str,
+    revoke_public_shares: bool = Query(
+        False,
+        description="Revoke active public waveform MP4s before local deletion",
+    ),
+):
+    """Delete retained audio and its local catalog entry."""
+    filepath = _safe_audio_path(filename)
+    try:
+        active_shares = audio_share_service.active_for_audio(filename)
+    except XaiAudioShareError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "The public-share catalog could not be checked; "
+                "the audio was not deleted."
+            ),
+        ) from exc
+    if active_shares and revoke_public_shares is not True:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "active_public_audio_shares",
+                "message": (
+                    "This audio still has active public copies. "
+                    "Revoke them before local deletion."
+                ),
+                "active_shares": [
+                    {
+                        "share_id": record.get("share_id"),
+                        "public_url": record.get("public_url"),
+                        "expires_at": record.get("expires_at"),
+                    }
+                    for record in active_shares
+                ],
+            },
+        )
+    if active_shares:
+        try:
+            audio_share_service.revoke_all_for_audio(filename)
+        except XaiAudioShareError as exc:
+            _raise_audio_share_http_error(exc)
+
+    try:
+        filepath.unlink()
+        catalog = load_audio_catalog(AUDIO_CATALOG_FILE)
+        if filename in catalog:
+            del catalog[filename]
+            save_audio_catalog(AUDIO_CATALOG_FILE, catalog)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="The generated audio could not be deleted.",
+        ) from exc
+    return {"ok": True, "deleted": filename}

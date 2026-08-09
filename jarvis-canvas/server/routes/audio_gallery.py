@@ -7,16 +7,10 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+from audio_catalog import AUDIO_EXTENSIONS, save_audio_catalog, sync_audio_catalog
 from flask import Blueprint, abort, jsonify, render_template, request, send_file
 
 from config import GENERATED_AUDIO_DIR
-from audio_catalog import (
-    AUDIO_EXTENSIONS,
-    load_audio_catalog,
-    save_audio_catalog,
-    sync_audio_catalog,
-)
-
 
 audio_gallery_bp = Blueprint("audio_gallery", __name__)
 AUDIO_CATALOG_FILE = GENERATED_AUDIO_DIR / "audio_catalog.json"
@@ -204,19 +198,3 @@ def set_gallery_audio_favorite(filename):
         "favorite": favorite,
         "favorited_at": entry["favorited_at"],
     })
-
-
-@audio_gallery_bp.route("/api/gallery/audio/<filename>", methods=["DELETE"])
-def delete_gallery_audio(filename):
-    """Delete an audio file and its local catalog entry."""
-    filepath = _audio_path(filename)
-    try:
-        filepath.unlink()
-        catalog = load_audio_catalog(AUDIO_CATALOG_FILE)
-        if filename in catalog:
-            del catalog[filename]
-            save_audio_catalog(AUDIO_CATALOG_FILE, catalog)
-        print(f"🗑️  Deleted gallery audio: {filename}")
-        return jsonify({"ok": True, "deleted": filename})
-    except OSError as exc:
-        return jsonify({"error": str(exc)}), 500

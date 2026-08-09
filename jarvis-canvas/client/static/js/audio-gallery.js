@@ -6,6 +6,9 @@ let audioItems = [];
 let filteredAudio = [];
 let refreshInProgress = false;
 let toastTimer = null;
+let xaiAudioShareStatus = {available: false, allowed_ttl_days: []};
+let currentAudioSharePreview = null;
+let currentAudioShareFilename = null;
 
 const STATIC_AUDIO_LEVELS = [
     0.34, 0.68, 0.48, 0.82, 0.56, 0.92, 0.44, 0.74,
@@ -579,6 +582,40 @@ async function fetchAudio() {
     }
 }
 
+async function fetchAudioShareStatus() {
+    try {
+        const response = await fetch('/api/xai-audio-shares/status');
+        const data = await response.json();
+        if (response.ok && data.ok) {
+            xaiAudioShareStatus = data;
+            configureAudioShareTtl();
+            if (audioItems.length) renderGallery();
+        }
+    } catch (error) {
+        console.debug('xAI audio sharing is unavailable:', error);
+    }
+}
+
+function configureAudioShareTtl() {
+    const select = document.getElementById('audioShareTtl');
+    if (!select) return;
+    const allowed = xaiAudioShareStatus.allowed_ttl_days || [1, 7, 30];
+    const selected = Number(xaiAudioShareStatus.default_ttl_days || 7);
+    select.innerHTML = allowed.map(days => (
+        `<option value="${days}" ${Number(days) === selected ? 'selected' : ''}>${days} day${Number(days) === 1 ? '' : 's'}</option>`
+    )).join('');
+}
+
+function canShareAudio(item) {
+    const extension = `.${extensionFromName(item?.name).toLowerCase()}`;
+    return Boolean(
+        xaiAudioShareStatus.available &&
+        item &&
+        Number(item.size || 0) > 0 &&
+        (xaiAudioShareStatus.supported_extensions || []).includes(extension)
+    );
+}
+
 function updateProviderFilter() {
     const select = document.getElementById('providerFilter');
     const selected = select.value;
@@ -713,6 +750,7 @@ function renderGallery() {
                     </div>
                     <div class="audio-actions">
                         <button class="btn btn-primary" onclick="downloadByIndex(${index})">⬇️ Download</button>
+                        ${canShareAudio(item) ? `<button class="btn btn-public" onclick="openAudioShareDialogByIndex(${index})">🔗 Share</button>` : ''}
                         <button class="btn btn-danger" onclick="deleteByIndex(${index})" aria-label="Delete ${escapeHtml(title)}" title="Delete">🗑️</button>
                     </div>
                 </div>
@@ -856,20 +894,263 @@ function deleteByIndex(index) {
     if (item) deleteAudio(item.name);
 }
 
+async function readApiError(response) {
+    try {
+        const data = await response.json();
+        return data.error || data.message || data.detail || `Request failed (${response.status})`;
+    } catch (_error) {
+        return `Request failed (${response.status})`;
+    }
+}
+
+function openAudioShareDialogByIndex(index) {
+    const item = filteredAudio[index];
+    if (item) openAudioShareDialog(item.name);
+}
+
+async function openAudioShareDialog(filename) {
+    const selectedAudio = audioItems.find(item => item.name === filename);
+    if (!canShareAudio(selectedAudio)) {
+        showToast('This audio is not eligible for xAI public sharing', 'error');
+        return;
+    }
+
+    document.querySelectorAll('.audio-player').forEach(player => player.pause());
+    currentAudioShareFilename = filename;
+    currentAudioSharePreview = null;
+    document.getElementById('audioShareFilename').textContent = filename;
+    document.getElementById('audioSharePreview').textContent = 'Checking the retained audio…';
+    document.getElementById('audioShareConfirm').checked = false;
+    document.getElementById('audioShareResult').hidden = true;
+    document.getElementById('audioShareHistory').textContent = 'Loading…';
+    updateAudioSharePublishState();
+    document.getElementById('audioShareModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+
+    await Promise.allSettled([
+        loadAudioSharePreview(filename),
+        loadAudioShareHistory(filename),
+    ]);
+}
+
+function closeAudioShareDialog(event) {
+    if (event && event.target !== document.getElementById('audioShareModal')) return;
+    document.getElementById('audioShareModal').classList.remove('active');
+    document.body.style.overflow = '';
+    currentAudioShareFilename = null;
+    currentAudioSharePreview = null;
+}
+
+function updateAudioSharePublishState() {
+    const button = document.getElementById('publishAudioShareBtn');
+    const confirmed = document.getElementById('audioShareConfirm').checked;
+    button.disabled = !(currentAudioSharePreview && confirmed);
+}
+
+async function loadAudioSharePreview(filename) {
+    const response = await fetch('/api/xai-audio-shares/preview', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({filename}),
+    });
+    if (!response.ok) {
+        const message = await readApiError(response);
+        document.getElementById('audioSharePreview').textContent = message;
+        throw new Error(message);
+    }
+    const data = await response.json();
+    if (currentAudioShareFilename !== filename) return;
+    currentAudioSharePreview = data.preview;
+    const duration = data.preview.duration
+        ? formatDuration(data.preview.duration)
+        : 'unknown length';
+    const format = String(data.preview.codec || data.preview.format || 'audio').toUpperCase();
+    document.getElementById('audioSharePreview').innerHTML = `
+        <strong>Ready to convert</strong>
+        <span>${escapeHtml(format)} · ${escapeHtml(formatSize(data.preview.audio_bytes))} · ${escapeHtml(duration)} → waveform MP4</span>
+    `;
+    updateAudioSharePublishState();
+}
+
+async function loadAudioShareHistory(filename) {
+    const response = await fetch(`/api/xai-audio-shares/list?filename=${encodeURIComponent(filename)}`);
+    if (!response.ok) {
+        document.getElementById('audioShareHistory').textContent = await readApiError(response);
+        return;
+    }
+    const data = await response.json();
+    if (currentAudioShareFilename === filename) renderAudioShareHistory(data.shares || []);
+}
+
+function renderAudioShareHistory(shares) {
+    const container = document.getElementById('audioShareHistory');
+    if (!shares.length) {
+        container.innerHTML = '<p class="audio-share-empty">No public shares yet.</p>';
+        return;
+    }
+    container.innerHTML = shares.map(share => {
+        const status = String(share.status || 'unknown');
+        const active = status === 'active' || status === 'revoked_cleanup_pending';
+        const url = String(share.public_url || '');
+        return `
+            <div class="audio-share-row">
+                <div class="audio-share-row-meta">
+                    <strong>${escapeHtml(status.replaceAll('_', ' '))}</strong>
+                    <span>Expires ${escapeHtml(formatShareDate(share.expires_at))}</span>
+                </div>
+                <div class="audio-share-row-actions">
+                    ${url ? `<button class="btn btn-secondary" type="button" onclick="copyAudioShareUrl('${escapeHtml(url)}')">Copy URL</button>` : ''}
+                    ${url ? `<a class="btn btn-secondary" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open</a>` : ''}
+                    ${active ? `<button class="btn btn-danger" type="button" onclick="revokeAudioShare('${escapeHtml(share.share_id)}')">Revoke</button>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function formatShareDate(value) {
+    if (!value) return 'unknown';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString();
+}
+
+function copyAudioShareUrlLegacy(url) {
+    const textarea = document.createElement('textarea');
+    const previousFocus = document.activeElement;
+    textarea.value = url;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+
+    let copied = false;
+    try {
+        copied = document.execCommand('copy');
+    } catch (_error) {
+        copied = false;
+    }
+    textarea.remove();
+    if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
+    return copied;
+}
+
+async function copyAudioShareUrl(url) {
+    let copied = false;
+    if (window.isSecureContext && navigator.clipboard?.writeText) {
+        try {
+            await navigator.clipboard.writeText(url);
+            copied = true;
+        } catch (_error) {
+            copied = false;
+        }
+    }
+    if (!copied) copied = copyAudioShareUrlLegacy(url);
+    if (copied) {
+        showToast('Public URL copied');
+        return;
+    }
+    window.prompt('Automatic copy was blocked. Press Ctrl+C or Cmd+C, then Enter:', url);
+}
+
+async function publishAudioShare() {
+    if (!currentAudioShareFilename || !currentAudioSharePreview) return;
+    const button = document.getElementById('publishAudioShareBtn');
+    button.disabled = true;
+    button.classList.add('is-busy');
+    button.setAttribute('aria-busy', 'true');
+    button.textContent = 'Converting & Publishing…';
+    try {
+        const response = await fetch('/api/xai-audio-shares/publish', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                filename: currentAudioShareFilename,
+                ttl_days: Number(document.getElementById('audioShareTtl').value),
+                expected_audio_sha256: currentAudioSharePreview.audio_sha256,
+                confirmed: document.getElementById('audioShareConfirm').checked,
+            }),
+        });
+        if (!response.ok) throw new Error(await readApiError(response));
+        const data = await response.json();
+        const result = document.getElementById('audioShareResult');
+        result.hidden = false;
+        result.innerHTML = `
+            <strong>Audio waveform published</strong>
+            <a href="${escapeHtml(data.share.public_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(data.share.public_url)}</a>
+            <button class="btn btn-secondary" type="button" onclick="copyAudioShareUrl('${escapeHtml(data.share.public_url)}')">Copy URL</button>
+        `;
+        document.getElementById('audioShareConfirm').checked = false;
+        showToast('Public audio URL created');
+        await loadAudioShareHistory(currentAudioShareFilename);
+    } catch (error) {
+        showToast(error.message || 'Audio publish failed', 'error');
+    } finally {
+        button.textContent = 'Publish Audio';
+        button.classList.remove('is-busy');
+        button.setAttribute('aria-busy', 'false');
+        updateAudioSharePublishState();
+    }
+}
+
+async function revokeAudioShare(shareId) {
+    if (!confirm('Revoke this public URL and delete the xAI file now?')) return;
+    try {
+        const response = await fetch('/api/xai-audio-shares/revoke', {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({share_id: shareId}),
+        });
+        if (!response.ok) throw new Error(await readApiError(response));
+        showToast('Public audio share revoked');
+        await loadAudioShareHistory(currentAudioShareFilename);
+    } catch (error) {
+        showToast(error.message || 'Failed to revoke public audio', 'error');
+    }
+}
+
 async function deleteAudio(filename) {
     if (!confirm(`Delete "${filename}"?\n\nThis cannot be undone.`)) return;
     document.querySelectorAll('.audio-player').forEach(player => player.pause());
 
+    await requestAudioDeletion(filename, false);
+}
+
+async function requestAudioDeletion(filename, revokePublicShares) {
     try {
-        const response = await fetch(`/api/gallery/audio/${encodeURIComponent(filename)}`, {
+        const response = await fetch('/api/audio-actions/delete', {
             method: 'DELETE',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                filename,
+                revoke_public_shares: revokePublicShares,
+            }),
         });
-        if (!response.ok) {
-            const result = await response.json();
-            throw new Error(result.error || 'Audio deletion failed');
+        if (response.ok) {
+            showToast(
+                revokePublicShares
+                    ? 'Public copies revoked and audio deleted'
+                    : 'Audio deleted'
+            );
+            await fetchAudio();
+            return;
         }
-        showToast('Audio deleted');
-        await fetchAudio();
+
+        const result = await response.json();
+        if (response.status === 409 && result.code === 'active_public_audio_shares') {
+            const count = (result.active_shares || []).length;
+            const confirmed = confirm(
+                `This track has ${count} active public share${count === 1 ? '' : 's'}.\n\n` +
+                'Revoke the waveform copies, delete the xAI files, and then delete the local audio?'
+            );
+            if (confirmed) await requestAudioDeletion(filename, true);
+            return;
+        }
+        throw new Error(result.error || 'Audio deletion failed');
     } catch (error) {
         console.error('Audio deletion failed:', error);
         showToast(error.message || 'Failed to delete audio', 'error');
@@ -907,4 +1188,16 @@ function showToast(message, type = 'success') {
     }, 2500);
 }
 
-document.addEventListener('DOMContentLoaded', fetchAudio);
+document.addEventListener('keydown', event => {
+    if (
+        event.key === 'Escape' &&
+        document.getElementById('audioShareModal').classList.contains('active')
+    ) {
+        closeAudioShareDialog();
+    }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    fetchAudio();
+    fetchAudioShareStatus();
+});

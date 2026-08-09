@@ -18,7 +18,6 @@ from api.routes import generated_music
 from lib import rate_limiter
 from skills import generate_music as generate_music_tool
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -449,6 +448,28 @@ def test_generated_music_health_and_file_serving(tmp_path, monkeypatch):
     assert error.value.status_code == 404
 
 
+def test_generated_music_delete_removes_file_and_catalog(tmp_path, monkeypatch):
+    track = tmp_path / "music_delete_me_20260808_120000.mp3"
+    track.write_bytes(b"fake-mp3")
+    catalog_file = tmp_path / "audio_catalog.json"
+    catalog_file.write_text(
+        json.dumps({track.name: {"title": "Delete Me"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(generated_music, "GENERATED_MUSIC_DIR", tmp_path)
+    monkeypatch.setattr(generated_music, "AUDIO_CATALOG_FILE", catalog_file)
+    monkeypatch.setattr(
+        generated_music,
+        "audio_share_service",
+        SimpleNamespace(active_for_audio=lambda _filename: []),
+    )
+
+    result = generated_music.delete_generated_music(track.name)
+
+    assert result == {"ok": True, "deleted": track.name}
+    assert not track.exists()
+    assert track.name not in json.loads(catalog_file.read_text(encoding="utf-8"))
+
 def test_generated_music_health_reports_gemini_pro_catalog_metadata(
     tmp_path,
     monkeypatch,
@@ -497,6 +518,26 @@ def test_generated_music_router_exposes_expected_routes():
     assert (
         "/api/generated-music/{filename}",
         ("GET",),
+    ) in routes
+    assert (
+        "/api/generated-music/{filename}",
+        ("DELETE",),
+    ) in routes
+    assert (
+        "/api/generated-music/xai-shares/status",
+        ("GET",),
+    ) in routes
+    assert (
+        "/api/generated-music/xai-shares/preview",
+        ("POST",),
+    ) in routes
+    assert (
+        "/api/generated-music/xai-shares/publish",
+        ("POST",),
+    ) in routes
+    assert (
+        "/api/generated-music/xai-shares/revoke",
+        ("DELETE",),
     ) in routes
 
 

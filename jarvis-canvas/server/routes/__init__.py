@@ -3,15 +3,16 @@ Jarvis Canvas - Routes package
 
 All blueprints are registered here.
 """
+from .audio_actions import audio_actions_bp
+from .audio_gallery import audio_gallery_bp
+from .gallery import gallery_bp
 from .health import health_bp
 from .pages import pages_bp
-from .gallery import gallery_bp
-from .video_gallery import video_gallery_bp
-from .audio_gallery import audio_gallery_bp
-from .stash import stash_bp
-from .views import views_bp
 from .pdf_shares import pdf_shares_bp
+from .stash import stash_bp
+from .video_gallery import video_gallery_bp
 from .video_shares import video_shares_bp
+from .views import views_bp
 
 __all__ = [
     'health_bp',
@@ -19,6 +20,7 @@ __all__ = [
     'gallery_bp',
     'video_gallery_bp',
     'audio_gallery_bp',
+    'audio_actions_bp',
     'stash_bp',
     'views_bp',
     'pdf_shares_bp',

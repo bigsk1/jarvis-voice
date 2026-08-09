@@ -10,7 +10,6 @@ from pathlib import Path
 
 from flask import Flask
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CANVAS_ROOT = PROJECT_ROOT / "jarvis-canvas"
 LIB_ROOT = PROJECT_ROOT / "lib"
@@ -78,7 +77,7 @@ def test_audio_catalog_backfills_files_and_preserves_favorites(tmp_path):
     assert updated["favorited_at"] == "2026-07-26T22:00:00"
 
 
-def test_audio_gallery_lists_favorites_downloads_and_deletes(tmp_path, monkeypatch):
+def test_audio_gallery_lists_favorites_and_downloads(tmp_path, monkeypatch):
     audio_gallery = _load_audio_gallery()
     monkeypatch.setattr(audio_gallery, "GENERATED_AUDIO_DIR", tmp_path)
     monkeypatch.setattr(audio_gallery, "AUDIO_CATALOG_FILE", tmp_path / "audio_catalog.json")
@@ -127,15 +126,6 @@ def test_audio_gallery_lists_favorites_downloads_and_deletes(tmp_path, monkeypat
     catalog = json.loads((tmp_path / "audio_catalog.json").read_text())
     assert catalog[audio_file.name]["favorite"] is True
     assert catalog[audio_file.name]["favorited_at"]
-
-    delete_response = client.delete(f"/api/gallery/audio/{audio_file.name}")
-    assert delete_response.status_code == 200
-    assert delete_response.get_json()["deleted"] == audio_file.name
-    assert not audio_file.exists()
-    assert audio_file.name not in json.loads(
-        (tmp_path / "audio_catalog.json").read_text()
-    )
-
 
 def test_audio_gallery_rejects_unsafe_unsupported_or_linked_files(
     tmp_path,
@@ -250,6 +240,20 @@ def test_audio_gallery_ui_keeps_actions_and_adds_live_visualizer():
     assert "toggleFavoriteByIndex" in AUDIO_JS
     assert "downloadByIndex" in AUDIO_JS
     assert "deleteByIndex" in AUDIO_JS
+    assert "fetch('/api/audio-actions/delete'" in AUDIO_JS
+    assert "method: 'DELETE'" in AUDIO_JS
+    assert "JSON.stringify({filename})" in AUDIO_JS
+    assert "xaiAudioShareStatus.available" in AUDIO_JS
+    assert "expected_audio_sha256" in AUDIO_JS
+    assert "revoke_public_shares" in AUDIO_JS
+    assert "window.isSecureContext" in AUDIO_JS
+    assert "document.execCommand('copy')" in AUDIO_JS
+    assert "button.classList.add('is-busy')" in AUDIO_JS
+    assert "button.setAttribute('aria-busy', 'true')" in AUDIO_JS
+    assert 'id="audioShareModal"' in AUDIO_HTML
+    assert "animated waveform MP4" in AUDIO_HTML
+    assert ".audio-share-modal" in AUDIO_CSS
+    assert "#publishAudioShareBtn.is-busy" in AUDIO_CSS
     assert "'&quot;'" in AUDIO_JS
     assert "@media (max-width: 768px)" in AUDIO_CSS
     assert ".audio-model" in AUDIO_CSS
