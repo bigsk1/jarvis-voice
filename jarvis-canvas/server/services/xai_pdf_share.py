@@ -11,11 +11,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
-from config import CANVAS_DIR
 from config_loader import get_config_value
 
-from .pdf_export import has_blocking_findings, validate_canvas_pdf
+from config import CANVAS_DIR
 
+from .pdf_export import has_blocking_findings, normalize_pdf_theme, validate_canvas_pdf
 
 ALLOWED_TTL_DAYS = (1, 7, 30)
 DEFAULT_TTL_DAYS = 7
@@ -232,7 +232,9 @@ class XaiPdfShareService:
         projection: dict,
         ttl_days: int,
         pdf_sha256: str,
+        pdf_theme: str,
     ) -> dict:
+        pdf_theme = normalize_pdf_theme(pdf_theme)
         if ttl_days not in ALLOWED_TTL_DAYS:
             raise XaiPdfShareError("Expiration must be 1, 7, or 30 days.")
         if has_blocking_findings(projection):
@@ -279,6 +281,7 @@ class XaiPdfShareService:
                 "source_updated_at": source_updated_at,
                 "pdf_sha256": pdf_sha256,
                 "pdf_bytes": len(pdf_payload),
+                "pdf_theme": pdf_theme,
             }
             self.registry.add(record)
             return record

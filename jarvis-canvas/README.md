@@ -90,9 +90,9 @@ Canvas works with defaults, but headless/LAN installs should set the public URL 
 
 Canvas page links use `CANVAS_PUBLIC_URL/{page_id}`, for example `http://192.168.70.228:8890/page_20260331_121401`. The Canvas UI serves direct `/page_...` links and selects that page after login.
 
-The page Download dialog offers JSON, Markdown, and PDF. PDF downloads remain
-local; the optional **Publish PDF** action sends a reviewed snapshot to xAI and
-creates an expiring public URL. See
+The page Download dialog offers JSON, Markdown, and dark or light PDF snapshots;
+dark is the default. PDF downloads remain local; the optional **Publish PDF**
+action sends the reviewed theme to xAI and creates an expiring public URL. See
 [Canvas PDF Downloads and xAI Public Sharing](../docs/CANVAS_PDF_SHARING.md) for
 setup, media behavior, safety checks, and revocation.
 
@@ -376,7 +376,7 @@ curl -X PATCH http://localhost:8890/api/gallery/images/{filename}/favorite \
 
 ### Download Page
 
-Export a page as JSON or Markdown:
+Export a page as JSON, Markdown, or PDF:
 
 ```bash
 # Download as JSON (default)
@@ -384,6 +384,9 @@ curl http://localhost:8890/api/pages/{id}/download
 
 # Download as Markdown with frontmatter
 curl "http://localhost:8890/api/pages/{id}/download?format=markdown"
+
+# Download the default dark PDF (use theme=light for a light page)
+curl -OJ "http://localhost:8890/api/canvas-exports/pages/{id}/pdf?theme=dark"
 ```
 
 ### Upload/Import Page

@@ -80,6 +80,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.0.0",
+    "ruff>=0.16.2",
 ]
 
 [tool.uv]
@@ -87,6 +88,14 @@ dev = [
 # Install only its dependencies; do not ask uv/Hatch to build an editable
 # `jarvis_voice` package that does not exist.
 package = false
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+# Keep the repo baseline focused on correctness and deterministic imports.
+select = ["E4", "E7", "E9", "F", "I"]
 
 [tool.pyright]
 # Tell pyright/basedpyright where to find local modules

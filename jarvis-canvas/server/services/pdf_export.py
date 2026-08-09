@@ -9,7 +9,6 @@ import re
 import socket
 import ssl
 import time
-import unicodedata
 import warnings
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -23,9 +22,7 @@ from fpdf import FPDF
 from fpdf.fonts import FontFace, TextStyle
 from markdown_it import MarkdownIt
 from PIL import Image, ImageOps, UnidentifiedImageError
-
 from security_utils import redact_sensitive_text
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 FONT_DIR = PROJECT_ROOT / "jarvis-web" / "client" / "fonts"
@@ -39,6 +36,40 @@ MAX_REMOTE_IMAGE_DIMENSION = 1600
 REMOTE_MEDIA_RENDER_BUDGET_SECONDS = 15.0
 REMOTE_IMAGE_TIMEOUT_SECONDS = 4.0
 REMOTE_IMAGE_MAX_REDIRECTS = 3
+ALLOWED_PDF_THEMES = ("light", "dark")
+DEFAULT_PDF_THEME = "dark"
+PDF_THEME_PALETTES = {
+    "light": {
+        "background": "#ffffff",
+        "text": "#1f2937",
+        "heading_1": "#111827",
+        "heading_2": "#1f2937",
+        "heading_3": "#374151",
+        "muted": "#5a626c",
+        "footer": "#78808a",
+        "link": "#1d4ed8",
+        "bullet": "#64748b",
+        "blockquote": "#4b5563",
+        "border": "#d1d5db",
+        "card": "#f8fafc",
+        "code": "#111827",
+    },
+    "dark": {
+        "background": "#0f172a",
+        "text": "#e5e7eb",
+        "heading_1": "#f8fafc",
+        "heading_2": "#f1f5f9",
+        "heading_3": "#e2e8f0",
+        "muted": "#94a3b8",
+        "footer": "#94a3b8",
+        "link": "#60a5fa",
+        "bullet": "#94a3b8",
+        "blockquote": "#cbd5e1",
+        "border": "#334155",
+        "card": "#172033",
+        "code": "#e2e8f0",
+    },
+}
 _MEDIA_TOKEN_PREFIX = "JARVIS_CANVAS_MEDIA_"
 _MEDIA_HTML_RE = re.compile(
     rf"<p(?:\s[^>]*)?>\s*@@{_MEDIA_TOKEN_PREFIX}(\d+)@@\s*</p>",
@@ -96,25 +127,46 @@ _EMOJI_RE = re.compile(
 )
 
 
+def normalize_pdf_theme(value: str | None) -> str:
+    """Validate and normalize a public PDF theme name."""
+    theme = str(value or DEFAULT_PDF_THEME).strip().lower()
+    if theme not in ALLOWED_PDF_THEMES:
+        raise ValueError("PDF theme must be light or dark.")
+    return theme
+
+
+def _hex_rgb(value: str) -> tuple[int, int, int]:
+    color = value.lstrip("#")
+    return tuple(int(color[index : index + 2], 16) for index in (0, 2, 4))
+
+
 class CanvasPDF(FPDF):
     """Small branded PDF shell used by Canvas exports."""
 
-    def __init__(self, title: str):
+    def __init__(self, title: str, theme: str):
         super().__init__(format="A4")
         self.canvas_title = title
+        self.canvas_theme = normalize_pdf_theme(theme)
+        self.canvas_palette = PDF_THEME_PALETTES[self.canvas_theme]
         self.set_auto_page_break(auto=True, margin=18)
         self.set_margins(18, 20, 18)
 
     def header(self):
+        palette = self.canvas_palette
+        self.set_fill_color(*_hex_rgb(palette["background"]))
+        self.rect(0, 0, self.w, self.h, style="F")
         self.set_font("Inter", "B", 8)
-        self.set_text_color(90, 98, 108)
+        self.set_text_color(*_hex_rgb(palette["muted"]))
         self.cell(0, 6, self.canvas_title[:100], align="L")
         self.ln(10)
+        self.set_text_color(*_hex_rgb(palette["text"]))
+        self.set_draw_color(*_hex_rgb(palette["border"]))
+        self.set_fill_color(*_hex_rgb(palette["background"]))
 
     def footer(self):
         self.set_y(-13)
         self.set_font("Inter", "", 7)
-        self.set_text_color(120, 128, 138)
+        self.set_text_color(*_hex_rgb(self.canvas_palette["footer"]))
         self.cell(0, 6, f"Shared from Jarvis Canvas  |  Page {self.page_no()}", align="C")
 
 
@@ -1070,10 +1122,14 @@ def _apply_pdf_typography(html_text: str) -> str:
 def _write_pdf_html(pdf: FPDF, html_text: str, tag_styles: dict) -> None:
     if not html_text.strip():
         return
+    palette = pdf.canvas_palette
+    pdf.set_text_color(*_hex_rgb(palette["text"]))
+    pdf.set_draw_color(*_hex_rgb(palette["border"]))
+    pdf.set_fill_color(*_hex_rgb(palette["background"]))
     pdf.write_html(
         html_text,
         font_family="Inter",
-        li_prefix_color="#64748b",
+        li_prefix_color=palette["bullet"],
         table_line_separators=True,
         tag_styles=tag_styles,
     )
@@ -1090,6 +1146,7 @@ def _fit_pdf_text(pdf: FPDF, text: str, max_width: float) -> str:
 
 
 def _render_embedded_media_card(pdf: FPDF, item: dict, asset: _EmbeddedImage) -> None:
+    palette = pdf.canvas_palette
     content_width = pdf.w - pdf.l_margin - pdf.r_margin
     image_max_width = min(content_width - 10, 150 if item["kind"] == "image" else 138)
     image_max_height = 92
@@ -1108,8 +1165,8 @@ def _render_embedded_media_card(pdf: FPDF, item: dict, asset: _EmbeddedImage) ->
     card_y = pdf.get_y() + 2
     image_x = card_x + (content_width - image_width) / 2
     image_y = card_y + 4
-    pdf.set_draw_color(209, 213, 219)
-    pdf.set_fill_color(248, 250, 252)
+    pdf.set_draw_color(*_hex_rgb(palette["border"]))
+    pdf.set_fill_color(*_hex_rgb(palette["card"]))
     pdf.rect(
         card_x,
         card_y,
@@ -1131,12 +1188,12 @@ def _render_embedded_media_card(pdf: FPDF, item: dict, asset: _EmbeddedImage) ->
     caption_y = image_y + image_height + 3
     pdf.set_xy(card_x + 5, caption_y)
     pdf.set_font("Inter", "B", 9.5)
-    pdf.set_text_color(31, 41, 55)
+    pdf.set_text_color(*_hex_rgb(palette["text"]))
     caption = _fit_pdf_text(pdf, item["label"], content_width - 10)
     pdf.cell(content_width - 10, 4.5, caption)
     pdf.set_xy(card_x + 5, caption_y + 5)
     pdf.set_font("Inter", "", 8.5)
-    pdf.set_text_color(29, 78, 216)
+    pdf.set_text_color(*_hex_rgb(palette["link"]))
     action = "Watch on YouTube" if item["kind"] == "youtube" else "Open original image"
     pdf.cell(content_width - 10, 4, action)
     pdf.link(
@@ -1262,14 +1319,16 @@ def _write_html_with_public_media(
     _write_pdf_html(pdf, rendered_html[cursor:], tag_styles)
 
 
-def render_canvas_pdf(projection: dict) -> bytes:
+def render_canvas_pdf(projection: dict, *, theme: str = DEFAULT_PDF_THEME) -> bytes:
     """Render a normalized Canvas projection to validated PDF bytes."""
-    pdf = CanvasPDF(projection["title"])
+    theme = normalize_pdf_theme(theme)
+    palette = PDF_THEME_PALETTES[theme]
+    pdf = CanvasPDF(projection["title"], theme)
     _register_fonts(pdf)
     pdf.set_title(projection["title"])
     pdf.set_author("Jarvis Canvas")
     pdf.set_creator("Jarvis Canvas")
-    pdf.set_subject("Portable Canvas PDF snapshot")
+    pdf.set_subject(f"Portable Canvas PDF snapshot ({theme} theme)")
     source_timestamp = projection.get("updated") or projection.get("created")
     creation_date = (
         datetime.fromisoformat(source_timestamp.replace("Z", "+00:00"))
@@ -1280,7 +1339,7 @@ def render_canvas_pdf(projection: dict) -> bytes:
     pdf.set_compression(True)
     pdf.add_page()
     pdf.set_font("Inter", "", 10.5)
-    pdf.set_text_color(31, 41, 55)
+    pdf.set_text_color(*_hex_rgb(palette["text"]))
 
     tags = projection.get("tags") or []
     metadata_bits = []
@@ -1316,25 +1375,30 @@ def render_canvas_pdf(projection: dict) -> bytes:
             ),
         )
     tag_styles = {
-        "a": FontFace(color="#1d4ed8", emphasis="UNDERLINE"),
-        "code": TextStyle(font_family="JetBrainsMono", font_size_pt=8.5),
+        "a": FontFace(color=palette["link"], emphasis="UNDERLINE"),
+        "code": TextStyle(
+            font_family="JetBrainsMono",
+            font_size_pt=8.5,
+            color=palette["code"],
+        ),
         "pre": TextStyle(
             font_family="JetBrainsMono",
             font_size_pt=8.5,
+            color=palette["code"],
             t_margin=4,
             b_margin=4,
         ),
         "p": TextStyle(
             font_family="Inter",
             font_size_pt=10.5,
-            color="#1f2937",
+            color=palette["text"],
             t_margin=1.5,
             b_margin=2.8,
         ),
         "li": TextStyle(
             font_family="Inter",
             font_size_pt=10.5,
-            color="#1f2937",
+            color=palette["text"],
             l_margin=5.5,
             t_margin=1.8,
             b_margin=1.8,
@@ -1345,7 +1409,7 @@ def render_canvas_pdf(projection: dict) -> bytes:
             font_family="Inter",
             font_style="B",
             font_size_pt=22,
-            color="#111827",
+            color=palette["heading_1"],
             t_margin=7,
             b_margin=0.7,
         ),
@@ -1353,7 +1417,7 @@ def render_canvas_pdf(projection: dict) -> bytes:
             font_family="Inter",
             font_style="B",
             font_size_pt=17.5,
-            color="#1f2937",
+            color=palette["heading_2"],
             t_margin=6,
             b_margin=0.65,
         ),
@@ -1361,14 +1425,14 @@ def render_canvas_pdf(projection: dict) -> bytes:
             font_family="Inter",
             font_style="B",
             font_size_pt=14,
-            color="#374151",
+            color=palette["heading_3"],
             t_margin=5,
             b_margin=0.55,
         ),
         "blockquote": TextStyle(
             font_family="Inter",
             font_style="I",
-            color="#4b5563",
+            color=palette["blockquote"],
             t_margin=3,
             b_margin=3,
         ),
@@ -1405,10 +1469,15 @@ def validate_canvas_pdf(payload: bytes, *, max_bytes: int = MAX_PDF_BYTES) -> di
     }
 
 
-def prepare_canvas_pdf(page: dict) -> tuple[dict, bytes]:
+def prepare_canvas_pdf(
+    page: dict,
+    *,
+    theme: str = DEFAULT_PDF_THEME,
+) -> tuple[dict, bytes]:
     """Build a projection, render it, and apply a final extracted-text scan."""
+    theme = normalize_pdf_theme(theme)
     projection = build_canvas_pdf_projection(page)
-    payload = render_canvas_pdf(projection)
+    payload = render_canvas_pdf(projection, theme=theme)
     inspection = validate_canvas_pdf(payload)
     if redact_sensitive_text(inspection["text"]) != inspection["text"]:
         _append_once(
@@ -1423,6 +1492,7 @@ def prepare_canvas_pdf(page: dict) -> tuple[dict, bytes]:
         "bytes": inspection["bytes"],
         "pages": inspection["pages"],
         "links": inspection["links"],
+        "theme": theme,
     }
     severity_order = {"block": 0, "warn": 1, "info": 2}
     projection["findings"].sort(

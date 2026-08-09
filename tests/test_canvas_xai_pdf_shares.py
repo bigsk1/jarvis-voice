@@ -9,7 +9,6 @@ from types import SimpleNamespace
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 for path in (ROOT / "jarvis-canvas", ROOT / "lib"):
     sys.path.insert(0, str(path))
@@ -89,9 +88,11 @@ def test_publish_catalog_and_revoke_lifecycle(tmp_path, monkeypatch):
         projection=projection,
         ttl_days=7,
         pdf_sha256="a" * 64,
+        pdf_theme="dark",
     )
 
     assert record["status"] == "active"
+    assert record["pdf_theme"] == "dark"
     assert record["expires_at"] == "2026-08-15T00:00:00Z"
     assert files.upload_calls[0][2].days == 7
     assert files.created == ["file_canvas_pdf"]
@@ -127,6 +128,7 @@ def test_publish_cleanup_runs_when_catalog_write_fails(tmp_path, monkeypatch):
             projection=projection,
             ttl_days=7,
             pdf_sha256="b" * 64,
+            pdf_theme="dark",
         )
 
     assert files.revoked == ["file_canvas_pdf"]
@@ -162,6 +164,7 @@ def test_revoked_file_cleanup_can_be_retried(tmp_path, monkeypatch):
         projection=projection,
         ttl_days=7,
         pdf_sha256="c" * 64,
+        pdf_theme="dark",
     )
 
     pending = service.revoke(record["share_id"])

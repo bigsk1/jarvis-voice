@@ -8,7 +8,6 @@ from pathlib import Path
 
 from flask import Flask
 
-
 ROOT = Path(__file__).resolve().parents[1]
 for path in (ROOT / "jarvis-canvas", ROOT / "lib"):
     sys.path.insert(0, str(path))
@@ -40,6 +39,9 @@ def test_pdf_download_and_preview_routes(tmp_path, monkeypatch):
 
     download = client.get(f"/api/canvas-exports/pages/{page['id']}/pdf")
     preview = client.post(f"/api/xai-pdf-shares/pages/{page['id']}/preview")
+    light_download = client.get(
+        f"/api/canvas-exports/pages/{page['id']}/pdf?theme=light"
+    )
 
     assert download.status_code == 200
     assert download.mimetype == "application/pdf"
@@ -47,9 +49,13 @@ def test_pdf_download_and_preview_routes(tmp_path, monkeypatch):
     assert "attachment" in download.headers["Content-Disposition"]
     assert preview.status_code == 200
     assert preview.json["can_publish"] is True
+    assert preview.json["theme"] == "dark"
+    assert preview.json["pdf"]["theme"] == "dark"
     assert len(preview.json["pdf_sha256"]) == 64
     assert len(preview.json["source_sha256"]) == 64
-    assert preview.json["preview_url"].startswith("/api/canvas-exports/")
+    assert preview.json["preview_url"].endswith("disposition=inline&theme=dark")
+    assert light_download.status_code == 200
+    assert light_download.data != download.data
 
 
 def test_unchanged_page_reuses_rendered_pdf(tmp_path, monkeypatch):
@@ -57,9 +63,9 @@ def test_unchanged_page_reuses_rendered_pdf(tmp_path, monkeypatch):
     original_prepare = routes.prepare_canvas_pdf
     render_calls = []
 
-    def counted_prepare(source_page):
-        render_calls.append(source_page["id"])
-        return original_prepare(source_page)
+    def counted_prepare(source_page, *, theme):
+        render_calls.append((source_page["id"], theme))
+        return original_prepare(source_page, theme=theme)
 
     monkeypatch.setattr(routes, "prepare_canvas_pdf", counted_prepare)
     client = app.test_client()
@@ -68,8 +74,25 @@ def test_unchanged_page_reuses_rendered_pdf(tmp_path, monkeypatch):
 
     assert first.status_code == 200
     assert second.status_code == 200
-    assert render_calls == [page["id"]]
-    assert first.data == routes._PDF_CACHE[second.json["source_sha256"]][1]
+    assert render_calls == [(page["id"], "dark")]
+    assert first.data == routes._PDF_CACHE[f'{second.json["source_sha256"]}:dark'][1]
+
+
+def test_pdf_routes_reject_unknown_theme(tmp_path, monkeypatch):
+    app, page = _app_with_page(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    download = client.get(
+        f"/api/canvas-exports/pages/{page['id']}/pdf?theme=sepia"
+    )
+    preview = client.post(
+        f"/api/xai-pdf-shares/pages/{page['id']}/preview",
+        json={"theme": "sepia"},
+    )
+
+    assert download.status_code == 400
+    assert preview.status_code == 400
+    assert download.json["error"] == "PDF theme must be light or dark."
 
 
 def test_publish_route_requires_confirmation_and_blocks_secrets(tmp_path, monkeypatch):
@@ -95,7 +118,9 @@ def test_pdf_render_failure_returns_actionable_422(tmp_path, monkeypatch):
     monkeypatch.setattr(
         routes,
         "prepare_canvas_pdf",
-        lambda _page: (_ for _ in ()).throw(NotImplementedError("unsupported nested content")),
+        lambda _page, **_kwargs: (_ for _ in ()).throw(
+            NotImplementedError("unsupported nested content")
+        ),
     )
 
     response = app.test_client().get(f"/api/canvas-exports/pages/{page['id']}/pdf")
@@ -117,7 +142,9 @@ def test_publish_rejects_page_changed_after_preview(tmp_path, monkeypatch):
         json={
             "ttl_days": 7,
             "confirmed": True,
+            "theme": preview["theme"],
             "expected_source_sha256": preview["source_sha256"],
+            "expected_pdf_sha256": preview["pdf_sha256"],
         },
     )
 
@@ -143,13 +170,18 @@ def test_publish_accepts_the_reviewed_page_fingerprint(tmp_path, monkeypatch):
     service = FakeShareService()
     monkeypatch.setattr(routes, "share_service", service)
     client = app.test_client()
-    preview = client.post(f"/api/xai-pdf-shares/pages/{page['id']}/preview").json
+    preview = client.post(
+        f"/api/xai-pdf-shares/pages/{page['id']}/preview",
+        json={"theme": "light"},
+    ).json
     response = client.post(
         f"/api/xai-pdf-shares/pages/{page['id']}",
         json={
             "ttl_days": 7,
             "confirmed": True,
+            "theme": "light",
             "expected_source_sha256": preview["source_sha256"],
+            "expected_pdf_sha256": preview["pdf_sha256"],
         },
     )
 
@@ -157,6 +189,30 @@ def test_publish_accepts_the_reviewed_page_fingerprint(tmp_path, monkeypatch):
     assert response.json["share"]["status"] == "active"
     assert len(service.publish_kwargs["pdf_sha256"]) == 64
     assert service.publish_kwargs["pdf_payload"].startswith(b"%PDF-")
+    assert service.publish_kwargs["pdf_theme"] == "light"
+
+
+def test_publish_rejects_a_theme_different_from_the_reviewed_pdf(tmp_path, monkeypatch):
+    app, page = _app_with_page(tmp_path, monkeypatch)
+    client = app.test_client()
+    preview = client.post(
+        f"/api/xai-pdf-shares/pages/{page['id']}/preview",
+        json={"theme": "light"},
+    ).json
+
+    response = client.post(
+        f"/api/xai-pdf-shares/pages/{page['id']}",
+        json={
+            "ttl_days": 7,
+            "confirmed": True,
+            "theme": "dark",
+            "expected_source_sha256": preview["source_sha256"],
+            "expected_pdf_sha256": preview["pdf_sha256"],
+        },
+    )
+
+    assert response.status_code == 409
+    assert "PDF changed after preview" in response.json["error"]
 
 
 def test_share_routes_are_not_in_canvas_public_api_prefixes():
@@ -177,7 +233,10 @@ def test_canvas_ui_exposes_all_downloads_and_guarded_public_share():
     assert "Download Page" in template
     assert "JSON" in template and "Markdown" in template and "PDF" in template
     assert "Anyone with the URL can view this PDF" in template
+    assert "PDF — Dark" in template and "PDF — Light" in template
+    assert 'id="xaiPdfTheme"' in template
     assert "xaiPdfConfirm" in template
     assert "xaiPdfShareStatus.available" in script
     assert "expected_source_sha256" in script
+    assert "expected_pdf_sha256" in script
     assert "files-cdn.x.ai" in script

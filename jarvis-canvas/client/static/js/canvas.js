@@ -11,6 +11,9 @@ let downloadPageId = null;
 let xaiPdfSharePageId = null;
 let xaiPdfShareUrl = null;
 let xaiPdfPreviewSourceSha256 = null;
+let xaiPdfPreviewPdfSha256 = null;
+let xaiPdfPreviewTheme = 'dark';
+let xaiPdfPreviewRequestId = 0;
 let xaiPdfPreviewCanPublish = false;
 let xaiPdfShareStatus = {
     available: false,
@@ -1059,15 +1062,16 @@ function closeDownloadModal() {
     document.getElementById('downloadModal').classList.remove('active');
 }
 
-function downloadSelectedPage(format) {
+function downloadSelectedPage(format, theme = 'dark') {
     if (!downloadPageId) return;
-    downloadPage(downloadPageId, format);
+    downloadPage(downloadPageId, format, theme);
     closeDownloadModal();
 }
 
-function downloadPage(id, format = 'json') {
+function downloadPage(id, format = 'json', theme = 'dark') {
+    const pdfTheme = theme === 'light' ? 'light' : 'dark';
     const url = format === 'pdf'
-        ? `/api/canvas-exports/pages/${encodeURIComponent(id)}/pdf?disposition=attachment`
+        ? `/api/canvas-exports/pages/${encodeURIComponent(id)}/pdf?disposition=attachment&theme=${pdfTheme}`
         : `/api/pages/${encodeURIComponent(id)}/download?format=${encodeURIComponent(format)}`;
     const link = document.createElement('a');
     link.href = url;
@@ -1087,6 +1091,7 @@ async function parseApiResponse(response) {
     if (!response.ok) {
         const error = new Error(payload.error || `Request failed (${response.status})`);
         error.payload = payload;
+        error.status = response.status;
         throw error;
     }
     return payload;
@@ -1107,9 +1112,11 @@ async function loadXaiPdfShareStatus() {
 }
 
 function closeXaiPdfShareModal() {
+    xaiPdfPreviewRequestId += 1;
     xaiPdfSharePageId = null;
     xaiPdfShareUrl = null;
     xaiPdfPreviewSourceSha256 = null;
+    xaiPdfPreviewPdfSha256 = null;
     xaiPdfPreviewCanPublish = false;
     document.getElementById('xaiPdfPreviewFrame').removeAttribute('src');
     document.getElementById('xaiPdfShareModal').classList.remove('active');
@@ -1118,7 +1125,10 @@ function closeXaiPdfShareModal() {
 function updateXaiPdfPublishButton() {
     const button = document.getElementById('xaiPdfPublishBtn');
     const confirmed = document.getElementById('xaiPdfConfirm').checked;
-    button.disabled = !xaiPdfPreviewCanPublish || !confirmed;
+    button.disabled = !xaiPdfPreviewCanPublish
+        || !xaiPdfPreviewSourceSha256
+        || !xaiPdfPreviewPdfSha256
+        || !confirmed;
 }
 
 function renderXaiPdfFindings(findings) {
@@ -1165,6 +1175,8 @@ async function openXaiPdfShareModal(pageId) {
     xaiPdfSharePageId = pageId;
     xaiPdfShareUrl = null;
     xaiPdfPreviewSourceSha256 = null;
+    xaiPdfPreviewPdfSha256 = null;
+    xaiPdfPreviewTheme = 'dark';
     xaiPdfPreviewCanPublish = false;
     document.getElementById('xaiPdfConfirm').checked = false;
     document.getElementById('xaiPdfPublishBtn').disabled = true;
@@ -1173,30 +1185,66 @@ async function openXaiPdfShareModal(pageId) {
     document.getElementById('xaiPdfFindings').textContent = 'Checking the snapshot…';
     document.getElementById('xaiPdfShareHistory').textContent = 'Loading…';
     document.getElementById('xaiPdfTtl').value = String(xaiPdfShareStatus.default_ttl_days || 7);
+    document.getElementById('xaiPdfTheme').value = 'dark';
     document.getElementById('xaiPdfShareModal').classList.add('active');
 
+    await Promise.all([refreshXaiPdfPreview(), loadXaiPdfShareHistory(pageId)]);
+}
+
+async function refreshXaiPdfPreview() {
+    const pageId = xaiPdfSharePageId;
+    if (!pageId) return;
+    const theme = document.getElementById('xaiPdfTheme').value === 'light' ? 'light' : 'dark';
+    const requestId = ++xaiPdfPreviewRequestId;
+    xaiPdfPreviewTheme = theme;
+    xaiPdfPreviewSourceSha256 = null;
+    xaiPdfPreviewPdfSha256 = null;
+    xaiPdfPreviewCanPublish = false;
+    document.getElementById('xaiPdfConfirm').checked = false;
+    document.getElementById('xaiPdfResult').hidden = true;
+    document.getElementById('xaiPdfMeta').textContent = `Preparing ${theme} preview…`;
+    document.getElementById('xaiPdfFindings').textContent = 'Checking the snapshot…';
+    document.getElementById('xaiPdfPreviewFrame').removeAttribute('src');
+    updateXaiPdfPublishButton();
+
     try {
-        const [previewResponse, historyResponse] = await Promise.all([
-            fetch(`/api/xai-pdf-shares/pages/${encodeURIComponent(pageId)}/preview`, { method: 'POST' }),
-            fetch(`/api/xai-pdf-shares/pages/${encodeURIComponent(pageId)}`)
-        ]);
+        const previewResponse = await fetch(
+            `/api/xai-pdf-shares/pages/${encodeURIComponent(pageId)}/preview`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ theme })
+            }
+        );
         const preview = await parseApiResponse(previewResponse);
-        const history = await parseApiResponse(historyResponse);
-        if (xaiPdfSharePageId !== pageId) return;
+        if (xaiPdfSharePageId !== pageId || xaiPdfPreviewRequestId !== requestId) return;
         xaiPdfPreviewCanPublish = Boolean(preview.can_publish);
         xaiPdfPreviewSourceSha256 = preview.source_sha256;
+        xaiPdfPreviewPdfSha256 = preview.pdf_sha256;
+        xaiPdfPreviewTheme = preview.theme === 'light' ? 'light' : 'dark';
         document.getElementById('xaiPdfMeta').textContent =
-            `${preview.pdf.pages} page${preview.pdf.pages === 1 ? '' : 's'} · ${formatByteCount(preview.pdf.bytes)} · ${preview.pdf.links} link${preview.pdf.links === 1 ? '' : 's'}`;
+            `${xaiPdfPreviewTheme === 'dark' ? 'Dark' : 'Light'} theme · ${preview.pdf.pages} page${preview.pdf.pages === 1 ? '' : 's'} · ${formatByteCount(preview.pdf.bytes)} · ${preview.pdf.links} link${preview.pdf.links === 1 ? '' : 's'}`;
         document.getElementById('xaiPdfPreviewFrame').src = preview.preview_url;
         renderXaiPdfFindings(preview.findings || []);
-        renderXaiPdfShareHistory(history.shares || []);
         updateXaiPdfPublishButton();
     } catch (error) {
-        if (xaiPdfSharePageId !== pageId) return;
+        if (xaiPdfSharePageId !== pageId || xaiPdfPreviewRequestId !== requestId) return;
         document.getElementById('xaiPdfMeta').textContent = 'Preview unavailable';
         document.getElementById('xaiPdfFindings').textContent = error.message;
-        document.getElementById('xaiPdfShareHistory').textContent = 'History unavailable';
         showToast(error.message, 'error');
+    }
+}
+
+async function loadXaiPdfShareHistory(pageId) {
+    try {
+        const history = await parseApiResponse(
+            await fetch(`/api/xai-pdf-shares/pages/${encodeURIComponent(pageId)}`)
+        );
+        if (xaiPdfSharePageId !== pageId) return;
+        renderXaiPdfShareHistory(history.shares || []);
+    } catch (error) {
+        if (xaiPdfSharePageId !== pageId) return;
+        document.getElementById('xaiPdfShareHistory').textContent = 'History unavailable';
     }
 }
 
@@ -1220,7 +1268,9 @@ async function publishXaiPdfShare() {
             body: JSON.stringify({
                 confirmed: true,
                 ttl_days: Number(document.getElementById('xaiPdfTtl').value),
-                expected_source_sha256: xaiPdfPreviewSourceSha256
+                theme: xaiPdfPreviewTheme,
+                expected_source_sha256: xaiPdfPreviewSourceSha256,
+                expected_pdf_sha256: xaiPdfPreviewPdfSha256
             })
         });
         const result = await parseApiResponse(response);
@@ -1249,6 +1299,12 @@ async function publishXaiPdfShare() {
             renderXaiPdfFindings(error.payload.findings);
             xaiPdfPreviewCanPublish = false;
         }
+        if (error.status === 409 || error.message.includes('Preview this PDF again')) {
+            xaiPdfPreviewCanPublish = false;
+            xaiPdfPreviewSourceSha256 = null;
+            xaiPdfPreviewPdfSha256 = null;
+            document.getElementById('xaiPdfConfirm').checked = false;
+        }
         showToast(error.message, 'error');
     } finally {
         button.textContent = 'Publish public PDF';
@@ -1272,7 +1328,7 @@ function renderXaiPdfShareHistory(shares) {
         status.textContent = String(share.status || 'unknown').replaceAll('_', ' ');
         const expires = document.createElement('span');
         expires.textContent = share.expires_at
-            ? `Expires ${new Date(share.expires_at).toLocaleString()}`
+            ? `${share.pdf_theme === 'dark' ? 'Dark' : 'Light'} theme · Expires ${new Date(share.expires_at).toLocaleString()}`
             : 'Expiration unavailable';
         details.append(status, expires);
         row.appendChild(details);
@@ -1916,6 +1972,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('searchInput')?.focus();
     });
     document.getElementById('xaiPdfConfirm')?.addEventListener('change', updateXaiPdfPublishButton);
+    document.getElementById('xaiPdfTheme')?.addEventListener('change', refreshXaiPdfPreview);
     
     // Initial load
     loadXaiPdfShareStatus();

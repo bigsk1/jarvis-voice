@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from io import BytesIO
 import socket
 import sys
+from io import BytesIO
 from pathlib import Path
 
 import fitz
 import pytest
 from PIL import Image
-
 
 ROOT = Path(__file__).resolve().parents[1]
 for path in (ROOT / "jarvis-canvas", ROOT / "lib"):
@@ -178,6 +177,39 @@ def test_pdf_is_valid_searchable_and_keeps_https_links(monkeypatch):
     assert projection["pdf"]["bytes"] == len(payload)
     assert second_payload == payload
     assert inspection["metadata"]["author"] == "Jarvis Canvas"
+
+
+def test_pdf_light_and_dark_themes_are_distinct_and_searchable():
+    page = {
+        "id": "page_20260808_020202_theme",
+        "title": "Theme preview",
+        "content": "## Readable heading\n\nBody text with a [link](https://example.com).",
+        "created": "2026-08-08T02:02:02Z",
+    }
+
+    dark_projection, dark_payload = prepare_canvas_pdf(page)
+    light_projection, light_payload = prepare_canvas_pdf(page, theme="light")
+    dark_inspection = validate_canvas_pdf(dark_payload)
+    light_inspection = validate_canvas_pdf(light_payload)
+
+    def page_corner_rgb(payload: bytes) -> tuple[int, int, int]:
+        with fitz.open(stream=payload, filetype="pdf") as document:
+            pixmap = document[0].get_pixmap(alpha=False)
+            offset = (5 * pixmap.width + 5) * pixmap.n
+            return tuple(pixmap.samples[offset : offset + 3])
+
+    assert dark_projection["pdf"]["theme"] == "dark"
+    assert light_projection["pdf"]["theme"] == "light"
+    assert dark_payload != light_payload
+    assert max(page_corner_rgb(dark_payload)) < 80
+    assert min(page_corner_rgb(light_payload)) > 240
+    assert "Theme preview" in dark_inspection["text"]
+    assert dark_inspection["text"] == light_inspection["text"]
+
+
+def test_pdf_rejects_unknown_theme():
+    with pytest.raises(ValueError, match="light or dark"):
+        prepare_canvas_pdf({"title": "Theme", "content": "Body"}, theme="sepia")
 
 
 def _test_png(color: tuple[int, int, int], size: tuple[int, int] = (640, 360)) -> bytes:

@@ -10,10 +10,13 @@ from collections import OrderedDict
 from io import BytesIO
 
 from flask import Blueprint, current_app, jsonify, request, send_file
-from werkzeug.utils import secure_filename
-
 from server.pages import get_page_path
-from server.services.pdf_export import has_blocking_findings, prepare_canvas_pdf
+from server.services.pdf_export import (
+    DEFAULT_PDF_THEME,
+    has_blocking_findings,
+    normalize_pdf_theme,
+    prepare_canvas_pdf,
+)
 from server.services.xai_pdf_share import (
     ALLOWED_TTL_DAYS,
     XaiPdfShareDisabled,
@@ -21,7 +24,7 @@ from server.services.xai_pdf_share import (
     XaiPdfShareService,
     get_xai_pdf_share_status,
 )
-
+from werkzeug.utils import secure_filename
 
 pdf_shares_bp = Blueprint("pdf_shares", __name__)
 _PAGE_ID_RE = re.compile(r"^page_[A-Za-z0-9_-]+$")
@@ -67,11 +70,12 @@ def _source_sha256(page: dict) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
-def _prepare(page_id: str):
+def _prepare(page_id: str, theme: str = DEFAULT_PDF_THEME):
+    theme = normalize_pdf_theme(theme)
     page = _load_page(page_id)
     if page is None:
         return None, None, None
-    cache_key = _source_sha256(page)
+    cache_key = f"{_source_sha256(page)}:{theme}"
     with _PDF_CACHE_LOCK:
         cached = _PDF_CACHE.get(cache_key)
         if cached is not None:
@@ -79,7 +83,7 @@ def _prepare(page_id: str):
             projection, payload = cached
             return page, projection, payload
     try:
-        projection, payload = prepare_canvas_pdf(page)
+        projection, payload = prepare_canvas_pdf(page, theme=theme)
     except (OSError, RuntimeError, ValueError):
         current_app.logger.exception("Canvas PDF rendering failed for page %s", page_id)
         raise CanvasPdfRenderError(
@@ -100,7 +104,11 @@ def _safe_error(message: str, status_code: int):
 @pdf_shares_bp.route("/api/canvas-exports/pages/<page_id>/pdf", methods=["GET"])
 def export_page_pdf(page_id: str):
     try:
-        page, _projection, payload = _prepare(page_id)
+        theme = normalize_pdf_theme(request.args.get("theme", DEFAULT_PDF_THEME))
+    except ValueError as exc:
+        return _safe_error(str(exc), 400)
+    try:
+        page, _projection, payload = _prepare(page_id, theme)
     except CanvasPdfRenderError as exc:
         return _safe_error(str(exc), 422)
     if page is None:
@@ -125,8 +133,13 @@ def xai_pdf_share_status():
 
 @pdf_shares_bp.route("/api/xai-pdf-shares/pages/<page_id>/preview", methods=["POST"])
 def preview_xai_pdf_share(page_id: str):
+    data = request.get_json(silent=True) or {}
     try:
-        page, projection, payload = _prepare(page_id)
+        theme = normalize_pdf_theme(data.get("theme", DEFAULT_PDF_THEME))
+    except ValueError as exc:
+        return _safe_error(str(exc), 400)
+    try:
+        page, projection, payload = _prepare(page_id, theme)
     except CanvasPdfRenderError as exc:
         return _safe_error(str(exc), 422)
     if page is None:
@@ -141,7 +154,11 @@ def preview_xai_pdf_share(page_id: str):
             "pdf": projection["pdf"],
             "pdf_sha256": hashlib.sha256(payload).hexdigest(),
             "source_sha256": _source_sha256(page),
-            "preview_url": f"/api/canvas-exports/pages/{page_id}/pdf?disposition=inline",
+            "theme": theme,
+            "preview_url": (
+                f"/api/canvas-exports/pages/{page_id}/pdf"
+                f"?disposition=inline&theme={theme}"
+            ),
         }
     )
 
@@ -157,9 +174,13 @@ def publish_xai_pdf_share(page_id: str):
         return _safe_error("Expiration must be 1, 7, or 30 days.", 400)
     if ttl_days not in ALLOWED_TTL_DAYS:
         return _safe_error("Expiration must be 1, 7, or 30 days.", 400)
+    try:
+        theme = normalize_pdf_theme(data.get("theme", DEFAULT_PDF_THEME))
+    except ValueError as exc:
+        return _safe_error(str(exc), 400)
 
     try:
-        page, projection, payload = _prepare(page_id)
+        page, projection, payload = _prepare(page_id, theme)
     except CanvasPdfRenderError as exc:
         return _safe_error(str(exc), 422)
     if page is None:
@@ -179,6 +200,11 @@ def publish_xai_pdf_share(page_id: str):
         return _safe_error("Preview this PDF again before publishing.", 400)
     if expected_source_sha256 != _source_sha256(page):
         return _safe_error("The Canvas page changed after preview. Review the new PDF before publishing.", 409)
+    expected_pdf_sha256 = str(data.get("expected_pdf_sha256") or "").strip().lower()
+    if not re.fullmatch(r"[a-f0-9]{64}", expected_pdf_sha256):
+        return _safe_error("Preview this PDF again before publishing.", 400)
+    if expected_pdf_sha256 != pdf_sha256:
+        return _safe_error("The PDF changed after preview. Review the new snapshot before publishing.", 409)
 
     try:
         record = share_service.publish(
@@ -189,6 +215,7 @@ def publish_xai_pdf_share(page_id: str):
             projection=projection,
             ttl_days=ttl_days,
             pdf_sha256=pdf_sha256,
+            pdf_theme=theme,
         )
     except XaiPdfShareDisabled as exc:
         return _safe_error(str(exc), 503)

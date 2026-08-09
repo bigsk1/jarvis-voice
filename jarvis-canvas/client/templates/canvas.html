@@ -161,9 +161,13 @@
                         <strong>Markdown</strong>
                         <span>Readable text with Canvas metadata frontmatter.</span>
                     </button>
-                    <button class="download-format-card" onclick="downloadSelectedPage('pdf')">
-                        <strong>PDF</strong>
-                        <span>Portable snapshot with safe link and media placeholders.</span>
+                    <button class="download-format-card" onclick="downloadSelectedPage('pdf', 'dark')">
+                        <strong>PDF — Dark <span class="download-default-badge">Default</span></strong>
+                        <span>Dark portable snapshot with safe links and embedded public media.</span>
+                    </button>
+                    <button class="download-format-card" onclick="downloadSelectedPage('pdf', 'light')">
+                        <strong>PDF — Light</strong>
+                        <span>Print-friendly light snapshot with the same portable content.</span>
                     </button>
                 </div>
             </div>
@@ -195,6 +199,12 @@
                     <section class="public-share-panel">
                         <div class="public-share-panel-title">Publish check</div>
                         <div id="xaiPdfFindings" class="public-share-findings" aria-live="polite">Checking the snapshot…</div>
+
+                        <label class="form-label" for="xaiPdfTheme">PDF appearance</label>
+                        <select class="form-input public-share-select" id="xaiPdfTheme">
+                            <option value="dark" selected>Dark</option>
+                            <option value="light">Light</option>
+                        </select>
 
                         <label class="form-label" for="xaiPdfTtl">Public for</label>
                         <select class="form-input public-share-select" id="xaiPdfTtl">

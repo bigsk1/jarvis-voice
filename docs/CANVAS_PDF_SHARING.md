@@ -1,9 +1,10 @@
 # Canvas PDF Downloads and xAI Public Sharing
 
-Canvas can export a page as JSON, Markdown, or a portable PDF snapshot. PDF
-downloads stay on the Jarvis host. As a separate opt-in action, an authenticated
-Canvas user can upload the PDF to the xAI Files API and create an expiring public
-URL.
+Canvas can export a page as JSON, Markdown, or a portable PDF snapshot in dark
+or light appearance. Dark is the default; light remains available for printing
+or viewers where a white page is preferred. PDF downloads stay on the Jarvis
+host. As a separate opt-in action, an authenticated Canvas user can upload the
+selected PDF to the xAI Files API and create an expiring public URL.
 
 This uses a PDF because xAI public file URLs support `application/pdf` but do not
 support HTML. It is a static snapshot, not a hosted interactive Canvas page.
@@ -29,8 +30,10 @@ support HTML. It is a static snapshot, not a hosted interactive Canvas page.
 - Canvas title, tags, and created/updated metadata. The original `source_query`
   is deliberately omitted.
 
-The Download dialog always offers PDF alongside the existing JSON and Markdown
-formats. PDF generation itself does not require xAI or a cloud API key.
+The Download dialog offers separate **PDF — Dark** and **PDF — Light** choices
+alongside the existing JSON and Markdown formats. PDF generation itself does
+not require xAI or a cloud API key. Direct callers can use `theme=dark` or
+`theme=light` on the PDF export URL; an omitted theme defaults to dark.
 
 For newly generated Canvas content, the preferred cross-surface format is a
 complete YouTube watch or `youtu.be` URL on its own line. Canvas can recognize
@@ -61,17 +64,21 @@ file lifetime.
 ## Publish and revoke
 
 1. Open a Canvas page and select **Publish PDF**.
-2. Review the rendered PDF preview and the publish-check findings.
-3. Choose an expiration, acknowledge that the file will be public, and publish.
+2. Choose dark or light appearance and review that rendered PDF preview plus the
+   publish-check findings. Changing the theme clears the confirmation and loads
+   a fresh preview.
+3. Choose an expiration, acknowledge that the reviewed file will be public, and
+   publish.
 4. Copy or open the returned `https://files-cdn.x.ai/...` URL.
 5. Use **Revoke** in the page's share history to revoke the URL and delete the
    xAI file early.
 
 The local catalog is stored at
 `data/canvas/.shares/xai_pdf_registry.json`. It records file/share IDs, hashes,
-timestamps, expiration, and lifecycle state. It does not store the xAI API key or
-PDF contents. Expired catalog entries remain as history; active entries can be
-revoked from the Canvas dialog.
+PDF theme, timestamps, expiration, and lifecycle state. It does not store the
+xAI API key or PDF contents. Expired catalog entries remain as history; active
+entries can be revoked from the Canvas dialog. Shares created before theme
+selection was added are light PDFs and appear as light in the history.
 
 A published PDF is an independent xAI file. Deleting its source Canvas page does
 not revoke that public URL; revoke active shares from the page dialog before
@@ -99,9 +106,10 @@ preview therefore warns whenever public image pixels are included, and the user
 must visually inspect them before publishing. Fetching a public image also
 reveals the Jarvis host's network address to that image host at export time.
 
-The publish request also carries a fingerprint of the page fields used for that
-preview. If the title, content, tags, or displayed timestamps change before the
-user clicks Publish, the request stops and requires a fresh preview.
+The publish request carries fingerprints of both the page fields and the exact
+themed PDF used for that preview. If the title, content, tags, displayed
+timestamps, selected theme, or rendered PDF change before the user clicks
+Publish, the request stops and requires a fresh preview.
 
 The publish routes are intentionally outside Canvas's unauthenticated internal
 `/api/pages` route prefix. When Canvas authentication is enabled, PDF export,
