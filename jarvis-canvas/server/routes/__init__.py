@@ -10,6 +10,7 @@ from .video_gallery import video_gallery_bp
 from .audio_gallery import audio_gallery_bp
 from .stash import stash_bp
 from .views import views_bp
+from .pdf_shares import pdf_shares_bp
 
 __all__ = [
     'health_bp',
@@ -19,4 +20,5 @@ __all__ = [
     'audio_gallery_bp',
     'stash_bp',
     'views_bp',
+    'pdf_shares_bp',
 ]

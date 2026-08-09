@@ -47,6 +47,7 @@ def create_app(mode='cloud'):
         gallery_bp,
         health_bp,
         pages_bp,
+        pdf_shares_bp,
         stash_bp,
         video_gallery_bp,
         views_bp,
@@ -55,6 +56,7 @@ def create_app(mode='cloud'):
     
     app.register_blueprint(health_bp)
     app.register_blueprint(pages_bp)
+    app.register_blueprint(pdf_shares_bp)
     app.register_blueprint(gallery_bp)
     app.register_blueprint(video_gallery_bp)
     app.register_blueprint(audio_gallery_bp)

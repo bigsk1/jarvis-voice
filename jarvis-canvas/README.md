@@ -84,8 +84,17 @@ Canvas works with defaults, but headless/LAN installs should set the public URL 
 |----------|---------|-------------|
 | `CANVAS_INTERNAL_URL` | `http://localhost:8890` | Server-side URL used by the Canvas tool for `/api` calls from the Jarvis host |
 | `CANVAS_PUBLIC_URL` | `http://localhost:8890` | Browser-facing URL returned in tool responses and memory, e.g. `http://192.168.70.228:8890` |
+| `CANVAS_XAI_PDF_SHARE` | `false` | Show the authenticated xAI public-PDF flow when `XAI_API_KEY` is also configured |
+| `CANVAS_XAI_PDF_SHARE_DEFAULT_TTL_DAYS` | `7` | Default public lifetime; the UI supports 1, 7, or 30 days |
+| `CANVAS_XAI_PDF_SHARE_MAX_BYTES` | `8388608` | Maximum generated PDF size accepted for public upload |
 
 Canvas page links use `CANVAS_PUBLIC_URL/{page_id}`, for example `http://192.168.70.228:8890/page_20260331_121401`. The Canvas UI serves direct `/page_...` links and selects that page after login.
+
+The page Download dialog offers JSON, Markdown, and PDF. PDF downloads remain
+local; the optional **Publish PDF** action sends a reviewed snapshot to xAI and
+creates an expiring public URL. See
+[Canvas PDF Downloads and xAI Public Sharing](../docs/CANVAS_PDF_SHARING.md) for
+setup, media behavior, safety checks, and revocation.
 
 ---
 

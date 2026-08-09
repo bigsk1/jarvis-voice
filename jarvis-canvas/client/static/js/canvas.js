@@ -7,6 +7,16 @@ let pages = [];
 let currentPage = null;
 let editingPage = null;
 let currentSearchQuery = '';
+let downloadPageId = null;
+let xaiPdfSharePageId = null;
+let xaiPdfShareUrl = null;
+let xaiPdfPreviewSourceSha256 = null;
+let xaiPdfPreviewCanPublish = false;
+let xaiPdfShareStatus = {
+    available: false,
+    default_ttl_days: 7,
+    allowed_ttl_days: [1, 7, 30]
+};
 
 function getInitialPageIdFromLocation() {
     const match = window.location.pathname.match(/^\/(page_[A-Za-z0-9_-]+)$/);
@@ -978,7 +988,9 @@ async function fetchPages() {
 }
 
 async function deletePage(id) {
-    if (!confirm('Delete this page? This cannot be undone.')) return;
+    if (!confirm(
+        'Delete this page? This cannot be undone. Already-published PDF URLs are separate and must be revoked first.'
+    )) return;
     
     try {
         await fetch(`/api/pages/${id}`, { method: 'DELETE' });
@@ -1036,9 +1048,27 @@ function printPage() {
     window.print();
 }
 
-// Download page function
+// Download page functions
+function openDownloadModal(id) {
+    downloadPageId = id;
+    document.getElementById('downloadModal').classList.add('active');
+}
+
+function closeDownloadModal() {
+    downloadPageId = null;
+    document.getElementById('downloadModal').classList.remove('active');
+}
+
+function downloadSelectedPage(format) {
+    if (!downloadPageId) return;
+    downloadPage(downloadPageId, format);
+    closeDownloadModal();
+}
+
 function downloadPage(id, format = 'json') {
-    const url = `/api/pages/${id}/download?format=${format}`;
+    const url = format === 'pdf'
+        ? `/api/canvas-exports/pages/${encodeURIComponent(id)}/pdf?disposition=attachment`
+        : `/api/pages/${encodeURIComponent(id)}/download?format=${encodeURIComponent(format)}`;
     const link = document.createElement('a');
     link.href = url;
     link.download = ''; // Let server set filename
@@ -1046,6 +1076,271 @@ function downloadPage(id, format = 'json') {
     link.click();
     document.body.removeChild(link);
     showToast('Downloading page...', 'success');
+}
+
+async function parseApiResponse(response) {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        throw new Error(response.ok ? 'Unexpected server response' : `Request failed (${response.status})`);
+    }
+    const payload = await response.json();
+    if (!response.ok) {
+        const error = new Error(payload.error || `Request failed (${response.status})`);
+        error.payload = payload;
+        throw error;
+    }
+    return payload;
+}
+
+async function loadXaiPdfShareStatus() {
+    try {
+        const response = await fetch('/api/xai-pdf-shares/status');
+        xaiPdfShareStatus = await parseApiResponse(response);
+    } catch (error) {
+        xaiPdfShareStatus = {
+            available: false,
+            default_ttl_days: 7,
+            allowed_ttl_days: [1, 7, 30]
+        };
+    }
+    if (currentPage) selectPage(currentPage);
+}
+
+function closeXaiPdfShareModal() {
+    xaiPdfSharePageId = null;
+    xaiPdfShareUrl = null;
+    xaiPdfPreviewSourceSha256 = null;
+    xaiPdfPreviewCanPublish = false;
+    document.getElementById('xaiPdfPreviewFrame').removeAttribute('src');
+    document.getElementById('xaiPdfShareModal').classList.remove('active');
+}
+
+function updateXaiPdfPublishButton() {
+    const button = document.getElementById('xaiPdfPublishBtn');
+    const confirmed = document.getElementById('xaiPdfConfirm').checked;
+    button.disabled = !xaiPdfPreviewCanPublish || !confirmed;
+}
+
+function renderXaiPdfFindings(findings) {
+    const container = document.getElementById('xaiPdfFindings');
+    container.replaceChildren();
+    if (!findings.length) {
+        const clear = document.createElement('div');
+        clear.className = 'public-share-clear';
+        clear.textContent = 'No publish warnings found.';
+        container.appendChild(clear);
+        return;
+    }
+    const list = document.createElement('ul');
+    list.className = 'public-share-finding-list';
+    findings.forEach((finding) => {
+        const item = document.createElement('li');
+        item.className = `public-share-finding finding-${finding.severity || 'info'}`;
+        const label = document.createElement('strong');
+        label.textContent = String(finding.severity || 'info').toUpperCase();
+        const message = document.createElement('span');
+        message.textContent = finding.line
+            ? `${finding.message} (line ${finding.line})`
+            : finding.message;
+        item.append(label, message);
+        list.appendChild(item);
+    });
+    container.appendChild(list);
+}
+
+function isExpectedXaiPublicUrl(rawUrl) {
+    try {
+        const parsed = new URL(rawUrl);
+        return parsed.protocol === 'https:' && parsed.hostname === 'files-cdn.x.ai';
+    } catch (error) {
+        return false;
+    }
+}
+
+async function openXaiPdfShareModal(pageId) {
+    if (!xaiPdfShareStatus.available) {
+        showToast(xaiPdfShareStatus.reason || 'xAI PDF sharing is unavailable', 'error');
+        return;
+    }
+    xaiPdfSharePageId = pageId;
+    xaiPdfShareUrl = null;
+    xaiPdfPreviewSourceSha256 = null;
+    xaiPdfPreviewCanPublish = false;
+    document.getElementById('xaiPdfConfirm').checked = false;
+    document.getElementById('xaiPdfPublishBtn').disabled = true;
+    document.getElementById('xaiPdfResult').hidden = true;
+    document.getElementById('xaiPdfMeta').textContent = 'Preparing preview…';
+    document.getElementById('xaiPdfFindings').textContent = 'Checking the snapshot…';
+    document.getElementById('xaiPdfShareHistory').textContent = 'Loading…';
+    document.getElementById('xaiPdfTtl').value = String(xaiPdfShareStatus.default_ttl_days || 7);
+    document.getElementById('xaiPdfShareModal').classList.add('active');
+
+    try {
+        const [previewResponse, historyResponse] = await Promise.all([
+            fetch(`/api/xai-pdf-shares/pages/${encodeURIComponent(pageId)}/preview`, { method: 'POST' }),
+            fetch(`/api/xai-pdf-shares/pages/${encodeURIComponent(pageId)}`)
+        ]);
+        const preview = await parseApiResponse(previewResponse);
+        const history = await parseApiResponse(historyResponse);
+        if (xaiPdfSharePageId !== pageId) return;
+        xaiPdfPreviewCanPublish = Boolean(preview.can_publish);
+        xaiPdfPreviewSourceSha256 = preview.source_sha256;
+        document.getElementById('xaiPdfMeta').textContent =
+            `${preview.pdf.pages} page${preview.pdf.pages === 1 ? '' : 's'} · ${formatByteCount(preview.pdf.bytes)} · ${preview.pdf.links} link${preview.pdf.links === 1 ? '' : 's'}`;
+        document.getElementById('xaiPdfPreviewFrame').src = preview.preview_url;
+        renderXaiPdfFindings(preview.findings || []);
+        renderXaiPdfShareHistory(history.shares || []);
+        updateXaiPdfPublishButton();
+    } catch (error) {
+        if (xaiPdfSharePageId !== pageId) return;
+        document.getElementById('xaiPdfMeta').textContent = 'Preview unavailable';
+        document.getElementById('xaiPdfFindings').textContent = error.message;
+        document.getElementById('xaiPdfShareHistory').textContent = 'History unavailable';
+        showToast(error.message, 'error');
+    }
+}
+
+function formatByteCount(bytes) {
+    const value = Number(bytes) || 0;
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function publishXaiPdfShare() {
+    if (!xaiPdfSharePageId || !document.getElementById('xaiPdfConfirm').checked) return;
+    const pageId = xaiPdfSharePageId;
+    const button = document.getElementById('xaiPdfPublishBtn');
+    button.disabled = true;
+    button.textContent = 'Publishing…';
+    try {
+        const response = await fetch(`/api/xai-pdf-shares/pages/${encodeURIComponent(pageId)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                confirmed: true,
+                ttl_days: Number(document.getElementById('xaiPdfTtl').value),
+                expected_source_sha256: xaiPdfPreviewSourceSha256
+            })
+        });
+        const result = await parseApiResponse(response);
+        if (!isExpectedXaiPublicUrl(result.share.public_url)) {
+            throw new Error('xAI returned an unexpected public URL');
+        }
+        xaiPdfShareUrl = result.share.public_url;
+        const resultBox = document.getElementById('xaiPdfResult');
+        const link = document.getElementById('xaiPdfResultLink');
+        link.href = xaiPdfShareUrl;
+        link.textContent = xaiPdfShareUrl;
+        resultBox.hidden = false;
+        document.getElementById('xaiPdfConfirm').checked = false;
+        showToast('Public PDF created', 'success');
+        try {
+            const history = await parseApiResponse(
+                await fetch(`/api/xai-pdf-shares/pages/${encodeURIComponent(pageId)}`)
+            );
+            renderXaiPdfShareHistory(history.shares || []);
+        } catch (historyError) {
+            document.getElementById('xaiPdfShareHistory').textContent =
+                'Public PDF created, but share history could not be refreshed.';
+        }
+    } catch (error) {
+        if (error.payload && Array.isArray(error.payload.findings)) {
+            renderXaiPdfFindings(error.payload.findings);
+            xaiPdfPreviewCanPublish = false;
+        }
+        showToast(error.message, 'error');
+    } finally {
+        button.textContent = 'Publish public PDF';
+        updateXaiPdfPublishButton();
+    }
+}
+
+function renderXaiPdfShareHistory(shares) {
+    const container = document.getElementById('xaiPdfShareHistory');
+    container.replaceChildren();
+    if (!shares.length) {
+        container.textContent = 'No public PDFs have been created for this page.';
+        return;
+    }
+    shares.forEach((share) => {
+        const row = document.createElement('div');
+        row.className = 'public-share-history-row';
+        const details = document.createElement('div');
+        details.className = 'public-share-history-details';
+        const status = document.createElement('strong');
+        status.textContent = String(share.status || 'unknown').replaceAll('_', ' ');
+        const expires = document.createElement('span');
+        expires.textContent = share.expires_at
+            ? `Expires ${new Date(share.expires_at).toLocaleString()}`
+            : 'Expiration unavailable';
+        details.append(status, expires);
+        row.appendChild(details);
+
+        if (['active', 'revoked_cleanup_pending'].includes(share.status) && isExpectedXaiPublicUrl(share.public_url)) {
+            const actions = document.createElement('div');
+            actions.className = 'public-share-history-actions';
+            const revoke = document.createElement('button');
+            revoke.className = 'btn btn-danger';
+            revoke.textContent = share.status === 'active' ? 'Revoke' : 'Retry cleanup';
+            revoke.addEventListener('click', () => revokeXaiPdfShare(share.share_id));
+            if (share.status === 'active') {
+                const open = document.createElement('a');
+                open.className = 'btn btn-secondary';
+                open.href = share.public_url;
+                open.target = '_blank';
+                open.rel = 'noopener noreferrer';
+                open.textContent = 'Open';
+                actions.appendChild(open);
+            }
+            actions.appendChild(revoke);
+            row.appendChild(actions);
+        }
+        container.appendChild(row);
+    });
+}
+
+async function revokeXaiPdfShare(shareId) {
+    if (!confirm('Revoke this public URL and delete the xAI file?')) return;
+    try {
+        const response = await fetch(`/api/xai-pdf-shares/${encodeURIComponent(shareId)}`, {
+            method: 'DELETE'
+        });
+        await parseApiResponse(response);
+        showToast('Public PDF revoked', 'success');
+        try {
+            const history = await parseApiResponse(
+                await fetch(`/api/xai-pdf-shares/pages/${encodeURIComponent(xaiPdfSharePageId)}`)
+            );
+            renderXaiPdfShareHistory(history.shares || []);
+        } catch (historyError) {
+            document.getElementById('xaiPdfShareHistory').textContent =
+                'Public PDF revoked, but share history could not be refreshed.';
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+async function copyXaiPdfShareUrl() {
+    if (!xaiPdfShareUrl) return;
+    try {
+        await navigator.clipboard.writeText(xaiPdfShareUrl);
+    } catch (error) {
+        const input = document.createElement('textarea');
+        input.value = xaiPdfShareUrl;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        input.remove();
+    }
+    showToast('Public URL copied', 'success');
+}
+
+function openXaiPdfShareUrl() {
+    if (isExpectedXaiPublicUrl(xaiPdfShareUrl)) {
+        window.open(xaiPdfShareUrl, '_blank', 'noopener,noreferrer');
+    }
 }
 
 // Upload modal functions
@@ -1454,9 +1749,14 @@ function selectPage(id) {
                     <button class="btn btn-secondary btn-icon" onclick="togglePin('${page.id}')" title="${page.pinned ? 'Unpin' : 'Pin'}">
                         ${page.pinned ? '📌' : '📍'}
                     </button>
-                    <button class="btn btn-secondary btn-icon" onclick="downloadPage('${page.id}')" title="Download">
+                    <button class="btn btn-secondary btn-icon" onclick="openDownloadModal('${page.id}')" title="Download JSON, Markdown, or PDF">
                         📥
                     </button>
+                    ${xaiPdfShareStatus.available ? `
+                        <button class="btn btn-accent" onclick="openXaiPdfShareModal('${page.id}')" title="Publish a public, expiring PDF with xAI">
+                            🌐 Publish PDF
+                        </button>
+                    ` : ''}
                     <button class="btn btn-secondary btn-icon" onclick="printPage()" title="Print">
                         🖨️
                     </button>
@@ -1587,10 +1887,11 @@ function showToast(message, type = 'success') {
     const container = document.getElementById('toastContainer');
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.innerHTML = `
-        <span>${type === 'success' ? '✅' : '❌'}</span>
-        <span>${message}</span>
-    `;
+    const icon = document.createElement('span');
+    icon.textContent = type === 'success' ? '✅' : '❌';
+    const text = document.createElement('span');
+    text.textContent = String(message || '');
+    toast.append(icon, text);
     container.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
 }
@@ -1614,8 +1915,10 @@ document.addEventListener('DOMContentLoaded', function() {
         clearSearch();
         document.getElementById('searchInput')?.focus();
     });
+    document.getElementById('xaiPdfConfirm')?.addEventListener('change', updateXaiPdfPublishButton);
     
     // Initial load
+    loadXaiPdfShareStatus();
     fetchPages();
 });
 
@@ -1627,6 +1930,8 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeEditModal();
         closeUploadModal();
+        closeDownloadModal();
+        closeXaiPdfShareModal();
     }
 });
 

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Canvas{% endblock %}
+{% block title %}Jarvis Canvas{% endblock %}
 
 {% block head %}
     <!-- Markdown & syntax (local vendor; CDN fallback if missing) -->
@@ -139,6 +139,97 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
                 <button class="btn btn-primary" id="uploadSubmitBtn" disabled onclick="submitUpload()">Import</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Download Modal -->
+    <div class="modal-overlay" id="downloadModal">
+        <div class="modal modal-compact">
+            <div class="modal-header">
+                <h3 class="modal-title">Download Page</h3>
+                <button class="modal-close" onclick="closeDownloadModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-help">Choose a portable copy of this Canvas page.</p>
+                <div class="download-format-grid">
+                    <button class="download-format-card" onclick="downloadSelectedPage('json')">
+                        <strong>JSON</strong>
+                        <span>Complete Canvas data for backup or re-import.</span>
+                    </button>
+                    <button class="download-format-card" onclick="downloadSelectedPage('markdown')">
+                        <strong>Markdown</strong>
+                        <span>Readable text with Canvas metadata frontmatter.</span>
+                    </button>
+                    <button class="download-format-card" onclick="downloadSelectedPage('pdf')">
+                        <strong>PDF</strong>
+                        <span>Portable snapshot with safe link and media placeholders.</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- xAI Public PDF Share Modal -->
+    <div class="modal-overlay" id="xaiPdfShareModal">
+        <div class="modal modal-wide public-share-modal">
+            <div class="modal-header">
+                <div>
+                    <h3 class="modal-title">Publish PDF with xAI</h3>
+                    <div class="modal-kicker">Public, unlisted PDF snapshot</div>
+                </div>
+                <button class="modal-close" onclick="closeXaiPdfShareModal()">&times;</button>
+            </div>
+            <div class="modal-body public-share-body">
+                <div class="public-share-warning">
+                    <strong>Anyone with the URL can view this PDF.</strong>
+                    It is uploaded to the xAI Files API using your <code>XAI_API_KEY</code> and remains public until it expires or you revoke it.
+                </div>
+
+                <div class="public-share-preview-grid">
+                    <section class="public-share-panel">
+                        <div class="public-share-panel-title">PDF preview</div>
+                        <div class="public-share-pdf-meta" id="xaiPdfMeta">Preparing preview…</div>
+                        <iframe id="xaiPdfPreviewFrame" class="public-share-preview-frame" title="Canvas PDF preview"></iframe>
+                    </section>
+                    <section class="public-share-panel">
+                        <div class="public-share-panel-title">Publish check</div>
+                        <div id="xaiPdfFindings" class="public-share-findings" aria-live="polite">Checking the snapshot…</div>
+
+                        <label class="form-label" for="xaiPdfTtl">Public for</label>
+                        <select class="form-input public-share-select" id="xaiPdfTtl">
+                            <option value="1">1 day</option>
+                            <option value="7" selected>7 days</option>
+                            <option value="30">30 days</option>
+                        </select>
+
+                        <label class="public-share-confirm">
+                            <input type="checkbox" id="xaiPdfConfirm">
+                            <span>I reviewed the PDF preview and understand this file will be public.</span>
+                        </label>
+
+                        <button class="btn btn-primary btn-full" id="xaiPdfPublishBtn" onclick="publishXaiPdfShare()" disabled>
+                            Publish public PDF
+                        </button>
+
+                        <div class="public-share-result" id="xaiPdfResult" hidden>
+                            <strong>Public PDF created</strong>
+                            <a id="xaiPdfResultLink" target="_blank" rel="noopener noreferrer"></a>
+                            <div class="public-share-result-actions">
+                                <button class="btn btn-secondary" onclick="copyXaiPdfShareUrl()">Copy URL</button>
+                                <button class="btn btn-secondary" onclick="openXaiPdfShareUrl()">Open PDF</button>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <section class="public-share-history">
+                    <div class="public-share-panel-title">Previous shares for this page</div>
+                    <div id="xaiPdfShareHistory" class="public-share-history-list">Loading…</div>
+                </section>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeXaiPdfShareModal()">Close</button>
             </div>
         </div>
     </div>

@@ -71,6 +71,9 @@ tqdm==4.67.1
 typing_extensions==4.15.0
 urllib3==2.5.0
 fpdf2>=2.8.7,<3
+Pillow>=11.3.0
+brotli>=1.1.0
+markdown-it-py[linkify]>=4.0.0
 pymupdf>=1.26.0
 spotipy>=2.25.0
 yt-dlp>=2026.7.4
