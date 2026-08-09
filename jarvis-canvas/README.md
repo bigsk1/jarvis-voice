@@ -87,6 +87,9 @@ Canvas works with defaults, but headless/LAN installs should set the public URL 
 | `CANVAS_XAI_PDF_SHARE` | `false` | Show the authenticated xAI public-PDF flow when `XAI_API_KEY` is also configured |
 | `CANVAS_XAI_PDF_SHARE_DEFAULT_TTL_DAYS` | `7` | Default public lifetime; the UI supports 1, 7, or 30 days |
 | `CANVAS_XAI_PDF_SHARE_MAX_BYTES` | `8388608` | Maximum generated PDF size accepted for public upload |
+| `CANVAS_XAI_VIDEO_SHARE` | `false` | Show the authenticated xAI public-video flow when `XAI_API_KEY` is configured |
+| `CANVAS_XAI_VIDEO_SHARE_DEFAULT_TTL_DAYS` | `7` | Default retained-video share lifetime; the UI supports 1, 7, or 30 days |
+| `CANVAS_XAI_VIDEO_SHARE_MAX_BYTES` | `48000000` | Maximum retained MP4 size accepted for public upload |
 
 Canvas page links use `CANVAS_PUBLIC_URL/{page_id}`, for example `http://192.168.70.228:8890/page_20260331_121401`. The Canvas UI serves direct `/page_...` links and selects that page after login.
 
@@ -95,6 +98,11 @@ dark is the default. PDF downloads remain local; the optional **Publish PDF**
 action sends the reviewed theme to xAI and creates an expiring public URL. See
 [Canvas PDF Downloads and xAI Public Sharing](../docs/CANVAS_PDF_SHARING.md) for
 setup, media behavior, safety checks, and revocation.
+
+The Video Gallery can also publish any retained MP4 through FastAPI and xAI
+Files, regardless of which provider generated it. See
+[Canvas xAI Video Sharing](../docs/CANVAS_VIDEO_SHARING.md) for lifecycle,
+configuration, and deletion behavior.
 
 ---
 

@@ -217,37 +217,3 @@ def serve_video_thumbnail(filename):
     except Exception as e:
         print(f"⚠️  Thumbnail error for {filename}: {e}")
         abort(500, str(e))
-
-
-@video_gallery_bp.route('/api/gallery/videos/<filename>', methods=['DELETE'])
-def delete_gallery_video(filename):
-    """Delete a video from the gallery."""
-    # Security: prevent path traversal
-    if '..' in filename or '/' in filename:
-        return jsonify({'error': 'Invalid filename'}), 400
-    
-    filepath = GENERATED_VIDEOS_DIR / filename
-    if not filepath.exists():
-        return jsonify({'error': 'Video not found'}), 404
-    
-    try:
-        # Delete the video file
-        filepath.unlink()
-        print(f"🗑️  Deleted gallery video: {filename}")
-        
-        # Delete cached thumbnail if exists
-        thumb_name = Path(filename).stem + ".jpg"
-        thumb_path = THUMBNAIL_CACHE_DIR / thumb_name
-        if thumb_path.exists():
-            thumb_path.unlink()
-            print(f"🗑️  Deleted thumbnail: {thumb_name}")
-        
-        # Remove from catalog
-        catalog = load_video_catalog()
-        if filename in catalog:
-            del catalog[filename]
-            save_video_catalog(catalog)
-        
-        return jsonify({'ok': True, 'deleted': filename})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500

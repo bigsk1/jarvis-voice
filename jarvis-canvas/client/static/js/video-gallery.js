@@ -6,6 +6,43 @@ let videos = [];
 let filteredVideos = [];
 let currentVideo = null;
 let refreshInProgress = false;
+let xaiVideoShareStatus = { available: false, allowed_ttl_days: [], max_video_bytes: 0 };
+let currentVideoSharePreview = null;
+let currentVideoShareFilename = null;
+
+async function fetchVideoShareStatus() {
+    try {
+        const response = await fetch('/api/xai-video-shares/status');
+        const data = await response.json();
+        if (response.ok && data.ok) {
+            xaiVideoShareStatus = data;
+            configureVideoShareTtl();
+            if (videos.length) renderGallery();
+        }
+    } catch (err) {
+        console.debug('xAI video sharing is unavailable:', err);
+    }
+}
+
+function configureVideoShareTtl() {
+    const select = document.getElementById('videoShareTtl');
+    if (!select) return;
+    const allowed = xaiVideoShareStatus.allowed_ttl_days || [1, 7, 30];
+    const selected = Number(xaiVideoShareStatus.default_ttl_days || 7);
+    select.innerHTML = allowed.map(days => (
+        `<option value="${days}" ${Number(days) === selected ? 'selected' : ''}>${days} day${Number(days) === 1 ? '' : 's'}</option>`
+    )).join('');
+}
+
+function canShareVideo(vid) {
+    return Boolean(
+        xaiVideoShareStatus.available &&
+        vid &&
+        String(vid.name || '').toLowerCase().endsWith('.mp4') &&
+        Number(vid.size || 0) > 0 &&
+        Number(vid.size || 0) <= Number(xaiVideoShareStatus.max_video_bytes || 0)
+    );
+}
 
 async function fetchVideos() {
     try {
@@ -109,6 +146,7 @@ function renderGallery() {
                 <div class="video-actions">
                     <div class="video-actions-left">
                         <button class="btn btn-primary" onclick="event.stopPropagation(); downloadByIndex(${index})">⬇️ Download</button>
+                        ${canShareVideo(vid) ? `<button class="btn btn-public" onclick="event.stopPropagation(); shareByIndex(${index})">🔗 Share</button>` : ''}
                     </div>
                     <div class="video-actions-right">
                         <button class="btn btn-danger" onclick="event.stopPropagation(); deleteByIndex(${index})">🗑️</button>
@@ -249,6 +287,12 @@ function downloadByIndex(index) {
     }
 }
 
+function shareByIndex(index) {
+    if (index >= 0 && index < filteredVideos.length) {
+        openVideoShareDialog(filteredVideos[index].name);
+    }
+}
+
 function deleteByIndex(index) {
     if (index >= 0 && index < filteredVideos.length) {
         deleteVideo(filteredVideos[index].name);
@@ -261,9 +305,15 @@ function openLightbox(filename) {
     const video = document.getElementById('lightboxVideo');
     video.src = `/api/gallery/videos/${encodeURIComponent(filename)}`;
     document.getElementById('lightboxFilename').textContent = filename;
+    const selectedVideo = videos.find(vid => vid.name === filename);
+    document.getElementById('lightboxShareBtn').hidden = !canShareVideo(selectedVideo);
     document.getElementById('videoLightbox').classList.add('active');
     document.body.style.overflow = 'hidden';
     video.play().catch(() => {});
+}
+
+function shareCurrentVideo() {
+    if (currentVideo) openVideoShareDialog(currentVideo);
 }
 
 function closeLightbox(event) {
@@ -324,6 +374,220 @@ async function downloadDirect(filename) {
     }
 }
 
+function updateVideoSharePublishState() {
+    const button = document.getElementById('publishVideoShareBtn');
+    const confirmed = document.getElementById('videoShareConfirm')?.checked;
+    button.disabled = !(currentVideoSharePreview && confirmed);
+}
+
+async function readApiError(response) {
+    try {
+        const data = await response.json();
+        return data.error || data.message || data.detail || `Request failed (${response.status})`;
+    } catch (_err) {
+        return `Request failed (${response.status})`;
+    }
+}
+
+async function openVideoShareDialog(filename) {
+    const selectedVideo = videos.find(vid => vid.name === filename);
+    if (!canShareVideo(selectedVideo)) {
+        showToast('This video is not eligible for xAI public sharing', 'error');
+        return;
+    }
+
+    currentVideoShareFilename = filename;
+    currentVideoSharePreview = null;
+    document.getElementById('videoShareFilename').textContent = filename;
+    document.getElementById('videoSharePreview').textContent = 'Checking the retained MP4…';
+    document.getElementById('videoShareConfirm').checked = false;
+    document.getElementById('videoShareResult').hidden = true;
+    document.getElementById('videoShareHistory').textContent = 'Loading…';
+    updateVideoSharePublishState();
+    document.getElementById('videoShareModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+
+    await Promise.allSettled([
+        loadVideoSharePreview(filename),
+        loadVideoShareHistory(filename),
+    ]);
+}
+
+function closeVideoShareDialog(event) {
+    if (event && event.target !== document.getElementById('videoShareModal')) return;
+    document.getElementById('videoShareModal').classList.remove('active');
+    if (!document.getElementById('videoLightbox').classList.contains('active')) {
+        document.body.style.overflow = '';
+    }
+    currentVideoShareFilename = null;
+    currentVideoSharePreview = null;
+}
+
+async function loadVideoSharePreview(filename) {
+    const response = await fetch('/api/xai-video-shares/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename }),
+    });
+    if (!response.ok) {
+        const message = await readApiError(response);
+        document.getElementById('videoSharePreview').textContent = message;
+        throw new Error(message);
+    }
+    const data = await response.json();
+    if (currentVideoShareFilename !== filename) return;
+    currentVideoSharePreview = data.preview;
+    const duration = data.preview.duration ? formatDuration(data.preview.duration) : 'unknown length';
+    document.getElementById('videoSharePreview').innerHTML = `
+        <strong>Ready to publish</strong>
+        <span>${escapeHtml(formatSize(data.preview.video_bytes))} · ${escapeHtml(duration)}</span>
+    `;
+    updateVideoSharePublishState();
+}
+
+async function loadVideoShareHistory(filename) {
+    const response = await fetch(`/api/xai-video-shares/list?filename=${encodeURIComponent(filename)}`);
+    if (!response.ok) {
+        document.getElementById('videoShareHistory').textContent = await readApiError(response);
+        return;
+    }
+    const data = await response.json();
+    if (currentVideoShareFilename === filename) renderVideoShareHistory(data.shares || []);
+}
+
+function renderVideoShareHistory(shares) {
+    const container = document.getElementById('videoShareHistory');
+    if (!shares.length) {
+        container.innerHTML = '<p class="video-share-empty">No public shares yet.</p>';
+        return;
+    }
+    container.innerHTML = shares.map(share => {
+        const status = String(share.status || 'unknown');
+        const active = status === 'active' || status === 'revoked_cleanup_pending';
+        const url = String(share.public_url || '');
+        return `
+            <div class="video-share-row">
+                <div class="video-share-row-meta">
+                    <strong>${escapeHtml(status.replaceAll('_', ' '))}</strong>
+                    <span>Expires ${escapeHtml(formatShareDate(share.expires_at))}</span>
+                </div>
+                <div class="video-share-row-actions">
+                    ${url ? `<button class="btn btn-secondary" type="button" onclick="copyVideoShareUrl('${escapeHtml(url)}')">Copy URL</button>` : ''}
+                    ${url ? `<a class="btn btn-secondary" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open</a>` : ''}
+                    ${active ? `<button class="btn btn-danger" type="button" onclick="revokeVideoShare('${escapeHtml(share.share_id)}')">Revoke</button>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function formatShareDate(value) {
+    if (!value) return 'unknown';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString();
+}
+
+function copyVideoShareUrlLegacy(url) {
+    const textarea = document.createElement('textarea');
+    const previousFocus = document.activeElement;
+    textarea.value = url;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+
+    let copied = false;
+    try {
+        copied = document.execCommand('copy');
+    } catch (_err) {
+        copied = false;
+    }
+    textarea.remove();
+    if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
+    return copied;
+}
+
+async function copyVideoShareUrl(url) {
+    let copied = false;
+
+    // The modern Clipboard API is normally unavailable on LAN HTTP origins.
+    // Avoid awaiting a guaranteed rejection so Firefox retains the click's
+    // user activation for the synchronous legacy copy fallback.
+    if (window.isSecureContext && navigator.clipboard?.writeText) {
+        try {
+            await navigator.clipboard.writeText(url);
+            copied = true;
+        } catch (_err) {
+            copied = false;
+        }
+    }
+
+    if (!copied) copied = copyVideoShareUrlLegacy(url);
+    if (copied) {
+        showToast('Public URL copied');
+        return;
+    }
+
+    window.prompt('Automatic copy was blocked. Press Ctrl+C or Cmd+C, then Enter:', url);
+}
+
+async function publishVideoShare() {
+    if (!currentVideoShareFilename || !currentVideoSharePreview) return;
+    const button = document.getElementById('publishVideoShareBtn');
+    button.disabled = true;
+    button.textContent = 'Publishing…';
+    try {
+        const response = await fetch('/api/xai-video-shares/publish', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                filename: currentVideoShareFilename,
+                ttl_days: Number(document.getElementById('videoShareTtl').value),
+                expected_video_sha256: currentVideoSharePreview.video_sha256,
+                confirmed: document.getElementById('videoShareConfirm').checked,
+            }),
+        });
+        if (!response.ok) throw new Error(await readApiError(response));
+        const data = await response.json();
+        const result = document.getElementById('videoShareResult');
+        result.hidden = false;
+        result.innerHTML = `
+            <strong>Video published</strong>
+            <a href="${escapeHtml(data.share.public_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(data.share.public_url)}</a>
+            <button class="btn btn-secondary" type="button" onclick="copyVideoShareUrl('${escapeHtml(data.share.public_url)}')">Copy URL</button>
+        `;
+        document.getElementById('videoShareConfirm').checked = false;
+        showToast('Public video URL created');
+        await loadVideoShareHistory(currentVideoShareFilename);
+    } catch (err) {
+        showToast(err.message || 'Video publish failed', 'error');
+    } finally {
+        button.textContent = 'Publish Video';
+        updateVideoSharePublishState();
+    }
+}
+
+async function revokeVideoShare(shareId) {
+    if (!confirm('Revoke this public URL and delete the xAI file now?')) return;
+    try {
+        const response = await fetch('/api/xai-video-shares/revoke', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ share_id: shareId }),
+        });
+        if (!response.ok) throw new Error(await readApiError(response));
+        showToast('Public video share revoked');
+        await loadVideoShareHistory(currentVideoShareFilename);
+    } catch (err) {
+        showToast(err.message || 'Failed to revoke public video', 'error');
+    }
+}
+
 async function deleteVideo(filename) {
     if (!filename || filename === 'null' || filename === 'undefined') {
         showToast('Cannot delete: no video selected', 'error');
@@ -331,18 +595,37 @@ async function deleteVideo(filename) {
     }
     if (!confirm(`Delete "${filename}"?\n\nThis cannot be undone.`)) return;
     
+    await requestVideoDeletion(filename, false);
+}
+
+async function requestVideoDeletion(filename, revokePublicShares) {
     try {
-        const response = await fetch(`/api/gallery/videos/${encodeURIComponent(filename)}`, {
-            method: 'DELETE'
+        const response = await fetch('/api/video-actions/delete', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                filename,
+                revoke_public_shares: revokePublicShares,
+            }),
         });
-        
+
         if (response.ok) {
-            showToast('Video deleted');
+            showToast(revokePublicShares ? 'Public copies revoked and video deleted' : 'Video deleted');
             refreshGallery();
-        } else {
-            const data = await response.json();
-            showToast(data.error || 'Failed to delete', 'error');
+            return;
         }
+
+        const data = await response.json();
+        if (response.status === 409 && data.code === 'active_public_video_shares') {
+            const count = (data.active_shares || []).length;
+            const confirmed = confirm(
+                `This video has ${count} active public share${count === 1 ? '' : 's'}.\n\n` +
+                'Revoke the public copies, delete the xAI files, and then delete the local video?'
+            );
+            if (confirmed) await requestVideoDeletion(filename, true);
+            return;
+        }
+        showToast(data.error || data.message || 'Failed to delete', 'error');
     } catch (err) {
         showToast('Failed to delete video', 'error');
     }
@@ -389,7 +672,13 @@ function showToast(message, type = 'success') {
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'Escape') {
+        if (document.getElementById('videoShareModal').classList.contains('active')) {
+            closeVideoShareDialog();
+        } else {
+            closeLightbox();
+        }
+    }
     if (e.key === 'ArrowRight' && currentVideo) navigateVideo(1);
     if (e.key === 'ArrowLeft' && currentVideo) navigateVideo(-1);
     if (e.key === ' ' && currentVideo) {
@@ -410,5 +699,6 @@ function navigateVideo(direction) {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
+    fetchVideoShareStatus();
     fetchVideos();
 });

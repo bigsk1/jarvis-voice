@@ -69,10 +69,45 @@
                 <span class="video-lightbox-filename" id="lightboxFilename"></span>
                 <div class="video-lightbox-actions">
                     <button class="btn btn-primary" onclick="downloadVideo()">⬇️ Download</button>
+                    <button class="btn btn-public" id="lightboxShareBtn" onclick="shareCurrentVideo()" hidden>🔗 Share</button>
                     <button class="btn btn-danger" onclick="deleteFromLightbox()">🗑️ Delete</button>
                 </div>
             </div>
         </div>
+    </div>
+
+    <div class="video-share-modal" id="videoShareModal" onclick="closeVideoShareDialog(event)">
+        <section class="video-share-dialog" role="dialog" aria-modal="true" aria-labelledby="videoShareTitle" onclick="event.stopPropagation()">
+            <button class="video-share-close" type="button" aria-label="Close" onclick="closeVideoShareDialog()">&times;</button>
+            <h2 id="videoShareTitle">Share Video Publicly</h2>
+            <p class="video-share-filename" id="videoShareFilename"></p>
+            <p class="video-share-warning">
+                Anyone with the URL can play or download this video. Video frames, audio, captions, and metadata are not scanned for secrets.
+            </p>
+
+            <div class="video-share-preview" id="videoSharePreview">Checking the retained MP4…</div>
+
+            <div class="video-share-controls">
+                <label for="videoShareTtl">Expires after</label>
+                <select id="videoShareTtl"></select>
+            </div>
+            <label class="video-share-confirm">
+                <input type="checkbox" id="videoShareConfirm" onchange="updateVideoSharePublishState()">
+                I reviewed the complete video and understand it will be public.
+            </label>
+
+            <div class="video-share-dialog-actions">
+                <button class="btn btn-secondary" type="button" onclick="closeVideoShareDialog()">Cancel</button>
+                <button class="btn btn-public" type="button" id="publishVideoShareBtn" onclick="publishVideoShare()" disabled>Publish Video</button>
+            </div>
+
+            <div class="video-share-result" id="videoShareResult" hidden></div>
+
+            <div class="video-share-history">
+                <h3>Share History</h3>
+                <div id="videoShareHistory">Loading…</div>
+            </div>
+        </section>
     </div>
 
     <div class="toast" id="toast"></div>

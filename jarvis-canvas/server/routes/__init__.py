@@ -11,6 +11,7 @@ from .audio_gallery import audio_gallery_bp
 from .stash import stash_bp
 from .views import views_bp
 from .pdf_shares import pdf_shares_bp
+from .video_shares import video_shares_bp
 
 __all__ = [
     'health_bp',
@@ -21,4 +22,5 @@ __all__ = [
     'stash_bp',
     'views_bp',
     'pdf_shares_bp',
+    'video_shares_bp',
 ]

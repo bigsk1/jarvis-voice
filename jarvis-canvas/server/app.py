@@ -50,6 +50,7 @@ def create_app(mode='cloud'):
         pdf_shares_bp,
         stash_bp,
         video_gallery_bp,
+        video_shares_bp,
         views_bp,
     )
     from server.routes.auth import auth_bp
@@ -59,6 +60,7 @@ def create_app(mode='cloud'):
     app.register_blueprint(pdf_shares_bp)
     app.register_blueprint(gallery_bp)
     app.register_blueprint(video_gallery_bp)
+    app.register_blueprint(video_shares_bp)
     app.register_blueprint(audio_gallery_bp)
     app.register_blueprint(stash_bp)
     app.register_blueprint(views_bp)

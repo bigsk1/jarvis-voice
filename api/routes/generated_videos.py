@@ -7,6 +7,8 @@ Endpoints:
 - GET  /api/generated-videos/{name}/info  - Get video metadata
 - DELETE /api/generated-videos/{name}     - Delete video
 - POST /api/generated-videos/generate     - Generate new video
+- POST /api/generated-videos/xai-shares/publish - Publish retained MP4
+- DELETE /api/generated-videos/xai-shares/revoke - Revoke public MP4
 - GET  /api/generated-videos/health       - Health check
 """
 import sys
@@ -15,7 +17,7 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import Optional
 
@@ -33,6 +35,15 @@ from video_catalog import (
     save_video_catalog as _save_video_catalog,
     sync_video_catalog as _sync_video_catalog,
 )
+from api.services.xai_video_share import (  # noqa: E402
+    ALLOWED_TTL_DAYS,
+    XaiVideoShareConflict,
+    XaiVideoShareDisabled,
+    XaiVideoShareError,
+    XaiVideoShareService,
+    XaiVideoShareValidationError,
+    get_xai_video_share_status,
+)
 
 # Load config
 load_config()
@@ -45,6 +56,7 @@ GENERATED_VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Catalog file for video metadata (shared with jarvis-canvas)
 VIDEO_CATALOG_FILE = GENERATED_VIDEOS_DIR / "video_catalog.json"
+video_share_service = XaiVideoShareService(GENERATED_VIDEOS_DIR)
 
 # Stash directory for looking up metadata
 STASH_DIR = get_stash_dir()
@@ -149,6 +161,26 @@ class GenerateResponse(BaseModel):
     speech: Optional[str] = None
     error: Optional[str] = None
     data: Optional[dict] = None
+
+
+class VideoShareFilenameRequest(BaseModel):
+    """Identify a retained video without putting its extension in a Canvas route."""
+
+    filename: str
+
+
+class VideoSharePublishRequest(VideoShareFilenameRequest):
+    """Publish the exact retained MP4 that the user reviewed."""
+
+    ttl_days: int = 7
+    expected_video_sha256: str
+    confirmed: bool = False
+
+
+class VideoShareRevokeRequest(BaseModel):
+    """Identify a public share for revocation and remote deletion."""
+
+    share_id: str
 
 
 def format_size(size_bytes: int) -> str:
@@ -394,6 +426,81 @@ async def generate_video(request: GenerateRequest):
         return GenerateResponse(ok=False, error=str(e))
 
 
+def _raise_video_share_http_error(exc: XaiVideoShareError) -> None:
+    if isinstance(exc, XaiVideoShareDisabled):
+        status_code = 503
+    elif isinstance(exc, XaiVideoShareConflict):
+        status_code = 409
+    elif isinstance(exc, XaiVideoShareValidationError):
+        status_code = 422
+    else:
+        status_code = 502
+    raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.get("/xai-shares/status")
+def xai_video_share_status():
+    """Return non-secret xAI video-share availability and limits."""
+    return {"ok": True, **get_xai_video_share_status()}
+
+
+@router.post("/xai-shares/preview")
+def preview_xai_video_share(request: VideoShareFilenameRequest):
+    """Validate and fingerprint the retained MP4 before user confirmation."""
+    try:
+        preview = video_share_service.inspect_video(request.filename)
+    except XaiVideoShareError as exc:
+        _raise_video_share_http_error(exc)
+    return {"ok": True, "preview": preview}
+
+
+@router.get("/xai-shares")
+def list_xai_video_shares(filename: str = Query(...)):
+    """List local lifecycle history for one retained video filename."""
+    try:
+        shares = video_share_service.list_for_video(filename)
+    except XaiVideoShareError as exc:
+        _raise_video_share_http_error(exc)
+    return {"ok": True, "shares": shares}
+
+
+@router.post("/xai-shares/publish", status_code=201)
+def publish_xai_video_share(request: VideoSharePublishRequest):
+    """Upload a reviewed retained MP4 and create an expiring public URL."""
+    if request.confirmed is not True:
+        raise HTTPException(
+            status_code=400,
+            detail="Confirm that this video will be public before publishing.",
+        )
+    if request.ttl_days not in ALLOWED_TTL_DAYS:
+        raise HTTPException(status_code=400, detail="Expiration must be 1, 7, or 30 days.")
+
+    catalog = sync_video_catalog()
+    provider = str((catalog.get(request.filename) or {}).get("provider") or "").strip() or None
+    try:
+        record = video_share_service.publish(
+            filename=request.filename,
+            ttl_days=request.ttl_days,
+            expected_video_sha256=request.expected_video_sha256.strip().lower(),
+            provider=provider,
+        )
+    except XaiVideoShareError as exc:
+        _raise_video_share_http_error(exc)
+    return {"ok": True, "share": record}
+
+
+@router.delete("/xai-shares/revoke")
+def revoke_xai_video_share(request: VideoShareRevokeRequest):
+    """Revoke a public URL and delete its underlying xAI file."""
+    if not request.share_id or len(request.share_id) != 32:
+        raise HTTPException(status_code=400, detail="Invalid share identifier.")
+    try:
+        record = video_share_service.revoke(request.share_id)
+    except XaiVideoShareError as exc:
+        _raise_video_share_http_error(exc)
+    return {"ok": True, "share": record}
+
+
 @router.get("/{filename}/info", response_model=VideoDetailResponse)
 async def get_video_info(filename: str):
     """
@@ -475,33 +582,72 @@ async def get_generated_video(filename: str):
 
 
 @router.delete("/{filename}", response_model=DeleteResponse)
-async def delete_generated_video(filename: str):
+def delete_generated_video(
+    filename: str,
+    revoke_public_shares: bool = Query(
+        False,
+        description="Revoke and delete active xAI public copies before local deletion",
+    ),
+):
     """
     Delete a generated video and remove from catalog.
-    
+
     **Example**:
     ```bash
     curl -X DELETE http://localhost:8880/api/generated-videos/my_video.mp4
     ```
     """
+    revoke_public_shares = revoke_public_shares is True
+
     # Security: prevent path traversal
-    if '..' in filename or '/' in filename or '\\' in filename:
+    if ".." in filename or "/" in filename or "\\" in filename:
         return DeleteResponse(ok=False, error="Invalid filename")
-    
+
     filepath = GENERATED_VIDEOS_DIR / filename
     if not filepath.exists():
         return DeleteResponse(ok=False, error="Video not found")
-    
+
+    try:
+        active_shares = video_share_service.active_for_video(filename)
+    except XaiVideoShareError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="The public-share catalog could not be checked; the video was not deleted.",
+        ) from exc
+    if active_shares and not revoke_public_shares:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "active_public_video_shares",
+                "message": (
+                    "This video still has active public copies. Revoke them before local deletion."
+                ),
+                "active_shares": [
+                    {
+                        "share_id": record.get("share_id"),
+                        "public_url": record.get("public_url"),
+                        "expires_at": record.get("expires_at"),
+                    }
+                    for record in active_shares
+                ],
+            },
+        )
+    if active_shares:
+        try:
+            video_share_service.revoke_all_for_video(filename)
+        except XaiVideoShareError as exc:
+            _raise_video_share_http_error(exc)
+
     try:
         # Delete the video file
         filepath.unlink()
-        
+
         # Remove from catalog
         catalog = load_video_catalog()
         if filename in catalog:
             del catalog[filename]
             save_video_catalog(catalog)
-        
+
         return DeleteResponse(ok=True, deleted=filename)
     except Exception as e:
         return DeleteResponse(ok=False, error=str(e))
