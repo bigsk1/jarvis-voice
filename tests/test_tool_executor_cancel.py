@@ -105,6 +105,12 @@ class ToolExecutorCancelTests(unittest.TestCase):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("flight_search"), 120)
 
+    def test_travel_explore_timeout_allows_full_provider_request(self):
+        executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
+        self.assertEqual(
+            executor._get_subprocess_timeout("serpapi_travel_explore"), 120
+        )
+
     def test_tripadvisor_timeout_allows_three_sequential_http_calls(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("serpapi_tripadvisor"), 160)

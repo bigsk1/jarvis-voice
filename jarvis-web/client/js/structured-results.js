@@ -201,6 +201,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_google_sports', payload => this._adaptGoogleSports(payload));
     this.register('serpapi_google_trends', payload => this._adaptGoogleTrends(payload));
     this.register('serpapi_google_trending_now', payload => this._adaptGoogleTrendingNow(payload));
+    this.register('serpapi_travel_explore', payload => this._adaptTravelExplore(payload));
     this.register('serpapi_tripadvisor', payload => this._adaptTripadvisor(payload));
     this.register('trakt_movies', payload => this._adaptTraktMovies(payload));
     this.register('tmdb_movies', payload => this._adaptTmdbMovies(payload));
@@ -1216,6 +1217,46 @@ class StructuredResultsRenderer {
       subtitle: dates,
       actionUrl: payload.booking_url,
       actionLabel: 'Open Google Flights',
+      items,
+    };
+  }
+
+  _adaptTravelExplore(payload) {
+    const currency = payload.currency || 'USD';
+    const items = this._rows(payload).map((row, index) => {
+      const chips = [];
+      if (row.hotel_price != null) {
+        chips.push(`Hotel signal ${this._formatPrice(row.hotel_price, currency)}`);
+      }
+      if (row.start_date && row.end_date) chips.push(`${row.start_date} → ${row.end_date}`);
+      else if (row.start_date) chips.push(`Starts ${row.start_date}`);
+      if (row.stops_label) chips.push(row.stops_label);
+      const airport = [row.airport_code, row.airport_location].filter(Boolean).join(' · ');
+      const transfer = row.ground_transfer_display
+        ? `${row.ground_transfer_display} ground transfer`
+        : '';
+      return {
+        title: row.name || `Destination ${index + 1}`,
+        url: row.google_travel_url,
+        image: row.thumbnail,
+        primary: row.flight_price != null
+          ? `${this._formatPrice(row.flight_price, currency)} flight signal`
+          : '',
+        chips,
+        details: [row.country, airport, row.flight_duration_display, transfer, row.airline].filter(Boolean),
+        actionLabel: 'Explore destination',
+      };
+    });
+    const duration = payload.travel_duration
+      ? String(payload.travel_duration).replace(/_/g, ' ')
+      : '';
+    return {
+      kind: 'travel',
+      eyebrow: 'Travel Explore · Planning prices',
+      heading: `Destination ideas from ${payload.departure_id || 'your origin'}`,
+      subtitle: [payload.month_label, duration, payload.interest].filter(Boolean).join(' · '),
+      actionUrl: payload.google_travel_url || payload.top_url,
+      actionLabel: 'Open Google Travel',
       items,
     };
   }

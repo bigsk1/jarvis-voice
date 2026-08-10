@@ -1698,6 +1698,59 @@ def test_extract_followup_data_generic_fallback_keeps_maps_and_hotel_candidate_r
     assert hotels["candidates"][0]["rating"] == 4.4
 
 
+def test_extract_followup_data_preserves_travel_explore_handoff_context():
+    data = {
+        "serpapi_travel_explore": {
+            "engine": "google_travel_explore",
+            "planning_stage": "destination_discovery",
+            "departure_id": "PDX",
+            "trip_type": "round_trip",
+            "date_mode": "flexible",
+            "month": 10,
+            "month_label": "October",
+            "travel_duration": "one_week",
+            "currency": "USD",
+            "flight_price_basis": "provider_headline_round_trip_fare",
+            "hotel_price_basis": "provider_headline_lodging_price_unspecified",
+            "price_confirmation_required": True,
+            "results": [
+                {
+                    "destination_id": "/m/030qb3t",
+                    "name": "Zion National Park",
+                    "airport_code": "LAS",
+                    "airport_location": "Las Vegas",
+                    "start_date": "2026-10-09",
+                    "end_date": "2026-10-16",
+                    "flight_price": 246,
+                    "hotel_price": 167,
+                    "ground_transfer_display": "2h 44m",
+                    "google_travel_url": "https://www.google.com/travel/explore/zion",
+                    "serpapi_link": "https://serpapi.com/private-drilldown",
+                }
+            ],
+        }
+    }
+
+    explore = _handler()._extract_followup_data(data)["serpapi_travel_explore"]
+
+    assert explore["planning_stage"] == "destination_discovery"
+    assert explore["departure_id"] == "PDX"
+    assert explore["month_label"] == "October"
+    assert explore["price_confirmation_required"] is True
+    assert explore["candidates"][0] == {
+        "destination_id": "/m/030qb3t",
+        "name": "Zion National Park",
+        "airport_code": "LAS",
+        "airport_location": "Las Vegas",
+        "start_date": "2026-10-09",
+        "end_date": "2026-10-16",
+        "flight_price": 246,
+        "hotel_price": 167,
+        "ground_transfer_display": "2h 44m",
+        "google_travel_url": "https://www.google.com/travel/explore/zion",
+    }
+
+
 def test_extract_followup_data_preserves_google_local_provenance_and_place_actions():
     handler = _handler()
     data = {

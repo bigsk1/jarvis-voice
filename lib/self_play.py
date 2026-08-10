@@ -104,6 +104,7 @@ DEFAULT_ALLOWED_TOOLS = {
     "serpapi_google_sports",
     "serpapi_google_trends",
     "serpapi_google_trending_now",
+    "serpapi_travel_explore",
     "serpapi_maps_search",
     "serpapi_amazon_search",
     "serpapi_search_index",

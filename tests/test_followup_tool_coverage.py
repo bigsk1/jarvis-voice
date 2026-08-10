@@ -629,6 +629,59 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "serpapi_travel_explore": _case(
+        {
+            "engine": "google_travel_explore",
+            "provider": "serpapi",
+            "planning_stage": "destination_discovery",
+            "departure_id": "PDX",
+            "trip_type": "round_trip",
+            "date_mode": "flexible",
+            "month": 10,
+            "month_label": "October",
+            "travel_duration": "one_week",
+            "currency": "USD",
+            "sort_by": "recommended",
+            "results_count": 1,
+            "provider_results_count": 30,
+            "flight_price_basis": "provider_headline_round_trip_fare",
+            "hotel_price_basis": "provider_headline_lodging_price_unspecified",
+            "price_confirmation_required": True,
+            "google_travel_url": "https://www.google.com/travel/explore",
+            "results": [
+                {
+                    "position": 1,
+                    "destination_id": "/m/030qb3t",
+                    "name": "Zion National Park",
+                    "country": "United States",
+                    "gps_coordinates": {
+                        "latitude": 37.2982,
+                        "longitude": -113.0263,
+                    },
+                    "airport_code": "LAS",
+                    "airport_location": "Las Vegas",
+                    "airport_location_id": "/m/0cv3w",
+                    "start_date": "2026-10-09",
+                    "end_date": "2026-10-16",
+                    "nights": 7,
+                    "flight_price": 246,
+                    "hotel_price": 167,
+                    "flight_duration_minutes": 135,
+                    "flight_duration_display": "2h 15m",
+                    "number_of_stops": 0,
+                    "stops_label": "Nonstop",
+                    "airline": "Alaska",
+                    "airline_code": "AS",
+                    "ground_transfer_minutes": 164,
+                    "ground_transfer_display": "2h 44m",
+                    "thumbnail": "https://images.example/zion.jpg",
+                    "google_travel_url": "https://www.google.com/travel/explore/zion",
+                    "serpapi_link": "https://serpapi.com/private-drilldown",
+                    "raw": {"secret": "SECRET_SENTINEL"},
+                }
+            ],
+        }
+    ),
     "serpapi_maps_search": _case(
         {
             "engine": "google_maps",
@@ -1527,6 +1580,52 @@ def test_hotel_search_followup_keeps_stay_context_and_property_identity():
     assert result["price_basis"] == "lowest_listed_total_for_entire_stay"
     assert result["candidates"][0]["property_id"] == "hotel-harbor-1"
     assert result["candidates"][0]["price_total"] == "$400"
+
+
+def test_travel_explore_followup_keeps_destination_handoff_fields():
+    payload, _ = LOCAL_TOOL_SAMPLES["serpapi_travel_explore"]
+
+    result = followup.extract_followup_data(
+        {"serpapi_travel_explore": payload}
+    )["serpapi_travel_explore"]
+
+    assert result["planning_stage"] == "destination_discovery"
+    assert result["departure_id"] == "PDX"
+    assert result["month_label"] == "October"
+    assert result["flight_price_basis"] == "provider_headline_round_trip_fare"
+    assert result["price_confirmation_required"] is True
+    assert result["candidates"] == [
+        {
+            "position": 1,
+            "destination_id": "/m/030qb3t",
+            "name": "Zion National Park",
+            "country": "United States",
+            "gps_coordinates": {
+                "latitude": 37.2982,
+                "longitude": -113.0263,
+            },
+            "airport_code": "LAS",
+            "airport_location": "Las Vegas",
+            "airport_location_id": "/m/0cv3w",
+            "start_date": "2026-10-09",
+            "end_date": "2026-10-16",
+            "nights": 7,
+            "flight_price": 246,
+            "hotel_price": 167,
+            "flight_duration_minutes": 135,
+            "flight_duration_display": "2h 15m",
+            "number_of_stops": 0,
+            "stops_label": "Nonstop",
+            "airline": "Alaska",
+            "airline_code": "AS",
+            "ground_transfer_minutes": 164,
+            "ground_transfer_display": "2h 44m",
+            "thumbnail": "https://images.example/zion.jpg",
+            "google_travel_url": "https://www.google.com/travel/explore/zion",
+        }
+    ]
+    assert "serpapi_link" not in result["candidates"][0]
+    assert "raw" not in result["candidates"][0]
 
 
 def test_yelp_search_followup_keeps_business_identity_and_comparison_fields():

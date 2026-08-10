@@ -116,6 +116,8 @@ class ToolExecutor:
             return 120  # One Google Trends request with a 90s HTTP allowance
         if tool_name == "serpapi_google_trending_now":
             return 120  # One Trending Now or selected-trend News request
+        if tool_name == "serpapi_travel_explore":
+            return 120  # One Travel Explore request with a 90s HTTP allowance
         if tool_name == "serpapi_google_news_light":
             return 120  # One Google News Light request with a 90s HTTP allowance
         if tool_name == "serpapi_google_shopping_light":

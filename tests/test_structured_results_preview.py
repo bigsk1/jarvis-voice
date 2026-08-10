@@ -59,6 +59,7 @@ const expectedTools = [
   'serpapi_google_sports',
   'serpapi_google_trends',
   'serpapi_google_trending_now',
+  'serpapi_travel_explore',
   'serpapi_tripadvisor',
   'trakt_movies',
   'tmdb_movies',
@@ -315,6 +316,30 @@ const html = renderer.render({{
       google_trends_url: 'https://trends.google.com/trends/explore?q=agentic+ai'
     }}]
   }},
+  serpapi_travel_explore: {{
+    departure_id: 'PDX',
+    month_label: 'October',
+    travel_duration: 'one_week',
+    interest: 'outdoors',
+    currency: 'USD',
+    google_travel_url: 'https://www.google.com/travel/explore',
+    results: [{{
+      name: 'Zion National Park',
+      country: 'United States',
+      airport_code: 'LAS',
+      airport_location: 'Las Vegas',
+      start_date: '2026-10-09',
+      end_date: '2026-10-16',
+      flight_price: 246,
+      hotel_price: 167,
+      flight_duration_display: '2h 15m',
+      stops_label: 'Nonstop',
+      ground_transfer_display: '2h 44m',
+      airline: 'Alaska',
+      thumbnail: 'https://images.example/zion.jpg',
+      google_travel_url: 'https://www.google.com/travel/explore/zion'
+    }}]
+  }},
   serpapi_tripadvisor: {{
     action: 'search',
     query: 'Rome',
@@ -485,6 +510,10 @@ for (const expected of [
   '42 active · 50 total', 'agentic ai', '200,000 searches', 'Active now',
   '+1000%', 'Technology · Business and Finance',
   'Related: ai agents · agent frameworks', 'Open Trending Now',
+  'Travel Explore · Planning prices', 'Destination ideas from PDX',
+  'October · one week · outdoors', 'Zion National Park', '$246 flight signal',
+  'Hotel signal $167', '2026-10-09 → 2026-10-16', 'LAS · Las Vegas',
+  '2h 44m ground transfer', 'Explore destination', 'Open Google Travel',
   'Colosseum', '155000 reviews', 'Rome, Italy', 'Ancient amphitheatre',
   'PDX → PHX', '$257', 'Alaska', 'AS 1349',
   'Departs 09/15/2099 · 7:03 AM', 'Open Google Flights',
@@ -509,7 +538,7 @@ for (const expected of [
 }}
 if (html.includes('flight_numbers')) process.exit(4);
 if (html.includes('https://serpapi.example/unsafe-thumb.jpg')) process.exit(9);
-if ((html.match(/structured-results-preview/g) || []).length !== 20) process.exit(5);
+if ((html.match(/structured-results-preview/g) || []).length !== 21) process.exit(5);
 
 if (!renderer.register('custom_demo', payload => ({{
   kind: 'generic',

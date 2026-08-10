@@ -1,0 +1,197 @@
+{
+  "enabled": true,
+  "name": "serpapi_travel_explore",
+  "description": "Discover where and roughly when to travel from an origin using Google Travel Explore through SerpApi. Use for open-ended or flexible planning such as 'where can I fly from PDX this fall under $300', 'weekend beach trips from Seattle', or 'one-week destinations in Europe from New York'. It returns a bounded destination shortlist with destination IDs, airport codes, suggested dates, headline flight and hotel prices, duration, stops, airline, imagery, coordinates, transfer time, and public Google Travel links. This is the discovery stage before exact shopping: after the user selects a destination, use flight_search to confirm route/date itineraries and current fares, serpapi_hotel_search for actual rooms and stay totals, and serpapi_tripadvisor for destination details and reviews. Do not use this when the user already supplied a specific destination and exact dates and wants bookable flight times; use flight_search instead. Headline Explore prices are planning signals, not booking quotes, and this tool never books or pays for travel. Stable results[] fields are designed for follow-ups and workflows, including name, destination_id, airport_code, start_date, end_date, flight_price, hotel_price, gps_coordinates, thumbnail, and google_travel_url.",
+  "complementary_tools": [
+    "flight_search",
+    "serpapi_hotel_search",
+    "serpapi_tripadvisor",
+    "canvas",
+    "stash"
+  ],
+  "script": "serpapi_travel_explore.py",
+  "proxy_policy": "off",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "departure_id": {
+        "type": "string",
+        "description": "Required origin as a 3-letter IATA airport code such as PDX, a Google location KGMID beginning /m/ or /g/, or comma-separated nearby origins."
+      },
+      "arrival_area_id": {
+        "type": "string",
+        "description": "Optional region or country KGMID used to constrain discovery, such as /m/02j9z for Europe. This is an advanced Google location ID, not a city name."
+      },
+      "trip_type": {
+        "type": "string",
+        "enum": [
+          "round_trip",
+          "one_way"
+        ],
+        "description": "Trip shape. Default round_trip."
+      },
+      "outbound_date": {
+        "type": "string",
+        "description": "Optional exact future departure date as YYYY-MM-DD. For round trips, return_date is then required. Omit exact dates for flexible discovery."
+      },
+      "return_date": {
+        "type": "string",
+        "description": "Optional exact future return date as YYYY-MM-DD. Requires outbound_date and is not allowed for one_way."
+      },
+      "month": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 12,
+        "description": "Flexible travel month: 1-12, limited to Google's six currently selectable calendar months. Use 0 or omit for all upcoming selectable months. Cannot be combined with exact dates."
+      },
+      "travel_duration": {
+        "type": "string",
+        "enum": [
+          "weekend",
+          "one_week",
+          "two_weeks"
+        ],
+        "description": "Flexible round-trip length. Default one_week. Cannot be combined with exact dates or one_way."
+      },
+      "travel_class": {
+        "type": "string",
+        "enum": [
+          "economy",
+          "premium_economy",
+          "business",
+          "first"
+        ],
+        "description": "Cabin class. Default economy."
+      },
+      "adults": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Adult travelers. Default 1; all travelers combined may not exceed 9."
+      },
+      "children": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Children aged 2-11. Default 0."
+      },
+      "infants_in_seat": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Infants occupying their own seats. Default 0."
+      },
+      "infants_on_lap": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Lap infants. Default 0 and cannot exceed adults."
+      },
+      "stops": {
+        "type": "string",
+        "enum": [
+          "any",
+          "nonstop",
+          "one_stop_or_fewer",
+          "two_stops_or_fewer"
+        ],
+        "description": "Stop limit for destination airfare signals. Default any."
+      },
+      "travel_mode": {
+        "type": "string",
+        "enum": [
+          "all",
+          "flight_only"
+        ],
+        "description": "Include all Google Explore travel modes or flight destinations only. Cannot be combined with interest."
+      },
+      "interest": {
+        "type": "string",
+        "enum": [
+          "popular",
+          "outdoors",
+          "beaches",
+          "museums",
+          "history",
+          "skiing"
+        ],
+        "description": "Destination-interest filter. Cannot be combined with travel_mode."
+      },
+      "include_airlines": {
+        "type": "string",
+        "description": "Comma-separated 2-character airline codes or STAR_ALLIANCE, SKYTEAM, or ONEWORLD. Cannot be combined with exclude_airlines."
+      },
+      "exclude_airlines": {
+        "type": "string",
+        "description": "Comma-separated airline codes or alliances to exclude. Cannot be combined with include_airlines."
+      },
+      "bags": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Carry-on bags. Default 0 and cannot exceed adults, children, and seated infants combined."
+      },
+      "max_price": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Maximum headline ticket price in the selected currency. This does not cap hotel or total trip cost."
+      },
+      "max_duration": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Maximum flight duration in minutes."
+      },
+      "currency": {
+        "type": "string",
+        "description": "Three-letter currency code for headline prices. Default USD."
+      },
+      "hl": {
+        "type": "string",
+        "description": "Two-letter Google result language code. Default en."
+      },
+      "gl": {
+        "type": "string",
+        "description": "Two-letter Google country code for localization. Default us."
+      },
+      "sort_by": {
+        "type": "string",
+        "enum": [
+          "recommended",
+          "flight_price",
+          "hotel_price",
+          "flight_duration"
+        ],
+        "description": "Local ordering of the returned provider page. Default recommended preserves Google order; other values sort only the returned candidates."
+      },
+      "num_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "description": "Number of normalized destinations to return. Default 5."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "Bypass SerpApi's one-hour cache. Default false; use true only when the user explicitly requests a fresh scrape."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Advanced non-reserved Google Travel Explore parameters passed through to SerpApi."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "Include the full SerpApi provider payload for debugging. Default false."
+      }
+    },
+    "required": [
+      "departure_id"
+    ]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "SERP_API_KEY"
+    ],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file."
+  }
+}

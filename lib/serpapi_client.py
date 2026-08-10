@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from typing import Any
 
 from config_loader import get_config_value
 from http_client import get_proxy_config, http_request
-
+from security_utils import redact_sensitive_text
 
 SERPAPI_ENDPOINT = "https://serpapi.com/search.json"
 SERPAPI_STATUS_PAGE_URL = "https://status.serpapi.com/"
@@ -28,6 +29,7 @@ SERPAPI_TOOL_ENGINES = {
     "serpapi_google_shopping_light": ("google_shopping_light",),
     "serpapi_google_sports": ("google_sports",),
     "serpapi_google_trends": ("google_trends",),
+    "serpapi_travel_explore": ("google_travel_explore",),
     "serpapi_search_index": ("search_index",),
     "serpapi_tripadvisor": ("tripadvisor",),
     "serpapi_youtube_search": ("youtube",),
@@ -55,6 +57,7 @@ SERPAPI_ENGINE_LABELS = {
     "google_trends": "Google Trends",
     "google_trends_news": "Google Trends News",
     "google_trends_trending_now": "Google Trends Trending Now",
+    "google_travel_explore": "Google Travel Explore",
     "home_depot": "Home Depot Search",
     "home_depot_product": "Home Depot Product",
     "search_index": "Search Index",
@@ -105,6 +108,10 @@ SERPAPI_ENGINE_STATUS_ALIASES = {
     "google_trends_trending_now": (
         "google trends trending now api",
         "google trends trending now",
+    ),
+    "google_travel_explore": (
+        "google travel explore api",
+        "google travel explore",
     ),
     "home_depot": ("home depot search api", "home depot search", "home depot api"),
     "home_depot_product": ("home depot product api", "home depot product"),
@@ -440,14 +447,20 @@ def request_serpapi(
     final_params["api_key"] = get_api_key()
     final_params.setdefault("output", "json")
 
-    response = http_request(
-        "GET",
-        SERPAPI_ENDPOINT,
-        params=final_params,
-        timeout=timeout,
-        use_proxy=use_proxy,
-        fallback_on_proxy_fail=fallback_on_proxy_fail,
-    )
+    try:
+        response = http_request(
+            "GET",
+            SERPAPI_ENDPOINT,
+            params=final_params,
+            timeout=timeout,
+            use_proxy=use_proxy,
+            fallback_on_proxy_fail=fallback_on_proxy_fail,
+        )
+    except Exception as exc:
+        safe_error = redact_sensitive_text(str(exc))[:1000]
+        raise RuntimeError(
+            f"SerpApi request failed: {safe_error or type(exc).__name__}"
+        ) from None
 
     if response.status_code >= 400:
         raise RuntimeError(f"SerpApi request failed with HTTP {response.status_code}.")
@@ -458,7 +471,8 @@ def request_serpapi(
         allowed_errors = tuple(allowed_error_substrings or ())
         if any(allowed.lower() in error_text.lower() for allowed in allowed_errors):
             return payload
-        raise RuntimeError(f"SerpApi error: {payload.get('error')}")
+        safe_error = redact_sensitive_text(str(payload.get("error")))[:1000]
+        raise RuntimeError(f"SerpApi error: {safe_error}")
     return payload
 
 
@@ -758,6 +772,93 @@ def _stops_label(stop_count: int) -> str:
     if stop_count == 1:
         return "1 stop"
     return f"{stop_count} stops"
+
+
+def extract_travel_explore_destinations(
+    payload: dict[str, Any], limit: int = 0
+) -> list[dict[str, Any]]:
+    """Normalize Google Travel Explore destinations into workflow-safe rows.
+
+    Travel Explore can return cities, regions, and drive-on destinations whose
+    nearest airport is in a different place. Keep those identities separate and
+    flatten the fields a later workflow needs for flight, hotel, Tripadvisor,
+    Canvas, or map handoffs. Provider SerpApi drill-down URLs are intentionally
+    omitted from normal results; the public Google Travel link is retained.
+    """
+    raw_destinations = payload.get("destinations") or []
+    if isinstance(raw_destinations, dict):
+        raw_destinations = [raw_destinations]
+    if not isinstance(raw_destinations, list):
+        return []
+
+    results: list[dict[str, Any]] = []
+    for position, item in enumerate(raw_destinations, 1):
+        if not isinstance(item, dict):
+            continue
+
+        airport = item.get("destination_airport")
+        if not isinstance(airport, dict):
+            airport = {}
+        coordinates = item.get("gps_coordinates")
+        if not isinstance(coordinates, dict):
+            coordinates = {}
+
+        start_date = str(item.get("start_date") or "").strip() or None
+        end_date = str(item.get("end_date") or "").strip() or None
+        nights = None
+        if start_date and end_date:
+            try:
+                nights = (date.fromisoformat(end_date) - date.fromisoformat(start_date)).days
+            except ValueError:
+                nights = None
+            if nights is not None and nights < 0:
+                nights = None
+
+        flight_duration = item.get("flight_duration")
+        car_duration = item.get("car_duration")
+        stop_count = item.get("number_of_stops")
+        try:
+            normalized_stops = int(stop_count) if stop_count not in (None, "") else None
+        except (TypeError, ValueError):
+            normalized_stops = None
+
+        row = {
+            "position": position,
+            "destination_id": item.get("destination_id"),
+            "name": item.get("name"),
+            "country": item.get("country"),
+            "gps_coordinates": coordinates or None,
+            "airport_code": airport.get("code"),
+            "airport_location": airport.get("location"),
+            "airport_location_id": airport.get("location_id"),
+            "start_date": start_date,
+            "end_date": end_date,
+            "nights": nights,
+            "flight_price": item.get("flight_price"),
+            "hotel_price": item.get("hotel_price"),
+            "flight_duration_minutes": flight_duration,
+            "flight_duration_display": format_duration_minutes(flight_duration),
+            "number_of_stops": normalized_stops,
+            "stops_label": (
+                _stops_label(normalized_stops)
+                if normalized_stops is not None
+                else None
+            ),
+            "airline": item.get("airline"),
+            "airline_code": item.get("airline_code"),
+            "ground_transfer_minutes": car_duration,
+            "ground_transfer_display": format_duration_minutes(car_duration),
+            "thumbnail": item.get("thumbnail"),
+            "google_travel_url": item.get("link"),
+        }
+        if any(
+            row.get(key) not in (None, "", [], {})
+            for key in ("destination_id", "name", "airport_code", "google_travel_url")
+        ):
+            results.append(row)
+            if limit > 0 and len(results) >= limit:
+                break
+    return results
 
 
 def _normalize_flight_itinerary(item: dict[str, Any], source: str) -> dict[str, Any]:

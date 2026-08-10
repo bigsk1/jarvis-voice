@@ -49,6 +49,7 @@ class TestToolProfiles(unittest.TestCase):
                 serpapi_tools.add(manifest["name"])
 
         self.assertIn("serpapi_tripadvisor", serpapi_tools)
+        self.assertIn("serpapi_travel_explore", serpapi_tools)
         self.assertIn("serpapi_search_index", serpapi_tools)
 
         # Most examples remove the whole SerpApi family. The research pipeline

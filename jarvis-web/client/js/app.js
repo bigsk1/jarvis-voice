@@ -1398,6 +1398,7 @@ class JarvisApp {
       serpapi_google_news_light: '📰',
       serpapi_google_trends: '📈',
       serpapi_google_trending_now: '🔥',
+      serpapi_travel_explore: '🌍',
       serpapi_google_sports: '🏈',
       trakt_movies: '🎬',
       tmdb_movies: '🎥',

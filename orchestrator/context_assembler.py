@@ -750,6 +750,11 @@ class ContextAssembler:
             # this cap, while game details need more than the generic search
             # budget to stay useful to the response model.
             return 10000
+        if lowered == "serpapi_travel_explore":
+            # Destination discovery returns a bounded shortlist whose dates,
+            # prices, airports, and links need to survive the tool handoff.
+            # Keep it below the provider-facing 10K result-context ceiling.
+            return 10000
         if lowered in {"trakt_movies", "trakt_tv_shows"}:
             # Preserve a useful movie/TV shortlist, exact links, constraints,
             # and trailer handles without passing the full provider payload.
@@ -834,9 +839,13 @@ class ContextAssembler:
             return []
 
         normalized_tool_name = str(tool_name or "").strip().lower()
-        if normalized_tool_name in {"tmdb_movies", "tmdb_tv_shows"}:
-            # TMDB already returns a bounded results list; prefer it over the
-            # five-row UI-oriented top_results slice for LLM follow-ups.
+        if normalized_tool_name in {
+            "tmdb_movies",
+            "tmdb_tv_shows",
+            "serpapi_travel_explore",
+        }:
+            # These tools already return a bounded results list; prefer it over
+            # the five-row UI-oriented top_results slice for LLM follow-ups.
             candidate_keys = (
                 "candidates",
                 "results",
@@ -885,7 +894,14 @@ class ContextAssembler:
             "image",
             "image_url",
         )
-        url_aliases = ("url", "link", "youtube_url", "watch_url", "product_link")
+        url_aliases = (
+            "url",
+            "link",
+            "youtube_url",
+            "watch_url",
+            "product_link",
+            "google_travel_url",
+        )
         is_hotel_search = str(data.get("engine") or "").strip().lower() == "google_hotels"
         is_yelp_search = str(data.get("engine") or "").strip().lower() == "yelp"
         is_search_index = str(tool_name or "").strip().lower() == "serpapi_search_index"
@@ -908,6 +924,7 @@ class ContextAssembler:
         is_google_trending_now = (
             str(tool_name or "").strip().lower() == "serpapi_google_trending_now"
         )
+        is_travel_explore = normalized_tool_name == "serpapi_travel_explore"
         is_tripadvisor = str(tool_name or "").strip().lower() == "serpapi_tripadvisor"
         is_trakt_media = normalized_tool_name in {"trakt_movies", "trakt_tv_shows"}
         is_tmdb_media = normalized_tool_name in {"tmdb_movies", "tmdb_tv_shows"}
@@ -1162,6 +1179,35 @@ class ContextAssembler:
                     "category_names",
                     "trend_breakdown",
                     "google_trends_url",
+                ):
+                    value = item.get(key)
+                    if value not in (None, "", [], {}):
+                        candidate[key] = self.build_preview_value(
+                            value,
+                            parent_key=key,
+                            depth=0,
+                            max_depth=2,
+                        )
+
+            if is_travel_explore:
+                for key in (
+                    "destination_id",
+                    "country",
+                    "gps_coordinates",
+                    "airport_code",
+                    "airport_location",
+                    "airport_location_id",
+                    "start_date",
+                    "end_date",
+                    "nights",
+                    "flight_price",
+                    "hotel_price",
+                    "flight_duration_display",
+                    "number_of_stops",
+                    "stops_label",
+                    "airline",
+                    "airline_code",
+                    "ground_transfer_display",
                 ):
                     value = item.get(key)
                     if value not in (None, "", [], {}):
@@ -2394,6 +2440,52 @@ class ContextAssembler:
                 )
         return preview
 
+    def build_travel_explore_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep flexible destination context without duplicating result rows."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "engine",
+            "provider",
+            "planning_stage",
+            "departure_id",
+            "arrival_area_id",
+            "trip_type",
+            "date_mode",
+            "outbound_date",
+            "return_date",
+            "month",
+            "month_label",
+            "travel_duration",
+            "travel_class",
+            "travel_mode",
+            "interest",
+            "travelers",
+            "currency",
+            "sort_by",
+            "sort_basis",
+            "applied_filters",
+            "results_count",
+            "provider_results_count",
+            "flight_price_basis",
+            "hotel_price_basis",
+            "price_confirmation_required",
+            "booking_note",
+            "serpapi_searches_used",
+            "google_travel_url",
+            "source",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=2,
+                )
+        return preview
+
     def build_preview_value(
         self,
         value: Any,
@@ -2574,7 +2666,10 @@ class ContextAssembler:
         result_chars_total = len(full_serialized)
         max_chars = self.tool_context_max_chars(tool_name)
 
-        force_compact_projection = (tool_name or "").lower() == "flight_search"
+        force_compact_projection = (tool_name or "").lower() in {
+            "flight_search",
+            "serpapi_travel_explore",
+        }
         if result_chars_total <= max_chars and not force_compact_projection:
             return full_serialized, result_chars_total, result_chars_total, False
 
@@ -2606,6 +2701,8 @@ class ContextAssembler:
                 data_preview = self.build_google_trends_data_preview(data)
             elif normalized_tool_name == "serpapi_google_trending_now":
                 data_preview = self.build_google_trending_now_data_preview(data)
+            elif normalized_tool_name == "serpapi_travel_explore":
+                data_preview = self.build_travel_explore_data_preview(data)
             elif normalized_tool_name == "serpapi_tripadvisor":
                 data_preview = self.build_tripadvisor_data_preview(data)
             elif normalized_tool_name in {"trakt_movies", "trakt_tv_shows"}:
@@ -2665,6 +2762,8 @@ class ContextAssembler:
                     if (tool_name or "").lower() in {"tmdb_movies", "tmdb_tv_shows"}
                     else 8
                     if (tool_name or "").lower() in {"trakt_movies", "trakt_tv_shows"}
+                    else 10
+                    if (tool_name or "").lower() == "serpapi_travel_explore"
                     else 5
                 ),
                 tool_name=tool_name,
@@ -2688,6 +2787,28 @@ class ContextAssembler:
         preview_compact = json.dumps(preview_payload, separators=(",", ":"), default=str)
         if len(preview_compact) <= max_chars:
             return preview_compact, result_chars_total, len(preview_compact), True
+
+        if (tool_name or "").lower() == "serpapi_travel_explore":
+            # Keep the specialized schema and complete destination rows when
+            # unusually long provider URLs make the full shortlist exceed the
+            # ceiling. Falling through to data_preview_text loses the row
+            # structure that the response model needs to stop searching.
+            candidates = preview_payload["llm_context_preview"].get("source_candidates")
+            if isinstance(candidates, list):
+                while len(candidates) > 1:
+                    candidates.pop()
+                    preview_compact = json.dumps(
+                        preview_payload,
+                        separators=(",", ":"),
+                        default=str,
+                    )
+                    if len(preview_compact) <= max_chars:
+                        return (
+                            preview_compact,
+                            result_chars_total,
+                            len(preview_compact),
+                            True,
+                        )
 
         if (tool_name or "").lower() == "workflow":
             # Rebuild with a tighter shared component budget before falling

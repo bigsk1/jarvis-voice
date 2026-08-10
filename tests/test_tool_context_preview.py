@@ -32,6 +32,7 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(self.orch._tool_context_max_chars("bookmark_search"), 5000)
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_web_search"), 6000)
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_google_sports"), 10000)
+        self.assertEqual(self.orch._tool_context_max_chars("serpapi_travel_explore"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("trakt_movies"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("tmdb_movies"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("trakt_tv_shows"), 10000)
@@ -1362,6 +1363,122 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(candidates[0]["reviews"], 1000)
         self.assertIn("Historically grounded", candidates[0]["description"])
         self.assertNotIn("provider_only", candidates[0])
+
+    def test_travel_explore_preview_keeps_compact_destination_handoffs(self):
+        result = {
+            "ok": True,
+            "speech": "Found 6 destination ideas from PDX.",
+            "data": {
+                "engine": "google_travel_explore",
+                "provider": "serpapi",
+                "planning_stage": "destination_discovery",
+                "departure_id": "PDX",
+                "trip_type": "round_trip",
+                "date_mode": "flexible",
+                "month": 10,
+                "month_label": "October",
+                "travel_duration": "one_week",
+                "currency": "USD",
+                "results_count": 6,
+                "provider_results_count": 86,
+                "flight_price_basis": "provider_headline_round_trip_fare",
+                "hotel_price_basis": "provider_headline_lodging_price_unspecified",
+                "price_confirmation_required": True,
+                "raw": {"large_provider_payload": "x" * 12000},
+                "results": [
+                    {
+                        "destination_id": f"/m/destination_{index}",
+                        "name": f"Destination {index}",
+                        "country": "United States",
+                        "airport_code": "LAS",
+                        "airport_location": "Las Vegas",
+                        "start_date": "2026-10-09",
+                        "end_date": "2026-10-16",
+                        "flight_price": 200 + index,
+                        "hotel_price": 100 + index,
+                        "flight_duration_display": "2h 15m",
+                        "stops_label": "Nonstop",
+                        "ground_transfer_display": "2h 44m",
+                        "google_travel_url": f"https://www.google.com/travel/explore/{index}",
+                        "provider_only": {"large": "omit me"},
+                    }
+                    for index in range(1, 7)
+                ],
+            },
+        }
+        result["data"]["top_results"] = result["data"]["results"][:5]
+
+        preview, total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_travel_explore",
+            result,
+        )
+
+        parsed = json.loads(preview)
+        data_preview = parsed["llm_context_preview"]["data_preview"]
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        self.assertTrue(truncated)
+        self.assertGreater(total, shown)
+        self.assertEqual(data_preview["planning_stage"], "destination_discovery")
+        self.assertEqual(data_preview["departure_id"], "PDX")
+        self.assertTrue(data_preview["price_confirmation_required"])
+        self.assertLessEqual(shown, 10000)
+        self.assertNotIn("data_preview_text", parsed["llm_context_preview"])
+        self.assertEqual(len(candidates), 6)
+        self.assertEqual(candidates[0]["source_list"], "results")
+        self.assertEqual(candidates[0]["destination_id"], "/m/destination_1")
+        self.assertEqual(candidates[0]["airport_code"], "LAS")
+        self.assertEqual(candidates[0]["flight_price"], 201)
+        self.assertEqual(candidates[0]["hotel_price"], 101)
+        self.assertEqual(candidates[0]["ground_transfer_display"], "2h 44m")
+        self.assertEqual(
+            candidates[0]["url"],
+            "https://www.google.com/travel/explore/1",
+        )
+        self.assertNotIn("provider_only", candidates[0])
+        self.assertNotIn("raw", data_preview)
+
+    def test_travel_explore_preview_trims_whole_rows_before_text_fallback(self):
+        result = {
+            "ok": True,
+            "speech": "Found 12 destination ideas from PDX.",
+            "data": {
+                "engine": "google_travel_explore",
+                "provider": "serpapi",
+                "planning_stage": "destination_discovery",
+                "departure_id": "PDX",
+                "results_count": 12,
+                "provider_results_count": 87,
+                "price_confirmation_required": True,
+                "results": [
+                    {
+                        "name": f"Destination {index}",
+                        "destination_id": f"/m/destination_{index}",
+                        "airport_code": "LAS",
+                        "start_date": "2026-10-09",
+                        "end_date": "2026-10-12",
+                        "flight_price": 100 + index,
+                        "thumbnail": "https://images.example/" + (str(index) * 1400),
+                        "google_travel_url": "https://www.google.com/travel/explore?" + (str(index) * 1400),
+                    }
+                    for index in range(1, 13)
+                ],
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_travel_explore",
+            result,
+        )
+
+        parsed = json.loads(preview)
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 10000)
+        self.assertNotIn("data_preview_text", parsed["llm_context_preview"])
+        self.assertGreater(len(candidates), 1)
+        self.assertLess(len(candidates), 10)
+        self.assertEqual(candidates[0]["name"], "Destination 1")
+        self.assertEqual(candidates[-1]["rank"], len(candidates))
 
     def test_flight_preview_keeps_compact_option_identity_including_flight_numbers(self):
         result = {

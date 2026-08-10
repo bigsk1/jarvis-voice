@@ -176,6 +176,55 @@ PYEOF
 ```
 **Built-in transform**: Pipeline executor automatically creates `${article.url}`, `${article.title}`, `${article.content}` from crawl_url results. No extract needed.
 
+### serpapi_travel_explore
+```python
+# Params: departure_id="PDX", travel_duration="weekend", interest="beaches"
+{
+  "ok": true,
+  "data": {
+    "planning_stage": "destination_discovery",
+    "departure_id": "PDX",
+    "trip_type": "round_trip",
+    "date_mode": "flexible",
+    "currency": "USD",
+    "price_confirmation_required": true,
+    "results_count": 5,
+    "provider_results_count": 71,
+    "serpapi_searches_used": 1,
+    "results": [
+      {
+        "destination_id": "/m/01626x",
+        "name": "Zion National Park",
+        "airport_code": "LAS",
+        "airport_location": "Las Vegas",
+        "start_date": "2026-09-24",
+        "end_date": "2026-10-01",
+        "flight_price": 138,
+        "hotel_price": 180,
+        "ground_transfer_display": "2h 30m",
+        "google_travel_url": "https://www.google.com/travel/explore?..."
+      }
+    ]
+  }
+}
+```
+**Extract rules:**
+```json
+"extract": {
+  "destinations": "results",
+  "top_destination": "results[0].name",
+  "top_destination_id": "results[0].destination_id",
+  "top_airport": "results[0].airport_code",
+  "top_start_date": "results[0].start_date",
+  "top_end_date": "results[0].end_date"
+}
+```
+**Workflow notes:** Use the bounded normalized `results` array and leave
+`include_raw` off. Explore flight/hotel prices are planning signals; confirm a
+selected row with `flight_search` and `serpapi_hotel_search`. Preserve
+destination identity separately from `airport_location` because parks and
+regions can require a ground transfer from a nearby airport.
+
 ### canvas (create action)
 ```python
 # Params: action="create", title="My Page", content="...", tags=["tag1"]

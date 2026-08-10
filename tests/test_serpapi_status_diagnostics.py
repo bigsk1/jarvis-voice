@@ -174,6 +174,32 @@ class SerpApiStatusDiagnosticTests(unittest.TestCase):
         self.assertIn("Google Trends API", result["speech"])
         self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
 
+    def test_travel_explore_timeout_matches_travel_explore_incident(self):
+        with patch.object(
+            serpapi_client,
+            "fetch_serpapi_unresolved_incidents",
+            return_value=[
+                incident(
+                    name="[Google Travel Explore API] Performance Degradation",
+                    update="We are investigating Google Travel Explore API latency.",
+                )
+            ],
+        ):
+            result = serpapi_client.diagnose_serpapi_tool_failure(
+                "serpapi_travel_explore",
+                {"departure_id": "PDX", "travel_duration": "one_week"},
+                "Tool serpapi_travel_explore timed out",
+                force=True,
+            )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            result["data"]["serpapi_incident"]["engine"],
+            "google_travel_explore",
+        )
+        self.assertIn("Google Travel Explore API", result["speech"])
+        self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
+
     def test_google_news_light_timeout_matches_news_light_incident(self):
         with patch.object(
             serpapi_client,

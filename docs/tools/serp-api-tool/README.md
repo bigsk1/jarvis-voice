@@ -30,6 +30,7 @@ discover general public webpages and source URLs.
 | `serpapi_google_local_services` | `google_local_services` plus conditional `google_maps` resolver | Screened US professional-service providers, Google badges, contact and availability details, and provider drill-down |
 | `serpapi_maps_search` | `google_maps` | Places and local businesses with addresses, ratings, hours, phones, and websites |
 | `serpapi_hotel_search` | `google_hotels` | Future lodging with stay dates, guests, prices, ratings, amenities, and property links |
+| `serpapi_travel_explore` | `google_travel_explore` | Flexible destination discovery from an origin with suggested dates, headline flight/hotel planning prices, and exact airport handoffs; see the [Travel Explore guide](../travel-explore-tool/README.md) |
 | `serpapi_tripadvisor` | `tripadvisor`, `tripadvisor_place`, `tripadvisor_reviews` | Destination, hotel, restaurant, attraction, and forum discovery plus place details, nearby suggestions, and reviews |
 | `serpapi_yelp_search` | `yelp`, `yelp_reviews` | Restaurants and local businesses with Yelp ratings, filters, price tiers, and optional review excerpts |
 | `serpapi_youtube_search` | `youtube` | YouTube video discovery by keyword |
@@ -59,7 +60,8 @@ The family uses these common layers:
 - `jarvis-web/server/services/followup_extractor.py` preserves bounded result
   identity for later turns.
 - `jarvis-web/client/js/structured-results.js` renders focused product, place,
-  image-gallery, multi-retailer shopping, hotel, flight, Tripadvisor, Google
+  image-gallery, multi-retailer shopping, hotel, Travel Explore, flight,
+  Tripadvisor, Google
   Local, Google Local Services, Google News Light, Google Trends, Trending Now,
   Google Sports, Search Index, eBay, Yelp, Maps, and YouTube cards.
 
@@ -80,7 +82,7 @@ Use `config/cloud.env` for cloud mode and `config/local.env` for local mode.
 Shopping Light when no location is supplied. The postal code also localizes
 Amazon delivery and Home Depot availability where supported.
 
-The eighteen `serpapi_*` manifests declare:
+The twenty `serpapi_*` manifests declare:
 
 ```json
 "availability": {
@@ -159,7 +161,7 @@ additional searches:
 
 | Tool or option | SerpApi searches |
 |---|---:|
-| eBay search/product, Google Shopping Light, Google Local, Maps, Hotels, Search Index, Google Images Light, Google News Light, Google Trends, Trending Now discovery, Trending Now news drill-down, YouTube search | 1 |
+| eBay search/product, Google Shopping Light, Google Local, Maps, Hotels, Travel Explore, Search Index, Google Images Light, Google News Light, Google Trends, Trending Now discovery, Trending Now news drill-down, YouTube search | 1 |
 | Google Local Services with explicit `data_cid` or a built-in New York, Austin, or Portland alias | 1 |
 | Google Local Services with any other explicit or mode-default location | 2: Google Maps CID resolution plus Local Services |
 | Amazon listing or product call | 1 base call |
@@ -566,6 +568,40 @@ Dates must be `YYYY-MM-DD`. Jarvis resolves relative dates before calling the
 tool. The default is lowest complete-stay price; results are reference quotes
 and the tool never books or pays.
 
+### Travel Explore
+
+```json
+{
+  "departure_id": "PDX",
+  "travel_duration": "weekend",
+  "interest": "beaches",
+  "max_price": 300,
+  "sort_by": "flight_price",
+  "num_results": 5
+}
+```
+
+Use `serpapi_travel_explore` when the destination or travel dates are still
+flexible. It makes one `google_travel_explore` request and returns a bounded,
+flat `results[]` shortlist. Each destination can include its Google location
+ID, suggested dates, airport code, headline flight and hotel prices, flight
+duration, stops, airline, coordinates, image, ground-transfer time, and public
+Google Travel link.
+
+This is a discovery tool, not exact shopping. Headline prices are provider
+planning signals; the provider does not document the lodging price basis.
+Suggested dates can also vary within the requested `weekend`, `one_week`, or
+`two_weeks` bucket. After the user selects a destination, use `flight_search`
+with the returned `airport_code`, `start_date`, and `end_date`, then use
+`serpapi_hotel_search` with the destination name and the same dates. Use
+`serpapi_tripadvisor` when the next question is about the destination itself.
+
+`arrival_area_id` accepts a broad region or country KGMID such as `/m/02j9z`
+for Europe. The Jarvis wrapper intentionally does not expose provider
+`arrival_id`: a fixed destination belongs in the exact `flight_search` stage.
+See the [focused Travel Explore guide](../travel-explore-tool/README.md) for
+workflow fields and handoff examples.
+
 ### Tripadvisor
 
 Discovery:
@@ -723,7 +759,9 @@ reuse the correct item or place instead of guessing:
 - Google Images Light full-size image URLs, source pages, dimensions, and
   explicit untrusted-content markers;
 - Search Index source URLs and pagination metadata;
-- hotel property IDs and stay context; and
+- hotel property IDs and stay context;
+- Travel Explore destination IDs, airport codes, suggested dates, price
+  signals, transfer times, coordinates, and public Google Travel links; and
 - YouTube video IDs and URLs.
 
 The Web UI renders structured cards for result types that have dedicated

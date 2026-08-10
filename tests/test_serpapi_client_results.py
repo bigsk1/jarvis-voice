@@ -4,14 +4,30 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
-from serpapi_client import extract_generic_results
+from serpapi_client import extract_generic_results, request_serpapi
 
 
 class SerpApiClientResultsTests(unittest.TestCase):
+    def test_request_error_redacts_api_key_from_exception_text(self):
+        secret = "provider-secret-value-1234567890"
+        with patch("serpapi_client.get_api_key", return_value=secret), patch(
+            "serpapi_client.http_request",
+            side_effect=RuntimeError(
+                f"failed https://serpapi.com/search.json?api_key={secret}&output=json"
+            ),
+        ):
+            with self.assertRaises(RuntimeError) as raised:
+                request_serpapi({"engine": "google_travel_explore"})
+
+        message = str(raised.exception)
+        self.assertNotIn(secret, message)
+        self.assertIn("api_key=[redacted]", message)
+
     def test_amazon_product_includes_shopping_signals(self):
         payload = {
             "product_results": {

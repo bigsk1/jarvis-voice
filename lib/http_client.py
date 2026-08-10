@@ -22,10 +22,10 @@ Config:
     JARVIS_HTTP_LOG_DIRECT=true  # Optional: log proxy_used=false when no proxy (default DEBUG only)
 """
 
-import sys
-import os
 import logging
+import os
 import socket
+import sys
 from urllib.parse import urlsplit
 
 import requests
@@ -35,6 +35,7 @@ from urllib3.util.retry import Retry
 # Add lib to path for config_loader
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import get_config_value
+from security_utils import redact_sensitive_text
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -381,7 +382,10 @@ def http_request(
         except requests.RequestException as e:
             last_error = e
             masked_proxy = _mask_proxy_url(proxies.get('https', ''))
-            logger.warning(f"[PROXY] ❌ Proxy request failed: {e}")
+            logger.warning(
+                "[PROXY] ❌ Proxy request failed: %s",
+                redact_sensitive_text(str(e)),
+            )
             print(f"[PROXY] ❌ Proxy failed ({masked_proxy}): {type(e).__name__}", file=sys.stderr)
 
     kwargs.pop('proxies', None)

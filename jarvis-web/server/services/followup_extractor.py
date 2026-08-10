@@ -54,6 +54,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_google_sports',
     'serpapi_google_trends',
     'serpapi_google_trending_now',
+    'serpapi_travel_explore',
     'serpapi_tripadvisor',
     'trakt_movies',
     'trakt_tv_shows',
@@ -383,6 +384,16 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'provider_results_count', 'active_results_count', 'top_query',
         'top_news_page_token', 'top_url', 'search_id', 'trending_now_url',
         'trends_news_url', 'serpapi_searches_used', 'source',
+    ],
+    'serpapi_travel_explore': [
+        'engine', 'provider', 'planning_stage', 'departure_id',
+        'arrival_area_id', 'trip_type', 'date_mode', 'outbound_date',
+        'return_date', 'month', 'month_label', 'travel_duration',
+        'travel_class', 'travel_mode', 'interest', 'travelers', 'currency',
+        'sort_by', 'sort_basis', 'applied_filters', 'results_count',
+        'provider_results_count', 'top_url', 'flight_price_basis',
+        'hotel_price_basis', 'price_confirmation_required', 'booking_note',
+        'serpapi_searches_used', 'google_travel_url', 'source',
     ],
     'serpapi_tripadvisor': [
         'action', 'engine', 'query', 'category', 'tripadvisor_domain',
@@ -3678,6 +3689,35 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                         extracted['review_data']['reviews'] = compact_reviews
                     else:
                         extracted['reviews'] = compact_reviews
+
+        # --- Travel Explore: destination identity drives later tool handoffs ---
+        if key == 'serpapi_travel_explore':
+            results = payload.get('results') or payload.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = payload.get('results_count', len(results))
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = {
+                        field: item[field]
+                        for field in (
+                            'position', 'destination_id', 'name', 'country',
+                            'gps_coordinates', 'airport_code', 'airport_location',
+                            'airport_location_id', 'start_date', 'end_date',
+                            'nights', 'flight_price', 'hotel_price',
+                            'flight_duration_minutes', 'flight_duration_display',
+                            'number_of_stops', 'stops_label', 'airline',
+                            'airline_code', 'ground_transfer_minutes',
+                            'ground_transfer_display', 'thumbnail',
+                            'google_travel_url',
+                        )
+                        if item.get(field) not in (None, '', [], {})
+                    }
+                    if candidate:
+                        candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
 
         # --- flight_search: itineraries are deeply nested (segments, layovers) ---
         # Keep the shortlist needed to compare or refer to a specific option on

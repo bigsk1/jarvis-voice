@@ -300,6 +300,7 @@ JSON object printed to stdout:
 | `serpapi_google_local_services` | Screened US professional-service providers from Google Local Services, with Google badges, contact/availability data, provider detail drill-down, and visible one- or two-search CID resolution |
 | `serpapi_maps_search` | SerpApi Google Maps place and local business search |
 | `serpapi_hotel_search` | Future Google Hotels options, cheapest-first stay pricing, and filters |
+| `serpapi_travel_explore` | Flexible destination discovery with suggested dates, headline flight/hotel planning prices, and airport handoffs |
 | `flight_search` | Future flight options and prices via SerpApi Google Flights or a keyless fallback |
 | `serpapi_youtube` | SerpApi YouTube video details and transcript fallback |
 | `serpapi_youtube_search` | SerpApi YouTube video search by keywords |
@@ -313,7 +314,7 @@ JSON object printed to stdout:
 | `opencode` | Autonomous coding agent |
 | `calculator` | Math, stats, unit conversions |
 
-All 17 `serpapi_*` tools require `SERP_API_KEY` in the active mode env and are
+All 20 `serpapi_*` tools require `SERP_API_KEY` in the active mode env and are
 excluded from that mode's callable registry and Tool RAG sync when it is absent.
 `flight_search` can instead use its keyless fallback. See the full
 [SerpApi tools guide](../docs/tools/serp-api-tool/README.md).

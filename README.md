@@ -836,12 +836,13 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `serpapi_google_local_services` - **SerpApi Google Local Services**: Screened US professional-service providers with Google badges, contact/availability details, focused provider drill-down, and explicit city-CID resolution cost
 - `serpapi_maps_search` - **SerpApi Maps**: Google Maps place and local business search with normalized address/rating/contact fields
 - `serpapi_hotel_search` - **SerpApi Hotels**: Google Hotels search with check-in/out, guest, price, and rating filters
+- [`serpapi_travel_explore`](docs/tools/travel-explore-tool/README.md) - **SerpApi Travel Explore**: Flexible destination discovery from an origin with suggested dates, headline flight/hotel planning prices, airport handoffs, and public Google Travel links
 - `serpapi_tripadvisor` - **SerpApi Tripadvisor**: Search destinations, hotels, restaurants, attractions, and forums; retrieve place details, nearby suggestions, and filtered reviews by `place_id`
 - `serpapi_yelp_search` - **SerpApi Yelp**: Local places (restaurants, coffee, bars) by description + location; filters, sort, optional reviews
 - `serpapi_youtube_search` - **SerpApi YouTube search**: Keyword search with video-first results (title, channel, views, duration, thumbnails)
 - `serpapi_youtube` - **SerpApi YouTube details**: Video metadata and transcript by URL or `video_id` (useful when `youtube_video` / yt-dlp hits auth or cookie limits)
 
-The 19 `serpapi_*` tools require a nonblank key in the active mode's env file.
+The 20 `serpapi_*` tools require a nonblank key in the active mode's env file.
 Without it they are not callable or included in that mode's Tool RAG sync. Jarvis
 Web shows the free Account API quota card only when Settings → System is opened
 and the selected mode has a valid key.

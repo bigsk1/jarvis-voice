@@ -42,6 +42,7 @@
 - **[../skills/README.md](../skills/README.md)** - **Tool profile overlays** (`JARVIS_TOOL_PROFILE`, `skills/profiles/<name>.json`, `bin/manage-tools.py profile …`); git tracks `default.json` and `skills/profiles/examples/*.json` (copy to `profiles/<name>.json` for use). After changing profile: restart services, then `./bin/sync-tools.py local` or `cloud`
 - **[tools/status-tool/README.md](tools/status-tool/README.md)** - 📊 **Status Recap Tool v1.4** (weather, crypto, stocks/futures, alerts, reminders, system health, canvas + stash)
 - **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** - 🔎 **SerpApi Tools** (Amazon, Google Shopping, Search Index, images, news, trends, marketplaces, local places/services, travel, and YouTube; includes mode availability, quota, proxy, cache, and request-cost behavior)
+- **[tools/travel-explore-tool/README.md](tools/travel-explore-tool/README.md)** - 🌍 **Travel Explore Tool** (flexible destination discovery, planning-price semantics, exact-search handoffs, and workflow fields)
 - **[tools/flight-search-tool/README.md](tools/flight-search-tool/README.md)** - ✈️ **Flight Search Tool** (future options, prices, dates, and times)
 
 ### Document Processing
@@ -155,6 +156,7 @@
 | **TOOL_MANAGEMENT.md** | Manifest/profile/mode/Web precedence; enabled vs credential **available** (`--mode`) |
 | **[../skills/README.md](../skills/README.md)** (section *Tool profiles*) | Optional overlay JSON per profile; `JARVIS_TOOL_PROFILE`; `bin/manage-tools.py profile`; re-sync tools DB after changes |
 | **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** | SerpApi search tool guide (setup, params, examples, troubleshooting) |
+| **[tools/travel-explore-tool/README.md](tools/travel-explore-tool/README.md)** | Flexible destination discovery and flight/hotel handoff guide |
 | **[tools/flight-search-tool/README.md](tools/flight-search-tool/README.md)** | Flight options and prices via SerpApi Google Flights or keyless fallback |
 | **MULTI_TURN_ORCHESTRATION.md** | Multi-turn tool chaining |
 | **ERROR_RECOVERY.md** | Error handling and retries |
