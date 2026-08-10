@@ -7,13 +7,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from server_package_utils import load_server_package
+
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(PROJECT_ROOT / "jarvis-web" / "server"))
+load_server_package("jarvis_web_test_server", PROJECT_ROOT / "jarvis-web" / "server")
 
-from services.usage_metadata import enrich_usage_metadata, format_usage_markdown
-from services.conversation_store import ConversationStore
+from jarvis_web_test_server.services.usage_metadata import (  # noqa: E402
+    enrich_usage_metadata,
+    format_usage_markdown,
+)
+from jarvis_web_test_server.services.conversation_store import ConversationStore  # noqa: E402
 
 
 class EnrichUsageMetadataTests(unittest.TestCase):

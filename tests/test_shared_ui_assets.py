@@ -1,8 +1,10 @@
 """Shared UI branding assets must not depend on checkout symlink support."""
 
 import importlib
+import os
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from PIL import Image
@@ -39,6 +41,14 @@ def _load_app(ui_name):
     if ui_name == "jarvis-canvas":
         return app_module.create_app("cloud")
     return app_module.app
+
+
+@pytest.fixture(autouse=True)
+def _isolate_app_import_state():
+    """Keep app startup imports from leaking config or packages to later tests."""
+    with patch.dict(os.environ):
+        yield
+    _purge_server_modules()
 
 
 @pytest.mark.parametrize(

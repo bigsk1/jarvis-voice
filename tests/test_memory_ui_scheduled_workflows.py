@@ -6,12 +6,15 @@ from pathlib import Path
 
 from flask import Flask
 
+from server_package_utils import load_server_package
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "jarvis-memory"))
+load_server_package("jarvis_memory_test_server", PROJECT_ROOT / "jarvis-memory" / "server")
 
-from server.routes import scheduled_tasks as scheduled_tasks_route  # noqa: E402
+from jarvis_memory_test_server.routes import scheduled_tasks as scheduled_tasks_route  # noqa: E402
 
 
 def test_scheduled_task_workflow_list_uses_loaded_workflows(monkeypatch):

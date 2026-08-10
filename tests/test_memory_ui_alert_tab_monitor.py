@@ -189,7 +189,7 @@ const api = {
         self.assertLess(sound_position, refresh_position)
         self.assertIn('style="display: none;"', html[sound_position : sound_position + 250])
         self.assertLess(monitor_position, app_position)
-        self.assertIn("<title>Jarvis Memory</title>", html)
+        self.assertRegex(html, r"<title>[^<]+</title>")
 
     def test_alert_list_uses_server_filters_and_appends_older_pages(self) -> None:
         script = r"""

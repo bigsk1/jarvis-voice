@@ -2710,7 +2710,7 @@ def upload_to_stash():
     import json
     import uuid
     import hashlib
-    from datetime import datetime
+    from datetime import datetime, timezone
     
     if 'file' not in request.files:
         return jsonify({'ok': False, 'error': 'No file provided'}), 400
@@ -2721,7 +2721,9 @@ def upload_to_stash():
     
     try:
         # Generate space and file IDs
-        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        now = datetime.now(timezone.utc)
+        timestamp = now.strftime('%Y%m%d_%H%M%S')
+        created_at = now.strftime('%Y-%m-%dT%H:%M:%SZ')
         space_id = f"space_{timestamp}_{uuid.uuid4().hex[:8]}"
         file_id = f"f_{uuid.uuid4().hex[:12]}"
         
@@ -2755,8 +2757,8 @@ def upload_to_stash():
         # Create meta.json
         meta = {
             'space_id': space_id,
-            'created_at': datetime.utcnow().isoformat() + 'Z',
-            'last_used_at': datetime.utcnow().isoformat() + 'Z',
+            'created_at': created_at,
+            'last_used_at': created_at,
             'labels': label_list,
             'owner': 'jarvis',
             'scope': 'project',
@@ -2771,7 +2773,7 @@ def upload_to_stash():
                 'hash_sha256': file_hash,
                 'tags': [],
                 'tool_origin': 'web_upload',
-                'created_at': datetime.utcnow().isoformat() + 'Z'
+                'created_at': created_at
             }]
         }
         

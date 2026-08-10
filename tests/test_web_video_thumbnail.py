@@ -6,12 +6,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from server_package_utils import load_server_package
+
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "jarvis-web"))
+load_server_package("jarvis_web_test_server", PROJECT_ROOT / "jarvis-web" / "server")
 
-from server.app import app
-from server.routes import api
+from jarvis_web_test_server.app import app  # noqa: E402
+from jarvis_web_test_server.routes import api  # noqa: E402
 
 
 def test_chat_uses_generated_video_thumbnail_as_poster():

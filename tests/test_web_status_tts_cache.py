@@ -65,6 +65,7 @@ def test_web_status_tts_reuses_persistent_audio_cache():
             patch.object(server_config, "get_jarvis_setting", side_effect=get_setting),
             patch.object(api, "_generate_openai_tts", side_effect=generate) as generate_tts,
             patch.object(api, "log_status_event") as log_status_event,
+            patch("server.app.is_auth_enabled", return_value=False),
         ):
             with app.test_client() as client:
                 first = client.post("/api/tts", json={
@@ -159,6 +160,7 @@ def test_elevenlabs_status_uses_flash_without_changing_final_model_or_voice():
             patch.object(server_config, "get_jarvis_setting", side_effect=get_setting),
             patch.object(api, "_generate_elevenlabs_tts", side_effect=generate),
             patch.object(api, "log_status_event") as log_status_event,
+            patch("server.app.is_auth_enabled", return_value=False),
         ):
             with app.test_client() as client:
                 status = client.post("/api/tts", json={

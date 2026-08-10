@@ -1,7 +1,7 @@
 """Regression coverage for configurable Stash API storage paths."""
 
 import asyncio
-import io
+import tempfile
 from pathlib import Path
 
 from fastapi import UploadFile
@@ -38,11 +38,14 @@ def test_stash_api_upload_creates_new_space(tmp_path, monkeypatch):
     monkeypatch.delenv("JARVIS_OVERRIDE_STASH_DIR", raising=False)
     monkeypatch.setenv("STASH_DIR", str(tmp_path))
 
-    result = asyncio.run(stash_routes.upload_file(
-        UploadFile(filename="uploaded.txt", file=io.BytesIO(b"uploaded")),
-        labels="test-upload",
-        space_id=None,
-    ))
+    with tempfile.SpooledTemporaryFile() as upload:
+        upload.write(b"uploaded")
+        upload.seek(0)
+        result = asyncio.run(stash_routes.upload_file(
+            UploadFile(filename="uploaded.txt", file=upload),
+            labels="test-upload",
+            space_id=None,
+        ))
 
     assert result["ok"] is True
     assert result["filename"] == "uploaded.txt"
