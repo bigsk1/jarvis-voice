@@ -174,8 +174,153 @@
       }
     },
   
+    "tool_aliases": {
+      "acknowledge_alerts": "_family_alerts",
+      "acknowledge_reminders": "_family_reminders",
+      "api_call": "_family_developer_ops",
+      "bookmark_search": "_family_search",
+      "brave_llm_context": "_family_search",
+      "check_opencode_sessions": "opencode",
+      "check_tool_logs": "_family_developer_ops",
+      "convert_file": "_family_files",
+      "create_alert": "_family_alerts",
+      "create_reminder": "_family_reminders",
+      "create_social_clip": "_family_video",
+      "crypto_chart": "crypto_price",
+      "execute_bash": "_family_developer_ops",
+      "flight_search": "_family_travel",
+      "forget": "_family_memory",
+      "generate_video": "_family_video",
+      "get_recent_conversations": "_family_memory",
+      "get_time": "_family_lookup",
+      "git_release_notes": "_family_developer_ops",
+      "list_alerts": "_family_alerts",
+      "list_reminders": "_family_reminders",
+      "memory_deduper": "_family_memory",
+      "price_alert": "_family_alerts",
+      "qr_code_generator": "_family_files",
+      "query_service_logs": "_family_developer_ops",
+      "recall": "_family_memory",
+      "release_watch": "_family_developer_ops",
+      "remember": "_family_memory",
+      "samantha": "_family_assistant",
+      "schedule_task": "_family_reminders",
+      "search_conversations": "_family_memory",
+      "search_docs": "_family_search",
+      "serpapi_amazon_search": "_family_shopping",
+      "serpapi_ebay_product": "_family_shopping",
+      "serpapi_ebay_search": "_family_shopping",
+      "serpapi_google_images_light": "_family_search",
+      "serpapi_google_local": "_family_local_search",
+      "serpapi_google_local_services": "_family_local_search",
+      "serpapi_google_news_light": "_family_search",
+      "serpapi_google_shopping_light": "_family_shopping",
+      "serpapi_google_sports": "_family_sports",
+      "serpapi_google_trending_now": "_family_search",
+      "serpapi_google_trends": "_family_search",
+      "serpapi_home_depot": "_family_shopping",
+      "serpapi_hotel_search": "_family_travel",
+      "serpapi_maps_search": "_family_local_search",
+      "serpapi_search_index": "_family_search",
+      "serpapi_travel_explore": "_family_travel",
+      "serpapi_tripadvisor": "_family_local_search",
+      "serpapi_yelp_search": "_family_local_search",
+      "serpapi_youtube": "_family_search",
+      "serpapi_youtube_search": "_family_search",
+      "supa_crawl_knowledge": "_family_search",
+      "tmdb_movies": "_family_entertainment",
+      "tmdb_tv_shows": "_family_entertainment",
+      "tool_search": "_family_tool_discovery",
+      "trakt_movies": "_family_entertainment",
+      "trakt_tv_shows": "_family_entertainment",
+      "update_memory": "_family_memory",
+      "upload_cloudflare": "_family_files",
+      "workflow": "_family_workflow",
+      "youtube_video": "_family_video"
+    },
+
     "tool_specific": {
       "_description": "UNHINGED overrides for specific tools, because why not",
+
+      "_family_alerts": {
+        "start": ["RINGING THE ALARM BELLS OF DESTINY", "WAKING THE ALERT GOBLINS"],
+        "progress": ["ALERTS HAVE BEEN TAMED", "THE WARNING BEACONS OBEY"]
+      },
+
+      "_family_reminders": {
+        "start": ["SUMMONING YOUR FUTURE OBLIGATIONS", "CONSULTING THE REMINDER ORACLE"],
+        "progress": ["TIME ITSELF HAS BEEN SCHEDULED", "REMINDERS LOCKED AND LOADED"]
+      },
+
+      "_family_developer_ops": {
+        "start": ["POKING THE MACHINERY WITH A SHARP STICK", "INITIATING QUESTIONABLE TECHNICAL OPERATIONS"],
+        "progress": ["THE MACHINES HAVE CONFESSED", "OPERATION COMPLETE, NOTHING EXPLODED MUCH"]
+      },
+
+      "_family_files": {
+        "start": ["WRESTLING WITH YOUR DIGITAL ARTIFACT", "SHOVING BYTES INTO THE FILE FORGE"],
+        "progress": ["THE FILE HAS ACHIEVED ITS FINAL FORM", "ARTIFACT SECURED"]
+      },
+
+      "_family_video": {
+        "start": ["AWAKENING THE VIDEO BEAST", "FORGING MOVING PICTURES FROM PURE CHAOS"],
+        "progress": ["THE FRAMES ARE MULTIPLYING", "VIDEO ABOMINATION COMPLETE"]
+      },
+
+      "_family_memory": {
+        "start": ["RUMMAGING THROUGH THE HAUNTED MEMORY VAULT", "REARRANGING THE THOUGHT GRAVEYARD"],
+        "progress": ["MEMORY RITUAL COMPLETE", "THE ARCHIVES HAVE SPOKEN"]
+      },
+
+      "_family_lookup": {
+        "start": ["CONSULTING THE ALL-KNOWING WALL CLOCK", "LOOKING THAT UP WITH RECKLESS INTENSITY"],
+        "progress": ["THE ANSWER HAS BEEN CAPTURED", "LOOKUP COMPLETE, MYSTERY DEFEATED"]
+      },
+
+      "_family_assistant": {
+        "start": ["SUMMONING THE OTHER DIGITAL ENTITY", "PASSING THE CURSED BATON"],
+        "progress": ["THE OTHER ASSISTANT HAS RESPONDED", "INTER-AI RITUAL COMPLETE"]
+      },
+
+      "_family_search": {
+        "start": ["RANSACKING EVERY RELEVANT SOURCE", "HUNTING ANSWERS ACROSS THE DIGITAL WASTELAND"],
+        "progress": ["RESULTS CAPTURED AND UNDER INTERROGATION", "THE SOURCES HAVE CONFESSED"]
+      },
+
+      "_family_travel": {
+        "start": ["PLOTTING YOUR ESCAPE FROM THIS REALITY", "INTERROGATING PLANES AND HOTELS"],
+        "progress": ["TRAVEL OPTIONS HAVE BEEN CAPTURED", "YOUR ESCAPE ROUTES ARE READY"]
+      },
+
+      "_family_shopping": {
+        "start": ["HUNTING PRODUCTS THROUGH THE CAPITALIST WILDERNESS", "COMPARING PRICES WITH PREDATORY FOCUS"],
+        "progress": ["THE DEALS HAVE BEEN ROUNDED UP", "SHOPPING RESULTS SECURED"]
+      },
+
+      "_family_local_search": {
+        "start": ["STALKING THE LOCAL MAP FOR ANSWERS", "INTERROGATING NEARBY BUSINESSES"],
+        "progress": ["LOCAL OPTIONS CAPTURED", "THE NEIGHBORHOOD HAS CONFESSED"]
+      },
+
+      "_family_sports": {
+        "start": ["CONSULTING THE SWEATY ORACLE OF SPORTS", "HUNTING SCORES AND SCHEDULES"],
+        "progress": ["SPORTS DATA SECURED", "THE SCOREBOARDS HAVE SPOKEN"]
+      },
+
+      "_family_entertainment": {
+        "start": ["RAIDING THE MOVIE AND TV VAULTS", "HUNTING YOUR NEXT SCREEN ADDICTION"],
+        "progress": ["ENTERTAINMENT OPTIONS CAPTURED", "THE WATCHLIST DEMANDS MORE SACRIFICES"]
+      },
+
+      "_family_tool_discovery": {
+        "start": ["SEARCHING THE TOOL SHED FOR A BIGGER HAMMER", "SUMMONING THE CORRECT DIGITAL WEAPON"],
+        "progress": ["MATCHING TOOLS HAVE ANSWERED THE CALL", "THE RIGHT WEAPON HAS BEEN FOUND"]
+      },
+
+      "_family_workflow": {
+        "start": ["UNLEASHING THE WORKFLOW HYDRA", "STARTING THE MULTI-STEP CHAOS RITUAL"],
+        "progress": ["THE WORKFLOW GRINDS FORWARD", "RITUAL COMPLETE, PIPELINE SURVIVED"]
+      },
   
       "opencode": {
         "start": ["OPENCODE AWAKENS FROM ITS SLUMBER", "RELEASING THE CODE KRAKEN", "THE BUILD RITUAL BEGINS"],

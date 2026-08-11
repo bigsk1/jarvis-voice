@@ -176,8 +176,153 @@
     }
   },
   
+  "tool_aliases": {
+    "acknowledge_alerts": "_family_alerts",
+    "acknowledge_reminders": "_family_reminders",
+    "api_call": "_family_developer_ops",
+    "bookmark_search": "_family_search",
+    "brave_llm_context": "_family_search",
+    "check_opencode_sessions": "opencode",
+    "check_tool_logs": "_family_developer_ops",
+    "convert_file": "_family_files",
+    "create_alert": "_family_alerts",
+    "create_reminder": "_family_reminders",
+    "create_social_clip": "_family_video",
+    "crypto_chart": "crypto_price",
+    "execute_bash": "_family_developer_ops",
+    "flight_search": "_family_travel",
+    "forget": "_family_memory",
+    "generate_video": "_family_video",
+    "get_recent_conversations": "_family_memory",
+    "get_time": "_family_lookup",
+    "git_release_notes": "_family_developer_ops",
+    "list_alerts": "_family_alerts",
+    "list_reminders": "_family_reminders",
+    "memory_deduper": "_family_memory",
+    "price_alert": "_family_alerts",
+    "qr_code_generator": "_family_files",
+    "query_service_logs": "_family_developer_ops",
+    "recall": "_family_memory",
+    "release_watch": "_family_developer_ops",
+    "remember": "_family_memory",
+    "samantha": "_family_assistant",
+    "schedule_task": "_family_reminders",
+    "search_conversations": "_family_memory",
+    "search_docs": "_family_search",
+    "serpapi_amazon_search": "_family_shopping",
+    "serpapi_ebay_product": "_family_shopping",
+    "serpapi_ebay_search": "_family_shopping",
+    "serpapi_google_images_light": "_family_search",
+    "serpapi_google_local": "_family_local_search",
+    "serpapi_google_local_services": "_family_local_search",
+    "serpapi_google_news_light": "_family_search",
+    "serpapi_google_shopping_light": "_family_shopping",
+    "serpapi_google_sports": "_family_sports",
+    "serpapi_google_trending_now": "_family_search",
+    "serpapi_google_trends": "_family_search",
+    "serpapi_home_depot": "_family_shopping",
+    "serpapi_hotel_search": "_family_travel",
+    "serpapi_maps_search": "_family_local_search",
+    "serpapi_search_index": "_family_search",
+    "serpapi_travel_explore": "_family_travel",
+    "serpapi_tripadvisor": "_family_local_search",
+    "serpapi_yelp_search": "_family_local_search",
+    "serpapi_youtube": "_family_search",
+    "serpapi_youtube_search": "_family_search",
+    "supa_crawl_knowledge": "_family_search",
+    "tmdb_movies": "_family_entertainment",
+    "tmdb_tv_shows": "_family_entertainment",
+    "tool_search": "_family_tool_discovery",
+    "trakt_movies": "_family_entertainment",
+    "trakt_tv_shows": "_family_entertainment",
+    "update_memory": "_family_memory",
+    "upload_cloudflare": "_family_files",
+    "workflow": "_family_workflow",
+    "youtube_video": "_family_video"
+  },
+
   "tool_specific": {
     "_description": "Override messages for specific tools. Falls back to categories if not defined.",
+
+    "_family_alerts": {
+      "start": ["Checking your alerts", "Updating your alerts"],
+      "progress": ["Alert task complete", "Alerts are up to date"]
+    },
+
+    "_family_reminders": {
+      "start": ["Checking your reminders", "Updating your reminders"],
+      "progress": ["Reminder task complete", "Reminders are up to date"]
+    },
+
+    "_family_developer_ops": {
+      "start": ["Running the requested operation", "Checking the technical details"],
+      "progress": ["Operation complete", "Technical details retrieved"]
+    },
+
+    "_family_files": {
+      "start": ["Preparing the file", "Working with the artifact"],
+      "progress": ["File operation complete", "Artifact is ready"]
+    },
+
+    "_family_video": {
+      "start": ["Starting video processing", "Preparing your video"],
+      "progress": ["Video processing is underway", "Video is ready"]
+    },
+
+    "_family_memory": {
+      "start": ["Checking stored context", "Working with memory"],
+      "progress": ["Memory task complete", "Stored context is ready"]
+    },
+
+    "_family_lookup": {
+      "start": ["Checking that now", "Looking that up"],
+      "progress": ["Lookup complete", "Got the answer"]
+    },
+
+    "_family_assistant": {
+      "start": ["Contacting the other assistant", "Handing that request off"],
+      "progress": ["Assistant response received", "The handoff is complete"]
+    },
+
+    "_family_search": {
+      "start": ["Searching relevant sources", "Looking through available sources"],
+      "progress": ["Results found, reviewing them", "Source search complete"]
+    },
+
+    "_family_travel": {
+      "start": ["Searching travel options", "Checking routes and stays"],
+      "progress": ["Travel options retrieved", "Travel search complete"]
+    },
+
+    "_family_shopping": {
+      "start": ["Searching product listings", "Comparing available products"],
+      "progress": ["Product results retrieved", "Shopping search complete"]
+    },
+
+    "_family_local_search": {
+      "start": ["Searching local listings", "Checking nearby places and services"],
+      "progress": ["Local results retrieved", "Nearby options are ready"]
+    },
+
+    "_family_sports": {
+      "start": ["Checking sports schedules and scores", "Looking up the latest sports data"],
+      "progress": ["Sports results retrieved", "Latest sports data is ready"]
+    },
+
+    "_family_entertainment": {
+      "start": ["Searching movies and shows", "Checking entertainment catalogs"],
+      "progress": ["Entertainment results retrieved", "Movie and show options are ready"]
+    },
+
+    "_family_tool_discovery": {
+      "start": ["Checking available tools", "Finding the right capability"],
+      "progress": ["Matching tools found", "Tool discovery complete"]
+    },
+
+    "_family_workflow": {
+      "start": ["Starting the workflow", "Running the requested workflow"],
+      "progress": ["Workflow is making progress", "Workflow complete"]
+    },
     
     "opencode": {
       "start": ["OpenCode is on it boss", "Starting the build", "Firing up OpenCode"],

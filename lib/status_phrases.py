@@ -68,6 +68,8 @@ class StatusPhrases:
         self.settings = self.config.get('settings', {})
         self.categories = self.config.get('categories', {})
         self.tool_specific = self.config.get('tool_specific', {})
+        aliases = self.config.get('tool_aliases', {})
+        self.tool_aliases = aliases if isinstance(aliases, dict) else {}
         
         # Track recently used phrases to avoid repetition
         self._recent_phrases: list[str] = []
@@ -95,10 +97,16 @@ class StatusPhrases:
         phrase = None
         
         # 1. Check tool-specific first
-        if tool_name and tool_name in self.tool_specific:
-            tool_phrases = self.tool_specific[tool_name]
+        resolved_tool_name = tool_name
+        if tool_name and tool_name not in self.tool_specific:
+            alias = self.tool_aliases.get(tool_name)
+            if isinstance(alias, str) and alias:
+                resolved_tool_name = alias
+
+        if resolved_tool_name and resolved_tool_name in self.tool_specific:
+            tool_phrases = self.tool_specific[resolved_tool_name]
             key = self.CATEGORY_KEY_MAP.get(category, 'progress')
-            if key in tool_phrases:
+            if isinstance(tool_phrases, dict) and key in tool_phrases:
                 phrases = tool_phrases[key]
                 phrase = self._select_random(phrases)
         
@@ -209,7 +217,8 @@ class StatusPhrases:
                     'standard': ['Still working', 'Taking a bit longer']
                 }
             },
-            'tool_specific': {}
+            'tool_specific': {},
+            'tool_aliases': {}
         }
     
     def get_settings(self) -> dict[str, Any]:
@@ -226,7 +235,9 @@ class StatusPhrases:
     
     def list_tool_overrides(self) -> list[str]:
         """List tools with specific overrides."""
-        return [k for k in self.tool_specific.keys() if not k.startswith('_')]
+        direct = {k for k in self.tool_specific.keys() if not k.startswith('_')}
+        aliases = {k for k in self.tool_aliases.keys() if not k.startswith('_')}
+        return sorted(direct | aliases)
 
 
 # Singleton instance for easy access
@@ -276,4 +287,3 @@ if __name__ == "__main__":
     print("Detailed style (building):")
     for _ in range(3):
         print(f"  - {phrases.get_phrase('building', style='detailed')}")
-
