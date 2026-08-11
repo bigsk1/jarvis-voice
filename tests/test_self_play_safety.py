@@ -42,7 +42,8 @@ def test_default_exclusions_cover_persistent_and_external_actions():
     } <= excluded
 
 
-def test_google_trends_is_reviewed_for_read_only_self_play():
+def test_serpapi_discovery_tools_are_reviewed_for_read_only_self_play():
+    assert "serpapi_google_events" in self_play.DEFAULT_ALLOWED_TOOLS
     assert "serpapi_google_local" in self_play.DEFAULT_ALLOWED_TOOLS
     assert "serpapi_google_local_services" in self_play.DEFAULT_ALLOWED_TOOLS
     assert "serpapi_google_images_light" in self_play.DEFAULT_ALLOWED_TOOLS

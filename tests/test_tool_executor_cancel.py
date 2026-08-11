@@ -111,6 +111,10 @@ class ToolExecutorCancelTests(unittest.TestCase):
             executor._get_subprocess_timeout("serpapi_travel_explore"), 120
         )
 
+    def test_google_events_timeout_allows_full_provider_request(self):
+        executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
+        self.assertEqual(executor._get_subprocess_timeout("serpapi_google_events"), 120)
+
     def test_document_ocr_timeout_allows_large_gpu_document_and_extraction(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("document_ocr"), 1200)
@@ -202,6 +206,53 @@ class ToolExecutorCancelTests(unittest.TestCase):
         self.assertEqual(result["error"], diagnosis["speech"])
         self.assertTrue(result["data"]["existing"])
         self.assertEqual(result["data"]["serpapi_incident"]["engine"], "home_depot")
+
+    def test_google_events_empty_results_uses_live_incident_context(self):
+        original = {
+            "ok": False,
+            "speech": (
+                "SerpApi Google Events error: SerpApi error: Google hasn't "
+                "returned any results for this query."
+            ),
+            "error": (
+                "SerpApi Google Events error: SerpApi error: Google hasn't "
+                "returned any results for this query."
+            ),
+        }
+        active_incident = {
+            "name": "[Google Events API] Empty results for all queries",
+            "status": "investigating",
+            "impact": "critical",
+            "shortlink": "https://stspg.io/example-events",
+            "incident_updates": [
+                {
+                    "status": "investigating",
+                    "body": "We are continuing to investigate this issue.",
+                }
+            ],
+        }
+
+        with patch(
+            "serpapi_client.fetch_serpapi_unresolved_incidents",
+            return_value=[active_incident],
+        ):
+            result = ToolExecutor._with_serpapi_incident_context(
+                "serpapi_google_events",
+                {"query": "events", "location": "Austin, Texas"},
+                original,
+            )
+
+        self.assertFalse(result["ok"])
+        self.assertIn("Empty results for all queries", result["speech"])
+        self.assertEqual(result["error"], result["speech"])
+        self.assertEqual(
+            result["data"]["failure_reason"],
+            "active_provider_incident",
+        )
+        self.assertEqual(
+            result["data"]["serpapi_incident"]["engine"],
+            "google_events",
+        )
 
     def test_successful_tool_does_not_check_serpapi_status(self):
         output = {"ok": True, "speech": "done"}

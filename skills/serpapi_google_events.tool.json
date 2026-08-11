@@ -1,0 +1,103 @@
+{
+  "enabled": true,
+  "name": "serpapi_google_events",
+  "description": "Find upcoming in-person or virtual events through SerpApi Google Events. Use for concerts, festivals, comedy, markets, family activities, conferences, nightlife, things happening today or this week, or general 'events near me' requests. Returns event dates and times, venues, addresses, descriptions, prices, ticket links, public event links, map links, and images. Keep event keywords in query and put the city in location; the tool adds a qualified location to Google's event query. When location is omitted, it uses JARVIS_DEFAULT_LOCATION and then JARVIS_DEFAULT_POSTAL_CODE from the active mode env, never proxy geography. Qualify ambiguous cities such as Portland as 'Portland, Oregon' or 'Portland, Maine'. Use serpapi_google_local for nearby businesses, serpapi_tripadvisor for destination attractions, and weather when conditions matter.",
+  "complementary_tools": [
+    "serpapi_google_local",
+    "serpapi_tripadvisor",
+    "serpapi_maps_search",
+    "weather",
+    "canvas",
+    "stash",
+    "workflow"
+  ],
+  "script": "serpapi_google_events.py",
+  "proxy_policy": "off",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "maxLength": 500,
+        "description": "Required event keywords such as events, live music, family-friendly events, food festivals, or comedy. Usually omit the city and use location. A full Google-style query such as 'concerts in Portland, Maine' is also accepted and will not be duplicated."
+      },
+      "location": {
+        "type": "string",
+        "maxLength": 200,
+        "description": "Optional city-level location. Include state, region, or country when ambiguous, for example Portland, Oregon or Portland, Maine. When omitted, the active mode's JARVIS_DEFAULT_LOCATION is used, followed by JARVIS_DEFAULT_POSTAL_CODE. Cannot be combined with uule."
+      },
+      "uule": {
+        "type": "string",
+        "maxLength": 500,
+        "description": "Advanced Google-encoded search origin. Cannot be combined with location; coordinate-based values should also supply a matching country. Because uule is not human-readable, put any desired event city directly in query."
+      },
+      "date_filter": {
+        "type": "string",
+        "enum": [
+          "today",
+          "tomorrow",
+          "week",
+          "next_week",
+          "month",
+          "next_month"
+        ],
+        "description": "Optional Google Events date filter. Leave blank for the engine's normal upcoming-event range."
+      },
+      "virtual": {
+        "type": "boolean",
+        "description": "Limit results to virtual events. Can be combined with date_filter. Default false."
+      },
+      "country": {
+        "type": "string",
+        "pattern": "^[a-zA-Z]{2}$",
+        "description": "Optional two-letter Google country code such as us, uk, or fr."
+      },
+      "language": {
+        "type": "string",
+        "pattern": "^[a-zA-Z]{2}$",
+        "description": "Optional two-letter result language such as en, es, or fr."
+      },
+      "start": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1000,
+        "multipleOf": 10,
+        "description": "Result offset for pagination: 0, 10, 20, and so on. Use next_start from a prior response. Default 0."
+      },
+      "max_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20,
+        "description": "Maximum normalized events to return. Default 10."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "Bypass SerpApi's one-hour exact-parameter cache. Default false; cached searches are free."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Advanced non-reserved Google Events parameters passed through to SerpApi. Core query, location, localization, date/type filter, pagination, cache, and output controls cannot be overridden."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "Include the full SerpApi JSON response for debugging. Default false."
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "SERP_API_KEY"
+    ],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file. For location-free prompts, also set JARVIS_DEFAULT_LOCATION or JARVIS_DEFAULT_POSTAL_CODE."
+  }
+}

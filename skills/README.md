@@ -297,6 +297,7 @@ JSON object printed to stdout:
 | `serpapi_ebay_search` | eBay listing discovery with prices, condition, shipping, images, and product IDs |
 | `serpapi_ebay_product` | Focused eBay listing details by numeric product ID |
 | `serpapi_home_depot` | SerpApi Home Depot product search with store/ZIP filters |
+| `serpapi_google_events` | Upcoming local or virtual Google Events using an explicit or active-mode default location, with dates, venues, ticket links, public maps, images, and date filters |
 | `serpapi_google_local` | Google Local business discovery using explicit or mode-default location, with ratings, hours, service options, sponsored listings, related searches, and pagination |
 | `serpapi_google_local_services` | Screened US professional-service providers from Google Local Services, with Google badges, contact/availability data, provider detail drill-down, and visible one- or two-search CID resolution |
 | `serpapi_maps_search` | SerpApi Google Maps place and local business search |

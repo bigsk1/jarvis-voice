@@ -761,6 +761,10 @@ class ContextAssembler:
             # prices, airports, and links need to survive the tool handoff.
             # Keep it below the provider-facing 10K result-context ceiling.
             return 10000
+        if lowered == "serpapi_google_events":
+            # Keep a bounded event shortlist with dates, venues, public links,
+            # and ticket sources for immediate answers and chained tools.
+            return 10000
         if lowered == "document_ocr":
             # The tool already replaces full OCR bodies with bounded excerpts
             # and Stash refs. Preserve enough page-attributed text or structured
@@ -916,6 +920,9 @@ class ContextAssembler:
         is_hotel_search = str(data.get("engine") or "").strip().lower() == "google_hotels"
         is_yelp_search = str(data.get("engine") or "").strip().lower() == "yelp"
         is_search_index = str(tool_name or "").strip().lower() == "serpapi_search_index"
+        is_google_events = (
+            str(tool_name or "").strip().lower() == "serpapi_google_events"
+        )
         is_google_local = (
             str(tool_name or "").strip().lower() == "serpapi_google_local"
         )
@@ -1025,6 +1032,30 @@ class ContextAssembler:
                             parent_key=key,
                             depth=0,
                             max_depth=2,
+                        )
+
+            if is_google_events:
+                for key in (
+                    "type",
+                    "start_date",
+                    "when",
+                    "date_text",
+                    "time",
+                    "address",
+                    "address_text",
+                    "description",
+                    "extracted_price",
+                    "ticket_info",
+                    "venue",
+                    "event_location_map",
+                ):
+                    value = item.get(key)
+                    if value not in (None, "", [], {}):
+                        candidate[key] = self.build_preview_value(
+                            value,
+                            parent_key=key,
+                            depth=0,
+                            max_depth=3,
                         )
 
             if is_google_local:
@@ -2273,6 +2304,65 @@ class ContextAssembler:
             candidates.append(candidate)
         return candidates
 
+    def build_google_events_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep Google Events filters, provenance, and pagination compact."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "engine",
+            "query",
+            "effective_query",
+            "query_location_embedded",
+            "location",
+            "location_source",
+            "location_ambiguity_warning",
+            "uule_used",
+            "country",
+            "language",
+            "date_filter",
+            "virtual",
+            "filters",
+            "start",
+            "max_results",
+            "results_count",
+            "provider_results_count",
+            "top_url",
+            "events_results_state",
+            "search_id",
+            "google_events_url",
+            "has_more",
+            "next_start",
+            "serpapi_searches_used",
+            "external_content_trust",
+            "untrusted_external_content",
+            "handling_note",
+            "source",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=2,
+                )
+
+        pagination = data.get("pagination")
+        if isinstance(pagination, dict):
+            preview["pagination"] = {
+                key: pagination[key]
+                for key in (
+                    "current",
+                    "start",
+                    "has_more",
+                    "next_start",
+                    "previous_start",
+                )
+                if pagination.get(key) not in (None, "") or key == "has_more"
+            }
+        return preview
+
     def build_google_local_data_preview(self, data: Any) -> dict[str, Any]:
         """Keep Google Local provenance, pagination, ads, and related searches compact."""
         if not isinstance(data, dict):
@@ -2695,6 +2785,7 @@ class ContextAssembler:
 
         force_compact_projection = (tool_name or "").lower() in {
             "flight_search",
+            "serpapi_google_events",
             "serpapi_travel_explore",
             # Account payloads always use an allowlisted projection even when
             # small, so an upstream regression cannot hand OAuth material to
@@ -2716,6 +2807,8 @@ class ContextAssembler:
                 data_preview = self.build_yelp_data_preview(data)
             elif normalized_tool_name == "serpapi_search_index":
                 data_preview = self.build_search_index_data_preview(data)
+            elif normalized_tool_name == "serpapi_google_events":
+                data_preview = self.build_google_events_data_preview(data)
             elif normalized_tool_name == "serpapi_google_local":
                 data_preview = self.build_google_local_data_preview(data)
             elif normalized_tool_name == "serpapi_google_local_services":

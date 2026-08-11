@@ -21,6 +21,7 @@ SERPAPI_TOOL_ENGINES = {
     "serpapi_ebay_product": ("ebay_product",),
     "serpapi_ebay_search": ("ebay",),
     "serpapi_hotel_search": ("google_hotels",),
+    "serpapi_google_events": ("google_events",),
     "serpapi_google_local": ("google_local",),
     "serpapi_google_local_services": ("google_local_services",),
     "serpapi_maps_search": ("google_maps",),
@@ -44,6 +45,7 @@ SERPAPI_ENGINE_LABELS = {
     "google": "Google Search",
     "google_flights": "Google Flights",
     "google_hotels": "Google Hotels",
+    "google_events": "Google Events",
     "google_images_light": "Google Images Light",
     "google_light": "Google Light Search",
     "google_local": "Google Local",
@@ -81,6 +83,7 @@ SERPAPI_ENGINE_STATUS_ALIASES = {
     "google": ("google search api", "google search"),
     "google_flights": ("google flights api", "google flights"),
     "google_hotels": ("google hotels api", "google hotels"),
+    "google_events": ("google events api", "google events"),
     "google_images_light": (
         "google images light api",
         "google images light",
@@ -149,6 +152,9 @@ _TRANSIENT_SERPAPI_ERROR_MARKERS = (
     "temporarily unavailable",
     "couldn't get valid results",
     "please try again later",
+)
+_GOOGLE_EVENTS_EMPTY_RESULTS_MARKER = (
+    "google hasn't returned any results for this query"
 )
 GENERIC_RESERVED_KEYS = {
     "engine",
@@ -235,6 +241,16 @@ def is_transient_serpapi_failure(error_text: Any) -> bool:
     if any(marker in lowered for marker in _TRANSIENT_SERPAPI_ERROR_MARKERS):
         return True
     return re.search(r"\b(?:500|502|503|504)\b", lowered) is not None
+
+
+def _is_engine_specific_incident_candidate(tool_name: str, error_text: Any) -> bool:
+    """Recognize provider errors that imply an outage only for one engine."""
+    normalized_tool_name = str(tool_name or "").strip().lower()
+    lowered_error = str(error_text or "").lower()
+    return (
+        normalized_tool_name == "serpapi_google_events"
+        and _GOOGLE_EVENTS_EMPTY_RESULTS_MARKER in lowered_error
+    )
 
 
 def fetch_serpapi_unresolved_incidents(
@@ -327,9 +343,13 @@ def diagnose_serpapi_tool_failure(
     *,
     force: bool = False,
 ) -> dict[str, Any] | None:
-    """Correlate a final transient SerpApi tool failure with an active incident."""
+    """Correlate an eligible SerpApi tool failure with an active incident."""
     engines = serpapi_engines_for_tool(tool_name, args)
-    if not engines or (not force and not is_transient_serpapi_failure(error_text)):
+    incident_candidate = (
+        is_transient_serpapi_failure(error_text)
+        or _is_engine_specific_incident_candidate(tool_name, error_text)
+    )
+    if not engines or (not force and not incident_candidate):
         return None
 
     match = find_serpapi_incident(engines, fetch_serpapi_unresolved_incidents())

@@ -46,6 +46,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_youtube_search',
     'serpapi_yelp_search',
     'serpapi_search_index',
+    'serpapi_google_events',
     'serpapi_google_local',
     'serpapi_google_local_services',
     'serpapi_google_images_light',
@@ -318,6 +319,16 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'engine', 'query', 'mode', 'safe', 'start', 'num_results',
         'results_count', 'provider_results_count', 'total_results', 'top_url',
         'search_id', 'has_more', 'next_start', 'serpapi_searches_used', 'source',
+    ],
+    'serpapi_google_events': [
+        'engine', 'query', 'effective_query', 'query_location_embedded',
+        'location', 'location_source', 'location_ambiguity_warning',
+        'uule_used', 'country', 'language', 'date_filter', 'virtual',
+        'filters', 'start', 'max_results', 'results_count',
+        'provider_results_count', 'top_url', 'events_results_state',
+        'search_id', 'google_events_url', 'has_more', 'next_start',
+        'serpapi_searches_used', 'external_content_trust',
+        'untrusted_external_content', 'handling_note', 'source',
     ],
     'serpapi_google_local': [
         'engine', 'query', 'location', 'location_source', 'uule_used',
@@ -3362,6 +3373,44 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 rows = payload.get(source_key)
                 if isinstance(rows, list) and rows:
                     extracted[source_key] = rows[:max_candidates]
+
+        if key == 'serpapi_google_events':
+            results = payload.get('results') or payload.get('top_results') or []
+            if isinstance(results, list) and results:
+                extracted['results_count'] = payload.get('results_count', len(results))
+                candidates = []
+                for item in results[:max_candidates]:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = {
+                        field: item[field]
+                        for field in (
+                            'position', 'title', 'url', 'link', 'type',
+                            'start_date', 'when', 'date_text', 'time',
+                            'address', 'address_text', 'description', 'price',
+                            'extracted_price', 'ticket_info', 'venue',
+                            'event_location_map', 'thumbnail', 'image',
+                        )
+                        if item.get(field) not in (None, '', [], {})
+                    }
+                    if candidate.get('title') or candidate.get('url'):
+                        candidates.append(candidate)
+                if candidates:
+                    extracted['candidates'] = candidates
+
+            pagination = payload.get('pagination')
+            if isinstance(pagination, dict):
+                compact_pagination = {
+                    field: pagination[field]
+                    for field in (
+                        'current', 'start', 'has_more', 'next_start',
+                        'previous_start',
+                    )
+                    if pagination.get(field) not in (None, '')
+                    or field == 'has_more'
+                }
+                if compact_pagination:
+                    extracted['pagination'] = compact_pagination
 
         if key == 'serpapi_google_local':
             results = payload.get('results') or payload.get('top_results') or []

@@ -332,6 +332,90 @@ class SerpApiStatusDiagnosticTests(unittest.TestCase):
         self.assertIn("Google Local API", result["speech"])
         self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
 
+    def test_google_events_timeout_matches_google_events_incident(self):
+        with patch.object(
+            serpapi_client,
+            "fetch_serpapi_unresolved_incidents",
+            return_value=[
+                incident(
+                    name="[Google Events API] Performance Degradation",
+                    update="We are investigating Google Events API latency.",
+                )
+            ],
+        ):
+            result = serpapi_client.diagnose_serpapi_tool_failure(
+                "serpapi_google_events",
+                {"query": "live music", "location": "Portland, Oregon"},
+                "Tool serpapi_google_events timed out",
+                force=True,
+            )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            result["data"]["serpapi_incident"]["engine"],
+            "google_events",
+        )
+        self.assertIn("Google Events API", result["speech"])
+        self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
+
+    def test_google_events_empty_results_checks_and_reports_matching_incident(self):
+        event_incident = incident(
+            name="[Google Events API] Empty results for all queries",
+            update="We are continuing to investigate this issue.",
+        )
+        with patch.object(
+            serpapi_client,
+            "fetch_serpapi_unresolved_incidents",
+            return_value=[event_incident],
+        ) as fetch_incidents:
+            result = serpapi_client.diagnose_serpapi_tool_failure(
+                "serpapi_google_events",
+                {"query": "events", "location": "Austin, Texas"},
+                "SerpApi error: Google hasn't returned any results for this query.",
+            )
+
+        fetch_incidents.assert_called_once_with()
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            result["data"]["failure_reason"],
+            "active_provider_incident",
+        )
+        self.assertEqual(
+            result["data"]["serpapi_incident"]["engine"],
+            "google_events",
+        )
+        self.assertIn("Empty results for all queries", result["speech"])
+        self.assertIn("continuing to investigate", result["speech"])
+
+    def test_google_events_empty_results_keeps_original_error_without_matching_incident(self):
+        with patch.object(
+            serpapi_client,
+            "fetch_serpapi_unresolved_incidents",
+            return_value=[incident(name="[eBay Search API] Performance Degradation")],
+        ) as fetch_incidents:
+            result = serpapi_client.diagnose_serpapi_tool_failure(
+                "serpapi_google_events",
+                {"query": "events", "location": "Portland, Oregon"},
+                "SerpApi error: Google hasn't returned any results for this query.",
+            )
+
+        fetch_incidents.assert_called_once_with()
+        self.assertIsNone(result)
+
+    def test_other_engines_empty_results_do_not_trigger_status_lookup(self):
+        with patch.object(
+            serpapi_client,
+            "fetch_serpapi_unresolved_incidents",
+        ) as fetch_incidents:
+            result = serpapi_client.diagnose_serpapi_tool_failure(
+                "serpapi_maps_search",
+                {"query": "unlikely place"},
+                "SerpApi error: Google hasn't returned any results for this query.",
+            )
+
+        self.assertIsNone(result)
+        fetch_incidents.assert_not_called()
+
     def test_google_local_services_timeout_matches_direct_or_resolver_incident(self):
         cases = (
             (

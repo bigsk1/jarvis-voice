@@ -32,6 +32,7 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(self.orch._tool_context_max_chars("bookmark_search"), 5000)
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_web_search"), 6000)
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_google_sports"), 10000)
+        self.assertEqual(self.orch._tool_context_max_chars("serpapi_google_events"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_travel_explore"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("document_ocr"), 6000)
         self.assertEqual(self.orch._tool_context_max_chars("trakt_movies"), 10000)
@@ -1041,6 +1042,64 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(data_preview["pagination"]["next_start"], 20)
         self.assertIn("Sponsored Coffee", json.dumps(data_preview["ads"]))
         self.assertIn("Best coffee", json.dumps(data_preview["discover_more_places"]))
+        self.assertNotIn("large_provider_payload", preview)
+
+    def test_google_events_preview_keeps_timing_venue_and_ticket_handoffs(self):
+        result = {
+            "ok": True,
+            "speech": "Found upcoming events.",
+            "data": {
+                "engine": "google_events",
+                "query": "live music",
+                "effective_query": "live music in Portland, Oregon",
+                "location": "Portland, Oregon",
+                "location_source": "jarvis_default_location",
+                "date_filter": "week",
+                "results_count": 6,
+                "provider_results_count": 10,
+                "external_content_trust": "untrusted",
+                "raw": {"large_provider_payload": "x" * 12000},
+                "results": [
+                    {
+                        "position": index,
+                        "title": f"Event {index}",
+                        "url": f"https://events.example/{index}",
+                        "type": "Concert",
+                        "when": f"Aug {10 + index}, 7 PM PDT",
+                        "address": [f"Venue {index}", "Portland, OR"],
+                        "description": "A bounded outdoor event. " * 20,
+                        "ticket_info": [
+                            {
+                                "source": "Tickets Example",
+                                "link": f"https://tickets.example/{index}",
+                                "link_type": "tickets",
+                            }
+                        ],
+                        "venue": {"name": f"Venue {index}", "rating": 4.7},
+                    }
+                    for index in range(1, 7)
+                ],
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_google_events", result
+        )
+
+        parsed = json.loads(preview)
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        data_preview = parsed["llm_context_preview"]["data_preview"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 10000)
+        self.assertEqual(len(candidates), 5)
+        self.assertEqual(candidates[0]["when"], "Aug 11, 7 PM PDT")
+        self.assertEqual(candidates[0]["venue"]["name"], "Venue 1")
+        self.assertEqual(
+            candidates[0]["ticket_info"][0]["link"],
+            "https://tickets.example/1",
+        )
+        self.assertEqual(data_preview["effective_query"], "live music in Portland, Oregon")
+        self.assertEqual(data_preview["external_content_trust"], "untrusted")
         self.assertNotIn("large_provider_payload", preview)
 
     def test_google_local_services_preview_keeps_provider_ids_and_resolution_cost(self):

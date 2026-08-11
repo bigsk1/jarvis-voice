@@ -1,8 +1,8 @@
 # SerpApi Tools
 
 Jarvis provides a family of focused SerpApi tools for shopping, indexed-web
-source discovery, existing-image discovery, news, trend analysis, local places,
-sports, travel, and YouTube. Each tool has its own schema and normalized result shape so
+source discovery, existing-image discovery, news, trend analysis, events, local
+places, sports, travel, and YouTube. Each tool has its own schema and normalized result shape so
 Tool RAG can select a narrow capability instead of routing every request through
 one ambiguous search tool.
 
@@ -26,6 +26,7 @@ discover general public webpages and source URLs.
 | `serpapi_ebay_search` | `ebay` | eBay listing discovery with price, condition, seller, shipping, images, and product IDs |
 | `serpapi_ebay_product` | `ebay_product` | One eBay listing's focused details by numeric product ID |
 | `serpapi_home_depot` | `home_depot`, `home_depot_product` | Home Depot products, price/rating comparison, store or ZIP availability, and focused details |
+| `serpapi_google_events` | `google_events` | Upcoming local or virtual events with dates, venues, descriptions, ticket sources, public maps, images, date filters, and active-mode location fallback; see the [Google Events guide](../google-events-tool/README.md) |
 | `serpapi_google_local` | `google_local` | Google Local business listings near an explicit or mode-default location, with ratings, hours, service options, ads, related place searches, and pagination |
 | `serpapi_google_local_services` | `google_local_services` plus conditional `google_maps` resolver | Screened US professional-service providers, Google badges, contact and availability details, and provider drill-down |
 | `serpapi_maps_search` | `google_maps` | Places and local businesses with addresses, ratings, hours, phones, and websites |
@@ -61,7 +62,7 @@ The family uses these common layers:
   identity for later turns.
 - `jarvis-web/client/js/structured-results.js` renders focused product, place,
   image-gallery, multi-retailer shopping, hotel, Travel Explore, flight,
-  Tripadvisor, Google
+  Tripadvisor, Google Events, Google
   Local, Google Local Services, Google News Light, Google Trends, Trending Now,
   Google Sports, Search Index, eBay, Yelp, Maps, and YouTube cards.
 
@@ -82,7 +83,7 @@ Use `config/cloud.env` for cloud mode and `config/local.env` for local mode.
 Shopping Light when no location is supplied. The postal code also localizes
 Amazon delivery and Home Depot availability where supported.
 
-The twenty `serpapi_*` manifests declare:
+The twenty-one `serpapi_*` manifests declare:
 
 ```json
 "availability": {
@@ -601,6 +602,32 @@ for Europe. The Jarvis wrapper intentionally does not expose provider
 `arrival_id`: a fixed destination belongs in the exact `flight_search` stage.
 See the [focused Travel Explore guide](../travel-explore-tool/README.md) for
 workflow fields and handoff examples.
+
+### Google Events
+
+```json
+{
+  "query": "live music",
+  "location": "Portland, Oregon",
+  "date_filter": "week",
+  "max_results": 10
+}
+```
+
+`serpapi_google_events` makes one `google_events` request and adds the resolved
+city to the provider query. An explicit `location` wins; otherwise it uses
+`JARVIS_DEFAULT_LOCATION`, then `JARVIS_DEFAULT_POSTAL_CODE`, from the active
+mode env file. Qualify ambiguous cities: use `Portland, Oregon` or
+`Portland, Maine`, not just `Portland`. A bare city remains callable but the
+result includes `location_ambiguity_warning` rather than pretending Jarvis
+knows which city was intended.
+
+Date filters support `today`, `tomorrow`, `week`, `next_week`, `month`, and
+`next_month`; `virtual: true` can be combined with any of them. Results retain
+bounded event timing, venue, address, description, image, ticket-source, and
+public map fields. Use returned venue/address data with `serpapi_google_local`,
+`serpapi_tripadvisor`, Maps, or weather in a later tool call or workflow step.
+See the [focused Google Events guide](../google-events-tool/README.md).
 
 ### Tripadvisor
 

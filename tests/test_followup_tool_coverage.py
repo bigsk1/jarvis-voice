@@ -642,6 +642,49 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "serpapi_google_events": _case(
+        {
+            "engine": "google_events",
+            "query": "live music",
+            "effective_query": "live music in Portland, Oregon",
+            "location": "Portland, Oregon",
+            "location_source": "jarvis_default_location",
+            "date_filter": "week",
+            "filters": ["date:week"],
+            "results_count": 1,
+            "provider_results_count": 10,
+            "google_events_url": "https://www.google.com/search?q=live+music+in+Portland",
+            "external_content_trust": "untrusted",
+            "untrusted_external_content": True,
+            "source": "SerpApi Google Events",
+            "results": [
+                {
+                    "position": 1,
+                    "title": "Waterfront Jazz Night",
+                    "url": "https://events.example/waterfront-jazz",
+                    "type": "Concert",
+                    "start_date": "Aug 14",
+                    "when": "Fri, Aug 14, 7:30 PM PDT",
+                    "address": ["Waterfront Park", "Portland, OR"],
+                    "address_text": "Waterfront Park, Portland, OR",
+                    "description": "An outdoor summer jazz concert.",
+                    "ticket_info": [
+                        {
+                            "source": "Tickets Example",
+                            "link": "https://tickets.example/jazz",
+                            "link_type": "tickets",
+                        }
+                    ],
+                    "venue": {"name": "Waterfront Park", "rating": 4.7},
+                    "event_location_map": {
+                        "link": "https://www.google.com/maps/place/Waterfront+Park"
+                    },
+                    "thumbnail": "https://images.example/jazz.jpg",
+                    "raw": {"secret": "SECRET_SENTINEL"},
+                }
+            ],
+        }
+    ),
     "serpapi_travel_explore": _case(
         {
             "engine": "google_travel_explore",
@@ -1680,6 +1723,44 @@ def test_travel_explore_followup_keeps_destination_handoff_fields():
         }
     ]
     assert "serpapi_link" not in result["candidates"][0]
+    assert "raw" not in result["candidates"][0]
+
+
+def test_google_events_followup_keeps_event_identity_timing_and_ticket_handoffs():
+    payload, _ = LOCAL_TOOL_SAMPLES["serpapi_google_events"]
+
+    result = followup.extract_followup_data(
+        {"serpapi_google_events": payload}
+    )["serpapi_google_events"]
+
+    assert result["effective_query"] == "live music in Portland, Oregon"
+    assert result["date_filter"] == "week"
+    assert result["external_content_trust"] == "untrusted"
+    assert result["candidates"] == [
+        {
+            "position": 1,
+            "title": "Waterfront Jazz Night",
+            "url": "https://events.example/waterfront-jazz",
+            "type": "Concert",
+            "start_date": "Aug 14",
+            "when": "Fri, Aug 14, 7:30 PM PDT",
+            "address": ["Waterfront Park", "Portland, OR"],
+            "address_text": "Waterfront Park, Portland, OR",
+            "description": "An outdoor summer jazz concert.",
+            "ticket_info": [
+                {
+                    "source": "Tickets Example",
+                    "link": "https://tickets.example/jazz",
+                    "link_type": "tickets",
+                }
+            ],
+            "venue": {"name": "Waterfront Park", "rating": 4.7},
+            "event_location_map": {
+                "link": "https://www.google.com/maps/place/Waterfront+Park"
+            },
+            "thumbnail": "https://images.example/jazz.jpg",
+        }
+    ]
     assert "raw" not in result["candidates"][0]
 
 

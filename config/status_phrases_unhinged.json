@@ -210,6 +210,7 @@
       "serpapi_amazon_search": "_family_shopping",
       "serpapi_ebay_product": "_family_shopping",
       "serpapi_ebay_search": "_family_shopping",
+      "serpapi_google_events": "_family_local_search",
       "serpapi_google_images_light": "_family_search",
       "serpapi_google_local": "_family_local_search",
       "serpapi_google_local_services": "_family_local_search",

@@ -347,6 +347,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_google_trends', payload => this._adaptGoogleTrends(payload));
     this.register('serpapi_google_trending_now', payload => this._adaptGoogleTrendingNow(payload));
     this.register('serpapi_travel_explore', payload => this._adaptTravelExplore(payload));
+    this.register('serpapi_google_events', payload => this._adaptGoogleEvents(payload));
     this.register('serpapi_tripadvisor', payload => this._adaptTripadvisor(payload));
     this.register('trakt_movies', payload => this._adaptTraktMovies(payload));
     this.register('trakt_account', payload => this._adaptTraktAccount(payload));
@@ -1459,6 +1460,56 @@ class StructuredResultsRenderer {
       subtitle: [payload.month_label, duration, payload.interest].filter(Boolean).join(' · '),
       actionUrl: payload.google_travel_url || payload.top_url,
       actionLabel: 'Open Google Travel',
+      items,
+    };
+  }
+
+  _adaptGoogleEvents(payload) {
+    const items = this._rows(payload).map((row, index) => {
+      const venue = row.venue && typeof row.venue === 'object' ? row.venue : {};
+      const tickets = Array.isArray(row.ticket_info)
+        ? row.ticket_info.filter(ticket => ticket && typeof ticket === 'object')
+        : (row.ticket_info && typeof row.ticket_info === 'object' ? [row.ticket_info] : []);
+      const firstTicket = tickets.find(ticket => ticket.link) || {};
+      const timing = row.when || row.date_text || row.time || row.start_date || '';
+      const address = row.address_text || this._list(row.address).join(', ');
+      const chips = [
+        row.type,
+        row.price,
+        venue.rating != null ? `Venue ★ ${venue.rating}` : '',
+        venue.reviews != null ? `${this._formatCount(venue.reviews)} venue reviews` : '',
+        tickets.length ? `${tickets.length} link${tickets.length === 1 ? '' : 's'}` : '',
+      ].filter(Boolean).map(String);
+      return {
+        title: row.title || `Event ${index + 1}`,
+        url: row.url || row.link || firstTicket.link || venue.link || row.event_location_map?.link,
+        image: row.thumbnail || row.image || row.event_location_map?.image,
+        imageUrl: row.image || row.thumbnail,
+        primary: timing,
+        chips,
+        details: [
+          venue.name,
+          address,
+          this._compactText(row.description, 260),
+        ].filter(Boolean),
+        actionLabel: firstTicket.link ? 'Tickets / details' : 'Event details',
+      };
+    });
+    const location = payload.location || (payload.uule_used ? 'encoded location' : '');
+    return {
+      kind: 'events',
+      layout: 'rail',
+      eyebrow: 'Google Events · External content',
+      heading: payload.effective_query || payload.query || 'Upcoming events',
+      subtitle: [
+        `${payload.results_count ?? items.length} event${Number(payload.results_count ?? items.length) === 1 ? '' : 's'}`,
+        location,
+        payload.date_filter ? String(payload.date_filter).replace(/_/g, ' ') : '',
+        payload.virtual ? 'Virtual only' : '',
+        payload.location_ambiguity_warning || '',
+      ].filter(Boolean).join(' · '),
+      actionUrl: payload.google_events_url || payload.top_url,
+      actionLabel: 'Open Google Events',
       items,
     };
   }

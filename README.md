@@ -833,6 +833,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `serpapi_ebay_search` - **SerpApi eBay**: Marketplace keyword or category search; compact listings with price, condition, listing URL, product ID hints for follow-up
 - `serpapi_ebay_product` - **SerpApi eBay product**: Single listing detail by item ID or product URL—price, condition, seller, media/images—for drill-down after search
 - `serpapi_home_depot` - **SerpApi Home Depot**: Product search with price, rating, product ID, store/ZIP availability, and follow-up candidate context
+- [`serpapi_google_events`](docs/tools/google-events-tool/README.md) - **SerpApi Google Events**: Upcoming concerts, festivals, comedy, family activities, conferences, and virtual events with dates, venues, ticket links, public maps, images, date filters, and active-mode location fallback
 - `serpapi_google_local` - **SerpApi Google Local**: Nearby business discovery using an explicit or mode-default location, with ratings, hours, service options, sponsored listings, related searches, and pagination
 - `serpapi_google_local_services` - **SerpApi Google Local Services**: Screened US professional-service providers with Google badges, contact/availability details, focused provider drill-down, and explicit city-CID resolution cost
 - `serpapi_maps_search` - **SerpApi Maps**: Google Maps place and local business search with normalized address/rating/contact fields
@@ -843,7 +844,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `serpapi_youtube_search` - **SerpApi YouTube search**: Keyword search with video-first results (title, channel, views, duration, thumbnails)
 - `serpapi_youtube` - **SerpApi YouTube details**: Video metadata and transcript by URL or `video_id` (useful when `youtube_video` / yt-dlp hits auth or cookie limits)
 
-The 20 `serpapi_*` tools require a nonblank key in the active mode's env file.
+The 21 `serpapi_*` tools require a nonblank key in the active mode's env file.
 Without it they are not callable or included in that mode's Tool RAG sync. Jarvis
 Web shows the free Account API quota card only when Settings → System is opened
 and the selected mode has a valid key.

@@ -60,6 +60,7 @@ const expectedTools = [
   'serpapi_google_trends',
   'serpapi_google_trending_now',
   'serpapi_travel_explore',
+  'serpapi_google_events',
   'serpapi_tripadvisor',
   'trakt_movies',
   'trakt_account',
@@ -341,6 +342,26 @@ const html = renderer.render({{
       google_travel_url: 'https://www.google.com/travel/explore/zion'
     }}]
   }},
+  serpapi_google_events: {{
+    query: 'live music',
+    effective_query: 'live music in Portland, Oregon',
+    location: 'Portland, Oregon',
+    date_filter: 'week',
+    results_count: 1,
+    google_events_url: 'https://www.google.com/search?q=live+music+in+Portland',
+    results: [{{
+      title: 'Waterfront Jazz Night',
+      url: 'https://events.example/waterfront-jazz',
+      thumbnail: 'https://images.example/jazz.jpg',
+      type: 'Concert',
+      when: 'Fri, Aug 14, 7:30 PM PDT',
+      address: ['Waterfront Park', 'Portland, OR'],
+      address_text: 'Waterfront Park, Portland, OR',
+      description: 'An outdoor summer jazz concert.',
+      ticket_info: [{{source: 'Tickets Example', link: 'https://tickets.example/jazz', link_type: 'tickets'}}],
+      venue: {{name: 'Waterfront Park', rating: 4.7, reviews: 1250}}
+    }}]
+  }},
   serpapi_tripadvisor: {{
     action: 'search',
     query: 'Rome',
@@ -515,6 +536,11 @@ for (const expected of [
   'October · one week · outdoors', 'Zion National Park', '$246 flight signal',
   'Hotel signal $167', '2026-10-09 → 2026-10-16', 'LAS · Las Vegas',
   '2h 44m ground transfer', 'Explore destination', 'Open Google Travel',
+  'Google Events · External content', 'live music in Portland, Oregon',
+  '1 event · Portland, Oregon · week', 'Waterfront Jazz Night',
+  'Fri, Aug 14, 7:30 PM PDT', 'Concert', 'Venue ★ 4.7',
+  '1,250 venue reviews', '1 link', 'Waterfront Park, Portland, OR',
+  'Tickets / details', 'Open Google Events',
   'Colosseum', '155000 reviews', 'Rome, Italy', 'Ancient amphitheatre',
   'PDX → PHX', '$257', 'Alaska', 'AS 1349',
   'Departs 09/15/2099 · 7:03 AM', 'Open Google Flights',
@@ -539,7 +565,7 @@ for (const expected of [
 }}
 if (html.includes('flight_numbers')) process.exit(4);
 if (html.includes('https://serpapi.example/unsafe-thumb.jpg')) process.exit(9);
-if ((html.match(/structured-results-preview/g) || []).length !== 21) process.exit(5);
+if ((html.match(/structured-results-preview/g) || []).length !== 22) process.exit(5);
 
 if (!renderer.register('custom_demo', payload => ({{
   kind: 'generic',
@@ -1214,6 +1240,36 @@ for (const expected of [
 ]) if (!errorHtml.includes(expected)) process.exit(6);
 if (errorHtml.indexOf('First Success') > errorHtml.indexOf('Second Success')) process.exit(7);
 
+const eventLocalHtml = renderer.render({{
+  _tool_trace: [
+    {{tool: 'serpapi_google_events', ok: true}},
+    {{tool: 'serpapi_google_local', ok: true}},
+  ],
+  serpapi_google_events: {{
+    effective_query: 'live music in Portland, Oregon',
+    results: [{{
+      title: 'Waterfront Jazz Night',
+      url: 'https://events.example/jazz',
+      when: 'Friday at 7 PM',
+    }}],
+  }},
+  serpapi_google_local: {{
+    query: 'restaurants near Waterfront Park',
+    location: 'Portland, Oregon',
+    results: [{{
+      title: 'Riverside Dinner',
+      url: 'https://restaurants.example/riverside',
+      address: '100 Waterfront Way',
+    }}],
+  }},
+}}, {{}}, []);
+for (const expected of [
+  '2 visual sections from 2 tool calls',
+  'Waterfront Jazz Night', 'Friday at 7 PM',
+  'Riverside Dinner', '100 Waterfront Way',
+]) if (!eventLocalHtml.includes(expected)) process.exit(12);
+if (eventLocalHtml.indexOf('Waterfront Jazz Night') > eventLocalHtml.indexOf('Riverside Dinner')) process.exit(13);
+
 const olderHistoryHtml = renderer.render({{
   serpapi_travel_explore: [
     travelPayload('Historical First'),
@@ -1231,9 +1287,9 @@ for (const expected of [
   '3 visual sections from 4 tool calls · 1 call without visual cards',
   'Historical First', 'Historical Second', 'Historical Third',
   'data-orchestration-call="4"',
-]) if (!olderHistoryHtml.includes(expected)) process.exit(8);
+]) if (!olderHistoryHtml.includes(expected)) process.exit(14);
 if (!(olderHistoryHtml.indexOf('Historical First') < olderHistoryHtml.indexOf('Historical Second')
-  && olderHistoryHtml.indexOf('Historical Second') < olderHistoryHtml.indexOf('Historical Third'))) process.exit(9);
+  && olderHistoryHtml.indexOf('Historical Second') < olderHistoryHtml.indexOf('Historical Third'))) process.exit(15);
 
 const emptyTailHtml = renderer.render({{
   _tool_trace: [
@@ -1242,8 +1298,8 @@ const emptyTailHtml = renderer.render({{
   ],
   serpapi_travel_explore: [travelPayload('Keep Earlier Result'), {{results: []}}],
 }}, {{}}, ['serpapi_travel_explore', 'serpapi_travel_explore']);
-if (!emptyTailHtml.includes('Keep Earlier Result')) process.exit(10);
-if (emptyTailHtml.includes('structured-results-orchestration-preview')) process.exit(11);
+if (!emptyTailHtml.includes('Keep Earlier Result')) process.exit(16);
+if (emptyTailHtml.includes('structured-results-orchestration-preview')) process.exit(17);
 
 const dedicatedYouTubeHtml = renderer.render({{
   _tool_trace: [
