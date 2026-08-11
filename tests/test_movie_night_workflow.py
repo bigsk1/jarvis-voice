@@ -6,13 +6,13 @@ import json
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "orchestrator"))
 
-from orchestrator.workflow_availability import check_workflow_availability  # noqa: E402
 from workflow_loader import WorkflowLoader  # noqa: E402
+
+from orchestrator.workflow_availability import check_workflow_availability  # noqa: E402
 
 
 def _workflow():
@@ -45,6 +45,8 @@ def test_movie_night_is_explicit_and_keeps_enrichment_optional():
     assert "at most one poster and one backdrop" in steps["canvas"]["llm_prompt"]
     assert "do not use original_url" in steps["canvas"]["llm_prompt"]
     assert "Trakt image" not in steps["canvas"]["llm_prompt"]
+    assert "${top_title}" not in workflow["success_speech"]
+    assert "top recommendation" not in workflow["success_speech"].lower()
 
 
 def test_movie_night_runs_without_optional_enrichment_but_requires_trakt():

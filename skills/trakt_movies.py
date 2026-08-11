@@ -20,7 +20,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from config_loader import load_config
 from http_client import http_request
 
-
 API_BASE_URL = "https://api.trakt.tv"
 USER_AGENT = "JarvisVoice/TraktMovies-1.0"
 DEFAULT_TIMEOUT_SECONDS = 15
@@ -66,6 +65,18 @@ SOURCE_WEIGHTS = {
     "streaming": 6.0,
     "trending": 5.0,
     "popular": 3.0,
+}
+
+HOUR_WORD_VALUES = {
+    "half": 0.5,
+    "a half": 0.5,
+    "a": 1.0,
+    "an": 1.0,
+    "one": 1.0,
+    "two": 2.0,
+    "three": 3.0,
+    "four": 4.0,
+    "five": 5.0,
 }
 
 
@@ -289,12 +300,25 @@ def normalize_video(item: Any, movie_title: str | None = None) -> dict[str, Any]
 
 
 def _infer_genres(request: str) -> list[str]:
-    lowered = request.lower()
+    lowered = re.sub(r"[-_/]+", " ", request.lower())
+    lowered = re.sub(r"\s+", " ", lowered)
     return [
         genre
         for genre, phrases in GENRE_HINTS.items()
-        if any(phrase in lowered for phrase in phrases)
+        if any(re.sub(r"[-_/]+", " ", phrase) in lowered for phrase in phrases)
     ][:4]
+
+
+def _hour_quantity(value: str) -> float | None:
+    normalized = re.sub(r"\s+", " ", value.strip().lower())
+    try:
+        return float(normalized)
+    except ValueError:
+        pass
+    if normalized.endswith(" and a half"):
+        whole = HOUR_WORD_VALUES.get(normalized.removesuffix(" and a half"))
+        return whole + 0.5 if whole is not None else None
+    return HOUR_WORD_VALUES.get(normalized)
 
 
 def _infer_runtime_filter(request: str) -> str | None:
@@ -305,10 +329,17 @@ def _infer_runtime_filter(request: str) -> str | None:
     )
     if minute_match:
         return f"1-{max(30, min(int(minute_match.group(1)), 300))}"
-    hour_match = re.search(r"(?:under|less than|max(?:imum)?(?: of)?)\s+(\d(?:\.\d+)?)\s*hours?", lowered)
+    hour_match = re.search(
+        r"(?:under|less than|max(?:imum)?(?: of)?)\s+"
+        r"(\d(?:\.\d+)?|(?:one|two|three|four|five)(?:\s+and\s+a\s+half)?|an?|half)"
+        r"\s*hours?",
+        lowered,
+    )
     if hour_match:
-        minutes = int(float(hour_match.group(1)) * 60)
-        return f"1-{max(30, min(minutes, 300))}"
+        hours = _hour_quantity(hour_match.group(1))
+        if hours is not None:
+            minutes = int(hours * 60)
+            return f"1-{max(30, min(minutes, 300))}"
     if any(term in lowered for term in ("short movie", "something short", "quick watch")):
         return "1-105"
     if "not too long" in lowered:
@@ -324,6 +355,36 @@ def _clean_reference_fragment(value: str) -> str:
         flags=re.IGNORECASE,
     )[0]
     return cleaned.strip(" \t\r\n.;:-\"")
+
+
+def _trim_reference_constraints(value: str) -> str:
+    """Remove viewing constraints accidentally captured after a title list."""
+    return re.split(
+        r"(?:,\s*|\s+)"
+        r"(?=(?:under|less\s+than|no\s+more\s+than|max(?:imum)?(?:\s+of)?|"
+        r"not\s+too|preferably|available|streaming|on\s+(?:netflix|prime|max|hulu))\b)",
+        value,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0].strip()
+
+
+def _split_reference_list(value: str) -> list[str]:
+    segment = re.sub(
+        r"^(?:(?:these|my)\s+)?(?:(?:previous|favorite|favourite)\s+)?"
+        r"movies?\s+(?:(?:are|include)\s+)?",
+        "",
+        value.strip(),
+        flags=re.IGNORECASE,
+    )
+    segment = _trim_reference_constraints(segment)
+    if not segment:
+        return []
+    return [
+        cleaned
+        for part in re.split(r"\s+(?:and|&)\s+|\s*,\s*", segment)
+        if (cleaned := _clean_reference_fragment(part))
+    ]
 
 
 def extract_reference_candidates(request: str) -> list[str]:
@@ -343,19 +404,7 @@ def extract_reference_candidates(request: str) -> list[str]:
     if marker:
         segment = re.split(r"[;\n]", marker.group(1), maxsplit=1)[0]
         segment = _clean_reference_fragment(segment)
-        if segment:
-            comma_parts = [_clean_reference_fragment(part) for part in segment.split(",")]
-            comma_parts = [part for part in comma_parts if part]
-            if len(comma_parts) > 1:
-                candidates.extend(comma_parts)
-            else:
-                candidates.append(segment)
-                and_parts = [
-                    _clean_reference_fragment(part)
-                    for part in re.split(r"\s+(?:and|&)\s+", segment)
-                ]
-                if len(and_parts) > 1:
-                    candidates.extend(part for part in and_parts if part)
+        candidates.extend(_split_reference_list(segment))
 
     deduped: list[str] = []
     seen: set[str] = set()
@@ -496,9 +545,19 @@ def _merge_candidate(
 
 def _candidate_score(movie: dict[str, Any], genre_hints: list[str]) -> float:
     score = 0.0
-    for signal in movie.get("source_signals") or []:
-        base_signal = "related" if str(signal).startswith("related:") else str(signal)
-        score += SOURCE_WEIGHTS.get(base_signal, 0.0)
+    signals = [str(signal) for signal in movie.get("source_signals") or []]
+    related_count = sum(signal.startswith("related:") for signal in signals)
+    if related_count:
+        score += SOURCE_WEIGHTS["related"] + min(4.0, (related_count - 1) * 2.0)
+    discovery_weights = [
+        SOURCE_WEIGHTS[signal]
+        for signal in signals
+        if signal in {"streaming", "trending", "popular"}
+    ]
+    if discovery_weights:
+        # Multiple current-list appearances corroborate a candidate, but are not
+        # three independent votes that should overwhelm a reference match.
+        score += max(discovery_weights) + min(1.5, (len(discovery_weights) - 1) * 0.75)
     movie_genres = {str(value).lower() for value in movie.get("genres") or []}
     score += len(movie_genres.intersection(genre_hints)) * 2.5
     rating = _safe_float(movie.get("rating"))
@@ -510,6 +569,65 @@ def _candidate_score(movie: dict[str, Any], genre_hints: list[str]) -> float:
     if movie.get("trailer_url"):
         score += 0.5
     return round(score, 3)
+
+
+def _select_diverse_candidates(
+    ranked: list[dict[str, Any]],
+    resolved_references: list[dict[str, Any]],
+    max_results: int,
+) -> list[dict[str, Any]]:
+    """Keep the ranked lead while representing each usable reference pool."""
+    selected = list(ranked[:max_results])
+    if not selected or not resolved_references:
+        return selected
+
+    rank_by_key = {_movie_key(movie): index for index, movie in enumerate(ranked)}
+
+    def related_keys(movie: dict[str, Any]) -> set[str]:
+        return {_normalize_title(value) for value in movie.get("related_to") or []}
+
+    for reference in resolved_references:
+        reference_key = _normalize_title(reference.get("title"))
+        if not reference_key or any(reference_key in related_keys(movie) for movie in selected):
+            continue
+        replacement = next(
+            (
+                movie
+                for movie in ranked
+                if reference_key in related_keys(movie)
+                and all(_movie_key(movie) != _movie_key(existing) for existing in selected)
+            ),
+            None,
+        )
+        if replacement is None:
+            continue
+
+        replace_index = next(
+            (
+                index
+                for index in range(len(selected) - 1, -1, -1)
+                if not related_keys(selected[index])
+            ),
+            None,
+        )
+        if replace_index is None:
+            coverage_counts: dict[str, int] = {}
+            for movie in selected:
+                for key in related_keys(movie):
+                    coverage_counts[key] = coverage_counts.get(key, 0) + 1
+            replace_index = next(
+                (
+                    index
+                    for index in range(len(selected) - 1, -1, -1)
+                    if all(coverage_counts.get(key, 0) > 1 for key in related_keys(selected[index]))
+                ),
+                None,
+            )
+        if replace_index is not None:
+            selected[replace_index] = replacement
+
+    selected.sort(key=lambda movie: rank_by_key[_movie_key(movie)])
+    return selected
 
 
 def _select_videos(rows: Any, movie_title: str, limit: int) -> list[dict[str, Any]]:
@@ -647,7 +765,7 @@ def _recommend(client: TraktClient, input_data: dict[str, Any]) -> dict[str, Any
         ),
         reverse=True,
     )
-    ranked = ranked[:max_results]
+    ranked = _select_diverse_candidates(ranked, resolved_references, max_results)
     if not ranked:
         raise TraktAPIError("Trakt returned no usable movie candidates for this request.")
 

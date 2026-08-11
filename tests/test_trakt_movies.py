@@ -9,12 +9,15 @@ from unittest.mock import patch
 
 import requests
 
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "skills"))
 
 from trakt_movies import (  # noqa: E402
     TraktClient,
+    _candidate_score,
+    _infer_genres,
+    _infer_runtime_filter,
+    _select_diverse_candidates,
     execute_action,
     extract_reference_candidates,
     normalize_movie,
@@ -66,6 +69,58 @@ def test_reference_parser_handles_quoted_and_natural_favorite_lists():
         "My favorite movies are Arrival, Ex Machina; I want something thoughtful tonight"
     )
     assert parsed[:2] == ["Arrival", "Ex Machina"]
+
+
+def test_reference_parser_separates_titles_from_movie_night_constraints():
+    cases = {
+        "thoughtful science fiction like Arrival and Blade Runner 2049, under two hours": [
+            "Arrival",
+            "Blade Runner 2049",
+        ],
+        "thoughtful science fiction like Arrival": ["Arrival"],
+        "Looking for something to watch. I like these previous movies matrix, bird box, solace": [
+            "matrix",
+            "bird box",
+            "solace",
+        ],
+        "I want a tense, intelligent science-fiction movie like Arrival and Ex Machina, "
+        "under two hours, preferably on Netflix or Prime": ["Arrival", "Ex Machina"],
+    }
+
+    for request, expected in cases.items():
+        assert extract_reference_candidates(request)[:3] == expected
+
+
+def test_inference_handles_hyphenated_genre_and_written_hour_limit():
+    request = "Tense, intelligent science-fiction under two hours"
+
+    assert _infer_genres(request) == ["science-fiction", "thriller"]
+    assert _infer_runtime_filter(request) == "1-120"
+
+
+def test_related_match_outranks_candidate_repeated_across_current_lists():
+    related = _movie("Reference Match", 30, rating=7.0, votes=500)
+    related["source_signals"] = ["related:Arrival"]
+    generic = _movie("Current Everywhere", 31, rating=8.5, votes=100000)
+    generic["source_signals"] = ["streaming", "trending", "popular"]
+
+    assert _candidate_score(related, []) > _candidate_score(generic, [])
+
+
+def test_candidate_selection_preserves_one_result_per_reference_when_available():
+    references = [_movie("Matrix", 40), _movie("Bird Box", 41), _movie("Solace", 42)]
+    ranked = [
+        {**_movie("Matrix Match 1", 43), "related_to": ["Matrix"]},
+        {**_movie("Matrix Match 2", 44), "related_to": ["Matrix"]},
+        {**_movie("Generic Pick", 45), "related_to": []},
+        {**_movie("Bird Box Match", 46), "related_to": ["Bird Box"]},
+        {**_movie("Solace Match", 47), "related_to": ["Solace"]},
+    ]
+
+    selected = _select_diverse_candidates(ranked, references, 3)
+    coverage = {title for movie in selected for title in movie["related_to"]}
+
+    assert coverage == {"Matrix", "Bird Box", "Solace"}
 
 
 def test_recommend_blends_related_and_current_sources_and_attaches_trailer_metadata():

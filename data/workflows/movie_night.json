@@ -2,7 +2,7 @@
   "id": "movie_night",
   "name": "Movie Night",
   "description": "Turn a mood, viewing constraint, or a few favorite movies into a focused movie-night shortlist. Public Trakt metadata and related-title signals are required; optional TMDB artwork, Trakt video metadata, YouTube trailer search, and Brave streaming context enrich a dated Canvas recommendation without requiring Trakt account OAuth. Example: /movie_night thoughtful mind-bending sci-fi like Inception and Arrival, under two hours, preferably on Max or Prime.",
-  "version": "1.1",
+  "version": "1.2",
   "enabled": true,
   "disable_server_side_tools": true,
   "triggers": {
@@ -194,7 +194,7 @@
       "description": "Create the dated Canvas movie-night brief"
     }
   ],
-  "success_speech": "Your movie-night shortlist is ready in Canvas. The top recommendation is ${top_title}.",
+  "success_speech": "Your movie-night shortlist is ready in Canvas with a best-fit pick and varied alternatives.",
   "partial_speech": "Your movie-night shortlist is ready in Canvas using Trakt and the optional artwork, trailer, or streaming sources that were available.",
   "abort_speech": "Movie Night could not be completed. Configure the Trakt Client ID or include a clearer movie mood or favorite title."
 }
