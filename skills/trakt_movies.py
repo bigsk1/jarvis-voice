@@ -299,14 +299,48 @@ def normalize_video(item: Any, movie_title: str | None = None) -> dict[str, Any]
     }
 
 
+def _genre_phrase_is_negated(text: str, start: int) -> bool:
+    prefix = text[max(0, start - 60):start]
+    clause = re.split(r"[,.;:]", prefix)[-1]
+    if re.search(r"\b(?:no|not|without|exclude|excluding)\b[^,.;:]{0,50}$", clause):
+        return True
+    return bool(re.search(r"\bnon[-\s]*$", clause))
+
+
 def _infer_genres(request: str) -> list[str]:
     lowered = re.sub(r"[-_/]+", " ", request.lower())
     lowered = re.sub(r"\s+", " ", lowered)
-    return [
-        genre
-        for genre, phrases in GENRE_HINTS.items()
-        if any(re.sub(r"[-_/]+", " ", phrase) in lowered for phrase in phrases)
-    ][:4]
+    inferred: list[str] = []
+    for genre, phrases in GENRE_HINTS.items():
+        matches = [
+            match
+            for phrase in phrases
+            for match in re.finditer(
+                rf"(?<![a-z0-9]){re.escape(re.sub(r'[-_/]+', ' ', phrase))}(?![a-z0-9])",
+                lowered,
+            )
+        ]
+        if matches and any(not _genre_phrase_is_negated(lowered, match.start()) for match in matches):
+            inferred.append(genre)
+    return inferred[:4]
+
+
+def _infer_excluded_genres(request: str) -> list[str]:
+    lowered = re.sub(r"[-_/]+", " ", request.lower())
+    lowered = re.sub(r"\s+", " ", lowered)
+    excluded: list[str] = []
+    for genre, phrases in GENRE_HINTS.items():
+        matches = [
+            match
+            for phrase in phrases
+            for match in re.finditer(
+                rf"(?<![a-z0-9]){re.escape(re.sub(r'[-_/]+', ' ', phrase))}(?![a-z0-9])",
+                lowered,
+            )
+        ]
+        if matches and any(_genre_phrase_is_negated(lowered, match.start()) for match in matches):
+            excluded.append(genre)
+    return excluded[:6]
 
 
 def _hour_quantity(value: str) -> float | None:
@@ -439,11 +473,22 @@ def _bounded_text(value: Any, maximum: int = 100) -> str | None:
     return text[:maximum]
 
 
-def _filter_params(input_data: dict[str, Any], inferred_genres: list[str] | None = None) -> dict[str, Any]:
+def _filter_params(
+    input_data: dict[str, Any],
+    inferred_genres: list[str] | None = None,
+    inferred_excluded_genres: list[str] | None = None,
+) -> dict[str, Any]:
     params: dict[str, Any] = {}
     genres = _normalize_genres(input_data.get("genres")) or list(inferred_genres or [])
+    excluded_genres = _normalize_genres(input_data.get("exclude_genres"))
+    for genre in inferred_excluded_genres or []:
+        if genre not in excluded_genres:
+            excluded_genres.append(genre)
+    genres = [genre for genre in genres if genre not in excluded_genres]
     if genres:
         params["genres"] = ",".join(genres)
+    if excluded_genres:
+        params["exclude_genres"] = ",".join(excluded_genres)
     for field in ("years", "runtimes", "ratings"):
         value = _bounded_text(input_data.get(field))
         if value:
@@ -458,7 +503,7 @@ def _provider_filter_params(filters: dict[str, Any]) -> dict[str, Any]:
 
 def _request_limit_for_filters(max_results: int, filters: dict[str, Any]) -> int:
     """Over-fetch a bounded pool when filters must be enforced locally."""
-    if any(filters.get(field) for field in ("years", "runtimes", "ratings")):
+    if any(filters.get(field) for field in ("years", "runtimes", "ratings", "exclude_genres")):
         return min(20, max_results * 3)
     return max_results
 
@@ -485,6 +530,13 @@ def _movie_matches_filters(movie: dict[str, Any], filters: dict[str, Any]) -> bo
         if value.strip()
     }
     if requested_genres and not genres.intersection(requested_genres):
+        return False
+    excluded_genres = {
+        value.strip().lower()
+        for value in str(filters.get("exclude_genres") or "").split(",")
+        if value.strip()
+    }
+    if excluded_genres and genres.intersection(excluded_genres):
         return False
     if filters.get("years") and not _range_contains(movie.get("year"), filters["years"]):
         return False
@@ -664,8 +716,15 @@ def _recommend(client: TraktClient, input_data: dict[str, Any]) -> dict[str, Any
     if not reference_candidates:
         reference_candidates = extract_reference_candidates(request)
 
+    inferred_excluded_genres = _infer_excluded_genres(request)
     genre_hints = _normalize_genres(input_data.get("genres")) or _infer_genres(request)
-    filters = _filter_params(input_data, genre_hints)
+    filters = _filter_params(input_data, genre_hints, inferred_excluded_genres)
+    excluded_genres = {
+        value.strip()
+        for value in str(filters.get("exclude_genres") or "").split(",")
+        if value.strip()
+    }
+    genre_hints = [genre for genre in genre_hints if genre not in excluded_genres]
     if not filters.get("runtimes"):
         inferred_runtime = _infer_runtime_filter(request)
         if inferred_runtime:

@@ -39,6 +39,11 @@
         "maxLength": 300,
         "description": "Movie title for search or for resolving details, images, credits, videos, recommendations, and similar movies when movie_id is omitted."
       },
+      "request": {
+        "type": "string",
+        "maxLength": 800,
+        "description": "Natural-language criteria for discover. Recognized positive and negative genre phrases are converted to provider filters; for example, 'science fiction, no anime, next 90 days' includes Science Fiction, excludes Animation, and applies a future release window. Structured parameters take precedence."
+      },
       "movie_id": {
         "type": "integer",
         "minimum": 1,
@@ -100,6 +105,19 @@
         },
         "description": "TMDB movie genre names for discover, such as Science Fiction, Thriller, Comedy, or Drama. Multiple genres are combined."
       },
+      "exclude_genres": {
+        "type": "array",
+        "maxItems": 6,
+        "items": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "description": "TMDB movie genres to exclude from discover through the documented without_genres provider filter. 'Animation', 'animated', and 'anime' resolve to TMDB genre 16."
+      },
+      "require_genres": {
+        "type": "boolean",
+        "description": "Fail discover unless at least one recognized included genre is supplied or inferred. Default false; scheduled preference workflows can set true to avoid an accidental all-genre run."
+      },
       "runtime_min": {
         "type": "integer",
         "minimum": 0,
@@ -126,12 +144,40 @@
       "release_date_from": {
         "type": "string",
         "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
-        "description": "Earliest primary release date for discover in YYYY-MM-DD format."
+        "description": "Earliest release date for discover in YYYY-MM-DD format. Uses the regional release date when release_types is supplied; otherwise preserves the primary-release-date behavior."
       },
       "release_date_to": {
         "type": "string",
         "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
-        "description": "Latest primary release date for discover in YYYY-MM-DD format."
+        "description": "Latest release date for discover in YYYY-MM-DD format. Uses the regional release date when release_types is supplied; otherwise preserves the primary-release-date behavior."
+      },
+      "days_ahead": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 365,
+        "description": "Future discover window beginning today. When request is supplied without explicit dates, a phrase such as 'next 60 days' is inferred; otherwise request-based discovery defaults to 90 days."
+      },
+      "release_types": {
+        "type": "array",
+        "maxItems": 6,
+        "items": {
+          "type": "string",
+          "enum": ["premiere", "limited_theatrical", "theatrical", "digital", "physical", "tv"]
+        },
+        "description": "Regional TMDB release types for discover. Values are OR-combined through with_release_type; use limited_theatrical and theatrical for an upcoming cinema radar."
+      },
+      "new_releases_only": {
+        "type": "boolean",
+        "description": "For discover with release_types and a date window, also require the movie's primary release date inside that window. Use true for a new-movie radar that should omit upcoming theatrical re-releases of older films. Default false."
+      },
+      "exclude_movie_ids": {
+        "type": "array",
+        "maxItems": 500,
+        "items": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "description": "TMDB movie IDs to omit locally after provider filtering, used by scheduled workflows to avoid emailing the same selection repeatedly."
       },
       "sort_by": {
         "type": "string",

@@ -78,9 +78,19 @@ for direct email addresses. See `docs/n8n/docs/WEBHOOK_AND_EMAIL_SYSTEM.md`.
 {
   "to": "andrew",           // Contact name OR email address
   "subject": "Meeting",
-  "body": "Let's meet at 3pm"
+  "body": "Let's meet at 3pm",
+  "image_url": "https://example.com/public-image.jpg",
+  "link_url": "https://example.com/details",
+  "link_text": "View details"
 }
 ```
+
+The image and link fields are optional. `image_url` must be publicly reachable
+by the recipient's email client; a `stash://` reference or private Jarvis URL
+cannot be used as a remote email image. The n8n email template must
+conditionally render `$json.body.image_url`, `$json.body.link_url`, and
+`$json.body.link_text`; see the tracked workflow and setup guide under
+`docs/n8n/`.
 
 **What it does:**
 1. Resolves contact name → email (from `contacts.json`)

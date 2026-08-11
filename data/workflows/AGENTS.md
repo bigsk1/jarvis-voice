@@ -657,6 +657,16 @@ streaming-list signal is not provider availability.
 or as optional enrichment beside `trakt_movies`. TMDB CDN URLs are external,
 untrusted content and must retain the returned attribution notice.
 
+For scheduled discovery, `action="discover"` also accepts a bounded natural
+language `request`, structured `exclude_genres`, `days_ahead`, regional
+`release_types`, and `exclude_movie_ids`. A request such as `science fiction,
+exclude animation and anime, next 90 days` resolves Science Fiction as an
+included provider filter and Animation as TMDB `without_genres=16`. Use
+`require_genres=true` in preference workflows so an empty or unrecognized
+request cannot accidentally become an all-genre scheduled scan. Pair regional
+release types with `new_releases_only=true` when re-releases of older movies
+must be omitted from a future-release radar.
+
 ### trakt_tv_shows
 ```python
 # Params: action="recommend", request="mysteries like Severance, episodes under an hour"
@@ -1028,6 +1038,7 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 | `memory_scan.json` | `/memory_scan` | Mode-aware memory dedupe, stash report, labeled Canvas report |
 | `movie_night.json` | `/movie_night <request>` | Required public Trakt recommendation set, optional read-only account recommendations, TMDB artwork, YouTube trailer rail, and Brave availability context, validated Canvas; no Trakt image hotlinking |
 | `night_out.json` | `/night_out <occasion or preference>` | Explicit-or-mode-default location, parsed target date, conditional 10-day weather, run-time-only open-state handling, bounded local/dining/activity evidence, validated Canvas; no crawl |
+| `upcoming_movie_radar.json` | `/upcoming_movie_radar <genre criteria>` | Explicit/scheduled TMDB discovery with hard included/excluded genres, regional theatrical date window, persistent sent-ID filtering, optional current context, rolling Canvas replacement, and conditional poster-rich email |
 | `quick_note.json` | `/note <text>` | Simple text capture, remember, canvas |
 | `serpapi_amazon_search.json` | `/serpapi_amazon <query>` (also `/amazon_search`, `/serpapi`) | SerpApi Amazon listings, Stash export, Canvas comparison |
 | `server_health_check.json` | `/health [host]` | Default value, ssh_remote, get_time |

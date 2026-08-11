@@ -250,7 +250,12 @@ def action_info(args: dict) -> dict:
 def action_save(args: dict) -> dict:
     """Save content to stash."""
     space_id = args.get('space_id')
-    name = args.get('name')
+    raw_name = args.get('name')
+    name = (
+        str(raw_name)
+        if isinstance(raw_name, (int, float)) and not isinstance(raw_name, bool)
+        else raw_name
+    )
     kind = args.get('kind', 'text')
     on_conflict = args.get('on_conflict', 'error')
     tags = args.get('tags', [])

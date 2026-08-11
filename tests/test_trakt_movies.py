@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "skills"))
 from trakt_movies import (  # noqa: E402
     TraktClient,
     _candidate_score,
+    _infer_excluded_genres,
     _infer_genres,
     _infer_runtime_filter,
     _select_diverse_candidates,
@@ -96,6 +97,41 @@ def test_inference_handles_hyphenated_genre_and_written_hour_limit():
 
     assert _infer_genres(request) == ["science-fiction", "thriller"]
     assert _infer_runtime_filter(request) == "1-120"
+
+
+def test_inference_treats_no_anime_as_exclusion_not_positive_animation():
+    request = "Thoughtful science fiction, no animated or anime movies"
+
+    assert _infer_genres(request) == ["science-fiction"]
+    assert _infer_excluded_genres(request) == ["animation"]
+
+
+def test_discovery_action_excludes_requested_genres_locally():
+    client = TraktClient("test-client-id")
+    request_params = {}
+
+    def fake_get(path, params=None):
+        assert path == "/movies/anticipated"
+        request_params.update(params or {})
+        return [
+            _movie("Animated Pick", 70, genres=["science-fiction", "animation"]),
+            _movie("Live Action Pick", 71, genres=["science-fiction", "thriller"]),
+        ]
+
+    with patch.object(client, "get", side_effect=fake_get):
+        data = execute_action(
+            client,
+            {
+                "action": "anticipated",
+                "genres": ["science-fiction"],
+                "exclude_genres": ["animation"],
+                "max_results": 2,
+            },
+        )
+
+    assert request_params["genres"] == "science-fiction"
+    assert "exclude_genres" not in request_params
+    assert [movie["title"] for movie in data["results"]] == ["Live Action Pick"]
 
 
 def test_related_match_outranks_candidate_repeated_across_current_lists():
@@ -258,6 +294,7 @@ def test_manifest_requires_only_public_client_id():
     assert manifest["proxy_policy"] == "prefer"
     assert "TRAKT_CLIENT_SECRET" not in json.dumps(manifest)
     assert "recommend" in manifest["parameters"]["properties"]["action"]["enum"]
+    assert "exclude_genres" in manifest["parameters"]["properties"]
 
 
 def test_client_requests_shared_proxy_chain_with_direct_fallback():

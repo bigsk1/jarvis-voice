@@ -97,6 +97,9 @@ Contact list for email lookup:
 | to | string | ✓ | Contact name or email address |
 | subject | string | ✓ | Email subject |
 | body | string | ✓ | Email content |
+| image_url | string |  | Publicly reachable `http://` or `https://` image URL to render inline |
+| link_url | string |  | Publicly reachable destination for the image/button |
+| link_text | string |  | Optional display text for `link_url` |
 
 **Example:**
 ```bash
@@ -152,9 +155,47 @@ Contact list for email lookup:
   "to": "recipient@example.com",
   "subject": "Hello from Jarvis",
   "body": "This is the email content.",
-  "from_name": "Jarvis Assistant"
+  "from_name": "Jarvis Assistant",
+  "image_url": "https://image.tmdb.org/t/p/w500/example.jpg",
+  "link_url": "https://www.themoviedb.org/movie/123",
+  "link_text": "View on TMDB"
 }
 ```
+
+The Webhook node exposes these as `$json.body.image_url`,
+`$json.body.link_url`, and `$json.body.link_text`. On the n8n host, add
+conditional blocks like these to the Send Email node's HTML after the main body
+(style the classes to match the existing template):
+
+```html
+{{ $json.body.image_url
+  ? '<div class="hero-image"><a href="' + ($json.body.link_url || $json.body.image_url) + '"><img src="' + $json.body.image_url + '" alt="Email image"></a></div>'
+  : '' }}
+
+{{ $json.body.link_url
+  ? '<div class="action-link"><a href="' + $json.body.link_url + '">' + ($json.body.link_text || 'Open link') + '</a></div>'
+  : '' }}
+```
+
+Keep both blocks conditional so existing body-only requests remain compatible.
+After updating the active n8n workflow, re-export it if the tracked
+`Jarvis → Send Email.json` copy should mirror that host.
+
+`image_url` is intentionally a public URL, not a Jarvis `stash://` reference or
+private Canvas URL: the recipient's email client must be able to fetch it. The
+Upcoming Movie Radar workflow passes TMDB's public CDN poster URL and includes
+the required TMDB attribution in the email body. Many email clients proxy or
+block remote images until the recipient permits them, so the text body and
+`link_url` must remain useful without the image.
+
+To schedule that workflow in Jarvis Memory, choose workflow
+`upcoming_movie_radar`, set Workflow Input to a bounded request such as
+`science fiction, exclude animation and anime, next 90 days, email`, and choose
+the weekly recurrence. `UPCOMING_MOVIE_RADAR_EMAIL_TO` may override the default
+`boss` contact with another contact name or direct address. The workflow writes
+the selected TMDB ID to persistent Stash history only after n8n reports a
+successful send, preventing repeated weekly picks without suppressing a movie
+after a failed delivery.
 
 ## Adding New Webhooks
 
@@ -252,4 +293,3 @@ curl -X POST http://localhost:5678/webhook/jarvis-email \
 - `config/webhook_registry.json` - Webhook registry
 - `config/contacts.json` - Contact list
 - `docs/n8n/docs/GOOGLE_CALENDAR_SYNC.md` - Calendar sync docs
-

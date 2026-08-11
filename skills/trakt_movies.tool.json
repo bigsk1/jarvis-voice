@@ -63,6 +63,15 @@
         },
         "description": "Optional Trakt genre slugs such as comedy, thriller, mystery, horror, romance, or science-fiction. Recommend infers common genre hints from request when omitted."
       },
+      "exclude_genres": {
+        "type": "array",
+        "maxItems": 6,
+        "items": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "description": "Optional genre slugs to exclude locally after Trakt returns candidates. Recommend also understands explicit negative phrases such as 'no animation', 'without anime', or 'non-anime' and will not send them as positive Trakt genre filters."
+      },
       "years": {
         "type": "string",
         "maxLength": 30,

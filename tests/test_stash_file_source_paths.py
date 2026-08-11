@@ -51,6 +51,21 @@ class _FakeStashFile:
             "ref": "stash://space_test/file_image",
         }
 
+    def save_json(self, data, name, on_conflict="error", tags=None, tool_origin="stash"):
+        type(self).saved = {
+            "data": data,
+            "name": name,
+            "on_conflict": on_conflict,
+            "tags": tags,
+            "tool_origin": tool_origin,
+        }
+        return {
+            "file_id": "file_json",
+            "name": name,
+            "size_bytes": 20,
+            "ref": "stash://space_test/file_json",
+        }
+
 
 def test_file_save_allows_source_under_resolved_temp_symlink(monkeypatch, tmp_path):
     real_tmp = tmp_path / "private_tmp"
@@ -99,3 +114,20 @@ def test_image_url_save_uses_strict_stash_path(monkeypatch):
     assert result["ok"] is True
     assert result["data"]["ref"] == "stash://space_test/file_image"
     assert _FakeStashFile.saved["url"] == "https://images.example/reference.png"
+
+
+def test_json_save_coerces_numeric_workflow_filename_to_string(monkeypatch):
+    monkeypatch.setattr(stash, "get_space", lambda _space_id: _FakeSpace())
+    monkeypatch.setattr(stash, "StashFile", _FakeStashFile)
+
+    result = stash.action_save({
+        "space_id": "space_upcoming_movie_radar",
+        "kind": "json",
+        "name": 1101383,
+        "json": {"tmdb_id": 1101383},
+        "on_conflict": "overwrite",
+    })
+
+    assert result["ok"] is True
+    assert result["data"]["name"] == "1101383"
+    assert _FakeStashFile.saved["name"] == "1101383"

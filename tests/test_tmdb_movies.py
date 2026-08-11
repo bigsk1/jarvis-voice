@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 import requests
-
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "skills"))
@@ -24,7 +24,6 @@ from tmdb_movies import (  # noqa: E402
     normalize_movie,
 )
 
-
 CONFIGURATION = {
     "secure_base_url": "https://image.tmdb.org/t/p/",
     "poster_sizes": ["w92", "w185", "w342", "w500", "original"],
@@ -32,7 +31,7 @@ CONFIGURATION = {
     "logo_sizes": ["w92", "w185", "w300", "w500", "original"],
     "profile_sizes": ["w45", "w185", "h632", "original"],
 }
-GENRES = {12: "Adventure", 878: "Science Fiction", 53: "Thriller"}
+GENRES = {12: "Adventure", 16: "Animation", 878: "Science Fiction", 53: "Thriller"}
 
 
 def _json_response(payload, status_code=200):
@@ -305,6 +304,85 @@ def test_discover_resolves_genre_names_and_preserves_filters():
     assert data["auth_method"] == "api_key"
 
 
+def test_discover_request_applies_animation_exclusion_release_window_and_history():
+    client = TMDBClient(api_key="test-api-key")
+    seen_params = {}
+    already_emailed = _movie("Already Emailed", 101)
+    new_pick = _movie("New Pick", 102)
+
+    def fake_get(path, params=None):
+        client.request_count += 1
+        if path == "/configuration":
+            return {"images": CONFIGURATION}
+        if path == "/genre/movie/list":
+            return {"genres": [{"id": key, "name": value} for key, value in GENRES.items()]}
+        if path == "/discover/movie":
+            seen_params.update(params or {})
+            return {
+                "page": 1,
+                "total_pages": 1,
+                "total_results": 2,
+                "results": [already_emailed, new_pick],
+            }
+        raise AssertionError(f"Unexpected path: {path}")
+
+    with patch.object(client, "get", side_effect=fake_get):
+        data = execute_action(
+            client,
+            {
+                "action": "discover",
+                "request": "science fiction, no anime, next 90 days",
+                "release_types": ["limited_theatrical", "theatrical"],
+                "new_releases_only": True,
+                "exclude_movie_ids": ["101"],
+                "require_genres": True,
+                "max_results": 1,
+            },
+        )
+
+    assert seen_params["with_genres"] == "878"
+    assert seen_params["without_genres"] == "16"
+    assert seen_params["with_release_type"] == "2|3"
+    assert "release_date.gte" in seen_params
+    assert "release_date.lte" in seen_params
+    assert seen_params["primary_release_date.gte"] == seen_params["release_date.gte"]
+    assert seen_params["primary_release_date.lte"] == seen_params["release_date.lte"]
+    start = date.fromisoformat(seen_params["release_date.gte"])
+    end = date.fromisoformat(seen_params["release_date.lte"])
+    assert (end - start).days == 89
+    assert [movie["tmdb_id"] for movie in data["results"]] == [102]
+    assert data["excluded_result_count"] == 1
+    assert data["selection_criteria"]["excluded_genres"] == ["Animation"]
+    assert data["selection_criteria"]["release_types"] == [
+        "limited_theatrical",
+        "theatrical",
+    ]
+    assert data["selection_criteria"]["new_releases_only"] is True
+    assert data["selection_criteria"]["excluded_movie_ids_count"] == 1
+
+
+def test_discover_can_require_a_recognized_positive_genre():
+    client = TMDBClient(api_key="test-api-key")
+
+    def fake_get(path, params=None):
+        if path == "/configuration":
+            return {"images": CONFIGURATION}
+        if path == "/genre/movie/list":
+            return {"genres": [{"id": key, "name": value} for key, value in GENRES.items()]}
+        raise AssertionError(f"Unexpected path: {path}")
+
+    with patch.object(client, "get", side_effect=fake_get):
+        with pytest.raises(TMDBAPIError, match="requires at least one recognized"):
+            execute_action(
+                client,
+                {
+                    "action": "discover",
+                    "request": "no anime, email me the result",
+                    "require_genres": True,
+                },
+            )
+
+
 def test_details_bundles_metadata_and_honors_result_limit():
     client = TMDBClient(access_token="test-token")
 
@@ -405,6 +483,9 @@ def test_manifest_is_standalone_and_accepts_either_tmdb_credential():
     assert "make one images call" in manifest["parameters"]["properties"]["action"]["description"]
     assert "do not search first" in manifest["parameters"]["properties"]["action"]["description"]
     assert "one successful discover call" in manifest["parameters"]["properties"]["action"]["description"]
+    assert "exclude_genres" in manifest["parameters"]["properties"]
+    assert "exclude_movie_ids" in manifest["parameters"]["properties"]
+    assert "new_releases_only" in manifest["parameters"]["properties"]
 
 
 def test_invalid_action_fails_before_any_network_helper_call():
