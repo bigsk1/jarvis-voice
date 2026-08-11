@@ -3754,6 +3754,7 @@ Previous structured data:
                         continue
                     tool = step_data.get('tool', 'unknown')
                     step_ok = step_data.get('ok', True)
+                    step_skipped = step_data.get('skipped') is True
                     step_num = step_data.get('step')
                     
                     # Check for for_each outputs (multiple iterations of same tool)
@@ -3784,14 +3785,22 @@ Previous structured data:
                                 'error': step_data.get('error') or step_data.get('speech') or 'Step failed'
                             }
                         step_duration = step_data.get('duration_ms') or 0
-                        self.socketio.emit('tool:complete', {
+                        completion_payload = {
                             'tool': tool,
                             'result': step_result_payload,
                             'duration_ms': step_duration,
                             'success': step_ok,
                             'message_id': message_id,
                             'workflow_step': step_num
-                        }, room=delivery_room)
+                        }
+                        if step_skipped:
+                            completion_payload.update({
+                                'skipped': True,
+                                'reason': step_data.get('reason') or 'Condition evaluated to false',
+                            })
+                        self.socketio.emit(
+                            'tool:complete', completion_payload, room=delivery_room
+                        )
                         emit_index += 1
             else:
                 # Normal orchestrator results - tools_used may have duplicates

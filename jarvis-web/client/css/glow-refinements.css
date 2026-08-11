@@ -487,6 +487,15 @@ body::after {
   border-left: 3px solid rgba(239, 68, 68, 0.5);
 }
 
+/* Skipped workflow branches - neutral accent, not success or failure */
+.tool-card.skipped {
+  border-left: 3px solid rgba(148, 163, 184, 0.5);
+}
+
+.tool-card.skipped:hover {
+  border-left-color: rgba(148, 163, 184, 0.7);
+}
+
 /* Feedback tool cards - purple accent */
 .tool-card.feedback {
   border-left: 3px solid rgba(139, 92, 246, 0.5);
@@ -648,4 +657,3 @@ body::after {
     display: none;
   }
 }
-

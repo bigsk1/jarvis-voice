@@ -1543,7 +1543,11 @@ class ChatUI {
       } else {
         cardId = data.tool;
       }
-      this.updateToolCard(cardId, data.tool, 'success', data.result, data.duration_ms);
+      const status = data.skipped === true ? 'skipped' : 'success';
+      const result = status === 'skipped'
+        ? (data.reason || 'Condition evaluated to false')
+        : data.result;
+      this.updateToolCard(cardId, data.tool, status, result, data.duration_ms);
     });
     
     socket.on('toolError', (data) => {
@@ -3305,22 +3309,28 @@ class ChatUI {
         const tool = entry.tool;
         const occurrenceIndex = toolOccurrenceCounts[tool] || 0;
         toolOccurrenceCounts[tool] = occurrenceIndex + 1;
-        const status = entry.ok === false ? 'error' : 'success';
+        const status = entry.skipped === true
+          ? 'skipped'
+          : entry.ok === false
+            ? 'error'
+            : 'success';
         const resultOccurrenceIndex = successfulToolOccurrenceCounts[tool] || 0;
         if (status === 'success') {
           successfulToolOccurrenceCounts[tool] = resultOccurrenceIndex + 1;
         }
         const fallback = status === 'error'
           ? this._getToolTraceFailureResult(entry)
-          : this._getToolTraceSuccessFallback(entry);
-        const toolResult = status === 'error'
-          ? fallback
-          : this._getToolResultForOccurrence(
+          : status === 'skipped'
+            ? this._getToolTraceSkippedResult(entry)
+            : this._getToolTraceSuccessFallback(entry);
+        const toolResult = status === 'success'
+          ? this._getToolResultForOccurrence(
             toolResultsData,
             tool,
             resultOccurrenceIndex,
             fallback
-          );
+          )
+          : fallback;
         toolCardsHtml += this._createToolCardHtml(
           tool,
           status,
@@ -4090,10 +4100,16 @@ class ChatUI {
     const orderedEntries = traceEntries.length > 0
       ? traceEntries.map(entry => ({
         toolName: entry.tool,
-        status: entry.ok === false ? 'error' : 'success',
-        result: entry.ok === false
-          ? this._getToolTraceFailureResult(entry)
-          : this._getToolTraceSuccessFallback(entry),
+        status: entry.skipped === true
+          ? 'skipped'
+          : entry.ok === false
+            ? 'error'
+            : 'success',
+        result: entry.skipped === true
+          ? this._getToolTraceSkippedResult(entry)
+          : entry.ok === false
+            ? this._getToolTraceFailureResult(entry)
+            : this._getToolTraceSuccessFallback(entry),
         args: entry.arguments || {},
         duration: entry.duration_ms ?? null
       }))
@@ -4119,7 +4135,13 @@ class ChatUI {
         duration: entry.duration
       };
       toolData.status = entry.status || toolData.status || 'success';
-      if (toolData.result === null || toolData.result === undefined) toolData.result = entry.result;
+      if (
+        entry.status === 'skipped'
+        || toolData.result === null
+        || toolData.result === undefined
+      ) {
+        toolData.result = entry.result;
+      }
       if (toolData.duration === null || toolData.duration === undefined) toolData.duration = entry.duration;
       reconciled[cardId] = toolData;
     });
@@ -4202,6 +4224,7 @@ class ChatUI {
 
     const flat = {};
     for (const step of workflowResults) {
+      if (step?.skipped === true) continue;
       const tool = step.tool || 'unknown';
       const rawOutputs = Array.isArray(step.outputs) ? step.outputs : [];
       const stepOutputs = rawOutputs.length
@@ -5542,7 +5565,7 @@ class ChatUI {
    * Add a tool execution card (for tool:start events)
    * @param {string} cardId - Unique ID for the card (e.g., 'crypto_price' or 'phone_call_1')
    * @param {string} toolName - Display name of the tool
-   * @param {string} status - Status: 'pending', 'success', 'error'
+   * @param {string} status - Status: 'pending', 'success', 'error', 'skipped'
    * @param {object} args - Tool arguments
    */
   addToolCard(cardId, toolName, status, args = {}) {
@@ -5565,13 +5588,16 @@ class ChatUI {
    * Update a tool card (creates it if doesn't exist - for workflows)
    * @param {string} cardId - Unique ID for the card (may include step number for workflows)
    * @param {string} toolName - Display name of the tool
-   * @param {string} status - Status: 'pending', 'success', 'error'
+   * @param {string} status - Status: 'pending', 'success', 'error', 'skipped'
    * @param {object} result - Tool result data
    * @param {number} duration - Duration in ms
    */
   updateToolCard(cardId, toolName, status, result = {}, duration = null) {
     // Handle legacy calls with 4 args (cardId = toolName)
-    if (typeof toolName !== 'string' || ['pending', 'success', 'error'].includes(toolName)) {
+    if (
+      typeof toolName !== 'string'
+      || ['pending', 'success', 'error', 'skipped'].includes(toolName)
+    ) {
       // Legacy call: updateToolCard(toolName, status, result, duration)
       duration = result;
       result = status;
@@ -5613,6 +5639,8 @@ class ChatUI {
         statusEl.innerHTML = `✅ ${duration ? Utils.formatDuration(duration) : 'Complete'}`;
       } else if (status === 'error') {
         statusEl.innerHTML = `❌ Failed`;
+      } else if (status === 'skipped') {
+        statusEl.innerHTML = `⏭ Skipped`;
       } else if (result.progress !== undefined) {
         statusEl.innerHTML = `⏳ ${result.progress}%`;
       }
@@ -5629,11 +5657,13 @@ class ChatUI {
    * Create tool card HTML
    */
   _createToolCardHtml(toolName, status, data, duration = null) {
-    const statusText = status === 'pending' 
-      ? '⏳ Running...' 
-      : status === 'success' 
+    const statusText = status === 'pending'
+      ? '⏳ Running...'
+      : status === 'success'
         ? `✅ ${duration ? Utils.formatDuration(duration) : 'Complete'}`
-        : '❌ Failed';
+        : status === 'skipped'
+          ? '⏭ Skipped'
+          : '❌ Failed';
     
     // Show full JSON - user can scroll in expanded view
     let summary = '';
@@ -5700,10 +5730,10 @@ class ChatUI {
       toolOccurrenceCounts[displayName] = occurrenceIndex + 1;
       const status = toolData.status || 'success';
       const resultOccurrenceIndex = successfulToolOccurrenceCounts[displayName] || 0;
-      if (status !== 'error') {
+      if (status !== 'error' && status !== 'skipped') {
         successfulToolOccurrenceCounts[displayName] = resultOccurrenceIndex + 1;
       }
-      const result = status === 'error'
+      const result = status === 'error' || status === 'skipped'
         ? (toolData.result ?? {})
         : this._getToolResultForOccurrence(
           toolResultsData,
@@ -5758,8 +5788,10 @@ class ChatUI {
           entries.push({
             tool: step.tool,
             ok: outputData.ok !== false,
+            skipped: outputData.skipped === true,
             duration_ms: outputData.duration_ms ?? step.duration_ms ?? null,
             error: outputData.error || null,
+            reason: outputData.reason || null,
             speech: outputData.speech || null
           });
         }
@@ -5769,8 +5801,10 @@ class ChatUI {
       entries.push({
         tool: step.tool,
         ok: step.ok !== false,
+        skipped: step.skipped === true,
         duration_ms: step.duration_ms ?? null,
         error: step.error || null,
+        reason: step.reason || null,
         speech: step.speech || step.reason || null
       });
     }
@@ -5782,6 +5816,10 @@ class ChatUI {
       error: entry.error || entry.speech || 'Tool failed',
       arguments: entry.arguments || {}
     };
+  }
+
+  _getToolTraceSkippedResult(entry = {}) {
+    return entry.reason || entry.speech || 'Condition evaluated to false';
   }
 
   _getToolTraceSuccessFallback(entry = {}) {

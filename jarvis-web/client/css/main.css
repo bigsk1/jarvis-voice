@@ -1074,6 +1074,10 @@ body {
   content: '❌';
 }
 
+.tool-card.skipped .tool-card-title::before {
+  content: '⏭';
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }

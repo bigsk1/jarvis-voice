@@ -96,13 +96,20 @@ const flattened = harness._flattenWorkflowToolResults({{
         title: 'Workflows/Research/Hazelnuts',
         url: 'http://web.test:8890/page_20260704_153800'
       }}
+    }},
+    {{
+      step: 7,
+      tool: 'canvas',
+      skipped: true,
+      reason: 'Condition evaluated to false'
     }}
   ]
 }});
+if (Array.isArray(flattened.canvas)) process.exit(2);
 const preview = harness._extractCanvasPreview(flattened, {{}});
-if (!preview) process.exit(2);
-if (preview.pageId !== 'page_20260704_153800') process.exit(3);
-if (preview.title !== 'Workflows/Research/Hazelnuts') process.exit(4);
+if (!preview) process.exit(3);
+if (preview.pageId !== 'page_20260704_153800') process.exit(4);
+if (preview.title !== 'Workflows/Research/Hazelnuts') process.exit(5);
 """
 
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
@@ -282,11 +289,15 @@ const expected = [
 if (names.join(',') !== expected.join(',')) process.exit(2);
 if (trace.length !== 7) process.exit(3);
 if (trace[1].speech !== 'Condition evaluated to false') process.exit(4);
+if (trace[1].skipped !== true) process.exit(5);
+const cards = Object.values(harness.pendingTools);
+if (cards[1].status !== 'skipped') process.exit(6);
+if (cards[1].result !== 'Condition evaluated to false') process.exit(7);
 
 const ordinaryTrace = harness._getToolTraceEntries({{
   _tool_trace: [{{ tool: 'weather', ok: true, duration_ms: 70 }}]
 }});
-if (ordinaryTrace.length !== 1 || ordinaryTrace[0].tool !== 'weather') process.exit(5);
+if (ordinaryTrace.length !== 1 || ordinaryTrace[0].tool !== 'weather') process.exit(8);
 """
 
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
@@ -321,6 +332,12 @@ const entries = harness._getPendingToolCardEntries(
     }}],
     ['serpapi_yelp_search_1', {{
       toolName: 'serpapi_yelp_search',
+      status: 'skipped',
+      result: 'Condition evaluated to false',
+      duration: null
+    }}],
+    ['serpapi_yelp_search_2', {{
+      toolName: 'serpapi_yelp_search',
       status: 'success',
       result: null,
       duration: 30
@@ -328,11 +345,49 @@ const entries = harness._getPendingToolCardEntries(
   ]
 );
 
-if (entries.length !== 2) process.exit(2);
+if (entries.length !== 3) process.exit(2);
 if (entries[0].status !== 'error') process.exit(3);
 if (entries[0].result.error !== 'No Yelp results') process.exit(4);
-if (entries[1].status !== 'success') process.exit(5);
-if (entries[1].result.result_id !== 'first-success') process.exit(6);
+if (entries[1].status !== 'skipped') process.exit(5);
+if (entries[1].result !== 'Condition evaluated to false') process.exit(6);
+if (entries[2].status !== 'success') process.exit(7);
+if (entries[2].result.result_id !== 'first-success') process.exit(8);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
+def test_skipped_tool_card_is_distinct_from_successful_empty_result():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(CHAT_JS))}, 'utf8');
+const start = source.indexOf('  _createToolCardHtml(');
+const end = source.indexOf('  _getToolResultForOccurrence(', start);
+const classSource = `class ToolCardHarness {{\n${{source.slice(start, end)}}\n}}; ToolCardHarness;`;
+const sandbox = {{
+  Utils: {{
+    escapeHtml: value => String(value),
+    escapeHtmlAndLinkify: value => String(value),
+    formatJson: value => JSON.stringify(value, null, 2),
+    formatDuration: value => `${{value}}ms`
+  }}
+}};
+vm.createContext(sandbox);
+const ToolCardHarness = vm.runInContext(classSource, sandbox);
+const harness = new ToolCardHarness();
+
+const skipped = harness._createToolCardHtml(
+  'send_email', 'skipped', 'Condition evaluated to false'
+);
+if (!skipped.includes('tool-card skipped')) process.exit(2);
+if (!skipped.includes('⏭ Skipped')) process.exit(3);
+if (!skipped.includes('Condition evaluated to false')) process.exit(4);
+if (skipped.includes('Complete')) process.exit(5);
+
+const emptySuccess = harness._createToolCardHtml('empty_tool', 'success', {{}});
+if (!emptySuccess.includes('tool-card success')) process.exit(6);
+if (!emptySuccess.includes('✅ Complete')) process.exit(7);
 """
 
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
