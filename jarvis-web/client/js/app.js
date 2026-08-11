@@ -1378,6 +1378,7 @@ class JarvisApp {
       stash: '📦',
       pdf_create: '📄',
       pdf_read: '📖',
+      document_ocr: '🔎',
       crypto_price: '💰',
       crypto_chart: '📈',
       stock_price: '📊',

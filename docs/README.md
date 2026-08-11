@@ -43,6 +43,7 @@
 - **[tools/status-tool/README.md](tools/status-tool/README.md)** - 📊 **Status Recap Tool v1.4** (weather, crypto, stocks/futures, alerts, reminders, system health, canvas + stash)
 - **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** - 🔎 **SerpApi Tools** (Amazon, Google Shopping, Search Index, images, news, trends, marketplaces, local places/services, travel, and YouTube; includes mode availability, quota, proxy, cache, and request-cost behavior)
 - **[tools/travel-explore-tool/README.md](tools/travel-explore-tool/README.md)** - 🌍 **Travel Explore Tool** (flexible destination discovery, planning-price semantics, exact-search handoffs, and workflow fields)
+- **[tools/document-ocr-tool/README.md](tools/document-ocr-tool/README.md)** - 🔎 **Optional OVIS OCR** (scanned PDFs/images, Markdown/JSON extraction, archives, readiness checks, and Stash follow-ups)
 - **[tools/flight-search-tool/README.md](tools/flight-search-tool/README.md)** - ✈️ **Flight Search Tool** (future options, prices, dates, and times)
 
 ### Document Processing
@@ -53,6 +54,7 @@
   - Convert pages to PNG/JPEG images
   - Search text within PDFs with context
   - Integrated with `stash.remember` for automatic PDF text extraction
+- **Document OCR Tool** (`skills/document_ocr.py`) - OCR scanned PDFs and text-heavy images through an optional OVIS service; saves full Markdown/JSON/ZIP outputs to Stash
 
 ### Remote & Infrastructure
 - **[tools/ssh/README.md](tools/ssh/README.md)** - 🔐 **SSH Remote Tool** (execute commands on remote hosts, apt management, multi-command)

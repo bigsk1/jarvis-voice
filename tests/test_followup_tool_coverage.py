@@ -396,6 +396,20 @@ LOCAL_TOOL_SAMPLES = {
         },
         {"action": "extract_text", "stash_ref": "stash://pdfs/document"},
     ),
+    "document_ocr": _case(
+        {
+            "action": "ocr",
+            "filename": "scan.pdf",
+            "pages_processed": 2,
+            "total_pages": 2,
+            "markdown_excerpt": "# Invoice\nInvoice 48217\nTotal: $123.45",
+            "markdown_stash_ref": "stash://ocr/scan_markdown",
+            "json_stash_ref": "stash://ocr/scan_json",
+            "stash_ref": "stash://ocr/scan_markdown",
+            "space_id": "ocr",
+        },
+        {"action": "ocr", "stash_ref": "stash://uploads/scan"},
+    ),
     "phone_call": _case(
         {
             "call_id": "call_7",

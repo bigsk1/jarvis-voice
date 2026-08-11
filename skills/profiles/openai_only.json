@@ -5,6 +5,7 @@
     "check_opencode_sessions": false,
     "crawl_url": false,
     "create_social_clip": false,
+    "document_ocr": false,
     "generate_music": false,
     "mcp_brave_search_brave_image_search": false,
     "mcp_brave_search_brave_local_search": false,

@@ -7,6 +7,7 @@
     "crawl_url": false,
     "crypto_chart": false,
     "docker_control": false,
+    "document_ocr": false,
     "flight_search": false,
     "generate_image": false,
     "generate_music": false,

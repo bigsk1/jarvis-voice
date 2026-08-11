@@ -3,6 +3,7 @@
   "overrides": {
     "brave_llm_context": false,
     "crawl_url": false,
+    "document_ocr": false,
     "flight_search": false,
     "generate_image": false,
     "generate_music": false,

@@ -852,6 +852,7 @@ and the selected mode has a valid key.
 - `flight_search` - **Flight search**: Future airfare and itinerary options through SerpApi Google Flights when configured, with a keyless `fast-flights` fallback
 
 **Artifact & Output Tools:**
+- [`document_ocr`](docs/tools/document-ocr-tool/README.md) - **Optional self-hosted OCR**: page-attributed Markdown from scanned PDFs/images, OVIS-hosted structured extraction, and ZIP artifacts with readiness preflight and Stash handoff
 - `convert_file` - **Local media conversion**: ImageMagick, FFmpeg, Potrace
   - Images: JPG ↔ PNG ↔ WebP ↔ GIF ↔ BMP ↔ TIFF ↔ ICO
   - Raster to vector: PNG/JPG → SVG (Potrace tracing for logos, line art)

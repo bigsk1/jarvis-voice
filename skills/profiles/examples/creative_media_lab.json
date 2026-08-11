@@ -6,6 +6,7 @@
     "check_opencode_sessions": false,
     "crawl_url": false,
     "docker_control": false,
+    "document_ocr": false,
     "flight_search": false,
     "git_release_notes": false,
     "mcp_brave_search_brave_local_search": false,

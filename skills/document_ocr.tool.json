@@ -1,0 +1,105 @@
+{
+  "enabled": true,
+  "name": "document_ocr",
+  "description": "OCR and structured extraction for existing scanned documents and images through an optional self-hosted OVIS FastAPI service. Use action=ocr to recover page-attributed Markdown from scanned PDFs, PNG, JPEG, WebP, BMP, or TIFF files; action=extract to turn OCR text into instructed text, Markdown, or schema-validated JSON using the generation backend configured on the OVIS host; action=archive to save the service ZIP with OCR outputs and crops; or action=status to check health, readiness, GPU/model state, and capabilities. Accepts Jarvis Stash references or policy-approved local files and saves full outputs back to Stash by default so later Web UI turns can continue from bounded excerpts and artifact refs. Prefer pdf_read for born-digital PDF text, metadata, search, merge, split, and page rendering. Use document_ocr when the PDF is scanned/image-only, when an image contains substantial text, or when exact structured extraction is requested. The OCR stage remains local to OVIS; action=extract uses whatever text backend the OVIS administrator configured, such as local Ollama. It does not generate images and Jarvis never supplies that backend's credentials.",
+  "complementary_tools": [
+    "pdf_read",
+    "analyze_image",
+    "stash",
+    "canvas"
+  ],
+  "script": "document_ocr.py",
+  "proxy_policy": "off",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": ["status", "ocr", "extract", "archive"],
+        "description": "Operation to run. Default ocr."
+      },
+      "stash_ref": {
+        "type": "string",
+        "description": "Input Stash URI such as stash://space_id/file_id. Required for ocr, extract, and archive unless space_id+file_id or file_path is provided."
+      },
+      "space_id": {
+        "type": "string",
+        "description": "Input Stash space ID when used with file_id."
+      },
+      "file_id": {
+        "type": "string",
+        "description": "Input Stash file ID or name when used with space_id."
+      },
+      "file_path": {
+        "type": "string",
+        "description": "Policy-approved local PDF or image path. Prefer stash_ref for Web UI uploads."
+      },
+      "page_start": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Optional first 1-indexed PDF page to process."
+      },
+      "page_end": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Optional last 1-indexed PDF page to process, inclusive."
+      },
+      "keep_region_tags": {
+        "type": "boolean",
+        "description": "Keep OVIS layout/region tags in OCR Markdown. Default true."
+      },
+      "include_region_data": {
+        "type": "boolean",
+        "description": "Ask OVIS to include region metadata. Default false because region payloads can be large."
+      },
+      "prompt": {
+        "type": "string",
+        "maxLength": 8000,
+        "description": "Required for action=extract. Instruction applied to the fixed OVIS OCR text by the generation backend configured on the OVIS host."
+      },
+      "scope": {
+        "type": "string",
+        "enum": ["document", "page"],
+        "description": "For action=extract, apply the instruction to the whole document or separately per page. Default document."
+      },
+      "response_format": {
+        "type": "string",
+        "enum": ["text", "markdown", "json"],
+        "description": "For action=extract, requested output format. Use json with json_schema for strict structured extraction. Default text."
+      },
+      "json_schema": {
+        "type": "object",
+        "description": "Optional JSON Schema object for action=extract with response_format=json. Remote schema references are rejected by OVIS."
+      },
+      "max_new_tokens": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 16384,
+        "description": "Optional per-request output-token cap for OVIS OCR/extraction inference. The OVIS host may enforce a lower generation-backend limit."
+      },
+      "save_to_stash": {
+        "type": "boolean",
+        "description": "Save full OCR/extraction outputs to Stash. Default true. Archive is always saved."
+      },
+      "output_space_id": {
+        "type": "string",
+        "description": "Optional existing Stash space for outputs; otherwise a new OCR space is created."
+      },
+      "output_name": {
+        "type": "string",
+        "description": "Optional safe base filename for saved OCR outputs."
+      }
+    }
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": ["OVIS_OCR_URL"],
+    "setup_hint": "Set OVIS_OCR_URL to the root URL of a reachable OVIS FastAPI service in the active mode env file."
+  }
+}

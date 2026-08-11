@@ -183,6 +183,7 @@ class TestAvailabilityEvaluator(EnvVarCleanupMixin, unittest.TestCase):
             "crawl_url": {"all_of_env": ["CRAWL4AI_URL"]},
             "screenshot_url": {"all_of_env": ["CRAWL4AI_URL"]},
             "create_social_clip": {"all_of_env": ["MONEYPRINTER_API_URL"]},
+            "document_ocr": {"all_of_env": ["OVIS_OCR_URL"]},
         }
         for name, expected_keys in manifests.items():
             manifest = json.loads((ROOT / "skills" / f"{name}.tool.json").read_text())

@@ -292,6 +292,15 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     # --- File/artifact producers ---
     'pdf_create': ['ref', 'name', 'size_bytes'],
     'pdf_read': ['page_count', 'stash_ref'],
+    'document_ocr': [
+        'action', 'request_id', 'filename', 'document_type', 'model',
+        'ocr_model', 'generation_model', 'scope', 'response_format',
+        'pages_processed', 'total_pages', 'elapsed_seconds',
+        'ocr_elapsed_seconds', 'generation_elapsed_seconds', 'ready',
+        'space_id', 'markdown_stash_ref', 'json_stash_ref',
+        'output_stash_ref', 'response_json_stash_ref',
+        'archive_stash_ref', 'error_code', 'retryable',
+    ],
     'convert_file': ['stash_ref', 'filename', 'source_format', 'target_format'],
     'qr_code_generator': ['stash_ref', 'filename'],
     'upload_cloudflare': ['url', 'image_id', 'filename'],
@@ -2311,6 +2320,13 @@ def _extract_bounded_content_followup(
         ),
         'pdf_read': (
             ('text', 'text_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+        ),
+        'document_ocr': (
+            ('markdown_excerpt', 'markdown_excerpt', FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS),
+            ('output_excerpt', 'output_excerpt', FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS),
+            ('parsed_json', 'parsed_json', FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS),
+            ('parsed_json_excerpt', 'parsed_json_excerpt', FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS),
+            ('page_outputs', 'page_outputs', FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS),
         ),
         'execute_bash': (
             ('stdout', 'stdout_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),

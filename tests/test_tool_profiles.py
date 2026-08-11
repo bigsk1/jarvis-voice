@@ -13,6 +13,47 @@ sys.path.insert(0, str(ROOT / "lib"))
 
 
 class TestToolProfiles(unittest.TestCase):
+    def test_narrow_profiles_gate_document_ocr_when_document_work_is_out_of_scope(self):
+        examples_dir = ROOT / "skills" / "profiles" / "examples"
+        disabled_profiles = {
+            "creative_media_lab.json",
+            "home_routines.json",
+            "local_home_voice.json",
+            "local_minimal_assistant.json",
+            "local_terminal_ops.json",
+            "workstation_ops.json",
+        }
+        retained_profiles = {
+            "docker.json",
+            "docs_kb_curator.json",
+            "local_daily_driver.json",
+            "local_research_lite.json",
+            "memory_and_artifacts.json",
+            "offline.json",
+            "offline_lan_first.json",
+            "research_pipeline.json",
+        }
+
+        for profile_name in sorted(disabled_profiles):
+            overrides = json.loads(
+                (examples_dir / profile_name).read_text(encoding="utf-8")
+            )["overrides"]
+            self.assertIs(
+                overrides.get("document_ocr"),
+                False,
+                f"{profile_name} should keep document_ocr out of its narrow tool pool",
+            )
+
+        for profile_name in sorted(retained_profiles):
+            overrides = json.loads(
+                (examples_dir / profile_name).read_text(encoding="utf-8")
+            )["overrides"]
+            self.assertIsNot(
+                overrides.get("document_ocr"),
+                False,
+                f"{profile_name} is intended to retain optional document/LAN OCR",
+            )
+
     def test_narrow_example_profiles_explicitly_gate_optional_media_tools(self):
         media_tools = {
             "trakt_movies",

@@ -38,7 +38,9 @@ def test_pdf_context_distinguishes_metadata_from_content_access():
     assert ATTACHMENT["stash_ref"] in context
     assert "docker-cheatsheet.pdf" in context
     assert "This metadata does not reveal the document contents" in context
-    assert "use pdf_read or another appropriate local tool/workflow" in context
+    assert "use pdf_read for born-digital text" in context
+    assert "document_ocr" in context
+    assert "scanned/image-only" in context
     assert "providers cannot access stash:// directly" in context
     assert "provider-native URL/file tool counts only if it actually receives" in context
 

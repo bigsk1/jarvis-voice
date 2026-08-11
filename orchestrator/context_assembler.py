@@ -341,6 +341,9 @@ class ContextAssembler:
                     context_lines.append(
                         "  If the user says first/second/third image or photo, map that ordinal to the matching uploaded image stash ref above."
                     )
+                    context_lines.append(
+                        "  For OCR/transcription of text-heavy uploaded images, use document_ocr with the matching stash ref when that optional tool is available; use analyze_image for general visual understanding."
+                    )
                     break
 
             uploaded_image = tool_results.get("uploaded_image", {}) if isinstance(tool_results, dict) else {}
@@ -351,6 +354,9 @@ class ContextAssembler:
                     "IMAGE RE-ANALYSIS: If the user asks to look again, correct, or re-identify the image: use analyze_image with image=\""
                     + str(stash_ref)
                     + "\"."
+                )
+                context_lines.append(
+                    "  If the request is specifically OCR/transcription of text in this image, use document_ocr with the same stash ref when that optional tool is available."
                 )
                 break
 
@@ -755,6 +761,11 @@ class ContextAssembler:
             # prices, airports, and links need to survive the tool handoff.
             # Keep it below the provider-facing 10K result-context ceiling.
             return 10000
+        if lowered == "document_ocr":
+            # The tool already replaces full OCR bodies with bounded excerpts
+            # and Stash refs. Preserve enough page-attributed text or structured
+            # extraction output for the immediate answer.
+            return 6000
         if lowered in {"trakt_movies", "trakt_tv_shows"}:
             # Preserve a useful movie/TV shortlist, exact links, constraints,
             # and trailer handles without passing the full provider payload.

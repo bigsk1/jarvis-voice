@@ -250,6 +250,7 @@ JSON object printed to stdout:
 |------|-------------|
 | `generate_image` | AI image generation and editing with Gemini, OpenAI, or xAI |
 | `analyze_image` | Vision analysis (Grok/Claude/GPT-4o) |
+| [`document_ocr`](../docs/tools/document-ocr-tool/README.md) | Optional OVIS OCR and structured extraction for scanned PDFs/images |
 | [`generate_music`](../docs/tools/generate-music-tool/README.md) | Catalog-backed AI music creation with ElevenLabs or Gemini Lyria |
 | `pdf_create` | Generate PDFs from content |
 | `pdf_read` | Extract text/images from PDFs |

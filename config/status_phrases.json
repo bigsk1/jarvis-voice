@@ -284,6 +284,11 @@
       "start": ["Reading the PDF", "Extracting text"],
       "progress": ["PDF contents retrieved"]
     },
+
+    "document_ocr": {
+      "start": ["Reading the scanned document", "Starting document OCR"],
+      "progress": ["OCR is processing the document", "Document text retrieved"]
+    },
     
     "printer": {
       "start": ["Sending to printer", "Printing your document"],
@@ -356,4 +361,3 @@
     }
   }
 }
-

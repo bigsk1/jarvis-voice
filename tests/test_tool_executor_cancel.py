@@ -111,6 +111,10 @@ class ToolExecutorCancelTests(unittest.TestCase):
             executor._get_subprocess_timeout("serpapi_travel_explore"), 120
         )
 
+    def test_document_ocr_timeout_allows_large_gpu_document_and_extraction(self):
+        executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
+        self.assertEqual(executor._get_subprocess_timeout("document_ocr"), 1200)
+
     def test_tripadvisor_timeout_allows_three_sequential_http_calls(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("serpapi_tripadvisor"), 160)

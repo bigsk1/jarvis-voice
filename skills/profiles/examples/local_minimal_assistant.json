@@ -2,6 +2,7 @@
   "description": "Copy to skills/profiles/local_minimal_assistant.json — Local.env + Ollama (~32k ctx; router serves ghost tools + ~5 retrieved). Stays online but shrinks the enabled tool pool so small models waste fewer slots. Keeps vision: do not set analyze_image false. Drops SerpApi shopping and verticals, Playwright, OpenCode, media generators, and bulky research extras.",
   "overrides": {
     "check_opencode_sessions": false,
+    "document_ocr": false,
     "flight_search": false,
     "generate_image": false,
     "generate_music": false,

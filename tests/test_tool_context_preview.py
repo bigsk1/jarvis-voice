@@ -33,6 +33,7 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_web_search"), 6000)
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_google_sports"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_travel_explore"), 10000)
+        self.assertEqual(self.orch._tool_context_max_chars("document_ocr"), 6000)
         self.assertEqual(self.orch._tool_context_max_chars("trakt_movies"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("tmdb_movies"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("trakt_tv_shows"), 10000)
