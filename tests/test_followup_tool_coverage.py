@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 EXTRACTOR_PATH = (
     PROJECT_ROOT / "jarvis-web" / "server" / "services" / "followup_extractor.py"
@@ -1167,6 +1166,12 @@ LOCAL_TOOL_SAMPLES = {
             "query": "Severance",
             "image_type": "all",
             "results_count": 1,
+            "provider_pages_scanned": 2,
+            "excluded_result_count": 1,
+            "selection_criteria": {
+                "genres": ["Sci-Fi & Fantasy"],
+                "excluded_genres": ["Animation"],
+            },
             "top_url": "https://www.themoviedb.org/tv/95396",
             "attribution_notice": "This product uses the TMDB API but is not endorsed or certified by TMDB.",
             "attribution_url": "https://www.themoviedb.org",
@@ -2054,6 +2059,9 @@ def test_tmdb_tv_followup_preserves_series_identity_artwork_and_seasons():
     assert compact["show"]["number_of_seasons"] == 2
     assert compact["candidates"][0]["image_type"] == "poster"
     assert compact["seasons"][0]["episode_count"] == 9
+    assert compact["provider_pages_scanned"] == 2
+    assert compact["excluded_result_count"] == 1
+    assert compact["selection_criteria"]["excluded_genres"] == ["Animation"]
 
 
 def test_request_context_is_bounded_and_drops_secret_or_bulky_arguments():

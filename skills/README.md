@@ -310,8 +310,8 @@ JSON object printed to stdout:
 | `trakt_movies` | Public Trakt movie discovery, related-title recommendations, current lists, metadata, and trailer/video links; requires a Trakt application Client ID |
 | `trakt_account` | Optional read-only Trakt OAuth context: personalized recommendations, deterministic night-workflow watched filtering, watchlist, history, ratings, favorites, personal/smart lists, and up-next; requires Client Secret plus `./bin/trakt-auth` |
 | `tmdb_movies` | Standalone TMDB movie search/discovery, rich details, posters/backdrops/logos, credits, videos, and recommendations; requires a TMDB API Read Access Token or v3 API key |
-| `trakt_tv_shows` | Public Trakt TV-show discovery, related-series recommendations, current lists, typical episode runtime, metadata, and trailer/video links; requires a Trakt application Client ID |
-| `tmdb_tv_shows` | Standalone TMDB TV search/discovery, rich series details, posters/backdrops/logos, aggregate credits, seasons, and recommendations; requires a TMDB API Read Access Token or v3 API key |
+| `trakt_tv_shows` | Public Trakt TV-show discovery, related-series recommendations, current lists, local excluded-genre filtering, typical episode runtime, metadata, and trailer/video links; requires a Trakt application Client ID |
+| `tmdb_tv_shows` | Standalone TMDB TV search/discovery with included/excluded genres and future first-air windows, rich series details, posters/backdrops/logos, aggregate credits, seasons, and recommendations; requires a TMDB API Read Access Token or v3 API key |
 | `spotify` | Music playback control |
 | `opencode` | Autonomous coding agent |
 | `calculator` | Math, stats, unit conversions |

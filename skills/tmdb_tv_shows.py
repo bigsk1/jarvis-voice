@@ -7,17 +7,16 @@ import json
 import os
 import re
 import sys
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import quote
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from config_loader import load_config
-
 from tmdb_movies import (
     ATTRIBUTION_NOTICE,
-    TMDBAPIError,
-    TMDBClient as _BaseTMDBClient,
     TMDB_WEB_BASE_URL,
+    TMDBAPIError,
     _clean_image_languages,
     _clean_language,
     _image_url,
@@ -26,9 +25,13 @@ from tmdb_movies import (
     _safe_float,
     _safe_int,
     _year_from_date,
+)
+from tmdb_movies import (
+    TMDBClient as _BaseTMDBClient,
+)
+from tmdb_movies import (
     normalize_images as _normalize_images,
 )
-
 
 USER_AGENT = "JarvisVoice/TMDBTVShows-1.0"
 
@@ -79,6 +82,32 @@ IMPORTANT_CREW_JOBS = {
     "Writer",
 }
 
+GENRE_ALIASES: dict[str, tuple[str, ...]] = {
+    "Action & Adventure": ("action", "adventure"),
+    "Animation": ("animation", "animated", "anime"),
+    "Comedy": ("comedy", "funny", "sitcom"),
+    "Crime": ("crime", "criminal", "gangster", "procedural"),
+    "Documentary": ("documentary", "docuseries", "nonfiction", "non-fiction"),
+    "Drama": ("drama", "dramatic"),
+    "Family": ("family", "family friendly", "family-friendly"),
+    "Kids": ("kids", "children", "children's"),
+    "Mystery": ("mystery", "detective", "whodunit"),
+    "News": ("news",),
+    "Reality": ("reality", "unscripted", "competition show"),
+    "Sci-Fi & Fantasy": (
+        "science fiction",
+        "science-fiction",
+        "sci fi",
+        "sci-fi",
+        "fantasy",
+        "magical",
+    ),
+    "Soap": ("soap", "soap opera"),
+    "Talk": ("talk", "talk show"),
+    "War & Politics": ("war", "military", "politics", "political"),
+    "Western": ("western", "cowboy"),
+}
+
 
 class TMDBClient(_BaseTMDBClient):
     """TMDB application client with TV genre discovery."""
@@ -104,6 +133,90 @@ class TMDBClient(_BaseTMDBClient):
 def _show_url(show_id: Any) -> str | None:
     parsed = _safe_int(show_id)
     return f"{TMDB_WEB_BASE_URL}/tv/{parsed}" if parsed and parsed > 0 else None
+
+
+def _phrase_is_negated(text: str, start: int) -> bool:
+    prefix = text[max(0, start - 60):start]
+    clause = re.split(r"[,.;:]", prefix)[-1]
+    if re.search(r"\b(?:no|not|without|exclude|excluding)\b[^,.;:]{0,50}$", clause):
+        return True
+    return bool(re.search(r"\bnon[-\s]*$", clause))
+
+
+def _request_genres(request: str, genre_map: dict[int, str]) -> tuple[list[str], list[str]]:
+    text = re.sub(r"\s+", " ", str(request or "").strip().lower())
+    available = {name.lower(): name for name in genre_map.values()}
+    included: list[str] = []
+    excluded: list[str] = []
+    for canonical, aliases in GENRE_ALIASES.items():
+        resolved = available.get(canonical.lower())
+        if not resolved:
+            continue
+        matches = [
+            match
+            for alias in aliases
+            for match in re.finditer(
+                rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])", text
+            )
+        ]
+        if not matches:
+            continue
+        if any(_phrase_is_negated(text, match.start()) for match in matches):
+            excluded.append(resolved)
+        if any(not _phrase_is_negated(text, match.start()) for match in matches):
+            included.append(resolved)
+    return included[:6], excluded[:6]
+
+
+def _resolve_genre_names(values: Any, genre_map: dict[int, str]) -> list[str]:
+    if isinstance(values, str):
+        raw_values = [value.strip() for value in values.split(",")]
+    elif isinstance(values, list):
+        raw_values = [str(value).strip() for value in values]
+    else:
+        return []
+    by_name = {name.lower(): name for name in genre_map.values()}
+    alias_names = {
+        alias.lower(): canonical
+        for canonical, aliases in GENRE_ALIASES.items()
+        for alias in aliases
+    }
+    resolved: list[str] = []
+    for raw in raw_values:
+        normalized = re.sub(r"\s+", " ", raw.lower().replace("_", " ")).strip()
+        canonical = alias_names.get(normalized, raw)
+        name = by_name.get(str(canonical).lower())
+        if not name:
+            raise TMDBAPIError(f"Unknown TMDB TV genre: {raw[:60]}")
+        if name not in resolved:
+            resolved.append(name)
+    return resolved[:6]
+
+
+def _request_days_ahead(request: str) -> int | None:
+    match = re.search(
+        r"\bnext\s+(\d{1,3})\s*(day|days|week|weeks|month|months)\b",
+        str(request or "").lower(),
+    )
+    if not match:
+        return None
+    quantity = int(match.group(1))
+    unit = match.group(2)
+    if unit.startswith("week"):
+        quantity *= 7
+    elif unit.startswith("month"):
+        quantity *= 30
+    return max(1, min(365, quantity))
+
+
+def _excluded_show_ids(values: Any) -> set[int]:
+    if not isinstance(values, list):
+        return set()
+    return {
+        parsed
+        for value in values[-500:]
+        if (parsed := _safe_int(value)) is not None and parsed > 0
+    }
 
 
 def _episode_summary(item: Any) -> dict[str, Any] | None:
@@ -494,6 +607,7 @@ def execute_action(client: TMDBClient, args: dict[str, Any]) -> dict[str, Any]:
         return _list_payload(client, action, payload, results)
 
     if action == "discover":
+        request = str(args.get("request") or "").strip()
         params: dict[str, Any] = {
             "include_adult": bool(args.get("include_adult", False)),
             "include_null_first_air_dates": False,
@@ -505,17 +619,28 @@ def execute_action(client: TMDBClient, args: dict[str, Any]) -> dict[str, Any]:
             raise TMDBAPIError("Unsupported TMDB TV discover sort_by value.")
         if year:
             params["first_air_date_year"] = year
-        requested_genres = [
-            str(value).strip().lower() for value in args.get("genres") or [] if str(value).strip()
-        ]
-        resolved_genres: list[str] = []
-        if requested_genres:
-            by_name = {name.lower(): genre_id for genre_id, name in genre_map.items()}
-            unknown = [name for name in requested_genres if name not in by_name]
-            if unknown:
-                raise TMDBAPIError(f"Unknown TMDB TV genre: {unknown[0][:60]}")
-            params["with_genres"] = ",".join(str(by_name[name]) for name in requested_genres)
-            resolved_genres = [genre_map[by_name[name]] for name in requested_genres]
+        inferred_genres, inferred_excluded_genres = _request_genres(request, genre_map)
+        resolved_genres = _resolve_genre_names(args.get("genres"), genre_map) or inferred_genres
+        resolved_excluded_genres = _resolve_genre_names(
+            args.get("exclude_genres"), genre_map
+        )
+        for genre in inferred_excluded_genres:
+            if genre not in resolved_excluded_genres:
+                resolved_excluded_genres.append(genre)
+        resolved_genres = [genre for genre in resolved_genres if genre not in resolved_excluded_genres]
+        if args.get("require_genres") is True and not resolved_genres:
+            raise TMDBAPIError(
+                "This discovery request requires at least one recognized TV genre."
+            )
+        by_name = {name.lower(): genre_id for genre_id, name in genre_map.items()}
+        if resolved_genres:
+            params["with_genres"] = ",".join(
+                str(by_name[name.lower()]) for name in resolved_genres
+            )
+        if resolved_excluded_genres:
+            params["without_genres"] = ",".join(
+                str(by_name[name.lower()]) for name in resolved_excluded_genres
+            )
         for source_key, target_key in (
             ("runtime_min", "with_runtime.gte"),
             ("runtime_max", "with_runtime.lte"),
@@ -527,35 +652,92 @@ def execute_action(client: TMDBClient, args: dict[str, Any]) -> dict[str, Any]:
         min_rating = _safe_float(args.get("min_rating"))
         if min_rating is not None:
             params["vote_average.gte"] = max(0.0, min(10.0, min_rating))
-        if args.get("first_air_date_from"):
-            params["first_air_date.gte"] = args["first_air_date_from"]
-        if args.get("first_air_date_to"):
-            params["first_air_date.lte"] = args["first_air_date_to"]
+        first_air_date_from = str(args.get("first_air_date_from") or "").strip() or None
+        first_air_date_to = str(args.get("first_air_date_to") or "").strip() or None
+        days_ahead = _safe_int(args.get("days_ahead"))
+        if days_ahead is None:
+            days_ahead = _request_days_ahead(request)
+        if request and days_ahead is None and not (first_air_date_from or first_air_date_to):
+            days_ahead = 90
+        if days_ahead is not None and not (first_air_date_from or first_air_date_to):
+            days_ahead = max(1, min(365, days_ahead))
+            today = datetime.now(timezone.utc).date()
+            first_air_date_from = today.isoformat()
+            first_air_date_to = (today + timedelta(days=days_ahead - 1)).isoformat()
+        if first_air_date_from:
+            params["first_air_date.gte"] = first_air_date_from
+        if first_air_date_to:
+            params["first_air_date.lte"] = first_air_date_to
         if args.get("origin_country"):
             params["with_origin_country"] = str(args["origin_country"]).upper()
         if args.get("original_language"):
             params["with_original_language"] = str(args["original_language"]).lower()
+        excluded_ids = _excluded_show_ids(args.get("exclude_show_ids"))
         payload = client.get("/discover/tv", params)
-        results = [
-            show
-            for item in (payload.get("results") or [])[:max_results]
-            if (show := normalize_show(item, configuration=configuration, genre_map=genre_map, source="discover"))
-        ]
-        data = _list_payload(client, action, payload, results, query=query)
+        raw_items = list(payload.get("results") or []) if isinstance(payload, dict) else []
+        total_pages = (
+            max(1, _safe_int(payload.get("total_pages")) or 1)
+            if isinstance(payload, dict)
+            else 1
+        )
+        next_page = page + 1
+        results: list[dict[str, Any]] = []
+        excluded_result_count = 0
+        pages_scanned = 1
+        while True:
+            results = []
+            excluded_result_count = 0
+            for item in raw_items:
+                show = normalize_show(
+                    item,
+                    configuration=configuration,
+                    genre_map=genre_map,
+                    source="discover",
+                )
+                if not show:
+                    continue
+                if show.get("tmdb_id") in excluded_ids:
+                    excluded_result_count += 1
+                    continue
+                results.append(show)
+                if len(results) >= max_results:
+                    break
+            if len(results) >= max_results or next_page > total_pages or pages_scanned >= 5:
+                break
+            next_payload = client.get("/discover/tv", {**params, "page": next_page})
+            if not isinstance(next_payload, dict):
+                break
+            raw_items.extend(next_payload.get("results") or [])
+            next_page += 1
+            pages_scanned += 1
+
+        data = _list_payload(
+            client,
+            action,
+            payload,
+            results[:max_results],
+            query=request or query,
+        )
         data["filters_used"] = {
             key: value for key, value in params.items() if key not in {"language", "page"}
         }
+        data["provider_pages_scanned"] = pages_scanned
+        data["excluded_result_count"] = excluded_result_count
         data["selection_criteria"] = {
             key: value
             for key, value in {
+                "request": request,
                 "genres": resolved_genres,
+                "excluded_genres": resolved_excluded_genres,
                 "episode_runtime_min_minutes": _safe_int(args.get("runtime_min")),
                 "episode_runtime_max_minutes": _safe_int(args.get("runtime_max")),
                 "minimum_rating": min_rating,
                 "minimum_votes": _safe_int(args.get("min_votes")),
                 "first_air_year": year,
-                "first_air_date_from": args.get("first_air_date_from"),
-                "first_air_date_to": args.get("first_air_date_to"),
+                "first_air_date_from": first_air_date_from,
+                "first_air_date_to": first_air_date_to,
+                "days_ahead": days_ahead,
+                "excluded_show_ids_count": len(excluded_ids) if excluded_ids else None,
                 "origin_country": args.get("origin_country"),
                 "original_language": args.get("original_language"),
                 "sort_by": params["sort_by"],

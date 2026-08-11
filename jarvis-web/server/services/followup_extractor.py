@@ -442,7 +442,8 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'tmdb_tv_shows': [
         'action', 'query', 'image_type', 'image_languages', 'results_count',
         'provider_results_count', 'page', 'total_pages', 'top_url',
-        'filters_used', 'selection_criteria', 'api_requests', 'auth_method',
+        'filters_used', 'selection_criteria', 'provider_pages_scanned',
+        'excluded_result_count', 'api_requests', 'auth_method',
         'public_metadata_only', 'runtime_scope', 'attribution_notice',
         'attribution_url', 'external_content_trust', 'source',
     ],

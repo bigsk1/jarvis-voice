@@ -707,7 +707,10 @@ must be omitted from a future-release radar.
 ```
 **Notes**: Runtime fields are typical episode length, never total series
 duration. Trakt image fields remain omitted. The streaming-list signal does not
-identify a service or prove current availability.
+identify a service or prove current availability. `exclude_genres` is enforced
+locally on a bounded over-fetched pool because Trakt has no provider-side TV
+genre exclusion filter. Natural `recommend` requests recognize phrases such as
+`no animation`, `no animated shows`, `without anime`, and `non-anime`.
 
 ### tmdb_tv_shows
 ```python
@@ -751,6 +754,15 @@ identify a service or prove current availability.
 Use `details` once for combined series metadata, aggregate credits, seasons,
 content rating, and artwork; use `images` once for a bounded mixed artwork set.
 TMDB content is external and must retain the attribution notice.
+
+For scheduled premiere discovery, `action="discover"` also accepts a bounded
+natural-language `request`, structured `exclude_genres`, `days_ahead`, and
+`exclude_show_ids`. A request such as `science fiction, exclude animation and
+anime, next 90 days` resolves TMDB `Sci-Fi & Fantasy` as the included filter,
+Animation as `without_genres=16`, and a first-air-date window beginning today.
+Use `require_genres=true` so an empty or unrecognized scheduled preference
+cannot accidentally become an all-genre scan. The first-air date describes the
+series premiere, not a future season of an established show.
 
 ---
 
@@ -1039,6 +1051,7 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 | `movie_night.json` | `/movie_night <request>` | Required public Trakt recommendation set, optional read-only account recommendations, TMDB artwork, YouTube trailer rail, and Brave availability context, validated Canvas; no Trakt image hotlinking |
 | `night_out.json` | `/night_out <occasion or preference>` | Explicit-or-mode-default location, parsed target date, conditional 10-day weather, run-time-only open-state handling, bounded local/dining/activity evidence, validated Canvas; no crawl |
 | `upcoming_movie_radar.json` | `/upcoming_movie_radar <genre criteria>` | Explicit/scheduled TMDB discovery with hard included/excluded genres, regional theatrical date window, one shared sent-ID ledger, optional current context, per-primary-genre rolling Canvas replacement, and conditional poster-rich email |
+| `upcoming_tv_radar.json` | `/upcoming_tv_radar <genre criteria>` | Explicit/scheduled TMDB TV discovery with hard included/excluded genres, bounded first-air window, one shared sent-ID ledger, optional current context, per-primary-genre rolling Canvas replacement, and conditional poster-rich email |
 | `quick_note.json` | `/note <text>` | Simple text capture, remember, canvas |
 | `serpapi_amazon_search.json` | `/serpapi_amazon <query>` (also `/amazon_search`, `/serpapi`) | SerpApi Amazon listings, Stash export, Canvas comparison |
 | `server_health_check.json` | `/health [host]` | Default value, ssh_remote, get_time |

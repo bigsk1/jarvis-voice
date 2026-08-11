@@ -4,24 +4,25 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 import requests
-
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "skills"))
 
 from tmdb_tv_shows import (  # noqa: E402
     ATTRIBUTION_NOTICE,
+    TMDBAPIError,
     TMDBClient,
     build_speech,
     execute_action,
     normalize_images,
     normalize_show,
 )
-
 
 CONFIGURATION = {
     "secure_base_url": "https://image.tmdb.org/t/p/",
@@ -30,7 +31,7 @@ CONFIGURATION = {
     "logo_sizes": ["w92", "w185", "w300", "w500", "original"],
     "profile_sizes": ["w45", "w185", "h632", "original"],
 }
-GENRES = {18: "Drama", 9648: "Mystery", 10765: "Sci-Fi & Fantasy"}
+GENRES = {16: "Animation", 18: "Drama", 9648: "Mystery", 10765: "Sci-Fi & Fantasy"}
 
 
 def _json_response(payload, status_code=200):
@@ -152,6 +153,78 @@ def test_discover_uses_tv_genres_and_episode_runtime_filters():
     assert "provider-applied discover filters" in build_speech(data)
 
 
+def test_discover_request_applies_animation_exclusion_future_window_and_history():
+    client = TMDBClient(api_key="test-key")
+    seen_params = {}
+    already_emailed = _show("Already Emailed", 101)
+    already_emailed["genre_ids"] = [16, 10765]
+    new_pick = _show("New Pick", 102)
+    new_pick["genre_ids"] = [10765]
+
+    def fake_get(path, params=None):
+        client.request_count += 1
+        if path == "/configuration":
+            return {"images": CONFIGURATION}
+        if path == "/genre/tv/list":
+            return {"genres": [{"id": key, "name": value} for key, value in GENRES.items()]}
+        if path == "/discover/tv":
+            seen_params.update(params or {})
+            return {
+                "page": 1,
+                "total_pages": 1,
+                "total_results": 2,
+                "results": [already_emailed, new_pick],
+            }
+        raise AssertionError(f"Unexpected path: {path}")
+
+    with patch.object(client, "get", side_effect=fake_get):
+        data = execute_action(
+            client,
+            {
+                "action": "discover",
+                "request": "science fiction, no anime, next 90 days",
+                "exclude_show_ids": ["101"],
+                "require_genres": True,
+                "max_results": 1,
+            },
+        )
+
+    assert seen_params["with_genres"] == "10765"
+    assert seen_params["without_genres"] == "16"
+    assert "first_air_date.gte" in seen_params
+    assert "first_air_date.lte" in seen_params
+    start = date.fromisoformat(seen_params["first_air_date.gte"])
+    end = date.fromisoformat(seen_params["first_air_date.lte"])
+    assert (end - start).days == 89
+    assert [show["tmdb_id"] for show in data["results"]] == [102]
+    assert data["excluded_result_count"] == 1
+    assert data["selection_criteria"]["genres"] == ["Sci-Fi & Fantasy"]
+    assert data["selection_criteria"]["excluded_genres"] == ["Animation"]
+    assert data["selection_criteria"]["excluded_show_ids_count"] == 1
+
+
+def test_discover_can_require_a_recognized_positive_tv_genre():
+    client = TMDBClient(api_key="test-key")
+
+    def fake_get(path, params=None):
+        if path == "/configuration":
+            return {"images": CONFIGURATION}
+        if path == "/genre/tv/list":
+            return {"genres": [{"id": key, "name": value} for key, value in GENRES.items()]}
+        raise AssertionError(f"Unexpected path: {path}")
+
+    with patch.object(client, "get", side_effect=fake_get):
+        with pytest.raises(TMDBAPIError, match="requires at least one recognized"):
+            execute_action(
+                client,
+                {
+                    "action": "discover",
+                    "request": "no anime, email me the result",
+                    "require_genres": True,
+                },
+            )
+
+
 def test_details_bundles_aggregate_credits_seasons_rating_and_artwork():
     client = TMDBClient(access_token="test-token")
 
@@ -240,3 +313,6 @@ def test_manifest_is_standalone_and_accepts_either_tmdb_credential():
     actions = manifest["parameters"]["properties"]["action"]["enum"]
     assert {"images", "discover", "airing_today", "on_the_air", "top_rated"}.issubset(actions)
     assert "do not search first" in manifest["parameters"]["properties"]["action"]["description"]
+    assert "exclude_genres" in manifest["parameters"]["properties"]
+    assert "exclude_show_ids" in manifest["parameters"]["properties"]
+    assert "days_ahead" in manifest["parameters"]["properties"]

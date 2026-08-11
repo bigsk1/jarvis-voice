@@ -197,6 +197,13 @@ the selected TMDB ID to persistent Stash history only after n8n reports a
 successful send, preventing repeated weekly picks without suppressing a movie
 after a failed delivery.
 
+The same email template supports `upcoming_tv_radar`. Schedule separate inputs
+such as `science fiction, exclude animation and anime, next 90 days, email`
+and `comedy, exclude animation, next 90 days, email`. Each resolved primary
+genre maintains its own Canvas page, while one shared sent-show ledger prevents
+the same series from being emailed by multiple genre schedules.
+`UPCOMING_TV_RADAR_EMAIL_TO` may override the default `boss` recipient.
+
 ## Adding New Webhooks
 
 ### 1. Create n8n workflow

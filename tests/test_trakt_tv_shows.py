@@ -9,12 +9,13 @@ from unittest.mock import patch
 
 import requests
 
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "skills"))
 
 from trakt_tv_shows import (  # noqa: E402
     TraktClient,
+    _infer_excluded_genres,
+    _infer_genres,
     execute_action,
     extract_reference_candidates,
     normalize_show,
@@ -172,6 +173,41 @@ def test_recommend_applies_episode_runtime_locally():
     assert all("runtimes" not in params for _, params in calls)
 
 
+def test_inference_treats_no_anime_as_exclusion_not_positive_animation():
+    request = "Thoughtful science fiction, no animated or anime TV shows"
+
+    assert _infer_genres(request) == ["science-fiction"]
+    assert _infer_excluded_genres(request) == ["animation"]
+
+
+def test_discovery_action_excludes_requested_tv_genres_locally():
+    client = TraktClient("test-client-id")
+    request_params = {}
+
+    def fake_get(path, params=None):
+        assert path == "/shows/anticipated"
+        request_params.update(params or {})
+        return [
+            _show("Animated Pick", 70, genres=["science-fiction", "animation"]),
+            _show("Live Action Pick", 71, genres=["science-fiction", "thriller"]),
+        ]
+
+    with patch.object(client, "get", side_effect=fake_get):
+        data = execute_action(
+            client,
+            {
+                "action": "anticipated",
+                "genres": ["science-fiction"],
+                "exclude_genres": ["animation"],
+                "max_results": 2,
+            },
+        )
+
+    assert request_params["genres"] == "science-fiction"
+    assert "exclude_genres" not in request_params
+    assert [show["title"] for show in data["results"]] == ["Live Action Pick"]
+
+
 def test_manifest_uses_shared_client_id_and_proxy_policy():
     manifest = json.loads((ROOT / "skills" / "trakt_tv_shows.tool.json").read_text())
 
@@ -179,6 +215,7 @@ def test_manifest_uses_shared_client_id_and_proxy_policy():
     assert manifest["proxy_policy"] == "prefer"
     assert "TRAKT_CLIENT_SECRET" not in json.dumps(manifest)
     assert "recommend" in manifest["parameters"]["properties"]["action"]["enum"]
+    assert "exclude_genres" in manifest["parameters"]["properties"]
     assert "episode-runtime" in manifest["parameters"]["properties"]["runtimes"]["description"]
 
 

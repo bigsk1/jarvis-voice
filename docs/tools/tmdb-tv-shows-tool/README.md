@@ -46,10 +46,18 @@ returns a balanced bounded set.
 | `videos` | Return bounded public YouTube/Vimeo video metadata, prioritizing official trailers |
 | `recommendations`, `similar` | Resolve one show and return TMDB's corresponding series list |
 | `trending`, `popular`, `airing_today`, `on_the_air`, `top_rated` | Return bounded public TMDB TV lists |
-| `discover` | Filter by genre, typical episode runtime, rating/votes, premiere date, origin country/language, and supported ordering |
+| `discover` | Filter by included/excluded genre, typical episode runtime, rating/votes, premiere date or future first-air window, origin country/language, sent-show IDs, and supported ordering |
 
 Runtime is a typical episode runtime. Discover results are provider-filtered;
 do not reinterpret that value as a total-series duration.
+
+`discover` accepts structured `genres` and `exclude_genres` or a natural
+`request`. For example, `science fiction, no anime, next 90 days` resolves to
+TMDB's `Sci-Fi & Fantasy` genre, applies `without_genres=16` for Animation,
+and bounds `first_air_date` from today through the requested window. Scheduled
+workflows can set `require_genres: true` and pass `exclude_show_ids` so an
+ambiguous request cannot become an all-genre run and an already emailed series
+is skipped.
 
 ## Artwork and UI handling
 
@@ -88,4 +96,8 @@ Use tmdb_tv_shows to show the creators, cast, seasons, network, content rating, 
 
 ```text
 Use tmdb_tv_shows to discover highly rated mystery shows with episodes under an hour and at least 500 votes.
+```
+
+```text
+Use tmdb_tv_shows to discover upcoming science-fiction shows in the next 90 days, no animated or anime series.
 ```

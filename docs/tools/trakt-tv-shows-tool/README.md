@@ -38,9 +38,13 @@ no configured proxy, requests start direct. This policy is limited to the tool.
 | `trending`, `popular`, `anticipated`, `streaming` | Retrieve bounded public discovery lists |
 
 `recommend` accepts a natural-language `request`, optional
-`reference_titles`, and explicit `genres`, `years`, `runtimes`, or `ratings`.
-Runtime always means a typical episode runtime. It is not the total duration of
-a season or series.
+`reference_titles`, and explicit `genres`, `exclude_genres`, `years`,
+`runtimes`, or `ratings`. Natural requests also recognize exclusions such as
+`no animation`, `no animated shows`, `without anime`, and `non-anime`.
+Trakt has no documented provider-side exclusion parameter, so Jarvis
+over-fetches a bounded candidate pool and enforces excluded genres locally.
+Runtime always means a typical episode runtime. It is not the total duration
+of a season or series.
 
 ## Trust and availability boundaries
 
@@ -65,6 +69,11 @@ Example:
 ```text
 /tv_night thoughtful mystery like Severance and Dark, episodes under an hour, preferably a completed series
 ```
+
+For a scheduled premiere watch, `/upcoming_tv_radar <genre criteria>` uses
+TMDB's first-air-date and provider-side genre filters, maintains one Canvas
+page per resolved primary genre, and keeps a shared emailed-show ledger across
+genre schedules.
 
 For optional personalized recommendations, watchlist, history, ratings, and
 up-next progress, configure the separate read-only

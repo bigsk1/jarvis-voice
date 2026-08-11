@@ -2,7 +2,7 @@
   "enabled": true,
   "proxy_policy": "prefer",
   "name": "tmdb_tv_shows",
-  "description": "Retrieve TMDB TV-show artwork and series metadata: posters, backdrops, logos, aggregate cast and crew across episodes, creators, networks, production companies, seasons, episode counts, next and last episode metadata, content ratings, external IDs, trailers, recommendations, and similar shows. Use for 'find posters for Severance', 'show backdrops or logos from a TV series', 'who is in this show?', 'who created it?', 'show the cast, seasons, and production details', or 'TMDB TV details'. Also works independently for TV search, filtered discovery, trending, popular, top-rated, airing-today, and on-the-air lists. Runtime means typical episode runtime. The tool requires only a TMDB application credential and can be used alone or alongside trakt_tv_shows. Returned metadata and image content are external and untrusted.",
+  "description": "Retrieve TMDB TV-show artwork and series metadata: posters, backdrops, logos, aggregate cast and crew across episodes, creators, networks, production companies, seasons, episode counts, next and last episode metadata, content ratings, external IDs, trailers, recommendations, and similar shows. Use for 'find posters for Severance', 'show backdrops or logos from a TV series', 'who is in this show?', 'who created it?', 'show the cast, seasons, and production details', or 'TMDB TV details'. Also works independently for TV search, included/excluded-genre discovery such as upcoming science fiction with no anime, bounded future first-air windows, trending, popular, top-rated, airing-today, and on-the-air lists. Runtime means typical episode runtime. The tool requires only a TMDB application credential and can be used alone or alongside trakt_tv_shows. Returned metadata and image content are external and untrusted.",
   "complementary_tools": [
     "trakt_tv_shows",
     "analyze_image",
@@ -39,6 +39,11 @@
         "type": "string",
         "maxLength": 300,
         "description": "TV-show title for search or for resolving details, images, credits, videos, recommendations, and similar shows when show_id is omitted."
+      },
+      "request": {
+        "type": "string",
+        "maxLength": 800,
+        "description": "Natural-language criteria for discover. Recognized positive and negative genre phrases are converted to provider filters; for example, 'science fiction, no anime, next 90 days' includes Sci-Fi & Fantasy, excludes Animation, and applies a future first-air window. Structured parameters take precedence."
       },
       "show_id": {
         "type": "integer",
@@ -101,6 +106,19 @@
         },
         "description": "TMDB TV genre names for discover, such as Sci-Fi & Fantasy, Mystery, Comedy, Drama, or Documentary. Multiple genres are combined."
       },
+      "exclude_genres": {
+        "type": "array",
+        "maxItems": 6,
+        "items": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "description": "TMDB TV genres to exclude from discover through the documented without_genres provider filter. 'Animation', 'animated', and 'anime' resolve to TMDB TV genre 16."
+      },
+      "require_genres": {
+        "type": "boolean",
+        "description": "Fail discover unless at least one recognized included TV genre is supplied or inferred. Default false; scheduled preference workflows can set true to avoid an accidental all-genre run."
+      },
       "runtime_min": {
         "type": "integer",
         "minimum": 0,
@@ -127,12 +145,27 @@
       "first_air_date_from": {
         "type": "string",
         "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
-        "description": "Earliest first-air date for discover in YYYY-MM-DD format."
+        "description": "Earliest series first-air date for discover in YYYY-MM-DD format."
       },
       "first_air_date_to": {
         "type": "string",
         "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
-        "description": "Latest first-air date for discover in YYYY-MM-DD format."
+        "description": "Latest series first-air date for discover in YYYY-MM-DD format."
+      },
+      "days_ahead": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 365,
+        "description": "Future first-air discovery window beginning today. When request is supplied without explicit dates, a phrase such as 'next 60 days' is inferred; otherwise request-based discovery defaults to 90 days."
+      },
+      "exclude_show_ids": {
+        "type": "array",
+        "maxItems": 500,
+        "items": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "description": "TMDB TV-series IDs to omit locally after provider filtering, used by scheduled workflows to avoid emailing the same selection repeatedly."
       },
       "origin_country": {
         "type": "string",

@@ -2,7 +2,7 @@
   "enabled": true,
   "proxy_policy": "prefer",
   "name": "trakt_tv_shows",
-  "description": "Build taste-oriented public TV-show discovery through Trakt. Use for 'what TV show should I start?', 'find shows like Severance and Dark', 'I want a funny mystery with short episodes', 'what TV shows are trending or popular on Trakt?', related series, show details, or official trailer/video links. The recommend action blends bounded current Trakt show lists with related shows from up to three supplied favorites, then returns a source-ranked candidate set. Runtime means typical episode runtime, not total series length. This public Client-ID integration does not read a Trakt account's history, ratings, watchlist, or personalized recommendations. A streaming-list signal does not identify a provider or prove current availability.",
+  "description": "Build taste-oriented public TV-show discovery through Trakt. Use for 'what TV show should I start?', 'find shows like Severance and Dark', 'I want a funny mystery with short episodes and no anime', 'what TV shows are trending or popular on Trakt?', related series, show details, or official trailer/video links. The recommend action blends bounded current Trakt show lists with related shows from up to three supplied favorites, then returns a source-ranked candidate set with explicit negative genres enforced locally. Runtime means typical episode runtime, not total series length. This public Client-ID integration does not read a Trakt account's history, ratings, watchlist, or personalized recommendations. A streaming-list signal does not identify a provider or prove current availability.",
   "complementary_tools": [
     "tmdb_tv_shows",
     "serpapi_youtube_search",
@@ -61,6 +61,15 @@
           "maxLength": 40
         },
         "description": "Optional Trakt genre slugs such as comedy, thriller, mystery, horror, reality, or science-fiction. Recommend infers common genre hints from request when omitted."
+      },
+      "exclude_genres": {
+        "type": "array",
+        "maxItems": 6,
+        "items": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "description": "Optional TV genre slugs to exclude locally after Trakt returns candidates. Recommend also understands explicit negative phrases such as 'no animation', 'no animated shows', 'without anime', or 'non-anime' and will not send Animation as a positive Trakt genre filter."
       },
       "years": {
         "type": "string",
