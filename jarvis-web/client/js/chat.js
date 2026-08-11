@@ -5369,13 +5369,38 @@ class ChatUI {
     const thinkingEl = document.createElement('div');
     thinkingEl.className = 'message assistant thinking-message';
     thinkingEl.innerHTML = `
-      <div class="thinking-indicator">
-        <div class="thinking-dots">
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
-        <span class="thinking-label">Thinking...</span>
+      <div class="thinking-indicator" data-phase="thinking">
+        <svg class="processing-glyph" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <defs>
+            <linearGradient id="sc-grad-outer" x1="0" y1="0" x2="1" y2="1">
+              <stop class="processing-glyph__stop--a" offset="0"></stop>
+              <stop class="processing-glyph__stop--b" offset="0.55"></stop>
+              <stop class="processing-glyph__stop--c" offset="1"></stop>
+            </linearGradient>
+            <linearGradient id="sc-grad-inner" x1="1" y1="0" x2="0" y2="1">
+              <stop class="processing-glyph__stop--c" offset="0"></stop>
+              <stop class="processing-glyph__stop--a" offset="1"></stop>
+            </linearGradient>
+            <radialGradient id="sc-grad-core">
+              <stop class="processing-glyph__stop--hot" offset="0"></stop>
+              <stop class="processing-glyph__stop--b" offset="0.55"></stop>
+              <stop class="processing-glyph__stop--fade" offset="1"></stop>
+            </radialGradient>
+          </defs>
+          <circle class="processing-glyph__track" cx="16" cy="16" r="12" pathLength="100"></circle>
+          <circle class="processing-glyph__echo" cx="16" cy="16" r="4.5" pathLength="100"></circle>
+          <g class="processing-glyph__orbit processing-glyph__orbit--outer">
+            <circle class="processing-glyph__arc processing-glyph__arc--outer" cx="16" cy="16" r="12" pathLength="100"></circle>
+            <circle class="processing-glyph__comet" cx="16" cy="4" r="1.7"></circle>
+          </g>
+          <g class="processing-glyph__orbit processing-glyph__orbit--inner">
+            <circle class="processing-glyph__arc processing-glyph__arc--inner" cx="16" cy="16" r="7.5" pathLength="100"></circle>
+          </g>
+          <path class="processing-glyph__scan" d="M7.5 16h17"></path>
+          <circle class="processing-glyph__aura" cx="16" cy="16" r="5.4"></circle>
+          <circle class="processing-glyph__core" cx="16" cy="16" r="2.7"></circle>
+        </svg>
+        <span class="thinking-label">Thinking</span>
       </div>
       <div class="tool-cards" id="pendingToolCards"></div>
     `;
@@ -5413,6 +5438,12 @@ class ChatUI {
     if (labelEl) labelEl.textContent = label;
   }
 
+  _setProcessingPhase(phase, label) {
+    const indicatorEl = this.messagesContainer.querySelector('.thinking-indicator');
+    if (indicatorEl) indicatorEl.dataset.phase = phase;
+    this._setProcessingLabel(label);
+  }
+
   _markToolStarted(data = {}) {
     this.activeToolCalls.add(this._processingToolKey(data));
     if (this.activeToolCalls.size !== 1) return;
@@ -5422,7 +5453,7 @@ class ChatUI {
       this._workingLabelTimer = null;
       if (this.activeToolCalls.size === 0) return;
       this._workingLabelVisible = true;
-      this._setProcessingLabel('Working...');
+      this._setProcessingPhase('working', 'Working');
     }, this.processingPhaseDelayMs);
   }
 
@@ -5436,7 +5467,7 @@ class ChatUI {
     }
     if (this._workingLabelVisible) {
       this._workingLabelVisible = false;
-      this._setProcessingLabel('Reviewing results...');
+      this._setProcessingPhase('reviewing', 'Reviewing results');
     }
   }
 

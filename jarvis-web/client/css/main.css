@@ -1886,26 +1886,273 @@ body {
   font-size: var(--text-sm);
 }
 
-.thinking-dots {
-  display: flex;
-  gap: 4px;
+/* Signal core glyph — inline SVG, no external assets.
+   Comet arc orbits a dashed track around a glowing core.
+   Phases: thinking (calm orbit) / working (fast, long tail) / reviewing (scan + echo). */
+.processing-glyph {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  overflow: visible;
+  filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.55))
+          drop-shadow(0 0 11px rgba(139, 92, 246, 0.3));
+  transition: filter 0.5s ease;
 }
 
-.thinking-dots span {
-  width: 6px;
-  height: 6px;
-  background: var(--accent-primary);
-  border-radius: 50%;
-  animation: bounce 1.4s infinite ease-in-out both;
+/* Gradient stops live in CSS so theme variables apply inside the SVG */
+.processing-glyph__stop--a { stop-color: var(--accent-primary); }
+.processing-glyph__stop--b { stop-color: var(--accent-secondary); }
+.processing-glyph__stop--c { stop-color: var(--text-link-chat, #67e8f9); }
+.processing-glyph__stop--hot { stop-color: #eef2ff; }
+.processing-glyph__stop--fade { stop-color: var(--accent-secondary); stop-opacity: 0; }
+
+.processing-glyph__track {
+  fill: none;
+  stroke: var(--accent-tertiary);
+  stroke-width: 1;
+  stroke-linecap: round;
+  stroke-dasharray: 0.5 4.5;
+  opacity: 0.45;
+  vector-effect: non-scaling-stroke;
 }
 
-.thinking-dots span:nth-child(1) { animation-delay: -0.32s; }
-.thinking-dots span:nth-child(2) { animation-delay: -0.16s; }
-.thinking-dots span:nth-child(3) { animation-delay: 0s; }
+.processing-glyph__orbit {
+  transform-box: view-box;
+  transform-origin: 16px 16px;
+}
 
-@keyframes bounce {
-  0%, 80%, 100% { transform: scale(0); }
-  40% { transform: scale(1); }
+.processing-glyph__arc {
+  fill: none;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  transition: stroke-dasharray 0.6s ease, stroke-dashoffset 0.6s ease,
+              stroke-width 0.4s ease, opacity 0.4s ease;
+}
+
+/* Dash head is pinned at the top of the ring (75% around from 3 o'clock)
+   so the comet dot at (16,4) always rides the leading edge. */
+.processing-glyph__arc--outer {
+  stroke: url(#sc-grad-outer);
+  stroke-width: 2.4;
+  stroke-dasharray: 30 70;
+  stroke-dashoffset: -45;
+}
+
+.processing-glyph__arc--inner {
+  stroke: url(#sc-grad-inner);
+  stroke-width: 1.8;
+  stroke-dasharray: 18 32;
+  opacity: 0.85;
+}
+
+.processing-glyph__comet {
+  fill: var(--text-link-chat, #67e8f9);
+  filter: drop-shadow(0 0 3px var(--text-link-chat, #67e8f9));
+  transition: opacity 0.4s ease;
+}
+
+.processing-glyph__echo {
+  fill: none;
+  stroke: var(--accent-tertiary);
+  stroke-width: 1.4;
+  opacity: 0;
+  vector-effect: non-scaling-stroke;
+  transform-box: view-box;
+  transform-origin: 16px 16px;
+}
+
+.processing-glyph__scan {
+  fill: none;
+  stroke: var(--text-link-chat, #67e8f9);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  opacity: 0;
+  vector-effect: non-scaling-stroke;
+}
+
+.processing-glyph__aura {
+  fill: url(#sc-grad-core);
+  opacity: 0.4;
+  transform-box: view-box;
+  transform-origin: 16px 16px;
+}
+
+.processing-glyph__core {
+  fill: url(#sc-grad-core);
+  transform-box: view-box;
+  transform-origin: 16px 16px;
+}
+
+/* Label gets a slow shimmer sweep */
+.thinking-label {
+  background: linear-gradient(
+    90deg,
+    var(--text-secondary) 0%,
+    var(--text-secondary) 35%,
+    var(--text-primary) 47%,
+    var(--accent-tertiary) 50%,
+    var(--text-primary) 53%,
+    var(--text-secondary) 65%,
+    var(--text-secondary) 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: signal-core-shimmer 3s linear infinite;
+}
+
+/* Phase: thinking — calm counter-rotating orbits, breathing core */
+.thinking-indicator[data-phase="thinking"] .processing-glyph__orbit--outer {
+  animation: signal-core-spin 3.4s linear infinite;
+}
+
+.thinking-indicator[data-phase="thinking"] .processing-glyph__orbit--inner {
+  animation: signal-core-spin 5.2s linear infinite reverse;
+}
+
+.thinking-indicator[data-phase="thinking"] .processing-glyph__core {
+  animation: signal-core-breathe 2.6s ease-in-out infinite;
+}
+
+.thinking-indicator[data-phase="thinking"] .processing-glyph__aura {
+  animation: signal-core-aura 2.6s ease-in-out infinite;
+}
+
+/* Phase: working — fast spin, comet tail stretches, glow intensifies */
+.thinking-indicator[data-phase="working"] .processing-glyph {
+  filter: drop-shadow(0 0 5px rgba(99, 102, 241, 0.75))
+          drop-shadow(0 0 14px rgba(139, 92, 246, 0.45));
+}
+
+.thinking-indicator[data-phase="working"] .processing-glyph__orbit--outer {
+  animation: signal-core-spin 0.85s linear infinite;
+}
+
+.thinking-indicator[data-phase="working"] .processing-glyph__orbit--inner {
+  animation: signal-core-spin 1.25s linear infinite reverse;
+}
+
+.thinking-indicator[data-phase="working"] .processing-glyph__arc--outer {
+  stroke-dasharray: 58 42;
+  stroke-dashoffset: -17;
+  stroke-width: 2.6;
+}
+
+.thinking-indicator[data-phase="working"] .processing-glyph__core {
+  animation: signal-core-breathe 0.85s ease-in-out infinite;
+}
+
+.thinking-indicator[data-phase="working"] .processing-glyph__aura {
+  animation: signal-core-aura 0.85s ease-in-out infinite;
+}
+
+/* Phase: reviewing — orbits settle into near-full rings, scan line sweeps,
+   echo rings ping outward from the core */
+.thinking-indicator[data-phase="reviewing"] .processing-glyph__orbit--outer {
+  animation: signal-core-spin 5.5s linear infinite;
+}
+
+.thinking-indicator[data-phase="reviewing"] .processing-glyph__orbit--inner {
+  animation: signal-core-spin 7s linear infinite reverse;
+}
+
+.thinking-indicator[data-phase="reviewing"] .processing-glyph__arc--outer {
+  stroke-dasharray: 92 8;
+  stroke-dashoffset: -83;
+}
+
+.thinking-indicator[data-phase="reviewing"] .processing-glyph__arc--inner {
+  stroke-dasharray: 42 8;
+}
+
+.thinking-indicator[data-phase="reviewing"] .processing-glyph__arc {
+  animation: signal-core-review-glow 2.2s ease-in-out infinite;
+}
+
+.thinking-indicator[data-phase="reviewing"] .processing-glyph__comet {
+  opacity: 0;
+}
+
+.thinking-indicator[data-phase="reviewing"] .processing-glyph__scan {
+  animation: signal-core-review-scan 2.2s ease-in-out infinite;
+}
+
+.thinking-indicator[data-phase="reviewing"] .processing-glyph__echo {
+  animation: signal-core-echo 2.2s ease-out infinite;
+}
+
+.thinking-indicator[data-phase="reviewing"] .processing-glyph__core {
+  animation: signal-core-review-core 2.2s ease-in-out infinite;
+}
+
+.thinking-indicator[data-phase="reviewing"] .processing-glyph__aura {
+  animation: signal-core-aura 2.2s ease-in-out infinite;
+}
+
+@keyframes signal-core-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes signal-core-breathe {
+  0%, 100% { transform: scale(0.86); opacity: 0.7; }
+  50% { transform: scale(1.18); opacity: 1; }
+}
+
+@keyframes signal-core-aura {
+  0%, 100% { transform: scale(0.8); opacity: 0.22; }
+  50% { transform: scale(1.25); opacity: 0.55; }
+}
+
+@keyframes signal-core-review-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes signal-core-review-scan {
+  0% { opacity: 0; transform: translateY(-6px); }
+  12% { opacity: 0.85; }
+  55% { opacity: 0.85; transform: translateY(6px); }
+  70%, 100% { opacity: 0; transform: translateY(6px); }
+}
+
+@keyframes signal-core-echo {
+  0% { opacity: 0; transform: scale(0.4); }
+  12% { opacity: 0.7; }
+  70%, 100% { opacity: 0; transform: scale(2.4); }
+}
+
+@keyframes signal-core-review-core {
+  0%, 100% { transform: scale(0.9); opacity: 0.7; }
+  14% { transform: scale(1.3); opacity: 1; }
+  45% { transform: scale(1); opacity: 0.85; }
+}
+
+@keyframes signal-core-shimmer {
+  from { background-position: 125% 0; }
+  to { background-position: -125% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .processing-glyph__orbit,
+  .processing-glyph__arc,
+  .processing-glyph__aura,
+  .processing-glyph__core,
+  .thinking-label {
+    animation: none !important;
+  }
+
+  .processing-glyph__scan,
+  .processing-glyph__echo {
+    animation: none !important;
+    opacity: 0;
+  }
+
+  .thinking-label {
+    background: none;
+    color: var(--text-secondary);
+  }
 }
 
 /* Status messages (ephemeral progress updates) */
