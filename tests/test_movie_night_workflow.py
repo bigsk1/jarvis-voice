@@ -28,6 +28,12 @@ def test_movie_night_is_explicit_and_keeps_enrichment_optional():
     }
     steps = {step["tool"]: step for step in workflow["steps"]}
     assert steps["trakt_movies"]["required"] is True
+    assert steps["trakt_account"]["required"] is False
+    assert steps["trakt_account"]["params"]["action"] == "movie_night_context"
+    assert steps["trakt_account"]["params"]["public_candidates"] == "${movie_candidates}"
+    assert steps["trakt_account"]["params"]["ignore_watched"] is True
+    assert steps["trakt_account"]["extract"]["movie_candidates"] == "eligible_public_candidates"
+    assert steps["trakt_account"]["extract"]["top_title"] == "enrichment_title"
     assert steps["tmdb_movies"]["required"] is False
     assert steps["tmdb_movies"]["params"] == {
         "action": "images",
@@ -45,6 +51,9 @@ def test_movie_night_is_explicit_and_keeps_enrichment_optional():
     assert "at most one poster and one backdrop" in steps["canvas"]["llm_prompt"]
     assert "do not use original_url" in steps["canvas"]["llm_prompt"]
     assert "Trakt image" not in steps["canvas"]["llm_prompt"]
+    assert "Recommend only from those eligible lists" in steps["canvas"]["llm_prompt"]
+    assert "${watched_filter_applied}" in steps["canvas"]["llm_prompt"]
+    assert "raw watched rows" in steps["canvas"]["llm_prompt"]
     assert "${top_title}" not in workflow["success_speech"]
     assert "top recommendation" not in workflow["success_speech"].lower()
 
@@ -56,6 +65,7 @@ def test_movie_night_runs_without_optional_enrichment_but_requires_trakt():
     assert status["available"] is True
     assert status["degraded"] is True
     assert status["optional_tools_skipped"] == [
+        "trakt_account",
         "tmdb_movies",
         "serpapi_youtube_search",
         "brave_llm_context",
@@ -66,6 +76,7 @@ def test_movie_night_runs_without_optional_enrichment_but_requires_trakt():
         available_tools={
             "get_time",
             "canvas",
+            "trakt_account",
             "tmdb_movies",
             "serpapi_youtube_search",
             "brave_llm_context",

@@ -37,6 +37,7 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(self.orch._tool_context_max_chars("trakt_movies"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("tmdb_movies"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("trakt_tv_shows"), 10000)
+        self.assertEqual(self.orch._tool_context_max_chars("trakt_account"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("tmdb_tv_shows"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("workflow"), 8000)
 
@@ -84,6 +85,48 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(compact["source_candidates"][7]["episode_runtime_minutes"], 48)
         self.assertEqual(compact["source_candidates"][7]["network"], "Example TV")
         self.assertNotIn("do not expose", preview)
+
+    def test_trakt_account_preview_keeps_safe_personal_fields_not_raw_tokens(self):
+        result = {
+            "ok": True,
+            "speech": "Retrieved account history.",
+            "data": {
+                "action": "history",
+                "account_data": True,
+                "read_only": True,
+                "oauth_used": True,
+                "pagination": {"page": 1, "item_count": 1},
+                "watched_filter_applied": True,
+                "watched_items_checked": 109,
+                "watched_pages_checked": 2,
+                "watched_public_excluded_count": 1,
+                "watched_account_excluded_count": 0,
+                "watched_excluded_count": 1,
+                "results": [
+                    {
+                        "title": "Arrival",
+                        "year": 2016,
+                        "media_type": "movie",
+                        "trakt_url": "https://trakt.tv/movies/arrival-2016",
+                        "user_rating": 9,
+                        "watched_at": "2026-01-01T00:00:00Z",
+                        "history_id": 44,
+                    }
+                ],
+                "access_token": "SECRET_SENTINEL",
+            },
+        }
+        preview, _total, _shown, _truncated = self.orch._build_llm_result_context_preview(
+            "trakt_account", result
+        )
+        compact = json.loads(preview)["llm_context_preview"]
+        self.assertTrue(compact["data_preview"]["read_only"])
+        self.assertEqual(compact["source_candidates"][0]["user_rating"], 9)
+        self.assertEqual(compact["source_candidates"][0]["history_id"], 44)
+        self.assertTrue(compact["data_preview"]["watched_filter_applied"])
+        self.assertEqual(compact["data_preview"]["watched_items_checked"], 109)
+        self.assertEqual(compact["data_preview"]["watched_excluded_count"], 1)
+        self.assertNotIn("SECRET_SENTINEL", preview)
 
     def test_tmdb_tv_details_preview_keeps_series_fields_and_seasons(self):
         result = {

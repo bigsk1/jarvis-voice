@@ -35,6 +35,7 @@
     "tmdb_movies": false,
     "tmdb_tv_shows": false,
     "trakt_movies": false,
+    "trakt_account": false,
     "trakt_tv_shows": false,
     "spotify": false,
     "status_recap": false,

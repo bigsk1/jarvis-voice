@@ -123,6 +123,7 @@ class ToolExecutorCancelTests(unittest.TestCase):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("trakt_movies"), 300)
         self.assertEqual(executor._get_subprocess_timeout("trakt_tv_shows"), 300)
+        self.assertEqual(executor._get_subprocess_timeout("trakt_account"), 300)
 
     def test_tmdb_timeout_allows_proxy_chain_and_metadata_helpers(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))

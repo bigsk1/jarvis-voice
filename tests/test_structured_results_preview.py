@@ -62,6 +62,7 @@ const expectedTools = [
   'serpapi_travel_explore',
   'serpapi_tripadvisor',
   'trakt_movies',
+  'trakt_account',
   'tmdb_movies',
   'trakt_tv_shows',
   'tmdb_tv_shows',
@@ -923,6 +924,45 @@ if (html.includes('walter-r2.trakt.tv')) process.exit(8);
 if (html.includes('structured-result-image')) process.exit(9);
 """
 
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
+def test_trakt_account_renderer_labels_personal_data_read_only():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const escapeHtml = value => String(value)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/\"/g, '&quot;').replace(/'/g, '&#39;');
+const sandbox = {{
+  URL, window: {{}}, console,
+  Utils: {{
+    escapeHtml,
+    safeHttpUrlForAttr: value => {{
+      try {{
+        const parsed = new URL(String(value));
+        return ['http:', 'https:'].includes(parsed.protocol) ? escapeHtml(parsed.href) : '';
+      }} catch (_error) {{ return ''; }}
+    }}
+  }}
+}};
+vm.createContext(sandbox);
+vm.runInContext(source, sandbox);
+const html = sandbox.window.structuredResultsRenderer.render({{
+  trakt_account: {{
+    action: 'history', account_data: true, read_only: true, oauth_used: true,
+    results: [{{
+      title: 'Arrival', year: 2016, media_type: 'movie', user_rating: 9,
+      watched_at: '2026-01-01T00:00:00Z', trakt_url: 'https://trakt.tv/movies/arrival-2016'
+    }}]
+  }}
+}});
+if (!html.includes('Trakt account · read only')) process.exit(2);
+if (!html.includes('Arrival')) process.exit(3);
+if (!html.includes('Your rating 9/10')) process.exit(4);
+if (!html.includes('Watched 2026-01-01')) process.exit(5);
+"""
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
 
 

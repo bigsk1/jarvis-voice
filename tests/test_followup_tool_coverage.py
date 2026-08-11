@@ -1056,6 +1056,42 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "trakt_account": _case(
+        {
+            "action": "movie_recommendations",
+            "request": "thoughtful science fiction",
+            "results_count": 1,
+            "top_url": "https://trakt.tv/movies/arrival-2016",
+            "genre_hints": ["science-fiction"],
+            "filters_used": {"ignore_watched": "true"},
+            "pagination": {"page": 1, "page_count": 1, "item_count": 1},
+            "oauth_used": True,
+            "account_data": True,
+            "read_only": True,
+            "watched_filter_applied": True,
+            "watched_items_checked": 109,
+            "watched_pages_checked": 2,
+            "watched_public_excluded_count": 1,
+            "watched_account_excluded_count": 0,
+            "watched_excluded_count": 1,
+            "external_content_trust": "untrusted",
+            "source": "Trakt API account",
+            "candidates": [
+                {
+                    "title": "Arrival",
+                    "year": 2016,
+                    "media_type": "movie",
+                    "ids": {"trakt": 168930, "slug": "arrival-2016"},
+                    "trakt_url": "https://trakt.tv/movies/arrival-2016",
+                    "runtime_minutes": 116,
+                    "rating": 8.0,
+                    "genres": ["science-fiction", "drama"],
+                    "source_signals": ["account_recommendation"],
+                }
+            ],
+        },
+        {"action": "movie_recommendations"},
+    ),
     "trakt_tv_shows": _case(
         {
             "action": "recommend",
@@ -1951,6 +1987,23 @@ def test_trakt_followup_preserves_movie_ids_constraints_and_trailer_handles():
     assert compact["trailers"][0]["url"].startswith("https://www.youtube.com/")
     assert compact["candidates"][0]["ids"]["slug"] == "arrival-2016"
     assert compact["candidates"][0]["trakt_url"].startswith("https://trakt.tv/")
+
+
+def test_trakt_account_followup_preserves_only_aggregate_watched_filter_metadata():
+    payload, arguments = LOCAL_TOOL_SAMPLES["trakt_account"]
+    data = {"trakt_account": payload}
+    if arguments is not None:
+        data["_tool_trace"] = [
+            {"tool": "trakt_account", "ok": True, "arguments": arguments}
+        ]
+
+    compact = followup.extract_followup_data(data)["trakt_account"]
+
+    assert compact["watched_filter_applied"] is True
+    assert compact["watched_items_checked"] == 109
+    assert compact["watched_pages_checked"] == 2
+    assert compact["watched_excluded_count"] == 1
+    assert "watched_rows" not in compact
 
 
 def test_tmdb_followup_preserves_movie_id_and_artwork_size_variants():

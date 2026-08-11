@@ -15,9 +15,8 @@ TRAKT_API_KEY="your-client-id"
 The manifest uses the standard `availability.all_of_env` gate. With no Client
 ID in the active cloud/local mode, the tool is not loaded and workflows that
 require it are not runnable. A Client Secret and OAuth token are not used by
-this public-metadata integration. The configured out-of-band redirect URI is
-therefore inactive unless a future account-linked feature explicitly adds an
-OAuth flow.
+this public-metadata integration. The separate `trakt_account` tool uses the
+Client Secret, registered redirect URI, and OAuth cache when configured.
 
 ## Network routing
 
@@ -83,3 +82,7 @@ official trailers for each of the top three movies while still presenting one
 grouped tool result. Each title would remain a separate SerpApi search and
 therefore consume a separate SerpApi search credit; combining several titles
 into one YouTube query would not reliably produce balanced results.
+
+For optional personalized recommendations, watchlist, history, ratings, and
+lists, configure the separate read-only [`trakt_account`](../trakt-account-tool/README.md)
+tool. The public movie tool remains available with only a Client ID.

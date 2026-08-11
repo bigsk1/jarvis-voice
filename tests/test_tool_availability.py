@@ -56,6 +56,15 @@ class TestAvailabilityEvaluator(EnvVarCleanupMixin, unittest.TestCase):
         )
         self.assertEqual(availability["config_files"], ["data/.spotify_cache"])
 
+    def test_trakt_account_manifest_requires_credentials_and_oauth_cache(self):
+        manifest = json.loads((ROOT / "skills" / "trakt_account.tool.json").read_text())
+        availability = manifest["availability"]
+        self.assertEqual(
+            availability["all_of_env"],
+            ["TRAKT_API_KEY", "TRAKT_CLIENT_SECRET", "TRAKT_REDIRECT_URI"],
+        )
+        self.assertEqual(availability["config_files"], ["data/.trakt_oauth.json"])
+
     def test_no_block_is_available(self):
         self.assertEqual(check_availability_block(None).status, "available")
         self.assertEqual(check_tool_availability({"name": "x"}).status, "available")

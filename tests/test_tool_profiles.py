@@ -56,6 +56,7 @@ class TestToolProfiles(unittest.TestCase):
 
     def test_narrow_example_profiles_explicitly_gate_optional_media_tools(self):
         media_tools = {
+            "trakt_account",
             "trakt_movies",
             "trakt_tv_shows",
             "tmdb_movies",

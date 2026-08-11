@@ -28,6 +28,12 @@ def test_tv_night_is_explicit_and_keeps_enrichment_optional():
     }
     steps = {step["tool"]: step for step in workflow["steps"]}
     assert steps["trakt_tv_shows"]["required"] is True
+    assert steps["trakt_account"]["required"] is False
+    assert steps["trakt_account"]["params"]["action"] == "tv_night_context"
+    assert steps["trakt_account"]["params"]["public_candidates"] == "${show_candidates}"
+    assert steps["trakt_account"]["params"]["ignore_watched"] is True
+    assert steps["trakt_account"]["extract"]["show_candidates"] == "eligible_public_candidates"
+    assert steps["trakt_account"]["extract"]["top_title"] == "enrichment_title"
     assert steps["tmdb_tv_shows"]["required"] is False
     assert steps["tmdb_tv_shows"]["params"] == {
         "action": "images",
@@ -49,6 +55,9 @@ def test_tv_night_is_explicit_and_keeps_enrichment_optional():
     assert "do not use original_url" in prompt
     assert "Copy every returned source URL byte-for-byte" in prompt
     assert "Trakt image" not in prompt
+    assert "Recommend only from those eligible lists" in prompt
+    assert "${watched_filter_applied}" in prompt
+    assert "raw watched rows" in prompt
     assert "https://www.https://" in steps["canvas"]["llm_output_validation"]["reject_patterns"]
 
 
@@ -59,6 +68,7 @@ def test_tv_night_runs_without_optional_enrichment_but_requires_trakt():
     assert status["available"] is True
     assert status["degraded"] is True
     assert status["optional_tools_skipped"] == [
+        "trakt_account",
         "tmdb_tv_shows",
         "serpapi_youtube_search",
         "brave_llm_context",
@@ -69,6 +79,7 @@ def test_tv_night_runs_without_optional_enrichment_but_requires_trakt():
         available_tools={
             "get_time",
             "canvas",
+            "trakt_account",
             "tmdb_tv_shows",
             "serpapi_youtube_search",
             "brave_llm_context",

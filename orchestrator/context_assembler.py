@@ -766,9 +766,9 @@ class ContextAssembler:
             # and Stash refs. Preserve enough page-attributed text or structured
             # extraction output for the immediate answer.
             return 6000
-        if lowered in {"trakt_movies", "trakt_tv_shows"}:
-            # Preserve a useful movie/TV shortlist, exact links, constraints,
-            # and trailer handles without passing the full provider payload.
+        if lowered in {"trakt_movies", "trakt_tv_shows", "trakt_account"}:
+            # Preserve useful public or account-aware media context, exact
+            # links, constraints, and safe account metadata.
             return 10000
         if lowered in {"tmdb_movies", "tmdb_tv_shows"}:
             # Retain bounded artwork variants, exact TMDB IDs, credits, and
@@ -937,7 +937,11 @@ class ContextAssembler:
         )
         is_travel_explore = normalized_tool_name == "serpapi_travel_explore"
         is_tripadvisor = str(tool_name or "").strip().lower() == "serpapi_tripadvisor"
-        is_trakt_media = normalized_tool_name in {"trakt_movies", "trakt_tv_shows"}
+        is_trakt_media = normalized_tool_name in {
+            "trakt_movies",
+            "trakt_tv_shows",
+            "trakt_account",
+        }
         is_tmdb_media = normalized_tool_name in {"tmdb_movies", "tmdb_tv_shows"}
         tmdb_action = str(data.get("action") or "").strip().lower() if is_tmdb_media else ""
         is_flight_search = str(tool_name or "").strip().lower() == "flight_search"
@@ -1277,6 +1281,18 @@ class ContextAssembler:
                     "match_score",
                     "streaming_signal",
                     "videos",
+                    "media_type",
+                    "user_rating",
+                    "rated_at",
+                    "watched_at",
+                    "listed_at",
+                    "history_id",
+                    "progress",
+                    "notes",
+                    "privacy",
+                    "share_link",
+                    "item_count",
+                    "comment_count",
                 ):
                     value = item.get(key)
                     if value not in (None, "", [], {}):
@@ -2680,6 +2696,10 @@ class ContextAssembler:
         force_compact_projection = (tool_name or "").lower() in {
             "flight_search",
             "serpapi_travel_explore",
+            # Account payloads always use an allowlisted projection even when
+            # small, so an upstream regression cannot hand OAuth material to
+            # the response model or follow-up context.
+            "trakt_account",
         }
         if result_chars_total <= max_chars and not force_compact_projection:
             return full_serialized, result_chars_total, result_chars_total, False
@@ -2716,7 +2736,7 @@ class ContextAssembler:
                 data_preview = self.build_travel_explore_data_preview(data)
             elif normalized_tool_name == "serpapi_tripadvisor":
                 data_preview = self.build_tripadvisor_data_preview(data)
-            elif normalized_tool_name in {"trakt_movies", "trakt_tv_shows"}:
+            elif normalized_tool_name in {"trakt_movies", "trakt_tv_shows", "trakt_account"}:
                 data_preview = {
                     key: self.build_preview_value(data[key], parent_key=key, max_depth=3)
                     for key in (
@@ -2735,7 +2755,21 @@ class ContextAssembler:
                         "api_requests",
                         "oauth_used",
                         "public_metadata_only",
+                        "account_data",
+                        "read_only",
+                        "authorized",
+                        "user",
+                        "permissions",
+                        "account",
+                        "limits",
+                        "pagination",
                         "runtime_scope",
+                        "watched_filter_applied",
+                        "watched_items_checked",
+                        "watched_pages_checked",
+                        "watched_public_excluded_count",
+                        "watched_account_excluded_count",
+                        "watched_excluded_count",
                         "streaming_provider_data",
                         "external_content_trust",
                         "source",
@@ -2772,7 +2806,7 @@ class ContextAssembler:
                     else 8
                     if (tool_name or "").lower() in {"tmdb_movies", "tmdb_tv_shows"}
                     else 8
-                    if (tool_name or "").lower() in {"trakt_movies", "trakt_tv_shows"}
+                    if (tool_name or "").lower() in {"trakt_movies", "trakt_tv_shows", "trakt_account"}
                     else 10
                     if (tool_name or "").lower() == "serpapi_travel_explore"
                     else 5

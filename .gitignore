@@ -140,6 +140,10 @@ jarvis-intel/*
 opencodetmp/
 # Spotify OAuth cache (contains access tokens)
 data/.spotify_cache
+# Trakt OAuth cache and refresh lock (contain or protect rotating tokens)
+data/.trakt_oauth.json
+data/.trakt_oauth.json.lock
+data/..trakt_oauth.json.*
 data/.phone_call_lock
 data/.phone_call_in_progress
 data/.webui_secret

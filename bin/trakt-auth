@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""Authorize Jarvis with Trakt's OAuth device flow."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "lib"))
+
+from config_loader import get_config_value, load_config  # noqa: E402
+from trakt_oauth import (  # noqa: E402
+    DEFAULT_REDIRECT_URI,
+    TraktOAuthError,
+    poll_device_token,
+    request_device_code,
+    save_token_response,
+    token_cache_path,
+)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Authorize Jarvis to read your Trakt account.")
+    parser.add_argument("--mode", choices=("cloud", "local"), default=None)
+    args = parser.parse_args()
+
+    load_config(args.mode)
+    client_id = str(get_config_value("TRAKT_API_KEY", "") or "").strip()
+    client_secret = str(get_config_value("TRAKT_CLIENT_SECRET", "") or "").strip()
+    redirect_uri = str(
+        get_config_value("TRAKT_REDIRECT_URI", DEFAULT_REDIRECT_URI) or DEFAULT_REDIRECT_URI
+    ).strip()
+    if not client_id or not client_secret:
+        print("Missing TRAKT_API_KEY or TRAKT_CLIENT_SECRET in the active Jarvis mode environment.")
+        return 1
+
+    print("Trakt account authorization for Jarvis")
+    print(f"Mode: {args.mode or get_config_value('JARVIS_MODE', 'cloud')}")
+    print(f"Redirect URI: {redirect_uri}")
+    print(f"Token cache: {token_cache_path()}")
+    print()
+    try:
+        device = request_device_code(client_id)
+        print(f"Open: {device['verification_url']}")
+        print(f"Enter code: {device['user_code']}")
+        print("Waiting for authorization. Press Ctrl-C to cancel.")
+        token_data = poll_device_token(
+            str(device["device_code"]),
+            client_id=client_id,
+            client_secret=client_secret,
+            interval=int(device["interval"]),
+            expires_in=int(device["expires_in"]),
+        )
+        credentials = save_token_response(
+            token_data,
+            client_id=client_id,
+            redirect_uri=redirect_uri,
+        )
+        print("Trakt authorization succeeded. The read-only account tool is ready.")
+        print(f"Token expires at Unix time {credentials.expires_at}; Jarvis will refresh it automatically.")
+        print("Restart Jarvis, then sync Tool RAG for this mode with ./bin/sync-tools.py cloud (or local).")
+        return 0
+    except KeyboardInterrupt:
+        print("\nAuthorization cancelled.")
+        return 130
+    except TraktOAuthError as exc:
+        print(f"Authorization failed: {exc}")
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

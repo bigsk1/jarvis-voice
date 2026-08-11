@@ -58,6 +58,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_tripadvisor',
     'trakt_movies',
     'trakt_tv_shows',
+    'trakt_account',
     'tmdb_movies',
     'tmdb_tv_shows',
     'flight_search',
@@ -422,6 +423,15 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'filters_used', 'trailers', 'sources_queried', 'warnings',
         'api_requests', 'public_metadata_only', 'runtime_scope',
         'streaming_provider_data', 'external_content_trust', 'source',
+    ],
+    'trakt_account': [
+        'action', 'request', 'results_count', 'top_url', 'genre_hints',
+        'filters_used', 'pagination', 'api_requests', 'oauth_used',
+        'account_data', 'read_only', 'authorized', 'user', 'permissions',
+        'account', 'limits', 'runtime_scope', 'watched_filter_applied',
+        'watched_items_checked', 'watched_pages_checked',
+        'watched_public_excluded_count', 'watched_account_excluded_count',
+        'watched_excluded_count', 'external_content_trust', 'source',
     ],
     'tmdb_movies': [
         'action', 'query', 'image_type', 'image_languages', 'results_count',
@@ -3256,7 +3266,7 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             elif isinstance(team_stats, list):
                 extracted['team_stats'] = team_stats[:12]
 
-        if key in {'trakt_movies', 'trakt_tv_shows'}:
+        if key in {'trakt_movies', 'trakt_tv_shows', 'trakt_account'}:
             results = payload.get('candidates') or payload.get('results') or payload.get('top_results') or []
             if isinstance(results, list) and results:
                 extracted['results_count'] = payload.get('results_count', len(results))
@@ -3274,6 +3284,11 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                             'genres', 'subgenres', 'certification', 'trailer_url',
                             'source_signals', 'related_to', 'match_score',
                             'streaming_signal', 'videos',
+                            'media_type', 'user_rating', 'rated_at', 'watched_at',
+                            'listed_at', 'history_id', 'progress', 'notes',
+                            'privacy', 'share_link', 'item_count', 'comment_count',
+                            'name', 'description', 'sort_by', 'sort_how',
+                            'display_numbers',
                         )
                         if item.get(field) not in (None, '', [], {})
                     }

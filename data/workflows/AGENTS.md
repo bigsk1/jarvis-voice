@@ -1026,14 +1026,14 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 | `jarvis_self_check.json` | `/jarvis_self_check` | Local system health, deduplicated alerts, full Canvas update |
 | `local_services_compare.json` | `/local_services_compare <service>` | Active-mode Google Local Services + Google Local + bounded Yelp review evidence, optional Stash, validated Canvas; no crawl |
 | `memory_scan.json` | `/memory_scan` | Mode-aware memory dedupe, stash report, labeled Canvas report |
-| `movie_night.json` | `/movie_night <request>` | Required public Trakt recommendation set, optional TMDB artwork, YouTube trailer rail, and Brave availability context, validated Canvas; no account OAuth or Trakt image hotlinking |
+| `movie_night.json` | `/movie_night <request>` | Required public Trakt recommendation set, optional read-only account recommendations, TMDB artwork, YouTube trailer rail, and Brave availability context, validated Canvas; no Trakt image hotlinking |
 | `night_out.json` | `/night_out <occasion or preference>` | Explicit-or-mode-default location, parsed target date, conditional 10-day weather, run-time-only open-state handling, bounded local/dining/activity evidence, validated Canvas; no crawl |
 | `quick_note.json` | `/note <text>` | Simple text capture, remember, canvas |
 | `serpapi_amazon_search.json` | `/serpapi_amazon <query>` (also `/amazon_search`, `/serpapi`) | SerpApi Amazon listings, Stash export, Canvas comparison |
 | `server_health_check.json` | `/health [host]` | Default value, ssh_remote, get_time |
 | `team_outlook.json` | `/team_outlook <sport> <team>` | Resolve one team KGMID, prioritize its standings division before bounding, add direct roster/current-news context, and create validated Canvas; `football` means American football and `soccer` means association football |
 | `trend_reality_check.json` | `/trend_reality_check <topic>` | Topic-specific Trends plus seedless Trending Now cross-check, optional News Light and Search Index, validated Canvas |
-| `tv_night.json` | `/tv_night <request>` | Required public Trakt TV recommendations, optional TMDB artwork/commitment metadata, YouTube trailer rail, and Brave availability context; episode runtime is not total-series duration |
+| `tv_night.json` | `/tv_night <request>` | Required public Trakt TV recommendations, optional read-only account recommendations, TMDB artwork/commitment metadata, YouTube trailer rail, and Brave availability context; episode runtime is not total-series duration |
 | `url_ingest.json` | `/url_ingest <url>` | crawl_url, stash, text_summarizer, manage_intel (auto_ingest), search_memory |
 | `vacation_reconnaissance.json` | `/vacation_reconnaissance <location>` | Required-location weather + bounded Tripadvisor, Google Local, News Light, Images Light, optional Stash, and Canvas; no crawl |
 | `weather_watch.json` | `/weather_watch` | Environment-backed default location, condition branching, alerts, Canvas |

@@ -17,7 +17,8 @@ The same Client ID can enable both `trakt_movies` and `trakt_tv_shows`. The
 manifest uses `availability.all_of_env`, so the TV tool is absent from the
 effective registry when the active cloud/local mode does not contain the key.
 No Client Secret, account OAuth token, watch history, ratings, or watchlist is
-used by this public-metadata integration.
+used by this public-metadata integration. Those account reads belong to the
+separate `trakt_account` tool.
 
 ## Network routing
 
@@ -64,3 +65,8 @@ Example:
 ```text
 /tv_night thoughtful mystery like Severance and Dark, episodes under an hour, preferably a completed series
 ```
+
+For optional personalized recommendations, watchlist, history, ratings, and
+up-next progress, configure the separate read-only
+[`trakt_account`](../trakt-account-tool/README.md) tool. The public TV tool
+remains available with only a Client ID.

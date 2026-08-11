@@ -204,6 +204,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_travel_explore', payload => this._adaptTravelExplore(payload));
     this.register('serpapi_tripadvisor', payload => this._adaptTripadvisor(payload));
     this.register('trakt_movies', payload => this._adaptTraktMovies(payload));
+    this.register('trakt_account', payload => this._adaptTraktAccount(payload));
     this.register('tmdb_movies', payload => this._adaptTmdbMovies(payload));
     this.register('trakt_tv_shows', payload => this._adaptTraktMovies(payload, 'show'));
     this.register('tmdb_tv_shows', payload => this._adaptTmdbMovies(payload, 'show'));
@@ -1055,6 +1056,62 @@ class StructuredResultsRenderer {
       actionLabel: `Open top ${isShow ? 'show' : 'movie'}`,
       items,
     };
+  }
+
+  _adaptTraktAccount(payload) {
+    const rows = this._rows(payload);
+    if (payload.action === 'status') {
+      const user = payload.user && typeof payload.user === 'object' ? payload.user : {};
+      const chips = ['Read only'];
+      if (user.vip === true) chips.push('VIP');
+      if (user.private === true) chips.push('Private profile');
+      return {
+        kind: 'generic',
+        layout: 'rail',
+        eyebrow: 'Trakt account · read only',
+        heading: user.username ? `@${user.username}` : 'Trakt authorization',
+        subtitle: payload.authorized ? 'OAuth active' : 'Authorization status',
+        items: [{
+          title: payload.authorized ? 'Account connected' : 'Account status',
+          primary: user.joined_at ? `Joined ${user.joined_at}` : '',
+          chips,
+          details: [user.location, user.about].filter(Boolean),
+        }],
+      };
+    }
+    if (['personal_lists', 'smart_lists'].includes(payload.action)) {
+      return {
+        kind: 'generic',
+        layout: 'rail',
+        eyebrow: 'Trakt account · read only',
+        heading: payload.action === 'smart_lists' ? 'Smart lists' : 'Personal lists',
+        subtitle: `${rows.length} list${rows.length === 1 ? '' : 's'} · OAuth`,
+        items: rows.map((row, index) => ({
+          title: row.name || `List ${index + 1}`,
+          url: row.share_link || row.trakt_url,
+          primary: row.item_count != null ? `${row.item_count} items` : '',
+          chips: [row.privacy, row.sort_by].filter(Boolean),
+          details: row.description ? [this._compactText(row.description, 260)] : [],
+          actionLabel: row.share_link || row.trakt_url ? 'Open list' : '',
+        })),
+      };
+    }
+    const firstType = rows.find(row => row && row.media_type)?.media_type;
+    const mediaType = firstType === 'show' || payload.action === 'show_recommendations'
+      || payload.action === 'tv_night_context' ? 'show' : 'movie';
+    const adapted = this._adaptTraktMovies(payload, mediaType);
+    adapted.eyebrow = 'Trakt account · read only';
+    const accountLabel = payload.user?.username ? `@${payload.user.username}` : '';
+    adapted.subtitle = [accountLabel, String(payload.action || 'account').replace(/_/g, ' '), 'OAuth']
+      .filter(Boolean).join(' · ');
+    adapted.items.forEach((item, index) => {
+      const row = rows[index] || {};
+      if (row.user_rating != null) item.chips.push(`Your rating ${row.user_rating}/10`);
+      if (row.progress != null) item.chips.push(`${row.progress}% progress`);
+      if (row.watched_at) item.details.push(`Watched ${row.watched_at}`);
+      if (row.listed_at) item.details.push(`Added ${row.listed_at}`);
+    });
+    return adapted;
   }
 
   _adaptTmdbMovies(payload, mediaType = 'movie') {

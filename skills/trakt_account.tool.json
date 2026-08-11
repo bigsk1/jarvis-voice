@@ -1,0 +1,150 @@
+{
+  "enabled": true,
+  "proxy_policy": "prefer",
+  "name": "trakt_account",
+  "description": "Read authenticated Trakt account context without changing the account. Use for personalized Trakt movie or TV recommendations, watchlist, viewing history, ratings, favorites, personal lists, smart lists, up-next progress, or to add optional account-aware context to movie-night and TV-night requests. This tool is strictly read-only: it cannot add, remove, rate, mark watched, create lists, or mutate Trakt. It requires a Trakt Client Secret and a local OAuth cache created with ./bin/trakt-auth; users with only TRAKT_API_KEY should use trakt_movies or trakt_tv_shows instead. OAuth access and Trakt VIP capability are separate: most reads only require an authorized account, while Trakt may return explicit VIP-only or VIP Enhanced responses for restricted endpoints or limits.",
+  "complementary_tools": [
+    "trakt_movies",
+    "trakt_tv_shows",
+    "tmdb_movies",
+    "tmdb_tv_shows",
+    "workflow",
+    "canvas"
+  ],
+  "script": "trakt_account.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "status",
+          "movie_recommendations",
+          "show_recommendations",
+          "movie_night_context",
+          "tv_night_context",
+          "watchlist",
+          "history",
+          "ratings",
+          "favorites",
+          "personal_lists",
+          "personal_list_items",
+          "smart_lists",
+          "smart_list_items",
+          "up_next"
+        ],
+        "description": "Read-only account operation. Use the *_night_context actions when complementing the matching workflow or a natural-language viewing request."
+      },
+      "request": {
+        "type": "string",
+        "maxLength": 800,
+        "description": "Natural-language viewing request used to infer genres and runtime for movie_night_context or tv_night_context."
+      },
+      "public_candidates": {
+        "type": "array",
+        "maxItems": 20,
+        "items": {
+          "type": "object",
+          "properties": {
+            "title": {"type": "string", "maxLength": 300},
+            "year": {"type": "integer"},
+            "ids": {
+              "type": "object",
+              "properties": {
+                "trakt": {"type": "integer"},
+                "slug": {"type": "string", "maxLength": 300},
+                "imdb": {"type": "string", "maxLength": 40},
+                "tmdb": {"type": "integer"},
+                "tvdb": {"type": "integer"}
+              }
+            }
+          },
+          "required": ["title"]
+        },
+        "description": "Bounded public Trakt candidates handed off by a night workflow. The account tool compares their stable IDs with the authorized account's watched sync and returns only eligible candidates; raw watched rows are never returned."
+      },
+      "media_type": {
+        "type": "string",
+        "enum": ["movies", "shows", "seasons", "episodes", "media"],
+        "description": "Media collection type for watchlist, history, ratings, favorites, or list-item reads. Defaults to movies. Favorites only supports movies or shows."
+      },
+      "list_id": {
+        "type": "string",
+        "maxLength": 160,
+        "description": "Trakt list slug or ID returned by personal_lists or smart_lists; required for a list-items action."
+      },
+      "genres": {
+        "type": "array",
+        "maxItems": 6,
+        "items": {"type": "string", "maxLength": 40},
+        "description": "Optional Trakt genre slugs for recommendation actions."
+      },
+      "years": {
+        "type": "string",
+        "maxLength": 30,
+        "description": "Optional recommendation year or range, such as 1990-2026."
+      },
+      "runtimes": {
+        "type": "string",
+        "maxLength": 30,
+        "description": "Optional runtime range in minutes. For shows this means typical episode runtime."
+      },
+      "ratings": {
+        "type": "string",
+        "maxLength": 30,
+        "description": "Optional Trakt community-rating percentage range."
+      },
+      "ignore_watched": {
+        "type": "boolean",
+        "description": "Exclude watched titles from recommendation actions. Defaults true."
+      },
+      "ignore_collected": {
+        "type": "boolean",
+        "description": "Exclude collected titles from recommendation actions. Defaults false."
+      },
+      "ignore_watchlisted": {
+        "type": "boolean",
+        "description": "Exclude watchlisted titles from recommendation actions. Defaults false."
+      },
+      "sort_by": {
+        "type": "string",
+        "enum": ["rank", "added", "title", "released", "runtime", "popularity", "random", "percentage", "my_rating", "watched", "collected"],
+        "description": "Sort mode for collection endpoints that support it. Defaults rank."
+      },
+      "sort_how": {
+        "type": "string",
+        "enum": ["asc", "desc"],
+        "description": "Sort direction for collection endpoints that support it. Defaults asc."
+      },
+      "page": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000,
+        "description": "Trakt pagination page. Defaults 1."
+      },
+      "max_results": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50,
+        "description": "Maximum normalized rows returned. Defaults 20."
+      },
+      "include_stats": {
+        "type": "boolean",
+        "description": "Request progress statistics for up_next when supported. Defaults true."
+      }
+    },
+    "required": ["action"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": ["TRAKT_API_KEY", "TRAKT_CLIENT_SECRET", "TRAKT_REDIRECT_URI"],
+    "config_files": ["data/.trakt_oauth.json"],
+    "setup_hint": "Set Trakt Client ID, Client Secret, and the registered redirect URI in the active mode env file, then run ./bin/trakt-auth --mode cloud (or local). The recommended device-flow redirect is urn:ietf:wg:oauth:2.0:oob."
+  }
+}

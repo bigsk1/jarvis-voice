@@ -1402,6 +1402,7 @@ class JarvisApp {
       serpapi_travel_explore: '🌍',
       serpapi_google_sports: '🏈',
       trakt_movies: '🎬',
+      trakt_account: '🔐',
       tmdb_movies: '🎥',
       trakt_tv_shows: '📺',
       tmdb_tv_shows: '📽️',

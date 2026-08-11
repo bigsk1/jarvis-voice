@@ -134,8 +134,8 @@ class ToolExecutor:
             return 200  # One Local Services call, plus a 90s Maps CID lookup when needed
         if tool_name == "serpapi_tripadvisor":
             return 160  # Up to three sequential 45s calls for search + optional place details + reviews
-        if tool_name in {"trakt_movies", "trakt_tv_shows"}:
-            return 300  # Bounded public list, related-title, and trailer lookups may be sequential
+        if tool_name in {"trakt_movies", "trakt_tv_shows", "trakt_account"}:
+            return 300  # Bounded Trakt list/account requests and token refreshes may be sequential
         if tool_name in {"tmdb_movies", "tmdb_tv_shows"}:
             return 300  # Configuration/genre helpers plus proxy-aware metadata or artwork lookup
         if tool_name == "status_recap":

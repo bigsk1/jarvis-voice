@@ -232,6 +232,7 @@
       "tmdb_tv_shows": "_family_entertainment",
       "tool_search": "_family_tool_discovery",
       "trakt_movies": "_family_entertainment",
+      "trakt_account": "_family_entertainment",
       "trakt_tv_shows": "_family_entertainment",
       "update_memory": "_family_memory",
       "upload_cloudflare": "_family_files",
