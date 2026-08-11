@@ -316,6 +316,10 @@ def test_extract_followup_data_includes_serpapi_youtube_fields():
             "duration": "3:33",
             "published_date": "2 years ago",
             "transcript_api_url": "https://serpapi.com/search.json?engine=youtube_video_transcript&video_id=dQw4w9WgXcQ&language_code=en",
+            "transcript_stash_ref": "stash://youtube/f_transcript",
+            "md_stash_ref": "stash://youtube/f_transcript",
+            "transcript_filename": "Example_Video_transcript.md",
+            "transcript_saved": True,
         }
     }
 
@@ -326,6 +330,8 @@ def test_extract_followup_data_includes_serpapi_youtube_fields():
     assert video["url"] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     assert video["title"] == "Example Video"
     assert video["transcript_api_url"].startswith("https://serpapi.com/search.json")
+    assert video["transcript_stash_ref"] == "stash://youtube/f_transcript"
+    assert video["md_stash_ref"] == "stash://youtube/f_transcript"
 
 
 def test_extract_followup_data_preserves_serpapi_youtube_search_candidates():

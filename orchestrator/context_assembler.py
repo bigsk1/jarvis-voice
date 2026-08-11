@@ -195,7 +195,13 @@ class ContextAssembler:
                 if isinstance(item, dict):
                     if tool_name == "text_summarizer" and isinstance(item.get("summary"), str):
                         source = item.get("source") if isinstance(item.get("source"), dict) else {}
-                        source_label = source.get("stash_ref") or source.get("path") or "provided text"
+                        source_label = (
+                            source.get("stash_ref")
+                            or source.get("path")
+                            or source.get("title")
+                            or source.get("url")
+                            or "provided text"
+                        )
                         tool_info.append(f"source: {source_label}")
                         tool_info.append(f"summary: {item.get('summary')}")
                         summary_meta = item.get("summary_meta")
@@ -1826,6 +1832,81 @@ class ContextAssembler:
             )
         return preview
 
+    def build_serpapi_youtube_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep video identity and a useful transcript excerpt without raw duplication."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "video_id",
+            "url",
+            "title",
+            "channel",
+            "channel_url",
+            "published_date",
+            "duration",
+            "views",
+            "likes",
+            "include_transcript",
+            "transcript_api_url",
+            "transcript_stash_ref",
+            "md_stash_ref",
+            "transcript_filename",
+            "transcript_saved",
+            "transcript_error",
+            "transcript_stash_error",
+            "source",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=1,
+                )
+
+        description = data.get("description")
+        if isinstance(description, dict):
+            description = description.get("content")
+        if isinstance(description, str) and description.strip():
+            preview["description"] = self.truncate_preview_text(description, 600)
+
+        transcript_data = data.get("transcript_data")
+        if isinstance(transcript_data, dict):
+            compact_transcript = {
+                key: transcript_data[key]
+                for key in (
+                    "requested_language_code",
+                    "requested_title",
+                    "requested_type",
+                    "transcript_count",
+                    "transcript_text_truncated",
+                )
+                if transcript_data.get(key) not in (None, "", [], {})
+            }
+            transcript_text = transcript_data.get("transcript_text")
+            if isinstance(transcript_text, str) and transcript_text.strip():
+                transcript_preview_limit = 3600
+                compact_transcript["transcript_text_chars"] = len(transcript_text)
+                compact_transcript["transcript_text_preview_truncated"] = (
+                    len(transcript_text) > transcript_preview_limit
+                )
+                compact_transcript["transcript_text"] = self.truncate_preview_text(
+                    transcript_text,
+                    transcript_preview_limit,
+                )
+            available = transcript_data.get("available_transcripts")
+            if isinstance(available, list) and available:
+                compact_transcript["available_transcripts"] = self.build_preview_value(
+                    available[:4],
+                    parent_key="available_transcripts",
+                    max_depth=2,
+                )
+            preview["transcript_data"] = compact_transcript
+
+        return preview
+
     def build_google_trends_data_preview(self, data: Any) -> dict[str, Any]:
         """Keep trend request context plus bounded averages and recent timeline data."""
         if not isinstance(data, dict):
@@ -2785,6 +2866,7 @@ class ContextAssembler:
 
         force_compact_projection = (tool_name or "").lower() in {
             "flight_search",
+            "serpapi_youtube",
             "serpapi_google_events",
             "serpapi_travel_explore",
             # Account payloads always use an allowlisted projection even when
@@ -2805,6 +2887,8 @@ class ContextAssembler:
             normalized_tool_name = (tool_name or "").lower()
             if normalized_tool_name == "serpapi_yelp_search":
                 data_preview = self.build_yelp_data_preview(data)
+            elif normalized_tool_name == "serpapi_youtube":
+                data_preview = self.build_serpapi_youtube_data_preview(data)
             elif normalized_tool_name == "serpapi_search_index":
                 data_preview = self.build_search_index_data_preview(data)
             elif normalized_tool_name == "serpapi_google_events":

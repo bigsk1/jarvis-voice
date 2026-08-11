@@ -89,7 +89,7 @@ Central API: **`http_request()`**, **`get_proxy_chain()`**, **`get_proxy_config(
 | Weather, SerpApi helpers, stash URL downloads, crypto/HTTP-using paths | `http_request()` → policy-aware chain + tunnel status handling |
 | **yfinance** (`skills/stock_price.py`) | Sets `http_proxy` / `https_proxy` env per proxy in order, then clears and retries direct on tunnel-style failures |
 | **GitHub** (`skills/git_release_notes.py`) | Session GETs with each proxy in chain, then direct |
-| **yt-dlp** (`youtube_video`, `youtube_transcript`) | Tries each URL from `get_proxy_url_chain()` in order |
+| **yt-dlp** (`youtube_video`, `youtube_transcript`) | Manifests use `proxy_policy: "prefer"`: try `LOCAL_PROXY`, then `LOCAL_PROXY2`, then direct |
 
 Tools without `proxy_policy` keep these existing behaviors. Adding a policy is
 only necessary when a tool needs to override its current default.

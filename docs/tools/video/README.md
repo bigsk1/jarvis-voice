@@ -352,6 +352,14 @@ python3 skills/auto-tools/youtube_video.py '{
 }'
 ```
 
+### Transcript storage and summarization
+
+`youtube_transcript` saves both SRT and Markdown files to stash. When yt-dlp is
+blocked and `serpapi_youtube` supplies the transcript instead, Jarvis saves the
+complete ordered transcript as Markdown and returns its stash reference. A
+same-turn or later Web chat request can pass that reference directly to
+`text_summarizer` without putting the full transcript in the routing preview.
+
 ### Updating yt-dlp safely
 
 Use the repository helper to update only the yt-dlp lock entry and install that
@@ -393,7 +401,9 @@ then call `acknowledge` so a failed downstream step is retried on the next run.
 
 ### Proxy setup (`LOCAL_PROXY` / `LOCAL_PROXY2`)
 
-The tool walks **`LOCAL_PROXY`**, then **`LOCAL_PROXY2`** (if set), trying each with `yt-dlp` until a download succeeds. If both are unset, `yt-dlp` runs **without** `--proxy`.
+The YouTube tools declare **`proxy_policy: "prefer"`**. They walk
+**`LOCAL_PROXY`**, then **`LOCAL_PROXY2`** (if set), and finally retry directly
+without `--proxy`. If both proxies are unset, `yt-dlp` runs directly.
 
 Details and MCP/browser nuances: [`docs/NETWORK_PROXY.md`](../../NETWORK_PROXY.md).
 

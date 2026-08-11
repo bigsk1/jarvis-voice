@@ -18,6 +18,7 @@ from serpapi_client import (
     parse_bool,
     request_serpapi,
 )
+from stash_helper import StashFile, open_space
 
 
 RESERVED_KEYS = {
@@ -123,6 +124,69 @@ def _join_transcript_snippets(transcript_items: list[dict[str, Any]]) -> str:
     return " ".join(parts).strip()
 
 
+def build_transcript_markdown(
+    video: dict[str, Any],
+    transcript_data: dict[str, Any],
+) -> str:
+    """Render every ordered transcript segment as a durable Markdown artifact."""
+    title = re.sub(r"\s+", " ", str(video.get("title") or "YouTube transcript")).strip()
+    url = str(video.get("url") or "").strip()
+    lines = [f"# {title}", ""]
+    if url:
+        lines.extend([f"Source: {url}", ""])
+    lines.extend(["## Transcript", ""])
+
+    transcript_items = transcript_data.get("transcript")
+    segment_count = 0
+    if isinstance(transcript_items, list):
+        for item in transcript_items:
+            if not isinstance(item, dict):
+                continue
+            snippet = str(item.get("snippet") or "").strip()
+            if not snippet:
+                continue
+            timestamp = str(item.get("start_time_text") or "").strip()
+            lines.append(f"**[{timestamp}]** {snippet}" if timestamp else snippet)
+            lines.append("")
+            segment_count += 1
+
+    if segment_count == 0:
+        transcript_text = str(transcript_data.get("transcript_text") or "").strip()
+        if transcript_text:
+            lines.extend([transcript_text, ""])
+    return "\n".join(lines).strip() + "\n"
+
+
+def save_transcript_to_stash(
+    video: dict[str, Any],
+    transcript_data: dict[str, Any],
+) -> dict[str, Any]:
+    """Save a fetched transcript so later Web turns can summarize it by reference."""
+    markdown = build_transcript_markdown(video, transcript_data)
+    if not _join_transcript_snippets(transcript_data.get("transcript") or []):
+        return {"transcript_saved": False}
+
+    title = str(video.get("title") or video.get("video_id") or "youtube_video")
+    safe_title = re.sub(r"[^A-Za-z0-9_-]+", "_", title).strip("_")[:100]
+    filename = f"{safe_title or 'youtube_video'}_transcript.md"
+    space, _ = open_space(scope="session", labels=["youtube_transcripts"])
+    result = StashFile(space).save_text(
+        content=markdown,
+        name=filename,
+        on_conflict="overwrite",
+        tags=["transcript", "youtube", "serpapi"],
+        tool_origin="serpapi_youtube",
+    )
+    stash_ref = result.get("ref")
+    return {
+        "transcript_saved": bool(result.get("file_id") and stash_ref),
+        "transcript_stash_ref": stash_ref,
+        "md_stash_ref": stash_ref,
+        "transcript_filename": filename,
+        "transcript_markdown_chars": len(markdown),
+    }
+
+
 def fetch_transcript(
     video_id: str,
     language_code: str,
@@ -225,7 +289,11 @@ def normalize_video_data(payload: dict[str, Any], video_id: str) -> dict[str, An
     }
 
 
-def build_speech(video: dict[str, Any], transcript_data: dict[str, Any] | None) -> str:
+def build_speech(
+    video: dict[str, Any],
+    transcript_data: dict[str, Any] | None,
+    transcript_saved: bool = False,
+) -> str:
     title = (video.get("title") or "that YouTube video").strip()
     channel = video.get("channel")
     views = video.get("views")
@@ -244,6 +312,7 @@ def build_speech(video: dict[str, Any], transcript_data: dict[str, Any] | None) 
             f"Fetched YouTube details for {title}"
             + (f" {' '.join(details)}" if details else "")
             + f". Transcript is available with {transcript_data['transcript_count']} segments."
+            + (" Saved the full transcript to stash." if transcript_saved else "")
         )
 
     if video.get("transcript_api_url"):
@@ -323,10 +392,23 @@ def main() -> int:
             data["transcript_data"] = transcript_data
         if transcript_error:
             data["transcript_error"] = transcript_error
+        if transcript_data is not None and transcript_data.get("transcript_count"):
+            try:
+                data.update(save_transcript_to_stash(video_data, transcript_data))
+            except Exception as exc:
+                data["transcript_saved"] = False
+                data["transcript_stash_error"] = str(exc)[:500]
         if include_raw:
             data["raw"] = payload
 
-        return_success(build_speech(video_data, transcript_data), data=data)
+        return_success(
+            build_speech(
+                video_data,
+                transcript_data,
+                transcript_saved=bool(data.get("transcript_saved")),
+            ),
+            data=data,
+        )
         return 0
 
     except Exception as exc:

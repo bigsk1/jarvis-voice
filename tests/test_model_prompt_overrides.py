@@ -103,6 +103,13 @@ class ModelPromptOverrideTests(unittest.TestCase):
 
         self.assertTrue(override.enabled)
         self.assertEqual(override.matched_model, "grok-4.5")
+        self.assertIn("ABSOLUTE TOOL STOP RULE", override.get("tool_calling_prepend"))
+        self.assertIn(
+            "NEVER repeat a successful tool call",
+            override.get("tool_calling_prepend"),
+        )
+        self.assertIn("result_truncated=true", override.get("tool_calling_prepend"))
+        self.assertIn("STOP TOOL USE AND RESPOND", override.get("tool_calling_prepend"))
         self.assertIn("Canvas export requests", override.get("tool_calling_prepend"))
         self.assertIn("action=create", override.get("tool_calling_prepend"))
         self.assertIn("page link", override.get("tool_calling_prepend"))

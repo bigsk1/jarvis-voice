@@ -3,6 +3,7 @@
   "name": "youtube_transcript",
   "description": "Download YouTube video transcripts in .srt and .md formats. Automatically converts to markdown and saves both files to stash for indexing. Use when user says 'download youtube transcript', 'get transcript from youtube', 'save youtube captions', or pastes a YouTube URL asking for transcripts.",
   "script": "youtube_transcript.py",
+  "proxy_policy": "prefer",
   "parameters": {
     "type": "object",
     "properties": {

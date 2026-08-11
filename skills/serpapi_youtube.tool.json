@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_youtube",
-  "description": "Fetch YouTube video details through SerpApi using a YouTube URL or video_id, with optional transcript lookup through SerpApi's YouTube transcript engine. Useful fallback when yt-dlp is blocked by cookies, auth, or missing transcript issues.",
+  "description": "Fetch YouTube video details through SerpApi using a YouTube URL or video_id, with optional transcript lookup through SerpApi's YouTube transcript engine. Full fetched transcripts are saved as Markdown in stash for same-turn and follow-up summarization. Useful fallback when yt-dlp is blocked by cookies, auth, or missing transcript issues.",
   "complementary_tools": [
     "canvas",
     "stash"
@@ -61,7 +61,7 @@
     "dangerous": false,
     "bash": false,
     "network": true,
-    "filesystem": false,
+    "filesystem": true,
     "auto_approve": true
   },
   "availability": {

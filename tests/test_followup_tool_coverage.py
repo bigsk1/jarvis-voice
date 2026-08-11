@@ -1303,6 +1303,9 @@ LOCAL_TOOL_SAMPLES = {
             "channel": "Jarvis",
             "duration": "10:00",
             "transcript_api_url": "https://api.example.test/transcript/abc123",
+            "transcript_stash_ref": "stash://youtube/transcript.md",
+            "md_stash_ref": "stash://youtube/transcript.md",
+            "transcript_saved": True,
         }
     ),
     "serpapi_youtube_search": _case(
@@ -2044,6 +2047,7 @@ def test_artifact_and_entity_tools_preserve_their_followup_handles():
         "status_recap": {"stash_ref", "canvas_id", "image_ref"},
         "upload_cloudflare": {"url", "image_id"},
         "youtube_transcript": {"srt_stash_ref", "md_stash_ref"},
+        "serpapi_youtube": {"transcript_stash_ref", "md_stash_ref"},
         "youtube_video": {"stash_ref"},
     }
 

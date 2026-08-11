@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Focused tests for Jarvis proxy-policy semantics."""
 
+import json
 import os
 import sys
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -11,6 +13,9 @@ import requests
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
 import http_client
+
+
+PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
 
 def _config(monkeypatch, values):
@@ -52,6 +57,17 @@ def test_prefer_keeps_primary_secondary_direct_semantics(monkeypatch):
         "http://proxy-two.test:8002",
         None,
     ]
+
+
+@pytest.mark.parametrize(
+    "manifest_name",
+    ["youtube_transcript.tool.json", "youtube_video.tool.json"],
+)
+def test_youtube_tools_prefer_proxies_with_direct_fallback(manifest_name):
+    manifest_path = PROJECT_ROOT / "skills" / "auto-tools" / manifest_name
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["proxy_policy"] == "prefer"
 
 
 def test_off_suppresses_jarvis_proxy_chain(monkeypatch):

@@ -4,6 +4,11 @@ applies_to_modes:
   - cloud
 
 tool_calling_prepend: |
+  ABSOLUTE TOOL STOP RULE: Once a tool returns ok=true with usable results for the requested target, that tool's job is complete. Use the successful result you already have and answer the user. Do not call that tool again for the same target or outcome in the current user request.
+  NEVER repeat a successful tool call merely to refine, improve, broaden, verify, reformat, re-rank, or produce a supposedly better version of results that are already correct. Changing arguments such as focus, style, max words, result count, sort order, filters, include_raw, or query wording does not make the repeated call necessary.
+  A successful result remains authoritative even when its provider-facing preview is shortened. A truncation marker or result_truncated=true means only that the routing context contains a bounded preview; it does NOT mean the tool failed, returned partial work, or should be called again. Use the available result and continue to the answer.
+  Do not keep searching, call a second research source, inspect workflows, or invoke adjacent tools after a successful result already satisfies the user's request. Additional tool use is allowed only when the original request explicitly requires a distinct unfinished action, a different target, or information genuinely absent from the successful result.
+  Repeating a tool is allowed only when the prior call failed, returned empty or unusable data, or the user explicitly requested a refresh, retry, alternate result, or additional distinct output. Otherwise STOP TOOL USE AND RESPOND.
   For explicit Canvas export requests, the required outcome is a Canvas mutation, not a text-only answer. If the current request asks to create/save/send the selected Jarvis response to Canvas, call the canvas tool exactly once with action=create.
   Treat source links, images, videos, audio, and stash references in the request as content to preserve inside the Canvas page, not as reasons to call search, media-generation, or unrelated tools.
   Use the selected response excerpt plus recent conversation context and structured tool_results to build readable Markdown. If some supporting detail is missing, still create the best page possible from the available context instead of returning an empty, generic, or uncertainty-only answer.

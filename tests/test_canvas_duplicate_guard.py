@@ -81,6 +81,22 @@ class _SummaryExecutor:
         }
 
 
+class _YoutubeSummaryExecutor:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, tool_name, args, skip_permission_check=False):
+        self.calls.append((tool_name, args, skip_permission_check))
+        return {
+            "ok": True,
+            "speech": "Summary: Switchyard routes each agent step to an appropriate model.",
+            "data": {
+                "summary": "Switchyard routes each agent step to an appropriate model.",
+                "summary_meta": {"summary_method": "llm", "llm_used": True},
+            },
+        }
+
+
 class CanvasDuplicateGuardTests(unittest.TestCase):
     def test_opencode_is_single_call_capped(self):
         self.assertIn("opencode", SINGLE_CALL_TOOLS)
@@ -434,6 +450,116 @@ class CanvasDuplicateGuardTests(unittest.TestCase):
         self.assertEqual(summary_args["operation"], "summarize")
         self.assertEqual(orchestrator.executor.calls[0][0], "text_summarizer")
         self.assertTrue(orchestrator.executor.calls[0][2])
+
+    def test_auto_summarizes_full_serpapi_youtube_transcript_when_requested(self):
+        orchestrator = Orchestrator.__new__(Orchestrator)
+        orchestrator.executor = _YoutubeSummaryExecutor()
+        orchestrator.progress_callback = None
+        youtube_result = {
+            "ok": True,
+            "data": {
+                "video_id": "9hDyXi5cbQw",
+                "url": "https://www.youtube.com/watch?v=9hDyXi5cbQw",
+                "title": "Switchyard NVIDIA's Local Agent Router",
+                "transcript_data": {
+                    "transcript": [
+                        {"snippet": "The first complete segment."},
+                        {"snippet": "The second complete segment."},
+                    ],
+                    "transcript_text": "TRUNCATED_FALLBACK_SHOULD_NOT_BE_USED",
+                    "transcript_text_truncated": True,
+                },
+            },
+        }
+
+        summary_args, summary_result = (
+            orchestrator._maybe_auto_summarize_serpapi_youtube_result(
+                youtube_result,
+                "get this transcript and summerize it",
+                {},
+            )
+        )
+
+        self.assertEqual(
+            summary_args["text"],
+            "The first complete segment. The second complete segment.",
+        )
+        self.assertNotIn("TRUNCATED_FALLBACK", summary_args["text"])
+        self.assertEqual(orchestrator.executor.calls[0][0], "text_summarizer")
+        self.assertTrue(orchestrator.executor.calls[0][2])
+        self.assertEqual(
+            summary_result["data"]["source"]["video_id"],
+            "9hDyXi5cbQw",
+        )
+        self.assertEqual(
+            summary_result["data"]["source"]["transcript_chars"],
+            len(summary_args["text"]),
+        )
+
+        repeated_args, repeated_result = (
+            orchestrator._maybe_auto_summarize_serpapi_youtube_result(
+                youtube_result,
+                "summarize the video",
+                {"text_summarizer": summary_result["data"]},
+            )
+        )
+        self.assertIsNone(repeated_args)
+        self.assertIsNone(repeated_result)
+        self.assertEqual(len(orchestrator.executor.calls), 1)
+
+    def test_serpapi_youtube_does_not_auto_summarize_without_summary_intent(self):
+        orchestrator = Orchestrator.__new__(Orchestrator)
+        orchestrator.executor = _YoutubeSummaryExecutor()
+        orchestrator.progress_callback = None
+
+        summary_args, summary_result = (
+            orchestrator._maybe_auto_summarize_serpapi_youtube_result(
+                {
+                    "ok": True,
+                    "data": {
+                        "video_id": "9hDyXi5cbQw",
+                        "transcript_data": {
+                            "transcript": [{"snippet": "Transcript text."}],
+                        },
+                    },
+                },
+                "get the YouTube video details",
+                {},
+            )
+        )
+
+        self.assertIsNone(summary_args)
+        self.assertIsNone(summary_result)
+        self.assertEqual(orchestrator.executor.calls, [])
+
+    def test_serpapi_youtube_summary_prefers_durable_transcript_stash_ref(self):
+        orchestrator = Orchestrator.__new__(Orchestrator)
+        orchestrator.executor = _YoutubeSummaryExecutor()
+        orchestrator.progress_callback = None
+
+        summary_args, summary_result = (
+            orchestrator._maybe_auto_summarize_serpapi_youtube_result(
+                {
+                    "ok": True,
+                    "data": {
+                        "video_id": "9hDyXi5cbQw",
+                        "transcript_stash_ref": "stash://youtube/f_transcript",
+                        "transcript_data": {
+                            "transcript": [{"snippet": "Complete transcript text."}],
+                        },
+                    },
+                },
+                "now summarize the transcript",
+                {},
+            )
+        )
+
+        self.assertNotIn("text", summary_args)
+        self.assertEqual(summary_args["stash_ref"], "stash://youtube/f_transcript")
+        self.assertEqual(
+            summary_result["data"]["source"]["stash_ref"],
+            "stash://youtube/f_transcript",
+        )
 
     def test_extract_useful_data_prefers_text_summary_over_stash_excerpt(self):
         orchestrator = Orchestrator.__new__(Orchestrator)

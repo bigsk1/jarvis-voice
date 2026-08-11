@@ -308,7 +308,11 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     'upload_cloudflare': ['url', 'image_id', 'filename'],
     'youtube_transcript': ['video_title', 'srt_stash_ref', 'md_stash_ref'],
     'youtube_video': ['video_title', 'stash_ref', 'filename', 'duration_seconds', 'channel'],
-    'serpapi_youtube': ['video_id', 'url', 'title', 'channel', 'duration', 'published_date', 'transcript_api_url'],
+    'serpapi_youtube': [
+        'video_id', 'url', 'title', 'channel', 'duration', 'published_date',
+        'transcript_api_url', 'transcript_stash_ref', 'md_stash_ref',
+        'transcript_filename', 'transcript_saved',
+    ],
     'serpapi_youtube_search': ['search_query', 'top_url', 'title'],
     'serpapi_yelp_search': [
         'engine', 'find_desc', 'find_loc', 'attrs', 'sort_by', 'sort_basis',

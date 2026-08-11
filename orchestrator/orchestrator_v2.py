@@ -2121,6 +2121,8 @@ Mode: {self.mode}
                             openai_previous_response_id = openai_cont["response_id"]
                     conversation_context.append(context_item)
 
+                    summary_args = None
+                    summary_result = None
                     if tool_name == "stash":
                         summary_args, summary_result = self._maybe_auto_summarize_stash_result(
                             result,
@@ -2128,15 +2130,29 @@ Mode: {self.mode}
                             transcript,
                             accumulated_data,
                         )
-                        if summary_result:
-                            self._add_auto_summary_context(
-                                summary_args,
-                                summary_result,
-                                tools_used,
+                    elif tool_name == "serpapi_youtube":
+                        summary_args, summary_result = (
+                            self._maybe_auto_summarize_serpapi_youtube_result(
+                                result,
+                                transcript,
                                 accumulated_data,
-                                conversation_context,
-                                seen_successful_tool_calls,
                             )
+                        )
+
+                    if summary_result:
+                        self._add_auto_summary_context(
+                            summary_args,
+                            summary_result,
+                            tools_used,
+                            accumulated_data,
+                            conversation_context,
+                            seen_successful_tool_calls,
+                        )
+                        # The derived summary was not part of the provider-native
+                        # tool_result continuation. Force the next routing turn to
+                        # use Jarvis's text context so it sees the completed summary.
+                        xai_provider_continuation = None
+                        openai_provider_continuation = None
                     
                     # Continue to next turn (LLM will decide if more tools needed)
                     continue
@@ -2804,6 +2820,167 @@ Your synthesized response:"""
         if not stash_ref and arguments.get("space_id") and arguments.get("file_id"):
             stash_ref = f"stash://{arguments.get('space_id')}/{arguments.get('file_id')}"
         return str(stash_ref).strip()
+
+    @staticmethod
+    def _query_requests_summary(user_query: str) -> bool:
+        """Recognize explicit summary intent, including common speech/transcript typos."""
+        lowered = str(user_query or "").lower()
+        return any(
+            term in lowered
+            for term in (
+                "summar",
+                "summeriz",
+                "sum up",
+                "recap",
+                "synopsis",
+                "key points",
+                "tl;dr",
+                "tldr",
+            )
+        )
+
+    @staticmethod
+    def _serpapi_youtube_transcript_text(result: dict) -> str:
+        """Reconstruct the complete normalized transcript from ordered SerpApi segments."""
+        if not isinstance(result, dict) or not result.get("ok", True):
+            return ""
+        data = result.get("data")
+        if not isinstance(data, dict):
+            return ""
+        transcript_data = data.get("transcript_data")
+        if not isinstance(transcript_data, dict):
+            return ""
+
+        transcript_items = transcript_data.get("transcript")
+        if isinstance(transcript_items, list):
+            snippets = []
+            for item in transcript_items:
+                if not isinstance(item, dict):
+                    continue
+                snippet = str(item.get("snippet") or "").strip()
+                if snippet:
+                    snippets.append(snippet)
+            if snippets:
+                return " ".join(snippets)
+
+        transcript_text = transcript_data.get("transcript_text")
+        return transcript_text.strip() if isinstance(transcript_text, str) else ""
+
+    @staticmethod
+    def _has_youtube_transcript_summary(accumulated_data: dict, video_id: str) -> bool:
+        """Return True when text_summarizer already handled this SerpApi video."""
+        if not video_id or not isinstance(accumulated_data, dict):
+            return False
+        summaries = accumulated_data.get("text_summarizer")
+        if summaries is None:
+            return False
+        if not isinstance(summaries, list):
+            summaries = [summaries]
+        for item in summaries:
+            if not isinstance(item, dict) or not item.get("summary"):
+                continue
+            source = item.get("source") if isinstance(item.get("source"), dict) else {}
+            if source.get("tool") == "serpapi_youtube" and source.get("video_id") == video_id:
+                return True
+        return False
+
+    def _maybe_auto_summarize_serpapi_youtube_result(
+        self,
+        youtube_result: dict,
+        user_query: str,
+        accumulated_data: dict,
+    ) -> tuple[dict[str, Any], dict[str, Any]] | tuple[None, None]:
+        """Run text_summarizer on the full SerpApi transcript when requested."""
+        if not self._query_requests_summary(user_query):
+            return None, None
+        if not hasattr(self, "executor") or self.executor is None:
+            return None, None
+        if not isinstance(youtube_result, dict) or not youtube_result.get("ok", True):
+            return None, None
+
+        data = youtube_result.get("data")
+        if not isinstance(data, dict):
+            return None, None
+        video_id = str(data.get("video_id") or "").strip()
+        if not video_id or self._has_youtube_transcript_summary(accumulated_data, video_id):
+            return None, None
+
+        transcript_text = self._serpapi_youtube_transcript_text(youtube_result)
+        stash_ref = str(
+            data.get("transcript_stash_ref") or data.get("md_stash_ref") or ""
+        ).strip()
+        if not transcript_text and not stash_ref:
+            return None, None
+
+        summary_args = {
+            "operation": "summarize",
+            "method": "auto",
+            "num_sentences": 12,
+            "summary_style": "detailed",
+            "max_words": get_int("STASH_AUTO_SUMMARY_MAX_WORDS", 700),
+            "focus": f"Answer this request from the complete YouTube transcript: {str(user_query)[:500]}",
+        }
+        if stash_ref:
+            summary_args["stash_ref"] = stash_ref
+        else:
+            summary_args["text"] = transcript_text
+
+        try:
+            self._emit_progress(
+                "tool_start",
+                tool="text_summarizer",
+                args={
+                    "operation": "summarize",
+                    "source_tool": "serpapi_youtube",
+                    "video_id": video_id,
+                    "transcript_chars": len(transcript_text),
+                    "stash_ref": stash_ref or None,
+                },
+                auto=True,
+            )
+            summary_result = self.executor.execute(
+                "text_summarizer",
+                summary_args,
+                skip_permission_check=True,
+            )
+            self._emit_progress(
+                "tool_complete",
+                tool="text_summarizer",
+                success=bool(
+                    isinstance(summary_result, dict) and summary_result.get("ok")
+                ),
+                auto=True,
+            )
+        except Exception as e:
+            if sys.stdout.isatty():
+                print(
+                    f"⚠️ Auto text_summarizer failed for SerpApi YouTube transcript: {e}",
+                    file=sys.stderr,
+                )
+            return None, None
+
+        if not isinstance(summary_result, dict) or not summary_result.get("ok"):
+            return None, None
+
+        summary_result = dict(summary_result)
+        summary_data = dict(summary_result.get("data") or {})
+        summary_source = dict(
+            summary_data.get("source")
+            if isinstance(summary_data.get("source"), dict)
+            else {}
+        )
+        summary_source.update({
+            "tool": "serpapi_youtube",
+            "video_id": video_id,
+            "url": data.get("url"),
+            "title": data.get("title"),
+            "transcript_chars": len(transcript_text),
+        })
+        if stash_ref:
+            summary_source["stash_ref"] = stash_ref
+        summary_data["source"] = summary_source
+        summary_result["data"] = summary_data
+        return summary_args, summary_result
 
     @staticmethod
     def _has_text_summarizer_summary_for_ref(accumulated_data: dict, stash_ref: str) -> bool:

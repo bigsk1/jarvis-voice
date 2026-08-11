@@ -3,6 +3,7 @@
   "name": "youtube_video",
   "description": "Download a YouTube video (or audio-only) using yt-dlp with fallback strategies and save it to stash for WebUI preview/download. Use when user says 'download this YouTube video', 'save this YouTube video', or provides a YouTube URL and wants the media file.",
   "script": "youtube_video.py",
+  "proxy_policy": "prefer",
   "parameters": {
     "type": "object",
     "properties": {

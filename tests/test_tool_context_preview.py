@@ -42,6 +42,55 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(self.orch._tool_context_max_chars("tmdb_tv_shows"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("workflow"), 8000)
 
+    def test_serpapi_youtube_preview_keeps_transcript_text_not_raw_payload(self):
+        transcript_text = "Full normalized transcript sentence. " * 320
+        result = {
+            "ok": True,
+            "speech": "Fetched YouTube details. Transcript is available with 78 segments.",
+            "data": {
+                "video_id": "9hDyXi5cbQw",
+                "url": "https://www.youtube.com/watch?v=9hDyXi5cbQw",
+                "title": "Switchyard NVIDIA's Local Agent Router",
+                "channel": "Sam Witteveen",
+                "published_date": "Aug 11, 2026",
+                "views": "3,345 views",
+                "include_transcript": True,
+                "transcript_stash_ref": "stash://youtube/f_transcript",
+                "md_stash_ref": "stash://youtube/f_transcript",
+                "transcript_saved": True,
+                "source": "SerpApi",
+                "transcript_data": {
+                    "requested_language_code": "en",
+                    "transcript_count": 78,
+                    "transcript_text": transcript_text,
+                    "transcript_text_truncated": False,
+                    "transcript": [
+                        {"snippet": "SEGMENT_ARRAY_SENTINEL", "start_ms": 0}
+                    ] * 78,
+                },
+                "raw": {"provider_payload": "RAW_PAYLOAD_SENTINEL" * 2000},
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_youtube", result
+        )
+
+        payload = json.loads(preview)
+        transcript = payload["llm_context_preview"]["data_preview"]["transcript_data"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 6000)
+        self.assertEqual(transcript["transcript_count"], 78)
+        self.assertEqual(transcript["transcript_text_chars"], len(transcript_text))
+        self.assertTrue(transcript["transcript_text_preview_truncated"])
+        self.assertIn("Full normalized transcript sentence", transcript["transcript_text"])
+        self.assertEqual(
+            payload["llm_context_preview"]["data_preview"]["transcript_stash_ref"],
+            "stash://youtube/f_transcript",
+        )
+        self.assertNotIn("RAW_PAYLOAD_SENTINEL", preview)
+        self.assertNotIn("SEGMENT_ARRAY_SENTINEL", preview)
+
     def test_trakt_tv_preview_keeps_episode_runtime_and_show_handles(self):
         candidates = [
             {
