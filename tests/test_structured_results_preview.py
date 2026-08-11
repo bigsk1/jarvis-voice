@@ -1127,6 +1127,146 @@ if (!tmdbHtml.includes('not endorsed or certified by TMDB')) process.exit(7);
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
 
 
+def test_direct_orchestration_renderer_preserves_occurrences_and_skips_empty_or_failed_calls():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const escapeHtml = value => String(value)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const sandbox = {{
+  URL, window: {{}}, console,
+  Utils: {{
+    escapeHtml,
+    safeHttpUrlForAttr: value => {{
+      try {{
+        const parsed = new URL(String(value));
+        return ['http:', 'https:'].includes(parsed.protocol) ? escapeHtml(parsed.href) : '';
+      }} catch (_error) {{ return ''; }}
+    }}
+  }}
+}};
+vm.createContext(sandbox);
+vm.runInContext(source, sandbox);
+const renderer = sandbox.window.structuredResultsRenderer;
+
+const traktCalls = [
+  {{
+    action: 'status', authorized: true,
+    user: {{username: 'realguy', vip: true}},
+  }},
+  {{
+    action: 'movie_recommendations',
+    candidates: [{{title: 'Recommendation One', year: 2026, ids: {{trakt: 1}}}}],
+  }},
+  {{
+    action: 'watchlist',
+    candidates: [{{title: 'Watchlist One', year: 2025, ids: {{trakt: 2}}}}],
+  }},
+  {{
+    action: 'history',
+    candidates: [{{title: 'History One', year: 2024, ids: {{trakt: 3}}}}],
+  }},
+  {{action: 'ratings', candidates: [], results_count: 0}},
+  {{action: 'favorites', candidates: [], results_count: 0}},
+];
+const traktTrace = [
+  {{tool: 'trakt_account', ok: true}},
+  {{tool: 'trakt_account', ok: true}},
+  {{tool: 'trakt_account', ok: true}},
+  {{tool: 'trakt_account', ok: true}},
+  {{tool: 'trakt_account', ok: true}},
+  {{tool: 'trakt_account', ok: true}},
+];
+const traktHtml = renderer.render({{
+  _tool_trace: traktTrace,
+  trakt_account: traktCalls,
+}}, {{}}, Array(6).fill('trakt_account'));
+for (const expected of [
+  'structured-results-orchestration-preview',
+  '4 visual sections from 6 tool calls · 2 calls without visual cards',
+  'Account connected', 'Recommendation One', 'Watchlist One', 'History One',
+  'data-orchestration-call="1"', 'data-orchestration-call="4"',
+]) if (!traktHtml.includes(expected)) process.exit(2);
+if ((traktHtml.match(/data-orchestration-tool="trakt_account"/g) || []).length !== 4) process.exit(3);
+if (traktHtml.includes('data-workflow-tool=')) process.exit(4);
+if (!(traktHtml.indexOf('Account connected') < traktHtml.indexOf('Recommendation One')
+  && traktHtml.indexOf('Recommendation One') < traktHtml.indexOf('Watchlist One')
+  && traktHtml.indexOf('Watchlist One') < traktHtml.indexOf('History One'))) process.exit(5);
+
+const travelPayload = name => ({{
+  departure_id: 'PDX',
+  results: [{{name, country: 'United States', flight_price: 199}}],
+}});
+const errorHtml = renderer.render({{
+  _tool_trace: [
+    {{tool: 'serpapi_travel_explore', ok: true}},
+    {{tool: 'serpapi_travel_explore', ok: false, error: 'Provider timeout'}},
+    {{tool: 'serpapi_travel_explore', ok: true}},
+  ],
+  serpapi_travel_explore: [travelPayload('First Success'), travelPayload('Second Success')],
+}}, {{}}, []);
+for (const expected of [
+  '2 visual sections from 3 tool calls · 1 failed',
+  'First Success', 'Second Success',
+  'data-orchestration-occurrence="1"', 'data-orchestration-occurrence="2"',
+]) if (!errorHtml.includes(expected)) process.exit(6);
+if (errorHtml.indexOf('First Success') > errorHtml.indexOf('Second Success')) process.exit(7);
+
+const olderHistoryHtml = renderer.render({{
+  serpapi_travel_explore: [
+    travelPayload('Historical First'),
+    travelPayload('Historical Second'),
+    travelPayload('Historical Third'),
+  ],
+  workflow: {{action: 'search', matches: []}},
+}}, {{}}, [
+  'serpapi_travel_explore',
+  'serpapi_travel_explore',
+  'workflow',
+  'serpapi_travel_explore',
+]);
+for (const expected of [
+  '3 visual sections from 4 tool calls · 1 call without visual cards',
+  'Historical First', 'Historical Second', 'Historical Third',
+  'data-orchestration-call="4"',
+]) if (!olderHistoryHtml.includes(expected)) process.exit(8);
+if (!(olderHistoryHtml.indexOf('Historical First') < olderHistoryHtml.indexOf('Historical Second')
+  && olderHistoryHtml.indexOf('Historical Second') < olderHistoryHtml.indexOf('Historical Third'))) process.exit(9);
+
+const emptyTailHtml = renderer.render({{
+  _tool_trace: [
+    {{tool: 'serpapi_travel_explore', ok: true}},
+    {{tool: 'serpapi_travel_explore', ok: true}},
+  ],
+  serpapi_travel_explore: [travelPayload('Keep Earlier Result'), {{results: []}}],
+}}, {{}}, ['serpapi_travel_explore', 'serpapi_travel_explore']);
+if (!emptyTailHtml.includes('Keep Earlier Result')) process.exit(10);
+if (emptyTailHtml.includes('structured-results-orchestration-preview')) process.exit(11);
+
+const dedicatedYouTubeHtml = renderer.render({{
+  _tool_trace: [
+    {{tool: 'serpapi_travel_explore', ok: true}},
+    {{tool: 'serpapi_youtube_search', ok: true}},
+  ],
+  serpapi_travel_explore: travelPayload('Visible Travel Result'),
+  serpapi_youtube_search: {{
+    results: [{{
+      video_id: 'abc123def45',
+      title: 'Dedicated YouTube Embed',
+      url: 'https://www.youtube.com/watch?v=abc123def45',
+    }}],
+  }},
+}}, {{}}, ['serpapi_travel_explore', 'serpapi_youtube_search']);
+if (!dedicatedYouTubeHtml.includes('Visible Travel Result')) process.exit(12);
+if (dedicatedYouTubeHtml.includes('Dedicated YouTube Embed')) process.exit(13);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+    assert ".render(toolResultsData, data, toolsUsed)" in CHAT_JS.read_text()
+
+
 def test_workflow_renderer_composes_supported_tools_in_step_order_without_youtube_rail():
     script = f"""
 const fs = require('fs');
@@ -1292,7 +1432,7 @@ def test_renderer_is_loaded_before_chat_and_uses_shared_responsive_styles():
     css = MAIN_CSS.read_text(encoding="utf-8")
 
     assert index.index('/js/structured-results.js') < index.index('/js/chat.js')
-    assert "window.structuredResultsRenderer.render(toolResultsData, data)" in chat
+    assert "window.structuredResultsRenderer.render(toolResultsData, data, toolsUsed)" in chat
     assert "${structuredResultsHtml}" in chat
     assert ".structured-results-track" in css
     assert ".structured-results-workflow-preview" in css

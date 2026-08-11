@@ -3918,7 +3918,7 @@ class ChatUI {
       ? this._renderCanvasPreviewHtml(canvasPreview)
       : '';
     const structuredResultsHtml = window.structuredResultsRenderer
-      ? window.structuredResultsRenderer.render(toolResultsData, data)
+      ? window.structuredResultsRenderer.render(toolResultsData, data, toolsUsed)
       : '';
 
     let chartHtml = '';

@@ -22,11 +22,26 @@ class StructuredResultsRenderer {
     return Array.from(this.adapters.keys());
   }
 
-  render(toolResultsData = {}, data = {}) {
+  render(toolResultsData = {}, data = {}, toolsUsed = []) {
     const workflow = this._workflowPayload(toolResultsData, data);
     if (workflow) {
       const sections = this._workflowCollections(workflow, toolResultsData, data);
       const html = sections.length ? this._renderWorkflow(workflow, sections) : '';
+      if (html) this._scheduleScrollControlsRefresh();
+      return html;
+    }
+
+    const orchestration = this._directOrchestrationCollections(
+      toolResultsData,
+      data,
+      toolsUsed
+    );
+    if (orchestration) {
+      const html = orchestration.sections.length > 1
+        ? this._renderOrchestration(orchestration)
+        : (orchestration.sections[0]
+          ? this._renderCollection(orchestration.sections[0].collection)
+          : '');
       if (html) this._scheduleScrollControlsRefresh();
       return html;
     }
@@ -55,6 +70,98 @@ class StructuredResultsRenderer {
       console.warn(`[StructuredResults] Could not render ${toolName}:`, error);
       return null;
     }
+  }
+
+  _directTraceEntries(toolResultsData = {}, data = {}, toolsUsed = []) {
+    const traceCandidates = [
+      toolResultsData?._tool_trace,
+      toolResultsData?.data?._tool_trace,
+      data?._tool_trace,
+      data?.data?._tool_trace,
+    ];
+    const trace = traceCandidates.find(candidate => Array.isArray(candidate));
+    if (trace) {
+      return trace.filter(entry => (
+        entry && typeof entry === 'object' && String(entry.tool || '').trim()
+      ));
+    }
+    return Array.isArray(toolsUsed)
+      ? toolsUsed
+        .map(tool => String(tool || '').trim())
+        .filter(Boolean)
+        .map(tool => ({tool, ok: true}))
+      : [];
+  }
+
+  _payloadForOccurrence(rawPayload, occurrenceIndex, occurrenceCount) {
+    // Direct orchestration stores successful payloads only; failed calls stay
+    // in _tool_trace. Match against the success index so an error between two
+    // successful calls cannot shift the second payload onto the wrong card.
+    if (occurrenceCount <= 1) return rawPayload;
+    if (!Array.isArray(rawPayload)) {
+      return occurrenceIndex === 0 ? rawPayload : null;
+    }
+    return occurrenceIndex < rawPayload.length
+      ? rawPayload[occurrenceIndex]
+      : null;
+  }
+
+  _directOrchestrationCollections(toolResultsData = {}, data = {}, toolsUsed = []) {
+    const entries = this._directTraceEntries(toolResultsData, data, toolsUsed);
+    if (!entries.length) return null;
+
+    const successTotals = new Map();
+    for (const entry of entries) {
+      if (entry.ok === false) continue;
+      const toolName = String(entry.tool || '').trim();
+      successTotals.set(toolName, (successTotals.get(toolName) || 0) + 1);
+    }
+
+    const successIndexes = new Map();
+    const sections = [];
+    let failedCalls = 0;
+    let callsWithoutCards = 0;
+
+    entries.forEach((entry, callIndex) => {
+      const toolName = String(entry.tool || '').trim();
+      if (entry.ok === false) {
+        failedCalls += 1;
+        return;
+      }
+
+      const occurrenceIndex = successIndexes.get(toolName) || 0;
+      successIndexes.set(toolName, occurrenceIndex + 1);
+      const adapter = this.adapters.get(toolName);
+      if (!adapter || this._usesDedicatedSurface(toolName)) {
+        callsWithoutCards += 1;
+        return;
+      }
+
+      const rawPayload = toolResultsData?.[toolName] ?? data?.[toolName];
+      const occurrencePayload = this._payloadForOccurrence(
+        rawPayload,
+        occurrenceIndex,
+        successTotals.get(toolName) || 0
+      );
+      const collection = this._adaptCollection(toolName, occurrencePayload, adapter);
+      if (!collection) {
+        callsWithoutCards += 1;
+        return;
+      }
+      sections.push({
+        toolName,
+        call: callIndex + 1,
+        occurrence: occurrenceIndex + 1,
+        collection,
+      });
+    });
+
+    return {
+      sections,
+      totalCalls: entries.length,
+      failedCalls,
+      callsWithoutCards,
+    };
   }
 
   _workflowPayload(toolResultsData = {}, data = {}) {
@@ -102,11 +209,15 @@ class StructuredResultsRenderer {
     return step?.data ?? null;
   }
 
-  _workflowUsesDedicatedSurface(toolName) {
+  _usesDedicatedSurface(toolName) {
     // The chat renderer already turns the leading YouTube search result into a
     // full-size playable embed. Keep that richer surface instead of duplicating
     // the same result as a compact workflow section.
     return toolName === 'serpapi_youtube_search';
+  }
+
+  _workflowUsesDedicatedSurface(toolName) {
+    return this._usesDedicatedSurface(toolName);
   }
 
   _workflowCollections(workflow, toolResultsData = {}, data = {}) {
@@ -178,6 +289,40 @@ class StructuredResultsRenderer {
         <div class="structured-results-workflow-header">
           <div class="structured-results-eyebrow">Workflow results</div>
           <div class="structured-results-heading">${this._escape(this._workflowTitle(workflow))}</div>
+          <div class="structured-results-subtitle">${this._escape(subtitle)}</div>
+        </div>
+        <div class="structured-results-workflow-sections">${sectionHtml}</div>
+      </section>
+    `;
+  }
+
+  _renderOrchestration(orchestration) {
+    const sections = orchestration.sections || [];
+    const subtitle = [
+      `${sections.length} visual section${sections.length === 1 ? '' : 's'} from ${orchestration.totalCalls} tool call${orchestration.totalCalls === 1 ? '' : 's'}`,
+      orchestration.failedCalls
+        ? `${orchestration.failedCalls} failed`
+        : '',
+      orchestration.callsWithoutCards
+        ? `${orchestration.callsWithoutCards} call${orchestration.callsWithoutCards === 1 ? '' : 's'} without visual cards`
+        : '',
+    ].filter(Boolean).join(' · ');
+    const sectionHtml = sections.map(section => this._renderCollection(
+      section.collection,
+      {
+        embedded: true,
+        surface: 'orchestration',
+        toolName: section.toolName,
+        call: section.call,
+        occurrence: section.occurrence,
+      }
+    )).join('');
+
+    return `
+      <section class="structured-results-workflow-preview structured-results-orchestration-preview" data-orchestration-results="true" aria-label="Combined tool results">
+        <div class="structured-results-workflow-header">
+          <div class="structured-results-eyebrow">Tool results</div>
+          <div class="structured-results-heading">Combined results</div>
           <div class="structured-results-subtitle">${this._escape(subtitle)}</div>
         </div>
         <div class="structured-results-workflow-sections">${sectionHtml}</div>
@@ -1750,16 +1895,22 @@ class StructuredResultsRenderer {
         </div>
       `
       : '';
-    const workflowTool = embedded && options.toolName
-      ? ` data-workflow-tool="${this._escape(options.toolName)}"`
+    const orchestration = embedded && options.surface === 'orchestration';
+    const surfaceTool = embedded && options.toolName
+      ? ` data-${orchestration ? 'orchestration' : 'workflow'}-tool="${this._escape(options.toolName)}"`
       : '';
-    const workflowStep = embedded && options.step != null
-      ? ` data-workflow-step="${this._escape(options.step)}"`
+    const surfacePosition = embedded && (orchestration ? options.call : options.step) != null
+      ? ` data-${orchestration ? 'orchestration-call' : 'workflow-step'}="${this._escape(orchestration ? options.call : options.step)}"`
       : '';
-    const embeddedClass = embedded ? ' structured-results-workflow-section' : '';
+    const occurrence = orchestration && options.occurrence != null
+      ? ` data-orchestration-occurrence="${this._escape(options.occurrence)}"`
+      : '';
+    const embeddedClass = embedded
+      ? ` structured-results-workflow-section${orchestration ? ' structured-results-orchestration-section' : ''}`
+      : '';
     const singleClass = single ? ' structured-results-single' : '';
     return `
-      <section class="structured-results-preview structured-results-${kind} structured-results-layout-${layout}${embeddedClass}${singleClass}"${workflowTool}${workflowStep} aria-label="${this._escape(collection.eyebrow || 'Structured results')}">
+      <section class="structured-results-preview structured-results-${kind} structured-results-layout-${layout}${embeddedClass}${singleClass}"${surfaceTool}${surfacePosition}${occurrence} aria-label="${this._escape(collection.eyebrow || 'Structured results')}">
         <div class="structured-results-header">
           <div>
             <div class="structured-results-eyebrow">${this._escape(collection.eyebrow || 'Results')}</div>
