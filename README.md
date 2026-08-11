@@ -12,7 +12,7 @@ The project includes several ways to use and inspect the system:
 
 - **Voice, CLI, Web UI, and TUI** entry points for talking to Jarvis, sending commands, and running workflows.
 - **Chat UI** with streaming tools, mode switching, prompt enhancement, file/image uploads, conversation search, exports, pinned-safe cleanup, and live logs.
-- **Canvas, Image Gallery, and Video Gallery** for saved notes, generated artifacts, media browsing, favorites, and visual reports.
+- **Canvas, Image, Music and Video Gallery** for saved notes, generated artifacts, media browsing, favorites, and visual reports.
 - **Memory Dashboard** for knowledge, conversations, scheduled tasks, reminders, and database maintenance.
 - **Intelligence Dashboard** for self-learning insights, tool performance, experience history, confidence tracking, and repair feedback.
 - **Docs Viewer** for browsing the project documentation with an assistant grounded in the local `docs/` folder.
@@ -1528,6 +1528,36 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 
 ## 🎯 Roadmap
 
+<details>
+<summary><strong>View roadmap and completed milestones</strong></summary>
+
+**Completed (August 2026) — Search, media discovery, OCR, and workflow UX:**
+- ✅ **21 focused SerpApi tools** — Expanded structured search across shopping,
+  indexed sources, images, news, trends, events, local places and services,
+  maps, sports, hotels, travel, Tripadvisor, Yelp, and YouTube, with quota
+  visibility and incident-aware outage diagnostics
+- ✅ **Movie and TV discovery** — Added public Trakt and TMDB tools, optional
+  read-only Trakt account context, artwork and trailer enrichment, related-title
+  recommendations, and watched-title filtering
+- ✅ **Movie night and upcoming radars** — Diversified recommendation searches,
+  added recurring movie and TV release workflows, separated Canvas pages by
+  primary genre, and supported explicit animation/anime exclusions
+- ✅ **Multi-tool and workflow result cards** — Repeated tool calls now render in
+  execution order, compatible results combine into dedicated workflow surfaces,
+  Canvas stays at the end, and skipped steps are distinct from completed or
+  failed tools
+- ✅ **Optional document OCR** — Added readiness-aware OVIS FastAPI integration
+  for scanned PDFs and text-heavy images, with Markdown/JSON extraction,
+  follow-up context, bounded timeouts, and graceful disablement
+- ✅ **Canvas export and media sharing** — Added themed PDF exports plus retained
+  video and audio sharing through xAI-compatible public media
+- ✅ **Status and Web UI controls** — Added Web overrides for status-LLM/static
+  phrase behavior, expanded dedicated fallback phrases, and slowed conversation
+  and result auto-scroll pacing
+- ✅ **Workflow and reminder reliability** — Optional unavailable workflow tools
+  can be skipped safely, recurring genre radars keep independent pages, and
+  stale recurring reminder backlogs no longer replay unexpectedly
+
 **Completed (July 2026) — Web retention, Canvas Gallery, and MCP:**
 - ✅ **Pinned-safe Web conversation cleanup** — `cleanup-all` prunes unpinned Web UI conversations after 90 days while preserving pinned conversations
 - ✅ **Canvas Gallery favorites** — Generated images can be favorited, filtered, and protected from generated-image cleanup
@@ -1996,6 +2026,8 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - **Phase 6: Self-Play Optimization** - Nightly simulation to discover better routing strategies
 - ✅ **Phase 7: Versioned Prompts** - COMPLETE! Auto-rollback on performance degradation
 
+</details>
+
 ---
 
 ## 📝 License
@@ -2003,10 +2035,11 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.55.4 (July 2026)
+**Current Version:** v2.55.4 (August 2026)
 **Status:** Production Ready ✅
-**Latest Features:** v2.55.2 adds complete Web tool follow-up payload coverage,
-bounded fallback extraction, strict-JSON conversation context, and explicit
-truncation metadata. It also includes Grok 4.5 catalog/default support,
-xAI OAuth/API-key routing clarity, versioned router prompts through `v4`, and
-final Tool RAG schema caps with per-mode Web settings.
+**Latest Features:** The August 2026 build expands Jarvis with 21 focused
+SerpApi tools, incident-aware outage diagnostics, and new shopping, local,
+sports, and travel workflows. It also adds Trakt/TMDB movie and TV discovery
+with watched-title filtering and recurring genre radars, optional OVIS document
+OCR, ordered multi-tool result cards, explicit skipped-step states, Canvas PDF
+and media sharing, and Web-controlled status update modes.
