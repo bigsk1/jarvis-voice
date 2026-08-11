@@ -1709,6 +1709,33 @@ class JarvisApp {
           ttsDefault.textContent = `⚡ override: ${s.tts.provider.value}`;
         }
 
+        // Populate status update overrides.
+        const statusLlmSetting = s.status_updates?.llm_enabled || {};
+        const statusLlmInput = document.getElementById('setting-status-llm-enabled');
+        statusLlmInput.value = statusLlmSetting.is_override
+          ? String(!!statusLlmSetting.value)
+          : '';
+        const statusLlmDefault = document.getElementById('status-llm-enabled-default');
+        statusLlmDefault.textContent = `(${envFile}: ${statusLlmSetting.default ? 'on' : 'off'})`;
+        statusLlmDefault.className = statusLlmSetting.is_override
+          ? 'setting-default setting-override'
+          : 'setting-default';
+        if (statusLlmSetting.is_override) {
+          statusLlmDefault.textContent = `⚡ override: ${statusLlmSetting.value ? 'on' : 'off'}`;
+        }
+
+        const statusPhraseSetting = s.status_updates?.phrase_mode || {};
+        const statusPhraseInput = document.getElementById('setting-status-phrase-mode');
+        statusPhraseInput.value = statusPhraseSetting.is_override ? statusPhraseSetting.value : '';
+        const statusPhraseDefault = document.getElementById('status-phrase-mode-default');
+        statusPhraseDefault.textContent = `(${envFile}: ${statusPhraseSetting.default || 'normal'})`;
+        statusPhraseDefault.className = statusPhraseSetting.is_override
+          ? 'setting-default setting-override'
+          : 'setting-default';
+        if (statusPhraseSetting.is_override) {
+          statusPhraseDefault.textContent = `⚡ override: ${statusPhraseSetting.value}`;
+        }
+
         // Annotate/disable providers without configured credentials.
         // Runs after select values are set so the current selection keeps
         // its warning label instead of being blocked.
@@ -1918,6 +1945,11 @@ class JarvisApp {
         const effectiveResponseStyle = s.response?.style?.value || c.JARVIS_RESPONSE_STYLE;
         const effectiveQaLimit = s.response?.qa_word_limit?.value ?? c.JARVIS_QA_WORD_LIMIT;
         const effectiveMultiTurnLimit = s.response?.multi_turn_word_limit?.value ?? c.JARVIS_MULTI_TURN_WORD_LIMIT;
+        const effectiveStatusLlmEnabled = s.status_updates?.llm_enabled?.value
+          ?? (c.STATUS_LLM_ENABLED === 'true');
+        const effectiveStatusPhraseMode = s.status_updates?.phrase_mode?.value
+          || c.STATUS_PHRASE_MODE
+          || 'normal';
         const effectiveCgEnabled = s.completion_guard?.enabled?.value ?? (c.JARVIS_COMPLETION_GUARD_ENABLED === 'true');
         const effectiveCgMode = s.completion_guard?.mode?.value || c.JARVIS_COMPLETION_GUARD_MODE;
         const effectiveCgThreshold = s.completion_guard?.auto_threshold?.value ?? c.JARVIS_COMPLETION_GUARD_AUTO_THRESHOLD;
@@ -2148,7 +2180,11 @@ class JarvisApp {
             </div>
             <div class="config-item">
               <span class="config-label">Status LLM</span>
-              <span class="config-value ${c.STATUS_LLM_ENABLED === 'true' ? 'enabled' : 'disabled'}">${c.STATUS_LLM_ENABLED === 'true' ? `${Utils.escapeHtml(c.STATUS_LLM_PROVIDER)} · ${Utils.escapeHtml(c.STATUS_LLM_MODEL || '(provider default)')}` : 'disabled · static phrases'}</span>
+              <span class="config-value ${effectiveStatusLlmEnabled ? 'enabled' : 'disabled'}">${effectiveStatusLlmEnabled ? `${Utils.escapeHtml(c.STATUS_LLM_PROVIDER)} · ${Utils.escapeHtml(c.STATUS_LLM_MODEL || '(provider default)')}` : 'disabled · static phrases'}</span>
+            </div>
+            <div class="config-item">
+              <span class="config-label">Status personality</span>
+              <span class="config-value">${Utils.escapeHtml(effectiveStatusPhraseMode)}</span>
             </div>
             <div class="config-item">
               <span class="config-label">Status audio cache</span>
@@ -3675,6 +3711,8 @@ class JarvisApp {
         tool_rag_limit: toolRagLimitRaw === '' ? null : parseInt(toolRagLimitRaw, 10),
         qa_word_limit: qaWordLimitRaw === '' ? null : parseInt(qaWordLimitRaw, 10),
         multi_turn_word_limit: multiTurnWordLimitRaw === '' ? null : parseInt(multiTurnWordLimitRaw, 10),
+        status_llm_enabled: parseNullableBool(document.getElementById('setting-status-llm-enabled').value),
+        status_phrase_mode: document.getElementById('setting-status-phrase-mode').value || null,
         completion_guard_enabled: parseNullableBool(document.getElementById('setting-completion-guard-enabled').value),
         completion_guard_mode: document.getElementById('setting-completion-guard-mode').value || null,
         completion_guard_ticket_on_fail: parseNullableBool(document.getElementById('setting-completion-guard-ticket-on-fail').value),

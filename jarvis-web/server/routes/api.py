@@ -25,6 +25,7 @@ from ..services.usage_metadata import format_usage_markdown
 from ..services.settings_manager import (
     CLOUD_TTS_PROVIDER_OPTIONS,
     LOCAL_TTS_PROVIDER_OPTIONS,
+    STATUS_PHRASE_MODE_OPTIONS,
     get_settings_manager,
 )
 from ..config import (
@@ -86,6 +87,22 @@ def _apply_router_prompt_override(mode: str) -> str | None:
     return version if version in available_router_prompt_versions() else None
 
 
+def _get_status_overrides(mode: str) -> dict[str, str]:
+    """Return validated per-mode status update overrides."""
+    from ..config import load_web_config
+
+    web_config = load_web_config()
+    mode_overrides = web_config.get(mode, {}) if isinstance(web_config, dict) else {}
+    overrides = {}
+    status_llm_enabled = mode_overrides.get('status_llm_enabled')
+    if isinstance(status_llm_enabled, bool):
+        overrides['STATUS_LLM_ENABLED'] = 'true' if status_llm_enabled else 'false'
+    status_phrase_mode = mode_overrides.get('status_phrase_mode')
+    if status_phrase_mode in STATUS_PHRASE_MODE_OPTIONS:
+        overrides['STATUS_PHRASE_MODE'] = status_phrase_mode
+    return overrides
+
+
 def _scoped_request_config(handler):
     """Run a Web API handler in its requested immutable config scope."""
     @functools.wraps(handler)
@@ -104,6 +121,7 @@ def _scoped_request_config(handler):
         overrides = {}
         if tts_provider:
             overrides['TTS_PROVIDER'] = str(tts_provider)
+        overrides.update(_get_status_overrides(mode))
         from config_loader import config_scope
         with config_scope(mode, overrides=overrides or None):
             return handler(*args, **kwargs)
@@ -643,6 +661,7 @@ def get_system_config():
         'STATUS_LLM_PROVIDER': get_jarvis_setting('STATUS_LLM_PROVIDER', 'ollama' if mode == 'local' else 'openai'),
         'STATUS_LLM_MODEL': get_jarvis_setting('STATUS_LLM_MODEL', ''),
         'STATUS_LLM_DEADLINE_MS': get_jarvis_setting('STATUS_LLM_DEADLINE_MS', '1000'),
+        'STATUS_PHRASE_MODE': get_jarvis_setting('STATUS_PHRASE_MODE', 'normal'),
         
         # Features
         'JARVIS_INTELLIGENCE': get_jarvis_setting('JARVIS_INTELLIGENCE', 'true'),
@@ -740,7 +759,7 @@ def update_web_settings():
 
     structured = any(k in data for k in [
         'llm_provider', 'llm_model', 'router_prompt_version', 'image_provider', 'video_provider',
-        'music_provider',
+        'music_provider', 'status_llm_enabled', 'status_phrase_mode',
         'response_style', 'tool_rag_limit', 'qa_word_limit', 'multi_turn_word_limit',
         'completion_guard_enabled', 'completion_guard_mode',
         'completion_guard_ticket_on_fail', 'completion_guard_show_ui_prompt',

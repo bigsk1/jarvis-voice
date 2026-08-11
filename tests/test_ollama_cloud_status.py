@@ -111,6 +111,8 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
             "tool_rag": get_config_value("CLOUD_TOOL_RAG_LIMIT"),
             "analyze_provider": get_config_value("ANALYZE_IMAGE_LLM_PROVIDER"),
             "analyze_model": get_config_value("ANALYZE_IMAGE_LLM_MODEL"),
+            "status_llm_enabled": get_config_value("STATUS_LLM_ENABLED"),
+            "status_phrase_mode": get_config_value("STATUS_PHRASE_MODE"),
             "child_image": child.get("JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER"),
             "child_music": child.get("JARVIS_OVERRIDE_MUSIC_TOOL_PROVIDER"),
             "child_tts": child.get("JARVIS_OVERRIDE_TTS_PROVIDER"),
@@ -120,6 +122,12 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
             ),
             "child_analyze_model": child.get(
                 "JARVIS_OVERRIDE_ANALYZE_IMAGE_LLM_MODEL"
+            ),
+            "child_status_llm_enabled": child.get(
+                "JARVIS_OVERRIDE_STATUS_LLM_ENABLED"
+            ),
+            "child_status_phrase_mode": child.get(
+                "JARVIS_OVERRIDE_STATUS_PHRASE_MODE"
             ),
         }
 
@@ -131,6 +139,8 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
             "tool_rag_limit": 9,
             "llm_provider": "xai",
             "llm_model": "grok-4.5",
+            "status_llm_enabled": False,
+            "status_phrase_mode": "unhinged",
         }
     }
     image_data = {"action": "image", "settings": {"provider": "openai"}}
@@ -145,14 +155,35 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
         "tool_rag": "9",
         "analyze_provider": "xai",
         "analyze_model": "grok-4.5",
+        "status_llm_enabled": "false",
+        "status_phrase_mode": "unhinged",
         "child_image": "openai",
         "child_music": "gemini",
         "child_tts": "elevenlabs",
         "child_tool_rag": "9",
         "child_analyze_provider": "xai",
         "child_analyze_model": "grok-4.5",
+        "child_status_llm_enabled": "false",
+        "child_status_phrase_mode": "unhinged",
     }
     assert dict(os.environ) == before
+
+
+def test_system_config_reflects_status_web_overrides():
+    web_config = {
+        "cloud": {
+            "status_llm_enabled": True,
+            "status_phrase_mode": "normal",
+        }
+    }
+    with patch(
+        "jarvis_web_test_server.config.load_web_config",
+        return_value=web_config,
+    ), app.test_request_context("/api/settings/system?mode=cloud"):
+        payload = api.get_system_config().get_json()
+
+    assert payload["config"]["STATUS_LLM_ENABLED"] == "true"
+    assert payload["config"]["STATUS_PHRASE_MODE"] == "normal"
 
 
 def test_local_web_chat_keeps_analyze_image_on_pinned_ollama_vision_model():

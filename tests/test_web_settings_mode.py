@@ -106,6 +106,30 @@ class WebSettingsModeTests(unittest.TestCase):
         settings.validate_web_overrides.assert_called_once_with({"router_prompt_version": "v1"})
         settings.save_web_overrides.assert_called_once_with({"router_prompt_version": "v1"})
 
+    def test_save_routes_status_update_settings_through_structured_overrides(self):
+        settings = MagicMock()
+        settings.set_mode.return_value = True
+        settings.save_web_overrides.return_value = True
+
+        payload = {
+            "status_llm_enabled": False,
+            "status_phrase_mode": "unhinged",
+        }
+        with (
+            self.app.test_request_context(
+                "/api/settings/web",
+                method="PUT",
+                json={"mode": "cloud", **payload},
+            ),
+            patch.object(self.api, "get_settings_manager", return_value=settings),
+            patch.object(self.api, "reload_web_config"),
+        ):
+            response = self.api.update_web_settings()
+
+        self.assertEqual(response.status_code, 200)
+        settings.validate_web_overrides.assert_called_once_with(payload)
+        settings.save_web_overrides.assert_called_once_with(payload)
+
     def test_save_routes_music_provider_through_structured_overrides(self):
         settings = MagicMock()
         settings.set_mode.return_value = True
@@ -594,6 +618,90 @@ class WebSettingsModeTests(unittest.TestCase):
                 settings.save_web_overrides({"router_prompt_version": "v9"})
 
         self.assertEqual(web_config["cloud"]["router_prompt_version"], "v4")
+
+    def test_status_update_overrides_are_validated_and_saved_per_mode(self):
+        from server.services import settings_manager as settings_module
+        from server.services.settings_manager import SettingsManager, SettingsValidationError
+
+        web_config = {"cloud": {}}
+        settings = SettingsManager("cloud")
+        with (
+            patch.object(settings, "_ensure_jarvis_config"),
+            patch.object(settings_module, "load_web_config", return_value=web_config),
+            patch.object(settings_module, "get_jarvis_setting", side_effect=lambda key, default="": default),
+            patch.object(settings_module, "save_web_config", return_value=True),
+        ):
+            self.assertTrue(settings.save_web_overrides({
+                "status_llm_enabled": False,
+                "status_phrase_mode": "unhinged",
+            }))
+            self.assertIs(web_config["cloud"]["status_llm_enabled"], False)
+            self.assertEqual(web_config["cloud"]["status_phrase_mode"], "unhinged")
+
+            with self.assertRaises(SettingsValidationError):
+                settings.save_web_overrides({"status_llm_enabled": "false"})
+            with self.assertRaises(SettingsValidationError):
+                settings.save_web_overrides({"status_phrase_mode": "chaotic"})
+
+        self.assertIs(web_config["cloud"]["status_llm_enabled"], False)
+        self.assertEqual(web_config["cloud"]["status_phrase_mode"], "unhinged")
+
+    def test_settings_payload_describes_status_defaults_and_overrides(self):
+        from server.services import settings_manager as settings_module
+        from server.services.settings_manager import SettingsManager
+
+        web_config = {
+            "cloud": {
+                "status_llm_enabled": False,
+                "status_phrase_mode": "unhinged",
+            },
+            "audio": {},
+            "ui": {},
+            "conversation": {},
+            "tools": {},
+        }
+        settings = SettingsManager("cloud")
+        with (
+            patch.object(settings, "_ensure_jarvis_config"),
+            patch.object(settings_module, "load_web_config", return_value=web_config),
+            patch.object(
+                settings_module,
+                "get_jarvis_setting",
+                side_effect=lambda key, default="": {
+                    "STATUS_LLM_ENABLED": "true",
+                    "STATUS_PHRASE_MODE": "normal",
+                }.get(key, default),
+            ),
+            patch.object(settings, "_get_provider_models", return_value={}),
+            patch.object(settings, "_get_api_key_status", return_value={}),
+            patch.object(settings, "get_provider_availability", return_value={}),
+        ):
+            payload = settings.get_settings_for_ui()
+
+        self.assertEqual(payload["status_updates"]["llm_enabled"], {
+            "value": False,
+            "default": True,
+            "is_override": True,
+        })
+        self.assertEqual(payload["status_updates"]["phrase_mode"], {
+            "value": "unhinged",
+            "default": "normal",
+            "is_override": True,
+            "options": ["normal", "unhinged"],
+        })
+
+    def test_status_update_controls_are_loaded_and_saved_by_the_web_client(self):
+        index_html = (ROOT / "jarvis-web" / "client" / "index.html").read_text()
+        app_js = (ROOT / "jarvis-web" / "client" / "js" / "app.js").read_text()
+
+        self.assertIn('id="setting-status-llm-enabled"', index_html)
+        self.assertIn('id="setting-status-phrase-mode"', index_html)
+        self.assertIn("s.status_updates?.llm_enabled", app_js)
+        self.assertIn("s.status_updates?.phrase_mode", app_js)
+        self.assertIn("status_llm_enabled: parseNullableBool", app_js)
+        self.assertIn("status_phrase_mode: document.getElementById", app_js)
+        self.assertIn('<span class="config-label">Status personality</span>', app_js)
+        self.assertNotIn("${Utils.escapeHtml(effectiveStatusPhraseMode)} static phrases", app_js)
 
     def test_settings_payload_describes_router_prompt_default_and_override(self):
         from server.services import settings_manager as settings_module

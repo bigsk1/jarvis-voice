@@ -575,6 +575,33 @@
               </select>
               <span class="setting-desc">Chooses the voice synthesis service for this web mode.</span>
             </div>
+            <div style="margin-top: var(--space-lg); padding-top: var(--space-lg); border-top: 1px solid var(--border-primary); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary);">
+              Status Updates
+            </div>
+            <div class="setting-group" style="margin-top: var(--space-md);">
+              <label class="setting-label">
+                Status LLM
+                <span class="setting-default" id="status-llm-enabled-default"></span>
+              </label>
+              <select class="setting-input" id="setting-status-llm-enabled">
+                <option value="">Use env default</option>
+                <option value="true">Enabled</option>
+                <option value="false">Disabled (static phrases)</option>
+              </select>
+              <span class="setting-desc">Enabled uses the configured status LLM provider and model. Disabled uses the bundled static status phrases.</span>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                Status Personality
+                <span class="setting-default" id="status-phrase-mode-default"></span>
+              </label>
+              <select class="setting-input" id="setting-status-phrase-mode">
+                <option value="">Use env default</option>
+                <option value="normal">Normal</option>
+                <option value="unhinged">Unhinged</option>
+              </select>
+              <span class="setting-desc">With Status LLM enabled, Unhinged uses its dedicated personality prompt; Normal follows the humor, sass, and encouragement ENV settings. With Status LLM disabled, this selects the normal or unhinged static phrase file.</span>
+            </div>
             <div class="setting-group" style="margin-top: var(--space-lg); padding-top: var(--space-lg); border-top: 1px solid var(--border-primary);">
               <label class="setting-label">
                 Response Style

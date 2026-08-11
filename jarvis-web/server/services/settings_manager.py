@@ -308,6 +308,7 @@ COMPLETION_GUARD_MODE_OPTIONS = {
     'manual': {'name': 'Manual', 'description': 'Ask whether the response completed correctly'},
     'auto': {'name': 'Auto', 'description': 'Evaluate the final raw answer and auto-repair when confidence is low'}
 }
+STATUS_PHRASE_MODE_OPTIONS = ('normal', 'unhinged')
 
 # Provider -> required API key env var (presence checked, value never exposed).
 # Providers absent from this map are either always available (local engines)
@@ -595,6 +596,10 @@ class SettingsManager:
         env_tool_rag_limit = int(get_jarvis_setting(env_tool_rag_key, env_tool_rag_default))
         env_qa_word_limit = int(get_jarvis_setting('JARVIS_QA_WORD_LIMIT', str(DEFAULT_JARVIS_QA_WORD_LIMIT)))
         env_multi_turn_word_limit = int(get_jarvis_setting('JARVIS_MULTI_TURN_WORD_LIMIT', str(DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT)))
+        env_status_llm_enabled = get_jarvis_setting('STATUS_LLM_ENABLED', 'false').lower() == 'true'
+        env_status_phrase_mode = str(get_jarvis_setting('STATUS_PHRASE_MODE', 'normal')).strip().lower()
+        if env_status_phrase_mode not in STATUS_PHRASE_MODE_OPTIONS:
+            env_status_phrase_mode = 'normal'
         env_completion_guard_enabled = get_jarvis_setting('JARVIS_COMPLETION_GUARD_ENABLED', 'false').lower() == 'true'
         env_completion_guard_mode = get_jarvis_setting('JARVIS_COMPLETION_GUARD_MODE', 'manual')
         env_completion_guard_ticket_on_fail = get_jarvis_setting('JARVIS_COMPLETION_GUARD_TICKET_ON_FAIL', 'true').lower() == 'true'
@@ -640,6 +645,12 @@ class SettingsManager:
         web_tool_rag_limit = mode_overrides.get('tool_rag_limit')
         web_qa_word_limit = mode_overrides.get('qa_word_limit')
         web_multi_turn_word_limit = mode_overrides.get('multi_turn_word_limit')
+        web_status_llm_enabled = mode_overrides.get('status_llm_enabled')
+        if web_status_llm_enabled is not None and not isinstance(web_status_llm_enabled, bool):
+            web_status_llm_enabled = None
+        web_status_phrase_mode = mode_overrides.get('status_phrase_mode')
+        if web_status_phrase_mode not in (None, *STATUS_PHRASE_MODE_OPTIONS):
+            web_status_phrase_mode = None
         web_completion_guard_enabled = mode_overrides.get('completion_guard_enabled')
         web_completion_guard_mode = mode_overrides.get('completion_guard_mode')
         web_completion_guard_ticket_on_fail = mode_overrides.get('completion_guard_ticket_on_fail')
@@ -668,6 +679,12 @@ class SettingsManager:
         effective_multi_turn_word_limit = (
             web_multi_turn_word_limit if web_multi_turn_word_limit is not None else env_multi_turn_word_limit
         )
+        effective_status_llm_enabled = (
+            web_status_llm_enabled
+            if web_status_llm_enabled is not None
+            else env_status_llm_enabled
+        )
+        effective_status_phrase_mode = web_status_phrase_mode or env_status_phrase_mode
         effective_completion_guard_enabled = (
             web_completion_guard_enabled
             if web_completion_guard_enabled is not None
@@ -818,6 +835,20 @@ class SettingsManager:
                         env_multi_turn_word_limit,
                     ),
                 }
+            },
+
+            'status_updates': {
+                'llm_enabled': {
+                    'value': effective_status_llm_enabled,
+                    'default': env_status_llm_enabled,
+                    'is_override': web_status_llm_enabled is not None,
+                },
+                'phrase_mode': {
+                    'value': effective_status_phrase_mode,
+                    'default': env_status_phrase_mode,
+                    'is_override': web_status_phrase_mode is not None,
+                    'options': list(STATUS_PHRASE_MODE_OPTIONS),
+                },
             },
 
             'completion_guard': {
@@ -1252,6 +1283,31 @@ class SettingsManager:
                     provider=str(overrides['tool_rag_limit']),
                     reason='Tool RAG limit must be between 1 and 50',
                 )
+        if (
+            'status_llm_enabled' in overrides
+            and overrides['status_llm_enabled'] is not None
+            and not isinstance(overrides['status_llm_enabled'], bool)
+        ):
+            requested = str(overrides['status_llm_enabled'])
+            raise SettingsValidationError(
+                field='status_llm_enabled',
+                provider=requested,
+                reason='Status LLM enabled must be true, false, or null',
+            )
+        if 'status_phrase_mode' in overrides and overrides['status_phrase_mode'] not in (
+            None,
+            '',
+            *STATUS_PHRASE_MODE_OPTIONS,
+        ):
+            requested = str(overrides['status_phrase_mode'])
+            raise SettingsValidationError(
+                field='status_phrase_mode',
+                provider=requested,
+                reason=(
+                    f"Unknown status phrase mode '{requested}'. Available modes: "
+                    f"{', '.join(STATUS_PHRASE_MODE_OPTIONS)}"
+                ),
+            )
 
     def save_web_overrides(self, overrides: dict[str, Any]) -> bool:
         """Save per-mode Web UI overrides.
@@ -1331,6 +1387,12 @@ class SettingsManager:
                 overrides['multi_turn_word_limit'],
                 env_numeric_defaults['multi_turn_word_limit'],
             )
+
+        if 'status_llm_enabled' in overrides:
+            mode_config['status_llm_enabled'] = overrides['status_llm_enabled']
+
+        if 'status_phrase_mode' in overrides:
+            mode_config['status_phrase_mode'] = overrides['status_phrase_mode'] or None
 
         if 'completion_guard_enabled' in overrides:
             value = overrides['completion_guard_enabled']
@@ -1434,6 +1496,8 @@ class SettingsManager:
             'tool_rag_limit': None,
             'qa_word_limit': None,
             'multi_turn_word_limit': None,
+            'status_llm_enabled': None,
+            'status_phrase_mode': None,
             'completion_guard_enabled': None,
             'completion_guard_mode': None,
             'completion_guard_ticket_on_fail': None,

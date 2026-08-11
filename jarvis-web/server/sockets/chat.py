@@ -134,6 +134,7 @@ def _scoped_by_mode(method):
         from ..services.settings_manager import (
             CLOUD_TTS_PROVIDER_OPTIONS,
             LOCAL_TTS_PROVIDER_OPTIONS,
+            STATUS_PHRASE_MODE_OPTIONS,
         )
 
         web_config = load_web_config()
@@ -152,7 +153,14 @@ def _scoped_by_mode(method):
         for web_key, config_key in key_map.items():
             value = mode_overrides.get(web_key)
             if value is not None:
-                scoped_overrides[config_key] = str(value)
+                scoped_overrides[config_key] = str(value).lower() if isinstance(value, bool) else str(value)
+
+        status_llm_enabled = mode_overrides.get('status_llm_enabled')
+        if isinstance(status_llm_enabled, bool):
+            scoped_overrides['STATUS_LLM_ENABLED'] = 'true' if status_llm_enabled else 'false'
+        status_phrase_mode = mode_overrides.get('status_phrase_mode')
+        if status_phrase_mode in STATUS_PHRASE_MODE_OPTIONS:
+            scoped_overrides['STATUS_PHRASE_MODE'] = status_phrase_mode
 
         # Cloud analyze_image calls are the retry/follow-up counterpart to the
         # direct Web upload vision pass, so they must use the same Web-selected
