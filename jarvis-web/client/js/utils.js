@@ -718,7 +718,7 @@ const Utils = {
 
     // Smooth scroll duration in milliseconds
     const duration = options.duration
-      ?? Math.min(2200, Math.max(750, Math.abs(distance) * 0.8));
+      ?? Math.min(3200, Math.max(1000, Math.abs(distance) * 1.1));
     const startTime = performance.now();
     const easeInOutQuart = (t) =>
       t < 0.5
