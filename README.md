@@ -12,7 +12,7 @@ The project includes several ways to use and inspect the system:
 
 - **Voice, CLI, Web UI, and TUI** entry points for talking to Jarvis, sending commands, and running workflows.
 - **Chat UI** with streaming tools, mode switching, prompt enhancement, file/image uploads, conversation search, exports, pinned-safe cleanup, and live logs.
-- **Canvas, Image, Music and Video Gallery** for saved notes, generated artifacts, media browsing, favorites, and visual reports.
+- **Canvas plus Image, Audio, and Video Galleries** for saved notes, generated artifacts, media browsing, favorites, and visual reports.
 - **Memory Dashboard** for knowledge, conversations, scheduled tasks, reminders, and database maintenance.
 - **Intelligence Dashboard** for self-learning insights, tool performance, experience history, confidence tracking, and repair feedback.
 - **Docs Viewer** for browsing the project documentation with an assistant grounded in the local `docs/` folder.
@@ -125,7 +125,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - `v1` is the immutable full-context baseline; `v2`, `v3`, and `v4` reduce router prompt size while preserving production routing contracts
   - `v4` is the local-mode default in `config/local.env.example`; cloud examples stay on `v1` unless changed in env or Web Settings
   - See [`orchestrator/router_prompts/README.md`](orchestrator/router_prompts/README.md)
-- **Advanced Tool Calling**: LLM-powered routing with 80+ skills
+- **Advanced Tool Calling**: LLM-powered routing with 100+ tools
 - **OpenAI Responses API support**: Optional `/v1/responses` routing for OpenAI tool-capable turns, in-flight client-tool continuation, hosted-tool gates, prompt-cache hints, and safe Chat Completions fallback
 - **Multi-Turn Orchestration**: Chains multiple tools to complete complex tasks
 - **Auto-Context System**: Automatic short-term memory of recent conversations
@@ -240,9 +240,9 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
 - **Tool Management**: Enable/disable tools per mode to optimize context window
 
 ### Dual Mode Operation
-- **Cloud Mode**: **xAI Grok** (`grok-4.3` default), Anthropic Claude, OpenAI GPT, or Ollama Cloud (`*:cloud` / `*-cloud` models through a signed-in Ollama daemon)
+- **Cloud Mode**: OpenAI (shipped default), xAI Grok (`grok-4.5` recommended for xAI), Anthropic Claude, or Ollama Cloud (`*:cloud` / `*-cloud` models through a signed-in Ollama daemon)
   - OpenAI can use Chat Completions by default or opt into Responses API routing for tool-capable turns with `OPENAI_API_MODE=responses` + `OPENAI_RESPONSES_TOOLS=true`
-- **Local Mode**: Ollama (qwen3-coder, mistral-nemo) + faster-whisper + Kokoro/Qwen3-TTS (free, offline)
+- **Local Mode**: Ollama (`gemma4` default) + faster-whisper + Kokoro/Qwen3-TTS (free, offline)
 - **Mode is not provider selection**: `JARVIS_MODE` chooses config/data boundaries; `LLM_PROVIDER` chooses the chat backend. See [`docs/ollama/README.md`](docs/ollama/README.md).
 - **Model Prompt Overrides**: Small provider/model-specific YAML prompt overlays in `config/models/`
   - Lets you patch stable model quirks without changing the global prompts for every provider
@@ -253,7 +253,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
 | Provider | Mode | Quality | Cost | Notes |
 |----------|------|---------|------|-------|
 | **ElevenLabs** | Cloud | Excellent | Paid | Best quality, expressive voices |
-| **xAI TTS** | Cloud | Good | Paid | Native xAI TTS using `XAI_API_KEY`; voices: eve, ara, rex, sal, leo; optional expressive speech tags |
+| **xAI TTS** | Cloud | Good | Paid | Native xAI TTS using `XAI_API_KEY`; built-in and custom voice IDs; optional expressive speech tags |
 | **Qwen3-TTS** | Both | Excellent | Free | 28 cloned voices (Jarvis, Samantha, etc.), local network |
 | **Kokoro** | Local | Good | Free | Lightweight, fast, Nicole+Sarah voices |
 | **OpenAI TTS** | Cloud | Good | Paid | alloy, echo, fable, onyx, nova, shimmer |
@@ -264,7 +264,7 @@ See: [`docs/qwen3-tts/QWEN3_TTS_INTEGRATION_GUIDE.md`](docs/qwen3-tts/QWEN3_TTS_
 **Voice API** (`/api/voice/speak`): Supports per-request TTS provider/voice overrides for multi-agent voice identity
 See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
 
-**Recommended Cloud Provider**: **xAI Grok 4.3** (1M context window, automatic caching, configurable reasoning effort)
+**Cloud Chat Default:** OpenAI. For xAI, the tracked recommended model is **Grok 4.5**; Grok 4.3 remains available for 1M context or non-reasoning use.
 
 ### Voice & Wake Word
 - **Wake Detection**: "Hey Jarvis" using OpenWakeWord
@@ -333,6 +333,15 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
   - Access via "🖼️ Gallery" link in Canvas header
 
 ![jarvis-image-gallery](docs/images/jarvis-image-gallery.png)
+
+---
+
+- **Audio Gallery UI**: Browse retained generated music in Canvas
+  - Playback with a live spectrum, search, filtering, favorites, download, and delete
+  - Share retained tracks as temporary xAI waveform videos
+  - Access via the "🎵 Audio" link in the Canvas header
+
+![jarvis-audio-gallery](docs/images/jarvis-audio.jpg)
 
 ---
 
@@ -536,8 +545,8 @@ jarvis-voice/
 
 ### 1. Initial Setup
 
-see [INSTALL_GUIDE.md](docs/INSTALL_GUIDE.md) for detailed instructions.
-see [QUICKSTART.md](docs/QUICKSTART.md) for detailed instructions.
+See [INSTALL_GUIDE.md](docs/INSTALL_GUIDE.md) or
+[QUICKSTART.md](docs/QUICKSTART.md) for detailed instructions.
 
 ### 1.1. Clone the repository
 ```bash
@@ -545,35 +554,32 @@ git clone https://github.com/bigsk1/jarvis-voice.git
 cd jarvis-voice
 ```
 
-You need python 3.12 or higher.
-
 ```bash
 cd ~/jarvis-voice
-./setup.sh
+chmod +x install.sh
+./install.sh
 ```
 
 This will:
-- Check dependencies
-- Create directories
-- Initialize git repository
-- Create convenience symlinks
+- Install system dependencies
+- Create the shared Python environment from the lockfile
+- Seed missing configuration files without overwriting existing ones
+- Run project setup and environment verification
 
 ### 2. Configure
 
-Copy and edit the example configs:
+Edit the configuration files created by the installer:
 
 ```bash
-# For cloud mode (xAI/Anthropic/OpenAI or Ollama Cloud)
-cp config/cloud.env.example config/cloud.env
-# OpenAI primary provider: cp config/cloud.openai.env.example config/cloud.env
-nano config/cloud.env  # Configure the chosen provider and credentials/daemon
+# Cloud mode ships with OpenAI as the default provider
+nano config/cloud.env
 
-# Recommended cloud provider: xAI Grok
+# Optional xAI alternative
 # LLM_PROVIDER="xai"
 # XAI_AUTH_MODE="auto"   # API key when set; otherwise a current `grok login`
 # XAI_API_KEY="xai-..."  # Optional for chat/OAuth vision; required for xAI generation/TTS/search APIs
-# XAI_MODEL="grok-4.3"  # 1M context, configurable reasoning effort
-# XAI_OAUTH_MODEL="grok-build"  # Grok CLI subscription chat model
+# XAI_MODEL="grok-4.5"
+# XAI_OAUTH_MODEL="grok-4.5"
 
 # Ollama Cloud alternative (signed-in daemon path):
 # LLM_PROVIDER="ollama"
@@ -581,36 +587,13 @@ nano config/cloud.env  # Configure the chosen provider and credentials/daemon
 # OLLAMA_CLOUD_MODEL="minimax-m3:cloud"
 # Or set OLLAMA_API_KEY for direct ollama.com access; see docs/ollama/README.md.
 
-# For local mode (Ollama)
-cp config/local.env.example config/local.env
-nano config/local.env  # Adjust Ollama endpoint
+# Local mode uses Ollama with gemma4 by default
+nano config/local.env
 # ALLOW_OLLAMA_CLOUD=true optionally exposes signed-daemon cloud cards locally.
 ```
 
 See [`config/README.md`](config/README.md), [`docs/XAI_PROVIDER.md`](docs/XAI_PROVIDER.md),
 and [`docs/ollama/README.md`](docs/ollama/README.md) for detailed configuration options.
-
-### 3. Install Dependencies
-
-```bash
-# Python environment
-python3 -m venv ~/jarvis-venv
-source ~/jarvis-venv/bin/activate
-pip install -r requirements.txt
-
-# System packages (Ubuntu/Debian)
-see ~/jarvis-voice/install-system-deps.sh
-
-# See system-packages.txt for complete list of system dependencies
-
-# Ollama (for local mode)
-curl https://ollama.ai/install.sh | sh
-ollama pull gemma4
-ollama pull nomic-embed-text
-
-# OpenCode (optional, for coding tasks)
-# See docs/opencode/OPENCODE.md for installation
-```
 
 </details>
 
@@ -760,7 +743,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 
 ## 🛠️ Tool System
 
-### Available Skills (80+)
+### Available Skills (100+)
 
 **Memory Management:**
 - `remember` - Store facts, preferences, technical info
@@ -783,7 +766,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `get_time` - Current time
 - `calculator` - **Advanced math**: arithmetic, percentages, statistics, unit conversions, trig
 - `canvas` - **Visual viewer**: save rich content (research, code, comparisons) to web UI
-- `weather` - Weather forecasts with OpenWeatherMap
+- `weather` - Weather via OpenWeatherMap with Open-Meteo daily forecasts
 - `phone_call` - **AI Phone Calls**: outbound calls via Vapi.ai with personas, voicemail detection, transcripts
 - `spotify` - **Music control**: play, pause, skip, queue, search, device switching, share via email
 - `network_tools` - **Network diagnostics**: ping (with stats), DNS lookup, port checks, HTTP/HTTPS status, traceroute
@@ -796,7 +779,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `workflow` - **Deterministic workflow discovery**: search/describe eligible shared or personal recipes and synchronously run one in the current orchestration turn
 - [`generate_music`](docs/tools/generate-music-tool/README.md) - **AI Music**: provider-ready music generation with genres, moods, tempo, stash integration
 - `generate_password` - **Password generation**: Secure passwords with length, complexity, memorable options
-- `samantha` - **Multi-agent**: Chat with Samantha (moltbot) AI, delegate tasks, fire-and-forget webhooks
+- `samantha` - **Multi-agent**: Chat with Samantha (OpenClaw), delegate tasks, fire-and-forget webhooks
 - `deep_memory_search` - **Comprehensive search**: Multi-source search across memory, conversations, intel, canvas, stash
 - `search_docs` - **Internal knowledge Q&A**: Semantic search over Jarvis docs (capabilities, parameters, features)
 - `ssh_remote` - **Remote execution**: SSH into remote hosts, run commands, apt management, multi-command sequences
@@ -1009,10 +992,10 @@ picker for the authoritative current surface.
 | `* [query]` | Search Firefox bookmarks (like * in address bar) | bookmark_search (requires `data/bookmarks.html`) |
 | `/archive <url>` | Archive webpage to stash with Canvas summary | crawl_url, stash, canvas |
 | `/buying_brief <product>` (also `/price_compare`) | Compare Google Shopping Light, Amazon, and eBay and create a localized buying recommendation | serpapi_google_shopping_light, serpapi_amazon_search, serpapi_ebay_search, stash, canvas |
-| `/crypto [coins]` | Crypto prices, news, analysis, email report | get_time, crypto_price, brave_search, crawl_url, stash, canvas, send_email |
+| `/crypto [coins]` | Crypto prices, news, analysis, email report | get_time, crypto_price, crypto_chart, mcp_brave_search_brave_web_search, crawl_url, stash, canvas, send_email |
 | `/deep_dive <url>`, `/dive <url>` | Screenshot + crawl URL, comprehensive canvas summary | screenshot_url, crawl_url, stash, text_summarizer, canvas |
 | `/game_brief <sport> <team>` (also `/game_recap`, `/sports_brief`) | Create a current game Canvas brief with status, score, line or period scoring, key performers, and returned watch or recap links; optional Brave sources add narrative context | serpapi_google_sports, optional brave_llm_context, optional mcp_brave_search_brave_web_search, canvas |
-| `/github_ai_radar` | Find current GitHub AI project signals and refresh a rolling Canvas report | Brave search, Brave LLM Context, optional YouTube search, crawl_url, stash, canvas |
+| `/github_ai_radar` | Find current GitHub AI project signals and refresh a rolling Canvas report | mcp_brave_search_brave_web_search, brave_llm_context, optional serpapi_youtube_search, crawl_url, stash, canvas |
 | `/health [host]` | SSH health check (default: vps2) | get_time, ssh_remote, stash, canvas |
 | `/jarvis_self_check` | Check local Jarvis health, refresh its Canvas report, and create a deduplicated alert for problems | get_time, system_monitor, check_tool_logs, query_service_logs, create_alert, canvas |
 | `/local_services_compare <service>` (also `/service_compare`) | Compare local providers, screening signals, business details, ratings, and bounded Yelp review excerpts using the active mode location | serpapi_google_local_services, serpapi_google_local, serpapi_yelp_search, stash, canvas |
@@ -1020,13 +1003,14 @@ picker for the authoritative current surface.
 | `/movie_night <mood, constraints, or favorite movies>` (also `/what_to_watch`, `/movie_picker`) | Build a decisive Trakt-based movie shortlist with related-title signals, optional account recommendations and watched-title filtering, TMDB artwork, trailers, current streaming evidence, and a dated Canvas recommendation | trakt_movies, optional trakt_account, optional tmdb_movies, optional serpapi_youtube_search, optional brave_llm_context, canvas |
 | `/night_out <occasion or preference>` (also `/date_night`) | Build a date-aware local evening plan; an explicit destination wins, otherwise use the active mode default location/postal code, and weather is skipped when the requested date exceeds the 10-day horizon | optional weather, serpapi_google_local, optional serpapi_yelp_search, optional serpapi_tripadvisor, canvas |
 | `/note <text>` | Save note to memory + Canvas | get_time, remember, canvas |
-| `/research <topic>` | Multi-source research with Brave + crawling | brave_search, crawl_url, stash, remember, canvas |
+| `/research <topic>` | Multi-source research with Brave + crawling | mcp_brave_search_brave_web_search, crawl_url, stash, remember, canvas |
 | `/serpapi_amazon <query>` (also `/amazon_search`, `/serpapi`) | SerpApi Amazon workflow: listings + Stash export + Canvas comparison | serpapi_amazon_search, stash, canvas |
 | `/status` | Daily status briefing (weather, crypto, stocks, alerts) | get_time, weather, crypto_price, crypto_chart, stock_price, list_alerts, list_reminders, system_monitor, canvas |
 | `/status_visual` | Status briefing + AI-generated dashboard image + same Canvas crypto charts as `/status` | get_time, weather, crypto_price, crypto_chart, stock_price, list_alerts, list_reminders, system_monitor, generate_image, canvas |
 | `/team_outlook <sport> <team>` (also `/season_outlook`) | Create a current-centered team outlook with recent and upcoming games, standings, roster context, and optional current news | serpapi_google_sports, optional serpapi_google_news_light, canvas |
 | `/trend_reality_check <topic>` (also `/trend_check`) | Test whether a topic shows sustained interest, a transient spike, or weak evidence using topic trends, the seedless current feed, news, and indexed source discovery | serpapi_google_trends, optional serpapi_google_trending_now, optional serpapi_google_news_light, optional serpapi_search_index, canvas |
 | `/tv_night <mood, constraints, or favorite shows>` (also `/what_show_to_watch`, `/tv_picker`) | Build a decisive Trakt-based TV shortlist with related-series signals, optional account recommendations and watched-show filtering, TMDB artwork/commitment metadata, trailers, current streaming evidence, and a dated Canvas recommendation | trakt_tv_shows, optional trakt_account, optional tmdb_tv_shows, optional serpapi_youtube_search, optional brave_llm_context, canvas |
+| `/upcoming_movie_radar <genre criteria>` (also `/movie_release_radar`, `/upcoming_movies`) | Find a new upcoming movie, maintain a rolling Canvas page per primary genre, and optionally email the pick with shared cross-genre deduplication | get_time, stash, tmdb_movies, optional brave_llm_context, canvas, optional send_email |
 | `/upcoming_tv_radar <genre criteria>` (also `/tv_release_radar`, `/upcoming_tv_shows`) | Find a new TV-series premiere in a bounded future window, exclude unwanted genres such as Animation, maintain a rolling Canvas page per primary genre, and optionally email the pick with shared cross-genre deduplication | get_time, stash, tmdb_tv_shows, optional brave_llm_context, canvas, optional send_email |
 | `/weather_watch`, `/garden_watch` | Weather watch for default location (`JARVIS_DEFAULT_LOCATION`); alerts for cold, wind, heat, or severe conditions | get_time, weather, create_alert, canvas |
 | `/url_ingest <url>` | Crawl URL, create intel file, ingest to memory | crawl_url, stash, text_summarizer, manage_intel, ingest_intel |
