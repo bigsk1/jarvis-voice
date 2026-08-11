@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from api.managers.scheduled_task_manager import ScheduledTaskManager
 from api.managers import scheduled_task_manager as scheduled_task_manager_module
+from api.managers.scheduled_task_manager import ScheduledTaskManager
 from services import scheduled_task_runner
 
 
@@ -45,6 +45,32 @@ def test_workflow_task_preserves_optional_query_input(tmp_path, monkeypatch):
     assert payload["query"] == "https://example.com/research"
     assert payload["when_original"] == "now"
     assert payload["schedule_summary"] == "Once immediately"
+
+
+def test_workflow_task_preserves_every_week_on_weekday_recurrence(tmp_path, monkeypatch):
+    manager = _manager(tmp_path)
+    monkeypatch.setattr(
+        ScheduledTaskManager,
+        "_resolve_workflow_id",
+        staticmethod(lambda workflow_id, **_kwargs: workflow_id),
+    )
+
+    task_id = manager.create_task(
+        name="Upcoming Movies Emailed",
+        task_type="workflow",
+        workflow_id="upcoming_movie_radar",
+        query="science fiction, exclude animation and anime, next 90 days, email",
+        when="every week on friday at 10am",
+        timezone_name="America/Los_Angeles",
+    )
+
+    task = manager.get_task(task_id)
+    payload = json.loads(task["task_payload"])
+
+    assert task["schedule_type"] == "weekly"
+    assert json.loads(task["schedule_expr"]) == {"days": [4], "hour": 10, "minute": 0}
+    assert payload["when_original"] == "every week on friday at 10am"
+    assert payload["schedule_summary"] == "Every Friday at 10:00 AM"
 
 
 def test_workflow_task_update_preserves_query_input(tmp_path, monkeypatch):

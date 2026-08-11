@@ -22,7 +22,6 @@ from time_utils import (
     replace_day_safe,
 )
 
-
 WEEKDAY_MAP = {
     "monday": 0, "mon": 0,
     "tuesday": 1, "tue": 1, "tues": 1,
@@ -254,7 +253,10 @@ def parse_schedule_expression(when: str, tz_name: str | None = None, default_hou
         }
 
     for day_name, day_num in WEEKDAY_MAP.items():
-        if re.search(rf"every\s+{day_name}\b", text):
+        if re.search(
+            rf"(?:every\s+(?:week\s+on\s+)?|weekly\s+(?:on\s+)?){day_name}\b",
+            text,
+        ):
             hour, minute = extract_time_from_expression(text, default_hour)
             expr = {"days": [day_num], "hour": hour, "minute": minute}
             return {
@@ -406,6 +408,9 @@ def parse_schedule_expression(when: str, tz_name: str | None = None, default_hou
             "next_run_at": run_at_utc,
             "summary": f"Once on day {day} at {_format_human_time(hour, minute)}",
         }
+
+    if re.match(r"^(?:every|weekly)\b", text):
+        raise ValueError(f"Could not parse recurring schedule expression: {when}")
 
     if re.search(r"(\d+)(?::(\d+))?\s*(am|pm)\b", text):
         hour, minute = extract_time_from_expression(text, default_hour)

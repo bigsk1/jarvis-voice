@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "orchestrator"))
 
 from workflow_loader import WorkflowLoader  # noqa: E402
 
+from orchestrator.pipeline_executor import PipelineExecutor  # noqa: E402
 from orchestrator.workflow_availability import check_workflow_availability  # noqa: E402
 
 
@@ -55,6 +56,13 @@ def test_radar_is_explicit_tmdb_first_and_requires_genre_filters():
     assert discover["params"]["new_releases_only"] is True
     assert discover["params"]["exclude_movie_ids"] == "${notified_movie_ids}"
     assert discover["extract"]["top_tmdb_id"] == "results[0].tmdb_id"
+    assert (
+        discover["extract"]["primary_radar_genre"]
+        == "selection_criteria.genres[0]"
+    )
+    assert discover["set_variables_on_success"] == {
+        "radar_title": "${radar_title_prefix}/${primary_radar_genre}"
+    }
 
 
 def test_radar_uses_persistent_sent_history_and_acknowledges_only_sent_email():
@@ -90,10 +98,18 @@ def test_radar_uses_persistent_sent_history_and_acknowledges_only_sent_email():
     }
 
 
-def test_radar_updates_one_canvas_page_with_bounded_history():
+def test_radar_routes_each_primary_genre_to_its_own_bounded_canvas_page():
     workflow = _workflow()
     canvas_steps = [step for step in workflow["steps"] if step["tool"] == "canvas"]
     assert [step.get("action") for step in canvas_steps] == ["read", "create", "update"]
+    discover = _step(workflow, "tmdb_movies")
+    assert workflow["steps"].index(discover) < workflow["steps"].index(canvas_steps[0])
+    assert workflow["variables"]["radar_title_prefix"]["value"] == (
+        "Workflows/Upcoming Movie Radar"
+    )
+    assert canvas_steps[0]["params"]["search"] == "${radar_title}"
+    assert canvas_steps[1]["params"]["title"] == "${radar_title}"
+    assert canvas_steps[2]["params"]["title"] == "${radar_title}"
     assert canvas_steps[1]["condition"] == {
         "op": "not_exists",
         "left": "${existing_radar_page_id}",
@@ -108,6 +124,42 @@ def test_radar_updates_one_canvas_page_with_bounded_history():
     assert "complete replacement Markdown" in canvas_steps[2]["llm_prompt"]
     assert "no more than eight prior dated picks" in canvas_steps[2]["llm_prompt"]
     assert "Do not describe it as a personalized AI ranking" in canvas_steps[1]["llm_prompt"]
+    assert "# Upcoming Movie Radar: ${primary_radar_genre}" in (
+        canvas_steps[1]["llm_prompt"]
+    )
+    assert "do not merge another genre page" in canvas_steps[2]["llm_prompt"]
+
+
+def test_radar_builds_canvas_title_from_tmdb_resolved_primary_genre():
+    workflow = _workflow()
+    discover = _step(workflow, "tmdb_movies")
+    executor = PipelineExecutor.__new__(PipelineExecutor)
+    variables = {
+        "radar_title_prefix": "Workflows/Upcoming Movie Radar",
+        "primary_radar_genre": "not returned",
+    }
+
+    executor._apply_output_transforms(
+        discover,
+        {
+            "ok": True,
+            "data": {
+                "selection_criteria": {"genres": ["Science Fiction"]},
+                "results": [{"tmdb_id": 123, "title": "Example"}],
+            },
+        },
+        variables,
+        "tmdb_movies",
+        "discover",
+    )
+    executor._apply_variable_assignments(
+        discover["set_variables_on_success"], variables
+    )
+
+    assert variables["primary_radar_genre"] == "Science Fiction"
+    assert variables["radar_title"] == (
+        "Workflows/Upcoming Movie Radar/Science Fiction"
+    )
 
 
 def test_radar_remains_available_without_optional_context_or_email_tool():
