@@ -5,13 +5,16 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 sys.path.insert(0, str(PROJECT_ROOT / "orchestrator"))
 
 from orchestrator_v2 import Orchestrator
 from response_formatter import ResponseFormatter
+from tts_normalizer import XAI_INLINE_SPEECH_TAGS, XAI_WRAPPING_SPEECH_TAGS
 
 
 class _FailIfCalledProvider:
@@ -31,6 +34,37 @@ class _ErrorProvider:
 
 
 class ResponseFormatterTests(unittest.TestCase):
+    def test_xai_tts_instruction_exposes_full_supported_vocabulary_only_for_xai(self):
+        formatter = ResponseFormatter(
+            provider=_FailIfCalledProvider(),
+            prompt_override=None,
+            extract_useful_data_fn=lambda _data: "",
+        )
+
+        with patch(
+            "response_formatter.get_config_value",
+            side_effect=lambda key, default="": {
+                "TTS_PROVIDER": "xai",
+                "XAI_TTS_STYLE_TAGS_ENABLED": "true",
+            }.get(key, default),
+        ):
+            instruction = formatter.xai_tts_style_tags_instruction()
+
+        for tag in XAI_INLINE_SPEECH_TAGS:
+            self.assertIn(f"[{tag}]", instruction)
+        for tag in XAI_WRAPPING_SPEECH_TAGS:
+            self.assertIn(f"<{tag}>...</{tag}>", instruction)
+        self.assertNotIn("<shout>", instruction)
+
+        with patch(
+            "response_formatter.get_config_value",
+            side_effect=lambda key, default="": {
+                "TTS_PROVIDER": "openai",
+                "XAI_TTS_STYLE_TAGS_ENABLED": "true",
+            }.get(key, default),
+        ):
+            self.assertEqual(formatter.xai_tts_style_tags_instruction(), "")
+
     def test_single_turn_short_response_passthrough(self):
         formatter = ResponseFormatter(
             provider=_FailIfCalledProvider(),

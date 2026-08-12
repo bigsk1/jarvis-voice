@@ -23,6 +23,7 @@ from config_loader import get_config_value  # noqa: E402
 import router_prompts  # noqa: E402
 from router_prompts import _validate_router_prompts, get_router_system_prompt  # noqa: E402
 from router_v2 import LLMRouter  # noqa: E402
+from tts_normalizer import XAI_INLINE_SPEECH_TAGS, XAI_WRAPPING_SPEECH_TAGS  # noqa: E402
 
 
 V1_SHA256 = "6c2ecbb0c032af7f7ffc70b6d093d11e918230e31ef4ddb7bfffadf9f4b4efc1"
@@ -362,6 +363,42 @@ def test_runtime_prompt_routes_live_flight_status_through_generic_web_search(ver
     assert "airline name, flight number, and current local date" in prompt
     assert "Do not use flight_search" in prompt
     assert "say so rather than guessing" in prompt
+
+
+def test_runtime_prompt_exposes_full_xai_tts_vocabulary_only_when_selected():
+    provider = MagicMock(model="test-model")
+
+    def build_prompt(tts_provider):
+        def get_config(key, default=None):
+            return {
+                "JARVIS_ROUTER_PROMPT_VERSION": "v4",
+                "JARVIS_TIMEZONE": "UTC",
+                "JARVIS_RESPONSE_STYLE": "casual",
+                "LLM_PROVIDER": "xai",
+                "TTS_PROVIDER": tts_provider,
+                "XAI_TTS_STYLE_TAGS_ENABLED": "true",
+            }.get(key, default)
+
+        with (
+            patch("router_v2.load_config"),
+            patch("router_v2.get_config_value", side_effect=get_config),
+            patch.object(LLMRouter, "_create_provider", return_value=provider),
+            patch("router_v2.load_model_prompt_override", return_value=None),
+            patch(
+                "router_v2.append_profile_card_for_router_direct_answer",
+                side_effect=lambda prompt: prompt,
+            ),
+        ):
+            return LLMRouter(mode="cloud", registry=MagicMock()).system_prompt
+
+    xai_prompt = build_prompt("xai")
+    for tag in XAI_INLINE_SPEECH_TAGS:
+        assert f"[{tag}]" in xai_prompt
+    for tag in XAI_WRAPPING_SPEECH_TAGS:
+        assert f"<{tag}>...</{tag}>" in xai_prompt
+    assert "<shout>" not in xai_prompt
+
+    assert "xAI TTS is active" not in build_prompt("openai")
 
 
 def test_web_ui_exposes_and_scopes_router_prompt_override():

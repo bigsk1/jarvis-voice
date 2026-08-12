@@ -834,7 +834,9 @@ RESPONSE STYLE: DETAILED (for display/reading - NOT voice synthesis)
             xai_tts_style_note = ""
             if xai_tts_style_tags_enabled:
                 xai_tts_style_note = """
-- xAI TTS is active: you may use a few supported speech tags sparingly in the final spoken answer when they improve delivery: [pause], [long-pause], [laugh], [chuckle], [sigh], [breath], <soft>...</soft>, <whisper>...</whisper>, <slow>...</slow>, <emphasis>...</emphasis>
+- xAI TTS is active: you may use supported speech tags sparingly in the final spoken answer when they improve delivery
+- Inline sounds: [pause], [long-pause], [hum-tune], [laugh], [chuckle], [giggle], [cry], [tsk], [tongue-click], [lip-smack], [breath], [inhale], [exhale], [sigh]
+- Wrapping styles: <soft>...</soft>, <whisper>...</whisper>, <loud>...</loud>, <build-intensity>...</build-intensity>, <decrease-intensity>...</decrease-intensity>, <higher-pitch>...</higher-pitch>, <lower-pitch>...</lower-pitch>, <slow>...</slow>, <fast>...</fast>, <sing-song>...</sing-song>, <singing>...</singing>, <laugh-speak>...</laugh-speak>, <emphasis>...</emphasis>
 - Use exact tag syntax: inline tags use square brackets like [pause]; wrapping tags use angle brackets like <slow>text</slow>
 - Speech tags are final-answer-only. Never put them in tool arguments, code, URLs, filenames, IDs, prices, data tables, or factual lists. Do not tag every sentence.
 """
