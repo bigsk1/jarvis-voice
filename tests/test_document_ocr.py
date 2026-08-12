@@ -74,6 +74,7 @@ def test_manifest_is_optional_network_file_tool():
         "extract",
         "archive",
     }
+    assert manifest["parameters"]["additionalProperties"] is False
 
 
 @pytest.mark.parametrize(
@@ -109,6 +110,18 @@ def test_direct_input_path_uses_shared_file_policy(input_pdf):
         document_ocr._resolve_input_path(
             {"file_path": str(ROOT / "config" / "cloud.env.example")}
         )
+
+
+def test_input_sources_are_mutually_exclusive(input_pdf):
+    with pytest.raises(ValueError, match="exactly one input source"):
+        document_ocr._resolve_input_path(
+            {
+                "file_path": str(input_pdf),
+                "stash_ref": "stash://uploads/scan",
+            }
+        )
+    with pytest.raises(ValueError, match="must be provided together"):
+        document_ocr._resolve_input_path({"space_id": "uploads"})
 
 
 def test_ocr_preflights_uploads_and_returns_stash_refs(input_pdf):
@@ -228,6 +241,137 @@ def test_extract_sends_strict_json_contract_and_preserves_parsed_result(input_pd
     assert result["data"]["stash_ref"] == "stash://space_extract/output"
 
 
+def test_page_scoped_json_returns_bounded_objects_and_primary_artifact(input_pdf):
+    pages = [
+        {
+            "page_number": page_number,
+            "output": json.dumps({"invoice_number": f"INV-{page_number:03d}"}),
+            "parsed_json": {"invoice_number": f"INV-{page_number:03d}"},
+            "elapsed_seconds": 0.25,
+        }
+        for page_number in range(1, 13)
+    ]
+    payload = {
+        "request_id": "gen-pages",
+        "filename": "scan.pdf",
+        "scope": "page",
+        "response_format": "json",
+        "pages": pages,
+        "pages_processed": len(pages),
+        "total_pages": len(pages),
+    }
+    space = SimpleNamespace(space_id="space_extract")
+    with (
+        patch("document_ocr._resolve_input_path", return_value=input_pdf),
+        patch("document_ocr._ready_preflight"),
+        patch("document_ocr._request_json", return_value=payload),
+        patch("document_ocr._output_space", return_value=space),
+        patch(
+            "document_ocr._save_json",
+            side_effect=[
+                "stash://space_extract/page-results",
+                "stash://space_extract/response",
+            ],
+        ) as save_json,
+    ):
+        result = document_ocr.action_extract(
+            {
+                "prompt": "Extract the invoice number.",
+                "scope": "page",
+                "response_format": "json",
+            }
+        )
+
+    data = result["data"]
+    assert data["page_outputs_total"] == 12
+    assert data["page_outputs_included"] == document_ocr.MAX_INLINE_PAGE_ITEMS
+    assert data["page_outputs_truncated"] is True
+    assert data["page_outputs_notice"] == (
+        "Additional page results are available in the Stash artifacts."
+    )
+    assert data["page_outputs"][0]["parsed_json"] == {"invoice_number": "INV-001"}
+    assert (
+        document_ocr._compact_json_size(data["page_outputs"])
+        <= document_ocr.MAX_INLINE_PAGE_OUTPUT_CHARS
+    )
+    assert data["page_results_stash_ref"] == "stash://space_extract/page-results"
+    assert data["output_stash_ref"] == "stash://space_extract/page-results"
+    assert data["stash_ref"] == "stash://space_extract/page-results"
+    primary_payload = save_json.call_args_list[0].args[1]
+    assert primary_payload["scope"] == "page"
+    assert primary_payload["pages"][0]["parsed_json"] == {
+        "invoice_number": "INV-001"
+    }
+    assert "output" not in primary_payload["pages"][0]
+    assert len(primary_payload["pages"]) == 12
+    assert save_json.call_args_list[1].args[1] is payload
+
+
+def test_large_page_json_uses_truthful_omission_notice_without_stash(input_pdf):
+    large_json = {"lines": ["recognized content" * 50] * 20}
+    payload = {
+        "scope": "page",
+        "response_format": "json",
+        "pages": [
+            {
+                "page_number": 1,
+                "output": json.dumps(large_json),
+                "parsed_json": large_json,
+            }
+        ],
+    }
+    with (
+        patch("document_ocr._resolve_input_path", return_value=input_pdf),
+        patch("document_ocr._ready_preflight"),
+        patch("document_ocr._request_json", return_value=payload),
+    ):
+        result = document_ocr.action_extract(
+            {
+                "prompt": "Extract the page as JSON.",
+                "scope": "page",
+                "response_format": "json",
+                "save_to_stash": False,
+            }
+        )
+
+    data = result["data"]
+    assert data["page_outputs_truncated"] is True
+    assert data["page_outputs_notice"] == (
+        "Additional page results were omitted and were not saved."
+    )
+    assert data["page_outputs"][0]["parsed_json_omitted"] is True
+    assert "full result not saved" in data["page_outputs"][0]["output_excerpt"]
+    assert (
+        document_ocr._compact_json_size(data["page_outputs"])
+        <= document_ocr.MAX_INLINE_PAGE_OUTPUT_CHARS
+    )
+
+
+def test_no_stash_truncation_notice_is_truthful(input_pdf):
+    payload = {
+        "scope": "document",
+        "response_format": "text",
+        "output": "x" * (document_ocr.INLINE_EXCERPT_CHARS + 100),
+        "pages": [],
+    }
+    with (
+        patch("document_ocr._resolve_input_path", return_value=input_pdf),
+        patch("document_ocr._ready_preflight"),
+        patch("document_ocr._request_json", return_value=payload),
+    ):
+        result = document_ocr.action_extract(
+            {
+                "prompt": "Summarize.",
+                "save_to_stash": False,
+            }
+        )
+
+    excerpt = result["data"]["output_excerpt"]
+    assert len(excerpt) <= document_ocr.INLINE_EXCERPT_CHARS
+    assert "full result not saved" in excerpt
+    assert "full result saved to Stash" not in excerpt
+
+
 def test_schema_requires_json_response_format(input_pdf):
     with patch("document_ocr._resolve_input_path", return_value=input_pdf), patch(
         "document_ocr._ready_preflight"
@@ -257,14 +401,15 @@ def test_preflight_failure_prevents_document_upload(input_pdf):
     request_json.assert_not_called()
 
 
-def test_post_timeout_is_retryable_but_not_retried(monkeypatch):
+def test_post_timeout_is_not_retryable_and_not_retried(monkeypatch):
     monkeypatch.setenv("OVIS_OCR_URL", "http://ocr.example.test:17860")
     with patch("document_ocr.requests.request", side_effect=requests.Timeout()) as request:
         with pytest.raises(document_ocr.OvisToolError) as error:
             document_ocr._request_json("POST", "/v1/ocr", files={}, data={})
     assert error.value.code == "ovis_timeout"
-    assert error.value.retryable is True
+    assert error.value.retryable is False
     request.assert_called_once()
+    assert request.call_args.kwargs["allow_redirects"] is False
 
 
 def test_generate_backend_unavailable_preserves_service_error_code(monkeypatch):
@@ -285,6 +430,49 @@ def test_generate_backend_unavailable_preserves_service_error_code(monkeypatch):
     assert error.value.code == "generate_backend_unavailable"
     assert error.value.retryable is True
     assert "generation backend" in str(error.value)
+
+
+@pytest.mark.parametrize(
+    ("status_code", "code"),
+    (
+        (502, "invalid_model_output"),
+        (502, "invalid_backend_response"),
+        (504, "generate_backend_timeout"),
+    ),
+)
+def test_ambiguous_or_invalid_generation_failures_are_not_retryable(
+    monkeypatch, status_code, code
+):
+    monkeypatch.setenv("OVIS_OCR_URL", "http://ocr.example.test:17860")
+    response = FakeResponse(
+        status_code=status_code,
+        payload={"detail": {"code": code, "message": "Generation failed."}},
+    )
+    with patch("document_ocr.requests.request", return_value=response):
+        with pytest.raises(document_ocr.OvisToolError) as error:
+            document_ocr._request_json("POST", "/v1/generate", files={}, data={})
+    assert error.value.code == code
+    assert error.value.retryable is False
+
+
+def test_server_busy_preserves_retry_after(monkeypatch):
+    monkeypatch.setenv("OVIS_OCR_URL", "http://ocr.example.test:17860")
+    response = FakeResponse(
+        status_code=503,
+        payload={
+            "detail": {
+                "code": "server_busy",
+                "message": "The OCR worker is busy.",
+            }
+        },
+        headers={"Retry-After": "5"},
+    )
+    with patch("document_ocr.requests.request", return_value=response):
+        with pytest.raises(document_ocr.OvisToolError) as error:
+            document_ocr._request_json("POST", "/v1/ocr", files={}, data={})
+    assert error.value.code == "server_busy"
+    assert error.value.retryable is True
+    assert error.value.retry_after_seconds == 5
 
 
 def test_archive_is_always_saved_to_stash(input_pdf):
@@ -308,6 +496,15 @@ def test_archive_is_always_saved_to_stash(input_pdf):
         "application/zip",
         ["document_ocr", "ocr", "archive"],
     )
+
+
+def test_archive_upload_does_not_follow_redirects(monkeypatch):
+    monkeypatch.setenv("OVIS_OCR_URL", "http://ocr.example.test:17860")
+    response = FakeResponse(body=b"PK archive")
+    with patch("document_ocr.requests.post", return_value=response) as post:
+        archive = document_ocr._request_archive("/v1/ocr/archive", files={}, data={})
+    assert archive == b"PK archive"
+    assert post.call_args.kwargs["allow_redirects"] is False
 
 
 def test_status_collects_health_readiness_and_capabilities():

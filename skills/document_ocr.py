@@ -34,8 +34,10 @@ MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 MAX_JSON_RESPONSE_BYTES = 25 * 1024 * 1024
 MAX_ARCHIVE_RESPONSE_BYTES = 100 * 1024 * 1024
 MAX_ERROR_RESPONSE_BYTES = 64 * 1024
-INLINE_EXCERPT_CHARS = 6000
-MAX_INLINE_STRUCTURED_CHARS = 12000
+INLINE_EXCERPT_CHARS = 4000
+MAX_INLINE_STRUCTURED_CHARS = 4000
+MAX_INLINE_PAGE_OUTPUT_CHARS = 4000
+MAX_INLINE_PAGE_ITEMS = 10
 SUPPORTED_EXTENSIONS = {
     ".pdf",
     ".png",
@@ -51,10 +53,18 @@ SUPPORTED_EXTENSIONS = {
 class OvisToolError(RuntimeError):
     """A safe, user-facing OVIS client error."""
 
-    def __init__(self, message: str, *, code: str = "ovis_error", retryable: bool = False):
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "ovis_error",
+        retryable: bool = False,
+        retry_after_seconds: int | None = None,
+    ):
         super().__init__(message)
         self.code = code
         self.retryable = retryable
+        self.retry_after_seconds = retry_after_seconds
 
 
 def _bounded_int_env(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -133,8 +143,29 @@ def _safe_error_from_response(response: requests.Response) -> OvisToolError:
         elif isinstance(detail, str) and detail.strip():
             message = detail.strip()[:1000]
 
-    retryable = response.status_code in {408, 425, 429, 502, 503, 504}
-    return OvisToolError(message, code=code, retryable=retryable)
+    retry_after_seconds: int | None = None
+    raw_retry_after = str(response.headers.get("Retry-After", "")).strip()
+    if raw_retry_after:
+        try:
+            retry_after_seconds = max(0, min(86400, int(raw_retry_after)))
+        except ValueError:
+            pass
+
+    # Structured OVIS codes are more informative than broad HTTP classes.
+    # In particular, 502 invalid output and 504 ambiguous backend timeouts
+    # should not encourage another expensive inference request.
+    if code in {"invalid_model_output", "invalid_backend_response", "generate_backend_timeout"}:
+        retryable = False
+    elif code in {"server_busy", "not_ready", "generate_backend_unavailable"}:
+        retryable = True
+    else:
+        retryable = response.status_code in {408, 425, 429, 503}
+    return OvisToolError(
+        message,
+        code=code,
+        retryable=retryable,
+        retry_after_seconds=retry_after_seconds,
+    )
 
 
 def _bounded_response_bytes(response: requests.Response, max_bytes: int) -> bytes:
@@ -181,12 +212,13 @@ def _request_json(
             data=data,
             timeout=timeout or _request_timeout(),
             stream=True,
+            allow_redirects=False,
         )
     except requests.Timeout as exc:
         raise OvisToolError(
             "The document OCR service timed out. The request was not retried.",
             code="ovis_timeout",
-            retryable=True,
+            retryable=method.upper() in {"GET", "HEAD"},
         ) from exc
     except requests.RequestException as exc:
         raise OvisToolError(
@@ -223,12 +255,13 @@ def _request_archive(endpoint: str, *, files: dict[str, Any], data: dict[str, An
             data=data,
             timeout=_request_timeout(),
             stream=True,
+            allow_redirects=False,
         )
     except requests.Timeout as exc:
         raise OvisToolError(
             "The document OCR archive request timed out. It was not retried.",
             code="ovis_timeout",
-            retryable=True,
+            retryable=False,
         ) from exc
     except requests.RequestException as exc:
         raise OvisToolError(
@@ -271,6 +304,23 @@ def _resolve_input_path(args: dict[str, Any]) -> Path:
     space_id = args.get("space_id")
     file_id = args.get("file_id")
 
+    if bool(space_id) != bool(file_id):
+        raise ValueError("space_id and file_id must be provided together.")
+
+    input_sources = [
+        label
+        for label, supplied in (
+            ("file_path", bool(file_path)),
+            ("stash_ref", bool(stash_ref)),
+            ("space_id/file_id", bool(space_id and file_id)),
+        )
+        if supplied
+    ]
+    if len(input_sources) != 1:
+        raise ValueError(
+            "Provide exactly one input source: file_path, stash_ref, or space_id with file_id."
+        )
+
     if file_path:
         path = resolve_local_file_tool_path(file_path, include_pictures=True)
     elif stash_ref:
@@ -278,10 +328,8 @@ def _resolve_input_path(args: dict[str, Any]) -> Path:
         if not result.get("found"):
             raise ValueError(result.get("error") or f"Stash file not found: {stash_ref}")
         path = Path(str(result["path"])).resolve()
-    elif space_id and file_id:
-        path = Path(resolve_file_path(space_id=str(space_id), file_id=str(file_id))).resolve()
     else:
-        raise ValueError("Provide stash_ref, space_id with file_id, or file_path.")
+        path = Path(resolve_file_path(space_id=str(space_id), file_id=str(file_id))).resolve()
 
     if not path.exists() or not path.is_file():
         raise ValueError(f"Input file not found: {path.name}")
@@ -384,13 +432,121 @@ def _save_binary(space, content: bytes, name: str, mime_type: str, tags: list[st
     return result["ref"]
 
 
-def _excerpt(value: Any, limit: int = INLINE_EXCERPT_CHARS) -> str | None:
+def _excerpt(
+    value: Any,
+    limit: int = INLINE_EXCERPT_CHARS,
+    *,
+    full_result_saved: bool = True,
+) -> str | None:
     if value in (None, ""):
         return None
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
     if len(text) <= limit:
         return text
-    return text[: max(0, limit - 44)].rstrip() + "\n...[truncated; full result saved to Stash]"
+    suffix = (
+        "\n...[truncated; full result saved to Stash]"
+        if full_result_saved
+        else "\n...[truncated; full result not saved; set save_to_stash=true]"
+    )
+    if limit <= len(suffix):
+        return suffix[:limit]
+    return text[: limit - len(suffix)].rstrip() + suffix
+
+
+def _compact_json_size(value: Any) -> int:
+    return len(json.dumps(value, ensure_ascii=False, default=str, separators=(",", ":")))
+
+
+def _bounded_page_outputs(
+    pages: Any,
+    *,
+    response_format: str,
+    full_result_saved: bool,
+) -> tuple[list[dict[str, Any]], int, bool]:
+    """Build complete, page-attributed previews under one shared result budget."""
+    valid_pages = [page for page in pages if isinstance(page, dict)] if isinstance(pages, list) else []
+    previews: list[dict[str, Any]] = []
+    content_omitted = False
+
+    for page in valid_pages:
+        if len(previews) >= MAX_INLINE_PAGE_ITEMS:
+            content_omitted = True
+            break
+
+        entry = {
+            key: page.get(key)
+            for key in ("page_number", "elapsed_seconds")
+            if page.get(key) is not None
+        }
+        parsed_json = page.get("parsed_json")
+        if response_format == "json" and parsed_json is not None:
+            complete_entry = {**entry, "parsed_json": parsed_json}
+            if _compact_json_size(previews + [complete_entry]) <= MAX_INLINE_PAGE_OUTPUT_CHARS:
+                entry = complete_entry
+            else:
+                content_omitted = True
+                entry["parsed_json_omitted"] = True
+                excerpt = _excerpt(
+                    page.get("output"),
+                    600,
+                    full_result_saved=full_result_saved,
+                )
+                if excerpt is not None:
+                    entry["output_excerpt"] = excerpt
+        else:
+            excerpt = _excerpt(
+                page.get("output"),
+                1200,
+                full_result_saved=full_result_saved,
+            )
+            if excerpt is not None:
+                entry["output_excerpt"] = excerpt
+                raw_output = page.get("output")
+                if isinstance(raw_output, str) and len(raw_output) > 1200:
+                    content_omitted = True
+
+        if _compact_json_size(previews + [entry]) > MAX_INLINE_PAGE_OUTPUT_CHARS:
+            content_omitted = True
+            break
+        previews.append(entry)
+
+    if len(previews) < len(valid_pages):
+        content_omitted = True
+    return previews, len(valid_pages), content_omitted
+
+
+def _page_results_artifact(
+    payload: dict[str, Any],
+    pages: list[dict[str, Any]],
+    response_format: str,
+) -> dict[str, Any]:
+    """Return a clean primary artifact for page-scoped extraction results."""
+    artifact_pages: list[dict[str, Any]] = []
+    for page in pages:
+        item = {
+            key: page.get(key)
+            for key in ("page_number", "elapsed_seconds")
+            if page.get(key) is not None
+        }
+        if response_format == "json" and page.get("parsed_json") is not None:
+            item["parsed_json"] = page["parsed_json"]
+        elif page.get("output") is not None:
+            item["output"] = page["output"]
+        artifact_pages.append(item)
+
+    return {
+        key: value
+        for key, value in {
+            "request_id": payload.get("request_id"),
+            "filename": payload.get("filename"),
+            "scope": "page",
+            "response_format": response_format,
+            "pages_processed": payload.get("pages_processed"),
+            "total_pages": payload.get("total_pages"),
+            "pages": artifact_pages,
+        }.items()
+        if value is not None
+    }
 
 
 def _common_metadata(payload: dict[str, Any]) -> dict[str, Any]:
@@ -466,6 +622,7 @@ def action_status(_args: dict[str, Any]) -> dict[str, Any]:
 
 def action_ocr(args: dict[str, Any]) -> dict[str, Any]:
     source = _resolve_input_path(args)
+    save_to_stash = bool(args.get("save_to_stash", True))
     _ready_preflight()
     form = _page_form(args)
     _add_max_new_tokens(form, args)
@@ -479,20 +636,26 @@ def action_ocr(args: dict[str, Any]) -> dict[str, Any]:
 
     markdown = str(payload.get("markdown") or "")
     data = {"action": "ocr", **_common_metadata(payload)}
-    data["markdown_excerpt"] = _excerpt(markdown)
+    data["markdown_excerpt"] = _excerpt(
+        markdown,
+        full_result_saved=save_to_stash,
+    )
     pages = payload.get("pages")
     if isinstance(pages, list):
+        valid_pages = [page for page in pages if isinstance(page, dict)]
         data["pages"] = [
             {
                 key: page[key]
                 for key in ("page_number", "elapsed_seconds")
-                if isinstance(page, dict) and page.get(key) is not None
+                if page.get(key) is not None
             }
-            for page in pages[:100]
-            if isinstance(page, dict)
+            for page in valid_pages[:MAX_INLINE_PAGE_ITEMS]
         ]
+        data["page_summaries_total"] = len(valid_pages)
+        data["page_summaries_included"] = len(data["pages"])
+        data["page_summaries_truncated"] = len(data["pages"]) < len(valid_pages)
 
-    if args.get("save_to_stash", True):
+    if save_to_stash:
         space = _output_space(args)
         base = _output_base_name(args, source)
         data["markdown_stash_ref"] = _save_text(
@@ -540,6 +703,7 @@ def _validated_json_schema(value: Any) -> str | None:
 
 def action_extract(args: dict[str, Any]) -> dict[str, Any]:
     source = _resolve_input_path(args)
+    save_to_stash = bool(args.get("save_to_stash", True))
     prompt = str(args.get("prompt") or "").strip()
     if not prompt:
         raise ValueError("prompt is required for action=extract.")
@@ -572,32 +736,54 @@ def action_extract(args: dict[str, Any]) -> dict[str, Any]:
     output = payload.get("output")
     parsed_json = payload.get("parsed_json")
     data = {"action": "extract", **_common_metadata(payload)}
-    data["output_excerpt"] = _excerpt(output)
     if parsed_json is not None:
         encoded = json.dumps(parsed_json, ensure_ascii=False, default=str)
         if len(encoded) <= MAX_INLINE_STRUCTURED_CHARS:
             data["parsed_json"] = parsed_json
         else:
-            data["parsed_json_excerpt"] = _excerpt(parsed_json)
+            data["parsed_json_excerpt"] = _excerpt(
+                parsed_json,
+                full_result_saved=save_to_stash,
+            )
+    else:
+        data["output_excerpt"] = _excerpt(
+            output,
+            full_result_saved=save_to_stash,
+        )
 
     pages = payload.get("pages")
     if isinstance(pages, list):
-        data["page_outputs"] = [
-            {
-                "page_number": page.get("page_number"),
-                "output_excerpt": _excerpt(page.get("output"), 1200),
-                "elapsed_seconds": page.get("elapsed_seconds"),
-            }
-            for page in pages[:100]
-            if isinstance(page, dict)
-        ]
+        page_outputs, page_outputs_total, page_outputs_truncated = _bounded_page_outputs(
+            pages,
+            response_format=response_format,
+            full_result_saved=save_to_stash,
+        )
+        data["page_outputs"] = page_outputs
+        data["page_outputs_total"] = page_outputs_total
+        data["page_outputs_included"] = len(page_outputs)
+        data["page_outputs_truncated"] = page_outputs_truncated
+        if page_outputs_truncated:
+            data["page_outputs_notice"] = (
+                "Additional page results are available in the Stash artifacts."
+                if save_to_stash
+                else "Additional page results were omitted and were not saved."
+            )
 
-    if args.get("save_to_stash", True):
+    if save_to_stash:
         space = _output_space(args)
         base = _output_base_name(args, source)
         extension = {"text": "txt", "markdown": "md", "json": "json"}[response_format]
         primary_ref: str | None = None
-        if response_format == "json" and parsed_json is not None:
+        valid_pages = [page for page in pages if isinstance(page, dict)] if isinstance(pages, list) else []
+        if scope == "page" and valid_pages:
+            primary_ref = _save_json(
+                space,
+                _page_results_artifact(payload, valid_pages, response_format),
+                f"{base}_extracted_pages.json",
+                ["document_ocr", "extract", response_format, "pages"],
+            )
+            data["page_results_stash_ref"] = primary_ref
+        elif response_format == "json" and parsed_json is not None:
             primary_ref = _save_json(
                 space,
                 parsed_json,
@@ -692,17 +878,20 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False))
         return 0
     except OvisToolError as exc:
+        error_data = {
+            "action": str(locals().get("args", {}).get("action", "ocr")),
+            "error_code": exc.code,
+            "retryable": exc.retryable,
+        }
+        if exc.retry_after_seconds is not None:
+            error_data["retry_after_seconds"] = exc.retry_after_seconds
         print(
             json.dumps(
                 {
                     "ok": False,
                     "speech": str(exc),
                     "error": str(exc),
-                    "data": {
-                        "action": str(locals().get("args", {}).get("action", "ocr")),
-                        "error_code": exc.code,
-                        "retryable": exc.retryable,
-                    },
+                    "data": error_data,
                 },
                 ensure_ascii=False,
             )

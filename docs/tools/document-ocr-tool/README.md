@@ -22,10 +22,10 @@ Jarvis does not need `OVIS_GENERATE_BACKEND`, the Ollama URL/model, or an OpenAI
 
 - `status` checks `/health/live`, `/health/ready`, and `/v1/capabilities`. It reports model/device state and whether structured extraction is configured.
 - `ocr` calls `/v1/ocr` and returns a bounded Markdown excerpt plus page/model/timing metadata. Full Markdown and service JSON are saved to Stash by default.
-- `extract` calls `/v1/generate`. OVIS first runs fixed-prompt OvisOCR2 OCR, then applies `prompt` through the text backend configured on the OVIS host. It supports document/page scope and text, Markdown, or JSON output. For strict JSON, send `response_format=json` and `json_schema`.
+- `extract` calls `/v1/generate`. OVIS first runs fixed-prompt OvisOCR2 OCR, then applies `prompt` through the text backend configured on the OVIS host. It supports document/page scope and text, Markdown, or JSON output. For strict JSON, send `response_format=json` and `json_schema`. Page-scoped extraction returns bounded, page-attributed inline results and saves a clean page-results JSON artifact in addition to the complete service envelope.
 - `archive` calls `/v1/ocr/archive` and saves the returned ZIP to Stash.
 
-The tool accepts PDF, PNG, JPEG, WebP, BMP, and TIFF inputs through `stash_ref`, `space_id` plus `file_id`, or a policy-approved `file_path`. Web uploads should use their `stash://...` reference.
+The tool accepts PDF, PNG, JPEG, WebP, BMP, and TIFF inputs through exactly one of `stash_ref`, `space_id` plus `file_id`, or a policy-approved `file_path`. Conflicting sources are rejected instead of silently selecting one. Web uploads should use their `stash://...` reference.
 
 Example strict extraction arguments:
 
@@ -53,9 +53,26 @@ Example strict extraction arguments:
 
 Before a document upload, Jarvis performs a short readiness check. A loading or unavailable service fails cleanly without attempting the upload. POST requests are not automatically retried because a timeout does not prove whether the remote inference completed.
 
+Jarvis also disables HTTP redirects for document requests. Configure
+`OVIS_OCR_URL` with the service's canonical root URL rather than relying on an
+HTTP redirect that could forward an uploaded document elsewhere.
+
 The HTTP read timeout defaults to 15 minutes and the Jarvis tool subprocess allows 20 minutes. Set `OVIS_OCR_TIMEOUT_SECONDS` between 10 and 1100 seconds for the deployment; the subprocess remains the outer bound.
 
-Inputs are limited to 50 MB. JSON responses are bounded to 25 MB and archives to 100 MB. Full successful content is stored as Stash artifacts while inline tool and Web follow-up context is deliberately truncated. This lets later turns answer questions about the OCR text without repeatedly placing an entire large document into routing prompts.
+Inputs are limited to 50 MB. JSON responses are bounded to 25 MB and archives to 100 MB. Full successful content is stored as Stash artifacts by default while inline tool and Web follow-up context is deliberately bounded. Page-scoped extraction uses one shared inline budget instead of multiplying a per-page excerpt by every selected page. If `save_to_stash=false`, truncation notices explicitly state that omitted content was not saved. This lets later turns answer questions about the OCR text without repeatedly placing an entire large document into routing prompts.
+
+`max_new_tokens` has action-specific budget semantics. OCR applies it per OCR
+page. Document-scoped extraction makes one generation call. Page-scoped
+extraction makes one call per selected page, so the selected page count times
+the effective token limit must fit the OVIS host's
+`max_generate_request_tokens` aggregate. Use `action=status` to inspect the
+active per-call and aggregate limits, and choose a narrow page range or smaller
+`max_new_tokens` for page scope.
+
+`include_region_data=true` embeds figure crops as Base64 data URLs and can
+exceed Jarvis's JSON response bound even when OVIS accepts the request. Use it
+only for narrow page ranges. Prefer `action=archive` when complete figure crops
+are needed; the ZIP is always saved to Stash.
 
 `document_ocr` does not call OVIS image-generation routes. The service's `/v1/generate` name refers to text instruction/extraction after OCR, not image generation.
 

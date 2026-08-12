@@ -1635,6 +1635,26 @@ def test_every_current_tool_payload_produces_bounded_followup_context(tool_name,
     assert len(encoded) <= 8000
 
 
+def test_document_ocr_followup_preserves_page_artifact_and_retry_guidance():
+    result = followup.extract_followup_data(
+        {
+            "document_ocr": {
+                "action": "extract",
+                "scope": "page",
+                "page_results_stash_ref": "stash://ocr/page-results",
+                "output_stash_ref": "stash://ocr/page-results",
+                "retryable": True,
+                "retry_after_seconds": 5,
+            }
+        }
+    )
+
+    compact = result["document_ocr"]
+    assert compact["page_results_stash_ref"] == "stash://ocr/page-results"
+    assert compact["retryable"] is True
+    assert compact["retry_after_seconds"] == 5
+
+
 def test_flight_search_followup_keeps_option_identity_without_nested_segments():
     payload, _ = LOCAL_TOOL_SAMPLES["flight_search"]
 

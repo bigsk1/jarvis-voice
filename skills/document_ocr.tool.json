@@ -20,7 +20,7 @@
       },
       "stash_ref": {
         "type": "string",
-        "description": "Input Stash URI such as stash://space_id/file_id. Required for ocr, extract, and archive unless space_id+file_id or file_path is provided."
+        "description": "Input Stash URI such as stash://space_id/file_id. Use exactly one input source: stash_ref, space_id+file_id, or file_path."
       },
       "space_id": {
         "type": "string",
@@ -32,7 +32,7 @@
       },
       "file_path": {
         "type": "string",
-        "description": "Policy-approved local PDF or image path. Prefer stash_ref for Web UI uploads."
+        "description": "Policy-approved local PDF or image path. Prefer stash_ref for Web UI uploads and do not combine this with another input source."
       },
       "page_start": {
         "type": "integer",
@@ -50,7 +50,7 @@
       },
       "include_region_data": {
         "type": "boolean",
-        "description": "Ask OVIS to include region metadata. Default false because region payloads can be large."
+        "description": "Ask OVIS to embed figure crops as Base64 data URLs in the full OCR JSON. Default false. Use only with a narrow page range; prefer action=archive for complete crop collections because Jarvis bounds JSON responses to 25 MB."
       },
       "prompt": {
         "type": "string",
@@ -75,11 +75,11 @@
         "type": "integer",
         "minimum": 1,
         "maximum": 16384,
-        "description": "Optional per-request output-token cap for OVIS OCR/extraction inference. The OVIS host may enforce a lower generation-backend limit."
+        "description": "Optional output-token cap. For OCR it applies per OCR page. For extract it applies to each generation-backend call and the host may impose a lower per-call limit. With scope=page, selected page count multiplied by the effective value must fit the host's aggregate max_generate_request_tokens budget; use a narrow page range or lower value. action=status reports the active limits."
       },
       "save_to_stash": {
         "type": "boolean",
-        "description": "Save full OCR/extraction outputs to Stash. Default true. Archive is always saved."
+        "description": "Save complete OCR/extraction outputs to Stash. Default true. When false, only bounded inline excerpts and structured page results that fit the shared preview budget are returned; omitted content is not recoverable. Archive is always saved."
       },
       "output_space_id": {
         "type": "string",
@@ -89,7 +89,8 @@
         "type": "string",
         "description": "Optional safe base filename for saved OCR outputs."
       }
-    }
+    },
+    "additionalProperties": false
   },
   "permissions": {
     "dangerous": false,

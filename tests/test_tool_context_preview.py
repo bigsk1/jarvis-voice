@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Tests for LLM tool-result preview truncation (orchestrator_v2)."""
 
+import json
 import sys
 import unittest
-import json
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "orchestrator"))
 
-from orchestrator_v2 import Orchestrator
+from orchestrator_v2 import Orchestrator  # noqa: E402
 
 
 class ToolContextPreviewTests(unittest.TestCase):
@@ -90,6 +90,46 @@ class ToolContextPreviewTests(unittest.TestCase):
         )
         self.assertNotIn("RAW_PAYLOAD_SENTINEL", preview)
         self.assertNotIn("SEGMENT_ARRAY_SENTINEL", preview)
+
+    def test_document_ocr_page_preview_fits_and_keeps_primary_artifact_reference(self):
+        result = {
+            "ok": True,
+            "speech": "Document extraction completed.",
+            "data": {
+                "action": "extract",
+                "scope": "page",
+                "response_format": "json",
+                "pages_processed": 50,
+                "total_pages": 50,
+                "page_outputs": [
+                    {
+                        "page_number": page_number,
+                        "parsed_json": {"text": "recognized content " * 18},
+                    }
+                    for page_number in range(1, 11)
+                ],
+                "page_outputs_total": 50,
+                "page_outputs_included": 10,
+                "page_outputs_truncated": True,
+                "page_outputs_notice": (
+                    "Additional page results are available in the Stash artifacts."
+                ),
+                "page_results_stash_ref": "stash://ocr/extracted-pages",
+                "output_stash_ref": "stash://ocr/extracted-pages",
+                "response_json_stash_ref": "stash://ocr/full-response",
+                "stash_ref": "stash://ocr/extracted-pages",
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "document_ocr", result
+        )
+
+        self.assertFalse(truncated)
+        self.assertLessEqual(shown, 6000)
+        self.assertIn("stash://ocr/extracted-pages", preview)
+        self.assertIn("page_results_stash_ref", preview)
+        self.assertIn("page_outputs_truncated", preview)
 
     def test_trakt_tv_preview_keeps_episode_runtime_and_show_handles(self):
         candidates = [
