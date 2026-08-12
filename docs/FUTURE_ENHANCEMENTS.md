@@ -503,6 +503,28 @@ If configurable UI ports become necessary, implement them as one shared public-U
 
 Do not make only the Canvas-to-Web port configurable; partial configuration would leave the other cross-UI links inconsistent.
 
+### 12) Streaming and Atomic Stash Ingestion
+**Priority:** Low / conditional on measured need
+
+Current Stash ingestion is intentionally simple and bounded: URL downloads,
+API uploads, local-file saves, and generated archives are materialized in
+memory before being written to their final Stash path. This is acceptable for
+the normal single-user, local-first deployment and current file-size limits.
+For example, joining a 100 MB OCR archive can briefly require a little over
+twice the archive size in memory, but that alone does not justify changing the
+core storage path.
+
+Revisit streaming ingestion only when there is measured memory pressure,
+regular several-hundred-megabyte artifacts, memory-constrained containers,
+concurrent callers, or public/multi-user uploads. The preferred design is one
+shared additive writer that streams into a same-directory partial file while
+enforcing size limits and calculating the hash, then atomically promotes the
+completed file and commits metadata. URL downloads, API uploads, local-file
+copies, and OCR archive responses could adopt it incrementally. Strict image
+processing remains separate because decoding and transformation still require
+bounded pixel memory. Very large media such as multi-gigabyte movies should use
+dedicated media storage or external object storage rather than normal Stash.
+
 ---
 
 ## 📊 Implementation Priority
@@ -526,6 +548,7 @@ Do not make only the Canvas-to-Web port configurable; partial configuration woul
 **Low Priority (Future):**
 - Smart home integration (optional)
 - Advanced visualizations
+- Streaming and atomic Stash ingestion, if large or concurrent workloads create measured pressure
 
 ---
 

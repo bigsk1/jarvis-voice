@@ -620,10 +620,15 @@ Delete spaces (single or expired).
 **Cleanup strategy (combined):**
 1. **Periodic job** (cron/systemd timer):
    - Delete expired where `pinned=false`
-   - Enforce global quota (LRU beyond 5GB)
+   - Protect spaces still referenced by saved Web conversations
 2. **On-demand**:
    - `mode: "expired_only"` for manual maintenance
    - `space_id: "..."` for single space deletion
+
+Global quota enforcement is not implemented. For the current single-user,
+local-first deployment, TTL cleanup and disk monitoring are preferred over a
+hard total-Stash cap that could unexpectedly block all new writes. Reconsider
+quotas for public or multi-user deployments.
 
 ---
 
@@ -902,7 +907,13 @@ def sanitize_filename(name: str) -> str:
     return name
 ```
 
-### 4.4 Disk Space Management
+### 4.4 Disk Space Management (Proposed)
+
+The quota example below is design material, not active runtime behavior.
+`STASH_MAX_SPACE_SIZE_MB` and `STASH_MAX_TOTAL_SIZE_GB` are not enforced by any
+Stash save path. A future implementation should be driven by measured need and
+should generally prefer warnings or per-user limits over a single global hard
+cap.
 
 ```python
 MAX_SPACE_SIZE = 500 * 1024 * 1024  # 500MB per space
@@ -1328,8 +1339,6 @@ STASH_GENERATED_MEDIA_TTL_DAYS=30
 STASH_SOURCE_ARTIFACT_TTL_DAYS=120
 STASH_CLEANUP_MAX_SPACES=100
 STASH_CLEANUP_MAX_BYTES_MB=512
-STASH_MAX_SPACE_SIZE_MB=500
-STASH_MAX_TOTAL_SIZE_GB=5
 STASH_ALLOWED_DOWNLOAD_HOSTS=""  # Empty = allow all external
 STASH_BLOCKED_DOWNLOAD_HOSTS="localhost,127.0.0.1,169.254.169.254"
 
@@ -1343,6 +1352,10 @@ STASH_BLOCKED_DOWNLOAD_HOSTS="localhost,127.0.0.1,169.254.169.254"
 # STASH_SUMMARIZE_MODEL="grok-4.5"                # xAI API key
 # Under xAI OAuth, unsupported API model pins resolve to XAI_OAUTH_MODEL.
 ```
+
+The cleanup limits above bound deletion work per run; they are not storage
+quotas. `STASH_MAX_SPACE_SIZE_MB` and `STASH_MAX_TOTAL_SIZE_GB` are intentionally
+omitted because the current runtime does not enforce them.
 
 `STASH_DIR` is the single storage root for stash artifacts. The normal value is
 `data/stash`, resolved relative to the project root. Use an absolute path when
