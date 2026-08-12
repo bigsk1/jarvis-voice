@@ -105,7 +105,7 @@ Implemented now:
 - **Effective evidence** (`data['_effective_evidence']` on saved assistant messages): structured grounding for the auto-evaluator, including follow-ups that reuse prior tool results without a new skill call; see [Effective evidence (grounding bundle)](#effective-evidence-grounding-bundle)
 - **Provider-native** (`server_side_tools`) usage counts as a fresh evidence epoch for that bundle (not only `tools_used`)
 - **Repair classification**: a repair pass is classified as substantive `repaired` only when `operational_correction` is true (tool-path delta and/or evidence delta). **Similar-answer rule**: if the tool path did not change and the repaired answer is very similar to the original (see below), the outcome is forced to **`tighten_only`** even when JSON `data` churn would otherwise make `evidence_delta` look true
-- No-tool rewrite repairs still default to `tighten_only` unless the repaired answer clearly cites a direct source or verified action
+- Ordinary no-tool rewrite repairs still default to `tighten_only` unless the repaired answer clearly cites a direct source or verified action. Chat-only repairs are the intentional exception: a material QA answer correction can settle as `repaired` without tools
 - One bounded repair pass when the user clicks `No`
 - Repair pass uses:
   - original query
@@ -144,6 +144,32 @@ Implemented now:
   - the Web UI shows a small countdown on active manual cards
   - when the user continues the same conversation before answering, older pending manual prompts settle as `superseded`
   - if a mobile/PWA reconnect leaves a stale card visible, submitting it now resolves as `expired` instead of surfacing a hard error
+
+### Chat-Only Turns
+
+Jarvis Web's sticky `#chat_only` mode does not disable Completion Guard. It
+changes what a valid evaluation and repair are allowed to do:
+
+- The original response record preserves `tool_policy=none`.
+- Manual mode can still show `Completed correctly?`; Auto mode can still run its
+  evaluator when the configured QA/tool eligibility rules allow it.
+- The evaluation rubric must judge only answer correctness, completeness,
+  reasoning, and support from the existing conversation/injected context. Zero
+  tools, no live retrieval, and an empty available-tool list are intentional and
+  are not failures.
+- Provider/model prompt overrides receive a trailing Chat-only override so
+  generic “search more” or “inspect the file” guidance cannot supersede policy.
+- Strategy classification returns `chat_only_repair` with no preferred tools.
+- The repair pass inherits `tool_policy=none`, cannot call client or hosted
+  tools, and must correct the answer from existing context only.
+- A successful `REPAIR_STATUS: repaired` with a material answer delta is a
+  substantive Chat-only correction. It is not discarded by the ordinary
+  no-tools `tighten_only` default merely because both tool lists are empty.
+
+If the answer needs current/external evidence unavailable in the supplied
+context, the correct outcome is an honest limitation or unresolved settlement,
+not a repair that silently escapes Chat only. See
+[Jarvis Web UI: `#chat_only`](./JARVIS_WEB_UI.md#chat_only-sticky-no-tools-chat).
 
 Not implemented yet:
 

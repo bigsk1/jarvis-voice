@@ -2,7 +2,7 @@
 
 **Status**: Active / Phase 1.5 Complete + 2026 operational bridges
 **Created**: 2025-11-27
-**Updated**: 2026-08-11 (request-scoped negative-insight applicability)
+**Updated**: 2026-08-11 (request-scoped insight applicability and Chat-only reflection)
 **Location**: `lib/intelligence.py`, `lib/intelligence_hooks.py`, `jarvis-intelligence/` (dashboard)
 
 ## Overview
@@ -371,6 +371,35 @@ The matched phrases are retained as `matched_trigger_signals` in the applied
 insight payload for provenance and debugging. This applicability guard is a
 correctness rule, not another tuning parameter; it does not alter confidence,
 learning rate, negative weight, or decay behavior.
+
+### 15. Web Chat-Only Learning Semantics (2026-08-11)
+
+Jarvis Web's sticky `#chat_only` mode preserves normal experience recording and
+reflection while removing tool-routing pressure from that turn:
+
+- Routing provenance stores `tool_policy=none` and `tool_rag_skipped=true`.
+- Relevant auto-memory and recent conversation context remain available to the
+  answer, but learned routing-insight injection is skipped before routing.
+- Reflection receives the response style, word limits, user/guard evidence,
+  auto-memory context, and explicit Chat-only provenance.
+- Its dedicated rubric evaluates relevance, accuracy, completeness, clarity,
+  tone, appropriate qualification, and correct use of already supplied context.
+- Using zero tools is intentional—not missing telemetry, a routing failure, or
+  evidence that Jarvis should have searched.
+- Reflection must not create `preferred_tool`, `avoided_tool`,
+  `preferred_workflow_id`, `preferred_tool_sequence`, or `supporting_tools`
+  associations for the Chat-only experience. Storage also suppresses these
+  associations as a final guard.
+- If no independently reusable non-tool procedural lesson remains, reflection
+  returns `is_procedural=false` and stores no routing insight.
+- Completion Guard can still contribute accepted/repaired/unresolved evidence,
+  but any repair inherits Chat only and remains QA-only.
+- Passive thumbs reactions remain valid direct satisfaction evidence. LLM
+  Feedback Analysis and random feedback sampling are skipped for the turn.
+
+This keeps conversational quality learning without teaching the normal router
+that deliberately unavailable tools were either missing or suboptimal. See
+[Jarvis Web UI: `#chat_only`](./JARVIS_WEB_UI.md#chat_only-sticky-no-tools-chat).
 
 ---
 

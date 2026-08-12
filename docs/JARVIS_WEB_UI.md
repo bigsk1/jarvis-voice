@@ -1,7 +1,7 @@
 # Jarvis Web UI
 
 > **Status**: Implemented and actively maintained
-> **Last Updated**: July 11, 2026
+> **Last Updated**: August 11, 2026
 
 ---
 
@@ -16,6 +16,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 - 📦 **Modular**: Separate from core - doesn't break terminal/TUI
 - 🔮 **Future-proof**: Web overrides don't affect cloud.env
 - 🧠 **Full Intelligence**: Uses same orchestrator → insights/feedback/self-learning works
+- 💬 **Intentional Chat**: Sticky `#chat_only` mode removes tool schemas and hosted tools when the user wants conversation only
 
 **This is NOT a replacement** - it's a new interface alongside:
 - Terminal (`orchestrator_v2.py`) - Dev/testing
@@ -104,6 +105,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | **Slash commands** | ✅ | `/canvas`, `/search`, `/recall`, etc. - modify behavior |
 | **@prompts** | ✅ | `@research`, `@quick`, `@compare` - inject methodologies |
 | **#tool hints** | ✅ | `#weather`, `#youtube_transcript`, etc. - softly prefer one or more tools |
+| **Chat only policy** | ✅ | `#chat_only` enables a sticky, explicitly selected no-tools mode |
 | **Command autocomplete** | ✅ | Type `/`, `@`, or standalone `#` to see suggestions |
 | **✨ Enhance with AI** | ✅ | Magic button transforms rough input into optimal prompt |
 | **Tool exclusion** | ✅ | Commands can exclude tools (force native search) |
@@ -166,6 +168,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | **Intelligence bridge** | ✅ | Accepted/repaired/ticketed/cancelled outcomes feed back into reflection data; expired/superseded settle neutrally |
 | **Corrected-path learning** | ✅ | Repaired answers, tools, and tool results are folded back into the original experience for reflections |
 | **Feedback-aware settlement** | ✅ | Final web feedback runs on the settled Completion Guard outcome and includes CG metadata in grading |
+| **Chat-only repair policy** | ✅ | Manual/Auto evaluation remains available, but repairs inherit no-tools policy and use QA-only answer deltas |
 | **Provider-split auto evaluator** | ✅ | Auto eval can run on a different provider/model than the main chat response |
 | **Eval provider/model overrides** | ✅ | AI Config exposes per-mode Completion Guard eval provider/model controls |
 | **Ollama cloud judge support** | ✅ | Cloud Ollama eval uses cloud-only model lists and defensive JSON parsing/budgeting for auto eval |
@@ -375,7 +378,8 @@ Repo root (shared with core Jarvis — outside jarvis-web/):
 socket.emit('chat:send', {
     message: 'What is bitcoin price?',
     conversation_id: 'conv_123',
-    mode: 'cloud'
+    mode: 'cloud',
+    tool_policy: 'none' // Optional: Chat only; omit for normal Auto routing
 });
 
 // After creating a conversation (client/REST), the server emits conversation:created.
@@ -1245,6 +1249,86 @@ See `jarvis-web/data/prompts/personal/README.md` for the short authoring guide.
 
 ---
 
+### `#chat_only`: Sticky No-Tools Chat
+
+Use `#chat_only` when you intentionally want a normal conversation without
+Tool RAG filling the request context with tool schemas or allowing provider-
+hosted tools. This is an explicit Web composer mode; it does not change normal
+Auto routing when the mode is off.
+
+**Enable and disable:**
+
+```text
+#chat_only
+#chat_only Explain why this design feels confusing
+Let's continue discussing the tradeoffs #chat_only
+```
+
+- Sending `#chat_only` by itself arms the mode without sending a chat message.
+- Including it as a standalone token in a request arms the mode and sends the
+  clean request.
+- A **Chat only** mode chip appears above the composer and remains active for
+  subsequent sends in the current page.
+- Remove the chip to return to Auto routing. The mode is not a
+  `web_config.json` setting; reloading the page resets the live composer toggle.
+  Saved messages retain their `#chat_only` badge/provenance when reloaded.
+
+**What remains available:**
+
+- The selected router/system prompt version and model-specific prompt overrides
+- The active response style (`auto`, `casual`, or `detailed`) and word limits
+- Recent Web conversation history
+- Relevant auto-memory context already injected by Jarvis
+- Existing model knowledge and reasoning
+- An explicitly selected `@prompt` that does not declare `tool_hints` (a
+  tool-dependent prompt conflicts with Chat only)
+- Plain-text attachment content already supplied to the request
+
+**What is disabled for the turn:**
+
+- Tool RAG retrieval, tool schemas, ghost tools, and learned tool-routing
+  insight injection
+- Client-side tools, autonomous workflows, and `/workflow` execution
+- Provider-hosted tools such as native web/search or code execution
+- `#tool` hints, ambient tool suggestions, and the ✨ Enhance path
+- Image/PDF analysis and **Send to Canvas**
+- Manual/inline LLM Feedback Analysis and random feedback sampling
+
+Image/PDF sends, tool hints, and workflows conflict with Chat only and are
+rejected with a toast. A rejected send does not silently arm Chat only or clear
+existing tool chips. Turn the mode off first when the task genuinely requires
+retrieval, file/vision analysis, an artifact, or an action.
+
+**Completion Guard and Intelligence:**
+
+- Completion Guard still works when enabled. Manual mode may show the normal
+  `Completed correctly?` card, and Auto mode may evaluate the answer.
+- Its evaluator judges correctness, completeness, reasoning, and support from
+  context; it must not penalize the absence of tools or recommend retrieval.
+- A repair inherits `tool_policy=none` and remains QA-only. A materially better
+  answer can be emitted even though neither pass used tools.
+- The normal Intelligence experience is still recorded. Reflection sees
+  `tool_policy=none` and `tool_rag_skipped=true`, uses a Chat-only answer-quality
+  rubric, and suppresses preferred/avoided tool and workflow associations.
+- Passive thumbs up/down reactions remain available while the linked
+  experience is eligible for reflection. They are separate from the disabled
+  LLM Feedback Analysis feature and do not rerun the task.
+
+**Defense in depth:** the client sends only the recognized value
+`tool_policy: "none"`; the socket clears stale tool metadata and rejects
+image/PDF payloads; the router supplies zero tool schemas and disables hosted
+tools; workflows and learned routing insights are skipped; and the orchestrator
+converts any anomalous model-emitted tool route into a non-executing QA response.
+The policy and `tool_rag_skipped` state are retained in routing/LLM provenance
+for log inspection.
+
+Chat only is therefore appropriate for discussion, brainstorming, explanation,
+rewriting, or reasoning from already available context. It is intentionally the
+wrong mode for “latest,” “look this up,” file/image inspection, Canvas output,
+or any request that needs Jarvis to act on another system.
+
+---
+
 ### #Tool Hints
 
 Type a standalone `#` anywhere in the chat input to browse enabled, non-blocked tools. Tool hints are soft preferences for the current request; they do not force the route and they can be ignored when another tool is a better fit.
@@ -1486,6 +1570,11 @@ Trigger LLM-as-QA feedback directly from the WebUI to analyze response quality.
 2. **`--feedback` Inline** - Add `--feedback` anywhere in your message
 
 Random feedback can also be sampled by the orchestrator when `FEEDBACK_RANDOM_ENABLED=true` and `FEEDBACK_RANDOM_CHANCE` is greater than zero. Jarvis Web displays pre-collected random feedback as the normal purple card when Completion Guard is not active; while Completion Guard is active, Web disables the orchestrator random path so only explicit feedback waits behind guard settlement.
+
+Feedback Analysis is unavailable while the sticky **Chat only** chip is active.
+Enabling Chat only clears and disables the 📊 toggle; an inline `--feedback`
+request is removed before sending, and the socket independently rejects the
+feedback flag for `tool_policy=none`. Passive thumbs reactions are unaffected.
 
 **What Happens:**
 1. Your query processes normally (tool calls, response)
@@ -1758,6 +1847,7 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 | **TTS** | Mode-specific shell scripts | Direct provider API; status cache is separate from final TTS |
 | **Intelligence/Insights** | ✅ Full (same orchestrator) | ✅ Full (singleton resets on mode switch) |
 | **Tool RAG** | ✅ Full | ✅ Full |
+| **Chat only** | Not exposed as a sticky composer mode | ✅ `#chat_only` request policy |
 | **Memory System** | ✅ Full (mode-specific DB) | ✅ Full (mode-specific DB) |
 | **MCP Tools** | Started on demand | Pre-registered in memory_db |
 
@@ -1805,3 +1895,4 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v2.14: `#tool` hints for soft per-request tool preference, full enabled-tool autocomplete, server validation, and ✨ Enhance preservation - April 20, 2026*
 *v2.15: Tool hint chips and ambient tool suggestions for optional per-request tool preferences - April 20, 2026*
 *v2.16: Mode-aware tool/prompt/workflow discovery, autonomous foreground workflow tool cards/follow-up context, and workflow Completion Guard exclusion - July 23, 2026*
+*v2.17: Sticky `#chat_only` composer policy, no-schema/hosted-tool enforcement, QA-only Completion Guard repairs, and Chat-only Intelligence/feedback handling - August 11, 2026*

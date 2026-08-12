@@ -93,6 +93,28 @@ When Completion Guard is enabled in Jarvis Web, **explicit async feedback waits 
 - **Intelligence bridge**: Feedback also stores `raw_data.feedback.latest` on the linked experience, preserving the rating, summary, issues, tool ratings, analysis, and guard status for future reflection.
 - **Reference**: [Completion Guard](./COMPLETION_GUARD.md).
 
+### Chat-Only Policy (Web UI, 2026)
+
+LLM Feedback Analysis is deliberately unavailable while Jarvis Web's sticky
+`#chat_only` mode is active. Feedback grading is tool-oriented and adds another
+LLM call/context path that is unnecessary for intentional conversation-only
+turns.
+
+- Enabling Chat only clears and disables the 📊 Feedback Analysis toggle.
+- An inline `--feedback` marker is removed and the turn proceeds without
+  Feedback Analysis; the socket also sanitizes handcrafted requests.
+- Orchestrator random feedback sampling is skipped when routing provenance has
+  `tool_policy=none`, and Jarvis Web applies the same request-scoped override.
+- Returning to Auto re-enables the button in its off state; Feedback Analysis
+  does not turn itself back on.
+- Passive thumbs up/down reactions remain available for eligible live responses.
+  They update the linked Intelligence experience without grading tools,
+  triggering Completion Guard, or rerunning the task.
+
+This policy is Web-only. CLI feedback behavior remains controlled by the normal
+feedback flags and configuration. See
+[Jarvis Web UI: `#chat_only`](./JARVIS_WEB_UI.md#chat_only-sticky-no-tools-chat).
+
 ### Autonomous Workflow Grading
 
 When normal orchestration selects the `workflow` meta-tool, feedback receives a

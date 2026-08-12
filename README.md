@@ -71,6 +71,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - **@prompts**: `@research`, `@quick`, `@compare`, `@generate_music`, `@email`, `@daily`
   - **Context-first injection**: Prompts inject BEFORE user message for better LLM context
   - **Tool Hints**: Start typing to get tool suggestions as you type or use #tool_name to add a tool to the request
+  - **Chat only**: Use `#chat_only` to keep a sticky no-tools conversation mode that skips Tool RAG schemas and provider-hosted tools until its mode chip is removed
   - **✨ Enhance with AI**: Magic button transforms input into optimal prompts
   - **Conversation search/export**: Filter, deep search, JSON/Markdown export, pinned-safe 90-day cleanup via `cleanup-all`
   - **Completion Guard**: Manual `Completed correctly?` card plus auto-evaluator mode, one bounded repair pass, stop/cancel support for repair runs, follow-up tickets, workflow/fire-and-forget exclusions, exported metadata, and intelligence-layer corrected-path learning
