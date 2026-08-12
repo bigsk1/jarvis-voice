@@ -1113,6 +1113,9 @@ class IntelligenceLayer:
 
         # CRITICAL: What tools were AVAILABLE to the LLM (from Tool RAG + ghost tools)
         available_tools = context_data.get('available_tools', [])
+        tool_policy = context_data.get('tool_policy')
+        tool_rag_skipped = context_data.get('tool_rag_skipped')
+        chat_only_mode = tool_policy == 'none'
 
         # Determine if this was a suboptimal experience
         tools_list = json.loads(exp['tools_used'])
@@ -1124,7 +1127,39 @@ class IntelligenceLayer:
         )
 
         # Format available tools list
-        available_tools_str = ', '.join(available_tools) if available_tools else '[Not captured]'
+        if chat_only_mode:
+            available_tools_str = '(intentionally disabled by Chat only policy)'
+        else:
+            available_tools_str = ', '.join(available_tools) if available_tools else '[Not captured]'
+        tool_policy_str = (
+            'none (Chat only; tools intentionally disabled)'
+            if chat_only_mode
+            else (str(tool_policy) if tool_policy else '[Not captured]')
+        )
+        tool_rag_skipped_str = (
+            str(tool_rag_skipped).lower()
+            if isinstance(tool_rag_skipped, bool)
+            else '[Not captured]'
+        )
+        chat_only_evaluation = ""
+        if chat_only_mode:
+            chat_only_evaluation = """
+CHAT ONLY EVALUATION:
+- The user intentionally selected Chat only. No client-side or provider-hosted tools were available, so using zero tools was correct and must not be treated as missing telemetry or a routing failure.
+- Evaluate the direct answer for relevance, accuracy, completeness, clarity, tone, and whether it used conversation or injected memory context appropriately.
+- Do not infer that a tool should have been used, do not penalize the absence of tools, and do not create preferred_tool, avoided_tool, preferred_workflow_id, preferred_tool_sequence, or supporting_tools conclusions from this turn.
+- The user's manual Chat-only selection is not evidence that the same query should avoid tools in Auto mode. Do not restate the Chat-only policy as a learned routing rule.
+- If there is no independently reusable procedural lesson, return is_procedural=false so the reflection is processed without storing a tool-routing insight.
+
+CRITICAL EVALUATION - CHAT ONLY:
+1. Did the response directly and completely answer the user's request?
+2. Was it accurate, internally consistent, and appropriately qualified where certainty was limited?
+3. Did its clarity, tone, detail, and formatting match the configured response style?
+4. Did it use relevant conversation or injected memory context without inventing unsupported details?
+5. If current or external information was required, did it clearly explain that Chat only could not fetch it?
+6. Treat explicit user reaction, evaluator feedback, and Completion Guard evidence according to their actual meanings; do not invent a retry, clarification, or tool failure.
+7. If no independently reusable procedural lesson remains, return is_procedural=false.
+"""
         tools_used_list = json.loads(exp['tools_used']) if exp['tools_used'] else []
         workflow_execution = context_data.get('workflow_execution')
         if not isinstance(workflow_execution, dict):
@@ -1157,10 +1192,19 @@ class IntelligenceLayer:
         unused_tools = [t for t in available_tools if t not in tools_used_list] if available_tools else []
         unused_tools_str = ', '.join(unused_tools[:10]) if unused_tools else 'None'  # Limit to 10
 
+        reflection_task = (
+            "Analyze this Chat-only interaction for response quality and any "
+            "independently reusable non-tool procedural lesson."
+            if chat_only_mode
+            else "Analyze this interaction to extract a PROCEDURAL insight (not a fact)."
+        )
         reflection_prompt = f"""
-Analyze this interaction to extract a PROCEDURAL insight (not a fact).
+{reflection_task}
 
 **User Query**: {exp['query']}
+
+**Tool Policy**: {tool_policy_str}
+**Tool RAG Skipped**: {tool_rag_skipped_str}
 
 **AVAILABLE TOOLS** (what the LLM could choose from):
 {available_tools_str}
@@ -1225,7 +1269,11 @@ Analyze this interaction to extract a PROCEDURAL insight (not a fact).
 
 **Provider-Native Tool Metadata**:
 {server_side_tools_str}
-
+"""
+        if chat_only_mode:
+            reflection_prompt += chat_only_evaluation
+        else:
+            reflection_prompt += f"""
 CRITICAL EVALUATION:
 1. Did the tool(s) return relevant data for the query? (tool_results vs query)
 2. Did the LLM response accurately reflect the tool data? (llm_response vs tool_results)
@@ -1344,7 +1392,9 @@ IMPORTANT CLASSIFICATION:
 - A SKILL/PROCEDURE is "For status queries, use fetch tools" → belongs here
 
 Your task: Extract a PROCEDURAL insight about TOOL SELECTION, not facts.
+"""
 
+        reflection_prompt += f"""
 Provide your analysis as JSON:
 ```json
 {{
@@ -1656,6 +1706,7 @@ Example for FACTUAL (should NOT be stored here):
 
         raw_data = redact_sensitive_data(self._get_experience_raw_data(experience))
         context = raw_data.get('context', {}) if isinstance(raw_data.get('context'), dict) else {}
+        chat_only_experience = context.get('tool_policy') == 'none'
         workflow_execution = (
             reflection.get('_workflow_execution_context')
             if isinstance(reflection.get('_workflow_execution_context'), dict)
@@ -1672,9 +1723,9 @@ Example for FACTUAL (should NOT be stored here):
 
         preferred_tools: dict[str, float] = {}
         preferred_tool_names = _coerce_string_list(reflection.get('preferred_tool'))
-        if suppress_preferred_tool:
+        if suppress_preferred_tool or chat_only_experience:
             preferred_tool_names = []
-        if not preferred_tool_names and not suppress_preferred_tool:
+        if not preferred_tool_names and not suppress_preferred_tool and not chat_only_experience:
             final_tool = _row_value(experience, 'final_tool')
             if final_tool and not is_workflow_experience:
                 # TODO: If the reflection also avoided this same tool, reshape the
@@ -1720,6 +1771,11 @@ Example for FACTUAL (should NOT be stored here):
 
         preferred_tool_sequence = _coerce_string_list(reflection.get('preferred_tool_sequence'))
         supporting_tools = _coerce_string_list(reflection.get('supporting_tools'))
+        if chat_only_experience:
+            preferred_workflow_id = ''
+            avoided_tools = []
+            preferred_tool_sequence = []
+            supporting_tools = []
         if is_workflow_experience:
             component_tools = set(
                 _coerce_string_list(
@@ -1752,7 +1808,11 @@ Example for FACTUAL (should NOT be stored here):
             'avoided_tools': avoided_tools,
             'preferred_tool_sequence': preferred_tool_sequence,
             'supporting_tools': supporting_tools,
-            'sequence_required': self._reflection_sequence_required(reflection.get('sequence_required')),
+            'sequence_required': (
+                False
+                if chat_only_experience
+                else self._reflection_sequence_required(reflection.get('sequence_required'))
+            ),
             'trigger_signals': trigger_signals,
             'primary_intent': str(reflection.get('primary_intent') or '').strip(),
             'source_experience_id': _row_value(experience, 'id'),
@@ -1761,7 +1821,7 @@ Example for FACTUAL (should NOT be stored here):
             'source_tool_sequence': source_tool_sequence,
             'source_reflection_json': json.dumps(redact_sensitive_data(reflection), default=str),
             'confidence': confidence,
-            'suppressed_preferred_tool': suppress_preferred_tool,
+            'suppressed_preferred_tool': suppress_preferred_tool or chat_only_experience,
         }
 
     def _insight_associations_compatible(

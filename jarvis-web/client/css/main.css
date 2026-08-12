@@ -1161,6 +1161,12 @@ body {
   color: var(--accent-secondary);
 }
 
+.chat-only-chip {
+  background: rgba(34, 211, 238, 0.1);
+  border-color: rgba(34, 211, 238, 0.45);
+  color: var(--text-link-chat);
+}
+
 .tool-hint-name,
 .ambient-tool-chip {
   overflow: hidden;
@@ -1394,6 +1400,14 @@ body {
 
 .feedback-btn.active:hover {
   background: rgba(139, 92, 246, 0.3);
+}
+
+.feedback-btn:disabled,
+.feedback-btn:disabled:hover {
+  cursor: not-allowed;
+  background: transparent;
+  transform: none;
+  opacity: 0.25;
 }
 
 /* Feedback badge on user message */

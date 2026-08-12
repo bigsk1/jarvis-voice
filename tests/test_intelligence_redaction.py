@@ -128,11 +128,18 @@ class IntelligenceRedactionTests(unittest.TestCase):
                     "speech": f"Done with token {SECRET}",
                     "data": {"api_key": SECRET, "result": "ok"},
                     "tool_trace": [{"tool": "api_call", "arguments": {"Authorization": f"Bearer {SECRET}"}}],
+                    "routing_provenance": {
+                        "tool_policy": "none",
+                        "tool_rag_skipped": True,
+                    },
                 },
             )
             self.assertGreater(exp_id, 0)
             row = intel.conn.execute("SELECT raw_data FROM experiences WHERE id = ?", (exp_id,)).fetchone()
             self.assertNotIn(SECRET, row["raw_data"])
+            context = json.loads(row["raw_data"])["context"]
+            self.assertEqual(context["tool_policy"], "none")
+            self.assertTrue(context["tool_rag_skipped"])
 
             self.assertTrue(
                 update_experience_from_feedback(

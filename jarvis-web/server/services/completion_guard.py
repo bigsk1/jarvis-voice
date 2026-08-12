@@ -235,11 +235,16 @@ class CompletionGuardPolicy:
         original_answer = record.get("raw_llm_response") or record.get("speech") or ""
         repaired_answer = result.get("raw_llm_response") or result.get("speech") or ""
         answer_similarity = self.text_similarity(original_answer, repaired_answer)
+        material_answer_delta = bool(self.normalize_comparison_text(repaired_answer)) and (
+            not self.normalize_comparison_text(original_answer)
+            or answer_similarity < _CG_TIGHTEN_ONLY_ANSWER_SIMILARITY_THRESHOLD
+        )
 
         return {
             "operational_correction": bool(tool_path_delta or evidence_delta),
             "tool_path_delta": bool(tool_path_delta),
             "evidence_delta": bool(evidence_delta),
+            "material_answer_delta": bool(material_answer_delta),
             "answer_similarity": round(answer_similarity, 4),
             "data_similarity": round(data_similarity, 4) if original_data and repair_data else None,
             "original_tools": original_tools,
@@ -478,6 +483,15 @@ Location handling:
     @staticmethod
     def classify_strategy(record: dict, note: str = "") -> dict:
         """Choose a repair strategy family and tool-family hints for the next pass."""
+        if record.get("tool_policy") == "none":
+            return {
+                "family": "chat_only_repair",
+                "reason": "The original turn explicitly disabled tools, so the repair must remain a QA-only response.",
+                "preferred_tools": [],
+                "avoid_tools": ["all tools"],
+                "completion_hint": "Correct or complete the answer using only the existing conversation and injected context. Do not call, request, or simulate tools.",
+            }
+
         query = (record.get("query") or "").lower()
         note_lower = (note or "").lower()
         raw = (record.get("raw_llm_response") or "").lower()

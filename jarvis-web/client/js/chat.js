@@ -252,6 +252,15 @@ class CommandSystem {
     // Check for #tool hint prefix
     if (input.startsWith('#')) {
       const query = input.slice(1).toLowerCase();
+      if ('chat_only'.startsWith(query)) {
+        suggestions.push({
+          type: 'policy',
+          name: 'chat_only',
+          prefix: '#',
+          icon: '◌',
+          description: 'Answer directly without Tool RAG or provider-hosted tools'
+        });
+      }
       for (const [name, tool] of Object.entries(this.tools || {})) {
         if (this._toolMatchesQuery(name, query)) {
           suggestions.push({
@@ -285,6 +294,7 @@ class CommandSystem {
       prompt: null,
       workflow: null,
       toolHints: [],
+      toolPolicy: null,
       message: input,
       instruction: null
     };
@@ -339,10 +349,14 @@ class CommandSystem {
       }
     }
 
-    // Extract standalone #tool_name hints from the remaining message.
+    // Extract the built-in chat-only policy and standalone #tool_name hints.
     // Unknown hashtags are left alone so normal prose is not accidentally removed.
     const hints = [];
     result.message = result.message.replace(/(^|\s)#([A-Za-z0-9_-]+)(?=\s|$)/g, (full, leading, name) => {
+      if (name.toLowerCase() === 'chat_only') {
+        result.toolPolicy = 'none';
+        return leading;
+      }
       const tool = this.tools[name];
       if (!tool || tool.blocked || tool.enabled === false) return full;
       if (!hints.includes(name) && hints.length < this.maxToolHints) {
@@ -364,6 +378,9 @@ class CommandSystem {
    */
   getActiveDisplay(parsed) {
     const parts = [];
+    if (parsed.toolPolicy === 'none') {
+      parts.push('#chat_only ◌');
+    }
     if (parsed.workflow) {
       const wf = this.workflows[parsed.workflow];
       const prefix = (wf?.triggers || []).includes('*') ? '*' : '/';
@@ -395,7 +412,8 @@ class CommandSystem {
       if (toolHints.length >= this.maxToolHints) break;
     }
 
-    return this.getActiveDisplay({ prompt, workflow: null, toolHints });
+    const toolPolicy = data?.tool_policy === 'none' ? 'none' : null;
+    return this.getActiveDisplay({ prompt, workflow: null, toolHints, toolPolicy });
   }
 }
 
@@ -473,6 +491,7 @@ class ChatUI {
     this.toolHintsContainer = document.getElementById('toolHintsContainer');
     this.ambientToolSuggestionsEl = document.getElementById('ambientToolSuggestions');
     this.selectedToolHints = [];
+    this.chatOnlyEnabled = false;
     
     // Token/cost tracking state
     this.tokenCounterEl = document.getElementById('tokenCounter');
@@ -767,6 +786,10 @@ class ChatUI {
 
   _addToolHint(name, options = {}) {
     if (!name || !window.commandSystem.getTool(name)) return false;
+    if (this.chatOnlyEnabled) {
+      Utils.toast('Turn off Chat only before selecting tools', 'info');
+      return false;
+    }
     if (this.selectedToolHints.includes(name)) {
       if (options.focus !== false) this.inputField.focus();
       return true;
@@ -790,15 +813,36 @@ class ChatUI {
     this.inputField.focus();
   }
 
+  _setChatOnlyEnabled(enabled, options = {}) {
+    const next = Boolean(enabled);
+    if (next && this.selectedToolHints.length > 0) {
+      this.selectedToolHints = [];
+    }
+    if (next) {
+      this.feedbackEnabled = false;
+    }
+    this.chatOnlyEnabled = next;
+    this._syncFeedbackControl();
+    this._renderToolHintChips();
+    this._updateAmbientToolSuggestions();
+    if (options.focus !== false) this.inputField.focus();
+  }
+
   _renderToolHintChips() {
     if (!this.toolHintsContainer) return;
 
-    if (this.selectedToolHints.length === 0) {
+    if (this.selectedToolHints.length === 0 && !this.chatOnlyEnabled) {
       this.toolHintsContainer.innerHTML = '';
       this.toolHintsContainer.style.display = 'none';
       return;
     }
 
+    const policyChip = this.chatOnlyEnabled ? `
+      <span class="tool-hint-chip chat-only-chip" title="Chat only: Tool RAG and provider-hosted tools are disabled">
+        <span class="tool-hint-name">Chat only</span>
+        <button type="button" class="tool-hint-remove chat-only-remove" title="Turn off Chat only">x</button>
+      </span>
+    ` : '';
     const chips = this.selectedToolHints.map(name => `
       <span class="tool-hint-chip" title="Prefer ${this._escapeAttr(name)} for this request">
         <span class="tool-hint-name">#${Utils.escapeHtml(name)}</span>
@@ -807,12 +851,17 @@ class ChatUI {
     `).join('');
 
     this.toolHintsContainer.innerHTML = `
-      <span class="tool-hint-label">Tool hints</span>
+      <span class="tool-hint-label">${this.chatOnlyEnabled ? 'Mode' : 'Tool hints'}</span>
+      ${policyChip}
       ${chips}
     `;
     this.toolHintsContainer.style.display = 'flex';
 
     this.toolHintsContainer.querySelectorAll('.tool-hint-remove').forEach(button => {
+      if (button.classList.contains('chat-only-remove')) {
+        button.addEventListener('click', () => this._setChatOnlyEnabled(false));
+        return;
+      }
       button.addEventListener('click', () => this._removeToolHint(button.dataset.tool));
     });
   }
@@ -825,6 +874,10 @@ class ChatUI {
 
   _updateAmbientToolSuggestions() {
     if (!this.ambientToolSuggestionsEl) return;
+    if (this.chatOnlyEnabled) {
+      this._hideAmbientToolSuggestions();
+      return;
+    }
     if (this.isProcessing) {
       this._hideAmbientToolSuggestions();
       return;
@@ -880,6 +933,11 @@ class ChatUI {
    */
   async _enhancePrompt() {
     const input = this.inputField.value.trim();
+
+    if (this.chatOnlyEnabled) {
+      Utils.toast('Turn off Chat only before enhancing with AI tools', 'info');
+      return;
+    }
     
     if (!input) {
       Utils.toast('Type something first, then click ✨ to enhance', 'info');
@@ -1070,6 +1128,19 @@ class ChatUI {
           </div>
         `;
       }
+      else if (s.type === 'policy') {
+        tooltipHtml = `
+          <div class="workflow-tooltip tool-tooltip">
+            <div class="tooltip-header">Chat only</div>
+            <div class="tooltip-steps">
+              <div class="tooltip-step">
+                <span class="tooltip-step-num">Mode</span>
+                <span class="tooltip-step-desc">${Utils.escapeHtml(s.description || '')}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }
       
       const displayPrefix = s.prefix || (s.type === 'prompt' ? '@' : '/');
       return `
@@ -1174,6 +1245,21 @@ class ChatUI {
     const type = item.dataset.type;
     const name = item.dataset.name;
     const prefix = item.dataset.prefix || (type === 'prompt' ? '@' : '/');
+
+    if (type === 'policy' && this.autocompleteContext) {
+      const currentVal = this.inputField.value;
+      const { start, end } = this.autocompleteContext;
+      const before = currentVal.slice(0, start);
+      const after = currentVal.slice(end);
+      this.inputField.value = `${before}${after.replace(/^\s+/, '')}`.replace(/[ \t]{2,}/g, ' ');
+      const cursor = Math.min(before.length, this.inputField.value.length);
+      this._setChatOnlyEnabled(true, { focus: false });
+      this.inputField.focus();
+      this.inputField.setSelectionRange(cursor, cursor);
+      Utils.autoResize(this.inputField);
+      this._hideAutocomplete();
+      return;
+    }
 
     if (type === 'tool' && this.autocompleteContext) {
       const currentVal = this.inputField.value;
@@ -3098,10 +3184,34 @@ class ChatUI {
     
     // Parse workflows, prompts, and tool hints
     const parsed = window.commandSystem.parseInput(rawMessage);
+    const requestedChatOnly = parsed.toolPolicy === 'none';
+    const effectiveChatOnly = this.chatOnlyEnabled || requestedChatOnly;
     const toolHints = this._combineToolHints(parsed.toolHints || []);
+    if (effectiveChatOnly && (parsed.workflow || toolHints.length > 0)) {
+      Utils.toast('Turn off Chat only before using tools or workflows', 'info');
+      return;
+    }
+    if (effectiveChatOnly && (hasImage || hasPdf)) {
+      Utils.toast('Turn off Chat only before analyzing images or PDFs', 'info');
+      return;
+    }
+    if (!parsed.message && requestedChatOnly && !hasImage && !hasFile) {
+      this._setChatOnlyEnabled(true, { focus: false });
+      this.inputField.value = '';
+      Utils.autoResize(this.inputField);
+      Utils.toast('Chat only is on until you remove the mode chip', 'success', 2200);
+      return;
+    }
     if (!parsed.message && toolHints.length > 0 && !hasImage && !hasFile) {
       Utils.toast('Add a task after the tool hint', 'info');
       return;
+    }
+    if (effectiveChatOnly && requestFeedback) {
+      requestFeedback = false;
+      Utils.toast('Feedback Analysis is unavailable in Chat only; sending without it', 'info', 2600);
+    }
+    if (requestedChatOnly) {
+      this._setChatOnlyEnabled(true, { focus: false });
     }
     
     // Build display message (show original with decorations, show feedback badge if enabled)
@@ -3109,16 +3219,19 @@ class ChatUI {
     // Keep the bubble focused on the user's task instead of displaying those
     // selectors twice. Workflows retain their original trigger text because
     // parseInput intentionally keeps it in parsed.message.
-    const hasParsedSelectors = Boolean(parsed.prompt) || (parsed.toolHints || []).length > 0;
+    const hasParsedSelectors = Boolean(parsed.prompt)
+      || (parsed.toolHints || []).length > 0
+      || parsed.toolPolicy === 'none';
     let displayMessage = hasParsedSelectors
       ? parsed.message
       : this.inputField.value.trim();
     let activeBadge = '';
     const displayParsed = {
       ...parsed,
-      toolHints
+      toolHints,
+      toolPolicy: this.chatOnlyEnabled ? 'none' : null
     };
-    if (displayParsed.workflow || displayParsed.prompt || toolHints.length > 0) {
+    if (displayParsed.workflow || displayParsed.prompt || toolHints.length > 0 || displayParsed.toolPolicy) {
       activeBadge = window.commandSystem.getActiveDisplay(displayParsed);
     }
     if (requestFeedback) {
@@ -3167,7 +3280,8 @@ class ChatUI {
     const sent = window.jarvisSocket.sendMessage(parsed.message, imagePayload, {
       system_instruction: parsed.instruction,
       prompt_name: parsed.prompt,
-      tool_hints: toolHints
+      tool_hints: toolHints,
+      tool_policy: this.chatOnlyEnabled ? 'none' : 'auto'
     }, requestFeedback, this.attachedFile, pdfAttachment ? [pdfAttachment] : null);
     if (!sent) {
       this.isProcessing = false;
@@ -4172,6 +4286,10 @@ class ChatUI {
   }
 
   sendResponseToCanvas(responseText, button = null) {
+    if (this.chatOnlyEnabled) {
+      Utils.toast('Turn off Chat only before sending a response to Canvas', 'info');
+      return;
+    }
     if (this.isProcessing) {
       Utils.toast('Wait for the current response to finish first', 'info');
       return;
@@ -6032,20 +6150,36 @@ class ChatUI {
    * Toggle feedback mode
    */
   toggleFeedback() {
-    this.feedbackEnabled = !this.feedbackEnabled;
-    
-    // Update button state
-    const feedbackBtn = document.getElementById('feedbackBtn');
-    if (feedbackBtn) {
-      feedbackBtn.classList.toggle('active', this.feedbackEnabled);
-      feedbackBtn.title = this.feedbackEnabled ? 'Feedback ON - Click to disable' : 'Feedback OFF - Click to enable';
+    if (this.chatOnlyEnabled) {
+      this.feedbackEnabled = false;
+      this._syncFeedbackControl();
+      Utils.toast('Turn off Chat only to use Feedback Analysis', 'info', 2200);
+      return;
     }
-    
+
+    this.feedbackEnabled = !this.feedbackEnabled;
+    this._syncFeedbackControl();
+
     Utils.toast(
       this.feedbackEnabled ? '📊 Feedback enabled for next message' : '📊 Feedback disabled',
       'info',
       2000
     );
+  }
+
+  _syncFeedbackControl() {
+    const feedbackBtn = document.getElementById('feedbackBtn');
+    if (!feedbackBtn) return;
+
+    const chatOnly = Boolean(this.chatOnlyEnabled);
+    feedbackBtn.disabled = chatOnly;
+    feedbackBtn.setAttribute('aria-disabled', String(chatOnly));
+    feedbackBtn.classList.toggle('active', this.feedbackEnabled && !chatOnly);
+    feedbackBtn.title = chatOnly
+      ? 'Feedback Analysis unavailable in Chat only'
+      : (this.feedbackEnabled
+          ? 'Feedback ON - Click to disable'
+          : 'Feedback OFF - Click to enable');
   }
 
   /**

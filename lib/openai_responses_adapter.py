@@ -12,6 +12,7 @@ import os
 import sys
 from typing import Any
 
+from provider_tool_policy import server_side_tools_disabled
 from typing_extensions import TypedDict
 
 
@@ -142,6 +143,8 @@ def chat_tools_to_responses_tools(tools: list[dict[str, Any]]) -> list[dict[str,
 
 def build_openai_builtin_responses_tools() -> list[dict[str, Any]]:
     """Optional hosted tools (behind discrete env knobs)."""
+    if server_side_tools_disabled():
+        return []
     if openai_env_bool("OPENAI_RESPONSES_DISABLE_SERVER_SIDE_TOOLS", False):
         return []
     if not openai_env_bool("OPENAI_RESPONSES_SERVER_SIDE_TOOLS", False):

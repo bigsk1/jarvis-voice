@@ -27,6 +27,7 @@ from ollama_utils import (
     request_ollama,
     OLLAMA_EXECUTION_LOCAL_DAEMON,
 )
+from provider_tool_policy import server_side_tools_disabled
 
 
 class LLMProvider(ABC):
@@ -556,7 +557,7 @@ class AnthropicProvider(LLMProvider):
             # Add web search tool if enabled (ANTHROPIC_SEARCH=true)
             # This is a server-side tool - Claude can search the web for real-time info
             extra_headers = {}
-            if self.enable_search:
+            if self.enable_search and not server_side_tools_disabled():
                 # Add web search as first tool (server-side, special type)
                 web_search_tool = {
                     "type": "web_search_20260209",
@@ -891,10 +892,13 @@ class XAIProvider(LLMProvider):
     
     def _build_xai_server_tools(self):
         """Build list of xAI server-side tools based on config."""
-        from xai_sdk.tools import web_search, x_search, code_execution
-
-        if self._xai_env_bool("XAI_DISABLE_SERVER_SIDE_TOOLS", False):
+        if (
+            server_side_tools_disabled()
+            or self._xai_env_bool("XAI_DISABLE_SERVER_SIDE_TOOLS", False)
+        ):
             return []
+
+        from xai_sdk.tools import web_search, x_search, code_execution
         
         # Read config for fine-grained control
         enable_code = os.environ.get('XAI_CODE_EXECUTION', 'true').lower() == 'true'
@@ -1113,14 +1117,15 @@ class XAIProvider(LLMProvider):
     def _xai_max_turns() -> int | None:
         """Optional cap on server-side tool iterations (web_search + x_search loops).
 
-        Reads XAI_SERVER_SIDE_MAX_TOOL_TURNS from env. When unset or invalid,
-        returns None and xAI uses its server-side default. Set this to bound
+        Reads XAI_SERVER_SIDE_MAX_TOOL_TURNS from request-scoped config or env.
+        When unset or invalid, returns None and xAI uses its server-side default. Set this to bound
         cost/latency on very tool-heavy queries (e.g. ones that trigger many
         web_search calls). Narrowly scoped to xAI's server-side Agent Tools
         loop (web_search, x_search, code_execution); unrelated to the
         orchestrator's MAX_TOOL_TURNS which bounds client-side tool iteration.
         """
-        raw = os.environ.get('XAI_SERVER_SIDE_MAX_TOOL_TURNS', '').strip()
+        from config_loader import get_config_value
+        raw = str(get_config_value('XAI_SERVER_SIDE_MAX_TOOL_TURNS', '') or '').strip()
         if not raw:
             return None
         try:
@@ -1286,11 +1291,9 @@ class XAIProvider(LLMProvider):
 
     @staticmethod
     def _xai_env_bool(name: str, default: bool = False) -> bool:
-        """Read an xAI boolean env knob without pulling config at call time."""
-        raw = os.environ.get(name)
-        if raw is None:
-            return default
-        return raw.strip().lower() in {"1", "true", "yes", "on"}
+        """Read an xAI boolean knob through the request-scoped config."""
+        from config_loader import get_bool
+        return bool(get_bool(name, default))
 
     def _xai_sdk_create_kwargs(
         self,

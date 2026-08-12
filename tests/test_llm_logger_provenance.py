@@ -46,6 +46,8 @@ class LLMLoggerProvenanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             logger = LLMLogger(log_dir=tmpdir)
             provenance = {
+                "tool_policy": "none",
+                "tool_rag_skipped": True,
                 "auto_context": {
                     "enabled": False,
                     "source": "none",
@@ -86,6 +88,8 @@ class LLMLoggerProvenanceTests(unittest.TestCase):
             self.assertEqual(len(lines), 1)
             entry = json.loads(lines[0])
             self.assertEqual(entry["routing_provenance"], provenance)
+            self.assertEqual(entry["routing_provenance"]["tool_policy"], "none")
+            self.assertTrue(entry["routing_provenance"]["tool_rag_skipped"])
             self.assertFalse(entry["auto_context_applied"])
             self.assertFalse(entry["memory_injected"])
             self.assertEqual(entry["memory_candidate_count"], 3)

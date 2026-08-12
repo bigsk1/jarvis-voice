@@ -8,6 +8,7 @@ import sys
 import re
 import json
 import logging
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 from pathlib import Path
@@ -86,6 +87,51 @@ _FULL_PROMPT_MARKERS = (
 )
 _MANDATORY_DISCOVERY_TOOLS = ("tool_search", "workflow")
 _REQUEST_TOOL_RAG_LIMIT_MAX = 50
+_CHAT_ONLY_SYSTEM_POLICY = (
+    "CHAT ONLY MODE:\n"
+    "- No client-side or provider-hosted tools are available for this request.\n"
+    "- Answer directly from the conversation context and your existing knowledge.\n"
+    "- Do not emit a tool call. If current or external information is required, say that it cannot be fetched in Chat only mode."
+)
+
+
+@contextmanager
+def _provider_runtime_tool_scope(
+    *,
+    disable_server_side_tools: bool,
+    server_side_max_tool_turns: int | None,
+):
+    """Apply provider tool policy without leaking Web request state globally."""
+    overrides: dict[str, str] = {}
+    if disable_server_side_tools:
+        overrides["DISABLE_SERVER_SIDE_TOOLS"] = "true"
+    if server_side_max_tool_turns is not None:
+        overrides["XAI_SERVER_SIDE_MAX_TOOL_TURNS"] = str(
+            max(1, int(server_side_max_tool_turns))
+        )
+    if not overrides:
+        yield
+        return
+
+    from config_loader import config_override_scope, get_scoped_config
+
+    if get_scoped_config() is not None:
+        with config_override_scope(overrides):
+            yield
+        return
+
+    # Legacy CLI callers may not install a config scope. Preserve their existing
+    # process-env behavior while Web requests use the isolated ContextVar path.
+    previous = {key: os.environ.get(key) for key in overrides}
+    os.environ.update(overrides)
+    try:
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 def _resolve_tool_rag_limit(mode: str, override: int | str | None = None) -> int:
@@ -560,6 +606,7 @@ def _log_tool_rag_trace(
     tool_schema_chars: int | None = None,
     tool_schema_est_tokens: int | None = None,
     tool_schema_top: list[dict[str, Any]] | None = None,
+    tool_rag_skipped: bool = False,
 ) -> None:
     """Write optional Tool RAG retrieval traces for live routing debugging."""
     if not get_bool("TOOL_RAG_TRACE_ENABLED", True):
@@ -604,6 +651,7 @@ def _log_tool_rag_trace(
             ],
             "final_tools": final_tools,
             "final_tool_count": len(final_tools),
+            "tool_rag_skipped": bool(tool_rag_skipped),
             "tool_schema_chars": tool_schema_chars,
             "tool_schema_est_tokens": tool_schema_est_tokens,
             "tool_schema_top": tool_schema_top or [],
@@ -993,6 +1041,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         server_side_max_tool_turns: int | None = None,
         previous_response_id: str | None = None,
         tool_rag_limit: int | None = None,
+        tool_policy: str = "auto",
     ) -> dict[str, Any]:
         """
         Use LLM to determine intent and route appropriately.
@@ -1013,6 +1062,8 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             }
         """
         self._excluded_tools = excluded_tools or []
+        chat_only = tool_policy == "none"
+        disable_server_side_tools = disable_server_side_tools or chat_only
         if isinstance(transcript, ProviderRouteInput):
             route_input = transcript
             transcript_text = route_input.tool_retrieval_query
@@ -1046,6 +1097,10 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                 provider_shape=provider_shape,
                 responses_continuation_payload_items=0,
             )
+        if chat_only:
+            provider_system_prompt = "\n\n".join(
+                part for part in (provider_system_prompt, _CHAT_ONLY_SYSTEM_POLICY) if part
+            )
         
         # Only print if in interactive mode
         if sys.stdout.isatty():
@@ -1056,30 +1111,42 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         
         # 1. Determine final Tool RAG schema cap based on mode/request.
         # This cap is applied again after ghost/signal merging.
-        retrieval_limit = _resolve_tool_rag_limit(self.mode, tool_rag_limit)
-        
-        # 2. Build a Tool RAG retrieval view. The routing LLM still receives the
-        # full transcript, but embeddings use a compact task-shaped query plus
-        # structured exact tool signals from hints/intelligence.
-        enabled_tool_names = list(self.registry.tools.keys())
-        tool_signals = build_tool_retrieval_signals(transcript_text, enabled_tool_names)
-        tool_search_query = tool_signals.query
-        tool_sim_threshold = _tool_rag_similarity_threshold(
-            transcript_text,
-            tool_search_query,
-            tool_signals.source,
-        )
-        
-        # 3. Find relevant tools using vector search
-        # This returns ToolSchema objects for the top matches + ghost tools
-        relevant_tools = self.registry.find_tools(
-            tool_search_query,
-            limit=retrieval_limit,
-            similarity_threshold=tool_sim_threshold,
-            typo_hint_source=typo_hint_source,
-        )
+        if chat_only:
+            retrieval_limit = 0
+            enabled_tool_names = []
+            tool_signals = ToolRetrievalSignals(
+                query="",
+                source="disabled_by_policy",
+                notes=["tool_policy=none; Tool RAG retrieval skipped"],
+            )
+            tool_search_query = ""
+            tool_sim_threshold = 0.0
+            relevant_tools = []
+        else:
+            retrieval_limit = _resolve_tool_rag_limit(self.mode, tool_rag_limit)
+
+            # 2. Build a Tool RAG retrieval view. The routing LLM still receives the
+            # full transcript, but embeddings use a compact task-shaped query plus
+            # structured exact tool signals from hints/intelligence.
+            enabled_tool_names = list(self.registry.tools.keys())
+            tool_signals = build_tool_retrieval_signals(transcript_text, enabled_tool_names)
+            tool_search_query = tool_signals.query
+            tool_sim_threshold = _tool_rag_similarity_threshold(
+                transcript_text,
+                tool_search_query,
+                tool_signals.source,
+            )
+
+            # 3. Find relevant tools using vector search
+            # This returns ToolSchema objects for the top matches + ghost tools
+            relevant_tools = self.registry.find_tools(
+                tool_search_query,
+                limit=retrieval_limit,
+                similarity_threshold=tool_sim_threshold,
+                typo_hint_source=typo_hint_source,
+            )
         ranked_tool_trace: list[dict[str, Any]] = []
-        if get_bool("TOOL_RAG_TRACE_ENABLED", True):
+        if not chat_only and get_bool("TOOL_RAG_TRACE_ENABLED", True):
             try:
                 from memory_db import get_memory_db
                 from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
@@ -1118,7 +1185,11 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         # Separate ghost tools from retrieved tools for visibility
         from config_loader import get_config_value
         ghost_tools_str = get_config_value('GHOST_TOOLS', 'search_memory,update_memory,semantic_recall,remember,canvas')
-        ghost_list = _merged_ghost_tool_names(ghost_tools_str, set(enabled_tool_names))
+        ghost_list = (
+            []
+            if chat_only
+            else _merged_ghost_tool_names(ghost_tools_str, set(enabled_tool_names))
+        )
 
         initial_tool_names = [t.name for t in relevant_tools]
         merged_tool_names, signal_meta = merge_tool_signal_names(
@@ -1191,7 +1262,11 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         # For Ollama, convert to Anthropic-like format (simpler)
         if hasattr(self.provider, '__class__') and 'Ollama' in self.provider.__class__.__name__:
             tools = [t.to_anthropic_format() for t in relevant_tools]
-        schema_payload = _estimate_tool_schema_payload(tools)
+        schema_payload = (
+            {"chars": 0, "est_tokens": 0, "top": []}
+            if chat_only
+            else _estimate_tool_schema_payload(tools)
+        )
         _log_tool_rag_trace(
             mode=self.mode,
             provider=getattr(self, "provider_type", "unknown"),
@@ -1217,6 +1292,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             tool_schema_chars=schema_payload["chars"],
             tool_schema_est_tokens=schema_payload["est_tokens"],
             tool_schema_top=schema_payload["top"],
+            tool_rag_skipped=chat_only,
         )
         
         try:
@@ -1232,17 +1308,10 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             import time
             llm_start_time = time.time()
             
-            previous_max_tool_turns = os.environ.get("XAI_SERVER_SIDE_MAX_TOOL_TURNS")
-            previous_disable_server_side_tools = os.environ.get("XAI_DISABLE_SERVER_SIDE_TOOLS")
-            previous_disable_openai_server_side_tools = os.environ.get(
-                "OPENAI_RESPONSES_DISABLE_SERVER_SIDE_TOOLS"
-            )
-            if disable_server_side_tools:
-                os.environ["XAI_DISABLE_SERVER_SIDE_TOOLS"] = "true"
-                os.environ["OPENAI_RESPONSES_DISABLE_SERVER_SIDE_TOOLS"] = "true"
-            if server_side_max_tool_turns is not None:
-                os.environ["XAI_SERVER_SIDE_MAX_TOOL_TURNS"] = str(max(1, int(server_side_max_tool_turns)))
-            try:
+            with _provider_runtime_tool_scope(
+                disable_server_side_tools=disable_server_side_tools,
+                server_side_max_tool_turns=server_side_max_tool_turns,
+            ):
                 text_response, tool_call, usage_info, thinking = self.provider.chat_with_tools(
                     messages=provider_messages,
                     tools=tools,
@@ -1251,23 +1320,6 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                     previous_response_id=route_previous_response_id,
                     responses_continuation_input=responses_continuation_input,
                 )
-            finally:
-                if disable_server_side_tools:
-                    if previous_disable_server_side_tools is None:
-                        os.environ.pop("XAI_DISABLE_SERVER_SIDE_TOOLS", None)
-                    else:
-                        os.environ["XAI_DISABLE_SERVER_SIDE_TOOLS"] = previous_disable_server_side_tools
-                    if previous_disable_openai_server_side_tools is None:
-                        os.environ.pop("OPENAI_RESPONSES_DISABLE_SERVER_SIDE_TOOLS", None)
-                    else:
-                        os.environ["OPENAI_RESPONSES_DISABLE_SERVER_SIDE_TOOLS"] = (
-                            previous_disable_openai_server_side_tools
-                        )
-                if server_side_max_tool_turns is not None:
-                    if previous_max_tool_turns is None:
-                        os.environ.pop("XAI_SERVER_SIDE_MAX_TOOL_TURNS", None)
-                    else:
-                        os.environ["XAI_SERVER_SIDE_MAX_TOOL_TURNS"] = previous_max_tool_turns
 
             dh = getattr(self.provider, "_openai_responses_diag_holder", None)
             if isinstance(dh, dict) and dh:

@@ -58,6 +58,23 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
         self.assertFalse(policy.should_prompt(manual, ["workflow"]))
         self.assertFalse(policy.should_auto_evaluate(auto, ["workflow"]))
 
+    def test_chat_only_repair_strategy_does_not_suggest_tools(self):
+        handler = ChatHandler.__new__(ChatHandler)
+
+        strategy = handler._classify_completion_guard_strategy(
+            {
+                "tool_policy": "none",
+                "query": "Search the web and update Canvas",
+                "raw_llm_response": "I could not verify this.",
+            },
+            "Please inspect the source file",
+        )
+
+        self.assertEqual(strategy["family"], "chat_only_repair")
+        self.assertEqual(strategy["preferred_tools"], [])
+        self.assertEqual(strategy["avoid_tools"], ["all tools"])
+        self.assertIn("Do not call", strategy["completion_hint"])
+
     def test_completion_guard_location_context_uses_default_location(self):
         def fake_config(key, default=""):
             return {
@@ -138,6 +155,7 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
         class _FakeProvider:
             def chat(self, prompt, system_prompt=None, max_tokens=None):
                 captured["prompt"] = prompt
+                captured["system_prompt"] = system_prompt
                 return """{
   "recommended_action": "accept",
   "task_status": "complete",
@@ -156,12 +174,13 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
 
         record = {
             "mode": "cloud",
+            "tool_policy": "none",
             "query": "what are some of the best places to eat near me?",
             "raw_llm_response": "Top-rated restaurants in Portland, OR (default location).",
             "speech": "Top-rated restaurants in Portland, OR.",
-            "tools_used": ["mcp_brave_search_brave_local_search"],
+            "tools_used": [],
             "server_side_tools": {},
-            "available_tools": ["mcp_brave_search_brave_local_search"],
+            "available_tools": [],
             "data": {"sample": "value"},
             "completion_guard": {},
         }
@@ -176,6 +195,15 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
         self.assertIn("Configured default postal/ZIP code:\n97201", captured["prompt"])
         self.assertIn('location-relative question like "near me"', captured["prompt"])
         self.assertIn("allowed fallback", captured["prompt"])
+        self.assertIn("Tool policy: Chat only", captured["prompt"])
+        self.assertIn("Do not penalize the response for using no tools", captured["prompt"])
+        self.assertIn("Available tools:\n(disabled by Chat only policy)", captured["prompt"])
+        self.assertIn("CHAT ONLY EVALUATION OVERRIDE", captured["system_prompt"])
+        self.assertIn("Ignore any model-specific guidance", captured["system_prompt"])
+        self.assertNotIn(
+            "follow-up pass should materially improve the evidence or tool path",
+            captured["prompt"],
+        )
 
     def test_tighten_instead_of_substantive_repair_when_same_tools_and_similar_answer(self):
         delta = {
@@ -201,6 +229,38 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
             "answer_similarity": 0.5,
         }
         self.assertFalse(ChatHandler._completion_guard_tighten_instead_of_substantive_repair(delta))
+
+    def test_chat_only_delta_distinguishes_material_answer_from_tightening(self):
+        handler = ChatHandler.__new__(ChatHandler)
+        record = {
+            "tool_policy": "none",
+            "raw_llm_response": "The feature is enabled.",
+            "tools_used": [],
+            "data": {},
+        }
+
+        material = handler._analyze_completion_guard_delta(
+            record,
+            {
+                "raw_llm_response": (
+                    "The feature is enabled only for manual QA responses. "
+                    "Automatic mode evaluates responses in the background instead."
+                ),
+                "tools_used": [],
+                "data": {},
+            },
+        )
+        similar = handler._analyze_completion_guard_delta(
+            record,
+            {
+                "raw_llm_response": "The feature is enabled.",
+                "tools_used": [],
+                "data": {},
+            },
+        )
+
+        self.assertTrue(material["material_answer_delta"])
+        self.assertFalse(similar["material_answer_delta"])
 
     def test_manual_prompt_records_get_expiry(self):
         handler = ChatHandler.__new__(ChatHandler)
@@ -258,6 +318,7 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
             "conversation_id": "conv-repair-room",
             "message_id": "msg-parent",
             "mode": "cloud",
+            "tool_policy": "none",
             "query": "What is X?",
             "speech": "Answer",
             "raw_llm_response": "Answer",
@@ -270,13 +331,13 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
             "ok": True,
             "speech": (
                 "REPAIR_STATUS: repaired\n"
-                "Better answer with verified source according to jarvis-intel/user-profile.md"
+                "A substantially better answer that fully explains X and corrects the missing details."
             ),
             "raw_llm_response": (
                 "REPAIR_STATUS: repaired\n"
-                "Better answer with verified source according to jarvis-intel/user-profile.md"
+                "A substantially better answer that fully explains X and corrects the missing details."
             ),
-            "tools_used": ["search_memory"],
+            "tools_used": [],
             "data": {},
         }
 
@@ -290,14 +351,6 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
         ), patch.object(
             handler, "_format_completion_guard_strategy", return_value="verify source"
         ), patch.object(
-            handler,
-            "_analyze_completion_guard_delta",
-            return_value={
-                "operational_correction": True,
-                "original_tools": [],
-                "repair_tools": ["search_memory"],
-            },
-        ), patch.object(
             handler, "_prepare_web_response_text", return_value=("Better text", "Better speech")
         ), patch.object(handler, "_compute_effective_evidence", return_value=None), patch.object(
             handler, "_update_completion_guard_experience"
@@ -306,12 +359,60 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
         ):
             handler._run_completion_guard_repair("ephemeral-session-99", record, note="wrong")
 
+        repair_prompt = fake_orchestrator.process.call_args.args[0]
+        self.assertEqual(fake_orchestrator.process.call_args.kwargs["tool_policy"], "none")
+        self.assertIn("This repair inherits Chat only mode", repair_prompt)
+        self.assertNotIn("You may use tools if needed", repair_prompt)
+        self.assertEqual(record["status"], "repaired")
+        self.assertTrue(record["repair_result"]["delta"]["chat_only_answer_correction"])
+        self.assertTrue(any(event == "chat:response" for event, _payload, _kwargs in handler.socketio.emitted))
+
         expected_room = "conversation:conv-repair-room"
         self.assertTrue(handler.socketio.emitted)
         for event, _payload, kwargs in handler.socketio.emitted:
             with self.subTest(event=event):
                 self.assertEqual(kwargs.get("room"), expected_room)
                 self.assertNotEqual(kwargs.get("room"), "ephemeral-session-99")
+
+    def test_auto_repair_passes_the_chat_only_record_to_shared_repair(self):
+        handler = ChatHandler.__new__(ChatHandler)
+        handler._evaluate_completion_guard_auto = unittest.mock.MagicMock(
+            return_value={
+                "repair_score": 0.95,
+                "recommended_action": "repair_required",
+                "suggested_note": "The answer missed a requirement.",
+            }
+        )
+        handler._run_completion_guard_repair = unittest.mock.MagicMock()
+        handler._update_completion_guard_experience = unittest.mock.MagicMock()
+        handler._start_feedback_async = unittest.mock.MagicMock()
+        record = {
+            "conversation_id": "conv-auto-chat-only",
+            "message_id": "msg-auto-chat-only",
+            "mode": "cloud",
+            "tool_policy": "none",
+            "status": "pending",
+            "repair_attempts": 0,
+            "tools_used": [],
+            "completion_guard": {"auto_threshold": 0.70},
+        }
+
+        with patch(
+            "jarvis_web_test_server.services.conversation_store.get_conversation_store"
+        ):
+            ChatHandler._run_completion_guard_auto_eval.__wrapped__(
+                handler,
+                "session-auto-chat-only",
+                record,
+            )
+
+        self.assertEqual(record["status"], "repairing")
+        self.assertEqual(record["repair_attempts"], 1)
+        handler._run_completion_guard_repair.assert_called_once_with(
+            "session-auto-chat-only",
+            record,
+            "The answer missed a requirement.",
+        )
 
     def test_latest_pending_message_reaction_updates_intelligence_and_conversation(self):
         handler = ChatHandler.__new__(ChatHandler)

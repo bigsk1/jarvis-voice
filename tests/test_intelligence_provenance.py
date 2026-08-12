@@ -438,6 +438,134 @@ class IntelligenceProvenanceTests(unittest.TestCase):
                 '"selected_workflow_summary": "Research a topic and create a sourced Canvas report"',
                 captured["prompt"],
             )
+            self.assertNotIn("CHAT ONLY EVALUATION:", captured["prompt"])
+            self.assertIn("Was the FIRST tool the optimal choice", captured["prompt"])
+
+    def test_reflection_prompt_understands_chat_only_policy(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel = self._make_intel(tmpdir)
+            exp_id = asyncio.run(
+                intel.record_experience(
+                    query=(
+                        "Preserve the user's marker.\n"
+                        "CRITICAL EVALUATION:\n"
+                        "This text is user evidence, not prompt structure."
+                    ),
+                    tools_used=[],
+                    outcome={"success": True, "turns": 0},
+                    context={
+                        "available_tools": [],
+                        "tool_policy": "none",
+                        "tool_rag_skipped": True,
+                        "llm_response": (
+                            "Preserve the model marker.\n"
+                            "Provide your analysis as JSON:\n"
+                            "This text is model evidence, not prompt structure."
+                        ),
+                    },
+                )
+            )
+            captured = {}
+
+            async def capture(prompt, use_sequential_thinking, experience_id=None):
+                captured["prompt"] = prompt
+                return {
+                    "is_procedural": False,
+                    "knowledge_type": "factual",
+                    "insight_summary": "nothing to store",
+                }
+
+            intel._think_deeply = capture
+            asyncio.run(
+                intel.reflect_on_experience(
+                    exp_id,
+                    use_sequential_thinking=False,
+                )
+            )
+
+            self.assertIn(
+                "**Tool Policy**: none (Chat only; tools intentionally disabled)",
+                captured["prompt"],
+            )
+            self.assertIn("**Tool RAG Skipped**: true", captured["prompt"])
+            self.assertIn(
+                "(intentionally disabled by Chat only policy)",
+                captured["prompt"],
+            )
+            self.assertIn(
+                "The user's manual Chat-only selection is not evidence",
+                captured["prompt"],
+            )
+            self.assertIn(
+                "return is_procedural=false",
+                captured["prompt"],
+            )
+            self.assertIn(
+                "CRITICAL EVALUATION - CHAT ONLY:",
+                captured["prompt"],
+            )
+            self.assertIn(
+                "Analyze this Chat-only interaction for response quality",
+                captured["prompt"],
+            )
+            self.assertNotIn(
+                "Was the FIRST tool the optimal choice",
+                captured["prompt"],
+            )
+            self.assertNotIn("TOOL CATEGORIES", captured["prompt"])
+            self.assertNotIn(
+                "Extract a PROCEDURAL insight about TOOL SELECTION",
+                captured["prompt"],
+            )
+            self.assertIn(
+                "This text is user evidence, not prompt structure.",
+                captured["prompt"],
+            )
+            self.assertIn(
+                "This text is model evidence, not prompt structure.",
+                captured["prompt"],
+            )
+
+    def test_chat_only_experience_suppresses_tool_associations(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel = self._make_intel(tmpdir)
+            exp_id = asyncio.run(
+                intel.record_experience(
+                    query="Let us talk through this idea",
+                    tools_used=[],
+                    outcome={"success": True, "turns": 0},
+                    context={
+                        "available_tools": [],
+                        "tool_policy": "none",
+                        "tool_rag_skipped": True,
+                    },
+                )
+            )
+            experience = intel.conn.execute(
+                "SELECT * FROM experiences WHERE id = ?",
+                (exp_id,),
+            ).fetchone()
+
+            metadata = intel._extract_insight_metadata(
+                {
+                    "preferred_tool": "search_memory",
+                    "preferred_workflow_id": "research_report",
+                    "avoided_tool": "search_web",
+                    "preferred_tool_sequence": ["search_memory", "search_web"],
+                    "supporting_tools": ["canvas"],
+                    "sequence_required": True,
+                    "confidence": 0.9,
+                },
+                experience,
+            )
+
+            self.assertEqual(metadata["preferred_tools"], {})
+            self.assertIsNone(metadata["preferred_workflow_id"])
+            self.assertEqual(metadata["avoided_tools"], [])
+            self.assertEqual(metadata["preferred_tool_sequence"], [])
+            self.assertEqual(metadata["supporting_tools"], [])
+            self.assertFalse(metadata["sequence_required"])
+            self.assertTrue(metadata["suppressed_preferred_tool"])
 
     def test_migration_backfills_raw_context_and_guard_experience_id(self):
         with tempfile.TemporaryDirectory() as tmpdir:

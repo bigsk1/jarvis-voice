@@ -616,6 +616,31 @@ class Orchestrator:
             return self._config_bool("ANTHROPIC_SEARCH", False)
         return False
 
+    @staticmethod
+    def _enforce_chat_only_route(
+        route: dict[str, Any],
+        chat_only_mode: bool,
+        routing_provenance: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Convert any anomalous tool route into a non-executing QA response."""
+        if not chat_only_mode or route.get("intent") != "tool":
+            return route
+
+        tool_name = str(route.get("tool_name") or "unknown")
+        routing_provenance["chat_only_tool_call_blocked"] = tool_name
+        guarded_route = dict(route)
+        guarded_route.update({
+            "intent": "qa",
+            "text_response": (
+                f"Chat only blocked an unexpected request to use {tool_name}. "
+                "No tools were run. Please retry, or turn off Chat only if this task needs tools."
+            ),
+            "available_tools": [],
+        })
+        for key in ("tool_name", "arguments", "id", "tool_call_id", "response_id"):
+            guarded_route.pop(key, None)
+        return guarded_route
+
     def _xai_provider_result_max_chars(self) -> int:
         return max(800, self._config_int("XAI_CONTINUATION_RESULT_MAX_CHARS", 6000))
 
@@ -1104,6 +1129,13 @@ class Orchestrator:
         
         Uses FEEDBACK_RANDOM_ENABLED and FEEDBACK_RANDOM_CHANCE from config.
         """
+        routing_provenance = result.get("routing_provenance") or {}
+        if (
+            isinstance(routing_provenance, dict)
+            and routing_provenance.get("tool_policy") == "none"
+        ):
+            return result
+
         import random
         from config_loader import get_config_value, get_float
         
@@ -1232,6 +1264,7 @@ Mode: {self.mode}
                 vision_pre_analyzed: bool = False,
                 request_kind: str = '',
                 tool_rag_limit: int | None = None,
+                tool_policy: str = 'auto',
                 _retry_state: dict[str, Any] | None = None) -> dict[str, Any]:
         """
         Process user transcript and execute tools or respond.
@@ -1256,6 +1289,8 @@ Mode: {self.mode}
             request_kind: Optional recognized request type. The Web UI uses
                            ``canvas_export`` for its Send-to-Canvas action.
             tool_rag_limit: Optional one-request cap for final Tool RAG schemas.
+            tool_policy: ``none`` disables Tool RAG, client tools, workflows,
+                         and provider-hosted tools for a direct chat response.
             _retry_state: Internal only. Carries in-flight orchestrator state across
                          recursive tool-failure retries so UI events and accumulated
                          results stay consistent within one user request.
@@ -1281,6 +1316,9 @@ Mode: {self.mode}
         except ImportError:
             # security_utils not available, continue without sanitization
             pass
+
+        tool_policy = 'none' if tool_policy == 'none' else 'auto'
+        chat_only_mode = tool_policy == 'none'
         
         # Store tool overrides for this request
         self._tool_overrides = tool_overrides or {}
@@ -1291,7 +1329,7 @@ Mode: {self.mode}
         
         # Check for explicit workflow commands (e.g., /research, /note, /health)
         # These bypass normal LLM routing and execute a predefined pipeline
-        workflow_result = self._try_workflow(transcript)
+        workflow_result = None if chat_only_mode else self._try_workflow(transcript)
         if workflow_result:
             return workflow_result
         
@@ -1328,9 +1366,8 @@ Mode: {self.mode}
         # not depend on a Tool RAG sync before becoming eligible.
         try:
             excluded = set(excluded_tools or [])
-            available_tool_names = [
-                name for name in self.registry.list_tools()
-                if name not in excluded
+            available_tool_names = [] if chat_only_mode else [
+                name for name in self.registry.list_tools() if name not in excluded
             ]
         except Exception:
             available_tool_names = []  # Fallback: no filtering
@@ -1344,7 +1381,13 @@ Mode: {self.mode}
             enhanced_transcript = f"{memory_context}\n\n{enhanced_transcript}"
         
         # Inject learned insights from self-learning intelligence
-        learning_context, applied_insights = self._get_learning_insights(transcript, available_tool_names)
+        if chat_only_mode:
+            learning_context, applied_insights = "", []
+        else:
+            learning_context, applied_insights = self._get_learning_insights(
+                transcript,
+                available_tool_names,
+            )
         if learning_context:
             enhanced_transcript = f"{learning_context}\n\n{enhanced_transcript}"
         combined_intelligence_context = "\n\n".join(
@@ -1377,6 +1420,8 @@ Mode: {self.mode}
                     for insight in applied_insights[:5]
                 ],
             },
+            "tool_policy": tool_policy,
+            "tool_rag_skipped": chat_only_mode,
         }
         if vision_pre_analyzed_active and self._provider_server_side_tools_available():
             routing_provenance["vision_pre_analyzed_disable_native_tools"] = True
@@ -1540,7 +1585,8 @@ Mode: {self.mode}
                 else None
             )
             disable_server_side_tools = (
-                client_search_hint_active
+                chat_only_mode
+                or client_search_hint_active
                 or (native_search_remaining is not None and native_search_remaining <= 0)
                 or (
                     vision_pre_analyzed_active
@@ -1548,7 +1594,15 @@ Mode: {self.mode}
                 )
             )
             if disable_server_side_tools:
-                if (
+                if chat_only_mode:
+                    turn_input = (
+                        "[CHAT ONLY MODE]\n"
+                        "No tools are available for this request. Answer directly from conversation context "
+                        "and existing knowledge. If current or external information is required, say it cannot "
+                        "be fetched until Chat only is turned off.\n\n"
+                        f"{turn_input}"
+                    )
+                elif (
                     vision_pre_analyzed_active
                     and self._provider_server_side_tools_available()
                     and not client_search_hint_active
@@ -1564,12 +1618,13 @@ Mode: {self.mode}
                     reason = "A client-side search tool was selected in the UI."
                 else:
                     reason = "The provider-native search budget is exhausted."
-                turn_input = (
-                    "[NATIVE SEARCH DISABLED]\n"
-                    f"{reason} Use results already gathered, choose a client-side search tool, "
-                    "or answer directly.\n\n"
-                    f"{turn_input}"
-                )
+                if not chat_only_mode:
+                    turn_input = (
+                        "[NATIVE SEARCH DISABLED]\n"
+                        f"{reason} Use results already gathered, choose a client-side search tool, "
+                        "or answer directly.\n\n"
+                        f"{turn_input}"
+                    )
             route_payload: str | ProviderRouteInput = turn_input
             route_previous_response_id = None
             continuation_fallback_reason = None
@@ -1634,6 +1689,7 @@ Mode: {self.mode}
                 ),
                 previous_response_id=route_previous_response_id,
                 tool_rag_limit=tool_rag_limit,
+                tool_policy=tool_policy,
             )
             if (
                 route.get("intent") == "error"
@@ -1664,6 +1720,7 @@ Mode: {self.mode}
                     ),
                     previous_response_id=None,
                     tool_rag_limit=tool_rag_limit,
+                    tool_policy=tool_policy,
                 )
             elif (
                 route.get("intent") == "error"
@@ -1692,7 +1749,13 @@ Mode: {self.mode}
                     ),
                     previous_response_id=None,
                     tool_rag_limit=tool_rag_limit,
+                    tool_policy=tool_policy,
                 )
+            route = self._enforce_chat_only_route(
+                route,
+                chat_only_mode,
+                routing_provenance,
+            )
             if os.environ.get('JARVIS_DEBUG'):
                 print(f"DEBUG: Routing complete, intent={route.get('intent')}", file=sys.stderr)
             
@@ -2263,6 +2326,8 @@ Mode: {self.mode}
                             tool_overrides=tool_overrides,
                             vision_pre_analyzed=vision_pre_analyzed_active,
                             request_kind=request_kind,
+                            tool_rag_limit=tool_rag_limit,
+                            tool_policy=tool_policy,
                             _retry_state={
                                 "vision_pre_analyzed": vision_pre_analyzed_active,
                                 "conversation_context": conversation_context,

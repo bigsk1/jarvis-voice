@@ -180,6 +180,15 @@ def record_interaction(
         # Tools that were AVAILABLE to the LLM (from Tool RAG + ghost tools)
         # This is critical for reflection - shows what LLM COULD have chosen
         available_tools = result.get('available_tools', [])
+        routing_provenance = result.get('routing_provenance') or {}
+        if not isinstance(routing_provenance, dict):
+            routing_provenance = {}
+        tool_policy = routing_provenance.get('tool_policy')
+        if tool_policy not in {'auto', 'none'}:
+            tool_policy = None
+        tool_rag_skipped = routing_provenance.get('tool_rag_skipped')
+        if not isinstance(tool_rag_skipped, bool):
+            tool_rag_skipped = None
         
         # Truncate to prevent DB bloat but keep enough for evaluation
         if len(raw_llm_response) > 2500:
@@ -222,6 +231,10 @@ def record_interaction(
             'provider_native_tools_used': native_tool_labels,
             # CRITICAL: What tools the LLM could have chosen from
             'available_tools': available_tools,
+            # Preserve the request policy so reflection can distinguish an
+            # intentional no-tools turn from missing tool telemetry.
+            'tool_policy': tool_policy,
+            'tool_rag_skipped': tool_rag_skipped,
             'experience_id': result.get('experience_id'),
             'web_conversation_id': result.get('web_conversation_id'),
             'jarvis_session_id': result.get('jarvis_session_id'),

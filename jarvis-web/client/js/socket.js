@@ -177,7 +177,7 @@ class JarvisSocket {
    * Send a chat message (with optional image, prompt metadata, and text file)
    * @param {string} message - The message text
    * @param {Object} imageData - Optional image payload {action, settings, images: [{url, filename}]}
-   * @param {Object} promptMeta - Optional prompt metadata {system_instruction, prompt_name, tool_hints, request_kind, tool_rag_limit}
+   * @param {Object} promptMeta - Optional prompt metadata {system_instruction, prompt_name, tool_hints, tool_policy, request_kind, tool_rag_limit}
    * @param {boolean} requestFeedback - Whether to request feedback analysis after response
    * @param {Object} fileContext - Optional text file data {name, content, size, type}
    * @param {Array} attachments - Optional server-issued artifact metadata
@@ -230,6 +230,9 @@ class JarvisSocket {
       if (Array.isArray(promptMeta.tool_hints) && promptMeta.tool_hints.length > 0) {
         payload.tool_hints = promptMeta.tool_hints;
       }
+      if (promptMeta.tool_policy === 'none') {
+        payload.tool_policy = 'none';
+      }
       if (promptMeta.request_kind === 'canvas_export') {
         payload.request_kind = promptMeta.request_kind;
       }
@@ -239,7 +242,7 @@ class JarvisSocket {
     }
     
     // Include feedback request if enabled
-    if (requestFeedback) {
+    if (requestFeedback && promptMeta?.tool_policy !== 'none') {
       payload.request_feedback = true;
     }
 

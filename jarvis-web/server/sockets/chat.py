@@ -295,6 +295,16 @@ class ChatHandler:
         return min(limit, 50)
 
     @staticmethod
+    def _sanitize_tool_policy(raw_policy) -> str:
+        """Accept the explicit no-tools policy; every other value is Auto."""
+        return 'none' if raw_policy == 'none' else 'auto'
+
+    @staticmethod
+    def _sanitize_feedback_request(raw_request, tool_policy: str) -> bool:
+        """Feedback Analysis is unavailable when tools are intentionally disabled."""
+        return bool(raw_request) and tool_policy != 'none'
+
+    @staticmethod
     def _format_tool_hint_context(tool_hints: list[str], request_kind: str = '') -> str:
         names = ', '.join(tool_hints)
         if request_kind == 'canvas_export' and tool_hints == ['canvas']:
@@ -894,12 +904,55 @@ class ChatHandler:
     def _evaluate_completion_guard_auto(self, record: dict) -> dict:
         """Evaluate whether the finished answer should auto-trigger a repair pass."""
         record_mode = record.get('mode', 'cloud')
+        tool_policy = self._sanitize_tool_policy(record.get('tool_policy'))
         provider_name, model_name, provider = self._create_completion_guard_eval_provider(
             mode=record_mode,
             completion_guard_config=record.get('completion_guard'),
             fallback_provider=record.get('provider'),
             fallback_model=record.get('model')
         )
+        if tool_policy == 'none':
+            policy_audit_rules = """Tool policy: Chat only (tools were deliberately disabled)
+- Judge only the answer's correctness, completeness, reasoning, and support from the context already provided
+- Do not penalize the response for using no tools, having no available tools, or not performing live retrieval
+- Prefer tighten_only over repair_required when a QA-only correction would not materially change correctness or completeness
+- Use recommended_action=repair_required only when another QA-only pass can materially improve the answer without tools
+- If a current or externally verifiable fact cannot be supported from the provided context, prefer an honest limitation over recommending retrieval
+- Never recommend a tool call, search, file inspection, workflow, artifact update, or other tool path"""
+            available_tools = '(disabled by Chat only policy)'
+            failure_type_examples = '["unsupported_claim", "incomplete_task"]'
+            contradiction_examples = '["answer conflicts with context supplied in the request"]'
+            evidence_gap_examples = '["answer omitted support available in the provided context"]'
+            failure_type_vocabulary = """- unsupported_claim
+- incomplete_task
+- missing_required_output
+- contradiction_with_provided_context
+- weak_contextual_support
+- wrong_output_format"""
+            evidence_rules = """- This was intentionally a zero-tool answer. Zero tool usage is not a failure or evidence gap by itself.
+- Judge any strong claim against the context shown here; a QA-only repair may correct, qualify, or remove an unsupported claim.
+- The repair cannot fetch new evidence, so request one only when the existing context supports a materially better answer."""
+        else:
+            policy_audit_rules = """Tool policy: Auto
+- Use recommended_action=repair_required only when a follow-up pass should materially improve the evidence or tool path
+- Prefer tighten_only over repair_required when the gap is disclaimers, qualification, or uncertainty wording—not missing retrieval or tool calls
+- If the answer missed evidence already present in tool data, call that out"""
+            available_tools = ', '.join(record.get('available_tools', [])) or '(not captured)'
+            failure_type_examples = '["unsupported_claim", "premature_not_found"]'
+            contradiction_examples = '["tool data contained evidence the answer missed"]'
+            evidence_gap_examples = '["available tools or returned data were not used well enough"]'
+            failure_type_vocabulary = """- unsupported_claim
+- incomplete_task
+- missing_required_output
+- contradiction_with_tool_data
+- premature_not_found
+- weak_evidence
+- wrong_output_format
+- hidden_tool_error
+- missed_direct_source"""
+            evidence_rules = """- Native provider tools listed above are REAL tool usage. Do not call this a zero-tool answer if native provider tools were used.
+- If native provider search returned sources/URLs, treat that as valid external evidence unless the answer still overclaims beyond what was returned.
+- If effective evidence is non-empty, treat supporting_tool_results as valid grounding for this answer even when tools_used is empty (e.g. refinements like "top 10" using prior tool results)."""
 
         prompt = f"""Audit whether this completed Jarvis answer is actually supported and complete.
 
@@ -909,11 +962,11 @@ Return JSON only:
   "task_status": "complete" | "partial" | "unsupported" | "failed",
   "risk_level": "low" | "medium" | "high" | "critical",
   "repair_worthwhile": true,
-  "failure_types": ["unsupported_claim", "premature_not_found"],
+  "failure_types": {failure_type_examples},
   "missing_requirements": ["did not answer what to call the user"],
   "unsupported_claims": ["claimed no memory exists without enough support"],
-  "contradictions": ["tool data contained evidence the answer missed"],
-  "evidence_gaps": ["available tools or returned data were not used well enough"],
+  "contradictions": {contradiction_examples},
+  "evidence_gaps": {evidence_gap_examples},
   "reason": "short explanation",
   "suggested_note": "short note for a repair pass or empty string"
 }}
@@ -923,24 +976,14 @@ Audit rules:
 - Do not penalize voice-style brevity by itself
 - Focus on support, completeness, contradictions, and missing required outputs
 - Use recommended_action=tighten_only when the answer mostly works and only needs softer wording, tighter scope, or minor hedging
-- Prefer tighten_only over repair_required when the gap is disclaimers, qualification, or uncertainty wording—not missing retrieval or tool calls
-- Use recommended_action=repair_required only when a follow-up pass should materially improve the evidence or tool path
+{policy_audit_rules}
 - Do not request a repair only because the answer could be phrased more cleanly
-- If the answer missed evidence already present in tool data, call that out
 - If the answer made strong claims without enough support, call that out
 - If the answer only partially addressed the request, call that out
 - Be conservative but honest: if the answer is incomplete or weakly supported, mark it
 
 General failure type vocabulary:
-- unsupported_claim
-- incomplete_task
-- missing_required_output
-- contradiction_with_tool_data
-- premature_not_found
-- weak_evidence
-- wrong_output_format
-- hidden_tool_error
-- missed_direct_source
+{failure_type_vocabulary}
 
 User request:
 {record.get('query', '')}
@@ -960,7 +1003,7 @@ Native provider tools used:
 {', '.join(self._normalize_server_side_tool_names(record.get('server_side_tools'))) or '(none)'}
 
 Available tools:
-{', '.join(record.get('available_tools', [])) or '(not captured)'}
+{available_tools}
 
 Effective evidence (structured grounding; may include prior turns; may be empty):
 ```json
@@ -973,9 +1016,7 @@ Structured result data:
 ```
 
 Important:
-- Native provider tools listed above are REAL tool usage. Do not call this a zero-tool answer if native provider tools were used.
-- If native provider search returned sources/URLs, treat that as valid external evidence unless the answer still overclaims beyond what was returned.
-- If effective evidence is non-empty, treat supporting_tool_results as valid grounding for this answer even when tools_used is empty (e.g. refinements like "top 10" using prior tool results).
+{evidence_rules}
 """
 
         override = load_model_prompt_override(
@@ -992,6 +1033,13 @@ Important:
             override,
             prepend_sections=("completion_guard_eval_prepend",),
         )
+        if tool_policy == 'none':
+            system_prompt += (
+                "\n\nCHAT ONLY EVALUATION OVERRIDE: Tools were intentionally disabled. "
+                "Ignore any model-specific guidance that assumes more tool work, search, "
+                "retrieval, file inspection, or artifact updates were possible. Judge whether "
+                "a tool-free QA repair can materially improve the answer from existing context."
+            )
         response = provider.chat(prompt, system_prompt=system_prompt, max_tokens=300)
         parsed = self._parse_completion_guard_auto_eval(response)
         if parsed:
@@ -1554,6 +1602,7 @@ Returned tool data:
         conversation_id = record.get('conversation_id')
         parent_message_id = record.get('message_id')
         mode = record.get('mode', 'cloud')
+        repair_tool_policy = self._sanitize_tool_policy(record.get('tool_policy'))
         repair_message_id = str(uuid.uuid4())
         start_time = time.time()
         delivery_room = self._delivery_room(session_id, conversation_id)
@@ -1644,6 +1693,22 @@ Returned tool data:
             orchestrator.set_progress_callback(progress_callback)
             repair_strategy = self._classify_completion_guard_strategy(record, note)
             record['repair_strategy'] = repair_strategy
+            if repair_tool_policy == 'none':
+                repair_tool_rules = """- This repair inherits Chat only mode from the original turn
+- Do not call, request, recommend, or simulate any tool or hosted provider tool
+- Correct or complete the answer using only the existing conversation, prior response, and injected context"""
+                strong_claim_rule = "- If the previous answer made a strong claim that the existing context cannot support, qualify or remove it instead of seeking new evidence"
+                repair_value_rule = "- Do not spend a repair pass on wording-only cleanup unless corrected reasoning or completeness materially improves the answer"
+            else:
+                repair_tool_rules = """- You may use tools if needed, but only when they clearly help verify or correct the issue
+- Do not just repeat the same failed retrieval path if it came back empty or weak
+- If one memory/search tool did not find enough, consider a different tool path that can inspect the source more directly
+- If the user references a specific file, folder, path, or source, treat that as a concrete lead and inspect it instead of only doing semantic recall
+- For intel or profile questions, prefer direct intel/file inspection when the user points to a known intel file or path
+- If a tool in this repair pass already returns the answer in its data, stop and answer from that data directly
+- If a prior artifact such as a canvas page is now known to be wrong and you have enough context, update it"""
+                strong_claim_rule = "- If the previous answer made a strong claim like shut down, deprecated, removed, saved, created, updated, or sent, verify it before repeating it"
+                repair_value_rule = "- Do not spend a repair pass on wording-only cleanup unless you find new evidence or a materially better tool path"
 
             repair_prompt = f"""[COMPLETION GUARD REPAIR - CONTINUE THE SAME TASK, DO NOT START OVER]
 
@@ -1661,16 +1726,10 @@ Rules:
 - Audit the prior raw answer first
 - Use the full raw answer, not the shortened speech text, as the main thing to critique
 - Do not repeat unsupported claims
-- If the previous answer made a strong claim like shut down, deprecated, removed, saved, created, updated, or sent, verify it before repeating it
+{strong_claim_rule}
 - Prefer fixing the smallest missing step
-- You may use tools if needed, but only when they clearly help verify or correct the issue
-- Do not spend a repair pass on wording-only cleanup unless you find new evidence or a materially better tool path
-- Do not just repeat the same failed retrieval path if it came back empty or weak
-- If one memory/search tool did not find enough, consider a different tool path that can inspect the source more directly
-- If the user references a specific file, folder, path, or source, treat that as a concrete lead and inspect it instead of only doing semantic recall
-- For intel or profile questions, prefer direct intel/file inspection when the user points to a known intel file or path
-- If a tool in this repair pass already returns the answer in its data, stop and answer from that data directly
-- If a prior artifact such as a canvas page is now known to be wrong and you have enough context, update it
+{repair_tool_rules}
+{repair_value_rule}
 - If you still cannot resolve the issue after one attempt, use REPAIR_STATUS: unresolved and explain exactly what remains uncertain
 - Do not write to jarvis-learned-lessons.md unless this repair uncovers a real reusable operational lesson, provider quirk, or tool limitation. Rewording alone is not lesson-worthy.
 
@@ -1698,7 +1757,10 @@ Previous structured data:
 ```
 """
 
-            result = orchestrator.process(repair_prompt)
+            result = orchestrator.process(
+                repair_prompt,
+                tool_policy=repair_tool_policy,
+            )
             if repair_message_id in self.pending_cancellations:
                 del self.pending_cancellations[repair_message_id]
             raw_response = result.get('raw_llm_response', '') or result.get('speech', '')
@@ -1786,7 +1848,17 @@ Previous structured data:
 
             original_tools = delta.get('original_tools', []) or []
             repair_tools = delta.get('repair_tools', []) or []
-            if (
+            chat_only_answer_correction = bool(
+                repair_tool_policy == 'none'
+                and result.get('ok', True)
+                and repair_status == 'repaired'
+                and delta.get('material_answer_delta')
+            )
+            if chat_only_answer_correction:
+                operational_correction = True
+                delta['operational_correction'] = True
+                delta['chat_only_answer_correction'] = True
+            elif (
                 not original_tools
                 and not repair_tools
                 and not self._repair_has_explicit_source_or_verified_action(result)
@@ -2223,10 +2295,27 @@ Previous structured data:
                     else ''
                 ),
                 'tool_rag_limit': self._sanitize_tool_rag_limit(data.get('tool_rag_limit')),
+                'tool_policy': self._sanitize_tool_policy(data.get('tool_policy')),
             }
+            if prompt_meta['tool_policy'] == 'none':
+                # The no-tools policy wins over stale or handcrafted selector metadata.
+                prompt_meta['tool_hints'] = []
+                prompt_meta['request_kind'] = ''
+                prompt_meta['tool_rag_limit'] = None
+            request_feedback = self._sanitize_feedback_request(
+                request_feedback,
+                prompt_meta['tool_policy'],
+            )
             
             from vision_multimodal import max_vision_images, normalize_web_image_payload
             normalized_image = normalize_web_image_payload(image_data)
+
+            if prompt_meta['tool_policy'] == 'none' and (normalized_image or pdf_attachments):
+                emit('chat:error', {
+                    'error': 'Turn off Chat only before analyzing images or PDFs.',
+                    'conversation_id': conversation_id,
+                })
+                return
 
             if not message and not normalized_image and not file_context and not pdf_attachments:
                 emit('chat:error', {
@@ -2314,6 +2403,8 @@ Previous structured data:
                 user_msg_data['request_kind'] = prompt_meta['request_kind']
             if prompt_meta.get('tool_rag_limit'):
                 user_msg_data['tool_rag_limit'] = prompt_meta['tool_rag_limit']
+            if prompt_meta.get('tool_policy') == 'none':
+                user_msg_data['tool_policy'] = 'none'
             store.add_message(conversation_id, 'user', message, data=user_msg_data if user_msg_data else None)
             
             # Update session
@@ -3223,13 +3314,18 @@ Previous structured data:
         original_user_message = message
         pdf_attachments = pdf_attachments or []
         prompt_meta = prompt_meta or {}
+        request_feedback = self._sanitize_feedback_request(
+            request_feedback,
+            prompt_meta.get('tool_policy', 'auto'),
+        )
         prompt_info = f", prompt={prompt_meta.get('prompt_name')}" if prompt_meta.get('prompt_name') else ""
         hint_info = f", tool_hints={prompt_meta.get('tool_hints')}" if prompt_meta.get('tool_hints') else ""
+        policy_info = ", tool_policy=none" if prompt_meta.get('tool_policy') == 'none' else ""
         feedback_info = f", request_feedback={request_feedback}" if request_feedback else ""
         print(
             f"[CHAT] Processing message: {message[:50]}... "
             f"(mode={mode}, session={session_id[:8]}, has_image={image_data is not None}, "
-            f"has_pdf={bool(pdf_attachments)}{prompt_info}{hint_info}{feedback_info})"
+            f"has_pdf={bool(pdf_attachments)}{prompt_info}{hint_info}{policy_info}{feedback_info})"
         )
         
         try:
@@ -3706,14 +3802,22 @@ Previous structured data:
                 if prompt_meta.get('tool_rag_limit')
                 else ""
             )
+            tool_policy_info = (
+                ", tool_policy=none"
+                if prompt_meta.get('tool_policy') == 'none'
+                else ""
+            )
             vision_pre_analyzed = bool(vision_result)
             if vision_pre_analyzed:
                 print("[CHAT] Web upload vision complete - native server-side tools disabled for this request")
-            print(f"[CHAT] Calling orchestrator.process() with {len(conversation_history)} history messages, {len(blocked_tools)} blocked tools{override_info}{tool_rag_limit_info}...")
+            print(f"[CHAT] Calling orchestrator.process() with {len(conversation_history)} history messages, {len(blocked_tools)} blocked tools{override_info}{tool_rag_limit_info}{tool_policy_info}...")
             from config_loader import config_override_scope
             feedback_overrides = (
                 {'FEEDBACK_RANDOM_ENABLED': 'false'}
-                if completion_guard_config.get('enabled')
+                if (
+                    completion_guard_config.get('enabled')
+                    or prompt_meta.get('tool_policy') == 'none'
+                )
                 else {}
             )
             with config_override_scope(feedback_overrides):
@@ -3725,6 +3829,7 @@ Previous structured data:
                     vision_pre_analyzed=vision_pre_analyzed,
                     request_kind=prompt_meta.get('request_kind', ''),
                     tool_rag_limit=prompt_meta.get('tool_rag_limit'),
+                    tool_policy=prompt_meta.get('tool_policy', 'auto'),
                 )
             
             # Clean up cancellation flag
@@ -3996,6 +4101,9 @@ Previous structured data:
                 'mode': mode,
                 'provider': effective_provider,
                 'model': effective_model,
+                'tool_policy': self._sanitize_tool_policy(
+                    prompt_meta.get('tool_policy')
+                ),
                 'query': original_user_message,
                 'processed_query': message,
                 'speech': result.get('speech', ''),
