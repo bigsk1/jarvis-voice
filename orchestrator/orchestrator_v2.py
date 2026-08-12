@@ -29,7 +29,7 @@ from model_catalog import get_provider_fallback_model
 from status_updater import StatusUpdater
 from security_utils import sanitize_for_speech
 
-from router_v2 import LLMRouter, ProviderRouteInput
+from router_v2 import LLMRouter, ProviderRouteInput, extract_current_user_request
 from context_assembler import ContextAssembler
 from response_formatter import ResponseFormatter
 from executor import ToolExecutor
@@ -1384,8 +1384,12 @@ Mode: {self.mode}
         if chat_only_mode:
             learning_context, applied_insights = "", []
         else:
+            # Intelligence should classify the user's task, not Jarvis-added
+            # tool-hint/context wrappers whose tool names can inflate semantic
+            # similarity to a narrow learned rule.
+            intelligence_query = extract_current_user_request(transcript)
             learning_context, applied_insights = self._get_learning_insights(
-                transcript,
+                intelligence_query,
                 available_tool_names,
             )
         if learning_context:

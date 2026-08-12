@@ -342,6 +342,18 @@ def _extract_current_tool_request(transcript: str) -> tuple[str | None, str]:
     return None, "unparsed"
 
 
+def extract_current_user_request(transcript: str) -> str:
+    """Return the clean current request used by semantic retrieval layers.
+
+    Jarvis prepends tool hints, learned strategies, memory, and prior-result
+    context to the router transcript. Those blocks remain available to the LLM,
+    but embedding them as if they were user text can make their tool names or
+    prohibitions look relevant to an unrelated request.
+    """
+    request, _source = _extract_current_tool_request(transcript)
+    return request or (transcript or "")
+
+
 def _parse_enabled_tool_names(raw: str, enabled_tool_names: set[str]) -> set[str]:
     """Extract exact registered tool names from a line of text."""
     if not raw or not enabled_tool_names:

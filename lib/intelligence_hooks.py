@@ -1219,6 +1219,7 @@ def get_routing_insights(query: str) -> dict[str, Any]:
                     'supporting_tools': i.get('supporting_tools') or [],
                     'sequence_required': bool(i.get('sequence_required')),
                     'trigger_signals': i.get('trigger_signals') or [],
+                    'matched_trigger_signals': i.get('matched_trigger_signals') or [],
                     'primary_intent': i.get('primary_intent') or '',
                     'source_experience_id': i.get('source_experience_id'),
                     'source_web_conversation_id': i.get('source_web_conversation_id'),

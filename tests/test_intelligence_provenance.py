@@ -225,6 +225,78 @@ class IntelligenceProvenanceTests(unittest.TestCase):
             self.assertEqual(evidence["experience_id"], exp_id)
             self.assertEqual(evidence["web_conversation_id"], "web-abc123")
 
+    def test_negative_insight_requires_its_stored_trigger_signal(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel = self._make_intel(tmpdir)
+            exp_id = self._record_experience(
+                intel,
+                "What sources did that Brave call cite? Don't search again",
+                ["brave_llm_context"],
+            )
+            experience = intel.conn.execute(
+                "SELECT * FROM experiences WHERE id = ?",
+                (exp_id,),
+            ).fetchone()
+            insight_id = asyncio.run(
+                intel._store_insight(
+                    {
+                        "is_procedural": True,
+                        "knowledge_type": "procedural",
+                        "insight_type": "routing_correction",
+                        "constraint_type": "negative",
+                        "trigger_concept": "prior Brave tool sources",
+                        "trigger_signals": [
+                            "sources did that Brave call cite",
+                            "Don't search again",
+                            "that Brave call",
+                        ],
+                        "preferred_tool": None,
+                        "avoided_tool": "brave_llm_context",
+                        "primary_intent": "recall prior tool sources",
+                        "applies_to": (
+                            "Follow-up questions about previous Brave citations "
+                            "when the user prohibits re-searching"
+                        ),
+                        "generalizability": "high",
+                        "confidence": 0.9,
+                        "insight_summary": (
+                            "Never re-call Brave for prior-citation queries when "
+                            "the user says not to search again."
+                        ),
+                    },
+                    experience,
+                )
+            )
+
+            fresh_query = "use brave to get the latest AI news"
+            fresh_insights = asyncio.run(intel.get_relevant_insights(fresh_query))
+            fresh_biases = asyncio.run(intel.get_tool_biases(fresh_query))
+            self.assertNotIn(insight_id, {item["id"] for item in fresh_insights})
+            self.assertNotIn("brave_llm_context", fresh_biases)
+
+            prior_result_query = (
+                "Which sources did that Brave call cite? DON’T search-again."
+            )
+            matching_insights = asyncio.run(
+                intel.get_relevant_insights(prior_result_query)
+            )
+            matching_biases = asyncio.run(intel.get_tool_biases(prior_result_query))
+            matched = next(
+                item for item in matching_insights if item["id"] == insight_id
+            )
+            self.assertIn("Don't search again", matched["matched_trigger_signals"])
+            self.assertLess(matching_biases["brave_llm_context"], 0)
+
+            # Older rows predate trigger metadata. Preserve their established
+            # semantic-only behavior instead of silently disabling them.
+            intel.conn.execute(
+                "UPDATE insights SET trigger_signals = '[]' WHERE id = ?",
+                (insight_id,),
+            )
+            intel.conn.commit()
+            legacy_insights = asyncio.run(intel.get_relevant_insights(fresh_query))
+            self.assertIn(insight_id, {item["id"] for item in legacy_insights})
+
     def test_record_experience_stamps_raw_context_experience_id(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             intel = self._make_intel(tmpdir)

@@ -2,7 +2,7 @@
 
 **Status**: Active / Phase 1.5 Complete + 2026 operational bridges
 **Created**: 2025-11-27
-**Updated**: 2026-07-23 (effective-registry insight filtering and autonomous workflow discovery)
+**Updated**: 2026-08-11 (request-scoped negative-insight applicability)
 **Location**: `lib/intelligence.py`, `lib/intelligence_hooks.py`, `jarvis-intelligence/` (dashboard)
 
 ## Overview
@@ -15,6 +15,7 @@ The Intelligence Layer is Jarvis's self-learning system. It observes interaction
 - Everything is continuous (vectors), not discrete rules
 - Learning generalizes through semantic similarity
 - **Phase 1**: Positive AND negative constraints (what to do AND what NOT to do)
+- Negative constraints with structured triggers apply only when the current user request contains one of those trigger signals
 - **Phase 1**: Fact vs Procedural classification (only skills stored, not facts)
 - **Phase 1**: Generalizability filtering (low-value insights filtered out)
 
@@ -324,6 +325,53 @@ The Intelligence Dashboard no longer loads large card lists eagerly on first pai
 
 This keeps the default Experiences tab responsive as the intelligence DB grows while preserving detail-modal behavior: raw experience data is still fetched only when opening a single record.
 
+### 14. Request-Scoped Negative Insight Applicability (2026-08-11)
+
+Semantic similarity discovers possible insights; it does not, by itself, prove
+that a narrow prohibition applies to the current request. Before Intelligence
+retrieval, Jarvis now derives the clean current user request and excludes
+Jarvis-added tool-hint, learned-strategy, memory, and prior-result wrappers from
+the embedding query. Those blocks remain available to the appropriate routing
+layers and to the LLM; they are simply not mistaken for user-authored intent by
+Intelligence retrieval.
+
+Negative insights that contain `trigger_signals` receive an additional
+applicability check after semantic retrieval and before prompt injection or tool
+bias calculation:
+
+1. Normalize the current request and stored triggers for case, apostrophes,
+   punctuation, and word boundaries.
+2. Require at least one complete stored trigger word or phrase to appear in the
+   clean current request.
+3. Skip the negative insight entirely when none match. It contributes neither
+   an `AVOID` prompt instruction nor a negative tool bias.
+
+For example, this valid lesson:
+
+```text
+Never re-call Brave for prior-citation questions when the user says not to search again.
+trigger_signals = ["sources did that Brave call cite", "Don't search again", "that Brave call"]
+```
+
+still applies to `What sources did that Brave call cite? Don't search again`,
+but it does not penalize `use brave to get the latest AI news`. Merely naming
+the same tool is not enough to activate the narrow prohibition.
+
+This safeguard is intentionally asymmetric:
+
+- Positive insights retain semantic generalization.
+- Negative insights with trigger metadata require an explicit trigger match
+  because `INTELLIGENCE_NEGATIVE_WEIGHT` makes their consequences stronger.
+- Legacy negative insights with no `trigger_signals` retain their established
+  semantic-only behavior for backward compatibility.
+- An explicit Web UI tool hint remains current-turn user intent and still
+  outranks a learned negative preference for Tool RAG schema inclusion.
+
+The matched phrases are retained as `matched_trigger_signals` in the applied
+insight payload for provenance and debugging. This applicability guard is a
+correctness rule, not another tuning parameter; it does not alter confidence,
+learning rate, negative weight, or decay behavior.
+
 ---
 
 ## Phase 1.5 Features (Implemented 2025-11-28)
@@ -389,7 +437,7 @@ Three automated maintenance jobs keep the intelligence layer healthy:
 ```bash
 # Config
 INTELLIGENCE_DECAY_RATE=0.95           # 5% decay per week unused
-INTELLIGENCE_DECAY_INTERVAL_DAYS=14    # Minimum days between decay runs (code default: 7 if unset)
+INTELLIGENCE_DECAY_INTERVAL_DAYS=30    # Current cloud recommendation; code default: 7 if unset
 ```
 
 **What it does**:
@@ -399,7 +447,7 @@ INTELLIGENCE_DECAY_INTERVAL_DAYS=14    # Minimum days between decay runs (code d
 - If successful (>80% helpful): slight boost
 - If confidence drops below 0.15: **auto-pruned**
 
-**⚠️ IMPORTANT**: The decay job tracks when it was last run and **skips if run within the minimum interval** (recommended config: 14 days; code default if unset: 7). This prevents accidental double-decay from compounding confidence reductions. Use `--force` to bypass if needed.
+**⚠️ IMPORTANT**: The decay job tracks when it was last run and **skips if run within the minimum interval** (current cloud recommendation: 30 days; code default if unset: 7). This prevents accidental double-decay from compounding confidence reductions. Use `--force` to bypass if needed.
 
 #### Anomaly Detection
 ```bash
@@ -460,11 +508,17 @@ USER QUERY → Check Insights → Route & Execute → Record Experience → Refl
 │  ────────────────────────────────────────────────────────────────────────────── │
 │  [PYTHON] get_routing_insights(query)                                           │
 │     │                                                                           │
-│     ├─▶ [EMBEDDING API] get_embedding(query)  ← OpenAI/Ollama call              │
+│     ├─▶ [PYTHON] Extract clean current user request                              │
+│     │      Excludes Jarvis-added hint/memory/intelligence wrappers               │
+│     │                                                                           │
+│     ├─▶ [EMBEDDING API] get_embedding(clean_request) ← OpenAI/Ollama call        │
 │     │      Returns: 1536/768-dim vector                                         │
 │     │                                                                           │
 │     ├─▶ [PYTHON] Cosine similarity search in insights DB                        │
 │     │      Finds: matching insights by pattern_embedding                        │
+│     │                                                                           │
+│     ├─▶ [PYTHON] Gate structured negative insights by trigger_signals            │
+│     │      No trigger match → no prompt instruction and no negative bias         │
 │     │                                                                           │
 │     └─▶ [LOG] logs/intelligence/intelligence-YYYY-MM-DD.jsonl                   │
 │            Event: "insights_applied"                                            │
@@ -719,15 +773,18 @@ Every interaction records:
 After reflection, insights capture:
 - **Pattern**: "Status queries need real-time tools"
 - **Applies to**: "Server health, uptime checks"
+- **Trigger signals**: Exact words/phrases that activate a structured negative constraint
 - **Preferred approach**: "Use fetch tools directly"
 - **Confidence**: 0.0-1.0
 
 ### How Insights Apply
 When a new query comes in:
-1. Generate query embedding
-2. Find similar insights (cosine similarity)
-3. Weight by confidence and relevance
-4. Inject into routing context
+1. Extract the clean current user request from any Jarvis-added wrappers
+2. Generate the clean-request embedding
+3. Find candidate insights with cosine similarity
+4. Require a stored trigger match for negative insights that have `trigger_signals`
+5. Weight applicable insights by confidence and relevance
+6. Inject applicable insights and biases into routing context
 
 ---
 
@@ -780,9 +837,9 @@ tests/
 # Learning parameters (advanced, optional)
 INTELLIGENCE_LEARNING_RATE=0.1          # How fast to update confidence on new evidence
 INTELLIGENCE_DECAY_RATE=0.95            # Decay multiplier per week unused (0.95 = 5% decay)
-INTELLIGENCE_DECAY_INTERVAL_DAYS=14     # Recommended; code default if unset: 7
+INTELLIGENCE_DECAY_INTERVAL_DAYS=30     # Current cloud recommendation; code default if unset: 7
 INTELLIGENCE_ANOMALY_THRESHOLD=2.5      # Z-score threshold for outlier detection
-INTELLIGENCE_MIN_CONFIDENCE=0.3         # Minimum confidence to apply insight to routing
+INTELLIGENCE_MIN_CONFIDENCE=0.40        # Minimum confidence to become a retrieval candidate
 INTELLIGENCE_NEGATIVE_WEIGHT=1.5        # Recommended; code default if unset: 1.0
 ```
 
@@ -793,10 +850,17 @@ INTELLIGENCE_NEGATIVE_WEIGHT=1.5        # Recommended; code default if unset: 1.
 | `LEARNING_RATE` | 0.05 (slow learning) | 0.3 (fast adaptation) | Start at 0.1 |
 | `DECAY_RATE` | 0.8 (aggressive pruning) | 0.99 (persistent) | 0.95 is balanced |
 | `ANOMALY_THRESHOLD` | 1.5 (flag more) | 3.5 (flag less) | 2.5 catches outliers |
-| `MIN_CONFIDENCE` | 0.1 (use weak insights) | 0.5 (only strong) | 0.3 is balanced |
+| `MIN_CONFIDENCE` | 0.1 (use weak insights) | 0.5 (only strong) | 0.40 is the current recommendation |
 | `NEGATIVE_WEIGHT` | 1.0 (equal to positive) | 2.0 (strong penalty) | 1.5 makes negatives win |
 
 **NEGATIVE_WEIGHT explained**: When multiple insights conflict (e.g., 2 positive + 1 negative for same tool), this multiplier ensures negative constraints are respected. At 1.5, a single negative insight can outweigh multiple weak positives.
+
+These values tune belief strength, candidate confidence, and maintenance timing;
+they do not determine whether a narrow negative lesson applies to a particular
+request. That decision is handled by the request-scoped `trigger_signals` gate.
+If a valid negative insight is activating too broadly, inspect and correct its
+triggers before raising `MIN_CONFIDENCE`, lowering `NEGATIVE_WEIGHT`, changing
+decay, or deleting the insight.
 
 ## Integration Points
 
@@ -950,7 +1014,7 @@ curl -X POST "http://localhost:5003/api/maintenance/reflect?batch_size=5"
 ./bin/run-intelligence-maintenance.py --decay --force
 ```
 
-**⚠️ Decay Job Interval Protection**: The decay job tracks when it was last run and will **skip** if run within `INTELLIGENCE_DECAY_INTERVAL_DAYS` (recommended config: 14 days; code default if unset: 7). This prevents accidental double-decay which compounds confidence reductions incorrectly. Use `--force` only if you understand the implications.
+**⚠️ Decay Job Interval Protection**: The decay job tracks when it was last run and will **skip** if run within `INTELLIGENCE_DECAY_INTERVAL_DAYS` (current cloud recommendation: 30 days; code default if unset: 7). This prevents accidental double-decay which compounds confidence reductions incorrectly. Use `--force` only if you understand the implications.
 
 **API Endpoints**:
 ```bash
@@ -974,7 +1038,7 @@ curl http://localhost:8880/api/intelligence/meta-knowledge
 #### 1. Decay Job (`--decay`)
 **Purpose**: Keep insight pool fresh by decaying unused/failed insights
 
-**⚠️ Interval Protection**: The decay job tracks when it was last run in the `meta_knowledge` table. If run within `INTELLIGENCE_DECAY_INTERVAL_DAYS` (recommended config: 14 days; code default if unset: 7), it will **skip** with status `"skipped"`. Use `--force` to bypass.
+**⚠️ Interval Protection**: The decay job tracks when it was last run in the `meta_knowledge` table. If run within `INTELLIGENCE_DECAY_INTERVAL_DAYS` (current cloud recommendation: 30 days; code default if unset: 7), it will **skip** with status `"skipped"`. Use `--force` to bypass.
 
 **Why?** Running decay multiple times compounds the reduction incorrectly:
 - First run: 1.0 → 0.95 (correct: 5% decay)
@@ -1213,6 +1277,33 @@ trigger_reflection(batch_size=10)
 "
 ```
 
+### Unrelated Negative Insight or Tool Avoidance
+
+Inspect the insight's applicability metadata before changing global tuning:
+
+```bash
+sqlite3 -readonly data/jarvis_intelligence.db "
+SELECT id, description, applies_to_pattern, trigger_signals, primary_intent,
+       avoided_tools, confidence
+FROM insights
+WHERE id = <INSIGHT_ID>;
+"
+```
+
+- If `trigger_signals` contains the request's actual prohibition or boundary,
+  keep the insight; unrelated requests will not activate it merely because they
+  mention the same tool.
+- If the triggers themselves are too broad, back up the active mode's database
+  and update the JSON `trigger_signals` field directly. The current dashboard
+  edit form does not expose this field. This metadata-only correction does not
+  require re-embedding.
+- If `trigger_signals` is empty, the row is a legacy insight and still uses
+  semantic-only applicability. Add precise triggers when narrowing it, or
+  remove the insight only when its underlying lesson is actually invalid.
+
+Do not use confidence/decay tuning to compensate for one bad applicability
+boundary; those settings affect every insight.
+
 ### Reset Learning
 
 ```bash
@@ -1362,7 +1453,7 @@ sqlite3 data/jarvis_intelligence.db "SELECT id, description, length(insight_embe
 ### Bottom Line
 
 **Safe to edit directly (no re-embed needed):**
-- `preferred_tools`, `avoided_tools`, `confidence`, `reasoning`, `trigger_concept`
+- `preferred_tools`, `avoided_tools`, `confidence`, `reasoning`, `trigger_concept`, `trigger_signals`, `primary_intent`
 
 **Must re-embed after editing:**
 - `description` → run `./bin/re-embed-insight <id>`

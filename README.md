@@ -1131,6 +1131,7 @@ The Intelligence Layer is Jarvis's self-learning system. It observes interaction
 - Everything is continuous (vectors), not discrete rules
 - Learning generalizes through semantic similarity
 - Positive AND negative constraints (what to do AND what NOT to do)
+- Structured negative constraints are request-scoped: a stored trigger must match the clean user request before a tool is penalized
 - Fact vs Procedural classification (only skills stored, not facts)
 - Generalizability filtering (low-value insights filtered out)
 
@@ -1145,6 +1146,7 @@ The Intelligence Layer is Jarvis's self-learning system. It observes interaction
 **Insights Generated**:
 - Pattern: "Status queries need real-time tools"
 - Applies to: "Server health, uptime checks"
+- Trigger signals: exact request words/phrases required by narrow negative constraints
 - Preferred approach: "Use fetch tools directly"
 - Confidence: 0.0-1.0
 - Tracking: times_applied, times_helpful, times_failed

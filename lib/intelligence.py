@@ -31,6 +31,7 @@ Usage:
 import os
 import sys
 import json
+import re
 import sqlite3
 import pickle
 import hashlib
@@ -115,6 +116,37 @@ def _coerce_string_list(value: Any) -> list[str]:
         return result
     text = str(value).strip()
     return [text] if text else []
+
+
+def _normalize_trigger_text(value: Any) -> str:
+    """Normalize exact reflection trigger phrases for boundary-safe matching."""
+    text = str(value or "").casefold().replace("’", "'")
+    # Treat apostrophes as part of the word so "don't" and "dont" agree, while
+    # all other punctuation (including hyphens) becomes a word boundary.
+    text = text.replace("'", "")
+    return " ".join(part for part in re.split(r"[\W_]+", text) if part)
+
+
+def _matching_trigger_signals(query: str, trigger_signals: Any) -> list[str]:
+    """Return stored trigger phrases that are explicitly present in the query.
+
+    Reflection defines these as specific words or phrases in the user query.
+    Semantic similarity still discovers candidate insights, but a modern
+    negative constraint with trigger metadata must match at least one of these
+    signals before it can suppress a tool. Legacy insights without signals keep
+    their existing semantic-only behavior.
+    """
+    normalized_query = _normalize_trigger_text(query)
+    if not normalized_query:
+        return []
+
+    padded_query = f" {normalized_query} "
+    matches: list[str] = []
+    for signal in _coerce_string_list(trigger_signals):
+        normalized_signal = _normalize_trigger_text(signal)
+        if normalized_signal and f" {normalized_signal} " in padded_query:
+            matches.append(signal)
+    return matches
 
 
 def _workflow_semantic_pattern(
@@ -2281,6 +2313,33 @@ Example for FACTUAL (should NOT be stored here):
                 relevance = similarity * row['confidence']
 
                 if relevance > 0.2:  # Minimum relevance threshold Might need to increase if unrelated tools being called or llm not following q&a intent 0.3+
+                    constraint_type = str(
+                        (
+                            row['constraint_type']
+                            if 'constraint_type' in row.keys()
+                            else 'positive'
+                        ) or 'positive'
+                    ).strip().lower()
+                    trigger_signals = _coerce_string_list(
+                        _json_loads_safely(row['trigger_signals'], [])
+                        if 'trigger_signals' in row.keys()
+                        else []
+                    )
+                    matched_trigger_signals = _matching_trigger_signals(
+                        query,
+                        trigger_signals,
+                    )
+                    if (
+                        constraint_type == 'negative'
+                        and trigger_signals
+                        and not matched_trigger_signals
+                    ):
+                        logger.debug(
+                            "Skipping negative insight #%s: current request lacks its trigger signals",
+                            row['id'],
+                        )
+                        continue
+
                     insight_data = {
                         'id': row['id'],
                         'insight': row['description'],
@@ -2295,10 +2354,11 @@ Example for FACTUAL (should NOT be stored here):
                         'relevance': relevance,
                         'evidence_count': row['evidence_count'],
                         # PHASE 1: New fields
-                        'constraint_type': row['constraint_type'] if 'constraint_type' in row.keys() else 'positive',
+                        'constraint_type': constraint_type,
                         'avoided_tools': _json_loads_safely(row['avoided_tools'], []) if 'avoided_tools' in row.keys() else [],
                         'trigger_concept': row['trigger_concept'] if 'trigger_concept' in row.keys() else '',
-                        'trigger_signals': _json_loads_safely(row['trigger_signals'], []) if 'trigger_signals' in row.keys() else [],
+                        'trigger_signals': trigger_signals,
+                        'matched_trigger_signals': matched_trigger_signals,
                         'primary_intent': row['primary_intent'] if 'primary_intent' in row.keys() else '',
                         'preferred_tool_sequence': _json_loads_safely(row['preferred_tool_sequence'], []) if 'preferred_tool_sequence' in row.keys() else [],
                         'supporting_tools': _json_loads_safely(row['supporting_tools'], []) if 'supporting_tools' in row.keys() else [],

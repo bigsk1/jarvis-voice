@@ -15,6 +15,7 @@ from router_v2 import (  # noqa: E402
     ToolRetrievalSignals,
     _cap_tool_names_for_schema,
     build_tool_retrieval_signals,
+    extract_current_user_request,
     _log_tool_rag_trace,
     _tool_rag_similarity_threshold,
     merge_tool_signal_names,
@@ -89,6 +90,23 @@ User's request: No send an email to Riley with youtube video https://example.com
         self.assertIn("send_email", signals.positive_tools)
         self.assertNotIn("generate_video", signals.positive_tools)
         self.assertIn("skipped_low_bias_prefer=generate_video:0.38", signals.notes)
+
+    def test_intelligence_request_excludes_web_tool_hint_wrapper(self):
+        prompt = """
+[CONTEXT - Tool preference for this request]
+
+Selected tool hints: brave_llm_context.
+Treat this as a strong preference for this turn.
+
+[END CONTEXT]
+
+User's request: use brave to get the latest AI news
+"""
+
+        self.assertEqual(
+            extract_current_user_request(prompt),
+            "use brave to get the latest AI news",
+        )
 
     def test_prefer_avoid_conflict_neutralizes_tool(self):
         prompt = """
