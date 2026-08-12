@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(ROOT, "orchestrator"))
 
 from router_v2 import (  # noqa: E402
     ToolRetrievalSignals,
+    _cap_tool_names_for_schema,
     build_tool_retrieval_signals,
     _log_tool_rag_trace,
     _tool_rag_similarity_threshold,
@@ -102,6 +103,51 @@ Current request: email Riley
         self.assertIn("send_email", signals.conflicted_tools)
         self.assertNotIn("send_email", signals.positive_tools)
         self.assertNotIn("send_email", signals.negative_tools)
+
+    def test_explicit_ui_hint_overrides_learned_avoid_and_survives_schema_cap(self):
+        prompt = """
+=== KNOWN FAILURES - AVOID THESE ===
+❌ Never re-call Brave when the user says not to search again.
+   → DO NOT use: brave_llm_context
+
+=== TOOL PREFERENCES ===
+  ❌ AVOID: brave_llm_context (-0.88)
+
+[CONTEXT - Tool preference for this request]
+
+Selected tool hints: brave_llm_context.
+Treat this as a strong preference for this turn.
+
+[END CONTEXT]
+
+User's request: use brave to get the latest AI news
+"""
+        enabled = {
+            "brave_llm_context",
+            "mcp_brave_search_brave_web_search",
+        }
+
+        signals = build_tool_retrieval_signals(prompt, enabled)
+        merged, meta = merge_tool_signal_names(
+            ["mcp_brave_search_brave_web_search"],
+            signals,
+            enabled,
+        )
+        capped = _cap_tool_names_for_schema(
+            merged,
+            limit=1,
+            positive_tools=signals.positive_tools,
+        )
+
+        self.assertEqual(signals.positive_tools, {"brave_llm_context"})
+        self.assertEqual(signals.negative_tools, set())
+        self.assertEqual(signals.conflicted_tools, set())
+        self.assertIn(
+            "explicit_tool_hints_overrode_negative=brave_llm_context",
+            signals.notes,
+        )
+        self.assertEqual(meta["appended"], ["brave_llm_context"])
+        self.assertEqual(capped, ["brave_llm_context"])
 
     def test_weak_avoid_signal_is_not_a_hard_exclusion(self):
         prompt = """

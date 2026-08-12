@@ -429,8 +429,23 @@ def build_tool_retrieval_signals(
     enabled_set = set(enabled_tool_names or [])
     positive_tools: set[str] = set()
     negative_tools: set[str] = set()
+    explicit_tool_hints: set[str] = set()
     notes: list[str] = []
     text = transcript or ""
+
+    for block in re.findall(
+        r"\[CONTEXT - Tool preference for this request\](.*?)\[END CONTEXT\]",
+        text,
+        flags=re.DOTALL,
+    ):
+        for line in block.splitlines():
+            if "Selected tool hints:" in line:
+                explicit_tool_hints.update(
+                    _parse_enabled_tool_names(
+                        line.split("Selected tool hints:", 1)[1],
+                        enabled_set,
+                    )
+                )
 
     for line in text.splitlines():
         if "Selected tool hints:" in line:
@@ -483,11 +498,21 @@ def build_tool_retrieval_signals(
 
     conflicted = positive_tools & negative_tools
     if conflicted:
-        # Conflicting intelligence happens in practice. Neutralize it instead
-        # of force-adding or force-removing the same tool.
-        positive_tools -= conflicted
+        # A direct UI selection is current-turn user intent and outranks learned
+        # negative preferences. Conflicts entirely within learned intelligence
+        # remain neutral so stale or contradictory lessons do not force routing.
+        explicit_overrides = conflicted & explicit_tool_hints
+        neutralized = conflicted - explicit_overrides
+        positive_tools -= neutralized
         negative_tools -= conflicted
-        notes.append(f"conflicted_tools={','.join(sorted(conflicted))}")
+        if explicit_overrides:
+            notes.append(
+                "explicit_tool_hints_overrode_negative="
+                + ",".join(sorted(explicit_overrides))
+            )
+        if neutralized:
+            notes.append(f"conflicted_tools={','.join(sorted(neutralized))}")
+        conflicted = neutralized
 
     if not get_bool("TOOL_RAG_COMPACT_QUERY_ENABLED", True):
         return ToolRetrievalSignals(
