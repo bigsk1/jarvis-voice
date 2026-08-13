@@ -565,6 +565,23 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
             "name": "xAI Grok",
             "models": [
                 {
+                    "id": "grok-imagine-image-2.0",
+                    "name": "Grok Imagine Image 2.0",
+                    "capabilities": ["generation", "editing", "batch", "quality_control"],
+                    "resolutions": ["1K", "2K"],
+                    "qualities": ["low", "medium"],
+                    "max_prompt_chars": 8_000,
+                    "pricing": {
+                        "unit": "image",
+                        "default_quality": "medium",
+                        "usd_by_size": {"1K": 0.06, "2K": 0.08},
+                        "usd_by_quality_and_size": {
+                            "low": {"1K": 0.04, "2K": 0.06},
+                            "medium": {"1K": 0.06, "2K": 0.08},
+                        },
+                    },
+                },
+                {
                     "id": "grok-imagine-image",
                     "name": "Grok Imagine Image",
                     "default": True,

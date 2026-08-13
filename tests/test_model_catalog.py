@@ -95,6 +95,13 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(openai_image["model_name"], "GPT Image 1.5")
         self.assertIn("transparent_background", openai_image["capabilities"])
 
+        xai_image = get_media_provider_options(
+            "image", {"xai": "grok-imagine-image-2.0"}
+        )["xai"]
+        self.assertEqual(xai_image["model_name"], "Grok Imagine Image 2.0")
+        self.assertEqual(xai_image["resolutions"], ["1K", "2K"])
+        self.assertIn("quality_control", xai_image["capabilities"])
+
     def test_media_resolution_defaults_empty_values_and_preserves_unknown_pins(self):
         self.assertEqual(resolve_media_model("image", "openai"), "gpt-image-2")
         self.assertEqual(resolve_media_model("image", "openai", ""), "gpt-image-2")
@@ -115,6 +122,18 @@ class ModelCatalogTests(unittest.TestCase):
         gemini_image = get_media_model_pricing("image", "gemini", "gemini-3.1-flash-image")
         self.assertEqual(gemini_image["unit"], "image")
         self.assertEqual(gemini_image["usd_by_size"]["4K"], 0.151)
+        xai_image_2 = get_media_model_metadata("image", "xai", "grok-imagine-image-2.0")
+        self.assertEqual(xai_image_2["resolutions"], ["1K", "2K"])
+        self.assertEqual(xai_image_2["qualities"], ["low", "medium"])
+        self.assertEqual(xai_image_2["max_prompt_chars"], 8_000)
+        self.assertNotIn("default", xai_image_2)
+        self.assertEqual(
+            xai_image_2["pricing"]["usd_by_quality_and_size"],
+            {
+                "low": {"1K": 0.04, "2K": 0.06},
+                "medium": {"1K": 0.06, "2K": 0.08},
+            },
+        )
         xai_video = get_media_model_pricing("video", "xai", "grok-imagine-video")
         self.assertEqual(xai_video["unit"], "second")
         self.assertEqual(xai_video["usd_by_resolution"]["720p"], 0.07)
