@@ -4225,7 +4225,8 @@ class ChatUI {
             ? this._getToolTraceFailureResult(entry)
             : this._getToolTraceSuccessFallback(entry),
         args: entry.arguments || {},
-        duration: entry.duration_ms ?? null
+        duration: entry.duration_ms ?? null,
+        workflowStep: entry.workflow_step ?? null
       }))
       : toolsUsed.map(toolName => ({
         toolName,
@@ -4237,7 +4238,16 @@ class ChatUI {
 
     orderedEntries.forEach((entry, index) => {
       const toolName = entry.toolName;
-      const queued = entriesByTool.get(toolName)?.shift();
+      const toolQueue = entriesByTool.get(toolName) || [];
+      const workflowCardId = entry.workflowStep != null
+        ? `${toolName}_step${entry.workflowStep}`
+        : null;
+      const workflowCardIndex = workflowCardId
+        ? toolQueue.findIndex(([cardId]) => cardId === workflowCardId)
+        : -1;
+      const queued = workflowCardIndex >= 0
+        ? toolQueue.splice(workflowCardIndex, 1)[0]
+        : toolQueue.shift();
       let cardId = queued?.[0] || `${toolName}_final${index}`;
       while (usedCardIds.has(cardId)) cardId = `${cardId}_${index}`;
       usedCardIds.add(cardId);
@@ -5900,27 +5910,77 @@ class ChatUI {
   }
 
   _getToolTraceEntries(toolResultsData = {}) {
-    const workflowEntries = this._getWorkflowStepTraceEntries(toolResultsData);
-    if (workflowEntries.length > 0) return workflowEntries;
-
     const trace = toolResultsData?._tool_trace || toolResultsData?.data?._tool_trace;
-    if (!Array.isArray(trace)) return [];
-    return trace.filter(entry => entry && typeof entry === 'object' && entry.tool);
+    const directEntries = Array.isArray(trace)
+      ? trace.filter(entry => entry && typeof entry === 'object' && entry.tool)
+      : [];
+    const workflowRuns = this._getWorkflowRunPayloads(toolResultsData);
+
+    if (!directEntries.length) {
+      return workflowRuns.flatMap(workflow => (
+        this._getWorkflowStepTraceEntries(toolResultsData, workflow)
+      ));
+    }
+    if (!workflowRuns.length) return directEntries;
+
+    // Autonomous runs can mix workflow meta-tool calls with ordinary tools.
+    // Keep that outer trace authoritative, expanding each workflow's component
+    // steps at the run call instead of replacing the complete call sequence.
+    const unplacedRuns = [...workflowRuns];
+    const mergedEntries = [];
+    for (const entry of directEntries) {
+      mergedEntries.push(entry);
+      const argumentsData = entry.arguments && typeof entry.arguments === 'object'
+        ? entry.arguments
+        : {};
+      const isWorkflowRun = entry.tool === 'workflow' && (
+        entry.workflow_run_started === true || argumentsData.action === 'run'
+      );
+      if (!isWorkflowRun) continue;
+
+      const requestedWorkflowId = String(argumentsData.workflow_id || '').trim();
+      let workflowIndex = requestedWorkflowId
+        ? unplacedRuns.findIndex(workflow => (
+          String(workflow?.workflow_id || '').trim() === requestedWorkflowId
+        ))
+        : 0;
+      if (workflowIndex < 0 && unplacedRuns.length === 1) workflowIndex = 0;
+      if (workflowIndex < 0) continue;
+
+      const [workflow] = unplacedRuns.splice(workflowIndex, 1);
+      mergedEntries.push(...this._getWorkflowStepTraceEntries(toolResultsData, workflow));
+    }
+    return mergedEntries;
   }
 
-  _getWorkflowStepTraceEntries(toolResultsData = {}) {
-    let workflowData = null;
+  _getWorkflowRunPayloads(toolResultsData = {}) {
+    const workflows = [];
     if (toolResultsData?.workflow_id && Array.isArray(toolResultsData?.results)) {
-      workflowData = toolResultsData;
-    } else {
-      const nested = toolResultsData?.workflow;
-      const candidates = Array.isArray(nested) ? [...nested].reverse() : [nested];
-      workflowData = candidates.find(candidate => (
-        candidate
-        && typeof candidate === 'object'
-        && candidate.action === 'run'
-        && Array.isArray(candidate.results)
-      )) || null;
+      workflows.push(toolResultsData);
+    }
+
+    const containers = [toolResultsData, toolResultsData?.data];
+    for (const container of containers) {
+      const nested = container?.workflow;
+      const candidates = Array.isArray(nested) ? nested : [nested];
+      for (const candidate of candidates) {
+        if (
+          candidate
+          && typeof candidate === 'object'
+          && candidate.action === 'run'
+          && Array.isArray(candidate.results)
+          && !workflows.includes(candidate)
+        ) workflows.push(candidate);
+      }
+    }
+    return workflows;
+  }
+
+  _getWorkflowStepTraceEntries(toolResultsData = {}, selectedWorkflow = null) {
+    let workflowData = selectedWorkflow;
+    if (!workflowData) {
+      const workflows = this._getWorkflowRunPayloads(toolResultsData);
+      workflowData = workflows.length > 0 ? workflows[workflows.length - 1] : null;
     }
     if (!workflowData) return [];
 
@@ -5932,7 +5992,7 @@ class ChatUI {
 
       const outputs = Array.isArray(step.outputs) ? step.outputs : [];
       if (outputs.length > 0) {
-        for (const output of outputs) {
+        outputs.forEach((output, outputIndex) => {
           const outputData = output && typeof output === 'object' ? output : {};
           entries.push({
             tool: step.tool,
@@ -5941,9 +6001,10 @@ class ChatUI {
             duration_ms: outputData.duration_ms ?? step.duration_ms ?? null,
             error: outputData.error || null,
             reason: outputData.reason || null,
-            speech: outputData.speech || null
+            speech: outputData.speech || null,
+            workflow_step: step.step != null ? `${step.step}_${outputIndex}` : null
           });
-        }
+        });
         continue;
       }
 
@@ -5954,7 +6015,8 @@ class ChatUI {
         duration_ms: step.duration_ms ?? null,
         error: step.error || null,
         reason: step.reason || null,
-        speech: step.speech || step.reason || null
+        speech: step.speech || step.reason || null,
+        workflow_step: step.step ?? null
       });
     }
     return entries;

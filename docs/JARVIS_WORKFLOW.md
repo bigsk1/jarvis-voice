@@ -564,6 +564,47 @@ step-aware preview that preserves late Canvas/Stash handles without replaying
 the entire variables graph. Web conversation persistence separately retains
 the nested workflow result and compact component follow-up projections.
 
+### Workflow execution boundary: a bounded sub-agent mental model
+
+For an **autonomous** `workflow(run)` call, it is useful to think of the
+workflow as a bounded sub-agent, but not as another open-ended agent. The
+parent router LLM chooses the recipe; `PipelineExecutor` owns the fixed tool
+order, variables, validation, and side effects. Individual `llm_prompt` steps
+may use a separate helper-model call with workflow-scoped inputs, but that
+helper does not share the parent model's complete in-flight context.
+
+```text
+Parent router LLM
+  → workflow(run)
+  → PipelineExecutor: fixed steps + optional workflow-scoped LLM helpers
+  → bounded workflow result: status, step previews, Canvas/Stash handles
+  → parent router LLM resumes
+  → optional Canvas/Stash read when the artifact body is needed
+```
+
+The workflow result boundary is important:
+
+- The parent receives the result Jarvis explicitly hands back, not every
+  internal helper prompt/output or every side effect produced during the run.
+- A Canvas `create` step normally returns page metadata such as its ID, title,
+  URL, and tags; it does not automatically return the saved Markdown body.
+  A Stash `save` step similarly returns a reference and metadata rather than
+  injecting the complete stored file.
+- Provider continuation (`previous_response_id`, structural tool results, and
+  equivalent provider mechanisms) preserves the parent tool-call chain. It
+  does **not** make hidden workflow state or artifact contents visible unless
+  Jarvis includes them in the returned result.
+- The parent may therefore call a read-only Canvas or Stash action to inspect,
+  quote, summarize, or verify the finished artifact. That is distinct from
+  rerunning the workflow or repeating its create/save side effects. If a short
+  completion acknowledgement is sufficient, the parent can stop without the
+  read.
+
+This parent-resume behavior applies to autonomous meta-tool execution. An
+explicit slash command or scheduled workflow can complete directly with the
+workflow's success response, without a parent routing turn that inspects its
+artifacts.
+
 ### Direct speech bypass tools
 
 These tools return spoken output without a second LLM synthesis pass (`DIRECT_SPEECH_TOOLS` in `orchestrator_v2.py`):

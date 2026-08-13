@@ -44,6 +44,33 @@ will not return it from search and will reject exact describe/run attempts.
 This is appropriate for personal or side-effecting recipes that Jarvis should
 never choose on its own.
 
+## Execution and context boundary
+
+For autonomous `workflow(run)` execution, a workflow can be understood as a
+**bounded sub-agent**: the parent router LLM selects the recipe, then
+`PipelineExecutor` runs its deterministic step order. The analogy stops there;
+the workflow is not an open-ended agent choosing arbitrary tools.
+
+Workflow `llm_prompt`, validation, branching, and completion-speech helpers use
+workflow-scoped prompts and variables. Their complete prompts and outputs are
+not automatically added to the parent router LLM's context. When the workflow
+finishes, the parent receives a bounded result containing completion state,
+step previews, and artifact handles. Provider-native continuation preserves
+that parent call/result chain, but it does not expose unreturned helper state or
+the contents of Canvas/Stash side effects.
+
+In particular, Canvas `create` normally returns page metadata rather than the
+saved Markdown body, and Stash `save` normally returns a reference rather than
+the stored file. The parent may make a later read-only Canvas/Stash call when it
+needs to inspect, quote, summarize, or verify the artifact. Such a read is not
+a rerun of the workflow or a repeat of its create/save action. If the user only
+needs completion confirmation, the parent can answer from the workflow result
+without reading the artifact.
+
+This parent-resume model applies to the autonomous meta-tool path. Explicit
+slash commands, API execution, and scheduled runs may return the workflow's
+success response directly without a parent routing turn.
+
 ---
 
 ## Runtime mode and shared artifacts

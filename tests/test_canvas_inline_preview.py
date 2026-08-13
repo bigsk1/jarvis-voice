@@ -303,6 +303,98 @@ if (ordinaryTrace.length !== 1 || ordinaryTrace[0].tool !== 'weather') process.e
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
 
 
+def test_mixed_workflow_and_direct_tools_preserve_complete_execution_order():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(CHAT_JS))}, 'utf8');
+const start = source.indexOf('  _reconcilePendingToolsWithFinalList(');
+const end = source.indexOf('  /**\\n   * Show feedback card', start);
+const classSource = `class MixedWorkflowHarness {{\\n${{source.slice(start, end)}}\\n}}; MixedWorkflowHarness;`;
+const sandbox = {{ console }};
+vm.createContext(sandbox);
+const MixedWorkflowHarness = vm.runInContext(classSource, sandbox);
+const harness = new MixedWorkflowHarness();
+harness.pendingToolMessageId = 'message-a';
+harness.pendingToolsByMessage = new Map();
+harness.pendingTools = {{
+  workflow: {{ toolName: 'workflow', status: 'success', result: {{ action: 'search', call: 1 }} }},
+  workflow_1: {{ toolName: 'workflow', status: 'success', result: {{ action: 'search', call: 2 }} }},
+  workflow_2: {{ toolName: 'workflow', status: 'success', result: {{ action: 'run' }} }},
+  canvas: {{ toolName: 'canvas', status: 'success', result: {{ source: 'direct-read' }} }},
+  get_time_step1: {{ toolName: 'get_time', status: 'success', result: {{ source: 'workflow-time' }} }},
+  serpapi_google_shopping_light_step2: {{
+    toolName: 'serpapi_google_shopping_light',
+    status: 'success',
+    result: {{ source: 'workflow-shopping' }}
+  }},
+  canvas_step3: {{ toolName: 'canvas', status: 'success', result: {{ source: 'workflow-create' }} }}
+}};
+
+const mixedData = {{
+  _tool_trace: [
+    {{ tool: 'workflow', ok: true, arguments: {{ action: 'search' }} }},
+    {{ tool: 'workflow', ok: true, arguments: {{ action: 'search' }} }},
+    {{
+      tool: 'workflow',
+      ok: true,
+      workflow_run_started: true,
+      arguments: {{ action: 'run', workflow_id: 'buying_brief' }}
+    }},
+    {{ tool: 'canvas', ok: true, arguments: {{ action: 'read' }} }}
+  ],
+  workflow: [
+    {{ action: 'search', matches: [] }},
+    {{ action: 'search', matches: [] }},
+    {{
+      action: 'run',
+      workflow_id: 'buying_brief',
+      results: [
+        {{ step: 1, tool: 'get_time', ok: true }},
+        {{ step: 2, tool: 'serpapi_google_shopping_light', ok: true }},
+        {{ step: 3, tool: 'canvas', ok: true }}
+      ]
+    }}
+  ]
+}};
+
+const trace = harness._getToolTraceEntries(mixedData);
+const traceNames = trace.map(entry => entry.tool);
+const expectedNames = [
+  'workflow',
+  'workflow',
+  'workflow',
+  'get_time',
+  'serpapi_google_shopping_light',
+  'canvas',
+  'canvas'
+];
+if (traceNames.join(',') !== expectedNames.join(',')) process.exit(2);
+if (trace[3].workflow_step !== 1) process.exit(3);
+if (trace[5].workflow_step !== 3) process.exit(4);
+
+harness._reconcilePendingToolsWithFinalList(
+  ['workflow', 'workflow', 'workflow', 'canvas'],
+  trace
+);
+const expectedCardIds = [
+  'workflow',
+  'workflow_1',
+  'workflow_2',
+  'get_time_step1',
+  'serpapi_google_shopping_light_step2',
+  'canvas_step3',
+  'canvas'
+];
+const cardIds = Object.keys(harness.pendingTools);
+if (cardIds.join(',') !== expectedCardIds.join(',')) process.exit(5);
+if (harness.pendingTools.canvas_step3.result.source !== 'workflow-create') process.exit(6);
+if (harness.pendingTools.canvas.result.source !== 'direct-read') process.exit(7);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
 def test_live_pending_tool_cards_skip_failures_when_indexing_success_results():
     script = f"""
 const fs = require('fs');
