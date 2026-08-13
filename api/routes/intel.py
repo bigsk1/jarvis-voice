@@ -2,8 +2,6 @@
 
 from fastapi import APIRouter, HTTPException, Query
 from pathlib import Path
-import json
-import subprocess
 import sys
 from datetime import datetime
 
@@ -20,14 +18,48 @@ INTEL_DIR = PROJECT_ROOT / "jarvis-intel"
 SKILLS_DIR = PROJECT_ROOT / "skills"
 
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
+sys.path.insert(0, str(SKILLS_DIR))
+from config_loader import config_scope, get_active_config_mode
 from intel_content import normalize_intel_content
 from intel_filename import validate_create_filename
+from manage_intel import auto_ingest, get_auto_ingest_plan, start_auto_ingest
+
+
+def _resolve_ingest_mode(mode: str | None) -> str:
+    """Resolve an explicit request mode or the FastAPI startup mode."""
+    try:
+        return get_active_config_mode(mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _require_ingest_plan(mode: str | None) -> tuple[str, dict]:
+    """Validate mode/config before a mutating route writes the Intel file."""
+    resolved_mode = _resolve_ingest_mode(mode)
+    plan = get_auto_ingest_plan(PROJECT_ROOT, resolved_mode)
+    if not plan.get("ok"):
+        raise HTTPException(status_code=400, detail=plan.get("error", "Ingest preflight failed"))
+    return resolved_mode, plan
+
+
+def _start_planned_ingest(mode: str) -> dict:
+    """Launch detached multi-mode ingestion after the canonical file is saved."""
+    result = start_auto_ingest(PROJECT_ROOT, mode)
+    if not result.get("started"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Ingest could not start"))
+    return result
 
 
 def get_db():
     """Get memory database instance for checking ingestion status"""
     from memory_db import MemoryDB
     return MemoryDB()
+
+
+def _memory_db_path(mode: str) -> Path:
+    """Return the existing-mode DB path without initializing MemoryDB."""
+    db_name = "jarvis_memory_local.db" if mode == "local" else "jarvis_memory.db"
+    return PROJECT_ROOT / "data" / db_name
 
 
 def human_size(size_bytes: int) -> str:
@@ -182,7 +214,8 @@ async def list_intel_files(
 
 @router.post("/ingest", response_model=IngestResult)
 async def ingest_intel_files(
-    async_mode: bool = Query(False, description="If true, start ingestion in background and return immediately")
+    async_mode: bool = Query(False, description="If true, start ingestion in background and return immediately"),
+    mode: str | None = None,
 ):
     """
     Trigger ingestion of all intel files to memory.
@@ -196,48 +229,45 @@ async def ingest_intel_files(
         if not ingest_script.exists():
             raise HTTPException(status_code=500, detail="ingest_intel.py not found")
         
+        resolved_mode, plan = _require_ingest_plan(mode)
+
         if async_mode:
-            # Start in background
-            subprocess.Popen(
-                ['python3', str(ingest_script), '--sync'],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True
-            )
+            started = _start_planned_ingest(resolved_mode)
             return IngestResult(
                 ok=True,
-                async_started=True
+                async_started=True,
+                modes=started.get("modes", []),
+                skipped_modes=started.get("skipped_modes", []),
+                partial=bool(started.get("warning")),
+                warning=started.get("warning"),
             )
         else:
-            # Run synchronously
-            result = subprocess.run(
-                ['python3', str(ingest_script)],
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 minutes max
+            result = auto_ingest(PROJECT_ROOT, resolved_mode)
+            if not result.get("ingested"):
+                error = result.get("error", "Ingestion failed")
+                status = 504 if "timeout" in error.lower() else 500
+                raise HTTPException(status_code=status, detail=error)
+            mode_results = result.get("results", [])
+            return IngestResult(
+                ok=True,
+                new_files=result.get("new_files", 0),
+                skipped_files=sum(
+                    int(entry.get("skipped_files", 0) or 0)
+                    for entry in mode_results
+                    if isinstance(entry, dict)
+                ),
+                total_facts=result.get("total_facts", 0),
+                processed_files=[
+                    str(filename)
+                    for entry in mode_results
+                    if isinstance(entry, dict)
+                    for filename in (entry.get("processed_files") or [])
+                ],
+                modes=result.get("modes", plan.get("modes", [])),
+                skipped_modes=result.get("skipped_modes", []),
+                partial=bool(result.get("partial")),
+                warning=result.get("warning"),
             )
-            
-            if result.returncode != 0:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Ingestion failed: {result.stderr or result.stdout}"
-                )
-            
-            try:
-                output = json.loads(result.stdout)
-                data = output.get('data', {})
-                return IngestResult(
-                    ok=True,
-                    new_files=data.get('new_files', 0),
-                    skipped_files=data.get('skipped_files', 0),
-                    total_facts=data.get('total_facts', 0),
-                    processed_files=data.get('processed_files', [])
-                )
-            except json.JSONDecodeError:
-                return IngestResult(ok=True)
-                
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Ingestion timed out (5 minutes)")
     except HTTPException:
         raise
     except Exception as e:
@@ -250,7 +280,7 @@ async def ingest_intel_files(
 
 @router.post("", response_model=IntelResponse)
 @router.post("/", response_model=IntelResponse, include_in_schema=False)
-async def create_intel_file(data: IntelCreate):
+async def create_intel_file(data: IntelCreate, mode: str | None = None):
     """
     Create a new intel file.
     
@@ -274,24 +304,27 @@ async def create_intel_file(data: IntelCreate):
                 status_code=409,
                 detail=f"File '{filename}' already exists. Use PUT to update."
             )
+
+        resolved_mode = None
+        ingest_plan = None
+        if data.auto_ingest:
+            resolved_mode, ingest_plan = _require_ingest_plan(mode)
         
         # Normalize escaped multiline text from LLM/tool output before writing.
         content, _ = normalize_intel_content(data.content)
         filepath.write_text(content, encoding='utf-8')
         
-        # Optionally ingest
+        ingest_start = None
         if data.auto_ingest:
-            subprocess.Popen(
-                ['python3', str(SKILLS_DIR / "ingest_intel.py"), '--sync'],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True
-            )
+            ingest_start = _start_planned_ingest(resolved_mode)
         
         return IntelResponse(
             ok=True,
             message=f"Created {filename}" + (" (ingestion started)" if data.auto_ingest else ""),
-            file=get_file_info(filepath)
+            file=get_file_info(filepath),
+            ingestion_started=bool(ingest_start),
+            ingest_modes=(ingest_start or ingest_plan or {}).get("modes"),
+            ingest_warning=(ingest_start or ingest_plan or {}).get("warning"),
         )
     except HTTPException:
         raise
@@ -300,7 +333,7 @@ async def create_intel_file(data: IntelCreate):
 
 
 @router.get("/{filename}", response_model=IntelResponse)
-async def get_intel_file(filename: str):
+async def get_intel_file(filename: str, mode: str | None = None):
     """
     Get an intel file's content and metadata.
     """
@@ -312,13 +345,17 @@ async def get_intel_file(filename: str):
             raise HTTPException(status_code=404, detail=f"File '{filename}' not found")
         
         content = filepath.read_text(encoding='utf-8')
-        db = get_db()
-        
-        return IntelResponse(
-            ok=True,
-            file=get_file_info(filepath, db),
-            content=content
-        )
+        resolved_mode = _resolve_ingest_mode(mode)
+        file_info = get_file_info(filepath)
+        if _memory_db_path(resolved_mode).is_file():
+            with config_scope(resolved_mode):
+                db = get_db()
+                try:
+                    file_info = get_file_info(filepath, db)
+                finally:
+                    db.close()
+
+        return IntelResponse(ok=True, file=file_info, content=content)
     except HTTPException:
         raise
     except Exception as e:
@@ -326,7 +363,7 @@ async def get_intel_file(filename: str):
 
 
 @router.put("/{filename}", response_model=IntelResponse)
-async def update_intel_file(filename: str, data: IntelUpdate):
+async def update_intel_file(filename: str, data: IntelUpdate, mode: str | None = None):
     """
     Update an existing intel file.
     
@@ -338,39 +375,42 @@ async def update_intel_file(filename: str, data: IntelUpdate):
         
         if not filepath.exists():
             raise HTTPException(status_code=404, detail=f"File '{filename}' not found")
+
+        resolved_mode = None
+        ingest_plan = None
+        if data.auto_ingest:
+            resolved_mode, ingest_plan = _require_ingest_plan(mode)
         
         # Normalize escaped multiline text from LLM/tool output before writing.
         content, _ = normalize_intel_content(data.content)
         filepath.write_text(content, encoding='utf-8')
         
         # Optionally re-ingest
+        ingest_start = None
         if data.auto_ingest:
             # First, delete old memories from this file
-            db = get_db()
-            cursor = db.conn.cursor()
-            cursor.execute(
-                "DELETE FROM knowledge_base WHERE source = ?",
-                (f"intel/{filename}",)
-            )
-            # Delete hash tracking
-            cursor.execute(
-                "DELETE FROM knowledge_base WHERE category = 'system' AND key = ?",
-                (f"intel_hash_{filename}",)
-            )
-            db.conn.commit()
-            
-            # Then trigger re-ingest
-            subprocess.Popen(
-                ['python3', str(SKILLS_DIR / "ingest_intel.py"), '--sync'],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True
-            )
+            with config_scope(resolved_mode):
+                db = get_db()
+                cursor = db.conn.cursor()
+                cursor.execute(
+                    "DELETE FROM knowledge_base WHERE source = ?",
+                    (f"intel/{filename}",)
+                )
+                # Delete hash tracking
+                cursor.execute(
+                    "DELETE FROM knowledge_base WHERE category = 'system' AND key = ?",
+                    (f"intel_hash_{filename}",)
+                )
+                db.conn.commit()
+            ingest_start = _start_planned_ingest(resolved_mode)
         
         return IntelResponse(
             ok=True,
             message=f"Updated {filename}" + (" (re-ingestion started)" if data.auto_ingest else ""),
-            file=get_file_info(filepath)
+            file=get_file_info(filepath),
+            ingestion_started=bool(ingest_start),
+            ingest_modes=(ingest_start or ingest_plan or {}).get("modes"),
+            ingest_warning=(ingest_start or ingest_plan or {}).get("warning"),
         )
     except HTTPException:
         raise

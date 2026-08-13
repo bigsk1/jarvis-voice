@@ -96,7 +96,11 @@ def test_auto_ingest_update_invalidates_only_exact_source(tmp_path, monkeypatch)
     monkeypatch.setattr(intel_routes, "INTEL_DIR", intel_dir)
     monkeypatch.setattr(intel_routes, "get_db", lambda: db)
     try:
-        with patch.object(intel_routes.subprocess, "Popen"):
+        with patch.object(
+            intel_routes,
+            "start_auto_ingest",
+            return_value={"started": True, "ok": True, "modes": ["cloud"]},
+        ):
             asyncio.run(
                 intel_routes.update_intel_file(
                     target.name,

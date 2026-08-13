@@ -50,7 +50,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Conversation history | ✅ | Save/load/delete, sidebar list |
 | Tool execution cards | ✅ | Expandable with args/results |
 | Image display | ✅ | Thumbnails + lightbox with download |
-| Settings panel | ✅ | Tabbed modal (General/AI/API Keys) |
+| Settings panel | ✅ | Six-tab modal: General, AI Config, Tools, System, API Keys, Profile |
 | Provider dropdowns | ✅ | xAI/Anthropic/OpenAI/Ollama with model options |
 | Error handling | ✅ | Toast notifications, error messages |
 | Status updates | ✅ | Non-blocking deadline/fallback stream to browser, not local speaker |
@@ -650,12 +650,13 @@ not keep showing the startup mode's catalog.
 - Show: tool name, status, duration
 - Expanded: arguments, full result, images
 
-### Settings Panel (5 Tabs)
+### Settings Panel (6 Tabs)
 - **General Tab**: Mode (cloud/local), TTS toggle, mode-aware help text
 - **AI Config Tab**: LLM provider/model dropdowns (per-mode), Image provider, Video provider, Music provider, History limit, Reset button
 - **Tools Tab**: Blocked tools list, add/remove UI, blocked/MCP visual indicators
 - **System Tab**: Mode-specific .env values (thresholds, TTS settings, features), plus a SerpApi quota card fetched only when the tab is opened. The card stays absent when the selected mode has no valid `SERP_API_KEY`; SerpApi does not count Account API lookups against monthly search quota.
 - **API Keys Tab**: Status indicators (configured/missing)
+- **Profile Tab**: Current version linked to GitHub releases, auth/mode status, and a safe rendered view/editor for `jarvis-intel/user-profile.md`. **Save & ingest** uses the existing FastAPI Intel CRUD route; the Profile Card cache refreshes immediately for the selected mode plus an already-existing, configured sibling while background ingestion updates Profile Reference facts in those same modes.
 
 ---
 

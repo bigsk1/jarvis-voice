@@ -27,8 +27,10 @@ from manage_intel import (
     delete_intel_file,
     filename_from_markdown_title,
     format_ingest_summary,
+    get_auto_ingest_plan,
     replace_intel_content,
     search_intel_file,
+    start_auto_ingest,
     update_intel_file,
     validate_create_filename,
 )
@@ -321,11 +323,15 @@ class TestIntelContentNormalization(unittest.TestCase):
             root = Path(tmpdir)
             skills_dir = root / "skills"
             data_dir = root / "data"
+            config_dir = root / "config"
             skills_dir.mkdir()
             data_dir.mkdir()
+            config_dir.mkdir()
             (skills_dir / "ingest_intel.py").write_text("# stub\n", encoding="utf-8")
             (data_dir / "jarvis_memory.db").write_text("", encoding="utf-8")
             (data_dir / "jarvis_memory_local.db").write_text("", encoding="utf-8")
+            (config_dir / "cloud.env").write_text("LLM_PROVIDER=xai\n", encoding="utf-8")
+            (config_dir / "local.env").write_text("LLM_PROVIDER=ollama\n", encoding="utf-8")
 
             calls = []
 
@@ -354,10 +360,13 @@ class TestIntelContentNormalization(unittest.TestCase):
             root = Path(tmpdir)
             skills_dir = root / "skills"
             data_dir = root / "data"
+            config_dir = root / "config"
             skills_dir.mkdir()
             data_dir.mkdir()
+            config_dir.mkdir()
             (skills_dir / "ingest_intel.py").write_text("# stub\n", encoding="utf-8")
             (data_dir / "jarvis_memory_local.db").write_text("", encoding="utf-8")
+            (config_dir / "local.env").write_text("LLM_PROVIDER=ollama\n", encoding="utf-8")
 
             calls = []
 
@@ -381,16 +390,90 @@ class TestIntelContentNormalization(unittest.TestCase):
             self.assertEqual(result["modes"], ["local"])
             self.assertEqual(calls, [("local", "ollama")])
 
+    def test_auto_ingest_skips_existing_sibling_without_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "skills").mkdir()
+            (root / "data").mkdir()
+            (root / "config").mkdir()
+            (root / "skills" / "ingest_intel.py").write_text("# stub\n", encoding="utf-8")
+            (root / "data" / "jarvis_memory.db").write_text("", encoding="utf-8")
+            (root / "data" / "jarvis_memory_local.db").write_text("", encoding="utf-8")
+            (root / "config" / "cloud.env").write_text("LLM_PROVIDER=xai\n", encoding="utf-8")
+
+            calls = []
+
+            def fake_run(cmd, capture_output, text, timeout, env):
+                calls.append(env["JARVIS_MODE"])
+
+                class Result:
+                    returncode = 0
+                    stdout = '{"ok": true, "data": {"new_files": 1, "total_facts": 2}}'
+                    stderr = ""
+
+                return Result()
+
+            with (
+                patch("manage_intel.export_config_environment", side_effect=_fake_export_environment),
+                patch("manage_intel.subprocess.run", side_effect=fake_run),
+            ):
+                result = auto_ingest(root, "cloud")
+
+            self.assertTrue(result["ingested"])
+            self.assertTrue(result["partial"])
+            self.assertEqual(result["modes"], ["cloud"])
+            self.assertEqual(result["skipped_modes"], ["local"])
+            self.assertIn("config/local.env is missing", result["warning"])
+            self.assertEqual(calls, ["cloud"])
+
+    def test_auto_ingest_plan_requires_only_selected_mode_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "config").mkdir()
+            (root / "data").mkdir()
+            (root / "config" / "local.env").write_text("LLM_PROVIDER=ollama\n", encoding="utf-8")
+
+            local_plan = get_auto_ingest_plan(root, "local")
+            cloud_plan = get_auto_ingest_plan(root, "cloud")
+
+            self.assertEqual(local_plan["modes"], ["local"])
+            self.assertFalse(cloud_plan["ok"])
+            self.assertIn("config/cloud.env not found", cloud_plan["error"])
+
+    def test_start_auto_ingest_launches_detached_worker_for_planned_modes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "config").mkdir()
+            (root / "data").mkdir()
+            (root / "skills").mkdir()
+            (root / "config" / "cloud.env").write_text("LLM_PROVIDER=xai\n", encoding="utf-8")
+            (root / "config" / "local.env").write_text("LLM_PROVIDER=ollama\n", encoding="utf-8")
+            (root / "data" / "jarvis_memory_local.db").write_text("", encoding="utf-8")
+
+            with patch("manage_intel.subprocess.Popen") as popen:
+                result = start_auto_ingest(root, "cloud")
+
+            self.assertTrue(result["started"])
+            self.assertEqual(result["modes"], ["cloud", "local"])
+            command = popen.call_args.args[0]
+            self.assertEqual(command[-2:], ["--auto-ingest", "cloud"])
+            self.assertEqual(popen.call_args.kwargs["cwd"], str(root))
+            self.assertTrue(popen.call_args.kwargs["start_new_session"])
+
     def test_auto_ingest_treats_sibling_failure_as_warning(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             skills_dir = root / "skills"
             data_dir = root / "data"
+            config_dir = root / "config"
             skills_dir.mkdir()
             data_dir.mkdir()
+            config_dir.mkdir()
             (skills_dir / "ingest_intel.py").write_text("# stub\n", encoding="utf-8")
             (data_dir / "jarvis_memory.db").write_text("", encoding="utf-8")
             (data_dir / "jarvis_memory_local.db").write_text("", encoding="utf-8")
+            (config_dir / "cloud.env").write_text("LLM_PROVIDER=xai\n", encoding="utf-8")
+            (config_dir / "local.env").write_text("LLM_PROVIDER=ollama\n", encoding="utf-8")
 
             calls = []
 
@@ -428,10 +511,13 @@ class TestIntelContentNormalization(unittest.TestCase):
             root = Path(tmpdir)
             skills_dir = root / "skills"
             data_dir = root / "data"
+            config_dir = root / "config"
             skills_dir.mkdir()
             data_dir.mkdir()
+            config_dir.mkdir()
             (skills_dir / "ingest_intel.py").write_text("# stub\n", encoding="utf-8")
             (data_dir / "jarvis_memory.db").write_text("", encoding="utf-8")
+            (config_dir / "cloud.env").write_text("LLM_PROVIDER=xai\n", encoding="utf-8")
 
             def fake_run(cmd, capture_output, text, timeout, env):
                 class Result:

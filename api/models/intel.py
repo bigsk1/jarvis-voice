@@ -51,6 +51,9 @@ class IntelResponse(BaseModel):
     files: list[IntelFile] | None = None
     content: str | None = None
     count: int | None = None
+    ingestion_started: bool = False
+    ingest_modes: list[str] | None = None
+    ingest_warning: str | None = None
 
 
 class IntelStats(BaseModel):
@@ -70,5 +73,9 @@ class IngestResult(BaseModel):
     new_files: int = 0
     skipped_files: int = 0
     total_facts: int = 0
-    processed_files: list[str] = []
+    processed_files: list[str] = Field(default_factory=list)
     async_started: bool = False
+    modes: list[str] = Field(default_factory=list)
+    skipped_modes: list[str] = Field(default_factory=list)
+    partial: bool = False
+    warning: str | None = None

@@ -22,6 +22,11 @@ from ..services.pdf_upload import (
 )
 from ..services.tool_discovery import get_tool_service
 from ..services.usage_metadata import format_usage_markdown
+from ..services.user_profile_service import (
+    UserProfileServiceError,
+    get_user_profile,
+    save_user_profile,
+)
 from ..services.settings_manager import (
     CLOUD_TTS_PROVIDER_OPTIONS,
     LOCAL_TTS_PROVIDER_OPTIONS,
@@ -2058,6 +2063,78 @@ def upload_intel_file():
         'message': f'Saved {filename} and started ingestion',
         'filename': filename
     })
+
+
+@api_bp.route('/user-profile', methods=['GET', 'PUT'])
+def user_profile():
+    """View or save the fixed user-profile.md through FastAPI Intel CRUD."""
+    try:
+        if request.method == 'GET':
+            mode = str(
+                request.args.get('mode') or get_web_setting('defaults.mode', 'cloud')
+            ).strip().lower()
+            if mode not in {'cloud', 'local'}:
+                return jsonify({'ok': False, 'error': 'Mode must be "cloud" or "local"'}), 400
+            return jsonify({'ok': True, 'profile': get_user_profile(mode)})
+
+        data = request.get_json(silent=True) or {}
+        mode = str(data.get('mode') or get_web_setting('defaults.mode', 'cloud')).strip().lower()
+        if mode not in {'cloud', 'local'}:
+            return jsonify({'ok': False, 'error': 'Mode must be "cloud" or "local"'}), 400
+        if not isinstance(data.get('expected_exists'), bool):
+            return jsonify({'ok': False, 'error': 'expected_exists must be a boolean'}), 400
+
+        profile = save_user_profile(
+            data.get('content'),
+            mode=mode,
+            expected_exists=data['expected_exists'],
+            expected_revision=data.get('expected_revision'),
+        )
+
+        ingest_modes = profile.get('ingest_modes') or [mode]
+        cache_modes = []
+        for cache_mode in [mode, *ingest_modes]:
+            if cache_mode in {'cloud', 'local'} and cache_mode not in cache_modes:
+                cache_modes.append(cache_mode)
+
+        # Profile Card injection reads the file directly and validates its hash
+        # on every answer boundary. Warm every mode accepted by the ingest plan
+        # so each existing user_model cache is current before the next chat.
+        cache_refresh_failures = []
+        from config_loader import config_scope
+        from user_profile import get_cached_profile_card
+
+        for cache_mode in cache_modes:
+            try:
+                with config_scope(cache_mode):
+                    get_cached_profile_card(force_refresh=True)
+            except Exception as exc:
+                cache_refresh_failures.append(cache_mode)
+                print(
+                    f"[User Profile] {cache_mode} cache warm skipped: {exc}",
+                    file=sys.stderr,
+                )
+
+        mode_label = ' and '.join(ingest_modes)
+        message = (
+            f'User profile saved. Profile Card refreshed; '
+            f'reference ingestion started for {mode_label}.'
+        )
+        if profile.get('ingest_warning'):
+            message += f" Warning: {profile['ingest_warning']}"
+        if cache_refresh_failures:
+            retry_modes = ' and '.join(cache_refresh_failures)
+            message += (
+                f" Profile Card cache refresh will retry on the next chat for {retry_modes}."
+            )
+
+        return jsonify({
+            'ok': True,
+            'profile': profile,
+            'message': message,
+        })
+    except UserProfileServiceError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), exc.status_code
 
 
 @api_bp.route('/stt', methods=['POST'])

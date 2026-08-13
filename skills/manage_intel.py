@@ -79,6 +79,86 @@ def format_ingest_summary(ingest_result: dict[str, Any]) -> str:
     return summary
 
 
+def get_auto_ingest_plan(project_root: Path, current_mode: str) -> dict[str, Any]:
+    """Plan current-mode ingestion plus an already-configured sibling DB.
+
+    The selected mode is always required and may create its own DB on first
+    use. A sibling is included only when both its DB and config file already
+    exist, so a single-mode install never grows an unused second database.
+    """
+    current_mode = str(current_mode or "").strip().lower()
+    if current_mode not in {"cloud", "local"}:
+        return {"ok": False, "error": f"Invalid ingest mode: {current_mode or 'missing'}"}
+
+    config_dir = project_root / "config"
+    current_config = config_dir / f"{current_mode}.env"
+    if not current_config.is_file():
+        return {
+            "ok": False,
+            "error": f"config/{current_mode}.env not found; {current_mode} ingest was not started",
+        }
+
+    data_dir = project_root / "data"
+    sibling_mode = "local" if current_mode == "cloud" else "cloud"
+    sibling_db = data_dir / (
+        "jarvis_memory_local.db" if sibling_mode == "local" else "jarvis_memory.db"
+    )
+    sibling_config = config_dir / f"{sibling_mode}.env"
+
+    modes = [current_mode]
+    skipped_modes = []
+    warnings = []
+    if sibling_db.is_file():
+        if sibling_config.is_file():
+            modes.append(sibling_mode)
+        else:
+            skipped_modes.append(sibling_mode)
+            warnings.append(
+                f"{sibling_mode} DB exists but config/{sibling_mode}.env is missing; "
+                f"skipped {sibling_mode} ingest"
+            )
+
+    plan = {
+        "ok": True,
+        "modes": modes,
+        "skipped_modes": skipped_modes,
+    }
+    if warnings:
+        plan["warning"] = " ".join(warnings)
+    return plan
+
+
+def start_auto_ingest(project_root: Path, current_mode: str) -> dict[str, Any]:
+    """Start detached mode-aware ingestion and return its preflight plan."""
+    plan = get_auto_ingest_plan(project_root, current_mode)
+    if not plan.get("ok"):
+        return {"started": False, **plan}
+
+    try:
+        subprocess.Popen(
+            [
+                sys.executable,
+                str(project_root / "skills" / "manage_intel.py"),
+                "--auto-ingest",
+                current_mode,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            cwd=str(project_root),
+        )
+    except OSError as exc:
+        return {
+            "started": False,
+            "ok": False,
+            "error": f"Could not start Intel ingestion: {exc}",
+            "modes": plan.get("modes", []),
+            "skipped_modes": plan.get("skipped_modes", []),
+        }
+
+    return {"started": True, **plan}
+
+
 def validate_path(path: str, intel_dir: Path) -> Path:
     """
     Validate and sanitize file path to ensure it's within jarvis-intel/.
@@ -444,27 +524,21 @@ def auto_ingest(project_root: Path, current_mode: str) -> dict[str, Any]:
     if not ingest_script.exists():
         return {"ingested": False, "error": "ingest_intel.py not found"}
 
-    data_dir = project_root / 'data'
-    db_paths = {
-        "cloud": data_dir / "jarvis_memory.db",
-        "local": data_dir / "jarvis_memory_local.db",
-    }
-    sibling_mode = "local" if current_mode == "cloud" else "cloud"
-
-    modes_to_ingest = [current_mode]
-    if db_paths[sibling_mode].exists():
-        modes_to_ingest.append(sibling_mode)
+    plan = get_auto_ingest_plan(project_root, current_mode)
+    if not plan.get("ok"):
+        return {"ingested": False, "error": plan.get("error", "Ingest preflight failed")}
+    modes_to_ingest = plan["modes"]
 
     mode_results = []
     total_new_files = 0
     total_facts = 0
-    warnings = []
-    
-    try:
-        for index, mode in enumerate(modes_to_ingest):
+    warnings = [plan["warning"]] if plan.get("warning") else []
+
+    for index, mode in enumerate(modes_to_ingest):
+        try:
             env = export_config_environment(mode)
             result = subprocess.run(
-                ['python3', str(ingest_script)],
+                [sys.executable, str(ingest_script)],
                 capture_output=True,
                 text=True,
                 timeout=per_mode_timeout,
@@ -493,6 +567,8 @@ def auto_ingest(project_root: Path, current_mode: str) -> dict[str, Any]:
                 facts = output.get('data', {}).get('total_facts', 0)
                 deleted_files = output.get('data', {}).get('deleted_files', 0)
                 deleted_facts = output.get('data', {}).get('deleted_facts', 0)
+                skipped_files = output.get('data', {}).get('skipped_files', 0)
+                processed_files = output.get('data', {}).get('processed_files', [])
                 total_new_files += new_files
                 total_facts += facts
                 mode_results.append({
@@ -502,6 +578,8 @@ def auto_ingest(project_root: Path, current_mode: str) -> dict[str, Any]:
                     "total_facts": facts,
                     "deleted_files": deleted_files,
                     "deleted_facts": deleted_facts,
+                    "skipped_files": skipped_files,
+                    "processed_files": processed_files,
                 })
             except json.JSONDecodeError:
                 mode_results.append({
@@ -509,23 +587,32 @@ def auto_ingest(project_root: Path, current_mode: str) -> dict[str, Any]:
                     "ok": True,
                     "raw_output": result.stdout,
                 })
+        except subprocess.TimeoutExpired:
+            error_text = f"{mode} ingest timeout ({per_mode_timeout}s)"
+            if index == 0:
+                return {"ingested": False, "error": error_text}
+            warnings.append(error_text)
+            mode_results.append({"mode": mode, "ok": False, "error": error_text})
+        except Exception as exc:
+            error_text = f"{mode} ingest failed: {str(exc)[:500]}"
+            if index == 0:
+                return {"ingested": False, "error": error_text}
+            warnings.append(error_text)
+            mode_results.append({"mode": mode, "ok": False, "error": error_text})
 
-        response = {
-            "ingested": True,
-            "new_files": total_new_files,
-            "total_facts": total_facts,
-            "modes": [entry["mode"] for entry in mode_results if entry.get("ok")],
-            "results": mode_results,
-        }
-        if warnings:
-            response["warning"] = " ".join(warnings)
-            response["failed_modes"] = [entry["mode"] for entry in mode_results if entry.get("ok") is False]
-            response["partial"] = True
-        return response
-    except subprocess.TimeoutExpired:
-        return {"ingested": False, "error": f"Ingest timeout ({per_mode_timeout}s per mode)"}
-    except Exception as e:
-        return {"ingested": False, "error": str(e)}
+    response = {
+        "ingested": True,
+        "new_files": total_new_files,
+        "total_facts": total_facts,
+        "modes": [entry["mode"] for entry in mode_results if entry.get("ok")],
+        "results": mode_results,
+        "skipped_modes": plan.get("skipped_modes", []),
+    }
+    if warnings:
+        response["warning"] = " ".join(warnings)
+        response["failed_modes"] = [entry["mode"] for entry in mode_results if entry.get("ok") is False]
+        response["partial"] = True
+    return response
 
 
 def main():
@@ -692,4 +779,8 @@ def main():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--auto-ingest":
+        internal_result = auto_ingest(Path(__file__).parent.parent.resolve(), sys.argv[2])
+        print(json.dumps(internal_result))
+        sys.exit(0 if internal_result.get("ingested") else 1)
     main()

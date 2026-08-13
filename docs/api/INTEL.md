@@ -20,15 +20,15 @@ curl http://localhost:8880/api/intel/stats
 curl http://localhost:8880/api/intel
 
 # Create a new intel file
-curl -X POST http://localhost:8880/api/intel \
+curl -X POST "http://localhost:8880/api/intel?mode=cloud" \
   -H "Content-Type: application/json" \
   -d '{"filename": "server-notes.md", "content": "# Servers\n- vps1: 10.0.0.1", "auto_ingest": true}'
 
 # Read a file
-curl http://localhost:8880/api/intel/server-notes.md
+curl "http://localhost:8880/api/intel/server-notes.md?mode=cloud"
 
 # Trigger ingestion
-curl -X POST "http://localhost:8880/api/intel/ingest?async_mode=true"
+curl -X POST "http://localhost:8880/api/intel/ingest?async_mode=true&mode=cloud"
 
 # Delete a file
 curl -X DELETE http://localhost:8880/api/intel/server-notes.md
@@ -104,7 +104,7 @@ List all intel files in the folder.
 ### Create Intel File
 
 ```http
-POST /api/intel
+POST /api/intel?mode=cloud
 ```
 
 Create a new Intel file. New filenames must use lowercase kebab-case; existing
@@ -123,13 +123,18 @@ legacy filenames remain readable and updateable for migration.
 |-------|------|----------|-------------|
 | `filename` | string | yes | Lowercase kebab-case filename ending in `.md` or `.txt` |
 | `content` | string | yes | File content (markdown recommended) |
-| `auto_ingest` | bool | no | Trigger background ingestion after creating |
+| `auto_ingest` | bool | no | Trigger background ingestion for the selected mode and an existing, configured sibling DB |
+
+The optional `mode=cloud|local` query parameter selects the primary database and defaults to the API server's startup mode. A sibling is included only when both its database and `config/<mode>.env` already exist.
 
 **Response:**
 ```json
 {
   "ok": true,
   "message": "Created xai-collections.md (ingestion started)",
+  "ingestion_started": true,
+  "ingest_modes": ["cloud", "local"],
+  "ingest_warning": null,
   "file": {
     "filename": "xai-collections.md",
     "size_bytes": 234,
@@ -145,10 +150,10 @@ legacy filenames remain readable and updateable for migration.
 ### Get Intel File
 
 ```http
-GET /api/intel/{filename}
+GET /api/intel/{filename}?mode=cloud
 ```
 
-Get an intel file's content and metadata.
+Get an intel file's content and mode-specific ingestion metadata. The file content itself is shared across modes.
 
 **Response:**
 ```json
@@ -170,7 +175,7 @@ Get an intel file's content and metadata.
 ### Update Intel File
 
 ```http
-PUT /api/intel/{filename}
+PUT /api/intel/{filename}?mode=cloud
 ```
 
 Update an existing intel file.
@@ -186,13 +191,16 @@ Update an existing intel file.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `content` | string | yes | New file content |
-| `auto_ingest` | bool | no | Delete old memories and re-ingest |
+| `auto_ingest` | bool | no | Delete old primary-mode facts and start mode-aware re-ingestion |
 
 **Response:**
 ```json
 {
   "ok": true,
   "message": "Updated network.md (re-ingestion started)",
+  "ingestion_started": true,
+  "ingest_modes": ["cloud", "local"],
+  "ingest_warning": null,
   "file": {
     "filename": "network.md",
     "size_bytes": 612,
@@ -227,15 +235,18 @@ Delete an intel file and all its associated memories.
 
 ```http
 POST /api/intel/ingest
-POST /api/intel/ingest?async_mode=true
+POST /api/intel/ingest?async_mode=true&mode=cloud
 ```
 
-Trigger ingestion of all intel files into memory.
+Trigger ingestion of all Intel files into the selected memory mode. The selected
+mode runs first. A sibling mode is included only when both its database and mode
+ENV already exist; this endpoint never creates an unused sibling database.
 
 **Query Parameters:**
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `async_mode` | bool | false | Run in background (returns immediately) |
+| `mode` | string | FastAPI startup mode | Selected mode: `cloud` or `local` |
 
 **Sync Response:**
 ```json
@@ -245,7 +256,11 @@ Trigger ingestion of all intel files into memory.
   "skipped_files": 6,
   "total_facts": 45,
   "processed_files": ["new-file.md", "updated-file.md"],
-  "async_started": false
+  "async_started": false,
+  "modes": ["cloud", "local"],
+  "skipped_modes": [],
+  "partial": false,
+  "warning": null
 }
 ```
 
@@ -253,7 +268,11 @@ Trigger ingestion of all intel files into memory.
 ```json
 {
   "ok": true,
-  "async_started": true
+  "async_started": true,
+  "modes": ["cloud"],
+  "skipped_modes": ["local"],
+  "partial": true,
+  "warning": "local DB exists but config/local.env is missing; skipped local ingest"
 }
 ```
 

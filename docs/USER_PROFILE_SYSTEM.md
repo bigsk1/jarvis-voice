@@ -1,6 +1,6 @@
 # User Profile System
 
-Last updated: 2026-05-21
+Last updated: 2026-08-13
 
 ## Overview
 
@@ -88,6 +88,10 @@ Everything under `## Profile Reference` is **Tier 3** (on-demand via search/inte
 
 - Enabled: `USER_PROFILE_CARD_ENABLED=true` (default)
 - Loaded by: `lib/user_profile.py` → cached in `user_model.profile_card_cache`
+- Jarvis Web **Save & ingest** refreshes that cache immediately for the selected
+  mode and any existing, configured sibling included in the ingest plan
+- Other file edits remain safe: the next answer in each mode compares the source
+  hash and refreshes a stale cache before injecting the card
 - Applied in:
   - `orchestrator/router_v2.py` → router system prompt (direct answers + tool-behavior nudging)
   - `orchestrator/response_formatter.py` → synthesis passes (condensation, multi-turn summaries)
@@ -105,6 +109,7 @@ Hard isolation (separate final-answer LLM call with zero profile on tool turns) 
 
 | Who | How |
 |-----|-----|
+| **You** | Jarvis Web → Settings → Profile → **Save & ingest** |
 | **You** | Edit `## Profile Card` → ingest intel |
 | **You** | "update my profile with X" → `manage_intel` on `user-profile.md` |
 | **Jarvis** | Append **`jarvis-learned-lessons.md`** only (apply-mode corrections, tool discoveries) |

@@ -78,7 +78,7 @@ Starting LOCAL mode:
 
 Runtime note:
 - `forget` now mirrors deletions into the sibling DB by logical memory identity (`category + key`) when that sibling DB file already exists.
-- Intel ingestion via `manage_intel` auto-ingest and the Memory UI `Ingest All` flow now runs current mode first, then the sibling DB sequentially if it exists.
+- Intel ingestion via `manage_intel` auto-ingest, Memory UI `Ingest All`, and FastAPI Intel auto-ingest runs current mode first, then a sibling DB sequentially only when its mode ENV also exists.
 
 ## Tool Compatibility
 
@@ -89,8 +89,9 @@ All memory tools work seamlessly:
 - `update_memory` → Updates the current mode's DB and mirrors the same logical memory into the sibling DB when available
 - `forget` → Deletes from current mode's DB and mirrors the same logical key into the sibling DB when available
 - `ingest_intel` → Direct tool call ingests to the current mode's DB
-- `manage_intel` with `auto_ingest=true` → Ingests current mode first, then sibling DB sequentially when present
+- `manage_intel` with `auto_ingest=true` → Ingests current mode first, then a sibling sequentially when both its DB and mode ENV are present
 - Memory UI `Ingest All` → Uses the same sequential current-mode-then-sibling ingest flow
+- FastAPI Intel `auto_ingest=true` → Starts that same flow in the background; optional `mode=cloud|local` selects the primary mode
 
 ### Read Tools (Always Current)
 - `recall` / `search_memory` → SQL fuzzy search (no embeddings)

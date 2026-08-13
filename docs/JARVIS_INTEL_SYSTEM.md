@@ -80,7 +80,7 @@ python3 skills/ingest_intel.py '{}'
 ```
 
 **Memory UI**:
-- `Ingest All` runs the selected mode first, then the sibling DB sequentially if that DB already exists
+- `Ingest All` runs the selected mode first, then the sibling DB sequentially if that DB and its mode ENV already exist
 - sibling-mode failures are surfaced as warnings; current-mode success is preserved
 
 ### 3. Use the Information
@@ -119,7 +119,8 @@ removes the current `intel_hash_<filename>` tracking row before re-ingestion.
 
 Mode behavior:
 - direct `ingest_intel` updates only the current mode DB
-- `manage_intel` with `auto_ingest=true` and Memory UI `Ingest All` run current mode first, then sibling DB if it exists
+- `manage_intel` with `auto_ingest=true`, Memory UI `Ingest All`, and FastAPI Intel `auto_ingest=true` run current mode first, then a sibling whose DB and mode ENV both already exist
+- a missing sibling DB is skipped silently; an existing sibling DB with no matching ENV is skipped with a partial warning and is never initialized implicitly
 - status/toast counts are totals across the modes that actually ran
 
 ### Fact Extraction Patterns
@@ -258,7 +259,7 @@ For removing a duplicate entry or correcting part of a growing file:
 2. Copy the exact block into `old_content`.
 3. Call `action=replace` with `expected_replacements` and the `file_sha256` returned by search as `expected_file_sha256`.
 4. Use an empty `new_content` to remove the block, or provide corrected text.
-5. Set `auto_ingest=true` to rebuild facts in the current and existing sibling mode databases.
+5. Set `auto_ingest=true` to rebuild facts in the current mode and any existing sibling with a configured mode ENV.
 
 The replace operation makes no changes if the exact match count is unexpected or the file hash is stale. Search/read again rather than weakening those safeguards.
 
@@ -346,7 +347,7 @@ Ingestion works in both modes with separate databases:
 Each database maintains independent hash tracking. Running ingest in either mode only affects that mode's database.
 
 Exception:
-- `manage_intel` with `auto_ingest=true` and Memory UI `Ingest All` intentionally run the sibling DB after the current mode when that sibling DB file already exists
+- `manage_intel` with `auto_ingest=true`, Memory UI `Ingest All`, and FastAPI Intel auto-ingest intentionally run the sibling after the current mode when both its DB and mode ENV already exist
 
 ---
 

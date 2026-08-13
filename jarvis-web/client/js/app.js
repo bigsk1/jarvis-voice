@@ -35,6 +35,9 @@ class JarvisApp {
     this._toolsRequestId = 0;
     this._serpApiAccountRequestId = 0;
     this._proxyStatusRequestId = 0;
+    this._userProfileRequestId = 0;
+    this._userProfileState = null;
+    this._userProfileEditing = false;
     
     // Audio playback state
     this.currentAudio = null;
@@ -389,11 +392,44 @@ class JarvisApp {
         if (tabName === 'api') {
           this._loadProxyStatus();
         }
+        if (tabName === 'profile') {
+          this._loadUserProfileSummary();
+        }
       });
     });
 
     document.getElementById('refreshProxyStatusBtn')?.addEventListener('click', () => {
       this._loadProxyStatus(true);
+    });
+
+    document.getElementById('manageUserProfileBtn')?.addEventListener('click', () => {
+      this._openUserProfileModal();
+    });
+    document.getElementById('closeUserProfile')?.addEventListener('click', () => {
+      this._closeUserProfileModal();
+    });
+    document.getElementById('cancelUserProfileBtn')?.addEventListener('click', () => {
+      this._closeUserProfileModal();
+    });
+    document.getElementById('editUserProfileBtn')?.addEventListener('click', () => {
+      this._editUserProfile();
+    });
+    document.getElementById('startUserProfileBtn')?.addEventListener('click', () => {
+      this._editUserProfile(true);
+    });
+    document.getElementById('saveUserProfileBtn')?.addEventListener('click', () => {
+      this._saveUserProfile();
+    });
+    document.getElementById('openIntelligenceProfileBtn')?.addEventListener('click', (event) => {
+      event.preventDefault();
+      window.open(this._getMemoryIntelUrl(), '_blank', 'noopener,noreferrer');
+    });
+
+    const userProfileModal = document.getElementById('userProfileModal');
+    userProfileModal?.addEventListener('click', (event) => {
+      if (event.target === userProfileModal) {
+        this._closeUserProfileModal();
+      }
     });
     
     
@@ -690,7 +726,9 @@ class JarvisApp {
     document.addEventListener('keydown', (e) => {
       // Escape to close modal or stop audio
       if (e.key === 'Escape') {
-        if (this.settingsModal.classList.contains('active')) {
+        if (document.getElementById('userProfileModal')?.classList.contains('active')) {
+          this._closeUserProfileModal();
+        } else if (this.settingsModal.classList.contains('active')) {
           this.settingsModal.classList.remove('active');
         } else if (this.currentAudio && this.isPlaying) {
           // Stop audio on Escape if playing
@@ -2578,6 +2616,234 @@ class JarvisApp {
       }
     } catch (err) {
       console.error('[App] Failed to fetch status for profile:', err);
+    }
+
+    if (document.getElementById('settings-profile')?.classList.contains('active')) {
+      this._loadUserProfileSummary();
+    }
+  }
+
+  _getMemoryIntelUrl() {
+    const hostname = window.location.hostname || 'localhost';
+    return `http://${hostname}:5002/#intel`;
+  }
+
+  _updateUserProfileSummary(profile = null, error = null) {
+    const stateEl = document.getElementById('user-profile-state');
+    const summaryEl = document.getElementById('user-profile-summary-text');
+    const manageButton = document.getElementById('manageUserProfileBtn');
+    if (!stateEl || !summaryEl || !manageButton) return;
+
+    stateEl.classList.remove('available', 'missing', 'error');
+    if (error) {
+      stateEl.textContent = 'Unavailable';
+      stateEl.classList.add('error');
+      summaryEl.textContent = error;
+      manageButton.textContent = 'Try again';
+      return;
+    }
+
+    if (!profile) {
+      stateEl.textContent = 'Checking…';
+      summaryEl.textContent = 'Checking for jarvis-intel/user-profile.md…';
+      manageButton.textContent = 'View or edit';
+      return;
+    }
+
+    if (profile.exists) {
+      const factCount = Number(profile.fact_count || 0);
+      stateEl.textContent = factCount > 0 ? `Ready · ${factCount} facts` : 'Ready';
+      stateEl.classList.add('available');
+      summaryEl.textContent = profile.ingested
+        ? 'Profile Card is active and Profile Reference is available to semantic recall.'
+        : 'Profile Card is active. Profile Reference ingestion may still be running.';
+      manageButton.textContent = 'View or edit';
+    } else {
+      stateEl.textContent = 'Not created';
+      stateEl.classList.add('missing');
+      summaryEl.textContent = 'Create a short Profile Card now; longer reference notes can be recalled after ingestion.';
+      manageButton.textContent = 'Create profile';
+    }
+  }
+
+  async _loadUserProfileSummary({ renderModal = false } = {}) {
+    const requestId = ++this._userProfileRequestId;
+    this._updateUserProfileSummary();
+    if (renderModal) {
+      this._renderUserProfileModal({ loading: true });
+    }
+
+    try {
+      const mode = this._settingsData?.mode || this.socket.mode || 'cloud';
+      const response = await fetch(`/api/user-profile?mode=${encodeURIComponent(mode)}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok || !data.profile) {
+        throw new Error(data.error || 'User profile could not be loaded.');
+      }
+      if (requestId !== this._userProfileRequestId) return null;
+
+      this._userProfileState = data.profile;
+      this._userProfileEditing = false;
+      this._updateUserProfileSummary(data.profile);
+      if (renderModal) this._renderUserProfileModal();
+      return data.profile;
+    } catch (err) {
+      if (requestId !== this._userProfileRequestId) return null;
+      const message = err?.message || 'User profile could not be loaded.';
+      this._userProfileState = { error: message };
+      this._updateUserProfileSummary(null, message);
+      if (renderModal) this._renderUserProfileModal({ error: message });
+      return null;
+    }
+  }
+
+  async _openUserProfileModal() {
+    const modal = document.getElementById('userProfileModal');
+    if (!modal) return;
+    modal.classList.add('active');
+    await this._loadUserProfileSummary({ renderModal: true });
+  }
+
+  _closeUserProfileModal() {
+    document.getElementById('userProfileModal')?.classList.remove('active');
+    this._userProfileEditing = false;
+  }
+
+  _renderUserProfileModal({ loading = false, error = null } = {}) {
+    const notice = document.getElementById('userProfileNotice');
+    const empty = document.getElementById('userProfileEmpty');
+    const rendered = document.getElementById('userProfileRendered');
+    const editor = document.getElementById('userProfileEditor');
+    const editButton = document.getElementById('editUserProfileBtn');
+    const saveButton = document.getElementById('saveUserProfileBtn');
+    if (!notice || !empty || !rendered || !editor || !editButton || !saveButton) return;
+
+    notice.hidden = true;
+    notice.classList.remove('success', 'error');
+    empty.hidden = true;
+    rendered.hidden = true;
+    editor.hidden = true;
+    editButton.hidden = true;
+    saveButton.hidden = true;
+
+    if (loading) {
+      notice.textContent = 'Loading your profile…';
+      notice.hidden = false;
+      return;
+    }
+    if (error || this._userProfileState?.error) {
+      notice.textContent = error || this._userProfileState.error;
+      notice.classList.add('error');
+      notice.hidden = false;
+      return;
+    }
+
+    const profile = this._userProfileState;
+    if (!profile) return;
+    if (this._userProfileEditing) {
+      editor.hidden = false;
+      saveButton.hidden = false;
+      return;
+    }
+    if (!profile.exists) {
+      empty.hidden = false;
+      return;
+    }
+
+    this._renderSafeUserProfileMarkdown(profile.content || '', rendered);
+    rendered.hidden = false;
+    editButton.hidden = false;
+  }
+
+  _renderSafeUserProfileMarkdown(content, target) {
+    if (!target) return;
+    const template = document.createElement('template');
+    // Escape raw HTML before Markdown parsing, then inspect the generated DOM.
+    // This keeps the preview useful without trusting profile-authored markup.
+    template.innerHTML = Utils.parseMarkdown(Utils.escapeHtml(String(content || '')));
+    template.content.querySelectorAll(
+      'script, style, iframe, object, embed, form, input, button, textarea, select, link, meta, img, svg, math'
+    ).forEach((element) => element.remove());
+
+    template.content.querySelectorAll('*').forEach((element) => {
+      for (const attribute of [...element.attributes]) {
+        if (!['href', 'title', 'target', 'rel'].includes(attribute.name.toLowerCase())) {
+          element.removeAttribute(attribute.name);
+        }
+      }
+    });
+
+    template.content.querySelectorAll('[href], [src]').forEach((element) => {
+      for (const attributeName of ['href', 'src']) {
+        if (!element.hasAttribute(attributeName)) continue;
+        const rawValue = String(element.getAttribute(attributeName) || '').trim();
+        try {
+          const parsed = new URL(rawValue, window.location.origin);
+          if (!['http:', 'https:'].includes(parsed.protocol)) {
+            element.removeAttribute(attributeName);
+          }
+        } catch {
+          element.removeAttribute(attributeName);
+        }
+      }
+      if (element.tagName === 'A' && element.hasAttribute('href')) {
+        element.setAttribute('target', '_blank');
+        element.setAttribute('rel', 'noopener noreferrer');
+      }
+    });
+
+    target.replaceChildren(template.content.cloneNode(true));
+  }
+
+  _editUserProfile(useStarter = false) {
+    const profile = this._userProfileState;
+    if (!profile || profile.error) return;
+    const input = document.getElementById('userProfileContent');
+    if (!input) return;
+
+    input.value = profile.exists && !useStarter
+      ? (profile.content || '')
+      : (profile.starter_template || '');
+    this._userProfileEditing = true;
+    this._renderUserProfileModal();
+    input.focus();
+  }
+
+  async _saveUserProfile() {
+    const profile = this._userProfileState;
+    const input = document.getElementById('userProfileContent');
+    const saveButton = document.getElementById('saveUserProfileBtn');
+    if (!profile || profile.error || !input || !saveButton) return;
+
+    saveButton.disabled = true;
+    saveButton.textContent = 'Saving…';
+    try {
+      const mode = this._settingsData?.mode || this.socket.mode || 'cloud';
+      const response = await fetch('/api/user-profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: input.value,
+          mode,
+          expected_exists: Boolean(profile.exists),
+          expected_revision: profile.revision || null,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok || !data.profile) {
+        throw new Error(data.error || 'User profile could not be saved.');
+      }
+
+      this._userProfileState = data.profile;
+      this._userProfileEditing = false;
+      this._updateUserProfileSummary(data.profile);
+      this._renderUserProfileModal();
+      Utils.toast(data.message || 'User profile saved and ingestion started.', 'success', 3500);
+    } catch (err) {
+      Utils.toast(err?.message || 'User profile could not be saved.', 'error', 4500);
+    } finally {
+      saveButton.disabled = false;
+      saveButton.textContent = 'Save & ingest';
     }
   }
   

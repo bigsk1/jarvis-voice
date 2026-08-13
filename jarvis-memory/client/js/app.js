@@ -74,6 +74,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Set up event listeners
   setupEventListeners();
   updateSidebarLayout();
+
+  const requestedTab = window.location.hash.slice(1).toLowerCase();
+  const knownTabs = new Set([
+    'memories', 'conversations', 'intel', 'reminders', 'alerts', 'scheduled', 'stats'
+  ]);
+  if (knownTabs.has(requestedTab)) {
+    switchTab(requestedTab, { load: false });
+  }
   
   // Load initial data
   await loadData();
@@ -953,7 +961,7 @@ function showModal(modal) {
 // Tab Navigation
 // =========================================================================
 
-function switchTab(tab) {
+function switchTab(tab, { load = true } = {}) {
   currentTab = tab;
   searchQuery = '';
   document.getElementById('searchInput').value = '';
@@ -986,7 +994,7 @@ function switchTab(tab) {
   if (tab === 'alerts') alertTabMonitor?.acknowledgeAttention();
   
   // Load data for tab
-  loadData();
+  if (load) loadData();
 }
 
 function updateSidebarLayout() {

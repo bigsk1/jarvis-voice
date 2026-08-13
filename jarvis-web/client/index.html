@@ -830,7 +830,14 @@
               <div class="profile-stats">
                 <div class="profile-stat">
                   <span class="stat-label">Version</span>
-                  <span class="stat-value" id="profile-version">...</span>
+                  <a
+                    class="stat-value profile-version-link"
+                    id="profile-version"
+                    href="https://github.com/bigsk1/jarvis-voice/releases"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="View Jarvis Voice releases"
+                  >...</a>
                 </div>
                 <div class="profile-stat">
                   <span class="stat-label">Mode</span>
@@ -840,6 +847,20 @@
                   <span class="stat-label">Auth Status</span>
                   <span class="stat-value" id="profile-auth-status">🔒 Secured</span>
                 </div>
+              </div>
+            </div>
+
+            <div class="profile-section">
+              <h4 class="profile-section-title">User Profile</h4>
+              <div class="user-profile-summary" id="user-profile-summary">
+                <div class="user-profile-summary-copy">
+                  <div class="user-profile-summary-title">
+                    <span>user-profile.md</span>
+                    <span class="user-profile-state" id="user-profile-state">Not checked</span>
+                  </div>
+                  <p id="user-profile-summary-text">A short Profile Card shapes every answer; longer reference notes are recalled when relevant.</p>
+                </div>
+                <button type="button" class="btn-secondary" id="manageUserProfileBtn">View or edit</button>
               </div>
             </div>
             
@@ -880,6 +901,41 @@
         <div class="modal-footer">
           <button class="btn-secondary" id="closeSettingsBtn">Cancel</button>
           <button class="btn-primary" id="saveSettingsBtn">Save Changes</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- User Profile Modal -->
+    <div class="modal-overlay user-profile-modal-overlay" id="userProfileModal">
+      <div class="modal user-profile-modal" role="dialog" aria-modal="true" aria-labelledby="userProfileModalTitle">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="userProfileModalTitle">User Profile</h2>
+            <div class="user-profile-path">jarvis-intel/user-profile.md</div>
+          </div>
+          <button class="icon-btn" id="closeUserProfile" aria-label="Close user profile">✕</button>
+        </div>
+        <div class="modal-body user-profile-modal-body">
+          <div class="user-profile-notice" id="userProfileNotice">
+            Loading your profile…
+          </div>
+          <div class="user-profile-empty" id="userProfileEmpty" hidden>
+            <h3>Create your Profile Card</h3>
+            <p>Keep the always-injected card short: who you are, how technical Jarvis should be, and stable working preferences. Put longer projects or infrastructure notes under Profile Reference. Do not store passwords or API keys.</p>
+            <button type="button" class="btn-primary" id="startUserProfileBtn">Start from the template</button>
+          </div>
+          <div class="user-profile-rendered" id="userProfileRendered" hidden></div>
+          <div class="user-profile-editor" id="userProfileEditor" hidden>
+            <label for="userProfileContent">Markdown source</label>
+            <textarea id="userProfileContent" spellcheck="true" maxlength="262144"></textarea>
+            <p>The <code>## Profile Card</code> section is required. Saving refreshes it immediately and starts background ingestion for Profile Reference.</p>
+          </div>
+        </div>
+        <div class="modal-footer user-profile-footer">
+          <a href="#" class="user-profile-intel-link" id="openIntelligenceProfileBtn">Open Intel files in Memory UI ↗</a>
+          <button type="button" class="btn-secondary" id="cancelUserProfileBtn">Close</button>
+          <button type="button" class="btn-secondary" id="editUserProfileBtn" hidden>Edit</button>
+          <button type="button" class="btn-primary" id="saveUserProfileBtn" hidden>Save &amp; ingest</button>
         </div>
       </div>
     </div>

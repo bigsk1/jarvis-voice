@@ -546,13 +546,17 @@ $HOME/
 
 `jarvis-intel/user-profile.md` is gitignored. On a fresh clone Jarvis runs fine without it; Tier 2 profile injection is skipped until you create the file:
 
+The easiest setup is **Jarvis Web → Settings → Profile → User Profile → Create profile**. Start from the template, then choose **Save & ingest**. The short `## Profile Card` cache is refreshed immediately in the selected mode and any existing, configured sibling; background Intel ingestion makes longer `## Profile Reference` notes available to semantic recall in those same modes. It never creates an unused second-mode DB.
+
+Or create it from the terminal:
+
 ```bash
 cp jarvis-intel/user-profile.md.example jarvis-intel/user-profile.md
 # Edit ## Profile Card (~15 lines), then optionally ingest reference sections:
 ./skills/ingest_intel.py '{"path":"jarvis-intel"}'
 ```
 
-The tracked `user-profile.md.example` is **not** ingested — `ingest_intel` only scans `*.md` and `*.txt`. See `docs/USER_PROFILE_SYSTEM.md`.
+The tracked `user-profile.md.example` is **not** ingested — `ingest_intel` only scans `*.md` and `*.txt`. The Web editor saves through the existing FastAPI Intel route; it does not create a separate profile store. See `docs/USER_PROFILE_SYSTEM.md`.
 
 ---
 
