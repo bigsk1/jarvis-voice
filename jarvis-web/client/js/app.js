@@ -438,7 +438,7 @@ class JarvisApp {
       );
     });
 
-    for (const mediaType of ['image', 'video', 'music']) {
+    for (const mediaType of ['image', 'video', 'music', 'tts']) {
       document.getElementById(`setting-${mediaType}-provider`)?.addEventListener('change', () => {
         this._updateMediaProviderDetail(mediaType);
       });
@@ -1718,6 +1718,7 @@ class JarvisApp {
         if (s.tts?.provider?.is_override) {
           ttsDefault.textContent = `⚡ override: ${s.tts.provider.value}`;
         }
+        this._updateMediaProviderDetail('tts');
 
         // Populate status update overrides.
         const statusLlmSetting = s.status_updates?.llm_enabled || {};
@@ -2940,9 +2941,12 @@ class JarvisApp {
     const metadata = this._settingsData?.[`${mediaType}_providers`]?.[provider];
     const summary = this._formatMediaProviderSummary(metadata, mediaType);
     const model = metadata?.model_name || metadata?.model;
-    detail.textContent = metadata && summary
-      ? `${model ? `${model} · ` : ''}${summary}`
-      : '';
+    const voice = metadata?.voice_name || metadata?.voice;
+    const parts = [];
+    if (model) parts.push(mediaType === 'tts' ? `Model: ${model}` : model);
+    if (voice) parts.push(`Voice: ${voice}`);
+    if (summary) parts.push(summary);
+    detail.textContent = metadata ? parts.join(' · ') : '';
   }
 
   async _ensureProviderModelsLoaded(provider) {

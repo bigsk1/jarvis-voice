@@ -630,6 +630,43 @@ class SettingsManager:
             return [current_provider, *options]
         return options
 
+    @staticmethod
+    def _get_tts_providers_for_ui() -> dict[str, dict[str, Any]]:
+        """Return TTS display metadata matching the effective runtime request."""
+        runtime_details = {
+            'kokoro': {
+                'model_name': 'kokoro',
+                'voice_name': get_jarvis_setting('KOKORO_TTS_VOICE', 'af_nicole'),
+            },
+            'openai': {
+                'model_name': get_jarvis_setting('TTS_MODEL', 'gpt-4o-mini-tts'),
+                'voice_name': get_jarvis_setting('VOICE', 'onyx'),
+            },
+            'elevenlabs': {
+                'model_name': get_jarvis_setting(
+                    'ELEVENLABS_TTS_MODEL',
+                    'eleven_multilingual_v2',
+                ),
+                'voice_name': get_jarvis_setting(
+                    'ELEVENLABS_TTS_VOICE',
+                    'pgCnBQgKPGkIP8fJuita',
+                ),
+            },
+            # xAI's native /v1/tts request selects a voice but does not accept
+            # a model identifier, so do not invent one for the UI.
+            'xai': {
+                'voice_name': get_jarvis_setting('XAI_TTS_VOICE', 'eve'),
+            },
+            'qwen3-tts': {
+                'model_name': 'tts-1',
+                'voice_name': get_jarvis_setting('QWEN3_TTS_VOICE', 'Jarvis'),
+            },
+        }
+        return {
+            provider: {**metadata, **runtime_details.get(provider, {})}
+            for provider, metadata in TTS_PROVIDERS.items()
+        }
+
     def _model_is_compatible_with_provider(self, provider: str, model: str | None) -> bool:
         """Reject a model override that clearly belongs to another provider/mode."""
         if provider == 'xai' and self._xai_uses_oauth():
@@ -752,6 +789,7 @@ class SettingsManager:
         image_providers = self._get_effective_media_providers('image')
         video_providers = self._get_effective_media_providers('video')
         music_providers = self._get_effective_media_providers('music')
+        tts_providers = self._get_tts_providers_for_ui()
         web_provider = mode_overrides.get('llm_provider')
         provider_invalid = False
         if web_provider not in (None, *llm_provider_options):
@@ -1072,7 +1110,7 @@ class SettingsManager:
             'image_providers': image_providers,
             'video_providers': video_providers,
             'music_providers': music_providers,
-            'tts_providers': TTS_PROVIDERS,
+            'tts_providers': tts_providers,
             'response_style_options': RESPONSE_STYLE_OPTIONS,
             
             # Blocked tools

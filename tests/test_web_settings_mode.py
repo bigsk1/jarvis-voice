@@ -172,6 +172,38 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertEqual(body["default_model"], "gpt-provider-default")
         settings._get_env_provider_model.assert_called_once_with("openai")
 
+    def test_tts_provider_metadata_matches_runtime_models_and_voices(self):
+        from server.services import settings_manager as settings_module
+        from server.services.settings_manager import SettingsManager
+
+        configured = {
+            "TTS_MODEL": "gpt-4o-mini-tts-custom",
+            "VOICE": "cedar",
+            "ELEVENLABS_TTS_MODEL": "eleven_v3",
+            "ELEVENLABS_TTS_VOICE": "eleven-voice-id",
+            "XAI_TTS_VOICE": "rex",
+            "QWEN3_TTS_VOICE": "Jarvis Clone",
+            "KOKORO_TTS_VOICE": "af_sky",
+        }
+
+        with patch.object(
+            settings_module,
+            "get_jarvis_setting",
+            side_effect=lambda key, default="": configured.get(key, default),
+        ):
+            providers = SettingsManager._get_tts_providers_for_ui()
+
+        self.assertEqual(providers["openai"]["model_name"], "gpt-4o-mini-tts-custom")
+        self.assertEqual(providers["openai"]["voice_name"], "cedar")
+        self.assertEqual(providers["elevenlabs"]["model_name"], "eleven_v3")
+        self.assertEqual(providers["elevenlabs"]["voice_name"], "eleven-voice-id")
+        self.assertEqual(providers["xai"]["voice_name"], "rex")
+        self.assertNotIn("model_name", providers["xai"])
+        self.assertEqual(providers["qwen3-tts"]["model_name"], "tts-1")
+        self.assertEqual(providers["qwen3-tts"]["voice_name"], "Jarvis Clone")
+        self.assertEqual(providers["kokoro"]["model_name"], "kokoro")
+        self.assertEqual(providers["kokoro"]["voice_name"], "af_sky")
+
     def test_save_persists_explicit_mode_even_when_socket_already_matches(self):
         settings = MagicMock()
         settings.set_mode.return_value = True

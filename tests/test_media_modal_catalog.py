@@ -44,6 +44,13 @@ def test_settings_media_providers_show_catalog_capabilities_and_pricing():
     assert "music_provider: document.getElementById('setting-music-provider')" in APP_JS
 
 
+def test_settings_tts_provider_shows_effective_model_and_voice():
+    assert "['image', 'video', 'music', 'tts']" in APP_JS
+    assert "this._updateMediaProviderDetail('tts')" in APP_JS
+    assert "if (voice) parts.push(`Voice: ${voice}`)" in APP_JS
+    assert 'id="tts-provider-capabilities"' in INDEX_HTML
+
+
 def test_system_features_show_music_env_provider():
     assert "<span class=\"config-label\">MUSIC_TOOL_PROVIDER</span>" in APP_JS
 
