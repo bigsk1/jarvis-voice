@@ -332,6 +332,135 @@ PROVIDER_DISPLAY_NAMES = {
     'elevenlabs': 'ElevenLabs',
 }
 
+# Curated credential readiness shown in Settings -> API Keys. Requirements are
+# evaluated against the active request's config scope, so cloud and local mode
+# remain isolated. Only boolean presence is returned to the browser; credential
+# values never leave the server.
+API_CREDENTIAL_SECTIONS = (
+    {
+        'id': 'providers',
+        'name': 'AI & voice providers',
+        'items': (
+            {
+                'id': 'anthropic',
+                'name': 'ANTHROPIC_API_KEY',
+                'description': 'Anthropic chat and vision',
+                'all_of': ('ANTHROPIC_API_KEY',),
+            },
+            {
+                'id': 'elevenlabs',
+                'name': 'ELEVENLABS_API_KEY',
+                'description': 'Speech and music generation',
+                'all_of': ('ELEVENLABS_API_KEY',),
+            },
+            {
+                'id': 'gemini',
+                'name': 'GEMINI_API_KEY',
+                'description': 'Gemini chat, vision, image, video, and music',
+                'all_of': ('GEMINI_API_KEY',),
+            },
+            {
+                'id': 'ollama',
+                'name': 'OLLAMA_API_KEY',
+                'description': 'Ollama Cloud; local Ollama does not require a key',
+                'all_of': ('OLLAMA_API_KEY',),
+                'not_required_modes': ('local',),
+            },
+            {
+                'id': 'openai',
+                'name': 'OPENAI_API_KEY',
+                'description': 'OpenAI chat, vision, speech, image, and video',
+                'all_of': ('OPENAI_API_KEY',),
+            },
+            {
+                'id': 'xai',
+                'name': 'XAI_API_KEY',
+                'description': 'xAI media, speech, and API-key chat; chat may use OAuth',
+                'all_of': ('XAI_API_KEY',),
+            },
+        ),
+    },
+    {
+        'id': 'tools',
+        'name': 'Tools & integrations',
+        'items': (
+            {
+                'id': 'serpapi',
+                'name': 'SERP_API_KEY',
+                'description': 'SerpApi search, shopping, travel, trends, and YouTube tools',
+                'all_of': ('SERP_API_KEY',),
+            },
+            {
+                'id': 'brave',
+                'name': 'BRAVE_API_KEY',
+                'description': 'Brave MCP and LLM-context search; BRAVE_SEARCH_API_KEY is also accepted',
+                'any_of': ('BRAVE_API_KEY', 'BRAVE_SEARCH_API_KEY'),
+            },
+            {
+                'id': 'coingecko',
+                'name': 'COINGECKO_API_KEY',
+                'description': 'CoinGecko tools and higher API limits',
+                'all_of': ('COINGECKO_API_KEY',),
+            },
+            {
+                'id': 'openweather',
+                'name': 'OPENWEATHER_API_KEY',
+                'description': 'OpenWeather-backed weather data',
+                'all_of': ('OPENWEATHER_API_KEY',),
+            },
+            {
+                'id': 'tmdb',
+                'name': 'TMDB_ACCESS_TOKEN / TMDB_API_KEY',
+                'description': 'Movie and TV metadata; either credential works',
+                'any_of': ('TMDB_ACCESS_TOKEN', 'TMDB_API_KEY'),
+            },
+            {
+                'id': 'trakt',
+                'name': 'TRAKT_API_KEY',
+                'description': 'Public Trakt movie and TV tools',
+                'all_of': ('TRAKT_API_KEY',),
+            },
+            {
+                'id': 'github',
+                'name': 'GITHUB_TOKEN / GH_TOKEN',
+                'description': 'Authenticated release notes, private repositories, and higher limits',
+                'any_of': ('GITHUB_TOKEN', 'GH_TOKEN'),
+            },
+            {
+                'id': 'cloudflare',
+                'name': 'CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID',
+                'description': 'Cloudflare image uploads require both values',
+                'all_of': ('CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID'),
+            },
+            {
+                'id': 'spotify',
+                'name': 'SPOTIFY_CLIENT_ID + SPOTIFY_CLIENT_SECRET',
+                'description': 'Spotify OAuth credentials; authorization cache is also required',
+                'all_of': ('SPOTIFY_CLIENT_ID', 'SPOTIFY_CLIENT_SECRET'),
+            },
+            {
+                'id': 'vapi',
+                'name': 'VAPI_API_KEY',
+                'description': 'Outbound phone-call tools',
+                'all_of': ('VAPI_API_KEY',),
+            },
+        ),
+    },
+)
+
+
+def _credential_env_keys() -> tuple[str, ...]:
+    """Return unique credential env names used by the status definitions."""
+    keys: dict[str, None] = {}
+    for section in API_CREDENTIAL_SECTIONS:
+        for item in section['items']:
+            for requirement in (*item.get('all_of', ()), *item.get('any_of', ())):
+                keys.setdefault(requirement, None)
+    return tuple(keys)
+
+
+API_CREDENTIAL_ENV_KEYS = _credential_env_keys()
+
 
 class SettingsValidationError(ValueError):
     """A web settings save was rejected before any mutation occurred."""
@@ -1065,16 +1194,41 @@ class SettingsManager:
                 return value
         return self._get_default_model(provider)
     
-    def _get_api_key_status(self) -> dict[str, bool]:
-        """Check which API keys are configured"""
+    def _get_api_key_status(self) -> list[dict[str, Any]]:
+        """Return grouped credential presence without exposing any values."""
         self._ensure_jarvis_config()
-        keys = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'OLLAMA_API_KEY',
-                'GEMINI_API_KEY', 'ELEVENLABS_API_KEY', 'VAPI_API_KEY',
-                'COINGECKO_API_KEY', 'OPENWEATHER_API_KEY', 'CLOUDFLARE_API_TOKEN']
-        return {
-            key: bool(str(get_jarvis_setting(key, '') or '').strip())
-            for key in keys
-        }
+        sections: list[dict[str, Any]] = []
+        for section in API_CREDENTIAL_SECTIONS:
+            items = []
+            for definition in section['items']:
+                all_of = definition.get('all_of', ())
+                any_of = definition.get('any_of', ())
+                configured = (
+                    all(bool(str(get_jarvis_setting(key, '') or '').strip()) for key in all_of)
+                    if all_of
+                    else any(bool(str(get_jarvis_setting(key, '') or '').strip()) for key in any_of)
+                )
+                not_required = self.mode in definition.get('not_required_modes', ())
+                status = (
+                    'configured'
+                    if configured
+                    else 'not_required'
+                    if not_required
+                    else 'not_set'
+                )
+                items.append({
+                    'id': definition['id'],
+                    'name': definition['name'],
+                    'description': definition['description'],
+                    'configured': configured,
+                    'status': status,
+                })
+            sections.append({
+                'id': section['id'],
+                'name': section['name'],
+                'items': items,
+            })
+        return sections
 
     def _provider_availability_entry(
         self,
@@ -1228,13 +1382,9 @@ class SettingsManager:
                 'configured': True
             }
         
-        # Add status for common API keys (don't show value)
-        api_keys = [
-            'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'OLLAMA_API_KEY',
-            'GEMINI_API_KEY', 'ELEVENLABS_API_KEY', 'VAPI_API_KEY',
-            'COINGECKO_API_KEY', 'OPENWEATHER_API_KEY', 'CLOUDFLARE_API_TOKEN',
-        ]
-        for key in api_keys:
+        # Backward-compatible flat status. Values are represented only by a
+        # fixed sentinel; real credential material is never serialized.
+        for key in API_CREDENTIAL_ENV_KEYS:
             value = str(get_jarvis_setting(key, '') or '').strip()
             settings[key] = {
                 'value': '***configured***' if value else '',

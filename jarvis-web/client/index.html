@@ -797,10 +797,20 @@
           
           <!-- API Keys Status -->
           <div class="settings-panel" id="settings-api">
-            <p class="setting-note">API keys are configured in <code id="api-keys-env-file">config/cloud.env</code> (the active mode's env file) and cannot be edited here for security.</p>
+            <p class="setting-note">API keys and integration credentials are read from <code id="api-keys-env-file">config/cloud.env</code> (the active mode's env file). Only configuration status is sent to the browser; credential values cannot be viewed or edited here. Tool availability also depends on the active tool profile and manifest.</p>
             <div id="api-keys-status">
               <!-- Populated by JS -->
             </div>
+            <section class="proxy-status-section">
+              <div class="proxy-status-heading">
+                <h4 class="api-key-section-title">Network routing</h4>
+                <button type="button" class="btn-secondary proxy-refresh-btn" id="refreshProxyStatusBtn">Refresh</button>
+              </div>
+              <div id="proxy-status-list">
+                <p class="proxy-status-note">Open this tab to check the active mode's proxy connections.</p>
+              </div>
+              <p class="proxy-status-note">Exit locations are approximate and may identify the VPN provider's registered location rather than the physical server.</p>
+            </section>
           </div>
           
           <!-- User Profile -->

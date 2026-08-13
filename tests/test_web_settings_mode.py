@@ -46,6 +46,113 @@ class WebSettingsModeTests(unittest.TestCase):
         get_manager.assert_called_once_with("cloud")
         get_default.assert_not_called()
 
+    def test_api_key_status_is_mode_scoped_grouped_and_secret_free(self):
+        import config_loader
+        from server.services.settings_manager import SettingsManager
+
+        secrets = {
+            "cloud-serp-secret",
+            "cloud-brave-secret",
+            "cloud-tmdb-secret",
+            "cloud-cf-token-secret",
+            "cloud-cf-account-secret",
+            "local-brave-alias-secret",
+            "local-openai-secret",
+            "local-spotify-id-secret",
+            "local-spotify-client-secret",
+        }
+        configs = {
+            "cloud": {
+                "SERP_API_KEY": "cloud-serp-secret",
+                "BRAVE_API_KEY": "cloud-brave-secret",
+                "TMDB_API_KEY": "cloud-tmdb-secret",
+                "CLOUDFLARE_API_TOKEN": "cloud-cf-token-secret",
+                "CLOUDFLARE_ACCOUNT_ID": "cloud-cf-account-secret",
+            },
+            "local": {
+                "BRAVE_SEARCH_API_KEY": "local-brave-alias-secret",
+                "OPENAI_API_KEY": "local-openai-secret",
+                "SPOTIFY_CLIENT_ID": "local-spotify-id-secret",
+                "SPOTIFY_CLIENT_SECRET": "local-spotify-client-secret",
+            },
+        }
+
+        def fake_load_mode_config(mode):
+            return dict(configs[mode])
+
+        def item_by_id(sections, item_id):
+            return next(
+                item
+                for section in sections
+                for item in section["items"]
+                if item["id"] == item_id
+            )
+
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch.object(config_loader, "_load_mode_config", side_effect=fake_load_mode_config),
+        ):
+            with config_loader.config_scope("cloud"):
+                cloud_manager = SettingsManager("cloud")
+                cloud_status = cloud_manager._get_api_key_status()
+                cloud_legacy = cloud_manager.get_settings_with_status()
+            with config_loader.config_scope("local"):
+                local_manager = SettingsManager("local")
+                local_status = local_manager._get_api_key_status()
+                local_legacy = local_manager.get_settings_with_status()
+
+        self.assertEqual(item_by_id(cloud_status, "serpapi")["status"], "configured")
+        self.assertEqual(item_by_id(local_status, "serpapi")["status"], "not_set")
+        self.assertEqual(item_by_id(local_status, "brave")["status"], "configured")
+        self.assertEqual(item_by_id(cloud_status, "tmdb")["status"], "configured")
+        self.assertEqual(item_by_id(cloud_status, "cloudflare")["status"], "configured")
+        self.assertEqual(item_by_id(local_status, "spotify")["status"], "configured")
+        self.assertEqual(item_by_id(local_status, "ollama")["status"], "not_required")
+        self.assertEqual(item_by_id(local_status, "openai")["status"], "configured")
+        tool_section = next(section for section in cloud_status if section["id"] == "tools")
+        self.assertEqual(
+            [item["id"] for item in tool_section["items"]],
+            [
+                "serpapi",
+                "brave",
+                "coingecko",
+                "openweather",
+                "tmdb",
+                "trakt",
+                "github",
+                "cloudflare",
+                "spotify",
+                "vapi",
+            ],
+        )
+        for status in (cloud_status, local_status):
+            for section in status:
+                for item in section["items"]:
+                    self.assertNotIn("value", item)
+        self.assertEqual(cloud_legacy["SERP_API_KEY"]["value"], "***configured***")
+        self.assertEqual(local_legacy["SERP_API_KEY"]["value"], "")
+
+        serialized = json.dumps({
+            "cloud": cloud_status,
+            "local": local_status,
+            "cloud_legacy": cloud_legacy,
+            "local_legacy": local_legacy,
+        })
+        for secret in secrets:
+            self.assertNotIn(secret, serialized)
+
+    def test_api_key_ui_renders_grouped_presence_only(self):
+        index_html = (ROOT / "jarvis-web" / "client" / "index.html").read_text()
+        app_js = (ROOT / "jarvis-web" / "client" / "js" / "app.js").read_text()
+
+        self.assertIn("Only configuration status is sent to the browser", index_html)
+        self.assertIn("Array.isArray(apiKeys)", app_js)
+        self.assertIn("Utils.escapeHtml(item.name", app_js)
+        self.assertIn("Not required locally", app_js)
+        api_start = app_js.index("// Populate API Keys status")
+        api_end = app_js.index("// Populate Profile section", api_start)
+        self.assertNotIn("item.value", app_js[api_start:api_end])
+
     def test_model_endpoint_returns_selected_provider_env_default(self):
         settings = MagicMock()
         settings._get_model_options_with_current.return_value = [

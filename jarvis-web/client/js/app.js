@@ -34,6 +34,7 @@ class JarvisApp {
     this._archivedExpanded = false;
     this._toolsRequestId = 0;
     this._serpApiAccountRequestId = 0;
+    this._proxyStatusRequestId = 0;
     
     // Audio playback state
     this.currentAudio = null;
@@ -385,7 +386,14 @@ class JarvisApp {
         if (tabName === 'system') {
           this._loadSerpApiAccount();
         }
+        if (tabName === 'api') {
+          this._loadProxyStatus();
+        }
       });
+    });
+
+    document.getElementById('refreshProxyStatusBtn')?.addEventListener('click', () => {
+      this._loadProxyStatus(true);
     });
     
     
@@ -1889,19 +1897,66 @@ class JarvisApp {
         }
         const apiKeysContainer = document.getElementById('api-keys-status');
         const apiKeys = s.api_keys || {};
-        
-        let apiHtml = '';
-        for (const [key, configured] of Object.entries(apiKeys)) {
-          apiHtml += `
-            <div class="api-key-item">
-              <span class="api-key-name">${key}</span>
-              <span class="api-key-status ${configured ? 'configured' : 'missing'}">
-                ${configured ? '✓ Configured' : '✗ Not set'}
-              </span>
-            </div>
-          `;
+
+        // New payloads group related credentials and evaluate aliases/pairs on
+        // the server. Keep the legacy object fallback for rolling upgrades.
+        const apiKeySections = Array.isArray(apiKeys)
+          ? apiKeys
+          : [{
+              id: 'legacy',
+              name: '',
+              items: Object.entries(apiKeys).map(([name, configured]) => ({
+                id: name,
+                name,
+                description: '',
+                configured,
+                status: configured ? 'configured' : 'not_set'
+              }))
+            }];
+
+        apiKeysContainer.innerHTML = apiKeySections.map((section) => {
+          const items = Array.isArray(section.items) ? section.items : [];
+          if (!items.length) return '';
+          const heading = section.name
+            ? `<h4 class="api-key-section-title">${Utils.escapeHtml(section.name)}</h4>`
+            : '';
+          const rows = items.map((item) => {
+            const status = item.status || (item.configured ? 'configured' : 'not_set');
+            const statusClass = status === 'configured'
+              ? 'configured'
+              : status === 'not_required'
+                ? 'not-required'
+                : 'missing';
+            const statusText = status === 'configured'
+              ? '✓ Configured'
+              : status === 'not_required'
+                ? '• Not required locally'
+                : '✗ Not set';
+            const description = item.description
+              ? `<span class="api-key-description">${Utils.escapeHtml(item.description)}</span>`
+              : '';
+            return `
+              <div class="api-key-item">
+                <span class="api-key-details">
+                  <span class="api-key-name">${Utils.escapeHtml(item.name || item.id || '')}</span>
+                  ${description}
+                </span>
+                <span class="api-key-status ${statusClass}">${statusText}</span>
+              </div>
+            `;
+          }).join('');
+          return `<section class="api-key-section">${heading}${rows}</section>`;
+        }).join('');
+
+        // Never retain proxy health from a previously selected mode.
+        this._proxyStatusRequestId = (this._proxyStatusRequestId || 0) + 1;
+        const proxyStatusList = document.getElementById('proxy-status-list');
+        if (proxyStatusList) {
+          proxyStatusList.innerHTML = '<p class="proxy-status-note">Open this tab to check the active mode\'s proxy connections.</p>';
         }
-        apiKeysContainer.innerHTML = apiHtml;
+        if (document.getElementById('settings-api')?.classList.contains('active')) {
+          this._loadProxyStatus();
+        }
         
         // Populate Profile section
         this._updateProfileSection(s);
@@ -1913,6 +1968,100 @@ class JarvisApp {
     } catch (err) {
       console.error('[App] Failed to load settings:', err);
       Utils.toast(`Failed to load settings: ${err.message}`, 'error');
+    }
+  }
+
+  /**
+   * Check each active-mode proxy through a fixed HTTPS IP/location endpoint.
+   * The server returns a redacted endpoint and never returns URL credentials.
+   */
+  async _loadProxyStatus(forceRefresh = false) {
+    const list = document.getElementById('proxy-status-list');
+    const refreshButton = document.getElementById('refreshProxyStatusBtn');
+    if (!list) return;
+
+    const requestId = (this._proxyStatusRequestId || 0) + 1;
+    this._proxyStatusRequestId = requestId;
+    if (refreshButton) refreshButton.disabled = true;
+    list.innerHTML = `
+      <div class="api-key-item">
+        <span class="api-key-details">
+          <span class="api-key-name">LOCAL_PROXY / LOCAL_PROXY2</span>
+          <span class="api-key-description">Checking outbound connectivity and exit location…</span>
+        </span>
+        <span class="api-key-status not-required">Checking</span>
+      </div>
+    `;
+
+    try {
+      const mode = this._settingsData?.mode || this.socket.mode;
+      const refresh = forceRefresh ? '&refresh=1' : '';
+      const response = await fetch(`/api/proxy/status?mode=${encodeURIComponent(mode)}${refresh}`);
+      const data = await response.json();
+      if (requestId !== this._proxyStatusRequestId) return;
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Proxy status check failed');
+
+      const proxies = Array.isArray(data.proxies) ? data.proxies : [];
+      list.innerHTML = proxies.map((proxy) => {
+        const status = String(proxy.status || 'unreachable');
+        const healthy = status === 'healthy';
+        const degraded = status === 'degraded';
+        const notConfigured = status === 'not_configured';
+        const invalid = status === 'invalid';
+        const statusClass = healthy
+          ? 'configured'
+          : degraded
+            ? 'degraded'
+            : notConfigured
+              ? 'not-required'
+              : 'missing';
+        const latency = Number.isFinite(Number(proxy.latency_ms))
+          ? ` · ${Number(proxy.latency_ms).toLocaleString()} ms`
+          : '';
+        const statusText = healthy
+          ? `✓ Healthy${latency}`
+          : degraded
+            ? `! Reachable${latency}`
+            : notConfigured
+              ? '• Not configured'
+              : invalid
+                ? '✗ Invalid'
+                : '✗ Unreachable';
+
+        let description = 'No proxy URL set in the active mode env file';
+        if (proxy.configured) {
+          const endpoint = [proxy.proxy_type, proxy.endpoint].filter(Boolean).join(' - ');
+          const exit = proxy.exit_ip
+            ? ` (${proxy.exit_ip}${proxy.location ? ` in ${proxy.location}` : ''})`
+            : '';
+          description = `${endpoint}${exit}`;
+          if (proxy.detail) description += ` · ${proxy.detail}`;
+        }
+        return `
+          <div class="api-key-item proxy-status-item">
+            <span class="api-key-details">
+              <span class="api-key-name">${Utils.escapeHtml(proxy.slot || 'Proxy')}</span>
+              <span class="api-key-description">${Utils.escapeHtml(description)}</span>
+            </span>
+            <span class="api-key-status ${statusClass}">${statusText}</span>
+          </div>
+        `;
+      }).join('');
+    } catch (error) {
+      if (requestId !== this._proxyStatusRequestId) return;
+      list.innerHTML = `
+        <div class="api-key-item">
+          <span class="api-key-details">
+            <span class="api-key-name">Proxy status</span>
+            <span class="api-key-description">${Utils.escapeHtml(error.message || 'Health check failed')}</span>
+          </span>
+          <span class="api-key-status missing">✗ Check failed</span>
+        </div>
+      `;
+    } finally {
+      if (requestId === this._proxyStatusRequestId && refreshButton) {
+        refreshButton.disabled = false;
+      }
     }
   }
   

@@ -4307,24 +4307,55 @@ body {
 }
 
 /* API Key Status */
+.api-key-section + .api-key-section {
+  margin-top: var(--space-lg);
+}
+
+.api-key-section-title {
+  margin: 0 0 var(--space-sm);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .api-key-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-md);
   padding: var(--space-sm) var(--space-md);
   background: var(--bg-tertiary);
   border-radius: var(--radius-sm);
   margin-bottom: var(--space-sm);
 }
 
+.api-key-details {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .api-key-name {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.api-key-description {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.35;
 }
 
 .api-key-status {
+  flex-shrink: 0;
   font-size: var(--text-sm);
+  white-space: nowrap;
 }
 
 .api-key-status.configured {
@@ -4333,6 +4364,47 @@ body {
 
 .api-key-status.missing {
   color: var(--error);
+}
+
+.api-key-status.not-required {
+  color: var(--text-muted);
+}
+
+.api-key-status.degraded {
+  color: var(--warning);
+}
+
+.proxy-status-section {
+  margin-top: var(--space-lg);
+}
+
+.proxy-status-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+
+.proxy-status-heading .api-key-section-title {
+  margin: 0;
+}
+
+.proxy-refresh-btn {
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--text-xs);
+}
+
+.proxy-refresh-btn:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.proxy-status-note {
+  margin: var(--space-xs) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
 }
 
 /* Buttons */

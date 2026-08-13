@@ -1053,6 +1053,189 @@ _OLLAMA_CLOUD_STATUS_TTL_SECONDS = 45
 _OLLAMA_MODEL_CONTEXT_CACHE = {}
 _OLLAMA_MODEL_CONTEXT_TTL_SECONDS = 600
 
+_PROXY_STATUS_CACHE = {}
+_PROXY_STATUS_TTL_SECONDS = 60
+_PROXY_STATUS_URL = 'https://ipapi.co/json/'
+
+
+def _proxy_display_metadata(slot, proxy_url):
+    """Return credential-free proxy endpoint metadata, or an invalid status."""
+    from urllib.parse import urlsplit
+
+    try:
+        parsed = urlsplit(proxy_url)
+        scheme = parsed.scheme.lower()
+        if scheme not in {'http', 'https', 'socks4', 'socks5', 'socks5h'}:
+            raise ValueError('unsupported scheme')
+        host = parsed.hostname
+        if not host:
+            raise ValueError('missing host')
+        port = parsed.port
+        if port is None:
+            port = 443 if scheme == 'https' else 1080 if scheme.startswith('socks') else 80
+        display_host = f'[{host}]' if ':' in host else host
+        return {
+            'slot': slot,
+            'configured': True,
+            'status': 'checking',
+            'proxy_type': scheme.upper(),
+            'endpoint': f'{display_host}:{port}',
+            'exit_ip': None,
+            'location': None,
+            'latency_ms': None,
+            'detail': None,
+        }
+    except (TypeError, ValueError):
+        return {
+            'slot': slot,
+            'configured': True,
+            'status': 'invalid',
+            'proxy_type': None,
+            'endpoint': 'Invalid proxy configuration',
+            'exit_ip': None,
+            'location': None,
+            'latency_ms': None,
+            'detail': 'Check the proxy URL format in the active mode env file',
+        }
+
+
+def _probe_proxy(slot, proxy_url):
+    """Perform one credential-safe, no-fallback HTTPS proxy health check."""
+    import ipaddress
+    import time
+
+    import requests as http_requests
+
+    result = _proxy_display_metadata(slot, proxy_url)
+    if result['status'] == 'invalid':
+        return result
+
+    started = time.monotonic()
+    session = http_requests.Session()
+    session.trust_env = False
+    try:
+        response = session.get(
+            _PROXY_STATUS_URL,
+            proxies={'http': proxy_url, 'https': proxy_url},
+            timeout=(3, 8),
+            headers={'Accept': 'application/json', 'User-Agent': 'Jarvis-Proxy-Health/1.0'},
+        )
+        result['latency_ms'] = max(1, round((time.monotonic() - started) * 1000))
+        if response.status_code in (401, 403, 407):
+            result['status'] = 'unreachable'
+            result['detail'] = 'Proxy authentication or access was rejected'
+            return result
+        if response.status_code != 200:
+            result['status'] = 'degraded'
+            result['detail'] = f'Proxy reached the internet; location service returned HTTP {response.status_code}'
+            return result
+        try:
+            data = response.json()
+        except ValueError:
+            result['status'] = 'degraded'
+            result['detail'] = 'Proxy reached the internet; location response was invalid'
+            return result
+
+        public_ip = str(data.get('ip') or '').strip() if isinstance(data, dict) else ''
+        try:
+            ipaddress.ip_address(public_ip)
+        except ValueError:
+            result['status'] = 'degraded'
+            result['detail'] = 'Proxy reached the internet; exit IP was unavailable'
+            return result
+
+        def safe_geo(key, limit=128):
+            value = data.get(key) if isinstance(data, dict) else None
+            return str(value).strip()[:limit] if value else None
+
+        location_parts = []
+        for value in (safe_geo('city'), safe_geo('region'), safe_geo('country_name')):
+            if value and value not in location_parts:
+                location_parts.append(value)
+        result.update({
+            'status': 'healthy',
+            'exit_ip': public_ip,
+            'location': ', '.join(location_parts) or 'Approximate location unavailable',
+            'detail': None,
+        })
+        return result
+    except http_requests.exceptions.Timeout:
+        result['status'] = 'unreachable'
+        result['detail'] = 'Proxy health check timed out'
+        return result
+    except http_requests.exceptions.ProxyError:
+        result['status'] = 'unreachable'
+        result['detail'] = 'Proxy connection or authentication failed'
+        return result
+    except http_requests.exceptions.RequestException:
+        result['status'] = 'unreachable'
+        result['detail'] = 'Proxy could not reach the health service'
+        return result
+    except Exception:
+        result['status'] = 'unreachable'
+        result['detail'] = 'Proxy health check failed'
+        return result
+    finally:
+        session.close()
+
+
+@api_bp.route('/proxy/status', methods=['GET'])
+@_scoped_request_config
+def get_proxy_status():
+    """Lazily verify active-mode proxies without exposing URL credentials."""
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from ..config import get_jarvis_setting, load_jarvis_config
+
+    mode = request.args.get('mode', 'cloud')
+    load_jarvis_config(mode)
+    proxy_values = {
+        slot: str(get_jarvis_setting(slot, '') or '').strip()
+        for slot in ('LOCAL_PROXY', 'LOCAL_PROXY2')
+    }
+    fingerprint = hashlib.sha256(
+        ('\0'.join((mode, proxy_values['LOCAL_PROXY'], proxy_values['LOCAL_PROXY2']))).encode()
+    ).hexdigest()
+    force_refresh = request.args.get('refresh', '').strip().lower() in {'1', 'true', 'yes'}
+    now = time.time()
+    cached = _PROXY_STATUS_CACHE.get(fingerprint)
+    if not force_refresh and cached and (now - cached['ts']) < _PROXY_STATUS_TTL_SECONDS:
+        return jsonify({**cached['payload'], 'cached': True})
+
+    results = {
+        slot: {
+            'slot': slot,
+            'configured': False,
+            'status': 'not_configured',
+            'proxy_type': None,
+            'endpoint': None,
+            'exit_ip': None,
+            'location': None,
+            'latency_ms': None,
+            'detail': None,
+        }
+        for slot in ('LOCAL_PROXY', 'LOCAL_PROXY2')
+    }
+    configured = [(slot, value) for slot, value in proxy_values.items() if value]
+    if configured:
+        with ThreadPoolExecutor(max_workers=len(configured)) as executor:
+            futures = {
+                slot: executor.submit(_probe_proxy, slot, value)
+                for slot, value in configured
+            }
+            for slot, future in futures.items():
+                results[slot] = future.result()
+
+    payload = {
+        'ok': True,
+        'mode': mode,
+        'cached': False,
+        'proxies': [results['LOCAL_PROXY'], results['LOCAL_PROXY2']],
+    }
+    _PROXY_STATUS_CACHE[fingerprint] = {'ts': now, 'payload': payload}
+    return jsonify(payload)
+
 
 @api_bp.route('/xai/oauth-status', methods=['GET'])
 @_scoped_request_config
