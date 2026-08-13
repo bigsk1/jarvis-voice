@@ -359,10 +359,10 @@ def test_runtime_prompt_routes_live_flight_status_through_generic_web_search(ver
     ):
         prompt = LLMRouter(mode="cloud", registry=MagicMock()).system_prompt
 
-    assert "use the generic web-search path available in this mode and profile" in prompt
-    assert "airline name, flight number, and current local date" in prompt
+    assert "Use web search for a specific flight's live status" in prompt
+    assert "airline, flight number, and today's date" in prompt
     assert "Do not use flight_search" in prompt
-    assert "say so rather than guessing" in prompt
+    assert "If web search is unavailable, do not guess" in prompt
 
 
 def test_runtime_prompt_exposes_full_xai_tts_vocabulary_only_when_selected():

@@ -957,7 +957,7 @@ RESPONSE STYLE: {response_style.upper()}
         if xai_search and xai_native_search_available:
             # Build xAI capabilities note
             capabilities = []
-            capabilities.append("- NATIVE WEB/X SEARCH: Use for current info, news, prices - DO NOT use brave_search or mcp_fetch_fetch (crawl_url is OK for specific URL extraction)")
+            capabilities.append("- NATIVE WEB/X SEARCH: Use for current info, news, prices -")
 
             if xai_image_understanding:
                 capabilities.append(
@@ -1016,7 +1016,7 @@ Use this for any time-sensitive queries, web searches, or temporal references.
 When searching the web, if needed use the CURRENT YEAR ({now.year}) not past years.
 {native_search_note}
 LIVE FLIGHT STATUS:
-For a specific flight's current status, delay, gate, cancellation, arrival, or location, use the generic web-search path available in this mode and profile. Search with the airline name, flight number, and current local date; prefer official airline or airport status pages and cross-check a live flight tracker. Do not use flight_search, if enabled which is only for future fare and itinerary options. If no web-search path is available, say so rather than guessing.
+Use web search for a specific flight's live status. Include the airline, flight number, and today's date; prefer official airline or airport sources and verify with a live tracker. Do not use flight_search; it is only for future fares and itineraries. If web search is unavailable, do not guess.
 {style_note}"""
         # Default location for weather/location queries only - never override user-specified locations
         location_block = ""
