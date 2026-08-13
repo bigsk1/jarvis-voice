@@ -202,7 +202,7 @@ XAI_API_KEY=your-xai-key
 # or OPENAI_API_KEY=your-openai-key
 
 # Model for your provider (see lib/model_catalog.py for curated options)
-XAI_MODEL="grok-4.5"              # recommended default
+XAI_MODEL="grok-4.6"              # recommended default
 # XAI_MODEL="grok-4.3"            # alternative: 1M context or reasoning_effort=none
 # XAI_MODEL="grok-build-0.1"      # alternative: coding / build-heavy workloads
 # or ANTHROPIC_MODEL="claude-sonnet-4-5-20250929"

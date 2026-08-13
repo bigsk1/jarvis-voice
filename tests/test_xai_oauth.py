@@ -1,25 +1,24 @@
 #!/usr/bin/env python3
 """Regression coverage for Grok CLI OAuth authentication."""
 
-from datetime import datetime, timezone
 import errno
 import json
 import os
 import pty
-from pathlib import Path
 import subprocess
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lib"))
 
-import xai_oauth  # noqa: E402
 import feedback  # noqa: E402
+import xai_oauth  # noqa: E402
 from llm_provider import XAIProvider  # noqa: E402
 from status_llm import StatusSummarizer  # noqa: E402
 
@@ -110,15 +109,16 @@ Available models:
     assert models[0]["vision"] is False
     assert models[0]["capabilities"] == ["tools", "thinking"]
     assert xai_oauth.get_xai_oauth_model("grok-build") == "grok-build"
-    assert xai_oauth.get_xai_oauth_model("grok-build-0.1") == "grok-4.5"
+    assert xai_oauth.get_xai_oauth_model("grok-build-0.1") == "grok-4.6"
 
 
-def test_model_discovery_allows_grok_45_oauth_default():
+def test_model_discovery_allows_current_reviewed_oauth_models():
     output = """You are logged in with grok.com.
-Default model: grok-4.5
+Default model: grok-4.6
 
 Available models:
-  * grok-4.5 (default)
+  * grok-4.6 (default)
+  - grok-4.5
   - grok-composer-2.5-fast
 """
     result = subprocess.CompletedProcess(["grok", "models"], 0, stdout=output, stderr="")
@@ -129,11 +129,13 @@ Available models:
     ):
         models = xai_oauth.discover_xai_oauth_models(use_cache=False)
 
-    assert [model["id"] for model in models] == ["grok-4.5"]
+    assert [model["id"] for model in models] == ["grok-4.6", "grok-4.5"]
     assert models[0]["context"] == "500K"
     assert models[0]["auth"] == "oauth"
     assert models[0]["vision"] is True
     assert models[0]["capabilities"] == ["tools", "thinking", "vision"]
+    assert models[1]["vision"] is True
+    assert xai_oauth.get_xai_oauth_model("grok-4.6") == "grok-4.6"
 
 
 def test_parse_oauth_usage_output_supports_cli_text():
@@ -311,13 +313,13 @@ def test_provider_uses_oauth_proxy_and_subscription_usage(tmp_path):
             }}],
         )
 
-    assert provider.model == "grok-4.5"
+    assert provider.model == "grok-4.6"
     assert provider.auth_mode == "oauth"
     client_kwargs = _FakeOpenAI.instances[-1].kwargs
     assert client_kwargs["api_key"] == "private-bearer-token"
     assert client_kwargs["base_url"] == xai_oauth.XAI_OAUTH_BASE_URL
     assert client_kwargs["default_headers"]["X-XAI-Token-Auth"] == "xai-grok-cli"
-    assert client_kwargs["default_headers"]["x-grok-model-override"] == "grok-4.5"
+    assert client_kwargs["default_headers"]["x-grok-model-override"] == "grok-4.6"
     assert text is None
     assert tool == {"name": "weather", "arguments": {"location": "Portland"}}
     assert thinking is None

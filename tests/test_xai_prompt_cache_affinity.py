@@ -9,11 +9,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
-from llm_provider import XAIProvider
+from llm_provider import XAIProvider  # noqa: E402
 
 
 class _FakeCompletions:
@@ -206,6 +205,14 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
                 "medium",
             )
 
+        provider.model = "grok-4.6"
+        with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "xhigh"}, clear=True):
+            self.assertEqual(provider._xai_reasoning_effort(), "xhigh")
+            self.assertEqual(
+                provider._xai_sdk_create_kwargs(tools=[])["reasoning_effort"],
+                "xhigh",
+            )
+
         provider.model = "grok-build-latest"
         with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "low"}, clear=True):
             self.assertEqual(provider._xai_reasoning_effort(), "low")
@@ -259,7 +266,7 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
              patch("config_loader.get_config_value", return_value="false"):
             provider = XAIProvider(api_key="xai-test-key", auth_mode="api_key")
 
-        self.assertEqual(provider.model, "grok-4.5")
+        self.assertEqual(provider.model, "grok-4.6")
 
     def test_xai_sdk_client_init_receives_grok_conv_id_metadata(self):
         calls = []

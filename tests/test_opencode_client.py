@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
-from opencode_client import OpenCodeClient, resolve_opencode_defaults
+from opencode_client import OpenCodeClient, resolve_opencode_defaults  # noqa: E402
 
 
 class FakeResponse:
@@ -90,7 +90,7 @@ class OpenCodeClientTests(unittest.TestCase):
             defaults = resolve_opencode_defaults("cloud")
 
         self.assertEqual(defaults["providerID"], "xai")
-        self.assertEqual(defaults["modelID"], "grok-4.5")
+        self.assertEqual(defaults["modelID"], "grok-4.6")
 
     def test_client_uses_catalog_fallback_when_opencode_model_unset(self):
         def fake_get_config(key, default=None):

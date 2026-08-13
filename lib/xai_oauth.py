@@ -3,34 +3,33 @@
 
 The official Grok CLI documents direct API access with the cached credentials
 written by ``grok login``.  Jarvis uses that documented chat-proxy contract for
-text, tool calls, and verified ``grok-4.5`` image input; xAI native search,
+text, tool calls, and verified ``grok-4.6``/``grok-4.5`` image input; xAI native search,
 generation, video, and TTS APIs still require ``XAI_API_KEY``.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import fcntl
 import json
 import os
-from pathlib import Path
 import pty
 import re
-import shutil
 import select
+import shutil
 import stat
 import struct
 import subprocess
 import termios
 import time
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
-
 XAI_OAUTH_BASE_URL = "https://cli-chat-proxy.grok.com/v1"
-XAI_OAUTH_DEFAULT_MODEL = "grok-4.5"
-XAI_OAUTH_REVIEWED_MODELS = ("grok-4.5", "grok-build")
-XAI_OAUTH_VISION_MODELS = ("grok-4.5",)
+XAI_OAUTH_DEFAULT_MODEL = "grok-4.6"
+XAI_OAUTH_REVIEWED_MODELS = ("grok-4.6", "grok-4.5", "grok-build")
+XAI_OAUTH_VISION_MODELS = ("grok-4.6", "grok-4.5")
 _VALID_AUTH_MODES = {"auto", "api_key", "oauth"}
 _VERSION_RE = re.compile(r"\bgrok\s+([0-9]+(?:\.[0-9]+){1,3})\b", re.IGNORECASE)
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")

@@ -1385,7 +1385,7 @@ When `stash.remember` is called with `summarize: true`:
 | Ollama local | `STASH_SUMMARIZE_MODEL` or `OLLAMA_MODEL` | Local daemon |
 | Ollama Cloud | `STASH_SUMMARIZE_MODEL` or `OLLAMA_CLOUD_MODEL` | Signed-in daemon or `OLLAMA_API_KEY` direct API |
 | xAI API | `STASH_SUMMARIZE_MODEL` or `XAI_MODEL` | `XAI_API_KEY` |
-| xAI OAuth | `XAI_OAUTH_MODEL` (`grok-4.5` by default) | Grok CLI OAuth chat proxy |
+| xAI OAuth | `XAI_OAUTH_MODEL` (`grok-4.6` by default) | Grok CLI OAuth chat proxy |
 
 **Note**: Summarization calls are independent of the main conversation context.
 This means costs are separate from your orchestrator tool call budget.

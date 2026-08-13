@@ -21,7 +21,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-
 logger = logging.getLogger(__name__)
 
 OPENAI_MODELS_SOURCE = "https://platform.openai.com/docs/api-reference/models/list"
@@ -139,12 +138,36 @@ def _context_label(tokens: int) -> str:
 CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
     "xai": [
         {
-            "id": "grok-4.5",
-            "name": "Grok 4.5 (Catalog default)",
+            "id": "grok-4.6",
+            "name": "Grok 4.6 (Catalog default)",
             "context_tokens": 500_000,
             "input_modalities": ["text", "image"],
             "output_modalities": ["text"],
             "default": True,
+            "pricing": {
+                "input": 2.00,
+                "output": 6.00,
+                "cached": 0.50,
+                "image_input": 2.00,
+                "search": 0.0,
+                "long_context": {
+                    "threshold": 200_000,
+                    "input": 4.00,
+                    "output": 12.00,
+                    "cached": 1.00,
+                },
+            },
+            "reasoning": True,
+            "reasoning_effort": True,
+            "reasoning_effort_values": ["low", "medium", "high", "xhigh"],
+            "reasoning_effort_default": "high",
+        },
+        {
+            "id": "grok-4.5",
+            "name": "Grok 4.5",
+            "context_tokens": 500_000,
+            "input_modalities": ["text", "image"],
+            "output_modalities": ["text"],
             "pricing": {
                 "input": 2.00,
                 "output": 6.00,
