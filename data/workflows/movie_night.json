@@ -4,7 +4,7 @@
   "description": "Turn a mood, viewing constraint, or a few favorite movies into a focused movie-night shortlist. Public Trakt metadata is required; an authorized Trakt account can optionally add personalized recommendation context, while TMDB artwork, trailers, and Brave streaming evidence further enrich the dated Canvas result. Example: /movie_night thoughtful mind-bending sci-fi like Inception and Arrival, under two hours, preferably on Max or Prime.",
   "version": "1.4",
   "enabled": true,
-  "disable_server_side_tools": true,
+  "disable_server_side_tools": false,
   "triggers": {
     "explicit": [
       "/movie_night",
