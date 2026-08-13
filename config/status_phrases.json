@@ -373,7 +373,7 @@
     },
     
     "generate_image": {
-      "start": ["Creating your image", "Generating artwork", "Firing up Gemini"],
+      "start": ["Creating your image", "Generating artwork", "Firing up the image generator"],
       "progress": ["Image taking shape", "Almost got your masterpiece"]
     },
     

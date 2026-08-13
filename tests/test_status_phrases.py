@@ -72,3 +72,17 @@ def test_aliases_are_reported_as_tool_overrides():
     assert "flight_search" in overrides
     assert "document_ocr" in overrides
     assert "_family_travel" not in overrides
+
+
+def test_static_image_phrases_do_not_guess_the_provider():
+    provider_names = ("gemini", "openai", "xai", "grok", "dall-e", "dalle")
+
+    for config_path in PHRASE_CONFIGS:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        image_phrases = config["tool_specific"]["generate_image"]
+        phrases = image_phrases["start"] + image_phrases["progress"]
+
+        for phrase in phrases:
+            assert not any(name in phrase.casefold() for name in provider_names), (
+                f"{config_path.name} has a provider-specific image status: {phrase}"
+            )
