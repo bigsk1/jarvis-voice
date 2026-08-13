@@ -117,8 +117,21 @@ eval(source + '\nglobal.CommandSystem = CommandSystem;');
 const commands = Object.create(global.CommandSystem.prototype);
 Object.assign(commands, {
   prompts: {}, workflows: {}, maxToolHints: 5,
-  tools: {search_web: {name: 'search_web', enabled: true, description: 'Search'}}
+  tools: {
+    search_web: {name: 'search_web', enabled: true, description: 'Search'},
+    acknowledge_alerts: {
+      name: 'acknowledge_alerts', enabled: true, description: 'Acknowledge alerts'
+    }
+  }
 });
+
+const completeToolMenu = commands.getSuggestions('#');
+if (completeToolMenu[0]?.type !== 'policy' || completeToolMenu[0]?.name !== 'chat_only') {
+  throw new Error(`Chat only was not pinned first: ${JSON.stringify(completeToolMenu)}`);
+}
+if (completeToolMenu[1]?.name !== 'acknowledge_alerts') {
+  throw new Error(`Tool list is not alphabetical after Chat only: ${JSON.stringify(completeToolMenu)}`);
+}
 
 const suggestions = commands.getSuggestions('#chat');
 if (!suggestions.some(item => item.type === 'policy' && item.name === 'chat_only')) {

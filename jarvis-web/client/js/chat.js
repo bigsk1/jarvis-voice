@@ -275,7 +275,16 @@ class CommandSystem {
       }
     }
     
-    const sorted = suggestions.sort((a, b) => a.name.localeCompare(b.name));
+    const sorted = suggestions.sort((a, b) => {
+      // Chat only is a sticky composer policy, not an ordinary tool hint. Pin
+      // it above the alphabetical tool list so an empty # menu keeps the mode
+      // immediately accessible without changing typed-prefix matching.
+      if (input.startsWith('#') && a.type !== b.type) {
+        if (a.type === 'policy') return -1;
+        if (b.type === 'policy') return 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
     // Tool hints are intentionally scrollable: the user should be able to browse
     // every currently enabled tool, while prompts/workflows stay compact.
     if (input.startsWith('#')) {
