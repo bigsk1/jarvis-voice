@@ -48,7 +48,7 @@ This file contains knowledge about Jarvis tools, provider limitations, common fa
 
 ## Image Generation (generate_image)
 
-### Provider: Gemini (default)
+### Provider: Gemini
 
 - Supports up to 14 reference images per editing request.
 - Google Search grounding available for real-time data in images (weather, stock prices, current events).
@@ -90,12 +90,6 @@ This file contains knowledge about Jarvis tools, provider limitations, common fa
 - Sync mode waits for call completion. Async mode returns immediately and the user checks later.
 - Call status can be checked with a follow-up call. This is a legitimate multi-call pattern.
 
-## Supa-Crawl-Knowledge and `supa-crawl-knowledge.md`
-
-- `supa_crawl_knowledge` with `action=list_sites` and `limit=100` returns the full crawled-site list in `data.sites` when `returned` matches `count`.
-- When the user asks to update `jarvis-intel/supa-crawl-knowledge.md` with **all** sites (for auto-context / memory ranking), you must: (1) `list_sites`, (2) `manage_intel` `update` with markdown that includes **every** site row—never a partial preview or a note to use the tool instead of listing them in the file.
-- Recommended columns: id, site name, pages, seed URL. Duplicates in display names can exist (e.g. two "Selfh St" with different URLs); keep both rows.
-
 ## Memory and Search Tools
 
 - search_memory: Best for keyword lookups. Uses FTS5 with BM25 ranking. Has the deepest fallback chain (FTS5 then AND then OR then LIKE).
@@ -109,12 +103,6 @@ This file contains knowledge about Jarvis tools, provider limitations, common fa
 - Provider URLs (video URLs, image URLs from cloud services) are temporary and expire.
 - Always reference artifacts by stash ref for reliability. Use provider URLs only when a tool specifically requires a public URL.
 - meta.json in each stash space contains source_url and source_url_created for checking URL freshness.
-
-## Web UI Prompts
-
-- Users can type @prompt_name before their message to inject specialized instructions.
-- Available prompts include: research, quick, debug, compare, email, deep_research, code_review, and others.
-- Prompts guide your behavior for that specific request without changing your general capabilities.
 
 ## Response Guidelines
 
