@@ -13,6 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
+from config_loader import load_config
 from tool_schema import get_tool_registry
 from tool_search_runtime import search_tools_runtime
 
@@ -27,6 +28,7 @@ def main() -> int:
         payload = {}
 
     mode = os.environ.get("JARVIS_MODE") or os.environ.get("JARVIS_EXECUTION_MODE") or "cloud"
+    load_config(mode)
     registry = get_tool_registry(mode=mode)
     result = search_tools_runtime(
         registry=registry,

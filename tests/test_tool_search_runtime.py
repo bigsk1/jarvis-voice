@@ -2,17 +2,23 @@
 import json
 import os
 import sys
+import tempfile
 import unittest
+from contextlib import redirect_stdout
 from datetime import datetime
+from io import StringIO
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 ROOT = os.path.dirname(os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(ROOT, "lib"))
 sys.path.insert(0, os.path.join(ROOT, "orchestrator"))
+sys.path.insert(0, os.path.join(ROOT, "skills"))
 
+import tool_search as tool_search_script  # noqa: E402
 from context_assembler import ContextAssembler  # noqa: E402
 from tool_schema import ToolSchema, _merged_ghost_tool_names  # noqa: E402
+from tool_logger import ToolLogger  # noqa: E402
 from tool_search_runtime import search_tools_runtime  # noqa: E402
 
 
@@ -25,11 +31,14 @@ class _FakeRegistry:
 
 
 class _FakeDB:
-    def __init__(self, results):
+    def __init__(self, results, *, fallback_embeddings=None):
         self.results = results
         self.last_query = None
         self.last_limit = None
         self.last_threshold = None
+        self.last_tool_search_meta = {
+            "fallback_embeddings": fallback_embeddings,
+        }
 
     def search_tools(self, query, limit=5, threshold=0.0):
         self.last_query = query
@@ -89,6 +98,30 @@ class ToolSearchRuntimeTests(unittest.TestCase):
         )
         self.registry = _FakeRegistry([self.weather, self.send_email, self.search_memory, self.tool_search])
 
+    def test_standalone_entrypoint_loads_selected_mode_before_search(self):
+        output = StringIO()
+        result = {"ok": True, "data": {"matches": []}}
+        with patch.dict(os.environ, {"JARVIS_MODE": "cloud"}, clear=False), patch.object(
+            sys,
+            "argv",
+            ["tool_search.py", json.dumps({"query": "yard maintenance"})],
+        ), patch.object(tool_search_script, "load_config") as load_config, patch.object(
+            tool_search_script,
+            "get_tool_registry",
+            return_value=self.registry,
+        ) as get_registry, patch.object(
+            tool_search_script,
+            "search_tools_runtime",
+            return_value=result,
+        ) as search, redirect_stdout(output):
+            exit_code = tool_search_script.main()
+
+        self.assertEqual(exit_code, 0)
+        load_config.assert_called_once_with("cloud")
+        get_registry.assert_called_once_with(mode="cloud")
+        self.assertEqual(search.call_args.kwargs["query"], "yard maintenance")
+        self.assertEqual(json.loads(output.getvalue()), result)
+
     def test_semantic_search_excludes_self_and_request_exclusions(self):
         db = _FakeDB(
             [
@@ -110,6 +143,32 @@ class ToolSearchRuntimeTests(unittest.TestCase):
         self.assertEqual(names, ["weather"])
         self.assertEqual(result["data"]["selected_tool_hints"], ["weather"])
         self.assertEqual(result["data"]["search_space"], 1)
+
+    def test_semantic_fallback_reaches_structured_tool_log(self):
+        db = _FakeDB(
+            [{"name": "weather", "similarity": 0.88}],
+            fallback_embeddings=True,
+        )
+        with patch("tool_search_runtime.get_memory_db", return_value=db):
+            result = search_tools_runtime(
+                registry=self.registry,
+                query="forecast weather",
+                limit=5,
+            )
+
+        self.assertIs(result["fallback_embeddings"], True)
+        with tempfile.TemporaryDirectory() as log_dir:
+            logger = ToolLogger(log_dir=log_dir)
+            logger.log_tool_call(
+                tool_name="tool_search",
+                arguments={"query": "forecast weather"},
+                result=result,
+                duration_ms=12.0,
+                mode="cloud",
+            )
+            entry = logger.get_recent_logs(limit=1)[0]
+
+        self.assertIs(entry["fallback_embeddings"], True)
 
     def test_exact_lookup_can_include_schema(self):
         result = search_tools_runtime(

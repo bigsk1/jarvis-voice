@@ -102,12 +102,14 @@ def test_local_services_compare_uses_required_service_and_mode_location_defaults
         "max_results": 5,
         "no_cache": False,
     }
-    assert local_services_step["required"] is True
+    assert local_services_step["required"] is False
+    assert local_services_step["on_fail"] == "continue"
 
     google_local_step = _step(workflow, "serpapi_google_local")
     assert "location" not in google_local_step["params"]
     assert google_local_step["params"]["max_results"] == 5
     assert google_local_step["params"]["max_ads"] == 0
+    assert google_local_step["required"] is True
 
     yelp_step = _step(workflow, "serpapi_yelp_search")
     assert "find_loc" not in yelp_step["params"]

@@ -166,6 +166,7 @@ def search_tools_runtime(
     summaries: list[dict[str, Any]] = []
     selected_tool_hints: list[str] = []
     search_mode = "semantic"
+    fallback_embeddings = None
 
     if tool_names:
         search_mode = "exact"
@@ -184,6 +185,9 @@ def search_tools_runtime(
         db = get_memory_db()
         try:
             ranked = db.search_tools(str(query).strip(), limit=max(limit * 4, 24), threshold=0.0)
+            search_meta = getattr(db, "last_tool_search_meta", {})
+            if isinstance(search_meta, dict):
+                fallback_embeddings = search_meta.get("fallback_embeddings")
         finally:
             db.close()
         for row in ranked:
@@ -215,6 +219,7 @@ def search_tools_runtime(
     return {
         "ok": True,
         "speech": speech,
+        "fallback_embeddings": fallback_embeddings,
         "data": {
             "query": str(query or ""),
             "matches": summaries,

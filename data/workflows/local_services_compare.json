@@ -1,7 +1,7 @@
 {
   "id": "local_services_compare",
   "name": "Local Services Comparison",
-  "description": "Compare providers for a required local service using the active mode's configured location. Use for requests such as compare AC repair, plumbing, electrical, cleaning, or other supported service providers. Combines Google Local Services screening and provider signals, broader Google Local business details, and a bounded Yelp search with review excerpts for one selected result, then saves optional Stash evidence and creates a dated Canvas shortlist. It does not crawl websites, contact providers, request quotes, or book service.",
+  "description": "Compare providers for a required local service using the active mode's configured location. Use for requests such as yard maintenance, lawn care, landscaping, appliance or dryer repair, AC repair, plumbing, electrical, cleaning, or other service providers. Adds Google Local Services screening when the natural service phrase maps to a supported profession, requires broader Google Local business details as the fallback source, and includes a bounded Yelp search with review excerpts for one selected result. Then it saves optional Stash evidence and creates a dated Canvas shortlist. It does not crawl websites, contact providers, request quotes, or book service.",
   "version": "1.0",
   "enabled": true,
   "disable_server_side_tools": true,
@@ -76,9 +76,9 @@
         "local_services_url": "google_local_services_url",
         "local_services_top_url": "top_url"
       },
-      "required": true,
-      "abort_speech": "Local services comparison requires a supported service after the command, for example /local_services_compare AC repair.",
-      "description": "Find Google Local Services providers and screening signals using the active mode location"
+      "required": false,
+      "on_fail": "continue",
+      "description": "Add Google Local Services providers and screening signals when the requested service maps to a supported profession"
     },
     {
       "step": 3,
@@ -101,9 +101,8 @@
         "google_local_url": "google_local_url",
         "google_local_top_url": "top_url"
       },
-      "required": false,
-      "on_fail": "continue",
-      "description": "Gather broader Google Local listings, addresses, hours, and business links"
+      "required": true,
+      "description": "Gather the required broader Google Local listings, addresses, hours, and business links"
     },
     {
       "step": 4,

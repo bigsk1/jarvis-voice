@@ -8,6 +8,8 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 
 ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(ROOT / "skills"))
@@ -16,8 +18,14 @@ sys.path.insert(0, str(ROOT / "lib"))
 import serpapi_client
 from serpapi_google_local_services import (
     GOOGLE_LOCAL_SERVICES_TIMEOUT,
+    SERVICE_CATEGORY_ALIASES,
+    SERVICE_JOB_TYPE_ALIASES,
+    SERVICE_QUERY_ALIASES,
+    SERVICE_TASK_ALIASES,
+    SUPPORTED_SERVICE_QUERIES,
     _serpapi_request,
     common_location_cid,
+    infer_service_job_type,
     main,
     normalize_provider,
     normalize_service_query,
@@ -212,6 +220,96 @@ def test_natural_car_repair_query_uses_provider_slug_after_default_location_reso
     assert data["serpapi_searches_used"] == 2
 
 
+def test_natural_dryer_repair_query_uses_appliance_category_and_job_type():
+    exit_code, result, request = run_main(
+        {"query": "dryer repair", "data_cid": "123"},
+        search_payload(),
+    )
+
+    assert exit_code == 0
+    params = request.call_args.args[0]
+    assert params["q"] == "appliance_repair"
+    assert params["job_type"] == "repair_dryer"
+    data = result["data"]
+    assert data["query"] == "dryer repair"
+    assert data["provider_query"] == "appliance_repair"
+    assert data["job_type"] == "repair_dryer"
+
+
+def test_natural_yard_maintenance_uses_broad_lawn_care_category():
+    exit_code, result, request = run_main(
+        {"query": "yard maintenance", "data_cid": "123"},
+        search_payload(),
+    )
+
+    assert exit_code == 0
+    params = request.call_args.args[0]
+    assert params["q"] == "lawn_care"
+    assert "job_type" not in params
+    data = result["data"]
+    assert data["query"] == "yard maintenance"
+    assert data["provider_query"] == "lawn_care"
+    assert "job_type" not in data
+
+
+def test_explicit_job_type_takes_precedence_over_natural_task_inference():
+    exit_code, result, request = run_main(
+        {
+            "query": "yard cleanup",
+            "job_type": "weed_control",
+            "data_cid": "123",
+        },
+        search_payload(),
+    )
+
+    assert exit_code == 0
+    assert request.call_args.args[0]["q"] == "lawn_care"
+    assert request.call_args.args[0]["job_type"] == "weed_control"
+    assert result["data"]["job_type"] == "weed_control"
+
+
+@pytest.mark.parametrize(
+    ("phrase", "provider_query", "job_type"),
+    (
+        ("local yard maintenance service near me", "lawn_care", ""),
+        ("lawn mowing service", "lawn_care", "lawn_mowing_maintenance"),
+        ("yard cleanup", "lawn_care", "yard_cleanup"),
+        ("sprinkler repair", "lawn_care", "irrigation_system_repair_maintenance"),
+        ("landscape design", "landscaper", "landscape_design"),
+        ("washing machine repair", "appliance_repair", "repair_washer"),
+        ("brake repair", "auto_repair_shop", "brake_repair"),
+        ("EV charger installation", "electrician", "electric_car_charger"),
+        ("garage door spring replacement", "garage_door_pro", "replace_springs"),
+        ("bathroom remodel", "general_contractor", "bathroom_remodel"),
+        ("air duct cleaning", "hvac", "clean_ducts_vents"),
+        ("move-out cleaning", "cleaning_service", "moving_clean"),
+        ("construction debris removal", "junk_removal", "construction_waste_removal"),
+        ("termite control", "pest_control", "termites"),
+        ("water heater repair", "plumber", "repair_water_heater"),
+        ("storm damage roof repair", "roofer", "storm_wind_damage_roof_repair"),
+        ("tree trimming", "tree_service", "tree_trimming_and_pruning"),
+        ("mold remediation", "water_damage", "water_damage_mold_removal"),
+        ("family doctor", "primary_care", ""),
+        ("divorce attorney", "family_lawyer", ""),
+    ),
+)
+def test_common_natural_service_phrases_map_deterministically(
+    phrase, provider_query, job_type
+):
+    assert normalize_service_query(phrase) == (phrase, provider_query)
+    assert infer_service_job_type(phrase) == job_type
+
+
+def test_alias_tables_only_target_supported_categories_and_are_consistent():
+    assert len(SERVICE_QUERY_ALIASES) >= 300
+    assert set(SERVICE_QUERY_ALIASES.values()) <= SUPPORTED_SERVICE_QUERIES
+    assert set(SERVICE_JOB_TYPE_ALIASES) == set(SERVICE_TASK_ALIASES)
+    assert set(SERVICE_CATEGORY_ALIASES) <= set(SERVICE_QUERY_ALIASES)
+    for phrase, (provider_query, job_type) in SERVICE_TASK_ALIASES.items():
+        assert SERVICE_QUERY_ALIASES[phrase] == provider_query
+        assert SERVICE_JOB_TYPE_ALIASES[phrase] == job_type
+
+
 def test_query_normalization_accepts_supported_phrases_and_rejects_unknown_categories():
     assert normalize_service_query("AC repair") == ("AC repair", "hvac")
     assert normalize_service_query("air conditioning repair") == (
@@ -226,6 +324,10 @@ def test_query_normalization_accepts_supported_phrases_and_rejects_unknown_categ
     assert normalize_service_query("house cleaner") == (
         "house cleaner",
         "cleaning_service",
+    )
+    assert normalize_service_query("dryer repair") == (
+        "dryer repair",
+        "appliance_repair",
     )
     assert normalize_service_query("electricians") == (
         "electricians",

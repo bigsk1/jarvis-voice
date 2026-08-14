@@ -157,57 +157,402 @@ SUPPORTED_SERVICE_QUERIES = frozenset({
     "yoga_instructor",
 })
 
-# Natural phrases the model or user is likely to provide when they do not know
-# SerpApi's canonical identifier. Most supported phrases need no entry because
-# spaces and punctuation normalize directly to underscores.
-SERVICE_QUERY_ALIASES = {
-    "ac_repair": "hvac",
-    "air_conditioner_repair": "hvac",
-    "air_conditioning_repair": "hvac",
+# Natural profession/category phrases the model or user is likely to provide
+# when they do not know SerpApi's canonical identifier. Most supported phrases
+# need no entry because spaces and punctuation normalize directly to
+# underscores. Keep these mappings exact and deterministic: this tool accepts a
+# profession, not an arbitrary free-form web search.
+SERVICE_CATEGORY_ALIASES = {
+    "air_conditioner_service": "hvac",
+    "air_conditioning_service": "hvac",
+    "allergy_doctor": "allergist",
+    "allergy_specialist": "allergist",
+    "animal_rescue": "animal_shelter",
+    "animal_hospital": "veterinarian",
+    "appliance_service": "appliance_repair",
+    "appliance_technician": "appliance_repair",
     "arborist": "tree_service",
+    "attorney_for_bankruptcy": "bankruptcy_lawyer",
+    "attorney_for_business": "business_lawyer",
+    "attorney_for_contracts": "contract_lawyer",
+    "attorney_for_criminal_defense": "criminal_lawyer",
+    "attorney_for_disability": "disability_lawyer",
+    "attorney_for_divorce": "family_lawyer",
+    "attorney_for_dui": "dui_lawyer",
+    "attorney_for_employment": "labor_lawyer",
+    "attorney_for_estates": "estate_lawyer",
+    "attorney_for_family_law": "family_lawyer",
+    "attorney_for_immigration": "immigration_lawyer",
+    "attorney_for_intellectual_property": "ip_lawyer",
+    "attorney_for_lawsuits": "litigation_lawyer",
+    "attorney_for_malpractice": "malpractice_lawyer",
+    "attorney_for_personal_injury": "personal_injury_lawyer",
+    "attorney_for_real_estate": "real_estate_lawyer",
+    "attorney_for_taxes": "tax_lawyer",
+    "attorney_for_traffic_ticket": "traffic_lawyer",
     "auto_detailing": "car_wash_and_detailing",
     "auto_mechanic": "auto_repair_shop",
     "auto_repair": "auto_repair_shop",
+    "automotive_mechanic": "auto_repair_shop",
     "automotive_repair": "auto_repair_shop",
     "body_shop": "auto_body_shop",
+    "business_attorney": "business_lawyer",
     "car_body_shop": "auto_body_shop",
+    "car_crash_lawyer": "personal_injury_lawyer",
     "car_detailing": "car_wash_and_detailing",
     "car_mechanic": "auto_repair_shop",
     "car_repair": "auto_repair_shop",
     "car_repair_shop": "auto_repair_shop",
     "car_wash": "car_wash_and_detailing",
+    "carpet_cleaner": "carpet_cleaning",
+    "cat_groomer": "pet_grooming",
     "cell_phone_repair": "cellphone_and_laptop_repair",
+    "childcare": "child_care",
+    "computer_repair": "cellphone_and_laptop_repair",
+    "contract_attorney": "contract_lawyer",
+    "criminal_defense_attorney": "criminal_lawyer",
+    "day_care": "child_care",
+    "daycare": "child_care",
+    "deck_builder": "general_contractor",
+    "divorce_attorney": "family_lawyer",
+    "drain_cleaner": "drain_expert",
+    "drain_cleaning": "drain_expert",
+    "drain_service": "drain_expert",
+    "driving_lessons": "driving_instructor",
+    "dui_attorney": "dui_lawyer",
+    "electrician_service": "electrician",
+    "electrical_service": "electrician",
     "electrical_contractor": "electrician",
+    "employment_attorney": "labor_lawyer",
+    "estate_planning_attorney": "estate_lawyer",
     "exterminator": "pest_control",
-    "garage_door_repair": "garage_door_pro",
+    "family_attorney": "family_lawyer",
+    "family_doctor": "primary_care",
+    "fence_builder": "fencing_pro",
+    "fence_company": "fencing_pro",
+    "fence_contractor": "fencing_pro",
+    "floor_installer": "flooring_pro",
+    "flooring_contractor": "flooring_pro",
+    "foundation_contractor": "foundation_pro",
+    "foundation_repair": "foundation_pro",
+    "garden_care": "lawn_care",
+    "garden_maintenance": "lawn_care",
+    "general_practitioner": "primary_care",
+    "grass_care": "lawn_care",
+    "hairdresser": "hair_salon",
+    "handyman_service": "handyman",
+    "hearing_doctor": "audiologist",
+    "hearing_specialist": "audiologist",
+    "heating_service": "hvac",
     "heating_and_air_conditioning": "hvac",
     "heating_and_cooling": "hvac",
+    "home_alarm": "home_security",
+    "home_builder": "general_contractor",
     "home_cleaner": "cleaning_service",
     "home_cleaning": "cleaning_service",
+    "home_remodeler": "general_contractor",
+    "home_security_system": "home_security",
+    "home_stereo_installer": "home_theater",
+    "home_theater_installer": "home_theater",
     "house_cleaner": "cleaning_service",
     "house_cleaning": "cleaning_service",
+    "house_inspector": "home_inspector",
+    "house_mover": "mover",
     "hvac_contractor": "hvac",
+    "hvac_repair": "hvac",
+    "hvac_service": "hvac",
+    "immigration_attorney": "immigration_lawyer",
+    "insurance_agent": "insurance_agency",
+    "junk_hauling": "junk_removal",
+    "labor_attorney": "labor_lawyer",
+    "landscape_architect": "landscaper",
     "landscape_contractor": "landscaper",
+    "landscape_designer": "landscaper",
+    "landscape_service": "landscaper",
     "landscaping": "landscaper",
+    "landscaping_service": "landscaper",
+    "laptop_repair": "cellphone_and_laptop_repair",
+    "lawn_maintenance": "lawn_care",
     "lawn_service": "lawn_care",
+    "lawncare": "lawn_care",
+    "legal_help_for_bankruptcy": "bankruptcy_lawyer",
     "locksmith_service": "locksmith",
     "maid": "cleaning_service",
     "maid_service": "cleaning_service",
+    "massage": "massage_therapist",
     "mechanic": "auto_repair_shop",
     "mechanic_shop": "auto_repair_shop",
     "moving_company": "mover",
+    "moving_help": "mover",
     "moving_service": "mover",
+    "nanny": "child_care",
+    "orthopedic_doctor": "orthopedic_surgeon",
+    "orthopedic_specialist": "orthopedic_surgeon",
+    "pain_and_suffering_lawyer": "personal_injury_lawyer",
+    "personal_injury_attorney": "personal_injury_lawyer",
+    "personal_training": "personal_trainer",
+    "pest_control_service": "pest_control",
     "pest_exterminator": "pest_control",
+    "pet_boarder": "pet_boarding",
+    "pet_daycare": "pet_boarding",
+    "pet_groomer": "pet_grooming",
+    "pet_grooming_service": "pet_grooming",
+    "pet_sitter": "pet_boarding",
+    "pet_training": "pet_trainer",
+    "physical_therapist": "physiotherapist",
+    "physical_therapy": "physiotherapist",
+    "plumber_service": "plumber",
     "plumbing_contractor": "plumber",
+    "plumbing_repair": "plumber",
     "plumbing_service": "plumber",
-    "roof_repair": "roofer",
+    "pool_builder": "pool_contractor",
+    "pool_cleaning": "pool_cleaner",
+    "pool_service": "pool_cleaner",
+    "primary_care_doctor": "primary_care",
+    "property_inspector": "home_inspector",
+    "realtor": "real_estate_agent",
+    "remodeling_contractor": "general_contractor",
+    "roofing_company": "roofer",
     "roofing_contractor": "roofer",
+    "septic_service": "sewage_pro",
+    "sewage_cleanup": "sewage_pro",
+    "sewer_service": "sewage_pro",
+    "siding_contractor": "siding_pro",
+    "siding_installation": "siding_pro",
+    "solar_company": "solar_energy_contractor",
     "solar_installer": "solar_energy_contractor",
+    "tax_accountant": "tax_specialist",
+    "tax_attorney": "tax_lawyer",
+    "tax_preparation": "tax_specialist",
+    "tax_preparer": "tax_specialist",
+    "therapeutic_massage": "massage_therapist",
+    "tire_center": "tire_shop",
     "tire_repair": "tire_shop",
+    "tow_service": "towing",
     "tow_truck": "towing",
     "towing_service": "towing",
+    "traffic_attorney": "traffic_lawyer",
+    "tree_care": "tree_service",
+    "tree_removal_service": "tree_service",
     "tree_trimmer": "tree_service",
+    "vet": "veterinarian",
+    "veterinary_clinic": "veterinarian",
+    "water_damage_restoration": "water_damage",
+    "water_remediation": "water_damage",
+    "weight_loss_clinic": "weight_loss_service",
+    "window_cleaning": "window_cleaner",
     "window_washing": "window_cleaner",
+    "window_installer": "window_repair",
+    "window_replacement": "window_repair",
+    "yard_care": "lawn_care",
+    "yard_maintenance": "lawn_care",
+    "yard_service": "lawn_care",
+    "yoga_classes": "yoga_instructor",
+    "yoga_teacher": "yoga_instructor",
+}
+
+# Exact task phrases that can safely narrow a supported profession to one of
+# SerpApi's documented job_type identifiers. Broad phrases stay in the category
+# map above so they do not accidentally exclude suitable providers.
+SERVICE_TASK_ALIASES = {
+    # Appliance Repair
+    "clothes_dryer_repair": ("appliance_repair", "repair_dryer"),
+    "dishwasher_repair": ("appliance_repair", "repair_dishwasher"),
+    "dryer_repair": ("appliance_repair", "repair_dryer"),
+    "dryer_service": ("appliance_repair", "repair_dryer"),
+    "freezer_repair": ("appliance_repair", "repair_freezer"),
+    "microwave_repair": ("appliance_repair", "repair_microwave"),
+    "oven_repair": ("appliance_repair", "repair_oven"),
+    "refrigerator_repair": ("appliance_repair", "repair_refrigerator"),
+    "stove_repair": ("appliance_repair", "repair_stove_cooktop"),
+    "washer_and_dryer_repair": ("appliance_repair", "repair_washer_dryer"),
+    "washer_dryer_repair": ("appliance_repair", "repair_washer_dryer"),
+    "washing_machine_repair": ("appliance_repair", "repair_washer"),
+    # Auto Body and Auto Repair
+    "brake_repair": ("auto_repair_shop", "brake_repair"),
+    "bumper_repair": ("auto_body_shop", "bumper_repair"),
+    "car_dent_repair": ("auto_body_shop", "dents_and_scratches_repair"),
+    "car_electrical_repair": ("auto_repair_shop", "electrical_system_repair"),
+    "car_engine_repair": ("auto_repair_shop", "engine_repair"),
+    "car_exhaust_repair": ("auto_repair_shop", "exhaust_system_repair"),
+    "car_maintenance": ("auto_repair_shop", "car_maintenance"),
+    "car_scratch_repair": ("auto_body_shop", "dents_and_scratches_repair"),
+    "car_transmission_repair": ("auto_repair_shop", "transmission_repair"),
+    "vehicle_maintenance": ("auto_repair_shop", "car_maintenance"),
+    # Electrical
+    "ceiling_fan_installation": ("electrician", "install_fan"),
+    "electrical_panel_repair": ("electrician", "repair_panel"),
+    "ev_charger_installation": ("electrician", "electric_car_charger"),
+    "light_fixture_installation": ("electrician", "install_light_fixtures"),
+    "light_fixture_repair": ("electrician", "repair_light_fixtures"),
+    "outdoor_lighting_installation": ("electrician", "install_outdoor_lighting"),
+    "outlet_installation": ("electrician", "install_outlets_switches"),
+    "outlet_repair": ("electrician", "repair_outlets_switches"),
+    "power_restoration": ("electrician", "restore_power"),
+    # Fencing and Flooring
+    "fence_design": ("fencing_pro", "fence_design"),
+    "fence_installation": ("fencing_pro", "installation_fencing_pro"),
+    "fence_installation_service": ("fencing_pro", "installation_fencing_pro"),
+    "fence_repair": ("fencing_pro", "repairs_maintenance_fencing_pro"),
+    "fence_repair_service": ("fencing_pro", "repairs_maintenance_fencing_pro"),
+    "floor_installation": ("flooring_pro", "installation_flooring_pro"),
+    "floor_refinishing": ("flooring_pro", "refinishing"),
+    "floor_repair": ("flooring_pro", "repair_maintenance_flooring_pro"),
+    "floor_repair_service": ("flooring_pro", "repair_maintenance_flooring_pro"),
+    "hardwood_flooring": ("flooring_pro", "hardwood"),
+    "tile_flooring": ("flooring_pro", "tile"),
+    # Garage Door
+    "garage_door_cable_repair": ("garage_door_pro", "repair_cables"),
+    "garage_door_installation": ("garage_door_pro", "install_garage_door"),
+    "garage_door_opener_replacement": ("garage_door_pro", "replace_opener"),
+    "garage_door_repair": ("garage_door_pro", "repair_garage_door"),
+    "garage_door_spring_replacement": ("garage_door_pro", "replace_springs"),
+    # General Contracting
+    "bathroom_remodel": ("general_contractor", "bathroom_remodel"),
+    "deck_building": ("general_contractor", "decks_patio"),
+    "home_addition": ("general_contractor", "home_addition"),
+    "home_construction": ("general_contractor", "home_building"),
+    "home_remodel": ("general_contractor", "home_remodel_renovation"),
+    "home_renovation": ("general_contractor", "home_remodel_renovation"),
+    "kitchen_remodel": ("general_contractor", "kitchen_remodel"),
+    "patio_construction": ("general_contractor", "decks_patio"),
+    # HVAC
+    "ac_installation": ("hvac", "install_ac"),
+    "ac_maintenance": ("hvac", "ac_maintenance"),
+    "ac_repair": ("hvac", "repair_ac"),
+    "air_conditioner_repair": ("hvac", "repair_ac"),
+    "air_conditioning_repair": ("hvac", "repair_ac"),
+    "air_duct_cleaning": ("hvac", "clean_ducts_vents"),
+    "air_duct_installation": ("hvac", "install_ducts_vents"),
+    "air_duct_repair": ("hvac", "repair_ducts_vents"),
+    "furnace_installation": ("hvac", "install_heating_system"),
+    "furnace_maintenance": ("hvac", "heating_maintenance"),
+    "furnace_repair": ("hvac", "repair_heating_system"),
+    "heating_system_repair": ("hvac", "repair_heating_system"),
+    "hvac_maintenance": ("hvac", "hvac_maintenance"),
+    "thermostat_repair": ("hvac", "repair_thermostat"),
+    # Handyman and House Cleaning
+    "drywall_installation": ("handyman", "install_drywall"),
+    "drywall_repair": ("handyman", "repair_drywall"),
+    "furniture_assembly": ("handyman", "assemble_furniture"),
+    "deep_house_cleaning": ("cleaning_service", "deep_clean"),
+    "move_out_cleaning": ("cleaning_service", "moving_clean"),
+    "moving_cleaning": ("cleaning_service", "moving_clean"),
+    "office_cleaning": ("cleaning_service", "office_clean"),
+    "regular_house_cleaning": ("cleaning_service", "standard_clean"),
+    "standard_house_cleaning": ("cleaning_service", "standard_clean"),
+    "tv_mounting": ("handyman", "mount_tv"),
+    # Junk Removal
+    "appliance_hauling": ("junk_removal", "appliance_removal"),
+    "appliance_removal": ("junk_removal", "appliance_removal"),
+    "construction_debris_removal": ("junk_removal", "construction_waste_removal"),
+    "furniture_hauling": ("junk_removal", "furniture_removal"),
+    "furniture_removal": ("junk_removal", "furniture_removal"),
+    "yard_waste_removal": ("junk_removal", "yard_waste_removal"),
+    # Landscaping and Lawn Care
+    "artificial_turf_installation": ("landscaper", "artificial_turf_installation"),
+    "driveway_paving": ("landscaper", "paving_driveway_walkway"),
+    "garden_design": ("landscaper", "landscape_design"),
+    "grass_cutting": ("lawn_care", "lawn_mowing_maintenance"),
+    "grass_seeding": ("lawn_care", "seeding"),
+    "grading_and_resloping": ("landscaper", "grading_resloping"),
+    "hardscape_installation": ("landscaper", "hardscapes"),
+    "irrigation_repair": ("lawn_care", "irrigation_system_repair_maintenance"),
+    "landscape_design": ("landscaper", "landscape_design"),
+    "landscape_installation": ("landscaper", "landscape_installations"),
+    "leaf_cleanup": ("lawn_care", "yard_cleanup"),
+    "lawn_cutting": ("lawn_care", "lawn_mowing_maintenance"),
+    "lawn_mowing": ("lawn_care", "lawn_mowing_maintenance"),
+    "lawn_pest_control": ("lawn_care", "lawn_pest_control"),
+    "lawn_seeding": ("lawn_care", "seeding"),
+    "lawn_sod_installation": ("lawn_care", "sod_installation"),
+    "lawn_weeding": ("lawn_care", "weed_control"),
+    "mulching": ("lawn_care", "mulching"),
+    "outdoor_water_feature": ("landscaper", "outdoor_water_feature"),
+    "retaining_wall": ("landscaper", "retaining_walls"),
+    "stone_masonry": ("landscaper", "stone_masonry"),
+    "sprinkler_repair": ("lawn_care", "irrigation_system_repair_maintenance"),
+    "sprinkler_system_repair": ("lawn_care", "irrigation_system_repair_maintenance"),
+    "walkway_paving": ("landscaper", "paving_driveway_walkway"),
+    "yard_cleanup": ("lawn_care", "yard_cleanup"),
+    # Moving and Painting
+    "cabinet_painting": ("painter", "cabinet_painting"),
+    "house_painting": ("painter", "paint_outdoors_painter"),
+    "interior_painting": ("painter", "paint_indoors_painter"),
+    "local_moving": ("mover", "local_move"),
+    "long_distance_moving": ("mover", "out_of_state_move"),
+    "out_of_state_moving": ("mover", "out_of_state_move"),
+    "packing_and_unpacking": ("mover", "packing_unpacking"),
+    # Pest Control
+    "ant_extermination": ("pest_control", "ants"),
+    "bed_bug_extermination": ("pest_control", "bed_bugs"),
+    "cockroach_extermination": ("pest_control", "cockroaches"),
+    "mosquito_control": ("pest_control", "mosquitoes"),
+    "rodent_control": ("pest_control", "rodents"),
+    "spider_extermination": ("pest_control", "spiders"),
+    "termite_control": ("pest_control", "termites"),
+    "wasp_removal": ("pest_control", "hornets_or_wasps"),
+    # Pet Services
+    "cat_boarding": ("pet_boarding", "cat_boarding"),
+    "dog_boarding": ("pet_boarding", "dog_boarding"),
+    "dog_daycare": ("pet_boarding", "dog_daycare"),
+    "dog_training": ("pet_trainer", "dog_training"),
+    "puppy_training": ("pet_trainer", "puppy_training"),
+    # Plumbing
+    "drain_unclogging": ("plumber", "unclog_drain"),
+    "faucet_installation": ("plumber", "install_faucet"),
+    "faucet_repair": ("plumber", "repair_faucet"),
+    "garbage_disposal_installation": ("plumber", "install_garbage_disposal"),
+    "garbage_disposal_repair": ("plumber", "repair_garbage_disposal"),
+    "leak_detection": ("plumber", "find_leak"),
+    "pipe_leak_repair": ("plumber", "repair_pipe"),
+    "pipe_repair": ("plumber", "repair_pipe"),
+    "shower_installation": ("plumber", "install_shower"),
+    "shower_repair": ("plumber", "repair_shower"),
+    "toilet_installation": ("plumber", "install_toilet"),
+    "toilet_repair": ("plumber", "repair_toilet"),
+    "water_heater_installation": ("plumber", "install_water_heater"),
+    "water_heater_repair": ("plumber", "repair_water_heater"),
+    # Roofing
+    "gutter_installation": ("roofer", "gutter_installation"),
+    "gutter_repair": ("roofer", "gutter_repair"),
+    "roof_inspection": ("roofer", "roof_inspection"),
+    "roof_installation": ("roofer", "roof_installation"),
+    "roof_repair": ("roofer", "roof_repair"),
+    "storm_damage_roof_repair": ("roofer", "storm_wind_damage_roof_repair"),
+    # Snow Removal
+    "driveway_snow_plowing": ("snow_removal", "residential_plowing"),
+    "snow_plowing": ("snow_removal", "residential_plowing"),
+    "snow_shoveling": ("snow_removal", "residential_shoveling_blowing"),
+    # Tree Services
+    "stump_removal": ("tree_service", "stump_removal"),
+    "tree_planting": ("tree_service", "tree_planting"),
+    "tree_removal": ("tree_service", "tree_removal"),
+    "tree_trimming": ("tree_service", "tree_trimming_and_pruning"),
+    # Water Damage and Windows
+    "fire_damage_restoration": ("water_damage", "fire_damage_cleanup_repair"),
+    "mold_remediation": ("water_damage", "water_damage_mold_removal"),
+    "mold_removal": ("water_damage", "water_damage_mold_removal"),
+    "sewage_damage_cleanup": ("water_damage", "water_damage_sewage_cleanup"),
+    "water_damage_cleanup": ("water_damage", "water_damage_cleanup_repair"),
+    "water_damage_mold_removal": ("water_damage", "water_damage_mold_removal"),
+    "gutter_cleaning": ("window_cleaner", "gutter_cleaning"),
+    "door_installation": ("window_repair", "door_installation"),
+    "door_repair": ("window_repair", "door_repair"),
+    "auto_window_repair": ("auto_body_shop", "window_repair_and_replacement"),
+}
+
+SERVICE_QUERY_ALIASES = {
+    **SERVICE_CATEGORY_ALIASES,
+    **{
+        phrase: provider_query
+        for phrase, (provider_query, _job_type) in SERVICE_TASK_ALIASES.items()
+    },
+}
+
+SERVICE_JOB_TYPE_ALIASES = {
+    phrase: job_type
+    for phrase, (_provider_query, job_type) in SERVICE_TASK_ALIASES.items()
 }
 
 # Google Local Services requires a numeric Google city/district CID. These
@@ -288,27 +633,84 @@ def normalize_language(value: Any) -> str:
     return language
 
 
+def _service_query_key(value: str) -> str:
+    """Normalize a natural service phrase for alias lookup."""
+    normalized = re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+    while normalized.startswith(("a_", "an_", "the_")):
+        normalized = normalized.split("_", 1)[1]
+    return normalized
+
+
+def _service_query_candidates(value: str) -> list[str]:
+    """Return exact lookup candidates after removing generic request framing."""
+    normalized = _service_query_key(value)
+    generic_suffixes = (
+        "_near_me",
+        "_companies",
+        "_company",
+        "_contractors",
+        "_contractor",
+        "_professionals",
+        "_professional",
+        "_providers",
+        "_provider",
+        "_services",
+        "_service",
+    )
+    candidates: list[str] = []
+    pending = [normalized]
+    while pending:
+        candidate = pending.pop(0)
+        if not candidate or candidate in candidates:
+            continue
+        candidates.append(candidate)
+        if candidate.startswith("local_"):
+            pending.append(candidate.removeprefix("local_"))
+        for suffix in generic_suffixes:
+            if candidate.endswith(suffix):
+                pending.append(candidate[: -len(suffix)])
+                break
+    return candidates
+
+
 def normalize_service_query(value: Any) -> tuple[str, str]:
     """Return the requested phrase and SerpApi's supported query identifier."""
     requested = _validate_text(value, "query", 300)
     if not requested:
         raise ValueError("'query' is required.")
 
-    normalized = re.sub(r"[^a-z0-9]+", "_", requested.lower()).strip("_")
-    while normalized.startswith(("a_", "an_", "the_")):
-        normalized = normalized.split("_", 1)[1]
-    provider_query = SERVICE_QUERY_ALIASES.get(normalized, normalized)
-    if provider_query not in SUPPORTED_SERVICE_QUERIES and provider_query.endswith("s"):
-        singular = provider_query[:-1]
-        provider_query = SERVICE_QUERY_ALIASES.get(singular, singular)
-    if provider_query not in SUPPORTED_SERVICE_QUERIES:
+    provider_query = ""
+    for candidate in _service_query_candidates(requested):
+        mapped = SERVICE_QUERY_ALIASES.get(candidate, candidate)
+        if mapped in SUPPORTED_SERVICE_QUERIES:
+            provider_query = mapped
+            break
+        if mapped.endswith("s"):
+            singular = mapped[:-1]
+            mapped = SERVICE_QUERY_ALIASES.get(singular, singular)
+            if mapped in SUPPORTED_SERVICE_QUERIES:
+                provider_query = mapped
+                break
+    if not provider_query:
         raise ValueError(
             f"Unsupported Google Local Services query '{requested}'. Use a supported "
-            "profession such as plumber, electrician, auto repair shop, cleaning "
-            "service, roofer, or locksmith; use serpapi_google_local for general "
-            "business searches."
+            "profession such as appliance repair, plumber, electrician, auto repair "
+            "shop, cleaning service, roofer, or locksmith; use "
+            "serpapi_google_local for general business searches."
         )
     return requested, provider_query
+
+
+def infer_service_job_type(query: str) -> str:
+    """Infer a supported provider subcategory from a natural service phrase."""
+    return next(
+        (
+            SERVICE_JOB_TYPE_ALIASES[candidate]
+            for candidate in _service_query_candidates(query)
+            if candidate in SERVICE_JOB_TYPE_ALIASES
+        ),
+        "",
+    )
 
 
 def resolve_location_input(explicit_location: Any) -> tuple[str, str]:
@@ -561,6 +963,8 @@ def main() -> int:
         query, provider_query = normalize_service_query(input_data.get("query"))
         language = normalize_language(input_data.get("language"))
         job_type = _validate_text(input_data.get("job_type"), "job_type", 200)
+        if not job_type:
+            job_type = infer_service_job_type(query)
         no_cache = parse_bool(input_data.get("no_cache", False))
         include_raw = parse_bool(input_data.get("include_raw", False))
         max_results = _bounded_int(
