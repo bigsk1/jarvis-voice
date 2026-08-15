@@ -976,10 +976,12 @@ RESPONSE STYLE: {response_style.upper()}
   Use code execution for any math beyond trivial""")
             
             native_search_note = f"""
-NATIVE SERVER-SIDE TOOLS ENABLED:
+NATIVE SERVER-SIDE TOOLS CONFIGURED:
+- These tools are available only when the current request policy permits them.
+- A later CHAT ONLY MODE or NATIVE SEARCH DISABLED notice makes them unavailable for that request and takes precedence.
 {chr(10).join(capabilities)}
-- Results are grounded and cited automatically
-- Only use external tools when native capabilities are insufficient
+- When permitted, results are grounded and cited automatically
+- When permitted, only use external tools when native capabilities are insufficient
 """
         elif xai_search and provider_type == "xai":
             native_search_note = """

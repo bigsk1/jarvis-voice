@@ -365,7 +365,7 @@ class XAINativeContinuationTests(unittest.TestCase):
 
         self.assertIn("XAI NATIVE SERVER-SIDE TOOLS DISABLED", prompt)
         self.assertIn("use the available Jarvis search/fetch tools", prompt)
-        self.assertNotIn("NATIVE SERVER-SIDE TOOLS ENABLED", prompt)
+        self.assertNotIn("NATIVE SERVER-SIDE TOOLS CONFIGURED", prompt)
         self.assertNotIn("DO NOT use brave_search", prompt)
 
     def test_router_prompt_claims_native_search_only_for_live_sdk_provider(self):
@@ -389,7 +389,9 @@ class XAINativeContinuationTests(unittest.TestCase):
         ):
             prompt = router.system_prompt
 
-        self.assertIn("NATIVE SERVER-SIDE TOOLS ENABLED", prompt)
+        self.assertIn("NATIVE SERVER-SIDE TOOLS CONFIGURED", prompt)
+        self.assertIn("available only when the current request policy permits them", prompt)
+        self.assertIn("CHAT ONLY MODE or NATIVE SEARCH DISABLED", prompt)
         self.assertIn("NATIVE WEB/X SEARCH", prompt)
         self.assertNotIn("XAI NATIVE SERVER-SIDE TOOLS DISABLED", prompt)
 
