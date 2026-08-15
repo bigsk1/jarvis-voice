@@ -1600,7 +1600,21 @@ class XAIProvider(LLMProvider):
 class OllamaProvider(LLMProvider):
     """Ollama provider using native tool calling API (Ollama 0.3.0+)."""
     
-    def __init__(self, base_url: str, model: str):
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        *,
+        include_localhost_fallback: bool | None = None,
+        context_window: int | None = None,
+        num_gpu: int | None = None,
+        keep_alive: str | int | None = None,
+        default_max_tokens: int | None = None,
+        temperature: float | None = None,
+        request_timeout: int = 180,
+        force_no_thinking: bool = False,
+        force_local_daemon: bool = False,
+    ):
         """Initialize Ollama provider."""
         from config_loader import get_active_config_mode
 
@@ -1608,14 +1622,28 @@ class OllamaProvider(LLMProvider):
         # Cloud mode must use only explicitly configured hosts: silently trying
         # localhost can route a hosted-model request through the wrong daemon,
         # and in Docker it points back into the Jarvis container.
-        self.execution_class = get_ollama_execution_class(model)
+        self.execution_class = (
+            OLLAMA_EXECUTION_LOCAL_DAEMON
+            if force_local_daemon
+            else get_ollama_execution_class(model)
+        )
+        if include_localhost_fallback is None:
+            include_localhost_fallback = get_active_config_mode() == "local"
         self.base_urls = get_ollama_request_urls(
             cloud_access=(self.execution_class != OLLAMA_EXECUTION_LOCAL_DAEMON),
             base_url=base_url,
-            include_localhost_fallback=(get_active_config_mode() == "local"),
+            include_localhost_fallback=include_localhost_fallback,
         )
         self.base_url = self.base_urls[0]
         self.model = model
+        self.context_window = context_window
+        self.num_gpu = num_gpu
+        self.keep_alive = keep_alive
+        self.default_max_tokens = default_max_tokens
+        self.temperature = temperature
+        self.request_timeout = max(1, int(request_timeout))
+        self.force_no_thinking = force_no_thinking
+        self.last_usage_info: dict[str, Any] | None = None
 
     @staticmethod
     def _strip_reasoning_content(text: str) -> str:
@@ -1661,6 +1689,8 @@ class OllamaProvider(LLMProvider):
     def chat(self, message: str, system_prompt: str | None = None, max_tokens: int = None) -> str:
         """Simple chat without tools."""
         import sys
+
+        self.last_usage_info = None
         
         messages = []
         if system_prompt:
@@ -1673,6 +1703,10 @@ class OllamaProvider(LLMProvider):
                 "messages": messages,
                 "stream": False
             }
+            if self.force_no_thinking:
+                request_data["think"] = False
+            if self.keep_alive is not None:
+                request_data["keep_alive"] = self.keep_alive
 
             # Some evaluator-style prompts require strict JSON. Ollama models are
             # more reliable when we explicitly request JSON mode at the API layer.
@@ -1736,12 +1770,15 @@ class OllamaProvider(LLMProvider):
             if json_mode:
                 options["temperature"] = 0
             
-            if max_tokens:
+            effective_max_tokens = max_tokens or self.default_max_tokens
+            if effective_max_tokens:
                 # Cloud-tagged models count thinking tokens against
                 # num_predict (think:false is ignored by remote backends).
                 # Multiply budget so the model has room for both reasoning
                 # and the actual JSON content.
-                options["num_predict"] = max_tokens * 4 if is_cloud else max_tokens
+                options["num_predict"] = (
+                    effective_max_tokens * 4 if is_cloud else effective_max_tokens
+                )
             
             if options:
                 request_data["options"] = options
@@ -1751,7 +1788,7 @@ class OllamaProvider(LLMProvider):
                 "/api/chat",
                 base_urls=self.base_urls,
                 json=request_data,
-                timeout=180  # 3 minutes for local models (qwen3-vl is heavy)
+                timeout=self.request_timeout,
             )
             self.base_url = used_base_url
             if response.status_code >= 400:
@@ -1765,6 +1802,10 @@ class OllamaProvider(LLMProvider):
             response.raise_for_status()
             
             result = response.json()
+            prompt_eval_count = int(result.get("prompt_eval_count") or 0)
+            eval_count = int(result.get("eval_count") or 0)
+            if prompt_eval_count or eval_count:
+                self.last_usage_info = self._build_usage(prompt_eval_count, eval_count)
             msg = result.get("message", {})
             content = msg.get("content", "")
 
@@ -1889,9 +1930,19 @@ class OllamaProvider(LLMProvider):
         # but the app should consistently request the configured window instead of using a
         # hardcoded allowlist of model names.
         from config_loader import get_int
-        context_window = get_int('OLLAMA_CONTEXT_WINDOW', 32000)
+        context_window = (
+            self.context_window
+            if self.context_window is not None
+            else get_int('OLLAMA_CONTEXT_WINDOW', 32000)
+        )
         if context_window and context_window > 0:
             options["num_ctx"] = context_window
+        if self.num_gpu is not None:
+            options["num_gpu"] = self.num_gpu
+        if self.temperature is not None:
+            options["temperature"] = self.temperature
+        if self.default_max_tokens:
+            options["num_predict"] = self.default_max_tokens
         return options
     
     def _convert_to_ollama_tools(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1999,8 +2050,10 @@ class OllamaProvider(LLMProvider):
                 "model": self.model,
                 "messages": full_messages,
                 "stream": False,
-                "think": bool(enable_thinking),
+                "think": False if self.force_no_thinking else bool(enable_thinking),
             }
+            if self.keep_alive is not None:
+                request_data["keep_alive"] = self.keep_alive
             
             # Add tools if provided (native tool calling)
             if ollama_tools:
@@ -2026,7 +2079,7 @@ class OllamaProvider(LLMProvider):
                 "/api/chat",
                 base_urls=self.base_urls,
                 json=request_data,
-                timeout=180  # 3 minutes for local models
+                timeout=self.request_timeout,
             )
             self.base_url = used_base_url
             
@@ -2180,8 +2233,10 @@ CRITICAL RULES:
                 "model": self.model,
                 "messages": full_messages,
                 "stream": False,
-                "think": bool(enable_thinking),
+                "think": False if self.force_no_thinking else bool(enable_thinking),
             }
+            if self.keep_alive is not None:
+                request_data["keep_alive"] = self.keep_alive
             
             # Set context window options
             options = self._get_context_options()
@@ -2201,7 +2256,7 @@ CRITICAL RULES:
                 "/api/chat",
                 base_urls=self.base_urls,
                 json=request_data,
-                timeout=180
+                timeout=self.request_timeout,
             )
             self.base_url = used_base_url
             if response.status_code >= 400:
@@ -2350,7 +2405,10 @@ def create_configured_provider(
     )
     provider_type = (provider_type or default_provider).strip().lower()
 
-    model = str(model_override).strip() if model_override not in (None, "") else None
+    explicit_model = (
+        str(model_override).strip() if model_override not in (None, "") else None
+    )
+    model = explicit_model
     if not model:
         model = first_config_value(model_config_keys)
 
@@ -2377,6 +2435,37 @@ def create_configured_provider(
             api_key=get_config_value("XAI_API_KEY"),
             model=model,
             enable_search=False if disable_server_side_tools else None,
+        )
+        return provider_type, getattr(provider, "model", model), provider
+    if provider_type == "helper":
+        from config_loader import get_float, get_int
+
+        # The helper is intentionally independent of task-specific model keys,
+        # JARVIS_MODE, OLLAMA_BASE_URL, and Ollama Cloud routing. An explicit
+        # per-call model override is still honored for diagnostics.
+        model = explicit_model or get_config_value(
+            "JARVIS_HELPER_LLM_MODEL", "jarvis-minicpm5-1b"
+        )
+        device = str(
+            get_config_value("JARVIS_HELPER_LLM_DEVICE", "auto") or "auto"
+        ).strip().lower()
+        if device not in {"auto", "cpu"}:
+            raise ValueError("JARVIS_HELPER_LLM_DEVICE must be 'auto' or 'cpu'")
+        provider = create_provider(
+            "ollama",
+            base_url=get_config_value(
+                "JARVIS_HELPER_LLM_BASE_URL", "http://127.0.0.1:11434"
+            ),
+            model=model,
+            include_localhost_fallback=False,
+            context_window=get_int("JARVIS_HELPER_LLM_CONTEXT_WINDOW", 8192),
+            num_gpu=0 if device == "cpu" else None,
+            keep_alive=get_config_value("JARVIS_HELPER_LLM_KEEP_ALIVE", "30m"),
+            default_max_tokens=get_int("JARVIS_HELPER_LLM_MAX_TOKENS", 1024),
+            temperature=get_float("JARVIS_HELPER_LLM_TEMPERATURE", 0.2),
+            request_timeout=get_int("JARVIS_HELPER_LLM_TIMEOUT_SECONDS", 120),
+            force_no_thinking=True,
+            force_local_daemon=True,
         )
         return provider_type, getattr(provider, "model", model), provider
     if provider_type == "ollama":
@@ -2430,7 +2519,16 @@ def create_provider(provider_type: str, **config) -> LLMProvider:
     elif provider_type == "ollama":
         return OllamaProvider(
             base_url=config["base_url"],
-            model=config["model"]
+            model=config["model"],
+            include_localhost_fallback=config.get("include_localhost_fallback"),
+            context_window=config.get("context_window"),
+            num_gpu=config.get("num_gpu"),
+            keep_alive=config.get("keep_alive"),
+            default_max_tokens=config.get("default_max_tokens"),
+            temperature=config.get("temperature"),
+            request_timeout=config.get("request_timeout", 180),
+            force_no_thinking=config.get("force_no_thinking", False),
+            force_local_daemon=config.get("force_local_daemon", False),
         )
     else:
         raise ValueError(f"Unknown provider type: {provider_type}")

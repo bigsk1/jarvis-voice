@@ -525,6 +525,38 @@ processing remains separate because decoding and transformation still require
 bounded pixel memory. Very large media such as multi-gigabyte movies should use
 dedicated media storage or external object storage rather than normal Stash.
 
+### 13) Native Helper LLM as a Zero-API-Cost Execution Tier
+**Priority:** Low–Medium / expand only after per-role evaluation
+**Status:** Native opt-in foundation implemented; Docker bundling deferred
+
+The baked-in Ollama helper should remain independent of the primary chat model
+and can become a shared execution tier for short, bounded, frequent tasks with
+no external API charge. Status phrases and Stash metadata summaries are the
+first roles; general text summarization remains behind its existing quality
+gate.
+
+**Potential extensions:**
+- Prompt enhancement, query cleanup, and lightweight query rewriting
+- Schema-constrained classification, tag/entity extraction, and metadata normalization
+- Short routing hints or argument normalization for deterministic workflows
+- Other simple internal transformations where a full primary-model call is wasteful
+
+**Rollout boundaries:**
+- Keep every role explicitly opt-in; do not silently replace the primary model
+- Use small prompts, bounded context/output, thinking disabled, and low temperature
+- Validate structured output against the expected schema and reject malformed or
+  low-confidence results
+- Preserve the current static, extractive, deterministic, or primary-model fallback
+  for each role
+- Keep status generation off the primary request's critical path
+- Benchmark latency and task accuracy on CPU and `auto` before enabling each role
+
+The existing classification plumbing is a useful future target, but the initial
+MiniCPM5-1B benchmark produced only 1/4 exact classifications, so it should stay
+disabled until the prompt/schema or model passes a representative quality gate.
+Docker should remain deferred until there is an explicit opt-in model download,
+storage, and resource-management design.
+
 ---
 
 ## 📊 Implementation Priority
@@ -548,6 +580,7 @@ dedicated media storage or external object storage rather than normal Stash.
 **Low Priority (Future):**
 - Smart home integration (optional)
 - Advanced visualizations
+- Native helper LLM execution-tier extensions, after per-role evaluation
 - Streaming and atomic Stash ingestion, if large or concurrent workloads create measured pressure
 
 ---
@@ -940,5 +973,5 @@ Optional: Phase 3B tool recall filter only if search_memory noise returns
 
 ---
 
-**Last Updated:** July 1, 2026  
-**Version:** 2.8 (Added media model picker roadmap item for Web AI config)
+**Last Updated:** August 15, 2026
+**Version:** 2.9 (Added native helper LLM execution-tier roadmap)

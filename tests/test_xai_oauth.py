@@ -439,6 +439,7 @@ def test_stash_summary_uses_xai_oauth_provider(tmp_path):
         patch.object(xai_oauth, "get_grok_cli_version", return_value="0.2.82"),
         patch.dict(os.environ, {
             "LLM_PROVIDER": "xai",
+            "STASH_SUMMARIZE_LLM_PROVIDER": "xai",
             "XAI_AUTH_MODE": "oauth",
             "XAI_API_KEY": "",
             "XAI_SEARCH": "false",

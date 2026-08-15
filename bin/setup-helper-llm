@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MODE="cloud"
+MODEL_NAME="jarvis-minicpm5-1b"
+BASE_URL="http://127.0.0.1:11434"
+FORCE_DOWNLOAD="false"
+
+usage() {
+    printf '%s\n' \
+        "Usage: ./bin/setup-helper-llm [--mode cloud|local] [--model NAME] [--base-url URL] [--force-download]" \
+        "" \
+        "Downloads the pinned MiniCPM5-1B Q4_K_M GGUF, verifies SHA-256," \
+        "imports it into a native host Ollama daemon, and removes the temporary GGUF."
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --mode)
+            MODE="${2:?--mode requires cloud or local}"
+            shift 2
+            ;;
+        --model)
+            MODEL_NAME="${2:?--model requires a name}"
+            shift 2
+            ;;
+        --base-url)
+            BASE_URL="${2:?--base-url requires a URL}"
+            shift 2
+            ;;
+        --force-download)
+            FORCE_DOWNLOAD="true"
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            printf 'Unknown argument: %s\n' "$1" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
+if [[ "$MODE" != "cloud" && "$MODE" != "local" ]]; then
+    printf 'Invalid mode: %s\n' "$MODE" >&2
+    exit 2
+fi
+
+PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
+if [[ ! -x "$PYTHON_BIN" ]]; then
+    printf 'Missing repo environment. Run: uv sync --dev\n' >&2
+    exit 1
+fi
+if ! command -v ollama >/dev/null 2>&1; then
+    printf 'Ollama is required for the native helper model.\n' >&2
+    exit 1
+fi
+
+TEMP_DIR="$(mktemp -d -t jarvis-minicpm5-1b.XXXXXX)"
+cleanup() {
+    if [[ -n "${TEMP_DIR:-}" && "$TEMP_DIR" == /tmp/jarvis-minicpm5-1b.* ]]; then
+        rm -rf -- "$TEMP_DIR"
+    fi
+}
+trap cleanup EXIT
+
+printf 'Downloading pinned MiniCPM5-1B Q4_K_M release...\n'
+MODEL_PATH="$({
+    PYTHONPATH="$ROOT_DIR/lib" \
+    JARVIS_MODE="$MODE" \
+    JARVIS_HELPER_DOWNLOAD_DIR="$TEMP_DIR" \
+    JARVIS_HELPER_FORCE_DOWNLOAD="$FORCE_DOWNLOAD" \
+    "$PYTHON_BIN" - <<'PY'
+import os
+from pathlib import Path
+
+from config_loader import get_config_value, load_config
+from huggingface_hub import hf_hub_download
+
+mode = os.environ["JARVIS_MODE"]
+load_config(mode)
+raw_tokens = str(get_config_value("HF_AUTH_TOKENS", "") or "")
+token = next((item.strip() for item in raw_tokens.split(",") if item.strip()), None)
+download_dir = Path(os.environ["JARVIS_HELPER_DOWNLOAD_DIR"])
+path = hf_hub_download(
+    repo_id="openbmb/MiniCPM5-1B-GGUF",
+    filename="MiniCPM5-1B-Q4_K_M.gguf",
+    revision="87007042419d30c1d8f38ef065424ee33870831e",
+    local_dir=download_dir,
+    token=token,
+    force_download=os.environ.get("JARVIS_HELPER_FORCE_DOWNLOAD") == "true",
+)
+print(path)
+PY
+} | tail -n 1)"
+
+EXPECTED_SHA256="81b64d05a23b17b34c475f42b3e72fbde62d4b92cc34541f7a8031d0752deafa"
+ACTUAL_SHA256="$(sha256sum "$MODEL_PATH" | awk '{print $1}')"
+if [[ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]]; then
+    printf 'GGUF checksum mismatch. Expected %s, got %s\n' "$EXPECTED_SHA256" "$ACTUAL_SHA256" >&2
+    exit 1
+fi
+
+printf 'Importing verified GGUF into Ollama as %s...\n' "$MODEL_NAME"
+MODELFILE_PATH="$TEMP_DIR/Modelfile"
+sed "s|__GGUF_PATH__|$MODEL_PATH|g" \
+    "$ROOT_DIR/config/ollama/minicpm5-1b.Modelfile.in" \
+    > "$MODELFILE_PATH"
+OLLAMA_HOST="$BASE_URL" ollama create "$MODEL_NAME" -f "$MODELFILE_PATH"
+
+OLLAMA_HOST="$BASE_URL" ollama show "$MODEL_NAME" >/dev/null
+printf 'Ready: %s on %s\n' "$MODEL_NAME" "$BASE_URL"

@@ -76,6 +76,49 @@ the daemon user to run `ollama signin`, and do not enable direct API-key access.
 The default remains `false`, keeping local inference, databases, and embeddings
 local.
 
+## Optional native helper model
+
+Native cloud and local installs can route selected lightweight helper roles to
+one host-local Ollama model without changing the primary chat provider or
+`OLLAMA_BASE_URL`. Docker does not install or enable this path.
+
+Install the pinned MiniCPM5-1B Q4_K_M model into the host daemon:
+
+```bash
+./bin/setup-helper-llm --mode cloud
+```
+
+The installer reads `HF_AUTH_TOKENS` from the selected mode when present,
+verifies the pinned GGUF SHA-256, imports `jarvis-minicpm5-1b`, and removes its
+temporary download. Configure the independent helper endpoint and opt in each
+role explicitly:
+
+```bash
+JARVIS_HELPER_LLM_BASE_URL="http://127.0.0.1:11434"
+JARVIS_HELPER_LLM_MODEL="jarvis-minicpm5-1b"
+# Device options: auto or cpu
+JARVIS_HELPER_LLM_DEVICE="auto"
+JARVIS_HELPER_LLM_KEEP_ALIVE="30m"
+JARVIS_HELPER_LLM_CONTEXT_WINDOW=8192
+JARVIS_HELPER_LLM_TEMPERATURE=0.2
+
+STATUS_LLM_PROVIDER=helper
+STASH_SUMMARIZE_LLM_PROVIDER=helper
+TEXT_SUMMARIZER_LLM_PROVIDER=helper
+```
+
+The helper provider never inherits `JARVIS_MODE`, `OLLAMA_BASE_URL`,
+`OLLAMA_MODEL`, or `OLLAMA_CLOUD_MODEL`. Status generation retains its bounded
+background deadline and static fallback; stash and long-text summaries retain
+their existing truncation and extractive fallbacks.
+
+Compare forced CPU with Ollama's automatic accelerator selection:
+
+```bash
+./bin/benchmark-helper-llm
+ollama ps
+```
+
 ## Vision and image analysis
 
 Jarvis routes all image understanding through one shared module:

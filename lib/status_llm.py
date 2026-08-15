@@ -9,6 +9,7 @@ Falls back to static phrases if LLM unavailable or fails.
 """
 
 import os
+import re
 import sys
 import time
 import requests
@@ -26,6 +27,10 @@ from ollama_utils import (
 
 _STATUS_CONTEXT_MAX_CHARS = 500
 _STATUS_CONTEXT_TRUNCATED = "... [truncated]"
+_HELPER_STATUS_INSTRUCTION = (
+    "Rewrite only as a 3-8 word progress phrase. Do not answer the task, "
+    "invent facts, claim completion unless stated, or use labels."
+)
 
 
 class StatusSummarizer:
@@ -35,6 +40,9 @@ class StatusSummarizer:
     BASE_SYSTEM_PROMPT = """You are a voice assistant status updater. Generate VERY short (5-8 words)
 conversational status updates. Be natural and avoid technical jargon.
 Do not use exclamation marks.
+Describe only the action currently underway. Never invent results, facts, or
+claim completion unless the current state explicitly says it is complete.
+Do not repeat prompt labels such as "Current state" or "Tool".
 Only output the status phrase, nothing else."""
     
     def __init__(self):
@@ -57,6 +65,7 @@ Only output the status phrase, nothing else."""
         self.api_key = None
         self.base_url = None
         self.xai_provider = None
+        self.helper_provider = None
         self._last_usage_info: dict[str, Any] | None = None
         
         if self.provider == 'openai':
@@ -79,6 +88,14 @@ Only output the status phrase, nothing else."""
         elif self.provider == 'anthropic':
             self.api_key = get_config_value('ANTHROPIC_API_KEY')
             self.base_url = 'https://api.anthropic.com/v1'
+        elif self.provider == 'helper':
+            from llm_provider import create_configured_provider
+
+            _provider_name, self.model, self.helper_provider = create_configured_provider(
+                provider_override='helper',
+                disable_server_side_tools=True,
+            )
+            self.base_url = self.helper_provider.base_url
         elif self.provider == 'ollama':
             status_model = (get_config_value('STATUS_LLM_MODEL', '') or '').strip()
             from ollama_utils import resolve_ollama_model
@@ -143,17 +160,23 @@ Be unpredictable, energetic, and slightly unhinged. Have fun with it!""")
         
         if (
             not self.api_key
-            and self.provider not in {'ollama', 'xai'}
+            and self.provider not in {'helper', 'ollama', 'xai'}
         ):
             return None
         
         started = time.monotonic()
-        prompt = self._build_prompt(context, tool_name, event_type)
+        prompt = (
+            self._build_helper_prompt(context, tool_name, event_type)
+            if self.provider == 'helper'
+            else self._build_prompt(context, tool_name, event_type)
+        )
         self._last_usage_info = None
         result = None
         error = None
         try:
-            if self.provider == 'ollama':
+            if self.provider == 'helper':
+                result = self._call_helper(prompt, event_type=event_type)
+            elif self.provider == 'ollama':
                 result = self._call_ollama(prompt)
             elif self.provider == 'xai':
                 if not self.xai_provider:
@@ -209,7 +232,10 @@ Be unpredictable, energetic, and slightly unhinged. Have fun with it!""")
                 model=self.model,
                 prompt_type='status_update',
                 messages=[
-                    {'role': 'system', 'content': self.system_prompt},
+                    {
+                        'role': 'system',
+                        'content': '' if self.provider == 'helper' else self.system_prompt,
+                    },
                     {'role': 'user', 'content': prompt},
                 ],
                 response_text=response_text,
@@ -260,6 +286,24 @@ Current state:
 {context}
 
 Generate a natural 5-8 word status update:"""
+
+    def _build_helper_prompt(
+        self,
+        context: str,
+        tool_name: str | None,
+        event_type: str,
+    ) -> str:
+        """Use a compact rewrite prompt that a 1B local model follows reliably."""
+        context = self._truncate_context_for_prompt(context)
+        tool_label = (tool_name or "task").replace("_", " ")
+        phase = {
+            'start': 'Starting',
+            'progress': 'Working on',
+            'error': 'Recovering while handling',
+            'complete': 'Finishing',
+        }.get(event_type, 'Working on')
+        state = f"{phase} {tool_label}. {context}"
+        return f"{_HELPER_STATUS_INSTRUCTION}\nSTATE: {state}\nPHRASE:"
     
     def _call_openai_compatible(self, prompt: str) -> str | None:
         """Call OpenAI-compatible API (OpenAI, xAI)."""
@@ -395,6 +439,28 @@ Generate a natural 5-8 word status update:"""
             )
         content = result.get('response', '')
         return self._clean_response(content)
+
+    def _call_helper(self, prompt: str, *, event_type: str = 'progress') -> str | None:
+        """Call the dedicated host-local helper without mode-aware routing."""
+        if not self.helper_provider:
+            return None
+        content = self.helper_provider.chat(
+            prompt,
+            system_prompt=None,
+            max_tokens=self.max_tokens,
+        )
+        self.base_url = self.helper_provider.base_url
+        self._last_usage_info = self.helper_provider.last_usage_info
+        if content.startswith('Error:'):
+            raise RuntimeError(content)
+        lowered = content.lower()
+        if any(label in lowered for label in ('current state:', 'tool:', 'phrase:')):
+            return None
+        if event_type != 'complete' and re.search(
+            r'\b(?:complete|completed|done|finished)\b', lowered
+        ):
+            return None
+        return self._clean_response(content)
     
     def _clean_response(self, content: str) -> str | None:
         """Clean up LLM response for TTS."""
@@ -429,6 +495,8 @@ Generate a natural 5-8 word status update:"""
             return False
         if self.provider == 'xai':
             return self.xai_provider is not None
+        if self.provider == 'helper':
+            return self.helper_provider is not None
         if self.provider != 'ollama' and not self.api_key:
             return False
         return True

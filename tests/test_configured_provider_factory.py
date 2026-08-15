@@ -143,6 +143,79 @@ def test_factory_passes_explicit_mode_to_ollama_resolution(monkeypatch, configur
     ]
 
 
+def test_helper_provider_uses_dedicated_local_config_not_ollama_routing(
+    monkeypatch,
+    configured_values,
+):
+    configured_values.update(
+        {
+            "JARVIS_HELPER_LLM_BASE_URL": "http://127.0.0.1:11434",
+            "JARVIS_HELPER_LLM_MODEL": "jarvis-minicpm5-1b",
+            "JARVIS_HELPER_LLM_DEVICE": "cpu",
+            "JARVIS_HELPER_LLM_CONTEXT_WINDOW": "8192",
+            "JARVIS_HELPER_LLM_KEEP_ALIVE": "30m",
+            "JARVIS_HELPER_LLM_MAX_TOKENS": "900",
+            "JARVIS_HELPER_LLM_TIMEOUT_SECONDS": "45",
+            "TASK_MODEL": "cloud-task-model",
+        }
+    )
+    calls = []
+
+    def fake_create(selected, **config):
+        calls.append((selected, config))
+        return SimpleNamespace(model=config["model"])
+
+    monkeypatch.setattr(llm_provider, "create_provider", fake_create)
+
+    selected, model, _ = llm_provider.create_configured_provider(
+        provider_override="helper",
+        model_config_keys=("TASK_MODEL",),
+        mode="local",
+    )
+
+    assert selected == "helper"
+    assert model == "jarvis-minicpm5-1b"
+    assert calls == [
+        (
+            "ollama",
+            {
+                "base_url": "http://127.0.0.1:11434",
+                "model": "jarvis-minicpm5-1b",
+                "include_localhost_fallback": False,
+                "context_window": 8192,
+                "num_gpu": 0,
+                "keep_alive": "30m",
+                "default_max_tokens": 900,
+                "temperature": 0.2,
+                "request_timeout": 45,
+                "force_no_thinking": True,
+                "force_local_daemon": True,
+            },
+        )
+    ]
+
+
+def test_helper_provider_honors_explicit_diagnostic_model_override(
+    monkeypatch,
+    configured_values,
+):
+    configured_values["JARVIS_HELPER_LLM_MODEL"] = "configured-helper"
+    monkeypatch.setattr(
+        llm_provider,
+        "create_provider",
+        lambda _selected, **config: SimpleNamespace(model=config["model"]),
+    )
+
+    selected, model, _ = llm_provider.create_configured_provider(
+        provider_override="helper",
+        model_override="benchmark-helper",
+        mode="cloud",
+    )
+
+    assert selected == "helper"
+    assert model == "benchmark-helper"
+
+
 def test_factory_returns_provider_resolved_model(monkeypatch, configured_values):
     monkeypatch.setattr(
         llm_provider,

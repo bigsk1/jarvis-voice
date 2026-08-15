@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+"""Benchmark the native Jarvis helper model on CPU and automatic acceleration."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import statistics
+import time
+from typing import Any
+
+import requests
+
+
+STATUS_INSTRUCTION = (
+    "Rewrite only as a 3-8 word progress phrase. Do not answer the task, invent "
+    "facts, claim completion unless stated, or use labels."
+)
+
+STATUS_CASES = [
+    {"state": "Starting weather. Getting Portland weather", "keywords": ("weather", "portland")},
+    {"state": "Working on web search. Comparing laptop battery reviews", "keywords": ("search", "laptop", "battery")},
+    {"state": "Working on stash. Saving the research notes", "keywords": ("saving", "research", "notes")},
+    {"state": "Working on document OCR. Extracting text from a PDF", "keywords": ("extracting", "text", "pdf")},
+    {"state": "Working on image generation. Rendering a blue product illustration", "keywords": ("rendering", "image", "illustration")},
+    {"state": "Finishing workflow. Reviewing the final results", "keywords": ("reviewing", "results", "workflow")},
+]
+
+SUMMARY_CASES = [
+    {
+        "text": "The Atlas deployment completed on August 12, 2026 at 14:30 UTC. Version 3.8.1 reduced median API latency from 240 ms to 155 ms. No database migration was required.",
+        "facts": ["August 12, 2026", "3.8.1", "240", "155", "No database migration"],
+    },
+    {
+        "text": "Northwind sold 18,420 units in Q2. Revenue was $4.7 million, up 12 percent year over year. Returns fell from 3.1 percent to 2.4 percent. The best-selling product was Harbor Blue.",
+        "facts": ["18,420", "$4.7 million", "12", "3.1", "2.4", "Harbor Blue"],
+    },
+    {
+        "text": "A Redis connection-pool failure caused a 17-minute outage. The incident began at 09:42 UTC and affected checkout requests only. Engineers restored service by rolling back configuration change CR-882. No customer data was lost.",
+        "facts": ["Redis", "17-minute", "09:42", "checkout", "CR-882", "No customer data"],
+    },
+]
+
+CLASSIFICATION_CASES = [
+    ("The upload is an invoice PDF saved in the stash.", "artifact"),
+    ("Please call me Sir in future conversations.", "preference"),
+    ("The production API hostname is api.internal.example.", "fact"),
+    ("Use this scratch note only for the current session.", "transient"),
+]
+
+CLASSIFICATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "label": {
+            "type": "string",
+            "enum": ["artifact", "preference", "fact", "transient"],
+        }
+    },
+    "required": ["label"],
+}
+
+
+def percentile(values: list[float], fraction: float) -> float:
+    ordered = sorted(values)
+    if not ordered:
+        return 0.0
+    index = max(0, math.ceil(len(ordered) * fraction) - 1)
+    return ordered[index]
+
+
+def normalize(text: str) -> str:
+    return " ".join((text or "").strip().strip('"').strip("'").split())
+
+
+def request_chat(
+    base_url: str,
+    model: str,
+    messages: list[dict[str, str]],
+    *,
+    device: str,
+    max_tokens: int,
+    temperature: float,
+    response_format: dict[str, Any] | None = None,
+) -> tuple[str, dict[str, Any]]:
+    options: dict[str, Any] = {
+        "num_ctx": 8192,
+        "num_predict": max_tokens,
+        "temperature": temperature,
+    }
+    if device == "cpu":
+        options["num_gpu"] = 0
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "think": False,
+        "keep_alive": "30m",
+        "options": options,
+    }
+    if response_format is not None:
+        payload["format"] = response_format
+
+    started = time.monotonic()
+    response = requests.post(f"{base_url}/api/chat", json=payload, timeout=180)
+    wall_ms = (time.monotonic() - started) * 1000
+    response.raise_for_status()
+    result = response.json()
+    eval_count = int(result.get("eval_count") or 0)
+    eval_duration = int(result.get("eval_duration") or 0)
+    result["wall_ms"] = wall_ms
+    result["decode_tokens_per_second"] = (
+        eval_count / (eval_duration / 1_000_000_000) if eval_duration else 0.0
+    )
+    return normalize(result.get("message", {}).get("content", "")), result
+
+
+def unload(base_url: str, model: str) -> None:
+    requests.post(
+        f"{base_url}/api/generate",
+        json={"model": model, "keep_alive": 0},
+        timeout=60,
+    ).raise_for_status()
+
+
+def run_suite(base_url: str, model: str, device: str) -> dict[str, Any]:
+    unload(base_url, model)
+    latencies: list[float] = []
+    role_latencies: dict[str, list[float]] = {
+        "status": [],
+        "summary": [],
+        "classification": [],
+    }
+    decode_rates: list[float] = []
+    outputs: dict[str, list[Any]] = {"status": [], "summaries": [], "classification": []}
+
+    # Cold warm-up is recorded separately from steady-state measurements.
+    _, cold = request_chat(
+        base_url,
+        model,
+        [{"role": "user", "content": "Reply with: ready"}],
+        device=device,
+        max_tokens=8,
+        temperature=0,
+    )
+
+    status_valid = 0
+    for case in STATUS_CASES:
+        text, raw = request_chat(
+            base_url,
+            model,
+            [
+                {
+                    "role": "user",
+                    "content": f"{STATUS_INSTRUCTION}\nSTATE: {case['state']}\nPHRASE:",
+                },
+            ],
+            device=device,
+            max_tokens=30,
+            temperature=0.2,
+        )
+        words = text.replace("!", "").split()
+        lowered = text.lower()
+        valid = (
+            2 <= len(words) <= 15
+            and "!" not in text
+            and "\n" not in text
+            and not any(label in lowered for label in ("current state:", "tool:", "phrase:"))
+            and not any(word in lowered for word in ("sunny", "rain", "humid", "lost"))
+            and not any(word in lowered.split() for word in ("complete", "completed", "done", "finished"))
+            and any(keyword in lowered for keyword in case["keywords"])
+        )
+        status_valid += int(valid)
+        outputs["status"].append({"text": text, "valid": valid})
+        latencies.append(raw["wall_ms"])
+        role_latencies["status"].append(raw["wall_ms"])
+        decode_rates.append(raw["decode_tokens_per_second"])
+
+    retained = 0
+    total_facts = 0
+    for case in SUMMARY_CASES:
+        text, raw = request_chat(
+            base_url,
+            model,
+            [
+                {"role": "system", "content": "Summarize precisely. Preserve every name, number, date, and conclusion. Return only the summary."},
+                {"role": "user", "content": case["text"]},
+            ],
+            device=device,
+            max_tokens=180,
+            temperature=0.2,
+        )
+        found = [fact for fact in case["facts"] if fact.lower() in text.lower()]
+        retained += len(found)
+        total_facts += len(case["facts"])
+        outputs["summaries"].append(
+            {"text": text, "facts_retained": len(found), "facts_total": len(case["facts"])}
+        )
+        latencies.append(raw["wall_ms"])
+        role_latencies["summary"].append(raw["wall_ms"])
+        decode_rates.append(raw["decode_tokens_per_second"])
+
+    json_valid = 0
+    exact = 0
+    for prompt, expected in CLASSIFICATION_CASES:
+        text, raw = request_chat(
+            base_url,
+            model,
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "Classify the input using these definitions: artifact is a file, upload, "
+                        "document, image, or stash item; preference is a user choice for future "
+                        "behavior; fact is durable information about the world or a system; "
+                        "transient is temporary, session-only, scratch, or short-lived. Return "
+                        "only the schema-conforming JSON object."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            device=device,
+            max_tokens=30,
+            temperature=0,
+            response_format=CLASSIFICATION_SCHEMA,
+        )
+        label = None
+        try:
+            label = json.loads(text).get("label")
+            json_valid += 1
+        except (json.JSONDecodeError, AttributeError):
+            pass
+        exact += int(label == expected)
+        outputs["classification"].append(
+            {"input": prompt, "expected": expected, "actual": label, "raw": text}
+        )
+        latencies.append(raw["wall_ms"])
+        role_latencies["classification"].append(raw["wall_ms"])
+        decode_rates.append(raw["decode_tokens_per_second"])
+
+    return {
+        "device": device,
+        "cold_start_ms": round(cold["wall_ms"], 2),
+        "warm_latency_ms": {
+            "median": round(statistics.median(latencies), 2),
+            "p95": round(percentile(latencies, 0.95), 2),
+            "max": round(max(latencies), 2),
+        },
+        "latency_by_role_ms": {
+            role: {
+                "median": round(statistics.median(values), 2),
+                "p95": round(percentile(values, 0.95), 2),
+                "max": round(max(values), 2),
+            }
+            for role, values in role_latencies.items()
+        },
+        "decode_tokens_per_second": {
+            "median": round(statistics.median(decode_rates), 2),
+            "min": round(min(decode_rates), 2),
+        },
+        "quality": {
+            "status_format_pass_rate": round(status_valid / len(STATUS_CASES), 3),
+            "summary_fact_retention": round(retained / total_facts, 3),
+            "classification_json_valid_rate": round(json_valid / len(CLASSIFICATION_CASES), 3),
+            "classification_exact_rate": round(exact / len(CLASSIFICATION_CASES), 3),
+        },
+        "outputs": outputs,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-url", default="http://127.0.0.1:11434")
+    parser.add_argument("--model", default="jarvis-minicpm5-1b")
+    parser.add_argument("--devices", nargs="+", choices=("cpu", "auto"), default=("cpu", "auto"))
+    args = parser.parse_args()
+
+    results = [run_suite(args.base_url.rstrip("/"), args.model, device) for device in args.devices]
+    print(json.dumps({"model": args.model, "results": results}, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

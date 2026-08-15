@@ -85,6 +85,19 @@ def test_build_prompt_keeps_long_context_with_truncation_marker():
     assert "Working on task" not in prompt.split("Current state:")[1]
 
 
+def test_helper_prompt_is_a_compact_rewrite_contract():
+    summarizer = status_llm.StatusSummarizer.__new__(status_llm.StatusSummarizer)
+    prompt = summarizer._build_helper_prompt(
+        "Getting Portland weather",
+        "weather",
+        "start",
+    )
+
+    assert "Rewrite only as a 3-8 word progress phrase" in prompt
+    assert "STATE: Starting weather. Getting Portland weather" in prompt
+    assert prompt.endswith("PHRASE:")
+
+
 def test_clean_response_strips_exclamation_marks_for_tts():
     summarizer = status_llm.StatusSummarizer()
     assert summarizer._clean_response("Digging for info like a pro!") == (
