@@ -2326,6 +2326,69 @@ def _extract_system_monitor_followup(payload: dict) -> dict:
     return {'system_snapshot': snapshot} if snapshot else {}
 
 
+def _extract_gpu_hot_status_followup(payload: dict, max_candidates: int) -> dict:
+    """Preserve the bounded remote GPU/host snapshot for later questions."""
+    extracted = {}
+    for field in (
+        'host_label', 'transport', 'dashboard_url', 'timestamp',
+        'gpu_count', 'process_count', 'processes_truncated',
+    ):
+        value = payload.get(field)
+        if value not in (None, '', [], {}):
+            extracted[field] = value
+
+    gpus = payload.get('gpus')
+    if isinstance(gpus, list):
+        compact_gpus = []
+        for gpu in gpus[:max_candidates]:
+            if not isinstance(gpu, dict):
+                continue
+            compact = {
+                field: gpu[field]
+                for field in (
+                    'index', 'name', 'utilization_percent',
+                    'vram_used_mib', 'vram_total_mib',
+                    'vram_capacity_percent', 'temperature_c',
+                    'power_draw_w', 'performance_state',
+                )
+                if gpu.get(field) not in (None, '', [], {})
+            }
+            if compact:
+                compact_gpus.append(compact)
+        if compact_gpus:
+            extracted['gpus'] = compact_gpus
+
+    system = payload.get('system')
+    if isinstance(system, dict):
+        compact_system = {
+            field: system[field]
+            for field in (
+                'cpu_percent', 'cpu_count', 'load_average_1m',
+                'ram_percent', 'ram_used_gb', 'ram_total_gb', 'swap_percent',
+            )
+            if system.get(field) not in (None, '', [], {})
+        }
+        if compact_system:
+            extracted['system'] = compact_system
+
+    processes = payload.get('processes')
+    if isinstance(processes, list):
+        compact_processes = []
+        for process in processes[:max_candidates]:
+            if not isinstance(process, dict):
+                continue
+            compact = {
+                field: process[field]
+                for field in ('pid', 'name', 'gpu_index', 'vram_mib')
+                if process.get(field) not in (None, '', [], {})
+            }
+            if compact:
+                compact_processes.append(compact)
+        if compact_processes:
+            extracted['processes'] = compact_processes
+    return extracted
+
+
 def _extract_bounded_content_followup(
     key: str,
     payload: dict,
@@ -2438,6 +2501,9 @@ def _extract_bounded_content_followup(
 
     if key == 'system_monitor':
         extracted.update(_extract_system_monitor_followup(payload))
+
+    if key == 'gpu_hot_status':
+        extracted.update(_extract_gpu_hot_status_followup(payload, max_candidates))
 
     return extracted
 

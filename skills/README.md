@@ -279,6 +279,7 @@ JSON object printed to stdout:
 | `docker_control` | Docker/compose management |
 | `network_tools` | Ping, DNS, port checks, traceroute |
 | `system_monitor` | CPU, RAM, disk, processes |
+| `gpu_hot_status` | Remote GPU Hot GPU, process, and host metrics |
 | `speaker_volume` | Audio volume control |
 
 ### Integrations

@@ -1,0 +1,24 @@
+# Template: render with ../../bin/render-systemd-unit.sh before installing so account paths match the target user.
+[Unit]
+Description=GPU Hot Monitor for Jarvis Alerts
+After=network-online.target jarvis-api.service
+Wants=network-online.target jarvis-api.service
+
+[Service]
+Type=simple
+User=__JARVIS_USER__
+Group=__JARVIS_GROUP__
+WorkingDirectory=__JARVIS_HOME__/jarvis-voice/services/gpu-hot-monitor
+EnvironmentFile=__JARVIS_HOME__/jarvis-voice/services/gpu-hot-monitor/config.env
+ExecStart=__JARVIS_HOME__/jarvis-venv/bin/python3 gpu_hot_monitor.py
+Restart=always
+RestartSec=10
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+ReadWritePaths=__JARVIS_HOME__/jarvis-voice/logs
+
+[Install]
+WantedBy=multi-user.target

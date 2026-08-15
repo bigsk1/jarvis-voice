@@ -72,7 +72,8 @@ const expectedTools = [
   'serpapi_google_local_services',
   'serpapi_maps_search',
   'serpapi_youtube_search',
-  'weather'
+  'weather',
+  'gpu_hot_status'
 ];
 if (JSON.stringify(renderer.registeredTools()) !== JSON.stringify(expectedTools)) process.exit(2);
 
@@ -1477,6 +1478,51 @@ const detailEmbeds = harness._collectYouTubeEmbeds('', '', {{
 if (detailEmbeds.length !== 1) process.exit(5);
 if (detailEmbeds[0].videoId !== 'selected123') process.exit(6);
 if (detailEmbeds[0].title !== 'Selected video') process.exit(7);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
+def test_gpu_hot_renderer_formats_gpu_host_and_process_metrics():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const escapeHtml = value => String(value)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const sandbox = {{
+  URL,
+  window: {{}},
+  console,
+  Utils: {{
+    escapeHtml,
+    safeHttpUrlForAttr: value => escapeHtml(new URL(String(value)).href)
+  }}
+}};
+vm.createContext(sandbox);
+vm.runInContext(source, sandbox);
+const html = sandbox.window.structuredResultsRenderer.render({{
+  gpu_hot_status: {{
+    host_label: 'Mini AI',
+    transport: 'websocket',
+    dashboard_url: 'http://gpu-host:1312/',
+    gpus: [{{
+      index: '0', name: 'RTX 5060 Ti', utilization_percent: 72,
+      vram_used_mib: 12288, vram_total_mib: 16384,
+      vram_capacity_percent: 75, temperature_c: 61, power_draw_w: 118
+    }}],
+    processes: [{{name: 'ollama', gpu_index: '0', vram_mib: 8192}}],
+    system: {{cpu_percent: 1, ram_percent: 12}}
+  }}
+}});
+for (const expected of [
+  'GPU Hot', 'Mini AI', 'RTX 5060 Ti', '61 °C', '72% utilized',
+  '75% VRAM', 'ollama 8,192 MiB', 'Host CPU 1%', 'RAM 12%',
+  'Open dashboard', 'structured-results-layout-metrics'
+]) {{
+  if (!html.includes(expected)) process.exit(2);
+}}
 """
 
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)

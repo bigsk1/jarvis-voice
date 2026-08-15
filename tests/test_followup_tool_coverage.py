@@ -314,6 +314,40 @@ LOCAL_TOOL_SAMPLES = {
             "owner": "example",
         }
     ),
+    "gpu_hot_status": _case(
+        {
+            "host_label": "Mini AI",
+            "transport": "websocket",
+            "dashboard_url": "http://gpu-host:1312/",
+            "timestamp": "2026-08-15T01:50:30Z",
+            "gpu_count": 1,
+            "gpus": [
+                {
+                    "index": "0",
+                    "name": "NVIDIA GeForce RTX 5060 Ti",
+                    "utilization_percent": 72.0,
+                    "vram_used_mib": 12288.0,
+                    "vram_total_mib": 16311.0,
+                    "vram_capacity_percent": 75.3,
+                    "temperature_c": 61.0,
+                    "power_draw_w": 118.0,
+                }
+            ],
+            "process_count": 2,
+            "processes": [
+                {"pid": 2796, "name": "parakeet-server", "gpu_index": "0", "vram_mib": 1496.0},
+                {"pid": 3489, "name": "uvicorn", "gpu_index": "0", "vram_mib": 812.0},
+            ],
+            "system": {
+                "cpu_percent": 1.0,
+                "cpu_count": 12,
+                "load_average_1m": 0.14,
+                "ram_percent": 12.0,
+                "ram_used_gb": 5.26,
+                "ram_total_gb": 49.01,
+            },
+        }
+    ),
     "ingest_intel": _case(
         {"ingested": True, "new_files": 2, "total_facts": 17, "partial": False}
     ),

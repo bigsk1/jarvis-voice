@@ -194,6 +194,7 @@
       "get_recent_conversations": "_family_memory",
       "get_time": "_family_lookup",
       "git_release_notes": "_family_developer_ops",
+      "gpu_hot_status": "system_monitor",
       "list_alerts": "_family_alerts",
       "list_reminders": "_family_reminders",
       "memory_deduper": "_family_memory",

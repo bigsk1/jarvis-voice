@@ -1,0 +1,40 @@
+{
+  "enabled": true,
+  "name": "gpu_hot_status",
+  "proxy_policy": "off",
+  "description": "Check the dedicated GPU Hot dashboard host used by Jarvis for local GPU inference and helper services. Returns current NVIDIA GPU utilization, allocated VRAM capacity, temperature, power, GPU processes, and host CPU/RAM/load data. Use for questions like 'how is Mini AI doing?', 'check the GPU host', 'how much VRAM is loaded?', 'what is using the GPU?', 'is the local inference machine overloaded?', or before/after diagnosing local Ollama, Qwen TTS, transcription, or other GPU-backed tool execution. This is the remote helper host; use system_monitor for the machine running Jarvis itself. Omit base_url to use GPU_HOT_URL or the ignored gpu-hot-monitor config.",
+  "script": "gpu_hot_status.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "base_url": {
+        "type": "string",
+        "description": "Optional GPU Hot dashboard base URL, such as http://gpu-host:1312. Omit to use configured GPU_HOT_URL."
+      },
+      "host_label": {
+        "type": "string",
+        "description": "Optional friendly host label for the response. Defaults to GPU_HOT_HOST_LABEL or Mini AI."
+      },
+      "include_host": {
+        "type": "boolean",
+        "description": "When true (default), read one WebSocket snapshot for host CPU/RAM and GPU processes. Falls back to GPU-only REST metrics if needed."
+      },
+      "max_processes": {
+        "type": "integer",
+        "description": "Maximum GPU processes to return, ordered by VRAM usage. Range 0-25; default 10."
+      },
+      "timeout_seconds": {
+        "type": "number",
+        "description": "Network timeout in seconds. Range 1-15; default 8."
+      }
+    },
+    "required": []
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  }
+}

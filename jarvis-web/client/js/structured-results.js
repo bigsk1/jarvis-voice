@@ -360,6 +360,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_maps_search', payload => this._adaptMaps(payload));
     this.register('serpapi_youtube_search', payload => this._adaptYouTubeSearch(payload));
     this.register('weather', payload => this._adaptWeather(payload));
+    this.register('gpu_hot_status', payload => this._adaptGpuHotStatus(payload));
   }
 
   _bindScrollControls() {
@@ -1874,6 +1875,55 @@ class StructuredResultsRenderer {
       eyebrow: 'Weather',
       heading: payload.location || 'Forecast',
       subtitle: current.join(' · '),
+      items,
+    };
+  }
+
+  _adaptGpuHotStatus(payload) {
+    const gpus = Array.isArray(payload.gpus) ? payload.gpus : [];
+    const processes = Array.isArray(payload.processes) ? payload.processes : [];
+    const formatNumber = value => {
+      const number = Number(value);
+      return Number.isFinite(number) ? number.toLocaleString(undefined, {maximumFractionDigits: 1}) : '';
+    };
+    const items = gpus.map((gpu, index) => {
+      const gpuIndex = String(gpu.index ?? index);
+      const gpuProcesses = processes.filter(process => String(process.gpu_index ?? '') === gpuIndex);
+      const chips = [];
+      if (gpu.utilization_percent != null) chips.push(`${formatNumber(gpu.utilization_percent)}% utilized`);
+      if (gpu.vram_capacity_percent != null) chips.push(`${formatNumber(gpu.vram_capacity_percent)}% VRAM`);
+      if (gpu.power_draw_w != null) chips.push(`${formatNumber(gpu.power_draw_w)} W`);
+      const details = [];
+      if (gpu.vram_used_mib != null && gpu.vram_total_mib != null) {
+        details.push(`${formatNumber(Number(gpu.vram_used_mib) / 1024)} / ${formatNumber(Number(gpu.vram_total_mib) / 1024)} GiB allocated`);
+      }
+      if (gpuProcesses.length) {
+        details.push(gpuProcesses.slice(0, 4).map(process => {
+          const memory = process.vram_mib != null ? ` ${formatNumber(process.vram_mib)} MiB` : '';
+          return `${process.name || 'process'}${memory}`;
+        }).join(' · '));
+      }
+      return {
+        title: gpu.name || `GPU ${gpuIndex}`,
+        primary: gpu.temperature_c != null ? `${formatNumber(gpu.temperature_c)} °C` : '',
+        chips,
+        details,
+      };
+    });
+    const system = payload.system && typeof payload.system === 'object' ? payload.system : {};
+    const subtitle = [
+      system.cpu_percent != null ? `Host CPU ${formatNumber(system.cpu_percent)}%` : '',
+      system.ram_percent != null ? `RAM ${formatNumber(system.ram_percent)}%` : '',
+      payload.transport ? String(payload.transport) : '',
+    ].filter(Boolean).join(' · ');
+    return {
+      kind: 'generic',
+      layout: 'metrics',
+      eyebrow: 'GPU Hot',
+      heading: payload.host_label || payload.node_name || 'GPU host',
+      subtitle,
+      actionUrl: payload.dashboard_url,
+      actionLabel: 'Open dashboard',
       items,
     };
   }
