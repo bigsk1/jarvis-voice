@@ -271,7 +271,10 @@ def run_suite(base_url: str, model: str, device: str) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:11434")
-    parser.add_argument("--model", default="jarvis-minicpm5-1b")
+    parser.add_argument(
+        "--model",
+        default="bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1",
+    )
     parser.add_argument("--devices", nargs="+", choices=("cpu", "auto"), default=("cpu", "auto"))
     args = parser.parse_args()
 

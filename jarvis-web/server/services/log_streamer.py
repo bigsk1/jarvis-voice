@@ -32,6 +32,8 @@ class LogStreamer:
     """
     Tails multiple log files and broadcasts parsed entries via callback.
     """
+
+    HELPER_DISPLAY_NAME = 'jarvis-helper-llm'
     
     # Log source configurations
     # NOTE: Paths are relative to JARVIS_ROOT
@@ -229,8 +231,14 @@ class LogStreamer:
             else:
                 duration_str = f"{duration:.0f}ms"
             
-            # Format title
-            title = f"{provider}/{model} → {total_tokens} tokens"
+            # Keep the registry-qualified helper model in details/raw logs while
+            # using a compact role label in the collapsed Server Logs row.
+            display_identity = (
+                self.HELPER_DISPLAY_NAME
+                if provider == 'helper'
+                else f"{provider}/{model}"
+            )
+            title = f"{display_identity} → {total_tokens} tokens"
             if cost_unknown and total_tokens:
                 title += " (subscription)"
             elif cost > 0:

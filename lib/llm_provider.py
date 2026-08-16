@@ -2444,7 +2444,8 @@ def create_configured_provider(
         # JARVIS_MODE, OLLAMA_BASE_URL, and Ollama Cloud routing. An explicit
         # per-call model override is still honored for diagnostics.
         model = explicit_model or get_config_value(
-            "JARVIS_HELPER_LLM_MODEL", "jarvis-minicpm5-1b"
+            "JARVIS_HELPER_LLM_MODEL",
+            "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1",
         )
         device = str(
             get_config_value("JARVIS_HELPER_LLM_DEVICE", "auto") or "auto"

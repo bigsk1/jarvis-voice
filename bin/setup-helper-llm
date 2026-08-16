@@ -3,16 +3,17 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODE="cloud"
-MODEL_NAME="jarvis-minicpm5-1b"
-BASE_URL="http://127.0.0.1:11434"
-FORCE_DOWNLOAD="false"
+DEFAULT_MODEL="bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1"
+MODEL_NAME=""
+BASE_URL=""
 
 usage() {
     printf '%s\n' \
-        "Usage: ./bin/setup-helper-llm [--mode cloud|local] [--model NAME] [--base-url URL] [--force-download]" \
+        "Usage: ./bin/setup-helper-llm [--mode cloud|local] [--model NAME] [--base-url URL]" \
         "" \
-        "Downloads the pinned MiniCPM5-1B Q4_K_M GGUF, verifies SHA-256," \
-        "imports it into a native host Ollama daemon, and removes the temporary GGUF."
+        "Pulls the configured Jarvis helper model onto its native Ollama daemon." \
+        "Defaults come from JARVIS_HELPER_LLM_MODEL and JARVIS_HELPER_LLM_BASE_URL" \
+        "in the selected mode's ENV file."
 }
 
 while [[ $# -gt 0 ]]; do
@@ -28,10 +29,6 @@ while [[ $# -gt 0 ]]; do
         --base-url)
             BASE_URL="${2:?--base-url requires a URL}"
             shift 2
-            ;;
-        --force-download)
-            FORCE_DOWNLOAD="true"
-            shift
             ;;
         -h|--help)
             usage
@@ -50,67 +47,62 @@ if [[ "$MODE" != "cloud" && "$MODE" != "local" ]]; then
     exit 2
 fi
 
-PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
-if [[ ! -x "$PYTHON_BIN" ]]; then
-    printf 'Missing repo environment. Run: uv sync --dev\n' >&2
-    exit 1
-fi
 if ! command -v ollama >/dev/null 2>&1; then
     printf 'Ollama is required for the native helper model.\n' >&2
     exit 1
 fi
 
-TEMP_DIR="$(mktemp -d -t jarvis-minicpm5-1b.XXXXXX)"
-cleanup() {
-    if [[ -n "${TEMP_DIR:-}" && "$TEMP_DIR" == /tmp/jarvis-minicpm5-1b.* ]]; then
-        rm -rf -- "$TEMP_DIR"
+if [[ -z "$MODEL_NAME" || -z "$BASE_URL" ]]; then
+    PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
+    if [[ ! -x "$PYTHON_BIN" ]]; then
+        printf 'Missing repo environment. Run: uv sync --dev\n' >&2
+        exit 1
     fi
-}
-trap cleanup EXIT
 
-printf 'Downloading pinned MiniCPM5-1B Q4_K_M release...\n'
-MODEL_PATH="$({
+    HELPER_CONFIG="$({
     PYTHONPATH="$ROOT_DIR/lib" \
     JARVIS_MODE="$MODE" \
-    JARVIS_HELPER_DOWNLOAD_DIR="$TEMP_DIR" \
-    JARVIS_HELPER_FORCE_DOWNLOAD="$FORCE_DOWNLOAD" \
+    JARVIS_HELPER_DEFAULT_MODEL="$DEFAULT_MODEL" \
     "$PYTHON_BIN" - <<'PY'
 import os
-from pathlib import Path
 
 from config_loader import get_config_value, load_config
-from huggingface_hub import hf_hub_download
 
 mode = os.environ["JARVIS_MODE"]
 load_config(mode)
-raw_tokens = str(get_config_value("HF_AUTH_TOKENS", "") or "")
-token = next((item.strip() for item in raw_tokens.split(",") if item.strip()), None)
-download_dir = Path(os.environ["JARVIS_HELPER_DOWNLOAD_DIR"])
-path = hf_hub_download(
-    repo_id="openbmb/MiniCPM5-1B-GGUF",
-    filename="MiniCPM5-1B-Q4_K_M.gguf",
-    revision="87007042419d30c1d8f38ef065424ee33870831e",
-    local_dir=download_dir,
-    token=token,
-    force_download=os.environ.get("JARVIS_HELPER_FORCE_DOWNLOAD") == "true",
-)
-print(path)
+model = str(
+    get_config_value(
+        "JARVIS_HELPER_LLM_MODEL",
+        os.environ["JARVIS_HELPER_DEFAULT_MODEL"],
+    )
+    or os.environ["JARVIS_HELPER_DEFAULT_MODEL"]
+).strip()
+base_url = str(
+    get_config_value(
+        "JARVIS_HELPER_LLM_BASE_URL",
+        "http://127.0.0.1:11434",
+    )
+    or "http://127.0.0.1:11434"
+).strip()
+print(f"{model}\t{base_url}")
 PY
-} | tail -n 1)"
+    } | tail -n 1)"
 
-EXPECTED_SHA256="81b64d05a23b17b34c475f42b3e72fbde62d4b92cc34541f7a8031d0752deafa"
-ACTUAL_SHA256="$(sha256sum "$MODEL_PATH" | awk '{print $1}')"
-if [[ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]]; then
-    printf 'GGUF checksum mismatch. Expected %s, got %s\n' "$EXPECTED_SHA256" "$ACTUAL_SHA256" >&2
-    exit 1
+    if [[ "$HELPER_CONFIG" != *$'\t'* ]]; then
+        printf 'Could not read helper model configuration for %s mode.\n' "$MODE" >&2
+        exit 1
+    fi
+    IFS=$'\t' read -r CONFIG_MODEL CONFIG_BASE_URL <<< "$HELPER_CONFIG"
+    MODEL_NAME="${MODEL_NAME:-${CONFIG_MODEL:-$DEFAULT_MODEL}}"
+    BASE_URL="${BASE_URL:-${CONFIG_BASE_URL:-http://127.0.0.1:11434}}"
 fi
 
-printf 'Importing verified GGUF into Ollama as %s...\n' "$MODEL_NAME"
-MODELFILE_PATH="$TEMP_DIR/Modelfile"
-sed "s|__GGUF_PATH__|$MODEL_PATH|g" \
-    "$ROOT_DIR/config/ollama/minicpm5-1b.Modelfile.in" \
-    > "$MODELFILE_PATH"
-OLLAMA_HOST="$BASE_URL" ollama create "$MODEL_NAME" -f "$MODELFILE_PATH"
+if [[ -z "$MODEL_NAME" || -z "$BASE_URL" ]]; then
+    printf 'Helper model and base URL must not be empty.\n' >&2
+    exit 2
+fi
 
+printf 'Pulling %s onto %s...\n' "$MODEL_NAME" "$BASE_URL"
+OLLAMA_HOST="$BASE_URL" ollama pull "$MODEL_NAME"
 OLLAMA_HOST="$BASE_URL" ollama show "$MODEL_NAME" >/dev/null
 printf 'Ready: %s on %s\n' "$MODEL_NAME" "$BASE_URL"

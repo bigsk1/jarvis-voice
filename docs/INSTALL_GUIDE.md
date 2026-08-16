@@ -172,8 +172,6 @@ cd ~/jarvis-voice
 
 # Copy example configs
 cp config/cloud.env.example config/cloud.env
-# OpenAI primary provider (one required key plus optional tool placeholders):
-# cp config/cloud.openai.env.example config/cloud.env
 cp config/local.env.example config/local.env
 
 # Secure permissions
@@ -213,11 +211,11 @@ when the intended Ollama service lives elsewhere.
 
 **What you usually need to change in `cloud.env`:**
 
-For a **single OpenAI key**, start from `config/cloud.openai.env.example`
-instead of the full template — set `OPENAI_API_KEY` only, then run
-`./bin/sync-tools.py cloud` and `./bin/manage-tools.py --mode cloud list`.
-OpenAI core settings are near the top; optional tool API keys and self-hosted
-integration settings are grouped at the bottom for later use.
+The canonical template already defaults to OpenAI. Set `OPENAI_API_KEY`,
+configure `OLLAMA_BASE_URL` for the required Jarvis Embedding daemon, and then
+run `./bin/sync-tools.py cloud` and
+`./bin/manage-tools.py --mode cloud list`. Optional provider, tool API, and
+self-hosted integration settings remain in the same template for later use.
 
 ```bash
 # ===== LLM Provider (pick ONE) =====

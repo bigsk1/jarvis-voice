@@ -184,8 +184,8 @@ only.
 
 ## Configuration
 
-Current examples live in `config/cloud.env.example`,
-`config/cloud.openai.env.example`, and `config/local.env.example`.
+Current examples live in `config/cloud.env.example` and
+`config/local.env.example`.
 
 ```bash
 STATUS_UPDATES_ENABLED=true

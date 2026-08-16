@@ -519,7 +519,7 @@ jarvis-voice/
 │   └── *.tool.json
 ├── config/                   # Environment & wiring
 │   ├── cloud.env / local.env # Active (gitignored); from *.example
-│   ├── cloud.env.example / cloud.openai.env.example / local.env.example
+│   ├── cloud.env.example / local.env.example
 │   ├── mcp-servers.json      # MCP server definitions
 │   ├── webhook_registry.json / contacts.json / ssh.json (often gitignored)
 │   └── …

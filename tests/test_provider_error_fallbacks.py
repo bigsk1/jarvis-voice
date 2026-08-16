@@ -221,6 +221,31 @@ class ProviderErrorFallbackTests(unittest.TestCase):
         self.assertEqual(entry.details["output_tokens"], 0)
         self.assertEqual(entry.level, "error")
 
+    def test_log_streamer_shortens_helper_title_without_losing_model_identity(self):
+        streamer = LogStreamer(lambda entry: None)
+        model = "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1"
+        line = json.dumps({
+            "timestamp": "2026-08-16T07:35:21",
+            "provider": "helper",
+            "model": model,
+            "input_tokens": 40,
+            "output_tokens": 28,
+            "total_tokens": 68,
+            "cost_usd": 0.0,
+            "cost_known": True,
+            "duration_ms": 236,
+            "success": True,
+            "response": {"type": "text"},
+        })
+
+        entry = streamer._parse_llm_entry(line, "llm")
+
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.title, "jarvis-helper-llm → 68 tokens [236ms]")
+        self.assertEqual(entry.details["provider"], "helper")
+        self.assertEqual(entry.details["model"], model)
+        self.assertIn(model, entry.raw)
+
 
 if __name__ == "__main__":
     unittest.main()

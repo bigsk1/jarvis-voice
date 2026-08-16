@@ -150,7 +150,7 @@ def test_helper_provider_uses_dedicated_local_config_not_ollama_routing(
     configured_values.update(
         {
             "JARVIS_HELPER_LLM_BASE_URL": "http://127.0.0.1:11434",
-            "JARVIS_HELPER_LLM_MODEL": "jarvis-minicpm5-1b",
+            "JARVIS_HELPER_LLM_MODEL": "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1",
             "JARVIS_HELPER_LLM_DEVICE": "cpu",
             "JARVIS_HELPER_LLM_CONTEXT_WINDOW": "8192",
             "JARVIS_HELPER_LLM_KEEP_ALIVE": "30m",
@@ -174,13 +174,13 @@ def test_helper_provider_uses_dedicated_local_config_not_ollama_routing(
     )
 
     assert selected == "helper"
-    assert model == "jarvis-minicpm5-1b"
+    assert model == "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1"
     assert calls == [
         (
             "ollama",
             {
                 "base_url": "http://127.0.0.1:11434",
-                "model": "jarvis-minicpm5-1b",
+                "model": "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1",
                 "include_localhost_fallback": False,
                 "context_window": 8192,
                 "num_gpu": 0,
@@ -214,6 +214,25 @@ def test_helper_provider_honors_explicit_diagnostic_model_override(
 
     assert selected == "helper"
     assert model == "benchmark-helper"
+
+
+def test_helper_provider_defaults_to_versioned_registry_model(
+    monkeypatch,
+    configured_values,
+):
+    monkeypatch.setattr(
+        llm_provider,
+        "create_provider",
+        lambda _selected, **config: SimpleNamespace(model=config["model"]),
+    )
+
+    selected, model, _ = llm_provider.create_configured_provider(
+        provider_override="helper",
+        mode="cloud",
+    )
+
+    assert selected == "helper"
+    assert model == "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1"
 
 
 def test_factory_returns_provider_resolved_model(monkeypatch, configured_values):

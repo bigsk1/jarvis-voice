@@ -10,11 +10,8 @@ This directory contains configuration files for Jarvis Voice Assistant.
 
 2. **Copy the example file:**
    ```bash
-   # For cloud mode (full multi-provider template):
+   # For cloud mode (defaults to OpenAI; other providers are included):
    cp cloud.env.example cloud.env
-
-   # For cloud mode with OpenAI as the primary provider:
-   cp cloud.openai.env.example cloud.env
 
    # For local mode:
    cp local.env.example local.env
@@ -56,15 +53,13 @@ Copy the template for each mode you intend to run (both live filenames are
 gitignored, but a one-mode-only install needs only its selected file):
 
 ```bash
-cp cloud.env.example cloud.env    # cloud mode (all providers)
-cp cloud.openai.env.example cloud.env   # cloud mode, OpenAI primary provider
+cp cloud.env.example cloud.env    # cloud mode (OpenAI default; all providers)
 cp local.env.example local.env    # local mode
 ```
 
 | File | Role |
 |------|------|
 | `cloud.env.example` / `local.env.example` | Committed templates — safe to browse in git |
-| `cloud.openai.env.example` | Concise OpenAI-primary template (one required secret plus optional tool placeholders) |
 | `cloud.env` / `local.env` | Your machine-specific settings and secrets (not committed) |
 | `mcp-servers.json` | Jarvis MCP server definitions (committed; no secrets in git) |
 
@@ -83,37 +78,19 @@ request/browser data or LLM mode selectors after startup.
 ### `cloud.env` (Cloud Mode)
 
 - **LLM providers**: xAI, Anthropic, OpenAI, or Ollama Cloud via `LLM_PROVIDER`
+- **Default path**: OpenAI primary; set `OPENAI_API_KEY` and the required Ollama embedding endpoint/model
 - **Also configures**: cloud TTS/STT, image/video APIs, the Ollama host used for unified embeddings, and optional paid services
 - **Best for**: production use, complex tool calling, providers with large context windows
 - **OpenCode**: can use the same cloud providers (Anthropic or OpenAI recommended for coding tasks)
 
+For the smallest OpenAI-oriented tool surface, select the tracked
+`JARVIS_TOOL_PROFILE=openai_only` profile. Integrations that need other API
+keys, OAuth caches, webhooks, or self-hosted services remain unavailable until
+they are configured.
+
 See also: [xAI provider guide](../docs/XAI_PROVIDER.md),
 [Ollama local/cloud guide](../docs/ollama/README.md), and
 [Speech-to-Text guide](../docs/SPEECH_TO_TEXT.md).
-
-### `cloud.openai.env.example` (OpenAI primary provider)
-
-Concise cloud template for users with **one required paid API key** plus an
-accessible Ollama daemon for the Jarvis Embedding model. It keeps chat, STT, TTS,
-image/video tools, and Responses routing on OpenAI while embeddings stay local.
-The OpenAI core is grouped at the top; optional tool APIs and self-hosted
-integration settings remain available in a separate section at the bottom.
-For the simplest one-key tool surface, uncomment
-`JARVIS_TOOL_PROFILE=openai_only`; this keeps OpenAI-backed and
-credential-free tools while hiding integrations that need additional setup.
-
-```bash
-cp cloud.openai.env.example cloud.env
-# Set OPENAI_API_KEY, then:
-./bin/sync-tools.py cloud
-./bin/manage-tools.py --mode cloud list
-```
-
-Tools that need other API keys, OAuth caches, webhooks, or self-hosted URLs
-(SerpApi, Brave, Spotify, Crawl4AI, email webhooks, etc.) stay **unavailable**
-through manifest availability checks or the template's `BLOCKED_TOOLS` default.
-After configuring a blocklisted integration, remove its tool name from that
-list and re-run `./bin/sync-tools.py cloud`. See `skills/README.md`.
 
 ### `local.env` (Local Mode)
 

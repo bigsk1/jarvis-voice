@@ -85,7 +85,7 @@ def _write_helper_configs(tmp_path):
                 "STATUS_LLM_ENABLED=true",
                 "STASH_SUMMARIZE_LLM_PROVIDER=helper",
                 "JARVIS_HELPER_LLM_BASE_URL=http://127.0.0.1:11434",
-                "JARVIS_HELPER_LLM_MODEL=jarvis-minicpm5-1b",
+                "JARVIS_HELPER_LLM_MODEL=bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1",
                 "JARVIS_HELPER_LLM_DEVICE=cpu",
                 "JARVIS_HELPER_LLM_KEEP_ALIVE=30m",
             ]
@@ -145,7 +145,7 @@ def test_status_helper_stays_on_loopback_and_applies_cpu_controls(tmp_path, monk
         "STATUS_LLM_PROVIDER": "helper",
         "STATUS_LLM_ENABLED": "true",
         "JARVIS_HELPER_LLM_BASE_URL": "http://127.0.0.1:11434",
-        "JARVIS_HELPER_LLM_MODEL": "jarvis-minicpm5-1b",
+        "JARVIS_HELPER_LLM_MODEL": "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1",
         "JARVIS_HELPER_LLM_DEVICE": "cpu",
         "JARVIS_HELPER_LLM_KEEP_ALIVE": "30m",
         "STATUS_LLM_MAX_TOKENS": "30",
@@ -160,7 +160,7 @@ def test_status_helper_stays_on_loopback_and_applies_cpu_controls(tmp_path, monk
 
     request = request_ollama.call_args
     assert request.kwargs["base_urls"] == ["http://127.0.0.1:11434"]
-    assert request.kwargs["json"]["model"] == "jarvis-minicpm5-1b"
+    assert request.kwargs["json"]["model"] == "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1"
     assert request.kwargs["json"]["think"] is False
     assert request.kwargs["json"]["keep_alive"] == "30m"
     assert request.kwargs["json"]["options"]["num_gpu"] == 0
@@ -173,7 +173,7 @@ def test_status_helper_rejects_false_completion_claim(tmp_path, monkeypatch):
     overrides = {
         "STATUS_LLM_PROVIDER": "helper",
         "STATUS_LLM_ENABLED": "true",
-        "JARVIS_HELPER_LLM_MODEL": "jarvis-minicpm5-1b",
+        "JARVIS_HELPER_LLM_MODEL": "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1",
     }
     response = _StatusResponse()
     response.json = lambda: {"message": {"content": "Weather lookup completed"}}
@@ -192,7 +192,7 @@ def test_stash_helper_stays_on_loopback_in_cloud_mode(tmp_path, monkeypatch):
     overrides = {
         "STASH_SUMMARIZE_LLM_PROVIDER": "helper",
         "JARVIS_HELPER_LLM_BASE_URL": "http://127.0.0.1:11434",
-        "JARVIS_HELPER_LLM_MODEL": "jarvis-minicpm5-1b",
+        "JARVIS_HELPER_LLM_MODEL": "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1",
         "JARVIS_HELPER_LLM_DEVICE": "cpu",
         "JARVIS_HELPER_LLM_KEEP_ALIVE": "30m",
     }
@@ -205,6 +205,6 @@ def test_stash_helper_stays_on_loopback_in_cloud_mode(tmp_path, monkeypatch):
 
     request = request_ollama.call_args
     assert request.kwargs["base_urls"] == ["http://127.0.0.1:11434"]
-    assert request.kwargs["json"]["model"] == "jarvis-minicpm5-1b"
+    assert request.kwargs["json"]["model"] == "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1"
     assert request.kwargs["json"]["think"] is False
     assert request.kwargs["json"]["keep_alive"] == "30m"

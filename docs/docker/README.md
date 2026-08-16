@@ -37,8 +37,8 @@ Host-only tools (Spotify, phone, printer, OpenCode, etc.) are disabled by the tr
 cd ~/jarvis-voice
 
 # One-time host prep (gitignored paths — Compose will not create the settings file)
+# Cloud mode defaults to OpenAI and also requires the configured Ollama embedding daemon.
 cp config/cloud.env.example config/cloud.env
-# cp config/cloud.openai.env.example config/cloud.env    # OpenAI mode only
 # cp config/local.env.example config/local.env   # local/Ollama mode instead
 mkdir -p audio jarvis-web/data/uploads
 cp -n jarvis-web/config/web_config.json.example jarvis-web/config/web_config.json

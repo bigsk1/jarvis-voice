@@ -85,20 +85,20 @@ Native cloud and local installs can route selected lightweight helper roles to
 one host-local Ollama model without changing the primary chat provider or
 `OLLAMA_BASE_URL`. Docker does not install or enable this path.
 
-Install the pinned MiniCPM5-1B Q4_K_M model into the host daemon:
+Pull the versioned Jarvis helper model onto the configured helper daemon:
 
 ```bash
 ./bin/setup-helper-llm --mode cloud
 ```
 
-The installer reads `HF_AUTH_TOKENS` from the selected mode when present,
-verifies the pinned GGUF SHA-256, imports `jarvis-minicpm5-1b`, and removes its
-temporary download. Configure the independent helper endpoint and opt in each
-role explicitly:
+The setup command reads `JARVIS_HELPER_LLM_BASE_URL` and
+`JARVIS_HELPER_LLM_MODEL` from the selected mode and runs `ollama pull` against
+that daemon. It does not download from Hugging Face or build a local Modelfile.
+Configure the independent helper endpoint and opt in each role explicitly:
 
 ```bash
 JARVIS_HELPER_LLM_BASE_URL="http://127.0.0.1:11434"
-JARVIS_HELPER_LLM_MODEL="jarvis-minicpm5-1b"
+JARVIS_HELPER_LLM_MODEL="bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1"
 # Device options: auto or cpu
 JARVIS_HELPER_LLM_DEVICE="auto"
 JARVIS_HELPER_LLM_KEEP_ALIVE="30m"
