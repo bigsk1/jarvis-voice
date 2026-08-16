@@ -12,8 +12,8 @@ usage() {
         "Usage: ./bin/setup-helper-llm [--mode cloud|local] [--model NAME] [--base-url URL]" \
         "" \
         "Pulls the configured Jarvis helper model onto its native Ollama daemon." \
-        "Defaults come from JARVIS_HELPER_LLM_MODEL and JARVIS_HELPER_LLM_BASE_URL" \
-        "in the selected mode's ENV file."
+        "Defaults come from the selected mode's ENV file. The helper URL uses" \
+        "JARVIS_HELPER_LLM_BASE_URL when set, otherwise OLLAMA_BASE_URL."
 }
 
 while [[ $# -gt 0 ]]; do
@@ -48,7 +48,7 @@ if [[ "$MODE" != "cloud" && "$MODE" != "local" ]]; then
 fi
 
 if ! command -v ollama >/dev/null 2>&1; then
-    printf 'Ollama is required for the native helper model.\n' >&2
+    printf 'The Ollama CLI is required to pull the helper model.\n' >&2
     exit 1
 fi
 
@@ -78,10 +78,8 @@ model = str(
     or os.environ["JARVIS_HELPER_DEFAULT_MODEL"]
 ).strip()
 base_url = str(
-    get_config_value(
-        "JARVIS_HELPER_LLM_BASE_URL",
-        "http://127.0.0.1:11434",
-    )
+    get_config_value("JARVIS_HELPER_LLM_BASE_URL")
+    or get_config_value("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
     or "http://127.0.0.1:11434"
 ).strip()
 print(f"{model}\t{base_url}")

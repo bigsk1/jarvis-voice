@@ -525,9 +525,9 @@ processing remains separate because decoding and transformation still require
 bounded pixel memory. Very large media such as multi-gigabyte movies should use
 dedicated media storage or external object storage rather than normal Stash.
 
-### 13) Native Helper LLM as a Zero-API-Cost Execution Tier
+### 13) Helper LLM as a Zero-API-Cost Execution Tier
 **Priority:** Low–Medium / expand only after per-role evaluation
-**Status:** Native opt-in foundation implemented; Docker bundling deferred
+**Status:** Native and Docker external-daemon opt-in foundation implemented
 
 The baked-in Ollama helper should remain independent of the primary chat model
 and can become a shared execution tier for short, bounded, frequent tasks with
@@ -554,8 +554,9 @@ gate.
 The existing classification plumbing is a useful future target, but the initial
 MiniCPM5-1B benchmark produced only 1/4 exact classifications, so it should stay
 disabled until the prompt/schema or model passes a representative quality gate.
-Docker should remain deferred until there is an explicit opt-in model download,
-storage, and resource-management design.
+Docker can use the helper through the same external Ollama daemon as the selected
+mode. Bundling Ollama and the model inside the Jarvis image remains out of scope;
+the operator explicitly pulls and manages the model on that external daemon.
 
 ---
 

@@ -79,11 +79,12 @@ the daemon user to run `ollama signin`, and do not enable direct API-key access.
 The default remains `false`, keeping local inference, databases, and embeddings
 local.
 
-## Optional native helper model
+## Optional helper model
 
-Native cloud and local installs can route selected lightweight helper roles to
-one host-local Ollama model without changing the primary chat provider or
-`OLLAMA_BASE_URL`. Docker does not install or enable this path.
+Native and Docker cloud/local installs can route selected lightweight helper
+roles to an Ollama daemon without changing the primary chat provider. Docker
+does not run Ollama or store model weights inside the Jarvis image; it connects
+to a host or LAN daemon just like the required embedding path.
 
 Pull the versioned Jarvis helper model onto the configured helper daemon:
 
@@ -91,13 +92,18 @@ Pull the versioned Jarvis helper model onto the configured helper daemon:
 ./bin/setup-helper-llm --mode cloud
 ```
 
-The setup command reads `JARVIS_HELPER_LLM_BASE_URL` and
-`JARVIS_HELPER_LLM_MODEL` from the selected mode and runs `ollama pull` against
-that daemon. It does not download from Hugging Face or build a local Modelfile.
-Configure the independent helper endpoint and opt in each role explicitly:
+The native setup command reads `JARVIS_HELPER_LLM_MODEL` from the selected mode.
+It uses `JARVIS_HELPER_LLM_BASE_URL` when explicitly set and otherwise falls
+back to the required `OLLAMA_BASE_URL`, then runs `ollama pull` against that
+daemon. It does not download from Hugging Face or build a local Modelfile.
+
+For Docker, pull the model directly on the external Ollama daemon instead of
+inside the Jarvis container. Configure a dedicated helper endpoint only when it
+differs from the embedding daemon, then opt in each role explicitly:
 
 ```bash
-JARVIS_HELPER_LLM_BASE_URL="http://127.0.0.1:11434"
+# Optional; defaults to OLLAMA_BASE_URL.
+# JARVIS_HELPER_LLM_BASE_URL="http://127.0.0.1:11434"
 JARVIS_HELPER_LLM_MODEL="bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1"
 # Device options: auto or cpu
 JARVIS_HELPER_LLM_DEVICE="auto"
@@ -110,10 +116,11 @@ STASH_SUMMARIZE_LLM_PROVIDER=helper
 TEXT_SUMMARIZER_LLM_PROVIDER=helper
 ```
 
-The helper provider never inherits `JARVIS_MODE`, `OLLAMA_BASE_URL`,
-`OLLAMA_MODEL`, or `OLLAMA_CLOUD_MODEL`. Status generation retains its bounded
-background deadline and static fallback; stash and long-text summaries retain
-their existing truncation and extractive fallbacks.
+The helper model never inherits `OLLAMA_MODEL` or `OLLAMA_CLOUD_MODEL` and never
+uses Ollama Cloud routing. Only its daemon URL falls back to `OLLAMA_BASE_URL`;
+an explicit `JARVIS_HELPER_LLM_BASE_URL` always wins. Status generation retains
+its bounded background deadline and static fallback; stash and long-text
+summaries retain their existing truncation and extractive fallbacks.
 
 Compare forced CPU with Ollama's automatic accelerator selection:
 

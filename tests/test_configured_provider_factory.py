@@ -223,16 +223,20 @@ def test_helper_provider_defaults_to_versioned_registry_model(
     monkeypatch.setattr(
         llm_provider,
         "create_provider",
-        lambda _selected, **config: SimpleNamespace(model=config["model"]),
+        lambda _selected, **config: SimpleNamespace(
+            model=config["model"],
+            base_url=config["base_url"],
+        ),
     )
 
-    selected, model, _ = llm_provider.create_configured_provider(
+    selected, model, provider = llm_provider.create_configured_provider(
         provider_override="helper",
         mode="cloud",
     )
 
     assert selected == "helper"
     assert model == "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1"
+    assert provider.base_url == "http://ollama.test:11434"
 
 
 def test_factory_returns_provider_resolved_model(monkeypatch, configured_values):

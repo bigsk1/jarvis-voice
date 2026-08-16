@@ -258,7 +258,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
 - **Cloud Mode**: OpenAI (shipped default), xAI Grok (`grok-4.6` recommended for xAI), Anthropic Claude, or Ollama Cloud (`*:cloud` / `*-cloud` models through a signed-in Ollama daemon)
   - OpenAI can use Chat Completions by default or opt into Responses API routing for tool-capable turns with `OPENAI_API_MODE=responses` + `OPENAI_RESPONSES_TOOLS=true`
 - **Local Mode**: Ollama (`gemma4` default) + faster-whisper + Kokoro/Qwen3-TTS (free, offline)
-- **Optional Native Helper LLM**: Native installs can run a pinned MiniCPM5-1B through host Ollama for zero-API-cost status phrases and Stash metadata summaries, using CPU or automatic GPU acceleration without changing the primary chat provider. Roles are opt-in and retain their existing fallbacks; see the [setup and benchmark guide](docs/ollama/README.md#optional-native-helper-model).
+- **Optional Helper LLM**: Native and Docker installs can use the versioned MiniCPM5-1B helper through an external Ollama daemon for zero-API-cost status phrases and Stash metadata summaries, using CPU or automatic GPU acceleration without changing the primary chat provider. Roles are opt-in and retain their existing fallbacks; see the [setup and benchmark guide](docs/ollama/README.md#optional-helper-model).
 - **Mode is not provider selection**: `JARVIS_MODE` chooses config/data boundaries; `LLM_PROVIDER` chooses the chat backend. See [`docs/ollama/README.md`](docs/ollama/README.md).
 - **Model Prompt Overrides**: Small provider/model-specific YAML prompt overlays in `config/models/`
   - Lets you patch stable model quirks without changing the global prompts for every provider

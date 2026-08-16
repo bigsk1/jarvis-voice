@@ -64,7 +64,7 @@ sed -i.bak \
 rm -f .env.bak
 ```
 
-Edit `config/cloud.env` and configure the selected cloud LLM and embedding provider credentials. Keep secrets out of root `.env`; that file is only for Compose ports, mode, UID/GID, API auth, and tool profile settings.
+Edit `config/cloud.env` and configure the selected cloud LLM and embedding provider credentials. Keep secrets out of root `.env`; that file is only for Compose ports, mode, UID/GID, API auth, tool profile settings, and optional Docker-only Ollama/helper overrides.
 
 ```bash
 open -e config/cloud.env
@@ -291,19 +291,39 @@ JARVIS_MODE=cloud
 
 Set this in root `.env`, then configure the matching provider values in `config/cloud.env`.
 
-Cloud mode can also use Ollama Cloud. Point `OLLAMA_BASE_URL` at a signed-in
-daemon reachable from Docker Desktop (normally
-`http://host.docker.internal:11434`) and set `OLLAMA_CLOUD_MODEL` to a
-recognized `*:cloud` or `*-cloud` model. Do not put a normal local Ollama model
-in `OLLAMA_CLOUD_MODEL`.
+Cloud mode can also use Ollama Cloud. Set the signed-in daemon in root `.env`
+when the mode ENV uses a native-only hostname:
+
+```env
+JARVIS_DOCKER_OLLAMA_BASE_URL=http://host.docker.internal:11434
+```
+
+Then set `OLLAMA_CLOUD_MODEL` in `config/cloud.env` to a recognized `*:cloud`
+or `*-cloud` model. Do not put a normal local Ollama model in
+`OLLAMA_CLOUD_MODEL`. The Docker endpoint also serves the required Jarvis
+Embedding model.
+
+The optional Jarvis helper model uses the same external daemon by default.
+Pull it on that daemon:
+
+```bash
+ollama pull bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1
+```
+
+Then opt in through the selected mode ENV, or use the commented
+`JARVIS_DOCKER_*` role overrides in root `.env`. The helper inherits the Docker
+Ollama endpoint by default; use `JARVIS_DOCKER_HELPER_LLM_BASE_URL` only when it
+intentionally runs on another daemon.
 
 Only the selected env file is required. A cloud-only setup may omit
 `config/local.env`; a local-only setup may omit `config/cloud.env`.
 
-For local mode, install and start Ollama on the Mac or Windows host. In `config/local.env`, use the Docker Desktop host address rather than container-local `localhost`:
+For local mode, install and start Ollama on the Mac or Windows host. Keep the
+native endpoint in `config/local.env` and put the Docker Desktop host address in
+root `.env`:
 
 ```env
-OLLAMA_BASE_URL="http://host.docker.internal:11434"
+JARVIS_DOCKER_OLLAMA_BASE_URL=http://host.docker.internal:11434
 ```
 
 Then set root `.env` to:

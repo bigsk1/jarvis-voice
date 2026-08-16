@@ -12,6 +12,23 @@ export PATH="$VIRTUAL_ENV/bin:$PATH"
 export PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"
 export JARVIS_DEPLOYMENT="${JARVIS_DEPLOYMENT:-docker}"
 
+apply_docker_override() {
+  local docker_key="$1"
+  local config_key="$2"
+  local value="${!docker_key:-}"
+  if [ -n "$value" ]; then
+    export "JARVIS_OVERRIDE_${config_key}=$value"
+  fi
+}
+
+apply_docker_override JARVIS_DOCKER_OLLAMA_BASE_URL OLLAMA_BASE_URL
+apply_docker_override JARVIS_DOCKER_HELPER_LLM_BASE_URL JARVIS_HELPER_LLM_BASE_URL
+apply_docker_override JARVIS_DOCKER_HELPER_LLM_MODEL JARVIS_HELPER_LLM_MODEL
+apply_docker_override JARVIS_DOCKER_HELPER_LLM_DEVICE JARVIS_HELPER_LLM_DEVICE
+apply_docker_override JARVIS_DOCKER_STATUS_LLM_PROVIDER STATUS_LLM_PROVIDER
+apply_docker_override JARVIS_DOCKER_STASH_SUMMARIZE_LLM_PROVIDER STASH_SUMMARIZE_LLM_PROVIDER
+apply_docker_override JARVIS_DOCKER_TEXT_SUMMARIZER_LLM_PROVIDER TEXT_SUMMARIZER_LLM_PROVIDER
+
 mkdir -p data logs audio
 
 resolved_mode="$(./bin/resolve-jarvis-mode "${JARVIS_MODE:-cloud}")"

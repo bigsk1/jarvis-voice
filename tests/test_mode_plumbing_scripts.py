@@ -239,6 +239,72 @@ def test_docker_entrypoint_rejects_missing_selected_config_before_launch(tmp_pat
     assert not launch_log.exists()
 
 
+def test_docker_entrypoint_promotes_nonempty_ollama_and_helper_overrides(tmp_path):
+    checkout, env, launch_log = _docker_checkout(tmp_path)
+    _write_executable(
+        checkout / "bin" / "jarvis-web",
+        """#!/usr/bin/env bash
+printf '%s|%s|%s|%s|%s|%s|%s\n' \
+  "${JARVIS_OVERRIDE_OLLAMA_BASE_URL:-}" \
+  "${JARVIS_OVERRIDE_JARVIS_HELPER_LLM_BASE_URL:-}" \
+  "${JARVIS_OVERRIDE_JARVIS_HELPER_LLM_MODEL:-}" \
+  "${JARVIS_OVERRIDE_JARVIS_HELPER_LLM_DEVICE:-}" \
+  "${JARVIS_OVERRIDE_STATUS_LLM_PROVIDER:-}" \
+  "${JARVIS_OVERRIDE_STASH_SUMMARIZE_LLM_PROVIDER:-}" \
+  "${JARVIS_OVERRIDE_TEXT_SUMMARIZER_LLM_PROVIDER:-}" \
+  > "$DOCKER_LAUNCH_LOG"
+""",
+    )
+    env.update(
+        {
+            "JARVIS_DOCKER_OLLAMA_BASE_URL": "http://ollama.internal:11434",
+            "JARVIS_DOCKER_HELPER_LLM_BASE_URL": "http://host.docker.internal:11434",
+            "JARVIS_DOCKER_HELPER_LLM_MODEL": "bigsk1/jarvis-helper:test",
+            "JARVIS_DOCKER_HELPER_LLM_DEVICE": "auto",
+            "JARVIS_DOCKER_STATUS_LLM_PROVIDER": "helper",
+            "JARVIS_DOCKER_STASH_SUMMARIZE_LLM_PROVIDER": "helper",
+            "JARVIS_DOCKER_TEXT_SUMMARIZER_LLM_PROVIDER": "helper",
+        }
+    )
+
+    result = subprocess.run(
+        ["bash", str(checkout / "docker" / "entrypoint.sh"), "web"],
+        cwd=checkout,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert launch_log.read_text().strip() == "|".join(
+        (
+            "http://ollama.internal:11434",
+            "http://host.docker.internal:11434",
+            "bigsk1/jarvis-helper:test",
+            "auto",
+            "helper",
+            "helper",
+            "helper",
+        )
+    )
+
+
+def test_base_compose_exposes_optional_docker_ollama_and_helper_inputs() -> None:
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+    environment = compose["x-jarvis-common"]["environment"]
+
+    for key in (
+        "JARVIS_DOCKER_OLLAMA_BASE_URL",
+        "JARVIS_DOCKER_HELPER_LLM_BASE_URL",
+        "JARVIS_DOCKER_HELPER_LLM_MODEL",
+        "JARVIS_DOCKER_HELPER_LLM_DEVICE",
+        "JARVIS_DOCKER_STATUS_LLM_PROVIDER",
+        "JARVIS_DOCKER_STASH_SUMMARIZE_LLM_PROVIDER",
+        "JARVIS_DOCKER_TEXT_SUMMARIZER_LLM_PROVIDER",
+    ):
+        assert key in environment
+
+
 def test_mcp_override_base_service_defers_tool_sync_to_web(tmp_path):
     checkout, env, launch_log = _docker_checkout(tmp_path)
     fake_bin = checkout / "fake-bin"

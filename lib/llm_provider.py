@@ -2440,9 +2440,10 @@ def create_configured_provider(
     if provider_type == "helper":
         from config_loader import get_float, get_int
 
-        # The helper is intentionally independent of task-specific model keys,
-        # JARVIS_MODE, OLLAMA_BASE_URL, and Ollama Cloud routing. An explicit
-        # per-call model override is still honored for diagnostics.
+        # The helper is intentionally independent of task-specific model keys
+        # and Ollama Cloud routing. It can use a dedicated daemon, but defaults
+        # to the mode's required embedding daemon when no helper URL is set.
+        # An explicit per-call model override is still honored for diagnostics.
         model = explicit_model or get_config_value(
             "JARVIS_HELPER_LLM_MODEL",
             "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1",
@@ -2454,8 +2455,10 @@ def create_configured_provider(
             raise ValueError("JARVIS_HELPER_LLM_DEVICE must be 'auto' or 'cpu'")
         provider = create_provider(
             "ollama",
-            base_url=get_config_value(
-                "JARVIS_HELPER_LLM_BASE_URL", "http://127.0.0.1:11434"
+            base_url=(
+                get_config_value("JARVIS_HELPER_LLM_BASE_URL")
+                or get_config_value("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+                or "http://127.0.0.1:11434"
             ),
             model=model,
             include_localhost_fallback=False,

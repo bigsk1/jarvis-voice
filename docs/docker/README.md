@@ -155,7 +155,7 @@ Two layers — do not mix them up:
 
 | File | Purpose |
 |------|---------|
-| **`.env`** (repo root) | Docker Compose only: ports, `JARVIS_MODE`, tool profile, UID/GID, `JARVIS_DOCKER_API_AUTH`. No secrets. |
+| **`.env`** (repo root) | Docker Compose only: ports, `JARVIS_MODE`, tool profile, UID/GID, API auth, and optional Docker-only Ollama/helper overrides. No secrets. |
 | **`config/cloud.env`** / **`config/local.env`** | Jarvis runtime: API keys, LLM provider, `JARVIS_API_KEY`, Ollama URLs, etc. Bind-mounted read-only into containers. |
 
 Compose mounts the `config/` directory read-only and validates only the file
@@ -204,8 +204,49 @@ config chooses Ollama as the chat backend.
 Do not use `localhost:11434` for an Ollama daemon running on the Docker host;
 inside a Jarvis container, localhost is the container. Cloud mode uses only the
 hosts explicitly listed in `OLLAMA_BASE_URL` and does not silently append a
-localhost fallback. See [Ollama in Jarvis](../ollama/README.md) for setup and
-diagnostics.
+localhost fallback. When the mode ENV uses localhost for native Jarvis, set the
+Docker-only endpoint in root `.env` instead:
+
+```env
+JARVIS_DOCKER_OLLAMA_BASE_URL=http://host.docker.internal:11434
+```
+
+This non-empty value overrides `OLLAMA_BASE_URL` inside every container. It is
+used by Jarvis Embedding and all other daemon-backed Ollama paths. Multiple
+intentional fallback hosts may be comma-separated. See
+[Ollama in Jarvis](../ollama/README.md) for setup and diagnostics.
+
+### Optional helper LLM
+
+The helper model also runs on an external Ollama daemon; it is not installed in
+the Jarvis image. Pull it on the daemon first:
+
+```bash
+ollama pull bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1
+```
+
+When `JARVIS_HELPER_LLM_BASE_URL` is unset, the helper uses the effective
+`OLLAMA_BASE_URL`, including `JARVIS_DOCKER_OLLAMA_BASE_URL` when configured. A
+dedicated helper URL in the mode ENV or root Docker ENV still takes precedence.
+
+For a Docker-only endpoint or role selection, uncomment the
+`JARVIS_DOCKER_*` helper values in root `.env`. Non-empty values override the
+selected mode ENV inside containers. A typical host-Ollama setup is:
+
+```env
+JARVIS_DOCKER_STATUS_LLM_PROVIDER=helper
+JARVIS_DOCKER_STASH_SUMMARIZE_LLM_PROVIDER=helper
+```
+
+Set `JARVIS_DOCKER_HELPER_LLM_BASE_URL` only when the helper intentionally uses
+a different daemon from embeddings and the other Ollama paths.
+
+Changing these runtime settings requires container recreation, not an image
+rebuild:
+
+```bash
+docker compose up -d --force-recreate
+```
 
 ### Tool profile
 
