@@ -1,0 +1,354 @@
+#!/usr/bin/env python3
+"""Rebuild every persisted embedding using the current Jarvis contract.
+
+This is model-independent maintenance, not a legacy-provider migration layer.
+Requests go through OLLAMA_BASE_URL and do not set ``num_gpu``, so each Ollama
+daemon uses its normal GPU/CPU placement.
+
+Examples:
+    ./bin/rebuild-embeddings cloud
+    ./bin/rebuild-embeddings local --database memory
+    ./bin/rebuild-embeddings both --batch-size 24
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pickle
+import sqlite3
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Callable
+
+PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+sys.path.insert(0, str(PROJECT_ROOT / "lib"))
+
+from config_loader import config_scope
+from embedding_inputs import build_stored_outcome_embedding_text
+from embedding_metadata import (
+    INTELLIGENCE_CONTEXT_NAMESPACE,
+    INTELLIGENCE_INSIGHT_NAMESPACE,
+    INTELLIGENCE_OUTCOME_NAMESPACE,
+    INTELLIGENCE_PATTERN_NAMESPACE,
+    INTELLIGENCE_QUERY_NAMESPACE,
+    MEMORY_KNOWLEDGE_NAMESPACE,
+    MEMORY_TOOLS_NAMESPACE,
+    complete_embedding_namespace_rebuild,
+    ensure_embedding_metadata_table,
+    start_embedding_namespace_rebuild,
+    update_embedding_rebuild_progress,
+)
+from embeddings import EMBEDDING_DIMENSIONS, get_embedding_runtime_status, get_embeddings_batch
+
+
+def _backup_database(conn: sqlite3.Connection, db_path: Path) -> Path:
+    backup_dir = PROJECT_ROOT / "data" / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    backup_path = backup_dir / f"{db_path.name}.pre_embedding_rebuild_{timestamp}"
+    backup_conn = sqlite3.connect(str(backup_path))
+    try:
+        conn.backup(backup_conn)
+    finally:
+        backup_conn.close()
+    os.chmod(backup_path, 0o600)
+    return backup_path
+
+
+def _chunks_after_id(
+    conn: sqlite3.Connection,
+    query: str,
+    last_row_id: int,
+    batch_size: int,
+):
+    while True:
+        rows = conn.execute(query, (last_row_id, batch_size)).fetchall()
+        if not rows:
+            return
+        yield rows
+        last_row_id = int(rows[-1]["id"])
+
+
+def _namespace_needs_vector_repair(
+    conn: sqlite3.Connection,
+    audit_query: str,
+) -> bool:
+    """Return true when any eligible row lacks a valid current-size vector."""
+    for row in conn.execute(audit_query):
+        blob = row[0]
+        if blob is None:
+            return True
+        try:
+            try:
+                vector = pickle.loads(blob)
+            except Exception:
+                raw = blob.decode("utf-8") if isinstance(blob, bytes) else blob
+                vector = json.loads(raw)
+            if len(vector) != EMBEDDING_DIMENSIONS:
+                return True
+        except Exception:
+            return True
+    return False
+
+
+def _rebuild_namespace(
+    conn: sqlite3.Connection,
+    *,
+    namespace: str,
+    select_query: str,
+    audit_query: str,
+    update_sql: str,
+    text_builder: Callable[[sqlite3.Row], str],
+    title_builder: Callable[[sqlite3.Row], str | None],
+    role: str,
+    batch_size: int,
+    force: bool,
+) -> tuple[int, bool]:
+    needs_vector_repair = _namespace_needs_vector_repair(conn, audit_query)
+    last_row_id = start_embedding_namespace_rebuild(
+        conn,
+        namespace,
+        force=force or needs_vector_repair,
+    )
+    if last_row_id is None:
+        print(f"  ✓ {namespace}: already current")
+        return 0, False
+    conn.commit()
+
+    rebuilt = 0
+    action = "resuming after ID " + str(last_row_id) if last_row_id else "starting"
+    if needs_vector_repair and not force:
+        action += " (repairing missing or malformed vectors)"
+    print(f"  → {namespace}: {action}")
+    for rows in _chunks_after_id(conn, select_query, last_row_id, batch_size):
+        texts = [text_builder(row) for row in rows]
+        titles = [title_builder(row) for row in rows]
+        vectors = get_embeddings_batch(texts, role=role, titles=titles)
+        updates = [
+            (pickle.dumps(vector), int(row["id"]))
+            for row, vector in zip(rows, vectors)
+        ]
+        conn.executemany(update_sql, updates)
+        last_row_id = int(rows[-1]["id"])
+        update_embedding_rebuild_progress(conn, namespace, last_row_id)
+        conn.commit()
+        rebuilt += len(rows)
+        print(f"    {rebuilt} vectors rebuilt (through ID {last_row_id})", flush=True)
+
+    complete_embedding_namespace_rebuild(conn, namespace)
+    conn.commit()
+    print(f"  ✓ {namespace}: complete ({rebuilt} rebuilt this run)")
+    return rebuilt, True
+
+
+def _outcome_text(row: sqlite3.Row) -> str:
+    return build_stored_outcome_embedding_text(
+        query=row["query"],
+        tools_used_json=row["tools_used"],
+        raw_data_json=row["raw_data"],
+        outcome_success=row["outcome_success"],
+        error_occurred=row["error_occurred"],
+    )
+
+
+def _rebuild_memory(db_path: Path, batch_size: int, force: bool) -> int:
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
+    try:
+        ensure_embedding_metadata_table(conn)
+        backup = _backup_database(conn, db_path)
+        print(f"Memory DB: {db_path}\n  Backup: {backup}")
+        total = 0
+        rebuilt, _ = _rebuild_namespace(
+            conn,
+            namespace=MEMORY_KNOWLEDGE_NAMESPACE,
+            select_query=(
+                "SELECT id, key, value FROM knowledge_base "
+                "WHERE id > ? ORDER BY id LIMIT ?"
+            ),
+            audit_query="SELECT embedding FROM knowledge_base",
+            update_sql="UPDATE knowledge_base SET embedding = ? WHERE id = ?",
+            text_builder=lambda row: row["value"],
+            title_builder=lambda row: row["key"],
+            role="document",
+            batch_size=batch_size,
+            force=force,
+        )
+        total += rebuilt
+        rebuilt, _ = _rebuild_namespace(
+            conn,
+            namespace=MEMORY_TOOLS_NAMESPACE,
+            select_query=(
+                "SELECT rowid AS id, name, description FROM tool_definitions "
+                "WHERE rowid > ? ORDER BY rowid LIMIT ?"
+            ),
+            audit_query="SELECT embedding FROM tool_definitions",
+            update_sql="UPDATE tool_definitions SET embedding = ? WHERE rowid = ?",
+            text_builder=lambda row: row["description"],
+            title_builder=lambda row: row["name"],
+            role="document",
+            batch_size=batch_size,
+            force=force,
+        )
+        total += rebuilt
+        return total
+    finally:
+        conn.close()
+
+
+def _rebuild_intelligence(db_path: Path, batch_size: int, force: bool) -> int:
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
+    try:
+        ensure_embedding_metadata_table(conn)
+        backup = _backup_database(conn, db_path)
+        print(f"Intelligence DB: {db_path}\n  Backup: {backup}")
+        specs = [
+            dict(
+                namespace=INTELLIGENCE_QUERY_NAMESPACE,
+                select_query=(
+                    "SELECT id, query FROM experiences WHERE id > ? ORDER BY id LIMIT ?"
+                ),
+                audit_query="SELECT query_embedding FROM experiences",
+                update_sql="UPDATE experiences SET query_embedding = ? WHERE id = ?",
+                text_builder=lambda row: row["query"],
+                title_builder=lambda row: "User query",
+                role="document",
+            ),
+            dict(
+                namespace=INTELLIGENCE_CONTEXT_NAMESPACE,
+                select_query=(
+                    "SELECT id, context_summary FROM experiences "
+                    "WHERE id > ? AND context_summary IS NOT NULL AND TRIM(context_summary) != '' "
+                    "ORDER BY id LIMIT ?"
+                ),
+                audit_query=(
+                    "SELECT context_embedding FROM experiences "
+                    "WHERE context_summary IS NOT NULL AND TRIM(context_summary) != ''"
+                ),
+                update_sql="UPDATE experiences SET context_embedding = ? WHERE id = ?",
+                text_builder=lambda row: row["context_summary"],
+                title_builder=lambda row: "Conversation context",
+                role="document",
+            ),
+            dict(
+                namespace=INTELLIGENCE_OUTCOME_NAMESPACE,
+                select_query=(
+                    "SELECT id, query, tools_used, outcome_success, error_occurred, raw_data "
+                    "FROM experiences WHERE id > ? ORDER BY id LIMIT ?"
+                ),
+                audit_query="SELECT outcome_embedding FROM experiences",
+                update_sql="UPDATE experiences SET outcome_embedding = ? WHERE id = ?",
+                text_builder=_outcome_text,
+                title_builder=lambda row: "Interaction outcome",
+                role="document",
+            ),
+            dict(
+                namespace=INTELLIGENCE_INSIGHT_NAMESPACE,
+                select_query=(
+                    "SELECT id, description FROM insights "
+                    "WHERE id > ? AND description IS NOT NULL AND TRIM(description) != '' "
+                    "ORDER BY id LIMIT ?"
+                ),
+                audit_query=(
+                    "SELECT insight_embedding FROM insights "
+                    "WHERE description IS NOT NULL AND TRIM(description) != ''"
+                ),
+                update_sql="UPDATE insights SET insight_embedding = ? WHERE id = ?",
+                text_builder=lambda row: row["description"],
+                title_builder=lambda row: None,
+                role="similarity",
+            ),
+            dict(
+                namespace=INTELLIGENCE_PATTERN_NAMESPACE,
+                select_query=(
+                    "SELECT id, applies_to_pattern FROM insights "
+                    "WHERE id > ? AND applies_to_pattern IS NOT NULL "
+                    "AND TRIM(applies_to_pattern) != '' ORDER BY id LIMIT ?"
+                ),
+                audit_query=(
+                    "SELECT pattern_embedding FROM insights "
+                    "WHERE applies_to_pattern IS NOT NULL "
+                    "AND TRIM(applies_to_pattern) != ''"
+                ),
+                update_sql="UPDATE insights SET pattern_embedding = ? WHERE id = ?",
+                text_builder=lambda row: row["applies_to_pattern"],
+                title_builder=lambda row: "Insight applicability",
+                role="document",
+            ),
+        ]
+        total = 0
+        for spec in specs:
+            rebuilt, _ = _rebuild_namespace(
+                conn,
+                batch_size=batch_size,
+                force=force,
+                **spec,
+            )
+            total += rebuilt
+        return total
+    finally:
+        conn.close()
+
+
+def _paths_for_mode(mode: str) -> dict[str, Path]:
+    suffix = "_local" if mode == "local" else ""
+    return {
+        "memory": PROJECT_ROOT / "data" / f"jarvis_memory{suffix}.db",
+        "intelligence": PROJECT_ROOT / "data" / f"jarvis_intelligence{suffix}.db",
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Rebuild Jarvis Embedding vectors")
+    parser.add_argument("mode", choices=["cloud", "local", "both"])
+    parser.add_argument(
+        "--database",
+        choices=["memory", "intelligence", "all"],
+        default="all",
+    )
+    parser.add_argument("--batch-size", type=int, default=24)
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Rebuild namespaces already complete for the current fingerprint",
+    )
+    args = parser.parse_args()
+    if args.batch_size < 1 or args.batch_size > 256:
+        parser.error("--batch-size must be between 1 and 256")
+
+    modes = ["cloud", "local"] if args.mode == "both" else [args.mode]
+    grand_total = 0
+    for mode in modes:
+        with config_scope(mode):
+            runtime = get_embedding_runtime_status(force_refresh=True)
+            if not runtime["ok"]:
+                raise SystemExit(f"Embedding runtime unavailable for {mode}: {runtime['error']}")
+            print(
+                f"{mode.upper()}: {runtime['model']}@{runtime['model_digest']} "
+                f"via {', '.join(runtime['compatible_hosts'])}"
+            )
+            paths = _paths_for_mode(mode)
+            selected = (
+                [args.database] if args.database != "all" else ["memory", "intelligence"]
+            )
+            for database in selected:
+                path = paths[database]
+                if not path.exists():
+                    print(f"Skipping missing database: {path}")
+                    continue
+                if database == "memory":
+                    grand_total += _rebuild_memory(path, args.batch_size, args.force)
+                else:
+                    grand_total += _rebuild_intelligence(path, args.batch_size, args.force)
+
+    print(f"Embedding rebuild complete: {grand_total} vectors rebuilt this run ({EMBEDDING_DIMENSIONS}D)")
+
+
+if __name__ == "__main__":
+    main()

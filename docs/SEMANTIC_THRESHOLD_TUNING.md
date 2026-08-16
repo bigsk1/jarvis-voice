@@ -18,7 +18,7 @@ config/local.env
 ### Setting
 ```bash
 # Add or modify this line:
-SEMANTIC_SIMILARITY_THRESHOLD=0.32  # Shipped cloud default (local: 0.30; code fallback: 0.40)
+SEMANTIC_SIMILARITY_THRESHOLD=0.31  # Unified Jarvis Embedding default; code fallback: 0.40
 ```
 
 ## How It Works
@@ -154,10 +154,10 @@ Threshold 0.70 → ❌ Missed
 ### 3. Different Thresholds for Different Modes
 ```bash
 # Cloud (shipped example)
-config/cloud.env: SEMANTIC_SIMILARITY_THRESHOLD=0.32
+config/cloud.env: SEMANTIC_SIMILARITY_THRESHOLD=0.31
 
 # Local (shipped example)
-config/local.env: SEMANTIC_SIMILARITY_THRESHOLD=0.30
+config/local.env: SEMANTIC_SIMILARITY_THRESHOLD=0.31
 ```
 
 ### 4. Document Your Changes
@@ -228,7 +228,7 @@ results = db.semantic_search("query", similarity_threshold=0.30)
 - Getting too many irrelevant results
 - Have very specific memories
 - Need high precision over recall
-- Using high-quality embeddings (OpenAI)
+- Favoring precision after validating representative Jarvis Embedding queries
 
 ### Tune Lower (0.35-) When:
 - Missing relevant memories
@@ -240,7 +240,7 @@ results = db.semantic_search("query", similarity_threshold=0.30)
 
 ```bash
 # Shipped cloud default (balanced)
-SEMANTIC_SIMILARITY_THRESHOLD=0.32
+SEMANTIC_SIMILARITY_THRESHOLD=0.31
 
 # More results (lenient)
 SEMANTIC_SIMILARITY_THRESHOLD=0.28

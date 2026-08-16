@@ -184,6 +184,33 @@ nano config/cloud.env
 nano config/local.env
 ```
 
+### Required Ollama embeddings in every mode
+
+Cloud and local modes both use the same fingerprinted 768D Jarvis Embedding
+contract. This requirement is independent of the chat provider: OpenAI, xAI,
+and Anthropic cloud chat still need a reachable Ollama daemon for Memory,
+Tool RAG, and Intelligence embeddings.
+
+Set `OLLAMA_BASE_URL` in both ENV files to the daemon host(s) you actually want
+Jarvis to use. That may be localhost or one or more dedicated LAN hosts. On
+every selected daemon host, pull the model:
+
+```bash
+ollama pull bigsk1/jarvis-embedding:bf16-v1
+```
+
+Then verify host reachability, the model tag, and the pinned digest without
+opening or creating any Jarvis database:
+
+```bash
+./bin/check-embeddings-health.py --both --runtime-only
+```
+
+`install.sh` and `setup.sh` deliberately do not install Ollama, start a daemon,
+or pull this model. During a fresh install they run before the example ENV files
+have been personalized, and blindly provisioning localhost could be wasteful
+when the intended Ollama service lives elsewhere.
+
 **What you usually need to change in `cloud.env`:**
 
 For a **single OpenAI key**, start from `config/cloud.openai.env.example`
@@ -859,9 +886,9 @@ source ~/jarvis-venv/bin/activate
 # Install Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 
-# Pull models (default local LLM is gemma4)
+# Pull the default local chat model. Jarvis Embedding is already required for
+# every mode and should have passed the runtime preflight above.
 ollama pull gemma4
-ollama pull nomic-embed-text
 
 # Test
 ./orchestrator/orchestrator_v2.py local "what time is it"

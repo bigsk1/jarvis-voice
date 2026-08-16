@@ -1,319 +1,272 @@
 #!/usr/bin/env python3
-"""
-Embedding Health Check - Validates that embeddings in the database
-match the expected dimensions for the current mode.
+"""Validate Memory and Tool RAG embedding fingerprints and vector integrity."""
 
-This prevents silent failures in semantic search caused by:
-- Wrong embedding model used during ingestion
-- Database synced without regenerating embeddings
-- Config changes that affect embedding provider
+from __future__ import annotations
 
-Expected dimensions:
-- Cloud mode (OpenAI): 1536 dimensions
-- Local mode (nomic-embed-text): 768 dimensions
-"""
-
-import sys
+import argparse
 import json
 import pickle
+import sqlite3
+import sys
 from pathlib import Path
 
-# Add lib to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
+sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 
 from config_loader import config_scope, get_config_value
-from memory_db import MemoryDB
-from embeddings import get_effective_embedding_provider, get_persistable_embedding
+from embedding_metadata import (
+    MEMORY_KNOWLEDGE_NAMESPACE,
+    MEMORY_TOOLS_NAMESPACE,
+    embedding_namespace_status,
+)
+from embeddings import (
+    EMBEDDING_DIMENSIONS,
+    get_embedding_runtime_status,
+    get_persistable_embedding,
+)
 
-# ANSI color codes
-GREEN = '\033[92m'
-RED = '\033[91m'
-YELLOW = '\033[93m'
-BLUE = '\033[94m'
-BOLD = '\033[1m'
-NC = '\033[0m'  # No Color
+GREEN = "\033[92m"
+RED = "\033[91m"
+YELLOW = "\033[93m"
+BLUE = "\033[94m"
+BOLD = "\033[1m"
+NC = "\033[0m"
 
 
-def _effective_embedding_backend() -> str:
-    """Match the runtime embedding resolver exactly."""
-    resolved = get_effective_embedding_provider()
-    return "ollama" if resolved == "ollama" else "openai"
+def _deserialize(blob):
+    try:
+        return json.loads(blob.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+        return pickle.loads(blob)
 
 
-def check_embedding_dimensions(mode='cloud', _scoped=False):
-    """
-    Check if embeddings in the database match expected dimensions for the mode.
-    
-    Args:
-        mode: 'cloud' or 'local'
-        
-    Returns:
-        dict with health status
-    """
+def _scan_vectors(
+    cursor,
+    table: str,
+    id_column: str,
+) -> tuple[int, int, int, list[dict]]:
+    total = cursor.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    rows = cursor.execute(
+        f"SELECT {id_column}, embedding FROM {table} WHERE embedding IS NOT NULL"
+    ).fetchall()
+    issues = []
+    issue_count = 0
+    for identifier, blob in rows:
+        try:
+            dimensions = len(_deserialize(blob))
+            if dimensions != EMBEDDING_DIMENSIONS:
+                issue_count += 1
+                if len(issues) < 100:
+                    issues.append({
+                        "id": identifier,
+                        "expected": EMBEDDING_DIMENSIONS,
+                        "actual": dimensions,
+                    })
+        except Exception as exc:
+            issue_count += 1
+            if len(issues) < 100:
+                issues.append({"id": identifier, "error": str(exc)})
+    return total, len(rows), issue_count, issues
+
+
+def check_embedding_runtime(mode: str = "cloud", _scoped: bool = False) -> dict:
+    """Verify configured Ollama hosts/model without opening or creating a DB."""
     if not _scoped:
         with config_scope(mode):
-            return check_embedding_dimensions(mode, _scoped=True)
-    
-    # Determine expected dimensions
-    if mode == 'local':
-        expected_dim = 768  # nomic-embed-text
-        db_path = 'data/jarvis_memory_local.db'
-    else:
-        expected_dim = 1536  # OpenAI text-embedding-3-small
-        db_path = 'data/jarvis_memory.db'
-    
-    project_root = Path(__file__).parent.parent
-    db_file = project_root / db_path
-    
-    if not db_file.exists():
-        return {
-            'ok': True,
-            'warning': f'Database not found: {db_path} (will be created on first use)',
-            'mode': mode
-        }
-    
-    # Connect to database
-    db = MemoryDB(str(db_file))
-    cursor = db.conn.cursor()
-    
-    # Check knowledge_base embeddings
-    memories_with_embeddings = cursor.execute(
-        "SELECT id, key, embedding FROM knowledge_base WHERE embedding IS NOT NULL LIMIT 100"
-    ).fetchall()
-    
-    # Check tool_definitions embeddings
-    tools_with_embeddings = cursor.execute(
-        "SELECT name, embedding FROM tool_definitions WHERE embedding IS NOT NULL LIMIT 50"
-    ).fetchall()
-    
-    db.close()
-    
-    # Analyze dimensions
-    memory_issues = []
-    for mem_id, key, embedding_blob in memories_with_embeddings:
-        try:
-            # Try to deserialize
-            try:
-                embedding = json.loads(embedding_blob.decode('utf-8'))
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                embedding = pickle.loads(embedding_blob)
-            
-            actual_dim = len(embedding)
-            if actual_dim != expected_dim:
-                memory_issues.append({
-                    'id': mem_id,
-                    'key': key[:50],
-                    'expected': expected_dim,
-                    'actual': actual_dim
-                })
-        except Exception as e:
-            memory_issues.append({
-                'id': mem_id,
-                'key': key[:50],
-                'error': str(e)
-            })
-    
-    tool_issues = []
-    for tool_name, embedding_blob in tools_with_embeddings:
-        try:
-            # Try to deserialize
-            try:
-                embedding = json.loads(embedding_blob.decode('utf-8'))
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                embedding = pickle.loads(embedding_blob)
-            
-            actual_dim = len(embedding)
-            if actual_dim != expected_dim:
-                tool_issues.append({
-                    'name': tool_name,
-                    'expected': expected_dim,
-                    'actual': actual_dim
-                })
-        except Exception as e:
-            tool_issues.append({
-                'name': tool_name,
-                'error': str(e)
-            })
-    
-    # Generate a real provider embedding to verify current config. A same-size
-    # hash fallback must not make a disconnected provider look healthy.
-    provider_error = None
-    try:
-        test_embedding = get_persistable_embedding("test query")
-        current_dim = len(test_embedding)
-    except Exception as exc:
-        current_dim = None
-        provider_error = str(exc)
-    
-    llm_provider = get_config_value("LLM_PROVIDER", "openai")
-    effective = _effective_embedding_backend()
-    if mode == "local":
-        embedding_model = get_config_value("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
-    else:
-        embedding_model = (
-            get_config_value("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
-            if effective == "ollama"
-            else "text-embedding-3-small"
-        )
-    
+            return check_embedding_runtime(mode, _scoped=True)
+
+    runtime = get_embedding_runtime_status(force_refresh=True)
     return {
-        'ok': (
-            provider_error is None
-            and len(memory_issues) == 0
-            and len(tool_issues) == 0
-            and current_dim == expected_dim
-        ),
-        'mode': mode,
-        'expected_dimensions': expected_dim,
-        'current_embedding_dimensions': current_dim,
-        'memories_checked': len(memories_with_embeddings),
-        'memory_issues': memory_issues,
-        'tools_checked': len(tools_with_embeddings),
-        'tool_issues': tool_issues,
-        # What actually runs vectors (openai vs ollama), not the chat LLM (xai/anthropic/…)
-        'embedding_provider': effective,
-        'llm_provider': llm_provider,
-        'embedding_model': embedding_model,
-        'provider_error': provider_error,
+        "ok": runtime["ok"],
+        "runtime_only": True,
+        "mode": mode,
+        "expected_dimensions": EMBEDDING_DIMENSIONS,
+        "embedding_provider": "ollama",
+        "embedding_model": runtime["model"],
+        "model_digest": runtime["model_digest"],
+        "runtime": runtime,
+        "provider_error": runtime["error"],
+        "namespaces": [],
     }
 
 
-def print_health_report(health):
-    """Print a formatted health report."""
-    mode = health['mode']
-    ok = health['ok']
-    
-    print(f"{BOLD}╔════════════════════════════════════════════════════════════╗{NC}")
-    print(f"{BOLD}║  Embedding Health Check - {mode.upper()} Mode{' ' * (30 - len(mode))}║{NC}")
-    print(f"{BOLD}╚════════════════════════════════════════════════════════════╝{NC}")
-    print()
-    
-    # Overall status
-    if ok:
-        print(f"{GREEN}✅ All embeddings are healthy!{NC}")
-    elif health.get('provider_error'):
-        print(f"{RED}❌ Embedding provider unavailable!{NC}")
-    else:
-        print(f"{RED}❌ Embedding dimension mismatch detected!{NC}")
-    
-    print()
-    print(f"{BLUE}Expected Dimensions:{NC} {health['expected_dimensions']}")
-    print(f"{BLUE}Current Config Generates:{NC} {health['current_embedding_dimensions']}")
-    print(f"{BLUE}Embedding Provider:{NC} {health['embedding_provider']}")
-    if health.get("llm_provider") and health["llm_provider"] != health["embedding_provider"]:
-        print(f"{BLUE}LLM Provider (chat):{NC} {health['llm_provider']}")
-    print(f"{BLUE}Embedding Model:{NC} {health['embedding_model']}")
-    if health.get('provider_error'):
-        print(f"{RED}Provider Error:{NC} {health['provider_error']}")
-    print()
-    
-    # Memory embeddings
-    print(f"{BOLD}Knowledge Base:{NC}")
-    print(f"  Checked: {health['memories_checked']} memories")
-    if health['memory_issues']:
-        print(f"  {RED}Issues: {len(health['memory_issues'])}{NC}")
-        print()
-        for issue in health['memory_issues'][:5]:  # Show first 5
-            if 'error' in issue:
-                print(f"    {RED}✗{NC} Memory #{issue['id']} ({issue['key']}...): {issue['error']}")
-            else:
-                print(f"    {RED}✗{NC} Memory #{issue['id']} ({issue['key']}...): {issue['actual']}D (expected {issue['expected']}D)")
-        if len(health['memory_issues']) > 5:
-            print(f"    ... and {len(health['memory_issues']) - 5} more")
-    else:
-        print(f"  {GREEN}✓ All OK{NC}")
-    
-    print()
-    
-    # Tool embeddings
-    print(f"{BOLD}Tool Definitions:{NC}")
-    print(f"  Checked: {health['tools_checked']} tools")
-    if health['tool_issues']:
-        print(f"  {RED}Issues: {len(health['tool_issues'])}{NC}")
-        print()
-        for issue in health['tool_issues'][:5]:  # Show first 5
-            if 'error' in issue:
-                print(f"    {RED}✗{NC} Tool {issue['name']}: {issue['error']}")
-            else:
-                print(f"    {RED}✗{NC} Tool {issue['name']}: {issue['actual']}D (expected {issue['expected']}D)")
-        if len(health['tool_issues']) > 5:
-            print(f"    ... and {len(health['tool_issues']) - 5} more")
-    else:
-        print(f"  {GREEN}✓ All OK{NC}")
-    
-    print()
-    
-    # Recommendations
-    if not ok:
-        print(f"{BOLD}{YELLOW}🔧 Recommended Actions:{NC}")
-        
-        if health.get('provider_error'):
-            print(f"{YELLOW}  1. Restore the configured embedding provider, then rerun the failed sync{NC}")
-        elif health['current_embedding_dimensions'] != health['expected_dimensions']:
-            print(f"{YELLOW}  1. Config issue: Current embedding model generates wrong dimensions{NC}")
-            print(f"     Check config/{mode}.env for correct LLM_PROVIDER and embedding model")
-        
-        if health['memory_issues']:
-            print(f"{YELLOW}  2. Memory embeddings are wrong - regenerate them:{NC}")
-            if mode == 'local':
-                print(f"     ./bin/sync-memory-db.py --from cloud --to local")
-            else:
-                print(f"     ./bin/sync-memory-db.py --from local --to cloud")
-        
-        if health['tool_issues']:
-            print(f"{YELLOW}  3. Tool embeddings are wrong - regenerate them:{NC}")
-            print(f"     ./bin/sync-tools.py {mode}")
-        
-        print()
-        print(f"{RED}⚠️  Semantic search will fail until embeddings are fixed!{NC}")
-    
-    print()
-    print("━" * 62)
+def check_embedding_dimensions(mode: str = "cloud", _scoped: bool = False) -> dict:
+    """Check the selected Memory database without changing its vector state."""
+    if not _scoped:
+        with config_scope(mode):
+            return check_embedding_dimensions(mode, _scoped=True)
+
+    relative_path = (
+        "data/jarvis_memory_local.db" if mode == "local" else "data/jarvis_memory.db"
+    )
+    db_file = Path(__file__).parent.parent / relative_path
+    runtime = get_embedding_runtime_status(force_refresh=True)
+
+    if not db_file.exists():
+        return {
+            "ok": runtime["ok"],
+            "warning": f"Database not found: {relative_path} (will be created on first use)",
+            "mode": mode,
+            "db_path": relative_path,
+            "expected_dimensions": EMBEDDING_DIMENSIONS,
+            "embedding_provider": "ollama",
+            "embedding_model": runtime["model"],
+            "model_digest": runtime["model_digest"],
+            "runtime": runtime,
+            "namespaces": [],
+            "provider_error": runtime["error"],
+        }
+
+    conn = sqlite3.connect(str(db_file))
+    try:
+        cursor = conn.cursor()
+        memory_total, memory_vectors, memory_issue_count, memory_issues = _scan_vectors(
+            cursor, "knowledge_base", "id"
+        )
+        tool_total, tool_vectors, tool_issue_count, tool_issues = _scan_vectors(
+            cursor, "tool_definitions", "name"
+        )
+        namespaces = [
+            embedding_namespace_status(
+                conn,
+                MEMORY_KNOWLEDGE_NAMESPACE,
+                vector_count=memory_vectors,
+            ),
+            embedding_namespace_status(
+                conn,
+                MEMORY_TOOLS_NAMESPACE,
+                vector_count=tool_vectors,
+            ),
+        ]
+    finally:
+        conn.close()
+
+    provider_error = runtime["error"]
+    current_dimensions = None
+    if runtime["ok"]:
+        try:
+            current_dimensions = len(
+                get_persistable_embedding(
+                    "Jarvis embedding health probe",
+                    role="query",
+                )
+            )
+        except Exception as exc:
+            provider_error = str(exc)
+
+    missing_memory_vectors = memory_total - memory_vectors
+    missing_tool_vectors = tool_total - tool_vectors
+    namespace_issues = [item for item in namespaces if not item["ok"]]
+    ok = (
+        provider_error is None
+        and current_dimensions == EMBEDDING_DIMENSIONS
+        and not namespace_issues
+        and memory_issue_count == 0
+        and tool_issue_count == 0
+        and missing_memory_vectors == 0
+        and missing_tool_vectors == 0
+    )
+    return {
+        "ok": ok,
+        "mode": mode,
+        "db_path": relative_path,
+        "expected_dimensions": EMBEDDING_DIMENSIONS,
+        "current_embedding_dimensions": current_dimensions,
+        "embedding_provider": "ollama",
+        "llm_provider": get_config_value("LLM_PROVIDER", "openai"),
+        "embedding_model": runtime["model"],
+        "model_digest": runtime["model_digest"],
+        "runtime": runtime,
+        "provider_error": provider_error,
+        "namespaces": namespaces,
+        "memories_total": memory_total,
+        "memories_checked": memory_vectors,
+        "missing_memory_vectors": missing_memory_vectors,
+        "memory_issues": memory_issues,
+        "memory_issues_count": memory_issue_count,
+        "tools_total": tool_total,
+        "tools_checked": tool_vectors,
+        "missing_tool_vectors": missing_tool_vectors,
+        "tool_issues": tool_issues,
+        "tool_issues_count": tool_issue_count,
+    }
 
 
-def main():
-    """Run health check for specified mode."""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='Check embedding health for Jarvis databases')
-    parser.add_argument('mode', nargs='?', default='cloud', choices=['cloud', 'local'],
-                        help='Mode to check (cloud or local)')
-    parser.add_argument('--json', action='store_true', help='Output JSON instead of formatted text')
-    parser.add_argument('--both', action='store_true', help='Check both cloud and local modes')
-    
+def print_health_report(health: dict) -> None:
+    mode = health["mode"]
+    title = "Embedding Runtime Preflight" if health.get("runtime_only") else "Embedding Health"
+    print(f"{BOLD}{title} - {mode.upper()}{NC}")
+    print(f"{GREEN if health['ok'] else RED}{'✅ Healthy' if health['ok'] else '❌ Unhealthy'}{NC}")
+    print(f"{BLUE}Contract:{NC} Ollama / {health.get('embedding_model')} / {health.get('expected_dimensions')}D")
+    print(f"{BLUE}Digest:{NC} {health.get('model_digest')}")
+    runtime = health.get("runtime", {})
+    print(f"{BLUE}Compatible hosts:{NC} {', '.join(runtime.get('compatible_hosts', [])) or 'none'}")
+    if runtime.get("unavailable_hosts"):
+        print(f"{YELLOW}Unavailable hosts:{NC} {', '.join(runtime['unavailable_hosts'])}")
+    if runtime.get("missing_model_hosts"):
+        print(f"{YELLOW}Hosts missing model:{NC} {', '.join(runtime['missing_model_hosts'])}")
+    if health.get("provider_error"):
+        print(f"{RED}Embedding provider unavailable:{NC} {health['provider_error']}")
+
+    for namespace in health.get("namespaces", []):
+        color = GREEN if namespace["ok"] else RED
+        print(
+            f"{color}{namespace['namespace']}: {namespace['status']}"
+            f" ({namespace['vector_count']} vectors){NC}"
+        )
+        if namespace.get("reason") and not namespace["ok"]:
+            print(f"  {namespace['reason']}")
+
+    if "memories_total" in health:
+        print(
+            f"Memory vectors: {health['memories_checked']}/{health['memories_total']} "
+            f"({health['memory_issues_count']} corrupt or wrong-size)"
+        )
+        print(
+            f"Tool vectors: {health['tools_checked']}/{health['tools_total']} "
+            f"({health['tool_issues_count']} corrupt or wrong-size)"
+        )
+
+    if not health["ok"]:
+        print()
+        if health.get("runtime_only"):
+            print(f"{YELLOW}Jarvis does not install Ollama or pull models automatically.{NC}")
+            print("Set OLLAMA_BASE_URL to the intended daemon host(s), ensure Ollama is running,")
+            print(
+                "and pull bigsk1/jarvis-embedding:bf16-v1 on each host before "
+                "starting Jarvis."
+            )
+        else:
+            print(f"{YELLOW}Semantic retrieval is fail-closed for incompatible namespaces.{NC}")
+            print("Back up the DB, then run ./bin/rebuild-embeddings for preserved data")
+            print("or delete the incompatible DB and restart for a clean initialization.")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Check Jarvis embedding fingerprints")
+    parser.add_argument("mode", nargs="?", default="cloud", choices=["cloud", "local"])
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--both", action="store_true")
+    parser.add_argument(
+        "--runtime-only",
+        action="store_true",
+        help="check configured Ollama hosts/model without reading or creating databases",
+    )
     args = parser.parse_args()
-    
-    if args.both:
-        # Check both modes
-        cloud_health = check_embedding_dimensions('cloud')
-        local_health = check_embedding_dimensions('local')
-        
-        if args.json:
-            print(json.dumps({
-                'cloud': cloud_health,
-                'local': local_health
-            }, indent=2))
-        else:
-            print_health_report(cloud_health)
-            print()
-            print_health_report(local_health)
-        
-        # Exit with error if either mode has issues
-        if not cloud_health['ok'] or not local_health['ok']:
-            sys.exit(1)
+
+    modes = ["cloud", "local"] if args.both else [args.mode]
+    checker = check_embedding_runtime if args.runtime_only else check_embedding_dimensions
+    reports = {mode: checker(mode) for mode in modes}
+    if args.json:
+        payload = reports if args.both else reports[args.mode]
+        print(json.dumps(payload, indent=2))
     else:
-        # Check single mode
-        health = check_embedding_dimensions(args.mode)
-        
-        if args.json:
-            print(json.dumps(health, indent=2))
-        else:
-            print_health_report(health)
-        
-        # Exit with error code if issues found
-        if not health['ok']:
-            sys.exit(1)
+        for index, mode in enumerate(modes):
+            if index:
+                print()
+            print_health_report(reports[mode])
+    if not all(report["ok"] for report in reports.values()):
+        raise SystemExit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

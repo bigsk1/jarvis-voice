@@ -789,8 +789,8 @@ graph LR
 ```
 
 **Database Details:**
-- **Cloud**: OpenAI text-embedding-3-small (1536 dimensions) + FTS5 full-text search
-- **Local**: nomic-embed-text (768 dimensions) + FTS5 full-text search
+- **Cloud**: Ollama Jarvis Embedding (768 dimensions) + FTS5 full-text search
+- **Local**: the same fingerprinted Jarvis Embedding contract + FTS5 full-text search
 - **Search**: Hybrid (FTS5 for keywords, embeddings for concepts)
 - **Models**: xAI Grok 4.5 / grok-4.3 / grok-build-0.1 ⭐, Claude Sonnet 5, GPT-4o (cloud) | gemma4 ⭐, qwen3.5:latest, qwen3-coder (local)
 

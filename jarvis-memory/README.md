@@ -45,8 +45,8 @@ Open http://localhost:5002 in your browser (or your server IP).
 
 | Mode | Database | Embeddings |
 |------|----------|------------|
-| Cloud | `data/jarvis_memory.db` | OpenAI (1536-dim) |
-| Local | `data/jarvis_memory_local.db` | Nomic (768-dim) |
+| Cloud | `data/jarvis_memory.db` | Ollama Jarvis Embedding (768D) |
+| Local | `data/jarvis_memory_local.db` | Ollama Jarvis Embedding (768D) |
 
 Use the mode selector in the header to switch databases.
 

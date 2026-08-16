@@ -216,6 +216,18 @@ if ! sqlite3 "$SELECTED_DB" "SELECT name FROM sqlite_master WHERE type='table' A
     echo ""
 fi
 
+# Fail closed before startup sync can mix an old or partially rebuilt vector
+# namespace with the configured Jarvis Embedding artifact.
+EMBEDDING_PREFLIGHT_OK=true
+if ! python3 "$PROJECT_ROOT/bin/check-embeddings-health.py" "$MODE" --json > /dev/null 2>&1; then
+    EMBEDDING_PREFLIGHT_OK=false
+    echo -e "${RED}❌ Embedding fingerprint preflight failed${NC}"
+    echo -e "${YELLOW}   Semantic retrieval and Tool RAG embedding writes remain disabled.${NC}"
+    echo -e "${YELLOW}   Inspect: ./bin/check-embeddings-health.py $MODE${NC}"
+    echo -e "${YELLOW}   Recover: ./bin/rebuild-embeddings $MODE (or delete the incompatible DB).${NC}"
+    echo ""
+fi
+
 # Sync databases between cloud and local modes
 if [ "$MODE" == "local" ]; then
     # Running in local mode - sync from cloud to local if cloud DB exists
@@ -259,7 +271,9 @@ fi
 # Sync tool definitions to vector database
 echo -e "${BLUE}🔧 Syncing tool definitions...${NC}"
 TOOL_SYNC_LOG="$PROJECT_ROOT/logs/tool-sync-${MODE}.log"
-if python3 "$PROJECT_ROOT/bin/sync-tools.py" "$MODE" > "$TOOL_SYNC_LOG" 2>&1; then
+if [ "$EMBEDDING_PREFLIGHT_OK" != true ]; then
+    echo -e "${YELLOW}  ⚠️  Tool embedding sync skipped until the fingerprint is repaired${NC}"
+elif python3 "$PROJECT_ROOT/bin/sync-tools.py" "$MODE" > "$TOOL_SYNC_LOG" 2>&1; then
     echo -e "${GREEN}  ✅ Tool embeddings updated${NC}"
 else
     TOOL_SYNC_STATUS=$?
@@ -273,11 +287,11 @@ echo ""
 # Health check: Verify embedding dimensions are correct
 echo -e "${BLUE}🩺 Checking embedding health...${NC}"
 if python3 "$PROJECT_ROOT/bin/check-embeddings-health.py" "$MODE" --json > /dev/null 2>&1; then
-    echo -e "${GREEN}  ✅ Embeddings healthy ($([ "$MODE" == "local" ] && echo "768" || echo "1536") dimensions)${NC}"
+    echo -e "${GREEN}  ✅ Jarvis Embedding fingerprints healthy (768 dimensions)${NC}"
 else
-    echo -e "${RED}  ❌ Embedding dimension mismatch detected!${NC}"
+    echo -e "${RED}  ❌ Embedding fingerprint or vector health check failed!${NC}"
     echo -e "${YELLOW}     Run: ./bin/check-embeddings-health.py $MODE${NC}"
-    echo -e "${YELLOW}     This will cause semantic search to fail!${NC}"
+    echo -e "${YELLOW}     Semantic retrieval is fail-closed; lexical fallback remains available.${NC}"
     echo ""
     # Don't exit, but warn loudly
 fi

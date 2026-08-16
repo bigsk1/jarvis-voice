@@ -16,9 +16,11 @@ Script-only options:
   --synthetic-full — also embed a built-in synthetic "full transcript" wrapping your query
   --full-transcript-file — embed file contents as the "full" regime (real captured prompt)
 
-Activate the project venv first (so real embeddings run; otherwise you may see fallback embeddings and junk scores):
+Activate the project venv first so the repository dependencies and verified
+Jarvis Embedding client are available. Embedding failures are explicit; the
+debugger does not generate synthetic fallback vectors:
 
-  source ~/jarvis-venv/bin/activate
+  source .venv/bin/activate
 
 Usage:
   ./bin/debug-tool-rag.py cloud "What is the price of Bitcoin?"

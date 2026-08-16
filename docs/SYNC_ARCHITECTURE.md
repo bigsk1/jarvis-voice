@@ -33,18 +33,18 @@ Scheduled tasks stay mode-local because cloud and local modes can expose
 different providers, tools, credentials, and workflows. Switching modes does not
 copy, merge, or replay the other mode's schedules.
 
-### Key Feature: Embedding Regeneration
+### Key Feature: Fingerprinted Embedding Regeneration
 
-**Critical**: When syncing memories between modes, embeddings are **regenerated** because:
-- Cloud mode uses OpenAI embeddings (1536 dimensions)
-- Local mode uses Nomic embeddings (768 dimensions)
-- **Copying embeddings directly would break semantic search**
+Both modes use Jarvis Embedding at 768 dimensions. Changed or missing target
+vectors are regenerated with the target database's exact namespace contract.
+Sync refuses an incompatible or partially rebuilt target namespace rather than
+mixing same-size vectors from a different digest or prompt format.
 
 **How it works:**
 ```python
 # For each memory being synced:
-text = f"{key}: {value}"
-embedding = get_embedding(text)  # Uses target mode's embedding model
+text = value  # key is supplied as the EmbeddingGemma document title
+embedding = get_persistable_embedding(text, role="document", title=key)
 embedding_blob = json.dumps(embedding).encode('utf-8')
 
 # Insert/update with new embedding
@@ -162,7 +162,7 @@ Web/request-blocked tool.
 
 ```python
 # For each tool:
-text = f"Tool {name}: {description}"
+text = description  # name is supplied as the EmbeddingGemma document title
 embedding = get_embedding(text)  # Uses current mode's embedding model
 
 db.upsert_tool(
@@ -227,9 +227,9 @@ db.upsert_tool(
 | **Storage** | Column `embedding_input_hash TEXT` on `tool_definitions`. |
 | **Skip path** | If `embedding IS NOT NULL`, stored hash equals computed hash, and `force_reembed` is false → skip `get_embedding()` and reuse stored blob. |
 | **Always embed** | New row, null embedding, null/mismatched hash, or **`./bin/sync-tools.py cloud|local --force`** (`force_reembed=True`). |
-| **Provider failure** | Storage rejects hash fallback vectors. A changed tool retries (`PERSISTENT_EMBEDDING_MAX_ATTEMPTS`, default `3`), then exits with status `4` without replacing the previous row or advancing `embedding_input_hash`. |
+| **Provider failure** | Storage never creates a synthetic/hash vector. A changed tool retries (`PERSISTENT_EMBEDDING_MAX_ATTEMPTS`, default `3`), then exits with status `4` without replacing the previous row or advancing `embedding_input_hash`. |
 
-**Manual workflow unchanged:** Run `./bin/sync-tools.py cloud|local` after changing tools; use **`--force`** when you need a full re-embed (e.g. after switching embedding model/dimensions or debugging). Startup sync in `jarvis-services` / `jarvis-api` benefits from fewer redundant embedding calls when nothing changed. Native startup logs failed sync details to `logs/tool-sync-<mode>.log` and continues with the last good index. Docker withholds its completed-sync marker and retries on the next container start.
+Run `./bin/sync-tools.py cloud|local` after changing tools; use **`--force`** only to refresh tools under the current verified fingerprint. A model, digest, prompt, dimension, or input-format change requires `./bin/rebuild-embeddings <mode>`. Startup sync in `jarvis-services` / `jarvis-api` benefits from fewer redundant embedding calls when nothing changed. Native startup logs failed sync details to `logs/tool-sync-<mode>.log`; semantic Tool RAG remains fail-closed unless the stored namespace is compatible. Docker withholds its completed-sync marker and retries on the next container start.
 
 Each completed sync attempt also writes an atomic, per-mode status file under
 `data/.tool_sync_status_<mode>.json`. Jarvis Web displays a persistent warning
@@ -258,20 +258,20 @@ sync record can do so.
 ## 3. Embedding Health Check (`check-embeddings-health.py`)
 
 ### Purpose
-Validates that embeddings in the database match the expected dimensions for the current mode, preventing **silent semantic search failures**.
+Validates the Ollama artifact, namespace fingerprints, completion state, vector
+dimensions, and missing vectors to prevent silent semantic search failures.
 
 ### What it Checks
 - ✅ Knowledge base embedding dimensions
 - ✅ Tool definition embedding dimensions
 - ✅ Current config generates correct dimensions
-- ✅ Embedding provider matches expected model
+- ✅ Model digest and prompt/input contract match every namespace
 
 ### Why This is Necessary
 
-**The Problem:**
-- Cloud mode expects 1536-dim embeddings (OpenAI)
-- Local mode expects 768-dim embeddings (Nomic)
-- If dimensions mismatch, cosine similarity breaks → 0 results
+**The Problem:** same-size vectors from different models, quantizations, prompts,
+or content builders are not interchangeable. Dimensions alone cannot prove
+compatibility.
 
 **Silent failures occur when:**
 - Config changed but embeddings not regenerated
@@ -386,12 +386,12 @@ Validates that embeddings in the database match the expected dimensions for the 
 
 ---
 
-## Expected Dimensions by Mode
+## Expected Contract by Mode
 
 | Mode | Provider | Embedding Model | Dimensions | Database File |
 |------|----------|----------------|------------|---------------|
-| **Cloud** | OpenAI | `text-embedding-3-small` | **1536** | `jarvis_memory.db` |
-| **Local** | Ollama | `nomic-embed-text` | **768** | `jarvis_memory_local.db` |
+| **Cloud** | Ollama | `bigsk1/jarvis-embedding:bf16-v1` | **768** | `jarvis_memory.db` |
+| **Local** | Ollama | `bigsk1/jarvis-embedding:bf16-v1` | **768** | `jarvis_memory_local.db` |
 
 ---
 
@@ -430,7 +430,7 @@ Validates that embeddings in the database match the expected dimensions for the 
 ./jarvis-local
 
 # What happens automatically:
-# - Memory sync: cloud → local (regenerates 1536→768 dims)
+# - Memory sync: cloud → local (regenerates changed/missing vectors)
 # - Tool sync: local (generates 768-dim tool embeddings)
 # - Health check: ✅ Pass (all 768-dim)
 ```
@@ -444,11 +444,9 @@ cp data/jarvis_memory.db data/jarvis_memory_local.db
 ./jarvis-local
 ```
 
-**What goes wrong:**
-- Embeddings are 1536-dim (from cloud)
-- Local mode expects 768-dim (from Nomic)
-- Health check: ❌ Fail
-- Semantic search: 0 results
+**What goes wrong:** direct copying bypasses the intended data boundary and can
+carry missing, mismatched, or incomplete fingerprint state. Health fails closed
+instead of guessing that vectors are compatible.
 
 **✅ Correct approach:**
 ```bash
@@ -578,7 +576,7 @@ Synchronizes the **intelligence layer** (self-learning system) between cloud and
 - ✅ **Insights** - Learned patterns (positive/negative constraints, tool preferences, and specific `preferred_workflow_id` associations)
 - ✅ **Insight Evidence** - Audit trail linking insights back to source experiences/web conversations, including the workflow identity that earned a preference
 - ✅ **Reflection Queue** - Pending reflections awaiting processing
-- ✅ Regenerates all embeddings for target mode dimensions
+- ✅ Regenerates all embeddings under the target database's verified fingerprint
 - ❌ **Meta Knowledge** - Deliberately not copied. Each cloud/local Intelligence database keeps its own maintenance history and meta-cognition findings.
 
 ### Important Behavior
@@ -591,16 +589,16 @@ Synchronizes the **intelligence layer** (self-learning system) between cloud and
   - `last_applied`
 - **Only pending reflection queue rows are synced**. Processed queue history is not copied across modes.
 - **`meta_knowledge` stays separate for each database**. It records facts about that specific database, including when its decay job last ran, blind spots derived from its recent experiences, and learning-quality findings. Copying those rows could make one database skip maintenance because maintenance ran only against the other database. After learning data is synced, each database can derive its own current findings.
-- **Ollama embedding requests now use context-aware safeguards**:
-  - `OLLAMA_EMBEDDING_CONTEXT_WINDOW` when set
-  - otherwise `OLLAMA_CONTEXT_WINDOW`
-  - automatic compact-and-retry for oversized raw text before fallback embeddings are used
+- **Ollama embedding requests use context-aware safeguards**:
+  - `OLLAMA_EMBEDDING_CONTEXT_WINDOW`, capped at EmbeddingGemma's supported 2048-token window
+  - automatic compact-and-retry for oversized raw text
+  - explicit failure when the verified model cannot return a valid 768D vector; no synthetic fallback is persisted
 
 ### Why Intelligence Syncs
 Unlike provider-specific configurations, **learned insights are universal**:
 - "Use `crypto_price` for price queries" applies to ANY LLM
 - "Don't use `search_memory` for server status" helps ALL providers
-- Only the vector embeddings need regeneration for dimension compatibility
+- Vector embeddings are regenerated under the target database's verified fingerprint
 
 ### How it Works
 
@@ -608,7 +606,7 @@ Unlike provider-specific configurations, **learned insights are universal**:
 # For each experience/insight being synced:
 # 1. Copy text content (query, description, pattern)
 # 2. Regenerate embeddings with target mode's model
-query_embedding = get_embedding(query)  # 1536-dim (cloud) or 768-dim (local)
+query_embedding = get_persistable_embedding(query, role="document", title="User query")
 # 3. Reuse matching target rows or insert missing rows with new IDs
 # 4. Remap insight_evidence rows to target insight/experience IDs
 # 5. Remap pending reflection_queue rows to target experience IDs
@@ -696,8 +694,8 @@ Synchronizes active `prompt_versions` between cloud and local memory databases s
 
 | Mode | Database | Embedding Dimensions |
 |------|----------|---------------------|
-| Cloud | `data/jarvis_intelligence.db` | 1536 (OpenAI) |
-| Local | `data/jarvis_intelligence_local.db` | 768 (Nomic) |
+| Cloud | `data/jarvis_intelligence.db` | 768 (Jarvis Embedding) |
+| Local | `data/jarvis_intelligence_local.db` | 768 (Jarvis Embedding) |
 
 ### Health Check Integration
 

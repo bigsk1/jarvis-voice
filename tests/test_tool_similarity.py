@@ -3,7 +3,7 @@
 Tool Similarity Ranking Test
 
 Tests how well the Tool RAG system matches queries to expected tools.
-Useful for tuning SEMANTIC_SIMILARITY_THRESHOLD.
+Useful for tuning TOOL_SIMILARITY_THRESHOLD.
 
 Usage:
     ./tests/test_tool_similarity.py                    # Run default test queries
@@ -20,7 +20,7 @@ import argparse
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 
 from memory_db import MemoryDB
-from config_loader import load_config, get_float
+from config_loader import get_config_value, load_config, get_float
 
 # Default test queries that REQUIRE tools (not answerable from system prompt)
 DEFAULT_TEST_QUERIES = [
@@ -44,7 +44,7 @@ DEFAULT_TEST_QUERIES = [
 ]
 
 
-def test_single_query(db: MemoryDB, query: str, show_all: bool = False, limit: int = 10):
+def run_single_query(db: MemoryDB, query: str, show_all: bool = False, limit: int = 10):
     """Test a single query and show tool rankings."""
     print(f'\n🔍 Query: "{query}"')
     print('-' * 50)
@@ -78,7 +78,12 @@ def test_single_query(db: MemoryDB, query: str, show_all: bool = False, limit: i
     return results
 
 
-def test_expected_queries(db: MemoryDB, queries: list, current_threshold: float):
+def run_expected_queries(
+    db: MemoryDB,
+    queries: list,
+    current_threshold: float,
+    ghost_tools: set[str],
+):
     """Test queries with expected tools and analyze threshold impact."""
     print('\n' + '=' * 60)
     print('=== TOOL RAG SIMILARITY ANALYSIS ===')
@@ -86,6 +91,7 @@ def test_expected_queries(db: MemoryDB, queries: list, current_threshold: float)
     
     all_expected_scores = []
     missed_tools = []
+    ghost_unranked = []
     
     for query, expected_tool in queries:
         # Get all tools with scores (no threshold filtering)
@@ -100,13 +106,18 @@ def test_expected_queries(db: MemoryDB, queries: list, current_threshold: float)
                 expected_score = tool.get('similarity', 0)
                 break
         
-        if expected_score:
-            all_expected_scores.append((expected_tool, expected_score, expected_rank, query[:40]))
+        is_ghost = expected_tool in ghost_tools
+        if expected_score is not None:
+            all_expected_scores.append(
+                (expected_tool, expected_score, expected_rank, query[:40], is_ghost)
+            )
+        elif is_ghost:
+            ghost_unranked.append((expected_tool, query[:40]))
         else:
             missed_tools.append((expected_tool, query[:40]))
         
         # Show details for low-scoring or missed tools
-        if not expected_score or expected_score < current_threshold:
+        if not is_ghost and (expected_score is None or expected_score < current_threshold):
             status = '⚠️  LOW SCORE' if expected_score else '❌ NOT FOUND'
             print(f'\n{status}: "{query}"')
             print(f'   Expected: {expected_tool}')
@@ -122,9 +133,17 @@ def test_expected_queries(db: MemoryDB, queries: list, current_threshold: float)
     print('=== EXPECTED TOOL SCORES (sorted low → high) ===')
     print('=' * 60 + '\n')
     
-    for tool, score, rank, query in sorted(all_expected_scores, key=lambda x: x[1]):
-        status = '⚠️' if score < current_threshold else '✅'
+    for tool, score, rank, query, is_ghost in sorted(
+        all_expected_scores,
+        key=lambda x: x[1],
+    ):
+        status = '👻' if is_ghost else ('⚠️' if score < current_threshold else '✅')
         print(f'{status} {score:.3f} #{rank:2d} {tool:25s} "{query}..."')
+
+    if ghost_unranked:
+        print('\n👻 AVAILABLE AS GHOST TOOLS (not dependent on vector cutoff):')
+        for tool, query in ghost_unranked:
+            print(f'   {tool}: "{query}..."')
     
     if missed_tools:
         print('\n❌ COMPLETELY MISSED:')
@@ -133,7 +152,7 @@ def test_expected_queries(db: MemoryDB, queries: list, current_threshold: float)
     
     # Statistics
     if all_expected_scores:
-        scores_only = [s[1] for s in all_expected_scores]
+        scores_only = [score for _, score, _, _, is_ghost in all_expected_scores if not is_ghost]
         print(f'\n📊 Statistics:')
         print(f'   Lowest:  {min(scores_only):.3f}')
         print(f'   Highest: {max(scores_only):.3f}')
@@ -174,7 +193,12 @@ def main():
     load_config(args.mode)
     
     # Get current threshold
-    current_threshold = args.threshold or get_float('SEMANTIC_SIMILARITY_THRESHOLD', 0.35)
+    current_threshold = args.threshold or get_float('TOOL_SIMILARITY_THRESHOLD', 0.28)
+    ghost_tools = {
+        name.strip()
+        for name in str(get_config_value('GHOST_TOOLS', '') or '').split(',')
+        if name.strip()
+    }
     
     print(f'🔧 Mode: {args.mode}')
     print(f'📏 Current threshold: {current_threshold}')
@@ -184,14 +208,13 @@ def main():
     
     if args.query:
         # Single query mode
-        test_single_query(db, args.query, show_all=args.all, limit=args.limit)
+        run_single_query(db, args.query, show_all=args.all, limit=args.limit)
     else:
         # Run all test queries
-        test_expected_queries(db, DEFAULT_TEST_QUERIES, current_threshold)
+        run_expected_queries(db, DEFAULT_TEST_QUERIES, current_threshold, ghost_tools)
     
     print('\n✅ Done!')
 
 
 if __name__ == '__main__':
     main()
-

@@ -21,7 +21,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
 from config_loader import get_bool, get_float, get_int, load_config
-from memory_db import MemoryDB
+from memory_db import MemoryDB, is_eligible_for_auto_memory_inject
 
 
 DEFAULT_TEST_QUERIES = [
@@ -262,6 +262,7 @@ def collect_auto_memory_diagnostics(
     limit: int,
     recency_enabled: bool,
     addressing_limit: int,
+    type_filter_enabled: bool = True,
 ) -> dict:
     now = datetime.now()
     transcript_lower = query.lower()
@@ -271,11 +272,22 @@ def collect_auto_memory_diagnostics(
     always_candidates = []
     intel_candidates = []
 
+    def include_memory(memory: dict) -> bool:
+        return (
+            not type_filter_enabled
+            or is_eligible_for_auto_memory_inject(memory)
+        )
+
     if addressing_limit > 0:
         for memory in db.get_addressing_preferences(limit=addressing_limit):
             key = memory.get("key", "")
             value = memory.get("value", "")
-            if not key or key in seen_keys or is_no_preference(value):
+            if (
+                not key
+                or key in seen_keys
+                or is_no_preference(value)
+                or not include_memory(memory)
+            ):
                 continue
             seen_keys.add(key)
             entry = build_entry(
@@ -303,6 +315,8 @@ def collect_auto_memory_diagnostics(
         for memory in intel_matches:
             key = memory.get("key", "")
             duplicate = bool(key and key in seen_keys)
+            if not include_memory(memory):
+                continue
             if key and not duplicate:
                 seen_keys.add(key)
             source_name = memory.get("source", "")
@@ -325,7 +339,7 @@ def collect_auto_memory_diagnostics(
             if not duplicate:
                 merged.append(entry)
 
-    candidate_limit = min(limit * 2, 20)
+    candidate_limit = min(limit * (5 if type_filter_enabled else 2), 50)
     candidate_threshold = min(threshold - 0.05, 0.30)
     semantic_results = db.semantic_search(
         query=query,
@@ -335,6 +349,8 @@ def collect_auto_memory_diagnostics(
     fallback_meta = getattr(db, "last_semantic_search_meta", {"fallback_embeddings": None})
 
     for memory in semantic_results:
+        if not include_memory(memory):
+            continue
         key = memory.get("key", "")
         base_similarity = memory.get("similarity")
         importance = memory.get("importance", 5)
@@ -397,6 +413,7 @@ def collect_auto_memory_diagnostics(
         "candidate_threshold": candidate_threshold,
         "recency_enabled": recency_enabled,
         "addressing_limit": addressing_limit,
+        "type_filter_enabled": type_filter_enabled,
         "always_candidates": always_candidates,
         "intel_candidates": intel_candidates,
         "semantic_candidates": semantic_candidates,
@@ -484,6 +501,7 @@ def print_query_report(result: dict, show_all: bool, sweep_values: list[float], 
             limit=result["limit"],
             recency_enabled=result["recency_enabled"],
             addressing_limit=result["addressing_limit"],
+            type_filter_enabled=result["type_filter_enabled"],
         )
         top_keys = ", ".join(entry["key"] or "<no-key>" for entry in sweep_result["injected"][:4]) or "none"
         marker = " <==" if abs(sweep_threshold - result["threshold"]) < 0.0001 else ""
@@ -515,6 +533,7 @@ def main():
         if args.no_recency
         else get_bool("AUTO_MEMORY_RECENCY_ENABLED", True)
     )
+    type_filter_enabled = get_bool("AUTO_MEMORY_TYPE_FILTER_ENABLED", True)
     sweep_values = parse_sweep_values(args.sweep)
 
     queries = [args.query] if args.query else DEFAULT_TEST_QUERIES
@@ -535,6 +554,7 @@ def main():
             limit=limit,
             recency_enabled=recency_enabled,
             addressing_limit=addressing_limit,
+            type_filter_enabled=type_filter_enabled,
         )
         print_query_report(result, show_all=args.all, sweep_values=sweep_values, mode=mode)
 

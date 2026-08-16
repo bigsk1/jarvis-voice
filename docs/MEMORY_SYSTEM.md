@@ -100,7 +100,7 @@ Legacy fuzzy keyword search (SQL LIKE substring matching).
 ### `semantic_recall`
 AI-powered search using vector embeddings - understands meaning, not just keywords.
 ```bash
-# Implementation: OpenAI embeddings + cosine similarity
+# Implementation: Ollama Jarvis Embedding + cosine similarity
 # Threshold: Configurable via SEMANTIC_SIMILARITY_THRESHOLD (default 0.40)
 # Ask: "Where do I like to eat?"
 # Finds memories about "favorite_restaurant" by understanding concepts
@@ -253,8 +253,9 @@ In `casual` response mode, Jarvis will:
 
 ### Memory Integration
 - Memory is used in **both cloud and local modes**
-- Shared database means Jarvis remembers across modes
-- Embeddings use appropriate model (OpenAI for cloud, Ollama for local)
+- Cloud and local use separate databases; configured startup sync and manual
+  sync commands keep intentionally shared records aligned
+- Both databases use the same verified 768D Jarvis Embedding contract through Ollama
 
 ## Response Style Impact
 
@@ -278,13 +279,10 @@ JARVIS_RESPONSE_STYLE="detailed"
 
 Memories are converted to vector embeddings for semantic search:
 
-**Cloud Mode (default):**
-- Uses OpenAI `text-embedding-3-small` independently of the chat provider
-- 1536 dimensions
-
-**Local Mode (default):**
-- Uses Ollama `nomic-embed-text`
-- 768 dimensions
+**Cloud and local modes:**
+- Use Ollama `bigsk1/jarvis-embedding:bf16-v1` independently of the chat provider
+- Use 768 dimensions with official asymmetric retrieval prompts
+- Persist a model digest and input-contract fingerprint per vector namespace
 
 **Similarity Threshold:** 0.40 (configurable via `SEMANTIC_SIMILARITY_THRESHOLD` in `lib/memory_db.py`)
 
@@ -296,11 +294,10 @@ Memory system is configured in:
 
 **Key Settings:**
 ```bash
-# Embedding provider (explicit; independent of LLM_PROVIDER)
-EMBEDDING_PROVIDER="openai"  # or "ollama"
-
-# Ollama embedding model (used when EMBEDDING_PROVIDER=ollama)
-OLLAMA_EMBEDDING_MODEL="nomic-embed-text"
+# Same values in cloud.env and local.env
+OLLAMA_EMBEDDING_MODEL="bigsk1/jarvis-embedding:bf16-v1"
+OLLAMA_EMBEDDING_MODEL_DIGEST="85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1"
+OLLAMA_EMBEDDING_CONTEXT_WINDOW=2048
 
 # Auto-memory injection (inject relevant memories before each LLM call)
 # Shipped: cloud LIMIT=3, local LIMIT=2

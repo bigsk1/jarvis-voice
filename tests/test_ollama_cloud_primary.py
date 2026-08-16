@@ -31,7 +31,7 @@ def fake_configs(tmp_path, monkeypatch):
                 "LLM_PROVIDER=ollama",
                 "OLLAMA_CLOUD_MODEL=qwen3.5:cloud",
                 "OLLAMA_MODEL=gemma4",
-                "EMBEDDING_PROVIDER=openai",
+                "OLLAMA_EMBEDDING_MODEL=bigsk1/jarvis-embedding:bf16-v1",
             ]
         )
     )
@@ -40,7 +40,7 @@ def fake_configs(tmp_path, monkeypatch):
             [
                 "LLM_PROVIDER=ollama",
                 "OLLAMA_MODEL=gemma4-local",
-                "EMBEDDING_PROVIDER=ollama",
+                "OLLAMA_EMBEDDING_MODEL=bigsk1/jarvis-embedding:bf16-v1",
             ]
         )
     )
@@ -193,18 +193,17 @@ def test_active_blank_api_key_masks_inherited_shell_value(tmp_path, monkeypatch)
 
 # --- get_effective_embedding_provider -------------------------------------
 
-def test_cloud_embedding_defaults_to_openai(tmp_path, monkeypatch):
+def test_cloud_embedding_is_unified_ollama(tmp_path, monkeypatch):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     (config_dir / "cloud.env").write_text("LLM_PROVIDER=ollama\n")
     (config_dir / "local.env").write_text("LLM_PROVIDER=ollama\n")
     monkeypatch.setattr(config_loader, "get_project_root", lambda: tmp_path)
     with config_scope("cloud"):
-        assert get_effective_embedding_provider() == "openai"
+        assert get_effective_embedding_provider() == "ollama"
 
 
 def test_local_embedding_defaults_to_ollama(tmp_path, monkeypatch):
-    monkeypatch.delenv("EMBEDDING_PROVIDER", raising=False)
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     (config_dir / "cloud.env").write_text("LLM_PROVIDER=ollama\n")
@@ -214,11 +213,9 @@ def test_local_embedding_defaults_to_ollama(tmp_path, monkeypatch):
         assert get_effective_embedding_provider() == "ollama"
 
 
-def test_explicit_embedding_provider_wins(fake_configs):
-    # cloud.env sets EMBEDDING_PROVIDER=openai explicitly.
+def test_embedding_provider_does_not_vary_by_mode(fake_configs):
     with config_scope("cloud"):
-        assert get_effective_embedding_provider() == "openai"
-    # local.env sets EMBEDDING_PROVIDER=ollama explicitly.
+        assert get_effective_embedding_provider() == "ollama"
     with config_scope("local"):
         assert get_effective_embedding_provider() == "ollama"
 

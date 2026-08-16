@@ -314,7 +314,7 @@ echo ""
 # Health check: Verify embedding dimensions are correct
 echo -e "${BLUE}🩺 Checking embedding health...${NC}"
 if python3 "$PROJECT_ROOT/bin/check-embeddings-health.py" "$MODE" --json > /dev/null 2>&1; then
-    echo -e "${GREEN}  ✅ Embeddings healthy ($([ "$MODE" == "local" ] && echo "768" || echo "1536") dimensions)${NC}"
+    echo -e "${GREEN}  ✅ Jarvis Embedding healthy (768 dimensions)${NC}"
 else
     echo -e "${RED}  ❌ Embedding dimension mismatch detected!${NC}"
     echo -e "${YELLOW}     Run: ./bin/check-embeddings-health.py $MODE${NC}"

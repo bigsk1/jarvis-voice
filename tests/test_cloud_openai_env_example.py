@@ -37,7 +37,9 @@ def test_openai_core_is_first_and_optional_integrations_are_last() -> None:
 
     core = text[core_index:optional_index]
     assert 'LLM_PROVIDER="openai"' in core
-    assert "EMBEDDING_PROVIDER=openai" in core
+    assert 'OLLAMA_EMBEDDING_MODEL="bigsk1/jarvis-embedding:bf16-v1"' in core
+    assert "OLLAMA_EMBEDDING_MODEL_DIGEST=" in core
+    assert "OLLAMA_BASE_URL=" in core
     assert "TTS_PROVIDER=openai" in core
     assert 'IMAGE_TOOL_PROVIDER="openai"' in core
     assert 'VIDEO_TOOL_PROVIDER="openai"' in core
@@ -69,6 +71,7 @@ def test_intelligence_and_feedback_controls_are_documented() -> None:
         "INTELLIGENCE_DECAY_RATE",
         "INTELLIGENCE_ANOMALY_THRESHOLD",
         "INTELLIGENCE_MIN_CONFIDENCE",
+        "INTELLIGENCE_RELEVANCE_THRESHOLD",
         "INTELLIGENCE_NEGATIVE_WEIGHT",
         "INTELLIGENCE_DECAY_INTERVAL_DAYS",
     }

@@ -107,6 +107,11 @@ def main():
         summary = f"{tool} {status} in {duration:.0f}ms"
         if log.get("fallback_embeddings"):
             summary += " - fallback embeddings used"
+        if log.get("semantic_disabled_reason"):
+            mode = log.get("retrieval_mode") or "non-semantic"
+            summary += f" - semantic retrieval disabled; {mode} used"
+        elif log.get("retrieval_mode") == "keyword_fallback":
+            summary += " - keyword fallback used"
         proxy = log.get("proxy")
         if isinstance(proxy, dict):
             if proxy.get("used") is True:
@@ -150,6 +155,8 @@ def main():
             "tool": log["tool"],
             "arguments": log["arguments"],
             "fallback_embeddings": log.get("fallback_embeddings"),
+            "retrieval_mode": log.get("retrieval_mode"),
+            "semantic_disabled_reason": log.get("semantic_disabled_reason"),
             "proxy": log.get("proxy"),
             "ok": log["result"]["ok"],
             "speech": log["result"]["speech"],

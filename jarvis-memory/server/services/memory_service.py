@@ -8,6 +8,15 @@ import os
 from pathlib import Path
 from typing import List, Dict, Optional
 
+from config_loader import config_scope
+from embedding_metadata import (
+    MEMORY_KNOWLEDGE_NAMESPACE,
+    ensure_embedding_metadata_table,
+    record_embedding_namespace_complete,
+    require_embedding_namespace,
+)
+from embeddings import get_persistable_embedding
+
 JARVIS_ROOT = Path(__file__).parent.parent.parent.parent
 DATA_PATH = JARVIS_ROOT / 'data'
 
@@ -88,6 +97,8 @@ class MemoryService:
         value: str,
         importance: int,
         metadata_json: str | None,
+        embedding_blob: bytes | None,
+        embedding_changed: bool,
     ) -> int:
         """
         Update the equivalent logical memory in the sibling DB by original category+key.
@@ -103,10 +114,26 @@ class MemoryService:
         conn = sqlite3.connect(str(sibling_path), check_same_thread=False)
         try:
             cursor = conn.cursor()
+            if embedding_changed:
+                ensure_embedding_metadata_table(conn)
+                vector_count = cursor.execute(
+                    "SELECT COUNT(*) FROM knowledge_base WHERE embedding IS NOT NULL"
+                ).fetchone()[0]
+                try:
+                    require_embedding_namespace(
+                        conn,
+                        MEMORY_KNOWLEDGE_NAMESPACE,
+                        vector_count=vector_count,
+                    )
+                except Exception:
+                    return 0
+                if embedding_blob is not None:
+                    record_embedding_namespace_complete(conn, MEMORY_KNOWLEDGE_NAMESPACE)
             cursor.execute(
                 """
                 UPDATE knowledge_base
                 SET category = ?, key = ?, value = ?, importance = ?, metadata = ?,
+                    embedding = CASE WHEN ? THEN ? ELSE embedding END,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE category = ? AND key = ?
                 """,
@@ -116,6 +143,8 @@ class MemoryService:
                     value,
                     importance,
                     metadata_json,
+                    1 if embedding_changed else 0,
+                    embedding_blob,
                     original_category,
                     original_key,
                 ),
@@ -268,20 +297,21 @@ class MemoryService:
                       importance: int = 5, source: str = None,
                       metadata: dict = None) -> int:
         """Create a new memory"""
-        conn = self._get_conn()
-        cursor = conn.cursor()
-        
-        metadata_json = json.dumps(metadata) if metadata else None
-        
-        try:
-            cursor.execute("""
-                INSERT INTO knowledge_base (category, key, value, importance, source, metadata)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (category, key, value, importance, source or 'memory_browser', metadata_json))
-            conn.commit()
-            return cursor.lastrowid
-        finally:
-            conn.close()
+        from memory_db import MemoryDB
+
+        with config_scope(self.mode):
+            db = MemoryDB(str(self.db_path))
+            try:
+                return db.remember(
+                    category,
+                    key,
+                    value,
+                    importance=importance,
+                    source=source or "memory_browser",
+                    metadata=metadata,
+                )
+            finally:
+                db.close()
     
     def update_memory(self, memory_id: int, category: str = None, key: str = None,
                       value: str = None, importance: int = None, 
@@ -303,6 +333,34 @@ class MemoryService:
         
         updates = []
         params = []
+        final_key = key if key is not None else existing["key"]
+        final_value = value if value is not None else existing["value"]
+        embedding_changed = key is not None or value is not None
+        embedding_blob = None
+
+        if embedding_changed:
+            try:
+                with config_scope(self.mode):
+                    ensure_embedding_metadata_table(conn)
+                    vector_count = cursor.execute(
+                        "SELECT COUNT(*) FROM knowledge_base WHERE embedding IS NOT NULL"
+                    ).fetchone()[0]
+                    require_embedding_namespace(
+                        conn,
+                        MEMORY_KNOWLEDGE_NAMESPACE,
+                        vector_count=vector_count,
+                    )
+                    embedding = get_persistable_embedding(
+                        final_value,
+                        role="document",
+                        title=final_key,
+                    )
+                    import pickle
+                    embedding_blob = pickle.dumps(embedding)
+                    record_embedding_namespace_complete(conn, MEMORY_KNOWLEDGE_NAMESPACE)
+            except Exception:
+                # Text edits remain available to FTS, but never retain a stale vector.
+                embedding_blob = None
         
         if category is not None:
             updates.append("category = ?")
@@ -319,6 +377,9 @@ class MemoryService:
         if metadata is not None:
             updates.append("metadata = ?")
             params.append(json.dumps(metadata))
+        if embedding_changed:
+            updates.append("embedding = ?")
+            params.append(embedding_blob)
         
         if not updates:
             return False
@@ -333,8 +394,6 @@ class MemoryService:
             updated = cursor.rowcount > 0
             if updated:
                 final_category = category if category is not None else existing["category"]
-                final_key = key if key is not None else existing["key"]
-                final_value = value if value is not None else existing["value"]
                 final_importance = importance if importance is not None else existing["importance"]
                 final_metadata = json.dumps(metadata) if metadata is not None else existing["metadata"]
                 self._update_matching_memory_in_sibling(
@@ -345,6 +404,8 @@ class MemoryService:
                     value=final_value,
                     importance=final_importance,
                     metadata_json=final_metadata,
+                    embedding_blob=embedding_blob,
+                    embedding_changed=embedding_changed,
                 )
             return updated
         finally:

@@ -13,15 +13,15 @@ own maintenance history and meta-cognition findings because those rows describe
 the state of that specific database (for example, its last decay run and blind
 spots). The target can derive its own findings from the learning data it receives.
 
-IMPORTANT: Cloud and local use DIFFERENT embedding dimensions (1536 vs 768).
-This script copies the TEXT content and REGENERATES embeddings for the target mode.
+Cloud and local use the same fingerprinted Jarvis Embedding contract. This script
+copies text content and regenerates missing target vectors with role-specific prompts.
 
-The learned insights are provider-agnostic - "use crypto_price for price queries" 
-applies whether you're using xAI, Anthropic, OpenAI, or Ollama. Only the vector
-embeddings need to be regenerated for dimension compatibility.
+The learned insights are provider-agnostic - "use crypto_price for price queries"
+applies whether you're using xAI, Anthropic, OpenAI, or Ollama. Vector embeddings
+are regenerated so the target records use its verified Jarvis Embedding fingerprint.
 
 Usage:
-    ./bin/sync-intelligence-db.py cloud     # Merge local → cloud (regenerate 1536-dim embeddings)
+    ./bin/sync-intelligence-db.py cloud     # Merge local → cloud (regenerate 768-dim embeddings)
     ./bin/sync-intelligence-db.py local     # Merge cloud → local (regenerate 768-dim embeddings)
     ./bin/sync-intelligence-db.py --dry-run local  # Preview what would sync
     ./bin/sync-intelligence-db.py --replace local  # Replace local with cloud mirror
@@ -31,7 +31,7 @@ Usage:
 import sys
 import sqlite3
 import pickle
-import shutil
+import os
 from pathlib import Path
 from datetime import datetime
 
@@ -39,7 +39,18 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 
 from config_loader import config_scope
-from embeddings import get_persistable_embedding
+from embedding_inputs import build_stored_outcome_embedding_text
+from embeddings import EMBEDDING_DIMENSIONS, get_persistable_embedding
+from embedding_metadata import (
+    INTELLIGENCE_CONTEXT_NAMESPACE,
+    INTELLIGENCE_INSIGHT_NAMESPACE,
+    INTELLIGENCE_OUTCOME_NAMESPACE,
+    INTELLIGENCE_PATTERN_NAMESPACE,
+    INTELLIGENCE_QUERY_NAMESPACE,
+    EmbeddingCompatibilityError,
+    record_embedding_namespace_complete,
+    require_embedding_namespace,
+)
 
 # ANSI colors
 GREEN = '\033[92m'
@@ -50,9 +61,14 @@ BOLD = '\033[1m'
 NC = '\033[0m'
 
 
-def get_embedding(text: str):
+def get_embedding(text: str, *, role: str = "document", title: str | None = None):
     """Generate a retrying provider embedding that is safe to persist."""
-    return get_persistable_embedding(text, max_attempts=3)
+    return get_persistable_embedding(
+        text,
+        role=role,
+        title=title,
+        max_attempts=3,
+    )
 
 
 def get_db_paths():
@@ -69,9 +85,16 @@ def backup_db(db_path: Path) -> Path:
     if not db_path.exists():
         return None
 
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
     backup_path = db_path.with_suffix(f'.db.backup_{timestamp}')
-    shutil.copy2(db_path, backup_path)
+    source_conn = sqlite3.connect(str(db_path))
+    backup_conn = sqlite3.connect(str(backup_path))
+    try:
+        source_conn.backup(backup_conn)
+    finally:
+        backup_conn.close()
+        source_conn.close()
+    os.chmod(backup_path, 0o600)
     return backup_path
 
 
@@ -241,12 +264,8 @@ def sync_intelligence(
     paths = get_db_paths()
 
     # Determine source and target
-    if target_mode == 'cloud':
-        source_mode = 'local'
-        target_dim = 1536
-    else:
-        source_mode = 'cloud'
-        target_dim = 768
+    source_mode = 'local' if target_mode == 'cloud' else 'cloud'
+    target_dim = EMBEDDING_DIMENSIONS
 
     source_path = paths[source_mode]
     target_path = paths[target_mode]
@@ -296,11 +315,11 @@ def sync_intelligence(
         source_conn.close()
         return True
 
-    if replace and (exp_count or insight_count):
+    if exp_count or insight_count:
         try:
             get_embedding("Jarvis Intelligence persistence readiness check")
         except Exception as exc:
-            print(f"{RED}❌ Replace sync aborted before deleting target data: {exc}{NC}")
+            print(f"{RED}❌ Sync aborted before changing target data: {exc}{NC}")
             source_conn.close()
             return False
 
@@ -316,13 +335,69 @@ def sync_intelligence(
     target_conn = target_intel.conn
     target_cursor = target_conn.cursor()
 
+    namespace_counts = {
+        INTELLIGENCE_QUERY_NAMESPACE: target_cursor.execute(
+            "SELECT COUNT(*) FROM experiences WHERE query_embedding IS NOT NULL"
+        ).fetchone()[0],
+        INTELLIGENCE_CONTEXT_NAMESPACE: target_cursor.execute(
+            "SELECT COUNT(*) FROM experiences WHERE context_embedding IS NOT NULL"
+        ).fetchone()[0],
+        INTELLIGENCE_OUTCOME_NAMESPACE: target_cursor.execute(
+            "SELECT COUNT(*) FROM experiences WHERE outcome_embedding IS NOT NULL"
+        ).fetchone()[0],
+        INTELLIGENCE_INSIGHT_NAMESPACE: target_cursor.execute(
+            "SELECT COUNT(*) FROM insights WHERE insight_embedding IS NOT NULL"
+        ).fetchone()[0],
+        INTELLIGENCE_PATTERN_NAMESPACE: target_cursor.execute(
+            "SELECT COUNT(*) FROM insights WHERE pattern_embedding IS NOT NULL"
+        ).fetchone()[0],
+    }
+    expected_namespace_counts = {
+        INTELLIGENCE_QUERY_NAMESPACE: target_cursor.execute(
+            "SELECT COUNT(*) FROM experiences"
+        ).fetchone()[0],
+        INTELLIGENCE_CONTEXT_NAMESPACE: target_cursor.execute(
+            "SELECT COUNT(*) FROM experiences "
+            "WHERE context_summary IS NOT NULL AND TRIM(context_summary) != ''"
+        ).fetchone()[0],
+        INTELLIGENCE_OUTCOME_NAMESPACE: target_cursor.execute(
+            "SELECT COUNT(*) FROM experiences"
+        ).fetchone()[0],
+        INTELLIGENCE_INSIGHT_NAMESPACE: target_cursor.execute(
+            "SELECT COUNT(*) FROM insights "
+            "WHERE description IS NOT NULL AND TRIM(description) != ''"
+        ).fetchone()[0],
+        INTELLIGENCE_PATTERN_NAMESPACE: target_cursor.execute(
+            "SELECT COUNT(*) FROM insights "
+            "WHERE applies_to_pattern IS NOT NULL AND TRIM(applies_to_pattern) != ''"
+        ).fetchone()[0],
+    }
+    try:
+        for namespace, count in namespace_counts.items():
+            require_embedding_namespace(target_conn, namespace, vector_count=count)
+            expected_count = expected_namespace_counts[namespace]
+            if count != expected_count:
+                raise EmbeddingCompatibilityError(
+                    f"{namespace}: {expected_count - count} target row(s) lack vectors"
+                )
+    except EmbeddingCompatibilityError as exc:
+        print(f"{RED}❌ Intelligence sync aborted: {exc}{NC}")
+        print("   Delete the target database or run ./bin/rebuild-embeddings first.")
+        source_conn.close()
+        target_intel.close()
+        return False
+
+    # Keep the target coherent across all four related table families. A
+    # provider or row failure rolls the complete manual sync back.
+    target_conn.commit()
+    target_conn.execute("BEGIN IMMEDIATE")
+
     # ============================================
     # SYNC EXPERIENCES
     # ============================================
     print(f"{BLUE}Syncing experiences...{NC}")
     if replace:
         target_cursor.execute("DELETE FROM experiences")
-        target_conn.commit()
 
     source_cursor.execute("""
         SELECT id, query, context_summary, tools_used, tool_sequence, turns_taken,
@@ -356,27 +431,37 @@ def sync_intelligence(
             context_embedding = None
             outcome_embedding = None
 
-            if query:
-                try:
-                    emb = get_embedding(query)
-                    query_embedding = pickle.dumps(emb)
-                except Exception as e:
-                    print(f"{YELLOW}  Warning: Failed to generate query embedding: {e}{NC}")
+            if not query:
+                raise ValueError("experience query is empty")
+            emb = get_embedding(query, title="User query")
+            query_embedding = pickle.dumps(emb)
+            record_embedding_namespace_complete(
+                target_conn,
+                INTELLIGENCE_QUERY_NAMESPACE,
+            )
 
             if context_summary:
-                try:
-                    emb = get_embedding(context_summary)
-                    context_embedding = pickle.dumps(emb)
-                except Exception as e:
-                    print(f"{YELLOW}  Warning: Failed to generate context embedding: {e}{NC}")
+                emb = get_embedding(context_summary, title="Conversation context")
+                context_embedding = pickle.dumps(emb)
+                record_embedding_namespace_complete(
+                    target_conn,
+                    INTELLIGENCE_CONTEXT_NAMESPACE,
+                )
 
             # Generate outcome embedding from a combination of signals
-            outcome_text = f"success={row['outcome_success']} satisfied={row['user_satisfied']} tools={row['tools_used']}"
-            try:
-                emb = get_embedding(outcome_text)
-                outcome_embedding = pickle.dumps(emb)
-            except Exception as e:
-                print(f"{YELLOW}  Warning: Failed to generate outcome embedding: {e}{NC}")
+            outcome_text = build_stored_outcome_embedding_text(
+                query=query,
+                tools_used_json=row['tools_used'],
+                raw_data_json=row['raw_data'],
+                outcome_success=row['outcome_success'],
+                error_occurred=row['error_occurred'],
+            )
+            emb = get_embedding(outcome_text, title="Interaction outcome")
+            outcome_embedding = pickle.dumps(emb)
+            record_embedding_namespace_complete(
+                target_conn,
+                INTELLIGENCE_OUTCOME_NAMESPACE,
+            )
 
             target_cursor.execute("""
                 INSERT INTO experiences (
@@ -412,7 +497,6 @@ def sync_intelligence(
             print(f"{RED}  Error copying experience #{row['id']}: {e}{NC}")
             exp_errors += 1
 
-    target_conn.commit()
     print(
         f"  ✅ Copied {exp_success} experiences"
         + (f", reused {exp_reused}" if exp_reused else "")
@@ -427,7 +511,6 @@ def sync_intelligence(
         if table_exists(target_cursor, "insight_evidence"):
             target_cursor.execute("DELETE FROM insight_evidence")
         target_cursor.execute("DELETE FROM insights")
-        target_conn.commit()
 
     insight_columns = [
         "id",
@@ -494,18 +577,20 @@ def sync_intelligence(
             pattern_embedding = None
 
             if description:
-                try:
-                    emb = get_embedding(description)
-                    insight_embedding = pickle.dumps(emb)
-                except Exception as e:
-                    print(f"{YELLOW}  Warning: Failed to generate insight embedding: {e}{NC}")
+                emb = get_embedding(description, role="similarity")
+                insight_embedding = pickle.dumps(emb)
+                record_embedding_namespace_complete(
+                    target_conn,
+                    INTELLIGENCE_INSIGHT_NAMESPACE,
+                )
 
             if pattern:
-                try:
-                    emb = get_embedding(pattern)
-                    pattern_embedding = pickle.dumps(emb)
-                except Exception as e:
-                    print(f"{YELLOW}  Warning: Failed to generate pattern embedding: {e}{NC}")
+                emb = get_embedding(pattern, title="Insight applicability")
+                pattern_embedding = pickle.dumps(emb)
+                record_embedding_namespace_complete(
+                    target_conn,
+                    INTELLIGENCE_PATTERN_NAMESPACE,
+                )
 
             # Insert into target
             target_cursor.execute("""
@@ -576,7 +661,6 @@ def sync_intelligence(
             print(f"{RED}  Error copying insight #{row['id']}: {e}{NC}")
             insight_errors += 1
 
-    target_conn.commit()
     print(
         f"  ✅ Copied {insight_success} insights"
         + (f", reused {insight_reused}" if insight_reused else "")
@@ -664,7 +748,6 @@ def sync_intelligence(
                 print(f"{RED}  Error copying insight evidence #{row['id']}: {e}{NC}")
                 evidence_errors += 1
 
-        target_conn.commit()
         print(
             f"  ✅ Copied {evidence_success} insight evidence rows"
             + (f" ({evidence_skipped} skipped)" if evidence_skipped else "")
@@ -679,7 +762,6 @@ def sync_intelligence(
     print(f"{BLUE}Syncing reflection queue...{NC}")
     if replace:
         target_cursor.execute("DELETE FROM reflection_queue")
-        target_conn.commit()
 
     source_cursor.execute("""
         SELECT experience_id, priority, processed, queued_at
@@ -715,24 +797,31 @@ def sync_intelligence(
         else:
             queue_skipped += 1
 
-    target_conn.commit()
     print(f"  ✅ Copied {queue_success} pending reflection entries" + (f" ({queue_skipped} skipped - missing experiences)" if queue_skipped else ""))
 
     # ============================================
     # CLEANUP
     # ============================================
 
+    total_errors = exp_errors + insight_errors + evidence_errors
+    if total_errors:
+        target_conn.rollback()
+    else:
+        target_conn.commit()
+
     source_conn.close()
     target_intel.close()
 
     print()
-    print(f"{GREEN}✅ Sync complete:{NC}")
+    if total_errors:
+        print(f"{RED}❌ Sync rolled back; target database was not changed:{NC}")
+    else:
+        print(f"{GREEN}✅ Sync complete:{NC}")
     print(f"   Experiences: {exp_success}" + (f" copied, {exp_reused} reused" if exp_reused else "") + (f" ({exp_errors} errors)" if exp_errors else ""))
     print(f"   Insights:    {insight_success}" + (f" copied, {insight_reused} reused" if insight_reused else "") + (f" ({insight_errors} errors)" if insight_errors else ""))
     print(f"   Insight evidence: {evidence_success}" + (f" ({evidence_skipped} skipped)" if evidence_skipped else "") + (f" ({evidence_errors} errors)" if evidence_errors else ""))
     print(f"   Pending reflections: {queue_success}" + (f" ({queue_skipped} skipped)" if queue_skipped else ""))
 
-    total_errors = exp_errors + insight_errors + evidence_errors
     return total_errors == 0
 
 

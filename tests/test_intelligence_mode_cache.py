@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
@@ -93,13 +94,14 @@ class IntelligenceModeCacheTests(unittest.TestCase):
             root = Path(tmpdir)
             config_dir = root / "config"
             config_dir.mkdir()
-            (config_dir / "cloud.env").write_text("EMBEDDING_PROVIDER=openai\n")
-            (config_dir / "local.env").write_text("EMBEDDING_PROVIDER=ollama\n")
+            model = "bigsk1/jarvis-embedding:bf16-v1"
+            (config_dir / "cloud.env").write_text(f"OLLAMA_EMBEDDING_MODEL={model}\n")
+            (config_dir / "local.env").write_text(f"OLLAMA_EMBEDDING_MODEL={model}\n")
 
             async def probe():
                 return (
                     config_loader.get_active_config_mode(),
-                    config_loader.get_config_value("EMBEDDING_PROVIDER"),
+                    config_loader.get_config_value("OLLAMA_EMBEDDING_MODEL"),
                 )
 
             async def run_probe():
@@ -109,7 +111,16 @@ class IntelligenceModeCacheTests(unittest.TestCase):
             with patch.object(config_loader, "get_project_root", return_value=root):
                 observed = asyncio.run(run_probe())
 
-        self.assertEqual(observed, ("local", "ollama"))
+        self.assertEqual(observed, ("local", "bigsk1/jarvis-embedding:bf16-v1"))
+
+    def test_cosine_accepts_rebuilt_list_vectors_and_rejects_shape_mismatch(self):
+        layer = object.__new__(intelligence.IntelligenceLayer)
+        self.assertAlmostEqual(
+            layer._cosine_similarity(np.array([1.0, 0.0]), [1.0, 0.0]),
+            1.0,
+        )
+        with self.assertRaisesRegex(ValueError, "shape mismatch"):
+            layer._cosine_similarity(np.array([1.0, 0.0]), [1.0])
 
 
 if __name__ == "__main__":

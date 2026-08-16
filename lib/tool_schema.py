@@ -332,6 +332,11 @@ class ToolRegistry:
         self.mcp_clients: dict[str, Any] = {}
         self.mcp_manager = None
         self.mcp_unavailable: dict[str, str] = {}
+        self.last_tool_search_meta: dict[str, Any] = {
+            "fallback_embeddings": None,
+            "retrieval_mode": "semantic",
+            "semantic_disabled_reason": None,
+        }
         # Tools excluded because required configuration is missing in the
         # active mode: name -> AvailabilityResult (diagnostics for sync,
         # manage-tools, and web discovery; never contains secret values).
@@ -662,7 +667,13 @@ class ToolRegistry:
         if similarity_threshold is None:
             similarity_threshold = get_float('TOOL_SIMILARITY_THRESHOLD', 0.0)
         threshold = similarity_threshold
-        
+        self.last_tool_search_meta = {
+            "fallback_embeddings": None,
+            "retrieval_mode": "semantic",
+            "semantic_disabled_reason": None,
+        }
+        db = None
+
         try:
             db = get_memory_db()
 
@@ -685,6 +696,13 @@ class ToolRegistry:
 
             # 1. Get relevant tools from vector search (embedding uses rag_query may include typo hints)
             relevant_tools_data = db.search_tools(rag_query, limit=limit, threshold=threshold)
+            search_meta = getattr(db, "last_tool_search_meta", {})
+            if isinstance(search_meta, dict):
+                self.last_tool_search_meta = {
+                    "fallback_embeddings": search_meta.get("fallback_embeddings"),
+                    "retrieval_mode": search_meta.get("retrieval_mode", "semantic"),
+                    "semantic_disabled_reason": search_meta.get("semantic_disabled_reason"),
+                }
             
             # 2. Collect retrieved tool names
             retrieved_names = [t['name'] for t in relevant_tools_data]
@@ -708,15 +726,19 @@ class ToolRegistry:
                 if tool:
                     final_tools.append(tool)
             
-            # Close DB connection
-            db.close()
-            
             return final_tools
             
         except Exception as e:
-            print(f"⚠️ Tool retrieval failed: {e}. Falling back to ALL enabled tools.")
-            # Fallback: return all enabled tools
-            return [t for t in self.tools.values() if t.permissions.get('enabled', True)]
+            self.last_tool_search_meta = {
+                "fallback_embeddings": None,
+                "retrieval_mode": "ghost_only",
+                "semantic_disabled_reason": str(e),
+            }
+            print(f"⚠️ Semantic tool retrieval disabled: {e}. Using ghost tools only.")
+            return [self.tools[name] for name in CORE_TOOLS if name in self.tools]
+        finally:
+            if db is not None:
+                db.close()
     
     def cleanup(self):
         """Stop all MCP clients and release resources."""

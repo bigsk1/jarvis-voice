@@ -644,6 +644,8 @@ def _log_tool_rag_trace(
     tool_schema_est_tokens: int | None = None,
     tool_schema_top: list[dict[str, Any]] | None = None,
     tool_rag_skipped: bool = False,
+    retrieval_mode: str = "semantic",
+    semantic_disabled_reason: str | None = None,
 ) -> None:
     """Write optional Tool RAG retrieval traces for live routing debugging."""
     if not get_bool("TOOL_RAG_TRACE_ENABLED", True):
@@ -673,6 +675,8 @@ def _log_tool_rag_trace(
             "query_chars": len(query or ""),
             "full_transcript_chars": len(transcript or ""),
             "full_transcript_embedding": query == transcript,
+            "retrieval_mode": retrieval_mode,
+            "semantic_disabled_reason": semantic_disabled_reason,
             "signal_meta": signal_meta,
             "signal_notes": signal_notes,
             "ghost_tools": ghost_tools,
@@ -1184,6 +1188,24 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                 similarity_threshold=tool_sim_threshold,
                 typo_hint_source=typo_hint_source,
             )
+        tool_rag_meta = (
+            {
+                "retrieval_mode": "skipped",
+                "semantic_disabled_reason": None,
+            }
+            if chat_only
+            else getattr(self.registry, "last_tool_search_meta", {})
+        )
+        if not isinstance(tool_rag_meta, dict):
+            tool_rag_meta = {}
+        tool_rag_retrieval_mode = tool_rag_meta.get("retrieval_mode", "semantic")
+        tool_rag_disabled_reason = tool_rag_meta.get("semantic_disabled_reason")
+        if tool_rag_disabled_reason:
+            logging.getLogger(__name__).warning(
+                "[TOOL_RAG] Semantic retrieval disabled; mode=%s reason=%s",
+                tool_rag_retrieval_mode,
+                tool_rag_disabled_reason,
+            )
         ranked_tool_trace: list[dict[str, Any]] = []
         if not chat_only and get_bool("TOOL_RAG_TRACE_ENABLED", True):
             try:
@@ -1332,6 +1354,8 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             tool_schema_est_tokens=schema_payload["est_tokens"],
             tool_schema_top=schema_payload["top"],
             tool_rag_skipped=chat_only,
+            retrieval_mode=tool_rag_retrieval_mode,
+            semantic_disabled_reason=tool_rag_disabled_reason,
         )
         
         try:

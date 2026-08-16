@@ -11,6 +11,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
 from embeddings import PersistentEmbeddingError
+from embedding_metadata import MEMORY_TOOLS_NAMESPACE, record_embedding_namespace_complete
 from memory_db import MemoryDB, _tool_definition_content_hash
 
 
@@ -26,6 +27,7 @@ def test_tool_upsert_preserves_previous_row_when_embedding_fails(tmp_path):
         """,
         ("weather", "Old description", "{}", old_embedding, old_hash),
     )
+    record_embedding_namespace_complete(db.conn, MEMORY_TOOLS_NAMESPACE)
     db.conn.commit()
 
     try:
@@ -44,7 +46,7 @@ def test_tool_upsert_preserves_previous_row_when_embedding_fails(tmp_path):
         db.close()
 
 
-def test_remember_update_preserves_previous_embedding_when_generation_fails(tmp_path):
+def test_remember_update_clears_stale_embedding_when_generation_fails(tmp_path):
     db = MemoryDB(str(tmp_path / "jarvis_memory.db"))
     try:
         with patch("embeddings.get_embedding", return_value=[1.0, 0.0, 0.0]):
@@ -64,6 +66,7 @@ def test_remember_update_preserves_previous_embedding_when_generation_fails(tmp_
         ).fetchone()
         assert updated_id == memory_id
         assert row["value"] == "January 2nd"
-        assert row["embedding"] == original
+        assert original is not None
+        assert row["embedding"] is None
     finally:
         db.close()

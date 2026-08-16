@@ -15,6 +15,7 @@
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (`grok-4.6` recommended default; also `grok-4.5`, `grok-4.3`, `grok-build-0.1`, native search/TTS, in-flight continuation) ⭐ RECOMMENDED
 - **[OPENAI_PROVIDER.md](OPENAI_PROVIDER.md)** - 🆕 **OpenAI provider** (Chat Completions default, optional Responses API routing, hosted tools, in-flight continuation)
 - **[ollama/README.md](ollama/README.md)** - **Ollama local + Ollama Cloud guide** (`OLLAMA_MODEL` vs `OLLAMA_CLOUD_MODEL`, vision uses cloud model in cloud mode / `OLLAMA_VISION_MODEL` in local mode, signed-in daemon, Docker addressing, troubleshooting)
+- **[ollama/JARVIS_EMBEDDING_MODEL.md](ollama/JARVIS_EMBEDDING_MODEL.md)** - Pinned Jarvis Embedding registry artifact, exact digests, host verification, and immutable version policy
 
 ### Main Features
 - **[JARVIS_WEB_UI.md](JARVIS_WEB_UI.md)** - 🌐 **Web Interface** (sticky Chat only, mode-scoped settings, Completion Guard, multi-image vision, server logs) ⭐ ENHANCED
@@ -1691,7 +1692,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Fact vs Procedural knowledge classification
   - Generalizability filtering (only stores reusable insights)
   - Confidence decay tracking for insight health
-  - Separate databases for cloud/local (embedding dimension compatibility)
+  - Separate cloud/local learning databases with one fingerprinted embedding contract
   - See: `docs/INTELLIGENCE_LAYER.md`
 - ✅ **Intelligence Grafana Dashboard** - Real-time self-learning metrics
   - Experience/insight counts, confidence gauges
@@ -1715,7 +1716,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 - ✅ **Intelligence Health & Sync Tools**
   - `bin/check-intelligence-health.py` - Validate embeddings, check stats
   - `bin/sync-intelligence-db.py` - Sync between cloud/local modes
-- ✅ **Embedding Fallback** - Deterministic hash-based fallback when APIs fail
+- ✅ **Embedding Safety** - Real provider vectors only; incompatible or unavailable embedding spaces fail closed
 
 **2025-11-25:**
 - ✅ **Google Calendar Sync** - Bidirectional sync between Jarvis reminders and Google Calendar ⭐ MAJOR

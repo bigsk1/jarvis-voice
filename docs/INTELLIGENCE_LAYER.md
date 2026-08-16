@@ -540,8 +540,8 @@ USER QUERY → Check Insights → Route & Execute → Record Experience → Refl
 │     ├─▶ [PYTHON] Extract clean current user request                              │
 │     │      Excludes Jarvis-added hint/memory/intelligence wrappers               │
 │     │                                                                           │
-│     ├─▶ [EMBEDDING API] get_embedding(clean_request) ← OpenAI/Ollama call        │
-│     │      Returns: 1536/768-dim vector                                         │
+│     ├─▶ [EMBEDDING API] get_embedding(clean_request) ← verified Ollama host      │
+│     │      Returns: 768D Jarvis Embedding vector                                │
 │     │                                                                           │
 │     ├─▶ [PYTHON] Cosine similarity search in insights DB                        │
 │     │      Finds: matching insights by pattern_embedding                        │
@@ -698,12 +698,9 @@ data/jarvis_intelligence.db
 data/jarvis_intelligence_local.db
 ```
 
-**Why separate?** Data mode owns the database and expected embedding space:
-- Cloud default: OpenAI embeddings (1536 dimensions)
-- Local default: Ollama/nomic embeddings (768 dimensions)
-
-This is independent of chat-provider selection. Cloud mode can use Ollama Cloud
-for chat while retaining the cloud Intelligence DB and OpenAI embeddings.
+**Why separate?** Data mode owns the learning records and its maintenance
+history. Both databases use the same fingerprinted Ollama Jarvis Embedding
+contract (768 dimensions), independently of chat-provider selection.
 
 ### Database Recreation
 
@@ -726,8 +723,8 @@ rm data/jarvis_intelligence.db
 
 | Mode | Works? | Notes |
 |------|--------|-------|
-| Cloud (OpenAI/Anthropic/xAI/Ollama Cloud) | ✅ Yes | Uses cloud DB/embedding config |
-| Local (normally local Ollama) | ✅ Yes | Uses local DB/embedding config |
+| Cloud (OpenAI/Anthropic/xAI/Ollama Cloud chat) | ✅ Yes | Uses cloud DB and unified Jarvis Embedding contract |
+| Local (normally local Ollama chat) | ✅ Yes | Uses local DB and unified Jarvis Embedding contract |
 | Switching modes | ✅ Yes | Separate databases |
 
 ### Tools & MCP Servers ✅
@@ -836,8 +833,8 @@ api/routes/
 ├── intelligence.py         # REST API endpoints for intelligence
 
 data/
-├── jarvis_intelligence.db       # Cloud learning database (1536-dim)
-├── jarvis_intelligence_local.db # Local learning database (768-dim)
+├── jarvis_intelligence.db       # Cloud learning database (Jarvis Embedding 768D)
+├── jarvis_intelligence_local.db # Local learning database (Jarvis Embedding 768D)
 
 config/
 ├── cloud.env   # Optional Intelligence tuning and emergency opt-out
@@ -869,6 +866,7 @@ INTELLIGENCE_DECAY_RATE=0.95            # Decay multiplier per week unused (0.95
 INTELLIGENCE_DECAY_INTERVAL_DAYS=30     # Current cloud recommendation; code default if unset: 7
 INTELLIGENCE_ANOMALY_THRESHOLD=2.5      # Z-score threshold for outlier detection
 INTELLIGENCE_MIN_CONFIDENCE=0.40        # Minimum confidence to become a retrieval candidate
+INTELLIGENCE_RELEVANCE_THRESHOLD=0.20   # Minimum cosine similarity x confidence to apply a candidate
 INTELLIGENCE_NEGATIVE_WEIGHT=1.5        # Recommended; code default if unset: 1.0
 ```
 
@@ -880,6 +878,7 @@ INTELLIGENCE_NEGATIVE_WEIGHT=1.5        # Recommended; code default if unset: 1.
 | `DECAY_RATE` | 0.8 (aggressive pruning) | 0.99 (persistent) | 0.95 is balanced |
 | `ANOMALY_THRESHOLD` | 1.5 (flag more) | 3.5 (flag less) | 2.5 catches outliers |
 | `MIN_CONFIDENCE` | 0.1 (use weak insights) | 0.5 (only strong) | 0.40 is the current recommendation |
+| `RELEVANCE_THRESHOLD` | 0.15 (broader semantic matches) | 0.35 (narrow matches) | Start at 0.20 and tune per embedding model |
 | `NEGATIVE_WEIGHT` | 1.0 (equal to positive) | 2.0 (strong penalty) | 1.5 makes negatives win |
 
 **NEGATIVE_WEIGHT explained**: When multiple insights conflict (e.g., 2 positive + 1 negative for same tool), this multiplier ensures negative constraints are respected. At 1.5, a single negative insight can outweigh multiple weak positives.
@@ -1210,7 +1209,7 @@ Output shows:
 # Merge cloud → local (regenerates 768-dim embeddings)
 ./bin/sync-intelligence-db.py local
 
-# Merge local → cloud (regenerates 1536-dim embeddings)
+# Merge local → cloud (regenerates changed/missing 768D embeddings)
 ./bin/sync-intelligence-db.py cloud
 
 # Replace target with a source mirror, discarding target-only rows
@@ -1234,14 +1233,15 @@ injecting the recommendation.
 
 `meta_knowledge` is deliberately not synchronized. The cloud and local Intelligence databases each keep their own maintenance history and meta-cognition findings because these rows describe the state of that specific database, such as its last decay run, blind spots, and learning-quality findings. Keeping them separate prevents maintenance performed on one database from incorrectly changing the maintenance schedule or reported health of the other. Each database can derive fresh findings after portable learning data is synchronized.
 
-Cloud learned: "Use crypto_price for price queries" (1536-dim embedding)
+Cloud learned: "Use crypto_price for price queries" (fingerprinted 768D embedding)
                           ↓
-            SYNC TO LOCAL (regenerate 768-dim)
+            SYNC TO LOCAL (regenerate target Jarvis Embedding vector)
                           ↓
-Local now knows: "Use crypto_price for price queries" (768-dim embedding)
+Local now knows: "Use crypto_price for price queries" (768D Jarvis Embedding vector)
 
 
-**Note**: Syncing regenerates embeddings for the target mode's embedding model. This ensures dimension compatibility.
+**Note**: Syncing regenerates embeddings through the target mode's configured
+Ollama hosts and records the exact shared fingerprint.
 
 **Also preserved during sync**:
 - `insights.created_at`
@@ -1251,19 +1251,12 @@ Local now knows: "Use crypto_price for price queries" (768-dim embedding)
 
 This matters because the decay job falls back to `created_at` when an insight has never been applied. Resetting timestamps would make stale insights look artificially fresh.
 
-### Embedding Fallback
+### Embedding Failure
 
-If embedding APIs fail (OpenAI down, Ollama unreachable), the system uses a **deterministic hash-based fallback**:
-
-```
-⚠️  FALLBACK EMBEDDING ACTIVE - semantic matching degraded!
-```
-
-**Fallback behavior**:
-- Same text → same embedding (deterministic) ✅
-- Similar text → random similarity (NO semantic meaning) ⚠️
-
-The system continues working but insight matching quality is degraded until real embeddings return.
+If Ollama is unreachable, the configured artifact digest differs, or a stored
+fingerprint is incompatible, Intelligence semantic retrieval fails closed.
+Raw experience recording can continue without a vector, and health checks
+report the missing row; Jarvis never substitutes deterministic hash vectors.
 
 ---
 
@@ -1452,14 +1445,16 @@ If you change `description` or `applies_to_pattern`, run these commands to regen
 ./bin/re-embed-experience 10 local
 ```
 
-**Embedding Dimensions by Mode:**
+**Embedding contract by mode:**
 
 | Mode | Provider | Dimensions | Database |
 |------|----------|------------|----------|
-| `cloud` | OpenAI (`text-embedding-3-small`) | 1536 | `jarvis_intelligence.db` |
-| `local` | Ollama (`nomic-embed-text`) | 768 | `jarvis_intelligence_local.db` |
+| `cloud` | Ollama (`bigsk1/jarvis-embedding:bf16-v1`) | 768 | `jarvis_intelligence.db` |
+| `local` | Ollama (`bigsk1/jarvis-embedding:bf16-v1`) | 768 | `jarvis_intelligence_local.db` |
 
-The scripts automatically use the correct embedding provider based on the mode parameter. Cloud and local databases are **incompatible** - you cannot copy embeddings between them.
+The mode parameter selects the target data set, not an embedding provider. A
+namespace is usable only when its stored digest, prompts, input format, and
+completion state match the current contract.
 
 ### Example: Fixing an Incorrect Insight
 
@@ -1972,7 +1967,8 @@ cloud/default with `./bin/jarvis-intelligence` or `./bin/start --ui-only`; use
 
 Full API table: [jarvis-intelligence/README.md](../jarvis-intelligence/README.md).
 
-**Mode switch:** Cloud → `data/jarvis_intelligence.db` (1536-dim embeddings). Local → `data/jarvis_intelligence_local.db` (768-dim). Dimensions are **not** interchangeable.
+**Mode switch:** Cloud and local select separate Intelligence data sets. Both
+use the same fingerprinted 768D Jarvis Embedding contract.
 
 ---
 

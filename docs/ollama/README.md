@@ -6,12 +6,15 @@ Jarvis supports Ollama in two deployment modes:
 
 | Jarvis mode | Normal Ollama model | Data and embeddings |
 |---|---|---|
-| `cloud` | `OLLAMA_CLOUD_MODEL`, normally `*:cloud` or `*-cloud` | Cloud Memory/Intelligence DBs and OpenAI embeddings by default |
-| `local` | `OLLAMA_MODEL`, normally a model running on your own GPU host | Local DBs and Ollama embeddings by default |
+| `cloud` | `OLLAMA_CLOUD_MODEL`, normally `*:cloud` or `*-cloud` | Cloud data DBs; Jarvis Embedding through daemon hosts |
+| `local` | `OLLAMA_MODEL`, normally a model running on your own GPU host | Local data DBs; the same Jarvis Embedding contract |
 
-Deployment mode, chat provider, Ollama model execution class, and embedding
-provider are separate settings. In particular, `LLM_PROVIDER=ollama` does not
-switch Jarvis into local mode.
+Deployment mode, chat provider, and Ollama model execution class are separate
+settings. Embeddings always use Ollama Jarvis Embedding and do not switch Jarvis
+into local mode.
+
+The published artifact, exact digests, and immutable versioning policy are
+documented in [JARVIS_EMBEDDING_MODEL.md](JARVIS_EMBEDDING_MODEL.md).
 
 ## Cloud mode with Ollama Cloud
 
@@ -21,7 +24,7 @@ Configure `config/cloud.env`:
 LLM_PROVIDER=ollama
 OLLAMA_BASE_URL="http://your-signed-in-ollama-host:11434"
 OLLAMA_CLOUD_MODEL="minimax-m3:cloud"
-EMBEDDING_PROVIDER=openai
+OLLAMA_EMBEDDING_MODEL="bigsk1/jarvis-embedding:bf16-v1"
 ```
 
 With a signed-in daemon, `OLLAMA_CLOUD_MODEL` must be cloud-tagged. Jarvis
@@ -62,7 +65,7 @@ LLM_PROVIDER=ollama
 OLLAMA_BASE_URL="http://your-local-gpu-host:11434"
 OLLAMA_MODEL="gemma4"
 ALLOW_OLLAMA_CLOUD=false
-EMBEDDING_PROVIDER=ollama
+OLLAMA_EMBEDDING_MODEL="bigsk1/jarvis-embedding:bf16-v1"
 ```
 
 By default the local Settings UI lists non-cloud models returned by the
@@ -176,7 +179,8 @@ image input, Jarvis falls back to conservative text-only enhancement, returns
 | `OLLAMA_VISION_MODEL` | Ollama model name | Local mode with `LLM_PROVIDER=ollama` | Vision/image analysis only; not used in cloud mode (see Vision section above) |
 | `ALLOW_OLLAMA_CLOUD` | `false` (default) or `true` | Local mode | When true, permits cloud-tagged cards through the signed-in daemon; never enables direct API routing |
 | `OLLAMA_BASE_URL` | One URL or comma-separated URLs | Both configs | Cloud tries only explicit hosts; local retains localhost as a final compatibility fallback |
-| `EMBEDDING_PROVIDER` | Commonly `openai` in cloud, `ollama` in local | Memory, Tool RAG, Intelligence | Independent of the chat provider; keep DB dimensions aligned with the selected data mode |
+| `OLLAMA_EMBEDDING_MODEL` | `bigsk1/jarvis-embedding:bf16-v1` | Memory, Tool RAG, Intelligence | Unified 768D contract; independent of chat provider |
+| `OLLAMA_EMBEDDING_MODEL_DIGEST` | Pinned SHA-256 | Memory, Tool RAG, Intelligence | Every reachable fallback host must match before it can serve vectors |
 | `JARVIS_SYNC_MODES` | Space-separated `cloud` / `local`; defaults to `JARVIS_MODE` in Docker | First-boot Docker tool sync | Does not change the running stack's mode |
 
 Do not set both model variables expecting automatic mode switching. The active
@@ -223,7 +227,8 @@ sign-in links — never raw profile data.
 ```bash
 OLLAMA_API_KEY=your_key_from_ollama_com_settings_keys
 OLLAMA_CLOUD_MODEL="qwen3.5:397b"
-# OLLAMA_BASE_URL is ignored for cloud-model inference when the key is set
+# OLLAMA_BASE_URL is bypassed for cloud-model chat when the key is set;
+# Jarvis Embedding still runs through the configured daemon hosts.
 ```
 
 Create a key at <https://ollama.com/settings/keys>. When `OLLAMA_API_KEY` is
@@ -384,6 +389,10 @@ pytest -q \
 Useful runtime checks:
 
 ```bash
+# Fresh-install/configuration preflight; does not touch databases.
+./bin/check-embeddings-health.py --both --runtime-only
+
+# Full mode-specific runtime and database health.
 ./bin/check-embeddings-health.py cloud
 ./bin/check-embeddings-health.py local
 ```
@@ -392,7 +401,7 @@ Cloud Ollama should report:
 
 - `startup_mode=cloud`;
 - provider `ollama` and the selected cloud model (tagged daemon card or canonical direct ID);
-- cloud DB paths and 1536-dimensional embeddings;
+- cloud DB paths and fingerprinted 768-dimensional Jarvis Embedding vectors;
 - token usage with subscription/unknown cost;
 - no localhost fallback in provider diagnostics.
 

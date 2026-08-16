@@ -92,6 +92,17 @@ class ToolLogger:
         }
 
         data = result.get("data")
+        embedding_diagnostics = (
+            data.get("embedding_diagnostics", {})
+            if isinstance(data, dict)
+            else {}
+        )
+        retrieval_mode = result.get("retrieval_mode")
+        if retrieval_mode is None and isinstance(embedding_diagnostics, dict):
+            retrieval_mode = embedding_diagnostics.get("retrieval_mode")
+        semantic_disabled_reason = result.get("semantic_disabled_reason")
+        if semantic_disabled_reason is None and isinstance(embedding_diagnostics, dict):
+            semantic_disabled_reason = embedding_diagnostics.get("semantic_disabled_reason")
         if isinstance(data, dict):
             summary_keys = (
                 "provider",
@@ -125,6 +136,8 @@ class ToolLogger:
             "tool": tool_name,
             "arguments": arguments,
             "fallback_embeddings": result.get("fallback_embeddings"),
+            "retrieval_mode": retrieval_mode,
+            "semantic_disabled_reason": semantic_disabled_reason,
             "result": result_summary,
             "duration_ms": round(duration_ms, 2),
             "user_query": user_query

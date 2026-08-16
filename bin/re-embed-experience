@@ -11,10 +11,9 @@ Examples:
 
 import sys
 import os
-import json
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config
 
 def main():
     if len(sys.argv) < 2:
@@ -36,7 +35,14 @@ def main():
         
         # Get current experience
         cursor = intel.conn.cursor()
-        cursor.execute("SELECT id, query, context_summary FROM experiences WHERE id = ?", (experience_id,))
+        cursor.execute(
+            """
+            SELECT id, query, context_summary, tools_used, outcome_success,
+                   error_occurred, raw_data
+            FROM experiences WHERE id = ?
+            """,
+            (experience_id,),
+        )
         row = cursor.fetchone()
         
         if not row:
@@ -52,16 +58,42 @@ def main():
         context = row['context_summary']
         
         print("   Generating embeddings...")
-        query_embedding = intel._get_persistable_embedding(query)
-        context_embedding = intel._get_persistable_embedding(context) if context else None
+        from embedding_metadata import (
+            INTELLIGENCE_CONTEXT_NAMESPACE,
+            INTELLIGENCE_OUTCOME_NAMESPACE,
+            INTELLIGENCE_QUERY_NAMESPACE,
+        )
+        query_embedding = intel._get_persistable_embedding(
+            query,
+            role="document",
+            namespace=INTELLIGENCE_QUERY_NAMESPACE,
+            title="User query",
+        )
+        context_embedding = (
+            intel._get_persistable_embedding(
+                context,
+                role="document",
+                namespace=INTELLIGENCE_CONTEXT_NAMESPACE,
+                title="Conversation context",
+            )
+            if context else None
+        )
         
-        # Build outcome text for outcome embedding
-        cursor.execute("SELECT outcome_success, tools_used, error_occurred FROM experiences WHERE id = ?", (experience_id,))
-        exp = cursor.fetchone()
-        outcome_text = f"{'Success' if exp['outcome_success'] else 'Failed'} using {exp['tools_used'] or 'no tools'}"
-        if exp['error_occurred']:
-            outcome_text += " with errors"
-        outcome_embedding = intel._get_persistable_embedding(outcome_text)
+        # Reuse the same canonical input format as live recording and rebuilds.
+        from embedding_inputs import build_stored_outcome_embedding_text
+        outcome_text = build_stored_outcome_embedding_text(
+            query=query,
+            tools_used_json=row['tools_used'],
+            raw_data_json=row['raw_data'],
+            outcome_success=row['outcome_success'],
+            error_occurred=row['error_occurred'],
+        )
+        outcome_embedding = intel._get_persistable_embedding(
+            outcome_text,
+            role="document",
+            namespace=INTELLIGENCE_OUTCOME_NAMESPACE,
+            title="Interaction outcome",
+        )
 
         if query_embedding is None or outcome_embedding is None or (context and context_embedding is None):
             print("❌ Real provider embeddings were unavailable; existing vectors were preserved")

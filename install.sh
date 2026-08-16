@@ -238,14 +238,21 @@ Venv: `{venv}`
 
 ### You must do manually
 1. **API keys & providers** — Edit `config/cloud.env` (and `config/local.env` for local/Ollama). Minimum: LLM + STT/TTS keys per `docs/INSTALL_GUIDE.md`.
-2. **Audio devices** — Set `IN_DEV` and `OUT_DEV` in both env files. Hints below (typical ALSA `plughw:...` lines; servers often use `pulse` or `default`).
-3. **Re-run verify after edits**: `./verify-env.sh`
-4. **Tool DB sync** (after keys work):  
+2. **Required embeddings (every mode)** — Set `OLLAMA_BASE_URL` in both ENV files to the daemon host(s) you intend to use. On every selected host run `ollama pull bigsk1/jarvis-embedding:bf16-v1`, then verify without touching databases:
+
+   `./bin/check-embeddings-health.py --both --runtime-only`
+
+   The installer deliberately does not install Ollama, start it, or pull models.
+3. **Audio devices** — Set `IN_DEV` and `OUT_DEV` in both env files. Hints below (typical ALSA `plughw:...` lines; servers often use `pulse` or `default`).
+4. **Re-run verify after edits**: `./verify-env.sh`
+5. **Tool DB sync** (after keys and Jarvis Embedding work):
+
    `source {venv}/bin/activate && cd {root} && ./bin/sync-tools.py cloud && ./bin/sync-tools.py local`
-5. **Smoke test**:  
+6. **Smoke test**:
+
    `./orchestrator/orchestrator_v2.py cloud "what time is it"`
-6. **Shell commands (optional)**: Run `./update-aliases.sh`, then use the exact `source` command it prints for Bash or Zsh.
-7. **Run stack**: `./bin/start` (see `docs/INSTALL_GUIDE.md`)
+7. **Shell commands (optional)**: Run `./update-aliases.sh`, then use the exact `source` command it prints for Bash or Zsh.
+8. **Run stack**: `./bin/start` (see `docs/INSTALL_GUIDE.md`)
 
 ### Optional (skipped by design)
 - OpenCode: `./setup_opencode_workspace.sh` — `docs/opencode/OPENCODE.md`

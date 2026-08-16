@@ -36,7 +36,7 @@ def load_intelligence_service_module():
 class IntelligenceMaintenanceTests(unittest.TestCase):
     def _make_intel(self, tmpdir: str) -> IntelligenceLayer:
         intel = IntelligenceLayer(str(Path(tmpdir) / "intel.db"))
-        intel._get_embedding = lambda text: np.array([1.0, 0.25, 0.5])
+        intel._get_embedding = lambda text, **kwargs: np.array([1.0, 0.25, 0.5])
         intel._get_persistable_embedding = intel._get_embedding
         return intel
 
@@ -62,6 +62,7 @@ class IntelligenceMaintenanceTests(unittest.TestCase):
                 ).fetchall()
             }
             self.assertTrue(service_module.REQUIRED_TABLES.issubset(tables))
+            self.assertIn("embedding_metadata", tables)
 
     def _insert_insight(
         self,

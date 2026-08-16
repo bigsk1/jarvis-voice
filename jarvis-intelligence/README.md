@@ -156,7 +156,7 @@ the canonical Intelligence schema owner before serving requests.
 ## Mode Switching
 
 Like other Jarvis dashboards, use the mode selector to switch between:
-- **☁️ Cloud** - `data/jarvis_intelligence.db` (OpenAI embeddings, 1536-dim)
+- **☁️ Cloud** - `data/jarvis_intelligence.db` (Ollama Jarvis Embedding, 768D)
 - **💻 Local** - `data/jarvis_intelligence_local.db` (Ollama embeddings, 768-dim)
 
 **Note**: Embedding dimensions are incompatible between modes.

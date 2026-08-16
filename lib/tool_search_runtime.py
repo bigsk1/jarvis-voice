@@ -167,6 +167,7 @@ def search_tools_runtime(
     selected_tool_hints: list[str] = []
     search_mode = "semantic"
     fallback_embeddings = None
+    semantic_disabled_reason = None
 
     if tool_names:
         search_mode = "exact"
@@ -188,6 +189,8 @@ def search_tools_runtime(
             search_meta = getattr(db, "last_tool_search_meta", {})
             if isinstance(search_meta, dict):
                 fallback_embeddings = search_meta.get("fallback_embeddings")
+                search_mode = search_meta.get("retrieval_mode", search_mode)
+                semantic_disabled_reason = search_meta.get("semantic_disabled_reason")
         finally:
             db.close()
         for row in ranked:
@@ -220,6 +223,8 @@ def search_tools_runtime(
         "ok": True,
         "speech": speech,
         "fallback_embeddings": fallback_embeddings,
+        "retrieval_mode": search_mode,
+        "semantic_disabled_reason": semantic_disabled_reason,
         "data": {
             "query": str(query or ""),
             "matches": summaries,
@@ -227,6 +232,11 @@ def search_tools_runtime(
             "count": len(summaries),
             "search_space": len(available_names if search_mode == "exact" else discoverable_names),
             "search_mode": search_mode,
+            "embedding_diagnostics": {
+                "fallback_embeddings": fallback_embeddings,
+                "retrieval_mode": search_mode,
+                "semantic_disabled_reason": semantic_disabled_reason,
+            },
             "include_schema": bool(include_schema),
         },
     }

@@ -291,6 +291,8 @@ Tools executed so far:
                     tool_schema_chars=1234,
                     tool_schema_est_tokens=309,
                     tool_schema_top=[{"name": "send_email", "chars": 900, "est_tokens": 225}],
+                    retrieval_mode="keyword_fallback",
+                    semantic_disabled_reason="embedding fingerprint mismatch",
                 )
 
             files = list((Path(tmp) / "logs" / "tool-rag").glob("tool-rag-*.jsonl"))
@@ -305,6 +307,11 @@ Tools executed so far:
             self.assertEqual(entry["tool_schema_est_tokens"], 309)
             self.assertEqual(entry["tool_schema_top"][0]["name"], "send_email")
             self.assertEqual(entry["final_schema_limit"], 15)
+            self.assertEqual(entry["retrieval_mode"], "keyword_fallback")
+            self.assertEqual(
+                entry["semantic_disabled_reason"],
+                "embedding fingerprint mismatch",
+            )
 
 
 if __name__ == "__main__":

@@ -44,7 +44,7 @@ def fake_configs(tmp_path, monkeypatch):
                 "LLM_PROVIDER=ollama",
                 "OLLAMA_CLOUD_MODEL=qwen3.5:cloud",
                 "OLLAMA_MODEL=gemma4",
-                "EMBEDDING_PROVIDER=openai",
+                "OLLAMA_EMBEDDING_MODEL=bigsk1/jarvis-embedding:bf16-v1",
                 "OLLAMA_BASE_URL=http://cloud-host:11434",
             ]
         )
@@ -54,7 +54,7 @@ def fake_configs(tmp_path, monkeypatch):
             [
                 "LLM_PROVIDER=ollama",
                 "OLLAMA_MODEL=gemma4-local",
-                "EMBEDDING_PROVIDER=ollama",
+                "OLLAMA_EMBEDDING_MODEL=bigsk1/jarvis-embedding:bf16-v1",
                 "OLLAMA_BASE_URL=http://localhost:11434",
             ]
         )
@@ -94,7 +94,7 @@ def test_scope_overlays_values_without_mutating_environ(fake_configs, monkeypatc
     monkeypatch.delenv("OLLAMA_CLOUD_MODEL", raising=False)
     with config_scope("cloud"):
         assert get_config_value("OLLAMA_CLOUD_MODEL") == "qwen3.5:cloud"
-        assert get_config_value("EMBEDDING_PROVIDER") == "openai"
+        assert get_config_value("OLLAMA_EMBEDDING_MODEL") == "bigsk1/jarvis-embedding:bf16-v1"
     # os.environ untouched by the scope.
     assert "OLLAMA_CLOUD_MODEL" not in os.environ
 
@@ -180,7 +180,7 @@ def test_concurrent_scopes_do_not_leak(fake_configs):
                 results[key] = {
                     "mode": get_active_config_mode(),
                     "model": get_config_value("OLLAMA_MODEL"),
-                    "embedding": get_config_value("EMBEDDING_PROVIDER"),
+                    "embedding": get_config_value("OLLAMA_EMBEDDING_MODEL"),
                     "url": get_config_value("OLLAMA_BASE_URL"),
                 }
                 barrier.wait()
@@ -198,12 +198,12 @@ def test_concurrent_scopes_do_not_leak(fake_configs):
 
     assert results["cloud"]["mode"] == "cloud"
     assert results["cloud"]["model"] == "gemma4"
-    assert results["cloud"]["embedding"] == "openai"
+    assert results["cloud"]["embedding"] == "bigsk1/jarvis-embedding:bf16-v1"
     assert results["cloud"]["url"] == "http://cloud-host:11434"
 
     assert results["local"]["mode"] == "local"
     assert results["local"]["model"] == "gemma4-local"
-    assert results["local"]["embedding"] == "ollama"
+    assert results["local"]["embedding"] == "bigsk1/jarvis-embedding:bf16-v1"
     assert results["local"]["url"] == "http://localhost:11434"
 
 

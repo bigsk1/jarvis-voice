@@ -11,10 +11,9 @@ Examples:
 
 import sys
 import os
-import json
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import load_config
 
 def main():
     if len(sys.argv) < 2:
@@ -52,8 +51,24 @@ def main():
         pattern = row['applies_to_pattern']
         
         print("   Generating embeddings...")
-        insight_embedding = intel._get_persistable_embedding(description)
-        pattern_embedding = intel._get_persistable_embedding(pattern) if pattern else None
+        from embedding_metadata import (
+            INTELLIGENCE_INSIGHT_NAMESPACE,
+            INTELLIGENCE_PATTERN_NAMESPACE,
+        )
+        insight_embedding = intel._get_persistable_embedding(
+            description,
+            role="similarity",
+            namespace=INTELLIGENCE_INSIGHT_NAMESPACE,
+        )
+        pattern_embedding = (
+            intel._get_persistable_embedding(
+                pattern,
+                role="document",
+                namespace=INTELLIGENCE_PATTERN_NAMESPACE,
+                title="Insight applicability",
+            )
+            if pattern else None
+        )
 
         if insight_embedding is None or (pattern and pattern_embedding is None):
             print("❌ Real provider embeddings were unavailable; existing vectors were preserved")

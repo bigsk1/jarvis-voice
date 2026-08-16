@@ -331,6 +331,7 @@ def request_ollama(
     base_urls: list[str] | tuple[str, ...] | None = None,
     retry_statuses: tuple[int, ...] = (500, 502, 503, 504),
     cloud_access: bool = False,
+    include_localhost_fallback: "bool | None" = None,
     timeout=None,
     **kwargs,
 ):
@@ -340,9 +341,11 @@ def request_ollama(
     if base_urls is None and base_url is None:
         candidate_urls = get_ollama_request_urls(cloud_access=cloud_access)
     else:
+        if include_localhost_fallback is None:
+            include_localhost_fallback = _localhost_fallback_is_default()
         candidate_urls = parse_ollama_base_urls(
             base_urls if base_urls is not None else base_url,
-            include_localhost_fallback=_localhost_fallback_is_default(),
+            include_localhost_fallback=include_localhost_fallback,
         )
 
     if not candidate_urls:

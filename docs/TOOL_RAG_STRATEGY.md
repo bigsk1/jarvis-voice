@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS tool_definitions (
     name TEXT PRIMARY KEY,          -- e.g., "weather_check"
     description TEXT NOT NULL,      -- "Check current weather for a location..."
     schema_json TEXT NOT NULL,      -- Full JSON schema for the tool
-    embedding BLOB,                 -- Vector embedding of name + description
+    embedding BLOB,                 -- 768D Jarvis Embedding document vector
     enabled BOOLEAN DEFAULT 1,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     embedding_input_hash TEXT       -- SHA-256 of embedding inputs; skip re-embed when unchanged (see SYNC_ARCHITECTURE.md)
@@ -56,8 +56,8 @@ CREATE TABLE IF NOT EXISTS tool_definitions (
 ```
 
 **Implementation Notes:**
--   Embeddings are stored as binary blobs (Pickled python lists for OpenAI, or JSON for others).
--   The system is robust enough to handle different serialization formats.
+-   Current Tool RAG writers store verified 768D Jarvis Embedding vectors as pickled Python lists.
+-   Readers can decode both pickle and JSON BLOBs, but the fingerprint must match before either format is queried.
 -   `embedding_input_hash` is populated by `MemoryDB.upsert_tool()` / `sync-tools.py`; existing DBs get the column via `ALTER TABLE` on open.
 
 ---
@@ -102,13 +102,13 @@ These tools are priority candidates, ensuring basic functionality gets first cha
 
 **Usage**:
 ```bash
-# Must run in the environment where 'openai' package is installed!
+# Use the Jarvis operator environment so the complete tool registry is available.
 source ~/jarvis-venv/bin/activate
 
-# Sync Cloud Tools (OpenAI Embeddings - 1536 dim)
+# Sync Cloud Tools (Jarvis Embedding - 768D)
 ./bin/sync-tools.py cloud
 
-# Sync Local Tools (Nomic Embeddings - 768 dim)
+# Sync Local Tools (Jarvis Embedding - 768D)
 ./bin/sync-tools.py local
 ```
 
@@ -358,17 +358,15 @@ Tracing intentionally runs an extra ranking search so the log can show near miss
 ## 6. Findings & troubleshooting
 
 ### Critical: Virtual Environment
-We discovered that running `sync-tools.py` outside the virtual environment resulted in **0 embeddings** because the `openai` package wasn't found. The script would fail silently (printing a warning) and store the tool *without* an embedding.
-**Fix**: The script now refuses to run outside the configured Jarvis venv. It
-also rejects provider fallback vectors even inside the correct venv, retries
-changed embeddings with bounded backoff, and preserves the previous vector and
-`embedding_input_hash` if the provider remains unavailable.
+`sync-tools.py` loads the full local/MCP registry and therefore runs in the
+configured Jarvis operator environment. It refuses a partial interpreter,
+retries real Jarvis Embedding writes with bounded backoff, and preserves the
+previous vector and `embedding_input_hash` if Ollama remains unavailable.
 
 ### Critical: Serialization
-The database stores embeddings as BLOBs.
--   **OpenAI**: Often stores as Pickled Python lists.
--   **Other**: May store as JSON strings.
-**Fix**: `memory_db.py` implements a robust double-try mechanism (Pickle first, then JSON) to decode the BLOBs correctly during search.
+The database stores embeddings as BLOBs. Current Tool RAG writers use pickle;
+`memory_db.py` also understands JSON serialization. Serialization alone never
+makes a vector compatible: the namespace fingerprint and 768D shape must pass.
 
 ### Verification
 To verify tools are indexed correctly:

@@ -13,6 +13,15 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from embedding_metadata import (
+    MEMORY_KNOWLEDGE_NAMESPACE,
+    MEMORY_TOOLS_NAMESPACE,
+    EmbeddingCompatibilityError,
+    ensure_embedding_metadata_table,
+    record_embedding_namespace_complete,
+    require_embedding_namespace,
+)
+
 
 def _tool_definition_content_hash(name: str, description: str, schema_json: str, enabled: bool) -> str:
     """SHA-256 of inputs that affect Tool RAG embedding and tool identity."""
@@ -181,23 +190,30 @@ class MemoryDB:
             data_dir = project_root / "data"
             data_dir.mkdir(exist_ok=True)
             
-            # Resolve data mode from the active config scope / JARVIS_MODE,
-            # never from the chat provider. Cloud mode keeps the main DB and its
-            # OpenAI embeddings even when LLM_PROVIDER=ollama.
+            # Resolve only the data location from the active mode. Both files
+            # use the same EmbeddingGemma/Ollama vector contract.
             from config_loader import get_active_config_mode
             mode = get_active_config_mode()
 
             if mode == 'local':
-                # Local mode - use separate database with nomic embeddings
+                # Local mode keeps a separate data set.
                 db_path = str(data_dir / "jarvis_memory_local.db")
             else:
-                # Cloud mode - use main database with OpenAI embeddings
+                # Cloud mode keeps the main data set.
                 db_path = str(data_dir / "jarvis_memory.db")
         
         self.db_path = db_path
         self.conn = None
-        self.last_semantic_search_meta = {"fallback_embeddings": None}
-        self.last_tool_search_meta = {"fallback_embeddings": None}
+        self.last_semantic_search_meta = {
+            "fallback_embeddings": None,
+            "retrieval_mode": "semantic",
+            "semantic_disabled_reason": None,
+        }
+        self.last_tool_search_meta = {
+            "fallback_embeddings": None,
+            "retrieval_mode": "semantic",
+            "semantic_disabled_reason": None,
+        }
         self._init_db()
     
     def _init_db(self):
@@ -311,6 +327,8 @@ class MemoryDB:
             )
         """)
         self._ensure_column(cursor, "tool_definitions", "embedding_input_hash", "TEXT")
+
+        ensure_embedding_metadata_table(self.conn)
         
         self._ensure_fts_triggers(cursor)
 
@@ -424,19 +442,31 @@ class MemoryDB:
         
         # Generate embedding if requested
         embedding_blob = None
-        embedding_failed = False
         if generate_embedding:
             try:
                 from embeddings import get_persistable_embedding
-                # Combine key and value for richer semantic context
-                text = f"{key}: {value}"
-                embedding_vector = get_persistable_embedding(text)
+                vector_count = cursor.execute(
+                    "SELECT COUNT(*) FROM knowledge_base WHERE embedding IS NOT NULL"
+                ).fetchone()[0]
+                require_embedding_namespace(
+                    self.conn,
+                    MEMORY_KNOWLEDGE_NAMESPACE,
+                    vector_count=vector_count,
+                )
+                embedding_vector = get_persistable_embedding(
+                    value,
+                    role="document",
+                    title=key,
+                )
                 # Serialize vector as blob
                 embedding_blob = pickle.dumps(embedding_vector)
+                record_embedding_namespace_complete(
+                    self.conn,
+                    MEMORY_KNOWLEDGE_NAMESPACE,
+                )
             except Exception as exc:
-                embedding_failed = True
                 logging.getLogger(__name__).warning(
-                    "Memory embedding update failed for %s/%s; preserving any existing vector: %s",
+                    "Memory embedding update failed for %s/%s; storing no stale vector: %s",
                     category,
                     key,
                     exc,
@@ -472,14 +502,13 @@ class MemoryDB:
             cursor.execute("""
                 UPDATE knowledge_base 
                 SET value = ?, importance = ?, updated_at = CURRENT_TIMESTAMP, source = ?,
-                    embedding = CASE WHEN ? THEN embedding ELSE ? END,
+                    embedding = ?,
                     metadata = ?
                 WHERE id = ?
             """, (
                 value,
                 importance,
                 source,
-                1 if embedding_failed else 0,
                 embedding_blob,
                 metadata_json,
                 existing['id'],
@@ -603,6 +632,8 @@ class MemoryDB:
         *,
         value: str | None,
         importance: int | None,
+        embedding_blob: bytes | None = None,
+        embedding_generated: bool = False,
     ) -> int:
         """
         Update the equivalent logical memory in the sibling DB by category+key.
@@ -624,6 +655,26 @@ class MemoryDB:
             if value is not None:
                 updates.append("value = ?")
                 params.append(value)
+                updates.append("embedding = ?")
+                params.append(embedding_blob)
+                if embedding_generated:
+                    ensure_embedding_metadata_table(conn)
+                    vector_count = cursor.execute(
+                        "SELECT COUNT(*) FROM knowledge_base WHERE embedding IS NOT NULL"
+                    ).fetchone()[0]
+                    try:
+                        require_embedding_namespace(
+                            conn,
+                            MEMORY_KNOWLEDGE_NAMESPACE,
+                            vector_count=vector_count,
+                        )
+                    except EmbeddingCompatibilityError as exc:
+                        logging.getLogger(__name__).warning(
+                            "Sibling memory update skipped because embeddings are incompatible: %s",
+                            exc,
+                        )
+                        return 0
+                    record_embedding_namespace_complete(conn, MEMORY_KNOWLEDGE_NAMESPACE)
             if importance is not None:
                 updates.append("importance = ?")
                 params.append(importance)
@@ -669,7 +720,7 @@ class MemoryDB:
         """Update an existing memory."""
         cursor = self.conn.cursor()
         existing = cursor.execute(
-            "SELECT category, key FROM knowledge_base WHERE id = ?",
+            "SELECT category, key, value FROM knowledge_base WHERE id = ?",
             (memory_id,),
         ).fetchone()
         if not existing:
@@ -677,10 +728,41 @@ class MemoryDB:
         
         updates = []
         params = []
+        embedding_blob = None
+        embedding_generated = False
         
         if value is not None:
             updates.append("value = ?")
             params.append(value)
+            try:
+                from embeddings import get_persistable_embedding
+                vector_count = cursor.execute(
+                    "SELECT COUNT(*) FROM knowledge_base WHERE embedding IS NOT NULL"
+                ).fetchone()[0]
+                require_embedding_namespace(
+                    self.conn,
+                    MEMORY_KNOWLEDGE_NAMESPACE,
+                    vector_count=vector_count,
+                )
+                embedding = get_persistable_embedding(
+                    value,
+                    role="document",
+                    title=existing["key"],
+                )
+                embedding_blob = pickle.dumps(embedding)
+                embedding_generated = True
+                record_embedding_namespace_complete(
+                    self.conn,
+                    MEMORY_KNOWLEDGE_NAMESPACE,
+                )
+            except Exception as exc:
+                logging.getLogger(__name__).warning(
+                    "Memory #%s text updated without a semantic vector: %s",
+                    memory_id,
+                    exc,
+                )
+            updates.append("embedding = ?")
+            params.append(embedding_blob)
         
         if importance is not None:
             updates.append("importance = ?")
@@ -702,6 +784,8 @@ class MemoryDB:
                 existing["key"],
                 value=value,
                 importance=importance,
+                embedding_blob=embedding_blob,
+                embedding_generated=embedding_generated,
             )
 
         return updated
@@ -1027,35 +1111,39 @@ class MemoryDB:
             List of memories with similarity/relevance scores, sorted by relevance
         """
         logger = logging.getLogger(__name__)
-        self.last_semantic_search_meta = {"fallback_embeddings": None}
+        self.last_semantic_search_meta = {
+            "fallback_embeddings": None,
+            "retrieval_mode": "semantic",
+            "semantic_disabled_reason": None,
+        }
         try:
-            from embeddings import (
-                get_embedding,
-                cosine_similarity,
-                reset_embedding_fallback_tracking,
-                consume_embedding_fallback_tracking,
-            )
+            from embeddings import get_embedding, cosine_similarity
             from config_loader import get_float
             
             # Use provided threshold or read from config
             if similarity_threshold is None:
                 similarity_threshold = get_float('SEMANTIC_SIMILARITY_THRESHOLD', 0.40)
             
-            # Generate embedding for query
-            reset_embedding_fallback_tracking()
-            query_embedding = get_embedding(query)
-            self.last_semantic_search_meta = consume_embedding_fallback_tracking()
-            if self.last_semantic_search_meta.get("fallback_embeddings"):
-                logger.warning(
-                    "[SEMANTIC_SEARCH] Fallback embeddings used for query: '%s...'",
-                    query[:120],
-                )
-            
             # Get all memories with embeddings
             cursor = self.conn.cursor()
             results = cursor.execute(
                 "SELECT * FROM knowledge_base WHERE embedding IS NOT NULL"
             ).fetchall()
+            if not results:
+                self.last_semantic_search_meta = {
+                    "fallback_embeddings": None,
+                    "retrieval_mode": "keyword_fallback",
+                    "semantic_disabled_reason": "no stored memory embeddings",
+                }
+                return self.fts_search(query, limit=limit)
+            require_embedding_namespace(
+                self.conn,
+                MEMORY_KNOWLEDGE_NAMESPACE,
+                vector_count=len(results),
+            )
+
+            # Query and stored documents intentionally use asymmetric prompts.
+            query_embedding = get_embedding(query, role="query")
             
             # Calculate similarity scores
             scored_memories = []
@@ -1086,13 +1174,19 @@ class MemoryDB:
             # If no results, fall back to FTS5 keyword search
             if not scored_memories:
                 # FTS5 has its own AND→OR→LIKE fallback
+                self.last_semantic_search_meta["retrieval_mode"] = "keyword_fallback"
                 return self.fts_search(query, limit=limit)
             
             return scored_memories[:limit]
             
-        except Exception:
+        except Exception as exc:
             # If embedding generation fails, fall back to FTS5
-            self.last_semantic_search_meta = {"fallback_embeddings": None}
+            self.last_semantic_search_meta = {
+                "fallback_embeddings": None,
+                "retrieval_mode": "keyword_fallback",
+                "semantic_disabled_reason": str(exc),
+            }
+            logger.warning("Semantic memory retrieval disabled: %s", exc)
             return self.fts_search(query, limit=limit)
     
     # ========== Conversation History ==========
@@ -1393,16 +1487,28 @@ class MemoryDB:
                 skip_embed = True
                 embedding_blob = row["embedding"]
 
+        vector_count = cursor.execute(
+            "SELECT COUNT(*) FROM tool_definitions WHERE embedding IS NOT NULL"
+        ).fetchone()[0]
+        require_embedding_namespace(
+            self.conn,
+            MEMORY_TOOLS_NAMESPACE,
+            vector_count=vector_count,
+        )
+
         if not skip_embed:
             from embeddings import get_persistable_embedding
 
-            text = f"Tool {name}: {description}"
             embedding_vector = get_persistable_embedding(
-                text,
+                description,
+                role="document",
+                title=name,
                 max_attempts=embedding_max_attempts,
                 retry_delay_seconds=embedding_retry_delay_seconds,
             )
             embedding_blob = pickle.dumps(embedding_vector)
+
+        record_embedding_namespace_complete(self.conn, MEMORY_TOOLS_NAMESPACE)
 
         cursor.execute("""
             INSERT OR REPLACE INTO tool_definitions (
@@ -1427,26 +1533,15 @@ class MemoryDB:
             List of tool definitions with similarity scores
         """
         cursor = self.conn.cursor()
-        self.last_tool_search_meta = {"fallback_embeddings": None}
+        self.last_tool_search_meta = {
+            "fallback_embeddings": None,
+            "retrieval_mode": "semantic",
+            "semantic_disabled_reason": None,
+        }
         
         try:
-            from embeddings import (
-                get_embedding,
-                cosine_similarity,
-                reset_embedding_fallback_tracking,
-                consume_embedding_fallback_tracking,
-            )
+            from embeddings import get_embedding, cosine_similarity
             logger = logging.getLogger(__name__)
-            
-            # 1. Generate query embedding
-            reset_embedding_fallback_tracking()
-            query_embedding = get_embedding(query)
-            self.last_tool_search_meta = consume_embedding_fallback_tracking()
-            if self.last_tool_search_meta.get("fallback_embeddings"):
-                logger.warning(
-                    "[TOOL_SEARCH] Fallback embeddings used for query: '%s...'",
-                    query[:120],
-                )
             
             # 2. Get all ENABLED tools with embeddings
             results = cursor.execute("""
@@ -1454,6 +1549,21 @@ class MemoryDB:
                 FROM tool_definitions 
                 WHERE enabled = 1 AND embedding IS NOT NULL
             """).fetchall()
+            if not results:
+                self.last_tool_search_meta = {
+                    "fallback_embeddings": None,
+                    "retrieval_mode": "unavailable",
+                    "semantic_disabled_reason": "no enabled tool embeddings",
+                }
+                return []
+            require_embedding_namespace(
+                self.conn,
+                MEMORY_TOOLS_NAMESPACE,
+                vector_count=len(results),
+            )
+
+            # 1. Generate the asymmetric retrieval query embedding.
+            query_embedding = get_embedding(query, role="query")
             
             logger.info(f"[TOOL_SEARCH] Searching {len(results)} enabled tools for query: '{query[:100]}...'")
             
@@ -1508,7 +1618,11 @@ class MemoryDB:
             
         except Exception as e:
             # Fallback: Basic keyword match
-            self.last_tool_search_meta = {"fallback_embeddings": None}
+            self.last_tool_search_meta = {
+                "fallback_embeddings": None,
+                "retrieval_mode": "keyword_fallback",
+                "semantic_disabled_reason": str(e),
+            }
             print(f"⚠️ Semantic tool search failed: {e}. Falling back to keyword search.")
             results = cursor.execute("""
                 SELECT name, description, schema_json 

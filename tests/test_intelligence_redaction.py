@@ -59,7 +59,7 @@ class IntelligenceRedactionTests(unittest.TestCase):
     def test_record_experience_redacts_query_context_and_evidence(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             intel = IntelligenceLayer(str(Path(tmpdir) / "intel.db"))
-            intel._get_embedding = lambda text: np.array([1.0, 0.5])
+            intel._get_embedding = lambda text, **kwargs: np.array([1.0, 0.5])
             intel._get_persistable_embedding = intel._get_embedding
 
             exp_id = asyncio.run(
@@ -110,7 +110,7 @@ class IntelligenceRedactionTests(unittest.TestCase):
     def test_hooks_redact_interaction_feedback_and_completion_guard(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             intel = IntelligenceLayer(str(Path(tmpdir) / "intel.db"))
-            intel._get_embedding = lambda text: np.array([1.0, 0.5])
+            intel._get_embedding = lambda text, **kwargs: np.array([1.0, 0.5])
             intel._get_persistable_embedding = intel._get_embedding
 
             old_layer = intelligence_hooks._intelligence_layer

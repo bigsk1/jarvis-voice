@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Sync memory databases between cloud and local modes.
-Each mode has its own database with mode-appropriate embeddings.
+Both modes use the same fingerprinted Jarvis Embedding vector contract.
 
 Usage:
     ./bin/sync-memory-db.py --from cloud --to local
@@ -26,7 +26,14 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 
 from config_loader import config_scope
-from embeddings import get_persistable_embedding
+from embeddings import get_embedding_runtime_status, get_persistable_embedding
+from embedding_metadata import (
+    MEMORY_KNOWLEDGE_NAMESPACE,
+    EmbeddingCompatibilityError,
+    ensure_embedding_metadata_table,
+    record_embedding_namespace_complete,
+    require_embedding_namespace,
+)
 
 
 def _table_columns(cursor, table_name):
@@ -85,7 +92,7 @@ def sync_databases(
 ):
     """
     Sync portable memory data, conversations, user model, alerts, and reminders.
-    Regenerates embeddings for the target mode's embedding model.
+    Regenerates changed or missing embeddings using the unified model.
 
     Scheduled tasks and their run history are intentionally excluded because
     they are owned by the mode-specific runner and tool profile.
@@ -166,6 +173,7 @@ def sync_databases(
     """)
     _ensure_column(target_cursor, "conversations", "metadata", "TEXT")
     _ensure_user_model_schema(target_cursor)
+    ensure_embedding_metadata_table(target_conn)
     
     # Get all memories from source
     memories = source_cursor.execute("""
@@ -181,8 +189,30 @@ def sync_databases(
     synced = 0
     skipped = 0
     errors = 0
+    memory_sync_enabled = True
+    target_vector_count = target_cursor.execute(
+        "SELECT COUNT(*) FROM knowledge_base WHERE embedding IS NOT NULL"
+    ).fetchone()[0]
+    try:
+        require_embedding_namespace(
+            target_conn,
+            MEMORY_KNOWLEDGE_NAMESPACE,
+            vector_count=target_vector_count,
+        )
+        if memories:
+            runtime = get_embedding_runtime_status()
+            if not runtime["ok"]:
+                raise RuntimeError(runtime["error"])
+    except (EmbeddingCompatibilityError, RuntimeError) as exc:
+        memory_sync_enabled = False
+        errors += 1
+        print(f"❌ Memory vector sync disabled: {exc}")
+        print("   Delete the target database or run ./bin/rebuild-embeddings before syncing memories.")
     
     for memory in memories:
+        if not memory_sync_enabled:
+            skipped += 1
+            continue
         memory['id']
         category = memory['category']
         key = memory['key']
@@ -200,27 +230,35 @@ def sync_databases(
             if source and str(source).startswith("intel/"):
                 existing = target_cursor.execute(
                     """
-                    SELECT id, updated_at FROM knowledge_base
+                    SELECT id, updated_at, embedding FROM knowledge_base
                     WHERE key = ? AND category = ? AND source = ?
                     """,
                     (key, category, source),
                 ).fetchone()
             else:
                 existing = target_cursor.execute(
-                    "SELECT id, updated_at FROM knowledge_base WHERE key = ? AND category = ?",
+                    "SELECT id, updated_at, embedding FROM knowledge_base WHERE key = ? AND category = ?",
                     (key, category),
                 ).fetchone()
             
             if existing:
                 # Update if source is newer
-                if updated_at > existing[1]:
+                if updated_at > existing[1] or existing[2] is None:
                     if verbose:
                         print(f"⟳ Updating: {key[:40]}...")
                     
                     # Generate new embedding for target mode
-                    text = f"{key}: {value}"
-                    embedding = get_persistable_embedding(text, max_attempts=3)
+                    embedding = get_persistable_embedding(
+                        value,
+                        role="document",
+                        title=key,
+                        max_attempts=3,
+                    )
                     embedding_blob = json.dumps(embedding).encode('utf-8')
+                    record_embedding_namespace_complete(
+                        target_conn,
+                        MEMORY_KNOWLEDGE_NAMESPACE,
+                    )
                     
                     target_cursor.execute("""
                         UPDATE knowledge_base 
@@ -241,9 +279,17 @@ def sync_databases(
                     print(f"+ Inserting: {key[:40]}...")
                 
                 # Generate embedding for target mode
-                text = f"{key}: {value}"
-                embedding = get_persistable_embedding(text, max_attempts=3)
+                embedding = get_persistable_embedding(
+                    value,
+                    role="document",
+                    title=key,
+                    max_attempts=3,
+                )
                 embedding_blob = json.dumps(embedding).encode('utf-8')
+                record_embedding_namespace_complete(
+                    target_conn,
+                    MEMORY_KNOWLEDGE_NAMESPACE,
+                )
                 
                 target_cursor.execute("""
                     INSERT INTO knowledge_base 

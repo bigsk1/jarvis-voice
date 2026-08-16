@@ -37,7 +37,11 @@ def main():
         # Semantic search
         db = get_memory_db()
         memories = db.semantic_search(query=query, limit=limit)
-        semantic_meta = getattr(db, 'last_semantic_search_meta', {"fallback_embeddings": None})
+        semantic_meta = getattr(db, 'last_semantic_search_meta', {
+            "fallback_embeddings": None,
+            "retrieval_mode": "semantic",
+            "semantic_disabled_reason": None,
+        })
         db.close()
 
         for idx, mem in enumerate(memories):
@@ -47,7 +51,10 @@ def main():
             result = {
                 "ok": True,
                 "speech": f"I couldn't find any memories related to '{query}'",
-                "data": {"memories": []}
+                "data": {
+                    "memories": [],
+                    "embedding_diagnostics": semantic_meta,
+                }
             }
         else:
             # Format speech with similarity scores
@@ -70,10 +77,9 @@ def main():
                 },
                 "fallback_embeddings": semantic_meta.get("fallback_embeddings"),
             }
-        if "fallback_embeddings" not in result:
-            result["fallback_embeddings"] = semantic_meta.get("fallback_embeddings")
-            if "data" in result:
-                result["data"]["embedding_diagnostics"] = semantic_meta
+        result["fallback_embeddings"] = semantic_meta.get("fallback_embeddings")
+        result["retrieval_mode"] = semantic_meta.get("retrieval_mode", "semantic")
+        result["semantic_disabled_reason"] = semantic_meta.get("semantic_disabled_reason")
         
         print(json.dumps(result))
         return result

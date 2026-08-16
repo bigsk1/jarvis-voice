@@ -3,6 +3,7 @@
 
 import asyncio
 import json
+import pickle
 import sys
 import tempfile
 import unittest
@@ -22,9 +23,39 @@ from intelligence_hooks import (
     _evaluate_insight_helpfulness,
     format_insights_for_prompt,
 )
+from config_loader import config_scope
 
 
 class IntelligenceProvenanceTests(unittest.TestCase):
+    def test_relevance_threshold_is_configurable(self):
+        with tempfile.TemporaryDirectory() as tmpdir, config_scope(
+            "cloud",
+            {"INTELLIGENCE_RELEVANCE_THRESHOLD": "0.30"},
+        ):
+            intel = IntelligenceLayer(
+                str(Path(tmpdir) / "intel.db"),
+                load_runtime_config=False,
+            )
+            intel._get_embedding = lambda text, **kwargs: np.array([1.0])
+            intel._cosine_similarity = lambda left, right: 0.25
+            intel.conn.execute(
+                """
+                INSERT INTO insights (
+                    description, pattern_embedding, confidence,
+                    generalizability, preferred_tools
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                ("Use weather for forecasts", pickle.dumps([1.0]), 1.0, "high", '{"weather": 1.0}'),
+            )
+            intel.conn.commit()
+
+            self.assertEqual(intel.relevance_threshold, 0.30)
+            self.assertEqual(
+                asyncio.run(intel.get_relevant_insights("forecast")),
+                [],
+            )
+            intel.close()
+
     def test_unknown_reflection_cost_remains_unknown(self):
         self.assertIsNone(_reflection_cost_from_usage({
             "cost_usd": None,
@@ -151,7 +182,7 @@ class IntelligenceProvenanceTests(unittest.TestCase):
 
     def _make_intel(self, tmpdir: str) -> IntelligenceLayer:
         intel = IntelligenceLayer(str(Path(tmpdir) / "intel.db"))
-        intel._get_embedding = lambda text: np.array([1.0, 0.25, 0.5])
+        intel._get_embedding = lambda text, **kwargs: np.array([1.0, 0.25, 0.5])
         intel._get_persistable_embedding = intel._get_embedding
         return intel
 
@@ -664,7 +695,7 @@ class IntelligenceProvenanceTests(unittest.TestCase):
             intel.close()
 
             reopened = IntelligenceLayer(str(db_path))
-            reopened._get_embedding = lambda text: np.array([1.0, 0.25, 0.5])
+            reopened._get_embedding = lambda text, **kwargs: np.array([1.0, 0.25, 0.5])
             reopened._get_persistable_embedding = reopened._get_embedding
             raw = reopened.conn.execute(
                 "SELECT raw_data FROM experiences WHERE id = ?",

@@ -45,6 +45,17 @@ import threading
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import load_config, get_float, get_int, get_active_config_mode
+from embedding_metadata import (
+    INTELLIGENCE_CONTEXT_NAMESPACE,
+    INTELLIGENCE_INSIGHT_NAMESPACE,
+    INTELLIGENCE_OUTCOME_NAMESPACE,
+    INTELLIGENCE_PATTERN_NAMESPACE,
+    INTELLIGENCE_QUERY_NAMESPACE,
+    ensure_embedding_metadata_table,
+    record_embedding_namespace_complete,
+    require_embedding_namespace,
+)
+from embedding_inputs import build_outcome_embedding_text
 from security_utils import redact_sensitive_data, redact_sensitive_text
 from time_utils import now_utc
 
@@ -427,6 +438,7 @@ class IntelligenceLayer:
         self.decay_rate = get_float('INTELLIGENCE_DECAY_RATE', 0.95)
         self.anomaly_threshold = get_float('INTELLIGENCE_ANOMALY_THRESHOLD', 2.5)
         self.min_confidence = get_float('INTELLIGENCE_MIN_CONFIDENCE', 0.3)
+        self.relevance_threshold = get_float('INTELLIGENCE_RELEVANCE_THRESHOLD', 0.2)
         self.negative_weight = get_float('INTELLIGENCE_NEGATIVE_WEIGHT', 1.0)  # Multiplier for negative constraints
 
     def _init_db(self):
@@ -615,6 +627,7 @@ class IntelligenceLayer:
         self._migrate_schema(cursor)
         self._backfill_insight_sources_from_evidence(cursor)
         self._backfill_raw_data_experience_ids(cursor)
+        ensure_embedding_metadata_table(self.conn)
 
         self.conn.commit()
 
@@ -796,20 +809,59 @@ class IntelligenceLayer:
     # EMBEDDING UTILITIES
     # ============================================
 
-    def _get_embedding(self, text: str) -> np.ndarray | None:
+    def _embedding_namespace_count(self, namespace: str) -> int:
+        """Return the number of persisted vectors in one Intelligence namespace."""
+        queries = {
+            INTELLIGENCE_QUERY_NAMESPACE:
+                "SELECT COUNT(*) FROM experiences WHERE query_embedding IS NOT NULL",
+            INTELLIGENCE_CONTEXT_NAMESPACE:
+                "SELECT COUNT(*) FROM experiences WHERE context_embedding IS NOT NULL",
+            INTELLIGENCE_OUTCOME_NAMESPACE:
+                "SELECT COUNT(*) FROM experiences WHERE outcome_embedding IS NOT NULL",
+            INTELLIGENCE_INSIGHT_NAMESPACE:
+                "SELECT COUNT(*) FROM insights WHERE insight_embedding IS NOT NULL",
+            INTELLIGENCE_PATTERN_NAMESPACE:
+                "SELECT COUNT(*) FROM insights WHERE pattern_embedding IS NOT NULL",
+        }
+        return int(self.conn.execute(queries[namespace]).fetchone()[0])
+
+    def _get_embedding(
+        self,
+        text: str,
+        *,
+        role: str = "query",
+        namespace: str | None = None,
+        title: str | None = None,
+    ) -> np.ndarray | None:
         """Get embedding for text, with caching."""
         if not text or not text.strip():
             return None
 
-        # Check cache
-        cache_key = hashlib.md5(text.encode()).hexdigest()
-        if cache_key in self._embedding_cache:
-            return self._embedding_cache[cache_key]
-
         try:
+            fingerprint = None
+            if namespace:
+                fingerprint = require_embedding_namespace(
+                    self.conn,
+                    namespace,
+                    vector_count=self._embedding_namespace_count(namespace),
+                )
+            cache_payload = json.dumps(
+                {
+                    "namespace": namespace,
+                    "fingerprint": fingerprint,
+                    "role": role,
+                    "title": title or "",
+                    "text": text,
+                },
+                sort_keys=True,
+            )
+            cache_key = hashlib.md5(cache_payload.encode()).hexdigest()
+            if cache_key in self._embedding_cache:
+                return self._embedding_cache[cache_key]
+
             # Import embedding function from existing infrastructure
             from embeddings import get_embedding
-            embedding = get_embedding(text)
+            embedding = get_embedding(text, role=role, title=title)
 
             if embedding is not None:
                 self._embedding_cache[cache_key] = np.array(embedding)
@@ -819,15 +871,30 @@ class IntelligenceLayer:
 
         return None
 
-    def _get_persistable_embedding(self, text: str) -> np.ndarray | None:
+    def _get_persistable_embedding(
+        self,
+        text: str,
+        *,
+        role: str,
+        namespace: str,
+        title: str | None = None,
+    ) -> np.ndarray | None:
         """Get a real provider embedding for storage, never a hash fallback."""
         if not text or not text.strip():
             return None
 
         try:
             from embeddings import get_persistable_embedding
-
-            return np.array(get_persistable_embedding(text))
+            require_embedding_namespace(
+                self.conn,
+                namespace,
+                vector_count=self._embedding_namespace_count(namespace),
+            )
+            result = np.array(
+                get_persistable_embedding(text, role=role, title=title)
+            )
+            record_embedding_namespace_complete(self.conn, namespace)
+            return result
         except Exception as exc:
             logger.warning("Persistent intelligence embedding skipped: %s", exc)
             return None
@@ -837,13 +904,20 @@ class IntelligenceLayer:
         if a is None or b is None:
             return 0.0
 
-        norm_a = np.linalg.norm(a)
-        norm_b = np.linalg.norm(b)
+        vector_a = np.asarray(a)
+        vector_b = np.asarray(b)
+        if vector_a.shape != vector_b.shape:
+            raise ValueError(
+                f"Embedding shape mismatch: {vector_a.shape} != {vector_b.shape}"
+            )
+
+        norm_a = np.linalg.norm(vector_a)
+        norm_b = np.linalg.norm(vector_b)
 
         if norm_a == 0 or norm_b == 0:
             return 0.0
 
-        return float(np.dot(a, b) / (norm_a * norm_b))
+        return float(np.dot(vector_a, vector_b) / (norm_a * norm_b))
 
     def _serialize_embedding(self, embedding: np.ndarray) -> bytes:
         """Serialize numpy array for database storage."""
@@ -909,15 +983,33 @@ class IntelligenceLayer:
         user_signals = redact_sensitive_data(user_signals)
 
         # Generate embeddings
-        query_embedding = self._get_persistable_embedding(query)
+        query_embedding = self._get_persistable_embedding(
+            query,
+            role="document",
+            namespace=INTELLIGENCE_QUERY_NAMESPACE,
+            title="User query",
+        )
 
         # Create rich outcome description for embedding
         outcome_description = self._describe_outcome(query, tools_used, outcome, user_signals)
-        outcome_embedding = self._get_persistable_embedding(outcome_description)
+        outcome_embedding = self._get_persistable_embedding(
+            outcome_description,
+            role="document",
+            namespace=INTELLIGENCE_OUTCOME_NAMESPACE,
+            title="Interaction outcome",
+        )
 
         # Context embedding
         context_summary = json.dumps(context)[:750] if context else ""
-        context_embedding = self._get_persistable_embedding(context_summary) if context_summary else None
+        context_embedding = (
+            self._get_persistable_embedding(
+                context_summary,
+                role="document",
+                namespace=INTELLIGENCE_CONTEXT_NAMESPACE,
+                title="Conversation context",
+            )
+            if context_summary else None
+        )
 
         # Infer satisfaction
         user_satisfied = self._infer_satisfaction(outcome, user_signals)
@@ -993,33 +1085,8 @@ class IntelligenceLayer:
         outcome: dict[str, Any],
         user_signals: dict[str, Any]
     ) -> str:
-        """Create a rich natural language description of what happened."""
-        parts = []
-
-        # Query type
-        parts.append(f"User asked: {query[:100]}")
-
-        # Tool journey
-        if len(tools_used) == 1:
-            parts.append(f"Answered in one turn using {tools_used[0]}")
-        elif len(tools_used) > 1:
-            parts.append(f"Took {len(tools_used)} turns: {' → '.join(tools_used)}")
-
-        # Outcome
-        if outcome.get('success'):
-            parts.append("Task completed successfully")
-        else:
-            parts.append(f"Task failed: {outcome.get('error', 'unknown error')}")
-
-        # User signals
-        if user_signals.get('thanked'):
-            parts.append("User expressed satisfaction")
-        if user_signals.get('clarified'):
-            parts.append("User had to clarify their request")
-        if user_signals.get('retried'):
-            parts.append("User had to retry")
-
-        return ". ".join(parts)
+        """Create the canonical v1 outcome embedding document."""
+        return build_outcome_embedding_text(query, tools_used, outcome, user_signals)
 
     def _infer_satisfaction(
         self,
@@ -2012,9 +2079,21 @@ Example for FACTUAL (should NOT be stored here):
         # Generate embeddings. Positive workflow lessons use the recipe's
         # bounded semantic metadata so test wording such as "run the previous
         # procedure" cannot become the retrieval pattern.
-        insight_embedding = self._get_persistable_embedding(insight_text)
+        insight_embedding = self._get_persistable_embedding(
+            insight_text,
+            role="similarity",
+            namespace=INTELLIGENCE_INSIGHT_NAMESPACE,
+        )
         pattern_text = _workflow_semantic_pattern(reflection, metadata)
-        pattern_embedding = self._get_persistable_embedding(pattern_text) if pattern_text else None
+        pattern_embedding = (
+            self._get_persistable_embedding(
+                pattern_text,
+                role="document",
+                namespace=INTELLIGENCE_PATTERN_NAMESPACE,
+                title="Insight applicability",
+            )
+            if pattern_text else None
+        )
         trigger_concept = reflection.get('trigger_concept', '')
 
         # Check for similar existing insights
@@ -2291,7 +2370,11 @@ Example for FACTUAL (should NOT be stored here):
         - Returns avoided_tools for negative constraints
         - Filters out low-generalizability insights
         """
-        query_embedding = self._get_embedding(query)
+        query_embedding = self._get_embedding(
+            query,
+            role="query",
+            namespace=INTELLIGENCE_PATTERN_NAMESPACE,
+        )
         if query_embedding is None:
             return []
 
@@ -2312,7 +2395,7 @@ Example for FACTUAL (should NOT be stored here):
                 # Weight by confidence and similarity
                 relevance = similarity * row['confidence']
 
-                if relevance > 0.2:  # Minimum relevance threshold Might need to increase if unrelated tools being called or llm not following q&a intent 0.3+
+                if relevance > self.relevance_threshold:
                     constraint_type = str(
                         (
                             row['constraint_type']

@@ -83,7 +83,7 @@ request/browser data or LLM mode selectors after startup.
 ### `cloud.env` (Cloud Mode)
 
 - **LLM providers**: xAI, Anthropic, OpenAI, or Ollama Cloud via `LLM_PROVIDER`
-- **Also configures**: cloud TTS/STT, image/video APIs, embeddings, and optional paid services
+- **Also configures**: cloud TTS/STT, image/video APIs, the Ollama host used for unified embeddings, and optional paid services
 - **Best for**: production use, complex tool calling, providers with large context windows
 - **OpenCode**: can use the same cloud providers (Anthropic or OpenAI recommended for coding tasks)
 
@@ -93,8 +93,9 @@ See also: [xAI provider guide](../docs/XAI_PROVIDER.md),
 
 ### `cloud.openai.env.example` (OpenAI primary provider)
 
-Concise cloud template for users with **one required OpenAI API key**. It keeps
-chat, STT, TTS, embeddings, image/video tools, and Responses routing on OpenAI.
+Concise cloud template for users with **one required paid API key** plus an
+accessible Ollama daemon for the Jarvis Embedding model. It keeps chat, STT, TTS,
+image/video tools, and Responses routing on OpenAI while embeddings stay local.
 The OpenAI core is grouped at the top; optional tool APIs and self-hosted
 integration settings remain available in a separate section at the bottom.
 For the simplest one-key tool surface, uncomment
@@ -257,7 +258,7 @@ ollama serve
 ```bash
 # Install recommended models
 ollama pull qwen3.5:latest
-ollama pull nomic-embed-text
+ollama pull bigsk1/jarvis-embedding:bf16-v1
 ```
 
 ## Advanced Configuration
@@ -283,12 +284,13 @@ OLLAMA_CONTEXT_WINDOW=12888
 
 ### Ollama Embeddings
 ```bash
-# Embeddings use the local Ollama embedding model
-OLLAMA_EMBEDDING_MODEL="nomic-embed-text"
+# Both data modes use this exact 768D Jarvis-owned EmbeddingGemma artifact.
+OLLAMA_EMBEDDING_MODEL="bigsk1/jarvis-embedding:bf16-v1"
+OLLAMA_EMBEDDING_MODEL_DIGEST="85462619ee721b466c5927d109d4cb765861907d5417b9109caebc4e614679f1"
 
 # Optional: override embedding num_ctx specifically for Ollama embed requests.
-# If omitted, Jarvis reuses OLLAMA_CONTEXT_WINDOW.
-OLLAMA_EMBEDDING_CONTEXT_WINDOW=8192
+# EmbeddingGemma supports a 2048-token context.
+OLLAMA_EMBEDDING_CONTEXT_WINDOW=2048
 ```
 
 ### Hybrid Mode

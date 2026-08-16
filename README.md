@@ -28,18 +28,32 @@ Deterministic workflows are Jarvis's reliable automation path. Instead of asking
 
 Bare minimum to try Jarvis in the **browser** (Web UI chat — no local mic or speakers required):
 
+Every mode requires an [Ollama](docs/ollama/README.md) daemon reachable through
+`OLLAMA_BASE_URL`, on this machine or a LAN host, with the pinned
+[Jarvis Embedding](docs/ollama/JARVIS_EMBEDDING_MODEL.md) artifact installed:
+
+```bash
+ollama pull bigsk1/jarvis-embedding:bf16-v1
+```
+
 | Path | Native (Ubuntu 24.04+, Python 3.12+) | Windows / macOS |
 |------|----------------------------------------|-----------------|
-| **Cloud** | `OPENAI_API_KEY` in `config/cloud.env` | [Docker](docs/docker/MAC-WINDOWS.md) + `OPENAI_API_KEY` |
-| **Local** | [Ollama](docs/ollama/README.md) + a local TTS server (default in example: Kokoro — see `config/local.env.example`) | [Docker](docs/docker/MAC-WINDOWS.md) + Ollama on the host/LAN + Kokoro or Qwen3-TTS |
+| **Cloud** | `OPENAI_API_KEY` in `config/cloud.env` + Ollama with Jarvis Embedding | [Docker](docs/docker/MAC-WINDOWS.md) + `OPENAI_API_KEY` + Ollama with Jarvis Embedding on the host/LAN |
+| **Local** | Ollama with Jarvis Embedding and a local chat model + a local TTS server (default in example: Kokoro — see `config/local.env.example`) | [Docker](docs/docker/MAC-WINDOWS.md) + Ollama with Jarvis Embedding and a local chat model on the host/LAN + Kokoro or Qwen3-TTS |
+
+Jarvis currently uses Ollama-native `/api/tags` and `/api/embed` endpoints and
+verifies the published model manifest digest. A bare llama.cpp or
+`llama-server` endpoint is not a supported replacement, even if it loads the
+same GGUF file.
 
 Native `./install.sh` also sets up wake word and host TTS playback — that path assumes a working mic and speakers. Use the Web UI first if you only want chat in the browser.
 
 > **Quick start**
 > 1. Clone the repo so it ends up at **`$HOME/jarvis-voice`**
 > 2. Run **`./install.sh`** on Ubuntu 24.04+ with Python 3.12+
-> 3. Add your API keys and audio settings in **`config/cloud.env`** and **`config/local.env`**
-> 4. Re-run **`./verify-env.sh`**, then start with **`./bin/start`**
+> 3. Add your API keys, audio settings, and intended **`OLLAMA_BASE_URL`** hosts in **`config/cloud.env`** and **`config/local.env`**
+> 4. Pull **`bigsk1/jarvis-embedding:bf16-v1`** on every selected Ollama host, then run **`./bin/check-embeddings-health.py --both --runtime-only`**
+> 5. Re-run **`./verify-env.sh`**, then start with **`./bin/start`**
 >
 > The base installer handles the core Jarvis setup only: system deps, `uv`, the `~/jarvis-venv` environment, config seeding, and project setup. Optional extras like OpenCode and n8n come later and are not required for a normal install.
 >
@@ -97,7 +111,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - **Decay job**: Interval-protected confidence decay with dry-run support; prunes very low-confidence stale/failed insights
   - **Anomaly detection**: Flags unusual experiences
   - **Meta-cognition**: Analyzes learning health
-  - Separate databases for cloud/local (1536 vs 768 dimensions)
+  - Separate cloud/local learning databases with one fingerprinted 768D embedding contract
   - See [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md)
 
 ![jarvis-intellegince](docs/images/jarvis-intelligence.jpg)
@@ -230,7 +244,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
 ![memory-browser](docs/images/memory-browser.jpg)
 
 ### Memory System
-- **Dual Database**: Separate DBs for cloud (OpenAI embeddings) and local (nomic embeddings)
+- **Dual Database**: Separate cloud/local data sets using the same fingerprinted Jarvis Embedding vectors
 - **Auto-Sync**: Bidirectional sync between modes on startup
 - **FTS5 Full-Text Search**: SQLite FTS5 with BM25 ranking for fast, accurate keyword searches
 - **Knowledge Base**: Facts, preferences, technical info with embeddings
@@ -593,6 +607,19 @@ nano config/cloud.env
 nano config/local.env
 # ALLOW_OLLAMA_CLOUD=true optionally exposes signed-daemon cloud cards locally.
 ```
+
+Every mode uses Ollama for the shared 768D Jarvis Embedding contract, even when
+cloud chat uses OpenAI, xAI, or Anthropic. The versioned artifact is an exact
+BF16 copy of EmbeddingGemma. Set `OLLAMA_BASE_URL` in both ENV files to localhost
+or the intended LAN daemon host(s), run `ollama pull
+bigsk1/jarvis-embedding:bf16-v1` on every selected host, then verify the runtime:
+
+```bash
+./bin/check-embeddings-health.py --both --runtime-only
+```
+
+The installer does not install Ollama, start a daemon, or pull models
+automatically because the configured service may live on another machine.
 
 See [`config/README.md`](config/README.md), [`docs/XAI_PROVIDER.md`](docs/XAI_PROVIDER.md),
 and [`docs/ollama/README.md`](docs/ollama/README.md) for detailed configuration options.
@@ -1227,14 +1254,14 @@ Jarvis uses separate databases for cloud and local modes:
 
 
 **Cloud Mode** - `data/jarvis_memory.db`:
-- Uses OpenAI embeddings (1536 dimensions) by default
-- Shared by cloud-mode chat providers, including Ollama Cloud
+- Uses Ollama `bigsk1/jarvis-embedding:bf16-v1` embeddings (768 dimensions)
+- Remains separate from the selected cloud chat provider
 
 **Local Mode** - `data/jarvis_memory_local.db`:
-- Uses Ollama/nomic embeddings (768 dimensions) by default
-- Separate from chat-provider selection
+- Uses the same fingerprinted Ollama `bigsk1/jarvis-embedding:bf16-v1` artifact (768 dimensions)
+- Remains a separate local data set
 
-**Auto-Sync**: On startup, newer memories are synced between databases with re-embedded vectors for the target mode's model. See [`docs/DUAL_DATABASE_SYSTEM.md`](docs/DUAL_DATABASE_SYSTEM.md).
+**Auto-Sync**: On startup, newer memories are synced between databases. Incompatible or partially rebuilt vector namespaces fail closed while FTS remains available. See [`docs/DUAL_DATABASE_SYSTEM.md`](docs/DUAL_DATABASE_SYSTEM.md).
 
 **Tables**:
 - `knowledge_base` - Facts, preferences, embeddings
@@ -1463,7 +1490,7 @@ ollama serve
 **"Model not found"**
 ```bash
 ollama pull gemma4
-ollama pull nomic-embed-text
+ollama pull bigsk1/jarvis-embedding:bf16-v1
 ```
 
 **"Permission denied" when running a tool script**
@@ -1599,13 +1626,13 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - ✅ **Intelligence provenance + safe maintenance** — Insights keep source experience/web conversation, query, tool sequence, preferred sequence, supporting tools, and reflection token/cost metadata; intelligence DB sync preserves those fields; maintenance decay supports dry-run previews
 - ✅ **Intelligence Dashboard pagination** — Experiences/Insights use server-side sorted/filtered 50-row pages with automatic scroll loading and lightweight summary facets instead of eager 500/1000-row list loads
 - ✅ **Canvas public LAN links** — `CANVAS_INTERNAL_URL` stays local for tool/API calls while `CANVAS_PUBLIC_URL` controls user-facing links; direct `/page_...` URLs work after auth for headless LAN deployments
-- ✅ **Tool RAG & embeddings (v2.48)** — Unchanged tools skip re-embedding via stored content hash; `./bin/sync-tools.py <cloud|local> --force` for a full refresh; `./bin/check-embeddings-health.py` reports the effective vector backend (`openai` vs `ollama`) separately from the chat LLM; see `docs/SYNC_ARCHITECTURE.md`, `docs/DUAL_DATABASE_SYSTEM.md`, `docs/EMBEDDING_HEALTH_CHECKS.md`
+- ✅ **Tool RAG & embeddings (v2.48)** — Unchanged tools skip re-embedding via stored content hash; `./bin/sync-tools.py <cloud|local> --force` for a full refresh; `./bin/check-embeddings-health.py` verifies the unified Jarvis Embedding artifact separately from the chat LLM; see `docs/SYNC_ARCHITECTURE.md`, `docs/DUAL_DATABASE_SYSTEM.md`, `docs/EMBEDDING_HEALTH_CHECKS.md`
 - ✅ **Jarvis Web UI `/logs`** — Auth-protected log browser: allowed extensions (`.jsonl`, `.log`, `.md`), stable folder navigation, folder search, YAML-style JSONL cards with modal expansion, markdown viewing, mobile drill-down
 - ✅ **Orchestrator: duplicate tools & follow-ups** — Repeated identical tool calls no longer end the turn immediately; bounded recovery with duplicate-guard context; better duplicate-prevention synthesis for transcript/stash-style answers; prior tool results carry `result_truncated` / char-count metadata; retries preserve tool cards and orchestrator state
 - ✅ **Stash & model overrides** — Conversation follow-ups keep real `stash` tool payloads (not upload-only); model prompt overrides strip `-latest` / `-cloud` suffixes for folder matching
 - ✅ **Ollama & install sync** — `OLLAMA_CONTEXT_WINDOW` applied broadly; explicit tool-contract guidance and retries; thinking disabled unless intended; `sync-memory-db` / `sync-evolution-db` repair paths for fresh targets and older DBs
 - ✅ **SerpAPI / Amazon / Canvas** — Stronger Amazon shopping in `serpapi_amazon_search`; Web UI product preview cards; shortlist context for “tell me more” follow-ups; Canvas supports embedded images and recovers inline `Image: https://…` product lines
-- ✅ **Embeddings & routing hygiene** — Embedding fallback surfaced in tool results/logs (`fallback_embeddings`); OpenAI tool schemas sanitized for cross-provider compatibility; shared cloud model catalog; Web UI defaults follow env-configured models; prompt enhancer + shopping guidance tightened
+- ✅ **Embeddings & routing hygiene** — Embedding failures are surfaced in tool results/logs without persisting synthetic vectors; OpenAI tool schemas sanitized for cross-provider compatibility; shared cloud model catalog; Web UI defaults follow env-configured models; prompt enhancer + shopping guidance tightened
 - ✅ **Scheduled task notifications** — Email, alerts, and webhooks on success/failure (deduped per run); run history shows delivery outcomes; notification UX polish
 - ✅ **Alerts & Weather Watch** — `create_alert` as a first-class tool; Memory UI **Alerts** tab; **Weather Watch** workflow (`/weather_watch`, `/garden_watch`) with Canvas report and condition-based alerts (`create_alert`)
 - ✅ **TTS stack** — Central `lib/tts_normalizer.py`; named profiles (e.g. `weather_watch`, `camera_alert`, `price_quote`, `timestamped`); `/api/voice/speak` optional `profile` parameter

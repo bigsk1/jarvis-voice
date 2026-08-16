@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(ROOT, "skills"))
 
 import tool_search as tool_search_script  # noqa: E402
 from context_assembler import ContextAssembler  # noqa: E402
-from tool_schema import ToolSchema, _merged_ghost_tool_names  # noqa: E402
+from tool_schema import ToolRegistry, ToolSchema, _merged_ghost_tool_names  # noqa: E402
 from tool_logger import ToolLogger  # noqa: E402
 from tool_search_runtime import search_tools_runtime  # noqa: E402
 
@@ -31,13 +31,22 @@ class _FakeRegistry:
 
 
 class _FakeDB:
-    def __init__(self, results, *, fallback_embeddings=None):
+    def __init__(
+        self,
+        results,
+        *,
+        fallback_embeddings=None,
+        retrieval_mode="semantic",
+        semantic_disabled_reason=None,
+    ):
         self.results = results
         self.last_query = None
         self.last_limit = None
         self.last_threshold = None
         self.last_tool_search_meta = {
             "fallback_embeddings": fallback_embeddings,
+            "retrieval_mode": retrieval_mode,
+            "semantic_disabled_reason": semantic_disabled_reason,
         }
 
     def search_tools(self, query, limit=5, threshold=0.0):
@@ -169,6 +178,66 @@ class ToolSearchRuntimeTests(unittest.TestCase):
             entry = logger.get_recent_logs(limit=1)[0]
 
         self.assertIs(entry["fallback_embeddings"], True)
+
+    def test_semantic_disabled_reason_reaches_structured_tool_log(self):
+        db = _FakeDB(
+            [{"name": "weather"}],
+            retrieval_mode="keyword_fallback",
+            semantic_disabled_reason="embedding fingerprint mismatch",
+        )
+        with patch("tool_search_runtime.get_memory_db", return_value=db):
+            result = search_tools_runtime(
+                registry=self.registry,
+                query="forecast weather",
+                limit=5,
+            )
+
+        self.assertEqual(result["retrieval_mode"], "keyword_fallback")
+        self.assertEqual(result["data"]["search_mode"], "keyword_fallback")
+        self.assertEqual(
+            result["semantic_disabled_reason"],
+            "embedding fingerprint mismatch",
+        )
+        with tempfile.TemporaryDirectory() as log_dir:
+            logger = ToolLogger(log_dir=log_dir)
+            logger.log_tool_call(
+                tool_name="tool_search",
+                arguments={"query": "forecast weather"},
+                result=result,
+                duration_ms=12.0,
+                mode="cloud",
+            )
+            entry = logger.get_recent_logs(limit=1)[0]
+
+        self.assertEqual(entry["retrieval_mode"], "keyword_fallback")
+        self.assertEqual(
+            entry["semantic_disabled_reason"],
+            "embedding fingerprint mismatch",
+        )
+
+    def test_registry_failure_returns_ghost_tools_instead_of_all_tools(self):
+        registry = ToolRegistry.__new__(ToolRegistry)
+        registry.tools = {
+            self.search_memory.name: self.search_memory,
+            self.weather.name: self.weather,
+        }
+        registry.last_tool_search_meta = {}
+
+        with patch(
+            "memory_db.get_memory_db",
+            side_effect=RuntimeError("embedding host unavailable"),
+        ):
+            tools = registry.find_tools("forecast weather", limit=5)
+
+        self.assertEqual([tool.name for tool in tools], ["search_memory"])
+        self.assertEqual(
+            registry.last_tool_search_meta["retrieval_mode"],
+            "ghost_only",
+        )
+        self.assertEqual(
+            registry.last_tool_search_meta["semantic_disabled_reason"],
+            "embedding host unavailable",
+        )
 
     def test_exact_lookup_can_include_schema(self):
         result = search_tools_runtime(

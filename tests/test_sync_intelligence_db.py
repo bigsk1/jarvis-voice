@@ -17,6 +17,14 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
 from intelligence import IntelligenceLayer
+from embedding_metadata import (
+    INTELLIGENCE_CONTEXT_NAMESPACE,
+    INTELLIGENCE_INSIGHT_NAMESPACE,
+    INTELLIGENCE_OUTCOME_NAMESPACE,
+    INTELLIGENCE_PATTERN_NAMESPACE,
+    INTELLIGENCE_QUERY_NAMESPACE,
+    record_embedding_namespace_complete,
+)
 
 
 def load_sync_module():
@@ -42,7 +50,7 @@ class SyncIntelligenceDbTests(unittest.TestCase):
         tools = tools or ["youtube_video", "send_email"]
         sequence = tools if sequence is None else sequence
         intel = IntelligenceLayer(str(db_path))
-        intel._get_embedding = lambda text: np.array([1.0, 0.5])
+        intel._get_embedding = lambda text, **kwargs: np.array([1.0, 0.5])
         intel._get_persistable_embedding = intel._get_embedding
         context = {"web_conversation_id": web_id}
         if preferred_workflow_id:
@@ -86,6 +94,15 @@ class SyncIntelligenceDbTests(unittest.TestCase):
             },
             experience,
         )
+        for namespace in (
+            INTELLIGENCE_QUERY_NAMESPACE,
+            INTELLIGENCE_CONTEXT_NAMESPACE,
+            INTELLIGENCE_OUTCOME_NAMESPACE,
+            INTELLIGENCE_INSIGHT_NAMESPACE,
+            INTELLIGENCE_PATTERN_NAMESPACE,
+        ):
+            record_embedding_namespace_complete(intel.conn, namespace)
+        intel.conn.commit()
         intel.close()
 
     def test_sync_preserves_new_insight_provenance_and_evidence(self):
@@ -98,7 +115,7 @@ class SyncIntelligenceDbTests(unittest.TestCase):
             sync = load_sync_module()
             sync.get_db_paths = lambda: {"cloud": cloud_db, "local": local_db}
             sync.load_config = lambda mode=None: None
-            sync.get_embedding = lambda text: [1.0, 0.5]
+            sync.get_embedding = lambda text, **kwargs: [1.0, 0.5]
 
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertTrue(sync.sync_intelligence("local", dry_run=False))
@@ -148,7 +165,7 @@ class SyncIntelligenceDbTests(unittest.TestCase):
             sync = load_sync_module()
             sync.get_db_paths = lambda: {"cloud": cloud_db, "local": local_db}
             sync.load_config = lambda mode=None: None
-            sync.get_embedding = lambda text: [1.0, 0.5]
+            sync.get_embedding = lambda text, **kwargs: [1.0, 0.5]
 
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertTrue(sync.sync_intelligence("local", dry_run=False))
@@ -185,7 +202,7 @@ class SyncIntelligenceDbTests(unittest.TestCase):
             sync = load_sync_module()
             sync.get_db_paths = lambda: {"cloud": cloud_db, "local": local_db}
             sync.load_config = lambda mode=None: None
-            sync.get_embedding = lambda text: [1.0, 0.5]
+            sync.get_embedding = lambda text, **kwargs: [1.0, 0.5]
 
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertTrue(sync.sync_intelligence("local", dry_run=False))
@@ -222,7 +239,7 @@ class SyncIntelligenceDbTests(unittest.TestCase):
             sync = load_sync_module()
             sync.get_db_paths = lambda: {"cloud": cloud_db, "local": local_db}
             sync.load_config = lambda mode=None: None
-            sync.get_embedding = lambda text: [1.0, 0.5]
+            sync.get_embedding = lambda text, **kwargs: [1.0, 0.5]
 
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertTrue(sync.sync_intelligence("local", dry_run=False, replace=True))
@@ -238,6 +255,33 @@ class SyncIntelligenceDbTests(unittest.TestCase):
                 "SELECT 1 FROM experiences WHERE query = ?",
                 ("check bookmark for cheese",),
             ).fetchone())
+
+    def test_embedding_failure_rolls_back_complete_sync(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            cloud_db = tmpdir / "cloud.db"
+            local_db = tmpdir / "local.db"
+            asyncio.run(self._seed_source(cloud_db))
+
+            sync = load_sync_module()
+            sync.get_db_paths = lambda: {"cloud": cloud_db, "local": local_db}
+            calls = 0
+
+            def flaky_embedding(text, **kwargs):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise RuntimeError("embedding host lost")
+                return [1.0, 0.5]
+
+            sync.get_embedding = flaky_embedding
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertFalse(sync.sync_intelligence("local", dry_run=False))
+
+            conn = sqlite3.connect(local_db)
+            self.addCleanup(conn.close)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM experiences").fetchone()[0], 0)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM insights").fetchone()[0], 0)
 
 
 if __name__ == "__main__":

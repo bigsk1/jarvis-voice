@@ -14,10 +14,10 @@ Usage:
     source "$HOME/jarvis-venv/bin/activate"
 
     ./bin/sync-tools.py cloud
-        Update data/jarvis_memory.db tool_definitions (OpenAI-class embeddings for cloud mode).
+        Update data/jarvis_memory.db tool_definitions (Jarvis Embedding, 768D).
 
     ./bin/sync-tools.py local
-        Update data/jarvis_memory_local.db tool_definitions (Ollama embeddings for local mode).
+        Update data/jarvis_memory_local.db tool_definitions (Jarvis Embedding, 768D).
 
     ./bin/sync-tools.py cloud --force
     ./bin/sync-tools.py local --force
@@ -44,9 +44,8 @@ def _ensure_jarvis_venv() -> None:
     """
     Refuse to run outside the Jarvis virtual environment.
 
-    Tool embeddings are dependency-sensitive: running this script with system
-    Python can create hash-matched fallback embeddings that future syncs skip.
-    Fail early so a bad interpreter cannot poison Tool RAG state.
+    Tool discovery depends on the full Jarvis runtime environment. Fail early
+    so a partial interpreter cannot silently omit registry or MCP integrations.
     """
     expected_venv = Path(
         os.environ.get("JARVIS_VENV", str(get_user_home() / "jarvis-venv"))
@@ -63,8 +62,8 @@ def _ensure_jarvis_venv() -> None:
 
     print("❌ Refusing to sync Tool RAG outside the Jarvis virtual environment.", file=sys.stderr)
     print("", file=sys.stderr)
-    print("Why: running sync-tools.py with system Python can generate fallback", file=sys.stderr)
-    print("embeddings, then embedding_input_hash can make later syncs skip the bad row.", file=sys.stderr)
+    print("Why: a partial interpreter can omit tool or MCP integrations and leave", file=sys.stderr)
+    print("the Tool RAG index incomplete.", file=sys.stderr)
     print("", file=sys.stderr)
     print(f"Expected venv: {expected_venv}", file=sys.stderr)
     print(f"Active VIRTUAL_ENV: {active_venv or '(not set)'}", file=sys.stderr)
