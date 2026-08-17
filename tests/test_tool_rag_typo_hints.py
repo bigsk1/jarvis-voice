@@ -66,6 +66,127 @@ class TestExpandToolRagQuery(unittest.TestCase):
         )
         self.assertEqual(hints, [])
 
+    def test_exact_two_word_compound_hints_complete_tool_name(self):
+        query = "Use open code to build a complex Python calculator"
+        q, hints = expand_tool_rag_query_for_typo_hints(
+            query,
+            ["opencode", "calculator"],
+            hint_source=query,
+            enabled=True,
+            max_distance=1,
+        )
+        self.assertEqual(hints, ["opencode"])
+        self.assertEqual(q, f"{query} opencode")
+
+    def test_exact_three_word_compound_hints_underscored_tool_name(self):
+        query = "please check tool logs for the failure"
+        q, hints = expand_tool_rag_query_for_typo_hints(
+            query,
+            ["check_tool_logs", "tool_search"],
+            hint_source=query,
+            enabled=True,
+            max_distance=1,
+        )
+        self.assertEqual(hints, ["check_tool_logs"])
+        self.assertEqual(q, f"{query} check_tool_logs")
+
+    def test_nonadjacent_words_do_not_form_compound_hint(self):
+        query = "open the source code"
+        q, hints = expand_tool_rag_query_for_typo_hints(
+            query,
+            ["opencode"],
+            enabled=True,
+            max_distance=1,
+        )
+        self.assertEqual(hints, [])
+        self.assertEqual(q, query)
+
+    def test_ambiguous_normalized_compound_is_skipped(self):
+        query = "use open code"
+        q, hints = expand_tool_rag_query_for_typo_hints(
+            query,
+            ["opencode", "open_code"],
+            enabled=True,
+            max_distance=1,
+        )
+        self.assertEqual(hints, [])
+        self.assertEqual(q, query)
+
+    def test_longest_exact_compound_wins_over_overlapping_tool_name(self):
+        query = "check tool logs"
+        q, hints = expand_tool_rag_query_for_typo_hints(
+            query,
+            ["check_tool_logs", "tool_logs"],
+            enabled=True,
+            max_distance=1,
+        )
+        self.assertEqual(hints, ["check_tool_logs"])
+        self.assertEqual(q, f"{query} check_tool_logs")
+
+    def test_short_tokens_do_not_accidentally_form_glued_tool_names(self):
+        cases = (
+            ("write a handler for GET requests", ["forget"]),
+            ("I need this for GET endpoints", ["forget"]),
+            ("please re-call the weather API", ["recall"]),
+            ("re-call that function", ["recall"]),
+        )
+        for query, tools in cases:
+            with self.subTest(query=query):
+                q, hints = expand_tool_rag_query_for_typo_hints(
+                    query,
+                    tools,
+                    enabled=True,
+                    max_distance=1,
+                    min_token_len=2,
+                )
+                self.assertEqual(hints, [])
+                self.assertEqual(q, query)
+
+    def test_separator_tool_still_allows_short_compound_token(self):
+        query = "make an API call"
+        q, hints = expand_tool_rag_query_for_typo_hints(
+            query,
+            ["api_call"],
+            enabled=True,
+            max_distance=1,
+        )
+        self.assertEqual(hints, ["api_call"])
+        self.assertEqual(q, f"{query} api_call")
+
+    def test_compound_and_later_typo_preserve_query_order(self):
+        query = "open code and check the weathr"
+        q, hints = expand_tool_rag_query_for_typo_hints(
+            query,
+            ["opencode", "weather"],
+            enabled=True,
+            max_distance=1,
+        )
+        self.assertEqual(hints, ["opencode", "weather"])
+        self.assertEqual(q, f"{query} opencode weather")
+
+    def test_hint_source_isolates_compound_matching(self):
+        query = "Context recommends open code\nCurrent request: say hello"
+        q, hints = expand_tool_rag_query_for_typo_hints(
+            query,
+            ["opencode"],
+            hint_source="say hello",
+            enabled=True,
+            max_distance=1,
+        )
+        self.assertEqual(hints, [])
+        self.assertEqual(q, query)
+
+    def test_four_token_compound_matches_complete_tool_name(self):
+        query = "use MCP brave search web for this"
+        q, hints = expand_tool_rag_query_for_typo_hints(
+            query,
+            ["mcp_brave_search_web"],
+            enabled=True,
+            max_distance=1,
+        )
+        self.assertEqual(hints, ["mcp_brave_search_web"])
+        self.assertEqual(q, f"{query} mcp_brave_search_web")
+
     def test_short_token_skipped(self):
         q, hints = expand_tool_rag_query_for_typo_hints(
             "ab cr xzqq",

@@ -3,10 +3,15 @@
 Optional typo hints for Tool RAG embedding queries only.
 
 Appends canonical tool names to the *retrieval* string when a user token is
-1–2 edits (optimal string alignment / Damerau-style transpositions) from:
+within the configured optimal string alignment / Damerau-style distance from:
   - an enabled tool's full name, or
   - a snake_case / kebab segment of that name (e.g. "bookmark" in "bookmark_search"),
 so near-misses like "bookmakrs" still surface the right tool.
+
+Adjacent multi-word spans are also joined when they exactly normalize to one
+complete enabled tool name (e.g. "open code" -> "opencode" and
+"check tool logs" -> "check_tool_logs"). Compound matching is exact and does
+not increase the fuzzy edit-distance allowance.
 
 Ties (multiple tools at the same minimum distance) are skipped.
 
@@ -30,6 +35,8 @@ logger = logging.getLogger(__name__)
 # Token must be at least this long to consider (avoids "ab" → many hits).
 _DEFAULT_MIN_TOKEN_LEN = 4
 _DEFAULT_MAX_DISTANCE = 1
+_MAX_COMPOUND_TOKENS = 4
+_MIN_GLUED_COMPOUND_TOKEN_LEN = 4
 _GENERIC_SEGMENTS = frozenset(
     {
         "api",
@@ -130,6 +137,49 @@ def _strip_url_like_spans(text: str) -> str:
 def _tokenize_for_typo_scan(query: str) -> list[str]:
     """Alphanumeric + underscore tokens (tool names are snake_case)."""
     return re.findall(r"[A-Za-z0-9_]+", query)
+
+
+def _normalize_compound_name(value: str) -> str:
+    """Normalize only tool-name separators for exact compound comparison."""
+    return re.sub(r"[_-]+", "", value).lower()
+
+
+def _compound_tool_index(tool_names: list[str]) -> dict[str, tuple[str, bool] | None]:
+    """Map normalized full names to canonical name/separator metadata."""
+    index: dict[str, tuple[str, bool] | None] = {}
+    for name in tool_names:
+        normalized = _normalize_compound_name(name)
+        if not normalized:
+            continue
+        candidate = (name, bool(re.search(r"[_-]", name)))
+        if normalized not in index:
+            index[normalized] = candidate
+        elif index[normalized] != candidate:
+            index[normalized] = None
+    return index
+
+
+def _exact_compound_tool_for_tokens(
+    tokens: list[str],
+    start: int,
+    tool_index: dict[str, tuple[str, bool] | None],
+) -> tuple[str | None, int]:
+    """Return the longest exact adjacent compound match and its token width."""
+    max_width = min(_MAX_COMPOUND_TOKENS, len(tokens) - start)
+    for width in range(max_width, 1, -1):
+        span = tokens[start : start + width]
+        normalized = _normalize_compound_name("".join(span))
+        if normalized not in tool_index:
+            continue
+
+        match = tool_index[normalized]
+        if match is None:
+            return None, width
+
+        canonical, has_separator = match
+        if has_separator or all(len(token) >= _MIN_GLUED_COMPOUND_TOKEN_LEN for token in span):
+            return canonical, width
+    return None, 0
 
 
 def _tool_name_candidates(name: str, min_segment_len: int) -> list[tuple[str, bool]]:
@@ -255,9 +305,29 @@ def expand_tool_rag_query_for_typo_hints(
     # Skip bare scheme tokens if they appear as words
     _skip_words = frozenset({"http", "https", "ftp"})
 
-    for raw in tokens:
+    compound_tools = _compound_tool_index(names)
+    token_index = 0
+    while token_index < len(tokens):
         if len(hints_ordered) >= max_hints:
             break
+
+        # Exact full-name compounds are checked longest-first. A matched span is
+        # consumed even when its normalized tool name is ambiguous, preventing an
+        # overlapping shorter name from turning an uncertain phrase into a hint.
+        canonical, compound_width = _exact_compound_tool_for_tokens(
+            tokens,
+            token_index,
+            compound_tools,
+        )
+        if compound_width:
+            if canonical and canonical not in seen_hint:
+                seen_hint.add(canonical)
+                hints_ordered.append(canonical)
+            token_index += compound_width
+            continue
+
+        raw = tokens[token_index]
+        token_index += 1
         if len(raw) < min_token_len:
             continue
         tl = raw.lower()

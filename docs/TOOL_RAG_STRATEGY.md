@@ -305,12 +305,15 @@ This avoids scanning:
 
 Matching behavior:
 - **URL-like spans** (`https?://…`, `www.…`) are removed before tokenization so host/path fragments are not typo-matched
+- contiguous spans of **2–4 tokens** are joined and compared to complete enabled tool names after removing only snake_case / kebab separators; a unique exact match appends the canonical name (for example, `open code` → `opencode` and `check tool logs` → `check_tool_logs`)
+- separator-free names such as `opencode` require every joined token to contain at least **4 characters**; this preserves `open code` while rejecting accidental concatenations such as `for GET` → `forget` and hyphen-split `re-call` → `recall`
+- compound spans are checked longest-first; ambiguous normalized tool names add no hint, and compound matching never uses or expands the fuzzy edit-distance allowance
 - remaining tokens are compared to each enabled tool's **full name**
 - they are also compared to **distinctive** snake_case / hyphen segments long enough (`TOOL_RAG_TYPO_MIN_TOKEN_LEN`, default **4**)
 - distance uses **optimal string alignment** (Damerau-style adjacent transpositions)
 - per tool, the **minimum** full-name/segment distance is used
 - if the global minimum is in `1 … TOOL_RAG_TYPO_MAX_DISTANCE` (default **1**) and **exactly one** tool achieves it, that canonical tool name is appended
-- **exact** token matches (full name or segment, distance **0**) add **no** hint
+- **exact single-token** matches (full name or segment, distance **0**) add **no** hint; the compound rules above apply only to spans of 2–4 tokens
 - **ties** (multiple tools at the same minimum distance) add **no** hint
 - hints are capped per query (`TOOL_RAG_TYPO_MAX_HINTS`, default **5**)
 
