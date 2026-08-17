@@ -2050,7 +2050,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.55.4 (August 2026)
+**Current Version:** v2.55.5 (August 2026)
 **Status:** Production Ready ✅
 **Latest Features:** The August 2026 build expands Jarvis with 21 focused
 SerpApi tools, incident-aware outage diagnostics, and new shopping, local,
