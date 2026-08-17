@@ -6,6 +6,8 @@ Run:
     python3 tests/test_tool_executor_cancel.py
 """
 
+import os
+import signal
 import sys
 import tempfile
 import time
@@ -93,6 +95,90 @@ class FakeMcpRegistry:
 
 
 class ToolExecutorCancelTests(unittest.TestCase):
+    def test_local_tool_progress_protocol_is_forwarded_before_final_result(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            script = Path(tmp_dir) / "progress_tool.py"
+            script.write_text(
+                "import json, sys\n"
+                "sys.stderr.write('__JARVIS_TOOL_PROGRESS__:' + json.dumps({"
+                "'event_type': 'tool_progress', 'phase': 'tool', "
+                "'status': 'Working', 'sequence': 1}) + '\\n')\n"
+                "sys.stderr.flush()\n"
+                "print(json.dumps({'ok': True, 'speech': 'done'}))\n"
+            )
+            executor = ToolExecutor(
+                mode="cloud",
+                registry=FakeRegistry(script, tool_name="fake_long_tool"),
+            )
+            executor.logger = RecordingLogger()
+            events = []
+            executor.set_progress_callback(
+                lambda event_type, **payload: events.append((event_type, payload))
+            )
+
+            result = executor.execute("fake_long_tool", {})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(events[0][0], "tool_progress")
+        self.assertEqual(events[0][1]["tool"], "fake_long_tool")
+        self.assertEqual(events[0][1]["status"], "Working")
+
+    def test_opencode_inner_event_type_reaches_executor_as_tool_progress(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            script = Path(tmp_dir) / "opencode_progress_tool.py"
+            script.write_text(
+                "import json, sys\n"
+                f"sys.path.insert(0, {str(PROJECT_ROOT)!r})\n"
+                "from skills.opencode import emit_opencode_progress\n"
+                "emit_opencode_progress({'event_type': 'message.part.updated', "
+                "'phase': 'tool', 'status': 'OpenCode: Running tests'})\n"
+                "print(json.dumps({'ok': True, 'speech': 'done'}))\n"
+            )
+            executor = ToolExecutor(
+                mode="cloud",
+                registry=FakeRegistry(script, tool_name="opencode"),
+            )
+            executor.logger = RecordingLogger()
+            events = []
+            executor.set_progress_callback(
+                lambda event_type, **payload: events.append((event_type, payload))
+            )
+
+            result = executor.execute("opencode", {}, skip_permission_check=True)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(events[0][0], "tool_progress")
+        self.assertEqual(events[0][1]["opencode_event_type"], "message.part.updated")
+        self.assertEqual(events[0][1]["status"], "OpenCode: Running tests")
+
+    def test_progress_callback_failure_is_reported_without_dropping_result(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            script = Path(tmp_dir) / "progress_tool.py"
+            script.write_text(
+                "import json, sys\n"
+                "sys.stderr.write('__JARVIS_TOOL_PROGRESS__:' + json.dumps({"
+                "'event_type': 'tool_progress', 'status': 'Working'}) + '\\n')\n"
+                "sys.stderr.flush()\n"
+                "print(json.dumps({'ok': True, 'speech': 'done'}))\n"
+            )
+            executor = ToolExecutor(
+                mode="cloud",
+                registry=FakeRegistry(script, tool_name="fake_long_tool"),
+            )
+            executor.logger = RecordingLogger()
+            executor.set_progress_callback(
+                lambda _event_type, **_payload: (_ for _ in ()).throw(
+                    RuntimeError("bridge failed")
+                )
+            )
+
+            with patch("sys.stderr", new_callable=__import__("io").StringIO) as stderr:
+                result = executor.execute("fake_long_tool", {})
+
+        self.assertTrue(result["ok"])
+        self.assertIn("[TOOL_PROGRESS] Callback failed", stderr.getvalue())
+        self.assertIn("(RuntimeError): bridge failed", stderr.getvalue())
+
     def test_amazon_timeout_allows_product_detail_enrichment(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("serpapi_amazon_search"), 90)
@@ -317,6 +403,92 @@ class ToolExecutorCancelTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertTrue(result["cancelled"])
         self.assertLess(elapsed, 3.0)
+
+    def test_opencode_timeout_sends_sigterm_before_escalating(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            marker_path = Path(tmpdir) / "abort-handler-ran"
+            script_path = Path(tmpdir) / "fake_opencode.py"
+            script_path.write_text(
+                "#!/usr/bin/env python3\n"
+                "import signal, subprocess, sys, time\n"
+                "from pathlib import Path\n"
+                f"marker = Path({str(marker_path)!r})\n"
+                "def stop(_signum, _frame):\n"
+                "    marker.write_text('aborted')\n"
+                "    raise SystemExit(143)\n"
+                "signal.signal(signal.SIGTERM, stop)\n"
+                "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)'])\n"
+                "while True:\n"
+                "    time.sleep(1)\n"
+            )
+            executor = ToolExecutor(
+                mode="cloud",
+                registry=FakeRegistry(str(script_path), tool_name="opencode"),
+            )
+            executor.logger = RecordingLogger()
+
+            start = time.time()
+            with patch.object(executor, "_get_subprocess_timeout", return_value=0.1):
+                result = executor.execute("opencode", {})
+            elapsed = time.time() - start
+            marker_value = marker_path.read_text()
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "Timeout")
+        self.assertEqual(marker_value, "aborted")
+        self.assertLess(elapsed, 3.0)
+
+    def test_opencode_process_timeout_includes_cleanup_grace(self):
+        executor = ToolExecutor(
+            mode="cloud",
+            registry=FakeRegistry("/tmp/fake.py", tool_name="opencode"),
+        )
+
+        with patch("executor.get_int", return_value=900):
+            timeout = executor._get_subprocess_timeout("opencode")
+
+        self.assertEqual(timeout, 930)
+
+    def test_timeout_does_not_wait_for_descendant_holding_output_pipes(self):
+        child_pid = None
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                pid_path = Path(tmpdir) / "escaped-child.pid"
+                script_path = Path(tmpdir) / "parent_with_escaped_child.py"
+                script_path.write_text(
+                    "#!/usr/bin/env python3\n"
+                    "import subprocess, sys, time\n"
+                    "from pathlib import Path\n"
+                    f"pid_path = Path({str(pid_path)!r})\n"
+                    "child = subprocess.Popen(\n"
+                    "    [sys.executable, '-c', 'import time; time.sleep(20)'],\n"
+                    "    start_new_session=True,\n"
+                    ")\n"
+                    "pid_path.write_text(str(child.pid))\n"
+                    "while True:\n"
+                    "    time.sleep(1)\n"
+                )
+                executor = ToolExecutor(
+                    mode="cloud",
+                    registry=FakeRegistry(str(script_path)),
+                )
+                executor.logger = RecordingLogger()
+
+                start = time.time()
+                with patch.object(executor, "_get_subprocess_timeout", return_value=0.1):
+                    result = executor.execute("fake_long_tool", {})
+                elapsed = time.time() - start
+                child_pid = int(pid_path.read_text())
+        finally:
+            if child_pid is not None:
+                try:
+                    os.kill(child_pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "Timeout")
+        self.assertLess(elapsed, 2.5)
 
     def test_large_stdout_does_not_deadlock_on_pipe_buffer(self):
         """Regression: >64KB stdout must not block until subprocess timeout."""

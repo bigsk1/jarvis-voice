@@ -26,6 +26,7 @@ def _purge_server_modules():
 
 
 def test_web_client_cancels_status_tts_before_final_audio():
+    assert "if (this.audioEnabled && data.status)" in APP_JS
     assert "this._cancelStatusTTS();" in APP_JS
     assert "this._completedResponseIds.has(data.message_id)" in APP_JS
     assert "purpose: kind" in APP_JS

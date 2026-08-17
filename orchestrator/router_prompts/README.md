@@ -117,9 +117,9 @@ time.
 | Version | Characters | Words | Rough Token Estimate | Character Delta |
 | --- | ---: | ---: | ---: | --- |
 | `v1` | `31,491` | `4,821` | `7,873-8,179` | Baseline |
-| `v2` | `13,003` | `1,841` | `~3,251` | `58.7%` fewer than v1 |
-| `v3` | `9,262` | `1,208` | `~2,316` | `70.6%` fewer than v1; `28.8%` fewer than v2 |
-| `v4` | `9,682` | `1,276` | `~2,421` | `69.3%` fewer than v1; `25.5%` fewer than v2; `4.5%` more than v3 |
+| `v2` | `13,524` | `1,904` | `~3,381` | `57.1%` fewer than v1 |
+| `v3` | `9,567` | `1,242` | `~2,392` | `69.6%` fewer than v1; `29.3%` fewer than v2 |
+| `v4` | `10,039` | `1,317` | `~2,510` | `68.1%` fewer than v1; `25.8%` fewer than v2; `4.9%` more than v3 |
 
 The important live metric is full routing payload size. A compact prompt can
 still be dominated by retrieved tool schemas, profile/context overlays, or
@@ -178,11 +178,11 @@ into one authoritative section.
 
 Measurements:
 
-- Characters: `13,515` (`57.1%` fewer than v1)
+- Characters: `13,524` (`57.1%` fewer than v1)
 - Physical lines: `88` (`75` nonblank)
-- Space-separated words: `1,903`
-- Rough token estimate: approximately `3,379`, depending on provider tokenizer
-- Prompt SHA-256: `8bdd4c12a24dbc2e600b5d08ebb08abecdce979e9951bfe9a5cf1017e9c0cf8c`
+- Space-separated words: `1,904`
+- Rough token estimate: approximately `3,381`, depending on provider tokenizer
+- Prompt SHA-256: `3725ea9dadaf1b62bc9e13d3c1f5c6304ed5cd5e82c9203eb460c71107cc7712`
 
 Tool RAG, schemas, runtime date/time, provider capability notes, response-style
 overlays, model overrides, and profile cards remain unchanged. Treat live tests
@@ -207,11 +207,11 @@ the injected time without a tool call.
 
 Measurements:
 
-- Characters: `9,558` (`69.6%` fewer than v1; `29.3%` fewer than v2)
+- Characters: `9,567` (`69.6%` fewer than v1; `29.3%` fewer than v2)
 - Physical lines: `91` (`76` nonblank)
-- Space-separated words: `1,241`
-- Rough token estimate: approximately `2,390`, depending on provider tokenizer
-- Prompt SHA-256: `8ea43ed078e402a81fd4110914278f3b8b50dbdf8558702c4cfe29b432559ed5`
+- Space-separated words: `1,242`
+- Rough token estimate: approximately `2,392`, depending on provider tokenizer
+- Prompt SHA-256: `d10d61134f21dd096ab1dfff93223d5ee3dc19fb70deddaeca95e6fc6c774e37`
 
 The main experimental risk is instruction adherence on weaker/local models:
 telegraphic grammar removes explanatory redundancy that may help some models.
@@ -229,11 +229,11 @@ improves adherence for providers/models that struggle with v3 shorthand.
 
 Measurements:
 
-- Characters: `10,030` (`68.1%` fewer than v1; `25.8%` fewer than v2; `4.9%` more than v3)
+- Characters: `10,039` (`68.1%` fewer than v1; `25.8%` fewer than v2; `4.9%` more than v3)
 - Physical lines: `46` (`31` nonblank)
-- Space-separated words: `1,316`
-- Rough token estimate: approximately `2,508`, depending on provider tokenizer
-- Prompt SHA-256: `0c25103d0495906c24c6c20a5ef489a28781296a4bd5cccb6996ac1fcfc47fc2`
+- Space-separated words: `1,317`
+- Rough token estimate: approximately `2,510`, depending on provider tokenizer
+- Prompt SHA-256: `558ad32d86156901b2117621b998340b2c35f94ab20f70aec8776b78c2409d96`
 
 V4 intentionally preserves the supplied Unicode comparison arrows and symbols;
 provider tokenization may therefore differ slightly from the character-based

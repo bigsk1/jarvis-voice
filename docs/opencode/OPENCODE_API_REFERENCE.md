@@ -4,14 +4,25 @@
 **Documentation:** http://localhost:4096/doc
 **Interactive UI:** http://localhost:4096/openapi
 
+> This file describes the Jarvis-facing subset. OpenCode is currently on the
+> `1.18.x` API family and can add endpoints between upgrades. Treat the running
+> server's authenticated `GET /doc` OpenAPI document as authoritative.
+
 ---
 
 ## Current Jarvis Integration
 
-Jarvis currently uses a **minimal subset** of the OpenCode API:
+Jarvis uses a focused, supervised subset of the OpenCode API:
 - Creates sessions
-- Sends tasks
-- Receives responses
+- Sends no-reply system/context messages and one task message
+- Subscribes to live SSE events while the task request runs
+- Polls todo/message state if the event stream is unavailable
+- Receives the complete final assistant response
+- Aborts unattended permission/question stalls and timed-out sessions
+
+The no-reply context writes are synchronous, do not invoke the coding agent,
+and use a 30-second HTTP timeout. The task message uses the longer supervised
+request window (`OPENCODE_TASK_TIMEOUT_SECONDS`, 900 seconds by default).
 
 **Location:** `lib/opencode_client.py`
 
@@ -54,35 +65,42 @@ Jarvis currently uses a **minimal subset** of the OpenCode API:
 **Request:**
 ```json
 {
-  "role": "user",
-  "content": [
+  "parts": [
     {
       "type": "text",
       "text": "Build a Flask app"
     }
-  ]
+  ],
+  "model": {
+    "providerID": "xai",
+    "modelID": "grok-build-0.1"
+  },
+  "agent": "build",
+  "noReply": false
 }
 ```
 
 **Response:**
 ```json
 {
-  "role": "assistant",
-  "content": [
+  "info": {
+    "id": "msg_...",
+    "sessionID": "ses_...",
+    "role": "assistant",
+    "providerID": "xai",
+    "modelID": "grok-build-0.1"
+  },
+  "parts": [
     {
       "type": "text",
       "text": "I've built the Flask app..."
     }
-  ],
-  "stopReason": "end_turn",
-  "usage": {
-    "inputTokens": 150,
-    "outputTokens": 300
-  }
+  ]
 }
 ```
 
-**Jarvis Use:** Core task execution - sends every task here
+**Jarvis Use:** Core task execution. The HTTP response remains the source of
+truth for the final answer while `/event` supplies live progress in parallel.
 
 ---
 
@@ -98,7 +116,47 @@ Jarvis currently uses a **minimal subset** of the OpenCode API:
 }
 ```
 
-**Jarvis Use:** Timeout handling (not currently implemented)
+**Jarvis Use:** Cancellation, timeout cleanup, and unattended permission/question blockers.
+
+---
+
+### Live Progress (Used by Jarvis)
+
+#### `GET /event`
+
+**Purpose:** Subscribe to Server-Sent Events for the active OpenCode directory.
+
+Jarvis filters every event to the exact `sessionID` it created or resumed. The
+useful event families include:
+
+- `session.status`, `session.idle`, and `session.error`
+- `message.part.updated` tool states (`pending`, `running`, `completed`, `error`)
+- `session.next.tool.called`, `.progress`, `.success`, and `.failed`
+- `todo.updated`
+- `permission.asked` / `permission.v2.asked`
+- `question.asked` / `question.v2.asked`
+
+Reasoning/text deltas and raw tool output are intentionally not forwarded to
+the Jarvis UI.
+
+At the local skill-process boundary, Jarvis wraps every normalized event as
+`event_type: tool_progress`; the OpenCode event family remains available as
+`opencode_event_type` (for example, `message.part.updated`).
+
+#### `GET /session/status`
+
+**Purpose:** Read active/retry/idle session state. Jarvis uses this only as a
+diagnostic endpoint; the live fallback currently derives user-facing detail
+from todo and message tool state.
+
+#### `GET /session/{sessionId}/todo`
+
+**Purpose:** Read the session plan and its pending/in-progress/completed steps.
+
+#### `GET /session/{sessionId}/message`
+
+**Purpose:** Read structured messages and tool parts. Jarvis uses the newest
+tool state as a polling fallback; it does not replace the final POST response.
 
 ---
 

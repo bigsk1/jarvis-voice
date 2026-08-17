@@ -66,6 +66,27 @@ class TtsNormalizerTests(unittest.TestCase):
 
         self.assertEqual(normalized, "Saved in stash, ready to review.")
 
+    def test_default_normalizer_removes_opencode_session_id_phrase(self):
+        normalized = normalize_tts_text(
+            "OpenCode finished. Session ID: ses_ff0749e8dffeQ2YuEPoVuIMvYx. "
+            "The project is ready."
+        )
+
+        self.assertEqual(normalized, "OpenCode finished. The project is ready.")
+        self.assertNotIn("Session ID", normalized)
+        self.assertNotIn("ses_", normalized)
+
+    def test_default_normalizer_removes_markdown_opencode_session_id_line(self):
+        normalized = normalize_tts_text(
+            "Build complete.\n- **Session ID:** `ses_ff0749e8dffeQ2YuEPoVuIMvYx`\n"
+            "Tests passed."
+        )
+
+        self.assertIn("Build complete.", normalized)
+        self.assertIn("Tests passed.", normalized)
+        self.assertNotIn("Session ID", normalized)
+        self.assertNotIn("ses_", normalized)
+
     def test_default_normalizer_removes_parenthesized_bare_url_examples(self):
         normalized = normalize_tts_text(
             "Preview limited; full details like exact hours in Yelp results "

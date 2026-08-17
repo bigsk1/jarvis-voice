@@ -23,6 +23,22 @@ from skills import opencode
 
 
 class OpenCodeToolTests(unittest.TestCase):
+    def test_progress_uses_jarvis_envelope_without_losing_opencode_event_type(self):
+        with patch("skills.opencode.emit_tool_progress") as emit:
+            opencode.emit_opencode_progress(
+                {
+                    "event_type": "message.part.updated",
+                    "phase": "tool",
+                    "status": "OpenCode: Running tests",
+                }
+            )
+
+        payload = emit.call_args.args[0]
+        self.assertEqual(payload["event_type"], "tool_progress")
+        self.assertEqual(payload["opencode_event_type"], "message.part.updated")
+        self.assertEqual(payload["tool"], "opencode")
+        self.assertEqual(payload["status"], "OpenCode: Running tests")
+
     def test_memory_context_accepts_keyword_only_hybrid_rows_without_fake_cosine(self):
         class FakeMemoryDb:
             closed = False
@@ -204,6 +220,22 @@ class OpenCodeToolTests(unittest.TestCase):
         self.assertIn(f"Implemented in `{app_dir}`.", raw)
         self.assertIn(f"Created `{index_html}`.", raw)
         self.assertIn("OpenCode can also add keyboard support.", raw)
+
+    def test_reasoning_parts_are_not_exposed_as_final_opencode_text(self):
+        result = {
+            "info": {"id": "msg_test"},
+            "parts": [
+                {"type": "reasoning", "text": "Internal plan that should stay private."},
+                {"type": "text", "text": "Created and tested demo.py."},
+            ],
+        }
+
+        public = opencode.sanitize_opencode_result(result)
+        raw = opencode.extract_opencode_response_text(public)
+
+        self.assertEqual(raw, "Created and tested demo.py.")
+        self.assertEqual([part["type"] for part in public["parts"]], ["text"])
+        self.assertEqual(len(result["parts"]), 2)
 
 
 if __name__ == "__main__":

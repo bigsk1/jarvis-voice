@@ -116,6 +116,25 @@ class OpenCodeLogger:
             "has_error": response_info["has_error"]
         }
         self._write_log(log_entry)
+
+    def log_progress(
+        self,
+        session_id: str,
+        progress: dict[str, Any],
+    ):
+        """Log one normalized live progress event from OpenCode."""
+        log_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "event": "progress",
+            "session_id": session_id,
+            "phase": progress.get("phase"),
+            "status": progress.get("status"),
+            "opencode_event": progress.get("event_type"),
+            "tool": progress.get("opencode_tool"),
+            "tool_status": progress.get("tool_status"),
+            "progress_percent": progress.get("progress"),
+        }
+        self._write_log(log_entry)
     
     def log_session_complete(
         self,
@@ -191,4 +210,3 @@ class OpenCodeLogger:
 def get_opencode_logger() -> OpenCodeLogger:
     """Get singleton OpenCode logger instance."""
     return OpenCodeLogger()
-

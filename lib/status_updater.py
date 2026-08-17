@@ -281,6 +281,10 @@ class StatusUpdater:
     def set_context(self, context: str):
         """Set the current tool context for dynamic summaries."""
         self._last_context = self._sanitize_status_text(context, 300)
+
+    def dynamic_summaries_enabled(self) -> bool:
+        """Return whether this updater can produce LLM-derived status text."""
+        return self.enabled and self.summarizer.is_enabled()
     
     def update_error(
         self,

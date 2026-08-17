@@ -50,6 +50,14 @@ XAI_WRAPPING_SPEECH_TAGS = {
 # (e.g. wrapped tokens like turn0search0) that must not appear in UI or TTS.
 _LLM_BMP_PUA_CITATION_RE = re.compile(r"[\uE000-\uF8FF]")
 
+# OpenCode session handles are useful in the visible result and logs, but they
+# are machine-only detail in spoken output. Accept common Markdown/code quoting
+# while keeping the rule scoped to OpenCode-style ``ses_`` identifiers.
+_OPENCODE_SESSION_ID_RE = re.compile(
+    r"(?i)(?<!\w)[*_`]*Session\s+ID[*_`]*\s*:"
+    r"[ \t*_`\"']*ses_[A-Za-z0-9_-]{6,}[*_`\"']*[.,;]?"
+)
+
 
 def strip_llm_citation_artifacts(text: str) -> str:
     """Strip BMP private-use citation placeholders from model output."""
@@ -517,6 +525,7 @@ def normalize_tts_text(
 
     text = _repair_malformed_xai_speech_tags(text)
     text = strip_llm_citation_artifacts(text)
+    text = _OPENCODE_SESSION_ID_RE.sub('', text)
     # Do this before Markdown cleanup strips underscores from the identifier.
     # Workflow completion messages sometimes expose a bare stash space ID
     # instead of a full stash:// reference; retain the useful surrounding phrase.

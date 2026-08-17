@@ -1688,6 +1688,21 @@ Returned tool data:
                         'status': kwargs.get('message'),
                         'timestamp': time.time()
                     }, room=delivery_room)
+                elif event_type == 'tool_progress':
+                    self.socketio.emit('tool:progress', {
+                        'message_id': repair_message_id,
+                        'tool': kwargs.get('tool'),
+                        'call_index': kwargs.get('call_index', 0),
+                        'status': kwargs.get('status'),
+                        'phase': kwargs.get('phase'),
+                        'progress': kwargs.get('progress'),
+                        'session_id': kwargs.get('session_id'),
+                        'opencode_event_type': kwargs.get('opencode_event_type'),
+                        'opencode_tool': kwargs.get('opencode_tool'),
+                        'tool_status': kwargs.get('tool_status'),
+                        'sequence': kwargs.get('sequence'),
+                        'timestamp': time.time()
+                    }, room=delivery_room)
 
             orchestrator.set_status_callback(status_callback)
             orchestrator.set_progress_callback(progress_callback)
@@ -3753,6 +3768,25 @@ Previous structured data:
                         self.socketio.emit('tool:progress', {
                             'message_id': message_id,
                             'status': kwargs.get('message'),
+                            'timestamp': time.time()
+                        }, room=delivery_room)
+                    elif event_type == 'tool_progress':
+                        print(
+                            f"[CHAT] Tool progress: {kwargs.get('tool')} - "
+                            f"{kwargs.get('status')}"
+                        )
+                        self.socketio.emit('tool:progress', {
+                            'message_id': message_id,
+                            'tool': kwargs.get('tool'),
+                            'call_index': kwargs.get('call_index', 0),
+                            'status': kwargs.get('status'),
+                            'phase': kwargs.get('phase'),
+                            'progress': kwargs.get('progress'),
+                            'session_id': kwargs.get('session_id'),
+                            'opencode_event_type': kwargs.get('opencode_event_type'),
+                            'opencode_tool': kwargs.get('opencode_tool'),
+                            'tool_status': kwargs.get('tool_status'),
+                            'sequence': kwargs.get('sequence'),
                             'timestamp': time.time()
                         }, room=delivery_room)
                 

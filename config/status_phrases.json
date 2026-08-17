@@ -328,9 +328,46 @@
     },
     
     "opencode": {
-      "start": ["OpenCode is on it boss", "Starting the build", "Firing up OpenCode"],
-      "progress": ["Build in progress", "OpenCode is working hard", "Code is flowing"],
-      "error": ["Build hit an issue, recovering", "OpenCode stumbled but is getting back up"]
+      "start": [
+        "OpenCode is on it, boss",
+        "Starting the build",
+        "Firing up OpenCode",
+        "OpenCode is getting started",
+        "The build is underway",
+        "Handing this over to OpenCode",
+        "OpenCode is setting up the project",
+        "Development is starting now"
+      ],
+      "progress": [
+        "OpenCode is making progress",
+        "The build is moving along",
+        "The project is taking shape",
+        "Development is moving forward",
+        "OpenCode is handling the details",
+        "The build is still running",
+        "Work on the project is continuing",
+        "OpenCode is working through the next steps",
+        "The project is coming together",
+        "OpenCode is keeping the build moving",
+        "Development work is continuing",
+        "The build remains active",
+        "OpenCode is making steady progress",
+        "The project work is underway",
+        "OpenCode is working through the implementation",
+        "The build is advancing",
+        "OpenCode is continuing with the project",
+        "The implementation is moving forward",
+        "Work is progressing on the build",
+        "OpenCode is staying on the task"
+      ],
+      "error": [
+        "Build hit an issue, recovering",
+        "OpenCode encountered an issue",
+        "OpenCode hit a snag and is retrying",
+        "The build ran into an issue",
+        "OpenCode is working around a problem",
+        "OpenCode is trying another approach"
+      ]
     },
     
     "mcp_brave_search_brave_web_search": {

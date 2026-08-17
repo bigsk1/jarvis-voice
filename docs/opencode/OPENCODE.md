@@ -56,18 +56,22 @@ JARVIS: "I've created a Flask API in your workspace with 5 endpoints..."
 
 ## Current Runtime Behavior
 
-OpenCode is working again and the current integration is intentionally simple and reliable:
+OpenCode is integrated as a supervised long-running tool:
 
 - Jarvis routes one build/coding request to the `opencode` tool
-- Jarvis sends a single long-running request to the OpenCode HTTP API
-- Jarvis waits for the final result (up to 6 minutes timeout)
-- Jarvis can show a bounded task-aware opening status plus generic periodic updates while waiting
+- Jarvis sends the task while subscribing to OpenCode's `/event` SSE feed
+- Real session, tool, todo, retry, blocker, error, idle, and completion phases are normalized into safe progress events
+- If SSE is unavailable or quiet, Jarvis polls the session's todo/message state and emits a phase-derived heartbeat
+- Jarvis waits for and returns the original final OpenCode response (15-minute default, configurable with `OPENCODE_TASK_TIMEOUT_SECONDS`)
+- On user cancellation or the configured task deadline, Jarvis aborts the OpenCode session before process-tree cleanup escalates
 - Jarvis summarizes the returned build result for voice/web response
 
 Important details:
 
 - **Not fire-and-forget**: Jarvis waits for the OpenCode result before answering
-- **Not true live progress yet**: current status updates use the safe OpenCode task summary, not streamed OpenCode step events
+- **True live progress**: the Web UI tool card shows a bounded timeline and a link to the OpenCode session while it is still running
+- **Status-LLM independent**: detailed Web progress works when the helper/status LLM is unavailable or disabled; when enabled, the status LLM may emit separate rate-limited natural-language summaries
+- **No hidden prompt stalls**: permission requests, questions, and terminal session errors are surfaced as issues and the unattended session is aborted
 - **Session/log checks are fallback-only**: `check_opencode_sessions` is useful when a run stalls, returns no usable result, or the user explicitly asks for session status/logs
 - **Successful builds should answer from OpenCode directly**: Jarvis should not replace a good build summary with a thin session-status recap
 
@@ -77,6 +81,7 @@ Example successful lifecycle in `logs/opencode/opencode-YYYY-MM-DD.jsonl`:
 - `message_sent` for `system`
 - `message_sent` for `context`
 - `message_sent` for `task`
+- `progress` entries for normalized live phases
 - `message_received`
 - `session_complete`
 
@@ -301,33 +306,42 @@ Notes:
 
 **Problem indicators:**
 - `response_length: 0` - OpenCode didn't respond
-- `duration_ms` near the 360000ms timeout with no useful response - likely stalled or timed out
+- `duration_ms` near the configured `OPENCODE_TASK_TIMEOUT_SECONDS` with no useful response - likely stalled or timed out
 - `ok: false` in tool-calls log - Task failed
 
 **Normal timing reality:**
 - Small builds often take 30-90 seconds
-- Larger builds can take 2-5 minutes
+- Larger builds can take 2-10 minutes
 - Long duration alone is not a failure if `message_received` and `session_complete` show success
 
-### Status Update Reality Today
+### Live Progress Behavior
 
-During a long build, Jarvis may speak/show a task-aware opening phrase followed
-by generic progress phrases such as:
+During a build, Jarvis consumes OpenCode's structured event stream and can show
+updates such as:
 
-- "OpenCode is working on your request"
-- "Still building"
-- "Almost there"
+- "OpenCode: Updating workspace/projects/example/app.py"
+- "OpenCode: Running a command"
+- "OpenCode is working on: Run the tests"
+- "OpenCode finished its work and is preparing the result"
 
-These are **not** live step-by-step updates from OpenCode itself. The opening
-phrase may use a bounded, sanitized version of the OpenCode `task` argument;
-later phrases are background Jarvis status messages while waiting on one
-blocking OpenCode API call. Status generation never delays that call.
+The bridge deliberately does not expose reasoning deltas, raw tool output, or
+unbounded command data. It emits bounded phase text, redacts common secret
+shapes, deduplicates repetitive `busy` events, and keeps the full normalized
+audit trail in `logs/opencode/opencode-YYYY-MM-DD.jsonl`.
 
-That means:
+Quiet-session heartbeats are derived from the last real phase, include truthful
+elapsed time, and never use a previous heartbeat as their detail. The initial
+system/context `noReply` writes are bounded to 30 seconds; they do not run the
+coding agent. A usable final POST response remains authoritative over a terminal
+event that arrives only after that response has completed.
 
-- you will not currently hear "creating index.html now" from actual live state unless a future session/log bridge exposes that step
-- permission prompts or internal OpenCode pauses are not streamed back as structured live events
-- if real progress visibility is needed, logs or OpenCode UI are still the best source
+The Web UI receives these events directly through `tool:progress`, so they do
+not depend on `STATUS_LLM_ENABLED`. OpenCode only uses the general status bubble
+and optional status TTS when the status LLM is enabled; otherwise the detailed
+tool card remains the sole live surface. Browser TTS is additionally gated by
+the Web UI audio toggle. The final tool result also includes up to 25
+normalized `progress_events` plus `progress_transport` (`sse`, `poll`,
+`sse+poll`, or `none`).
 
 ### Troubleshooting
 
@@ -403,7 +417,7 @@ OpenCode receives this system prompt with every task:
 ### 🚧 Phase 2 In Progress
 - [x] **Workspace enforcement** - Verify OpenCode respects boundaries (DONE Confirmed works)
 - [ ] **Supervised agent loop** - OpenCode asks Jarvis when blocked, Jarvis answers or escalates to user
-- [ ] **Live progress streaming** - Surface real build steps/permission states instead of generic filler updates
+- [x] **Live progress streaming** - Surface real build steps/permission states with SSE and polling fallback
 - [ ] **Memory strategy** - Decide when Jarvis should inject memory vs keep OpenCode task-only
 - [ ] **Structured artifact reporting** - Return created files, run commands, and test status in a more machine-usable way
 - [ ] **Resume existing OpenCode sessions from follow-up requests** - Use `jarvis_session`, optional `web_conversation_id`, and prior `session_id` context so requests like "add keyboard support" continue the existing OpenCode project/session instead of starting fresh when appropriate
@@ -429,7 +443,7 @@ Desired future behavior:
 
 That supervision loop is not fully implemented yet, but the current workspace-isolated model is the foundation for it.
 - [x] **Context injection** - Pass user preferences, credentials to OpenCode (We already have .env in ~/.config/opencode/jarvis-env.env)
-- [ ] **Session persistence** - Resume long-running tasks - with Jarvis to opencode, currently 300 sec timeout on jarvis? waiting for opencode, but jarvis can check opencode logs without triggering another opencode tool call
+- [ ] **Session persistence** - Resume long-running tasks across separate Jarvis requests; the current request remains supervised until its configured OpenCode deadline
 - [x] **Improved condensation** - Better voice response formatting - works fine currently
 
 ---
@@ -471,6 +485,7 @@ That supervision loop is not fully implemented yet, but the current workspace-is
 ```bash
 OPENCODE_ENABLED=true
 OPENCODE_BASE_URL=http://localhost:4096
+OPENCODE_TASK_TIMEOUT_SECONDS=900
 ANTHROPIC_API_KEY=sk-ant-api03-...
 OPENAI_API_KEY=sk-proj-...
 ```
@@ -479,6 +494,7 @@ OPENAI_API_KEY=sk-proj-...
 ```bash
 OPENCODE_ENABLED=true
 OPENCODE_BASE_URL=http://localhost:4096
+OPENCODE_TASK_TIMEOUT_SECONDS=900
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=gemma4
 ```
@@ -524,7 +540,7 @@ install -D -m 600 config/opencode.config.json.template ~/.config/opencode/openco
 
 1. **Manual server management** - Must start OpenCode server (systemd handles this)
 2. **Permission prompts** - OpenCode asks to confirm file edits and bash commands (by design)
-3. **No streaming** - Jarvis waits for complete response before speaking
+3. **Final response remains synchronous** - Jarvis streams progress while waiting, then returns the complete OpenCode result
 4. **Session cleanup** - OpenCode may clear session messages after completion (but we log everything)
 5. **Workspace enforcement** - Config set, needs testing to verify it works
 

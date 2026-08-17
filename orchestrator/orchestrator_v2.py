@@ -482,6 +482,8 @@ class Orchestrator:
         
         # Status updates for voice progress feedback
         self.status_updater = StatusUpdater(mode)
+        self._active_tool_call_index = None
+        self.executor.set_progress_callback(self._handle_executor_progress)
         self.executor.set_workflow_runtime(
             workflow_loader=self.workflow_loader,
             pipeline_executor=self.pipeline_executor,
@@ -557,6 +559,28 @@ class Orchestrator:
             except Exception as e:
                 if sys.stdout.isatty():
                     print(f"⚠️ Progress callback error: {e}")
+
+    def _handle_executor_progress(self, event_type: str, **kwargs):
+        """Bridge structured child-tool events into status and Web progress."""
+        if event_type == "tool_progress":
+            kwargs.setdefault("call_index", self._active_tool_call_index or 0)
+            message = str(kwargs.get("status") or "").strip()
+            # OpenCode's detailed event text already has a dedicated Web tool
+            # card. Only send it through the general status surface when the
+            # status LLM can turn it into a short natural-language update;
+            # otherwise a second raw/static bubble is redundant.
+            if message and self.status_updater.dynamic_summaries_enabled():
+                phase = kwargs.get("phase")
+                self.status_updater.update(
+                    category="error" if phase in {"blocked", "error"} else "building",
+                    tool_name=str(kwargs.get("tool") or "opencode"),
+                    priority="high" if phase in {"blocked", "error"} else "normal",
+                    context={
+                        "phase": phase or "running",
+                        "detail": message,
+                    },
+                )
+        self._emit_progress(event_type, **kwargs)
 
     def _tool_freshness_ttl_seconds(self, tool_name: str) -> int | None:
         """
@@ -2019,14 +2043,12 @@ Mode: {self.mode}
                 
                 # @TOOL_CONFIG: status update categories — route tools to UI status messages
                 if tool_name == 'opencode':
-                    # OpenCode is long-running - start background updates
+                    # The child streams real OpenCode phases after this opening status.
                     self.status_updater.update(
                         category='building',
                         tool_name=tool_name,
                         context=status_context,
                     )
-                    # Background OpenCode updates fall back to initial context + static/LLM phrases, not live session logs TODO: in /docs/FUTURE_ENHANCEMENTS.md
-                    self.status_updater.start_background_updates(tool_name=tool_name, category='building')
                 elif 'search' in tool_name or 'brave' in tool_name:
                     self.status_updater.update(category='searching', tool_name=tool_name, context=status_context)
                 elif 'fetch' in tool_name or 'playwright' in tool_name:
@@ -2073,7 +2095,11 @@ Mode: {self.mode}
                 
                 # Execute the tool with timing
                 tool_start_time = time.time()
-                result = self.executor.execute(tool_name, arguments)
+                self._active_tool_call_index = call_index
+                try:
+                    result = self.executor.execute(tool_name, arguments)
+                finally:
+                    self._active_tool_call_index = None
                 tool_duration_ms = int((time.time() - tool_start_time) * 1000)
                 if tool_name == "workflow":
                     self._merge_workflow_usage(total_usage, result.get("usage"))
@@ -2627,6 +2653,8 @@ Mode: {self.mode}
                             parts.append(text)
                     return "\n".join(parts).strip()
                 if isinstance(payload, dict):
+                    if payload.get("type") in {"reasoning", "step-start", "step-finish"}:
+                        return ""
                     if isinstance(payload.get("text"), str):
                         return payload["text"].strip()
                     for key in ("parts", "content"):

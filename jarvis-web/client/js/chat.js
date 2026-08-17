@@ -1618,8 +1618,17 @@ class ChatUI {
     
     socket.on('toolProgress', (data) => {
       if (data.tool) {
-        // Update specific tool card with progress
-        this.updateToolCard(data.tool, 'pending', { progress: data.progress, status: data.status });
+        const cardId = data.call_index > 0 ? `${data.tool}_${data.call_index}` : data.tool;
+        if (data.tool === 'opencode' && data.status) {
+          this._updateOpenCodeProgressCard(cardId, data);
+          this.showProgressStatus(data.status);
+        } else {
+          // Update specific tool card with progress
+          this.updateToolCard(cardId, data.tool, 'pending', {
+            progress: data.progress,
+            status: data.status
+          });
+        }
       } else if (data.status) {
         // Show routing/progress status as ephemeral message
         this.showProgressStatus(data.status);
@@ -5818,6 +5827,62 @@ class ChatUI {
     if (bodyEl && result) {
       const summary = typeof result === 'object' ? Utils.formatJson(result) : String(result);
       bodyEl.innerHTML = Utils.escapeHtmlAndLinkify(summary);
+    }
+  }
+
+  /** Keep a bounded, readable timeline for a live OpenCode session. */
+  _updateOpenCodeProgressCard(cardId, data) {
+    if (!this.pendingTools[cardId]) {
+      this.updateToolCard(cardId, 'opencode', 'pending', {});
+    }
+
+    const state = this.pendingTools[cardId];
+    state.progressEvents = Array.isArray(state.progressEvents) ? state.progressEvents : [];
+    const previous = state.progressEvents[state.progressEvents.length - 1];
+    if (!previous || previous.status !== data.status || previous.phase !== data.phase) {
+      state.progressEvents.push({
+        status: data.status,
+        phase: data.phase || 'running'
+      });
+      state.progressEvents = state.progressEvents.slice(-8);
+    }
+    if (data.session_id) state.sessionId = data.session_id;
+
+    const card = document.getElementById(`tool-card-${cardId}`);
+    if (!card) return;
+
+    const statusEl = card.querySelector('.tool-card-status');
+    if (statusEl) {
+      const icon = data.phase === 'error' || data.phase === 'blocked'
+        ? '⚠️'
+        : data.phase === 'complete'
+          ? '✅'
+          : '⏳';
+      const percent = Number.isFinite(data.progress) ? ` ${data.progress}%` : '';
+      statusEl.textContent = `${icon}${percent} ${data.status}`;
+    }
+
+    const bodyEl = card.querySelector('.tool-card-body');
+    if (bodyEl) {
+      bodyEl.textContent = state.progressEvents
+        .map((entry) => `• ${entry.status}`)
+        .join('\n');
+    }
+
+    if (state.sessionId && !card.querySelector('.tool-card-link-row')) {
+      const sessionUrl = this._getOpenCodeSessionUrl(state.sessionId);
+      if (sessionUrl) {
+        const row = document.createElement('div');
+        row.className = 'tool-card-link-row';
+        const link = document.createElement('a');
+        link.href = sessionUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.className = 'content-link tool-card-link';
+        link.textContent = `Open session: ${state.sessionId}`;
+        row.appendChild(link);
+        card.insertBefore(row, bodyEl || null);
+      }
     }
   }
 

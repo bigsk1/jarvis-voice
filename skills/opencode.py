@@ -4,18 +4,32 @@ Jarvis Skill: OpenCode Integration
 Execute complex tasks using OpenCode autonomous agent.
 """
 
-import sys
 import json
 import os
-import time
 import re
+import signal
+import sys
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
-from opencode_client import OpenCodeClient, resolve_opencode_defaults
 from config_loader import get_config_value, load_config
 from memory_db import MemoryDB
+from opencode_client import OpenCodeClient, resolve_opencode_defaults
 from paths import get_jarvis_workspace
+from tool_progress import emit_tool_progress
+
+
+def emit_opencode_progress(progress: dict) -> None:
+    """Wrap an OpenCode event in Jarvis's local-tool progress envelope."""
+    payload = {
+        "tool": "opencode",
+        **progress,
+    }
+    opencode_event_type = payload.pop("event_type", None)
+    if opencode_event_type:
+        payload["opencode_event_type"] = opencode_event_type
+    payload["event_type"] = "tool_progress"
+    emit_tool_progress(payload)
 
 
 def main():
@@ -49,6 +63,17 @@ def main():
         # Initialize OpenCode client
         client = OpenCodeClient(base_url=opencode_url)
 
+        def handle_termination(signum, _frame):
+            active_session_id = getattr(client, "active_session_id", None)
+            if active_session_id:
+                client.abort_session(active_session_id)
+            raise SystemExit(128 + signum)
+
+        signal.signal(signal.SIGTERM, handle_termination)
+
+        def progress_callback(progress: dict):
+            emit_opencode_progress(progress)
+
         # Check health
         health = client.health_check()
         if not health["healthy"]:
@@ -73,39 +98,34 @@ def main():
         if include_memory:
             context["memory"] = get_memory_context(task, mode)
 
-        # Give status update for complex tasks (immediate feedback)
-        task_lower = task.lower()
-        is_complex = any(word in task_lower for word in [
-            'build', 'create', 'develop', 'game', 'website', 'api', 'application', 'tetris'
-        ])
-        
-        if is_complex:
-            # Print immediate status (won't be final result)
-            sys.stderr.write("⏳ OpenCode is building this for you... (may take 30-60 seconds)\n")
-            sys.stderr.flush()
-        
-        # Execute task with appropriate agent mode (with timing)
-        start_time = time.time()
+        # Execute the task while emitting machine-readable progress on stderr.
         result = client.execute_task(
             task=task, 
             session_id=session_id, 
             model=model, 
             context=context,
-            agent_mode=agent_mode  # Use "build" for actual work, "plan" for analysis
+            agent_mode=agent_mode,  # Use "build" for actual work, "plan" for analysis
+            progress_callback=progress_callback,
         )
-        time.time() - start_time
 
         if not result["ok"]:
-            return_error(f"OpenCode execution failed: {result.get('error')}")
+            return_error(
+                f"OpenCode execution failed: {result.get('error')}",
+                data={
+                    "session_id": result.get("session_id"),
+                    "progress_events": result.get("progress_events", []),
+                },
+            )
             return 1
 
         # Extract result data
         opencode_result = result.get("result", {})
+        public_opencode_result = sanitize_opencode_result(opencode_result)
         session_id = result.get("session_id")
-        raw_llm_response = extract_opencode_response_text(opencode_result, max_chars=12000)
+        raw_llm_response = extract_opencode_response_text(public_opencode_result, max_chars=12000)
 
         # Build speech response (condensed for voice)
-        speech = condense_for_voice(opencode_result, task)
+        speech = condense_for_voice(public_opencode_result, task)
 
         # Return success
         return_success(
@@ -114,7 +134,9 @@ def main():
             data={
                 "session_id": session_id,
                 "task_type": task_type,
-                "opencode_result": opencode_result,
+                "opencode_result": public_opencode_result,
+                "progress_events": result.get("progress_events", []),
+                "progress_transport": result.get("progress_transport"),
             },
         )
         return 0
@@ -236,6 +258,8 @@ def _extract_text(payload):
                 parts.append(text)
         return "\n".join(parts).strip()
     if isinstance(payload, dict):
+        if payload.get("type") in {"reasoning", "step-start", "step-finish"}:
+            return ""
         if isinstance(payload.get("text"), str):
             return payload["text"].strip()
         if isinstance(payload.get("content"), str):
@@ -249,6 +273,21 @@ def _extract_text(payload):
             if text:
                 return text
     return ""
+
+
+def sanitize_opencode_result(result: dict) -> dict:
+    """Remove provider reasoning parts from the result exposed to Jarvis/Web."""
+    if not isinstance(result, dict):
+        return {}
+    public_result = dict(result)
+    parts = result.get("parts")
+    if isinstance(parts, list):
+        public_result["parts"] = [
+            part
+            for part in parts
+            if not isinstance(part, dict) or part.get("type") != "reasoning"
+        ]
+    return public_result
 
 
 def extract_opencode_response_text(result: dict, max_chars: int | None = None) -> str:
@@ -336,9 +375,11 @@ def return_success(speech: str, data=None, raw_llm_response: str | None = None):
     print(json.dumps(result))
 
 
-def return_error(message: str):
+def return_error(message: str, data=None):
     """Return error response."""
     result = {"ok": False, "speech": message, "error": message}
+    if data:
+        result["data"] = data
     print(json.dumps(result))
 
 

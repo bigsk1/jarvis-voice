@@ -86,3 +86,22 @@ def test_static_image_phrases_do_not_guess_the_provider():
             assert not any(name in phrase.casefold() for name in provider_names), (
                 f"{config_path.name} has a provider-specific image status: {phrase}"
             )
+
+
+def test_normal_opencode_phrases_have_enough_unique_progress_variety():
+    selector = StatusPhrases(config_path=str(PHRASE_CONFIGS[0]), mode="normal")
+    opencode_phrases = selector.tool_specific["opencode"]
+
+    for category in ("start", "progress", "error"):
+        phrases = opencode_phrases[category]
+        assert len(phrases) == len(set(phrases))
+
+    assert len(opencode_phrases["progress"]) >= 15
+    assert "Build in progress" not in opencode_phrases["progress"]
+    assert "OpenCode is working hard" not in opencode_phrases["progress"]
+
+    first_six = [
+        selector.get_phrase("progress", tool_name="opencode")
+        for _ in range(6)
+    ]
+    assert len(set(first_six)) == 6

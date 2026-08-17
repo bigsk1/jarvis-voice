@@ -3,22 +3,28 @@
 Jarvis Voice Assistant - Orchestrator Executor
 Executes tools/skills and formats responses for TTS.
 """
-import os
-import sys
 import json
+import os
+import signal
 import subprocess
+import sys
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from pathlib import Path
 from typing import Any
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, export_config_environment
+from config_loader import export_config_environment, get_int, load_config
 from http_client import PROXY_POLICY_ENV, STANDARD_PROXY_ENV_KEYS
 from serpapi_client import diagnose_serpapi_tool_failure
+from security_utils import redact_sensitive_text
 from tool_logger import get_logger
+from tool_progress import parse_tool_progress
 from tool_search_runtime import search_tools_runtime
+
 try:
     from .workflow_tool_runtime import execute_workflow_tool
 except ImportError:
@@ -54,6 +60,7 @@ class ToolExecutor:
         # Initialize logger
         self.logger = get_logger(mode)
         self.cancel_check = None
+        self.progress_callback = None
         self.jarvis_session_id = None
         self.web_conversation_id = None
         self.excluded_tools: set[str] = set()
@@ -64,6 +71,82 @@ class ToolExecutor:
     def set_cancel_check(self, callback):
         """Set callback to check if the current tool execution should be cancelled."""
         self.cancel_check = callback
+
+    def set_progress_callback(self, callback):
+        """Set callback for structured progress emitted by local tool subprocesses."""
+        self.progress_callback = callback
+
+    def _consume_progress_line(self, tool_name: str, line: str) -> bool:
+        """Forward one structured stderr line; return whether it was protocol data."""
+        payload = parse_tool_progress(line)
+        if payload is None:
+            return False
+        if not self.progress_callback:
+            return True
+
+        event_type = str(payload.pop("event_type", "tool_progress"))
+        payload.setdefault("tool", tool_name)
+        try:
+            self.progress_callback(event_type, **payload)
+        except Exception as exc:
+            safe_error = redact_sensitive_text(str(exc)).replace("\n", " ")[:300]
+            print(
+                f"[TOOL_PROGRESS] Callback failed for {tool_name} "
+                f"({type(exc).__name__}): {safe_error}",
+                file=sys.stderr,
+                flush=True,
+            )
+        return True
+
+    @staticmethod
+    def _terminate_process_tree(
+        process: subprocess.Popen,
+        *,
+        grace_seconds: float = 3,
+    ) -> None:
+        """Terminate a local tool and descendants, then escalate after a grace period."""
+        if process.poll() is not None:
+            return
+
+        deadline = time.monotonic() + grace_seconds
+
+        try:
+            if os.name == "posix":
+                os.killpg(process.pid, signal.SIGTERM)
+            else:
+                process.terminate()
+        except (OSError, ProcessLookupError):
+            pass
+
+        try:
+            process.wait(timeout=grace_seconds)
+        except subprocess.TimeoutExpired:
+            pass
+
+        if os.name == "posix" and process.poll() is not None:
+            while time.monotonic() < deadline:
+                try:
+                    os.killpg(process.pid, 0)
+                except ProcessLookupError:
+                    return
+                except PermissionError:
+                    pass
+                time.sleep(0.05)
+        elif process.poll() is not None:
+            return
+
+        try:
+            if os.name == "posix":
+                os.killpg(process.pid, signal.SIGKILL)
+            else:
+                process.kill()
+        except (OSError, ProcessLookupError):
+            pass
+
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
 
     def set_session_context(self, jarvis_session_id: str | None = None, web_conversation_id: str | None = None):
         """Set session metadata that should be propagated to tool subprocesses."""
@@ -89,7 +172,9 @@ class ToolExecutor:
     def _get_subprocess_timeout(self, tool_name: str) -> int:
         """Return the subprocess timeout for a local tool."""
         if tool_name == "opencode":
-            return 480  # 8 minutes for OpenCode tasks (complex builds)
+            # Let the skill report/abort its own configured HTTP deadline, then
+            # retain a short process-cleanup window for the executor.
+            return max(60, get_int("OPENCODE_TASK_TIMEOUT_SECONDS", 900)) + 30
         if tool_name == "ingest_intel":
             return 300  # 5 minutes to match API sync ingest timeout for large intel files
         if tool_name == "manage_intel":
@@ -342,7 +427,8 @@ class ToolExecutor:
                 stderr=subprocess.PIPE,
                 text=True,
                 cwd=self.skills_dir,
-                env=tool_env  # Pass environment so tools see LLM_PROVIDER
+                env=tool_env,  # Pass environment so tools see LLM_PROVIDER
+                start_new_session=(os.name == "posix"),
             )
 
             if tool_script.suffix != '.py' and process.stdin:
@@ -351,48 +437,82 @@ class ToolExecutor:
 
             deadline = start_time + timeout
             cancelled = False
+            timed_out = False
             stdout = ""
             stderr = ""
 
-            # Read stdout/stderr in a background thread while polling for cancel/timeout.
-            # Without this, tools that print >64KB JSON deadlock: the child blocks on a full
-            # pipe buffer while the parent waits for process exit before calling communicate().
-            with ThreadPoolExecutor(max_workers=1) as io_pool:
-                communicate_future = io_pool.submit(process.communicate)
+            # Drain both pipes concurrently while polling for cancellation/timeout.
+            # Structured stderr lines are forwarded immediately; ordinary stderr is
+            # retained for the existing final error fallback.
+            stdout_lines: list[str] = []
+            stderr_lines: list[str] = []
 
-                while True:
-                    if self.cancel_check:
-                        try:
-                            if self.cancel_check():
-                                cancelled = True
-                                process.terminate()
-                                try:
-                                    process.wait(timeout=3)
-                                except subprocess.TimeoutExpired:
-                                    process.kill()
-                                break
-                        except Exception:
-                            pass
+            def read_stdout() -> None:
+                if not process.stdout:
+                    return
+                try:
+                    for line in iter(process.stdout.readline, ""):
+                        stdout_lines.append(line)
+                except (OSError, ValueError):
+                    pass
 
-                    if communicate_future.done():
-                        stdout, stderr = communicate_future.result()
-                        break
+            def read_stderr() -> None:
+                if not process.stderr:
+                    return
+                try:
+                    for line in iter(process.stderr.readline, ""):
+                        if not self._consume_progress_line(tool_name, line):
+                            stderr_lines.append(line)
+                except (OSError, ValueError):
+                    pass
 
-                    if time.time() >= deadline:
-                        process.kill()
-                        try:
-                            communicate_future.result(timeout=5)
-                        except Exception:
-                            pass
-                        raise subprocess.TimeoutExpired(cmd, timeout)
+            stdout_thread = threading.Thread(
+                target=read_stdout,
+                daemon=True,
+                name=f"tool-stdout-{tool_name}",
+            )
+            stderr_thread = threading.Thread(
+                target=read_stderr,
+                daemon=True,
+                name=f"tool-stderr-{tool_name}",
+            )
+            stdout_thread.start()
+            stderr_thread.start()
 
-                    time.sleep(0.25)
+            while process.poll() is None:
+                if self.cancel_check:
+                    try:
+                        if self.cancel_check():
+                            cancelled = True
+                            self._terminate_process_tree(
+                                process,
+                                grace_seconds=6 if tool_name == "opencode" else 3,
+                            )
+                            break
+                    except Exception:
+                        pass
+
+                if time.time() >= deadline:
+                    timed_out = True
+                    self._terminate_process_tree(
+                        process,
+                        grace_seconds=6 if tool_name == "opencode" else 3,
+                    )
+                    break
+
+                time.sleep(0.25)
+
+            drain_timeout = 1 if (cancelled or timed_out) else 5
+            drain_deadline = time.monotonic() + drain_timeout
+            for drain_thread in (stdout_thread, stderr_thread):
+                drain_thread.join(timeout=max(0, drain_deadline - time.monotonic()))
+            stdout = "".join(stdout_lines)
+            stderr = "".join(stderr_lines)
+
+            if timed_out:
+                raise subprocess.TimeoutExpired(cmd, timeout)
 
             if cancelled:
-                if process.stdout:
-                    process.stdout.close()
-                if process.stderr:
-                    process.stderr.close()
                 duration_ms = (time.time() - start_time) * 1000
                 output = {
                     "ok": True,
