@@ -178,11 +178,11 @@ into one authoritative section.
 
 Measurements:
 
-- Characters: `13,003` (`58.7%` fewer than v1)
-- Physical lines: `87` (`74` nonblank)
-- Space-separated words: `1,841`
-- Rough token estimate: approximately `3,251`, depending on provider tokenizer
-- Prompt SHA-256: `d353ddf2e7f806a6597d07ac9ff5ec9d7c299c9af8550e28b9f6c90c32d2c884`
+- Characters: `13,515` (`57.1%` fewer than v1)
+- Physical lines: `88` (`75` nonblank)
+- Space-separated words: `1,903`
+- Rough token estimate: approximately `3,379`, depending on provider tokenizer
+- Prompt SHA-256: `8bdd4c12a24dbc2e600b5d08ebb08abecdce979e9951bfe9a5cf1017e9c0cf8c`
 
 Tool RAG, schemas, runtime date/time, provider capability notes, response-style
 overlays, model overrides, and profile cards remain unchanged. Treat live tests
@@ -207,11 +207,11 @@ the injected time without a tool call.
 
 Measurements:
 
-- Characters: `9,262` (`70.6%` fewer than v1; `28.8%` fewer than v2)
+- Characters: `9,558` (`69.6%` fewer than v1; `29.3%` fewer than v2)
 - Physical lines: `91` (`76` nonblank)
-- Space-separated words: `1,208`
-- Rough token estimate: approximately `2,316`, depending on provider tokenizer
-- Prompt SHA-256: `eddad7ba3f1ce13feb1960e175b7c7ab0457f18aa7b61e167b8588b47f5e3b2e`
+- Space-separated words: `1,241`
+- Rough token estimate: approximately `2,390`, depending on provider tokenizer
+- Prompt SHA-256: `8ea43ed078e402a81fd4110914278f3b8b50dbdf8558702c4cfe29b432559ed5`
 
 The main experimental risk is instruction adherence on weaker/local models:
 telegraphic grammar removes explanatory redundancy that may help some models.
@@ -229,11 +229,11 @@ improves adherence for providers/models that struggle with v3 shorthand.
 
 Measurements:
 
-- Characters: `9,682` (`69.3%` fewer than v1; `25.5%` fewer than v2; `4.5%` more than v3)
+- Characters: `10,030` (`68.1%` fewer than v1; `25.8%` fewer than v2; `4.9%` more than v3)
 - Physical lines: `46` (`31` nonblank)
-- Space-separated words: `1,276`
-- Rough token estimate: approximately `2,421`, depending on provider tokenizer
-- Prompt SHA-256: `6e56ca4d15d044e429e6e4ae4ae1c2bc4f41485280a91f8f7ad24ae5ca13ade6`
+- Space-separated words: `1,316`
+- Rough token estimate: approximately `2,508`, depending on provider tokenizer
+- Prompt SHA-256: `0c25103d0495906c24c6c20a5ef489a28781296a4bd5cccb6996ac1fcfc47fc2`
 
 V4 intentionally preserves the supplied Unicode comparison arrows and symbols;
 provider tokenization may therefore differ slightly from the character-based

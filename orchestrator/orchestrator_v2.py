@@ -24,7 +24,11 @@ from config_loader import (
     DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT,
 )
 from time_utils import safe_iso_to_local_datetime, parse_utc_timestamp, now_utc
-from memory_db import get_memory_db, is_eligible_for_auto_memory_inject
+from memory_db import (
+    get_memory_db,
+    is_eligible_for_auto_memory_inject,
+    preference_slot_for_row,
+)
 from model_catalog import get_provider_fallback_model
 from status_updater import StatusUpdater
 from security_utils import sanitize_for_speech
@@ -3626,11 +3630,26 @@ Your synthesized response:"""
             limit = get_int('AUTO_MEMORY_LIMIT', 8)
             threshold = get_float('AUTO_MEMORY_SIMILARITY_THRESHOLD', 0.42)
             recency_enabled = get_config_value('AUTO_MEMORY_RECENCY_ENABLED', 'true').lower() == 'true'
-            addressing_limit = get_int('AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT', 2)
+            addressing_limit = get_int('AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT', 4)
             type_filter_enabled = get_config_value('AUTO_MEMORY_TYPE_FILTER_ENABLED', 'true').lower() == 'true'
+            profile_card_enabled = get_config_value('USER_PROFILE_CARD_ENABLED', 'true').lower() == 'true'
             transcript_lower = transcript.lower()
 
-            def _include_memory(row: dict) -> bool:
+            def _is_profile_card_memory(row: dict) -> bool:
+                source = str(row.get('source') or '').replace('\\', '/').lower()
+                return profile_card_enabled and source.endswith('intel/user-profile.md')
+
+            def _include_memory(row: dict, *, allow_active_preference: bool = False) -> bool:
+                # The exact Profile Card is already present in the routing and
+                # synthesis system prompts. Its ingested search rows would only
+                # duplicate that baseline and can contradict an active override.
+                if _is_profile_card_memory(row):
+                    return False
+                # Canonical response preferences are admitted only through the
+                # scope/expiry resolver above. Letting them re-enter through a
+                # search lane could resurrect an expired or other-session row.
+                if preference_slot_for_row(row) and not allow_active_preference:
+                    return False
                 if not type_filter_enabled:
                     return True
                 return is_eligible_for_auto_memory_inject(row)
@@ -3653,8 +3672,9 @@ Your synthesized response:"""
                 ]
                 return any(term in text for term in tooling_terms)
             
-            # Always-include ONLY addressing/response-style (call me sir, tone, language)
-            # Topic-specific prefs (dog, Spotify) go through semantic search only
+            # Resolve up to all four canonical response-preference slots first.
+            # These do not consume the query-retrieval budget below. Topic-specific
+            # preferences (dog, Spotify) still go through semantic search only.
             # Skip "no preference" values - user said forget/stop, don't inject those
             NO_PREFERENCE_VALUES = frozenset([
                 'no specific preference', 'no preference', 'none', 'nothing',
@@ -3671,20 +3691,36 @@ Your synthesized response:"""
                 return False
 
             seen_keys: set[str] = set()
-            merged: list[tuple[float, int, dict, str]] = []  # (score, importance, memory, source)
+            active_preferences: list[tuple[float, int, dict, str]] = []
+            merged: list[tuple[float, int, dict, str]] = []  # Retrieval hits only
             keyword_candidates: list[dict[str, Any]] = []
             if addressing_limit > 0:
-                for m in db.get_addressing_preferences(limit=addressing_limit):
+                active_session_id = (
+                    getattr(self, 'web_conversation_id', None)
+                    or getattr(self, 'session_id', None)
+                )
+                for m in db.get_addressing_preferences(
+                    limit=addressing_limit,
+                    session_id=active_session_id,
+                ):
                     key = m.get('key', '')
                     value = m.get('value', '')
                     if (
                         key
                         and key not in seen_keys
                         and not _is_no_preference(value)
-                        and _include_memory(m)
+                        and _include_memory(m, allow_active_preference=True)
                     ):
                         seen_keys.add(key)
-                        merged.append((1.1, m.get('importance', 5), m, 'always'))
+                        scope_scores = {
+                            'persistent': 1.20,
+                            'temporary': 1.25,
+                            'session': 1.30,
+                        }
+                        scope = m.get('preference_scope', 'persistent')
+                        active_preferences.append(
+                            (scope_scores.get(scope, 1.20), m.get('importance', 5), m, 'always')
+                        )
 
             # Curated intel should have a better chance to surface for technical/tooling queries,
             # especially when exact tool names or provider quirks are involved.
@@ -3720,7 +3756,8 @@ Your synthesized response:"""
             )
             for rank, m in enumerate(precise_matches, start=1):
                 key = m.get('key', '')
-                if key and key in seen_keys:
+                active_slot = preference_slot_for_row(m)
+                if (key and key in seen_keys) or (active_slot and active_slot in seen_keys):
                     continue
                 if not _include_memory(m):
                     continue
@@ -3753,7 +3790,8 @@ Your synthesized response:"""
             now = datetime.now()
             for m in memories:
                 key = m.get('key', '')
-                if key and key in seen_keys:
+                active_slot = preference_slot_for_row(m)
+                if (key and key in seen_keys) or (active_slot and active_slot in seen_keys):
                     continue
                 if not _include_memory(m):
                     continue
@@ -3801,9 +3839,11 @@ Your synthesized response:"""
                         seen_keys.add(key)
                     merged.append((adjusted, importance, m, 'intel' if _is_intel_source(source_name) else 'semantic'))
             
-            # Sort by score desc, then importance desc; take top N
+            # Canonical preferences are a separate always-applied lane. The
+            # retrieval limit caps only Intel/keyword/semantic matches.
+            active_preferences.sort(key=lambda x: (x[0], x[1]), reverse=True)
             merged.sort(key=lambda x: (x[0], x[1]), reverse=True)
-            top = merged[:limit]
+            top = active_preferences + merged[:limit]
 
             top_candidates = list(keyword_candidates[: min(max(limit, 3), 5)])
             for candidate in semantic_candidates[: min(max(limit, 3), 5)]:
@@ -3872,7 +3912,9 @@ Your synthesized response:"""
                 # match_hint: rank_score is what we sorted on; embed = raw cosine when present
                 raw_embed = float(m.get("similarity") or 0)
                 if source == "always":
-                    match_hint = f"pinned_pref rank={rank_score:.2f}"
+                    slot = m.get('preference_slot') or m.get('key', '')
+                    scope = m.get('preference_scope', 'persistent')
+                    match_hint = f"active_pref slot={slot} scope={scope} rank={rank_score:.2f}"
                 elif source == "intel":
                     # Intel via semantic search carries similarity; FTS intel hits do not
                     if raw_embed > 0:
@@ -3913,7 +3955,8 @@ Your synthesized response:"""
             }
             lines = [
                 "=== RELEVANT STORED KNOWLEDGE (use directly when relevant) ===",
-                "Lines tagged pinned_pref are address/tone preferences (e.g. call me sir)—honor those over your defaults when they apply.",
+                "Lines tagged active_pref are the one resolved value for a canonical response-preference slot.",
+                "Precedence: the current user request wins for this turn; then active_pref; then Profile Card baseline, other memory, and Intelligence guidance. Never merge contradictory names, styles, languages, or tones.",
                 "Other lines are semantic or exact-keyword matches for this query (not necessarily instructions); use when relevant and ignore if off-topic or stale.",
                 "If this block already answers the question, use it directly. Call search_memory or semantic_recall only if you need broader recall than what is shown here.",
                 "Freshness note: For live market/weather questions, newer live tool calls outrank older stored memory.",

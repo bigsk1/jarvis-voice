@@ -67,7 +67,7 @@ class MemoryDBUpdateSyncTests(unittest.TestCase):
             metadata = json.loads(row["metadata"])
 
             self.assertEqual(metadata["memory_type"], "preference")
-            self.assertEqual(metadata["memory_type_reason"], "preference_marker")
+            self.assertEqual(metadata["memory_type_reason"], "canonical_preference_slot")
         finally:
             db.close()
 

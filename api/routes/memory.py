@@ -267,7 +267,9 @@ async def create_memory(memory: MemoryCreate):
     """
     Create or update a memory.
     
-    If a memory with the same category+key exists, it will be updated.
+    If a memory with the same category+key exists, it will be updated. Canonical
+    response preferences use slot+scope identity instead; session scope also
+    includes preference_session_id, and temporary scope requires an expiry/TTL.
     Generates vector embedding for semantic search by default.
     
     **Categories**: personal, technical, contact, preference, project, fact, location, other
@@ -280,6 +282,17 @@ async def create_memory(memory: MemoryCreate):
     """
     try:
         db = get_db()
+        metadata = dict(memory.metadata or {})
+        if memory.preference_slot:
+            metadata["preference_slot"] = memory.preference_slot
+        if memory.preference_scope:
+            metadata["preference_scope"] = memory.preference_scope
+        if memory.preference_session_id:
+            metadata["preference_session_id"] = memory.preference_session_id
+        if memory.expires_at:
+            metadata["expires_at"] = memory.expires_at
+        if memory.ttl_minutes is not None:
+            metadata["ttl_minutes"] = memory.ttl_minutes
         memory_id = db.remember(
             category=memory.category,
             key=memory.key,
@@ -287,7 +300,7 @@ async def create_memory(memory: MemoryCreate):
             importance=memory.importance,
             source=memory.source,
             generate_embedding=memory.generate_embedding,
-            metadata=memory.metadata
+            metadata=metadata,
         )
         
         return MemoryResponse(
@@ -295,6 +308,8 @@ async def create_memory(memory: MemoryCreate):
             memory_id=memory_id,
             message=f"Memory saved (ID: {memory_id})"
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

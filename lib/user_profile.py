@@ -169,7 +169,8 @@ def format_profile_card_prompt_section(card_text: str) -> str:
     if not card_text:
         return ""
     return (
-        "USER PROFILE CARD (synthesis only; runtime env/response_style/explicit prefs win on conflict):\n"
+        "USER PROFILE CARD (baseline only; the current user instruction and active response "
+        "preferences win on conflict; never merge contradictory identity/style values):\n"
         f"{card_text}"
     )
 
@@ -179,7 +180,9 @@ ROUTER_PROFILE_BOUNDARY = (
     "Apply for direct-text answers and for tool choice/arguments when the card gives relevant "
     "constraints (e.g. research before changes, ask before destructive actions).\n"
     "Does not affect Tool RAG retrieval — only this routing LLM system prompt.\n"
-    "Runtime RESPONSE STYLE / provider capabilities already in this prompt win on conflic."
+    "Treat this card as a baseline. The current user instruction and active response preferences "
+    "win on conflict; never merge contradictory identity/style values. Runtime RESPONSE STYLE / "
+    "provider capabilities already in this prompt also win on conflict."
 )
 
 

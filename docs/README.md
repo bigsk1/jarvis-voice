@@ -957,7 +957,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 **2026-02-15:**
 - ✅ **Auto-Memory Injection** - Relevant memories loaded into LLM context automatically
   - No tool calls needed for recall; "What do you know about Jessi?" works without search_memory
-  - **Always-include**: Addressing/response-style only (call me sir, tone, language) – 1–2 items max
+  - **Always-include**: Up to all four resolved response-preference slots, separate from the query-retrieval limit
   - **Semantic search**: Topic-specific memories (dog, Spotify, etc.) only when relevant to query
   - Recency weighting: recent memories rank slightly higher; 60+ day old fade
   - Config: `AUTO_MEMORY_INJECTION_ENABLED`, `AUTO_MEMORY_LIMIT`, `AUTO_MEMORY_SIMILARITY_THRESHOLD`, `AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT`

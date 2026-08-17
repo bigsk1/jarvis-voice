@@ -52,11 +52,25 @@ Memory runs on the **raw user transcript** for search; the **injected blocks** a
 
 ### Implementation (`orchestrator/orchestrator_v2.py` → `_get_relevant_memories`)
 
-**Merge:** Candidates come from (1) addressing preferences (pinned), (2) optional intel FTS matches on tooling-heavy queries, (3) precise FTS5 matches where every meaningful query term is present, and (4) semantic search with recency weighting and intel boosts. Each row gets a numeric **score** used for ordering.
+**Merge:** Candidates come from (1) resolved canonical response preferences, (2) optional intel FTS matches on tooling-heavy queries, (3) precise FTS5 matches where every meaningful query term is present, and (4) semantic search with recency weighting and intel boosts. Each row gets a numeric **score** used for ordering. Search rows ingested from `intel/user-profile.md` are excluded from auto-memory because the exact Profile Card is already present in router and synthesis prompts.
 
-**Sort:** `merged.sort(key=lambda x: (score, importance), reverse=True)`, then `top = merged[:AUTO_MEMORY_LIMIT]`. Primary key is **score** (higher = listed first). **Importance** breaks ties. **Recency** is not a separate column; it multiplies semantic similarity before comparison. There is no “newest first” sort by itself.
+**Sort:** Resolved canonical preferences are kept in a separate always-applied lane. Intel/keyword/semantic hits are sorted with `merged.sort(key=lambda x: (score, importance), reverse=True)` and sliced to `AUTO_MEMORY_LIMIT`; the active preferences are then prepended without consuming that retrieval budget. Primary retrieval key is **score** (higher = listed first). **Importance** breaks ties. **Recency** is not a separate column; it multiplies semantic similarity before comparison. There is no “newest first” retrieval sort by itself.
 
-**Prompt lines:** Each bullet includes its exact `memory_id` plus a short **match hint**: `rank=…` matches the sort key; semantic rows also show `embed=…` (raw cosine before recency). The ID lets a clearly identified injected row feed an ID-only `update_memory` or `forget` call without another lookup. A header line states the **semantic bar** (`AUTO_MEMORY_SIMILARITY_THRESHOLD`): adjusted dense rank must be ≥ threshold to qualify. Exact keyword rows use `keyword_exact` and are independent of that cosine threshold. Pinned and intel-keyword rows use fixed tags (`pinned_pref`, `intel_kw`, `intel_curated`, `intel_semantic`).
+**Prompt lines:** Each bullet includes its exact `memory_id` plus a short **match hint**: `rank=…` matches the sort key; semantic rows also show `embed=…` (raw cosine before recency). The ID lets a clearly identified injected row feed an ID-only `update_memory` or `forget` call without another lookup. A header line states the **semantic bar** (`AUTO_MEMORY_SIMILARITY_THRESHOLD`): adjusted dense rank must be ≥ threshold to qualify. Exact keyword rows use `keyword_exact` and are independent of that cosine threshold. Response preferences use `active_pref slot=… scope=…`; intel rows use `intel_kw`, `intel_curated`, or `intel_semantic`.
+
+### Canonical response-preference lifecycle
+
+Only four slots bypass query relevance: `how_to_address_user`, `response_style`, `preferred_language`, and `response_tone`. Recognized aliases are canonicalized during `remember`, so another write to the same persistent slot updates one row instead of creating a competing preference.
+
+Scopes are deterministic:
+
+1. Current-turn user instruction
+2. Matching `session` preference
+3. Unexpired `temporary` preference
+4. `persistent` preference
+5. Profile Card baseline, other query-relevant memory, and Intelligence guidance
+
+`session` rows are selected only for their Jarvis/Web conversation ID. `temporary` rows require `expires_at` or `ttl_minutes`; expired rows are ignored and the persistent value becomes active again. Within one slot and scope, the most recently updated row wins regardless of importance. The injector emits at most one active row per slot, admits all four by default, and suppresses canonical rows from search lanes so inactive values cannot leak back in.
 
 **Config** (cloud.env / local.env):
 
@@ -77,7 +91,7 @@ AUTO_MEMORY_SIMILARITY_THRESHOLD=0.40
 | 0.45 | Fewer, tighter matches |
 | 0.50+ | Only very close matches |
 
-**Token impact**: ~5–10 memories × ~50 tokens ≈ 250–500 tokens per request. Similar to auto-context.
+**Token impact**: shipped retrieval adds up to 2 local / 3 cloud rows, plus up to four short canonical preference rows when all slots are populated. The preference lane is intentionally small and is not traded away against query recall.
 
 ---
 
@@ -171,7 +185,7 @@ Or: always include top N high-importance memories (e.g., importance ≥ 8) up to
 **Refinement**: Combine query-based semantic search with a small "always include" set:
 
 - Query-based: `semantic_search(transcript)` – topic relevance.
-- Always-include: `get_addressing_preferences(limit=2)` – addressing/response-style only.
+- Always-include: `get_addressing_preferences(limit=4)` – one resolved value per canonical response slot.
 
 ---
 
@@ -187,32 +201,32 @@ AUTO_MEMORY_LIMIT=3
 AUTO_MEMORY_SIMILARITY_THRESHOLD=0.40
 AUTO_MEMORY_TYPE_FILTER_ENABLED=true
 AUTO_MEMORY_RECENCY_ENABLED=true
-AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT=2
+AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT=4
 ```
 
 | Var | Default | Description |
 |-----|---------|--------------|
 | `AUTO_MEMORY_INJECTION_ENABLED` | true | Master switch – set false to disable |
-| `AUTO_MEMORY_LIMIT` | 3 cloud / 2 local (shipped) | Max memories injected per request |
+| `AUTO_MEMORY_LIMIT` | 3 cloud / 2 local (shipped) | Max Intel/keyword/semantic hits; active canonical preferences are additional |
 | `AUTO_MEMORY_SIMILARITY_THRESHOLD` | 0.40 (shipped) | Min similarity (0.35–0.42 recommended) |
 | `AUTO_MEMORY_TYPE_FILTER_ENABLED` | true | Filter injected memories by query type |
 | `AUTO_MEMORY_RECENCY_ENABLED` | true | Recent memories rank slightly higher |
-| `AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT` | 2 | Max addressing/response-style items always included |
+| `AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT` | 4 | Max active canonical response-preference slots injected; `0` disables this lane |
 
 ---
 
 ## Implementation (Phases 1–3)
 
-- **orchestrator/orchestrator_v2.py**: `_get_relevant_memories()` – semantic search, recency weighting, always-include preferences
-- **lib/memory_db.py**: `get_addressing_preferences()` – addressing/response-style only
+- **orchestrator/orchestrator_v2.py**: `_get_relevant_memories()` – semantic search, recency weighting, resolved active preferences
+- **lib/memory_db.py**: canonical preference writes plus scope/expiry-aware `get_addressing_preferences()`
 - **orchestrator/router_v2.py**: Stronger remember prompting for "call me sir" / "from now on" patterns
 - **config/*.env.example**: All `AUTO_MEMORY_*` vars documented
 
-Recency: 7 days = 1.0, 30 days = 0.97, 60 days = 0.94, 120 days = 0.90, older than 120 days = 0.85. Importance used for tie-break and conflict resolution.
+Recency: 7 days = 1.0, 30 days = 0.97, 60 days = 0.94, 120 days = 0.90, older than 120 days = 0.85. Importance is only a tie-break for ordinary retrieval rows; canonical preference conflicts are resolved by scope and update time before ranking.
 
-**Labeling**: Always-included preferences show "user preference (always included)" (not "100% relevance") so it's clear they're not semantically matched to the query. Semantic results show actual relevance %.
+**Labeling**: Always-included preferences show `active_pref` with their canonical slot and scope (not a fake semantic percentage). Semantic results show actual relevance.
 
-**Always-include = addressing/response-style only**: Keys matching `address`, `how_to`, `response_tone`, `response_style`, `preferred_language` are the only ones always injected. Topic-specific prefs (dog, Spotify, etc.) appear only when semantically relevant to the query.
+**Always-include = canonical response preferences only**: The four canonical slots are the only preferences always injected. Topic-specific preferences (dog, Spotify, etc.) appear only when semantically relevant to the query.
 
 ## Related Docs
 

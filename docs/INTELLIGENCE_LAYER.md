@@ -1938,15 +1938,16 @@ USER_CORRECTION_LEARNING_MODE=apply    # downgrade linked experience + optional 
 
 ---
 
-## Profile Card boundary (2026)
+## Profile Card and response-preference boundary (2026)
 
-Stable user preferences are injected **before** intelligence insights via `lib/user_profile.py`:
+The Profile Card is a curated baseline injected through `lib/user_profile.py`:
 
 - Source: memory DB `user_model` table (cloud/local DBs)
 - Injected as a compact **Profile Card** in router context
-- Complements intelligence insights (learned routing) with explicit prefs (tone, tool prefs, boundaries)
+- Canonical response preferences from `remember` are resolved separately by scope/expiry and override conflicting Profile Card or Intelligence text
+- Current-turn instructions override both
 
-Does **not** replace `jarvis-intel` files — those remain the manual override layer. See [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md) for schema and edit workflow.
+This does **not** replace `jarvis-intel` files for operational knowledge and learned routing. Intelligence guidance must not override explicit identity, language, style, or tone preferences. See [USER_PROFILE_SYSTEM.md](USER_PROFILE_SYSTEM.md) for schema and edit workflow.
 
 ---
 

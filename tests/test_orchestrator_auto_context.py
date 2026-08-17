@@ -26,7 +26,7 @@ class OrchestratorAutoContextTests(unittest.TestCase):
         orch._safe_iso_to_local_datetime = lambda value: None
 
         class FakeDb:
-            def get_addressing_preferences(self, limit):
+            def get_addressing_preferences(self, limit, session_id=None):
                 return []
 
             def fts_search(self, transcript, limit):
@@ -77,7 +77,7 @@ class OrchestratorAutoContextTests(unittest.TestCase):
         orch._safe_iso_to_local_datetime = lambda value: None
 
         class FakeDb:
-            def get_addressing_preferences(self, limit):
+            def get_addressing_preferences(self, limit, session_id=None):
                 return []
 
             def fts_search(self, transcript, limit):
@@ -138,7 +138,7 @@ class OrchestratorAutoContextTests(unittest.TestCase):
             def __init__(self):
                 self.semantic_limit = None
 
-            def get_addressing_preferences(self, limit):
+            def get_addressing_preferences(self, limit, session_id=None):
                 return []
 
             def fts_search(self, transcript, limit):
@@ -203,6 +203,241 @@ class OrchestratorAutoContextTests(unittest.TestCase):
         self.assertEqual(fake_db.semantic_limit, 10)
         self.assertIn("durable_fact", bundle["context"])
         self.assertNotIn("stash_item_", bundle["context"])
+
+    def test_active_preference_uses_session_and_suppresses_profile_card_duplicates(self):
+        orch = Orchestrator.__new__(Orchestrator)
+        orch.timezone = ZoneInfo("America/Los_Angeles")
+        orch.web_conversation_id = "web-conversation-123"
+        orch.session_id = "jarvis-session-456"
+        orch._safe_iso_to_local_datetime = lambda value: None
+
+        class FakeDb:
+            requested_session_id = None
+
+            def get_addressing_preferences(self, limit, session_id=None):
+                self.requested_session_id = session_id
+                return [
+                    {
+                        "id": 77,
+                        "key": "how_to_address_user",
+                        "value": "Call me Joe",
+                        "category": "preference",
+                        "source": "user_conversation",
+                        "metadata": {
+                            "memory_type": "preference",
+                            "preference_slot": "how_to_address_user",
+                            "preference_scope": "session",
+                        },
+                        "preference_slot": "how_to_address_user",
+                        "preference_scope": "session",
+                        "importance": 7,
+                        "updated_at": _sqlite_utc(datetime.now(timezone.utc)),
+                    }
+                ]
+
+            def fts_search(self, transcript, limit):
+                return []
+
+            def fts_search_precise(self, transcript, limit):
+                return [
+                    {
+                        "id": 88,
+                        "key": "Core Identity - Name",
+                        "value": "Boss",
+                        "category": "personal",
+                        "source": "intel/user-profile.md",
+                        "metadata": {"memory_type": "fact"},
+                        "importance": 9,
+                    }
+                ]
+
+            def semantic_search(self, query, limit, similarity_threshold):
+                return [
+                    {
+                        "id": 89,
+                        "key": "preferred_name",
+                        "value": "Call me Old Name",
+                        "category": "preference",
+                        "source": "remember",
+                        "metadata": {"memory_type": "preference"},
+                        "similarity": 0.99,
+                        "importance": 10,
+                    }
+                ]
+
+        fake_db = FakeDb()
+
+        def fake_get_config_value(key, default=None):
+            values = {
+                "AUTO_MEMORY_INJECTION_ENABLED": "true",
+                "AUTO_MEMORY_RECENCY_ENABLED": "false",
+                "AUTO_MEMORY_TYPE_FILTER_ENABLED": "true",
+            }
+            return values.get(key, default)
+
+        with patch("orchestrator_v2.get_memory_db", return_value=fake_db), patch(
+            "orchestrator_v2.get_config_value", side_effect=fake_get_config_value
+        ), patch("orchestrator_v2.get_int", return_value=4), patch(
+            "orchestrator_v2.get_float", return_value=0.42
+        ):
+            bundle = orch._get_relevant_memories_bundle("How should you address me?")
+
+        assert fake_db.requested_session_id == "web-conversation-123"
+        self.assertIn("Call me Joe", bundle["context"])
+        self.assertIn("active_pref slot=how_to_address_user scope=session", bundle["context"])
+        self.assertIn("current user request wins", bundle["context"])
+        self.assertNotIn("Call me Old Name", bundle["context"])
+        self.assertNotIn("Core Identity - Name", bundle["context"])
+
+    def test_inactive_scoped_preference_cannot_reenter_through_semantic_search(self):
+        orch = Orchestrator.__new__(Orchestrator)
+        orch.timezone = ZoneInfo("America/Los_Angeles")
+        orch.session_id = "current-session"
+        orch.web_conversation_id = None
+        orch._safe_iso_to_local_datetime = lambda value: None
+
+        class FakeDb:
+            def get_addressing_preferences(self, limit, session_id=None):
+                return []
+
+            def fts_search(self, transcript, limit):
+                return []
+
+            def fts_search_precise(self, transcript, limit):
+                return []
+
+            def semantic_search(self, query, limit, similarity_threshold):
+                return [
+                    {
+                        "id": 101,
+                        "key": "preference_override:response_style:session:old",
+                        "value": "Talk like a pirate",
+                        "category": "preference",
+                        "source": "user_conversation",
+                        "metadata": {
+                            "memory_type": "preference",
+                            "preference_slot": "response_style",
+                            "preference_scope": "session",
+                            "preference_session_id": "different-session",
+                        },
+                        "similarity": 0.99,
+                        "importance": 10,
+                    }
+                ]
+
+        def fake_get_config_value(key, default=None):
+            values = {
+                "AUTO_MEMORY_INJECTION_ENABLED": "true",
+                "AUTO_MEMORY_RECENCY_ENABLED": "false",
+                "AUTO_MEMORY_TYPE_FILTER_ENABLED": "true",
+            }
+            return values.get(key, default)
+
+        with patch("orchestrator_v2.get_memory_db", return_value=FakeDb()), patch(
+            "orchestrator_v2.get_config_value", side_effect=fake_get_config_value
+        ), patch("orchestrator_v2.get_int", return_value=4), patch(
+            "orchestrator_v2.get_float", return_value=0.42
+        ):
+            bundle = orch._get_relevant_memories_bundle("Please use pirate style")
+
+        self.assertFalse(bundle["meta"]["injected"])
+        self.assertNotIn("Talk like a pirate", bundle["context"])
+
+    def test_all_four_active_preferences_are_additional_to_retrieval_limit(self):
+        orch = Orchestrator.__new__(Orchestrator)
+        orch.timezone = ZoneInfo("America/Los_Angeles")
+        orch.session_id = "current-session"
+        orch.web_conversation_id = None
+        orch._safe_iso_to_local_datetime = lambda value: None
+
+        class FakeDb:
+            requested_preference_limit = None
+
+            def get_addressing_preferences(self, limit, session_id=None):
+                self.requested_preference_limit = limit
+                slots = [
+                    ("how_to_address_user", "Call me Joe", "session"),
+                    ("response_style", "Use pirate phrasing", "temporary"),
+                    ("preferred_language", "Use Australian English", "persistent"),
+                    ("response_tone", "Be direct and humorous", "persistent"),
+                ]
+                return [
+                    {
+                        "id": 200 + index,
+                        "key": slot,
+                        "value": value,
+                        "category": "preference",
+                        "source": "user_conversation",
+                        "metadata": {
+                            "memory_type": "preference",
+                            "preference_slot": slot,
+                            "preference_scope": scope,
+                        },
+                        "preference_slot": slot,
+                        "preference_scope": scope,
+                        "importance": 8,
+                        "updated_at": _sqlite_utc(datetime.now(timezone.utc)),
+                    }
+                    for index, (slot, value, scope) in enumerate(slots)
+                ]
+
+            def fts_search(self, transcript, limit):
+                return []
+
+            def fts_search_precise(self, transcript, limit):
+                return [
+                    {
+                        "id": 301 + index,
+                        "key": f"keyword_fact_{index}",
+                        "value": f"Retrieved fact {index}",
+                        "category": "fact",
+                        "source": "remember",
+                        "metadata": {"memory_type": "fact"},
+                        "importance": 5,
+                    }
+                    for index in range(1, 4)
+                ]
+
+            def semantic_search(self, query, limit, similarity_threshold):
+                return []
+
+        fake_db = FakeDb()
+
+        def fake_get_config_value(key, default=None):
+            values = {
+                "AUTO_MEMORY_INJECTION_ENABLED": "true",
+                "AUTO_MEMORY_RECENCY_ENABLED": "false",
+                "AUTO_MEMORY_TYPE_FILTER_ENABLED": "true",
+                "USER_PROFILE_CARD_ENABLED": "true",
+            }
+            return values.get(key, default)
+
+        def fake_get_int(key, default=0):
+            return {
+                "AUTO_MEMORY_LIMIT": 2,
+                "AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT": 4,
+            }.get(key, default)
+
+        with patch("orchestrator_v2.get_memory_db", return_value=fake_db), patch(
+            "orchestrator_v2.get_config_value", side_effect=fake_get_config_value
+        ), patch("orchestrator_v2.get_int", side_effect=fake_get_int), patch(
+            "orchestrator_v2.get_float", return_value=0.42
+        ):
+            bundle = orch._get_relevant_memories_bundle("Tell me the retrieved facts")
+
+        self.assertEqual(fake_db.requested_preference_limit, 4)
+        for expected in (
+            "Call me Joe",
+            "Use pirate phrasing",
+            "Use Australian English",
+            "Be direct and humorous",
+            "Retrieved fact 1",
+            "Retrieved fact 2",
+        ):
+            self.assertIn(expected, bundle["context"])
+        self.assertNotIn("Retrieved fact 3", bundle["context"])
+        self.assertEqual(bundle["meta"]["limit"], 2)
+        self.assertEqual(bundle["meta"]["injected_count"], 6)
 
     def test_auto_context_instructions_are_compact_and_tool_agnostic(self):
         orch = Orchestrator.__new__(Orchestrator)

@@ -20,7 +20,11 @@ from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
 from config_loader import get_bool, get_float, get_int, load_config
-from memory_db import MemoryDB, is_eligible_for_auto_memory_inject
+from memory_db import (
+    MemoryDB,
+    is_eligible_for_auto_memory_inject,
+    preference_slot_for_row,
+)
 
 DEFAULT_TEST_QUERIES = [
     "call me sir",
@@ -74,6 +78,10 @@ def parse_args() -> argparse.Namespace:
         "--always-include-limit",
         type=int,
         help="Override AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT",
+    )
+    parser.add_argument(
+        "--session-id",
+        help="Resolve session-scoped preferences for this Jarvis/Web conversation ID",
     )
     parser.add_argument(
         "--no-recency",
@@ -261,49 +269,65 @@ def collect_auto_memory_diagnostics(
     recency_enabled: bool,
     addressing_limit: int,
     type_filter_enabled: bool = True,
+    session_id: str | None = None,
+    profile_card_enabled: bool = True,
 ) -> dict:
     now = datetime.now()
     transcript_lower = query.lower()
     seen_keys = set()
     merged = []
+    active_preferences = []
     semantic_candidates = []
     always_candidates = []
     intel_candidates = []
     keyword_candidates = []
 
-    def include_memory(memory: dict) -> bool:
+    def include_memory(memory: dict, *, allow_active_preference: bool = False) -> bool:
+        source_name = str(memory.get("source") or "").replace("\\", "/").lower()
+        if profile_card_enabled and source_name.endswith("intel/user-profile.md"):
+            return False
+        if preference_slot_for_row(memory) and not allow_active_preference:
+            return False
         return (
             not type_filter_enabled
             or is_eligible_for_auto_memory_inject(memory)
         )
 
     if addressing_limit > 0:
-        for memory in db.get_addressing_preferences(limit=addressing_limit):
+        for memory in db.get_addressing_preferences(
+            limit=addressing_limit,
+            session_id=session_id,
+        ):
             key = memory.get("key", "")
             value = memory.get("value", "")
             if (
                 not key
                 or key in seen_keys
                 or is_no_preference(value)
-                or not include_memory(memory)
+                or not include_memory(memory, allow_active_preference=True)
             ):
                 continue
             seen_keys.add(key)
+            scope = memory.get("preference_scope", "persistent")
             entry = build_entry(
                 memory,
                 bucket="always",
                 base_similarity=None,
-                adjusted_score=1.10,
+                adjusted_score={
+                    "persistent": 1.20,
+                    "temporary": 1.25,
+                    "session": 1.30,
+                }.get(scope, 1.20),
                 threshold=threshold,
                 importance=memory.get("importance", 5),
                 recency_factor=1.0,
                 recency_band="always",
                 include=True,
-                reason="always included addressing/style preference",
+                reason=f"active canonical preference ({scope})",
                 query_source="always",
             )
             always_candidates.append(entry)
-            merged.append(entry)
+            active_preferences.append(entry)
 
     if is_tooling_query(transcript_lower):
         intel_matches = [
@@ -428,6 +452,10 @@ def collect_auto_memory_diagnostics(
         if include:
             merged.append(entry)
 
+    active_preferences.sort(
+        key=lambda item: (item["adjusted_score"], item["importance"]),
+        reverse=True,
+    )
     merged.sort(
         key=lambda item: (item["adjusted_score"], item["importance"]),
         reverse=True,
@@ -440,7 +468,7 @@ def collect_auto_memory_diagnostics(
         ),
         reverse=True,
     )
-    injected = merged[:limit]
+    injected = active_preferences + merged[:limit]
 
     return {
         "query": query,
@@ -450,6 +478,8 @@ def collect_auto_memory_diagnostics(
         "recency_enabled": recency_enabled,
         "addressing_limit": addressing_limit,
         "type_filter_enabled": type_filter_enabled,
+        "session_id": session_id,
+        "profile_card_enabled": profile_card_enabled,
         "always_candidates": always_candidates,
         "intel_candidates": intel_candidates,
         "keyword_candidates": keyword_candidates,
@@ -504,7 +534,7 @@ def print_query_report(result: dict, show_all: bool, sweep_values: list[float], 
     print("=" * 100)
     print(
         f"Mode={mode}  DB={result['db_path']}  threshold={result['threshold']:.2f}  "
-        f"candidate_threshold={result['candidate_threshold']:.2f}  limit={result['limit']}  "
+        f"candidate_threshold={result['candidate_threshold']:.2f}  retrieval_limit={result['limit']}  "
         f"recency={'on' if result['recency_enabled'] else 'off'}  "
         f"always_include_limit={result['addressing_limit']}"
     )
@@ -554,6 +584,8 @@ def print_query_report(result: dict, show_all: bool, sweep_values: list[float], 
             recency_enabled=result["recency_enabled"],
             addressing_limit=result["addressing_limit"],
             type_filter_enabled=result["type_filter_enabled"],
+            session_id=result["session_id"],
+            profile_card_enabled=result["profile_card_enabled"],
         )
         top_keys = ", ".join(entry["key"] or "<no-key>" for entry in sweep_result["injected"][:4]) or "none"
         marker = " <==" if abs(sweep_threshold - result["threshold"]) < 0.0001 else ""
@@ -578,7 +610,7 @@ def main():
     addressing_limit = (
         args.always_include_limit
         if args.always_include_limit is not None
-        else get_int("AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT", 2)
+        else get_int("AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT", 4)
     )
     recency_enabled = (
         False
@@ -586,6 +618,7 @@ def main():
         else get_bool("AUTO_MEMORY_RECENCY_ENABLED", True)
     )
     type_filter_enabled = get_bool("AUTO_MEMORY_TYPE_FILTER_ENABLED", True)
+    profile_card_enabled = get_bool("USER_PROFILE_CARD_ENABLED", True)
     sweep_values = parse_sweep_values(args.sweep)
 
     queries = [args.query] if args.query else DEFAULT_TEST_QUERIES
@@ -607,6 +640,8 @@ def main():
             recency_enabled=recency_enabled,
             addressing_limit=addressing_limit,
             type_filter_enabled=type_filter_enabled,
+            session_id=args.session_id,
+            profile_card_enabled=profile_card_enabled,
         )
         print_query_report(result, show_all=args.all, sweep_values=sweep_values, mode=mode)
 

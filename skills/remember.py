@@ -7,11 +7,11 @@ Security:
 - Flags suspicious content for review
 - Limits content length
 """
-import sys
 import json
+import logging
 import os
 import re
-import logging
+import sys
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -19,9 +19,8 @@ logger = logging.getLogger(__name__)
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lib'))
-from memory_db import get_memory_db
-from config_loader import load_config
-
+from config_loader import load_config  # noqa: E402
+from memory_db import get_memory_db, normalize_preference_write  # noqa: E402
 
 # Prompt injection detection patterns
 INJECTION_PATTERNS = [
@@ -96,6 +95,10 @@ def main():
         key = args.get('key')
         value = args.get('value')
         importance = args.get('importance', 5)
+        preference_slot = args.get('preference_slot')
+        preference_scope = args.get('preference_scope')
+        expires_at = args.get('expires_at')
+        ttl_minutes = args.get('ttl_minutes')
         
         # SECURITY: Sanitize inputs
         if key:
@@ -122,15 +125,29 @@ def main():
             return result
         
         # Store in memory with metadata
-        from datetime import datetime
-        db = get_memory_db()
+        from datetime import datetime, timezone
         
         # Build metadata
         metadata = {
             "created_by": "user_conversation",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "tool": "remember"
         }
+        if preference_slot:
+            metadata["preference_slot"] = preference_slot
+        if preference_scope:
+            metadata["preference_scope"] = preference_scope
+        if expires_at:
+            metadata["expires_at"] = expires_at
+        if ttl_minutes is not None:
+            metadata["ttl_minutes"] = ttl_minutes
+        if preference_scope == "session":
+            web_conversation_id = os.environ.get("JARVIS_WEB_CONVERSATION_ID", "").strip()
+            jarvis_session_id = os.environ.get("JARVIS_SESSION_ID", "").strip()
+            if web_conversation_id:
+                metadata["web_conversation_id"] = web_conversation_id
+            if jarvis_session_id:
+                metadata["jarvis_session_id"] = jarvis_session_id
         
         # SECURITY: Flag suspicious content in metadata
         if key_suspicious or value_suspicious:
@@ -138,6 +155,15 @@ def main():
             metadata["matched_pattern"] = key_pattern or value_pattern
             # Lower importance for flagged content
             importance = min(importance, 3)
+
+        category, key, metadata = normalize_preference_write(
+            category,
+            key,
+            metadata,
+        )
+        storage_key = key
+        display_key = metadata.get("preference_slot") or key
+        db = get_memory_db()
         
         memory_id = db.remember(
             category=category,
@@ -151,13 +177,17 @@ def main():
         
         result = {
             "ok": True,
-            "speech": f"I'll remember that: {key} is {value}",
+            "speech": f"I'll remember {display_key}: {value}",
             "data": {
                 "memory_id": memory_id,
                 "category": category,
-                "key": key,
+                "key": display_key,
+                "storage_key": storage_key if storage_key != display_key else None,
                 "value": value,
-                "importance": importance
+                "importance": importance,
+                "preference_slot": metadata.get("preference_slot"),
+                "preference_scope": metadata.get("preference_scope"),
+                "expires_at": metadata.get("expires_at"),
             }
         }
         
@@ -176,4 +206,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

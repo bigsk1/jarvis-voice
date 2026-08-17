@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "update_memory",
-  "description": "Update or correct an existing memory by explicit ID. Use a memory ID already visible in the current conversation or injected memory context when it clearly identifies the intended record; otherwise call search_memory or semantic_recall first. If identification is missing or ambiguous, do not update. This tool never searches or fuzzy-matches.",
+  "description": "Update or correct an existing memory by explicit ID. Use a memory ID already visible in the current conversation or injected memory context when it clearly identifies the intended record; otherwise call search_memory or semantic_recall first. If identification is missing or ambiguous, do not update. This tool never searches or fuzzy-matches. To change a response preference's slot, scope, or expiry, call remember with the canonical preference fields instead.",
   "complementary_tools": [
     "search_memory",
     "semantic_recall",

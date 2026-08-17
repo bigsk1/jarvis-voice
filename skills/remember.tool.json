@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "remember",
-  "description": "Store important information in persistent memory. Use this when the user shares information that should be remembered for future conversations, such as: personal facts (name, birthday, family), preferences (favorite places, settings), important contacts (doctor, dentist), locations (home address, work), or any other information that would be useful to recall later. You should proactively decide what's important to remember - don't wait to be told.",
+  "description": "Store important information in memory. Use this for durable personal facts, preferences, contacts, locations, projects, and reusable technical knowledge. Response preferences use canonical slots so changes replace the active value instead of creating contradictions. Persistent is the default; use session only for this chat, or temporary with an expiry/TTL for requests such as 'for today'.",
   "complementary_tools": [
     "update_memory",
     "manage_intel"
@@ -28,7 +28,7 @@
       },
       "key": {
         "type": "string",
-        "description": "What this information is about (e.g., 'wife_birthday', 'favorite_restaurant', 'doctor')"
+        "description": "What this information is about (e.g., 'wife_birthday', 'favorite_restaurant', 'doctor'). For a response preference, use the same value as preference_slot. Recognized legacy aliases are canonicalized."
       },
       "value": {
         "type": "string",
@@ -39,6 +39,34 @@
         "description": "How important this is (1-10): Critical personal data (birthday, family, health) = 9-10, Important preferences/projects = 7-8, Useful technical knowledge = 5-7, Temporary/test data = 3-4, Ephemeral data = 1-2. Default to 7 if unsure.",
         "minimum": 1,
         "maximum": 10
+      },
+      "preference_slot": {
+        "type": "string",
+        "enum": [
+          "how_to_address_user",
+          "response_style",
+          "preferred_language",
+          "response_tone"
+        ],
+        "description": "Canonical slot for an always-applied response preference. Omit for ordinary topic preferences such as favorite music."
+      },
+      "preference_scope": {
+        "type": "string",
+        "enum": [
+          "persistent",
+          "session",
+          "temporary"
+        ],
+        "description": "Lifetime for a canonical response preference. persistent is the default; session applies only to the current chat; temporary applies across chats until expires_at or ttl_minutes."
+      },
+      "expires_at": {
+        "type": "string",
+        "description": "ISO 8601 expiry with timezone for a temporary preference (for example 2026-08-18T00:00:00-07:00). Optional for session preferences."
+      },
+      "ttl_minutes": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Alternative lifetime in minutes for a temporary preference. Do not send together with expires_at."
       }
     },
     "required": [

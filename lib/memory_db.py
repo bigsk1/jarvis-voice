@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import pickle
+import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -142,6 +143,167 @@ def parse_memory_metadata(raw) -> dict:
         except json.JSONDecodeError:
             return {}
     return {}
+
+
+CANONICAL_PREFERENCE_SLOTS = (
+    "how_to_address_user",
+    "response_style",
+    "preferred_language",
+    "response_tone",
+)
+CANONICAL_PREFERENCE_SCOPES = frozenset({"persistent", "session", "temporary"})
+_PREFERENCE_SLOT_ALIASES = {
+    "how_to_address_user": "how_to_address_user",
+    "address_user": "how_to_address_user",
+    "address_me_as": "how_to_address_user",
+    "preferred_name": "how_to_address_user",
+    "call_me": "how_to_address_user",
+    "response_style": "response_style",
+    "writing_style": "response_style",
+    "speaking_style": "response_style",
+    "communication_style": "response_style",
+    "preferred_language": "preferred_language",
+    "response_language": "preferred_language",
+    "language_preference": "preferred_language",
+    "response_tone": "response_tone",
+    "tone_preference": "response_tone",
+    "communication_tone": "response_tone",
+}
+
+
+def _normalized_preference_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+
+
+def parse_preference_expires_at(value) -> datetime | None:
+    """Parse an ISO preference expiry and normalize it to UTC."""
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("expires_at must be an ISO 8601 date/time") from exc
+    if parsed.tzinfo is None:
+        raise ValueError("expires_at must include a timezone offset")
+    return parsed.astimezone(timezone.utc)
+
+
+def preference_slot_for_row(memory: dict) -> str | None:
+    """Return a canonical response-preference slot for a memory row, if any."""
+    metadata = parse_memory_metadata(memory.get("metadata"))
+    explicit_slot = _normalized_preference_key(metadata.get("preference_slot", ""))
+    if explicit_slot in CANONICAL_PREFERENCE_SLOTS:
+        return explicit_slot
+
+    category = _normalized_preference_key(memory.get("category", ""))
+    if category not in {"preference", "preferences", "personal_preference"}:
+        return None
+    return _PREFERENCE_SLOT_ALIASES.get(_normalized_preference_key(memory.get("key", "")))
+
+
+def normalize_preference_write(
+    category: str,
+    key: str,
+    metadata: dict | None = None,
+    *,
+    now: datetime | None = None,
+) -> tuple[str, str, dict]:
+    """
+    Canonicalize one response-preference write and its storage identity.
+
+    Ordinary topic preferences are left untouched. The four always-included
+    response slots use deterministic keys, scopes, and metadata so aliases
+    cannot create competing active values.
+    """
+    normalized_category = _normalized_preference_key(category)
+    memory_metadata = dict(metadata) if isinstance(metadata, dict) else {}
+    explicit_slot = _normalized_preference_key(memory_metadata.get("preference_slot", ""))
+    if explicit_slot and explicit_slot not in CANONICAL_PREFERENCE_SLOTS:
+        allowed = ", ".join(CANONICAL_PREFERENCE_SLOTS)
+        raise ValueError(f"preference_slot must be one of: {allowed}")
+
+    slot = explicit_slot
+    if not slot and normalized_category in {
+        "preference",
+        "preferences",
+        "personal_preference",
+    }:
+        slot = _PREFERENCE_SLOT_ALIASES.get(_normalized_preference_key(key), "")
+
+    requested_scope = _normalized_preference_key(
+        memory_metadata.get("preference_scope", "persistent")
+    ) or "persistent"
+    if not slot:
+        if requested_scope != "persistent":
+            raise ValueError("scoped preferences require a canonical preference_slot")
+        return category, key, memory_metadata
+    if requested_scope not in CANONICAL_PREFERENCE_SCOPES:
+        allowed = ", ".join(sorted(CANONICAL_PREFERENCE_SCOPES))
+        raise ValueError(f"preference_scope must be one of: {allowed}")
+
+    original_key = str(key or "").strip()
+    if original_key and _normalized_preference_key(original_key) != slot:
+        memory_metadata.setdefault("preference_original_key", original_key)
+    memory_metadata["preference_slot"] = slot
+    memory_metadata["preference_scope"] = requested_scope
+    memory_metadata["memory_type"] = "preference"
+    memory_metadata["memory_type_confidence"] = 1.0
+    memory_metadata["memory_type_reason"] = "canonical_preference_slot"
+
+    current_time = now or datetime.now(timezone.utc)
+    if current_time.tzinfo is None:
+        current_time = current_time.replace(tzinfo=timezone.utc)
+    current_time = current_time.astimezone(timezone.utc)
+
+    if requested_scope == "persistent":
+        memory_metadata.pop("expires_at", None)
+        memory_metadata.pop("preference_session_id", None)
+        memory_metadata.pop("ttl_minutes", None)
+        memory_metadata.pop("ttl_seconds", None)
+        return "preference", slot, memory_metadata
+
+    if requested_scope == "session":
+        session_id = str(
+            memory_metadata.get("preference_session_id")
+            or memory_metadata.get("web_conversation_id")
+            or memory_metadata.get("jarvis_session_id")
+            or ""
+        ).strip()
+        if not session_id:
+            raise ValueError("session preferences require an active Jarvis session")
+        memory_metadata["preference_session_id"] = session_id
+        scope_token = hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:16]
+        storage_key = f"preference_override:{slot}:session:{scope_token}"
+    else:
+        storage_key = f"preference_override:{slot}:temporary"
+
+    expires_at = parse_preference_expires_at(memory_metadata.get("expires_at"))
+    if expires_at is None:
+        ttl_minutes = memory_metadata.get("ttl_minutes")
+        ttl_seconds = memory_metadata.get("ttl_seconds")
+        try:
+            if ttl_minutes not in (None, ""):
+                ttl_seconds = float(ttl_minutes) * 60
+            elif ttl_seconds not in (None, ""):
+                ttl_seconds = float(ttl_seconds)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("preference TTL must be a positive number") from exc
+        if ttl_seconds not in (None, ""):
+            if ttl_seconds <= 0:
+                raise ValueError("preference TTL must be greater than zero")
+            expires_at = current_time + timedelta(seconds=ttl_seconds)
+    if requested_scope == "temporary" and expires_at is None:
+        raise ValueError("temporary preferences require expires_at or ttl_minutes")
+    if expires_at is not None:
+        if expires_at <= current_time:
+            raise ValueError("preference expires_at must be in the future")
+        memory_metadata["expires_at"] = expires_at.isoformat()
+    memory_metadata.pop("ttl_minutes", None)
+    memory_metadata.pop("ttl_seconds", None)
+    return "preference", storage_key, memory_metadata
 
 
 def resolve_memory_type(
@@ -504,6 +666,18 @@ class MemoryDB:
         Returns:
             ID of the stored memory
         """
+        raw_metadata = dict(metadata) if isinstance(metadata, dict) else {}
+        if dedupe_by_source and not raw_metadata.get("preference_slot"):
+            # Source-owned Intel facts may describe communication style, but
+            # they are Profile Card/search material rather than a mutable
+            # response-preference override.
+            memory_metadata = raw_metadata
+        else:
+            category, key, memory_metadata = normalize_preference_write(
+                category,
+                key,
+                raw_metadata,
+            )
         cursor = self.conn.cursor()
         
         # Generate embedding if requested
@@ -540,7 +714,6 @@ class MemoryDB:
         
         # Phase 3 memory quality gate groundwork: classify writes without
         # enforcing routing changes yet.
-        memory_metadata = dict(metadata) if isinstance(metadata, dict) else {}
         classification = classify_memory_entry(category, key, value, source, memory_metadata)
         for class_key, class_value in classification.items():
             memory_metadata.setdefault(class_key, class_value)
@@ -1037,29 +1210,96 @@ class MemoryDB:
         
         return [dict(row) for row in results]
     
-    def get_addressing_preferences(self, limit: int = 2) -> list[dict]:
+    def get_addressing_preferences(
+        self,
+        limit: int = 4,
+        *,
+        session_id: str | None = None,
+        now: datetime | None = None,
+    ) -> list[dict]:
         """
-        Get ONLY addressing/response-style preferences that affect every response.
-        E.g. how_to_address_user, address_user, response_tone, response_style.
-        These are the only memories that should be always-included regardless of query.
-        Topic-specific preferences (dog, Spotify, etc.) go through semantic search only.
+        Resolve the active value for each canonical response-preference slot.
+
+        Scope precedence is session, then unexpired temporary, then persistent.
+        Contradictory aliases cannot coexist in the result: newest wins within
+        one scope, regardless of importance. Topic preferences remain semantic-only.
         """
+        if limit <= 0:
+            return []
         cursor = self.conn.cursor()
-        # Use ESCAPE for underscore - in LIKE, _ matches any char; we want literal "how_to"
         results = cursor.execute(
-            """SELECT id, category, key, value, importance, created_at, updated_at, source, metadata
-               FROM knowledge_base
-               WHERE (
-                   key LIKE '%address%' ESCAPE '\\'
-                   OR key LIKE '%how\\_to%' ESCAPE '\\'
-                   OR key LIKE '%response_tone%' OR key LIKE '%response_style%'
-                   OR key LIKE '%preferred_language%'
-               )
-               ORDER BY importance DESC, updated_at DESC
-               LIMIT ?""",
-            (limit,),
+            """
+            SELECT id, category, key, value, importance, created_at, updated_at, source, metadata
+            FROM knowledge_base
+            WHERE category IN ('preference', 'preferences', 'personal_preference')
+            ORDER BY updated_at DESC, id DESC
+            """
         ).fetchall()
-        return [dict(row) for row in results]
+
+        current_time = now or datetime.now(timezone.utc)
+        if current_time.tzinfo is None:
+            current_time = current_time.replace(tzinfo=timezone.utc)
+        current_time = current_time.astimezone(timezone.utc)
+        active_session_id = str(session_id or "").strip()
+        scope_rank = {"persistent": 1, "temporary": 2, "session": 3}
+        selected: dict[str, tuple[int, float, dict]] = {}
+
+        for raw_row in results:
+            row = dict(raw_row)
+            row_metadata = parse_memory_metadata(row.get("metadata"))
+            source_name = str(row.get("source") or "").replace("\\", "/").lower()
+            if source_name.startswith("intel/") and not row_metadata.get("preference_slot"):
+                continue
+            slot = preference_slot_for_row(row)
+            if not slot:
+                continue
+            metadata = row_metadata
+            scope = _normalized_preference_key(
+                metadata.get("preference_scope", "persistent")
+            ) or "persistent"
+            if scope not in CANONICAL_PREFERENCE_SCOPES:
+                continue
+            if scope == "session":
+                row_session_id = str(metadata.get("preference_session_id") or "").strip()
+                if not active_session_id or row_session_id != active_session_id:
+                    continue
+
+            try:
+                expires_at = parse_preference_expires_at(metadata.get("expires_at"))
+            except ValueError:
+                continue
+            if scope == "temporary" and expires_at is None:
+                continue
+            if expires_at is not None and expires_at <= current_time:
+                continue
+
+            updated = row.get("updated_at") or row.get("created_at")
+            try:
+                updated_at = datetime.fromisoformat(str(updated).replace("Z", "+00:00"))
+                if updated_at.tzinfo is None:
+                    updated_at = updated_at.replace(tzinfo=timezone.utc)
+                updated_timestamp = updated_at.timestamp()
+            except (TypeError, ValueError):
+                updated_timestamp = 0.0
+
+            candidate_rank = scope_rank[scope]
+            existing = selected.get(slot)
+            if existing and (candidate_rank, updated_timestamp) <= (existing[0], existing[1]):
+                continue
+
+            row["storage_key"] = row.get("key")
+            row["key"] = slot
+            row["preference_slot"] = slot
+            row["preference_scope"] = scope
+            row["expires_at"] = expires_at.isoformat() if expires_at else None
+            selected[slot] = (candidate_rank, updated_timestamp, row)
+
+        ordered = sorted(
+            selected.values(),
+            key=lambda item: (item[0], item[1], item[2].get("importance", 0)),
+            reverse=True,
+        )
+        return [item[2] for item in ordered[:limit]]
 
     # ========== Structured User Model ==========
 

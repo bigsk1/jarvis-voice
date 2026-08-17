@@ -1,7 +1,7 @@
 """Memory API models."""
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,6 +27,29 @@ class MemoryCreate(BaseModel):
     source: str | None = Field(None, description="Where this information came from")
     metadata: dict[str, Any] | None = Field(None, description="Additional metadata (tags, expiration, etc.)")
     generate_embedding: bool = Field(True, description="Generate vector embedding for semantic search")
+    preference_slot: Literal[
+        "how_to_address_user",
+        "response_style",
+        "preferred_language",
+        "response_tone",
+    ] | None = Field(None, description="Canonical slot for an always-applied response preference")
+    preference_scope: Literal["persistent", "session", "temporary"] | None = Field(
+        None,
+        description="Response-preference lifetime; persistent is the default",
+    )
+    preference_session_id: str | None = Field(
+        None,
+        description="Conversation/session identifier required when preference_scope=session",
+    )
+    expires_at: str | None = Field(
+        None,
+        description="ISO 8601 expiry for a temporary response preference",
+    )
+    ttl_minutes: int | None = Field(
+        None,
+        ge=1,
+        description="Alternative temporary response-preference lifetime in minutes",
+    )
 
     model_config = ConfigDict(json_schema_extra={
             "example": {

@@ -117,14 +117,14 @@ Hard isolation (separate final-answer LLM call with zero profile on tool turns) 
 
 ---
 
-## Explicit prefs (Tier 1)
+## Explicit response preferences (Tier 1)
 
-Unchanged from before:
+- `remember` canonicalizes `how_to_address_user`, `response_style`, `preferred_language`, and `response_tone`.
+- `persistent` is the mutable baseline; `session` applies only to its conversation; `temporary` requires `expires_at` or `ttl_minutes`.
+- `forget` removes a visible active preference by exact `memory_id`.
+- Auto-memory resolves one value per slot, allows all four by default, and does not charge them against the Intel/keyword/semantic `AUTO_MEMORY_LIMIT`.
 
-- `remember` / `forget` for discrete preferences
-- Auto-memory always-include for addressing/tone keys (`AUTO_MEMORY_ALWAYS_INCLUDE_LIMIT`)
-
-Do not duplicate Profile Card content in profile memories unless it is a short-lived override.
+Current-turn instructions and active scoped preferences override conflicting Profile Card content. The ingested `intel/user-profile.md` rows remain searchable but are excluded from automatic memory injection because the exact card is already present in the router and synthesis prompts.
 
 ---
 

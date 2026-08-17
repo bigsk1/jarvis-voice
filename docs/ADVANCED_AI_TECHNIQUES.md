@@ -131,7 +131,7 @@ Auto-memory should eventually classify each candidate memory into one of these b
 
 | Bucket | Meaning | Default Behavior |
 |--------|---------|------------------|
-| `pinned_preference` | Addressing, tone, language, stable user preference | Always allow unless explicitly forgotten |
+| `active_response_preference` | Scope/expiry-resolved addressing, style, language, or tone slot | Always allow unless explicitly forgotten |
 | `general_fact` | Personal/project/history fact not requiring a tool | Allow when relevant |
 | `about_disabled_tool` | Mentions a disabled tool but is historical or explanatory | Demote or annotate; allow for explicit tool-history/debug queries |
 | `requires_disabled_tool` | Would cause the model to use, recommend, or assume a disabled tool works | Suppress unless user explicitly asks about that disabled tool |
@@ -185,7 +185,7 @@ Not all old memories have metadata. A fallback can still help, but should be con
 - Match exact known tool names only, not broad English words.
 - Use source paths as hints, e.g. `intel/samantha.md`.
 - Treat `source=intel/<tool>.md` as `about_disabled_tool`, not automatically `requires_disabled_tool`.
-- Do not filter pinned preferences through tool matching.
+- Do not filter resolved active response preferences through tool matching.
 - Prefer demotion/annotation over deletion.
 
 Example rule:
@@ -292,7 +292,7 @@ Implement a metadata-first, runtime-only filter. Do not edit memory enabled stat
 
 Initial practical behavior:
 
-- Always allow pinned preferences.
+- Always allow resolved active response preferences.
 - Suppress memories with `requires_enabled_tools` that are unavailable.
 - Demote exact-name/source matches for disabled tools.
 - Allow disabled-tool memories when the user explicitly asks about that tool.

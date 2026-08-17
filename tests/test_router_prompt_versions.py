@@ -27,9 +27,9 @@ from tts_normalizer import XAI_INLINE_SPEECH_TAGS, XAI_WRAPPING_SPEECH_TAGS  # n
 
 
 V1_SHA256 = "6c2ecbb0c032af7f7ffc70b6d093d11e918230e31ef4ddb7bfffadf9f4b4efc1"
-V2_SHA256 = "d353ddf2e7f806a6597d07ac9ff5ec9d7c299c9af8550e28b9f6c90c32d2c884"
-V3_SHA256 = "eddad7ba3f1ce13feb1960e175b7c7ab0457f18aa7b61e167b8588b47f5e3b2e"
-V4_SHA256 = "6e56ca4d15d044e429e6e4ae4ae1c2bc4f41485280a91f8f7ad24ae5ca13ade6"
+V2_SHA256 = "8bdd4c12a24dbc2e600b5d08ebb08abecdce979e9951bfe9a5cf1017e9c0cf8c"
+V3_SHA256 = "8ea43ed078e402a81fd4110914278f3b8b50dbdf8558702c4cfe29b432559ed5"
+V4_SHA256 = "0c25103d0495906c24c6c20a5ef489a28781296a4bd5cccb6996ac1fcfc47fc2"
 
 
 def test_v1_is_exact_established_router_prompt_baseline():
@@ -50,9 +50,9 @@ def test_v2_is_compact_standalone_prompt_with_its_own_hash():
     version, v2 = get_router_system_prompt("v2")
 
     assert version == "v2"
-    assert len(v2) == 13_003
-    assert len(v2.splitlines()) == 87
-    assert len(v2.split()) == 1_841
+    assert len(v2) == 13_515
+    assert len(v2.splitlines()) == 88
+    assert len(v2.split()) == 1_903
     assert v2.isascii()
     assert hashlib.sha256(v2.encode()).hexdigest() == V2_SHA256
 
@@ -61,9 +61,9 @@ def test_v3_is_caveman_hybrid_with_normal_output_guard_and_own_hash():
     version, v3 = get_router_system_prompt("v3")
 
     assert version == "v3"
-    assert len(v3) == 9_262
+    assert len(v3) == 9_558
     assert len(v3.splitlines()) == 91
-    assert len(v3.split()) == 1_208
+    assert len(v3.split()) == 1_241
     assert v3.isascii()
     assert "NEVER imitate caveman grammar in user-facing answer" in v3
     assert "Speak normal fluent language" in v3
@@ -74,9 +74,9 @@ def test_v4_is_caveman_light_with_normal_output_guard_and_own_hash():
     version, v4 = get_router_system_prompt("v4")
 
     assert version == "v4"
-    assert len(v4) == 9_682
+    assert len(v4) == 10_030
     assert len(v4.splitlines()) == 46
-    assert len(v4.split()) == 1_276
+    assert len(v4.split()) == 1_316
     assert "NEVER use caveman grammar in user answers" in v4
     assert "Speak normal fluent English" in v4
     assert hashlib.sha256(v4.encode()).hexdigest() == V4_SHA256
@@ -91,7 +91,7 @@ def test_v4_is_caveman_light_with_normal_output_guard_and_own_hash():
         "manage_intel with action=append",
         "semantic_recall returns no results, try search_memory once",
         "update replaces the full page",
-        "key=how_to_address_user",
+        "preference_slot: how_to_address_user",
         "generate_image stash refs",
         "check_opencode_sessions is fallback-only",
         "~/jarvis-workspace/projects/",
@@ -134,7 +134,7 @@ def test_v2_preserves_high_risk_behavioral_contracts(contract):
         "manage_intel(action=append, path=jarvis-learned-lessons.md, auto_ingest=true)",
         "acknowledge_reminders(title_search=",
         "update replaces full page",
-        "key=how_to_address_user",
+        "preference_slot = how_to_address_user",
         "uploaded_image and generate_image stash refs",
         "check_opencode_sessions only when no usable result",
         "~/jarvis-workspace/projects/",
@@ -156,7 +156,7 @@ def test_v3_preserves_high_risk_behavioral_contracts(contract):
         "manage_intel(action=append, path=jarvis-learned-lessons.md, auto_ingest=true)",
         "acknowledge_reminders(title_search=",
         "update = full intentional rewrite",
-        "key=how_to_address_user",
+        "preference_slot must be how_to_address_user",
         "stash_ref from uploaded_image or uploaded_images",
         "check_opencode_sessions only on no usable result",
         "~/jarvis-workspace/projects/",
