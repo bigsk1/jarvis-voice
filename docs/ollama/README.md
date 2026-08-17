@@ -16,6 +16,50 @@ into local mode.
 The published artifact, exact digests, and immutable versioning policy are
 documented in [JARVIS_EMBEDDING_MODEL.md](JARVIS_EMBEDDING_MODEL.md).
 
+## Install Ollama
+
+Install Ollama on the machine that will serve Jarvis through
+`OLLAMA_BASE_URL`. If that daemon runs on another LAN host, Ollama does not also
+need to be installed on the Jarvis machine.
+
+### macOS
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+Or [download the macOS installer](https://ollama.com/download/Ollama.dmg).
+
+### Windows
+
+Run in PowerShell:
+
+```powershell
+irm https://ollama.com/install.ps1 | iex
+```
+
+Or [download the Windows installer](https://ollama.com/download/OllamaSetup.exe).
+
+### Linux
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+See the [manual Linux installation instructions](https://docs.ollama.com/linux#manual-install)
+when the install script is not appropriate.
+
+### Docker
+
+Run the official [`ollama/ollama`](https://hub.docker.com/r/ollama/ollama)
+image as a separate service. Jarvis containers connect to that daemon; they do
+not bundle Ollama or its model weights.
+
+Official client libraries are also available for
+[Python](https://github.com/ollama/ollama-python) and
+[JavaScript](https://github.com/ollama/ollama-js), but Jarvis does not require
+either library to connect to an Ollama daemon.
+
 ## Cloud mode with Ollama Cloud
 
 Configure `config/cloud.env`:
