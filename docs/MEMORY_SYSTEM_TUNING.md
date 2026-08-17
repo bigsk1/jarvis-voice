@@ -62,7 +62,7 @@
   - Features: stemming, phrase search, boolean operators, Porter algorithm
   - Industry-standard relevance scoring
 - `recall`: Legacy SQL LIKE fuzzy search (kept for backward compatibility)
-- `semantic_recall`: AI embedding vector search in knowledge_base (cosine similarity)
+- `semantic_recall`: fused embedding cosine + FTS5/BM25 search in `knowledge_base`
 - `search_conversations`: SQL LIKE text search in conversations table
 
 **Key Upgrade**: `search_memory` now uses SQLite FTS5 virtual tables with BM25 ranking for superior speed and accuracy.

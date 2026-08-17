@@ -207,6 +207,8 @@ def test_shared_request_is_proxy_capable_but_manifest_defaults_off():
         (ROOT / "skills" / "serpapi_search_index.tool.json").read_text()
     )
     assert manifest["proxy_policy"] == "off"
+    assert "General-purpose web search" in manifest["description"]
+    assert "own LLM-first Search Index (not Google)" in manifest["description"]
 
 
 def test_status_diagnostics_register_search_index_engine():

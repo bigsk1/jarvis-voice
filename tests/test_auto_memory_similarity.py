@@ -17,12 +17,10 @@ import os
 import sys
 from datetime import datetime
 
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
 from config_loader import get_bool, get_float, get_int, load_config
 from memory_db import MemoryDB, is_eligible_for_auto_memory_inject
-
 
 DEFAULT_TEST_QUERIES = [
     "call me sir",
@@ -271,6 +269,7 @@ def collect_auto_memory_diagnostics(
     semantic_candidates = []
     always_candidates = []
     intel_candidates = []
+    keyword_candidates = []
 
     def include_memory(memory: dict) -> bool:
         return (
@@ -339,6 +338,39 @@ def collect_auto_memory_diagnostics(
             if not duplicate:
                 merged.append(entry)
 
+    for rank, memory in enumerate(
+        db.fts_search_precise(query, limit=max(limit * 2, 8)),
+        start=1,
+    ):
+        key = memory.get("key", "")
+        duplicate = bool(key and key in seen_keys)
+        if not include_memory(memory):
+            continue
+        if key and not duplicate:
+            seen_keys.add(key)
+        adjusted_score = max(0.80, 1.0 - ((rank - 1) * 0.04))
+        entry = build_entry(
+            memory,
+            bucket="keyword",
+            base_similarity=None,
+            adjusted_score=adjusted_score,
+            threshold=threshold,
+            importance=memory.get("importance", 5),
+            recency_factor=1.0,
+            recency_band="fts_and",
+            include=not duplicate,
+            reason=(
+                "all meaningful query terms matched"
+                if not duplicate
+                else "duplicate of prior key"
+            ),
+            query_source="fts_precise",
+            duplicate=duplicate,
+        )
+        keyword_candidates.append(entry)
+        if not duplicate:
+            merged.append(entry)
+
     candidate_limit = min(limit * (5 if type_filter_enabled else 2), 50)
     candidate_threshold = min(threshold - 0.05, 0.30)
     semantic_results = db.semantic_search(
@@ -346,7 +378,11 @@ def collect_auto_memory_diagnostics(
         limit=candidate_limit,
         similarity_threshold=candidate_threshold,
     )
-    fallback_meta = getattr(db, "last_semantic_search_meta", {"fallback_embeddings": None})
+    retrieval_meta = getattr(
+        db,
+        "last_semantic_search_meta",
+        {"retrieval_mode": "hybrid", "semantic_disabled_reason": None},
+    )
 
     for memory in semantic_results:
         if not include_memory(memory):
@@ -416,9 +452,11 @@ def collect_auto_memory_diagnostics(
         "type_filter_enabled": type_filter_enabled,
         "always_candidates": always_candidates,
         "intel_candidates": intel_candidates,
+        "keyword_candidates": keyword_candidates,
         "semantic_candidates": semantic_candidates,
         "injected": injected,
-        "fallback_embeddings": fallback_meta.get("fallback_embeddings"),
+        "retrieval_mode": retrieval_meta.get("retrieval_mode", "hybrid"),
+        "semantic_disabled_reason": retrieval_meta.get("semantic_disabled_reason"),
         "db_path": db.db_path,
         "now": now,
     }
@@ -455,6 +493,7 @@ def format_entry_line(index: int, entry: dict, now: datetime) -> str:
 
 def print_query_report(result: dict, show_all: bool, sweep_values: list[float], mode: str):
     query = result["query"]
+    keyword_candidates = result["keyword_candidates"]
     semantic_candidates = result["semantic_candidates"]
     injected = result["injected"]
     now = result["now"]
@@ -469,8 +508,12 @@ def print_query_report(result: dict, show_all: bool, sweep_values: list[float], 
         f"recency={'on' if result['recency_enabled'] else 'off'}  "
         f"always_include_limit={result['addressing_limit']}"
     )
-    if result["fallback_embeddings"]:
-        print(f"Embedding fallback: {result['fallback_embeddings']}")
+    if result["semantic_disabled_reason"]:
+        print(
+            "Semantic retrieval disabled: "
+            f"{result['semantic_disabled_reason']} "
+            f"(mode={result['retrieval_mode']})"
+        )
 
     print()
     print(f"Injected memories ({len(injected)}):")
@@ -478,6 +521,15 @@ def print_query_report(result: dict, show_all: bool, sweep_values: list[float], 
         print("  none")
     else:
         for i, entry in enumerate(injected, start=1):
+            print(format_entry_line(i, entry, now))
+
+    print()
+    print(f"Precise keyword candidates ({len(keyword_candidates)}):")
+    if not keyword_candidates:
+        print("  none")
+    else:
+        display = keyword_candidates if show_all else keyword_candidates[:10]
+        for i, entry in enumerate(display, start=1):
             print(format_entry_line(i, entry, now))
 
     print()

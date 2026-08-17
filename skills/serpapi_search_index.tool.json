@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_search_index",
-  "description": "Discover public webpages and source URLs through SerpApi's structured Search Index for research grounding, reference discovery, reproducible datasets, and workflow pipelines. Use it to find relevant articles, documentation, guides, reports, websites, and other indexed pages about a topic, then pass returned URLs to MCP Fetch, crawl_url, summarizers, Canvas, Stash, or later workflow steps. Standard mode returns ranked indexed sources; deep mode expands recall by decomposing the query into parallel aspects. Results preserve exact URLs, titles, snippets, dates, languages, images, sitelinks, related queries, pagination, and a SerpApi search ID. Cached results are allowed by default.",
+  "description": "General-purpose web search over SerpApi's own LLM-first Search Index (not Google). Use it for search-engine-style requests when public webpages and source URLs are needed and provider-specific Google results are not required. Discover public webpages and source URLs through the index for research and retrieval grounding, reference discovery, reproducible datasets, and workflow pipelines. Use it to find relevant articles, documentation, guides, reports, websites, and other indexed pages about a topic, then pass returned URLs to MCP Fetch, crawl_url, summarizers, Canvas, Stash, or later workflow steps. Standard mode returns ranked indexed sources; deep mode expands recall by decomposing the query into parallel aspects. Results preserve exact URLs, titles, snippets, dates, languages, images, sitelinks, related queries, pagination, and a SerpApi search ID. Cached results are allowed by default.",
   "complementary_tools": [
     "mcp_fetch_fetch",
     "crawl_url",

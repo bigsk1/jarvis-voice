@@ -5,11 +5,11 @@ SQLite-based memory system for storing facts, conversations, and learned pattern
 Supports semantic search with vector embeddings.
 """
 import hashlib
-import sqlite3
 import json
+import logging
 import os
 import pickle
-import logging
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -20,6 +20,12 @@ from embedding_metadata import (
     ensure_embedding_metadata_table,
     record_embedding_namespace_complete,
     require_embedding_namespace,
+)
+from hybrid_retrieval import (
+    fts5_query,
+    lexical_coverage,
+    query_terms,
+    reciprocal_rank_score,
 )
 
 
@@ -205,13 +211,11 @@ class MemoryDB:
         self.db_path = db_path
         self.conn = None
         self.last_semantic_search_meta = {
-            "fallback_embeddings": None,
-            "retrieval_mode": "semantic",
+            "retrieval_mode": "hybrid",
             "semantic_disabled_reason": None,
         }
         self.last_tool_search_meta = {
-            "fallback_embeddings": None,
-            "retrieval_mode": "semantic",
+            "retrieval_mode": "hybrid",
             "semantic_disabled_reason": None,
         }
         self._init_db()
@@ -328,9 +332,22 @@ class MemoryDB:
         """)
         self._ensure_column(cursor, "tool_definitions", "embedding_input_hash", "TEXT")
 
+        # Tool-name words are indexed separately so requests such as "crypto
+        # price" match ``crypto_price`` without maintaining a hand-written
+        # phrase-to-tool routing table.
+        cursor.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS tool_definitions_fts USING fts5(
+                name UNINDEXED,
+                name_terms,
+                description,
+                tokenize='porter unicode61'
+            )
+        """)
+
         ensure_embedding_metadata_table(self.conn)
         
         self._ensure_fts_triggers(cursor)
+        self._ensure_tool_fts_triggers(cursor)
 
         self.conn.commit()
 
@@ -404,6 +421,55 @@ class MemoryDB:
                 ) VALUES(
                     'delete', old.id, old.category, old.key, old.value, old.long_form
                 );
+            END
+        """)
+
+    def _ensure_tool_fts_triggers(self, cursor: sqlite3.Cursor) -> None:
+        """Keep the small Tool RAG FTS5 index synchronized with definitions."""
+        required = {"tool_fts_insert", "tool_fts_update", "tool_fts_delete"}
+        installed = {
+            row["name"]
+            for row in cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                "AND name IN ('tool_fts_insert', 'tool_fts_update', 'tool_fts_delete')"
+            ).fetchall()
+        }
+        indexed_count = cursor.execute(
+            "SELECT COUNT(*) FROM tool_definitions_fts"
+        ).fetchone()[0]
+        definition_count = cursor.execute(
+            "SELECT COUNT(*) FROM tool_definitions"
+        ).fetchone()[0]
+        if installed == required and indexed_count == definition_count:
+            return
+
+        for name in required:
+            cursor.execute(f"DROP TRIGGER IF EXISTS {name}")
+        cursor.execute("DELETE FROM tool_definitions_fts")
+        cursor.execute(
+            """
+            INSERT INTO tool_definitions_fts(rowid, name, name_terms, description)
+            SELECT rowid, name, replace(name, '_', ' '), description
+            FROM tool_definitions
+            """
+        )
+        cursor.execute("""
+            CREATE TRIGGER tool_fts_insert AFTER INSERT ON tool_definitions BEGIN
+                INSERT INTO tool_definitions_fts(rowid, name, name_terms, description)
+                VALUES(new.rowid, new.name, replace(new.name, '_', ' '), new.description);
+            END
+        """)
+        cursor.execute("""
+            CREATE TRIGGER tool_fts_update
+            AFTER UPDATE OF name, description ON tool_definitions BEGIN
+                DELETE FROM tool_definitions_fts WHERE rowid = old.rowid;
+                INSERT INTO tool_definitions_fts(rowid, name, name_terms, description)
+                VALUES(new.rowid, new.name, replace(new.name, '_', ' '), new.description);
+            END
+        """)
+        cursor.execute("""
+            CREATE TRIGGER tool_fts_delete AFTER DELETE ON tool_definitions BEGIN
+                DELETE FROM tool_definitions_fts WHERE rowid = old.rowid;
             END
         """)
 
@@ -922,6 +988,38 @@ class MemoryDB:
             return self.recall(query, limit=limit)
         
         return results
+
+    def fts_search_precise(self, query: str, limit: int = 10) -> list[dict]:
+        """Return only rows matching every meaningful query term via FTS5."""
+        terms = query_terms(query)
+        match_query = fts5_query(terms, operator="AND")
+        if not match_query:
+            return []
+        try:
+            rows = self.conn.execute(
+                """
+                SELECT kb.*, bm25(knowledge_base_fts) AS relevance_score
+                FROM knowledge_base kb
+                JOIN knowledge_base_fts ON kb.id = knowledge_base_fts.rowid
+                WHERE knowledge_base_fts MATCH ?
+                ORDER BY relevance_score ASC, kb.importance DESC
+                LIMIT ?
+                """,
+                (match_query, max(1, int(limit))),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+
+        memories: list[dict] = []
+        for rank, row in enumerate(rows, start=1):
+            memory = dict(row)
+            raw_score = float(memory.pop("relevance_score"))
+            memory.pop("embedding", None)
+            memory["keyword_rank"] = rank
+            memory["keyword_bm25"] = raw_score
+            memory["retrieval_channels"] = ["keyword"]
+            memories.append(memory)
+        return memories
     
     def get_all_memories(self, category: str = None) -> list[dict]:
         """Get all stored memories, optionally filtered by category."""
@@ -1091,13 +1189,13 @@ class MemoryDB:
     
     def semantic_search(self, query: str, limit: int = 5, similarity_threshold: float = None) -> list[dict]:
         """
-        Semantic search using vector embeddings with smart fallback.
-        Finds memories similar in meaning, not just keywords.
-        
-        Strategy:
-        1. Try semantic search with embeddings (meaning-based)
-        2. If 0 results (threshold too high), fall back to FTS5 (keyword-based)
-        3. If FTS5 fails, fall back to LIKE (substring-based)
+        Search memories with fused embedding and FTS5/BM25 rankings.
+
+        The configured similarity threshold still gates dense-only matches.
+        Broad keyword matches may reinforce rows already found semantically.
+        Keyword-only rows must match every meaningful query term while dense
+        retrieval is healthy; broad FTS remains available as the fallback when
+        embeddings are unavailable.
         
         Args:
             query: Search query (can be natural language)
@@ -1111,83 +1209,169 @@ class MemoryDB:
             List of memories with similarity/relevance scores, sorted by relevance
         """
         logger = logging.getLogger(__name__)
+        requested_limit = max(1, int(limit))
         self.last_semantic_search_meta = {
-            "fallback_embeddings": None,
-            "retrieval_mode": "semantic",
+            "retrieval_mode": "hybrid",
             "semantic_disabled_reason": None,
         }
+        keyword_limit = max(requested_limit * 4, 20)
+        keyword_rows = self.fts_search(query, limit=keyword_limit)
+        for rank, memory in enumerate(keyword_rows, start=1):
+            memory["keyword_rank"] = rank
+        precise_keyword_rows = self.fts_search_precise(query, limit=keyword_limit)
+        precise_keyword_ranks = {
+            int(memory["id"]): rank
+            for rank, memory in enumerate(precise_keyword_rows, start=1)
+        }
+
+        # A precise hit can fall outside the broad candidate cap when many
+        # single-term matches rank ahead of it. Keep it available for lexical
+        # admission with its rank from the stricter AND query.
+        keyword_ids = {int(memory["id"]) for memory in keyword_rows}
+        for memory in precise_keyword_rows:
+            memory_id = int(memory["id"])
+            if memory_id not in keyword_ids:
+                precise_memory = dict(memory)
+                precise_memory["keyword_rank"] = precise_keyword_ranks[memory_id]
+                keyword_rows.append(precise_memory)
+                keyword_ids.add(memory_id)
+
+        dense_rows: list[dict] = []
+        semantic_disabled_reason = None
         try:
-            from embeddings import get_embedding, cosine_similarity
             from config_loader import get_float
-            
-            # Use provided threshold or read from config
+            from embeddings import cosine_similarity, get_embedding
+
             if similarity_threshold is None:
                 similarity_threshold = get_float('SEMANTIC_SIMILARITY_THRESHOLD', 0.40)
-            
-            # Get all memories with embeddings
+
             cursor = self.conn.cursor()
             results = cursor.execute(
                 "SELECT * FROM knowledge_base WHERE embedding IS NOT NULL"
             ).fetchall()
             if not results:
-                self.last_semantic_search_meta = {
-                    "fallback_embeddings": None,
-                    "retrieval_mode": "keyword_fallback",
-                    "semantic_disabled_reason": "no stored memory embeddings",
-                }
-                return self.fts_search(query, limit=limit)
+                raise RuntimeError("no stored memory embeddings")
             require_embedding_namespace(
                 self.conn,
                 MEMORY_KNOWLEDGE_NAMESPACE,
                 vector_count=len(results),
             )
-
-            # Query and stored documents intentionally use asymmetric prompts.
             query_embedding = get_embedding(query, role="query")
-            
-            # Calculate similarity scores
-            scored_memories = []
+
             for row in results:
                 memory = dict(row)
-                
-                # Deserialize embedding (handle both pickle and JSON formats)
                 try:
-                    # Try JSON first (newer format)
                     stored_embedding = json.loads(memory['embedding'].decode('utf-8'))
                 except (json.JSONDecodeError, AttributeError, UnicodeDecodeError):
-                    # Fall back to pickle (older format)
                     stored_embedding = pickle.loads(memory['embedding'])
-                
-                # Calculate similarity
                 similarity = cosine_similarity(query_embedding, stored_embedding)
-                
-                # Only include if above threshold
                 if similarity >= similarity_threshold:
                     memory['similarity'] = similarity
-                    # Remove the embedding blob from result (too large)
                     del memory['embedding']
-                    scored_memories.append(memory)
-            
-            # Sort by similarity (highest first), then by importance
-            scored_memories.sort(key=lambda x: (x['similarity'], x['importance']), reverse=True)
-            
-            # If no results, fall back to FTS5 keyword search
-            if not scored_memories:
-                # FTS5 has its own AND→OR→LIKE fallback
-                self.last_semantic_search_meta["retrieval_mode"] = "keyword_fallback"
-                return self.fts_search(query, limit=limit)
-            
-            return scored_memories[:limit]
-            
+                    dense_rows.append(memory)
+            dense_rows.sort(
+                key=lambda item: (item['similarity'], item['importance']),
+                reverse=True,
+            )
+            for rank, memory in enumerate(dense_rows, start=1):
+                memory["dense_rank"] = rank
         except Exception as exc:
-            # If embedding generation fails, fall back to FTS5
-            self.last_semantic_search_meta = {
-                "fallback_embeddings": None,
-                "retrieval_mode": "keyword_fallback",
-                "semantic_disabled_reason": str(exc),
-            }
+            semantic_disabled_reason = str(exc)
             logger.warning("Semantic memory retrieval disabled: %s", exc)
-            return self.fts_search(query, limit=limit)
+
+        dense_top = dense_rows[0]["similarity"] if dense_rows else 0.0
+        dense_baseline = float(similarity_threshold or 0.0)
+        dense_span = max(dense_top - dense_baseline, 1e-9)
+        fused_by_id: dict[int, dict] = {}
+
+        for memory in dense_rows:
+            item = dict(memory)
+            item["dense_confidence"] = max(
+                0.0,
+                min(1.0, (memory["similarity"] - dense_baseline) / dense_span),
+            )
+            item["retrieval_channels"] = ["dense"]
+            fused_by_id[int(item["id"])] = item
+
+        for memory in keyword_rows:
+            memory_id = int(memory["id"])
+            is_dense_match = memory_id in fused_by_id
+            is_precise_match = memory_id in precise_keyword_ranks
+            if (
+                semantic_disabled_reason is None
+                and not is_dense_match
+                and not is_precise_match
+            ):
+                # Broad OR/LIKE results are useful as corroborating evidence,
+                # but are too weak to introduce a keyword-only memory while
+                # the embedding namespace is healthy.
+                continue
+            item = fused_by_id.get(memory_id, {})
+            for key, value in memory.items():
+                item.setdefault(key, value)
+            item["keyword_rank"] = memory["keyword_rank"]
+            item["keyword_confidence"] = 1.0 / (memory["keyword_rank"] ** 0.5)
+            if semantic_disabled_reason is not None:
+                item["keyword_match_mode"] = "fallback"
+            elif is_precise_match:
+                item["keyword_match_mode"] = "precise"
+            else:
+                item["keyword_match_mode"] = "dense_support"
+            if "keyword" not in item.setdefault("retrieval_channels", []):
+                item["retrieval_channels"].append("keyword")
+            fused_by_id[memory_id] = item
+
+        fused: list[dict] = []
+        for item in fused_by_id.values():
+            dense_confidence = float(item.get("dense_confidence") or 0.0)
+            keyword_confidence = float(item.get("keyword_confidence") or 0.0)
+            channels = item.get("retrieval_channels", [])
+            if "dense" in channels and "keyword" in channels:
+                hybrid_score = (0.75 * dense_confidence) + (0.25 * keyword_confidence)
+            elif "dense" in channels:
+                hybrid_score = 0.75 * dense_confidence
+            else:
+                hybrid_score = 0.55 * keyword_confidence
+            item["hybrid_score"] = hybrid_score
+            item["retrieval_score"] = hybrid_score
+            item["rrf_score"] = reciprocal_rank_score(
+                item.get("dense_rank"),
+                item.get("keyword_rank"),
+            )
+            fused.append(item)
+
+        fused.sort(
+            key=lambda item: (
+                item.get("hybrid_score", 0.0),
+                item.get("rrf_score", 0.0),
+                item.get("importance", 5),
+            ),
+            reverse=True,
+        )
+        final = fused[:requested_limit]
+        has_dense = any("dense" in item.get("retrieval_channels", []) for item in final)
+        has_keyword = any("keyword" in item.get("retrieval_channels", []) for item in final)
+        if semantic_disabled_reason:
+            retrieval_mode = "keyword_fallback" if has_keyword else "unavailable"
+        elif has_dense and has_keyword:
+            retrieval_mode = "hybrid"
+        elif has_keyword:
+            retrieval_mode = "keyword_only"
+        else:
+            retrieval_mode = "semantic"
+        self.last_semantic_search_meta = {
+            "retrieval_mode": retrieval_mode,
+            "semantic_disabled_reason": semantic_disabled_reason,
+            "similarity_threshold": float(similarity_threshold or 0.0),
+            "dense_candidate_count": len(dense_rows),
+            "keyword_candidate_count": len(keyword_rows),
+            "keyword_precise_candidate_count": len(precise_keyword_ranks),
+            "keyword_admitted_count": sum(
+                "keyword" in item.get("retrieval_channels", []) for item in fused
+            ),
+            "fused_candidate_count": len(fused),
+        }
+        return final
     
     # ========== Conversation History ==========
     
@@ -1511,127 +1695,245 @@ class MemoryDB:
         record_embedding_namespace_complete(self.conn, MEMORY_TOOLS_NAMESPACE)
 
         cursor.execute("""
-            INSERT OR REPLACE INTO tool_definitions (
+            INSERT INTO tool_definitions (
                 name, description, schema_json, embedding, enabled, updated_at, embedding_input_hash
             )
             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+            ON CONFLICT(name) DO UPDATE SET
+                description = excluded.description,
+                schema_json = excluded.schema_json,
+                embedding = excluded.embedding,
+                enabled = excluded.enabled,
+                updated_at = CURRENT_TIMESTAMP,
+                embedding_input_hash = excluded.embedding_input_hash
         """, (name, description, schema_json, embedding_blob, enabled, new_hash))
 
         self.conn.commit()
         return "skipped" if skip_embed else "embedded"
     
+    def _keyword_search_tools(self, query: str, limit: int) -> list[dict]:
+        """Rank enabled tool definitions with local FTS5/BM25."""
+        terms = query_terms(query)
+        match_query = fts5_query(terms, operator="OR")
+        if not match_query:
+            return []
+        try:
+            rows = self.conn.execute(
+                """
+                SELECT td.name, td.description, td.schema_json,
+                       bm25(tool_definitions_fts, 0.0, 8.0, 1.0) AS keyword_bm25
+                FROM tool_definitions_fts
+                JOIN tool_definitions td ON td.rowid = tool_definitions_fts.rowid
+                WHERE tool_definitions_fts MATCH ? AND td.enabled = 1
+                ORDER BY keyword_bm25 ASC
+                LIMIT ?
+                """,
+                (match_query, max(1, int(limit))),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+
+        query_term_set = set(terms)
+        ranked: list[dict] = []
+        for rank, row in enumerate(rows, start=1):
+            item = dict(row)
+            name_text = item["name"].replace("_", " ")
+            name_terms = set(query_terms(name_text))
+            coverage = lexical_coverage(terms, name_text, item["description"])
+            item.update(
+                {
+                    "keyword_rank": rank,
+                    "keyword_coverage": coverage,
+                    "exact_name_match": bool(name_terms and name_terms <= query_term_set),
+                }
+            )
+            ranked.append(item)
+        return ranked
+
     def search_tools(self, query: str, limit: int = 5, threshold: float = 0.0) -> list[dict]:
         """
-        Semantically search for relevant tools.
-        
-        Args:
-            query: User's natural language request
-            limit: Max number of tools to return
-            threshold: Minimum similarity score (0.0-1.0). Set to 0.0 to disable.
-            
-        Returns:
-            List of tool definitions with similarity scores
+        Search enabled tools with fused embedding and FTS5/BM25 evidence.
+
+        ``threshold`` remains the minimum cosine score for dense-only results.
+        Lexical-only candidates must have broad term coverage or contain their
+        complete tool name in the request, so FTS cannot flood Tool RAG merely
+        because one generic word matched.
         """
+        logger = logging.getLogger(__name__)
         cursor = self.conn.cursor()
-        self.last_tool_search_meta = {
-            "fallback_embeddings": None,
-            "retrieval_mode": "semantic",
-            "semantic_disabled_reason": None,
-        }
-        
+        requested_limit = max(1, int(limit))
+        lexical_rows = self._keyword_search_tools(
+            query,
+            limit=max(requested_limit * 4, 32),
+        )
+        dense_rows: list[dict] = []
+        semantic_disabled_reason = None
+
         try:
-            from embeddings import get_embedding, cosine_similarity
-            logger = logging.getLogger(__name__)
-            
-            # 2. Get all ENABLED tools with embeddings
-            results = cursor.execute("""
-                SELECT name, description, schema_json, embedding 
-                FROM tool_definitions 
+            from embeddings import cosine_similarity, get_embedding
+
+            stored_rows = cursor.execute(
+                """
+                SELECT name, description, schema_json, embedding
+                FROM tool_definitions
                 WHERE enabled = 1 AND embedding IS NOT NULL
-            """).fetchall()
-            if not results:
-                self.last_tool_search_meta = {
-                    "fallback_embeddings": None,
-                    "retrieval_mode": "unavailable",
-                    "semantic_disabled_reason": "no enabled tool embeddings",
-                }
-                return []
+                """
+            ).fetchall()
+            if not stored_rows:
+                raise RuntimeError("no enabled tool embeddings")
             require_embedding_namespace(
                 self.conn,
                 MEMORY_TOOLS_NAMESPACE,
-                vector_count=len(results),
+                vector_count=len(stored_rows),
             )
-
-            # 1. Generate the asymmetric retrieval query embedding.
             query_embedding = get_embedding(query, role="query")
-            
-            logger.info(f"[TOOL_SEARCH] Searching {len(results)} enabled tools for query: '{query[:100]}...'")
-            
-            # 3. Calculate similarity
-            scored_tools = []
-            for row in results:
+            logger.info(
+                "[TOOL_SEARCH] Hybrid search across %s enabled tools for query: %r",
+                len(stored_rows),
+                query[:100],
+            )
+            for row in stored_rows:
                 tool = dict(row)
                 try:
-                    # Deserialize embedding
-                    blob = tool['embedding']
-                    stored_embedding = None
-                    
-                    # Try pickle first (since we know it's pickle from debug)
+                    blob = tool.pop("embedding")
                     try:
                         stored_embedding = pickle.loads(blob)
                     except Exception:
-                        # If pickle fails, try JSON (newer format)
-                        try:
-                            if isinstance(blob, bytes):
-                                stored_embedding = json.loads(blob.decode('utf-8'))
-                            else:
-                                stored_embedding = json.loads(blob)
-                        except Exception:
-                            pass
-                    
-                    if stored_embedding:
-                        similarity = cosine_similarity(query_embedding, stored_embedding)
-                        tool['similarity'] = similarity
-                        del tool['embedding']  # Remove blob to save memory
-                        scored_tools.append(tool)
-                except Exception as e:
-                    logger.warning(f"⚠️ Error processing tool {tool.get('name')}: {e}")
-                    continue
-            
-            # 4. Sort by similarity
-            scored_tools.sort(key=lambda x: x['similarity'], reverse=True)
-            
-            # 5. Apply threshold filter if set
+                        if isinstance(blob, bytes):
+                            stored_embedding = json.loads(blob.decode("utf-8"))
+                        else:
+                            stored_embedding = json.loads(blob)
+                    tool["similarity"] = cosine_similarity(
+                        query_embedding,
+                        stored_embedding,
+                    )
+                    dense_rows.append(tool)
+                except Exception as exc:
+                    logger.warning(
+                        "Error processing tool embedding %s: %s",
+                        tool.get("name"),
+                        exc,
+                    )
+            dense_rows.sort(key=lambda item: item["similarity"], reverse=True)
+            for rank, item in enumerate(dense_rows, start=1):
+                item["dense_rank"] = rank
+        except Exception as exc:
+            semantic_disabled_reason = str(exc)
+            logger.warning("Semantic tool retrieval disabled: %s", exc)
+
+        dense_top = dense_rows[0]["similarity"] if dense_rows else 0.0
+        if dense_rows:
             if threshold > 0.0:
-                filtered = [t for t in scored_tools if t['similarity'] >= threshold]
-                logger.info(f"[TOOL_SEARCH] Threshold {threshold}: {len(filtered)}/{len(scored_tools)} tools passed")
-                scored_tools = filtered
-            
-            # 6. Limit results
-            final_tools = scored_tools[:limit]
-            
-            # Log top results for debugging
-            for i, tool in enumerate(final_tools[:5]):  # Show top 5
-                logger.info(f"[TOOL_SEARCH]   #{i+1}: {tool['name']} (score: {tool['similarity']:.4f})")
-            
-            return final_tools
-            
-        except Exception as e:
-            # Fallback: Basic keyword match
-            self.last_tool_search_meta = {
-                "fallback_embeddings": None,
-                "retrieval_mode": "keyword_fallback",
-                "semantic_disabled_reason": str(e),
-            }
-            print(f"⚠️ Semantic tool search failed: {e}. Falling back to keyword search.")
-            results = cursor.execute("""
-                SELECT name, description, schema_json 
-                FROM tool_definitions 
-                WHERE enabled = 1 AND (name LIKE ? OR description LIKE ?)
-                LIMIT ?
-            """, (f"%{query}%", f"%{query}%", limit)).fetchall()
-            
-            return [dict(row) for row in results]
+                dense_baseline = float(threshold)
+            else:
+                scale_index = min(len(dense_rows) - 1, max(8, requested_limit * 2))
+                dense_baseline = dense_rows[scale_index]["similarity"]
+        else:
+            dense_baseline = 0.0
+        dense_span = max(dense_top - dense_baseline, 1e-9)
+
+        keyword_strengths = [abs(float(row.get("keyword_bm25") or 0.0)) for row in lexical_rows]
+        keyword_top = max(keyword_strengths, default=0.0)
+        by_name: dict[str, dict] = {}
+
+        for row in dense_rows:
+            if threshold > 0.0 and row["similarity"] < threshold:
+                continue
+            item = dict(row)
+            item["dense_confidence"] = max(
+                0.0,
+                min(1.0, (row["similarity"] - dense_baseline) / dense_span),
+            )
+            item["retrieval_channels"] = ["dense"]
+            by_name[item["name"]] = item
+
+        for row in lexical_rows:
+            name = row["name"]
+            has_dense_evidence = name in by_name
+            if not row["exact_name_match"]:
+                if has_dense_evidence and row["keyword_coverage"] < 0.50:
+                    continue
+                if not has_dense_evidence and not semantic_disabled_reason:
+                    continue
+                if not has_dense_evidence and row["keyword_coverage"] < 0.34:
+                    continue
+            item = by_name.get(name, {})
+            for field in ("name", "description", "schema_json"):
+                item.setdefault(field, row[field])
+            item["keyword_rank"] = row["keyword_rank"]
+            item["keyword_bm25"] = row["keyword_bm25"]
+            item["keyword_coverage"] = row["keyword_coverage"]
+            item["exact_name_match"] = row["exact_name_match"]
+            if "keyword" not in item.setdefault("retrieval_channels", []):
+                item["retrieval_channels"].append("keyword")
+            strength = abs(float(row.get("keyword_bm25") or 0.0))
+            keyword_confidence = (
+                strength / keyword_top
+                if keyword_top > 0.0
+                else 1.0 / max(1, row["keyword_rank"])
+            )
+            if row["exact_name_match"]:
+                keyword_confidence = max(keyword_confidence, 1.0)
+            item["keyword_confidence"] = min(1.0, keyword_confidence)
+            by_name[name] = item
+
+        fused: list[dict] = []
+        for item in by_name.values():
+            dense_confidence = float(item.get("dense_confidence") or 0.0)
+            keyword_confidence = float(item.get("keyword_confidence") or 0.0)
+            channels = item.get("retrieval_channels", [])
+            if "dense" in channels and "keyword" in channels:
+                hybrid_score = (0.72 * dense_confidence) + (0.28 * keyword_confidence)
+            elif "dense" in channels:
+                hybrid_score = 0.72 * dense_confidence
+            else:
+                hybrid_score = 0.65 * keyword_confidence
+            item["hybrid_score"] = hybrid_score
+            item["rrf_score"] = reciprocal_rank_score(
+                item.get("dense_rank"),
+                item.get("keyword_rank"),
+            )
+            fused.append(item)
+
+        fused.sort(
+            key=lambda item: (
+                item.get("hybrid_score", 0.0),
+                item.get("rrf_score", 0.0),
+                item.get("similarity", -1.0),
+            ),
+            reverse=True,
+        )
+        final_tools = fused[:requested_limit]
+
+        has_dense = any("dense" in item.get("retrieval_channels", []) for item in final_tools)
+        has_keyword = any("keyword" in item.get("retrieval_channels", []) for item in final_tools)
+        if semantic_disabled_reason:
+            retrieval_mode = "keyword_fallback" if has_keyword else "unavailable"
+        elif has_dense and has_keyword:
+            retrieval_mode = "hybrid"
+        elif has_keyword:
+            retrieval_mode = "keyword_only"
+        else:
+            retrieval_mode = "semantic"
+        self.last_tool_search_meta = {
+            "retrieval_mode": retrieval_mode,
+            "semantic_disabled_reason": semantic_disabled_reason,
+            "dense_candidate_count": len(dense_rows),
+            "keyword_candidate_count": len(lexical_rows),
+            "fused_candidate_count": len(fused),
+        }
+
+        for index, tool in enumerate(final_tools[:5], start=1):
+            logger.info(
+                "[TOOL_SEARCH] #%s %s hybrid=%.4f dense=%s keyword_rank=%s channels=%s",
+                index,
+                tool["name"],
+                tool["hybrid_score"],
+                f"{tool['similarity']:.4f}" if tool.get("similarity") is not None else "-",
+                tool.get("keyword_rank", "-"),
+                "+".join(tool.get("retrieval_channels", [])),
+            )
+        return final_tools
 
     def get_tool_definition(self, name: str) -> dict | None:
         """Get specific tool definition by name."""

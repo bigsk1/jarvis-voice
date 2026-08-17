@@ -124,6 +124,32 @@ class ToolTurnBudgetTests(unittest.TestCase):
         self.assertEqual(result["tool_trace"][0]["tool"], "serpapi_yelp_search")
         self.assertFalse(result["tool_trace"][0]["ok"])
 
+    def test_web_tool_hint_wrapper_is_not_used_for_memory_retrieval(self):
+        orchestrator = self._build_orchestrator(fail_on_calls=set())
+        memory_queries = []
+        intelligence_queries = []
+        orchestrator._get_relevant_memories_bundle = lambda query: (
+            memory_queries.append(query) or {"context": "", "meta": {}}
+        )
+        orchestrator._get_learning_insights = lambda query, _available_tools: (
+            intelligence_queries.append(query) or ("", [])
+        )
+        prompt = (
+            "[CONTEXT - Tool preference for this request]\n\n"
+            "Selected tool hints: canvas.\n\n"
+            "[END CONTEXT]\n\n"
+            "User's request: Find local activities"
+        )
+
+        with patch(
+            "orchestrator_v2.get_int",
+            side_effect=lambda key, default=0: 1 if key == "MAX_TOOL_TURNS" else default,
+        ):
+            orchestrator.process(prompt)
+
+        self.assertEqual(memory_queries, ["Find local activities"])
+        self.assertEqual(intelligence_queries, ["Find local activities"])
+
     def test_mid_budget_failure_retry_uses_only_remaining_turns(self):
         orchestrator = self._build_orchestrator(fail_on_calls={3})
 

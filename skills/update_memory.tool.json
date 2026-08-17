@@ -1,9 +1,10 @@
 {
   "enabled": true,
   "name": "update_memory",
-  "description": "Update or correct an existing memory. Use this when you realize a stored fact is outdated, incorrect, or needs to be changed. Can search for the memory automatically if you provide a search query instead of a memory ID.",
+  "description": "Update or correct an existing memory by explicit ID. Use a memory ID already visible in the current conversation or injected memory context when it clearly identifies the intended record; otherwise call search_memory or semantic_recall first. If identification is missing or ambiguous, do not update. This tool never searches or fuzzy-matches.",
   "complementary_tools": [
     "search_memory",
+    "semantic_recall",
     "manage_intel"
   ],
   "script": "update_memory.py",
@@ -12,15 +13,7 @@
     "properties": {
       "memory_id": {
         "type": "integer",
-        "description": "The ID of the memory to update (optional if search_query is provided)"
-      },
-      "search_query": {
-        "type": "string",
-        "description": "Search for the memory to update by keywords (used if memory_id not provided). Example: 'favorite food' or 'pizza'"
-      },
-      "category": {
-        "type": "string",
-        "description": "Optional category to narrow search (preference, fact, contact, etc.)"
+        "description": "Exact memory ID from visible context or a prior search_memory or semantic_recall lookup."
       },
       "new_value": {
         "type": "string",
@@ -34,6 +27,7 @@
       }
     },
     "required": [
+      "memory_id",
       "new_value"
     ]
   },

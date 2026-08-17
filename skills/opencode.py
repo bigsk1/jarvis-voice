@@ -124,11 +124,55 @@ def main():
         return 1
 
 
+def _opencode_memory_context_entry(memory: dict) -> dict | None:
+    """Convert a hybrid MemoryDB row into conservative OpenCode context."""
+    similarity = memory.get("similarity")
+    if isinstance(similarity, (int, float)):
+        score = float(similarity)
+        relevance_basis = "semantic_similarity"
+    else:
+        retrieval_score = memory.get("retrieval_score")
+        if not isinstance(retrieval_score, (int, float)):
+            return None
+        score = float(retrieval_score)
+        relevance_basis = "keyword_retrieval_score"
+
+    # Preserve the historical OpenCode context threshold. MemoryDB already
+    # gates lexical-only rows, so retrieval_score is used only when no cosine
+    # exists rather than pretending a keyword hit has zero similarity.
+    if score <= 0.5:
+        return None
+
+    channels = set(memory.get("retrieval_channels") or [])
+    if channels == {"dense", "keyword"}:
+        match_type = "hybrid"
+    elif "dense" in channels or isinstance(similarity, (int, float)):
+        match_type = "semantic"
+    elif "keyword" in channels:
+        match_type = (
+            "keyword_fallback"
+            if memory.get("keyword_match_mode") == "fallback"
+            else "keyword_exact"
+        )
+    else:
+        match_type = "retrieval"
+
+    return {
+        "key": memory.get("key"),
+        "value": memory.get("value"),
+        "category": memory.get("category"),
+        "relevance": f"{score * 100:.0f}%",
+        "relevance_basis": relevance_basis,
+        "match_type": match_type,
+    }
+
+
 def get_memory_context(task: str, provider: str) -> dict:
     """
     Retrieve relevant memories from Jarvis's database for OpenCode context.
     Uses semantic search to find related information.
     """
+    db = None
     try:
         db = MemoryDB()
         
@@ -143,16 +187,14 @@ def get_memory_context(task: str, provider: str) -> dict:
         # Get recent project context
         projects = db.recall(query="project", limit=3) or []
         
+        relevant_context = [
+            entry
+            for mem in relevant_memories
+            if (entry := _opencode_memory_context_entry(mem)) is not None
+        ]
+
         memory_context = {
-            "relevant_memories": [
-                {
-                    "key": mem.get("key"),
-                    "value": mem.get("value"),
-                    "category": mem.get("category"),
-                    "relevance": f"{mem.get('similarity', 0) * 100:.0f}%"
-                }
-                for mem in relevant_memories if mem.get("similarity", 0) > 0.5
-            ],
+            "relevant_memories": relevant_context,
             "user_preferences": [
                 {
                     "key": pref.get("key"),
@@ -178,6 +220,9 @@ def get_memory_context(task: str, provider: str) -> dict:
             "recent_projects": [],
             "error": f"Memory lookup failed: {str(e)}"
         }
+    finally:
+        if db is not None:
+            db.close()
 
 
 def _extract_text(payload):

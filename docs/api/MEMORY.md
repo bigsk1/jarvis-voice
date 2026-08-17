@@ -4,9 +4,9 @@
 
 ## Overview
 
-The Memory API provides full CRUD access to Jarvis's semantic memory system. Use it to:
+The Memory API provides full CRUD access to Jarvis's memory system. Use it to:
 - Store persistent knowledge (project locations, preferences, contacts)
-- Search by keyword (FTS5) or meaning (vector embeddings)
+- Search by keyword (FTS5) or with fused dense and keyword retrieval
 - Build external apps that leverage Jarvis's memory
 
 **Base URL:** `http://localhost:8880/api/memory`
@@ -29,7 +29,7 @@ curl -X POST http://localhost:8880/api/memory \
 # Search by keyword
 curl "http://localhost:8880/api/memory/search/keyword?q=flask"
 
-# Search by meaning (semantic)
+# Search by meaning with hybrid retrieval
 curl "http://localhost:8880/api/memory/search/semantic?q=where%20is%20my%20web%20project"
 
 # Get stats
@@ -231,13 +231,17 @@ curl "http://localhost:8880/api/memory/search/keyword?q=api&category=technical"
 
 ---
 
-### Semantic Search (AI Embeddings)
+### Hybrid Search (Embeddings + FTS5/BM25)
 
 ```http
 GET /api/memory/search/semantic?q={query}&limit={limit}&threshold={threshold}
 ```
 
-Finds conceptually related memories using vector similarity.
+Combines dense vector similarity with FTS5/BM25 keyword evidence. Broad keyword
+matches may reinforce dense results; keyword-only results must match every
+meaningful query term while embeddings are healthy. If embeddings are
+unavailable, the endpoint reports keyword fallback metadata and continues
+without mixing incompatible vectors.
 
 **Best for:**
 - Natural language questions
@@ -249,7 +253,7 @@ Finds conceptually related memories using vector similarity.
 |-------|------|---------|-------------|
 | `q` | string | - | Natural language query |
 | `limit` | int | 5 | Max results (1-50) |
-| `threshold` | float | 0.3 | Min similarity (0-1) |
+| `threshold` | float | mode configuration | Minimum dense similarity (0-1); omit to use `SEMANTIC_SIMILARITY_THRESHOLD` |
 
 **Example:**
 ```bash
@@ -260,7 +264,7 @@ curl "http://localhost:8880/api/memory/search/semantic?q=where%20is%20my%20web%2
 curl "http://localhost:8880/api/memory/search/semantic?q=what%20is%20my%20dog%27s%20name&threshold=0.4"
 ```
 
-**Response includes similarity score:**
+**Response includes result-level evidence and search-level diagnostics:**
 ```json
 {
   "ok": true,
@@ -270,10 +274,22 @@ curl "http://localhost:8880/api/memory/search/semantic?q=what%20is%20my%20dog%27
       "id": 273,
       "key": "dog_name",
       "value": "Jessi",
-      "similarity": 0.454,  // Vector similarity
-      ...
+      "similarity": 0.454,
+      "retrieval_score": 0.75,
+      "retrieval_channels": ["dense", "keyword"],
+      "keyword_match_mode": "precise"
     }
-  ]
+  ],
+  "retrieval": {
+    "retrieval_mode": "hybrid",
+    "semantic_disabled_reason": null,
+    "similarity_threshold": 0.31,
+    "dense_candidate_count": 4,
+    "keyword_candidate_count": 2,
+    "keyword_precise_candidate_count": 1,
+    "keyword_admitted_count": 2,
+    "fused_candidate_count": 4
+  }
 }
 ```
 
@@ -284,10 +300,12 @@ Content-Type: application/json
 
 {
   "query": "What was the project I was working on last month with the API?",
-  "limit": 5,
-  "similarity_threshold": 0.35
+  "limit": 5
 }
 ```
+
+Set `similarity_threshold` explicitly only when a caller needs to override the
+active mode's configured threshold for that request.
 
 ---
 

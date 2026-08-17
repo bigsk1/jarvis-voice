@@ -1,8 +1,9 @@
-"""Memory API models"""
+"""Memory API models."""
+
+from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Any
-from enum import Enum
 
 
 class MemoryCategory(str, Enum):
@@ -65,6 +66,39 @@ class Memory(BaseModel):
     metadata: dict[str, Any] | None = None
     relevance: float | None = Field(None, description="Search relevance score (if from search)")
     similarity: float | None = Field(None, description="Semantic similarity score (if from semantic search)")
+    retrieval_score: float | None = Field(
+        None,
+        description="Final normalized score used to rank a hybrid search result",
+    )
+    hybrid_score: float | None = Field(
+        None,
+        description="Combined dense and keyword score used by hybrid retrieval",
+    )
+    rrf_score: float | None = Field(
+        None,
+        description="Reciprocal-rank-fusion diagnostic score",
+    )
+    retrieval_channels: list[str] | None = Field(
+        None,
+        description="Evidence channels contributing to this result",
+    )
+    keyword_match_mode: str | None = Field(
+        None,
+        description="How keyword evidence was admitted: precise, dense_support, or fallback",
+    )
+
+
+class MemoryRetrievalMetadata(BaseModel):
+    """Diagnostics for one semantic/hybrid memory search."""
+
+    retrieval_mode: str
+    semantic_disabled_reason: str | None = None
+    similarity_threshold: float | None = None
+    dense_candidate_count: int | None = None
+    keyword_candidate_count: int | None = None
+    keyword_precise_candidate_count: int | None = None
+    keyword_admitted_count: int | None = None
+    fused_candidate_count: int | None = None
 
 
 class MemoryResponse(BaseModel):
@@ -75,6 +109,12 @@ class MemoryResponse(BaseModel):
     memory: Memory | None = None
     memories: list[Memory] | None = None
     count: int | None = None
+
+
+class MemorySearchResponse(MemoryResponse):
+    """Memory response with diagnostics from semantic/hybrid retrieval."""
+
+    retrieval: MemoryRetrievalMetadata
 
 
 class MemoryCategoriesResponse(BaseModel):
@@ -93,10 +133,18 @@ class MemorySearchRequest(BaseModel):
 
 
 class SemanticSearchRequest(BaseModel):
-    """Request for semantic (AI-powered) search"""
+    """Request for hybrid semantic and keyword search."""
     query: str = Field(..., description="Natural language question or concept")
     limit: int = Field(5, ge=1, le=50, description="Maximum results")
-    similarity_threshold: float = Field(0.3, ge=0.0, le=1.0, description="Minimum similarity score (0-1)")
+    similarity_threshold: float | None = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Minimum dense similarity score (0-1); omit to use "
+            "SEMANTIC_SIMILARITY_THRESHOLD for the active mode"
+        ),
+    )
 
     model_config = ConfigDict(json_schema_extra={
             "example": {

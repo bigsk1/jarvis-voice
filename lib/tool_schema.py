@@ -9,11 +9,87 @@ import os
 from pathlib import Path
 from typing import Any
 
-from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
 from http_client import normalize_proxy_policy
+from hybrid_retrieval import adaptive_rank_cutoff, query_segments
+from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
 
 _logger = logging.getLogger(__name__)
 _MANDATORY_GHOST_TOOLS = ("tool_search", "workflow")
+_ADAPTIVE_DYNAMIC_TOOL_MAX = 5
+_COMPOUND_SEGMENT_TOOL_MAX = 2
+
+
+def _merge_compound_segment_rankings(
+    primary: list[dict[str, Any]],
+    segment_rankings: list[tuple[str, list[dict[str, Any]]]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Merge small per-clause retrieval views into the full-query ranking."""
+    by_name: dict[str, dict[str, Any]] = {}
+    for row in primary:
+        name = str(row.get("name") or "")
+        if not name:
+            continue
+        item = dict(row)
+        item["full_query_hybrid_score"] = float(row.get("hybrid_score") or 0.0)
+        by_name[name] = item
+
+    segment_meta: list[dict[str, Any]] = []
+    for segment, ranked in segment_rankings:
+        selected, cutoff_meta = adaptive_rank_cutoff(
+            ranked,
+            budget=_COMPOUND_SEGMENT_TOOL_MAX,
+        )
+        segment_meta.append(
+            {
+                "query": segment,
+                "selected_tools": [row.get("name") for row in selected],
+                "adaptive_selection": cutoff_meta,
+            }
+        )
+        for row in selected:
+            name = str(row.get("name") or "")
+            if not name:
+                continue
+            segment_score = float(row.get("hybrid_score") or 0.0)
+            item = by_name.get(name)
+            if item is None:
+                item = dict(row)
+                item["full_query_hybrid_score"] = None
+                item["segment_only"] = True
+                by_name[name] = item
+            current_segment_score = float(item.get("segment_hybrid_score") or 0.0)
+            if segment_score >= current_segment_score:
+                item["segment_hybrid_score"] = segment_score
+            if segment_score > float(item.get("hybrid_score") or 0.0):
+                for field in (
+                    "similarity",
+                    "dense_rank",
+                    "dense_confidence",
+                    "keyword_rank",
+                    "keyword_bm25",
+                    "keyword_coverage",
+                    "keyword_confidence",
+                    "exact_name_match",
+                    "retrieval_channels",
+                    "rrf_score",
+                ):
+                    if field in row:
+                        item[field] = row[field]
+                item["hybrid_score"] = segment_score
+            segment_queries = item.setdefault("segment_queries", [])
+            if segment not in segment_queries:
+                segment_queries.append(segment)
+
+    merged = list(by_name.values())
+    merged.sort(
+        key=lambda item: (
+            float(item.get("hybrid_score") or 0.0),
+            float(item.get("rrf_score") or 0.0),
+            float(item.get("similarity") or 0.0),
+        ),
+        reverse=True,
+    )
+    return merged, segment_meta
 
 
 def _merged_ghost_tool_names(raw_value: str | None, available_names: set[str]) -> list[str]:
@@ -333,8 +409,7 @@ class ToolRegistry:
         self.mcp_manager = None
         self.mcp_unavailable: dict[str, str] = {}
         self.last_tool_search_meta: dict[str, Any] = {
-            "fallback_embeddings": None,
-            "retrieval_mode": "semantic",
+            "retrieval_mode": "hybrid",
             "semantic_disabled_reason": None,
         }
         # Tools excluded because required configuration is missing in the
@@ -640,8 +715,8 @@ class ToolRegistry:
         typo_hint_source: str | None = None,
     ) -> list[ToolSchema]:
         """
-        Find relevant tools for a user query using vector search.
-        Prioritizes GHOST_TOOLS before semantic matches.
+        Find relevant tools with fused dense/FTS5 ranking and adaptive selection.
+        Prioritizes GHOST_TOOLS before retrieved matches.
 
         The router may apply a final schema cap after this merge, so ghost
         tools are candidates for the final prompt rather than an unlimited
@@ -649,16 +724,17 @@ class ToolRegistry:
 
         Args:
             query: Text to embed for similarity search.
-            limit: Max semantic candidates requested before ghost merge and
-                any router final schema cap.
-            similarity_threshold: Min cosine similarity to keep a tool. If None, uses
+            limit: Final schema ceiling used to bound adaptive candidates
+                before ghost merge and any router final schema cap.
+            similarity_threshold: Min cosine similarity for dense-only candidates.
+                Strong lexical matches can also qualify. If None, uses
                 TOOL_SIMILARITY_THRESHOLD from config (router may pass an explicit value).
             typo_hint_source: If set, typo/near-segment RAG hints consider only this text
                 (typically the raw user request); ``query`` is still embedded in full with
                 hints appended. If None, hint logic scans all of ``query``.
         """
-        from memory_db import get_memory_db
         from config_loader import get_config_value, get_float
+        from memory_db import get_memory_db
         
         # Get prioritized "ghost" tools from config (or use defaults).
         ghost_tools_str = get_config_value('GHOST_TOOLS', 'search_memory,semantic_recall,remember')
@@ -667,9 +743,13 @@ class ToolRegistry:
         if similarity_threshold is None:
             similarity_threshold = get_float('TOOL_SIMILARITY_THRESHOLD', 0.0)
         threshold = similarity_threshold
+        mandatory_count = sum(name in CORE_TOOLS for name in _MANDATORY_GHOST_TOOLS)
+        dynamic_budget = max(
+            1,
+            min(_ADAPTIVE_DYNAMIC_TOOL_MAX, limit - mandatory_count),
+        )
         self.last_tool_search_meta = {
-            "fallback_embeddings": None,
-            "retrieval_mode": "semantic",
+            "retrieval_mode": "hybrid",
             "semantic_disabled_reason": None,
         }
         db = None
@@ -695,14 +775,71 @@ class ToolRegistry:
                 )
 
             # 1. Get relevant tools from vector search (embedding uses rag_query may include typo hints)
-            relevant_tools_data = db.search_tools(rag_query, limit=limit, threshold=threshold)
+            # Retrieve a wider fused pool, then let the per-query score shape
+            # choose how much of the non-ghost tail is worth sending. The final
+            # router cap remains the hard ceiling.
+            relevant_tools_data = db.search_tools(
+                rag_query,
+                limit=max(limit * 2, 16),
+                threshold=threshold,
+            )
             search_meta = getattr(db, "last_tool_search_meta", {})
             if isinstance(search_meta, dict):
                 self.last_tool_search_meta = {
-                    "fallback_embeddings": search_meta.get("fallback_embeddings"),
-                    "retrieval_mode": search_meta.get("retrieval_mode", "semantic"),
+                    "retrieval_mode": search_meta.get("retrieval_mode", "hybrid"),
                     "semantic_disabled_reason": search_meta.get("semantic_disabled_reason"),
+                    "dense_candidate_count": search_meta.get("dense_candidate_count", 0),
+                    "keyword_candidate_count": search_meta.get("keyword_candidate_count", 0),
+                    "fused_candidate_count": search_meta.get("fused_candidate_count", 0),
                 }
+
+            # A single embedding can collapse a longer multi-action request
+            # around its strongest clause. Retrieve a maximum of three
+            # structural clauses independently, keep only the tight top of
+            # each, then apply the same global adaptive budget. No intent or
+            # phrase-to-tool mapping is involved.
+            compound_segments = query_segments(query)
+            segment_rankings: list[tuple[str, list[dict[str, Any]]]] = []
+            if (
+                compound_segments
+                and not self.last_tool_search_meta.get("semantic_disabled_reason")
+            ):
+                for segment in compound_segments:
+                    try:
+                        segment_rows = db.search_tools(
+                            segment,
+                            limit=max(dynamic_budget * 2, 8),
+                            threshold=threshold,
+                        )
+                        segment_meta = getattr(db, "last_tool_search_meta", {})
+                        if not (
+                            isinstance(segment_meta, dict)
+                            and segment_meta.get("semantic_disabled_reason")
+                        ):
+                            segment_rankings.append((segment, segment_rows))
+                    except Exception as exc:
+                        _logger.debug(
+                            "[TOOL_RAG] compound segment retrieval skipped for %r: %s",
+                            segment,
+                            exc,
+                        )
+
+            relevant_tools_data, segment_meta = _merge_compound_segment_rankings(
+                relevant_tools_data,
+                segment_rankings,
+            )
+            relevant_tools_data, adaptive_meta = adaptive_rank_cutoff(
+                relevant_tools_data,
+                budget=dynamic_budget,
+            )
+            self.last_tool_search_meta["adaptive_selection"] = adaptive_meta
+            self.last_tool_search_meta["compound_segments"] = compound_segments
+            self.last_tool_search_meta["segment_searches"] = segment_meta
+            self.last_tool_search_meta["segment_supported_tools"] = [
+                row["name"]
+                for row in relevant_tools_data
+                if row.get("segment_queries")
+            ]
             
             # 2. Collect retrieved tool names
             retrieved_names = [t['name'] for t in relevant_tools_data]
@@ -730,7 +867,6 @@ class ToolRegistry:
             
         except Exception as e:
             self.last_tool_search_meta = {
-                "fallback_embeddings": None,
                 "retrieval_mode": "ghost_only",
                 "semantic_disabled_reason": str(e),
             }

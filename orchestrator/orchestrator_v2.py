@@ -1372,9 +1372,14 @@ Mode: {self.mode}
         except Exception:
             available_tool_names = []  # Fallback: no filtering
         
+        # Semantic retrieval layers should classify the user's task, not
+        # Jarvis-added prompt/tool-hint wrappers whose prose can distort the
+        # embedding query. The full transcript remains available to the LLM.
+        retrieval_query = extract_current_user_request(transcript)
+
         # Auto-inject relevant memories (semantic search + recency weighting)
         # Works for CLI, WebUI, wake word - all go through orchestrator.process()
-        memory_bundle = self._get_relevant_memories_bundle(transcript)
+        memory_bundle = self._get_relevant_memories_bundle(retrieval_query)
         memory_context = memory_bundle.get("context", "")
         memory_meta = memory_bundle.get("meta", {})
         if memory_context:
@@ -1384,12 +1389,8 @@ Mode: {self.mode}
         if chat_only_mode:
             learning_context, applied_insights = "", []
         else:
-            # Intelligence should classify the user's task, not Jarvis-added
-            # tool-hint/context wrappers whose tool names can inflate semantic
-            # similarity to a narrow learned rule.
-            intelligence_query = extract_current_user_request(transcript)
             learning_context, applied_insights = self._get_learning_insights(
-                intelligence_query,
+                retrieval_query,
                 available_tool_names,
             )
         if learning_context:
@@ -3671,6 +3672,7 @@ Your synthesized response:"""
 
             seen_keys: set[str] = set()
             merged: list[tuple[float, int, dict, str]] = []  # (score, importance, memory, source)
+            keyword_candidates: list[dict[str, Any]] = []
             if addressing_limit > 0:
                 for m in db.get_addressing_preferences(limit=addressing_limit):
                     key = m.get('key', '')
@@ -3705,6 +3707,35 @@ Your synthesized response:"""
                     source_name = m.get('source', '')
                     score = 1.08 if _is_curated_intel(source_name) else 0.96
                     merged.append((score, m.get('importance', 5), m, 'intel'))
+
+            # Exact lexical agreement is a parallel retrieval lane, not a
+            # semantic fallback. Requiring every meaningful term keeps this
+            # conservative enough for automatic prompt injection while still
+            # surfacing names, identifiers, and exact stored wording.
+            precise_search = getattr(db, "fts_search_precise", None)
+            precise_matches = (
+                precise_search(transcript, limit=max(limit * 2, 8))
+                if callable(precise_search)
+                else []
+            )
+            for rank, m in enumerate(precise_matches, start=1):
+                key = m.get('key', '')
+                if key and key in seen_keys:
+                    continue
+                if not _include_memory(m):
+                    continue
+                score = max(0.80, 1.0 - ((rank - 1) * 0.04))
+                if key:
+                    seen_keys.add(key)
+                merged.append((score, m.get('importance', 5), m, 'keyword'))
+                keyword_candidates.append({
+                    "key": key,
+                    "category": m.get("category", ""),
+                    "source": m.get("source", ""),
+                    "bucket": "keyword",
+                    "score": round(score, 3),
+                    "similarity": 0.0,
+                })
             
             # Semantic search: cast a slightly wider net, then keep rows with adjusted >= threshold
             # (AUTO_MEMORY_SIMILARITY_THRESHOLD applies to the recency-weighted score, not raw embed alone).
@@ -3774,9 +3805,12 @@ Your synthesized response:"""
             merged.sort(key=lambda x: (x[0], x[1]), reverse=True)
             top = merged[:limit]
 
-            top_candidates = []
+            top_candidates = list(keyword_candidates[: min(max(limit, 3), 5)])
             for candidate in semantic_candidates[: min(max(limit, 3), 5)]:
-                top_candidates.append(candidate)
+                if not any(existing.get("key") == candidate["key"] for existing in top_candidates):
+                    top_candidates.append(candidate)
+                if len(top_candidates) >= min(max(limit, 3), 5):
+                    break
             for rank_score, _, m, source in merged[: min(max(limit, 3), 5)]:
                 candidate = {
                     "key": m.get("key", ""),
@@ -3799,7 +3833,7 @@ Your synthesized response:"""
                         "injected": False,
                         "threshold": threshold,
                         "limit": limit,
-                        "candidate_count": len(semantic_candidates),
+                        "candidate_count": len(semantic_candidates) + len(keyword_candidates),
                         "injected_count": 0,
                         "top_candidates": top_candidates,
                     }
@@ -3817,6 +3851,7 @@ Your synthesized response:"""
                 return any(k in text for k in keywords)
 
             for rank_score, _, m, source in top:
+                memory_id = m.get('id')
                 key = m.get('key', '')
                 value = m.get('value', '')
                 if _is_no_preference(value):
@@ -3846,6 +3881,8 @@ Your synthesized response:"""
                         match_hint = f"intel_curated rank={rank_score:.2f}"
                     else:
                         match_hint = f"intel_kw rank={rank_score:.2f}"
+                elif source == "keyword":
+                    match_hint = f"keyword_exact rank={rank_score:.2f}"
                 else:
                     match_hint = f"semantic embed={raw_embed:.2f} rank={rank_score:.2f}"
                 staleness_hint = ""
@@ -3857,7 +3894,7 @@ Your synthesized response:"""
                 age_text = f"{age_minutes}m" if age_minutes is not None else "unknown"
                 memory_lines.append(
                     f"- {key}: {value} "
-                    f"(category: {cat}, {match_hint}, saved_at: {saved_at_local}, age: {age_text}"
+                    f"(memory_id: {memory_id}, category: {cat}, {match_hint}, saved_at: {saved_at_local}, age: {age_text}"
                     f"{', source: ' + source_name if source_name else ''}"
                     f"{', staleness: ' + staleness_hint if staleness_hint else ''})"
                 )
@@ -3869,7 +3906,7 @@ Your synthesized response:"""
                     "injected": False,
                     "threshold": threshold,
                     "limit": limit,
-                    "candidate_count": len(semantic_candidates),
+                    "candidate_count": len(semantic_candidates) + len(keyword_candidates),
                     "injected_count": 0,
                     "top_candidates": top_candidates,
                 }
@@ -3877,10 +3914,10 @@ Your synthesized response:"""
             lines = [
                 "=== RELEVANT STORED KNOWLEDGE (use directly when relevant) ===",
                 "Lines tagged pinned_pref are address/tone preferences (e.g. call me sir)—honor those over your defaults when they apply.",
-                "Other lines are semantic matches for this query (not necessarily instructions); use when relevant and ignore if off-topic or stale.",
+                "Other lines are semantic or exact-keyword matches for this query (not necessarily instructions); use when relevant and ignore if off-topic or stale.",
                 "If this block already answers the question, use it directly. Call search_memory or semantic_recall only if you need broader recall than what is shown here.",
                 "Freshness note: For live market/weather questions, newer live tool calls outrank older stored memory.",
-                f"Higher rank = stronger fit. embed = cosine; rank = similarity after recency (semantic rows need adjusted rank ≥ {threshold:.2f}).",
+                f"Higher rank = stronger fit. embed = cosine; semantic rank includes recency (semantic rows need adjusted rank ≥ {threshold:.2f}); keyword_exact means every meaningful query term matched.",
                 ""
             ] + memory_lines + ["==="]
             return {
@@ -3890,7 +3927,7 @@ Your synthesized response:"""
                     "injected": True,
                     "threshold": threshold,
                     "limit": limit,
-                    "candidate_count": len(semantic_candidates),
+                    "candidate_count": len(semantic_candidates) + len(keyword_candidates),
                     "injected_count": len(memory_lines),
                     "top_candidates": top_candidates,
                 }

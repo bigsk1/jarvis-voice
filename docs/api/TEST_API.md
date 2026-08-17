@@ -335,14 +335,16 @@ curl -s "http://localhost:8880/api/memory/search/keyword?q=project&category=tech
 ### 15. Test Semantic Search
 
 ```bash
-# Natural language question
-curl -s "http://localhost:8880/api/memory/search/semantic?q=what%20is%20my%20dog%27s%20name" | jq '.memories[] | {key, value, similarity}'
+# Natural language question (uses the active mode's configured threshold)
+curl -s "http://localhost:8880/api/memory/search/semantic?q=what%20is%20my%20dog%27s%20name" | jq '{retrieval, memories: [.memories[] | {key, value, similarity, retrieval_score, retrieval_channels}]}'
 
 # With threshold
 curl -s "http://localhost:8880/api/memory/search/semantic?q=where%20is%20my%20project&threshold=0.4" | jq
 ```
 
-**Expected:** Returns memories with similarity scores (0-1).
+**Expected:** Returns hybrid-ranked memories plus retrieval mode, channel, and
+fallback diagnostics. Supplying `threshold` overrides the active mode's
+`SEMANTIC_SIMILARITY_THRESHOLD` for that request.
 
 ### 16. Test Get Memory by ID
 

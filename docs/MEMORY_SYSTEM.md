@@ -114,13 +114,14 @@ AI-powered search using vector embeddings - understands meaning, not just keywor
 - **Legacy/backward compat** → `recall` (slower, same as old search_memory)
 
 ### `update_memory`
-Modifies existing memories when information changes. **Smart search enabled** - can find memories automatically without needing the ID.
+Modifies existing memories when information changes. Updates are ID-only: use
+an exact `memory_id` already present in visible conversation or injected memory
+context. If no verified ID is available, call `search_memory` or
+`semantic_recall` first. Never select an update target from a fuzzy text match.
 
 **Parameters:**
-- `search_query` - Find memory by keywords (optional if you have the ID)
-- `memory_id` - Direct memory ID (optional if you provide search_query)
+- `memory_id` - Exact verified memory ID
 - `new_value` - The updated information
-- `category` - Optional category filter for search
 - `importance` - Optional updated importance (1-10)
 
 ```bash
@@ -128,18 +129,21 @@ Modifies existing memories when information changes. **Smart search enabled** - 
 # Jarvis automatically finds the restaurant memory and updates it
 
 # Direct tool usage examples:
-# With search (automatic):
-python3 skills/update_memory.py '{"search_query": "restaurant", "new_value": "Sushi House"}'
-
-# With ID (if known):
+# With a verified ID:
 python3 skills/update_memory.py '{"memory_id": 5, "new_value": "Sushi House"}'
 ```
 
 ### `forget`
-Removes memories that are no longer needed or incorrect.
+Removes memories that are no longer needed or incorrect. Deletion is ID-only:
+use an exact `memory_id` already present in the visible conversation or injected
+memory context. If no verified ID is available, call `search_memory` or
+`semantic_recall` first. Never select a deletion target from a fuzzy text match.
 ```bash
 # Say: "Forget about my favorite restaurant"
-# Jarvis deletes that memory
+# Jarvis searches for the record, verifies its ID, then deletes by ID
+
+# Direct tool usage with a verified ID:
+python3 skills/forget.py '{"memory_id": 5}'
 ```
 
 ## Managing the Database

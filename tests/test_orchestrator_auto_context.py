@@ -20,6 +20,57 @@ def _sqlite_utc(dt: datetime) -> str:
 
 
 class OrchestratorAutoContextTests(unittest.TestCase):
+    def test_auto_memory_injects_precise_keyword_match_independent_of_dense_threshold(self):
+        orch = Orchestrator.__new__(Orchestrator)
+        orch.timezone = ZoneInfo("America/Los_Angeles")
+        orch._safe_iso_to_local_datetime = lambda value: None
+
+        class FakeDb:
+            def get_addressing_preferences(self, limit):
+                return []
+
+            def fts_search(self, transcript, limit):
+                return []
+
+            def fts_search_precise(self, transcript, limit):
+                return [
+                    {
+                        "id": 4312,
+                        "key": "atlas_failover_phrase",
+                        "value": "The Atlas lab failover phrase is silver harbor.",
+                        "category": "fact",
+                        "source": "remember",
+                        "metadata": {"memory_type": "fact"},
+                        "importance": 8,
+                        "updated_at": _sqlite_utc(datetime.now(timezone.utc)),
+                    }
+                ]
+
+            def semantic_search(self, query, limit, similarity_threshold):
+                return []
+
+        def fake_get_config_value(key, default=None):
+            values = {
+                "AUTO_MEMORY_INJECTION_ENABLED": "true",
+                "AUTO_MEMORY_RECENCY_ENABLED": "true",
+                "AUTO_MEMORY_TYPE_FILTER_ENABLED": "true",
+            }
+            return values.get(key, default)
+
+        with patch("orchestrator_v2.get_memory_db", return_value=FakeDb()), patch(
+            "orchestrator_v2.get_config_value", side_effect=fake_get_config_value
+        ), patch("orchestrator_v2.get_int", side_effect=lambda key, default=0: 2), patch(
+            "orchestrator_v2.get_float", return_value=0.95
+        ):
+            bundle = orch._get_relevant_memories_bundle(
+                "What is the Atlas lab failover phrase?"
+            )
+
+        self.assertTrue(bundle["meta"]["injected"])
+        self.assertIn("atlas_failover_phrase", bundle["context"])
+        self.assertIn("memory_id: 4312", bundle["context"])
+        self.assertIn("keyword_exact", bundle["context"])
+
     def test_auto_memory_meta_reports_candidates_when_none_are_injected(self):
         orch = Orchestrator.__new__(Orchestrator)
         orch.timezone = ZoneInfo("America/Los_Angeles")

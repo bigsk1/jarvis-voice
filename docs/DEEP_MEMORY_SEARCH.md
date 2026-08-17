@@ -131,7 +131,7 @@ python skills/deep_memory_search.py '{"query": "project", "date_filter": "month"
 ## Related Tools
 
 - `search_memory` - FTS5 keyword search in memory
-- `semantic_recall` - Embedding-based semantic search
+- `semantic_recall` - Hybrid embedding + FTS5/BM25 memory search
 - `search_conversations` - Terminal conversation history
 - `manage_intel` - Intel folder CRUD operations
 - `canvas` - Canvas page operations

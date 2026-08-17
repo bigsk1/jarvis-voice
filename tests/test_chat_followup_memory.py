@@ -151,6 +151,46 @@ def test_extract_followup_data_preserves_semantic_recall_candidates():
     assert memory["candidates"][1]["id"] == 222
 
 
+def test_extract_followup_data_preserves_deep_memory_search_ids():
+    handler = _handler()
+    data = {
+        "deep_memory_search": {
+            "results": {
+                "memory": [
+                    {
+                        "id": 731,
+                        "key": "atlas_phrase",
+                        "value": "silver harbor",
+                        "category": "fact",
+                        "retrieval_score": 0.55,
+                    },
+                    {
+                        "id": 845,
+                        "key": "atlas_owner",
+                        "value": "The Atlas owner is Morgan.",
+                        "category": "fact",
+                        "similarity": 0.78,
+                    },
+                ],
+                "canvas": [{"id": "page-1", "title": "Atlas"}],
+            },
+            "flat_results": [
+                {"id": 731, "key": "atlas_phrase"},
+                {"id": "page-1", "title": "Atlas"},
+            ],
+        }
+    }
+
+    result = handler._extract_followup_data(data)
+    memory = result["deep_memory_search"]
+
+    assert memory["memory_count"] == 2
+    assert memory["id"] == 731
+    assert memory["key"] == "atlas_phrase"
+    assert memory["candidates"][0]["retrieval_score"] == 0.55
+    assert memory["candidates"][1]["id"] == 845
+
+
 def test_extract_followup_data_preserves_forget_mutation_refs():
     handler = _handler()
     data = {

@@ -35,8 +35,7 @@ class _FakeDB:
         self,
         results,
         *,
-        fallback_embeddings=None,
-        retrieval_mode="semantic",
+        retrieval_mode="hybrid",
         semantic_disabled_reason=None,
     ):
         self.results = results
@@ -44,7 +43,6 @@ class _FakeDB:
         self.last_limit = None
         self.last_threshold = None
         self.last_tool_search_meta = {
-            "fallback_embeddings": fallback_embeddings,
             "retrieval_mode": retrieval_mode,
             "semantic_disabled_reason": semantic_disabled_reason,
         }
@@ -57,6 +55,27 @@ class _FakeDB:
 
     def close(self):
         return None
+
+
+class _QueryAwareFakeDB(_FakeDB):
+    def __init__(self, results_by_query):
+        super().__init__([], retrieval_mode="hybrid")
+        self.results_by_query = results_by_query
+        self.queries = []
+
+    def search_tools(self, query, limit=5, threshold=0.0):
+        self.queries.append(query)
+        self.last_query = query
+        self.last_limit = limit
+        self.last_threshold = threshold
+        self.last_tool_search_meta = {
+            "retrieval_mode": "hybrid",
+            "semantic_disabled_reason": None,
+            "dense_candidate_count": 12,
+            "keyword_candidate_count": 4,
+            "fused_candidate_count": len(self.results_by_query.get(query, [])),
+        }
+        return self.results_by_query.get(query, [])[:limit]
 
 
 class ToolSearchRuntimeTests(unittest.TestCase):
@@ -153,32 +172,6 @@ class ToolSearchRuntimeTests(unittest.TestCase):
         self.assertEqual(result["data"]["selected_tool_hints"], ["weather"])
         self.assertEqual(result["data"]["search_space"], 1)
 
-    def test_semantic_fallback_reaches_structured_tool_log(self):
-        db = _FakeDB(
-            [{"name": "weather", "similarity": 0.88}],
-            fallback_embeddings=True,
-        )
-        with patch("tool_search_runtime.get_memory_db", return_value=db):
-            result = search_tools_runtime(
-                registry=self.registry,
-                query="forecast weather",
-                limit=5,
-            )
-
-        self.assertIs(result["fallback_embeddings"], True)
-        with tempfile.TemporaryDirectory() as log_dir:
-            logger = ToolLogger(log_dir=log_dir)
-            logger.log_tool_call(
-                tool_name="tool_search",
-                arguments={"query": "forecast weather"},
-                result=result,
-                duration_ms=12.0,
-                mode="cloud",
-            )
-            entry = logger.get_recent_logs(limit=1)[0]
-
-        self.assertIs(entry["fallback_embeddings"], True)
-
     def test_semantic_disabled_reason_reaches_structured_tool_log(self):
         db = _FakeDB(
             [{"name": "weather"}],
@@ -194,6 +187,11 @@ class ToolSearchRuntimeTests(unittest.TestCase):
 
         self.assertEqual(result["retrieval_mode"], "keyword_fallback")
         self.assertEqual(result["data"]["search_mode"], "keyword_fallback")
+        self.assertNotIn("fallback_embeddings", result)
+        self.assertNotIn(
+            "fallback_embeddings",
+            result["data"]["embedding_diagnostics"],
+        )
         self.assertEqual(
             result["semantic_disabled_reason"],
             "embedding fingerprint mismatch",
@@ -238,6 +236,195 @@ class ToolSearchRuntimeTests(unittest.TestCase):
             registry.last_tool_search_meta["semantic_disabled_reason"],
             "embedding host unavailable",
         )
+
+    def test_registry_adaptively_trims_dynamic_tail_but_keeps_ghosts(self):
+        registry = ToolRegistry.__new__(ToolRegistry)
+        workflow = ToolSchema(
+            name="workflow",
+            description="Discover and run workflows.",
+            parameters={"type": "object", "properties": {}},
+            script_path="skills/workflow.py",
+        )
+        registry.tools = {
+            tool.name: tool
+            for tool in (
+                self.search_memory,
+                self.tool_search,
+                workflow,
+                self.weather,
+                self.send_email,
+            )
+        }
+        registry.last_tool_search_meta = {}
+        db = _FakeDB(
+            [
+                {"name": "weather", "hybrid_score": 1.0, "similarity": 0.52},
+                {"name": "send_email", "hybrid_score": 0.20, "similarity": 0.31},
+            ],
+            retrieval_mode="hybrid",
+        )
+
+        with patch("memory_db.get_memory_db", return_value=db), patch(
+            "config_loader.get_config_value", return_value="search_memory"
+        ), patch("config_loader.get_float", return_value=0.28):
+            tools = registry.find_tools("weather forecast", limit=5)
+
+        self.assertEqual(
+            [tool.name for tool in tools],
+            ["search_memory", "tool_search", "workflow", "weather"],
+        )
+        self.assertEqual(
+            registry.last_tool_search_meta["adaptive_selection"]["reason"],
+            "dominant_top_result",
+        )
+
+    def test_registry_preserves_secondary_compound_action(self):
+        registry = ToolRegistry.__new__(ToolRegistry)
+
+        def tool(name):
+            return ToolSchema(
+                name=name,
+                description=name.replace("_", " "),
+                parameters={"type": "object", "properties": {}},
+                script_path=f"skills/{name}.py",
+            )
+
+        tools = [
+            self.search_memory,
+            self.tool_search,
+            tool("workflow"),
+            tool("stock_price"),
+            tool("status_recap"),
+            tool("serpapi_google_news_light"),
+            tool("gpu_hot_status"),
+        ]
+        registry.tools = {item.name: item for item in tools}
+        registry.last_tool_search_meta = {}
+
+        query = "Look up NVIDIA stock price and the latest news about NVIDIA."
+        db = _QueryAwareFakeDB(
+            {
+                query: [
+                    {"name": "stock_price", "hybrid_score": 1.0, "similarity": 0.42},
+                    {"name": "status_recap", "hybrid_score": 0.109, "similarity": 0.30},
+                    {
+                        "name": "serpapi_google_news_light",
+                        "hybrid_score": 0.038,
+                        "similarity": 0.287,
+                    },
+                ],
+                "Look up NVIDIA stock price": [
+                    {"name": "stock_price", "hybrid_score": 1.0, "similarity": 0.51},
+                    {"name": "status_recap", "hybrid_score": 0.058, "similarity": 0.30},
+                ],
+                "the latest news about NVIDIA": [
+                    {"name": "gpu_hot_status", "hybrid_score": 0.72, "similarity": 0.31},
+                    {
+                        "name": "serpapi_google_news_light",
+                        "hybrid_score": 0.503,
+                        "similarity": 0.289,
+                    },
+                ],
+            }
+        )
+
+        with patch("memory_db.get_memory_db", return_value=db), patch(
+            "config_loader.get_config_value", return_value="search_memory"
+        ), patch("config_loader.get_float", return_value=0.28), patch(
+            "tool_schema.expand_tool_rag_query_for_typo_hints",
+            side_effect=lambda text, *_args, **_kwargs: (text, []),
+        ):
+            selected = registry.find_tools(query, limit=15)
+
+        names = [item.name for item in selected]
+        self.assertIn("stock_price", names)
+        self.assertIn("serpapi_google_news_light", names)
+        self.assertNotIn("status_recap", names)
+        self.assertEqual(
+            registry.last_tool_search_meta["compound_segments"],
+            [
+                "Look up NVIDIA stock price",
+                "the latest news about NVIDIA",
+            ],
+        )
+        self.assertIn(
+            "serpapi_google_news_light",
+            registry.last_tool_search_meta["segment_supported_tools"],
+        )
+
+    def test_registry_promotes_general_web_search_from_compound_clause(self):
+        registry = ToolRegistry.__new__(ToolRegistry)
+
+        def tool(name):
+            return ToolSchema(
+                name=name,
+                description=name.replace("_", " "),
+                parameters={"type": "object", "properties": {}},
+                script_path=f"skills/{name}.py",
+            )
+
+        dynamic_names = [
+            "semantic_recall",
+            "recall",
+            "deep_memory_search",
+            "generate_image",
+            "serpapi_google_trending_now",
+            "serpapi_search_index",
+        ]
+        tools = [
+            self.search_memory,
+            self.tool_search,
+            tool("workflow"),
+            *(tool(name) for name in dynamic_names),
+        ]
+        registry.tools = {item.name: item for item in tools}
+        registry.last_tool_search_meta = {}
+
+        query = (
+            "Search Google for EmbeddingGemma retrieval prompts and give me "
+            "the top findings."
+        )
+        db = _QueryAwareFakeDB(
+            {
+                query: [
+                    {"name": "semantic_recall", "hybrid_score": 0.72, "similarity": 0.435},
+                    {"name": "search_memory", "hybrid_score": 0.604, "similarity": 0.410},
+                    {"name": "recall", "hybrid_score": 0.521, "similarity": 0.392},
+                    {"name": "deep_memory_search", "hybrid_score": 0.437, "similarity": 0.374},
+                    {"name": "generate_image", "hybrid_score": 0.336, "similarity": 0.352},
+                    {
+                        "name": "serpapi_search_index",
+                        "hybrid_score": 0.289,
+                        "similarity": 0.342,
+                    },
+                ],
+                "Search Google for EmbeddingGemma retrieval prompts": [],
+                "give me the top findings": [
+                    {
+                        "name": "serpapi_google_trending_now",
+                        "hybrid_score": 0.72,
+                        "similarity": 0.351,
+                    },
+                    {
+                        "name": "serpapi_search_index",
+                        "hybrid_score": 0.699,
+                        "similarity": 0.349,
+                    },
+                ],
+            }
+        )
+
+        with patch("memory_db.get_memory_db", return_value=db), patch(
+            "config_loader.get_config_value", return_value="search_memory"
+        ), patch("config_loader.get_float", return_value=0.28), patch(
+            "tool_schema.expand_tool_rag_query_for_typo_hints",
+            side_effect=lambda text, *_args, **_kwargs: (text, []),
+        ):
+            selected = registry.find_tools(query, limit=15)
+
+        names = [item.name for item in selected]
+        self.assertIn("serpapi_search_index", names)
+        self.assertNotIn("generate_image", names)
 
     def test_exact_lookup_can_include_schema(self):
         result = search_tools_runtime(

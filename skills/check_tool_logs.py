@@ -105,8 +105,6 @@ def main():
         duration = log["duration_ms"]
         
         summary = f"{tool} {status} in {duration:.0f}ms"
-        if log.get("fallback_embeddings"):
-            summary += " - fallback embeddings used"
         if log.get("semantic_disabled_reason"):
             mode = log.get("retrieval_mode") or "non-semantic"
             summary += f" - semantic retrieval disabled; {mode} used"
@@ -154,7 +152,6 @@ def main():
             "timestamp": log["timestamp"],
             "tool": log["tool"],
             "arguments": log["arguments"],
-            "fallback_embeddings": log.get("fallback_embeddings"),
             "retrieval_mode": log.get("retrieval_mode"),
             "semantic_disabled_reason": log.get("semantic_disabled_reason"),
             "proxy": log.get("proxy"),

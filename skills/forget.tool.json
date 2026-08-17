@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "forget",
-  "description": "DELETE/REMOVE one or more memories permanently. Use when user says 'forget', 'delete', 'remove', or 'erase' a memory. Supports a single memory_id, multiple memory_ids, or a search_query if the ID is unknown. This is for DELETION - use update_memory if you need to CHANGE a value instead.",
+  "description": "DELETE/REMOVE one or more memories permanently by explicit ID. Use a memory ID already visible in the current conversation or injected memory context when it clearly identifies the intended record; otherwise call search_memory or semantic_recall first. If identification is missing or ambiguous, do not delete. This tool accepts only memory_id or memory_ids and never searches or fuzzy-matches. This is for DELETION - use update_memory if you need to CHANGE a value instead.",
   "complementary_tools": [
     "remember",
     "manage_intel",
@@ -15,7 +15,7 @@
     "properties": {
       "memory_id": {
         "type": "integer",
-        "description": "The ID of the memory to delete (optional if search_query provided)"
+        "description": "Exact memory ID from visible context or a prior search_memory or semantic_recall lookup."
       },
       "memory_ids": {
         "type": "array",
@@ -24,10 +24,6 @@
         },
         "maxItems": 10,
         "description": "Multiple memory IDs to delete in one call. Use this when the user names more than one memory ID. Hard capped at 10 IDs for safety."
-      },
-      "search_query": {
-        "type": "string",
-        "description": "Search keywords to find the memory to delete (e.g., 'favorite color', 'birthday'). Used if memory_id not provided."
       }
     },
     "required": []

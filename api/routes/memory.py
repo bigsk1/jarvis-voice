@@ -1,14 +1,20 @@
-"""Memory API endpoints - CRUD and search for Jarvis memories"""
+"""Memory API endpoints - CRUD and search for Jarvis memories."""
 
-from fastapi import APIRouter, HTTPException, Query
 import sys
 from pathlib import Path
+
+from fastapi import APIRouter, HTTPException, Query
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 
 from api.models.memory import (
-    MemoryCreate, MemoryUpdate, Memory, MemoryCategoriesResponse, MemoryResponse,
-    SemanticSearchRequest
+    Memory,
+    MemoryCategoriesResponse,
+    MemoryCreate,
+    MemoryResponse,
+    MemorySearchResponse,
+    MemoryUpdate,
+    SemanticSearchRequest,
 )
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
@@ -36,7 +42,7 @@ def memory_to_dict(row) -> dict:
         import json
         try:
             memory['metadata'] = json.loads(memory['metadata'])
-        except:
+        except (json.JSONDecodeError, TypeError):
             pass
     
     return memory
@@ -183,19 +189,30 @@ async def search_memories_keyword(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/search/semantic", response_model=MemoryResponse)
+@router.get("/search/semantic", response_model=MemorySearchResponse)
 async def search_memories_semantic(
     q: str = Query(..., description="Natural language question or concept"),
     limit: int = Query(5, ge=1, le=50, description="Maximum results"),
-    threshold: float = Query(0.3, ge=0.0, le=1.0, description="Minimum similarity (0-1)")
+    threshold: float | None = Query(
+        None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Minimum dense similarity (0-1); omit to use the active mode's "
+            "SEMANTIC_SIMILARITY_THRESHOLD"
+        ),
+    ),
 ):
     """
-    Semantic search using AI embeddings (understands meaning, not just keywords).
+    Hybrid search using dense embeddings and FTS5/BM25 keyword evidence.
     
     Good for: Natural language questions like "Where is my Flask project?", 
     "What's John's email?", "How do I configure the API?"
     
-    Uses vector similarity - finds conceptually related memories even without exact keyword matches.
+    Broad keyword hits reinforce dense matches, while keyword-only results must
+    match every meaningful query term when embeddings are healthy. If semantic
+    retrieval is unavailable, the endpoint continues with keyword fallback and
+    reports the reason in retrieval metadata.
     """
     try:
         db = get_db()
@@ -205,19 +222,20 @@ async def search_memories_semantic(
             similarity_threshold=threshold
         )
         
-        return MemoryResponse(
+        return MemorySearchResponse(
             ok=True,
             count=len(memories),
-            memories=[Memory(**memory_to_dict(m)) for m in memories]
+            memories=[Memory(**memory_to_dict(m)) for m in memories],
+            retrieval=db.last_semantic_search_meta,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/search/semantic", response_model=MemoryResponse)
+@router.post("/search/semantic", response_model=MemorySearchResponse)
 async def search_memories_semantic_post(request: SemanticSearchRequest):
     """
-    Semantic search (POST version for complex queries).
+    Hybrid memory search (POST version for complex queries).
     
     Same as GET /search/semantic but accepts JSON body for longer queries.
     """
@@ -229,10 +247,11 @@ async def search_memories_semantic_post(request: SemanticSearchRequest):
             similarity_threshold=request.similarity_threshold
         )
         
-        return MemoryResponse(
+        return MemorySearchResponse(
             ok=True,
             count=len(memories),
-            memories=[Memory(**memory_to_dict(m)) for m in memories]
+            memories=[Memory(**memory_to_dict(m)) for m in memories],
+            retrieval=db.last_semantic_search_meta,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

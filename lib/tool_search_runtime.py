@@ -74,7 +74,13 @@ def _parameter_details(parameters: dict[str, Any], max_items: int = 6) -> list[d
     return details
 
 
-def _tool_summary(tool, *, similarity: float | None = None, include_schema: bool = False) -> dict[str, Any]:
+def _tool_summary(
+    tool,
+    *,
+    similarity: float | None = None,
+    retrieval: dict[str, Any] | None = None,
+    include_schema: bool = False,
+) -> dict[str, Any]:
     """Convert a ToolSchema into a discovery summary."""
     required_params, optional_params = _parameter_preview(getattr(tool, "parameters", {}) or {})
     summary = {
@@ -88,6 +94,13 @@ def _tool_summary(tool, *, similarity: float | None = None, include_schema: bool
     }
     if similarity is not None:
         summary["similarity"] = round(float(similarity), 6)
+    if retrieval:
+        if retrieval.get("hybrid_score") is not None:
+            summary["hybrid_score"] = round(float(retrieval["hybrid_score"]), 6)
+        summary["retrieval_channels"] = list(retrieval.get("retrieval_channels", []))
+        for field in ("dense_rank", "keyword_rank"):
+            if retrieval.get(field) is not None:
+                summary[field] = int(retrieval[field])
     if include_schema:
         summary["parameters_schema"] = getattr(tool, "parameters", {}) or {"type": "object", "properties": {}}
     return summary
@@ -165,8 +178,7 @@ def search_tools_runtime(
 
     summaries: list[dict[str, Any]] = []
     selected_tool_hints: list[str] = []
-    search_mode = "semantic"
-    fallback_embeddings = None
+    search_mode = "hybrid"
     semantic_disabled_reason = None
 
     if tool_names:
@@ -188,7 +200,6 @@ def search_tools_runtime(
             ranked = db.search_tools(str(query).strip(), limit=max(limit * 4, 24), threshold=0.0)
             search_meta = getattr(db, "last_tool_search_meta", {})
             if isinstance(search_meta, dict):
-                fallback_embeddings = search_meta.get("fallback_embeddings")
                 search_mode = search_meta.get("retrieval_mode", search_mode)
                 semantic_disabled_reason = search_meta.get("semantic_disabled_reason")
         finally:
@@ -200,7 +211,14 @@ def search_tools_runtime(
             tool = registry.get_tool(name)
             if not tool:
                 continue
-            summaries.append(_tool_summary(tool, similarity=row.get("similarity"), include_schema=include_schema))
+            summaries.append(
+                _tool_summary(
+                    tool,
+                    similarity=row.get("similarity"),
+                    retrieval=row,
+                    include_schema=include_schema,
+                )
+            )
             selected_tool_hints.append(name)
             if len(summaries) >= limit:
                 break
@@ -222,7 +240,6 @@ def search_tools_runtime(
     return {
         "ok": True,
         "speech": speech,
-        "fallback_embeddings": fallback_embeddings,
         "retrieval_mode": search_mode,
         "semantic_disabled_reason": semantic_disabled_reason,
         "data": {
@@ -233,7 +250,6 @@ def search_tools_runtime(
             "search_space": len(available_names if search_mode == "exact" else discoverable_names),
             "search_mode": search_mode,
             "embedding_diagnostics": {
-                "fallback_embeddings": fallback_embeddings,
                 "retrieval_mode": search_mode,
                 "semantic_disabled_reason": semantic_disabled_reason,
             },

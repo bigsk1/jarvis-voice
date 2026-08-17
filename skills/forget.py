@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Forget Tool - Delete memories by ID or search query
+Forget Tool - Delete memories by explicit ID
 """
-import sys
 import json
 import os
+import sys
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lib'))
@@ -37,46 +37,31 @@ def _normalize_memory_ids(args: dict) -> list[int]:
 
 
 def main():
-    """Delete a memory from database by ID or search query."""
+    """Delete one or more memories from the database by explicit ID."""
     try:
         # Read arguments
         args = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
 
         requested_memory_ids = _normalize_memory_ids(args)
         memory_ids = requested_memory_ids
-        search_query = args.get('search_query')
-
-        db = get_memory_db()
-
-        # If no memory IDs, try to find one by search_query
-        if not memory_ids and search_query:
-            # Search for matching memories
-            memories = db.search_memory(query=search_query, limit=5)
-
-            if not memories:
-                result = {
-                    "ok": False,
-                    "speech": f"I couldn't find any memories matching '{search_query}'",
-                    "error": "No matching memories found"
-                }
-                print(json.dumps(result))
-                db.close()
-                return result
-
-            # Take the best match (first result)
-            best_match = memories[0]
-            if best_match.get('id') is not None:
-                memory_ids = [int(best_match['id'])]
 
         if not memory_ids:
             result = {
                 "ok": False,
-                "speech": "I need either a memory ID, memory IDs, or search keywords to forget something",
-                "error": "Missing memory_id, memory_ids, or search_query parameter"
+                "speech": (
+                    "Search memory first to identify the exact memory ID, then "
+                    "call forget with memory_id or memory_ids. I didn't delete anything."
+                ),
+                "error": "Missing memory_id or memory_ids parameter",
+                "data": {
+                    "lookup_tools": ["search_memory", "semantic_recall"],
+                    "required_parameters": ["memory_id", "memory_ids"],
+                },
             }
             print(json.dumps(result))
-            db.close()
             return result
+
+        db = get_memory_db()
 
         raw_memory_ids = []
         if args.get("memory_id") is not None:

@@ -701,7 +701,7 @@ def _compact_memory_candidate(item: dict) -> dict:
     candidate = {}
     for field in (
         'id', 'key', 'value', 'category', 'importance',
-        'similarity', 'relevance',
+        'similarity', 'retrieval_score', 'relevance',
     ):
         value = item.get(field)
         if value not in (None, '', [], {}):
@@ -712,6 +712,12 @@ def _compact_memory_candidate(item: dict) -> dict:
 def _extract_memory_candidates(payload: dict, max_candidates: int) -> dict:
     """Extract compact memory refs from tools that return memories."""
     memories = payload.get('memories')
+    if not isinstance(memories, list) or not memories:
+        # deep_memory_search groups all source results under results while its
+        # memory rows retain the canonical IDs needed by forget/update.
+        grouped_results = payload.get('results')
+        if isinstance(grouped_results, dict):
+            memories = grouped_results.get('memory')
     if not isinstance(memories, list) or not memories:
         return {}
 

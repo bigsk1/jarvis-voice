@@ -2,7 +2,11 @@
 
 ## Overview
 
-The `SEMANTIC_SIMILARITY_THRESHOLD` controls how strict semantic search is when finding related memories. You can tune this value in your `.env` file without changing code.
+The `SEMANTIC_SIMILARITY_THRESHOLD` controls how strict the dense embedding lane
+is when finding related memories. `semantic_recall` also fuses FTS5/BM25
+results, so a strong keyword or identifier match can still qualify regardless
+of this cosine threshold. You can tune the value in your `.env` file without
+changing code.
 
 ## Configuration
 
@@ -26,8 +30,8 @@ SEMANTIC_SIMILARITY_THRESHOLD=0.31  # Unified Jarvis Embedding default; code fal
 When you ask: "What do I like to eat?"
 - Jarvis converts to AI embedding (vector)
 - Compares to all stored memories
-- Each gets a similarity score (0.0-1.0)
-- Only returns memories above threshold
+- FTS5/BM25 ranks keyword evidence in parallel
+- The threshold filters dense-only candidates before the rankings are fused
 
 **Example**:
 - Memory: "favorite_food: pizza"

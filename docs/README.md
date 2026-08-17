@@ -710,10 +710,10 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Tightened exact-id vs alias matching, quieter Ollama metadata handling, and safer fallback/default resolution across the shared model catalog
 
 **2026-04-06:**
-- ✅ **Embedding fallback visibility**
-  - Runtime embedding fallback is now tracked separately from stored DB embedding health
-  - `semantic_recall`, semantic deep-memory search, and semantic memory-update fallback now surface `fallback_embeddings` in tool results/logs
-  - Non-tool semantic paths like auto memory injection and Tool RAG now emit explicit fallback warnings instead of degrading silently
+- ✅ **Semantic retrieval degradation visibility**
+  - Runtime keyword fallback is tracked separately from stored DB embedding health; Jarvis never substitutes hash-generated vectors
+  - Semantic retrieval surfaces `retrieval_mode` and `semantic_disabled_reason` in tool results/logs when embeddings are unavailable or incompatible
+  - Non-tool semantic paths like auto memory injection and Tool RAG emit explicit degradation warnings instead of failing silently
 - ✅ **OpenAI tool-schema compatibility**
   - OpenAI function-call schemas are now sanitized before dispatch so unsupported top-level schema features do not break tool routing
   - Added documentation for the strict cross-provider schema subset in `TOOL_CALLING_SYSTEM.md` and `skills/README.md`

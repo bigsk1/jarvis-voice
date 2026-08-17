@@ -38,16 +38,23 @@ from pathlib import Path
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "orchestrator"))
-from config_loader import load_config, get_config_value, get_float
+from config_loader import get_config_value, get_float, load_config
+from hybrid_retrieval import adaptive_rank_cutoff, query_segments
 from memory_db import get_memory_db
-from tool_schema import ToolRegistry, _merged_ghost_tool_names
-from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
 from router_v2 import (
-    build_tool_retrieval_signals,
-    merge_tool_signal_names,
     _cap_tool_names_for_schema,
     _resolve_tool_rag_limit,
     _tool_rag_similarity_threshold,
+    build_tool_retrieval_signals,
+    merge_tool_signal_names,
+)
+from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
+from tool_schema import (
+    _ADAPTIVE_DYNAMIC_TOOL_MAX,
+    _MANDATORY_GHOST_TOOLS,
+    ToolRegistry,
+    _merge_compound_segment_rankings,
+    _merged_ghost_tool_names,
 )
 
 
@@ -148,6 +155,19 @@ def _production_initial_names(
     return names
 
 
+def _adaptive_tools(
+    ranked_tools: list[dict],
+    retrieval_limit: int,
+    ghost_tools: list[str],
+) -> tuple[list[dict], dict]:
+    mandatory_count = sum(name in ghost_tools for name in _MANDATORY_GHOST_TOOLS)
+    dynamic_budget = max(
+        1,
+        min(_ADAPTIVE_DYNAMIC_TOOL_MAX, retrieval_limit - mandatory_count),
+    )
+    return adaptive_rank_cutoff(ranked_tools, budget=dynamic_budget)
+
+
 def _print_production_block(
     title: str,
     transcript: str,
@@ -170,7 +190,44 @@ def _print_production_block(
         hint_source=hint_source,
     )
     all_tools = _run_search(db, rag_query, 100)
-    retrieved_tools = db.search_tools(rag_query, limit=retrieval_limit, threshold=threshold)
+    ranked_candidates = db.search_tools(
+        rag_query,
+        limit=max(retrieval_limit * 2, 16),
+        threshold=threshold,
+    )
+    primary_meta = getattr(db, "last_tool_search_meta", {})
+    compound_segments = query_segments(signals.query)
+    segment_rankings: list[tuple[str, list[dict]]] = []
+    if not (
+        isinstance(primary_meta, dict)
+        and primary_meta.get("semantic_disabled_reason")
+    ):
+        mandatory_count = sum(name in ghost_tools for name in _MANDATORY_GHOST_TOOLS)
+        dynamic_budget = max(
+            1,
+            min(_ADAPTIVE_DYNAMIC_TOOL_MAX, retrieval_limit - mandatory_count),
+        )
+        for segment in compound_segments:
+            rows = db.search_tools(
+                segment,
+                limit=max(dynamic_budget * 2, 8),
+                threshold=threshold,
+            )
+            segment_meta = getattr(db, "last_tool_search_meta", {})
+            if not (
+                isinstance(segment_meta, dict)
+                and segment_meta.get("semantic_disabled_reason")
+            ):
+                segment_rankings.append((segment, rows))
+    ranked_candidates, compound_meta = _merge_compound_segment_rankings(
+        ranked_candidates,
+        segment_rankings,
+    )
+    retrieved_tools, adaptive_meta = _adaptive_tools(
+        ranked_candidates,
+        retrieval_limit,
+        ghost_tools,
+    )
     initial_names = _production_initial_names(retrieved_tools, ghost_tools, enabled_tool_names)
     final_names, signal_meta = merge_tool_signal_names(
         initial_names,
@@ -186,6 +243,9 @@ def _print_production_block(
         ghost_tools=ghost_tools,
     )
     score_by_name = {tool["name"]: tool.get("similarity", 0.0) for tool in all_tools}
+    score_by_name.update(
+        {tool["name"]: tool.get("similarity", 0.0) for tool in ranked_candidates}
+    )
 
     print(title)
     print(f"   Signal source: {signals.source}")
@@ -198,16 +258,22 @@ def _print_production_block(
         print(f"   Signal meta: {signal_meta}")
     if signals.notes:
         print(f"   Signal notes: {signals.notes}")
+    if compound_segments:
+        print(f"   Compound segments: {compound_segments}")
+        print(f"   Segment selections: {compound_meta}")
+    print(f"   Adaptive selection: {adaptive_meta}")
     print()
-    print(f"🔎 Vector Search Results (Top 20) — pass threshold ≥ {threshold}:")
-    print(f"   {'Rank':<6} {'Score':<8} {'Tool Name':<40} {'Pass?':<10}")
-    print(f"   {'-'*6} {'-'*8} {'-'*40} {'-'*10}")
+    print(f"🔎 Hybrid Search Results (Top 20) — dense threshold ≥ {threshold}:")
+    print(f"   {'Rank':<6} {'Hybrid':<8} {'Dense':<8} {'Tool Name':<40} {'Channels':<16}")
+    print(f"   {'-'*6} {'-'*8} {'-'*8} {'-'*40} {'-'*16}")
     for i, tool in enumerate(all_tools[:20], 1):
         name = tool["name"]
-        score = tool["similarity"]
-        passed = "✅ YES" if score >= threshold else "❌ NO"
+        hybrid = float(tool.get("hybrid_score") or 0.0)
+        dense = tool.get("similarity")
+        dense_text = f"{float(dense):.4f}" if dense is not None else "-"
+        channels = "+".join(tool.get("retrieval_channels", []))
         ghost_marker = "👻" if name in ghost_tools else "  "
-        print(f"   {i:<6} {score:<8.4f} {ghost_marker} {name:<38} {passed}")
+        print(f"   {i:<6} {hybrid:<8.4f} {dense_text:<8} {ghost_marker} {name:<38} {channels:<16}")
     print()
     print("📚 Production-style tool list (merged, then final schema cap):")
     print(f"   Final schema limit: {retrieval_limit}")
@@ -226,7 +292,7 @@ def _print_production_block(
         elif name in [tool["name"] for tool in retrieved_tools]:
             tags.append("retrieved")
         score = score_by_name.get(name)
-        score_text = f"score={score:.4f}" if score is not None else "score=n/a"
+        score_text = f"dense={score:.4f}" if score is not None else "dense=n/a"
         tag_text = f" ({', '.join(tags)})" if tags else ""
         print(f"   {i:>2}. {name}{tag_text} {score_text}")
     print()
@@ -245,15 +311,17 @@ def _print_block(
     print(f"   Embedding input length: {len(query)} chars")
     print(f"   Threshold (this regime): {threshold}")
     print()
-    print(f"🔎 Vector Search Results (Top 20) — pass threshold ≥ {threshold}:")
-    print(f"   {'Rank':<6} {'Score':<8} {'Tool Name':<40} {'Pass?':<10}")
-    print(f"   {'-'*6} {'-'*8} {'-'*40} {'-'*10}")
+    print(f"🔎 Hybrid Search Results (Top 20) — dense threshold ≥ {threshold}:")
+    print(f"   {'Rank':<6} {'Hybrid':<8} {'Dense':<8} {'Tool Name':<40} {'Channels':<16}")
+    print(f"   {'-'*6} {'-'*8} {'-'*8} {'-'*40} {'-'*16}")
     for i, tool in enumerate(all_tools[:20], 1):
         name = tool["name"]
-        score = tool["similarity"]
-        passed = "✅ YES" if score >= threshold else "❌ NO"
+        hybrid = float(tool.get("hybrid_score") or 0.0)
+        dense = tool.get("similarity")
+        dense_text = f"{float(dense):.4f}" if dense is not None else "-"
+        channels = "+".join(tool.get("retrieval_channels", []))
         ghost_marker = "👻" if name in ghost_tools else "  "
-        print(f"   {i:<6} {score:<8.4f} {ghost_marker} {name:<38} {passed}")
+        print(f"   {i:<6} {hybrid:<8.4f} {dense_text:<8} {ghost_marker} {name:<38} {channels:<16}")
     print()
     retrieved_names = [t["name"] for t in retrieved_tools]
     final_names: list[str] = []
@@ -263,13 +331,16 @@ def _print_block(
     for name in retrieved_names:
         if name not in final_names:
             final_names.append(name)
-    print(f"📚 Legacy tool list approximation (ghost first, then retrieved ∩ threshold):")
+    print("📚 Hybrid candidate list approximation (ghost first, then retrieved):")
     print(f"   Total tool list size: {len(final_names)}")
     print(f"   Retrieved (above threshold): {len(retrieved_names)}")
-    print(f"   Retrieved Tools:")
+    print("   Retrieved Tools:")
     for name in retrieved_names:
-        score = next((t["similarity"] for t in retrieved_tools if t["name"] == name), 0)
-        print(f"      • {name} (score: {score:.4f})")
+        row = next((t for t in retrieved_tools if t["name"] == name), {})
+        print(
+            f"      • {name} (hybrid: {float(row.get('hybrid_score') or 0.0):.4f}, "
+            f"dense: {float(row.get('similarity') or 0.0):.4f})"
+        )
     print()
 
 
@@ -304,7 +375,9 @@ def debug_tool_rag(
     ft = full_threshold if full_threshold is not None else env_full_threshold
 
     retrieval_limit = _resolve_tool_rag_limit(mode)
-    db = get_memory_db()
+    # This standalone debugger has no request config_scope; select the data
+    # mode explicitly instead of falling back to the process JARVIS_MODE.
+    db = get_memory_db(mode=mode)
 
     try:
         registry = _build_live_registry()

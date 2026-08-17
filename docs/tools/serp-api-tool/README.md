@@ -321,8 +321,11 @@ means association football and is translated to `ft`.
 
 Use `mode=deep` when a workflow needs broader recall. Search Index returns
 ranked titles, snippets, dates, languages, images, sitelinks, related queries,
-pagination metadata, and exact URLs. It does not fetch page bodies. Pass a
-chosen URL to MCP Fetch, `crawl_url`, a summarizer, Stash, or Canvas.
+pagination metadata, and exact URLs. It is SerpApi's own LLM-first web index,
+not the provider-specific Google Search engine, and it does not fetch page
+bodies. It can satisfy a general search-engine-style source request when exact
+Google provenance is not required. Pass a chosen URL to MCP Fetch, `crawl_url`,
+a summarizer, Stash, or Canvas.
 
 ### Google Images Light
 

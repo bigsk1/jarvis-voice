@@ -2,9 +2,9 @@
 """
 Update Memory Tool - Modify existing memories
 """
-import sys
 import json
 import os
+import sys
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lib'))
@@ -17,10 +17,8 @@ def main():
         # Read arguments
         args = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
         
-        memory_id = args.get('memory_id')
+        raw_memory_id = args.get('memory_id')
         new_value = args.get('new_value')
-        search_query = args.get('search_query')
-        category = args.get('category')
         importance = args.get('importance')
         
         if not new_value:
@@ -31,51 +29,35 @@ def main():
             }
             print(json.dumps(result))
             return result
-        
-        # Get database connection
+
+        if raw_memory_id is None:
+            result = {
+                "ok": False,
+                "speech": (
+                    "Search memory first to identify the exact memory ID, then "
+                    "call update_memory with memory_id. I didn't update anything."
+                ),
+                "error": "Missing memory_id parameter",
+                "data": {
+                    "lookup_tools": ["search_memory", "semantic_recall"],
+                    "required_parameters": ["memory_id", "new_value"],
+                },
+            }
+            print(json.dumps(result))
+            return result
+
+        try:
+            memory_id = int(raw_memory_id)
+        except (TypeError, ValueError):
+            result = {
+                "ok": False,
+                "speech": "I need a valid numeric memory ID. I didn't update anything.",
+                "error": "Invalid memory_id parameter",
+            }
+            print(json.dumps(result))
+            return result
+
         db = get_memory_db()
-        semantic_meta = {"fallback_embeddings": None}
-        
-        # If no memory_id provided, search for it
-        if not memory_id:
-            if not search_query:
-                result = {
-                    "ok": False,
-                    "speech": "I need either a memory ID or a search query to find the memory to update",
-                    "error": "Missing memory_id or search_query"
-                }
-                print(json.dumps(result))
-                db.close()
-                return result
-            
-            # Search for the memory (try recall first, then semantic search)
-            memories = db.recall(query=search_query, category=category, limit=1)
-            
-            if not memories:
-                # Fallback to semantic search (no category filter available)
-                all_memories = db.semantic_search(query=search_query, limit=5)
-                semantic_meta = getattr(db, 'last_semantic_search_meta', {"fallback_embeddings": None})
-                # Filter by category if specified
-                if category:
-                    memories = [m for m in all_memories if m.get('category') == category][:1]
-                else:
-                    memories = all_memories[:1]
-            
-            if not memories:
-                result = {
-                    "ok": False,
-                    "speech": f"I couldn't find any memories matching '{search_query}'",
-                    "error": "No matching memories found"
-                }
-                print(json.dumps(result))
-                db.close()
-                return result
-            
-            # Use the first matching memory
-            memory_id = memories[0]['id']
-            old_value = memories[0].get('value', '')
-        else:
-            old_value = None
         
         # Update memory
         success = db.update_memory(
@@ -86,20 +68,12 @@ def main():
         db.close()
         
         if success:
-            if old_value:
-                speech = f"I've updated that memory from '{old_value}' to '{new_value}'"
-            else:
-                speech = f"I've updated that memory to: {new_value}"
-            
             result = {
                 "ok": True,
-                "speech": speech,
-                "fallback_embeddings": semantic_meta.get("fallback_embeddings"),
+                "speech": f"I've updated that memory to: {new_value}",
                 "data": {
                     "memory_id": memory_id,
-                    "old_value": old_value,
                     "new_value": new_value,
-                    "embedding_diagnostics": semantic_meta,
                 }
             }
         else:
@@ -107,7 +81,6 @@ def main():
                 "ok": False,
                 "speech": f"I couldn't find a memory with ID {memory_id}",
                 "error": "Memory not found",
-                "fallback_embeddings": semantic_meta.get("fallback_embeddings"),
             }
         
         print(json.dumps(result))

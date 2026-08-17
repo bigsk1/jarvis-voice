@@ -176,6 +176,48 @@ class ForgetToolTests(unittest.TestCase):
         self.assertEqual(payload["data"]["deleted_id"], cloud_id)
         self.assertFalse(local_path.exists())
 
+    def test_search_query_shortcut_is_rejected_without_deleting(self):
+        db = MemoryDB(str(self.db_path))
+        try:
+            memory_id = db.remember(
+                "phone_calls",
+                "phone_call_andrew",
+                "Andrew was having pizza for dinner",
+                generate_embedding=False,
+            )
+        finally:
+            db.close()
+
+        stdout = StringIO()
+        with patch("skills.forget.get_memory_db") as get_memory_db, patch.object(
+            sys,
+            "argv",
+            ["forget.py", json.dumps({"search_query": "pineapple on pizza"})],
+        ), patch("sys.stdout", stdout):
+            result = forget.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            payload["error"],
+            "Missing memory_id or memory_ids parameter",
+        )
+        self.assertEqual(
+            payload["data"]["lookup_tools"],
+            ["search_memory", "semantic_recall"],
+        )
+        self.assertIn("didn't delete anything", payload["speech"])
+        get_memory_db.assert_not_called()
+
+        db = MemoryDB(str(self.db_path))
+        try:
+            self.assertIn(
+                memory_id,
+                [memory["id"] for memory in db.get_all_memories()],
+            )
+        finally:
+            db.close()
+
 
 if __name__ == "__main__":
     unittest.main()

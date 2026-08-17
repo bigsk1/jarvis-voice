@@ -4,11 +4,10 @@ Simple database schema tests for MemoryDB: knowledge_base.long_form and
 tool_definitions.embedding_input_hash on fresh init (cloud + local).
 """
 
-import sys
-import os
 import sqlite3
+import sys
+import tempfile
 from pathlib import Path
-import shutil
 
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
@@ -58,104 +57,53 @@ def check_long_form_column(db_path: Path, db_name: str):
 
 def main():
     project_root = Path(__file__).parent.parent
-    cloud_db = project_root / 'data' / 'jarvis_memory.db'
-    local_db = project_root / 'data' / 'jarvis_memory_local.db'
-    
+
     print_header("Database Schema Test - MemoryDB (long_form + tool_definitions)")
-    
-    # Backup existing databases
-    print("\n📦 Backing up existing databases...")
-    backups_made = []
-    
-    if cloud_db.exists():
-        backup = cloud_db.with_suffix('.db.backup-schema-test')
-        shutil.copy(cloud_db, backup)
-        backups_made.append(('cloud', cloud_db, backup))
-        print(f"  ✅ Backed up {cloud_db.name}")
-    
-    if local_db.exists():
-        backup = local_db.with_suffix('.db.backup-schema-test')
-        shutil.copy(local_db, backup)
-        backups_made.append(('local', local_db, backup))
-        print(f"  ✅ Backed up {local_db.name}")
-    
-    all_passed = True
-    
-    # Test 1: Fresh cloud DB
-    print_header("Test 1: Fresh Cloud Database (MemoryDB init)")
-    
-    if cloud_db.exists():
-        cloud_db.unlink()
-    
-    os.environ['LLM_PROVIDER'] = 'anthropic'
     from memory_db import MemoryDB
-    
-    db = MemoryDB()
-    db.close()
-    
-    assert "embedding_input_hash" in _tool_definitions_column_names(cloud_db), (
-        "tool_definitions.embedding_input_hash missing after fresh MemoryDB init (cloud)"
-    )
-    assert "user_model" in _table_names(cloud_db), (
-        "user_model table missing after fresh MemoryDB init (cloud)"
-    )
-    
-    if not check_long_form_column(cloud_db, "Cloud DB"):
-        all_passed = False
-    
-    # Test 2: Fresh local DB
-    print_header("Test 2: Fresh Local Database (MemoryDB init)")
-    
-    if local_db.exists():
-        local_db.unlink()
-    
-    os.environ['LLM_PROVIDER'] = 'ollama'
-    
-    # Need to reimport to pick up new env var
-    import importlib
-    import memory_db
-    importlib.reload(memory_db)
-    
-    db2 = memory_db.MemoryDB()
-    db2.close()
-    
-    assert "embedding_input_hash" in _tool_definitions_column_names(local_db), (
-        "tool_definitions.embedding_input_hash missing after fresh MemoryDB init (local)"
-    )
-    assert "user_model" in _table_names(local_db), (
-        "user_model table missing after fresh MemoryDB init (local)"
-    )
-    
-    if not check_long_form_column(local_db, "Local DB"):
-        all_passed = False
-    
-    # Test 3: Add data with long_form to cloud
-    print_header("Test 3: Insert and Sync long_form Data")
-    
-    conn = sqlite3.connect(str(cloud_db))
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO knowledge_base (category, key, value, importance, long_form)
-        VALUES (?, ?, ?, ?, ?)
-    """, ('test', 'schema_test', 'test value', 5, 'This is long form test data'))
-    conn.commit()
-    conn.close()
-    
-    print("✅ Inserted test record with long_form to cloud DB")
-    
-    # Verify it's there
-    conn = sqlite3.connect(str(cloud_db))
-    cursor = conn.cursor()
-    result = cursor.execute(
-        "SELECT long_form FROM knowledge_base WHERE key = ?", ('schema_test',)
-    ).fetchone()
-    conn.close()
-    
-    if result and result[0]:
-        print(f"✅ Verified long_form data in cloud DB: '{result[0][:40]}...'")
-    else:
-        print("❌ long_form data not found in cloud DB")
-        all_passed = False
+
+    all_passed = True
+    with tempfile.TemporaryDirectory(prefix="jarvis-schema-test-") as tmp:
+        temp_root = Path(tmp)
+        cloud_db = temp_root / 'jarvis_memory.db'
+        local_db = temp_root / 'jarvis_memory_local.db'
+
+        # Both mode databases now share one schema and embedding contract. Use
+        # explicit isolated paths instead of deleting/restoring operator data.
+        print_header("Test 1: Fresh Cloud Database (MemoryDB init)")
+        db = MemoryDB(str(cloud_db))
+        db.close()
+        assert "embedding_input_hash" in _tool_definitions_column_names(cloud_db)
+        assert "user_model" in _table_names(cloud_db)
+        assert "tool_definitions_fts" in _table_names(cloud_db)
+        if not check_long_form_column(cloud_db, "Cloud DB"):
+            all_passed = False
+
+        print_header("Test 2: Fresh Local Database (MemoryDB init)")
+        db2 = MemoryDB(str(local_db))
+        db2.close()
+        assert "embedding_input_hash" in _tool_definitions_column_names(local_db)
+        assert "user_model" in _table_names(local_db)
+        assert "tool_definitions_fts" in _table_names(local_db)
+        if not check_long_form_column(local_db, "Local DB"):
+            all_passed = False
+
+        print_header("Test 3: Insert and Sync long_form Data")
+        conn = sqlite3.connect(str(cloud_db))
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO knowledge_base (category, key, value, importance, long_form)
+            VALUES (?, ?, ?, ?, ?)
+        """, ('test', 'schema_test', 'test value', 5, 'This is long form test data'))
+        conn.commit()
+        result = cursor.execute(
+            "SELECT long_form FROM knowledge_base WHERE key = ?", ('schema_test',)
+        ).fetchone()
+        conn.close()
+        if result and result[0]:
+            print(f"✅ Verified long_form data in cloud DB: '{result[0][:40]}...'")
+        else:
+            print("❌ long_form data not found in cloud DB")
+            all_passed = False
     
     # Test 4: Check sync script can handle long_form
     print_header("Test 4: Sync Script Compatibility")
@@ -172,22 +120,6 @@ def main():
     else:
         print("⚠️  sync-memory-db.py not found")
     
-    # Cleanup test data
-    conn = sqlite3.connect(str(cloud_db))
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM knowledge_base WHERE key = ?", ('schema_test',))
-    conn.commit()
-    conn.close()
-    
-    # Restore original databases
-    print_header("Restoring Original Databases")
-    
-    for db_name, db_path, backup_path in backups_made:
-        db_path.unlink(missing_ok=True)
-        shutil.copy(backup_path, db_path)
-        backup_path.unlink()
-        print(f"  ✅ Restored {db_name} database")
-    
     # Summary
     print_header("Test Results")
     
@@ -197,6 +129,7 @@ def main():
         print("  ✅ long_form column in memory_db.py schema")
         print("  ✅ long_form column created on fresh init")
         print("  ✅ tool_definitions.embedding_input_hash on fresh cloud/local init")
+        print("  ✅ tool_definitions_fts on fresh cloud/local init")
         print("  ✅ user_model table on fresh cloud/local init")
         print("  ✅ long_form data can be inserted and retrieved")
         print("  ✅ sync-memory-db.py updated for long_form and user_model")

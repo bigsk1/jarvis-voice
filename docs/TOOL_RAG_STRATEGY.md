@@ -13,7 +13,7 @@ Previously, `ToolRegistry` loaded **ALL** enabled tools into the LLM's system pr
 -   **Cloud Models (Claude/GPT-4)**: High cost, potential confusion with similar tools.
 -   **Local Models (Ollama)**: **CRITICAL FAILURE POINT**. Small context windows (8k-32k) get filled with tool definitions, leaving no room for conversation history or reasoning.
 
-**Solution**: Treat "Tools" like "Memories". Store them in a vector database, retrieve the most relevant tools for the current request, then merge prioritized ghost tools and exact tool preferences before applying the final schema cap.
+**Solution**: Treat "Tools" like "Memories". Store their embeddings and a local FTS5/BM25 index, fuse the two independent rankings, adapt the non-ghost shortlist to the query's score distribution, then merge prioritized ghost tools and exact tool preferences before applying the final schema cap.
 
 ---
 
@@ -26,8 +26,12 @@ graph TD
     A[Full User Prompt] --> B[Router]
     B --> C[Build Compact Retrieval Signals]
     C --> D{Tool RAG}
-    D -- Compact Query Embedding --> E[Memory DB]
-    E -- Ranked Tools --> D
+    D -- Compact Query --> E[Embedding Search]
+    D -- Same Query --> H[FTS5 / BM25]
+    E --> I[Hybrid Rank Fusion]
+    H --> I
+    I --> J[Adaptive Dynamic Tail]
+    J --> D
     D -- Capped Ranked Tools + Ghost/Exact Signals --> F[LLM System Prompt]
     A --> F
     F --> G[LLM Decision]
@@ -55,6 +59,10 @@ CREATE TABLE IF NOT EXISTS tool_definitions (
 );
 ```
 
+`tool_definitions_fts` is a synchronized FTS5 index over normalized tool-name
+words and descriptions. SQLite triggers keep it current on insert, update, and
+delete; it does not require a second sync command or another model.
+
 **Implementation Notes:**
 -   Current Tool RAG writers store verified 768D Jarvis Embedding vectors as pickled Python lists.
 -   Readers can decode both pickle and JSON BLOBs, but the fingerprint must match before either format is queried.
@@ -69,9 +77,22 @@ We modified `lib/tool_schema.py` to support retrieval.
 ### Workflow
 1.  **User speaks**: "What is the price of Bitcoin?"
 2.  **Router**: Calls `registry.find_tools("price of Bitcoin")`.
-3.  **Vector Search**: DB finds `crypto_price` (high similarity).
-4.  **Ghost Prioritization**: Registry merges critical "Ghost Tools" (Time, Memory, Logs) before the final schema cap is applied.
-5.  **LLM Prompt**: Receives `[crypto_price, get_time, search_memory, ...]`.
+3.  **Hybrid Search**: Embedding similarity and FTS5/BM25 independently rank enabled tools; normalized evidence and reciprocal-rank diagnostics are fused.
+4.  **Compound support**: Sufficiently detailed multi-clause requests receive a few supplemental clause-level retrieval views so one dominant action does not hide a secondary requested action.
+5.  **Adaptive selection**: A dominant winner or a natural score gap shortens the merged non-ghost tail; ambiguous requests may use the full budget.
+6.  **Ghost Prioritization**: Registry merges configured ghost tools before the final schema cap is applied.
+7.  **LLM Prompt**: Receives the adaptive candidates plus ghosts and explicit tool hints.
+
+The adaptive selector does not classify phrases or maintain an intent-to-tool
+lookup table. It operates on each query's dense/keyword evidence and score
+distribution. The helper LLM is not part of this latency-sensitive path.
+
+Clause-level retrieval follows the same rule: it splits only longer requests at
+structural punctuation or conjunction boundaries, retrieves at most three
+clauses, and keeps a tight adaptive shortlist from each before applying the
+existing global dynamic budget. Short requests continue to use one retrieval
+query. Diagnostics expose `compound_segments`, `segment_searches`, and
+`segment_supported_tools` in the Tool RAG metadata.
 
 ### The "Ghost Tool" Pattern
 These tools are priority candidates, ensuring basic functionality gets first chance inside the final schema cap when retrieval misses:
@@ -120,24 +141,24 @@ source ~/jarvis-venv/bin/activate
 -   **Negative tool signals**: `DO NOT use: tool` / `AVOID: tool` style signals can exclude non-ghost tools from the semantic result. If the same tool is both preferred and avoided in the same structured signal set, the conflict is neutralized.
 -   **Memory/intel tool-name signals**: Exact-match extraction from general memory/intel prose is experimental and disabled by default because that prose is noisier than explicit learned strategy lines.
 -   **Threshold selection**:
-    - `TOOL_SIMILARITY_THRESHOLD` is the base cutoff for compact/current/raw/original-tail/trailing request queries.
+    - `TOOL_SIMILARITY_THRESHOLD` remains the dense cosine floor for compact/current/raw/original-tail/trailing request queries. A strong lexical match can also qualify through the hybrid lane.
     - `TOOL_SIMILARITY_THRESHOLD_FULL` is used only for true `full_fallback`, even when that fallback string is capped before embedding.
     - If `TOOL_SIMILARITY_THRESHOLD_FULL` is unset or blank, both paths use `TOOL_SIMILARITY_THRESHOLD`.
 
 ### C. `tool_search` discovery mode
 
-`tool_search` intentionally reuses the same tool embedding index instead of maintaining a second discovery metadata system.
+`tool_search` intentionally reuses the same hybrid tool index instead of maintaining a second discovery metadata system.
 
 Current behavior:
--   semantic discovery queries use the live tool registry plus request exclusions
+-   hybrid discovery queries use the live tool registry plus request exclusions
 -   semantic and browse discovery focus on non-ghost tools because Tool RAG already considers ghost tools during routing
 -   exact inspection still allows ghost tools by exact name, except `tool_search` itself
--   discovery ranking uses a zero-threshold semantic pass with a wider raw candidate pool than normal routing
+-   discovery ranking uses a wider zero-threshold dense pool fused with FTS5/BM25; results expose their retrieval channels and hybrid score
 -   results are summary-first by default, with optional schema expansion for exact tool-name inspection
 -   invalid `limit` values safely fall back to the default instead of failing the tool call
 
 Current caveats:
--   discovery still depends on synced tool embeddings, so brand-new or changed tools need `./bin/sync-tools.py`
+-   dense discovery still depends on synced tool embeddings, so brand-new or changed tools need `./bin/sync-tools.py`; FTS stays synchronized automatically
 -   discovery is wider than the normal router shortlist, but it is still bounded by a raw top-K pool
 -   the next routing turn still runs normal Tool RAG plus exact positive hints; it is **not** true exact hydration yet
 
@@ -171,8 +192,9 @@ CLOUD_TOOL_RAG_LIMIT=15
 LOCAL_TOOL_RAG_LIMIT=6
 ```
 
-The router retrieves candidates, merges ghost tools and exact positive signals,
-then caps the final tool schema list. Priority is:
+The router retrieves a wider hybrid pool, adaptively selects the useful
+non-ghost tail, merges ghost tools and exact positive signals, then caps the
+final tool schema list. The mode limit is a ceiling, not a target. Priority is:
 
 1. explicit positive signals such as UI-selected tool hints
 2. mandatory discovery tools `tool_search` and `workflow`, when enabled

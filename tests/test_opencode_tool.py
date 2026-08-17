@@ -23,6 +23,67 @@ from skills import opencode
 
 
 class OpenCodeToolTests(unittest.TestCase):
+    def test_memory_context_accepts_keyword_only_hybrid_rows_without_fake_cosine(self):
+        class FakeMemoryDb:
+            closed = False
+
+            def semantic_search(self, query, limit):
+                self.asserted = (query, limit)
+                return [
+                    {
+                        "key": "dense_context",
+                        "value": "Use typed Python.",
+                        "category": "preference",
+                        "similarity": 0.61,
+                        "retrieval_score": 0.92,
+                        "retrieval_channels": ["dense", "keyword"],
+                    },
+                    {
+                        "key": "exact_identifier",
+                        "value": "The project code is Atlas-7.",
+                        "category": "fact",
+                        "retrieval_score": 0.55,
+                        "retrieval_channels": ["keyword"],
+                        "keyword_match_mode": "precise",
+                    },
+                    {
+                        "key": "weak_dense",
+                        "value": "Do not include this.",
+                        "category": "fact",
+                        "similarity": 0.49,
+                        "retrieval_score": 0.99,
+                        "retrieval_channels": ["dense", "keyword"],
+                    },
+                ]
+
+            def recall(self, query, limit=None):
+                return []
+
+            def close(self):
+                self.closed = True
+
+        fake_db = FakeMemoryDb()
+        with patch("skills.opencode.MemoryDB", return_value=fake_db):
+            context = opencode.get_memory_context("Work on Atlas-7", "cloud")
+
+        self.assertTrue(fake_db.closed)
+        self.assertEqual(
+            [item["key"] for item in context["relevant_memories"]],
+            ["dense_context", "exact_identifier"],
+        )
+        self.assertEqual(
+            context["relevant_memories"][0]["relevance_basis"],
+            "semantic_similarity",
+        )
+        self.assertEqual(context["relevant_memories"][0]["relevance"], "61%")
+        self.assertEqual(context["relevant_memories"][0]["match_type"], "hybrid")
+        self.assertEqual(
+            context["relevant_memories"][1]["relevance_basis"],
+            "keyword_retrieval_score",
+        )
+        self.assertEqual(context["relevant_memories"][1]["relevance"], "55%")
+        self.assertEqual(context["relevant_memories"][1]["match_type"], "keyword_exact")
+
     def test_uses_opencode_provider_and_model_from_config(self):
         stdout = StringIO()
 

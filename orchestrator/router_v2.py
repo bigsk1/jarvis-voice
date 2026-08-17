@@ -644,8 +644,9 @@ def _log_tool_rag_trace(
     tool_schema_est_tokens: int | None = None,
     tool_schema_top: list[dict[str, Any]] | None = None,
     tool_rag_skipped: bool = False,
-    retrieval_mode: str = "semantic",
+    retrieval_mode: str = "hybrid",
     semantic_disabled_reason: str | None = None,
+    retrieval_meta: dict[str, Any] | None = None,
 ) -> None:
     """Write optional Tool RAG retrieval traces for live routing debugging."""
     if not get_bool("TOOL_RAG_TRACE_ENABLED", True):
@@ -677,6 +678,7 @@ def _log_tool_rag_trace(
             "full_transcript_embedding": query == transcript,
             "retrieval_mode": retrieval_mode,
             "semantic_disabled_reason": semantic_disabled_reason,
+            "retrieval_meta": retrieval_meta or {},
             "signal_meta": signal_meta,
             "signal_notes": signal_notes,
             "ghost_tools": ghost_tools,
@@ -686,6 +688,11 @@ def _log_tool_rag_trace(
                     "rank": idx + 1,
                     "name": tool.get("name"),
                     "similarity": round(float(tool.get("similarity") or 0.0), 6),
+                    "hybrid_score": round(float(tool.get("hybrid_score") or 0.0), 6),
+                    "dense_rank": tool.get("dense_rank"),
+                    "keyword_rank": tool.get("keyword_rank"),
+                    "keyword_coverage": round(float(tool.get("keyword_coverage") or 0.0), 6),
+                    "retrieval_channels": tool.get("retrieval_channels", []),
                     "in_final_tools": tool.get("name") in final_tools,
                 }
                 for idx, tool in enumerate(ranked_tools[:max_ranked])
@@ -1198,7 +1205,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         )
         if not isinstance(tool_rag_meta, dict):
             tool_rag_meta = {}
-        tool_rag_retrieval_mode = tool_rag_meta.get("retrieval_mode", "semantic")
+        tool_rag_retrieval_mode = tool_rag_meta.get("retrieval_mode", "hybrid")
         tool_rag_disabled_reason = tool_rag_meta.get("semantic_disabled_reason")
         if tool_rag_disabled_reason:
             logging.getLogger(__name__).warning(
@@ -1219,7 +1226,11 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                         enabled_tool_names,
                         hint_source=typo_hint_source,
                     )
-                    ranked_tool_trace = db.search_tools(rag_trace_query, limit=100, threshold=0.0)
+                    ranked_tool_trace = db.search_tools(
+                        rag_trace_query,
+                        limit=100,
+                        threshold=tool_sim_threshold,
+                    )
                 finally:
                     db.close()
             except Exception as trace_error:
@@ -1356,6 +1367,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             tool_rag_skipped=chat_only,
             retrieval_mode=tool_rag_retrieval_mode,
             semantic_disabled_reason=tool_rag_disabled_reason,
+            retrieval_meta=tool_rag_meta,
         )
         
         try:

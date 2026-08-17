@@ -1126,7 +1126,7 @@ SEMANTIC_SIMILARITY_THRESHOLD=0.30  # Default: 0.30 (balanced)
 
 **Search Strategy:**
 - **Keyword/Entity searches** (1-3 words, technical terms): Use `search_memory` → FTS5
-- **Natural language questions** (4+ words, conceptual): Use `semantic_recall` → Embeddings
+- **Natural language questions** (conceptual or mixed with exact terms): Use `semantic_recall` → fused embeddings + FTS5/BM25
 
 See [`docs/FTS5_SEARCH_SYSTEM.md`](docs/FTS5_SEARCH_SYSTEM.md) and [`docs/SEMANTIC_THRESHOLD_TUNING.md`](docs/SEMANTIC_THRESHOLD_TUNING.md) for details.
 

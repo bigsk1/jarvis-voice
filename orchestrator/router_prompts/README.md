@@ -117,9 +117,9 @@ time.
 | Version | Characters | Words | Rough Token Estimate | Character Delta |
 | --- | ---: | ---: | ---: | --- |
 | `v1` | `31,491` | `4,821` | `7,873-8,179` | Baseline |
-| `v2` | `12,976` | `1,833` | `~3,244` | `58.8%` fewer than v1 |
-| `v3` | `9,175` | `1,189` | `~2,294` | `70.9%` fewer than v1; `29.3%` fewer than v2 |
-| `v4` | `9,571` | `1,256` | `~2,393` | `69.6%` fewer than v1; `26.2%` fewer than v2; `4.3%` more than v3 |
+| `v2` | `13,003` | `1,841` | `~3,251` | `58.7%` fewer than v1 |
+| `v3` | `9,262` | `1,208` | `~2,316` | `70.6%` fewer than v1; `28.8%` fewer than v2 |
+| `v4` | `9,682` | `1,276` | `~2,421` | `69.3%` fewer than v1; `25.5%` fewer than v2; `4.5%` more than v3 |
 
 The important live metric is full routing payload size. A compact prompt can
 still be dominated by retrieved tool schemas, profile/context overlays, or
@@ -154,6 +154,11 @@ prompt checksum. Treat the checksum constant as immutable too. If prompt
 behavior needs to change, copy v1 into a new version instead of updating v1 or
 its checksum.
 
+Live tool schemas and implementation guards remain authoritative when a
+historic v1 example names a parameter that a tool no longer accepts. Do not
+patch v1 to follow those runtime changes; update maintained prompt versions and
+keep safety-critical validation at the tool boundary.
+
 Jarvis always validates v1 because it is the recovery baseline. Other versions
 are validated when selected. A stale hash in an unused experimental version
 therefore cannot prevent Jarvis from starting with v1, while selecting that
@@ -173,11 +178,11 @@ into one authoritative section.
 
 Measurements:
 
-- Characters: `12,976` (`58.8%` fewer than v1)
+- Characters: `13,003` (`58.7%` fewer than v1)
 - Physical lines: `87` (`74` nonblank)
-- Space-separated words: `1,833`
-- Rough token estimate: approximately `3,244`, depending on provider tokenizer
-- Prompt SHA-256: `690de3d9c82a7849af641f878bf8440f787a8f391c8576cdf509a79ac0582c27`
+- Space-separated words: `1,841`
+- Rough token estimate: approximately `3,251`, depending on provider tokenizer
+- Prompt SHA-256: `d353ddf2e7f806a6597d07ac9ff5ec9d7c299c9af8550e28b9f6c90c32d2c884`
 
 Tool RAG, schemas, runtime date/time, provider capability notes, response-style
 overlays, model overrides, and profile cards remain unchanged. Treat live tests
@@ -202,11 +207,11 @@ the injected time without a tool call.
 
 Measurements:
 
-- Characters: `9,175` (`70.9%` fewer than v1; `29.3%` fewer than v2)
+- Characters: `9,262` (`70.6%` fewer than v1; `28.8%` fewer than v2)
 - Physical lines: `91` (`76` nonblank)
-- Space-separated words: `1,189`
-- Rough token estimate: approximately `2,294`, depending on provider tokenizer
-- Prompt SHA-256: `488aab327f393fdc76f6703db4c626215049969d45c6bdc7690b304c1300df3a`
+- Space-separated words: `1,208`
+- Rough token estimate: approximately `2,316`, depending on provider tokenizer
+- Prompt SHA-256: `eddad7ba3f1ce13feb1960e175b7c7ab0457f18aa7b61e167b8588b47f5e3b2e`
 
 The main experimental risk is instruction adherence on weaker/local models:
 telegraphic grammar removes explanatory redundancy that may help some models.
@@ -224,11 +229,11 @@ improves adherence for providers/models that struggle with v3 shorthand.
 
 Measurements:
 
-- Characters: `9,571` (`69.6%` fewer than v1; `26.2%` fewer than v2; `4.3%` more than v3)
+- Characters: `9,682` (`69.3%` fewer than v1; `25.5%` fewer than v2; `4.5%` more than v3)
 - Physical lines: `46` (`31` nonblank)
-- Space-separated words: `1,256`
-- Rough token estimate: approximately `2,393`, depending on provider tokenizer
-- Prompt SHA-256: `3e6a96c8853f29e48b4f9443eeccb6df3d47cb3bf0c0ffc8a7942ab2a90d67ac`
+- Space-separated words: `1,276`
+- Rough token estimate: approximately `2,421`, depending on provider tokenizer
+- Prompt SHA-256: `6e56ca4d15d044e429e6e4ae4ae1c2bc4f41485280a91f8f7ad24ae5ca13ade6`
 
 V4 intentionally preserves the supplied Unicode comparison arrows and symbols;
 provider tokenization may therefore differ slightly from the character-based

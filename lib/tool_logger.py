@@ -135,7 +135,6 @@ class ToolLogger:
             "mode": mode,
             "tool": tool_name,
             "arguments": arguments,
-            "fallback_embeddings": result.get("fallback_embeddings"),
             "retrieval_mode": retrieval_mode,
             "semantic_disabled_reason": semantic_disabled_reason,
             "result": result_summary,

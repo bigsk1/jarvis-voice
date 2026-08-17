@@ -53,6 +53,32 @@ def parse_date_filter(date_filter: str) -> datetime | None:
             return None
 
 
+def memory_retrieval_label(memory: dict) -> tuple[str, str]:
+    """Return truthful source labels for a MemoryDB semantic_search row."""
+    channels = set(memory.get('retrieval_channels') or [])
+    similarity = memory.get('similarity')
+
+    if 'dense' in channels:
+        try:
+            similarity_text = f", {float(similarity) * 100:.0f}% semantic match"
+        except (TypeError, ValueError):
+            similarity_text = ""
+        if 'keyword' in channels:
+            return 'memory_hybrid', f"Memory (hybrid{similarity_text})"
+        return 'memory_semantic', f"Memory (semantic{similarity_text})"
+
+    if 'keyword' in channels:
+        if memory.get('keyword_match_mode') == 'fallback':
+            return 'memory_keyword', 'Memory (keyword fallback; embeddings unavailable)'
+        return 'memory_keyword', 'Memory (exact keyword match)'
+
+    # Compatibility for older/custom MemoryDB implementations that return a
+    # cosine but do not annotate retrieval channels.
+    if isinstance(similarity, (int, float)):
+        return 'memory_semantic', f"Memory (semantic, {similarity * 100:.0f}% match)"
+    return 'memory_retrieval', 'Memory (retrieval match)'
+
+
 def ripgrep_search(query: str, paths: list[str], file_globs: list[str] = None, 
                    case_sensitive: bool = False, no_ignore: bool = False) -> list[dict]:
     """
@@ -135,7 +161,10 @@ def ripgrep_search(query: str, paths: list[str], file_globs: list[str] = None,
 def search_memory_db(query: str, limit: int, mode: str, date_filter: datetime = None) -> tuple[list[dict], dict]:
     """Search memory database using existing methods."""
     results = []
-    semantic_meta = {"fallback_embeddings": None}
+    semantic_meta = {
+        "retrieval_mode": "hybrid",
+        "semantic_disabled_reason": None,
+    }
     
     try:
         db = get_memory_db()
@@ -164,7 +193,11 @@ def search_memory_db(query: str, limit: int, mode: str, date_filter: datetime = 
         if mode in ['comprehensive', 'semantic']:
             # Semantic search
             semantic_results = db.semantic_search(query=query, limit=limit)
-            semantic_meta = getattr(db, 'last_semantic_search_meta', {"fallback_embeddings": None})
+            semantic_meta = getattr(
+                db,
+                'last_semantic_search_meta',
+                {"retrieval_mode": "hybrid", "semantic_disabled_reason": None},
+            )
             for mem in semantic_results:
                 # Avoid duplicates from keyword search
                 existing_keys = [r.get('key') for r in results]
@@ -179,8 +212,7 @@ def search_memory_db(query: str, limit: int, mode: str, date_filter: datetime = 
                     except:
                         pass
                 
-                mem['_source'] = 'memory_semantic'
-                mem['_source_display'] = f"Memory (semantic, {mem.get('similarity', 0)*100:.0f}% match)"
+                mem['_source'], mem['_source_display'] = memory_retrieval_label(mem)
                 results.append(mem)
         
         db.close()
@@ -539,7 +571,10 @@ def main():
             all_results['memory'] = memory_results
             source_counts['memory'] = len(memory_results)
         else:
-            memory_semantic_meta = {"fallback_embeddings": None}
+            memory_semantic_meta = {
+                "retrieval_mode": "hybrid",
+                "semantic_disabled_reason": None,
+            }
         
         if 'conversations' in sources:
             conv_results = search_terminal_conversations(query, limit, date_filter)
@@ -588,7 +623,6 @@ def main():
         output = {
             "ok": True,
             "speech": speech,
-            "fallback_embeddings": memory_semantic_meta.get("fallback_embeddings"),
             "data": {
                 "query": query,
                 "mode": mode,

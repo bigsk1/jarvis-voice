@@ -2,7 +2,10 @@
 
 ## Overview
 
-Jarvis uses a **comprehensive multi-tier fallback architecture** for all search methods, ensuring **zero false negatives** regardless of query structure, similarity thresholds, or data characteristics.
+Jarvis combines dense semantic retrieval with FTS5/BM25 and retains explicit
+fallback paths when embeddings are unavailable. No retrieval system can
+guarantee zero false negatives, so diagnostics identify which channel produced
+each result.
 
 **Key Principle**: Every search method should return relevant results or gracefully degrade through intelligent fallback strategies.
 
@@ -48,18 +51,20 @@ Jarvis uses a **comprehensive multi-tier fallback architecture** for all search 
 
 ---
 
-### 2. Semantic Search (`semantic_recall` tool)
+### 2. Hybrid Search (`semantic_recall` tool)
 
-**Primary Use**: AI-powered meaning-based search using vector embeddings  
-**Best For**: Natural language questions, conceptual queries
+**Primary Use**: Meaning-based embeddings fused with keyword/BM25 evidence
+**Best For**: Natural language questions, concepts, names, and identifiers
 
-**Fallback Chain**:
+**Retrieval Flow**:
 ```
-1. Try semantic search (cosine similarity with embeddings)
-   - Uses configured threshold (default 0.40)
-        ↓ (if 0 results OR embedding error)
-2. Fall back to FTS5 search (with its own fallback chain)
-   - Inherits: FTS5 (exact) → FTS5 (AND) → FTS5 (OR) → LIKE
+1. Rank embedding matches above the configured cosine threshold
+2. Rank keyword matches with FTS5/BM25 in parallel
+3. Fuse candidates; broad keyword hits may reinforce dense matches, while a
+   keyword-only row must match every meaningful query term
+4. If embeddings are incompatible or unavailable, admit the broader keyword
+   results and continue keyword-only; report retrieval_mode=keyword_fallback
+   plus semantic_disabled_reason
 ```
 
 **Threshold Behavior**:
@@ -67,17 +72,18 @@ Jarvis uses a **comprehensive multi-tier fallback architecture** for all search 
 - **Medium threshold (0.35-0.45)**: Balanced (recommended)
 - **Low threshold (0.20-0.30)**: Permissive, more results
 
-**Why FTS5 Fallback?**
-- Threshold too high: Query similarity 0.33 but threshold 0.40 → 0 results
-- Embedding failure: Model unavailable, dimension mismatch
-- Query structure: Natural language doesn't match stored phrasing
+The threshold still governs dense-only candidates. It does not suppress a
+precise all-term keyword result. Broad OR/LIKE matches cannot displace semantic
+matches while embeddings are healthy, but remain available during an embedding
+outage.
 
 **Example**:
 ```python
 Query: "what is the IP of Mini-AI"
 
-1. Try semantic: Similarity scores all < 0.40 threshold → 0 results
-2. Fall back to FTS5: Extracts "IP" and "Mini-AI" → 3 results ✅
+1. Embedding search supplies meaning-based candidates.
+2. FTS5 independently finds "IP" and "Mini-AI" candidates.
+3. A row found by both channels rises in the fused ranking.
    - Servers - Mini-AI server (192.168.1.xxx)
    - Network info
    - OpenCode server (port 4096)
@@ -115,7 +121,7 @@ None - returns 0 if no substring match found
 | Search Method | Primary Strategy | Fallback 1 | Fallback 2 | Fallback 3 | Guarantees |
 |---------------|-----------------|------------|------------|------------|------------|
 | **`search_memory`** (FTS5) | Exact query | FTS5 AND | FTS5 OR | LIKE | ✅ Always returns results (if data exists) |
-| **`semantic_recall`** (Embeddings) | Cosine similarity | FTS5 (with chain) | LIKE | - | ✅ Always returns results (if data exists) |
+| **`semantic_recall`** (Hybrid) | Dense + FTS5/BM25 fusion | Keyword-only if dense is unavailable | LIKE through the FTS chain | - | Returns ranked evidence when either channel matches |
 | **`recall`** (LIKE) | SQL LIKE | - | - | - | ⚠️ May return 0 (by design) |
 
 ---
@@ -146,7 +152,7 @@ semantic_recall("what are my food preferences?")
 semantic_recall("where is my web application running?")
 ```
 
-### When to Use `semantic_recall` (Embeddings)
+### When to Use `semantic_recall` (Hybrid)
 
 ✅ **Use for:**
 - Natural language questions: "what are my food preferences?"
@@ -421,7 +427,7 @@ def fts_search(query, limit):
 ## Summary
 
 ✅ **`search_memory` (FTS5)**: Keyword search with 4-tier fallback (exact → AND → OR → LIKE)  
-✅ **`semantic_recall` (Embeddings)**: Meaning-based search with FTS5 fallback  
+✅ **`semantic_recall` (Hybrid)**: Meaning and keyword rankings fused, with keyword-only fallback
 ✅ **`recall` (LIKE)**: Simple substring (used as final fallback)
 
 **Key Benefits**:

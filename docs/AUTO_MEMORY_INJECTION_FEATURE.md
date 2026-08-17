@@ -20,7 +20,7 @@
 ## Design Principles
 
 - **Transparent injection** – Relevant memories appear in context before the LLM responds, similar to conversation history.
-- **Sensible cutoffs** – Use similarity thresholds and limits to avoid noise and token bloat.
+- **Sensible cutoffs** – Use dense similarity thresholds, precise keyword agreement, and limits to avoid noise and token bloat.
 - **Complement tools** – Auto-injection does not replace tools; it reduces the need for them in common cases.
 - **Configurable** – Enable/disable, tune limits and thresholds via config.
 
@@ -30,7 +30,7 @@
 
 ### Concept
 
-Before each LLM call, run semantic search on the current transcript (and optionally recent conversation summary). Inject matching memories into the prompt, similar to how OpenCode uses `get_memory_context()`.
+Before each LLM call, run hybrid dense/keyword search on the current transcript. Inject matching memories into the prompt, similar to how OpenCode uses `get_memory_context()`.
 
 ### Flow
 
@@ -52,11 +52,11 @@ Memory runs on the **raw user transcript** for search; the **injected blocks** a
 
 ### Implementation (`orchestrator/orchestrator_v2.py` → `_get_relevant_memories`)
 
-**Merge:** Candidates come from (1) addressing preferences (pinned), (2) optional intel FTS matches on tooling-heavy queries, (3) semantic search with recency weighting and intel boosts. Each row gets a numeric **score** used for ordering.
+**Merge:** Candidates come from (1) addressing preferences (pinned), (2) optional intel FTS matches on tooling-heavy queries, (3) precise FTS5 matches where every meaningful query term is present, and (4) semantic search with recency weighting and intel boosts. Each row gets a numeric **score** used for ordering.
 
 **Sort:** `merged.sort(key=lambda x: (score, importance), reverse=True)`, then `top = merged[:AUTO_MEMORY_LIMIT]`. Primary key is **score** (higher = listed first). **Importance** breaks ties. **Recency** is not a separate column; it multiplies semantic similarity before comparison. There is no “newest first” sort by itself.
 
-**Prompt lines:** Each bullet includes a short **match hint**: `rank=…` matches the sort key; semantic rows also show `embed=…` (raw cosine before recency). A header line states the **semantic bar** (`AUTO_MEMORY_SIMILARITY_THRESHOLD`): adjusted rank must be ≥ threshold to qualify. Pinned and intel-keyword rows use fixed tags (`pinned_pref`, `intel_kw`, `intel_curated`, `intel_semantic`).
+**Prompt lines:** Each bullet includes its exact `memory_id` plus a short **match hint**: `rank=…` matches the sort key; semantic rows also show `embed=…` (raw cosine before recency). The ID lets a clearly identified injected row feed an ID-only `update_memory` or `forget` call without another lookup. A header line states the **semantic bar** (`AUTO_MEMORY_SIMILARITY_THRESHOLD`): adjusted dense rank must be ≥ threshold to qualify. Exact keyword rows use `keyword_exact` and are independent of that cosine threshold. Pinned and intel-keyword rows use fixed tags (`pinned_pref`, `intel_kw`, `intel_curated`, `intel_semantic`).
 
 **Config** (cloud.env / local.env):
 
