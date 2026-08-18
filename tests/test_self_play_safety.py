@@ -49,6 +49,7 @@ def test_serpapi_discovery_tools_are_reviewed_for_read_only_self_play():
     assert "serpapi_google_images_light" in self_play.DEFAULT_ALLOWED_TOOLS
     assert "serpapi_google_news_light" in self_play.DEFAULT_ALLOWED_TOOLS
     assert "serpapi_google_shopping_light" in self_play.DEFAULT_ALLOWED_TOOLS
+    assert "serpapi_google_immersive_product" in self_play.DEFAULT_ALLOWED_TOOLS
     assert "serpapi_google_sports" in self_play.DEFAULT_ALLOWED_TOOLS
     assert "serpapi_google_trends" in self_play.DEFAULT_ALLOWED_TOOLS
     assert "serpapi_google_trending_now" in self_play.DEFAULT_ALLOWED_TOOLS

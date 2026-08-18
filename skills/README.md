@@ -304,6 +304,7 @@ JSON object printed to stdout:
 | `serpapi_search_index` | Structured indexed-web source discovery with standard/deep recall, snippets, exact URLs, and workflow-ready pagination |
 | `serpapi_google_images_light` | Existing web-image discovery with full-size URLs, thumbnails, source pages, dimensions, filters, follow-up references, and optional strict top-result Stash download |
 | `serpapi_google_news_light` | Fast topic-specific Google News discovery with headlines, sources, snippets, grouped Top Stories, and exact article URLs |
+| `serpapi_google_immersive_product` | Rich exact-product specifications, review insights, media, variants, and expanded store offers using a Google Shopping Light handoff token |
 | `serpapi_google_trends` | Query-driven Google Trends time series, regional comparisons, and rising/top related queries or topics |
 | `serpapi_google_trending_now` | Seedless current-trend discovery with volume/growth signals and explicit selected-trend news drill-down |
 | `serpapi_google_sports` | Google Sports schedules, scores, direct-game line or period scores, box scores, viewing options, recap links, standings, players, brackets, league stats, and rankings with optional query-to-KGMID resolution |
@@ -331,7 +332,7 @@ JSON object printed to stdout:
 | `opencode` | Autonomous coding agent |
 | `calculator` | Math, stats, unit conversions |
 
-All 22 `serpapi_*` tools require `SERP_API_KEY` in the active mode env and are
+All 23 `serpapi_*` tools require `SERP_API_KEY` in the active mode env and are
 excluded from that mode's callable registry and Tool RAG sync when it is absent.
 `flight_search` can instead use its keyless fallback. See the full
 [SerpApi tools guide](../docs/tools/serp-api-tool/README.md).

@@ -242,6 +242,12 @@ class ToolExecutorCancelTests(unittest.TestCase):
             executor._get_subprocess_timeout("serpapi_google_shopping_light"), 120
         )
 
+    def test_google_immersive_product_timeout_allows_full_provider_request(self):
+        executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
+        self.assertEqual(
+            executor._get_subprocess_timeout("serpapi_google_immersive_product"), 120
+        )
+
     def test_google_sports_timeout_allows_resolver_and_provider_requests(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("serpapi_google_sports"), 200)

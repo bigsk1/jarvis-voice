@@ -92,6 +92,13 @@ class ContextAssembler:
             "embed_url",
         }
     )
+    _PREVIEW_OPAQUE_TOKEN_KEYS = frozenset(
+        {
+            "page_token",
+            "immersive_product_page_token",
+            "stores_next_page_token",
+        }
+    )
 
     def __init__(
         self,
@@ -771,6 +778,11 @@ class ContextAssembler:
             # Keep a bounded event shortlist with dates, venues, public links,
             # and ticket sources for immediate answers and chained tools.
             return 10000
+        if lowered == "serpapi_google_shopping_light":
+            # Immersive Product handoff tokens are commonly 1.5K characters.
+            # Keep a few complete, titled candidates instead of allowing the
+            # generic fallback to cut an opaque token into an unusable prefix.
+            return 8000
         if lowered == "document_ocr":
             # The tool already replaces full OCR bodies with bounded excerpts
             # and Stash refs. Preserve enough page-attributed text or structured
@@ -835,6 +847,8 @@ class ContextAssembler:
 
     def preview_string_limit(self, parent_key: str) -> int:
         pk = parent_key or ""
+        if pk in self._PREVIEW_OPAQUE_TOKEN_KEYS:
+            return 20000
         if pk in self._PREVIEW_LONG_STRING_KEYS:
             return 600
         if pk in self._PREVIEW_URLISH_STRING_KEYS or pk.endswith("_url"):
@@ -860,7 +874,14 @@ class ContextAssembler:
             return []
 
         normalized_tool_name = str(tool_name or "").strip().lower()
-        if normalized_tool_name in {
+        if normalized_tool_name == "serpapi_google_immersive_product":
+            candidate_keys = (
+                "stores",
+                "top_results",
+                "results",
+                "items",
+            )
+        elif normalized_tool_name in {
             "tmdb_movies",
             "tmdb_tv_shows",
             "serpapi_travel_explore",
@@ -944,6 +965,10 @@ class ContextAssembler:
         )
         is_google_shopping_light = (
             str(tool_name or "").strip().lower() == "serpapi_google_shopping_light"
+        )
+        is_google_immersive_product = (
+            str(tool_name or "").strip().lower()
+            == "serpapi_google_immersive_product"
         )
         is_google_trends = str(tool_name or "").strip().lower() == "serpapi_google_trends"
         is_google_trending_now = (
@@ -1215,6 +1240,32 @@ class ContextAssembler:
                     "extensions",
                     "installment",
                     "multiple_sources",
+                    "immersive_product_page_token",
+                    "serpapi_immersive_product_api",
+                ):
+                    value = item.get(key)
+                    if value not in (None, "", [], {}):
+                        candidate[key] = self.build_preview_value(
+                            value,
+                            parent_key=key,
+                            depth=0,
+                            max_depth=2,
+                        )
+
+            if is_google_immersive_product:
+                for key in (
+                    "details_and_offers",
+                    "coupon",
+                    "discount",
+                    "original_price",
+                    "extracted_price",
+                    "extracted_original_price",
+                    "reviews",
+                    "payment_methods",
+                    "shipping",
+                    "shipping_extracted",
+                    "total",
+                    "extracted_total",
                 ):
                     value = item.get(key)
                     if value not in (None, "", [], {}):
@@ -2297,6 +2348,63 @@ class ContextAssembler:
             }
         return preview
 
+    def build_google_immersive_product_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep exact handoff tokens plus bounded product-detail sections."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "engine",
+            "page_token",
+            "next_page_token",
+            "more_stores",
+            "output_format",
+            "results_count",
+            "stores_count",
+            "top_url",
+            "top_image_url",
+            "stores_next_page_token",
+            "has_more_stores",
+            "search_id",
+            "serpapi_searches_used",
+            "external_content_trust",
+            "untrusted_external_content",
+            "handling_note",
+            "source",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=2,
+                )
+
+        for key, depth in (
+            ("product_summary", 3),
+            ("about_the_product", 4),
+            ("top_insights", 4),
+            ("ratings", 3),
+            ("user_reviews", 4),
+            ("more_options", 4),
+            ("variants", 4),
+            ("related_searches", 3),
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=depth,
+                )
+
+        content = data.get("content")
+        if isinstance(content, str) and content.strip():
+            preview["content_chars"] = data.get("content_chars", len(content))
+            preview["content_excerpt"] = self.truncate_preview_text(content, 1800)
+        return preview
+
     def build_google_sports_data_preview(self, data: Any) -> dict[str, Any]:
         """Keep sports identity, view, counts, and durable follow-up IDs compact."""
         if not isinstance(data, dict):
@@ -2962,6 +3070,7 @@ class ContextAssembler:
             "serpapi_google_events",
             "serpapi_travel_explore",
             "serpapi_open_table_reviews",
+            "serpapi_google_immersive_product",
             # Account payloads always use an allowlisted projection even when
             # small, so an upstream regression cannot hand OAuth material to
             # the response model or follow-up context.
@@ -2998,6 +3107,8 @@ class ContextAssembler:
                 data_preview = self.build_google_news_light_data_preview(data)
             elif normalized_tool_name == "serpapi_google_shopping_light":
                 data_preview = self.build_google_shopping_light_data_preview(data)
+            elif normalized_tool_name == "serpapi_google_immersive_product":
+                data_preview = self.build_google_immersive_product_data_preview(data)
             elif normalized_tool_name == "serpapi_google_sports":
                 data_preview = self.build_google_sports_data_preview(data)
             elif normalized_tool_name == "serpapi_google_trends":
@@ -3126,6 +3237,75 @@ class ContextAssembler:
                             len(preview_compact),
                             True,
                         )
+
+        if (tool_name or "").lower() == "serpapi_google_shopping_light":
+            # Shopping rows can contain both a long opaque token and a SerpApi
+            # URL that repeats the same token. When that pushes the normal
+            # projection over budget, retain compact titled candidates with
+            # complete tokens and discard the redundant URL/offer detail.
+            context = preview_payload.get("llm_context_preview")
+            candidates = context.get("source_candidates") if isinstance(context, dict) else None
+            if isinstance(candidates, list):
+                compact_candidates = []
+                for candidate in candidates:
+                    if not isinstance(candidate, dict):
+                        continue
+                    compact_candidate = {
+                        key: candidate[key]
+                        for key in (
+                            "rank",
+                            "position",
+                            "provider_position",
+                            "title",
+                            "source",
+                            "price",
+                            "rating",
+                            "reviews",
+                            "immersive_product_page_token",
+                        )
+                        if candidate.get(key) not in (None, "", [], {})
+                    }
+                    if compact_candidate:
+                        compact_candidates.append(compact_candidate)
+                context["source_candidates"] = compact_candidates
+
+                data_preview = context.get("data_preview")
+                if isinstance(data_preview, dict):
+                    context["data_preview"] = {
+                        key: data_preview[key]
+                        for key in (
+                            "engine",
+                            "query",
+                            "query_displayed",
+                            "results_count",
+                            "provider_results_count",
+                            "location",
+                            "provider_location_used",
+                            "sort_by",
+                            "comparison_note",
+                            "search_id",
+                            "has_more",
+                            "next_start",
+                            "serpapi_searches_used",
+                            "source",
+                        )
+                        if data_preview.get(key) not in (None, "", [], {})
+                    }
+
+                while compact_candidates:
+                    preview_compact = json.dumps(
+                        preview_payload,
+                        separators=(",", ":"),
+                        default=str,
+                    )
+                    if len(preview_compact) <= max_chars:
+                        return (
+                            preview_compact,
+                            result_chars_total,
+                            len(preview_compact),
+                            True,
+                        )
+                    compact_candidates.pop()
 
         if (tool_name or "").lower() == "workflow":
             # Rebuild with a tighter shared component budget before falling

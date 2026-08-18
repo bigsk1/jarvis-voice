@@ -29,6 +29,7 @@ SERPAPI_TOOL_ENGINES = {
     "serpapi_open_table_reviews": ("open_table_reviews",),
     "serpapi_google_images_light": ("google_images_light",),
     "serpapi_google_news_light": ("google_news_light",),
+    "serpapi_google_immersive_product": ("google_immersive_product",),
     "serpapi_google_shopping_light": ("google_shopping_light",),
     "serpapi_google_sports": ("google_sports",),
     "serpapi_google_trends": ("google_trends",),
@@ -49,6 +50,7 @@ SERPAPI_ENGINE_LABELS = {
     "google_hotels": "Google Hotels",
     "google_events": "Google Events",
     "google_images_light": "Google Images Light",
+    "google_immersive_product": "Google Immersive Product",
     "google_light": "Google Light Search",
     "google_local": "Google Local",
     "google_local_services": "Google Local Services",
@@ -90,6 +92,10 @@ SERPAPI_ENGINE_STATUS_ALIASES = {
     "google_images_light": (
         "google images light api",
         "google images light",
+    ),
+    "google_immersive_product": (
+        "google immersive product api",
+        "google immersive product",
     ),
     "google_light": ("google light search api", "google light search"),
     "google_local": ("google local api", "google local"),
@@ -492,7 +498,19 @@ def request_serpapi(
         ) from None
 
     if response.status_code >= 400:
-        raise RuntimeError(f"SerpApi request failed with HTTP {response.status_code}.")
+        provider_error = ""
+        try:
+            error_payload = response.json()
+            if isinstance(error_payload, dict) and error_payload.get("error"):
+                provider_error = redact_sensitive_text(
+                    str(error_payload["error"])
+                )[:1000].rstrip(".")
+        except Exception:
+            provider_error = ""
+        detail = f": {provider_error}" if provider_error else ""
+        raise RuntimeError(
+            f"SerpApi request failed with HTTP {response.status_code}{detail}."
+        )
 
     payload = response.json()
     if payload.get("error"):

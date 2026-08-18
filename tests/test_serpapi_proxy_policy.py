@@ -26,6 +26,7 @@ EXPECTED_SERPAPI_TOOLS = {
     "serpapi_google_images_light",
     "serpapi_google_news_light",
     "serpapi_google_shopping_light",
+    "serpapi_google_immersive_product",
     "serpapi_google_sports",
     "serpapi_google_trends",
     "serpapi_google_trending_now",

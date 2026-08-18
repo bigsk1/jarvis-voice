@@ -799,6 +799,11 @@ def test_extract_followup_data_preserves_google_shopping_offer_comparison():
                         "extracted_price": 33.33,
                         "period": 6,
                     },
+                    "immersive_product_page_token": "opaque-product-token+/=",
+                    "serpapi_immersive_product_api": (
+                        "https://serpapi.com/search.json?engine=google_immersive_product"
+                        "&page_token=opaque-product-token%2B%2F%3D"
+                    ),
                 }
             ],
             "lowest_returned_price": {
@@ -831,6 +836,12 @@ def test_extract_followup_data_preserves_google_shopping_offer_comparison():
     assert shopping["candidates"][0]["old_price"] == "$249.99"
     assert shopping["candidates"][0]["delivery"] == "Free delivery"
     assert shopping["candidates"][0]["installment"]["period"] == 6
+    assert shopping["candidates"][0]["immersive_product_page_token"] == (
+        "opaque-product-token+/="
+    )
+    assert shopping["candidates"][0]["serpapi_immersive_product_api"].startswith(
+        "https://serpapi.com/search.json"
+    )
     assert shopping["lowest_returned_price"]["source"] == "Audio Shop"
     assert shopping["pagination"] == {
         "current": 1,
@@ -839,6 +850,53 @@ def test_extract_followup_data_preserves_google_shopping_offer_comparison():
         "next_start": 10,
     }
     assert "api_key" not in json.dumps(shopping)
+
+
+def test_extract_followup_data_preserves_google_immersive_product_handoffs():
+    handler = _handler()
+    page_token = "opaque-product-token+/="
+    data = {
+        "serpapi_google_immersive_product": {
+            "engine": "google_immersive_product",
+            "page_token": page_token,
+            "stores_next_page_token": "opaque-store-page-token_-",
+            "has_more_stores": True,
+            "product_summary": {
+                "title": "Acme Quiet 5 Wireless Headphones",
+                "brand": "Acme",
+                "rating": 4.8,
+                "reviews": 1500,
+            },
+            "stores": [
+                {
+                    "name": "Audio Shop",
+                    "url": "https://shop.example/quiet-5",
+                    "price": "$149.00",
+                    "details_and_offers": ["Free returns"],
+                }
+            ],
+            "about_the_product": {
+                "features": [{"title": "Battery", "description": "30 hours"}]
+            },
+            "user_reviews": [
+                {"title": "Excellent", "text": "Comfortable for long sessions."}
+            ],
+            "variants": [
+                {"title": "Color", "items": [{"name": "Blue", "page_token": "blue-token"}]}
+            ],
+        }
+    }
+
+    product = handler._extract_followup_data(data)[
+        "serpapi_google_immersive_product"
+    ]
+
+    assert product["page_token"] == page_token
+    assert product["stores_next_page_token"] == "opaque-store-page-token_-"
+    assert product["product_summary"]["title"].startswith("Acme Quiet")
+    assert product["stores"][0]["url"] == "https://shop.example/quiet-5"
+    assert product["about_the_product"]["features"][0]["title"] == "Battery"
+    assert product["variants"][0]["items"][0]["page_token"] == "blue-token"
 
 
 def test_extract_followup_data_preserves_google_sports_ids_scores_and_seasons():

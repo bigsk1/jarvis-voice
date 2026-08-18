@@ -16,7 +16,8 @@ discover general public webpages and source URLs.
 | Tool | Provider engine(s) | Best use |
 |---|---|---|
 | `serpapi_amazon_search` | `amazon`, `amazon_product` | Amazon listing discovery, ASIN details, prices, ratings, Prime, delivery, stock, and product comparison |
-| `serpapi_google_shopping_light` | `google_shopping_light` | Fast multi-retailer product discovery and price comparison with merchant, delivery, rating, sale, thumbnail, and offer links |
+| `serpapi_google_shopping_light` | `google_shopping_light` | Fast multi-retailer product discovery and price comparison with merchant, delivery, rating, sale, thumbnail, offer links, and Immersive Product handoff tokens |
+| `serpapi_google_immersive_product` | `google_immersive_product` | Rich detail for one selected product: specifications, review insights, user reviews, media, variants, and expanded store offers |
 | `serpapi_google_sports` | `google_sports` plus conditional `google` resolver | Current game schedules and scores, game details, standings, players, brackets, league statistics, and rankings |
 | `serpapi_search_index` | `search_index` | Ranked indexed-web sources for grounding, datasets, and workflows; fetch returned URLs separately |
 | `serpapi_google_images_light` | `google_images_light` | Existing web images with full-size URLs, thumbnails, source pages, dimensions, usage-rights filters, and pagination |
@@ -64,13 +65,15 @@ The family uses these common layers:
 - `jarvis-web/client/js/structured-results.js` renders focused product, place,
   image-gallery, multi-retailer shopping, hotel, Travel Explore, flight,
   Tripadvisor, Google Events, Google
-  Local, Google Local Services, Google News Light, Google Trends, Trending Now,
+  Local, Google Local Services, Google News Light, Google Shopping Light,
+  Google Immersive Product, Google Trends, Trending Now,
   Google Sports, Search Index, eBay, OpenTable Reviews, Yelp, Maps, and YouTube cards.
 
 Raw provider JSON is available only through each tool's `include_raw` debug
 option. Normal conversational and workflow calls should leave it off.
-`serpapi_open_table_reviews` additionally supports explicit HTML and Markdown
-provider output; both remain labeled and handled as untrusted external content.
+`serpapi_open_table_reviews` and `serpapi_google_immersive_product` additionally
+support explicit HTML and Markdown provider output; both remain labeled and
+handled as untrusted external content.
 
 ## Setup and mode-aware availability
 
@@ -86,7 +89,7 @@ Use `config/cloud.env` for cloud mode and `config/local.env` for local mode.
 Shopping Light when no location is supplied. The postal code also localizes
 Amazon delivery and Home Depot availability where supported.
 
-The twenty-two `serpapi_*` manifests declare:
+The twenty-three `serpapi_*` manifests declare:
 
 ```json
 "availability": {
@@ -165,7 +168,8 @@ additional searches:
 
 | Tool or option | SerpApi searches |
 |---|---:|
-| eBay search/product, Google Shopping Light, Google Local, Maps, Hotels, Travel Explore, Search Index, Google Images Light, Google News Light, Google Trends, Trending Now discovery, Trending Now news drill-down, YouTube search | 1 |
+| eBay search/product, Google Shopping Light, Google Immersive Product, Google Local, Maps, Hotels, Travel Explore, Search Index, Google Images Light, Google News Light, Google Trends, Trending Now discovery, Trending Now news drill-down, YouTube search | 1 |
+| Normal Google product discovery plus rich detail | 2: Shopping Light plus Immersive Product |
 | Google Local Services with explicit `data_cid` or a built-in New York, Austin, or Portland alias | 1 |
 | Google Local Services with any other explicit or mode-default location | 2: Google Maps CID resolution plus Local Services |
 | Amazon listing or product call | 1 base call |
@@ -260,6 +264,41 @@ calling an offer the best deal. Comparison workflows can pass the compact
 candidate rows directly to later ranking, Canvas, or reporting steps. Use
 `serpapi_amazon_search` instead when Amazon-specific Prime, delivery, stock, or
 ASIN detail is required.
+
+Eligible Shopping Light rows also preserve
+`immersive_product_page_token` and `serpapi_immersive_product_api`. Those are
+provider-generated product locators for a second, explicit detail call; they
+are not browser session state and must not be guessed, decoded, or constructed
+from a product name or Google product ID.
+
+### Google Immersive Product
+
+Use this after selecting an exact Shopping Light result when the user needs
+product specifications, features, review themes, user reviews, product media,
+variants, or richer store comparisons:
+
+```json
+{
+  "page_token": "<immersive_product_page_token from the selected result>",
+  "more_stores": true,
+  "max_stores": 13
+}
+```
+
+`more_stores=true` is the default and asks SerpApi for up to 13 offers in the
+single detail search. The result preserves `stores_next_page_token` for an
+explicit later store page and exposes provider tokens embedded in returned
+variant or related-product handoff links. It does not automatically paginate,
+switch variants, or enrich every discovery candidate, so a normal discovery
+plus selected-product detail request costs two searches.
+
+The manifest lists `serpapi_google_shopping_light` as a soft prerequisite so
+Tool RAG can show both schemas when only a product name is known. Availability
+remains independent: if Shopping Light is disabled but a verified token is
+already available from history, a workflow, the user, or another provider
+response, Immersive Product can still run. Workflows that require discovery
+must keep Shopping Light as their own required step. JSON is the normal format;
+HTML and Markdown remain explicitly untrusted external content.
 
 ### Google Sports
 
@@ -820,6 +859,8 @@ reuse the correct item or place instead of guessing:
 - Google Trends summaries, regional values, recent timeline points, and
   related links;
 - Trending Now volume/growth signals and exact selected-trend news tokens;
+- Google Shopping Light product tokens plus Google Immersive Product features,
+  review/store context, variant handoffs, and store-pagination tokens;
 - Google Images Light full-size image URLs, source pages, dimensions, and
   explicit untrusted-content markers;
 - Search Index source URLs and pagination metadata;
@@ -829,8 +870,8 @@ reuse the correct item or place instead of guessing:
 - YouTube video IDs and URLs.
 
 The Web UI renders structured cards for result types that have dedicated
-adapters. Links and image URLs remain available to later Stash and Canvas
-actions.
+adapters, including a product-and-store rail for Google Immersive Product.
+Links and image URLs remain available to later Stash and Canvas actions.
 
 ## Incident-aware failures
 

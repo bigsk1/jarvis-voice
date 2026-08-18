@@ -4,6 +4,7 @@
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
@@ -27,6 +28,22 @@ class SerpApiClientResultsTests(unittest.TestCase):
         message = str(raised.exception)
         self.assertNotIn(secret, message)
         self.assertIn("api_key=[redacted]", message)
+
+    def test_http_error_includes_safe_provider_message(self):
+        response = SimpleNamespace(
+            status_code=400,
+            json=lambda: {"error": "Invalid `page_token` parameter."},
+        )
+        with patch("serpapi_client.get_api_key", return_value="test-key"), patch(
+            "serpapi_client.http_request", return_value=response
+        ):
+            with self.assertRaises(RuntimeError) as raised:
+                request_serpapi({"engine": "google_immersive_product"})
+
+        self.assertEqual(
+            str(raised.exception),
+            "SerpApi request failed with HTTP 400: Invalid `page_token` parameter.",
+        )
 
     def test_amazon_product_includes_shopping_signals(self):
         payload = {

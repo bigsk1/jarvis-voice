@@ -1,6 +1,7 @@
 """Regression coverage for durable Tool RAG sync status."""
 
 import json
+from pathlib import Path
 
 from lib.tool_sync_status import (
     read_tool_sync_status,
@@ -66,3 +67,11 @@ def test_missing_corrupt_or_incomplete_status_is_not_treated_as_failure(tmp_path
         encoding="utf-8",
     )
     assert read_tool_sync_status("cloud", project_root=tmp_path) is None
+
+
+def test_sync_script_selects_requested_memory_database_explicitly():
+    project_root = Path(__file__).resolve().parent.parent
+    source = (project_root / "bin" / "sync-tools.py").read_text(encoding="utf-8")
+
+    assert "db = get_memory_db(mode)" in source
+    assert "db = get_memory_db()" not in source

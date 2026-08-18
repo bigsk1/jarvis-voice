@@ -836,6 +836,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 
 - `serpapi_amazon_search` - **SerpApi Amazon Search**: Amazon listing discovery and focused ASIN/product details with price, rating, Prime, delivery, stock, images, and links
 - `serpapi_google_shopping_light` - **SerpApi Google Shopping Light**: Fast multi-retailer shopping results with current and prior prices, merchants, ratings, delivery, sale/free-shipping filters, thumbnails, and offer links
+- `serpapi_google_immersive_product` - **SerpApi Google Immersive Product**: Rich product details, features, review insights, user reviews, media, variants, and expanded store offers using the exact token returned by Google Shopping Light
 - `serpapi_google_sports` - **SerpApi Google Sports**: Current schedules, scores, game details, standings, players, brackets, league statistics, and rankings with query-to-KGMID resolution or direct deterministic IDs
 - `serpapi_search_index` - **SerpApi Search Index**: Structured indexed-web source discovery with exact URLs, snippets, standard/deep recall, and workflow-ready pagination for later fetch/crawl steps
 - `serpapi_google_images_light` - **SerpApi Google Images Light**: Search existing web images with full-size URLs, thumbnails, source pages, dimensions, filters, workflow-ready references, and optional strict top-result Stash download
@@ -857,7 +858,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `serpapi_youtube_search` - **SerpApi YouTube search**: Keyword search with video-first results (title, channel, views, duration, thumbnails)
 - `serpapi_youtube` - **SerpApi YouTube details**: Video metadata and transcript by URL or `video_id` (useful when `youtube_video` / yt-dlp hits auth or cookie limits)
 
-The 22 `serpapi_*` tools require a nonblank key in the active mode's env file.
+The 23 `serpapi_*` tools require a nonblank key in the active mode's env file.
 Without it they are not callable or included in that mode's Tool RAG sync. Jarvis
 Web shows the free Account API quota card only when Settings → System is opened
 and the selected mode has a valid key.
@@ -1548,7 +1549,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 <summary><strong>View roadmap and completed milestones</strong></summary>
 
 **Completed (August 2026) — Search, media discovery, OCR, and workflow UX:**
-- ✅ **22 focused SerpApi tools** — Expanded structured search across shopping,
+- ✅ **23 focused SerpApi tools** — Expanded structured search across shopping,
   indexed sources, images, news, trends, events, local places and services,
   maps, sports, hotels, travel, Tripadvisor, OpenTable reviews, Yelp, and YouTube, with quota
   visibility and incident-aware outage diagnostics
@@ -2053,7 +2054,7 @@ Source Available — free for personal use, modification, and non-commercial red
 
 **Current Version:** v2.55.5 (August 2026)
 **Status:** Production Ready ✅
-**Latest Features:** The August 2026 build expands Jarvis with 22 focused
+**Latest Features:** The August 2026 build expands Jarvis with 23 focused
 SerpApi tools, incident-aware outage diagnostics, and new shopping, local,
 sports, and travel workflows. It also adds Trakt/TMDB movie and TV discovery
 with watched-title filtering and recurring genre radars, optional OVIS document

@@ -39,6 +39,7 @@
     "serpapi_search_index": false,
     "serpapi_google_images_light": false,
     "serpapi_google_news_light": false,
+    "serpapi_google_immersive_product": false,
     "serpapi_google_shopping_light": false,
     "serpapi_google_sports": false,
     "serpapi_google_trends": false,

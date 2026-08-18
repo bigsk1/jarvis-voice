@@ -286,6 +286,12 @@ def _normalize_product(
         "tag": _compact_text(item.get("tag"), 100),
         "extensions": _compact_extensions(item.get("extensions")),
         "block_position": _compact_text(item.get("block_position"), 50),
+        "immersive_product_page_token": _compact_text(
+            item.get("immersive_product_page_token"), 20000
+        ),
+        "serpapi_immersive_product_api": _http_url(
+            item.get("serpapi_immersive_product_api")
+        ),
     }
     return {
         key: field

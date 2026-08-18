@@ -56,6 +56,7 @@ const expectedTools = [
   'serpapi_search_index',
   'serpapi_google_images_light',
   'serpapi_google_news_light',
+  'serpapi_google_immersive_product',
   'serpapi_google_shopping_light',
   'serpapi_google_sports',
   'serpapi_google_trends',
@@ -233,6 +234,32 @@ const html = renderer.render({{
       thumbnail: 'https://images.example/funding.jpg',
       snippet: 'Several agent startups announced new funding rounds.',
       date: '2 hours ago'
+    }}]
+  }},
+  serpapi_google_immersive_product: {{
+    output_format: 'json',
+    top_url: 'https://shop.example/quiet-5',
+    top_image_url: 'https://images.example/quiet-5.jpg',
+    stores_next_page_token: 'opaque-store-token',
+    product_summary: {{
+      title: 'Acme Quiet 5 Product Details',
+      brand: 'Acme',
+      rating: 4.8,
+      reviews: 1500,
+      price_range: '$149–$199',
+      thumbnails: ['https://images.example/quiet-5.jpg']
+    }},
+    stores: [{{
+      name: 'Audio Shop Immersive',
+      url: 'https://shop.example/quiet-5',
+      logo: 'https://images.example/audio-shop.png',
+      rating: 4.7,
+      reviews: 800,
+      total: '$149 total',
+      shipping: 'Free two-day delivery',
+      discount: 'Save $50',
+      details_and_offers: ['Free returns within 30 days'],
+      payment_methods: ['Visa', 'PayPal']
     }}]
   }},
   serpapi_google_shopping_light: {{
@@ -518,6 +545,11 @@ for (const expected of [
   'Finance Example', 'Top story', 'AI funding',
   'Agentic AI attracts new funding', 'Example News',
   'Several agent startups announced new funding rounds', 'Open Google News',
+  'Google Immersive Product', 'Acme Quiet 5 Product Details',
+  'Acme · ★ 4.8 · 1,500 reviews · $149–$199 · 1 store offer',
+  'Audio Shop Immersive', '$149 total', '800 reviews', 'Save $50',
+  'Free two-day delivery', 'Free returns within 30 days', 'Visa · PayPal',
+  'View product offer',
   'Google Shopping Light', 'noise cancelling headphones', '24 offers found',
   'Portland, Oregon, United States', 'price low to high · On sale · Free shipping',
   'Acme Quiet 5 Wireless Headphones', '$199.99', 'Was $249.99',
@@ -567,7 +599,7 @@ for (const expected of [
 }}
 if (html.includes('flight_numbers')) process.exit(4);
 if (html.includes('https://serpapi.example/unsafe-thumb.jpg')) process.exit(9);
-if ((html.match(/structured-results-preview/g) || []).length !== 22) process.exit(5);
+if ((html.match(/structured-results-preview/g) || []).length !== 23) process.exit(5);
 
 if (!renderer.register('custom_demo', payload => ({{
   kind: 'generic',

@@ -58,6 +58,11 @@ def shopping_payload():
                 "serpapi_thumbnail": "https://serpapi.example/quiet-5.jpg",
                 "tag": "20% OFF",
                 "extensions": ["20% OFF", "Black", "Bluetooth"],
+                "immersive_product_page_token": "opaque-product-token+/=",
+                "serpapi_immersive_product_api": (
+                    "https://serpapi.com/search.json?engine=google_immersive_product"
+                    "&page_token=opaque-product-token%2B%2F%3D"
+                ),
             }
         ],
         "inline_shopping_results": [
@@ -155,6 +160,11 @@ def test_normalization_combines_sections_and_deduplicates_products():
         "serpapi_thumbnail": "https://serpapi.example/quiet-5.jpg",
         "tag": "20% OFF",
         "extensions": ["20% OFF", "Black", "Bluetooth"],
+        "immersive_product_page_token": "opaque-product-token+/=",
+        "serpapi_immersive_product_api": (
+            "https://serpapi.com/search.json?engine=google_immersive_product"
+            "&page_token=opaque-product-token%2B%2F%3D"
+        ),
     }
     assert results[1]["position"] == 2
     assert results[1]["section"] == "inline"

@@ -343,6 +343,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_search_index', payload => this._adaptSearchIndex(payload));
     this.register('serpapi_google_images_light', payload => this._adaptGoogleImagesLight(payload));
     this.register('serpapi_google_news_light', payload => this._adaptGoogleNewsLight(payload));
+    this.register('serpapi_google_immersive_product', payload => this._adaptGoogleImmersiveProduct(payload));
     this.register('serpapi_google_shopping_light', payload => this._adaptGoogleShoppingLight(payload));
     this.register('serpapi_google_sports', payload => this._adaptGoogleSports(payload));
     this.register('serpapi_google_trends', payload => this._adaptGoogleTrends(payload));
@@ -882,6 +883,110 @@ class StructuredResultsRenderer {
       ].filter(Boolean).join(' · '),
       actionUrl: payload.google_shopping_light_url,
       actionLabel: 'Open Google Shopping',
+      items,
+    };
+  }
+
+  _adaptGoogleImmersiveProduct(payload) {
+    const summary = payload.product_summary && typeof payload.product_summary === 'object'
+      ? payload.product_summary
+      : {};
+    const format = String(payload.output_format || 'json').toLowerCase();
+    const heading = summary.title || 'Google product details';
+    if (format !== 'json' && payload.content) {
+      const plainContent = format === 'html'
+        ? String(payload.content).replace(/<[^>]*>/g, ' ')
+        : String(payload.content);
+      return {
+        kind: 'product',
+        eyebrow: 'Google Immersive Product',
+        heading,
+        subtitle: `${format === 'markdown' ? 'Markdown' : 'HTML'} provider response`,
+        actionUrl: payload.top_url,
+        actionLabel: 'View product offer',
+        items: [{
+          title: `${format === 'markdown' ? 'Markdown' : 'HTML'} product document`,
+          url: payload.top_url,
+          primary: payload.content_chars != null
+            ? `${this._formatCount(payload.content_chars)} characters`
+            : '',
+          chips: ['Untrusted external content'],
+          details: [this._compactText(plainContent, 420)],
+          actionLabel: 'View product offer',
+        }],
+      };
+    }
+
+    const thumbnails = Array.isArray(summary.thumbnails) ? summary.thumbnails : [];
+    const productImage = payload.top_image_url || thumbnails.map(item => {
+      if (typeof item === 'string') return item;
+      if (!item || typeof item !== 'object') return '';
+      return item.serpapi_thumbnail || item.thumbnail || item.url || item.image || '';
+    }).find(Boolean);
+    const stores = Array.isArray(payload.stores)
+      ? payload.stores.filter(item => item && typeof item === 'object').slice(0, 13)
+      : this._rows(payload);
+    const items = stores.map((store, index) => {
+      const chips = [
+        store.rating != null ? `★ ${store.rating}` : '',
+        store.reviews != null ? `${this._formatCount(store.reviews)} reviews` : '',
+        store.discount,
+        store.tag,
+      ].filter(Boolean).map(String);
+      const paymentMethods = this._list(store.payment_methods).slice(0, 4).join(' · ');
+      const primary = store.total || store.price
+        || this._formatMarketplacePrice(store.extracted_total ?? store.extracted_price);
+      return {
+        title: store.name || store.title || `Store offer ${index + 1}`,
+        url: store.url || payload.top_url,
+        image: store.logo || productImage,
+        primary,
+        chips,
+        details: [
+          store.shipping,
+          store.details_and_offers,
+          store.coupon,
+          paymentMethods,
+        ].filter(Boolean).map(value => this._compactText(this._displayText(value), 220)),
+        actionLabel: 'View offer',
+      };
+    });
+
+    if (!items.length) {
+      const about = payload.about_the_product && typeof payload.about_the_product === 'object'
+        ? payload.about_the_product
+        : {};
+      const features = Array.isArray(about.features)
+        ? about.features.slice(0, 4).map(item => this._displayText(item)).filter(Boolean)
+        : [];
+      items.push({
+        title: heading,
+        url: payload.top_url,
+        image: productImage,
+        primary: summary.price_range || '',
+        chips: [
+          summary.rating != null ? `★ ${summary.rating}` : '',
+          summary.reviews != null ? `${this._formatCount(summary.reviews)} reviews` : '',
+        ].filter(Boolean),
+        details: features.length ? features : [about.description].filter(Boolean),
+        actionLabel: 'View product',
+      });
+    }
+
+    return {
+      kind: 'product',
+      layout: 'rail',
+      eyebrow: 'Google Immersive Product',
+      heading,
+      subtitle: [
+        summary.brand,
+        summary.rating != null ? `★ ${summary.rating}` : '',
+        summary.reviews != null ? `${this._formatCount(summary.reviews)} reviews` : '',
+        summary.price_range,
+        `${stores.length} store offer${stores.length === 1 ? '' : 's'}`,
+      ].filter(Boolean).join(' · '),
+      actionUrl: payload.top_url,
+      actionLabel: 'View product offer',
       items,
     };
   }

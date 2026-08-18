@@ -1,0 +1,78 @@
+{
+  "enabled": true,
+  "name": "serpapi_google_immersive_product",
+  "description": "Get rich details for one exact Google Shopping product through SerpApi. Use for 'show product details', 'product specifications', 'product features', 'product reviews', 'product pros and cons', 'compare stores for this product', 'best place to buy this model', 'shipping and offers', 'product variants', 'product images or videos', and exact-model purchase research. Returns the product title, brand, rating, review count, price range, specifications/features, review insights, user reviews, store offers, shipping, discounts, images, videos, variants, related products, and store pagination. This is a detail lookup, not product-name discovery: page_token must be the exact opaque immersive_product_page_token from serpapi_google_shopping_light or another verified SerpApi handoff response. If only a product name or model is known, call serpapi_google_shopping_light first and pass the selected result's token. Never guess, construct, decode, or alter the token. One call uses one SerpApi search; a normal Shopping Light discovery plus detail lookup uses two. JSON is the default structured result; HTML and Markdown return provider-rendered untrusted external content.",
+  "complementary_tools": [
+    "serpapi_google_shopping_light",
+    "serpapi_amazon_search",
+    "serpapi_ebay_search",
+    "serpapi_home_depot",
+    "canvas",
+    "stash"
+  ],
+  "prerequisite_tools": [
+    "serpapi_google_shopping_light"
+  ],
+  "script": "serpapi_google_immersive_product.py",
+  "proxy_policy": "off",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "page_token": {
+        "type": "string",
+        "maxLength": 20000,
+        "description": "Required opaque immersive_product_page_token from the selected serpapi_google_shopping_light result, or the full official serpapi_immersive_product_api URL containing it. Preserve it exactly. Never derive it from a product name, product_id, or Google URL."
+      },
+      "more_stores": {
+        "type": "boolean",
+        "description": "Request the expanded store list. Default true, normally returning up to 13 stores instead of roughly 3 to 5."
+      },
+      "next_page_token": {
+        "type": "string",
+        "maxLength": 20000,
+        "description": "Optional exact stores_next_page_token from a prior response to fetch another store-offer page for the same product."
+      },
+      "max_stores": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 13,
+        "description": "Maximum normalized store offers retained from this provider page. Default 13."
+      },
+      "max_reviews": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "description": "Maximum normalized user reviews retained. Default 10."
+      },
+      "output_format": {
+        "type": "string",
+        "enum": ["json", "html", "markdown"],
+        "description": "Provider result format. JSON is the default and supports structured follow-ups and rich UI cards; HTML and Markdown return the provider-rendered document."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "Bypass SerpApi's cache. Default false; cached exact-parameter searches are free."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Advanced non-reserved Google Immersive Product parameters. Engine, credentials, tokens, store expansion, output, cache, and async controls cannot be overridden."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "Include the full SerpApi JSON payload for debugging. Applies only to output_format=json; default false."
+      }
+    },
+    "required": ["page_token"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": ["SERP_API_KEY"],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file."
+  }
+}

@@ -927,6 +927,43 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "serpapi_google_immersive_product": _case(
+        {
+            "engine": "google_immersive_product",
+            "page_token": "opaque-product-token+/=",
+            "more_stores": True,
+            "results_count": 1,
+            "stores_count": 1,
+            "stores_next_page_token": "opaque-store-page-token_-",
+            "has_more_stores": True,
+            "serpapi_searches_used": 1,
+            "source": "SerpApi Google Immersive Product",
+            "product_summary": {
+                "title": "Acme Quiet 5 Wireless Headphones",
+                "brand": "Acme",
+                "rating": 4.8,
+                "reviews": 1500,
+                "price_range": "$149–$199",
+            },
+            "stores": [
+                {
+                    "name": "Audio Shop",
+                    "url": "https://shop.example/quiet-5",
+                    "price": "$149.00",
+                    "shipping": "Free delivery",
+                }
+            ],
+            "about_the_product": {
+                "features": [{"title": "Battery", "description": "30 hours"}]
+            },
+            "user_reviews": [
+                {"title": "Excellent", "text": "Comfortable for long sessions."}
+            ],
+            "variants": [
+                {"title": "Color", "items": [{"name": "Blue", "page_token": "blue-token"}]}
+            ],
+        }
+    ),
     "serpapi_google_shopping_light": _case(
         {
             "engine": "google_shopping_light",
@@ -960,6 +997,11 @@ LOCAL_TOOL_SAMPLES = {
                     "delivery": "Free delivery",
                     "tag": "20% OFF",
                     "extensions": ["Black", "Bluetooth"],
+                    "immersive_product_page_token": "opaque-product-token+/=",
+                    "serpapi_immersive_product_api": (
+                        "https://serpapi.com/search.json?engine=google_immersive_product"
+                        "&page_token=opaque-product-token%2B%2F%3D"
+                    ),
                 }
             ],
             "lowest_returned_price": {

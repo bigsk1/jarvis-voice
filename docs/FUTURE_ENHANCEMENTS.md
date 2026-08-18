@@ -374,6 +374,98 @@ Ideas:
 - “Notify me when done” via existing channels (email/webhook/print)
 - Persist job artifacts in stash; keep a job status tool (`jobs.list`, `jobs.status`)
 
+### F) Generic Tool-Result References and Automatic Payload Hydration
+**Priority:** Medium context efficiency / safer multi-tool handoffs
+
+**Status:** Design idea. The current bounded-preview approach remains valid and
+should stay in place until a generic resolver proves simpler and more reliable.
+
+**Problem:** Some tools return values that another tool must receive exactly,
+but that the model does not need to read or understand. Examples include long
+pagination/page tokens, provider cursors, base64 images, large JSON fragments,
+and other opaque handoff payloads. Putting these values into model context can
+waste tokens and creates a risk that an opaque value is truncated, escaped, or
+otherwise altered before the next call.
+
+**Core idea:** Keep the complete value under Jarvis control and show the model a
+short, scoped reference plus the human-meaningful fields it needs to select the
+right result.
+
+```text
+Producer result shown to the model:
+{ title: "LG OLED G4", product_ref: "toolref://tr_8f3a" }
+
+Consumer call produced by the model:
+{ page_token: "toolref://tr_8f3a" }
+
+Executor behavior:
+toolref://tr_8f3a -> validate scope and TTL -> hydrate exact value -> run tool
+```
+
+The resolver should be generic rather than tied to one SerpApi engine or one
+argument name. Tool schemas or executor policy could declare which arguments
+accept resolvable references and which producer fields may be registered.
+
+**Relationship to Stash:**
+- `stash://...` remains the durable, inspectable home for images, audio,
+  documents, videos, and other user-facing artifacts.
+- `toolref://...` represents short-lived opaque values or pointers used for
+  tool-to-tool execution.
+- Large binary data should not be stored directly in a resolver database. For
+  example, a returned base64 image should be decoded into Stash (or a temporary
+  artifact backend), while the resolver stores only its `stash://` reference.
+- A consuming tool can pass the short reference; the executor hydrates it into
+  the file path, bytes, data URL, or base64 form required by that tool. Raw
+  base64 should never be inserted into ordinary text context.
+
+**Possible resolver storage:**
+- Use an in-memory map for references needed only during the current
+  orchestration run.
+- Use a small, dedicated ephemeral database when references must survive a Web
+  follow-up request, worker change, or short process restart.
+- Scope every entry to runtime mode plus conversation/session, and record value
+  type, source tool, allowed consumer tool/argument, creation time, expiration,
+  and optional artifact reference.
+- Use an unguessable random reference ID. A content hash can provide integrity
+  or deduplication, but cannot replace storage of the original value.
+- Store only registered handoff values or artifact pointers, not every complete
+  tool result. Keep this lifecycle separate from Intelligence and Memory sync.
+
+**Safety and lifecycle requirements:**
+- Resolve references only in declared tool arguments, immediately before
+  execution; never expand arbitrary reference-looking text from a user prompt.
+- Enforce conversation/session ownership, active cloud/local mode, expected
+  value type, allowed destination tool, maximum payload size, and expiration.
+- Do not expose hydrated values in prompts, UI cards, routine logs, tool traces,
+  or error messages.
+- Apply short TTL cleanup and make an expired reference fail clearly rather
+  than silently reusing stale provider state.
+- Preserve normal permission, availability, validation, and workflow dependency
+  checks after hydration.
+
+**Good candidates:**
+- SerpApi page tokens, pagination cursors, and prerequisite-to-detail handoffs
+- Images passed from generation/search/upload tools into vision, editing, OCR,
+  conversion, or publishing tools
+- Large HTML, Markdown, JSON, document, audio, and video payloads already backed
+  by Stash
+- Workflow outputs that a later required step needs exactly but the LLM only
+  needs to identify by title, type, or position
+
+**Suggested rollout:**
+1. Add a reference registry and executor-side resolver with TTL, scope, type,
+   allowlist, redaction, and cleanup tests.
+2. Pilot it on one opaque token chain while retaining the current complete-token
+   fallback.
+3. Add Stash-backed binary hydration for one image producer/consumer pair.
+4. Measure prompt tokens saved, resolution failures, retries, latency, and
+   cross-turn behavior before making it a general tool-schema convention.
+
+**Non-goals:** Do not replace compact normal IDs, URLs, or ordinary structured
+arguments with references. Do not use this as a credential store, and do not
+make tool execution depend on a reference when passing the direct bounded value
+is already simpler and reliable.
+
 ---
 
 ## 🚀 Future / Nice to Have
@@ -575,6 +667,8 @@ the operator explicitly pulls and manages the model on that external daemon.
 - Profiles / tool packs (not multi-user)
 - Background jobs + notifications (stash-first artifacts)
 - Observability improvements (trace + budgets + “why” summaries)
+- Generic tool-result references and automatic payload hydration, after a
+  measured opaque-token pilot
 - Per-provider media model pickers in Web AI config (Gemini Veo/Omni, Sora variants, etc.)
 - Credential-aware tool/provider availability + manual Tool Doctor diagnostics
 

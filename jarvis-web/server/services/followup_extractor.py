@@ -52,6 +52,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_google_local_services',
     'serpapi_google_images_light',
     'serpapi_google_news_light',
+    'serpapi_google_immersive_product',
     'serpapi_google_shopping_light',
     'serpapi_google_sports',
     'serpapi_google_trends',
@@ -380,6 +381,13 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'top_story_articles_count', 'provider_top_story_articles_count',
         'top_url', 'search_id', 'has_more', 'next_start',
         'google_news_light_url', 'serpapi_searches_used', 'source',
+    ],
+    'serpapi_google_immersive_product': [
+        'engine', 'page_token', 'next_page_token', 'more_stores',
+        'output_format', 'results_count', 'stores_count', 'top_url',
+        'top_image_url', 'stores_next_page_token', 'has_more_stores',
+        'search_id', 'serpapi_searches_used', 'external_content_trust',
+        'untrusted_external_content', 'handling_note', 'source',
     ],
     'serpapi_google_shopping_light': [
         'engine', 'query', 'query_displayed', 'shopping_results_state',
@@ -2264,6 +2272,33 @@ def _bounded_structured_followup_value(
     return _truncate_followup_text(str(value), max_chars)
 
 
+def _restore_immersive_page_tokens(original, compact):
+    """Restore provider handoff tokens that generic secret filtering removes."""
+    if isinstance(original, dict) and isinstance(compact, dict):
+        restored = 0
+        for field, value in original.items():
+            if field == 'page_token' and isinstance(value, str) and value:
+                compact[field] = _truncate_followup_text(value, 20000)
+                restored += 1
+            elif field in compact:
+                _restore_immersive_page_tokens(value, compact[field])
+        if restored and isinstance(compact.get('_followup_redacted_fields'), int):
+            remaining = compact['_followup_redacted_fields'] - restored
+            if remaining > 0:
+                compact['_followup_redacted_fields'] = remaining
+            else:
+                compact.pop('_followup_redacted_fields', None)
+    elif isinstance(original, list) and isinstance(compact, list):
+        for source_item, compact_item in zip(original, compact):
+            _restore_immersive_page_tokens(source_item, compact_item)
+    return compact
+
+
+def _bounded_immersive_followup_value(value, *, max_chars: int):
+    compact = _bounded_structured_followup_value(value, max_chars=max_chars)
+    return _restore_immersive_page_tokens(value, compact)
+
+
 def _extract_query_service_logs_followup(
     payload: dict,
     max_candidates: int,
@@ -3313,6 +3348,8 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                             'old_price', 'extracted_old_price', 'rating', 'reviews',
                             'delivery', 'thumbnail', 'serpapi_thumbnail', 'tag',
                             'block_position', 'multiple_sources',
+                            'immersive_product_page_token',
+                            'serpapi_immersive_product_api',
                         )
                         if item.get(field) not in (None, '', [], {})
                     }
@@ -3363,6 +3400,42 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 }
                 if compact_pagination:
                     extracted['pagination'] = compact_pagination
+
+        if key == 'serpapi_google_immersive_product':
+            summary = payload.get('product_summary')
+            if isinstance(summary, dict):
+                extracted['product_summary'] = _bounded_structured_followup_value(
+                    summary,
+                    max_chars=3500,
+                )
+
+            stores = payload.get('stores') or payload.get('top_results') or []
+            if isinstance(stores, list) and stores:
+                extracted['stores'] = _bounded_structured_followup_value(
+                    stores[:max_candidates],
+                    max_chars=5000,
+                )
+
+            for field, max_chars in (
+                ('about_the_product', 4500),
+                ('top_insights', 4500),
+                ('ratings', 2500),
+                ('user_reviews', 5000),
+                ('more_options', 3000),
+                ('variants', 3500),
+                ('related_searches', 2500),
+            ):
+                section = payload.get(field)
+                if section not in (None, '', [], {}):
+                    extracted[field] = _bounded_immersive_followup_value(
+                        section,
+                        max_chars=max_chars,
+                    )
+
+            content = payload.get('content')
+            if isinstance(content, str) and content.strip():
+                extracted['content_chars'] = payload.get('content_chars', len(content))
+                extracted['content_excerpt'] = _truncate_followup_text(content, 2000)
 
         if key == 'serpapi_google_sports':
             results = payload.get('results') or payload.get('top_results') or []

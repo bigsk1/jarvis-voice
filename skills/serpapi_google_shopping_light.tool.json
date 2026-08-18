@@ -1,8 +1,9 @@
 {
   "enabled": true,
   "name": "serpapi_google_shopping_light",
-  "description": "Search Google Shopping across multiple retailers through SerpApi's fast lightweight structured engine. Use for 'shop for...', 'compare prices for...', 'find the best price on...', 'Google Shopping for...', 'where can I buy...', 'show products under...', sale checks, free-shipping offers, and multi-store purchase research. Returns merchant, current and prior price, rating, review count, delivery, direct or Google product link, thumbnail, sale tags, and pagination. It can use JARVIS_DEFAULT_LOCATION or JARVIS_DEFAULT_POSTAL_CODE when location is omitted. Prefer this for broad retailer price discovery; use serpapi_amazon_search for Amazon-specific Prime, delivery, stock, or ASIN details. Prices may describe different variants or seller terms, so verify the selected offer before purchase.",
+  "description": "Search Google Shopping across multiple retailers through SerpApi's fast lightweight structured engine. Use for 'shop for...', 'compare prices for...', 'find the best price on...', 'Google Shopping for...', 'where can I buy...', 'show products under...', sale checks, free-shipping offers, and multi-store purchase research. Returns merchant, current and prior price, rating, review count, delivery, direct or Google product link, thumbnail, sale tags, pagination, and—when available—the exact immersive product token needed by serpapi_google_immersive_product for specifications, reviews, variants, and richer store details. It can use JARVIS_DEFAULT_LOCATION or JARVIS_DEFAULT_POSTAL_CODE when location is omitted. Prefer this for broad retailer discovery and as the prerequisite product finder for Google Immersive Product; use serpapi_amazon_search for Amazon-specific Prime, delivery, stock, or ASIN details. Prices may describe different variants or seller terms, so verify the selected offer before purchase.",
   "complementary_tools": [
+    "serpapi_google_immersive_product",
     "serpapi_amazon_search",
     "serpapi_ebay_search",
     "serpapi_home_depot",

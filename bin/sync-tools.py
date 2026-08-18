@@ -152,7 +152,10 @@ def sync_tools(mode='cloud', verbose=True, force_reembed: bool = False) -> dict[
             print(f"     - {name}: {describe_missing(registry.unavailable_tools[name])}")
     
     # Get DB connection
-    db = get_memory_db()
+    # Select the requested data mode explicitly. load_config(mode) controls the
+    # registry/profile, but ambient mode state is not a reliable database
+    # selector when cloud and local syncs run back to back.
+    db = get_memory_db(mode)
     
     # Load blocked tools from config (comma-separated list)
     # Example: BLOCKED_TOOLS="mcp_playwright_browser_navigate,mcp_playwright_browser_snapshot"

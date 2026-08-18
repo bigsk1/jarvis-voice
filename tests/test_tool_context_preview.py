@@ -779,6 +779,11 @@ class ToolContextPreviewTests(unittest.TestCase):
                         "delivery": "Free delivery",
                         "tag": "Sale",
                         "extensions": ["Black", "Bluetooth"],
+                        "immersive_product_page_token": f"opaque-token-{index}+/=",
+                        "serpapi_immersive_product_api": (
+                            "https://serpapi.com/search.json?engine=google_immersive_product"
+                            f"&page_token=opaque-token-{index}"
+                        ),
                     }
                     for index in range(1, 7)
                 ],
@@ -800,11 +805,129 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(candidates[0]["price"], "$151.00")
         self.assertEqual(candidates[0]["old_price"], "$201.00")
         self.assertEqual(candidates[0]["delivery"], "Free delivery")
+        self.assertEqual(
+            candidates[0]["immersive_product_page_token"], "opaque-token-1+/="
+        )
         self.assertEqual(data_preview["search_id"], "shopping-light-123")
         self.assertEqual(data_preview["pagination"]["next_start"], 10)
         self.assertEqual(
             data_preview["lowest_returned_price"]["source"], "Audio Shop 1"
         )
+        self.assertNotIn("large_provider_payload", preview)
+
+    def test_google_immersive_product_preview_keeps_detail_and_pagination_tokens(self):
+        page_token = "opaque-product-token-" + ("A" * 500) + "+/="
+        result = {
+            "ok": True,
+            "speech": "Found rich product details.",
+            "data": {
+                "engine": "google_immersive_product",
+                "page_token": page_token,
+                "more_stores": True,
+                "stores_count": 1,
+                "stores_next_page_token": "opaque-store-page-token_-",
+                "has_more_stores": True,
+                "search_id": "immersive-123",
+                "serpapi_searches_used": 1,
+                "external_content_trust": "untrusted",
+                "product_summary": {
+                    "title": "Acme Quiet 5 Wireless Headphones",
+                    "brand": "Acme",
+                    "rating": 4.8,
+                    "reviews": 1500,
+                    "price_range": "$149–$199",
+                },
+                "stores": [
+                    {
+                        "name": "Audio Shop",
+                        "url": "https://shop.example/quiet-5",
+                        "price": "$149.00",
+                        "shipping": "Free delivery",
+                        "details_and_offers": ["Free returns"],
+                    }
+                ],
+                "about_the_product": {
+                    "features": [{"title": "Battery", "description": "30 hours"}]
+                },
+                "user_reviews": [
+                    {"title": "Excellent", "text": "Comfortable for long sessions."}
+                ],
+                "variants": [
+                    {
+                        "title": "Color",
+                        "items": [{"name": "Blue", "page_token": "blue-token"}],
+                    }
+                ],
+                "raw": {"large_provider_payload": "x" * 12000},
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_google_immersive_product", result
+        )
+
+        parsed = json.loads(preview)
+        data_preview = parsed["llm_context_preview"]["data_preview"]
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 6000)
+        self.assertEqual(data_preview["page_token"], page_token)
+        self.assertEqual(
+            data_preview["stores_next_page_token"], "opaque-store-page-token_-"
+        )
+        self.assertEqual(data_preview["variants"][0]["items"][0]["page_token"], "blue-token")
+        self.assertEqual(candidates[0]["url"], "https://shop.example/quiet-5")
+        self.assertEqual(candidates[0]["price"], "$149.00")
+        self.assertNotIn("large_provider_payload", preview)
+
+    def test_google_shopping_light_preview_never_truncates_immersive_tokens(self):
+        tokens = [f"token-{index}-" + (chr(64 + index) * 1550) for index in range(1, 6)]
+        result = {
+            "ok": True,
+            "speech": "Found five shopping candidates.",
+            "data": {
+                "engine": "google_shopping_light",
+                "query": "LG OLED65G4SUB 65 inch OLED TV",
+                "results_count": 5,
+                "provider_results_count": 9,
+                "sort_by": "price_low_to_high",
+                "comparison_note": "Verify the exact model and seller terms.",
+                "results": [
+                    {
+                        "position": index,
+                        "provider_position": index,
+                        "title": (
+                            "LG OLED evo G4 Series Smart TV"
+                            if index == 3
+                            else f"Other LG OLED TV {index}"
+                        ),
+                        "source": f"Store {index}",
+                        "price": f"${1000 + index}.00",
+                        "immersive_product_page_token": tokens[index - 1],
+                        "serpapi_immersive_product_api": (
+                            "https://serpapi.com/search.json?engine=google_immersive_product"
+                            f"&page_token={tokens[index - 1]}"
+                        ),
+                    }
+                    for index in range(1, 6)
+                ],
+                "raw": {"large_provider_payload": "x" * 20000},
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_google_shopping_light", result
+        )
+
+        parsed = json.loads(preview)
+        candidates = parsed["llm_context_preview"]["source_candidates"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 8000)
+        self.assertGreaterEqual(len(candidates), 3)
+        self.assertEqual(candidates[2]["title"], "LG OLED evo G4 Series Smart TV")
+        self.assertEqual(candidates[2]["immersive_product_page_token"], tokens[2])
+        self.assertNotIn("serpapi_immersive_product_api", candidates[2])
+        self.assertNotIn("data_preview_text", parsed["llm_context_preview"])
         self.assertNotIn("large_provider_payload", preview)
 
     def test_google_images_light_preview_keeps_assets_sources_and_trust_markers(self):

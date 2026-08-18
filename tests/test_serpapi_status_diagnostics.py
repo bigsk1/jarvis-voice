@@ -252,6 +252,32 @@ class SerpApiStatusDiagnosticTests(unittest.TestCase):
         self.assertIn("Google Shopping Light API", result["speech"])
         self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
 
+    def test_google_immersive_product_timeout_matches_product_incident(self):
+        with patch.object(
+            serpapi_client,
+            "fetch_serpapi_unresolved_incidents",
+            return_value=[
+                incident(
+                    name="[Google Immersive Product API] Performance Degradation",
+                    update="We are investigating Google Immersive Product API latency.",
+                )
+            ],
+        ):
+            result = serpapi_client.diagnose_serpapi_tool_failure(
+                "serpapi_google_immersive_product",
+                {"page_token": "opaque-product-token"},
+                "Tool serpapi_google_immersive_product timed out",
+                force=True,
+            )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            result["data"]["serpapi_incident"]["engine"],
+            "google_immersive_product",
+        )
+        self.assertIn("Google Immersive Product API", result["speech"])
+        self.assertIn(serpapi_client.SERPAPI_STATUS_PAGE_URL, result["speech"])
+
     def test_google_sports_timeout_matches_direct_and_resolver_incidents(self):
         cases = (
             ({"kgmid": "/m/0jmk7"}, "Google Sports API", "google_sports"),
