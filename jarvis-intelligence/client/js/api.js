@@ -2,6 +2,23 @@
  * API Client for Jarvis Intelligence Dashboard
  */
 
+function assertMaintenanceResult(result, allowedStatuses = ['ok', 'dry_run']) {
+  if (!result || typeof result !== 'object') {
+    throw new Error('Maintenance returned an invalid response');
+  }
+  if (result.error) {
+    throw new Error(result.error);
+  }
+  if (result.ok === false) {
+    throw new Error(result.reason || 'Maintenance request failed');
+  }
+  if (!allowedStatuses.includes(result.status)) {
+    const status = result.status || 'missing';
+    throw new Error(`Unexpected maintenance status: ${status}`);
+  }
+  return result;
+}
+
 class IntelligenceAPI {
   constructor() {
     this.baseUrl = '';
@@ -187,8 +204,14 @@ class IntelligenceAPI {
     });
   }
   
-  async runDecay() {
-    return this.fetch('/api/maintenance/decay', { method: 'POST' });
+  async runDecay({ dryRun = false, force = false } = {}) {
+    const params = new URLSearchParams();
+    if (dryRun) params.set('dry_run', 'true');
+    if (force) params.set('force', 'true');
+    const query = params.toString();
+    return this.fetch(`/api/maintenance/decay${query ? '?' + query : ''}`, {
+      method: 'POST'
+    });
   }
   
   async runAnomalyDetection() {

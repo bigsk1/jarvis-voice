@@ -1331,18 +1331,34 @@ function renderStats(stats, toolPerformance) {
   
   // Add maintenance button handlers
   document.getElementById('runDecayBtn')?.addEventListener('click', async () => {
-    const confirmed = confirm(
-      'Run intelligence decay now?\n\n'
-      + 'This can lower insight confidence and prune very low-confidence insights. '
-      + 'It should only be run after a DB backup or when you are intentionally doing maintenance.\n\n'
-      + 'Use the CLI/API dry-run first if you want a preview.'
-    );
-    if (!confirmed) return;
-
-    showToast('Running decay job...', 'info');
     try {
-      await api.runDecay();
-      showToast('Decay job completed', 'success');
+      showToast('Previewing selective decay...', 'info');
+      const preview = await api.runDecay({ dryRun: true });
+      assertMaintenanceResult(preview, ['ok', 'dry_run', 'skipped']);
+      if (preview.status === 'skipped') {
+        showToast(`Decay skipped: ${preview.reason}`, 'info');
+        return;
+      }
+
+      const confirmed = confirm(
+        `Run selective intelligence decay for ${api.mode}?\n\n`
+        + `Checked: ${preview.total_checked || 0}\n`
+        + `Protected/recent: ${preview.protected || 0}\n`
+        + `Would decay: ${preview.decayed || 0}\n`
+        + `Would prune: ${preview.pruned || 0}\n\n`
+        + 'A verified SQLite backup will be created automatically before any write.'
+      );
+      if (!confirmed) return;
+
+      showToast('Backing up database and running selective decay...', 'info');
+      const result = await api.runDecay();
+      assertMaintenanceResult(result, ['ok', 'dry_run', 'skipped']);
+      if (result.status === 'skipped') {
+        showToast(`Decay skipped: ${result.reason}`, 'info');
+        return;
+      }
+      const backupLabel = result.backup_path ? ' (backup created)' : '';
+      showToast(`Selective decay completed${backupLabel}`, 'success');
       await loadStats();
     } catch (e) {
       showToast(`Decay failed: ${e.message}`, 'error');

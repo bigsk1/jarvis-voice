@@ -113,6 +113,32 @@ class IntelligenceModeCacheTests(unittest.TestCase):
 
         self.assertEqual(observed, ("local", "bigsk1/jarvis-embedding:bf16-v1"))
 
+    def test_maintenance_hook_honors_explicit_local_mode(self):
+        class MaintenanceLayer:
+            async def run_decay_job(self, *, force, dry_run):
+                return {
+                    "status": "dry_run",
+                    "active_mode": config_loader.get_active_config_mode(),
+                    "force": force,
+                    "dry_run": dry_run,
+                }
+
+        with patch.object(
+            intelligence_hooks,
+            "_get_intel",
+            return_value=MaintenanceLayer(),
+        ) as get_intel:
+            result = intelligence_hooks.run_decay_job(
+                force=True,
+                dry_run=True,
+                mode="local",
+            )
+
+        get_intel.assert_called_once_with("local")
+        self.assertEqual(result["active_mode"], "local")
+        self.assertTrue(result["force"])
+        self.assertTrue(result["dry_run"])
+
     def test_cosine_accepts_rebuilt_list_vectors_and_rejects_shape_mismatch(self):
         layer = object.__new__(intelligence.IntelligenceLayer)
         self.assertAlmostEqual(

@@ -15,17 +15,18 @@ Usage:
     )
 """
 
-import os
-import re
-import sys
-import json
-import sqlite3
 import asyncio
-import logging
 import concurrent.futures
 import contextvars
-from typing import Any
+import json
+import logging
+import os
+import re
+import sqlite3
+import sys
+from contextlib import nullcontext
 from datetime import datetime
+from typing import Any
 
 sys.path.insert(0, os.path.dirname(__file__))
 from security_utils import redact_sensitive_data, redact_sensitive_text
@@ -1491,6 +1492,12 @@ def track_insight_outcomes(
                 outcome_success=outcome_success,
                 result=result,
             )
+            if was_helpful is None:
+                logger.debug(
+                    "Skipped neutral insight outcome for %s: no attributable evidence",
+                    insight_id,
+                )
+                continue
             
             # Record the usage (handles FastAPI and standalone)
             _run_async(
@@ -1516,7 +1523,7 @@ def _evaluate_insight_helpfulness(
     tools_used: list[str],
     outcome_success: bool,
     result: dict[str, Any] | None = None,
-) -> bool:
+) -> bool | None:
     """
     Evaluate whether an insight was helpful for this interaction.
     
@@ -1529,8 +1536,9 @@ def _evaluate_insight_helpfulness(
     - X not used + failure → NOT helpful (advice ignored, failed = should have followed?)
     
     NEGATIVE insight ("avoid Y"):
-    - Y not used + success → HELPFUL (advice followed, worked)
-    - Y not used + failure → NOT helpful (advice followed, still failed)
+    - Y not used + replacement used successfully → HELPFUL
+    - Y not used + no attributable replacement → NEUTRAL (do not self-reinforce)
+    - Y not used + failure → NOT helpful
     - Y was used + success → NOT helpful (advice ignored, still worked = advice was WRONG)
     - Y was used + failure → UNCLEAR, count as helpful (advice was correct, should have avoided)
     
@@ -1545,7 +1553,7 @@ def _evaluate_insight_helpfulness(
     if isinstance(avoided_tools, str):
         try:
             avoided_tools = json.loads(avoided_tools) if avoided_tools else []
-        except:
+        except (json.JSONDecodeError, TypeError):
             avoided_tools = [avoided_tools] if avoided_tools else []
     
     if constraint_type == 'negative':
@@ -1553,9 +1561,22 @@ def _evaluate_insight_helpfulness(
         tools_violated = [t for t in avoided_tools if t in tools_used]
         
         if not tools_violated:
-            # Followed the advice (avoided the tool)
-            # Helpful only if outcome was successful
-            return outcome_success
+            if not outcome_success:
+                return False
+
+            # Avoidance alone is not evidence. Otherwise an obsolete negative
+            # can exclude the correct tool, receive credit when any fallback
+            # eventually succeeds, and become permanently self-reinforcing.
+            replacement_tools = _extract_preferred_tool_names(preferred_tools)
+            replacement_used = any(
+                tool in tools_used
+                for tool in replacement_tools
+            )
+            if not replacement_used:
+                return None
+            if _preferred_tool_had_trace_failure(replacement_tools, result):
+                return False
+            return True
         else:
             # VIOLATED the advice (used the tool we were told to avoid)
             if outcome_success:
@@ -1703,34 +1724,42 @@ def evaluate_learning() -> dict[str, Any]:
 # MAINTENANCE JOBS
 # ============================================
 
-def run_decay_job(force: bool = False, dry_run: bool = False) -> dict[str, Any]:
+def run_decay_job(
+    force: bool = False,
+    dry_run: bool = False,
+    *,
+    mode: str | None = None,
+) -> dict[str, Any]:
     """
-    Run the confidence decay job.
-    
-    Reduces confidence of stale/unused insights based on DECAY_RATE.
-    
-    IMPORTANT: This job should only run once per decay period (default: 7 days).
-    Running multiple times will be skipped unless force=True.
+    Run selective Intelligence decay in an optional explicit data mode.
+
+    Protects proven/recent strategies, applies bounded decay to weak guidance,
+    and prunes unsafe legacy negatives after a verified backup.
     
     Args:
         force: If True, bypass minimum interval check (use with caution!)
         dry_run: If True, calculate changes without writing to the database
+        mode: Explicit cloud/local data mode for operator and UI calls
     
     Returns:
         Stats about decayed/pruned insights
     """
-    intel = _get_intel()
-    if not intel:
-        return {'status': 'unavailable'}
-    
-    try:
-        return _run_async(intel.run_decay_job(force=force, dry_run=dry_run))
-    except Exception as e:
-        logger.warning(f"Decay job failed: {e}")
-        return {'status': 'error', 'error': str(e)}
+    from config_loader import config_scope
+
+    scope = config_scope(mode) if mode is not None else nullcontext()
+    with scope:
+        intel = _get_intel(mode)
+        if not intel:
+            return {'status': 'unavailable'}
+
+        try:
+            return _run_async(intel.run_decay_job(force=force, dry_run=dry_run))
+        except Exception as e:
+            logger.warning(f"Decay job failed: {e}")
+            return {'status': 'error', 'error': str(e)}
 
 
-def run_anomaly_detection() -> dict[str, Any]:
+def run_anomaly_detection(*, mode: str | None = None) -> dict[str, Any]:
     """
     Run anomaly detection on recent experiences.
     
@@ -1739,19 +1768,26 @@ def run_anomaly_detection() -> dict[str, Any]:
     
     Returns:
         Stats and list of detected anomalies
+
+    Args:
+        mode: Explicit cloud/local data mode when supplied
     """
-    intel = _get_intel()
-    if not intel:
-        return {'status': 'unavailable'}
-    
-    try:
-        return _run_async(intel.run_anomaly_detection())
-    except Exception as e:
-        logger.warning(f"Anomaly detection failed: {e}")
-        return {'status': 'error', 'error': str(e)}
+    from config_loader import config_scope
+
+    scope = config_scope(mode) if mode is not None else nullcontext()
+    with scope:
+        intel = _get_intel(mode)
+        if not intel:
+            return {'status': 'unavailable'}
+
+        try:
+            return _run_async(intel.run_anomaly_detection())
+        except Exception as e:
+            logger.warning(f"Anomaly detection failed: {e}")
+            return {'status': 'error', 'error': str(e)}
 
 
-def run_meta_cognition() -> dict[str, Any]:
+def run_meta_cognition(*, mode: str | None = None) -> dict[str, Any]:
     """
     Run meta-cognition analysis.
     
@@ -1762,38 +1798,57 @@ def run_meta_cognition() -> dict[str, Any]:
     
     Returns:
         Findings and actions taken
+
+    Args:
+        mode: Explicit cloud/local data mode when supplied
     """
-    intel = _get_intel()
-    if not intel:
-        return {'status': 'unavailable'}
-    
-    try:
-        return _run_async(intel.run_meta_cognition())
-    except Exception as e:
-        logger.warning(f"Meta-cognition failed: {e}")
-        return {'status': 'error', 'error': str(e)}
+    from config_loader import config_scope
+
+    scope = config_scope(mode) if mode is not None else nullcontext()
+    with scope:
+        intel = _get_intel(mode)
+        if not intel:
+            return {'status': 'unavailable'}
+
+        try:
+            return _run_async(intel.run_meta_cognition())
+        except Exception as e:
+            logger.warning(f"Meta-cognition failed: {e}")
+            return {'status': 'error', 'error': str(e)}
 
 
-def run_all_maintenance(force: bool = False, dry_run: bool = False) -> dict[str, Any]:
+def run_all_maintenance(
+    force: bool = False,
+    dry_run: bool = False,
+    *,
+    mode: str | None = None,
+) -> dict[str, Any]:
     """
     Run all maintenance jobs (decay, anomaly, meta-cognition).
     
     Args:
         force: If True, bypass minimum interval check for decay job
         dry_run: If True, calculate decay changes without writing decay updates
+        mode: Explicit cloud/local data mode when supplied
     
     Returns:
         Combined results from all jobs
     """
-    intel = _get_intel()
-    if not intel:
-        return {'status': 'unavailable'}
-    
-    try:
-        return _run_async(intel.run_all_maintenance(force=force, dry_run=dry_run))
-    except Exception as e:
-        logger.warning(f"Maintenance failed: {e}")
-        return {'status': 'error', 'error': str(e)}
+    from config_loader import config_scope
+
+    scope = config_scope(mode) if mode is not None else nullcontext()
+    with scope:
+        intel = _get_intel(mode)
+        if not intel:
+            return {'status': 'unavailable'}
+
+        try:
+            return _run_async(
+                intel.run_all_maintenance(force=force, dry_run=dry_run)
+            )
+        except Exception as e:
+            logger.warning(f"Maintenance failed: {e}")
+            return {'status': 'error', 'error': str(e)}
 
 
 # ============================================

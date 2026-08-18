@@ -142,10 +142,9 @@ def _matching_trigger_signals(query: str, trigger_signals: Any) -> list[str]:
     """Return stored trigger phrases that are explicitly present in the query.
 
     Reflection defines these as specific words or phrases in the user query.
-    Semantic similarity still discovers candidate insights, but a modern
-    negative constraint with trigger metadata must match at least one of these
-    signals before it can suppress a tool. Legacy insights without signals keep
-    their existing semantic-only behavior.
+    Semantic similarity still discovers candidate insights, but a negative
+    constraint must match at least one modern trigger signal before it can
+    suppress a tool. Unscoped legacy negatives are unsafe and are ignored.
     """
     normalized_query = _normalize_trigger_text(query)
     if not normalized_query:
@@ -158,6 +157,83 @@ def _matching_trigger_signals(query: str, trigger_signals: Any) -> list[str]:
         if normalized_signal and f" {normalized_signal} " in padded_query:
             matches.append(signal)
     return matches
+
+
+def _insight_authority(insight: dict[str, Any]) -> float:
+    """Rank conflicting learned guidance by relevance and observed reliability."""
+    authority = float(insight.get('relevance') or 0.0)
+    evidence_count = max(0, int(insight.get('evidence_count') or 0))
+    authority *= 1.0 + (0.10 * min(max(0, evidence_count - 1), 4))
+
+    times_applied = max(0, int(insight.get('times_applied') or 0))
+    times_helpful = max(0, int(insight.get('times_helpful') or 0))
+    if times_applied >= 3:
+        success_rate = min(1.0, times_helpful / times_applied)
+        authority *= 0.75 + (0.50 * success_rate)
+
+    failures = max(0, int(insight.get('consecutive_failures') or 0))
+    authority *= 0.8 ** failures
+    if insight.get('matched_trigger_signals'):
+        authority *= 1.15
+    return authority
+
+
+def _resolve_relevant_insight_conflicts(
+    insights: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Remove contradictory tool guidance before it reaches Tool RAG or the LLM."""
+    by_tool: dict[str, dict[str, list[int]]] = {}
+    for index, insight in enumerate(insights):
+        constraint_type = insight.get('constraint_type', 'positive')
+        if constraint_type == 'negative':
+            tools = _coerce_string_list(insight.get('avoided_tools', []))
+            side = 'negative'
+        else:
+            tools = _coerce_string_list(insight.get('preferred_tools', {}))
+            side = 'positive'
+        for tool in tools:
+            by_tool.setdefault(tool, {'positive': [], 'negative': []})[side].append(index)
+
+    suppressed: set[int] = set()
+    dominance_ratio = max(
+        1.0,
+        get_float('INTELLIGENCE_CONFLICT_DOMINANCE_RATIO', 1.25),
+    )
+    for tool, sides in by_tool.items():
+        if not sides['positive'] or not sides['negative']:
+            continue
+        positive_score = max(_insight_authority(insights[i]) for i in sides['positive'])
+        negative_score = max(_insight_authority(insights[i]) for i in sides['negative'])
+        if positive_score >= negative_score * dominance_ratio:
+            suppressed.update(sides['negative'])
+            outcome = 'positive'
+        elif negative_score >= positive_score * dominance_ratio:
+            suppressed.update(sides['positive'])
+            outcome = 'negative'
+        else:
+            # Ambiguous learned advice must not remove or force the tool.
+            suppressed.update(sides['positive'])
+            suppressed.update(sides['negative'])
+            outcome = 'neutral'
+        logger.debug(
+            "Resolved Intelligence conflict for %s: %s "
+            "(positive=%.3f, negative=%.3f)",
+            tool,
+            outcome,
+            positive_score,
+            negative_score,
+        )
+
+    return [insight for index, insight in enumerate(insights) if index not in suppressed]
+
+
+def _select_top_relevant_insights(
+    insights: list[dict[str, Any]],
+    top_k: int,
+) -> list[dict[str, Any]]:
+    """Resolve conflicts only among candidates eligible for this output window."""
+    candidates = insights[:max(0, top_k)]
+    return _resolve_relevant_insight_conflicts(candidates)
 
 
 def _workflow_semantic_pattern(
@@ -2412,11 +2488,13 @@ Example for FACTUAL (should NOT be stored here):
                         query,
                         trigger_signals,
                     )
-                    if (
-                        constraint_type == 'negative'
-                        and trigger_signals
-                        and not matched_trigger_signals
-                    ):
+                    if constraint_type == 'negative' and not trigger_signals:
+                        logger.debug(
+                            "Skipping unscoped legacy negative insight #%s",
+                            row['id'],
+                        )
+                        continue
+                    if constraint_type == 'negative' and not matched_trigger_signals:
                         logger.debug(
                             "Skipping negative insight #%s: current request lacks its trigger signals",
                             row['id'],
@@ -2436,6 +2514,10 @@ Example for FACTUAL (should NOT be stored here):
                         'confidence': row['confidence'],
                         'relevance': relevance,
                         'evidence_count': row['evidence_count'],
+                        'times_applied': row['times_applied'],
+                        'times_helpful': row['times_helpful'],
+                        'times_failed': row['times_failed'],
+                        'consecutive_failures': row['consecutive_failures'],
                         # PHASE 1: New fields
                         'constraint_type': constraint_type,
                         'avoided_tools': _json_loads_safely(row['avoided_tools'], []) if 'avoided_tools' in row.keys() else [],
@@ -2454,7 +2536,7 @@ Example for FACTUAL (should NOT be stored here):
 
         # Sort by relevance
         relevant.sort(key=lambda x: x['relevance'], reverse=True)
-        return relevant[:top_k]
+        return _select_top_relevant_insights(relevant, top_k)
 
     async def get_tool_biases(self, query: str) -> dict[str, float]:
         """
@@ -2680,16 +2762,232 @@ Example for FACTUAL (should NOT be stored here):
     # MAINTENANCE JOBS (Decay, Anomaly, Meta-Cognition)
     # ============================================
 
-    async def run_decay_job(self, force: bool = False, dry_run: bool = False) -> dict[str, Any]:
+    def _create_maintenance_backup(self, job_type: str) -> str:
+        """Create and verify a SQLite-consistent backup before maintenance writes."""
+        if self.conn.in_transaction:
+            raise RuntimeError("Cannot back up Intelligence DB with a transaction already open")
+
+        db_path = Path(self.db_path).resolve()
+        project_data = Path(__file__).parent.parent.resolve() / "data"
+        try:
+            db_path.relative_to(project_data)
+            backup_dir = project_data / "backups"
+        except ValueError:
+            # Tests and explicitly supplied operator databases stay self-contained.
+            backup_dir = db_path.parent / "backups"
+
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = now_utc().strftime("%Y%m%d_%H%M%S_%f")
+        safe_job_type = re.sub(r"[^a-z0-9_-]+", "-", job_type.lower()).strip("-")
+        backup_path = backup_dir / f"{db_path.name}.pre_{safe_job_type}_{timestamp}"
+
+        backup_fd = os.open(
+            backup_path,
+            os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+            0o600,
+        )
+        os.close(backup_fd)
+        source_conn = sqlite3.connect(f"{db_path.as_uri()}?mode=ro", uri=True)
+        backup_conn = sqlite3.connect(str(backup_path))
+        try:
+            source_conn.backup(backup_conn)
+            backup_conn.commit()
+            quick_check = backup_conn.execute("PRAGMA quick_check").fetchone()[0]
+            if quick_check != "ok":
+                raise RuntimeError(
+                    f"Maintenance backup failed integrity check: {quick_check}"
+                )
+        finally:
+            backup_conn.close()
+            source_conn.close()
+
+        os.chmod(backup_path, 0o600)
+        return str(backup_path)
+
+    def _open_maintenance_writer(self) -> sqlite3.Connection:
+        """Open a dedicated connection and reserve the SQLite writer slot."""
+        if self.conn.in_transaction:
+            raise RuntimeError(
+                "Cannot start Intelligence maintenance with pending database writes"
+            )
+
+        maintenance_conn = sqlite3.connect(
+            self.db_path,
+            timeout=30,
+            check_same_thread=False,
+        )
+        maintenance_conn.row_factory = sqlite3.Row
+        try:
+            maintenance_conn.execute("BEGIN IMMEDIATE")
+        except Exception:
+            maintenance_conn.close()
+            raise
+        return maintenance_conn
+
+    def _decay_assessment(
+        self,
+        insight: sqlite3.Row,
+        *,
+        now: datetime,
+        last_decay_run: datetime | None,
+    ) -> dict[str, Any]:
+        """Classify one insight and calculate selective, bounded decay."""
+        old_confidence = float(insight['confidence'] or 0.0)
+        constraint_type = str(insight['constraint_type'] or 'positive').strip().lower()
+        evidence_count = int(insight['evidence_count'] or 0)
+        times_applied = int(insight['times_applied'] or 0)
+        times_helpful = int(insight['times_helpful'] or 0)
+        times_failed = int(insight['times_failed'] or 0)
+        consecutive_failures = int(insight['consecutive_failures'] or 0)
+        success_rate = (
+            times_helpful / times_applied
+            if times_applied > 0
+            else None
+        )
+
+        trigger_signals = _coerce_string_list(
+            _json_loads_safely(insight['trigger_signals'], [])
+        )
+        has_primary_intent = bool(str(insight['primary_intent'] or '').strip())
+        has_source = bool(
+            insight['source_experience_id']
+            or str(insight['source_web_conversation_id'] or '').strip()
+        )
+        legacy = not trigger_signals and not has_primary_intent and not has_source
+        unscoped_negative = constraint_type == 'negative' and not trigger_signals
+
+        activity_candidates = [
+            self._parse_timestamp(insight['last_applied']),
+            self._parse_timestamp(insight['updated_at']),
+            self._parse_timestamp(insight['latest_evidence_at']),
+            self._parse_timestamp(insight['created_at']),
+        ]
+        last_activity = max((ts for ts in activity_candidates if ts), default=now)
+        days_since = max(0, (now - last_activity).days)
+
+        max_catchup_days = max(1, get_int('INTELLIGENCE_DECAY_MAX_CATCHUP_DAYS', 30))
+        effective_decay_days = min(days_since, max_catchup_days)
+        if last_decay_run:
+            days_since_decay_run = max(0, (now - last_decay_run).days)
+            effective_decay_days = min(effective_decay_days, days_since_decay_run)
+
+        prune_threshold = max(
+            0.0,
+            min(1.0, get_float('INTELLIGENCE_PRUNE_CONFIDENCE', 0.15)),
+        )
+        legacy_prune_days = max(
+            1,
+            get_int('INTELLIGENCE_LEGACY_NEGATIVE_PRUNE_DAYS', 120),
+        )
+        direct_legacy_prune = (
+            unscoped_negative
+            and legacy
+            and evidence_count <= 1
+            and days_since >= legacy_prune_days
+        )
+
+        if old_confidence < prune_threshold:
+            return {
+                'old_confidence': old_confidence,
+                'new_confidence': old_confidence,
+                'days_since': days_since,
+                'effective_decay_days': effective_decay_days,
+                'policy': 'below_prune_threshold',
+                'prune': True,
+                'prune_reason': 'below_threshold',
+            }
+
+        if direct_legacy_prune:
+            return {
+                'old_confidence': old_confidence,
+                'new_confidence': old_confidence,
+                'days_since': days_since,
+                'effective_decay_days': effective_decay_days,
+                'policy': 'legacy_unscoped_negative',
+                'prune': True,
+                'prune_reason': 'legacy_unscoped_negative',
+            }
+
+        grace_days = max(0, get_int('INTELLIGENCE_DECAY_GRACE_DAYS', 30))
+        proven = (
+            consecutive_failures == 0
+            and not unscoped_negative
+            and (
+                evidence_count >= 2
+                or (
+                    times_applied >= 2
+                    and success_rate is not None
+                    and (
+                        success_rate == 1.0
+                        or (times_applied >= 3 and success_rate >= 0.75)
+                    )
+                )
+            )
+        )
+
+        new_confidence = old_confidence
+        if days_since <= grace_days or effective_decay_days <= 0:
+            policy = 'recent'
+        elif proven:
+            # Useful evidence protects a strategy. Real outcomes still adjust
+            # confidence immediately in record_insight_usage().
+            policy = 'proven'
+        else:
+            base_retention = max(0.5, min(0.999, float(self.decay_rate)))
+            failing = (
+                consecutive_failures > 0
+                or (
+                    times_applied >= 3
+                    and times_failed > times_helpful
+                )
+            )
+            if failing:
+                policy = 'failing'
+                weekly_retention = max(0.5, base_retention - 0.05)
+            elif unscoped_negative:
+                policy = 'unscoped_negative'
+                weekly_retention = max(0.5, base_retention - 0.10)
+            elif old_confidence < self.min_confidence:
+                policy = 'low_confidence'
+                weekly_retention = max(0.5, base_retention - 0.03)
+            elif legacy:
+                policy = 'legacy'
+                weekly_retention = base_retention
+            elif evidence_count <= 1 and times_applied == 0:
+                policy = 'unproven'
+                weekly_retention = min(0.995, base_retention + 0.03)
+            else:
+                policy = 'ordinary'
+                weekly_retention = min(0.995, base_retention + 0.04)
+
+            new_confidence = old_confidence * (
+                weekly_retention ** (effective_decay_days / 7)
+            )
+
+        return {
+            'old_confidence': old_confidence,
+            'new_confidence': max(0.0, min(1.0, new_confidence)),
+            'days_since': days_since,
+            'effective_decay_days': effective_decay_days,
+            'policy': policy,
+            'prune': new_confidence < prune_threshold,
+            'prune_reason': 'below_threshold',
+        }
+
+    async def run_decay_job(
+        self,
+        force: bool = False,
+        dry_run: bool = False,
+        *,
+        create_backup: bool = True,
+    ) -> dict[str, Any]:
         """
-        Apply confidence decay to stale/unused insights.
+        Selectively retire weak Intelligence while preserving proven strategies.
 
-        Uses INTELLIGENCE_DECAY_RATE from config.
-        Insights that haven't been applied recently lose confidence.
-        Insights that have failed repeatedly decay faster.
-
-        IMPORTANT: This job should only run once per decay period (default: 7 days).
-        Running it multiple times will compound the decay incorrectly.
+        Age alone never lowers a proven insight. Weak, failing, legacy, and
+        unscoped negative insights decay at different bounded rates. Old
+        one-evidence negative rules without modern trigger metadata are pruned
+        because they cannot be applied safely.
 
         Args:
             force: If True, bypass the minimum interval check
@@ -2698,11 +2996,46 @@ Example for FACTUAL (should NOT be stored here):
         Returns:
             Stats about the decay job run
         """
-        intel_log = get_intel_logger()
-        cursor = self.conn.cursor()
+        if dry_run:
+            return self._run_decay_job_with_connection(
+                self.conn,
+                force=force,
+                dry_run=True,
+                create_backup=False,
+            )
+
+        # Use a dedicated writer connection. BEGIN IMMEDIATE prevents any
+        # learning writer from slipping between the verified snapshot and the
+        # maintenance changes, while readers may continue normally.
+        maintenance_conn = self._open_maintenance_writer()
+        try:
+            return self._run_decay_job_with_connection(
+                maintenance_conn,
+                force=force,
+                dry_run=False,
+                create_backup=create_backup,
+            )
+        except Exception:
+            maintenance_conn.rollback()
+            raise
+        finally:
+            if maintenance_conn.in_transaction:
+                maintenance_conn.rollback()
+            maintenance_conn.close()
+
+    def _run_decay_job_with_connection(
+        self,
+        active_conn: sqlite3.Connection,
+        *,
+        force: bool,
+        dry_run: bool,
+        create_backup: bool,
+    ) -> dict[str, Any]:
+        """Plan and optionally apply decay using one stable database snapshot."""
+        cursor = active_conn.cursor()
 
         # Check if decay was already run recently (prevent double-decay)
-        min_interval_days = get_int('INTELLIGENCE_DECAY_INTERVAL_DAYS', 7)
+        min_interval_days = get_int('INTELLIGENCE_DECAY_INTERVAL_DAYS', 30)
 
         cursor.execute("""
             SELECT MAX(timestamp) as last_run
@@ -2715,7 +3048,9 @@ Example for FACTUAL (should NOT be stored here):
         if row and row['last_run'] and not force:
             last_decay_run = self._parse_timestamp(row['last_run'])
             if not last_decay_run:
-                last_decay_run = datetime.now()
+                raise RuntimeError(
+                    f"Invalid decay timestamp in meta_knowledge: {row['last_run']}"
+                )
             days_since_run = max(0, (now_utc().replace(tzinfo=None) - last_decay_run).days)
 
             if days_since_run < min_interval_days:
@@ -2728,18 +3063,19 @@ Example for FACTUAL (should NOT be stored here):
         elif row and row['last_run']:
             last_decay_run = self._parse_timestamp(row['last_run'])
 
-        # Get insights with tracking data
+        # Include every confidence tier so already-inactive junk can be pruned.
         cursor.execute("""
-            SELECT id, description, confidence, times_applied, times_helpful,
-                   times_failed, consecutive_failures, last_applied, created_at,
-                   updated_at,
+            SELECT id, description, constraint_type, confidence, evidence_count,
+                   times_applied, times_helpful, times_failed,
+                   consecutive_failures, last_applied, created_at, updated_at,
+                   trigger_signals, primary_intent, source_experience_id,
+                   source_web_conversation_id,
                    (
                        SELECT MAX(e.created_at)
                        FROM insight_evidence e
                        WHERE e.insight_id = insights.id
                    ) AS latest_evidence_at
             FROM insights
-            WHERE confidence > 0.1
         """)
 
         insights = cursor.fetchall()
@@ -2748,104 +3084,120 @@ Example for FACTUAL (should NOT be stored here):
             'dry_run': dry_run,
             'total_checked': len(insights),
             'decayed': 0,
-            'boosted': 0,
             'unchanged': 0,
-            'pruned': 0
+            'protected': 0,
+            'pruned': 0,
+            'policy_counts': {},
+            'prune_reasons': {},
+            'max_catchup_days': max(
+                1,
+                get_int('INTELLIGENCE_DECAY_MAX_CATCHUP_DAYS', 30),
+            ),
+            'grace_days': max(0, get_int('INTELLIGENCE_DECAY_GRACE_DAYS', 30)),
+            'last_run': row['last_run'] if row else None,
+            'backup_path': None,
         }
 
         now = now_utc().replace(tzinfo=None)
-
+        decisions = []
+        confidence_before = 0.0
+        confidence_after_survivors = 0.0
+        survivor_count = 0
         for insight in insights:
-            old_confidence = insight['confidence']
-            new_confidence = old_confidence
-            reasons = []
+            decision = self._decay_assessment(
+                insight,
+                now=now,
+                last_decay_run=last_decay_run,
+            )
+            decisions.append((insight, decision))
+            policy = decision['policy']
+            stats['policy_counts'][policy] = stats['policy_counts'].get(policy, 0) + 1
+            confidence_before += decision['old_confidence']
 
-            # Calculate days since last application
-            activity_candidates = [
-                self._parse_timestamp(insight['last_applied']),
-                self._parse_timestamp(insight['updated_at']),
-                self._parse_timestamp(insight['latest_evidence_at']),
-                self._parse_timestamp(insight['created_at']),
-            ]
-            last_activity = max((ts for ts in activity_candidates if ts), default=now)
-            days_since = max(0, (now - last_activity).days)
+            if decision['prune']:
+                stats['pruned'] += 1
+                prune_reason = decision['prune_reason']
+                stats['prune_reasons'][prune_reason] = (
+                    stats['prune_reasons'].get(prune_reason, 0) + 1
+                )
+                continue
 
-            # Apply decay based on various factors
-
-            # 1. Time-based decay (unused insights fade)
-            effective_decay_days = days_since
-            if last_decay_run:
-                # Confidence is already persisted after each decay run. Only apply
-                # the decay that accrued since the last run so stale insights do
-                # not get charged for their full age every maintenance cycle.
-                days_since_decay_run = max(0, (now - last_decay_run).days)
-                effective_decay_days = min(days_since, days_since_decay_run)
-
-            if effective_decay_days > 7:
-                decay_factor = self.decay_rate ** (effective_decay_days / 7)  # Compound decay per week
-                new_confidence *= decay_factor
-                reasons.append(f"time_decay_{effective_decay_days}d")
-
-            # 2. Failure-based decay (failed insights decay faster)
-            if insight['consecutive_failures'] and insight['consecutive_failures'] > 0:
-                failure_decay = 0.9 ** insight['consecutive_failures']
-                new_confidence *= failure_decay
-                reasons.append(f"failure_decay_{insight['consecutive_failures']}_consecutive")
-
-            # 3. Success rate boost (proven insights get slight boost)
-            if insight['times_applied'] and insight['times_applied'] > 3:
-                success_rate = insight['times_helpful'] / insight['times_applied']
-                if success_rate > 0.8:
-                    # Slight boost for highly successful insights
-                    new_confidence = min(1.0, new_confidence * 1.02)
-                    reasons.append(f"success_boost_{success_rate:.0%}")
-
-            # Apply change if significant
-            if abs(new_confidence - old_confidence) > 0.01:
-                if not dry_run:
-                    cursor.execute("""
-                        UPDATE insights SET confidence = ? WHERE id = ?
-                    """, (new_confidence, insight['id']))
-
-                    intel_log.log_decay_applied(
-                        insight['id'], old_confidence, new_confidence,
-                        days_since, '+'.join(reasons) or 'general_decay'
-                    )
-
-                if new_confidence < old_confidence:
-                    stats['decayed'] += 1
-                elif new_confidence > old_confidence:
-                    stats['boosted'] += 1
+            survivor_count += 1
+            confidence_after_survivors += decision['new_confidence']
+            if decision['new_confidence'] < decision['old_confidence'] - 1e-9:
+                stats['decayed'] += 1
             else:
                 stats['unchanged'] += 1
+                if policy in {'proven', 'recent'}:
+                    stats['protected'] += 1
 
-            # Prune very low confidence insights
-            if new_confidence < 0.15:
-                if not dry_run:
-                    cursor.execute("DELETE FROM insight_evidence WHERE insight_id = ?", (insight['id'],))
-                    cursor.execute("DELETE FROM insights WHERE id = ?", (insight['id'],))
-                    intel_log.log_insight_pruned(
-                        insight['id'], insight['description'],
-                        'below_threshold', new_confidence
-                    )
-                stats['pruned'] += 1
+        stats['avg_confidence_before'] = round(
+            confidence_before / len(insights), 4,
+        ) if insights else 0.0
+        stats['avg_confidence_after_survivors'] = round(
+            confidence_after_survivors / survivor_count,
+            4,
+        ) if survivor_count else 0.0
 
         if not dry_run:
-            # Record that decay job ran (for interval tracking)
-            cursor.execute("""
-                INSERT INTO meta_knowledge (meta_type, description, observation, conclusion, action_taken, confidence)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                'decay_job_run',
-                'Decay maintenance job executed',
-                f"Checked {stats['total_checked']} insights",
-                f"Decayed: {stats['decayed']}, Boosted: {stats['boosted']}, Pruned: {stats['pruned']}",
-                'decay_applied',
-                1.0
-            ))
+            if create_backup:
+                stats['backup_path'] = self._create_maintenance_backup('decay')
 
-            self.conn.commit()
+            intel_log = get_intel_logger()
+            applied_logs = []
+            pruned_logs = []
+            try:
+                for insight, decision in decisions:
+                    if decision['prune']:
+                        cursor.execute(
+                            "DELETE FROM insight_evidence WHERE insight_id = ?",
+                            (insight['id'],),
+                        )
+                        cursor.execute("DELETE FROM insights WHERE id = ?", (insight['id'],))
+                        pruned_logs.append((insight, decision))
+                    elif decision['new_confidence'] < decision['old_confidence'] - 1e-9:
+                        cursor.execute(
+                            "UPDATE insights SET confidence = ? WHERE id = ?",
+                            (decision['new_confidence'], insight['id']),
+                        )
+                        applied_logs.append((insight, decision))
 
+                cursor.execute("""
+                    INSERT INTO meta_knowledge (
+                        meta_type, description, observation, conclusion,
+                        action_taken, confidence
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    'decay_job_run',
+                    'Selective decay maintenance executed',
+                    f"Checked {stats['total_checked']} insights; protected {stats['protected']}",
+                    f"Decayed: {stats['decayed']}, Pruned: {stats['pruned']}",
+                    'selective_decay_applied',
+                    1.0,
+                ))
+                active_conn.commit()
+            except Exception:
+                active_conn.rollback()
+                raise
+
+            for insight, decision in applied_logs:
+                intel_log.log_decay_applied(
+                    insight['id'],
+                    decision['old_confidence'],
+                    decision['new_confidence'],
+                    decision['days_since'],
+                    (
+                        f"{decision['policy']}_decay_"
+                        f"{decision['effective_decay_days']}d"
+                    ),
+                )
+            for insight, decision in pruned_logs:
+                intel_log.log_insight_pruned(
+                    insight['id'],
+                    insight['description'],
+                    decision['prune_reason'],
+                    decision['new_confidence'],
+                )
             intel_log.log_maintenance_run('decay_job', stats)
         return stats
 
@@ -2941,7 +3293,26 @@ Example for FACTUAL (should NOT be stored here):
         intel_log.log_maintenance_run('anomaly_detection', stats)
         return stats
 
-    async def run_meta_cognition(self) -> dict[str, Any]:
+    async def run_meta_cognition(
+        self,
+        *,
+        create_backup: bool = True,
+    ) -> dict[str, Any]:
+        """Run meta-cognition with a recoverable pre-write snapshot."""
+        backup_path = (
+            self._create_maintenance_backup('meta-cognition')
+            if create_backup
+            else None
+        )
+        try:
+            stats = await self._run_meta_cognition_impl()
+        except Exception:
+            self.conn.rollback()
+            raise
+        stats['backup_path'] = backup_path
+        return stats
+
+    async def _run_meta_cognition_impl(self) -> dict[str, Any]:
         """
         Higher-level reflection on the learning process itself.
 
@@ -3022,15 +3393,10 @@ Example for FACTUAL (should NOT be stored here):
                 'meta_type': 'over_generalization',
                 'observation': f"Insight #{row['id']} applied {row['times_applied']}x with {row['failure_rate']}% failure rate",
                 'conclusion': f"Insight may be too general: '{row['description'][:50]}...'",
-                'action': 'reduce_confidence',
+                'action': 'flag_for_selective_decay',
                 'confidence': 0.7
             }
             findings.append(finding)
-
-            # Reduce confidence of over-generalized insight
-            cursor.execute("""
-                UPDATE insights SET confidence = confidence * 0.7 WHERE id = ?
-            """, (row['id'],))
 
             cursor.execute("""
                 INSERT INTO meta_knowledge (meta_type, description, observation, conclusion, action_taken, confidence)
@@ -3124,15 +3490,41 @@ Example for FACTUAL (should NOT be stored here):
             force: If True, bypass minimum interval check for decay job
             dry_run: If True, calculate decay changes without writing decay updates
         """
-        results = {}
-
-        results['decay'] = await self.run_decay_job(force=force, dry_run=dry_run)
+        results = {'backup_path': None}
         if dry_run:
+            results['decay'] = await self.run_decay_job(
+                force=force,
+                dry_run=True,
+                create_backup=False,
+            )
             results['anomalies'] = {'status': 'skipped_dry_run'}
             results['meta_cognition'] = {'status': 'skipped_dry_run'}
             return results
+
+        # Match decay-only ordering: reserve the writer slot first, then take
+        # the verified pre-change snapshot, then plan/apply decay on that same
+        # stable database state.
+        maintenance_conn = self._open_maintenance_writer()
+        try:
+            results['backup_path'] = self._create_maintenance_backup(
+                'all-maintenance'
+            )
+            results['decay'] = self._run_decay_job_with_connection(
+                maintenance_conn,
+                force=force,
+                dry_run=False,
+                create_backup=False,
+            )
+        except Exception:
+            maintenance_conn.rollback()
+            raise
+        finally:
+            if maintenance_conn.in_transaction:
+                maintenance_conn.rollback()
+            maintenance_conn.close()
+
         results['anomalies'] = await self.run_anomaly_detection()
-        results['meta_cognition'] = await self.run_meta_cognition()
+        results['meta_cognition'] = await self.run_meta_cognition(create_backup=False)
 
         return results
 

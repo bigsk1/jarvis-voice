@@ -4,19 +4,26 @@
 import asyncio
 import importlib.util
 import json
+import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
-from intelligence import IntelligenceLayer
+from intelligence import (
+    IntelligenceLayer,
+    _resolve_relevant_insight_conflicts,
+    _select_top_relevant_insights,
+)
 
 
 def load_intelligence_service_module():
@@ -34,6 +41,11 @@ def load_intelligence_service_module():
 
 
 class IntelligenceMaintenanceTests(unittest.TestCase):
+    def setUp(self):
+        logger_patch = patch("intelligence.get_intel_logger")
+        logger_patch.start()
+        self.addCleanup(logger_patch.stop)
+
     def _make_intel(self, tmpdir: str) -> IntelligenceLayer:
         intel = IntelligenceLayer(str(Path(tmpdir) / "intel.db"))
         intel._get_embedding = lambda text, **kwargs: np.array([1.0, 0.25, 0.5])
@@ -180,6 +192,382 @@ class IntelligenceMaintenanceTests(unittest.TestCase):
             expected = 0.8 * (0.95 ** (14 / 7))
             self.assertEqual(stats["decayed"], 1)
             self.assertAlmostEqual(confidence, expected, places=4)
+
+    def test_decay_protects_old_proven_insight(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel = self._make_intel(tmpdir)
+            insight_id = self._insert_insight(
+                intel,
+                created_at=datetime.now() - timedelta(days=300),
+                updated_at=datetime.now() - timedelta(days=300),
+                confidence=1.0,
+            )
+            intel.conn.execute(
+                """
+                UPDATE insights
+                SET evidence_count = 3, times_applied = 5, times_helpful = 5
+                WHERE id = ?
+                """,
+                (insight_id,),
+            )
+            intel.conn.commit()
+
+            stats = asyncio.run(intel.run_decay_job(force=True))
+            confidence = intel.conn.execute(
+                "SELECT confidence FROM insights WHERE id = ?",
+                (insight_id,),
+            ).fetchone()["confidence"]
+
+            self.assertAlmostEqual(confidence, 1.0)
+            self.assertEqual(stats["policy_counts"]["proven"], 1)
+            self.assertEqual(stats["protected"], 1)
+
+    def test_decay_protects_low_confidence_insight_with_two_perfect_uses(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel = self._make_intel(tmpdir)
+            insight_id = self._insert_insight(
+                intel,
+                created_at=datetime.now() - timedelta(days=300),
+                updated_at=datetime.now() - timedelta(days=300),
+                confidence=0.18,
+            )
+            intel.conn.execute(
+                """
+                UPDATE insights
+                SET times_applied = 2, times_helpful = 2
+                WHERE id = ?
+                """,
+                (insight_id,),
+            )
+            intel.conn.commit()
+
+            stats = asyncio.run(intel.run_decay_job(force=True))
+            confidence = intel.conn.execute(
+                "SELECT confidence FROM insights WHERE id = ?",
+                (insight_id,),
+            ).fetchone()["confidence"]
+
+            self.assertAlmostEqual(confidence, 0.18)
+            self.assertEqual(stats["policy_counts"]["proven"], 1)
+            self.assertEqual(stats["protected"], 1)
+
+    def test_decay_bounds_first_run_catchup(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel = self._make_intel(tmpdir)
+            insight_id = self._insert_insight(
+                intel,
+                created_at=datetime.now() - timedelta(days=300),
+                updated_at=datetime.now() - timedelta(days=300),
+                confidence=0.8,
+            )
+
+            stats = asyncio.run(intel.run_decay_job(force=True))
+            confidence = intel.conn.execute(
+                "SELECT confidence FROM insights WHERE id = ?",
+                (insight_id,),
+            ).fetchone()["confidence"]
+
+            self.assertEqual(stats["max_catchup_days"], 30)
+            self.assertAlmostEqual(confidence, 0.8 * (0.95 ** (30 / 7)), places=4)
+
+    def test_decay_prunes_old_unscoped_negative_after_verified_backup(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel = self._make_intel(tmpdir)
+            insight_id = self._insert_insight(
+                intel,
+                created_at=datetime.now() - timedelta(days=150),
+                updated_at=datetime.now() - timedelta(days=150),
+                confidence=1.0,
+            )
+            intel.conn.execute(
+                """
+                UPDATE insights
+                SET constraint_type = 'negative', avoided_tools = '["crypto_price"]'
+                WHERE id = ?
+                """,
+                (insight_id,),
+            )
+            intel.conn.commit()
+
+            stats = asyncio.run(intel.run_decay_job(force=True))
+            backup_path = Path(stats["backup_path"])
+
+            self.assertEqual(stats["prune_reasons"]["legacy_unscoped_negative"], 1)
+            self.assertIsNone(intel.conn.execute(
+                "SELECT 1 FROM insights WHERE id = ?",
+                (insight_id,),
+            ).fetchone())
+            self.assertTrue(backup_path.exists())
+            backup = sqlite3.connect(backup_path)
+            self.addCleanup(backup.close)
+            self.assertEqual(backup.execute("PRAGMA quick_check").fetchone()[0], "ok")
+            self.assertIsNotNone(backup.execute(
+                "SELECT 1 FROM insights WHERE id = ?",
+                (insight_id,),
+            ).fetchone())
+
+    def test_decay_does_not_reapply_lifetime_failure_multiplier(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel = self._make_intel(tmpdir)
+            insight_id = self._insert_insight(
+                intel,
+                created_at=datetime.now() - timedelta(days=150),
+                updated_at=datetime.now() - timedelta(days=150),
+                confidence=0.8,
+            )
+            intel.conn.execute(
+                """
+                UPDATE insights
+                SET times_applied = 1, times_failed = 1, consecutive_failures = 1
+                WHERE id = ?
+                """,
+                (insight_id,),
+            )
+            intel.conn.commit()
+
+            asyncio.run(intel.run_decay_job(force=True))
+            first = intel.conn.execute(
+                "SELECT confidence FROM insights WHERE id = ?",
+                (insight_id,),
+            ).fetchone()["confidence"]
+            asyncio.run(intel.run_decay_job(force=True))
+            second = intel.conn.execute(
+                "SELECT confidence FROM insights WHERE id = ?",
+                (insight_id,),
+            ).fetchone()["confidence"]
+
+            self.assertAlmostEqual(second, first)
+
+    def test_decay_rolls_back_every_change_on_mid_run_error(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel = self._make_intel(tmpdir)
+            first_id = self._insert_insight(
+                intel,
+                created_at=datetime.now() - timedelta(days=90),
+                updated_at=datetime.now() - timedelta(days=90),
+                confidence=0.8,
+            )
+            second_id = self._insert_insight(
+                intel,
+                created_at=datetime.now() - timedelta(days=90),
+                updated_at=datetime.now() - timedelta(days=90),
+                confidence=0.8,
+            )
+            intel.conn.execute(f"""
+                CREATE TRIGGER fail_second_decay
+                BEFORE UPDATE OF confidence ON insights
+                WHEN NEW.id = {second_id}
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced decay failure');
+                END
+            """)
+            intel.conn.commit()
+
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "forced decay failure"):
+                asyncio.run(intel.run_decay_job(force=True))
+
+            confidences = [
+                intel.conn.execute(
+                    "SELECT confidence FROM insights WHERE id = ?",
+                    (insight_id,),
+                ).fetchone()["confidence"]
+                for insight_id in (first_id, second_id)
+            ]
+            self.assertEqual(confidences, [0.8, 0.8])
+            self.assertEqual(intel.conn.execute(
+                "SELECT COUNT(*) FROM meta_knowledge WHERE meta_type = 'decay_job_run'"
+            ).fetchone()[0], 0)
+
+    def test_all_maintenance_locks_writer_before_verified_backup(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel = self._make_intel(tmpdir)
+            self._insert_insight(
+                intel,
+                created_at=datetime.now() - timedelta(days=90),
+                updated_at=datetime.now() - timedelta(days=90),
+                confidence=0.8,
+            )
+            original_backup = intel._create_maintenance_backup
+            writer_was_reserved = []
+
+            def assert_locked_then_backup(job_type):
+                contender = sqlite3.connect(intel.db_path, timeout=0)
+                try:
+                    with self.assertRaisesRegex(
+                        sqlite3.OperationalError,
+                        "database is locked",
+                    ):
+                        contender.execute("BEGIN IMMEDIATE")
+                    writer_was_reserved.append(True)
+                finally:
+                    contender.close()
+                return original_backup(job_type)
+
+            with patch.object(
+                intel,
+                "_create_maintenance_backup",
+                side_effect=assert_locked_then_backup,
+            ):
+                results = asyncio.run(intel.run_all_maintenance(force=True))
+
+            self.assertEqual(writer_was_reserved, [True])
+            self.assertTrue(Path(results["backup_path"]).exists())
+            self.assertEqual(results["decay"]["status"], "ok")
+
+    def test_conflicting_insight_guidance_keeps_only_clear_winner(self):
+        positive = {
+            "id": 1,
+            "constraint_type": "positive",
+            "preferred_tools": {"crypto_price": 1.0},
+            "relevance": 0.9,
+            "evidence_count": 4,
+            "times_applied": 5,
+            "times_helpful": 5,
+        }
+        negative = {
+            "id": 2,
+            "constraint_type": "negative",
+            "avoided_tools": ["crypto_price"],
+            "relevance": 0.5,
+            "evidence_count": 1,
+            "matched_trigger_signals": ["price"],
+        }
+
+        resolved = _resolve_relevant_insight_conflicts([positive, negative])
+
+        self.assertEqual([item["id"] for item in resolved], [1])
+
+    def test_ambiguous_conflicting_guidance_neutralizes_both_sides(self):
+        positive = {
+            "id": 1,
+            "constraint_type": "positive",
+            "preferred_tools": {"crypto_price": 1.0},
+            "relevance": 0.7,
+            "evidence_count": 1,
+        }
+        negative = {
+            "id": 2,
+            "constraint_type": "negative",
+            "avoided_tools": ["crypto_price"],
+            "relevance": 0.7,
+            "evidence_count": 1,
+        }
+
+        self.assertEqual(
+            _resolve_relevant_insight_conflicts([positive, negative]),
+            [],
+        )
+
+    def test_out_of_window_conflict_cannot_veto_top_k_guidance(self):
+        candidates = [
+            {
+                "id": 1,
+                "constraint_type": "positive",
+                "preferred_tools": {"crypto_price": 1.0},
+                "relevance": 0.9,
+                "evidence_count": 1,
+            },
+            {
+                "id": 2,
+                "constraint_type": "positive",
+                "preferred_tools": {"tool_a": 1.0},
+                "relevance": 0.85,
+                "evidence_count": 1,
+            },
+            {
+                "id": 3,
+                "constraint_type": "positive",
+                "preferred_tools": {"tool_b": 1.0},
+                "relevance": 0.8,
+                "evidence_count": 1,
+            },
+            {
+                "id": 4,
+                "constraint_type": "positive",
+                "preferred_tools": {"tool_c": 1.0},
+                "relevance": 0.7,
+                "evidence_count": 1,
+            },
+            {
+                "id": 10,
+                "constraint_type": "negative",
+                "avoided_tools": ["crypto_price"],
+                "relevance": 0.6,
+                "evidence_count": 5,
+                "times_applied": 5,
+                "times_helpful": 5,
+                "matched_trigger_signals": ["price"],
+            },
+        ]
+
+        selected = _select_top_relevant_insights(candidates, top_k=3)
+
+        self.assertEqual([item["id"] for item in selected], [1, 2, 3])
+
+    def test_dashboard_rejects_failed_or_unexpected_decay_results(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not installed")
+
+        api_source = (
+            PROJECT_ROOT / "jarvis-intelligence" / "client" / "js" / "api.js"
+        ).read_text()
+        probe = r"""
+function expectThrow(value, expected) {
+  try {
+    assertMaintenanceResult(value);
+  } catch (error) {
+    if (!String(error.message).includes(expected)) process.exit(3);
+    return;
+  }
+  process.exit(2);
+}
+assertMaintenanceResult({ok: true, status: 'dry_run'});
+assertMaintenanceResult({ok: true, status: 'ok'});
+expectThrow({ok: true, error: 'Intelligence layer not available'}, 'not available');
+expectThrow({ok: true, status: 'skipped'}, 'Unexpected maintenance status');
+expectThrow({ok: false, status: 'ok', reason: 'failed'}, 'failed');
+"""
+        completed = subprocess.run(
+            [node, "-e", f"{api_source}\n{probe}"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        app_source = (
+            PROJECT_ROOT / "jarvis-intelligence" / "client" / "js" / "app.js"
+        ).read_text()
+        self.assertGreaterEqual(app_source.count("assertMaintenanceResult("), 2)
+
+    def test_meta_cognition_flags_but_does_not_compound_confidence(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            intel = self._make_intel(tmpdir)
+            insight_id = self._insert_insight(
+                intel,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                confidence=0.8,
+            )
+            intel.conn.execute(
+                """
+                UPDATE insights
+                SET times_applied = 6, times_helpful = 2, times_failed = 4
+                WHERE id = ?
+                """,
+                (insight_id,),
+            )
+            intel.conn.commit()
+
+            asyncio.run(intel.run_meta_cognition(create_backup=False))
+            asyncio.run(intel.run_meta_cognition(create_backup=False))
+            confidence = intel.conn.execute(
+                "SELECT confidence FROM insights WHERE id = ?",
+                (insight_id,),
+            ).fetchone()["confidence"]
+
+            self.assertAlmostEqual(confidence, 0.8)
 
     def test_ui_delete_experience_unlinks_evidence_references(self):
         with tempfile.TemporaryDirectory() as tmpdir:

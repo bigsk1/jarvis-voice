@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -36,6 +37,11 @@ def load_sync_module():
 
 
 class SyncIntelligenceDbTests(unittest.TestCase):
+    def setUp(self):
+        logger_patch = patch("intelligence.get_intel_logger")
+        logger_patch.start()
+        self.addCleanup(logger_patch.stop)
+
     async def _seed_source(
         self,
         db_path: Path,

@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -27,6 +28,11 @@ from config_loader import config_scope
 
 
 class IntelligenceProvenanceTests(unittest.TestCase):
+    def setUp(self):
+        logger_patch = patch("intelligence.get_intel_logger")
+        logger_patch.start()
+        self.addCleanup(logger_patch.stop)
+
     def test_relevance_threshold_is_configurable(self):
         with tempfile.TemporaryDirectory() as tmpdir, config_scope(
             "cloud",
@@ -318,15 +324,15 @@ class IntelligenceProvenanceTests(unittest.TestCase):
             self.assertIn("Don't search again", matched["matched_trigger_signals"])
             self.assertLess(matching_biases["brave_llm_context"], 0)
 
-            # Older rows predate trigger metadata. Preserve their established
-            # semantic-only behavior instead of silently disabling them.
+            # Older negative rows predate trigger metadata and are too broad to
+            # suppress a tool safely. Maintenance retires these rows over time.
             intel.conn.execute(
                 "UPDATE insights SET trigger_signals = '[]' WHERE id = ?",
                 (insight_id,),
             )
             intel.conn.commit()
             legacy_insights = asyncio.run(intel.get_relevant_insights(fresh_query))
-            self.assertIn(insight_id, {item["id"] for item in legacy_insights})
+            self.assertNotIn(insight_id, {item["id"] for item in legacy_insights})
 
     def test_record_experience_stamps_raw_context_experience_id(self):
         with tempfile.TemporaryDirectory() as tmpdir:

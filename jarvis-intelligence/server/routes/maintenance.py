@@ -1,9 +1,11 @@
 """
 Maintenance API Routes - Trigger maintenance jobs
 """
+import asyncio
 import subprocess
 import sys
 from pathlib import Path
+
 from flask import Blueprint, jsonify, request
 
 # Add parent paths
@@ -20,19 +22,15 @@ def trigger_reflection():
         mode = request.args.get('mode', 'cloud')
         batch_size = request.args.get('batch_size', 5, type=int)
         
-        # Load config for mode
-        from config_loader import load_config
-        load_config(mode)
-        
-        # Import intelligence after config loaded
+        from config_loader import config_scope
         from intelligence import get_intelligence_layer
-        import asyncio
         
         async def do_reflect():
-            intel = get_intelligence_layer()
-            if not intel:
-                return 0
-            return await intel.process_reflection_queue(batch_size=batch_size)
+            with config_scope(mode):
+                intel = get_intelligence_layer(mode)
+                if not intel:
+                    return 0
+                return await intel.process_reflection_queue(batch_size=batch_size)
         
         processed = asyncio.run(do_reflect())
         
@@ -53,17 +51,15 @@ def run_decay_job():
         force = request.args.get('force', 'false').lower() in ('true', '1', 'yes', 'on')
         dry_run = request.args.get('dry_run', 'false').lower() in ('true', '1', 'yes', 'on')
         
-        from config_loader import load_config
-        load_config(mode)
-        
+        from config_loader import config_scope
         from intelligence import get_intelligence_layer
-        import asyncio
         
         async def do_decay():
-            intel = get_intelligence_layer()
-            if not intel:
-                return {'error': 'Intelligence layer not available'}
-            return await intel.run_decay_job(force=force, dry_run=dry_run)
+            with config_scope(mode):
+                intel = get_intelligence_layer(mode)
+                if not intel:
+                    return {'error': 'Intelligence layer not available'}
+                return await intel.run_decay_job(force=force, dry_run=dry_run)
         
         result = asyncio.run(do_decay())
         
@@ -82,17 +78,15 @@ def run_anomaly_detection():
     try:
         mode = request.args.get('mode', 'cloud')
         
-        from config_loader import load_config
-        load_config(mode)
-        
+        from config_loader import config_scope
         from intelligence import get_intelligence_layer
-        import asyncio
         
         async def do_anomaly():
-            intel = get_intelligence_layer()
-            if not intel:
-                return {'error': 'Intelligence layer not available'}
-            return await intel.run_anomaly_detection()
+            with config_scope(mode):
+                intel = get_intelligence_layer(mode)
+                if not intel:
+                    return {'error': 'Intelligence layer not available'}
+                return await intel.run_anomaly_detection()
         
         result = asyncio.run(do_anomaly())
         
@@ -111,17 +105,15 @@ def run_meta_cognition():
     try:
         mode = request.args.get('mode', 'cloud')
         
-        from config_loader import load_config
-        load_config(mode)
-        
+        from config_loader import config_scope
         from intelligence import get_intelligence_layer
-        import asyncio
         
         async def do_meta():
-            intel = get_intelligence_layer()
-            if not intel:
-                return {'error': 'Intelligence layer not available'}
-            return await intel.run_meta_cognition()
+            with config_scope(mode):
+                intel = get_intelligence_layer(mode)
+                if not intel:
+                    return {'error': 'Intelligence layer not available'}
+                return await intel.run_meta_cognition()
         
         result = asyncio.run(do_meta())
         
@@ -142,17 +134,15 @@ def run_all_maintenance():
         force = request.args.get('force', 'false').lower() in ('true', '1', 'yes', 'on')
         dry_run = request.args.get('dry_run', 'false').lower() in ('true', '1', 'yes', 'on')
         
-        from config_loader import load_config
-        load_config(mode)
-        
+        from config_loader import config_scope
         from intelligence import get_intelligence_layer
-        import asyncio
         
         async def do_all():
-            intel = get_intelligence_layer()
-            if not intel:
-                return {'error': 'Intelligence layer not available'}
-            return await intel.run_all_maintenance(force=force, dry_run=dry_run)
+            with config_scope(mode):
+                intel = get_intelligence_layer(mode)
+                if not intel:
+                    return {'error': 'Intelligence layer not available'}
+                return await intel.run_all_maintenance(force=force, dry_run=dry_run)
         
         result = asyncio.run(do_all())
         

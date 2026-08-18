@@ -465,18 +465,24 @@ Three automated maintenance jobs keep the intelligence layer healthy:
 #### Decay Job
 ```bash
 # Config
-INTELLIGENCE_DECAY_RATE=0.95           # 5% decay per week unused
-INTELLIGENCE_DECAY_INTERVAL_DAYS=30    # Current cloud recommendation; code default: 7 if unset
+INTELLIGENCE_DECAY_RATE=0.95           # Base retention for stale, unproven insights
+INTELLIGENCE_DECAY_INTERVAL_DAYS=30    # Minimum time between runs
+INTELLIGENCE_DECAY_GRACE_DAYS=30       # No age decay after recent activity
+INTELLIGENCE_DECAY_MAX_CATCHUP_DAYS=30 # Maximum age charged by one run
+INTELLIGENCE_PRUNE_CONFIDENCE=0.15
+INTELLIGENCE_LEGACY_NEGATIVE_PRUNE_DAYS=120
 ```
 
 **What it does**:
 - Checks each insight's newest activity timestamp: `last_applied`, `updated_at`, latest `insight_evidence.created_at`, or `created_at`
-- If unused >7 days: `confidence *= DECAY_RATE`
-- If has failures: extra decay `confidence *= 0.9^consecutive_failures`
-- If successful (>80% helpful): slight boost
-- If confidence drops below 0.15: **auto-pruned**
+- Protects recently active and proven insights from age-only decay
+- Applies bounded, faster decay to failing, low-confidence, legacy, or unsupported insights
+- Prunes old one-evidence negative rules that lack modern trigger metadata
+- Prunes insights below `INTELLIGENCE_PRUNE_CONFIDENCE`
+- Creates and verifies a SQLite backup under `data/backups/` before every write run
 
-**⚠️ IMPORTANT**: The decay job tracks when it was last run and **skips if run within the minimum interval** (current cloud recommendation: 30 days; code default if unset: 7). This prevents accidental double-decay from compounding confidence reductions. Use `--force` to bypass if needed.
+Real interaction outcomes adjust confidence immediately. Maintenance does not
+reapply lifetime success/failure counters or boost already-proven insights.
 
 #### Anomaly Detection
 ```bash
@@ -862,8 +868,13 @@ tests/
 
 # Learning parameters (advanced, optional)
 INTELLIGENCE_LEARNING_RATE=0.1          # How fast to update confidence on new evidence
-INTELLIGENCE_DECAY_RATE=0.95            # Decay multiplier per week unused (0.95 = 5% decay)
-INTELLIGENCE_DECAY_INTERVAL_DAYS=30     # Current cloud recommendation; code default if unset: 7
+INTELLIGENCE_DECAY_RATE=0.95            # Base weekly retention for stale, unproven insights
+INTELLIGENCE_DECAY_INTERVAL_DAYS=30     # Minimum interval; also the code default
+INTELLIGENCE_DECAY_GRACE_DAYS=30        # Protect recently active insights
+INTELLIGENCE_DECAY_MAX_CATCHUP_DAYS=30  # Limit damage after long gaps between runs
+INTELLIGENCE_PRUNE_CONFIDENCE=0.15      # Remove insights already below this confidence
+INTELLIGENCE_LEGACY_NEGATIVE_PRUNE_DAYS=120  # Retire old unscoped negative rules
+INTELLIGENCE_CONFLICT_DOMINANCE_RATIO=1.25   # Required authority ratio to win a tool conflict
 INTELLIGENCE_ANOMALY_THRESHOLD=2.5      # Z-score threshold for outlier detection
 INTELLIGENCE_MIN_CONFIDENCE=0.40        # Minimum confidence to become a retrieval candidate
 INTELLIGENCE_RELEVANCE_THRESHOLD=0.20   # Minimum cosine similarity x confidence to apply a candidate
@@ -881,7 +892,7 @@ INTELLIGENCE_NEGATIVE_WEIGHT=1.5        # Recommended; code default if unset: 1.
 | `RELEVANCE_THRESHOLD` | 0.15 (broader semantic matches) | 0.35 (narrow matches) | Start at 0.20 and tune per embedding model |
 | `NEGATIVE_WEIGHT` | 1.0 (equal to positive) | 2.0 (strong penalty) | 1.5 makes negatives win |
 
-**NEGATIVE_WEIGHT explained**: When multiple insights conflict (e.g., 2 positive + 1 negative for same tool), this multiplier ensures negative constraints are respected. At 1.5, a single negative insight can outweigh multiple weak positives.
+**NEGATIVE_WEIGHT explained**: Conflict resolution happens first. This multiplier controls the routing-bias strength of a negative insight that survives that resolution; it does not decide which side wins a conflict.
 
 These values tune belief strength, candidate confidence, and maintenance timing;
 they do not determine whether a narrow negative lesson applies to a particular
@@ -1042,7 +1053,9 @@ curl -X POST "http://localhost:5003/api/maintenance/reflect?batch_size=5"
 ./bin/run-intelligence-maintenance.py --decay --force
 ```
 
-**⚠️ Decay Job Interval Protection**: The decay job tracks when it was last run and will **skip** if run within `INTELLIGENCE_DECAY_INTERVAL_DAYS` (current cloud recommendation: 30 days; code default if unset: 7). This prevents accidental double-decay which compounds confidence reductions incorrectly. Use `--force` only if you understand the implications.
+**Safety**: Dry-run is write-free. Every write run creates a verified SQLite
+backup under `data/backups/`, uses one transaction, and rolls back the complete
+decay operation on failure.
 
 **API Endpoints**:
 ```bash
@@ -1064,13 +1077,9 @@ curl http://localhost:8880/api/intelligence/meta-knowledge
 ### What Each Job Does
 
 #### 1. Decay Job (`--decay`)
-**Purpose**: Keep insight pool fresh by decaying unused/failed insights
+**Purpose**: Let reliable strategies rise while weak, obsolete, or unsafe guidance retires
 
-**⚠️ Interval Protection**: The decay job tracks when it was last run in the `meta_knowledge` table. If run within `INTELLIGENCE_DECAY_INTERVAL_DAYS` (current cloud recommendation: 30 days; code default if unset: 7), it will **skip** with status `"skipped"`. Use `--force` to bypass.
-
-**Why?** Running decay multiple times compounds the reduction incorrectly:
-- First run: 1.0 → 0.95 (correct: 5% decay)
-- Second run same day: 0.95 → 0.9025 (wrong: double decay!)
+**⚠️ Interval Protection**: The decay job tracks when it was last run in the `meta_knowledge` table. If run within `INTELLIGENCE_DECAY_INTERVAL_DAYS` (default: 30 days), it will **skip** with status `"skipped"`. Use `--force` to bypass.
 
 **Algorithm**:
 ```
@@ -1081,19 +1090,19 @@ curl http://localhost:8880/api/intelligence/meta-knowledge
    a. Calculate newest activity timestamp:
       max(last_applied, updated_at, latest evidence, created_at)
 
-   b. If newest activity > 7 days ago:
-      confidence *= DECAY_RATE  (default 0.95 = 5% decay)
+   b. Protect recent or proven insights from age-only decay
 
-   c. If consecutive_failures > 0:
-      confidence *= 0.9 ^ consecutive_failures
+   c. Classify remaining insight as failing, unscoped negative,
+      low-confidence, legacy, unproven, or ordinary
 
-   d. If helpful_ratio > 80%:
-      confidence *= 1.02  (2% boost)
+   d. Apply that policy's weekly retention rate, capped to
+      INTELLIGENCE_DECAY_MAX_CATCHUP_DAYS per run
 
-   e. If confidence < 0.15:
-      DELETE insight (pruned)
+   e. Prune below-threshold insights and sufficiently old one-evidence
+      negative rules that have no trigger scope
 
-3. Record run timestamp in meta_knowledge table
+3. Create and verify a pre-write backup
+4. Apply every update/delete in one transaction and record the run timestamp
 ```
 
 **Log Events**:
@@ -1101,28 +1110,9 @@ curl http://localhost:8880/api/intelligence/meta-knowledge
 - `insight_pruned` - When insight deleted
 - `maintenance_run` with `job_type: "decay_job"`
 
-**Understanding the Two Boost Systems**:
-
-There are TWO separate mechanisms that can boost insight confidence:
-
-| System | When | Boost Amount | Conditions |
-|--------|------|--------------|------------|
-| **Real-Time** | After each interaction | **+5% flat** | Insight was shown to LLM AND interaction succeeded |
-| **Maintenance** | During decay job | **×1.02 (2%)** | Insight applied 3+ times AND >80% success rate |
-
-```python
-# Real-time boost (in record_insight_usage)
-# Happens IMMEDIATELY after each successful use
-if was_helpful:
-    new_confidence = min(1.0, old_confidence + 0.05)  # +5% flat
-
-# Maintenance boost (in run_decay_job)
-# Only during maintenance, AFTER time-decay applied
-if times_applied > 3 and success_rate > 80%:
-    new_confidence = min(1.0, new_confidence * 1.02)  # ×1.02
-```
-
-**Key insight**: The maintenance boost (1.02×) is applied AFTER the time-decay, so it mitigates but cannot prevent decay for rarely-used insights. See "Rare-But-Valid Insights Decay Problem" in Known Limitations.
+Confidence changes from helpful or failed use happen only in
+`record_insight_usage()`. A negative rule is neutral—not rewarded—when its
+avoided tool was never tried and no attributable replacement succeeded.
 
 #### 2. Anomaly Detection (`--anomaly`)
 **Purpose**: Flag unusual experiences for manual review
@@ -1828,10 +1818,11 @@ cat logs/intelligence/*.jsonl | jq 'select(.event == "meta_cognition")'
   "job_type": "decay_job",
   "stats": {
     "total_checked": 45,
-    "decayed": 0,
-    "boosted": 0,
-    "unchanged": 45,
-    "pruned": 0
+    "decayed": 12,
+    "protected": 29,
+    "unchanged": 29,
+    "pruned": 4,
+    "backup_path": "data/backups/jarvis_intelligence.db.pre_decay_..."
   }
 }
 ```
@@ -1880,41 +1871,20 @@ Intelligence **does** learn tool routing and negative constraints. It **does not
 
 Profile Card and feedback bridge cover some of this manually; Phase 3 below tracks automated behavioral learning.
 
-### 4. Rare-But-Valid Insights Decay Problem ⚠️
+### 4. Selective decay and rare-but-valid protection
 
-**The Issue**: Good insights that are rarely triggered decay over time, even when they're 100% correct when used.
+Maintenance is evidence-aware rather than applying the same multiplier to every old insight:
 
-**Example scenario**:
-```
-Insight: "Use crypto_price tool for cryptocurrency queries"
-- Created with confidence 1.0
-- Works perfectly every time (100% success rate)
-- But user only asks about crypto once a month
+- Recently active insights receive a configurable grace period.
+- Proven insights are protected when they have multiple evidence records, or repeated use with at least a 75% helpful rate and no consecutive failures.
+- Unproven, low-confidence, failing, and legacy insights decay at different rates.
+- A single run can catch up only `INTELLIGENCE_DECAY_MAX_CATCHUP_DAYS`, avoiding a destructive cliff after maintenance has been idle for months.
+- Old negative rules without modern trigger, intent, source, or supporting evidence metadata are pruned after `INTELLIGENCE_LEGACY_NEGATIVE_PRUNE_DAYS`.
+- Confidence already below `INTELLIGENCE_PRUNE_CONFIDENCE` is pruned instead of lingering indefinitely.
 
-Day 0:   confidence = 1.00
-Day 14:  Decay runs → 1.00 × 0.95² = 0.90  (2 weeks decay)
-Day 28:  Decay runs → 0.90 × 0.95² = 0.81
-Day 42:  Decay runs → 0.81 × 0.95² = 0.73
-Day 56:  Decay runs → 0.73 × 0.95² = 0.66
-...eventually drops below threshold and gets pruned!
-```
+Write-mode decay, including the decay phase of all-maintenance, acquires the SQLite writer lock and then creates and verifies a pre-change snapshot in `data/backups/` before applying changes. A failure rolls the decay transaction back. Dry-run mode reports the planned protected, decayed, and pruned counts without writing or creating a backup.
 
-**Why it happens**: The decay formula `confidence *= DECAY_RATE^(days/7)` is based on time since newest activity, not success rate. New reflection merges and evidence rows refresh activity, so a newly reinforced older insight should not decay just because its original `created_at` is old. The maintenance boost (1.02×) cannot outpace the decay (0.9025×) for insights that are both rarely used and not recently reinforced.
-
-**Current design philosophy**:
-- Frequently used + helpful = valuable → stays high
-- Rarely used = probably not important → fades away
-- This works for common patterns but punishes niche/specialized insights
-
-**Workarounds**:
-1. **Manual fix**: Use Intelligence Dashboard UI to manually boost confidence for known-good insights
-2. **Increase interval**: Set `INTELLIGENCE_DECAY_INTERVAL_DAYS=30` or higher to slow decay
-
-**Potential future fixes** (not implemented):
-- "Verified" flag to exempt insights from time decay
-- Category-based decay rates (technical insights decay slower)
-- Minimum confidence floor based on success rate (100% success → can't drop below 0.7)
-- Success-weighted decay (high success rate reduces decay multiplier)
+At retrieval time, unscoped legacy negative rules are ignored. Conflict resolution considers only the candidates inside the requested top-k window, so a lower-ranked insight cannot veto guidance it would not be allowed to replace. When positive and negative candidates target the same tool, the stronger insight must exceed `INTELLIGENCE_CONFLICT_DOMINANCE_RATIO`; otherwise both sides are withheld so contradictory guidance cannot cancel a correct routing signal.
 
 ---
 
@@ -2047,7 +2017,7 @@ Dashboard filters expose CG facets on the Experiences tab. See [COMPLETION_GUARD
 - [x] **Enhanced reflection context** - LLM response, tool results, available tools in prompt
 - [x] **Content quality evaluation** - Reflection evaluates data relevance, not just tool success
 - [x] **Insight tracking (active)** - times_applied, times_helpful, times_failed now updated
-- [x] **Decay job** - Auto-decay unused/failed insights
+- [x] **Selective decay job** - Protect proven guidance and retire weak/unsafe insights
 - [x] **Anomaly detection** - Flag unusual experiences (high turns, failed multi-turn)
 - [x] **Meta-cognition** - Blind spot detection, over-generalization, learning quality
 - [x] **meta_knowledge table** - Store learning system findings

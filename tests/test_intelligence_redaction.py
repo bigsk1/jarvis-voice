@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -28,6 +29,11 @@ SECRET = "sk-testsecret12345678901234567890"
 
 
 class IntelligenceRedactionTests(unittest.TestCase):
+    def setUp(self):
+        logger_patch = patch("intelligence.get_intel_logger")
+        logger_patch.start()
+        self.addCleanup(logger_patch.stop)
+
     def test_redact_sensitive_text_preserves_email_but_redacts_secrets(self):
         text = (
             "email person@example.com with api_key=sk-testsecret12345678901234567890 "

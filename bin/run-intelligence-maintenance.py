@@ -3,7 +3,7 @@
 Intelligence Maintenance Runner
 
 Manually trigger maintenance jobs:
-- Decay: Reduce confidence of stale/unused insights
+- Decay: Protect proven insights and retire weak/unsafe guidance
 - Anomaly: Detect unusual experiences
 - Meta-cognition: Analyze learning process health
 
@@ -16,16 +16,67 @@ Usage:
     ./bin/run-intelligence-maintenance.py --watch      # Run all and show logs
 """
 
-import sys
-import os
-import json
 import argparse
-from pathlib import Path
+import json
+import os
+import sys
 from datetime import datetime
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _ensure_project_python() -> None:
+    """Re-exec with a Jarvis environment before importing Intelligence."""
+    candidates = [PROJECT_ROOT / ".venv"]
+    configured_venv = os.environ.get("JARVIS_VENV")
+    if configured_venv:
+        candidates.append(Path(configured_venv).expanduser())
+    candidates.append(Path.home() / "jarvis-venv")
+
+    active_prefix = Path(sys.prefix).expanduser().resolve()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if active_prefix == resolved:
+            return
+
+    for candidate in candidates:
+        expected_python = candidate.expanduser().resolve() / "bin" / "python"
+        if expected_python.is_file():
+            os.execv(
+                str(expected_python),
+                [str(expected_python), str(Path(__file__).resolve()), *sys.argv[1:]],
+            )
+
+    print(
+        "ERROR: No Jarvis Python environment was found. Run 'uv sync --dev' "
+        "or set JARVIS_VENV.",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+
+
+if __name__ == "__main__":
+    _ensure_project_python()
 
 # Add lib to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config
+sys.path.insert(0, str(PROJECT_ROOT / "lib"))
+
+
+def _failed_jobs(results: dict) -> list[str]:
+    """Return maintenance result keys that report an unavailable/error state."""
+    failures = []
+    top_status = str(results.get("status") or "").lower()
+    if top_status in {"error", "unavailable"} or results.get("error"):
+        failures.append("maintenance")
+    for name, result in results.items():
+        if not isinstance(result, dict):
+            continue
+        status = str(result.get("status") or "").lower()
+        if status in {"error", "unavailable"} or result.get("error"):
+            failures.append(name)
+    return failures
+
 
 def main():
     parser = argparse.ArgumentParser(description='Run intelligence maintenance jobs')
@@ -38,13 +89,12 @@ def main():
     parser.add_argument('--mode', choices=['cloud', 'local'], default='cloud', help='Mode to run in')
     args = parser.parse_args()
     
-    # Load config
-    load_config(args.mode)
-    
-    # Import hooks after config loaded
+    # Hooks install an isolated mode-specific config scope for each job.
     from intelligence_hooks import (
-        run_decay_job, run_anomaly_detection, 
-        run_meta_cognition, run_all_maintenance
+        run_all_maintenance,
+        run_anomaly_detection,
+        run_decay_job,
+        run_meta_cognition,
     )
     
     print("=" * 60)
@@ -70,16 +120,24 @@ def main():
     
     if args.decay:
         print("Running decay job...")
-        results['decay'] = run_decay_job(force=args.force, dry_run=args.dry_run)
+        results['decay'] = run_decay_job(
+            force=args.force,
+            dry_run=args.dry_run,
+            mode=args.mode,
+        )
     elif args.anomaly:
         print("Running anomaly detection...")
-        results['anomalies'] = run_anomaly_detection()
+        results['anomalies'] = run_anomaly_detection(mode=args.mode)
     elif args.meta:
         print("Running meta-cognition...")
-        results['meta_cognition'] = run_meta_cognition()
+        results['meta_cognition'] = run_meta_cognition(mode=args.mode)
     else:
         print("Running ALL maintenance jobs...")
-        results = run_all_maintenance(force=args.force, dry_run=args.dry_run)
+        results = run_all_maintenance(
+            force=args.force,
+            dry_run=args.dry_run,
+            mode=args.mode,
+        )
     
     print()
     print("=" * 60)
@@ -96,14 +154,27 @@ def main():
                 print(f"   Last run: {decay.get('last_run', 'Unknown')}")
                 print(f"   Next eligible: {decay.get('next_eligible', 'Unknown')}")
                 print("   (Use --force to bypass)")
-            elif decay.get('status') != 'error':
+            elif decay.get('status') in {'ok', 'dry_run'}:
                 dry_label = " (DRY RUN)" if decay.get('dry_run') else ""
                 print(f"\n📉 DECAY JOB:{dry_label}")
                 print(f"   Insights checked: {decay.get('total_checked', 0)}")
+                print(f"   Protected/recent: {decay.get('protected', 0)}")
                 print(f"   Decayed: {decay.get('decayed', 0)}")
-                print(f"   Boosted: {decay.get('boosted', 0)}")
                 print(f"   Pruned: {decay.get('pruned', 0)}")
                 print(f"   Unchanged: {decay.get('unchanged', 0)}")
+                print(f"   Average before: {decay.get('avg_confidence_before', 0):.1%}")
+                print(
+                    "   Average after (survivors): "
+                    f"{decay.get('avg_confidence_after_survivors', 0):.1%}"
+                )
+                if decay.get('policy_counts'):
+                    policies = ', '.join(
+                        f"{name}={count}"
+                        for name, count in sorted(decay['policy_counts'].items())
+                    )
+                    print(f"   Policies: {policies}")
+                if decay.get('backup_path'):
+                    print(f"   Backup: {decay['backup_path']}")
             else:
                 print(f"\n📉 DECAY JOB: {decay}")
         else:
@@ -142,6 +213,9 @@ def main():
                     print(f"      {emoji} {f['meta_type']}: {f['observation'][:60]}...")
         else:
             print(f"\n🧠 META-COGNITION: {meta}")
+
+    if results.get('backup_path'):
+        print(f"\n📦 Maintenance backup: {results['backup_path']}")
     
     print()
     
@@ -192,7 +266,12 @@ def main():
         else:
             print(f"No log file found: {log_file}")
     
+    failures = _failed_jobs(results)
     print()
+    if failures:
+        print(f"❌ Maintenance failed: {', '.join(failures)}")
+        raise SystemExit(2)
+
     print("✅ Maintenance complete!")
     print()
     print("Logs written to: logs/intelligence/intelligence-YYYY-MM-DD.jsonl")

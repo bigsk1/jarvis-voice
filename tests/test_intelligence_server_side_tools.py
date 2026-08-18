@@ -39,6 +39,11 @@ from orchestrator_v2 import Orchestrator
 
 
 class IntelligenceServerSideToolsTests(unittest.TestCase):
+    def setUp(self):
+        logger_patch = patch("intelligence.get_intel_logger")
+        logger_patch.start()
+        self.addCleanup(logger_patch.stop)
+
     def test_direct_reflection_constructs_provider_without_native_tools(self):
         layer = IntelligenceLayer.__new__(IntelligenceLayer)
         provider = MagicMock()
@@ -318,6 +323,60 @@ class IntelligenceServerSideToolsTests(unittest.TestCase):
                         },
                         {"tool": "mcp_brave_search_brave_web_search", "ok": True},
                     ],
+                },
+            )
+        )
+
+    def test_negative_avoidance_without_replacement_evidence_is_neutral(self):
+        insight = {
+            "constraint_type": "negative",
+            "avoided_tools": ["crypto_price"],
+            "preferred_tools": {},
+        }
+
+        self.assertIsNone(
+            _evaluate_insight_helpfulness(
+                insight,
+                tools_used=["tool_search"],
+                outcome_success=True,
+                result={"ok": True},
+            )
+        )
+
+    def test_negative_replacement_success_is_helpful(self):
+        insight = {
+            "constraint_type": "negative",
+            "avoided_tools": ["old_search"],
+            "preferred_tools": {"serpapi_search": 1.0},
+        }
+
+        self.assertTrue(
+            _evaluate_insight_helpfulness(
+                insight,
+                tools_used=["serpapi_search"],
+                outcome_success=True,
+                result={
+                    "ok": True,
+                    "tool_trace": [{"tool": "serpapi_search", "ok": True}],
+                },
+            )
+        )
+
+    def test_negative_unused_named_replacement_is_neutral(self):
+        insight = {
+            "constraint_type": "negative",
+            "avoided_tools": ["old_search"],
+            "preferred_tools": {"serpapi_search": 1.0},
+        }
+
+        self.assertIsNone(
+            _evaluate_insight_helpfulness(
+                insight,
+                tools_used=["brave_search"],
+                outcome_success=True,
+                result={
+                    "ok": True,
+                    "tool_trace": [{"tool": "brave_search", "ok": True}],
                 },
             )
         )

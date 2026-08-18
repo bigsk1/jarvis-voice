@@ -108,7 +108,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - Generalizability filtering (only stores reusable insights)
   - **Insight tracking**: times_applied, times_helpful, times_failed are updated when retrieved insights are later used
   - **Reflection observability**: Lifetime reflection tokens/cost and last reflection provider/model on insight records
-  - **Decay job**: Interval-protected confidence decay with dry-run support; prunes very low-confidence stale/failed insights
+  - **Selective decay**: Protects proven strategies, bounds long-gap catch-up, retires unsafe legacy negatives, previews changes, and creates a verified pre-write backup
   - **Anomaly detection**: Flags unusual experiences
   - **Meta-cognition**: Analyzes learning health
   - Separate cloud/local learning databases with one fingerprinted 768D embedding contract
@@ -1996,7 +1996,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Fact vs Procedural knowledge classification
   - Generalizability filtering, confidence decay tracking
   - **Insight tracking**: times_applied, helpful, failed now active
-  - **Decay job**: Auto-prunes stale insights (<0.15 confidence)
+  - **Selective decay**: Protects proven insights and retires weak or unsafe legacy guidance after a verified backup
   - **Anomaly detection**: Flags unusual experiences (high turns)
   - **Meta-cognition**: Detects blind spots, learning issues
   - **13 log events** for full Grafana/Loki visibility
