@@ -1044,6 +1044,17 @@ body {
   color: var(--text-secondary);
 }
 
+.tool-card-link-row {
+  padding: var(--space-xs) var(--space-md) var(--space-sm);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.tool-card-link-row .tool-card-link {
+  color: var(--text-primary);
+}
+
 .tool-card-body {
   padding: var(--space-md);
   font-size: var(--text-sm);

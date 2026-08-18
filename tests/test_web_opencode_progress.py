@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 CHAT_SERVER = (ROOT / "jarvis-web/server/sockets/chat.py").read_text()
 CHAT_CLIENT = (ROOT / "jarvis-web/client/js/chat.js").read_text()
+MAIN_CSS = (ROOT / "jarvis-web/client/css/main.css").read_text()
 
 
 def test_web_socket_forwards_structured_opencode_progress():
@@ -18,6 +19,13 @@ def test_web_client_shows_latest_phase_timeline_and_session_link():
     assert "state.progressEvents.slice(-8)" in CHAT_CLIENT
     assert "this.showProgressStatus(data.status)" in CHAT_CLIENT
     assert "Open session: ${state.sessionId}" in CHAT_CLIENT
+
+
+def test_opencode_session_link_row_matches_tool_card_inset():
+    assert ".tool-card-link-row {" in MAIN_CSS
+    assert "padding: var(--space-xs) var(--space-md) var(--space-sm);" in MAIN_CSS
+    assert ".tool-card-link-row .tool-card-link {" in MAIN_CSS
+    assert "color: var(--text-primary);" in MAIN_CSS
 
 
 def test_web_client_routes_call_index_and_updates_bounded_card_at_runtime():
