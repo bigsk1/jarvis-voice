@@ -46,6 +46,7 @@ from router_v2 import (
     _resolve_tool_rag_limit,
     _tool_rag_similarity_threshold,
     build_tool_retrieval_signals,
+    expand_prerequisite_tool_names,
     merge_tool_signal_names,
 )
 from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
@@ -177,6 +178,7 @@ def _print_production_block(
     retrieval_limit: int,
     ghost_tools: list[str],
     enabled_tool_names: list[str],
+    registry: ToolRegistry,
     threshold_override: float | None = None,
 ) -> None:
     signals = build_tool_retrieval_signals(transcript, enabled_tool_names)
@@ -236,6 +238,14 @@ def _print_production_block(
         enabled_tool_names,
         ghost_tools=ghost_tools,
     )
+    final_names, prerequisites_added = expand_prerequisite_tool_names(
+        final_names,
+        registry,
+        enabled_tool_names,
+        excluded_tools=signals.negative_tools,
+    )
+    if prerequisites_added:
+        signal_meta["prerequisites_added"] = prerequisites_added
     uncapped_final_names = list(final_names)
     final_names = _cap_tool_names_for_schema(
         final_names,
@@ -428,6 +438,7 @@ def debug_tool_rag(
             retrieval_limit,
             ghost_tools,
             tool_names,
+            registry,
             threshold_override=st,
         )
 
@@ -460,6 +471,7 @@ def debug_tool_rag(
                 retrieval_limit,
                 ghost_tools,
                 tool_names,
+                registry,
                 threshold_override=None,
             )
         elif synthetic_full:
@@ -489,6 +501,7 @@ def debug_tool_rag(
                 retrieval_limit,
                 ghost_tools,
                 tool_names,
+                registry,
                 threshold_override=None,
             )
 

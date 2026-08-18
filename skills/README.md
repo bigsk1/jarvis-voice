@@ -123,6 +123,18 @@ Every tool needs a `.tool.json` file:
 }
 ```
 
+`prerequisite_tools` is optional. Use it when a downstream tool needs an ID,
+URL, or other value that another registered tool must discover first. Tool RAG
+adds up to three enabled, non-blocked prerequisites to the same bounded schema
+shortlist; the normal mode/request Tool RAG cap still applies. Do not use it for
+merely related tools—keep those in `complementary_tools`.
+
+```json
+{
+  "prerequisite_tools": ["serpapi_search_index"]
+}
+```
+
 ### Availability (credential requirements)
 
 Tools with hard configuration requirements declare them in an optional
@@ -308,6 +320,7 @@ JSON object printed to stdout:
 | `serpapi_youtube` | SerpApi YouTube video details and transcript fallback |
 | `serpapi_youtube_search` | SerpApi YouTube video search by keywords |
 | `serpapi_yelp_search` | Yelp place discovery with local rating/review sorting, attrs, links, and optional review excerpts |
+| `serpapi_open_table_reviews` | Paginated OpenTable diner reviews, category ratings, summaries, responses, and photos by restaurant ID or URL, with JSON/HTML/Markdown output |
 | `serpapi_tripadvisor` | Tripadvisor discovery plus place details, nearby suggestions, and filtered review drill-down by place ID |
 | `trakt_movies` | Public Trakt movie discovery, related-title recommendations, current lists, metadata, and trailer/video links; requires a Trakt application Client ID |
 | `trakt_account` | Optional read-only Trakt OAuth context: personalized recommendations, deterministic night-workflow watched filtering, watchlist, history, ratings, favorites, personal/smart lists, and up-next; requires Client Secret plus `./bin/trakt-auth` |
@@ -318,7 +331,7 @@ JSON object printed to stdout:
 | `opencode` | Autonomous coding agent |
 | `calculator` | Math, stats, unit conversions |
 
-All 20 `serpapi_*` tools require `SERP_API_KEY` in the active mode env and are
+All 22 `serpapi_*` tools require `SERP_API_KEY` in the active mode env and are
 excluded from that mode's callable registry and Tool RAG sync when it is absent.
 `flight_search` can instead use its keyless fallback. See the full
 [SerpApi tools guide](../docs/tools/serp-api-tool/README.md).

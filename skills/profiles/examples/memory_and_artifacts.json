@@ -48,6 +48,7 @@
     "serpapi_google_trending_now": false,
     "serpapi_tripadvisor": false,
     "serpapi_travel_explore": false,
+    "serpapi_open_table_reviews": false,
     "serpapi_yelp_search": false,
     "serpapi_youtube": false,
     "serpapi_youtube_search": false,

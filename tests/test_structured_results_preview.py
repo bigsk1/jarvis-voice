@@ -52,6 +52,7 @@ const expectedTools = [
   'serpapi_ebay_product',
   'serpapi_hotel_search',
   'serpapi_yelp_search',
+  'serpapi_open_table_reviews',
   'serpapi_search_index',
   'serpapi_google_images_light',
   'serpapi_google_news_light',
@@ -753,7 +754,7 @@ for (const expected of [
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
 
 
-def test_tripadvisor_renderer_formats_details_nearby_places_and_reviews():
+def test_restaurant_review_renderers_format_details_and_review_cards():
     script = f"""
 const fs = require('fs');
 const vm = require('vm');
@@ -834,6 +835,69 @@ for (const expected of [
   'We loved walking the old streets'
 ]) {{
   if (!reviewsHtml.includes(expected)) process.exit(3);
+}}
+
+const openTableHtml = renderer.render({{
+  serpapi_open_table_reviews: {{
+    rid: 'r/central-park-boathouse-new-york-2',
+    restaurant_name: 'Central Park Boathouse',
+    restaurant_url: 'https://www.opentable.com/r/central-park-boathouse-new-york-2?page=1',
+    page: 1,
+    total_pages: 217,
+    output_format: 'json',
+    reviews_summary: {{
+      reviews_count: 1662,
+      ratings_summary: {{overall: 4.6}}
+    }},
+    reviews: [{{
+      text: 'The lake view was stunning and dinner was excellent.',
+      dined_at: '2026-08-01T17:30:00Z',
+      user: {{name: 'Julie', location: 'Nashville', vip: true}},
+      rating: {{overall: 5, food: 5, service: 5, ambience: 5, value: 4, noise: 'Moderate'}},
+      response: {{content: 'Thank you for dining with us.'}},
+      images: [{{url: 'https://images.example/review.jpg'}}]
+    }}]
+  }}
+}});
+for (const expected of [
+  'OpenTable reviews', 'Central Park Boathouse', '★ 4.6 overall',
+  '1,662 total reviews', 'Page 1 of 217', 'Julie', 'Nashville',
+  'VIP diner', 'Food 5', 'Service 5', 'The lake view was stunning',
+  'Restaurant response: Thank you for dining with us.'
+]) {{
+  if (!openTableHtml.includes(expected)) process.exit(4);
+}}
+
+const markdownHtml = renderer.render({{
+  serpapi_open_table_reviews: {{
+    rid: 'r/central-park-boathouse-new-york-2',
+    restaurant_name: 'Central Park Boathouse',
+    restaurant_url: 'https://www.opentable.com/r/central-park-boathouse-new-york-2',
+    output_format: 'markdown',
+    content_chars: 42,
+    content: '# Reviews\\n\\nA token-efficient review table.'
+  }}
+}});
+for (const expected of [
+  'Markdown provider response', 'Markdown review document',
+  '42 characters', 'Untrusted external content',
+  'A token-efficient review table.'
+]) {{
+  if (!markdownHtml.includes(expected)) process.exit(5);
+}}
+
+const rawHtmlPreview = renderer.render({{
+  serpapi_open_table_reviews: {{
+    restaurant_name: 'Central Park Boathouse',
+    restaurant_url: 'https://www.opentable.com/r/central-park-boathouse-new-york-2',
+    output_format: 'html',
+    content_chars: 58,
+    content: '<script>alert(1)</script><p>Excellent dinner and service.</p>'
+  }}
+}});
+if (rawHtmlPreview.includes('<script>') || rawHtmlPreview.includes('<p>')) process.exit(6);
+for (const expected of ['HTML provider response', 'Excellent dinner and service.']) {{
+  if (!rawHtmlPreview.includes(expected)) process.exit(7);
 }}
 """
 

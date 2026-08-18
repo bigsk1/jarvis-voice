@@ -339,6 +339,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_ebay_product', payload => this._adaptEbayProduct(payload));
     this.register('serpapi_hotel_search', payload => this._adaptHotels(payload));
     this.register('serpapi_yelp_search', payload => this._adaptYelp(payload));
+    this.register('serpapi_open_table_reviews', payload => this._adaptOpenTableReviews(payload));
     this.register('serpapi_search_index', payload => this._adaptSearchIndex(payload));
     this.register('serpapi_google_images_light', payload => this._adaptGoogleImagesLight(payload));
     this.register('serpapi_google_news_light', payload => this._adaptGoogleNewsLight(payload));
@@ -604,6 +605,93 @@ class StructuredResultsRenderer {
       eyebrow: 'Yelp',
       heading: `${description}${location}`,
       subtitle: payload.sort_by ? `Sorted by ${payload.sort_by.replace(/_/g, ' ')}` : '',
+      items,
+    };
+  }
+
+  _adaptOpenTableReviews(payload) {
+    const format = String(payload.output_format || 'json').toLowerCase();
+    if (format !== 'json' && payload.content) {
+      const plainContent = format === 'html'
+        ? String(payload.content).replace(/<[^>]*>/g, ' ')
+        : String(payload.content);
+      return {
+        kind: 'local',
+        eyebrow: 'OpenTable reviews',
+        heading: payload.restaurant_name || payload.rid || 'OpenTable restaurant',
+        subtitle: `${format === 'markdown' ? 'Markdown' : 'HTML'} provider response`,
+        actionUrl: payload.restaurant_url,
+        actionLabel: 'Open on OpenTable',
+        items: [{
+          title: `${format === 'markdown' ? 'Markdown' : 'HTML'} review document`,
+          url: payload.restaurant_url,
+          primary: payload.content_chars != null
+            ? `${this._formatCount(payload.content_chars)} characters`
+            : '',
+          chips: ['Untrusted external content'],
+          details: [this._compactText(plainContent, 420)],
+          actionLabel: 'Open restaurant',
+        }],
+      };
+    }
+
+    const rows = Array.isArray(payload.reviews)
+      ? payload.reviews.slice(0, 5)
+      : this._rows(payload);
+    const items = rows.map((row, index) => {
+      const user = row.user && typeof row.user === 'object' ? row.user : {};
+      const rating = row.rating && typeof row.rating === 'object' ? row.rating : {};
+      const response = row.response && typeof row.response === 'object' ? row.response : {};
+      const images = Array.isArray(row.images) ? row.images : [];
+      const categoryRatings = [
+        rating.food != null ? `Food ${rating.food}` : '',
+        rating.service != null ? `Service ${rating.service}` : '',
+        rating.ambience != null ? `Ambience ${rating.ambience}` : '',
+        rating.value != null ? `Value ${rating.value}` : '',
+        rating.noise ? `Noise: ${rating.noise}` : '',
+      ].filter(Boolean).join(' · ');
+      const chips = [
+        user.location,
+        row.dined_at ? `Dined ${this._formatDateTime(row.dined_at)}` : '',
+        user.vip === true ? 'VIP diner' : '',
+      ].filter(Boolean).map(String);
+      return {
+        title: user.name || `Review ${index + 1}`,
+        url: payload.restaurant_url,
+        image: images[0]?.url || user.avatar,
+        primary: rating.overall != null ? `★ ${rating.overall}` : '',
+        chips,
+        details: [
+          row.text ? this._compactText(row.text, 320) : '',
+          categoryRatings,
+          response.content
+            ? `Restaurant response: ${this._compactText(response.content, 180)}`
+            : '',
+        ].filter(Boolean),
+        actionLabel: 'Open restaurant',
+      };
+    });
+    const summary = payload.reviews_summary && typeof payload.reviews_summary === 'object'
+      ? payload.reviews_summary
+      : {};
+    const ratings = summary.ratings_summary && typeof summary.ratings_summary === 'object'
+      ? summary.ratings_summary
+      : {};
+    const subtitle = [
+      ratings.overall != null ? `★ ${ratings.overall} overall` : '',
+      summary.reviews_count != null
+        ? `${this._formatCount(summary.reviews_count)} total reviews`
+        : '',
+      payload.total_pages != null ? `Page ${payload.page || 1} of ${payload.total_pages}` : '',
+    ].filter(Boolean).join(' · ');
+    return {
+      kind: 'local',
+      layout: 'rail',
+      eyebrow: 'OpenTable reviews',
+      heading: payload.restaurant_name || payload.rid || 'OpenTable restaurant',
+      subtitle,
+      actionUrl: payload.restaurant_url,
+      actionLabel: 'Open on OpenTable',
       items,
     };
   }

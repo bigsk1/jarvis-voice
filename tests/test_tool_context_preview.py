@@ -1512,6 +1512,99 @@ class ToolContextPreviewTests(unittest.TestCase):
         )
         self.assertNotIn("service_options", candidates[0])
 
+    def test_open_table_reviews_preview_keeps_bounded_reviews_and_rating_summary(self):
+        reviews = [
+            {
+                "id": f"OT-{index}",
+                "text": "A detailed restaurant review. " * 80,
+                "dined_at": "2026-08-01T17:30:00Z",
+                "submitted_at": "2026-08-02T17:35:36Z",
+                "user": {"name": f"Diner {index}", "location": "Portland"},
+                "rating": {"overall": 5, "food": 5, "service": 4},
+                "response": {"content": "Thank you for visiting. " * 40},
+                "images": [{"url": f"https://images.example/review-{index}.jpg"}],
+            }
+            for index in range(1, 7)
+        ]
+        result = {
+            "ok": True,
+            "speech": "Found OpenTable reviews.",
+            "data": {
+                "engine": "open_table_reviews",
+                "rid": "r/example-restaurant",
+                "restaurant_name": "Example Restaurant",
+                "restaurant_url": "https://www.opentable.com/r/example-restaurant?page=1",
+                "page": 1,
+                "total_pages": 12,
+                "has_more": True,
+                "next_page": 2,
+                "output_format": "json",
+                "results_count": 6,
+                "reviews_summary": {
+                    "reviews_count": 120,
+                    "ratings_count": 100,
+                    "ratings_summary": {"overall": 4.7, "food": 4.6},
+                    "ai_summary": "Guests consistently praise the food and service.",
+                },
+                "reviews": reviews,
+                "top_results": reviews[:5],
+                "raw": {"large_provider_payload": "x" * 12000},
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_open_table_reviews",
+            result,
+        )
+
+        parsed = json.loads(preview)
+        context = parsed["llm_context_preview"]
+        candidates = context["source_candidates"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 6000)
+        self.assertEqual(len(candidates), 5)
+        self.assertEqual(candidates[0]["id"], "OT-1")
+        self.assertEqual(candidates[0]["user"]["name"], "Diner 1")
+        self.assertEqual(candidates[0]["rating"]["overall"], 5)
+        self.assertIn("detailed restaurant review", candidates[0]["text"])
+        self.assertEqual(context["data_preview"]["next_page"], 2)
+        self.assertEqual(
+            context["data_preview"]["reviews_summary"]["ratings_summary"]["overall"],
+            4.7,
+        )
+        self.assertNotIn("raw", context["data_preview"])
+
+    def test_open_table_html_preview_never_sends_the_full_document_to_the_model(self):
+        content = "<html><body>" + ("Excellent dinner. " * 20000) + "</body></html>"
+        result = {
+            "ok": True,
+            "speech": "Fetched OpenTable reviews as HTML.",
+            "data": {
+                "engine": "open_table_reviews",
+                "rid": "r/example-restaurant",
+                "restaurant_name": "Example Restaurant",
+                "restaurant_url": "https://www.opentable.com/r/example-restaurant",
+                "page": 1,
+                "output_format": "html",
+                "content": content,
+                "content_chars": len(content),
+                "external_content_trust": "untrusted",
+            },
+        }
+
+        preview, total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "serpapi_open_table_reviews",
+            result,
+        )
+
+        parsed = json.loads(preview)["llm_context_preview"]["data_preview"]
+        self.assertTrue(truncated)
+        self.assertGreater(total, 300000)
+        self.assertLessEqual(shown, 6000)
+        self.assertEqual(parsed["content_chars"], len(content))
+        self.assertIn("Excellent dinner", parsed["content_excerpt"])
+        self.assertNotIn("content", parsed)
+
     def test_tripadvisor_preview_keeps_place_ids_and_followup_evidence(self):
         result = {
             "ok": True,

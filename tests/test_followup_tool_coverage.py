@@ -1315,6 +1315,49 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "serpapi_open_table_reviews": _case(
+        {
+            "engine": "open_table_reviews",
+            "rid": "r/central-park-boathouse-new-york-2",
+            "restaurant_name": "Central Park Boathouse New York",
+            "restaurant_url": (
+                "https://www.opentable.com/r/central-park-boathouse-new-york-2?page=1"
+            ),
+            "page": 1,
+            "total_pages": 217,
+            "has_more": True,
+            "next_page": 2,
+            "output_format": "json",
+            "results_count": 1,
+            "serpapi_searches_used": 1,
+            "external_content_trust": "untrusted",
+            "untrusted_external_content": True,
+            "source": "SerpApi OpenTable Reviews",
+            "reviews_summary": {
+                "reviews_count": 1662,
+                "ratings_count": 950,
+                "ratings_summary": {"overall": 4.6, "food": 4.4},
+                "ai_summary": "Diners praise the lakeside views and attentive service.",
+            },
+            "reviews": [
+                {
+                    "id": "OT-1",
+                    "text": "The lake view was stunning and dinner was excellent.",
+                    "dined_at": "2026-08-01T17:30:00Z",
+                    "submitted_at": "2026-08-02T17:35:36Z",
+                    "user": {"name": "Julie", "location": "Nashville"},
+                    "rating": {"overall": 5, "food": 5, "service": 5},
+                    "response": {
+                        "content": "Thank you for dining with us.",
+                        "date": "2026-08-03T17:42:46Z",
+                    },
+                    "images": [
+                        {"id": "photo-1", "url": "https://images.example/review.jpg"}
+                    ],
+                }
+            ],
+        }
+    ),
     "serpapi_amazon_search": _case(
         {
             "engine": "amazon",
@@ -1837,6 +1880,39 @@ def test_yelp_search_followup_keeps_business_identity_and_comparison_fields():
     assert result["candidates"][0]["reviews"] == 24
     assert result["candidates"][0]["categories"] == ["Cafes", "Coffee & Tea"]
     assert result["candidates"][0]["neighborhoods"] == "Hillsboro"
+
+
+def test_open_table_reviews_followup_keeps_rating_review_and_page_context():
+    payload, _ = LOCAL_TOOL_SAMPLES["serpapi_open_table_reviews"]
+
+    result = followup.extract_followup_data(
+        {"serpapi_open_table_reviews": payload}
+    )["serpapi_open_table_reviews"]
+
+    assert result["rid"] == "r/central-park-boathouse-new-york-2"
+    assert result["next_page"] == 2
+    assert result["reviews_summary"]["ratings_summary"]["overall"] == 4.6
+    assert result["reviews"][0]["user"]["name"] == "Julie"
+    assert result["reviews"][0]["rating"]["overall"] == 5
+    assert result["reviews"][0]["response"]["content"].startswith("Thank you")
+
+
+def test_open_table_markdown_followup_keeps_only_a_bounded_excerpt():
+    content = "# Reviews\n\n" + ("Excellent food and service. " * 500)
+    result = followup.extract_followup_data(
+        {
+            "serpapi_open_table_reviews": {
+                "rid": "r/example-restaurant",
+                "output_format": "markdown",
+                "content": content,
+                "content_chars": len(content),
+            }
+        }
+    )["serpapi_open_table_reviews"]
+
+    assert result["content_chars"] == len(content)
+    assert result["content_excerpt"].startswith("# Reviews")
+    assert len(result["content_excerpt"]) < 2100
 
 
 def test_bounded_default_preserves_live_scalar_payloads_and_false_values():

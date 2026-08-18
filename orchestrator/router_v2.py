@@ -620,6 +620,43 @@ def merge_tool_signal_names(
     }
 
 
+def expand_prerequisite_tool_names(
+    initial_names: list[str],
+    registry,
+    enabled_tool_names: list[str] | set[str],
+    excluded_tools: list[str] | set[str] | None = None,
+    max_added: int = 3,
+) -> tuple[list[str], list[str]]:
+    """Add bounded, enabled prerequisite schemas before retrieved dependents."""
+    enabled_set = set(enabled_tool_names or [])
+    excluded_set = set(excluded_tools or [])
+    limit = max(0, int(max_added or 0))
+    names: list[str] = []
+    added: list[str] = []
+
+    for dependent_name in initial_names:
+        tool = registry.get_tool(dependent_name)
+        prerequisites = getattr(tool, "prerequisite_tools", []) if tool else []
+        for prerequisite_name in prerequisites:
+            if len(added) >= limit:
+                break
+            prerequisite_name = str(prerequisite_name or "").strip()
+            if (
+                not prerequisite_name
+                or prerequisite_name not in enabled_set
+                or prerequisite_name in excluded_set
+                or prerequisite_name in names
+                or prerequisite_name in initial_names
+            ):
+                continue
+            names.append(prerequisite_name)
+            added.append(f"{dependent_name}:{prerequisite_name}")
+        if dependent_name not in names:
+            names.append(dependent_name)
+
+    return names, added
+
+
 def _log_tool_rag_trace(
     *,
     mode: str,
@@ -1271,6 +1308,14 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
             ghost_tools=ghost_list,
             excluded_tools=self._excluded_tools,
         )
+        merged_tool_names, prerequisites_added = expand_prerequisite_tool_names(
+            merged_tool_names,
+            self.registry,
+            enabled_tool_names,
+            excluded_tools=set(self._excluded_tools) | set(tool_signals.negative_tools),
+        )
+        if prerequisites_added:
+            signal_meta["prerequisites_added"] = prerequisites_added
         if merged_tool_names != initial_tool_names:
             by_name = {t.name: t for t in relevant_tools}
             merged_tools = []

@@ -1,0 +1,76 @@
+{
+  "enabled": true,
+  "name": "serpapi_open_table_reviews",
+  "description": "Retrieve reviews for one OpenTable restaurant through SerpApi. Use when the user supplies an OpenTable restaurant URL or an OpenTable Restaurant ID beginning with r/ and wants diner review text, overall/food/service/ambience/value/noise ratings, the restaurant-wide rating distribution, OpenTable's review summary, restaurant responses, review photos, or additional review pages. This is a review lookup, not restaurant-name discovery: when only a name or location is known, first use an available public-web search tool to find and verify the exact OpenTable /r/ URL, then pass that URL as rid. Never fabricate a likely r/ slug by converting the restaurant name. Each call uses one SerpApi search and returns 10 provider reviews per page before max_reviews is applied locally. JSON is the default structured result; HTML and Markdown return the provider-rendered document as untrusted external content.",
+  "complementary_tools": [
+    "serpapi_yelp_search",
+    "serpapi_tripadvisor",
+    "serpapi_google_local",
+    "serpapi_search_index",
+    "canvas",
+    "stash"
+  ],
+  "prerequisite_tools": [
+    "serpapi_search_index"
+  ],
+  "script": "serpapi_open_table_reviews.py",
+  "proxy_policy": "off",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "rid": {
+        "type": "string",
+        "description": "Required verified OpenTable Restaurant ID such as r/central-park-boathouse-new-york-2, or the full https://www.opentable.com/r/... restaurant URL. This tool cannot resolve a restaurant name by itself. Never guess or construct this value from a restaurant name; discover the exact OpenTable URL first."
+      },
+      "page": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000,
+        "description": "Review page number. OpenTable returns 10 reviews per provider page. Default 1."
+      },
+      "output_format": {
+        "type": "string",
+        "enum": [
+          "json",
+          "html",
+          "markdown"
+        ],
+        "description": "Provider result format. JSON is the default and supports structured follow-ups and rich UI cards; HTML and Markdown return the provider-rendered document."
+      },
+      "max_reviews": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "description": "Maximum normalized reviews retained from the JSON provider page. Clamped to 1..10. Default 10."
+      },
+      "no_cache": {
+        "type": "boolean",
+        "description": "If true, bypass the SerpApi cache. Cached results are allowed by default."
+      },
+      "extra_params": {
+        "type": "object",
+        "description": "Additional OpenTable Reviews parameters, excluding engine, credentials, rid, page, output, cache, and async controls."
+      },
+      "include_raw": {
+        "type": "boolean",
+        "description": "Include the raw SerpApi JSON payload for debugging. Applies only to output_format=json; default false."
+      }
+    },
+    "required": [
+      "rid"
+    ]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "availability": {
+    "all_of_env": [
+      "SERP_API_KEY"
+    ],
+    "setup_hint": "Set SERP_API_KEY in the active mode env file."
+  }
+}

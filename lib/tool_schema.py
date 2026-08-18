@@ -241,6 +241,7 @@ class ToolSchema:
         permissions: dict[str, Any] | None = None,
         deterministic_routing: dict[str, Any] | None = None,
         proxy_policy: str = "inherit",
+        prerequisite_tools: list[str] | None = None,
     ):
         """
         Initialize a tool schema.
@@ -260,6 +261,8 @@ class ToolSchema:
                 }
             deterministic_routing: Optional metadata for non-LLM fallback routing.
             proxy_policy: Runtime network policy: inherit, off, prefer, or require.
+            prerequisite_tools: Optional upstream tools that should be visible
+                whenever this tool is retrieved so required inputs can be resolved.
         """
         self.name = name
         self.description = description
@@ -274,6 +277,12 @@ class ToolSchema:
         }
         self.deterministic_routing = deterministic_routing or {}
         self.proxy_policy = normalize_proxy_policy(proxy_policy)
+        raw_prerequisites = prerequisite_tools if isinstance(prerequisite_tools, list) else []
+        self.prerequisite_tools = list(dict.fromkeys(
+            tool_name.strip()
+            for tool_name in raw_prerequisites
+            if isinstance(tool_name, str) and tool_name.strip()
+        ))
     
     def to_openai_format(self) -> dict[str, Any]:
         """Convert to OpenAI function calling format."""
@@ -380,6 +389,7 @@ Parameters:
             permissions=data.get("permissions", None),
             deterministic_routing=data.get("deterministic_routing", None),
             proxy_policy=data.get("proxy_policy", "inherit"),
+            prerequisite_tools=data.get("prerequisite_tools", None),
         )
 
 
@@ -485,7 +495,7 @@ class ToolRegistry:
                 # Legacy: Skip opencode tool if disabled in config
                 if tool_file.stem == 'opencode' and not opencode_enabled:
                     if verbose:
-                        print(f"⊝ Skipping opencode tool (disabled in config)")
+                        print("⊝ Skipping opencode tool (disabled in config)")
                     continue
 
                 # Credential-aware availability: runs AFTER profile resolution

@@ -6,6 +6,7 @@ import logging
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
@@ -14,12 +15,50 @@ sys.path.insert(0, str(PROJECT_ROOT / "orchestrator"))
 
 from router_v2 import (  # noqa: E402
     _cap_tool_names_for_schema,
+    expand_prerequisite_tool_names,
     _log_tool_rag_signal_meta,
     _resolve_tool_rag_limit,
 )
 
 
 class ToolRagLimitTests(unittest.TestCase):
+    def test_enabled_prerequisite_is_added_before_dependent_and_bounded(self):
+        tools = {
+            "detail_tool": SimpleNamespace(
+                prerequisite_tools=["lookup_tool", "blocked_tool", "extra_tool"]
+            ),
+            "lookup_tool": SimpleNamespace(prerequisite_tools=[]),
+            "extra_tool": SimpleNamespace(prerequisite_tools=[]),
+        }
+        registry = SimpleNamespace(get_tool=lambda name: tools.get(name))
+
+        names, added = expand_prerequisite_tool_names(
+            ["search_memory", "detail_tool"],
+            registry,
+            {"search_memory", "detail_tool", "lookup_tool", "blocked_tool", "extra_tool"},
+            excluded_tools={"blocked_tool"},
+            max_added=1,
+        )
+
+        self.assertEqual(names, ["search_memory", "lookup_tool", "detail_tool"])
+        self.assertEqual(added, ["detail_tool:lookup_tool"])
+
+    def test_prerequisite_respects_exclusions(self):
+        dependent = SimpleNamespace(prerequisite_tools=["lookup_tool"])
+        registry = SimpleNamespace(
+            get_tool=lambda name: dependent if name == "detail_tool" else None
+        )
+
+        names, added = expand_prerequisite_tool_names(
+            ["detail_tool"],
+            registry,
+            {"detail_tool", "lookup_tool"},
+            excluded_tools={"lookup_tool"},
+        )
+
+        self.assertEqual(names, ["detail_tool"])
+        self.assertEqual(added, [])
+
     def test_final_cap_prioritizes_explicit_tool_and_discovery(self):
         names = [
             "search_memory",

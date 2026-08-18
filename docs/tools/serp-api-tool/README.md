@@ -2,7 +2,7 @@
 
 Jarvis provides a family of focused SerpApi tools for shopping, indexed-web
 source discovery, existing-image discovery, news, trend analysis, events, local
-places, sports, travel, and YouTube. Each tool has its own schema and normalized result shape so
+places and restaurant reviews, sports, travel, and YouTube. Each tool has its own schema and normalized result shape so
 Tool RAG can select a narrow capability instead of routing every request through
 one ambiguous search tool.
 
@@ -33,6 +33,7 @@ discover general public webpages and source URLs.
 | `serpapi_hotel_search` | `google_hotels` | Future lodging with stay dates, guests, prices, ratings, amenities, and property links |
 | `serpapi_travel_explore` | `google_travel_explore` | Flexible destination discovery from an origin with suggested dates, headline flight/hotel planning prices, and exact airport handoffs; see the [Travel Explore guide](../travel-explore-tool/README.md) |
 | `serpapi_tripadvisor` | `tripadvisor`, `tripadvisor_place`, `tripadvisor_reviews` | Destination, hotel, restaurant, attraction, and forum discovery plus place details, nearby suggestions, and reviews |
+| `serpapi_open_table_reviews` | `open_table_reviews` | Paginated OpenTable diner reviews, rating summaries, category ratings, restaurant responses, and photos by restaurant ID or URL; JSON, HTML, or Markdown output |
 | `serpapi_yelp_search` | `yelp`, `yelp_reviews` | Restaurants and local businesses with Yelp ratings, filters, price tiers, and optional review excerpts |
 | `serpapi_youtube_search` | `youtube` | YouTube video discovery by keyword |
 | `serpapi_youtube` | `youtube_video`, `youtube_video_transcript` | Video details and optional transcript fallback by URL or video ID |
@@ -64,10 +65,12 @@ The family uses these common layers:
   image-gallery, multi-retailer shopping, hotel, Travel Explore, flight,
   Tripadvisor, Google Events, Google
   Local, Google Local Services, Google News Light, Google Trends, Trending Now,
-  Google Sports, Search Index, eBay, Yelp, Maps, and YouTube cards.
+  Google Sports, Search Index, eBay, OpenTable Reviews, Yelp, Maps, and YouTube cards.
 
 Raw provider JSON is available only through each tool's `include_raw` debug
 option. Normal conversational and workflow calls should leave it off.
+`serpapi_open_table_reviews` additionally supports explicit HTML and Markdown
+provider output; both remain labeled and handled as untrusted external content.
 
 ## Setup and mode-aware availability
 
@@ -83,7 +86,7 @@ Use `config/cloud.env` for cloud mode and `config/local.env` for local mode.
 Shopping Light when no location is supplied. The postal code also localizes
 Amazon delivery and Home Depot availability where supported.
 
-The twenty-one `serpapi_*` manifests declare:
+The twenty-two `serpapi_*` manifests declare:
 
 ```json
 "availability": {
@@ -171,6 +174,7 @@ additional searches:
 | Home Depot `include_product_details=true` | 1 additional product call |
 | Tripadvisor search with details and reviews | Up to 3 total calls |
 | Tripadvisor details-only or reviews-only action | 1 |
+| OpenTable Reviews JSON, HTML, or Markdown page | 1 |
 | Yelp `include_reviews=true` | 2 total calls |
 | YouTube `include_transcript=true` | 2 total calls |
 | Flight search with SerpApi | 1 |
@@ -679,6 +683,35 @@ because Tripadvisor discontinued that API surface.
 Yelp does not consistently return full addresses or hours; use Maps when those
 fields are required.
 
+### OpenTable Reviews
+
+`serpapi_open_table_reviews` is a focused review lookup, not a restaurant-name
+search. Pass either the `r/...` restaurant ID from an OpenTable URL or the full
+restaurant URL:
+
+```json
+{
+  "rid": "https://www.opentable.com/r/central-park-boathouse-new-york-2",
+  "page": 1,
+  "output_format": "json",
+  "max_reviews": 10
+}
+```
+
+JSON output normalizes the restaurant-wide rating summary, up to ten reviews
+from the selected provider page, diner metadata, overall/food/service/ambience/
+value/noise ratings, restaurant responses, review photos, and next/previous
+page handoffs. Use `output_format: "markdown"` or `"html"` only when the user
+explicitly wants the provider-rendered document. Those formats return raw
+untrusted content; JSON remains the normal choice for grounded follow-ups and
+the Web review-card adapter. If only a restaurant name is known, find its public
+OpenTable restaurant URL with a search tool before calling this tool. Its
+manifest declares `serpapi_search_index` as a prerequisite, so Tool RAG keeps
+that focused URL resolver visible beside the review tool without a hardcoded
+OpenTable router rule. Search for the exact restaurant and location on
+`opentable.com/r`, verify the matched title/location, and never manufacture an
+`r/...` slug from the name.
+
 ### YouTube
 
 Discover videos:
@@ -783,6 +816,7 @@ reuse the correct item or place instead of guessing:
 - Amazon ASINs, links, images, prices, ratings, Prime, delivery, and stock;
 - eBay and Home Depot product IDs;
 - Maps, Yelp, and Tripadvisor place IDs;
+- OpenTable restaurant IDs, pagination, rating summaries, and bounded review excerpts;
 - Google Trends summaries, regional values, recent timeline points, and
   related links;
 - Trending Now volume/growth signals and exact selected-trend news tokens;

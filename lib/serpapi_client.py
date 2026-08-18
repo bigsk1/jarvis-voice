@@ -11,6 +11,7 @@ from http_client import get_proxy_config, http_request
 from security_utils import redact_sensitive_text
 
 SERPAPI_ENDPOINT = "https://serpapi.com/search.json"
+SERPAPI_SEARCH_ENDPOINT = "https://serpapi.com/search"
 SERPAPI_STATUS_PAGE_URL = "https://status.serpapi.com/"
 SERPAPI_UNRESOLVED_INCIDENTS_ENDPOINT = (
     "https://status.serpapi.com/api/v2/incidents/unresolved.json"
@@ -25,6 +26,7 @@ SERPAPI_TOOL_ENGINES = {
     "serpapi_google_local": ("google_local",),
     "serpapi_google_local_services": ("google_local_services",),
     "serpapi_maps_search": ("google_maps",),
+    "serpapi_open_table_reviews": ("open_table_reviews",),
     "serpapi_google_images_light": ("google_images_light",),
     "serpapi_google_news_light": ("google_news_light",),
     "serpapi_google_shopping_light": ("google_shopping_light",),
@@ -72,6 +74,7 @@ SERPAPI_ENGINE_LABELS = {
     "youtube_video": "YouTube Video",
     "youtube_video_transcript": "YouTube Video Transcript",
     "news": "Google News",
+    "open_table_reviews": "OpenTable Reviews",
 }
 
 SERPAPI_ENGINE_STATUS_ALIASES = {
@@ -137,6 +140,12 @@ SERPAPI_ENGINE_STATUS_ALIASES = {
         "youtube transcript",
     ),
     "news": ("google news api", "google news"),
+    "open_table_reviews": (
+        "opentable reviews api",
+        "opentable reviews",
+        "open table reviews api",
+        "open table reviews",
+    ),
 }
 
 _TRANSIENT_SERPAPI_ERROR_MARKERS = (
@@ -494,6 +503,56 @@ def request_serpapi(
         safe_error = redact_sensitive_text(str(payload.get("error")))[:1000]
         raise RuntimeError(f"SerpApi error: {safe_error}")
     return payload
+
+
+def request_serpapi_text(
+    params: dict[str, Any],
+    output: str,
+    timeout: int = 25,
+    *,
+    use_proxy: bool = True,
+    fallback_on_proxy_fail: bool = True,
+) -> str:
+    """Request a non-JSON SerpApi representation such as HTML or Markdown."""
+    normalized_output = str(output or "").strip().lower()
+    if normalized_output not in {"html", "md"}:
+        raise ValueError("SerpApi text output must be 'html' or 'md'.")
+
+    final_params = dict(params)
+    final_params["api_key"] = get_api_key()
+    final_params["output"] = normalized_output
+
+    try:
+        response = http_request(
+            "GET",
+            SERPAPI_SEARCH_ENDPOINT,
+            params=final_params,
+            timeout=timeout,
+            use_proxy=use_proxy,
+            fallback_on_proxy_fail=fallback_on_proxy_fail,
+        )
+    except Exception as exc:
+        safe_error = redact_sensitive_text(str(exc))[:1000]
+        raise RuntimeError(
+            f"SerpApi request failed: {safe_error or type(exc).__name__}"
+        ) from None
+
+    if response.status_code >= 400:
+        raise RuntimeError(f"SerpApi request failed with HTTP {response.status_code}.")
+
+    content = str(response.text or "")
+    content_type = str(response.headers.get("content-type") or "").lower()
+    if "json" in content_type or content.lstrip().startswith("{"):
+        try:
+            payload = response.json()
+        except Exception:
+            payload = None
+        if isinstance(payload, dict) and payload.get("error"):
+            safe_error = redact_sensitive_text(str(payload["error"]))[:1000]
+            raise RuntimeError(f"SerpApi error: {safe_error}")
+    if not content.strip():
+        raise RuntimeError("SerpApi returned an empty response.")
+    return content
 
 
 def extract_generic_results(payload: dict[str, Any], engine: str, limit: int) -> list[dict[str, Any]]:

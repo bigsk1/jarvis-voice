@@ -115,6 +115,7 @@ class ModelPromptOverrideTests(unittest.TestCase):
         self.assertIn("page link", override.get("tool_calling_prepend"))
         self.assertIn("serpapi_hotel_search", override.get("tool_calling_prepend"))
         self.assertIn("serpapi_yelp_search", override.get("tool_calling_prepend"))
+        self.assertIn("serpapi_open_table_reviews", override.get("tool_calling_prepend"))
         self.assertIn("serpapi_travel_explore", override.get("tool_calling_prepend"))
         self.assertIn("one successful structured search", override.get("tool_calling_prepend"))
         self.assertIn("Do not search workflows", override.get("tool_calling_prepend"))

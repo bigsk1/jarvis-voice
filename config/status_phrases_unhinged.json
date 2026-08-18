@@ -226,6 +226,7 @@
       "serpapi_search_index": "_family_search",
       "serpapi_travel_explore": "_family_travel",
       "serpapi_tripadvisor": "_family_local_search",
+      "serpapi_open_table_reviews": "_family_local_search",
       "serpapi_yelp_search": "_family_local_search",
       "serpapi_youtube": "_family_search",
       "serpapi_youtube_search": "_family_search",

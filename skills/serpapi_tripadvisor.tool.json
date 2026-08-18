@@ -5,6 +5,7 @@
   "complementary_tools": [
     "serpapi_hotel_search",
     "serpapi_maps_search",
+    "serpapi_open_table_reviews",
     "canvas",
     "stash"
   ],

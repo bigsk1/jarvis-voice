@@ -45,6 +45,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_ebay_product',
     'serpapi_youtube_search',
     'serpapi_yelp_search',
+    'serpapi_open_table_reviews',
     'serpapi_search_index',
     'serpapi_google_events',
     'serpapi_google_local',
@@ -318,6 +319,13 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'engine', 'find_desc', 'find_loc', 'attrs', 'sort_by', 'sort_basis',
         'results_count', 'provider_results_count', 'top_url', 'place_id',
         'serpapi_searches_used', 'source',
+    ],
+    'serpapi_open_table_reviews': [
+        'engine', 'rid', 'restaurant_name', 'restaurant_url', 'top_url',
+        'page', 'total_pages', 'has_previous', 'previous_page', 'has_more',
+        'next_page', 'output_format', 'results_count', 'search_id',
+        'serpapi_searches_used', 'external_content_trust',
+        'untrusted_external_content', 'handling_note', 'source',
     ],
     'serpapi_search_index': [
         'engine', 'query', 'mode', 'safe', 'start', 'num_results',
@@ -3056,6 +3064,71 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 }
                 if compact_reviews:
                     extracted['review_data']['reviews'] = compact_reviews
+
+        if key == 'serpapi_open_table_reviews':
+            summary = payload.get('reviews_summary')
+            if isinstance(summary, dict):
+                compact_summary = {
+                    field: summary[field]
+                    for field in ('reviews_count', 'ratings_count', 'ratings_summary')
+                    if summary.get(field) not in (None, '', [], {})
+                }
+                if summary.get('ai_summary'):
+                    compact_summary['ai_summary'] = _truncate_followup_text(
+                        str(summary['ai_summary']), 1200
+                    )
+                if compact_summary:
+                    extracted['reviews_summary'] = compact_summary
+
+            reviews = payload.get('reviews') or payload.get('top_results') or []
+            if isinstance(reviews, list) and reviews:
+                extracted['results_count'] = payload.get('results_count', len(reviews))
+                compact_reviews = []
+                for review in reviews[:max_candidates]:
+                    if not isinstance(review, dict):
+                        continue
+                    compact_review = {
+                        field: review[field]
+                        for field in ('id', 'dined_at', 'submitted_at', 'rating', 'user')
+                        if review.get(field) not in (None, '', [], {})
+                    }
+                    if review.get('text'):
+                        compact_review['text'] = _truncate_followup_text(
+                            str(review['text']), 700
+                        )
+                    response = review.get('response')
+                    if isinstance(response, dict):
+                        compact_response = {
+                            field: response[field]
+                            for field in ('date',)
+                            if response.get(field) not in (None, '')
+                        }
+                        if response.get('content'):
+                            compact_response['content'] = _truncate_followup_text(
+                                str(response['content']), 500
+                            )
+                        if compact_response:
+                            compact_review['response'] = compact_response
+                    images = review.get('images')
+                    if isinstance(images, list) and images:
+                        compact_review['images'] = [
+                            {
+                                field: image[field]
+                                for field in ('id', 'url')
+                                if image.get(field) not in (None, '')
+                            }
+                            for image in images[:2]
+                            if isinstance(image, dict) and image.get('url')
+                        ]
+                    if compact_review:
+                        compact_reviews.append(compact_review)
+                if compact_reviews:
+                    extracted['reviews'] = compact_reviews
+
+            content = payload.get('content')
+            if isinstance(content, str) and content.strip():
+                extracted['content_chars'] = payload.get('content_chars', len(content))
+                extracted['content_excerpt'] = _truncate_followup_text(content, 2000)
 
         if key == 'serpapi_search_index':
             results = payload.get('results') or payload.get('top_results') or []

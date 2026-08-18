@@ -221,6 +221,8 @@ class ToolExecutor:
             return 120  # One Google Local request with a 90s HTTP allowance
         if tool_name == "serpapi_google_local_services":
             return 200  # One Local Services call, plus a 90s Maps CID lookup when needed
+        if tool_name == "serpapi_open_table_reviews":
+            return 90  # One OpenTable Reviews request with a 45s HTTP allowance
         if tool_name == "serpapi_tripadvisor":
             return 160  # Up to three sequential 45s calls for search + optional place details + reviews
         if tool_name in {"trakt_movies", "trakt_tv_shows", "trakt_account"}:

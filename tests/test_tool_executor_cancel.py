@@ -209,6 +209,12 @@ class ToolExecutorCancelTests(unittest.TestCase):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("serpapi_tripadvisor"), 160)
 
+    def test_open_table_reviews_timeout_allows_full_provider_request(self):
+        executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
+        self.assertEqual(
+            executor._get_subprocess_timeout("serpapi_open_table_reviews"), 90
+        )
+
     def test_trakt_timeout_allows_bounded_related_and_video_calls(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("trakt_movies"), 300)

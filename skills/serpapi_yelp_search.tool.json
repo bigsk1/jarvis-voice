@@ -4,6 +4,7 @@
   "description": "Find restaurants, coffee shops, bars, and other local businesses using Yelp results through SerpApi. Use when Yelp ratings, review counts, price tiers, categories, review snippets, or Yelp filters such as DogsAllowed and GoodForKids matter. The default is Yelp's recommended order; rating and review_count sort the complete returned page locally because Yelp's explicitly sorted response can omit business details. Results include names, Yelp links, stable place IDs, ratings, review counts, price tiers, neighborhoods, open-state labels, categories, and snippets when Yelp returns them. This search does not guarantee street addresses or full operating hours; use a maps or web search tool for those. One normal search uses one SerpApi request; include_reviews uses one additional request for the selected or top result.",
   "complementary_tools": [
     "serpapi_maps_search",
+    "serpapi_open_table_reviews",
     "canvas",
     "stash"
   ],

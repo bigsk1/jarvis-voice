@@ -852,11 +852,12 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `serpapi_hotel_search` - **SerpApi Hotels**: Google Hotels search with check-in/out, guest, price, and rating filters
 - [`serpapi_travel_explore`](docs/tools/travel-explore-tool/README.md) - **SerpApi Travel Explore**: Flexible destination discovery from an origin with suggested dates, headline flight/hotel planning prices, airport handoffs, and public Google Travel links
 - `serpapi_tripadvisor` - **SerpApi Tripadvisor**: Search destinations, hotels, restaurants, attractions, and forums; retrieve place details, nearby suggestions, and filtered reviews by `place_id`
+- `serpapi_open_table_reviews` - **SerpApi OpenTable Reviews**: Retrieve paginated diner reviews, detailed category ratings, rating summaries, restaurant responses, and review photos from an OpenTable restaurant ID or URL; supports JSON, HTML, and Markdown output
 - `serpapi_yelp_search` - **SerpApi Yelp**: Local places (restaurants, coffee, bars) by description + location; filters, sort, optional reviews
 - `serpapi_youtube_search` - **SerpApi YouTube search**: Keyword search with video-first results (title, channel, views, duration, thumbnails)
 - `serpapi_youtube` - **SerpApi YouTube details**: Video metadata and transcript by URL or `video_id` (useful when `youtube_video` / yt-dlp hits auth or cookie limits)
 
-The 21 `serpapi_*` tools require a nonblank key in the active mode's env file.
+The 22 `serpapi_*` tools require a nonblank key in the active mode's env file.
 Without it they are not callable or included in that mode's Tool RAG sync. Jarvis
 Web shows the free Account API quota card only when Settings → System is opened
 and the selected mode has a valid key.
@@ -1547,9 +1548,9 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 <summary><strong>View roadmap and completed milestones</strong></summary>
 
 **Completed (August 2026) — Search, media discovery, OCR, and workflow UX:**
-- ✅ **21 focused SerpApi tools** — Expanded structured search across shopping,
+- ✅ **22 focused SerpApi tools** — Expanded structured search across shopping,
   indexed sources, images, news, trends, events, local places and services,
-  maps, sports, hotels, travel, Tripadvisor, Yelp, and YouTube, with quota
+  maps, sports, hotels, travel, Tripadvisor, OpenTable reviews, Yelp, and YouTube, with quota
   visibility and incident-aware outage diagnostics
 - ✅ **Movie and TV discovery** — Added public Trakt and TMDB tools, optional
   read-only Trakt account context, artwork and trailer enrichment, related-title
@@ -2052,7 +2053,7 @@ Source Available — free for personal use, modification, and non-commercial red
 
 **Current Version:** v2.55.5 (August 2026)
 **Status:** Production Ready ✅
-**Latest Features:** The August 2026 build expands Jarvis with 21 focused
+**Latest Features:** The August 2026 build expands Jarvis with 22 focused
 SerpApi tools, incident-aware outage diagnostics, and new shopping, local,
 sports, and travel workflows. It also adds Trakt/TMDB movie and TV discovery
 with watched-title filtering and recurring genre radars, optional OVIS document

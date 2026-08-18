@@ -27,9 +27,9 @@ from tts_normalizer import XAI_INLINE_SPEECH_TAGS, XAI_WRAPPING_SPEECH_TAGS  # n
 
 
 V1_SHA256 = "6c2ecbb0c032af7f7ffc70b6d093d11e918230e31ef4ddb7bfffadf9f4b4efc1"
-V2_SHA256 = "3725ea9dadaf1b62bc9e13d3c1f5c6304ed5cd5e82c9203eb460c71107cc7712"
-V3_SHA256 = "d10d61134f21dd096ab1dfff93223d5ee3dc19fb70deddaeca95e6fc6c774e37"
-V4_SHA256 = "558ad32d86156901b2117621b998340b2c35f94ab20f70aec8776b78c2409d96"
+V2_SHA256 = "da6a79e6caacdbb15629079aa3cad095d650093b0a865aeb4eff2e386926a36b"
+V3_SHA256 = "d4471025efaf49af999c2104c841b5b208fda6494d7b95a7928ff61b810dcf2d"
+V4_SHA256 = "783672bb395ea6a92279454f5a99713f96029875d6bef0b288613b9bc2dace66"
 
 
 def test_v1_is_exact_established_router_prompt_baseline():
@@ -50,9 +50,9 @@ def test_v2_is_compact_standalone_prompt_with_its_own_hash():
     version, v2 = get_router_system_prompt("v2")
 
     assert version == "v2"
-    assert len(v2) == 13_524
-    assert len(v2.splitlines()) == 88
-    assert len(v2.split()) == 1_904
+    assert len(v2) == 13_771
+    assert len(v2.splitlines()) == 89
+    assert len(v2.split()) == 1_944
     assert v2.isascii()
     assert hashlib.sha256(v2.encode()).hexdigest() == V2_SHA256
 
@@ -61,9 +61,9 @@ def test_v3_is_caveman_hybrid_with_normal_output_guard_and_own_hash():
     version, v3 = get_router_system_prompt("v3")
 
     assert version == "v3"
-    assert len(v3) == 9_567
-    assert len(v3.splitlines()) == 91
-    assert len(v3.split()) == 1_242
+    assert len(v3) == 9_814
+    assert len(v3.splitlines()) == 92
+    assert len(v3.split()) == 1_282
     assert v3.isascii()
     assert "NEVER imitate caveman grammar in user-facing answer" in v3
     assert "Speak normal fluent language" in v3
@@ -74,9 +74,9 @@ def test_v4_is_caveman_light_with_normal_output_guard_and_own_hash():
     version, v4 = get_router_system_prompt("v4")
 
     assert version == "v4"
-    assert len(v4) == 10_039
+    assert len(v4) == 10_284
     assert len(v4.splitlines()) == 46
-    assert len(v4.split()) == 1_317
+    assert len(v4.split()) == 1_356
     assert "NEVER use caveman grammar in user answers" in v4
     assert "Speak normal fluent English" in v4
     assert hashlib.sha256(v4.encode()).hexdigest() == V4_SHA256
@@ -90,6 +90,16 @@ def test_maintained_prompts_describe_current_opencode_timeout(version):
     assert "6-minute timeout" not in prompt
     assert "timeout 6 min" not in prompt
     assert "6 min timeout" not in prompt
+
+
+@pytest.mark.parametrize("version", ["v2", "v3", "v4"])
+def test_maintained_prompts_resolve_discoverable_required_inputs(version):
+    _, prompt = get_router_system_prompt(version)
+
+    assert "Required IDs, URLs, and other lookup-derived inputs" in prompt
+    assert "never synthesize them from names" in prompt
+    assert "use a visible lookup tool or tool_search" in prompt
+    assert "Ask only after lookup fails or remains ambiguous" in prompt
 
 
 @pytest.mark.parametrize(

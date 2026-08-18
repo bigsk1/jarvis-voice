@@ -1440,6 +1440,7 @@ class JarvisApp {
       serpapi_hotel_search: '🏨',
       serpapi_youtube: '▶️',
       serpapi_youtube_search: '▶️',
+      serpapi_open_table_reviews: '🍽️',
       serpapi_yelp_search: '⭐',
       serpapi_search_index: '🌐',
       serpapi_google_images_light: '🖼️',

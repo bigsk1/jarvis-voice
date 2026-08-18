@@ -925,6 +925,7 @@ class ContextAssembler:
         )
         is_hotel_search = str(data.get("engine") or "").strip().lower() == "google_hotels"
         is_yelp_search = str(data.get("engine") or "").strip().lower() == "yelp"
+        is_open_table_reviews = normalized_tool_name == "serpapi_open_table_reviews"
         is_search_index = str(tool_name or "").strip().lower() == "serpapi_search_index"
         is_google_events = (
             str(tool_name or "").strip().lower() == "serpapi_google_events"
@@ -1023,6 +1024,43 @@ class ContextAssembler:
                             depth=0,
                             max_depth=1,
                         )
+
+            if is_open_table_reviews:
+                for key in ("id", "dined_at", "submitted_at", "user"):
+                    value = item.get(key)
+                    if value not in (None, "", [], {}):
+                        candidate[key] = self.build_preview_value(
+                            value,
+                            parent_key=key,
+                            depth=0,
+                            max_depth=1,
+                        )
+                if item.get("text"):
+                    candidate["text"] = self.truncate_preview_text(item["text"], 360)
+                response = item.get("response")
+                if isinstance(response, dict):
+                    compact_response = {
+                        key: response[key]
+                        for key in ("date",)
+                        if response.get(key) not in (None, "")
+                    }
+                    if response.get("content"):
+                        compact_response["content"] = self.truncate_preview_text(
+                            response["content"], 220
+                        )
+                    if compact_response:
+                        candidate["response"] = compact_response
+                images = item.get("images")
+                if isinstance(images, list) and images:
+                    candidate["images"] = [
+                        {
+                            key: image[key]
+                            for key in ("id", "url")
+                            if image.get(key) not in (None, "")
+                        }
+                        for image in images[:1]
+                        if isinstance(image, dict) and image.get("url")
+                    ]
 
             if is_search_index:
                 for key in (
@@ -1690,6 +1728,60 @@ class ContextAssembler:
             if compact_review_data:
                 preview["review_data"] = compact_review_data
 
+        return preview
+
+    def build_open_table_reviews_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep OpenTable rating context and bounded review-document content."""
+        if not isinstance(data, dict):
+            return {}
+
+        preview: dict[str, Any] = {}
+        for key in (
+            "engine",
+            "rid",
+            "restaurant_name",
+            "restaurant_url",
+            "page",
+            "total_pages",
+            "has_previous",
+            "previous_page",
+            "has_more",
+            "next_page",
+            "output_format",
+            "results_count",
+            "search_id",
+            "serpapi_searches_used",
+            "external_content_trust",
+            "untrusted_external_content",
+            "handling_note",
+            "source",
+        ):
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                preview[key] = self.build_preview_value(
+                    value,
+                    parent_key=key,
+                    max_depth=2,
+                )
+
+        summary = data.get("reviews_summary")
+        if isinstance(summary, dict):
+            compact_summary = {
+                key: summary[key]
+                for key in ("reviews_count", "ratings_count", "ratings_summary")
+                if summary.get(key) not in (None, "", [], {})
+            }
+            if summary.get("ai_summary"):
+                compact_summary["ai_summary"] = self.truncate_preview_text(
+                    summary["ai_summary"], 1000
+                )
+            if compact_summary:
+                preview["reviews_summary"] = compact_summary
+
+        content = data.get("content")
+        if isinstance(content, str) and content.strip():
+            preview["content_chars"] = data.get("content_chars", len(content))
+            preview["content_excerpt"] = self.truncate_preview_text(content, 1800)
         return preview
 
     def build_tripadvisor_data_preview(self, data: Any) -> dict[str, Any]:
@@ -2869,6 +2961,7 @@ class ContextAssembler:
             "serpapi_youtube",
             "serpapi_google_events",
             "serpapi_travel_explore",
+            "serpapi_open_table_reviews",
             # Account payloads always use an allowlisted projection even when
             # small, so an upstream regression cannot hand OAuth material to
             # the response model or follow-up context.
@@ -2887,6 +2980,8 @@ class ContextAssembler:
             normalized_tool_name = (tool_name or "").lower()
             if normalized_tool_name == "serpapi_yelp_search":
                 data_preview = self.build_yelp_data_preview(data)
+            elif normalized_tool_name == "serpapi_open_table_reviews":
+                data_preview = self.build_open_table_reviews_data_preview(data)
             elif normalized_tool_name == "serpapi_youtube":
                 data_preview = self.build_serpapi_youtube_data_preview(data)
             elif normalized_tool_name == "serpapi_search_index":

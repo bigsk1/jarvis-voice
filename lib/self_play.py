@@ -107,6 +107,7 @@ DEFAULT_ALLOWED_TOOLS = {
     "serpapi_google_trending_now",
     "serpapi_travel_explore",
     "serpapi_maps_search",
+    "serpapi_open_table_reviews",
     "serpapi_amazon_search",
     "serpapi_search_index",
     "serpapi_tripadvisor",
