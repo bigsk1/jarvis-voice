@@ -669,6 +669,8 @@ the operator explicitly pulls and manages the model on that external daemon.
 - Observability improvements (trace + budgets + “why” summaries)
 - Generic tool-result references and automatic payload hydration, after a
   measured opaque-token pilot
+- Cache-aware Intelligence reflection processing with a safe chunked
+  "Process up to 20" option
 - Per-provider media model pickers in Web AI config (Gemini Veo/Omni, Sora variants, etc.)
 - Credential-aware tool/provider availability + manual Tool Doctor diagnostics
 
@@ -1014,6 +1016,100 @@ requirements shipped for file-backed tools (Spotify OAuth, `ssh_remote`,
 - `jarvis-web/server/routes/api.py`, `jarvis-web/client/js/app.js`, `chat.js`
 - `lib/tool_builder.py`, `bin/build-tool`
 - Selected `skills/*.tool.json` manifests with `availability` blocks
+
+---
+
+### 10) Reflection Queue Throughput and Cache-Aware Processing
+**Priority:** Medium operational convenience / cost visibility
+**Status:** Design proposal; keep the current five-reflection default
+
+The Intelligence UI currently offers one action that processes up to five
+pending reflections. `process_reflection_queue(batch_size=5)` selects the
+highest-priority rows and calls the reflection LLM once per experience,
+sequentially. This is a Jarvis work chunk, not one provider batch request. If
+only two rows are pending, the database query naturally returns and processes
+two.
+
+Increasing the number alone does not reduce the number of LLM requests or make
+the provider charge them as a batch. It mainly saves repeated button presses
+and keeps calls close together in time, which can help only when the provider
+actually reuses a substantial common prompt prefix.
+
+**Measured baseline (2026-08-17):** One observed set of 30 consecutive xAI
+`grok-4.6` reflection responses used 141,858 input tokens, of which 4,736 were
+reported as cached (3.34%), plus 10,999 output tokens and about $0.35 in
+recorded cost. Treat this as a diagnostic sample, not a price forecast; active
+mode, provider/model, prompt size, reasoning effort, and pricing can all change.
+
+The low cache share is consistent with the current prompt layout: changing
+experience fields appear near the beginning of the user message, while much of
+the reusable evaluation rubric and JSON schema appears later. Prefix caches
+stop at the first differing content, so merely calling 20 reflections in quick
+succession does not expose most of the shared instructions to caching. This
+matches xAI's recommendation to
+[front-load static content](https://docs.x.ai/developers/advanced-api-usage/prompt-caching/best-practices)
+and monitor the provider-reported cached-token count.
+
+#### Processing options
+
+| Option | Benefit | Main tradeoff | Recommendation |
+|---|---|---|---|
+| Keep **Process 5** only | Shorter synchronous request and bounded surprise cost | Repeated clicks for a backlog | Retain as the primary/default action |
+| Raise the default to 10 or 20 | Fewer clicks | Longer blocking request, greater timeout/failure exposure, and a larger unreviewed charge | Do not make this the default |
+| Add **Process up to 20** as one long request | Simple UI/API change | Can hold the Web request open for several minutes and gives weak partial-progress visibility | Avoid as the first implementation |
+| Add **Process up to 20** as four chunks of five | Backlog convenience with progress and partial completion | Same number of LLM calls and approximately the same model cost | Preferred interactive option |
+| Add **Process All** as a background job | Best for very large queues and leaving the UI | Requires durable job status, cancellation, and restart recovery | Consider only if large queues become routine |
+| Put several experiences into one LLM prompt | May reduce repeated instructions | Cross-experience contamination, harder attribution/parsing, and all-or-nothing retries | Do not use for normal reflection quality |
+
+#### Recommended UI behavior
+
+- Keep **Process 5** as the primary action.
+- When more than five rows are pending, show a secondary **Process up to 20**
+  action. The label should use the real queue count, such as `Process 12` when
+  twelve remain.
+- Implement the larger action as at most four five-item requests. Show progress
+  (`5 of 20`, `10 of 20`) and allow stopping between chunks.
+- Disable overlapping reflection runs from the same UI and refresh insights,
+  pending count, cost, and failure state after each chunk.
+- Explain that the larger action is a convenience and does not itself create a
+  provider batch discount.
+- Optionally show a cost estimate based on recent recorded reflections, clearly
+  labeled as an estimate for the currently active provider/model.
+
+#### Backend contract and safety
+
+- Clamp a requested chunk size to a reviewed range such as `1..20`; do not
+  accept an unbounded `batch_size` query parameter.
+- Preserve priority ordering and process fewer rows when fewer are pending.
+- Return `attempted`, `processed`, `failed`, `remaining`, duration, and the
+  provider/model used rather than only the successful count.
+- Keep each completed reflection committed independently so a later failure or
+  cancellation does not lose earlier work.
+- Never mark a queue row processed when the reflection call or JSON parsing
+  fails. Make retries safe and observable.
+- Continue disabling provider-native tools during reflection; the supplied
+  experience record is the evidence being analyzed.
+
+#### Cache-efficiency work before raising throughput
+
+1. Move the stable reflection rubric, procedural-vs-factual rules, output JSON
+   schema, and examples into a stable prefix or system prompt.
+2. Put only experience-specific query, tool trace, outcome, feedback, and
+   correction data in the variable portion after that prefix. Separate stable
+   Chat-only and tool-enabled variants if necessary.
+3. Preserve one experience per LLM call for clean evidence attribution and
+   independent retries.
+4. Record and aggregate input, output, reasoning, cache-read/cache-write tokens,
+   cost, duration, parse failures, and provider/model for each UI-triggered run.
+5. Compare cache share and cost per reflection before and after the prompt
+   rearrangement. Add the larger UI action only after the behavior remains
+   correct under focused reflection tests.
+
+**Likely files:** `lib/intelligence.py`,
+`jarvis-intelligence/server/routes/maintenance.py`,
+`jarvis-intelligence/client/js/api.js`,
+`jarvis-intelligence/client/js/app.js`, and Intelligence reflection/maintenance
+tests.
 
 ---
 
