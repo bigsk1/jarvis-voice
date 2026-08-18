@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🧀 BrieMine • Cheese Makers Dating</title>
+  <style>
+    :root {
+      --cheese-yellow: #F4D35E;
+      --cheese-orange: #EE964B;
+      --cheese-deep: #D97706;
+      --cheese-cream: #FEF3C7;
+      --cheese-light: #FFFBEB;
+      --cheese-brown: #92400E;
+      --dark-brown: #451A03;
+      --text: #3F2A1D;
+      --white: #FFFFFF;
+      --shadow: rgba(146, 64, 14, 0.15);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Floating Cheese Background */
+    .cheese-bg {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: -1;
+      overflow: hidden;
+    }
+
+    .floating-cheese {
+      position: absolute;
+      font-size: 2.5rem;
+      opacity: 0.08;
+      user-select: none;
+      animation: float-cheese 25s infinite ease-in-out;
+    }
+
+    .floating-cheese:nth-child(1) { top: 10%; left: 8%; animation-delay: 0s; }
+    .floating-cheese:nth-child(2) { top: 25%; left: 75%; animation-delay: -4s; font-size: 3rem; }
+    .floating-cheese:nth-child(3) { top: 55%; left: 15%; animation-delay: -9s; }
+    .floating-cheese:nth-child(4) { top: 70%; left: 82%; animation-delay: -14s; font-size: 2rem; }
+    .floating-cheese:nth-child(5) { top: 40%; left: 40%; animation-delay: -19s; font-size: 3.5rem; }
+
+    @keyframes float-cheese {
+      0%, 100% { transform: translateY(0) rotate(-8deg); }
+      50% { transform: translateY(-45px) rotate(12deg); }
+    }
+
+    /* Navbar */
+    nav {
+      position: sticky;
+      top: 0;
+      background: rgba(255, 251, 235, 0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--cheese-yellow);
+      z-index: 100;
+      padding: 1rem 2rem;
+    }
+
+    .nav-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 1.65rem;
+      font-weight: 800;
+      color: var(--cheese-brown);
+      text-decoration: none;
+    }
+
+    .logo span {
+      background: linear-gradient(90deg, var(--cheese-deep), var(--cheese-orange));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      align-items: center;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: color 0.2s ease;
+    }
+
+    .nav-links a:hover {
+      color: var(--cheese-deep);
+    }
+
+    .nav-cta {
+      background: var(--cheese-deep);
+      color: white !important;
+      padding: 0.55rem 1.25rem;
+      border-radius: 9999px;
+      font-size: 0.9rem;
+      transition: all 0.2s ease;
+    }
+
+    .nav-cta:hover {
+      background: var(--cheese-brown);
+      transform: translateY(-1px);
+    }
+
+    /* Hero */
+    .hero {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 5rem 2rem 4rem;
+      text-align: center;
+      position: relative;
+    }
+
+    .hero h1 {
+      font-size: 3.75rem;
+      font-weight: 900;
+      line-height: 1.05;
+      margin-bottom: 1.25rem;
+      color: var(--dark-brown);
+    }
+
+    .hero h1 .highlight {
+      background: linear-gradient(90deg, #D97706, #F59E0B);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: inline-block;
+    }
+
+    .hero p {
+      font-size: 1.35rem;
+      color: #6B4E31;
+      max-width: 620px;
+      margin: 0 auto 2rem;
+    }
+
+    .cta-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: var(--cheese-deep);
+      color: white;
+      border: none;
+      padding: 1rem 2.25rem;
+      font-size: 1.15rem;
+      font-weight: 700;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 10px 15px -3px var(--shadow), 0 4px 6px -4px var(--shadow);
+    }
+
+    .cta-button:hover {
+      background: var(--cheese-brown);
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 20px 25px -5px var(--shadow), 0 8px 10px -6px var(--shadow);
+    }
+
+    .hero .tagline {
+      margin-top: 1.5rem;
+      font-size: 0.95rem;
+      color: #8B5A2B;
+      font-weight: 600;
+    }
+
+    /* Section Styles */
+    section {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 3.5rem 2rem;
+    }
+
+    .section-title {
+      text-align: center;
+      font-size: 2.35rem;
+      font-weight: 800;
+      margin-bottom: 0.5rem;
+      color: var(--dark-brown);
+    }
+
+    .section-subtitle {
+      text-align: center;
+      color: #6B4E31;
+      margin-bottom: 2.5rem;
+      font-size: 1.1rem;
+    }
+
+    /* How It Works */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .step {
+      background: var(--white);
+      border: 3px solid var(--cheese-yellow);
+      border-radius: 20px;
+      padding: 2rem 1.5rem;
+      text-align: center;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .step:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 15px 25px -8px var(--shadow);
+    }
+
+    .step-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 42px;
+      height: 42px;
+      background: var(--cheese-orange);
+      color: white;
+      font-weight: 800;
+      font-size: 1.3rem;
+      border-radius: 9999px;
+      margin-bottom: 1rem;
+    }
+
+    .step h3 {
+      font-size: 1.3rem;
+      margin-bottom: 0.6rem;
+      color: var(--cheese-brown);
+    }
+
+    .step p {
+      color: #6B4E31;
+      font-size: 0.98rem;
+    }
+
+    /* Featured Profiles */
+    .profiles {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.75rem;
+    }
+
+    .profile {
+      background: var(--white);
+      border-radius: 20px;
+      overflow: hidden;
+      border: 2px solid var(--cheese-yellow);
+      box-shadow: 0 10px 15px -3px var(--shadow);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .profile:hover {
+      transform: translateY(-8px);
+      box-shadow: 0 20px 25px -8px var(--shadow);
+    }
+
+    .profile-header {
+      height: 110px;
+      background: linear-gradient(135deg, var(--cheese-yellow), var(--cheese-orange));
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 4rem;
+    }
+
+    .profile-header::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 30px;
+      background: var(--white);
+      border-radius: 50% 50% 0 0;
+    }
+
+    .profile-body {
+      padding: 1.25rem 1.5rem 1.5rem;
+    }
+
+    .profile-name {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: var(--dark-brown);
+      margin-bottom: 0.15rem;
+    }
+
+    .profile-meta {
+      font-size: 0.85rem;
+      color: #8B5A2B;
+      margin-bottom: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .profile-bio {
+      font-size: 0.95rem;
+      color: #5C4033;
+      margin-bottom: 1.1rem;
+      line-height: 1.45;
+      min-height: 72px;
+    }
+
+    .like-btn {
+      width: 100%;
+      background: #FEF3C7;
+      color: var(--cheese-brown);
+      border: 2px solid var(--cheese-yellow);
+      padding: 0.7rem;
+      font-size: 1rem;
+      font-weight: 700;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .like-btn:hover {
+      background: var(--cheese-yellow);
+      border-color: var(--cheese-deep);
+    }
+
+    .like-btn.liked {
+      background: #FEE2E2;
+      border-color: #F87171;
+      color: #B91C1C;
+    }
+
+    .like-btn.liked:hover {
+      background: #FECACA;
+    }
+
+    /* Testimonials */
+    .testimonials {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .testimonial {
+      background: var(--white);
+      border: 2px solid var(--cheese-orange);
+      border-radius: 18px;
+      padding: 1.75rem;
+      position: relative;
+    }
+
+    .testimonial::before {
+      content: "🧀";
+      position: absolute;
+      top: -12px;
+      left: 24px;
+      background: var(--cheese-cream);
+      font-size: 1.4rem;
+      padding: 2px 8px;
+      border-radius: 9999px;
+    }
+
+    .testimonial p {
+      font-style: italic;
+      color: #5C4033;
+      margin-bottom: 1rem;
+      font-size: 1rem;
+    }
+
+    .testimonial-author {
+      font-weight: 700;
+      color: var(--cheese-brown);
+      font-size: 0.95rem;
+    }
+
+    /* Footer */
+    footer {
+      background: var(--dark-brown);
+      color: #FEF3C7;
+      text-align: center;
+      padding: 2.5rem 2rem 2rem;
+      margin-top: 2rem;
+    }
+
+    footer p {
+      opacity: 0.85;
+      font-size: 0.95rem;
+    }
+
+    .footer-tagline {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+      color: var(--cheese-yellow);
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(69, 26, 3, 0.75);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      padding: 1rem;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--white);
+      border-radius: 24px;
+      max-width: 420px;
+      width: 100%;
+      box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.4);
+      overflow: hidden;
+      border: 4px solid var(--cheese-yellow);
+    }
+
+    .modal-header {
+      background: linear-gradient(to right, var(--cheese-yellow), var(--cheese-orange));
+      padding: 1.25rem 1.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-header h2 {
+      color: var(--dark-brown);
+      font-size: 1.5rem;
+      font-weight: 800;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 1.8rem;
+      line-height: 1;
+      color: var(--dark-brown);
+      cursor: pointer;
+      padding: 0 4px;
+    }
+
+    .modal-body {
+      padding: 1.75rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.15rem;
+    }
+
+    .form-group label {
+      display: block;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+      font-size: 0.95rem;
+      color: var(--cheese-brown);
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border: 2px solid #E5D5B7;
+      border-radius: 12px;
+      font-size: 1rem;
+      background: var(--cheese-light);
+      transition: border-color 0.2s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: var(--cheese-deep);
+    }
+
+    .submit-btn {
+      width: 100%;
+      margin-top: 0.5rem;
+      background: var(--cheese-deep);
+      color: white;
+      border: none;
+      padding: 0.9rem;
+      font-size: 1.1rem;
+      font-weight: 700;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .submit-btn:hover {
+      background: var(--cheese-brown);
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #3F2A1D;
+      color: #FEF3C7;
+      padding: 0.95rem 1.65rem;
+      border-radius: 9999px;
+      font-weight: 600;
+      box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3);
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      z-index: 300;
+      opacity: 0;
+      transition: all 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+      white-space: nowrap;
+      max-width: 92vw;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    .toast .emoji {
+      font-size: 1.3rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .hero h1 {
+        font-size: 2.85rem;
+      }
+      .hero p {
+        font-size: 1.15rem;
+      }
+      .nav-links {
+        gap: 1.1rem;
+        font-size: 0.9rem;
+      }
+      .section-title {
+        font-size: 1.95rem;
+      }
+      .profiles {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 480px) {
+      nav {
+        padding: 0.9rem 1rem;
+      }
+      .logo {
+        font-size: 1.35rem;
+      }
+      .nav-links {
+        gap: 0.85rem;
+      }
+      .cta-button {
+        padding: 0.85rem 1.75rem;
+        font-size: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Floating Cheese Background -->
+  <div class="cheese-bg" aria-hidden="true">
+    <div class="floating-cheese">🧀</div>
+    <div class="floating-cheese">🧀</div>
+    <div class="floating-cheese">🧀</div>
+    <div class="floating-cheese">🧀</div>
+    <div class="floating-cheese">🧀</div>
+  </div>
+
+  <!-- Navbar -->
+  <nav>
+    <div class="nav-content">
+      <a href="#" class="logo">
+        🧀 <span>BrieMine</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#how">How It Works</a></li>
+        <li><a href="#profiles">Profiles</a></li>
+        <li><a href="#stories">Stories</a></li>
+        <li><a href="#" class="nav-cta" onclick="openSignupModal(); return false;">Join Free</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <header class="hero">
+    <h1>Find Your <span class="highlight">Gouda</span> Match</h1>
+    <p>The only dating site where everyone is looking for a sharp connection. Say cheese and fall in love.</p>
+    <button class="cta-button" onclick="openSignupModal()">
+      🧀 Sign Up &amp; Get Curdy
+    </button>
+    <div class="tagline">Over 12,847 cheese lovers have already melted together ❤️</div>
+  </header>
+
+  <!-- How It Works -->
+  <section id="how">
+    <h2 class="section-title">How It Works</h2>
+    <p class="section-subtitle">Four simple steps to find your perfect rind</p>
+    
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">1</div>
+        <h3>Create Profile</h3>
+        <p>Tell us your favorite cheese, your rind type, and write a bio that's not too bleu.</p>
+      </div>
+      <div class="step">
+        <div class="step-number">2</div>
+        <h3>Browse Singles</h3>
+        <p>Swipe through local cheese makers who are ready to melt. No fakes, only aged to perfection.</p>
+      </div>
+      <div class="step">
+        <div class="step-number">3</div>
+        <h3>Match &amp; Melt</h3>
+        <p>When you both like each other, we send the cheesiest pickup lines automatically.</p>
+      </div>
+      <div class="step">
+        <div class="step-number">4</div>
+        <h3>Meet IRL</h3>
+        <p>Plan your first date at the local dairy farm. Bring crackers. Wear stretchy pants.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Featured Profiles -->
+  <section id="profiles">
+    <h2 class="section-title">Featured Cheese Makers</h2>
+    <p class="section-subtitle">These singles are looking for someone who can handle their flavor</p>
+    
+    <div class="profiles">
+      <!-- Profile 1 -->
+      <div class="profile">
+        <div class="profile-header">🧀</div>
+        <div class="profile-body">
+          <div class="profile-name">Cheddar Chad</div>
+          <div class="profile-meta">32 • Wisconsin • Sharp</div>
+          <div class="profile-bio">Mature cheddar looking for someone who can handle my sharpness. I enjoy long walks to the cheese board and avoiding processed singles.</div>
+          <button class="like-btn" onclick="likeProfile(this, 'Cheddar Chad')">
+            <span>❤️</span> <span class="like-text">Like</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Profile 2 -->
+      <div class="profile">
+        <div class="profile-header">🧀</div>
+        <div class="profile-body">
+          <div class="profile-name">Brieanna</div>
+          <div class="profile-meta">28 • Vermont • Creamy</div>
+          <div class="profile-bio">Soft on the outside, bold on the inside. Seeking someone to melt with on cold nights. Must love wine and not be lactose intolerant.</div>
+          <button class="like-btn" onclick="likeProfile(this, 'Brieanna')">
+            <span>❤️</span> <span class="like-text">Like</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Profile 3 -->
+      <div class="profile">
+        <div class="profile-header">🧀</div>
+        <div class="profile-body">
+          <div class="profile-name">Gouda Gary</div>
+          <div class="profile-meta">41 • Netherlands • Smoked</div>
+          <div class="profile-bio">Aged to perfection. Hobbies: wine pairing, making dad jokes, and avoiding blue cheese drama. Looking for my forever fondue partner.</div>
+          <button class="like-btn" onclick="likeProfile(this, 'Gouda Gary')">
+            <span>❤️</span> <span class="like-text">Like</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Profile 4 -->
+      <div class="profile">
+        <div class="profile-header">🧀</div>
+        <div class="profile-body">
+          <div class="profile-name">Camembert Carla</div>
+          <div class="profile-meta">29 • France • Runny</div>
+          <div class="profile-bio">French flair meets dairy delight. If you like it runny, I'm your girl. Warning: I get extra gooey after a few glasses of Bordeaux.</div>
+          <button class="like-btn" onclick="likeProfile(this, 'Camembert Carla')">
+            <span>❤️</span> <span class="like-text">Like</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Testimonials -->
+  <section id="stories">
+    <h2 class="section-title">Real Love Stories</h2>
+    <p class="section-subtitle">From our very satisfied (and slightly lactose-intolerant) members</p>
+    
+    <div class="testimonials">
+      <div class="testimonial">
+        <p>"I matched with Gouda Gary last month. Now we're inseparable. He really aged well and smells incredible. Best decision since I discovered extra-sharp cheddar."</p>
+        <div class="testimonial-author">— Swiss Sally, 34</div>
+      </div>
+      <div class="testimonial">
+        <p>"Brieanna is the brie to my cracker. We met at a cheese tasting and haven't stopped smiling since. She makes me feel like I'm 2 weeks past expiration—in the best way."</p>
+        <div class="testimonial-author">— Mozzarella Mike, 31</div>
+      </div>
+      <div class="testimonial">
+        <p>"Signed up as a joke. Met Cheddar Chad. Now we're planning our wedding at the Wisconsin State Fair. The cheese wheel cake is going to be legendary."</p>
+        <div class="testimonial-author">— Provolone Penelope, 27</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-tagline">Made with 🧀 and questionable life choices</div>
+    <p>© 2026 BrieMine Dating. All rights reserved. Not responsible for cheese-related breakups or actual dairy allergies.</p>
+    <p style="margin-top: 0.6rem; font-size: 0.8rem; opacity: 0.6;">"We take your privacy cheddarly seriously."</p>
+  </footer>
+
+  <!-- Signup Modal -->
+  <div class="modal-overlay" id="modal" onclick="if (event.target.id === 'modal') closeModal()">
+    <div class="modal" onclick="event.stopImmediatePropagation()">
+      <div class="modal-header">
+        <h2>Join the Wheel of Love</h2>
+        <button class="close-btn" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <form id="signupForm" onsubmit="handleSignup(event)">
+          <div class="form-group">
+            <label for="name">Your Name</label>
+            <input type="text" id="name" placeholder="e.g. Curd Ferguson" required>
+          </div>
+          <div class="form-group">
+            <label for="favoriteCheese">Favorite Cheese</label>
+            <select id="favoriteCheese" required>
+              <option value="">— Select your spirit cheese —</option>
+              <option value="Cheddar">Sharp Cheddar</option>
+              <option value="Brie">Brie (the fancy one)</option>
+              <option value="Gouda">Gouda (the good one)</option>
+              <option value="Camembert">Camembert</option>
+              <option value="Swiss">Swiss (with holes for personality)</option>
+              <option value="Blue">Blue Cheese (bold choice)</option>
+              <option value="Mozzarella">Mozzarella (pizza vibes)</option>
+              <option value="Parmesan">Parmesan (grate expectations)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="email">Email Address</label>
+            <input type="email" id="email" placeholder="you@cheesemail.com" required>
+          </div>
+          <button type="submit" class="submit-btn">Create My Profile 🧀</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast" class="toast" role="alert" aria-live="polite">
+    <span class="emoji"></span>
+    <span class="message"></span>
+  </div>
+
+  <script>
+    // Smooth scroll for nav links
+    function setupSmoothScroll() {
+      document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function(e) {
+          const targetId = this.getAttribute('href').slice(1);
+          const target = document.getElementById(targetId);
+          if (target) {
+            e.preventDefault();
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        });
+      });
+    }
+
+    // Toast notification
+    let toastTimeout = null;
+    function showToast(message, emoji = '🧀') {
+      const toast = document.getElementById('toast');
+      toast.querySelector('.emoji').textContent = emoji;
+      toast.querySelector('.message').textContent = message;
+      
+      toast.classList.remove('show');
+      // force reflow
+      void toast.offsetWidth;
+      toast.classList.add('show');
+
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3200);
+    }
+
+    // Like profile
+    function likeProfile(button, name) {
+      const textSpan = button.querySelector('.like-text');
+      const isLiked = button.classList.contains('liked');
+
+      if (isLiked) {
+        button.classList.remove('liked');
+        textSpan.textContent = 'Like';
+        showToast(`You unliked ${name}. Cold as refrigerated cheese.`, '😢');
+      } else {
+        button.classList.add('liked');
+        textSpan.textContent = 'Liked!';
+        const funnyMessages = [
+          `${name} is feeling grate about this!`,
+          `You just made ${name}'s day extra sharp!`,
+          `Love at first brie with ${name}!`,
+          `${name} says you're looking gouda too!`,
+          `Match made in curd heaven!`,
+          `You're on a roll... of cheese!`
+        ];
+        const msg = funnyMessages[Math.floor(Math.random() * funnyMessages.length)];
+        showToast(msg, '❤️');
+      }
+    }
+
+    // Modal controls
+    function openSignupModal() {
+      const modal = document.getElementById('modal');
+      modal.classList.add('active');
+      // focus first input
+      setTimeout(() => {
+        const nameInput = document.getElementById('name');
+        if (nameInput) nameInput.focus();
+      }, 150);
+    }
+
+    function closeModal() {
+      const modal = document.getElementById('modal');
+      modal.classList.remove('active');
+      // reset form
+      const form = document.getElementById('signupForm');
+      if (form) form.reset();
+    }
+
+    // Handle fake signup
+    function handleSignup(e) {
+      e.preventDefault();
+      
+      const name = document.getElementById('name').value.trim();
+      const cheese = document.getElementById('favoriteCheese').value;
+      const email = document.getElementById('email').value.trim();
+
+      closeModal();
+
+      // Funny success messages based on cheese
+      const cheesePuns = {
+        'Cheddar': 'sharp move',
+        'Brie': 'very cultured decision',
+        'Gouda': 'gouda choice!',
+        'Camembert': 'you like it runny, huh?',
+        'Swiss': 'full of personality',
+        'Blue': 'bold. very bold.',
+        'Mozzarella': 'pizza party incoming',
+        'Parmesan': 'you have grate taste'
+      };
+
+      let pun = cheesePuns[cheese] || 'cheesy decision';
+      if (!cheese) pun = 'mystery cheese enjoyer';
+
+      const messages = [
+        `Welcome aboard, ${name}! ${pun.charAt(0).toUpperCase() + pun.slice(1)}.`,
+        `Profile created! We just sent ${name} 47 cheesy pickup lines.`,
+        `Thanks! Our matchmakers are already pairing you with someone ${cheese ? 'as ' + cheese.toLowerCase() : 'cheesy'} as you.`,
+        `You're in! Expect your first wheel of potential matches within 24 hours.`
+      ];
+      
+      const msg = messages[Math.floor(Math.random() * messages.length)];
+      setTimeout(() => {
+        showToast(msg, '🧀');
+      }, 280);
+
+      // Easter egg: randomly like a profile after signup (fun only)
+      setTimeout(() => {
+        if (Math.random() > 0.6) {
+          const profiles = document.querySelectorAll('.profile .like-btn:not(.liked)');
+          if (profiles.length > 0) {
+            const randomBtn = profiles[Math.floor(Math.random() * profiles.length)];
+            const profileName = randomBtn.closest('.profile').querySelector('.profile-name').textContent;
+            randomBtn.classList.add('liked');
+            const txt = randomBtn.querySelector('.like-text');
+            if (txt) txt.textContent = 'Liked!';
+            showToast(`We auto-liked ${profileName} for you. You're welcome.`, '🤖');
+          }
+        }
+      }, 5200);
+    }
+
+    // Keyboard escape for modal
+    function setupKeyboard() {
+      document.addEventListener('keydown', function(e) {
+        const modal = document.getElementById('modal');
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+          closeModal();
+        }
+      });
+    }
+
+    // Bonus: clicking logo scrolls to top nicely
+    function setupLogo() {
+      const logo = document.querySelector('.logo');
+      if (logo) {
+        logo.addEventListener('click', function(e) {
+          e.preventDefault();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+      }
+    }
+
+    // Initialize everything
+    function init() {
+      setupSmoothScroll();
+      setupKeyboard();
+      setupLogo();
+
+      // Optional: show a welcome toast once after 6 seconds (only on first load in session)
+      if (!sessionStorage.getItem('cheeseToastShown')) {
+        setTimeout(() => {
+          // Only show if user hasn't scrolled much yet
+          if (window.scrollY < 80) {
+            showToast('Pro tip: Everyone here is single and ready to fondue.', '💡');
+            sessionStorage.setItem('cheeseToastShown', 'true');
+          }
+        }, 6200);
+      }
+
+      // Make sure floating cheeses don't block clicks
+      console.log('%c[BrieMine] Single-file cheese dating site ready. All puns accounted for.', 'color:#8B5A2B');
+    }
+
+    // Boot it up
+    init();
+  </script>
+</body>
+</html>
