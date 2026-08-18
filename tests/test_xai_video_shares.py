@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
 
+from api.services import xai_video_share
 from api.services.xai_video_share import (
     XaiVideoShareConflict,
     XaiVideoShareError,
@@ -14,6 +15,15 @@ from api.services.xai_video_share import (
     XaiVideoShareService,
     get_xai_video_share_status,
 )
+
+
+SHARE_NOW = datetime(2026, 8, 8, tzinfo=timezone.utc)
+SHARE_EXPIRES_AT = SHARE_NOW + timedelta(days=7)
+
+
+@pytest.fixture(autouse=True)
+def _freeze_share_clock(monkeypatch):
+    monkeypatch.setattr(xai_video_share, "_utc_now", lambda: SHARE_NOW)
 
 
 class FakeTimestamp:
@@ -39,7 +49,7 @@ class FakeFilesClient:
         self.created.append(file_id)
         return SimpleNamespace(
             public_url="https://files-cdn.x.ai/public/test-video.mp4",
-            expires_at=FakeTimestamp(datetime(2026, 8, 15, tzinfo=timezone.utc)),
+            expires_at=FakeTimestamp(SHARE_EXPIRES_AT),
         )
 
     def revoke_public_url(self, file_id):
@@ -82,7 +92,9 @@ def test_publish_retained_bytes_catalog_and_revoke(tmp_path, monkeypatch):
 
     assert record["status"] == "active"
     assert record["provider"] == "Gemini"
-    assert record["expires_at"] == "2026-08-15T00:00:00Z"
+    assert record["expires_at"] == (
+        SHARE_EXPIRES_AT.isoformat().replace("+00:00", "Z")
+    )
     assert files.upload_calls[0][0] == b"reviewed-local-video"
     assert files.upload_calls[0][1] == "gemini-result.mp4"
     assert files.upload_calls[0][2].days == 7

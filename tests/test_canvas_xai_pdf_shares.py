@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 for path in (ROOT / "jarvis-canvas", ROOT / "lib"):
     sys.path.insert(0, str(path))
 
+from server.services import xai_pdf_share  # noqa: E402
 from server.services.pdf_export import prepare_canvas_pdf  # noqa: E402
 from server.services.xai_pdf_share import (  # noqa: E402
     XaiPdfShareError,
@@ -20,6 +21,15 @@ from server.services.xai_pdf_share import (  # noqa: E402
     XaiPdfShareService,
     get_xai_pdf_share_status,
 )
+
+
+SHARE_NOW = datetime(2026, 8, 8, tzinfo=timezone.utc)
+SHARE_EXPIRES_AT = SHARE_NOW + timedelta(days=7)
+
+
+@pytest.fixture(autouse=True)
+def _freeze_share_clock(monkeypatch):
+    monkeypatch.setattr(xai_pdf_share, "_utc_now", lambda: SHARE_NOW)
 
 
 class FakeTimestamp:
@@ -45,7 +55,7 @@ class FakeFilesClient:
         self.created.append(file_id)
         return SimpleNamespace(
             public_url="https://files-cdn.x.ai/public/test-canvas.pdf",
-            expires_at=FakeTimestamp(datetime(2026, 8, 15, tzinfo=timezone.utc)),
+            expires_at=FakeTimestamp(SHARE_EXPIRES_AT),
         )
 
     def revoke_public_url(self, file_id):
@@ -93,7 +103,9 @@ def test_publish_catalog_and_revoke_lifecycle(tmp_path, monkeypatch):
 
     assert record["status"] == "active"
     assert record["pdf_theme"] == "dark"
-    assert record["expires_at"] == "2026-08-15T00:00:00Z"
+    assert record["expires_at"] == (
+        SHARE_EXPIRES_AT.isoformat().replace("+00:00", "Z")
+    )
     assert files.upload_calls[0][2].days == 7
     assert files.created == ["file_canvas_pdf"]
     assert service.list_for_page(page["id"])[0]["share_id"] == record["share_id"]

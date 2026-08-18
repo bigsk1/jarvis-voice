@@ -6,11 +6,12 @@ import json
 import shutil
 import subprocess
 import wave
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
 
+from api.services import xai_audio_share
 from api.services.xai_audio_share import (
     XaiAudioShareConflict,
     XaiAudioShareRegistry,
@@ -18,6 +19,15 @@ from api.services.xai_audio_share import (
     XaiAudioShareValidationError,
     get_xai_audio_share_status,
 )
+
+
+SHARE_NOW = datetime(2026, 8, 8, tzinfo=timezone.utc)
+SHARE_EXPIRES_AT = SHARE_NOW + timedelta(days=7)
+
+
+@pytest.fixture(autouse=True)
+def _freeze_share_clock(monkeypatch):
+    monkeypatch.setattr(xai_audio_share, "_utc_now", lambda: SHARE_NOW)
 
 
 class FakeTimestamp:
@@ -43,9 +53,7 @@ class FakeFilesClient:
         self.created.append(file_id)
         return SimpleNamespace(
             public_url="https://files-cdn.x.ai/public/test-audio-waveform.mp4",
-            expires_at=FakeTimestamp(
-                datetime(2026, 8, 15, tzinfo=timezone.utc)
-            ),
+            expires_at=FakeTimestamp(SHARE_EXPIRES_AT),
         )
 
     def revoke_public_url(self, file_id):
@@ -104,7 +112,9 @@ def test_publish_converted_mp4_catalog_and_revoke(tmp_path, monkeypatch):
     assert record["status"] == "active"
     assert record["provider"] == "Google Gemini"
     assert record["public_format"] == "video/mp4"
-    assert record["expires_at"] == "2026-08-15T00:00:00Z"
+    assert record["expires_at"] == (
+        SHARE_EXPIRES_AT.isoformat().replace("+00:00", "Z")
+    )
     assert files.upload_calls[0][0] == b"waveform-mp4-with-complete-audio"
     assert files.upload_calls[0][1] == "gemini-result-waveform.mp4"
     assert files.upload_calls[0][2].days == 7
