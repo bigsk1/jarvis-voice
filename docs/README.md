@@ -692,7 +692,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Native Ollama tool calls now send explicit exact-schema tool-contract guidance plus stricter retry hints after invalid tool-name or arg-shape failures
   - Tool-routing requests now explicitly disable Ollama thinking unless thinking is intentionally enabled, which helps preserve context for large Tool RAG turns
 - ✅ **Fresh-install sync repair path**
-  - `sync-memory-db.py` now documents the current `--from/--to` usage at the top of the script and repairs fresh local targets by creating missing `conversations.metadata`, `alerts`, and `reminders` schema before syncing
+  - `sync-memory-db.py` documents the current `--from/--to` usage and repairs portable-memory schema; selected-mode startup migration creates mode-local `alerts` and `reminders` tables
   - Conversation sync now tolerates older source DBs that do not yet have a `metadata` column
   - `sync-evolution-db.py` now creates prompt-evolution tables on the target during sync and exits cleanly when the source DB has not been initialized with `prompt_versions` yet
 

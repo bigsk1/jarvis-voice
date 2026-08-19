@@ -82,9 +82,10 @@ curl -X POST http://localhost:8880/api/voice/speak \
   }'
 ```
 
-### 4. Test Auto-Sync
+### 4. Test Mode Isolation
 
-**Scenario**: Create alert in cloud mode, switch to local mode, verify it synced.
+**Scenario**: Create an alert in cloud mode, switch to local mode, and verify it
+remains cloud-local.
 
 **Steps:**
 ```bash
@@ -93,7 +94,7 @@ curl -X POST http://localhost:8880/api/voice/speak \
 
 # 2. Create alert
 curl -X POST http://localhost:8880/api/alerts \
-  -d '{"title": "Sync Test", "source": "test"}' \
+  -d '{"title": "Mode Isolation Test", "source": "test"}' \
   -H "Content-Type: application/json"
 
 # 3. Stop cloud API (Ctrl+C)
@@ -101,11 +102,12 @@ curl -X POST http://localhost:8880/api/alerts \
 # 4. Start local API
 ./bin/jarvis-api --local
 
-# 5. List alerts (should see "Sync Test")
+# 5. List alerts (should not include "Mode Isolation Test")
 curl http://localhost:8880/api/alerts | jq '.alerts[] | {title, source}'
 ```
 
-**Expected:** Alert syncs automatically between databases.
+**Expected:** The cloud alert is absent from the local database. Restart cloud
+mode to list or manage it.
 
 ### 5. Test Reminder (Automated)
 
@@ -246,8 +248,8 @@ curl http://localhost:8880/api/alerts/99999
 ### Database Storage
 - ✅ All alerts stored in database
 - ✅ All reminders stored in database
-- ✅ Alerts sync between cloud/local DBs
-- ✅ Reminders sync between cloud/local DBs
+- ✅ Alerts stay local to their cloud or local mode database
+- ✅ Reminders stay local to their cloud or local mode database
 
 ### Auto-Resolve
 - ✅ Checks configured URL (HTTP GET)

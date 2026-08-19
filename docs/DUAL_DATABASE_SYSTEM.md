@@ -90,9 +90,10 @@ zipping the shorter vector.
 
 `./bin/sync-memory-db.py` remains the automatic portable-memory sync path.
 It copies newer memory text and regenerates changed or missing target vectors.
-Conversation history, user-model rows, alerts, and reminders remain non-vector
-sync data. If the target memory namespace is incompatible, vector memory sync is
-skipped while the non-vector sync phases may still run.
+Conversation history and user-model rows remain non-vector sync data. Alerts,
+reminders, scheduled tasks, and task runs stay mode-local and are not copied. If
+the target memory namespace is incompatible, vector memory sync is skipped while
+the portable non-vector sync phases may still run.
 
 `tool_definitions` is not copied by memory sync. Run Tool RAG sync for each
 database:

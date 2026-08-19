@@ -62,7 +62,7 @@ def migrate_database(db_path: Path):
                 metadata TEXT,
                 related_intel_file TEXT,
                 
-                -- Sync tracking
+                -- Legacy sync metadata retained for schema compatibility
                 synced_to_other_db BOOLEAN DEFAULT 0,
                 sync_timestamp TEXT
             )
@@ -106,7 +106,7 @@ def migrate_database(db_path: Path):
                 -- Metadata
                 metadata TEXT,
                 
-                -- Sync tracking
+                -- Legacy sync metadata retained for schema compatibility
                 synced_to_other_db BOOLEAN DEFAULT 0,
                 sync_timestamp TEXT
             )

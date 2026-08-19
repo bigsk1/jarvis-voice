@@ -557,7 +557,7 @@ jarvis-voice/
 - ✅ Implement alert endpoints (POST, GET, PUT, DELETE)
 - ✅ Create `alert_manager.py` logic
 - ✅ Add TTS endpoint (`POST /speak`)
-- ✅ Update `sync-memory-db.py` to sync alerts
+- ✅ Keep alert lifecycle and delivery state local to the selected mode database
 - ✅ Test with Uptime Kuma webhook
 
 **Deliverable**: External systems can send alerts to Jarvis

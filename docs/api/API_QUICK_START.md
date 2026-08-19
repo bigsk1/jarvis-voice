@@ -24,9 +24,9 @@ The foundational API system is now ready for webhooks and proactive notification
 - Auto-resolve checking
 - Database integration
 
-### 4. **Database Sync** ✅
-- Alerts and reminders sync between cloud/local modes
-- Maintains consistency across databases
+### 4. **Mode-Local Proactive State** ✅
+- Alerts and reminders stay in the mode where they were created
+- Cloud and local services maintain independent lifecycle and delivery state
 
 ---
 

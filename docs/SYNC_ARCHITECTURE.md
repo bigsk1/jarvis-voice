@@ -24,14 +24,15 @@ Synchronizes **memories** (`knowledge_base`), **conversations**, and the structu
 - ✅ Knowledge base entries (memories from `remember` and `ingest_intel`)
 - ✅ Conversations (recent 100 exchanges)
 - ✅ User model traits (compact behavioral profile, no embeddings)
-- ✅ Alerts (proactive system notifications)
-- ✅ Reminders
+- ❌ Alerts (owned by the active mode's proactive services)
+- ❌ Reminders (owned by the active mode's reminder scheduler)
 - ❌ Scheduled tasks and run history (owned by the mode that created them)
 - ❌ Tool definitions (synced separately by `sync-tools.py`)
 
-Scheduled tasks stay mode-local because cloud and local modes can expose
-different providers, tools, credentials, and workflows. Switching modes does not
-copy, merge, or replay the other mode's schedules.
+Alerts, reminders, scheduled tasks, and task runs stay mode-local. Their status,
+delivery, recurrence, follow-up, and execution state belongs to the services
+running against that mode's database. Switching modes does not copy, merge, or
+replay the other mode's proactive records or schedules.
 
 ### Key Feature: Fingerprinted Embedding Regeneration
 
@@ -93,13 +94,13 @@ cursor.execute("INSERT OR REPLACE INTO knowledge_base (..., embedding) VALUES (.
 
 ### Fresh-Install Behavior
 
-`sync-memory-db.py` now doubles as a repair step for newly recreated local databases:
-- Creates missing target tables for `conversations`, `alerts`, and `reminders`
+`sync-memory-db.py` also repairs portable-memory schema on newly recreated databases:
+- Creates missing target tables for `knowledge_base`, `conversations`, and `user_model`
 - Backfills missing `conversations.metadata` on target DBs created from older schemas
 - Reads conversation metadata from the source DB when present, or safely substitutes `NULL` for older source databases
 
-The scheduled-task manager creates its own mode-local task and run tables when
-that mode starts.
+Startup migration creates the selected mode's alert and reminder tables. The
+scheduled-task manager creates that mode's task and run tables when it starts.
 
 This means a clean local rebuild can usually be repopulated with:
 
