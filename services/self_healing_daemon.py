@@ -384,7 +384,13 @@ def get_alerts_to_check(db_path: str) -> List[Dict[str, Any]]:
             WHERE status = 'pending'
             AND auto_resolve_url IS NOT NULL
             AND auto_resolve_url != ''
-            ORDER BY severity DESC, created_at ASC
+            ORDER BY CASE severity
+                WHEN 'critical' THEN 0
+                WHEN 'high' THEN 1
+                WHEN 'medium' THEN 2
+                WHEN 'low' THEN 3
+                ELSE 4
+            END, created_at ASC
             LIMIT ?
         """, (MAX_CHECKS_PER_LOOP,)).fetchall()
         

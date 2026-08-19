@@ -75,7 +75,13 @@ def get_pending_alerts(db_path: str) -> List[Dict[str, Any]]:
             SELECT * FROM alerts 
             WHERE status = 'pending'
             AND follow_up_count < ?
-            ORDER BY severity DESC, created_at ASC
+            ORDER BY CASE severity
+                WHEN 'critical' THEN 0
+                WHEN 'high' THEN 1
+                WHEN 'medium' THEN 2
+                WHEN 'low' THEN 3
+                ELSE 4
+            END, created_at ASC
         """, (MAX_FOLLOW_UPS,)).fetchall()
         
         conn.close()
