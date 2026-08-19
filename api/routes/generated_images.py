@@ -27,7 +27,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
 
 # Add lib and skills to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -183,7 +183,10 @@ class GenerateRequest(BaseModel):
     transparent: bool = Field(False, description="Transparent background (OpenAI only, png/webp)")
     n: Optional[int] = Field(None, ge=1, le=10, description="Number of images (xAI only, 1-10; forced to 1 when editing)")
     save: bool = Field(True, description="Save to disk and stash")
-    mode: str = Field("cloud", description="'cloud' uses cloud.env, 'local' uses local.env")
+    mode: Literal["cloud", "local"] = Field(
+        "cloud",
+        description="'cloud' uses cloud.env, 'local' uses local.env",
+    )
     upload_to_cdn: bool = Field(False, description="Upload to Cloudflare CDN and return public URL")
 
 

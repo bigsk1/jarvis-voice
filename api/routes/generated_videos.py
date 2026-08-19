@@ -19,7 +19,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
 
 # Add lib and skills to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -152,7 +152,10 @@ class GenerateRequest(BaseModel):
     negative_prompt: Optional[str] = Field(None, description="What to avoid in video (Gemini only)")
     provider: Optional[str] = Field(None, description="Override provider: 'xai', 'openai', or 'gemini'")
     save: bool = Field(True, description="Save to disk and stash")
-    mode: str = Field("cloud", description="'cloud' uses cloud.env, 'local' uses local.env")
+    mode: Literal["cloud", "local"] = Field(
+        "cloud",
+        description="'cloud' uses cloud.env, 'local' uses local.env",
+    )
 
 
 class GenerateResponse(BaseModel):

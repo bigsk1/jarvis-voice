@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from typing import Literal, Optional
 import subprocess
 from pathlib import Path
 import sys
@@ -18,7 +18,7 @@ project_root = Path(__file__).parent.parent.parent
 class SpeakRequest(BaseModel):
     """Request to speak a message"""
     message: str
-    mode: str = "cloud"  # cloud or local
+    mode: Literal["cloud", "local"] = "cloud"
     tts_provider: Optional[str] = None  # Override: openai, elevenlabs, xai, qwen3-tts, kokoro
     voice: Optional[str] = None  # Override voice for the provider
     profile: Optional[str] = None  # Optional named TTS normalization profile

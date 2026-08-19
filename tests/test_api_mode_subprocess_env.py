@@ -8,10 +8,38 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
 from api.routes import generated_images, generated_music, generated_videos, voice
 
 config_loader = sys.modules["config_loader"]
+
+
+@pytest.mark.parametrize(
+    ("request_type", "kwargs"),
+    (
+        (
+            generated_images.GenerateRequest,
+            {"prompt": "test image", "mode": "hybrid"},
+        ),
+        (
+            generated_music.GenerateRequest,
+            {"prompt": "test music", "mode": "hybrid"},
+        ),
+        (
+            generated_videos.GenerateRequest,
+            {"prompt": "test video", "mode": "hybrid"},
+        ),
+        (
+            voice.SpeakRequest,
+            {"message": "test voice", "mode": "hybrid"},
+        ),
+    ),
+    ids=("image", "music", "video", "voice"),
+)
+def test_request_models_reject_unknown_modes(request_type, kwargs):
+    with pytest.raises(ValidationError):
+        request_type(**kwargs)
 
 
 @pytest.fixture
