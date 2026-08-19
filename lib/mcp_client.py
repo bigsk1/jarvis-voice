@@ -1009,21 +1009,26 @@ class MCPRemoteClient:
     
     def _wait_for_sse_response(self, request: dict) -> Any:
         """Wait for response from SSE stream after sending a request."""
-        try:
-            result = self._sse_response_queue.get(timeout=30)
-            
+        deadline = time.monotonic() + 30
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise Exception(f"Timeout waiting for SSE response from {self.name}")
+
+            try:
+                result = self._sse_response_queue.get(timeout=remaining)
+            except queue.Empty:
+                raise Exception(f"Timeout waiting for SSE response from {self.name}")
+
             if "error" in result and "id" not in result:
                 raise Exception(f"SSE error: {result['error']}")
-            
-            if result.get("id") == request["id"]:
-                if "error" in result:
-                    raise Exception(f"MCP error: {result['error'].get('message', 'Unknown')}")
-                return result.get("result")
-            
-        except queue.Empty:
-            raise Exception(f"Timeout waiting for SSE response from {self.name}")
-        
-        return None
+
+            if result.get("id") != request["id"]:
+                continue
+
+            if "error" in result:
+                raise Exception(f"MCP error: {result['error'].get('message', 'Unknown')}")
+            return result.get("result")
     
     def _send_http_request(self, request: dict) -> Any:
         """

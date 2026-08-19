@@ -1,4 +1,4 @@
-"""Regression coverage for remote MCP SSE initialization locking."""
+"""Regression coverage for remote MCP SSE request coordination."""
 
 from __future__ import annotations
 
@@ -73,3 +73,23 @@ def test_sse_reconnect_can_reinitialize_while_request_lock_is_held(monkeypatch):
 
     assert not worker.is_alive(), "SSE reconnect deadlocked during initialization"
     assert completed == [True]
+
+
+def test_sse_wait_skips_notification_before_matching_response():
+    client = MCPRemoteClient("remote-test", "https://example.test/sse", "sse")
+    request = {"jsonrpc": "2.0", "id": 7, "method": "tools/call"}
+    expected = {"content": [{"type": "text", "text": "done"}]}
+
+    client._sse_response_queue.put(
+        {
+            "jsonrpc": "2.0",
+            "method": "notifications/progress",
+            "params": {"progress": 1},
+        }
+    )
+    client._sse_response_queue.put(
+        {"jsonrpc": "2.0", "id": request["id"], "result": expected}
+    )
+
+    assert client._wait_for_sse_response(request) == expected
+    assert client._sse_response_queue.empty()
