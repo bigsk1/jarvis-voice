@@ -6,12 +6,12 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from services import follow_up_daemon, reminder_scheduler  # noqa: E402
-
 
 REMINDERS_SCHEMA = """
 CREATE TABLE reminders (
@@ -118,7 +118,13 @@ def test_failed_recurring_reminder_speech_does_not_advance_recurrence(tmp_path):
     assert row[3] is None
 
 
-def test_unknown_recurring_rule_falls_back_to_triggered(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "recurrence_rule",
+    ["YEARLY", "MONTHLY:nope", "MONTHLY:0", "WEEKLY:nope", "WEEKLY:7"],
+)
+def test_invalid_recurring_rule_falls_back_to_triggered(
+    tmp_path, monkeypatch, recurrence_rule
+):
     db_path = tmp_path / "reminders.db"
     original_trigger = "2026-08-18T12:00:00+00:00"
     fixed_now = datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc)
@@ -127,9 +133,9 @@ def test_unknown_recurring_rule_falls_back_to_triggered(tmp_path, monkeypatch):
     conn.execute(
         """
         INSERT INTO reminders (id, title, trigger_time, status, recurrence_rule)
-        VALUES (1, 'Legacy recurrence', ?, 'scheduled', 'YEARLY')
+        VALUES (1, 'Legacy recurrence', ?, 'scheduled', ?)
         """,
-        (original_trigger,),
+        (original_trigger, recurrence_rule),
     )
     conn.commit()
     conn.close()
@@ -139,7 +145,7 @@ def test_unknown_recurring_rule_falls_back_to_triggered(tmp_path, monkeypatch):
     updated = reminder_scheduler.mark_reminder_triggered(
         str(db_path),
         1,
-        recurrence_rule="YEARLY",
+        recurrence_rule=recurrence_rule,
         current_trigger=original_trigger,
         spoken=True,
     )
@@ -161,6 +167,32 @@ def test_unknown_recurring_rule_falls_back_to_triggered(tmp_path, monkeypatch):
         1,
         fixed_now.isoformat(),
     )
+
+
+@pytest.mark.parametrize(
+    "recurrence_rule",
+    ["MONTHLY:nope", "MONTHLY:0", "WEEKLY:nope", "WEEKLY:7"],
+)
+def test_speak_reminder_tolerates_malformed_recurrence(
+    tmp_path, monkeypatch, recurrence_rule
+):
+    _write_script(tmp_path / "bin" / "say.sh", 0)
+    monkeypatch.setattr(
+        reminder_scheduler, "get_config_value", lambda _key, default=None: default
+    )
+
+    ok = reminder_scheduler.speak_reminder(
+        {
+            "id": 9,
+            "title": "Legacy reminder",
+            "description": "",
+            "recurrence_rule": recurrence_rule,
+        },
+        "cloud",
+        tmp_path,
+    )
+
+    assert ok is True
 
 
 def test_overdue_weekly_reminder_fast_forwards_to_next_future_occurrence(

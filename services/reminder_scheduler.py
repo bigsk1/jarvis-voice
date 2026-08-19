@@ -89,6 +89,27 @@ def _tts_script_timeout_seconds(default: int = 60) -> int:
         return default
 
 
+def _parse_recurrence_rule(recurrence_rule: str | None) -> tuple[str, int | None] | None:
+    """Parse a supported recurrence rule without raising on legacy bad data."""
+    if recurrence_rule == "DAILY":
+        return "DAILY", None
+
+    if not recurrence_rule or ":" not in recurrence_rule:
+        return None
+
+    recurrence_type, raw_value = recurrence_rule.split(":", 1)
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return None
+
+    if recurrence_type == "WEEKLY" and 0 <= value <= 6:
+        return "WEEKLY", value
+    if recurrence_type == "MONTHLY" and 1 <= value <= 31:
+        return "MONTHLY", value
+    return None
+
+
 def speak_reminder(reminder: Dict[str, Any], mode: str, project_root: Path) -> bool:
     """Speak reminder via TTS."""
     title = reminder.get('title', 'Reminder')
@@ -102,14 +123,17 @@ def speak_reminder(reminder: Dict[str, Any], mode: str, project_root: Path) -> b
     
     # Add recurring info if applicable
     if recurrence_rule:
-        if recurrence_rule == "DAILY":
+        parsed_recurrence = _parse_recurrence_rule(recurrence_rule)
+        if parsed_recurrence is None:
+            message += ". Its recurrence schedule is invalid, so it will not be rescheduled."
+        elif parsed_recurrence[0] == "DAILY":
             message += ". This is a daily reminder, rescheduled for tomorrow."
-        elif recurrence_rule.startswith("WEEKLY:"):
+        elif parsed_recurrence[0] == "WEEKLY":
             days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-            day_num = int(recurrence_rule.split(':')[1])
+            day_num = parsed_recurrence[1]
             message += f". This is a weekly reminder, rescheduled for next {days[day_num]}."
-        elif recurrence_rule.startswith("MONTHLY:"):
-            day = recurrence_rule.split(':')[1]
+        else:
+            day = parsed_recurrence[1]
             message += f". This is a monthly reminder, rescheduled for the {day}th of next month."
     
     # Use appropriate TTS script
@@ -166,18 +190,21 @@ def calculate_next_occurrence(
     local_tz = get_app_timezone()
     current = parse_utc_timestamp(current_trigger).astimezone(local_tz)
     reference = reference_time.astimezone(local_tz) if reference_time else current
+    parsed_recurrence = _parse_recurrence_rule(recurrence_rule)
+    if parsed_recurrence is None:
+        return None
+    recurrence_type, recurrence_value = parsed_recurrence
 
     def _advance(trigger: datetime) -> datetime | None:
-        if recurrence_rule == "DAILY":
+        if recurrence_type == "DAILY":
             return add_days_local(trigger, 1)
 
-        if recurrence_rule.startswith("WEEKLY:"):
+        if recurrence_type == "WEEKLY":
             # Advance in local time to preserve wall-clock scheduling across DST.
             return add_days_local(trigger, 7)
 
-        if recurrence_rule.startswith("MONTHLY:"):
-            target_day = int(recurrence_rule.split(':')[1])
-            return replace_day_safe(add_months_local(trigger, 1), target_day)
+        if recurrence_type == "MONTHLY":
+            return replace_day_safe(add_months_local(trigger, 1), recurrence_value)
 
         return None
 
