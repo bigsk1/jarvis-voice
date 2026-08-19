@@ -650,6 +650,79 @@ Docker can use the helper through the same external Ollama daemon as the selecte
 mode. Bundling Ollama and the model inside the Jarvis image remains out of scope;
 the operator explicitly pulls and manages the model on that external daemon.
 
+### 14) Conditional Cross-Mode Mirroring for Alerts and Reminders
+**Priority:** Low / only if seamless mode switching becomes a real requirement
+
+Alerts and reminders currently stay in the cloud or local database where they
+were created. This is the simplest reliable behavior: each mode owns its own
+delivery, recurrence, follow-up, and lifecycle state, and a local-only or
+cloud-only installation never needs the other mode's database.
+
+Revisit this decision only if users need an alert or reminder created in one
+mode to remain available, with its latest state, after switching to the other
+mode. For the current single-machine topology, prefer **write-through
+mirroring** over a periodic bidirectional table merge.
+
+#### Preferred write-through design
+
+- Keep the feature opt-in. Enable it only when both mode configurations are
+  valid and both memory databases already exist and pass schema checks. Never
+  create or migrate an opposing database merely because the active mode writes
+  an alert or reminder.
+- Add a stable UUID-style synchronization identity to each alert and reminder.
+  Cloud and local integer primary keys are allocated independently and must not
+  be treated as identities for records in the other database.
+- Route all proactive mutations through one persistence layer. This includes
+  create, edit, acknowledge, acknowledge-all, cancel, delete, trigger,
+  recurrence advancement, spoken state, follow-up counters, last-check state,
+  and auto-resolution. API managers, skills, schedulers, and daemons must not
+  bypass this layer with direct SQL.
+- Apply each mutation idempotently to the active database and the existing peer
+  database using the stable identity and a monotonically increasing state
+  version. The peer keeps its own integer key for normal mode-local API use.
+- Preserve active-mode availability with a small durable retry outbox for a
+  locked or temporarily unavailable peer. Replay only missed ordered mutations;
+  do not scan and compare entire tables. Drain pending mutations before starting
+  the newly selected mode's proactive scheduler.
+- Assume one proactive service stack is active at a time. If cloud and local
+  schedulers must run concurrently, add explicit delivery ownership or move to
+  one shared operational store; otherwise both modes could deliver the same
+  mirrored reminder.
+
+No new Jarvis create or acknowledge tools should be required. Mirroring belongs
+below the existing tool and API contracts in the persistence layer.
+
+#### Why this is preferable to a general merge
+
+| Concern | Write-through mirroring | Periodic bidirectional merge |
+|---|---|---|
+| Record matching | Stable UUID assigned at creation | Must infer identity or retrofit it across existing rows |
+| Lifecycle changes | Copies the known ordered mutation immediately | Compares snapshots and decides which status or timestamp wins |
+| Integer ID collisions | Avoided; each database keeps its own local ID | Dangerous if independent IDs are treated as shared identity |
+| Normal operation | Small deterministic write per state change | Repeated table scans and conflict-resolution rules |
+| Partial failure | Replay a specific idempotent mutation from the outbox | Reconcile potentially divergent full records later |
+| Historical data | Optional explicit one-time backfill | Naturally attempts history, but with greater ambiguity and risk |
+
+Write-through mirroring is still synchronization; it moves synchronization to
+the moment of mutation and keeps failure recovery narrow. It is simpler than a
+merge because it does not need to guess which independently edited record is
+authoritative. If the future requirement expands to simultaneous multi-mode,
+multi-device, or remote writers, skip dual-write mirroring and design a shared
+store or ordered event log instead.
+
+#### Acceptance criteria before enabling
+
+- A single-mode installation never creates or requires the opposing database.
+- Switching modes exposes the same proactive item and its latest lifecycle
+  state without replaying an acknowledged, canceled, or already delivered item.
+- Retried mutations are idempotent, ordered, observable, and cannot update an
+  unrelated row.
+- Peer write failures are surfaced in health/status reporting and recover
+  without blocking normal active-mode alert or reminder handling.
+- Automated coverage includes both directions, ID collisions, database locks,
+  stale schemas, recurrence advancement, deletion, and mode switching before a
+  scheduler starts.
+
 ---
 
 ## 📊 Implementation Priority
@@ -679,6 +752,7 @@ the operator explicitly pulls and manages the model on that external daemon.
 - Advanced visualizations
 - Native helper LLM execution-tier extensions, after per-role evaluation
 - Streaming and atomic Stash ingestion, if large or concurrent workloads create measured pressure
+- Conditional write-through mirroring for alerts and reminders, only if seamless mode switching becomes necessary
 
 ---
 
@@ -1164,5 +1238,5 @@ Optional: Phase 3B tool recall filter only if search_memory noise returns
 
 ---
 
-**Last Updated:** August 15, 2026
-**Version:** 2.9 (Added native helper LLM execution-tier roadmap)
+**Last Updated:** August 19, 2026
+**Version:** 2.10 (Added conditional proactive-state mirroring roadmap)
