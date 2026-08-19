@@ -4,11 +4,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 import subprocess
-import os
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
+from config_loader import export_config_environment
 from tts_normalizer import normalize_tts_text, validate_tts_profile
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
@@ -50,7 +50,7 @@ async def speak(request: SpeakRequest):
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-        env = os.environ.copy()
+        env = export_config_environment(request.mode)
         provider_used = request.tts_provider or env.get('TTS_PROVIDER', 'elevenlabs')
         preserve_xai_tags = provider_used == 'xai'
         spoken_message = normalize_tts_text(

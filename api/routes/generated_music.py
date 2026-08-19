@@ -12,7 +12,6 @@ Endpoints:
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -32,7 +31,7 @@ from audio_catalog import (  # noqa: E402
     save_audio_catalog,
     sync_audio_catalog,
 )
-from config_loader import get_config_value, load_config  # noqa: E402
+from config_loader import export_config_environment, get_config_value, load_config  # noqa: E402
 from generate_music import (  # noqa: E402
     DEFAULT_MUSIC_PROVIDER,
     OUTPUT_FORMATS,
@@ -288,8 +287,7 @@ async def generate_music(request: GenerateRequest):
     if request.provider:
         args["provider"] = request.provider
 
-    env = os.environ.copy()
-    env["JARVIS_MODE"] = request.mode
+    env = export_config_environment(request.mode)
     tool_path = PROJECT_ROOT / "skills" / "generate_music.py"
 
     try:

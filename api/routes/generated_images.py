@@ -34,7 +34,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / 'lib'))
 sys.path.insert(0, str(PROJECT_ROOT / 'skills'))
 
-from config_loader import load_config, get_config_value
+from config_loader import export_config_environment, get_config_value, load_config
 from model_catalog import get_media_model_env_key, resolve_media_model
 
 # Load config
@@ -364,9 +364,7 @@ async def generate_image(request: GenerateRequest):
         tool_path = PROJECT_ROOT / "skills" / "generate_image.py"
         
         # Set environment for mode
-        import os
-        env = os.environ.copy()
-        env["JARVIS_MODE"] = request.mode
+        env = export_config_environment(request.mode)
         
         result = subprocess.run(
             ["python3", str(tool_path), json.dumps(args)],
