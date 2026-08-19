@@ -118,6 +118,51 @@ def test_failed_recurring_reminder_speech_does_not_advance_recurrence(tmp_path):
     assert row[3] is None
 
 
+def test_unknown_recurring_rule_falls_back_to_triggered(tmp_path, monkeypatch):
+    db_path = tmp_path / "reminders.db"
+    original_trigger = "2026-08-18T12:00:00+00:00"
+    fixed_now = datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc)
+    conn = sqlite3.connect(db_path)
+    conn.execute(REMINDERS_SCHEMA)
+    conn.execute(
+        """
+        INSERT INTO reminders (id, title, trigger_time, status, recurrence_rule)
+        VALUES (1, 'Legacy recurrence', ?, 'scheduled', 'YEARLY')
+        """,
+        (original_trigger,),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(reminder_scheduler, "get_app_timezone", lambda: timezone.utc)
+    monkeypatch.setattr(reminder_scheduler, "now_utc", lambda: fixed_now)
+
+    updated = reminder_scheduler.mark_reminder_triggered(
+        str(db_path),
+        1,
+        recurrence_rule="YEARLY",
+        current_trigger=original_trigger,
+        spoken=True,
+    )
+
+    conn = sqlite3.connect(db_path)
+    row = conn.execute(
+        """
+        SELECT status, trigger_time, triggered_at, spoken, spoken_at
+        FROM reminders WHERE id = 1
+        """
+    ).fetchone()
+    conn.close()
+
+    assert updated is True
+    assert row == (
+        "triggered",
+        original_trigger,
+        fixed_now.isoformat(),
+        1,
+        fixed_now.isoformat(),
+    )
+
+
 def test_overdue_weekly_reminder_fast_forwards_to_next_future_occurrence(
     tmp_path, monkeypatch
 ):

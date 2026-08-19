@@ -247,7 +247,6 @@ def mark_reminder_triggered(
                       AND (? IS NULL OR trigger_time = ?)
                 """, (
                     now,
-                    spoken_value,
                     spoken_at,
                     reminder_id,
                     current_trigger,
