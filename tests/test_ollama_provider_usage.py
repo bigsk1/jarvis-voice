@@ -148,6 +148,30 @@ def test_explicit_no_localhost_fallback_is_passed_to_request_ollama(monkeypatch)
     assert mocked.call_args.kwargs["base_urls"] == ["http://gpu-one:11434"]
 
 
+def test_optional_seed_is_sent_only_when_configured(monkeypatch):
+    monkeypatch.setenv("JARVIS_MODE", "local")
+    seeded = OllamaProvider(
+        base_url="http://gpu-one:11434",
+        model="gemma4",
+        include_localhost_fallback=False,
+        force_local_daemon=True,
+        seed=73,
+    )
+    unseeded = OllamaProvider(
+        base_url="http://gpu-one:11434",
+        model="gemma4",
+        include_localhost_fallback=False,
+        force_local_daemon=True,
+    )
+    response = _ChatResponse("ok")
+    with patch("llm_provider.request_ollama", return_value=(response, "http://gpu-one:11434")) as mocked:
+        seeded.chat_with_tools(messages=[{"role": "user", "content": "Hi"}], tools=[])
+        unseeded.chat_with_tools(messages=[{"role": "user", "content": "Hi"}], tools=[])
+
+    assert mocked.call_args_list[0].kwargs["json"]["options"]["seed"] == 73
+    assert "seed" not in mocked.call_args_list[1].kwargs["json"]["options"]
+
+
 def test_timeout_error_text_uses_configured_request_timeout(monkeypatch):
     import requests as req
 

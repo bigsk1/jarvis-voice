@@ -34,12 +34,14 @@ from ollama_capability_evaluation import (
     smoke_capability_cases,
 )
 
-BENCHMARK_SCHEMA_VERSION = 4
-BENCHMARK_VERSION = "3.0"
+BENCHMARK_SCHEMA_VERSION = 5
+BENCHMARK_VERSION = "4.0"
 DEFAULT_CONTEXT_CANDIDATES = (8192, 16384, 32768, 65536, 131072, 262144)
 DEFAULT_MAX_CONTEXT = 65536
 DEFAULT_MIN_VRAM_RESIDENCY = 0.95
 DEFAULT_ROUTER_PROMPT_VERSION = "v4"
+CONTEXT_PROBE_MAX_TOKENS = 128
+BENCHMARK_PROVIDER_SEED = 73
 RETRYABLE_HTTP_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
 RETRYABLE_PROVIDER_ERROR_MARKERS = (
     "connection aborted",
@@ -302,11 +304,43 @@ def is_provider_transport_error(
 
 def is_retryable_provider_error(text: str | None) -> bool:
     """Return true only for provider errors likely to be transient infrastructure failures."""
+    if extract_rejected_unknown_tool(text):
+        return False
     normalized = str(text or "").strip().lower()
     status_match = re.search(r"\b(\d{3})\b", normalized)
     if status_match and int(status_match.group(1)) in RETRYABLE_HTTP_STATUSES:
         return True
     return any(marker in normalized for marker in RETRYABLE_PROVIDER_ERROR_MARKERS)
+
+
+def extract_rejected_unknown_tool(text: str | None) -> str | None:
+    """Return a tool name when Ollama 500s because the model named an uninjected tool."""
+    match = re.search(
+        r"\btool ['\"]([^'\"]+)['\"] not found\b",
+        str(text or ""),
+        flags=re.IGNORECASE,
+    )
+    return match.group(1) if match else None
+
+
+def coerce_rejected_unknown_tool(
+    text: str | None,
+    tool_call: dict[str, Any] | None,
+    usage: dict[str, Any] | None,
+) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None]:
+    """Turn Ollama's unknown-tool 500 into a graded hallucinated tool call."""
+    if tool_call is not None:
+        return text, tool_call, usage
+    name = extract_rejected_unknown_tool(text)
+    if not name:
+        return text, tool_call, usage
+    note = dict(usage or {})
+    note["note"] = "ollama rejected unknown tool"
+    return (
+        None,
+        {"name": name, "arguments": {}, "rejected_by_ollama": True},
+        note,
+    )
 
 
 def ollama_http_error(response: requests.Response, stage: str) -> requests.HTTPError:
@@ -842,6 +876,61 @@ def evaluate_functional_case(
     return True, "correctly remained in direct-answer mode"
 
 
+def _tool_call_schema_valid(
+    tool_call: dict[str, Any] | None,
+    tool_schemas: dict[str, dict[str, Any]] | None,
+) -> bool | None:
+    if not tool_call:
+        return None
+    name = str(tool_call.get("name") or "")
+    arguments = tool_call.get("arguments")
+    if not name or not isinstance(arguments, dict):
+        return False
+    schema_by_name = tool_schemas or TOOL_BY_NAME
+    expected_schema = schema_by_name.get(name)
+    if not expected_schema:
+        return False
+    schema = expected_schema["input_schema"]
+    allowed = set(schema.get("properties") or {})
+    if set(arguments) - allowed:
+        return False
+    return _validate_schema_value(arguments, schema, "tool arguments") is None
+
+
+def routing_case_breakdown(
+    case: FunctionalCase,
+    *,
+    text: str | None,
+    tool_call: dict[str, Any] | None,
+    tool_schemas: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Strict pass plus partial credit for right-tool / wrong-args routing."""
+    passed, reason = evaluate_functional_case(
+        case,
+        text=text,
+        tool_call=tool_call,
+        tool_schemas=tool_schemas,
+    )
+    actual_tool = str((tool_call or {}).get("name") or "") or None
+    name_correct = bool(case.expected_tool and actual_tool == case.expected_tool)
+    schema_valid = _tool_call_schema_valid(tool_call, tool_schemas)
+    if passed:
+        partial_score = 1.0
+    elif name_correct:
+        partial_score = 0.5
+    else:
+        partial_score = 0.0
+    return {
+        "passed": passed,
+        "reason": reason,
+        "tool_name_correct": name_correct,
+        "schema_valid": schema_valid,
+        "partial_score": partial_score,
+        "actual_tool": actual_tool,
+        "expected_tool": case.expected_tool,
+    }
+
+
 def evaluate_structured_output(
     content: str,
     schema: dict[str, Any],
@@ -899,9 +988,9 @@ def make_context_prompt(context_window: int) -> tuple[str, str, str]:
     between_needles = (filler_units * 7) // 10
     after_second = filler_units - before_first - between_needles
     prompt = (
-        "Read the synthetic filler below. Return both checkpoint codes exactly, in their "
-        "original order, and no other text. The repeated word data carries no information "
-        "and contains no user data.\n"
+        "Output exactly two lines containing only the checkpoint codes, in the order they "
+        "appear below, and nothing else. Do not summarize the filler. The repeated word "
+        "data carries no information and contains no user data.\n"
         + (" data" * before_first)
         + f" FIRST CHECKPOINT CODE: {first} "
         + (" data" * between_needles)
@@ -1202,6 +1291,7 @@ class BenchmarkRunner:
                 request_timeout=max(1, int(self.client.timeout)),
                 force_no_thinking=True,
                 force_local_daemon=True,
+                seed=BENCHMARK_PROVIDER_SEED,
             )
         return self._provider
 
@@ -1234,7 +1324,9 @@ class BenchmarkRunner:
         max_attempts = self.client.max_retries + 1
         for attempt in range(1, max_attempts + 1):
             result = call()
-            text, tool_call, usage, _thinking = result
+            text, tool_call, usage, thinking = result
+            text, tool_call, usage = coerce_rejected_unknown_tool(text, tool_call, usage)
+            result = (text, tool_call, usage, thinking)
             if not is_provider_transport_error(text, tool_call, usage):
                 return result
             if attempt >= max_attempts or not is_retryable_provider_error(text):
@@ -1276,6 +1368,7 @@ class BenchmarkRunner:
             provider=provider,
         )
         passed, reason = evaluate_functional_case(case, text=text, tool_call=tool_call)
+        routing = routing_case_breakdown(case, text=text, tool_call=tool_call)
         usage = usage or {}
         note = str(usage.get("note") or "")
         result = {
@@ -1284,6 +1377,7 @@ class BenchmarkRunner:
             "round": round_number,
             "passed": passed,
             "reason": reason,
+            "routing": routing,
             "wall_ms": round(wall_ms, 2),
             "path": "structured_fallback" if "structured prompting fallback" in note else "native",
             "tool_call": tool_call,
@@ -1356,7 +1450,7 @@ class BenchmarkRunner:
             usage=usage,
             provider=provider,
         )
-        passed, reason = evaluate_functional_case(
+        routing = routing_case_breakdown(
             case,
             text=text,
             tool_call=tool_call,
@@ -1370,8 +1464,9 @@ class BenchmarkRunner:
             "packet_id": packet["packet_id"],
             "packet_family": packet.get("family"),
             "round": round_number,
-            "passed": passed,
-            "reason": reason,
+            "passed": routing["passed"],
+            "reason": routing["reason"],
+            "routing": routing,
             "expected_decision": decision,
             "expected_tool": expected_tool,
             "query_sha256": hashlib.sha256(case.prompt.encode("utf-8")).hexdigest(),
@@ -1660,7 +1755,7 @@ class BenchmarkRunner:
         result = self.client.chat(
             [{"role": "user", "content": prompt}],
             context_window=context_window,
-            max_tokens=64,
+            max_tokens=CONTEXT_PROBE_MAX_TOKENS,
         )
         residency = self._residency_check(
             f"context:{context_window}",
@@ -1673,10 +1768,12 @@ class BenchmarkRunner:
         reported_context = int(residency.get("reported_context") or 0)
         context_honored = not reported_context or reported_context >= context_window
         fill_ratio = result.prompt_tokens / context_window if context_window else 0.0
-        passed = bool(needle_pass and context_honored and fill_ratio >= 0.40)
+        resident = bool(residency.get("full_gpu") and context_honored and fill_ratio >= 0.40)
+        passed = bool(needle_pass and resident)
         return {
             "context_window": context_window,
             "passed": passed,
+            "resident": resident,
             "needle_pass": needle_pass,
             "context_honored": context_honored,
             "reported_context": reported_context,
@@ -2246,11 +2343,67 @@ class BenchmarkRunner:
             )
 
         probes = report["context_probes"]
-        category_scores["long_context"] = (
-            round(100 * sum(bool(item["passed"]) for item in probes) / len(probes), 1)
-            if probes
-            else None
-        )
+        if probes:
+            category_scores["long_context"] = round(
+                sum(
+                    (50.0 if item.get("resident") else 0.0)
+                    + (50.0 if item.get("needle_pass") else 0.0)
+                    for item in probes
+                )
+                / len(probes),
+                1,
+            )
+        else:
+            category_scores["long_context"] = None
+
+        routing_items = [item for item in results if item.get("category") == "tool_routing"]
+        if routing_items:
+            schema_known = [
+                item
+                for item in routing_items
+                if (item.get("routing") or {}).get("schema_valid") is not None
+            ]
+            report["routing_breakdown"] = {
+                "strict_pass_rate": round(
+                    100
+                    * sum(bool(item.get("passed")) for item in routing_items)
+                    / len(routing_items),
+                    1,
+                ),
+                "tool_name_accuracy": round(
+                    100
+                    * sum(
+                        bool((item.get("routing") or {}).get("tool_name_correct"))
+                        for item in routing_items
+                    )
+                    / len(routing_items),
+                    1,
+                ),
+                "schema_valid_rate": (
+                    round(
+                        100
+                        * sum(
+                            bool((item.get("routing") or {}).get("schema_valid"))
+                            for item in schema_known
+                        )
+                        / len(schema_known),
+                        1,
+                    )
+                    if schema_known
+                    else None
+                ),
+                "partial_score": round(
+                    100
+                    * sum(
+                        float((item.get("routing") or {}).get("partial_score") or 0)
+                        for item in routing_items
+                    )
+                    / len(routing_items),
+                    1,
+                ),
+            }
+        else:
+            report["routing_breakdown"] = None
 
         latencies = [float(item["wall_ms"]) for item in results]
         decode_rates = [
@@ -2472,12 +2625,16 @@ class BenchmarkRunner:
         )
         report["grade"] = grades[report["grade_scope"]]
 
-        successful_contexts = [
-            int(probe["context_window"])
-            for probe in probes
-            if probe.get("passed") and probe.get("residency", {}).get("full_gpu")
+        resident_contexts = [
+            int(probe["context_window"]) for probe in probes if probe.get("resident")
         ]
-        report["recommended_context"] = max(successful_contexts) if successful_contexts else None
+        needle_contexts = [
+            int(probe["context_window"]) for probe in probes if probe.get("needle_pass")
+        ]
+        report["max_resident_context"] = max(resident_contexts) if resident_contexts else None
+        report["max_needle_context"] = max(needle_contexts) if needle_contexts else None
+        report["recommended_context"] = report["max_resident_context"]
+        successful_contexts = resident_contexts
         tool_score = category_scores.get("tool_routing")
         structured_score = category_scores.get("structured_output")
         overall = float(grades["jarvis"].get("score") or 0)
@@ -2564,7 +2721,9 @@ def render_markdown_report(report: dict[str, Any]) -> str:
     if runs_jarvis:
         lines.extend(
             [
-                f"- Recommended tested context: `{report.get('recommended_context') or 'none'}`",
+                f"- Recommended tested context: `{report.get('recommended_context') or 'none'}` "
+                f"(resident `{report.get('max_resident_context') or 'none'}`, "
+                f"needle `{report.get('max_needle_context') or 'none'}`)",
                 f"- Warm latency median/p95: `{warm.get('median', 0)} / {warm.get('p95', 0)} ms`",
                 f"- Decode median (Ollama eval rate): `{decode.get('median', 0)} tok/s`",
                 f"- Prefill median / max-context (prompt eval): "
@@ -2594,6 +2753,18 @@ def render_markdown_report(report: dict[str, Any]) -> str:
         for category, score in category_scores.items():
             lines.append(
                 f"| {category.replace('_', ' ')} | {score if score is not None else 'N/A'} |"
+            )
+        routing_breakdown = report.get("routing_breakdown") or {}
+        if routing_breakdown:
+            lines.extend(
+                [
+                    "",
+                    "Routing breakdown (strict pass still grades `tool routing`; partial credit "
+                    "is diagnostic): "
+                    f"name `{routing_breakdown.get('tool_name_accuracy')}%`, "
+                    f"schema `{routing_breakdown.get('schema_valid_rate')}%`, "
+                    f"partial `{routing_breakdown.get('partial_score')}`.",
+                ]
             )
 
     capability_meta = report.get("model_capability_evaluation") or {}
@@ -2704,15 +2875,16 @@ def render_markdown_report(report: dict[str, Any]) -> str:
                 "",
                 "## Context probes",
                 "",
-                "| Context | Result | Raw GPU ratio | GPU check | Fill | Prompt tok/s |",
-                "|---:|---|---:|---|---:|---:|",
+                "| Context | Needle | Resident | Raw GPU ratio | GPU check | Fill | Prompt tok/s |",
+                "|---:|---|---|---:|---|---:|---:|",
             ]
         )
         for probe in probes:
             residency = probe.get("residency") or {}
             lines.append(
                 f"| {probe.get('context_window')} | "
-                f"{'pass' if probe.get('passed') else 'fail'} | "
+                f"{'pass' if probe.get('needle_pass') else 'fail'} | "
+                f"{'yes' if probe.get('resident') else 'no'} | "
                 f"{residency.get('vram_residency_ratio', 0):.1%} | "
                 f"{residency.get('residency_method', 'unknown')} | "
                 f"{probe.get('fill_ratio', 0):.1%} | "
@@ -2786,13 +2958,23 @@ def summarize_for_terminal(report: dict[str, Any]) -> str:
         f"(thinking={configuration.get('capability_thinking', 'off')})",
         f"  combined grade: {_grade_text(grades.get('combined') or {})}",
         f"  Jarvis local fit: {report.get('jarvis_local_fit')}",
-        f"  recommended tested context: {report.get('recommended_context') or 'none'}",
+        f"  recommended tested context: {report.get('recommended_context') or 'none'} "
+        f"(resident {report.get('max_resident_context') or 'none'}, "
+        f"needle {report.get('max_needle_context') or 'none'})",
         f"  transport retries: {len((report.get('transport') or {}).get('retry_events') or [])}",
     ]
     category_scores = report.get("category_scores") or {}
     if any(score is not None for score in category_scores.values()):
         for category, score in category_scores.items():
             lines.append(f"  {category}: {score if score is not None else 'N/A'}")
+    routing_breakdown = report.get("routing_breakdown") or {}
+    if routing_breakdown:
+        lines.append(
+            "  routing breakdown: "
+            f"name {routing_breakdown.get('tool_name_accuracy')}%, "
+            f"schema {routing_breakdown.get('schema_valid_rate')}%, "
+            f"partial {routing_breakdown.get('partial_score')}"
+        )
     capability_results = report.get("capability_results") or []
     if capability_results:
         scored_results = [
@@ -2864,6 +3046,7 @@ __all__ = [
     "calculate_combined_grade",
     "calculate_weighted_grade",
     "canonical_model_name",
+    "coerce_rejected_unknown_tool",
     "evaluate_functional_case",
     "evaluate_structured_output",
     "extract_native_context",
@@ -2877,6 +3060,7 @@ __all__ = [
     "performance_score",
     "render_markdown_report",
     "resolve_context_candidates",
+    "routing_case_breakdown",
     "safe_slug",
     "same_ollama_host",
     "summarize_for_terminal",

@@ -33,6 +33,7 @@ from ollama_model_benchmark import (  # noqa: E402
     RawChatResult,
     calculate_grade,
     canonical_model_name,
+    coerce_rejected_unknown_tool,
     evaluate_functional_case,
     evaluate_structured_output,
     extract_native_context,
@@ -44,6 +45,7 @@ from ollama_model_benchmark import (  # noqa: E402
     mentions_celsius_temperature,
     performance_score,
     resolve_context_candidates,
+    routing_case_breakdown,
     same_ollama_host,
 )
 
@@ -383,6 +385,44 @@ def test_replay_case_grading_uses_packet_schema_not_sanity_shortlist():
     )[0]
 
 
+def test_routing_partial_credit_keeps_right_tool_wrong_key_visible():
+    packet = load_tool_rag_replay_fixture()["packets"][0]
+    payload = packet["cases"][0]
+    expected = payload["expected"]
+    case = FunctionalCase(
+        payload["case_id"],
+        "tool_routing",
+        payload["query"],
+        expected_tool=expected["tool_name"],
+        expected_args=expected["arguments"],
+        optional_args=expected["optional_arguments"],
+        arg_concepts={
+            key: tuple(tuple(group) for group in groups)
+            for key, groups in expected["argument_concepts"].items()
+        },
+    )
+    schemas = {tool["name"]: tool for tool in packet["tools"]}
+    invented_limit = {
+        "name": "serpapi_home_depot",
+        "arguments": {"query": "cordless drills", "upperbound": 150, "limit": 5},
+    }
+    hallucinated = {"name": "search_memory", "arguments": {"query": "gpu server"}}
+
+    right_tool = routing_case_breakdown(
+        case, text=None, tool_call=invented_limit, tool_schemas=schemas
+    )
+    wrong_tool = routing_case_breakdown(
+        case, text=None, tool_call=hallucinated, tool_schemas=schemas
+    )
+
+    assert right_tool["passed"] is False
+    assert right_tool["tool_name_correct"] is True
+    assert right_tool["schema_valid"] is False
+    assert right_tool["partial_score"] == 0.5
+    assert wrong_tool["tool_name_correct"] is False
+    assert wrong_tool["partial_score"] == 0.0
+
+
 def test_direct_response_concepts_accept_synonyms_but_require_every_concept():
     case = FunctionalCase(
         "direct-concepts",
@@ -444,6 +484,36 @@ def test_retryable_provider_errors_are_narrowly_classified():
     assert is_retryable_provider_error("Error: 503 Service Unavailable: server busy")
     assert is_retryable_provider_error("Error: 429 Too Many Requests")
     assert not is_retryable_provider_error("Error: 400 Bad Request: invalid tool schema")
+    assert not is_retryable_provider_error(
+        "Error: 500 Internal Server Error: tool 'search_memory' not found"
+    )
+
+
+def test_unknown_tool_500_is_graded_as_hallucinated_tool_call():
+    text, tool_call, usage = coerce_rejected_unknown_tool(
+        "Error: 500 Internal Server Error: tool 'search_memory' not found",
+        None,
+        None,
+    )
+    case = FunctionalCase(
+        "replay_missing_memory_search",
+        "tool_routing",
+        "Look up a hostname.",
+        expected_tool="tool_search",
+    )
+
+    assert text is None
+    assert tool_call == {
+        "name": "search_memory",
+        "arguments": {},
+        "rejected_by_ollama": True,
+    }
+    assert usage["note"] == "ollama rejected unknown tool"
+    assert not is_provider_transport_error(text, tool_call, usage)
+    breakdown = routing_case_breakdown(case, text=text, tool_call=tool_call)
+    assert breakdown["passed"] is False
+    assert breakdown["actual_tool"] == "search_memory"
+    assert breakdown["partial_score"] == 0.0
 
 
 def test_exact_host_client_retries_connection_error_without_failing_over():
@@ -623,6 +693,49 @@ def test_error_report_never_promotes_partial_results_to_top_level_grade():
     }
     assert report["partial_grade"]["score"] is not None
     assert report["jarvis_local_fit"] == "inconclusive"
+
+
+def test_resident_context_is_recommended_even_when_needles_fail():
+    runner = BenchmarkRunner(_ResidencyClient([]), contexts=[8192])
+    report = {
+        "status": "complete",
+        "functional_results": [],
+        "capability_results": [],
+        "context_probes": [
+            {
+                "context_window": 8192,
+                "passed": False,
+                "resident": True,
+                "needle_pass": False,
+                "fill_ratio": 0.5,
+                "prompt_tokens_per_second": 4000.0,
+                "decode_tokens_per_second": 80.0,
+                "wall_ms": 100.0,
+                "residency": {"full_gpu": True, "vram_residency_ratio": 1.0},
+            },
+            {
+                "context_window": 65536,
+                "passed": False,
+                "resident": True,
+                "needle_pass": False,
+                "fill_ratio": 0.5,
+                "prompt_tokens_per_second": 3000.0,
+                "decode_tokens_per_second": 70.0,
+                "wall_ms": 200.0,
+                "residency": {"full_gpu": True, "vram_residency_ratio": 1.0},
+            },
+        ],
+        "performance": {},
+        "transport": {"retry_events": []},
+        "warnings": [],
+    }
+
+    runner._finalize_report(report)
+
+    assert report["recommended_context"] == 65536
+    assert report["max_resident_context"] == 65536
+    assert report["max_needle_context"] is None
+    assert report["category_scores"]["long_context"] == 50.0
 
 
 def test_keyboard_interrupt_writes_an_inconclusive_interrupted_report():

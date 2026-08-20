@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Tests for the app-independent Ollama Model Capability Evaluation."""
 
+import hashlib
 import itertools
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -35,9 +37,11 @@ def _case(case_id: str) -> dict:
 def test_capability_fixture_is_progressive_content_addressed_and_app_independent():
     fixture = load_capability_fixture()
 
-    assert fixture["fixture_id"] == "jarvis-ollama-model-capability-v1"
+    assert fixture["fixture_id"] == "jarvis-ollama-model-capability-v2"
+    assert fixture["schema_version"] == 2
+    assert fixture["supersedes"]["fixture_id"] == "jarvis-ollama-model-capability-v1"
     assert len(fixture["fixture_sha256"]) == 64
-    assert len(fixture["cases"]) == 33
+    assert len(fixture["cases"]) == 32
     assert fixture["request_contract"] == {
         "system_prompt": False,
         "tools": False,
@@ -54,50 +58,67 @@ def test_capability_fixture_is_progressive_content_addressed_and_app_independent
         "max_tokens": 2048,
         "unresolved_truncation": "unscored",
     }
-    assert fixture["qualitative_probe"]["prompt"] == (
-        "Do not interpret this as a question about the user or the user's personal "
-        "circumstances. Considering reality as a whole, answer in your own terms: "
-        "What is the most important thing that is true?"
-    )
     assert fixture["qualitative_probe"]["scored"] is False
+    assert all(case["grader"]["type"] != "word_count_concepts" for case in fixture["cases"])
     for category in CAPABILITY_CATEGORIES:
         difficulties = [
             case["difficulty"] for case in fixture["cases"] if case["category"] == category
         ]
         assert difficulties.count("easy") == 2
         assert difficulties.count("medium") == 3
-        assert difficulties.count("hard") == (4 if category == "general_knowledge" else 3)
+        assert difficulties.count("hard") == 3
 
 
 def test_synthetic_challenge_oracles_are_unique_and_numerically_correct():
     card_orders = [
         "".join(order)
-        for order in itertools.permutations("1234")
-        if order.index("2") < order.index("4")
-        and abs(order.index("1") - order.index("2")) != 1
-        and order.index("3") == order.index("1") + 1
-        and order.index("4") < order.index("1")
+        for order in itertools.permutations("5678")
+        if order.index("6") < order.index("8")
+        and abs(order.index("5") - order.index("6")) != 1
+        and order.index("7") == order.index("5") + 1
+        and order.index("8") < order.index("5")
     ]
-    safe_answers = []
-    for coin in "ABCD":
-        statement_1 = coin in "AB"
-        statements = (statement_1, coin != "B", coin == "C", statement_1)
+    chest_answers = []
+    for coin in "WXYZ":
+        statement_1 = coin in "WX"
+        statements = (statement_1, coin != "X", coin == "Y", statement_1)
         if sum(statements) == 3:
-            safe_answers.append(coin)
+            chest_answers.append(coin)
     onto_functions = sum(
-        len(set(outputs)) == 3 for outputs in itertools.product(range(3), repeat=5)
+        len(set(outputs)) == 3 for outputs in itertools.product(range(3), repeat=4)
     )
-    exclusive_multiples = sum((number % 3 == 0) ^ (number % 5 == 0) for number in range(1, 101))
+    exclusive_multiples = sum((number % 4 == 0) ^ (number % 6 == 0) for number in range(1, 81))
+    circular_not_adjacent = math.factorial(5) - 2 * math.factorial(4)
+    base_rate = (0.80 * 0.02) / (0.80 * 0.02 + 0.05 * 0.98)
+    harmonic_speed = 2 / (1 / 50 + 1 / 20)
+    n_values = [n for n in range(1, 200) if n % 8 == 3 and n % 9 == 5]
 
-    assert card_orders == ["2413"]
-    assert safe_answers == ["A"]
-    assert onto_functions == 150
-    assert exclusive_multiples == 41
+    assert card_orders == ["6857"]
+    assert chest_answers == ["W"]
+    assert onto_functions == 36
+    assert exclusive_multiples == 21
+    assert circular_not_adjacent == 72
+    assert n_values[0] == 59
+    assert abs(base_rate * 100 - 24.615) < 0.01
+    assert abs(harmonic_speed - 28.5714) < 0.001
 
-    a_small, a_large = 81 / 87, 192 / 263
-    b_small, b_large = 234 / 270, 55 / 80
+    a_small, a_large = 16 / 20, 100 / 180
+    b_small, b_large = 140 / 180, 4 / 10
     assert a_small > b_small and a_large > b_large
-    assert (81 + 192) / (87 + 263) < (234 + 55) / (270 + 80)
+    assert (16 + 100) / (20 + 180) < (140 + 4) / (180 + 10)
+
+
+def test_capability_v1_stays_immutable_for_historical_reports():
+    fixture_path = (
+        Path(__file__).resolve().parents[1]
+        / "config"
+        / "benchmarks"
+        / "ollama-model-capability-v1.json"
+    )
+
+    assert hashlib.sha256(fixture_path.read_bytes()).hexdigest() == (
+        "60359611c467c80bc35314dcae517c6eccd2f26fb857349e6edfc3368e242ba2"
+    )
 
 
 def test_capability_fixture_rejects_app_features(tmp_path, monkeypatch):
@@ -129,6 +150,8 @@ def test_alias_grader_accepts_plain_language_around_final_answer():
         ("knowledge_medium_incompleteness", "Final answer: Gödel's incompleteness theorems"),
         ("logic_medium_truth_tellers", "Final answer: Aria truthful; Bex lying"),
         ("logic_hard_schedule", "Final answer: NJLKM"),
+        ("logic_hard_four_chests", "Final answer: W"),
+        ("logic_hard_four_chests", "Final answer: chest W"),
     ],
 )
 def test_alias_grader_accepts_live_equivalent_answer_forms(case_id, answer):
@@ -139,9 +162,13 @@ def test_alias_grader_accepts_live_equivalent_answer_forms(case_id, answer):
     ("case_id", "answer"),
     [
         ("math_medium_binomial", "Final answer: 3/8"),
-        ("reflection_easy_coin_streak", "Final answer: 50%"),
-        ("reflection_hard_monty_hall", "Final answer: 2/3"),
-        ("reflection_medium_notebook_pen", "Final answer: $0.25"),
+        ("reflection_easy_die_streak", "Final answer: 1/6"),
+        ("reflection_easy_die_streak", "Final answer: 16.7%"),
+        ("reflection_hard_switch_chests", "Final answer: 3/4"),
+        ("reflection_medium_lamp_bulb", "Final answer: $0.20"),
+        ("reflection_hard_base_rate", "Final answer: 25%"),
+        ("reflection_hard_base_rate", "Final answer: 0.246"),
+        ("reflection_hard_base_rate", "Final answer: 16/65"),
     ],
 )
 def test_numeric_grader_accepts_equivalent_free_response_forms(case_id, answer):
@@ -165,6 +192,14 @@ def test_concept_grader_awards_partial_credit_and_rejects_contradiction():
             "Earth rotates slower while the Moon moves eastward, so Earth rotates farther.",
         )[0]
         == 0
+    )
+    assert (
+        evaluate_capability_answer(
+            case,
+            "The Moon advances in its orbit, not because Earth rotates slower, "
+            "so Earth must rotate farther to catch up.",
+        )[0]
+        == 1
     )
 
 
@@ -210,67 +245,56 @@ def test_concept_grader_accepts_articles_plurals_and_detectability_paraphrases()
     assert evaluate_capability_answer(_case("knowledge_hard_mercator"), mercator)[0] == 1
 
 
-def test_word_count_concept_grader_separates_content_from_exact_length():
-    answer = (
-        "Earth's axial tilt changes how sunlight reaches each hemisphere during its yearly "
-        "orbit. When a hemisphere tilts toward the Sun, sunlight arrives at a more direct "
-        "angle and daylight hours are longer, producing greater warming and summer. Tilting "
-        "away brings less direct sunlight and shorter days, producing winter. Earth's changing "
-        "distance is not the primary cause; in fact, the hemispheres experience opposite "
-        "seasons at the same distance at any given moment, which the tilt naturally explains."
-    )
-    case = _case("knowledge_hard_seasons_76_words")
+def test_word_count_concept_grader_still_works_on_synthetic_payloads():
+    case = {
+        "grader": {
+            "type": "word_count_concepts",
+            "word_count": 4,
+            "word_count_weight": 0.4,
+            "required_groups": [["axial tilt"]],
+        }
+    }
 
-    exact_score, exact_reason, _ = evaluate_capability_answer(case, answer)
-    short_score, short_reason, _ = evaluate_capability_answer(
-        case,
-        answer.replace("yearly ", "", 1),
-    )
+    exact_score, exact_reason, _ = evaluate_capability_answer(case, "axial tilt does matter")
+    short_score, short_reason, _ = evaluate_capability_answer(case, "axial tilt matters")
 
-    assert len(answer.split()) == 76
     assert exact_score == 1
-    assert "word count 76/76" in exact_reason
+    assert "word count 4/4" in exact_reason
     assert short_score == pytest.approx(0.6)
-    assert "word count 75/76" in short_reason
+    assert "word count 3/4" in short_reason
 
 
-def test_word_count_concept_grader_accepts_live_plural_concepts_but_not_wrong_length():
-    answer = (
-        "Earth's seasons result primarily from its axial tilt, not distance variations. "
-        "As Earth orbits the Sun, its tilted axis causes different hemispheres to receive "
-        "varying sunlight angles and day lengths. When a hemisphere tilts toward the Sun, "
-        "it experiences summer due to more direct, intense radiation. Conversely, tilting "
-        "away creates winter with less direct light. Distance changes minimally affect "
-        "seasonal temperature, making axial tilt the dominant factor."
+def test_short_letter_aliases_require_the_whole_final_answer():
+    assert evaluate_capability_answer(_case("logic_hard_four_chests"), "Final answer: Y")[0] == 0
+    assert (
+        evaluate_capability_answer(
+            _case("reflection_hard_simpson_glaze"),
+            "Final answer: B is better than A overall",
+        )[0]
+        == 0
+    )
+    assert (
+        evaluate_capability_answer(_case("reflection_hard_simpson_glaze"), "Final answer: A")[0]
+        == 1
     )
 
-    score, reason, _ = evaluate_capability_answer(
-        _case("knowledge_hard_seasons_76_words"),
-        answer,
+
+def test_memorized_classic_crt_answers_do_not_pass_varied_covers():
+    assert (
+        evaluate_capability_answer(_case("reflection_hard_switch_chests"), "Final answer: 2/3")[0]
+        == 0
     )
-
-    assert score == pytest.approx(0.6)
-    assert "word count 67/76" in reason
-
-
-def test_word_count_concept_grader_accepts_live_daylight_duration_paraphrase():
-    answer = (
-        "Axial tilt causes seasons through varying direct sunlight. A hemisphere tilted "
-        "toward the Sun receives prolonged daylight. Tilt's effect on solar angle and "
-        "duration is the primary driver."
+    assert (
+        evaluate_capability_answer(_case("reflection_hard_base_rate"), "Final answer: 9%")[0] == 0
     )
-
-    score, reason, _ = evaluate_capability_answer(
-        _case("knowledge_hard_seasons_76_words"),
-        answer,
+    assert (
+        evaluate_capability_answer(_case("reflection_medium_lamp_bulb"), "Final answer: $0.25")[0]
+        == 0
     )
-
-    assert score == pytest.approx(0.6)
-    assert "matched 3/3" in reason
 
 
 def test_alias_grading_remains_strict_when_concept_matching_is_flexible():
-    assert evaluate_capability_answer(_case("logic_hard_four_safes"), "Final answer: C")[0] == 0
+    assert evaluate_capability_answer(_case("logic_hard_four_chests"), "Final answer: Y")[0] == 0
 
 
 def test_capability_category_scores_weight_harder_cases_more():

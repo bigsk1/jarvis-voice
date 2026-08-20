@@ -1614,6 +1614,7 @@ class OllamaProvider(LLMProvider):
         request_timeout: int = 180,
         force_no_thinking: bool = False,
         force_local_daemon: bool = False,
+        seed: int | None = None,
     ):
         """Initialize Ollama provider."""
         from config_loader import get_active_config_mode
@@ -1644,6 +1645,7 @@ class OllamaProvider(LLMProvider):
         self.temperature = temperature
         self.request_timeout = max(1, int(request_timeout))
         self.force_no_thinking = force_no_thinking
+        self.seed = seed
         self.last_usage_info: dict[str, Any] | None = None
 
     @staticmethod
@@ -1951,6 +1953,8 @@ class OllamaProvider(LLMProvider):
             options["num_gpu"] = self.num_gpu
         if self.temperature is not None:
             options["temperature"] = self.temperature
+        if self.seed is not None:
+            options["seed"] = int(self.seed)
         if self.default_max_tokens:
             options["num_predict"] = self.default_max_tokens
         return options

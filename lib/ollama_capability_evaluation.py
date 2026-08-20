@@ -23,7 +23,7 @@ CAPABILITY_GRADER_TYPES = ("aliases", "number", "concepts", "word_count_concepts
 
 
 def capability_fixture_path() -> Path:
-    return get_project_root() / "config" / "benchmarks" / "ollama-model-capability-v1.json"
+    return get_project_root() / "config" / "benchmarks" / "ollama-model-capability-v2.json"
 
 
 def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -56,9 +56,9 @@ def load_capability_fixture() -> dict[str, Any]:
         path.read_text(encoding="utf-8"),
         object_pairs_hook=_reject_duplicate_json_keys,
     )
-    if payload.get("schema_version") != 1:
+    if payload.get("schema_version") != 2:
         raise ValueError(f"unsupported capability fixture schema in {path}")
-    if payload.get("fixture_id") != "jarvis-ollama-model-capability-v1":
+    if payload.get("fixture_id") != "jarvis-ollama-model-capability-v2":
         raise ValueError(f"unexpected capability fixture id in {path}")
     contract = payload.get("request_contract") or {}
     if any(contract.get(key) is not False for key in ("system_prompt", "tools", "response_format")):
@@ -132,6 +132,10 @@ def load_capability_fixture() -> dict[str, Any]:
             raise ValueError(f"invalid max_tokens for capability case {case_id!r}")
         if grader_type not in CAPABILITY_GRADER_TYPES:
             raise ValueError(f"invalid grader for capability case {case_id!r}")
+        if grader_type == "word_count_concepts":
+            raise ValueError(
+                f"graded capability case {case_id!r} cannot use exact word-count scoring"
+            )
         if grader_type == "aliases":
             if set(grader) != {"type", "answers"}:
                 raise ValueError(f"unexpected aliases grader fields for {case_id!r}")
@@ -156,29 +160,7 @@ def load_capability_fixture() -> dict[str, Any]:
                     f"{case_id}.grader.forbidden_groups",
                 )
         else:
-            allowed = {
-                "type",
-                "word_count",
-                "word_count_weight",
-                "required_groups",
-                "forbidden_groups",
-            }
-            if set(grader) - allowed:
-                raise ValueError(f"unexpected word-count grader fields for {case_id!r}")
-            if not isinstance(grader.get("word_count"), int) or grader["word_count"] <= 0:
-                raise ValueError(f"invalid target word count for {case_id!r}")
-            word_count_weight = grader.get("word_count_weight")
-            if not isinstance(word_count_weight, (int, float)) or not 0 < word_count_weight < 1:
-                raise ValueError(f"invalid word-count weight for {case_id!r}")
-            _validate_concept_groups(
-                grader.get("required_groups"),
-                f"{case_id}.grader.required_groups",
-            )
-            if "forbidden_groups" in grader:
-                _validate_concept_groups(
-                    grader.get("forbidden_groups"),
-                    f"{case_id}.grader.forbidden_groups",
-                )
+            raise ValueError(f"unsupported grader for capability case {case_id!r}")
     missing = [
         f"{category}/{difficulty}"
         for (category, difficulty), count in coverage.items()
@@ -259,6 +241,43 @@ def _contains_phrase(
     )
 
 
+def _alias_answer_matches(normalized_final: str, answer: str) -> bool:
+    """Match long aliases as phrases; require short tokens to be the whole answer."""
+    needle = _normalized_text(answer)
+    if not needle:
+        return False
+    tokens = needle.split()
+    if len(tokens) == 1 and len(tokens[0]) <= 2:
+        word_tokens = re.findall(r"[a-z0-9]+", normalized_final)
+        return word_tokens == [needle]
+    return _contains_phrase(normalized_final, answer)
+
+
+_NEGATED_PHRASE = re.compile(
+    r"(?:not(?:\s+because|\s+that|\s+due\s+to)?|"
+    r"(?:does|do|did|is|was|are|were)\s+not|"
+    r"doesn't|don't|didn't|isn't|wasn't|"
+    r"never|rather\s+than|instead\s+of|without)\s+"
+)
+
+
+def _phrase_is_asserted(normalized_haystack: str, phrase: str) -> bool:
+    """True when a forbidden phrase appears as a claim, not as a denied contrast."""
+    if not _contains_phrase(normalized_haystack, phrase, flexible_concept=True):
+        return False
+    haystack = _flexible_concept_form(normalized_haystack)
+    needle = _flexible_concept_form(_normalized_text(phrase))
+    if not needle:
+        return False
+    for match in re.finditer(rf"(?<!\w){re.escape(needle)}(?!\w)", haystack):
+        prefix = haystack[: match.start()]
+        window = " ".join(prefix.split()[-6:])
+        if window and _NEGATED_PHRASE.search(window + " "):
+            continue
+        return True
+    return False
+
+
 def _numeric_candidates(value: str) -> list[tuple[float, bool]]:
     candidates: list[tuple[float, bool]] = []
     normalized = unicodedata.normalize("NFKC", value).replace(",", "")
@@ -286,7 +305,7 @@ def evaluate_capability_answer(case: dict[str, Any], text: str) -> tuple[float, 
     if grader_type == "aliases":
         answers = [str(answer) for answer in grader.get("answers") or []]
         matched = next(
-            (answer for answer in answers if _contains_phrase(normalized_final, answer)),
+            (answer for answer in answers if _alias_answer_matches(normalized_final, answer)),
             None,
         )
         if matched is not None:
@@ -298,12 +317,10 @@ def evaluate_capability_answer(case: dict[str, Any], text: str) -> tuple[float, 
         tolerance = float(grader.get("tolerance") or 0)
         percent_equivalent = bool(grader.get("percent_equivalent"))
         candidates = _numeric_candidates(final_answer)
-        for candidate, is_percent in reversed(candidates):
+        for candidate, _is_percent in reversed(candidates):
             variants = [candidate]
             if percent_equivalent:
-                variants.append(
-                    candidate / 100 if is_percent or abs(candidate) > 1 else candidate * 100
-                )
+                variants.extend((candidate / 100.0, candidate * 100.0))
             if any(
                 math.isclose(value, expected, abs_tol=tolerance, rel_tol=0) for value in variants
             ):
@@ -314,10 +331,7 @@ def evaluate_capability_answer(case: dict[str, Any], text: str) -> tuple[float, 
         normalized_response = _normalized_text(text)
         forbidden = grader.get("forbidden_groups") or []
         if any(
-            any(
-                _contains_phrase(normalized_response, option, flexible_concept=True)
-                for option in group
-            )
+            any(_phrase_is_asserted(normalized_response, option) for option in group)
             for group in forbidden
         ):
             return 0.0, "answer included a forbidden contradiction", final_answer

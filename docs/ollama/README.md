@@ -187,10 +187,17 @@ already resident or shows later shared-runner activity is left loaded.
 
 The Model Capability Evaluation uses a content-addressed tracked fixture with
 free-response general knowledge, logic, math, and cognitive-reflection cases
-at progressively weighted easy, medium, and hard levels. Requests contain one
-user message and no system prompt, Jarvis prompt, tools, retrieval, JSON mode,
-or grammar schema. Deterministic alias, numeric, concept, and exact-word-count
-graders allow partial concept credit without using another model as judge.
+at progressively weighted easy, medium, and hard levels. The active fixture is
+`config/benchmarks/ollama-model-capability-v2.json`. Version 1 remains tracked
+byte-for-byte so older reports stay reproducible. Famous trick-question
+surfaces (Monty Hall, hospital births, bat-and-ball, Wikipedia kidney-stone
+Simpson's) were replaced with parameter-varied covers of the same skills.
+Requests contain one user message and no system prompt, Jarvis prompt, tools,
+retrieval, JSON mode, or grammar schema. Deterministic alias, numeric, and
+concept graders allow partial concept credit without using another model as
+judge. One- or two-character aliases must be the entire final answer.
+Forbidden concept phrases do not zero a denied contrast such as "not because
+Earth rotates slower." Exact word-count is not part of the intelligence grade.
 Output truncation gets one larger-budget retry; a still-truncated scored case
 makes the capability grade inconclusive instead of counting as a wrong answer.
 
@@ -315,9 +322,20 @@ that may have room for it:
 Each context probe uses common-token synthetic filler targeting roughly 45%
 of the requested allocation and records the actual model-tokenized fill. This
 keeps the workload comparable across Gemma and Qwen-family tokenizers; the
-benchmark does not infer token count from character count. An Ollama rejection
-now retains its bounded response detail in the report instead of reducing it
-to a generic HTTP status.
+benchmark does not infer token count from character count. Reports split
+**resident context** (the window the GPU actually held with enough fill) from
+**needle retrieval** (whether the model returned both checkpoint codes).
+`recommended_context` follows residency so a model that held 64K but summarized
+the filler is not reported as `none`. The long-context category score averages
+those two signals. An Ollama rejection now retains its bounded response detail
+in the report instead of reducing it to a generic HTTP status.
+
+Replay grading still uses a strict pass for the `tool routing` score. The
+report also records a routing breakdown: exact tool name, schema-valid
+arguments, and partial credit (1.0 full pass, 0.5 right tool with bad or
+invented arguments, 0.0 otherwise). Jarvis functional and replay calls send
+Ollama `seed` 73 with temperature 0 so host-to-host routing noise is not
+confused with GPU differences.
 
 `--mode` selects `config/<mode>.env` for **both** `OLLAMA_BASE_URL` and
 `OLLAMA_CONTEXT_WINDOW`. Keep `--mode local` for GPU comparisons; cloud mode's
@@ -335,6 +353,9 @@ default a transient connection failure, timeout, HTTP 429, or HTTP 5xx gets one
 same-host retry with exponential backoff; tune this with `--retries`,
 `--retry-backoff`, and `--timeout`. Exhausted or non-retryable provider failures
 stop the run as inconclusive instead of lowering the model's functional score.
+Ollama HTTP 500 `tool '<name>' not found` is not treated as transport: the model
+named a tool that was not in the injected shortlist, so the case is graded as a
+hallucinated tool call and the suite continues.
 A recovered retry is not a failed answer, but its delay remains in observed
 wall latency so the performance score reflects the real Jarvis wait.
 
