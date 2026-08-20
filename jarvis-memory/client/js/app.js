@@ -71,6 +71,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('modeSelect').value = mode;
   api.setMode(mode);
   
+  // Browsers may restore prior select values; keep the first request aligned with the UI.
+  syncAlertFiltersFromControls();
+
   // Set up event listeners
   setupEventListeners();
   updateSidebarLayout();
@@ -103,6 +106,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('beforeunload', () => alertTabMonitor?.destroy(), { once: true });
   }
 });
+
+function syncAlertFiltersFromControls() {
+  const statusControl = document.getElementById('alertStatusFilter');
+  const severityControl = document.getElementById('alertSeverityFilter');
+
+  if (statusControl) alertStatusFilter = statusControl.value;
+  if (severityControl) alertSeverityFilter = severityControl.value;
+}
 
 function setupEventListeners() {
   // Mode selector

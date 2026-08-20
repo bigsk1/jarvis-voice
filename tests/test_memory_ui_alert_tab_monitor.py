@@ -259,6 +259,52 @@ vm.runInContext(`
             check=True,
         )
 
+    def test_alert_filters_sync_from_restored_browser_controls_before_initial_load(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        sync_call_position = source.index("  syncAlertFiltersFromControls();")
+        initial_load_position = source.index("  await loadData();")
+
+        self.assertLess(sync_call_position, initial_load_position)
+
+        script = r"""
+const fs = require('fs');
+const vm = require('vm');
+const assert = require('assert');
+
+const source = fs.readFileSync(process.argv[1], 'utf8');
+const start = source.indexOf('function syncAlertFiltersFromControls');
+const end = source.indexOf('function setupEventListeners', start);
+assert(start >= 0 && end > start, 'alert filter sync source not found');
+
+const controls = {
+  alertStatusFilter: { value: 'pending' },
+  alertSeverityFilter: { value: 'high' }
+};
+const sandbox = {
+  document: {
+    getElementById(id) { return controls[id] || null; }
+  }
+};
+vm.createContext(sandbox);
+vm.runInContext(`
+  let alertStatusFilter = 'all';
+  let alertSeverityFilter = 'all';
+  ${source.slice(start, end)}
+  syncAlertFiltersFromControls();
+  globalThis.filters = { alertStatusFilter, alertSeverityFilter };
+`, sandbox);
+
+assert.deepStrictEqual(
+  JSON.parse(JSON.stringify(sandbox.filters)),
+  { alertStatusFilter: 'pending', alertSeverityFilter: 'high' }
+);
+"""
+        subprocess.run(
+            ["node", "-e", script, str(APP_JS)],
+            cwd=PROJECT_ROOT,
+            check=True,
+        )
+
     def test_alert_route_reports_next_page_without_hiding_filtered_records(self) -> None:
         memory_root = str(PROJECT_ROOT / "jarvis-memory")
         if memory_root not in sys.path:
