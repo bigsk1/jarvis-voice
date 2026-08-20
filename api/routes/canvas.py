@@ -7,7 +7,11 @@ import re
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from lib.canvas_page_ids import generate_canvas_page_id
-from lib.canvas_content import append_content, is_suspicious_content_shrink
+from lib.canvas_content import (
+    append_content,
+    canvas_url_validation_error,
+    is_suspicious_content_shrink,
+)
 from ..models.canvas import (
     CanvasPage, CanvasPageFull, CanvasPageResponse,
     CanvasListResponse, CanvasStats, CanvasAppend, CanvasCreate, CanvasUpdate
@@ -317,6 +321,10 @@ async def create_page(data: CanvasCreate):
     
     Returns the created page with its ID.
     """
+    url_error = canvas_url_validation_error(data.content)
+    if url_error:
+        raise HTTPException(status_code=400, detail=url_error)
+
     # Ensure canvas directory exists
     os.makedirs(CANVAS_DIR, exist_ok=True)
     
@@ -385,6 +393,9 @@ async def update_page(page_id: str, data: CanvasUpdate):
     if data.title is not None:
         page_data["title"] = data.title
     if data.content is not None:
+        url_error = canvas_url_validation_error(data.content)
+        if url_error:
+            raise HTTPException(status_code=400, detail=url_error)
         existing_content = page_data.get("content", "")
         if (
             not data.allow_content_shrink
@@ -437,6 +448,10 @@ async def append_page(page_id: str, data: CanvasAppend):
     page_data = _load_page(filepath)
     if not page_data:
         raise HTTPException(status_code=500, detail="Failed to load page")
+
+    url_error = canvas_url_validation_error(data.content)
+    if url_error:
+        raise HTTPException(status_code=400, detail=url_error)
 
     page_data["content"] = append_content(page_data.get("content", ""), data.content)
     page_data["updated"] = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')

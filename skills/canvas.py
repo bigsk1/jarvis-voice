@@ -23,6 +23,7 @@ from typing import Any
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import get_config_value, load_config
+from canvas_content import canvas_url_validation_error
 
 # Constants
 CANVAS_INTERNAL_URL_DEFAULT = "http://localhost:8890"
@@ -132,22 +133,6 @@ def _normalize_bare_urls_in_sources_sections(content: str) -> str:
             continue
         out.append(line)
     return "\n".join(out)
-
-
-def _find_truncated_urls(content: str) -> list[str]:
-    """Detect clearly truncated URLs like 'https://example.com/...'. """
-    if not content:
-        return []
-    # Match URL-like tokens that contain ellipsis, which are not resolvable links.
-    matches = re.findall(r'(?:https?://|www\.)[^\s)\]]*\.\.\.[^\s)\]]*', content, flags=re.IGNORECASE)
-    # Return unique values preserving order
-    seen = set()
-    bad = []
-    for m in matches:
-        if m not in seen:
-            seen.add(m)
-            bad.append(m)
-    return bad
 
 
 def _extract_inline_image_url(content: str) -> tuple[str | None, str]:
@@ -382,11 +367,11 @@ def create_page(title: str, content: str, tags: list[str] = None,
             ),
         }
 
-    truncated_urls = _find_truncated_urls(content or "")
-    if truncated_urls:
+    url_error = canvas_url_validation_error(content or "")
+    if url_error:
         return {
             "ok": False,
-            "error": f"Canvas content contains truncated URLs: {truncated_urls[:3]}",
+            **url_error,
             "speech": "I couldn't save that canvas page because one or more source links were truncated. I'll need to regenerate it with full URLs."
         }
 
@@ -471,11 +456,11 @@ def update_page(page_id: str, title: str = None, content: str = None,
         content = _embed_image_markdown(content, image_url=image_url, image_alt=image_alt)
         content = _unwrap_outer_markdown_fence(content)
         content = _normalize_bare_urls_in_sources_sections(content)
-        truncated_urls = _find_truncated_urls(content)
-        if truncated_urls:
+        url_error = canvas_url_validation_error(content)
+        if url_error:
             return {
                 "ok": False,
-                "error": f"Canvas content contains truncated URLs: {truncated_urls[:3]}",
+                **url_error,
                 "speech": "I couldn't update that canvas page because one or more source links were truncated. Please regenerate with full URLs."
             }
         data['content'] = content
@@ -526,11 +511,11 @@ def append_page(page_id: str, content: str,
             "speech": "I can't append an empty section to Canvas."
         }
 
-    truncated_urls = _find_truncated_urls(content)
-    if truncated_urls:
+    url_error = canvas_url_validation_error(content)
+    if url_error:
         return {
             "ok": False,
-            "error": f"Canvas content contains truncated URLs: {truncated_urls[:3]}",
+            **url_error,
             "speech": "I couldn't append that section because one or more source links were truncated. Please regenerate it with full URLs."
         }
 

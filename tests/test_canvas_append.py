@@ -10,7 +10,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import skills.canvas as canvas_module  # noqa: E402
-from lib.canvas_content import append_content, is_suspicious_content_shrink  # noqa: E402
+from lib.canvas_content import (  # noqa: E402
+    append_content,
+    canvas_url_validation_error,
+    find_truncated_urls,
+    is_suspicious_content_shrink,
+)
 
 
 def test_append_page_sends_only_new_content(monkeypatch):
@@ -141,3 +146,31 @@ def test_server_shrink_guard_blocks_large_accidental_replacement():
     assert is_suspicious_content_shrink("x" * 1000, "y" * 800) is False
     assert is_suspicious_content_shrink("x" * 6902, "y" * 7000) is False
     assert is_suspicious_content_shrink("short page", "shorter") is False
+
+
+def test_canvas_url_policy_allows_bounded_compare_ranges():
+    content = (
+        "[Compare releases](https://github.com/yt-dlp/yt-dlp/compare/"
+        "2026.07.04...2026.08.19)"
+    )
+
+    assert find_truncated_urls(content) == []
+    assert canvas_url_validation_error(content) is None
+
+
+def test_canvas_url_policy_rejects_incomplete_placeholders():
+    content = "\n".join([
+        "https://...",
+        "https://example.com/...",
+        "https://example.com/releases/latest...",
+    ])
+
+    error = canvas_url_validation_error(content)
+
+    assert error is not None
+    assert error["error_code"] == "truncated_content_url"
+    assert error["truncated_urls"] == [
+        "https://...",
+        "https://example.com/...",
+        "https://example.com/releases/latest...",
+    ]

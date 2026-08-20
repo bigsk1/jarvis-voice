@@ -517,7 +517,16 @@ def save_report_to_canvas(title: str, content: str, source_query: str) -> tuple[
             cwd=str(project_root),
         )
         if result.returncode != 0:
-            return None, (result.stderr or "canvas tool failed").strip()
+            stdout = (result.stdout or "").strip()
+            stderr = (result.stderr or "").strip()
+            if stdout:
+                try:
+                    failed_result = json.loads(stdout)
+                    if isinstance(failed_result, dict) and failed_result.get("error"):
+                        return None, str(failed_result["error"])
+                except json.JSONDecodeError:
+                    pass
+            return None, stderr or stdout or "canvas tool failed"
         parsed = json.loads(result.stdout or "{}")
         if not parsed.get("ok"):
             return None, parsed.get("error") or "canvas create failed"
@@ -580,6 +589,7 @@ def main():
         max_issues = clamp(int(args.get("max_issues", 20) or 20), 1, 100)
         save_to_canvas = bool(args.get("save_to_canvas", True))
         save_to_stash = bool(args.get("save_to_stash", True))
+        canvas_title = str(args.get("canvas_title", "")).strip()
 
         target = parse_repo_target(target_input, explicit_tag)
 
@@ -608,8 +618,13 @@ def main():
         canvas_page_id = None
         canvas_error = None
         if save_to_canvas:
-            title = f"Release Notes: {target.owner}/{target.repo} {tag}"
+            title = canvas_title or f"Release Notes: {target.owner}/{target.repo} {tag}"
             canvas_page_id, canvas_error = save_report_to_canvas(title=title, content=report_md, source_query=target_input)
+            if not canvas_page_id:
+                raise RuntimeError(
+                    "Failed to save release notes to Canvas: "
+                    f"{canvas_error or 'unknown Canvas error'}"
+                )
 
         remember_artifact(target=target, tag=tag, stash_ref=stash_ref, page_id=canvas_page_id)
 

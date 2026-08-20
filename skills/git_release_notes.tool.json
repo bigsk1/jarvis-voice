@@ -47,6 +47,10 @@
         "type": "boolean",
         "description": "Create a canvas page with the full markdown report (default true)."
       },
+      "canvas_title": {
+        "type": "string",
+        "description": "Optional stable Canvas page title override. Useful for idempotent workflows that must verify or recreate the exact release artifact."
+      },
       "save_to_stash": {
         "type": "boolean",
         "description": "Save markdown report to stash for sharing/follow-up (default true)."

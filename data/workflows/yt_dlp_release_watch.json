@@ -1,8 +1,8 @@
 {
   "id": "yt_dlp_release_watch",
   "name": "yt-dlp Stable Release Watch",
-  "description": "Check PyPI for a new stable yt-dlp release, create GitHub release notes in Canvas, alert once, and acknowledge the handled version.",
-  "version": "1.0",
+  "description": "Check PyPI for the current stable yt-dlp release, ensure its GitHub release notes exist in Canvas, alert once for a version change, and acknowledge the handled version.",
+  "version": "1.1",
   "enabled": true,
   "allow_workflow_tool": false,
   "triggers": {
@@ -53,11 +53,33 @@
     },
     {
       "step": 2,
+      "tool": "canvas",
+      "action": "read",
+      "params": {
+        "search": "Release Notes: ${github_project} ${current_version}"
+      },
+      "output_var": "existing_release_page",
+      "extract": {
+        "canvas_page_id": "page_id"
+      },
+      "required": true,
+      "description": "Find the stable Canvas artifact for the current release version"
+    },
+    {
+      "step": 3,
       "tool": "git_release_notes",
       "condition": {
-        "op": "eq",
-        "left": "${changed}",
-        "right": true
+        "any": [
+          {
+            "op": "eq",
+            "left": "${changed}",
+            "right": true
+          },
+          {
+            "op": "not_exists",
+            "left": "${canvas_page_id}"
+          }
+        ]
       },
       "params": {
         "target": "${github_project}",
@@ -68,6 +90,7 @@
         "max_prs": 25,
         "max_issues": 25,
         "save_to_canvas": true,
+        "canvas_title": "Release Notes: ${github_project} ${current_version}",
         "save_to_stash": false
       },
       "output_var": "release_notes",
@@ -77,10 +100,10 @@
         "github_release_url": "release_url"
       },
       "required": true,
-      "description": "Create or refresh the exact-tag GitHub release report in Canvas"
+      "description": "Create or refresh the current GitHub release report when the version changed or its Canvas artifact is missing"
     },
     {
-      "step": 3,
+      "step": 4,
       "tool": "create_alert",
       "condition": {
         "op": "eq",
@@ -111,7 +134,7 @@
       "description": "Create one deduplicated medium-severity alert for the release"
     },
     {
-      "step": 4,
+      "step": 5,
       "tool": "release_watch",
       "condition": {
         "op": "eq",

@@ -9,6 +9,8 @@ from unittest.mock import Mock
 
 from flask import Flask
 
+from lib.canvas_content import canvas_url_validation_error
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PAGES_ROUTE = ROOT / "jarvis-canvas" / "server" / "routes" / "pages.py"
@@ -26,6 +28,7 @@ def _load_pages_route(tmp_path, monkeypatch):
 
     canvas_content = types.ModuleType("canvas_content")
     canvas_content.append_content = lambda old, new: f"{old}\n\n{new}"
+    canvas_content.canvas_url_validation_error = canvas_url_validation_error
     canvas_content.is_suspicious_content_shrink = lambda _old, _new: False
 
     canvas_ids = types.ModuleType("canvas_page_ids")
@@ -118,3 +121,30 @@ def test_upload_syncs_stash_references_for_new_and_existing_pinned_pages(tmp_pat
         "stash://space_created/file.png",
         "stash://space_updated/file.png",
     ]
+
+
+def test_canvas_server_create_uses_shared_url_policy(tmp_path, monkeypatch):
+    app, _sync_pins = _load_pages_route(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    accepted = client.post(
+        "/api/pages",
+        json={
+            "title": "Release Notes",
+            "content": (
+                "[Compare](https://github.com/yt-dlp/yt-dlp/compare/"
+                "2026.07.04...2026.08.19)"
+            ),
+        },
+    )
+    rejected = client.post(
+        "/api/pages",
+        json={
+            "title": "Incomplete",
+            "content": "Source: https://example.com/...",
+        },
+    )
+
+    assert accepted.status_code == 201
+    assert rejected.status_code == 400
+    assert rejected.get_json()["error_code"] == "truncated_content_url"

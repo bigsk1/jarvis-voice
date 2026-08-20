@@ -13,7 +13,11 @@ try:
     from stash_helper import get_stash_dir
 except ImportError:
     from lib.stash_helper import get_stash_dir
-from canvas_content import append_content, is_suspicious_content_shrink
+from canvas_content import (
+    append_content,
+    canvas_url_validation_error,
+    is_suspicious_content_shrink,
+)
 from canvas_page_ids import generate_canvas_page_id
 from server.pages import (
     delete_page_file,
@@ -101,6 +105,10 @@ def create_page():
     
     if not data.get('title'):
         return jsonify({"error": "Title is required"}), 400
+
+    url_error = canvas_url_validation_error(data.get('content', ''))
+    if url_error:
+        return jsonify(url_error), 400
     
     now_utc = datetime.now(timezone.utc)
     page_id = generate_canvas_page_id(now_utc)
@@ -143,6 +151,9 @@ def update_page(page_id):
     if 'content' in data:
         old_content = page.get('content', '')
         new_content = data['content']
+        url_error = canvas_url_validation_error(new_content)
+        if url_error:
+            return jsonify(url_error), 400
         allow_content_shrink = data.get('allow_content_shrink') is True
         if (
             not allow_content_shrink
@@ -185,6 +196,10 @@ def append_page(page_id):
     additional_content = data.get('content')
     if not isinstance(additional_content, str) or not additional_content.strip():
         return jsonify({"error": "Content is required for append"}), 400
+
+    url_error = canvas_url_validation_error(additional_content)
+    if url_error:
+        return jsonify(url_error), 400
 
     with open(filepath) as f:
         page = json.load(f)

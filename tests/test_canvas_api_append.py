@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 
-from api.models.canvas import CanvasAppend, CanvasUpdate
+from api.models.canvas import CanvasAppend, CanvasCreate, CanvasUpdate
 from api.routes import canvas as canvas_routes
 
 
@@ -60,3 +60,37 @@ def test_fastapi_canvas_update_blocks_suspicious_shrink(tmp_path, monkeypatch):
 
     assert exc_info.value.status_code == 409
     assert exc_info.value.detail["error_code"] == "suspicious_content_shrink"
+
+
+def test_fastapi_canvas_create_allows_compare_range_url(tmp_path, monkeypatch):
+    monkeypatch.setattr(canvas_routes, "CANVAS_DIR", str(tmp_path))
+
+    result = asyncio.run(
+        canvas_routes.create_page(CanvasCreate(
+            title="Release Notes",
+            content=(
+                "[Compare](https://github.com/yt-dlp/yt-dlp/compare/"
+                "2026.07.04...2026.08.19)"
+            ),
+        ))
+    )
+
+    assert result.ok is True
+    assert result.page is not None
+    assert result.page.title == "Release Notes"
+
+
+def test_fastapi_canvas_create_rejects_truncated_url(tmp_path, monkeypatch):
+    monkeypatch.setattr(canvas_routes, "CANVAS_DIR", str(tmp_path))
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            canvas_routes.create_page(CanvasCreate(
+                title="Incomplete",
+                content="Source: https://example.com/...",
+            ))
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["error_code"] == "truncated_content_url"
+    assert list(tmp_path.iterdir()) == []
