@@ -882,6 +882,27 @@ class PipelineExecutor:
             # Backward compatibility for custom crawl workflows created before
             # validated_output_var became explicit.
             variables["validated_articles"] = validated_outputs
+
+    @staticmethod
+    def _for_each_should_abort(
+        step: dict,
+        successful_count: int,
+        required_success: int,
+    ) -> bool:
+        """Apply explicit loop failure policy before normal step semantics."""
+        if successful_count >= required_success:
+            return False
+
+        on_all_fail = step.get("on_all_fail")
+        if on_all_fail == "abort_with_message":
+            return True
+        if on_all_fail == "continue":
+            return False
+
+        return (
+            step.get("required", True)
+            and step.get("on_fail") != "continue"
+        )
     
     def _execute_for_each(self, step: dict, tool_name: str, action: str,
                           tool_defaults: dict, variables: dict,
@@ -902,9 +923,10 @@ class PipelineExecutor:
                 else step.get("required_success_count", 1)
             )
             validated_outputs = []
-            abort = (
-                len(validated_outputs) < required_success
-                and step.get("on_all_fail") == "abort_with_message"
+            abort = self._for_each_should_abort(
+                step,
+                len(validated_outputs),
+                required_success,
             )
             return {
                 "items_processed": 0,
@@ -1030,10 +1052,11 @@ class PipelineExecutor:
         variables.pop("_loop_index", None)
         
         # Check if we met required success count
-        abort = False
-        if len(validated_outputs) < required_success:
-            if step.get("on_all_fail") == "abort_with_message":
-                abort = True
+        abort = self._for_each_should_abort(
+            step,
+            len(validated_outputs),
+            required_success,
+        )
         
         return {
             "items_processed": len(outputs),

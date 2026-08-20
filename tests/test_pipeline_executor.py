@@ -1059,6 +1059,86 @@ MIME type: application/pdf
         self.assertEqual(result["retries"], 2)
         self.assertTrue(result["abort"])
 
+    def test_for_each_default_required_failure_aborts_before_later_step(self):
+        calls = []
+
+        def execute(tool, _params):
+            calls.append(tool)
+            if tool == "always_fail":
+                return {"ok": False, "error": "probe failure"}
+            return {"ok": True, "data": {"ran": True}}
+
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(execute=execute),
+            provider=None,
+        )
+        workflow = {
+            "id": "for_each_failure_probe",
+            "name": "for_each failure probe",
+            "abort_speech": "Workflow aborted",
+            "success_speech": "Workflow reported success",
+            "steps": [
+                {
+                    "step": 1,
+                    "tool": "always_fail",
+                    "for_each": "${items}",
+                    "output_var": "attempts",
+                },
+                {
+                    "step": 2,
+                    "tool": "must_not_run",
+                    "required": True,
+                },
+            ],
+        }
+
+        with patch.object(
+            executor,
+            "_extract_workflow_variables",
+            return_value={"items": ["one", "two"]},
+        ):
+            result = executor.execute(workflow, "probe")
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["speech"], "Workflow aborted")
+        self.assertEqual(calls, ["always_fail", "always_fail"])
+
+    def test_for_each_failure_honors_required_and_continue_overrides(self):
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(
+                execute=lambda *_args, **_kwargs: {"ok": False, "error": "failed"}
+            ),
+            provider=None,
+        )
+        step = {
+            "tool": "probe",
+            "for_each": "${items}",
+        }
+
+        def execute(overrides):
+            return executor._execute_for_each(
+                {**step, **overrides},
+                "probe",
+                None,
+                {},
+                {"items": ["one"]},
+                {},
+                0,
+                10,
+            )
+
+        self.assertTrue(execute({})["abort"])
+        self.assertFalse(execute({"required": False})["abort"])
+        self.assertFalse(execute({"on_fail": "continue"})["abort"])
+        self.assertFalse(execute({"on_all_fail": "continue"})["abort"])
+        self.assertTrue(
+            execute({"required": False, "on_all_fail": "abort_with_message"})[
+                "abort"
+            ]
+        )
+
     def test_for_each_empty_items_honors_on_all_fail_abort(self):
         executor = PipelineExecutor(
             mode="cloud",
