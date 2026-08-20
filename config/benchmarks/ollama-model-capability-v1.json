@@ -1,0 +1,407 @@
+{
+  "schema_version": 1,
+  "fixture_id": "jarvis-ollama-model-capability-v1",
+  "description": "Application-independent model capability evaluation using timeless knowledge and synthetic or parameter-varied reasoning questions. No system prompt, tools, JSON mode, retrieval, or Jarvis data are used.",
+  "request_contract": {
+    "system_prompt": false,
+    "tools": false,
+    "response_format": false,
+    "temperature": 0,
+    "seed": 73,
+    "thinking": "explicit_cli_profile",
+    "canonical_profile": "off"
+  },
+  "output_budget_policy": {
+    "retry_on_done_reason_length": true,
+    "minimum_initial_tokens": 1024,
+    "multiplier": 2,
+    "max_tokens": 2048,
+    "unresolved_truncation": "unscored"
+  },
+  "qualitative_probe": {
+    "probe_id": "foundational_truth",
+    "prompt": "Do not interpret this as a question about the user or the user's personal circumstances. Considering reality as a whole, answer in your own terms: What is the most important thing that is true?",
+    "max_tokens": 512,
+    "scored": false,
+    "purpose": "A final open-ended behavioral sample about what the model prioritizes. Record verbatim; do not interpret it as an objective measure or include it in any grade."
+  },
+  "scoring": {
+    "category_weights": {
+      "general_knowledge": 0.25,
+      "logic": 0.25,
+      "math": 0.25,
+      "cognitive_reflection": 0.25
+    },
+    "difficulty_weights": {
+      "easy": 1,
+      "medium": 2,
+      "hard": 3
+    },
+    "policy": "Free-response answers are graded deterministically. Alias and numeric graders are all-or-nothing. Concept graders award proportional credit for required concept groups and zero credit for a forbidden contradiction. No model judge is used."
+  },
+  "cases": [
+    {
+      "case_id": "knowledge_easy_tungsten",
+      "category": "general_knowledge",
+      "difficulty": "easy",
+      "prompt": "Which chemical element is denoted by the symbol W? End with `Final answer: <element name>`.",
+      "max_tokens": 128,
+      "grader": {"type": "aliases", "answers": ["tungsten", "wolfram"]}
+    },
+    {
+      "case_id": "knowledge_easy_amazon_ocean",
+      "category": "general_knowledge",
+      "difficulty": "easy",
+      "prompt": "Into which ocean does the Amazon River ultimately flow? End with `Final answer: <ocean>`.",
+      "max_tokens": 128,
+      "grader": {"type": "aliases", "answers": ["atlantic", "atlantic ocean"]}
+    },
+    {
+      "case_id": "knowledge_medium_terminal_acceptor",
+      "category": "general_knowledge",
+      "difficulty": "medium",
+      "prompt": "During aerobic cellular respiration in human mitochondria, what molecule is the terminal electron acceptor in the electron transport chain? End with `Final answer: <molecule>`.",
+      "max_tokens": 192,
+      "grader": {"type": "aliases", "answers": ["oxygen", "molecular oxygen", "o2"]}
+    },
+    {
+      "case_id": "knowledge_medium_westphalia",
+      "category": "general_knowledge",
+      "difficulty": "medium",
+      "prompt": "What collective name is commonly given to the 1648 treaties that ended the Thirty Years' War? End with `Final answer: <name>`.",
+      "max_tokens": 192,
+      "grader": {
+        "type": "aliases",
+        "answers": ["peace of westphalia", "treaties of westphalia", "westphalian peace"]
+      }
+    },
+    {
+      "case_id": "knowledge_medium_incompleteness",
+      "category": "general_knowledge",
+      "difficulty": "medium",
+      "prompt": "Which theorem says, roughly, that any consistent formal system powerful enough to express ordinary arithmetic contains true statements it cannot prove? End with `Final answer: <theorem name>`.",
+      "max_tokens": 256,
+      "grader": {
+        "type": "aliases",
+        "answers": [
+          "godel incompleteness theorem",
+          "godel's incompleteness theorem",
+          "godel first incompleteness theorem",
+          "godel's first incompleteness theorem",
+          "godel incompleteness theorems",
+          "godel's incompleteness theorems"
+        ]
+      }
+    },
+    {
+      "case_id": "knowledge_hard_mercator",
+      "category": "general_knowledge",
+      "difficulty": "hard",
+      "prompt": "Why does Greenland appear far too large relative to Africa on a Mercator world map? Answer in one or two plain-language sentences.",
+      "max_tokens": 320,
+      "grader": {
+        "type": "concepts",
+        "required_groups": [
+          ["mercator projection", "cylindrical projection", "map projection"],
+          ["high latitude", "high latitudes", "near the poles", "toward the poles", "closer to the poles"],
+          ["area distortion", "distorts area", "distorts size", "stretches area", "stretches areas", "stretches landmasses", "exaggerates area", "exaggerates its size", "exaggerates size", "look much larger", "looks much larger", "size distortion", "size is exaggerated", "scale increases"]
+        ]
+      }
+    },
+    {
+      "case_id": "knowledge_hard_lunar_day",
+      "category": "general_knowledge",
+      "difficulty": "hard",
+      "prompt": "At one location on Earth, the interval between successive times the Moon crosses the local meridian is about 24 hours 50 minutes, rather than 24 hours. Explain the astronomical reason in one or two plain-language sentences.",
+      "max_tokens": 320,
+      "grader": {
+        "type": "concepts",
+        "required_groups": [
+          ["moon moves eastward", "moon orbits eastward", "moon's eastward orbit", "moon advances in its orbit", "moon moves along its orbit", "moon moves in its orbit", "moon orbits earth in the same direction", "moon orbits earth"],
+          ["earth must rotate farther", "earth rotates farther", "earth rotates extra", "earth must rotate a little extra", "earth must rotate extra", "additional rotation", "rotate more", "catch up"]
+        ],
+        "forbidden_groups": [["earth rotates slower", "earth's rotation is slower"]]
+      }
+    },
+    {
+      "case_id": "knowledge_hard_carbon_dating",
+      "category": "general_knowledge",
+      "difficulty": "hard",
+      "prompt": "Why can carbon-14 dating be useful for relatively recent organic remains but not for fossils tens of millions of years old? Answer in one or two plain-language sentences.",
+      "max_tokens": 384,
+      "grader": {
+        "type": "concepts",
+        "required_groups": [
+          [
+            "half-life of about 5730 years",
+            "half life of about 5730 years",
+            "half-life is about 5730 years",
+            "half life is about 5730 years",
+            "short half-life",
+            "short half life",
+            "carbon-14 decays",
+            "carbon 14 decays",
+            "radioactive decay"
+          ],
+          [
+            "too little carbon-14 remains",
+            "too little carbon 14 remains",
+            "almost all carbon-14 has decayed",
+            "almost all carbon 14 has decayed",
+            "decayed to undetectable levels",
+            "undetectable levels",
+            "below detectable levels",
+            "cannot be measured reliably",
+            "too little remains to measure",
+            "none left to measure",
+            "no carbon-14 left to measure",
+            "no carbon 14 left to measure"
+          ]
+        ],
+        "forbidden_groups": [["carbon-14 does not decay", "carbon 14 does not decay"]]
+      }
+    },
+    {
+      "case_id": "knowledge_hard_seasons_76_words",
+      "category": "general_knowledge",
+      "difficulty": "hard",
+      "prompt": "Explain why Earth's seasons are caused primarily by axial tilt rather than changes in distance from the Sun. Respond in exactly 76 words. For this benchmark, a word is a whitespace-separated token; hyphenated terms and contractions each count as one word.",
+      "max_tokens": 512,
+      "grader": {
+        "type": "word_count_concepts",
+        "word_count": 76,
+        "word_count_weight": 0.4,
+        "required_groups": [
+          ["axial tilt", "axis is tilted", "tilted axis", "earth's tilt"],
+          [
+            "sunlight angle",
+            "sunlight angles",
+            "angle of sunlight",
+            "more direct sunlight",
+            "less direct sunlight",
+            "solar angle",
+            "sun's rays are more direct",
+            "sun's rays are less direct"
+          ],
+          [
+            "longer days",
+            "shorter days",
+            "daylight hours",
+            "duration of daylight",
+            "length of daylight",
+            "day lengths",
+            "solar angle and duration",
+            "prolonged daylight"
+          ]
+        ]
+      }
+    },
+    {
+      "case_id": "logic_easy_order",
+      "category": "logic",
+      "difficulty": "easy",
+      "prompt": "Ava finishes before Ben. Cora finishes after Ben. Give the only possible order from first to last. End with `Final answer: <names in order>`.",
+      "max_tokens": 128,
+      "grader": {"type": "aliases", "answers": ["ava ben cora", "ava then ben then cora"]}
+    },
+    {
+      "case_id": "logic_easy_syllogism",
+      "category": "logic",
+      "difficulty": "easy",
+      "prompt": "All norps are velts. No velts are blue. Can any norp be blue? End with `Final answer: yes` or `Final answer: no`.",
+      "max_tokens": 128,
+      "grader": {"type": "aliases", "answers": ["no", "no norp can be blue"]}
+    },
+    {
+      "case_id": "logic_medium_truth_tellers",
+      "category": "logic",
+      "difficulty": "medium",
+      "prompt": "Aria and Bex are each either always truthful or always lying. Aria says, 'Bex is lying.' Bex says, 'Aria and I are the same type.' Determine both types. End with `Final answer: Aria <type>; Bex <type>`.",
+      "max_tokens": 256,
+      "grader": {
+        "type": "aliases",
+        "answers": [
+          "aria truthful bex liar",
+          "aria truthful bex lying",
+          "aria truth teller bex liar",
+          "aria honest bex lying",
+          "aria true bex false"
+        ]
+      }
+    },
+    {
+      "case_id": "logic_medium_selection",
+      "category": "logic",
+      "difficulty": "medium",
+      "prompt": "Exactly one of Nia and Omar is selected. Priya is selected if and only if Nia is selected. Priya is not selected. Which of Nia or Omar must be selected? End with `Final answer: <name>`.",
+      "max_tokens": 192,
+      "grader": {"type": "aliases", "answers": ["omar"]}
+    },
+    {
+      "case_id": "logic_medium_four_cards",
+      "category": "logic",
+      "difficulty": "medium",
+      "prompt": "Cards 1, 2, 3, and 4 are placed in one row. Card 2 is left of card 4. Card 1 is not adjacent to card 2. Card 3 is immediately right of card 1. Card 4 is left of card 1. Give the unique order from left to right. End with `Final answer: <digits in order>`.",
+      "max_tokens": 384,
+      "grader": {"type": "aliases", "answers": ["2413", "2 4 1 3"]}
+    },
+    {
+      "case_id": "logic_hard_schedule",
+      "category": "logic",
+      "difficulty": "hard",
+      "prompt": "Five talks J, K, L, M, and N occupy five consecutive slots. J is before K. L is immediately after J. M is after K. N is before J. Give the unique complete order. End with `Final answer: <letters in order>`.",
+      "max_tokens": 320,
+      "grader": {
+        "type": "aliases",
+        "answers": ["n j l k m", "njlkm", "n then j then l then k then m"]
+      }
+    },
+    {
+      "case_id": "logic_hard_meta_statements",
+      "category": "logic",
+      "difficulty": "hard",
+      "prompt": "Exactly one of these three statements is true. A says: 'B is true.' B says: 'C is false.' C says: 'A and B are both false.' Which statement is true? End with `Final answer: A`, `Final answer: B`, or `Final answer: C`.",
+      "max_tokens": 384,
+      "grader": {"type": "aliases", "answers": ["c", "statement c"]}
+    },
+    {
+      "case_id": "logic_hard_four_safes",
+      "category": "logic",
+      "difficulty": "hard",
+      "prompt": "Exactly one of safes A, B, C, and D contains a coin. Four statements are made: (1) the coin is in A or B; (2) the coin is not in B; (3) the coin is in C; (4) statement 1 is true. Exactly three of the four statements are true. Which safe contains the coin? End with `Final answer: <letter>`.",
+      "max_tokens": 448,
+      "grader": {"type": "aliases", "answers": ["a", "safe a"]}
+    },
+    {
+      "case_id": "math_easy_linear",
+      "category": "math",
+      "difficulty": "easy",
+      "prompt": "Solve 3x + 7 = 31. End with `Final answer: <number>`.",
+      "max_tokens": 128,
+      "grader": {"type": "number", "value": 8, "tolerance": 0}
+    },
+    {
+      "case_id": "math_easy_percent_chain",
+      "category": "math",
+      "difficulty": "easy",
+      "prompt": "Start with 80. Increase it by 25%, then decrease the result by 20%. What is the final value? End with `Final answer: <number>`.",
+      "max_tokens": 160,
+      "grader": {"type": "number", "value": 80, "tolerance": 0}
+    },
+    {
+      "case_id": "math_medium_binomial",
+      "category": "math",
+      "difficulty": "medium",
+      "prompt": "A fair coin is flipped four times. What is the probability of getting exactly two heads? End with `Final answer: <fraction or decimal>`.",
+      "max_tokens": 224,
+      "grader": {"type": "number", "value": 0.375, "tolerance": 0.0001}
+    },
+    {
+      "case_id": "math_medium_work_rate",
+      "category": "math",
+      "difficulty": "medium",
+      "prompt": "One pump fills a tank in 6 hours and a second pump fills the same tank in 3 hours. Working together at constant rates, how many hours do they need? End with `Final answer: <hours>`.",
+      "max_tokens": 224,
+      "grader": {"type": "number", "value": 2, "tolerance": 0.0001}
+    },
+    {
+      "case_id": "math_medium_inclusion_exclusion",
+      "category": "math",
+      "difficulty": "medium",
+      "prompt": "Among the integers from 1 through 100 inclusive, how many are divisible by 3 or by 5, but not by both? End with `Final answer: <integer>`.",
+      "max_tokens": 384,
+      "grader": {"type": "number", "value": 41, "tolerance": 0}
+    },
+    {
+      "case_id": "math_hard_congruences",
+      "category": "math",
+      "difficulty": "hard",
+      "prompt": "Find the smallest positive integer n such that n leaves remainder 2 when divided by 5 and remainder 3 when divided by 7. End with `Final answer: <integer>`.",
+      "max_tokens": 320,
+      "grader": {"type": "number", "value": 17, "tolerance": 0}
+    },
+    {
+      "case_id": "math_hard_circular_arrangements",
+      "category": "math",
+      "difficulty": "hard",
+      "prompt": "Five distinct people sit around a round table. Rotations count as the same seating. How many seatings have Alice and Bob not adjacent? End with `Final answer: <integer>`.",
+      "max_tokens": 384,
+      "grader": {"type": "number", "value": 12, "tolerance": 0}
+    },
+    {
+      "case_id": "math_hard_surjections",
+      "category": "math",
+      "difficulty": "hard",
+      "prompt": "How many onto functions are there from a set of five labeled elements to a set of three labeled elements? End with `Final answer: <integer>`.",
+      "max_tokens": 512,
+      "grader": {"type": "number", "value": 150, "tolerance": 0}
+    },
+    {
+      "case_id": "reflection_easy_coin_streak",
+      "category": "cognitive_reflection",
+      "difficulty": "easy",
+      "prompt": "A fair coin has landed heads five times in a row. What is the probability that the next flip is heads? End with `Final answer: <fraction, decimal, or percent>`.",
+      "max_tokens": 160,
+      "grader": {"type": "number", "value": 0.5, "tolerance": 0.0001, "percent_equivalent": true}
+    },
+    {
+      "case_id": "reflection_easy_percentage_reversal",
+      "category": "cognitive_reflection",
+      "difficulty": "easy",
+      "prompt": "A price is reduced by 20%. What percentage increase, applied to the reduced price, returns it to the original price? End with `Final answer: <percent>`.",
+      "max_tokens": 192,
+      "grader": {"type": "number", "value": 25, "tolerance": 0.0001}
+    },
+    {
+      "case_id": "reflection_medium_notebook_pen",
+      "category": "cognitive_reflection",
+      "difficulty": "medium",
+      "prompt": "A notebook and a pen cost $5.50 total. The notebook costs exactly $5.00 more than the pen. How much does the pen cost in dollars? End with `Final answer: $<amount>`.",
+      "max_tokens": 224,
+      "grader": {"type": "number", "value": 0.25, "tolerance": 0.0001}
+    },
+    {
+      "case_id": "reflection_medium_average_speed",
+      "category": "cognitive_reflection",
+      "difficulty": "medium",
+      "prompt": "A car travels the same distance outbound at 60 mph and back at 30 mph. What is its average speed for the entire round trip? End with `Final answer: <mph>`.",
+      "max_tokens": 256,
+      "grader": {"type": "number", "value": 40, "tolerance": 0.0001}
+    },
+    {
+      "case_id": "reflection_medium_hospital_variance",
+      "category": "cognitive_reflection",
+      "difficulty": "medium",
+      "prompt": "A city has a small hospital with about 15 births per day and a large hospital with about 45 births per day. Over a year, which hospital will record more days on which over 60% of the babies born are boys: the small hospital, the large hospital, or about the same? End with `Final answer: <choice>`.",
+      "max_tokens": 384,
+      "grader": {
+        "type": "aliases",
+        "answers": ["small", "small hospital", "the small hospital"]
+      }
+    },
+    {
+      "case_id": "reflection_hard_base_rate",
+      "category": "cognitive_reflection",
+      "difficulty": "hard",
+      "prompt": "A condition affects 1% of people. A test is positive for 90% of affected people and has a 9% false-positive rate for unaffected people. For a randomly selected person who tests positive, approximately what percent chance do they actually have the condition? End with `Final answer: <percent>`.",
+      "max_tokens": 448,
+      "grader": {"type": "number", "value": 9.17, "tolerance": 0.15}
+    },
+    {
+      "case_id": "reflection_hard_monty_hall",
+      "category": "cognitive_reflection",
+      "difficulty": "hard",
+      "prompt": "In the standard three-door Monty Hall problem, you pick one door. The host knows where the prize is, always opens a different losing door, and always offers a switch. What is the probability of winning if you switch? End with `Final answer: <fraction, decimal, or percent>`.",
+      "max_tokens": 320,
+      "grader": {"type": "number", "value": 0.6666667, "tolerance": 0.005, "percent_equivalent": true}
+    },
+    {
+      "case_id": "reflection_hard_simpsons_paradox",
+      "category": "cognitive_reflection",
+      "difficulty": "hard",
+      "prompt": "Two kidney-stone treatments have these recovery counts. Treatment A: 81 of 87 small-stone cases and 192 of 263 large-stone cases recovered. Treatment B: 234 of 270 small-stone cases and 55 of 80 large-stone cases recovered. Although B has the higher overall recovery percentage, which treatment has the higher recovery rate within both stone-size groups and is therefore favored after controlling for stone size? End with `Final answer: <A or B>`.",
+      "max_tokens": 512,
+      "grader": {"type": "aliases", "answers": ["a", "treatment a"]}
+    }
+  ]
+}

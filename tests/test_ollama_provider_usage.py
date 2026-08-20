@@ -129,6 +129,47 @@ def test_local_provider_keeps_localhost_fallback(monkeypatch):
     assert p.base_urls == ["http://gpu-one:11434", "http://localhost:11434"]
 
 
+def test_explicit_no_localhost_fallback_is_passed_to_request_ollama(monkeypatch):
+    monkeypatch.setenv("JARVIS_MODE", "local")
+    provider = OllamaProvider(
+        base_url="http://gpu-one:11434",
+        model="gemma4",
+        include_localhost_fallback=False,
+        force_local_daemon=True,
+    )
+    assert provider.base_urls == ["http://gpu-one:11434"]
+    response = _ChatResponse("ok")
+    with patch("llm_provider.request_ollama", return_value=(response, "http://gpu-one:11434")) as mocked:
+        provider.chat_with_tools(
+            messages=[{"role": "user", "content": "Hi"}],
+            tools=[],
+        )
+    assert mocked.call_args.kwargs["include_localhost_fallback"] is False
+    assert mocked.call_args.kwargs["base_urls"] == ["http://gpu-one:11434"]
+
+
+def test_timeout_error_text_uses_configured_request_timeout(monkeypatch):
+    import requests as req
+
+    monkeypatch.setenv("JARVIS_MODE", "local")
+    provider = OllamaProvider(
+        base_url="http://gpu-one:11434",
+        model="gemma4",
+        include_localhost_fallback=False,
+        request_timeout=300,
+        force_local_daemon=True,
+    )
+    with patch("llm_provider.request_ollama", side_effect=req.exceptions.Timeout()):
+        text, tool_call, usage, thinking = provider.chat_with_tools(
+            messages=[{"role": "user", "content": "Hi"}],
+            tools=[],
+        )
+    assert text.startswith("Error: Request timed out after 300s")
+    assert tool_call is None
+    assert usage is None
+    assert thinking is None
+
+
 def test_cloud_tool_calls_skip_local_rewrites(monkeypatch):
     raw = {"name": "Some-Tool", "arguments": {"url": "example.com"}}
     assert _provider("qwen3.5:cloud", monkeypatch)._correct_tool_call_for_execution_class(raw) == raw

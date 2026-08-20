@@ -1,0 +1,378 @@
+#!/usr/bin/env python3
+"""Benchmark one installed Ollama model for Jarvis local-mode suitability."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _ensure_repo_python() -> None:
+    """Re-exec with the locked repo environment when it is available."""
+    expected = (PROJECT_ROOT / ".venv" / "bin" / "python").resolve()
+    executable = Path(sys.executable).resolve()
+    if executable == expected or not expected.is_file():
+        return
+    os.execv(str(expected), [str(expected), str(Path(__file__).resolve()), *sys.argv[1:]])
+
+
+if __name__ == "__main__":
+    _ensure_repo_python()
+
+sys.path.insert(0, str(PROJECT_ROOT / "lib"))
+
+from config_loader import config_scope, get_config_value, get_int  # noqa: E402
+from ollama_benchmark_fixtures import is_loopback_url  # noqa: E402
+from ollama_model_benchmark import (  # noqa: E402
+    CAPABILITY_THINKING_PROFILES,
+    DEFAULT_ROUTER_PROMPT_VERSION,
+    EVALUATION_SELECTIONS,
+    BenchmarkRunner,
+    OllamaBenchmarkClient,
+    extract_native_context,
+    find_model_entry,
+    resolve_context_candidates,
+    summarize_for_terminal,
+    write_reports,
+)
+from ollama_utils import get_ollama_base_urls  # noqa: E402
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return parsed
+
+
+def _non_negative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be zero or greater")
+    return parsed
+
+
+def _non_negative_float(value: str) -> float:
+    parsed = float(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be zero or greater")
+    return parsed
+
+
+def _ratio(value: str) -> float:
+    parsed = float(value)
+    if not 0 < parsed <= 1:
+        raise argparse.ArgumentTypeError("must be greater than 0 and at most 1")
+    return parsed
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Grade one already-installed local Ollama model for Jarvis suitability, "
+            "application-independent model capability, or both."
+        ),
+        epilog=(
+            "No tools are executed and no models are pulled or created. Inference can load "
+            "the selected model and temporarily change its Ollama context allocation. "
+            "Use --dry-run for a read-only preflight, and --release to unload a runner "
+            "this benchmark loaded."
+        ),
+    )
+    parser.add_argument("--model", required=True, help="Exact installed Ollama model/tag.")
+    parser.add_argument(
+        "--evaluation",
+        choices=EVALUATION_SELECTIONS,
+        default="jarvis",
+        help=(
+            "jarvis, capability, or all (default: jarvis). 'all' reports separate Jarvis, "
+            "model capability, and combined grades."
+        ),
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("local", "cloud"),
+        default="local",
+        help=(
+            "Config file used to resolve OLLAMA_BASE_URL and OLLAMA_CONTEXT_WINDOW "
+            "(default: local). Cloud mode can raise the auto context ceiling."
+        ),
+    )
+    target = parser.add_mutually_exclusive_group()
+    target.add_argument(
+        "--base-url",
+        help="Benchmark exactly this Ollama daemon; disables Jarvis host fallback.",
+    )
+    target.add_argument(
+        "--host-index",
+        type=_positive_int,
+        default=1,
+        help="1-based host from the mode's OLLAMA_BASE_URL list (default: 1).",
+    )
+    parser.add_argument(
+        "--label",
+        help="Non-secret report label such as rtx-5060ti or rtx-4090.",
+    )
+    parser.add_argument(
+        "--rounds",
+        type=_positive_int,
+        default=3,
+        help="Jarvis functional reliability repetitions (default: 3).",
+    )
+    parser.add_argument(
+        "--capability-rounds",
+        type=_positive_int,
+        default=1,
+        help="Model Capability Evaluation repetitions (default: 1).",
+    )
+    parser.add_argument(
+        "--capability-thinking",
+        choices=CAPABILITY_THINKING_PROFILES,
+        default="off",
+        help=(
+            "Thinking profile for capability cases: off is the canonical cross-model and "
+            "combined-grade profile; default/on/low/medium/high are separately labeled "
+            "experiments (default: off)."
+        ),
+    )
+    parser.add_argument(
+        "--contexts",
+        default="auto",
+        help="auto or comma-separated context sizes (default: auto).",
+    )
+    parser.add_argument(
+        "--max-context",
+        type=_positive_int,
+        help="Upper bound for auto context probing (default: OLLAMA_CONTEXT_WINDOW or 65536).",
+    )
+    parser.add_argument(
+        "--keep-alive",
+        default="5m",
+        help="Temporary Ollama runner lifetime used by requests (default: 5m).",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=300.0,
+        help="Per-request timeout in seconds (default: 300).",
+    )
+    parser.add_argument(
+        "--retries",
+        type=_non_negative_int,
+        default=1,
+        help="Same-host retries for transient connection, timeout, 429, and 5xx failures (default: 1).",
+    )
+    parser.add_argument(
+        "--retry-backoff",
+        type=_non_negative_float,
+        default=1.0,
+        help="Initial retry backoff in seconds; doubles per retry, capped at 30s (default: 1).",
+    )
+    parser.add_argument(
+        "--min-vram-residency",
+        type=_ratio,
+        default=0.95,
+        help="Stop below this GPU-resident fraction (default: 0.95).",
+    )
+    parser.add_argument(
+        "--allow-other-models",
+        action="store_true",
+        help="Run despite other loaded models; results may reflect VRAM contention.",
+    )
+    parser.add_argument(
+        "--allow-localhost",
+        action="store_true",
+        help="Allow targeting a loopback Ollama daemon such as this host's helper/iGPU.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Inspect the exact host and installed tag without sending inference.",
+    )
+    parser.add_argument(
+        "--release",
+        action="store_true",
+        help=(
+            "After the run, make a conservative best-effort unload only when this benchmark "
+            "loaded the target and /api/ps shows no later shared-runner activity."
+        ),
+    )
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="Run a short plumbing check; its grade is not a full comparison score.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=PROJECT_ROOT / "logs" / "ollama-benchmarks",
+        help="Ignored directory for JSON and Markdown reports.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Also print the complete JSON report to stdout.",
+    )
+    return parser
+
+
+def _resolve_target(args: argparse.Namespace) -> tuple[str, int, str]:
+    with config_scope(args.mode):
+        configured_urls = get_ollama_base_urls(include_localhost_fallback=False)
+        default_max_context = get_int("OLLAMA_CONTEXT_WINDOW", 65536)
+        router_prompt_version = (
+            get_config_value("JARVIS_ROUTER_PROMPT_VERSION", DEFAULT_ROUTER_PROMPT_VERSION)
+            or DEFAULT_ROUTER_PROMPT_VERSION
+        )
+    if args.base_url:
+        if "," in args.base_url:
+            raise ValueError("--base-url must identify exactly one daemon")
+        base_url = args.base_url.strip().rstrip("/")
+    else:
+        if not configured_urls:
+            raise ValueError("no OLLAMA_BASE_URL hosts configured for this mode")
+        if args.host_index > len(configured_urls):
+            raise ValueError(
+                f"--host-index {args.host_index} exceeds {len(configured_urls)} configured hosts"
+            )
+        base_url = configured_urls[args.host_index - 1]
+    if not base_url.startswith(("http://", "https://")):
+        raise ValueError("Ollama base URL must start with http:// or https://")
+    if is_loopback_url(base_url) and not args.allow_localhost:
+        raise ValueError(
+            "refusing loopback Ollama host (this machine's helper/iGPU). "
+            "Pass --allow-localhost only for an intentional helper check, "
+            "or use --host-index 1 or 2 for the GPU daemons"
+        )
+    return base_url, args.max_context or default_max_context or 65536, str(router_prompt_version)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.rounds > 20:
+        parser.error("--rounds must be 20 or fewer")
+    if args.capability_rounds > 5:
+        parser.error("--capability-rounds must be 5 or fewer")
+    if args.timeout <= 0:
+        parser.error("--timeout must be greater than zero")
+    if args.retries > 5:
+        parser.error("--retries must be 5 or fewer")
+
+    progress_started = time.monotonic()
+
+    def print_progress(message: str) -> None:
+        elapsed = int(time.monotonic() - progress_started)
+        minutes, seconds = divmod(elapsed, 60)
+        print(f"[+{minutes:02d}:{seconds:02d}] {message}", flush=True)
+
+    print_progress("Resolving mode configuration, exact host, and model metadata")
+    try:
+        base_url, max_context, router_prompt_version = _resolve_target(args)
+        client = OllamaBenchmarkClient(
+            base_url,
+            args.model,
+            timeout=args.timeout,
+            keep_alive=args.keep_alive,
+            max_retries=args.retries,
+            retry_backoff_seconds=args.retry_backoff,
+            retry_callback=lambda event: print_progress(event["message"]),
+        )
+        tags = client.get_tags()
+        if not find_model_entry(tags, args.model):
+            raise ValueError(
+                f"model {args.model!r} is not installed on the selected host; "
+                "this benchmark never pulls models"
+            )
+        native_context = extract_native_context(client.get_show())
+        contexts = resolve_context_candidates(
+            args.contexts,
+            native_context=native_context,
+            max_context=max_context,
+        )
+        if args.smoke:
+            contexts = contexts[:1]
+    except KeyboardInterrupt:
+        print("INTERRUPTED before inference; no model was loaded by the benchmark", file=sys.stderr)
+        return 130
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    label = args.label or f"{args.mode}-host-{args.host_index}"
+    print("Jarvis Ollama model benchmark")
+    print(f"  model: {args.model}")
+    print(f"  target: {base_url}")
+    print(f"  label: {label}")
+    print(f"  evaluation: {args.evaluation}")
+    print(f"  contexts: {', '.join(f'{value:,}' for value in contexts)}")
+    if args.evaluation in {"jarvis", "all"}:
+        print(f"  Jarvis rounds: {0 if args.dry_run else 1 if args.smoke else args.rounds}")
+    if args.evaluation in {"capability", "all"}:
+        print(
+            "  capability: "
+            f"{0 if args.dry_run else 1 if args.smoke else args.capability_rounds} "
+            f"round(s), thinking={args.capability_thinking}"
+        )
+    print(
+        f"  transport: {args.timeout:g}s timeout, {args.retries} same-host "
+        f"{'retry' if args.retries == 1 else 'retries'}, {args.retry_backoff:g}s backoff"
+    )
+    if args.evaluation in {"jarvis", "all"}:
+        print(
+            "  Jarvis: frozen Tool RAG decision packets plus sanity cases; "
+            "no retrieval or tool will execute"
+        )
+    if args.evaluation in {"capability", "all"}:
+        print("  capability: no system prompt, tools, retrieval, JSON mode, or grammar schema")
+    if args.dry_run:
+        print("  dry-run: no inference")
+    if args.release:
+        print("  release: conservative best-effort unload of a benchmark-owned runner")
+    else:
+        print(f"  residency after exit: Ollama keep_alive={args.keep_alive}")
+    print("  interrupt: Ctrl-C during the benchmark writes an interrupted report")
+    print()
+
+    runner = BenchmarkRunner(
+        client,
+        contexts=contexts,
+        rounds=args.rounds,
+        min_vram_residency=args.min_vram_residency,
+        allow_other_models=args.allow_other_models,
+        smoke=args.smoke,
+        dry_run=args.dry_run,
+        release_owned_runner=args.release,
+        router_prompt_version=router_prompt_version,
+        evaluation=args.evaluation,
+        capability_rounds=args.capability_rounds,
+        capability_thinking=args.capability_thinking,
+        host_label=label,
+        progress=print_progress,
+    )
+    report = runner.run()
+    json_path, markdown_path = write_reports(report, args.output_dir)
+    print(summarize_for_terminal(report))
+    print(f"  JSON report: {json_path}")
+    print(f"  Markdown report: {markdown_path}")
+    if args.json:
+        print()
+        print(json.dumps(report, indent=2, sort_keys=True))
+
+    if report["status"] == "stopped_cpu_offload":
+        return 3
+    if report["status"] == "error":
+        return 2
+    if report["status"] == "interrupted":
+        return 130
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

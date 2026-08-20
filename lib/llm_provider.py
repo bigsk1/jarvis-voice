@@ -1629,10 +1629,11 @@ class OllamaProvider(LLMProvider):
         )
         if include_localhost_fallback is None:
             include_localhost_fallback = get_active_config_mode() == "local"
+        self.include_localhost_fallback = bool(include_localhost_fallback)
         self.base_urls = get_ollama_request_urls(
             cloud_access=(self.execution_class != OLLAMA_EXECUTION_LOCAL_DAEMON),
             base_url=base_url,
-            include_localhost_fallback=include_localhost_fallback,
+            include_localhost_fallback=self.include_localhost_fallback,
         )
         self.base_url = self.base_urls[0]
         self.model = model
@@ -1783,12 +1784,21 @@ class OllamaProvider(LLMProvider):
             if options:
                 request_data["options"] = options
             
+            if os.environ.get('JARVIS_DEBUG'):
+                debug_options = request_data.get("options", {})
+                print(
+                    f"DEBUG: Ollama chat - model={self.model}, "
+                    f"think={request_data.get('think')}, num_ctx={debug_options.get('num_ctx')}",
+                    file=sys.stderr
+                )
+
             response, used_base_url = request_ollama(
                 "post",
                 "/api/chat",
                 base_urls=self.base_urls,
                 json=request_data,
                 timeout=self.request_timeout,
+                include_localhost_fallback=self.include_localhost_fallback,
             )
             self.base_url = used_base_url
             if response.status_code >= 400:
@@ -2080,6 +2090,7 @@ class OllamaProvider(LLMProvider):
                 base_urls=self.base_urls,
                 json=request_data,
                 timeout=self.request_timeout,
+                include_localhost_fallback=self.include_localhost_fallback,
             )
             self.base_url = used_base_url
             
@@ -2172,8 +2183,14 @@ class OllamaProvider(LLMProvider):
             return content, None, usage_info, thinking
             
         except requests.exceptions.Timeout:
-            print(f"Ollama API timeout after 180s", file=sys.stderr)
-            return "Error: Request timed out. The model may be overloaded.", None, None, None
+            print(
+                f"Ollama API timeout after {self.request_timeout}s",
+                file=sys.stderr,
+            )
+            return (
+                f"Error: Request timed out after {self.request_timeout}s. "
+                "The model may be overloaded."
+            ), None, None, None
         except Exception as e:
             print(f"Ollama API error: {e}", file=sys.stderr)
             return f"Error: {str(e)}", None, None, None
@@ -2257,6 +2274,7 @@ CRITICAL RULES:
                 base_urls=self.base_urls,
                 json=request_data,
                 timeout=self.request_timeout,
+                include_localhost_fallback=self.include_localhost_fallback,
             )
             self.base_url = used_base_url
             if response.status_code >= 400:

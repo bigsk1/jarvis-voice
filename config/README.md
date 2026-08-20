@@ -248,7 +248,7 @@ OPENCODE_BASE_URL="http://localhost:4096"
 ```
 
 `OLLAMA_BASE_URL` also accepts a comma-separated fallback list like
-`"http://192.168.70.226:11434,http://192.168.1.68:11434"`. Local mode retains
+`"http://gpu-one.local:11434,http://gpu-two.local:11434"`. Local mode retains
 `http://localhost:11434` as a final compatibility fallback. Cloud mode tries
 only explicitly listed hosts, so add localhost yourself only when intentional.
 

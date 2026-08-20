@@ -173,6 +173,222 @@ Compare forced CPU with Ollama's automatic accelerator selection:
 ollama ps
 ```
 
+## Benchmark local chat models
+
+Use the tracked benchmark to compare an already-installed model on one exact
+Ollama host. `--evaluation jarvis` exercises Jarvis's real Ollama tool-calling
+path, while `--evaluation capability` measures application-independent model
+capability. `--evaluation all` runs both and reports three grades: Jarvis,
+Model Capability, and a combined score weighted 60% Jarvis / 40% capability.
+It never executes a tool, reads Jarvis data, or pulls, creates, copies, or
+deletes a model. Use `--dry-run` for a read-only preflight. Use `--release`
+after a real run for a conservative best-effort unload; a model that was
+already resident or shows later shared-runner activity is left loaded.
+
+The Model Capability Evaluation uses a content-addressed tracked fixture with
+free-response general knowledge, logic, math, and cognitive-reflection cases
+at progressively weighted easy, medium, and hard levels. Requests contain one
+user message and no system prompt, Jarvis prompt, tools, retrieval, JSON mode,
+or grammar schema. Deterministic alias, numeric, concept, and exact-word-count
+graders allow partial concept credit without using another model as judge.
+Output truncation gets one larger-budget retry; a still-truncated scored case
+makes the capability grade inconclusive instead of counting as a wrong answer.
+
+The final capability request asks what the model considers the most important
+truth when considering reality as a whole. Its response is recorded verbatim
+as an unscored qualitative sample. It can be useful for comparison, but it is
+not proof of a model's latent values and never changes any grade.
+
+Canonical cross-model capability comparisons explicitly send `think: false`.
+Only that profile can contribute to the combined grade. `default`, `on`,
+`low`, `medium`, and `high` are available as separately labeled experiments;
+they are not comparable to the canonical profile and produce no combined
+grade. If a model does not honor an explicit thinking profile, its capability
+grade is inconclusive. See Ollama's [thinking
+documentation](https://docs.ollama.com/capabilities/thinking) for model support.
+
+The primary routing score replays two real local-trace-shaped packets: one
+SerpAPI/shopping-heavy shortlist and one memory/reminder shortlist. Their live
+queries were not copied. The tracked fixture contains synthetic replacement
+queries, ranked/final tool names, expected production decisions, and SHA-256
+pins for every exact injected schema. Router v4, the selected model overlay,
+and the assembled prompt are also hashed in the report. A schema or base-prompt
+change fails closed until the fixture is deliberately refreshed and reviewed.
+Retrieval is not rerun and no returned tool call is executed.
+
+Current Tool RAG traces stop at retrieval metadata and do not contain the
+model's final tool decision. The fixture's expected decisions are therefore a
+reviewed oracle derived from the current tool contracts, not copied model
+answers from private traffic.
+
+The active oracle is
+`config/benchmarks/ollama-tool-rag-replay-v2.json`; it is tracked benchmark
+source, not a generated log. Version 1 remains tracked byte-for-byte so older
+reports bearing its fixture SHA remain reproducible. Change the oracle by
+adding a new version and reviewing representative live results—do not rewrite
+an existing fixture in place.
+
+Version 2 avoids treating one literal phrasing as the only correct answer:
+
+- `arguments` are required expected values; `optional_arguments` may be
+  omitted but must match when supplied.
+- `argument_concepts` and `response_concepts` require one alternative from
+  every concept group. For example, `["gpu", "graphics card"]` is an
+  either/or group, while a second memory-related group must also match.
+- The selected tool name remains exact and all returned arguments must satisfy
+  its tracked schema. These replays grade the first production routing
+  decision. The current v2 format does not accept an alternate multi-tool
+  process: the benchmark does not execute tools and cannot prove that another
+  process would reach the same result. A case with genuinely equivalent routes
+  needs a future reviewed fixture contract that represents and grades each
+  route explicitly.
+
+The older seven-tool weather/calculator/email shortlist remains as a
+`routing_sanity` diagnostic but no longer supplies the graded `tool_routing`
+score. The replay cases grade exact tool names, schema-valid arguments,
+`tool_search` when the required capability is absent, and direct answers when
+no tool should run. Structured tests use Ollama `"json"` mode for two cases and
+a grammar schema for one. Functional replies are not token-capped.
+
+```bash
+# Read-only: confirm host, digest, loaded models, and context candidates.
+./bin/benchmark-ollama-model \
+  --model 'gemma4' \
+  --host-index 1 \
+  --label rtx-5060ti \
+  --dry-run
+
+# First OLLAMA_BASE_URL host (for example, the always-on RTX 5060 Ti).
+./bin/benchmark-ollama-model \
+  --model 'ornith-1.5:9b' \
+  --host-index 1 \
+  --label rtx-5060ti \
+  --release
+
+# Second configured host (for example, the RTX 4090 workstation).
+./bin/benchmark-ollama-model \
+  --model 'gemma4' \
+  --host-index 2 \
+  --label rtx-4090 \
+  --release
+
+# A community tag must match the exact name returned by that host's /api/tags.
+./bin/benchmark-ollama-model \
+  --model 'orcarouter/Qwen3.8-27B-Uncensored:q3_K_S' \
+  --host-index 1 \
+  --label rtx-5060ti \
+  --release
+
+# App-independent capability only; canonical cross-model thinking profile.
+./bin/benchmark-ollama-model \
+  --model 'gemma4' \
+  --host-index 1 \
+  --label rtx-5060ti \
+  --evaluation capability \
+  --capability-thinking off \
+  --release
+
+# Produce Jarvis, capability, and combined grades in one run.
+./bin/benchmark-ollama-model \
+  --model 'gemma4' \
+  --host-index 1 \
+  --label rtx-5060ti \
+  --evaluation all \
+  --release
+```
+
+The default full run repeats the functional cases three times and probes 8K,
+16K, 32K, and 64K where allowed by the model metadata and
+`OLLAMA_CONTEXT_WINDOW`. Raise the explicit ceiling only when testing a host
+that may have room for it:
+
+```bash
+./bin/benchmark-ollama-model \
+  --model 'gemma4' \
+  --host-index 2 \
+  --max-context 131072 \
+  --rounds 3 \
+  --release \
+  --label rtx-4090
+```
+
+Each context probe uses common-token synthetic filler targeting roughly 45%
+of the requested allocation and records the actual model-tokenized fill. This
+keeps the workload comparable across Gemma and Qwen-family tokenizers; the
+benchmark does not infer token count from character count. An Ollama rejection
+now retains its bounded response detail in the report instead of reducing it
+to a generic HTTP status.
+
+`--mode` selects `config/<mode>.env` for **both** `OLLAMA_BASE_URL` and
+`OLLAMA_CONTEXT_WINDOW`. Keep `--mode local` for GPU comparisons; cloud mode's
+context ceiling is much larger and will change the probe set. Loopback URLs are
+refused unless `--allow-localhost` is set. `JARVIS_OVERRIDE_*` process values
+retain their normal higher precedence; `--base-url` and `--max-context` are the
+benchmark's explicit command-line overrides. A dry-run lists every resolved
+context candidate and may inspect a busy host without requiring
+`--allow-other-models`, because it sends no inference.
+
+The terminal prints elapsed time, the active phase, current/total step, each
+case's pass/fail and latency, each context probe's fill/prefill rate, and every
+transport retry. Requests are sequential and pinned to the selected host. By
+default a transient connection failure, timeout, HTTP 429, or HTTP 5xx gets one
+same-host retry with exponential backoff; tune this with `--retries`,
+`--retry-backoff`, and `--timeout`. Exhausted or non-retryable provider failures
+stop the run as inconclusive instead of lowering the model's functional score.
+A recovered retry is not a failed answer, but its delay remains in observed
+wall latency so the performance score reflects the real Jarvis wait.
+
+Use `--release` for normal bake-offs. Without it, a runner loaded by the
+benchmark remains available until `--keep-alive` expires (five minutes by
+default). Starting a different model during that window can keep both runners
+resident and add their VRAM usage; Ollama may evict one only when its scheduler
+or VRAM limits require it. Changing `num_ctx` for the same model normally
+reallocates that runner rather than retaining independent 4K and 8K copies.
+The terminal and JSON report record the cleanup action and last observed
+context. Pre-existing or subsequently shared runners are never unloaded by
+`--release`.
+
+Press Ctrl-C to stop a running benchmark. It writes the completed partial work
+as `status=interrupted`, grade `N/A (incomplete)`, and exit code 130. With
+`--release`, cleanup still makes a bounded best-effort unload only when the
+benchmark initiated the target load and `/api/ps` still matches its last
+residency check. If ownership cannot be established, cleanup leaves the runner
+for `--keep-alive` expiration. Ollama exposes no per-client runner ownership
+token, so a quiet window remains required. An interrupt during the initial
+read-only metadata lookup exits cleanly before inference and does not create a
+report.
+
+After every inference, the runner reads Ollama's `/api/ps`. If the target drops
+below 95% GPU residency, it stops immediately and retains the highest smaller
+context that passed, if any. A narrow, reported exception handles Ollama's
+memory-mapped MoE accounting bug only when `/api/ps` size is consistent with an
+extra copy of the installed artifact; that inference is marked medium
+confidence in the JSON report. The benchmark refuses to run while a different
+model is loaded unless `--allow-other-models` is explicitly supplied. Run it
+during a quiet window because inference loads the target and temporarily
+changes its context allocation and keep-alive expiry.
+
+Timestamped JSON and Markdown reports are written under the ignored
+`logs/ollama-benchmarks/` directory. Compare Jarvis grades with the same host,
+rounds, and context candidates. Compare capability grades only when the
+fixture SHA, capability rounds, and thinking profile match. The capability
+suite is a practical local-model diagnostic, not a standardized IQ test: it is
+finite, public, and can be contaminated or overfit. Increase
+`--capability-rounds` when testing response stability; temperature and seed
+remain fixed.
+
+Run the same tag on both hosts to measure the hardware difference. `prompt tokens/s` is Ollama's
+`prompt_eval_count / prompt_eval_duration`: GPU prefill speed, which depends
+strongly on prompt length. `decode tokens/s` is Ollama's
+`eval_count / eval_duration`, the same generated-output rate shown as `eval
+rate` by `ollama --verbose`. Client wall latency includes model load, prefill,
+and decode. JSON results retain all native Ollama duration/count fields so both
+rates are auditable. Prefill, decode, warm latency, and per-context VRAM are
+reported separately and contribute to the performance grade. Use `--smoke`
+only to verify plumbing, not as a model ranking score. JSON reports retain
+retry events and partial category diagnostics; an errored or interrupted run
+never publishes a partial letter grade as its top-level result.
+
 ## Vision and image analysis
 
 Jarvis routes all image understanding through one shared module:

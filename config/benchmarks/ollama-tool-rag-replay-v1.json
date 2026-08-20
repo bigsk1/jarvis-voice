@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "fixture_id": "jarvis-ollama-tool-rag-replay-v1",
+  "description": "Content-addressed decision replays shaped from local-mode Tool RAG traces. Queries are synthetic replacements; tools are never executed.",
+  "router_prompt_version": "v4",
+  "router_base_sha256": "783672bb395ea6a92279454f5a99713f96029875d6bef0b288613b9bc2dace66",
+  "safety": {
+    "synthetic_queries_only": true,
+    "live_user_text_copied": false,
+    "secrets_or_memory_included": false,
+    "tools_executed": false
+  },
+  "packets": [
+    {
+      "packet_id": "shopping-serpapi-pressure",
+      "family": "shopping_serpapi",
+      "trace_shape": {
+        "source": "redacted local-mode Tool RAG trace shape",
+        "router_prompt_version": "v4",
+        "ranked_tools": [
+          "qr_code_generator",
+          "serpapi_google_local_services",
+          "serpapi_google_local",
+          "serpapi_home_depot",
+          "serpapi_search_index",
+          "serpapi_google_shopping_light",
+          "serpapi_ebay_search",
+          "serpapi_google_images_light",
+          "serpapi_ebay_product",
+          "serpapi_google_trending_now",
+          "execute_bash",
+          "serpapi_google_news_light"
+        ],
+        "recorded_schema_chars": 14947,
+        "recorded_schema_est_tokens": 3737
+      },
+      "final_tools": [
+        "tool_search",
+        "workflow",
+        "qr_code_generator",
+        "serpapi_google_local_services",
+        "serpapi_google_local",
+        "serpapi_home_depot"
+      ],
+      "tool_schema_sha256": {
+        "tool_search": "9c49a315e65bc2829e167bd7cc9f59348d500c7e02b9ad5593129de3904f452e",
+        "workflow": "dc86c83a50ce992b092510cad4006283fc1d8488f008164a6ad8eae2c9dfd6a0",
+        "qr_code_generator": "77bea1365c2d10af77a2bdbaab96bb19895d5a027e9cb26e77d5dcfb03f0f25d",
+        "serpapi_google_local_services": "608f40467d3f4bb38dea5c45d6a405e8f0e369ce5b57c714a00a33cd7c995773",
+        "serpapi_google_local": "b005e06289ec12b6eb8323951b9812aaa63ef1ca66a4a4e5f150264fa4b03926",
+        "serpapi_home_depot": "b36f5440f3b3e158197b19558e7e0a7506c139f471fa71bf7e581d83fb0e0adf"
+      },
+      "schema_snapshot_sha256": "4ff7d77cf1daf1a7e2e90de1a2dff627b1426f73634e43183fcfe6e45ee172c5",
+      "cases": [
+        {
+          "case_id": "replay_shopping_home_depot",
+          "query": "Find cordless drills at Home Depot under 150 dollars and return up to five products.",
+          "expected": {
+            "decision": "tool",
+            "tool_name": "serpapi_home_depot",
+            "arguments": {"upperbound": 150, "num_results": 5},
+            "argument_contains": {"query": ["cordless", "drill"]}
+          }
+        },
+        {
+          "case_id": "replay_shopping_missing_tool",
+          "query": "Compare current RTX 5060 Ti 16GB prices across multiple retailers.",
+          "expected": {
+            "decision": "tool_search",
+            "tool_name": "tool_search",
+            "argument_contains": {"query": ["rtx", "5060", "retailer"]}
+          }
+        },
+        {
+          "case_id": "replay_local_services_near_miss",
+          "query": "Find screened Google Guaranteed electricians in Portland, Oregon.",
+          "expected": {
+            "decision": "tool",
+            "tool_name": "serpapi_google_local_services",
+            "argument_contains": {"query": ["electrician"], "location": ["portland"]}
+          }
+        },
+        {
+          "case_id": "replay_shopping_direct_answer",
+          "query": "Without calling a tool, explain in one short sentence what GPU VRAM means.",
+          "expected": {
+            "decision": "direct",
+            "response_contains": ["memory", "gpu"]
+          }
+        }
+      ]
+    },
+    {
+      "packet_id": "memory-reminder-pressure",
+      "family": "memory_reminder",
+      "trace_shape": {
+        "source": "redacted local-mode Tool RAG trace shape",
+        "router_prompt_version": "v4",
+        "ranked_tools": [
+          "get_recent_conversations",
+          "query_service_logs",
+          "list_reminders",
+          "release_watch",
+          "get_time",
+          "system_monitor",
+          "acknowledge_alerts",
+          "search_memory",
+          "list_alerts",
+          "check_tool_logs",
+          "search_conversations",
+          "serpapi_google_trending_now"
+        ],
+        "recorded_schema_chars": 6761,
+        "recorded_schema_est_tokens": 1690
+      },
+      "final_tools": [
+        "tool_search",
+        "workflow",
+        "query_service_logs",
+        "list_reminders",
+        "release_watch",
+        "get_time"
+      ],
+      "tool_schema_sha256": {
+        "tool_search": "9c49a315e65bc2829e167bd7cc9f59348d500c7e02b9ad5593129de3904f452e",
+        "workflow": "dc86c83a50ce992b092510cad4006283fc1d8488f008164a6ad8eae2c9dfd6a0",
+        "query_service_logs": "59c365ff6836463fe13a9af38f57cec167c7782db3925b3deae7866b254df13c",
+        "list_reminders": "69d924ca5babc8ada14215511910237485ec4fd1f3ff3c3c4ca0a444d81d8b7e",
+        "release_watch": "c56b5afbb2fba384d0d73f3463538a58fee0021044d5184040e0314945ec0238",
+        "get_time": "0ebab8f4422403f7d078021e9ad7352764ccb15fb1867f0068fd4d63fc7a3b91"
+      },
+      "schema_snapshot_sha256": "7ca03ec8ae9709e139633c2d6b92c7f15ded6459a8dae6c413e6401613519350",
+      "cases": [
+        {
+          "case_id": "replay_current_reminders",
+          "query": "What reminders currently need my attention?",
+          "expected": {
+            "decision": "tool",
+            "tool_name": "list_reminders",
+            "arguments": {"status": "current"}
+          }
+        },
+        {
+          "case_id": "replay_missing_memory_search",
+          "query": "Look up what I previously told you about the hostname of my always-on GPU server.",
+          "expected": {
+            "decision": "tool_search",
+            "tool_name": "tool_search",
+            "argument_contains": {"query": ["gpu", "server"]}
+          }
+        },
+        {
+          "case_id": "replay_reminder_service_logs",
+          "query": "Check the reminder service logs for errors.",
+          "expected": {
+            "decision": "tool",
+            "tool_name": "query_service_logs",
+            "arguments": {"service": "reminder", "event_type": "error"}
+          }
+        },
+        {
+          "case_id": "replay_memory_direct_answer",
+          "query": "Without checking anything, explain the difference between a reminder and a memory in one sentence.",
+          "expected": {
+            "decision": "direct",
+            "response_contains": ["reminder", "memory"]
+          }
+        }
+      ]
+    }
+  ]
+}
