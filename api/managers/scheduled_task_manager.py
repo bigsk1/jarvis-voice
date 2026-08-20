@@ -530,6 +530,68 @@ class ScheduledTaskManager:
         conn.close()
         return released
 
+    def fail_run_and_release_lock(
+        self,
+        task_id: int,
+        run_id: int,
+        owner: str,
+        *,
+        reason: str,
+        duration_ms: float | None = None,
+        summary: str | None = None,
+        next_run_at: str | None = None,
+    ) -> bool:
+        """Atomically fail an unfinished run and release its owned task lock."""
+        now = datetime.now().isoformat()
+        conn = sqlite3.connect(self.db.db_path)
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE scheduled_tasks
+                SET lock_owner = NULL,
+                    lock_acquired_at = NULL,
+                    last_run_at = ?,
+                    next_run_at = ?,
+                    last_status = 'failure',
+                    last_error = ?,
+                    last_duration_ms = ?,
+                    last_result_summary = ?,
+                    updated_at = ?
+                WHERE id = ?
+                  AND mode = ?
+                  AND lock_owner = ?
+            """, (
+                now,
+                next_run_at,
+                reason,
+                duration_ms,
+                summary,
+                now,
+                task_id,
+                self.mode,
+                owner,
+            ))
+            released = cursor.rowcount > 0
+            if released:
+                cursor.execute("""
+                    UPDATE scheduled_task_runs
+                    SET finished_at = ?,
+                        status = 'failure',
+                        error = ?,
+                        duration_ms = COALESCE(?, duration_ms)
+                    WHERE id = ?
+                      AND task_id = ?
+                      AND status = 'running'
+                      AND finished_at IS NULL
+                """, (now, reason, duration_ms, run_id, task_id))
+            conn.commit()
+            return released
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     def release_lock_and_update(self, task_id: int, *, status: str, error: str | None = None,
                                 duration_ms: float | None = None, summary: str | None = None,
                                 next_run_at: str | None = None):

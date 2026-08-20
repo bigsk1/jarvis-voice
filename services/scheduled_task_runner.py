@@ -519,52 +519,89 @@ def main():
                     logger.log_error(f"Scheduled task {task_id} failed", {"task_id": task_id, "error": error})
 
                 duration_ms = round((time.time() - started) * 1000, 2)
-                next_run = manager.resolve_followup_next_run(
-                    task,
-                    reference_utc=task.get('next_run_at'),
-                    manual_run_once=manual_run_once,
-                )
-                notification_results = _maybe_send_notifications(
-                    task,
-                    status=status,
-                    summary=summary,
-                    error=error,
-                    scheduled_for=scheduled_for,
-                    next_run=next_run
-                )
-                for item in notification_results:
-                    if not item.get("result", {}).get("ok"):
-                        logger.log_error("Scheduled task notification issue", {
+                next_run = None
+                notification_results = []
+                try:
+                    next_run = manager.resolve_followup_next_run(
+                        task,
+                        reference_utc=task.get('next_run_at'),
+                        manual_run_once=manual_run_once,
+                    )
+                    notification_results = _maybe_send_notifications(
+                        task,
+                        status=status,
+                        summary=summary,
+                        error=error,
+                        scheduled_for=scheduled_for,
+                        next_run=next_run
+                    )
+                    for item in notification_results:
+                        if not item.get("result", {}).get("ok"):
+                            logger.log_error("Scheduled task notification issue", {
+                                "task_id": task_id,
+                                "channel": item.get("channel"),
+                                "outcome": item.get("outcome"),
+                                "error": item.get("result", {}).get("error"),
+                            })
+                    manager.finish_run(
+                        run_id,
+                        status=status,
+                        mode=task['mode'],
+                        provider=execution_provider,
+                        model=execution_model,
+                        workflow_id=task.get('task_target') if task['task_type'] == 'workflow' else None,
+                        tools_used=result.get('tools_used', []),
+                        speech=result.get('speech'),
+                        raw_llm_response=result.get('raw_llm_response'),
+                        result_data=result.get('data'),
+                        error=error,
+                        duration_ms=duration_ms,
+                        completion_guard_applied=False,
+                        feedback_collected=False,
+                        metadata={"task_name": task['name'], "notifications": notification_results}
+                    )
+                    manager.release_lock_and_update(
+                        task_id,
+                        status=status,
+                        error=error,
+                        duration_ms=duration_ms,
+                        summary=summary[:500] if summary else None,
+                        next_run_at=next_run
+                    )
+                except Exception as cleanup_exc:
+                    cleanup_reason = (
+                        "Scheduled task cleanup failed: "
+                        f"{type(cleanup_exc).__name__}: {cleanup_exc}"
+                    )
+                    logger.log_error(cleanup_reason, {
+                        "task_id": task_id,
+                        "run_id": run_id,
+                        "error": str(cleanup_exc),
+                    })
+                    try:
+                        recovered = manager.fail_run_and_release_lock(
+                            task_id,
+                            run_id,
+                            owner,
+                            reason=cleanup_reason,
+                            duration_ms=duration_ms,
+                            summary=str(summary)[:500] if summary else None,
+                            next_run_at=next_run,
+                        )
+                    except Exception as recovery_exc:
+                        logger.log_error("Scheduled task cleanup recovery failed", {
                             "task_id": task_id,
-                            "channel": item.get("channel"),
-                            "outcome": item.get("outcome"),
-                            "error": item.get("result", {}).get("error"),
+                            "run_id": run_id,
+                            "error": str(recovery_exc),
                         })
-                manager.finish_run(
-                    run_id,
-                    status=status,
-                    mode=task['mode'],
-                    provider=execution_provider,
-                    model=execution_model,
-                    workflow_id=task.get('task_target') if task['task_type'] == 'workflow' else None,
-                    tools_used=result.get('tools_used', []),
-                    speech=result.get('speech'),
-                    raw_llm_response=result.get('raw_llm_response'),
-                    result_data=result.get('data'),
-                    error=error,
-                    duration_ms=duration_ms,
-                    completion_guard_applied=False,
-                    feedback_collected=False,
-                    metadata={"task_name": task['name'], "notifications": notification_results}
-                )
-                manager.release_lock_and_update(
-                    task_id,
-                    status=status,
-                    error=error,
-                    duration_ms=duration_ms,
-                    summary=summary[:500] if summary else None,
-                    next_run_at=next_run
-                )
+                        raise
+                    logger.log_action("recover_task_cleanup", {
+                        "task_id": task_id,
+                        "run_id": run_id,
+                        "lock_released": recovered,
+                        "next_run_at": next_run,
+                    }, success=recovered)
+                    continue
                 logger.log_action("run_task", {
                     "task_id": task_id,
                     "name": task['name'],
