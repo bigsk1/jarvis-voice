@@ -81,7 +81,7 @@ therefore live beside each other under the Docker-mounted `data/` directory.
 ```yaml
 settings:
   check_interval_minutes: 10
-  cooldown_hours: 4
+  cooldown_hours: 24
   jarvis_api_url: http://localhost:8880
 
 watchlist:
@@ -137,6 +137,11 @@ watchlist:
           value: 4400
           severity: high
 ```
+
+`cooldown_hours` starts when a price alert is acknowledged. Jarvis suppresses
+the same symbol, condition type, direction (for percentage moves), and configured
+threshold during that window. Changing the threshold creates a new condition
+identity, so the edited target can alert immediately.
 
 ### Condition Types
 

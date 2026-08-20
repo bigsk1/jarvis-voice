@@ -6,13 +6,16 @@ Run:
     python3 tests/test_alert_manager.py
 """
 
+import json
 import os
 import sqlite3
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -62,6 +65,19 @@ class AlertManagerDedupeTests(unittest.TestCase):
     def tearDown(self):
         self.tmpdir.cleanup()
 
+    @staticmethod
+    def _price_config(*, threshold: float = 8, cooldown_hours: float = 24) -> dict:
+        return {
+            "settings": {"cooldown_hours": cooldown_hours},
+            "watchlist": {
+                "crypto": [{
+                    "symbol": "BTC",
+                    "conditions": [{"type": "percent_change_24h", "value": threshold}],
+                }],
+                "stocks": [],
+            },
+        }
+
     def test_dedupe_key_suppresses_same_condition(self):
         first_id = self.manager.create_alert(
             title="Cold watch",
@@ -100,6 +116,221 @@ class AlertManagerDedupeTests(unittest.TestCase):
         self.assertGreater(cold_id, 0)
         self.assertGreater(wind_id, 0)
         self.assertNotEqual(cold_id, wind_id)
+
+    def test_acknowledged_price_condition_is_suppressed_during_cooldown(self):
+        metadata = {
+            "symbol": "BTC",
+            "price": 71_000,
+            "change_24h": 11,
+            "type": "percent_change",
+        }
+        with patch(
+            "api.managers.alert_manager.load_price_alert_config",
+            return_value=self._price_config(),
+        ):
+            first_id = self.manager.create_alert(
+                title="Bitcoin moved 11 percent",
+                source="price_monitor",
+                metadata=metadata,
+                speak_immediately=False,
+            )
+            self.manager.acknowledge_alert(first_id)
+            repeated_id = self.manager.create_alert(
+                title="Bitcoin moved 11.2 percent",
+                source="price_monitor",
+                metadata=metadata,
+                speak_immediately=False,
+            )
+
+        self.assertEqual(repeated_id, -first_id)
+        conn = sqlite3.connect(self.db_path)
+        rows = conn.execute(
+            "SELECT metadata FROM alerts WHERE source = 'price_monitor'"
+        ).fetchall()
+        conn.close()
+        self.assertEqual(len(rows), 1)
+        self.assertIn('"price_condition_key": "BTC:percent_change:up:8"', rows[0][0])
+
+    def test_price_threshold_edit_bypasses_acknowledgement_cooldown(self):
+        config = self._price_config(threshold=8)
+        metadata = {
+            "symbol": "BTC",
+            "price": 71_000,
+            "change_24h": 11,
+            "type": "percent_change",
+        }
+        with patch(
+            "api.managers.alert_manager.load_price_alert_config",
+            side_effect=lambda: config,
+        ):
+            first_id = self.manager.create_alert(
+                title="Bitcoin moved 11 percent",
+                source="price_monitor",
+                metadata=metadata,
+                speak_immediately=False,
+            )
+            self.manager.acknowledge_alert(first_id)
+            config["watchlist"]["crypto"][0]["conditions"][0]["value"] = 12
+            changed_id = self.manager.create_alert(
+                title="Bitcoin moved 12 percent",
+                source="price_monitor",
+                metadata=metadata,
+                speak_immediately=False,
+            )
+
+        self.assertGreater(changed_id, 0)
+        self.assertNotEqual(changed_id, first_id)
+
+    def test_opposite_percentage_direction_bypasses_acknowledgement_cooldown(self):
+        with patch(
+            "api.managers.alert_manager.load_price_alert_config",
+            return_value=self._price_config(),
+        ):
+            first_id = self.manager.create_alert(
+                title="Bitcoin moved 11 percent up",
+                source="price_monitor",
+                metadata={
+                    "symbol": "BTC",
+                    "change_24h": 11,
+                    "type": "percent_change",
+                },
+                speak_immediately=False,
+            )
+            self.manager.acknowledge_alert(first_id)
+            changed_id = self.manager.create_alert(
+                title="Bitcoin moved 11 percent down",
+                source="price_monitor",
+                metadata={
+                    "symbol": "BTC",
+                    "change_24h": -11,
+                    "type": "percent_change",
+                },
+                speak_immediately=False,
+            )
+
+        self.assertGreater(changed_id, 0)
+        self.assertNotEqual(changed_id, first_id)
+
+    def test_price_condition_can_alert_again_after_cooldown(self):
+        metadata = {
+            "symbol": "BTC",
+            "price": 71_000,
+            "change_24h": 11,
+            "type": "percent_change",
+        }
+        with patch(
+            "api.managers.alert_manager.load_price_alert_config",
+            return_value=self._price_config(),
+        ):
+            first_id = self.manager.create_alert(
+                title="Bitcoin moved 11 percent",
+                source="price_monitor",
+                metadata=metadata,
+                speak_immediately=False,
+            )
+            self.manager.acknowledge_alert(first_id)
+            expired_at = (datetime.now() - timedelta(hours=25)).isoformat()
+            conn = sqlite3.connect(self.db_path)
+            conn.execute(
+                "UPDATE alerts SET acknowledged_at = ? WHERE id = ?",
+                (expired_at, first_id),
+            )
+            conn.commit()
+            conn.close()
+            next_id = self.manager.create_alert(
+                title="Bitcoin moved 11 percent again",
+                source="price_monitor",
+                metadata=metadata,
+                speak_immediately=False,
+            )
+
+        self.assertGreater(next_id, 0)
+        self.assertNotEqual(next_id, first_id)
+
+    def test_recent_legacy_percentage_alert_is_suppressed(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.execute(
+            """
+            INSERT INTO alerts (
+                title, source, status, created_at, acknowledged_at, metadata
+            ) VALUES (?, 'price_monitor', 'acknowledged', ?, ?, ?)
+            """,
+            (
+                "Bitcoin moved 11 percent",
+                datetime.now().isoformat(),
+                datetime.now().isoformat(),
+                json.dumps({"symbol": "BTC", "type": "percent_change"}),
+            ),
+        )
+        existing_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        with patch(
+            "api.managers.alert_manager.load_price_alert_config",
+            return_value=self._price_config(),
+        ):
+            repeated_id = self.manager.create_alert(
+                title="Bitcoin moved 11.2 percent",
+                source="price_monitor",
+                metadata={"symbol": "BTC", "type": "percent_change"},
+                speak_immediately=False,
+            )
+
+        self.assertEqual(repeated_id, -existing_id)
+
+    def test_bulk_acknowledgement_stamps_legacy_price_condition(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.execute(
+            """
+            INSERT INTO alerts (title, source, status, created_at, metadata)
+            VALUES (?, 'price_monitor', 'pending', ?, ?)
+            """,
+            (
+                "Bitcoin moved 11 percent up",
+                datetime.now().isoformat(),
+                json.dumps({
+                    "symbol": "BTC",
+                    "type": "percent_change",
+                    "change_24h": 11,
+                }),
+            ),
+        )
+        existing_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        config = self._price_config(threshold=8)
+        with patch(
+            "api.managers.alert_manager.load_price_alert_config",
+            side_effect=lambda: config,
+        ):
+            count = self.manager.acknowledge_all(status="pending")
+            config["watchlist"]["crypto"][0]["conditions"][0]["value"] = 12
+            changed_id = self.manager.create_alert(
+                title="Bitcoin moved 12 percent up",
+                source="price_monitor",
+                metadata={
+                    "symbol": "BTC",
+                    "type": "percent_change",
+                    "change_24h": 12,
+                },
+                speak_immediately=False,
+            )
+
+        self.assertEqual(count, 1)
+        self.assertGreater(changed_id, 0)
+        self.assertNotEqual(changed_id, existing_id)
+        conn = sqlite3.connect(self.db_path)
+        metadata_json = conn.execute(
+            "SELECT metadata FROM alerts WHERE id = ?",
+            (existing_id,),
+        ).fetchone()[0]
+        conn.close()
+        self.assertIn(
+            '"price_condition_key": "BTC:percent_change:up:8"',
+            metadata_json,
+        )
 
     def test_weather_watch_speech_sanitizes_iso_dates(self):
         spoken = self.manager._sanitize_weather_watch_speech(

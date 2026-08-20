@@ -21,7 +21,7 @@ PRICE_ALERT_EXAMPLE_PATH = PROJECT_ROOT / "data" / "price-alerts.yaml.example"
 DEFAULT_PRICE_ALERT_CONFIG: dict[str, Any] = {
     "settings": {
         "check_interval_minutes": 10,
-        "cooldown_hours": 4,
+        "cooldown_hours": 24,
         "jarvis_api_url": "http://localhost:8880",
     },
     "sources": {

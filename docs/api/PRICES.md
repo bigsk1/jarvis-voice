@@ -212,7 +212,7 @@ data and its fresh-clone template therefore share the same data boundary.
   "ok": true,
   "settings": {
     "check_interval_minutes": 10,
-    "cooldown_hours": 4
+    "cooldown_hours": 24
   },
   "watchlist": {
     "crypto": [
@@ -240,6 +240,10 @@ data and its fresh-clone template therefore share the same data boundary.
   "source": "data/price-alerts.yaml"
 }
 ```
+
+Acknowledged price alerts use `cooldown_hours` to suppress the same symbol,
+condition type, direction (for percentage moves), and configured threshold.
+Editing the threshold makes that condition eligible immediately.
 
 ### Get Thresholds Only
 

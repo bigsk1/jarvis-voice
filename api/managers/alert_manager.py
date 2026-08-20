@@ -2,8 +2,10 @@
 
 import sqlite3
 import json
+import logging
+import math
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 import sys
@@ -12,7 +14,13 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'lib'))
 from config_loader import load_config, get_config_value, get_active_config_mode
 from memory_db import get_memory_db
+from price_alert_config import load_price_alert_config
 from tts_normalizer import normalize_tts_text
+
+
+logger = logging.getLogger(__name__)
+PRICE_ALERT_DEFAULT_COOLDOWN_HOURS = 24.0
+PRICE_ALERT_CONDITION_KEY = "price_condition_key"
 
 
 def _tts_script_timeout_seconds(default: int = 60) -> int:
@@ -82,6 +90,187 @@ class AlertManager:
         """, (source, f'%"{key}": "{value}"%'))
         existing = cursor.fetchone()
         return existing[0] if existing else None
+
+    @staticmethod
+    def _normalize_price_alert_type(value: Any) -> str:
+        alert_type = str(value or "").strip().lower()
+        if alert_type in {"percent_change", "percent_change_24h"}:
+            return "percent_change"
+        return alert_type
+
+    @staticmethod
+    def _format_price_threshold(value: Any) -> str:
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            numeric_value = float(value)
+            if math.isfinite(numeric_value):
+                return format(numeric_value, ".15g")
+        return str(value or "").strip()
+
+    @staticmethod
+    def _price_alert_direction(metadata: dict[str, Any]) -> str:
+        for key in ("change_24h", "change_percent"):
+            value = metadata.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                if value > 0:
+                    return "up"
+                if value < 0:
+                    return "down"
+        return "unknown"
+
+    def _price_alert_condition_key(
+        self,
+        metadata: dict[str, Any],
+        config: dict[str, Any] | None = None,
+    ) -> str | None:
+        """Identify a price condition, including its configured threshold."""
+        symbol = str(metadata.get("symbol") or "").strip().upper()
+        alert_type = self._normalize_price_alert_type(metadata.get("type"))
+        if not symbol or alert_type not in {"above", "below", "percent_change"}:
+            return None
+
+        threshold = metadata.get("threshold")
+        if threshold is None and config:
+            watchlist = config.get("watchlist") or {}
+            for asset_type in ("crypto", "stocks"):
+                for asset in watchlist.get(asset_type) or []:
+                    if not isinstance(asset, dict):
+                        continue
+                    if str(asset.get("symbol") or "").strip().upper() != symbol:
+                        continue
+                    for condition in asset.get("conditions") or []:
+                        if not isinstance(condition, dict):
+                            continue
+                        condition_type = self._normalize_price_alert_type(condition.get("type"))
+                        if condition_type == alert_type:
+                            threshold = condition.get("value")
+                            break
+                    if threshold is not None:
+                        break
+                if threshold is not None:
+                    break
+
+        direction = self._price_alert_direction(metadata) if alert_type == "percent_change" else None
+        parts = [symbol, alert_type]
+        if direction:
+            parts.append(direction)
+        parts.append(self._format_price_threshold(threshold))
+        return ":".join(parts)
+
+    def _price_alert_policy(self, metadata: dict[str, Any]) -> tuple[float, str | None]:
+        """Load the acknowledgement cooldown and stable condition identity."""
+        config: dict[str, Any] = {}
+        try:
+            config = load_price_alert_config()
+        except Exception as exc:
+            logger.warning("Unable to load price-alert cooldown configuration: %s", exc)
+
+        raw_cooldown = (config.get("settings") or {}).get(
+            "cooldown_hours",
+            PRICE_ALERT_DEFAULT_COOLDOWN_HOURS,
+        )
+        try:
+            cooldown_hours = float(raw_cooldown)
+            if not math.isfinite(cooldown_hours) or cooldown_hours < 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            cooldown_hours = PRICE_ALERT_DEFAULT_COOLDOWN_HOURS
+
+        return cooldown_hours, self._price_alert_condition_key(metadata, config)
+
+    def _find_recent_acknowledged_price_alert(
+        self,
+        cursor: sqlite3.Cursor,
+        metadata: dict[str, Any],
+        condition_key: str,
+        cooldown_hours: float,
+    ) -> int | None:
+        """Find the same acknowledged price condition within its cooldown."""
+        if cooldown_hours <= 0:
+            return None
+
+        cutoff = (datetime.now() - timedelta(hours=cooldown_hours)).isoformat()
+        cursor.execute("""
+            SELECT id, metadata FROM alerts
+            WHERE source = 'price_monitor'
+              AND status = 'acknowledged'
+              AND acknowledged_at IS NOT NULL
+              AND acknowledged_at >= ?
+            ORDER BY acknowledged_at DESC
+        """, (cutoff,))
+
+        symbol = str(metadata.get("symbol") or "").strip().upper()
+        alert_type = self._normalize_price_alert_type(metadata.get("type"))
+        direction = self._price_alert_direction(metadata)
+        for alert_id, raw_metadata in cursor.fetchall():
+            try:
+                existing_metadata = json.loads(raw_metadata or "{}")
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(existing_metadata, dict):
+                continue
+            if str(existing_metadata.get("symbol") or "").strip().upper() != symbol:
+                continue
+            if self._normalize_price_alert_type(existing_metadata.get("type")) != alert_type:
+                continue
+            if (
+                alert_type == "percent_change"
+                and self._price_alert_direction(existing_metadata) != direction
+            ):
+                continue
+
+            existing_key = existing_metadata.get(PRICE_ALERT_CONDITION_KEY)
+            if existing_key:
+                if existing_key == condition_key:
+                    return alert_id
+                continue
+
+            # Older percentage alerts did not record their configured threshold.
+            # Treat those as the same condition so deploying cooldown support does
+            # not immediately replay an alert that was just acknowledged.
+            if existing_metadata.get("threshold") is None:
+                return alert_id
+            if self._price_alert_condition_key(existing_metadata) == condition_key:
+                return alert_id
+
+        return None
+
+    def _stamp_price_condition_keys(
+        self,
+        cursor: sqlite3.Cursor,
+        where_clause: str,
+        params: list[Any] | tuple[Any, ...],
+    ) -> None:
+        """Persist condition identities on legacy price alerts as they are acknowledged."""
+        cursor.execute(
+            f"SELECT id, metadata FROM alerts "
+            f"WHERE source = 'price_monitor' AND {where_clause}",
+            params,
+        )
+        rows = cursor.fetchall()
+        if not rows:
+            return
+
+        try:
+            config = load_price_alert_config()
+        except Exception as exc:
+            logger.warning("Unable to load price-alert configuration while acknowledging: %s", exc)
+            config = {}
+
+        for alert_id, raw_metadata in rows:
+            try:
+                metadata = json.loads(raw_metadata or "{}")
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(metadata, dict) or metadata.get(PRICE_ALERT_CONDITION_KEY):
+                continue
+            condition_key = self._price_alert_condition_key(metadata, config)
+            if not condition_key:
+                continue
+            metadata[PRICE_ALERT_CONDITION_KEY] = condition_key
+            cursor.execute(
+                "UPDATE alerts SET metadata = ? WHERE id = ?",
+                (json.dumps(metadata), alert_id),
+            )
         
     def create_alert(self, 
                      title: str,
@@ -107,8 +296,16 @@ class AlertManager:
             speak_immediately: Whether to speak the alert via TTS
             
         Returns:
-            Alert ID, or -1 if duplicate pending alert exists
+            Alert ID, or the negative existing alert ID when suppressed
         """
+        metadata = dict(metadata) if metadata else None
+        price_cooldown_hours = 0.0
+        price_condition_key = None
+        if source == 'price_monitor' and metadata:
+            price_cooldown_hours, price_condition_key = self._price_alert_policy(metadata)
+            if price_condition_key:
+                metadata[PRICE_ALERT_CONDITION_KEY] = price_condition_key
+
         conn = sqlite3.connect(self.db.db_path)
         cursor = conn.cursor()
         
@@ -137,6 +334,17 @@ class AlertManager:
                 if existing:
                     conn.close()
                     return -existing[0]
+
+                if price_condition_key:
+                    existing_id = self._find_recent_acknowledged_price_alert(
+                        cursor,
+                        metadata,
+                        price_condition_key,
+                        price_cooldown_hours,
+                    )
+                    if existing_id:
+                        conn.close()
+                        return -existing_id
             
             # For error alerts (no symbol but has 'error' key)
             elif 'error' in metadata:
@@ -244,6 +452,9 @@ class AlertManager:
         """Mark alert as acknowledged"""
         conn = sqlite3.connect(self.db.db_path)
         cursor = conn.cursor()
+
+        self._stamp_price_condition_keys(cursor, "id = ?", [alert_id])
+        now = datetime.now().isoformat()
         
         cursor.execute("""
             UPDATE alerts 
@@ -251,7 +462,7 @@ class AlertManager:
                 acknowledged_at = ?,
                 updated_at = ?
             WHERE id = ?
-        """, (datetime.now().isoformat(), datetime.now().isoformat(), alert_id))
+        """, (now, now, alert_id))
         
         success = cursor.rowcount > 0
         conn.commit()
@@ -274,18 +485,22 @@ class AlertManager:
         conn = sqlite3.connect(self.db.db_path)
         cursor = conn.cursor()
         
-        query = "UPDATE alerts SET status = 'acknowledged', acknowledged_at = ?, updated_at = ? WHERE 1=1"
-        params = [datetime.now().isoformat(), datetime.now().isoformat()]
-        
-        if status:
-            query += " AND status = ?"
-            params.append(status)
-        else:
-            query += " AND status = 'pending'"  # Default to pending
+        conditions = ["status = ?"]
+        filter_params: list[Any] = [status or "pending"]
         
         if severity:
-            query += " AND severity = ?"
-            params.append(severity)
+            conditions.append("severity = ?")
+            filter_params.append(severity)
+
+        where_clause = " AND ".join(conditions)
+        self._stamp_price_condition_keys(cursor, where_clause, filter_params)
+
+        now = datetime.now().isoformat()
+        query = (
+            "UPDATE alerts SET status = 'acknowledged', acknowledged_at = ?, updated_at = ? "
+            f"WHERE {where_clause}"
+        )
+        params = [now, now, *filter_params]
         
         cursor.execute(query, params)
         count = cursor.rowcount
