@@ -374,6 +374,124 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
                 self.assertEqual(kwargs.get("room"), expected_room)
                 self.assertNotEqual(kwargs.get("room"), "ephemeral-session-99")
 
+    def test_repair_status_marker_is_machine_like_completion_text(self):
+        self.assertTrue(
+            ChatHandler._is_machine_like_completion_text("REPAIR_STATUS: repaired")
+        )
+
+    def test_marker_only_repair_never_reaches_chat_or_history(self):
+        cases = [
+            {
+                "name": "tool_data_can_be_synthesized",
+                "data": {"verified_value": "present"},
+                "synthesized_answer": "The verified value is present.",
+                "expected_status": "repaired",
+                "expected_answer": "The verified value is present.",
+            },
+            {
+                "name": "no_answer_can_be_synthesized",
+                "data": {},
+                "synthesized_answer": None,
+                "expected_status": "unresolved",
+                "expected_answer": (
+                    "I couldn't produce a complete repaired answer. "
+                    "The original issue remains unresolved."
+                ),
+            },
+        ]
+
+        for case in cases:
+            with self.subTest(case=case["name"]):
+                handler = ChatHandler.__new__(ChatHandler)
+                handler.socketio = _FakeSocketIO()
+                handler.pending_cancellations = {}
+                handler.sessions = {}
+
+                record = {
+                    "conversation_id": f"conv-{case['name']}",
+                    "message_id": f"msg-{case['name']}",
+                    "mode": "cloud",
+                    "tool_policy": "auto",
+                    "query": "Verify the current value",
+                    "speech": "Old answer",
+                    "raw_llm_response": "Old answer",
+                    "tools_used": [],
+                    "data": {},
+                    "completion_guard": {"ticket_on_fail": False},
+                }
+                fake_result = {
+                    "ok": True,
+                    "speech": "REPAIR_STATUS: repaired",
+                    "raw_llm_response": "REPAIR_STATUS: repaired",
+                    "tools_used": ["read_file"],
+                    "data": case["data"],
+                }
+                fake_orchestrator = unittest.mock.MagicMock()
+                fake_orchestrator.process.return_value = fake_result
+                store = unittest.mock.MagicMock()
+
+                with patch(
+                    "orchestrator_v2.Orchestrator",
+                    return_value=fake_orchestrator,
+                ), patch(
+                    "jarvis_web_test_server.services.conversation_store.get_conversation_store",
+                    return_value=store,
+                ), patch.object(
+                    handler,
+                    "_classify_completion_guard_strategy",
+                    return_value={"family": "verify"},
+                ), patch.object(
+                    handler,
+                    "_format_completion_guard_strategy",
+                    return_value="verify source",
+                ), patch.object(
+                    handler,
+                    "_synthesize_from_existing_tool_result",
+                    return_value=case["synthesized_answer"],
+                ) as synthesize, patch.object(
+                    handler,
+                    "_compute_effective_evidence",
+                    return_value=None,
+                ), patch.object(
+                    handler,
+                    "_update_completion_guard_experience",
+                ), patch.object(
+                    handler,
+                    "_start_feedback_async",
+                ), patch.object(
+                    handler,
+                    "_generate_tts",
+                    return_value=None,
+                ), patch(
+                    "jarvis_web_test_server.config.get_web_setting",
+                    return_value=False,
+                ):
+                    ChatHandler._run_completion_guard_repair.__wrapped__(
+                        handler,
+                        "session-marker-only",
+                        record,
+                        note="The answer is incomplete",
+                    )
+
+                if case["data"]:
+                    synthesize.assert_called_once()
+                else:
+                    synthesize.assert_not_called()
+
+                saved_text = store.add_message.call_args.args[2]
+                responses = [
+                    payload
+                    for event, payload, _kwargs in handler.socketio.emitted
+                    if event == "chat:response"
+                ]
+                self.assertEqual(record["status"], case["expected_status"])
+                self.assertEqual(saved_text, case["expected_answer"])
+                self.assertEqual(responses[0]["text"], case["expected_answer"])
+                self.assertEqual(responses[0]["speech"], case["expected_answer"])
+                self.assertNotIn("REPAIR_STATUS", saved_text)
+                self.assertNotIn("REPAIR_STATUS", responses[0]["text"])
+                self.assertNotIn("REPAIR_STATUS", responses[0]["speech"])
+
     def test_auto_repair_passes_the_chat_only_record_to_shared_repair(self):
         handler = ChatHandler.__new__(ChatHandler)
         handler._evaluate_completion_guard_auto = unittest.mock.MagicMock(

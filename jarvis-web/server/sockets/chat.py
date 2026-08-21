@@ -824,6 +824,8 @@ class ChatHandler:
         s = text.strip()
         if not s:
             return True
+        if s.upper().startswith('REPAIR_STATUS:'):
+            return True
         if s.startswith('{') or s.startswith('['):
             return True
         if '\\"url\\":' in s or '"url":' in s or '\\"title\\":' in s or '"title":' in s:
@@ -1780,7 +1782,11 @@ Previous structured data:
                 del self.pending_cancellations[repair_message_id]
             raw_response = result.get('raw_llm_response', '') or result.get('speech', '')
             repair_status, cleaned_raw = self._extract_repair_status(raw_response)
-            _, cleaned_speech = self._extract_repair_status(result.get('speech', '') or '')
+            speech_repair_status, cleaned_speech = self._extract_repair_status(
+                result.get('speech', '') or ''
+            )
+            if repair_status is None:
+                repair_status = speech_repair_status
 
             if result.get('cancelled'):
                 record['status'] = 'cancelled'
@@ -1834,9 +1840,11 @@ Previous structured data:
                 )
                 return
 
-            if cleaned_raw:
+            if repair_status is not None:
                 result['raw_llm_response'] = cleaned_raw
-            if cleaned_speech:
+            if speech_repair_status is not None:
+                result['speech'] = cleaned_speech or cleaned_raw
+            elif cleaned_speech:
                 result['speech'] = cleaned_speech
             elif cleaned_raw and result.get('speech'):
                 result['speech'] = cleaned_raw
@@ -1857,6 +1865,18 @@ Previous structured data:
                     result['speech'] = synthesized_answer
                     result['raw_llm_response'] = synthesized_answer
                     repair_status = 'repaired'
+
+            if repair_status is not None and not any(
+                str(result.get(field) or '').strip()
+                for field in ('speech', 'raw_llm_response')
+            ):
+                unresolved_answer = (
+                    "I couldn't produce a complete repaired answer. "
+                    "The original issue remains unresolved."
+                )
+                result['speech'] = unresolved_answer
+                result['raw_llm_response'] = unresolved_answer
+                repair_status = 'unresolved'
 
             delta = self._analyze_completion_guard_delta(record, result)
             operational_correction = bool(delta.get('operational_correction'))
