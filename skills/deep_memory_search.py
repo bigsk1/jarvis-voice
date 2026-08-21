@@ -13,32 +13,39 @@ Searches:
 Uses ripgrep (rg) for fast file-based searches with --json output.
 """
 
-import sys
-import os
 import json
-import subprocess
+import os
 import re
+import subprocess
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lib'))
-from memory_db import get_memory_db
 from config_loader import load_config
+from memory_db import get_memory_db
+from time_utils import (
+    ensure_local,
+    get_app_timezone,
+    now_local,
+    parse_utc_timestamp,
+    safe_iso_to_local_datetime,
+)
 
 # Project root
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
 
 def parse_date_filter(date_filter: str) -> datetime | None:
-    """Convert date filter string to datetime object."""
+    """Convert a date filter string to an aware datetime in app-local time."""
     if not date_filter:
         return None
     
-    now = datetime.now()
+    now = now_local()
     
     if date_filter == 'today':
-        return datetime(now.year, now.month, now.day)
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
     elif date_filter == 'week':
         return now - timedelta(days=7)
     elif date_filter == 'month':
@@ -46,11 +53,31 @@ def parse_date_filter(date_filter: str) -> datetime | None:
     elif date_filter == 'year':
         return now - timedelta(days=365)
     else:
-        # Try parsing as ISO date
+        return safe_iso_to_local_datetime(date_filter, tz=now.tzinfo)
+
+
+def _is_before_date_filter(
+    value: str | datetime | None,
+    date_filter: datetime | None,
+    *,
+    naive_is_utc: bool = False,
+) -> bool:
+    """Compare a mixed stored timestamp with an app-local cutoff."""
+    if not value or not date_filter:
+        return False
+
+    cutoff = ensure_local(date_filter)
+    if isinstance(value, datetime):
+        value_datetime = ensure_local(value, cutoff.tzinfo)
+    elif naive_is_utc:
         try:
-            return datetime.fromisoformat(date_filter.replace('Z', '+00:00'))
-        except ValueError:
-            return None
+            value_datetime = parse_utc_timestamp(str(value)).astimezone(cutoff.tzinfo)
+        except (TypeError, ValueError):
+            return False
+    else:
+        value_datetime = safe_iso_to_local_datetime(str(value), tz=cutoff.tzinfo)
+
+    return value_datetime is not None and value_datetime < cutoff
 
 
 def memory_retrieval_label(memory: dict) -> tuple[str, str]:
@@ -178,13 +205,12 @@ def search_memory_db(query: str, limit: int, mode: str, date_filter: datetime = 
                     del mem['embedding']
                 
                 # Date filtering
-                if date_filter and mem.get('created_at'):
-                    try:
-                        mem_date = datetime.fromisoformat(mem['created_at'].replace('Z', '+00:00'))
-                        if mem_date < date_filter:
-                            continue
-                    except:
-                        pass
+                if _is_before_date_filter(
+                    mem.get('created_at'),
+                    date_filter,
+                    naive_is_utc=True,
+                ):
+                    continue
                 
                 mem['_source'] = 'memory_keyword'
                 mem['_source_display'] = 'Memory (keyword match)'
@@ -204,13 +230,12 @@ def search_memory_db(query: str, limit: int, mode: str, date_filter: datetime = 
                 if mem.get('key') in existing_keys:
                     continue
                 
-                if date_filter and mem.get('created_at'):
-                    try:
-                        mem_date = datetime.fromisoformat(mem['created_at'].replace('Z', '+00:00'))
-                        if mem_date < date_filter:
-                            continue
-                    except:
-                        pass
+                if _is_before_date_filter(
+                    mem.get('created_at'),
+                    date_filter,
+                    naive_is_utc=True,
+                ):
+                    continue
                 
                 mem['_source'], mem['_source_display'] = memory_retrieval_label(mem)
                 results.append(mem)
@@ -232,13 +257,12 @@ def search_terminal_conversations(query: str, limit: int, date_filter: datetime 
         db.close()
         
         for conv in conversations:
-            if date_filter and conv.get('timestamp'):
-                try:
-                    conv_date = datetime.fromisoformat(conv['timestamp'].replace('Z', '+00:00'))
-                    if conv_date < date_filter:
-                        continue
-                except:
-                    pass
+            if _is_before_date_filter(
+                conv.get('timestamp'),
+                date_filter,
+                naive_is_utc=True,
+            ):
+                continue
             
             conv['_source'] = 'terminal_conversation'
             conv['_source_display'] = 'Terminal/Voice Conversation'
@@ -278,13 +302,8 @@ def search_web_conversations(query: str, limit: int, date_filter: datetime = Non
                 conv_data = json.load(f)
             
             # Date filtering
-            if date_filter and conv_data.get('created_at'):
-                try:
-                    conv_date = datetime.fromisoformat(conv_data['created_at'].replace('Z', '+00:00'))
-                    if conv_date < date_filter:
-                        continue
-                except:
-                    pass
+            if _is_before_date_filter(conv_data.get('created_at'), date_filter):
+                continue
             
             # Extract relevant messages
             matching_messages = []
@@ -342,8 +361,11 @@ def search_intel_folder(query: str, limit: int, date_filter: datetime = None) ->
     for file_path, matches in files_matches.items():
         try:
             if date_filter:
-                file_mtime = datetime.fromtimestamp(Path(file_path).stat().st_mtime)
-                if file_mtime < date_filter:
+                file_mtime = datetime.fromtimestamp(
+                    Path(file_path).stat().st_mtime,
+                    tz=get_app_timezone(),
+                )
+                if _is_before_date_filter(file_mtime, date_filter):
                     continue
 
             file_name = Path(file_path).name
@@ -396,13 +418,8 @@ def search_canvas_pages(query: str, limit: int, date_filter: datetime = None) ->
                 page_data = json.load(f)
             
             # Date filtering
-            if date_filter and page_data.get('created'):
-                try:
-                    page_date = datetime.fromisoformat(page_data['created'].replace('Z', '+00:00'))
-                    if page_date < date_filter:
-                        continue
-                except:
-                    pass
+            if _is_before_date_filter(page_data.get('created'), date_filter):
+                continue
             
             results.append({
                 'page_id': page_data.get('id'),
@@ -459,13 +476,8 @@ def search_stash_spaces(query: str, limit: int, date_filter: datetime = None) ->
                 meta = json.load(f)
             
             # Date filtering
-            if date_filter and meta.get('created_at'):
-                try:
-                    space_date = datetime.fromisoformat(meta['created_at'].replace('Z', '+00:00'))
-                    if space_date < date_filter:
-                        continue
-                except:
-                    pass
+            if _is_before_date_filter(meta.get('created_at'), date_filter):
+                continue
             
             # Get file info
             files = meta.get('files', [])
