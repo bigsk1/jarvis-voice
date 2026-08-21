@@ -191,6 +191,10 @@ class ToolExecutor:
             return 1200  # 20 minutes — MoneyPrinterTurbo script + stock + TTS + render + download
         if tool_name == "weather":
             return 90  # Weather API can be slow with proxy fallback
+        if tool_name == "external_network_intel":
+            # A full passive profile combines several bounded HTTPS providers;
+            # leave room for the configured primary/fallback proxy chain.
+            return 180
         if tool_name == "gpu_hot_status":
             return 30  # One bounded LAN WebSocket snapshot with REST fallback
         if tool_name == "flight_search":

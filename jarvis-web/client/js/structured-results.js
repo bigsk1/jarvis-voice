@@ -362,6 +362,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_maps_search', payload => this._adaptMaps(payload));
     this.register('serpapi_youtube_search', payload => this._adaptYouTubeSearch(payload));
     this.register('weather', payload => this._adaptWeather(payload));
+    this.register('external_network_intel', payload => this._adaptExternalNetworkIntel(payload));
     this.register('gpu_hot_status', payload => this._adaptGpuHotStatus(payload));
   }
 
@@ -2068,6 +2069,146 @@ class StructuredResultsRenderer {
       eyebrow: 'Weather',
       heading: payload.location || 'Forecast',
       subtitle: current.join(' · '),
+      items,
+    };
+  }
+
+  _adaptExternalNetworkIntel(payload) {
+    const summary = payload.summary && typeof payload.summary === 'object'
+      ? payload.summary
+      : {};
+    const registration = payload.registration && typeof payload.registration === 'object'
+      ? payload.registration
+      : {};
+    const routing = payload.routing && typeof payload.routing === 'object'
+      ? payload.routing
+      : {};
+    const dns = payload.dns && typeof payload.dns === 'object'
+      ? payload.dns
+      : {};
+    const providerRange = payload.published_provider_range
+      && typeof payload.published_provider_range === 'object'
+      ? payload.published_provider_range
+      : {};
+    const reputation = payload.reputation && typeof payload.reputation === 'object'
+      ? payload.reputation
+      : {};
+    const abuse = reputation.abuseipdb && typeof reputation.abuseipdb === 'object'
+      ? reputation.abuseipdb
+      : {};
+    const shodan = reputation.shodan_internetdb
+      && typeof reputation.shodan_internetdb === 'object'
+      ? reputation.shodan_internetdb
+      : {};
+    const asns = this._list(summary.announcing_asns || routing.asns);
+    const services = this._list(summary.service_candidates);
+    const ptr = this._list(dns.ptr);
+    const resolvedIps = this._list(dns.resolved_ips);
+    const dnsRecordDetails = Object.entries(
+      dns.records && typeof dns.records === 'object' ? dns.records : {}
+    ).flatMap(([recordType, record]) => (
+      Array.isArray(record?.answers) ? record.answers : []
+    ).slice(0, 4).map(answer => (
+      answer?.data ? `${recordType} ${answer.data}` : ''
+    ))).filter(Boolean).slice(0, 8);
+    const hostnames = this._list(shodan.hostnames);
+    const ports = this._list(shodan.ports);
+    const tags = this._list(shodan.tags);
+    const vulnerabilities = this._list(shodan.vulnerabilities);
+    const items = [];
+
+    if (summary.owner || summary.registered_network || registration.name || registration.ldh_name) {
+      items.push({
+        title: 'Ownership',
+        primary: summary.owner || registration.name || registration.ldh_name || '',
+        chips: [summary.registered_network || registration.name, registration.country].filter(Boolean),
+        details: [
+          registration.start_address && registration.end_address
+            ? `${registration.start_address} – ${registration.end_address}`
+            : '',
+          this._list(registration.nameservers).slice(0, 5).join(' · '),
+        ].filter(Boolean),
+      });
+    }
+    if (asns.length || summary.routed_prefix || providerRange.prefix) {
+      items.push({
+        title: 'Routing',
+        primary: asns.length ? asns.map(asn => `AS${asn}`).join(', ') : '',
+        chips: [summary.routed_prefix || routing.prefix, providerRange.provider].filter(Boolean),
+        details: [
+          providerRange.prefix ? `Published range ${providerRange.prefix}` : '',
+          [providerRange.service, providerRange.scope].filter(Boolean).join(' · '),
+        ].filter(Boolean),
+      });
+    }
+    if (
+      services.length || ptr.length || resolvedIps.length || dnsRecordDetails.length
+      || hostnames.length || ports.length
+    ) {
+      items.push({
+        title: 'DNS and service associations',
+        primary: services[0] || ptr[0] || hostnames[0] || resolvedIps[0] || '',
+        chips: ports.slice(0, 8).map(port => `Port ${port}`),
+        details: [
+          services.slice(1, 5).join(' · '),
+          hostnames.filter(host => !services.includes(host)).slice(0, 5).join(' · '),
+          dnsRecordDetails.join(' · '),
+        ].filter(Boolean),
+      });
+    }
+    if (abuse.status || tags.length || vulnerabilities.length) {
+      const score = abuse.abuse_confidence_score;
+      items.push({
+        title: 'Reputation',
+        primary: score != null ? `${score}% AbuseIPDB confidence` : (abuse.status || ''),
+        chips: [
+          abuse.total_reports != null ? `${abuse.total_reports} reports` : '',
+          ...tags.slice(0, 4),
+        ].filter(Boolean),
+        details: [
+          abuse.last_reported_at ? `Last reported ${this._formatDateTime(abuse.last_reported_at)}` : '',
+          vulnerabilities.length ? `${vulnerabilities.length} vulnerabilities in passive snapshot` : '',
+        ].filter(Boolean),
+      });
+    }
+    if (!items.length && payload.classification && typeof payload.classification === 'object') {
+      const classification = payload.classification;
+      items.push({
+        title: 'Address classification',
+        primary: `${classification.is_global ? 'Global' : 'Non-global'} IPv${classification.version || ''}`,
+        chips: [
+          classification.is_private ? 'Private' : '',
+          classification.is_reserved ? 'Reserved' : '',
+          classification.is_loopback ? 'Loopback' : '',
+          classification.is_link_local ? 'Link local' : '',
+        ].filter(Boolean),
+        details: payload.external_lookup_skipped ? [payload.external_lookup_skipped] : [],
+      });
+    }
+    const lookupErrors = Array.isArray(payload.errors)
+      ? payload.errors.filter(error => error && typeof error === 'object')
+      : [];
+    if (!items.length && lookupErrors.length) {
+      items.push({
+        title: 'Lookup status',
+        primary: payload.result_status || 'partial',
+        details: lookupErrors.slice(0, 4).map(error => (
+          [error?.source, error?.error].filter(Boolean).join(': ')
+        )).filter(Boolean),
+      });
+    }
+
+    return {
+      kind: 'generic',
+      layout: 'metrics',
+      eyebrow: 'Passive network intelligence',
+      heading: payload.target || 'Network lookup',
+      subtitle: [
+        payload.target_type,
+        payload.query_type,
+        payload.result_status,
+        payload.checked_at ? this._formatDateTime(payload.checked_at) : '',
+      ].filter(Boolean).join(' · '),
       items,
     };
   }

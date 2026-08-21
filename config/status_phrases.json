@@ -527,6 +527,11 @@
       "progress": ["Network check complete"]
     },
     
+    "external_network_intel": {
+      "start": ["Checking public network intelligence", "Looking up ownership and reputation"],
+      "progress": ["Passive network lookup complete"]
+    },
+
     "youtube_transcript": {
       "start": ["Getting the transcript", "Downloading captions"],
       "progress": ["Transcript retrieved"]

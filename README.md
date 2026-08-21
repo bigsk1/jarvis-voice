@@ -798,6 +798,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `phone_call` - **AI Phone Calls**: outbound calls via Vapi.ai with personas, voicemail detection, transcripts
 - `spotify` - **Music control**: play, pause, skip, queue, search, device switching, share via email
 - `network_tools` - **Network diagnostics**: ping (with stats), DNS lookup, port checks, HTTP/HTTPS status, traceroute
+- [`external_network_intel`](docs/tools/external-network-intel-tool/README.md) - **Passive public network intelligence**: IP/domain ownership, ASN/routing, DNS, official cloud ranges, Shodan InternetDB, and optional AbuseIPDB reputation (no scanning)
 - `system_monitor` - **System resources**: CPU, RAM, disk, processes, network I/O, uptime
 - `text_summarizer` - **Text processing**: summarization, keyword extraction, word count, sentiment analysis
 - `stock_price` - **Stock/futures prices**: stocks (TSLA, AAPL), futures (GC=F gold, SI=F silver), forex (EURUSD=X)

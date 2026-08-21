@@ -11,6 +11,7 @@
 - **[docker/README.md](docker/README.md)** - 🐳 **Docker guide** — run Web UIs + API in containers (commands, `.env`, hybrid mode)
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
+- **[tools/external-network-intel-tool/README.md](tools/external-network-intel-tool/README.md)** - **Passive public IP/domain intelligence** (RDAP, routing, DNS, official cloud ranges, Shodan InternetDB, optional AbuseIPDB; no scanning)
 - **[SPEECH_TO_TEXT.md](SPEECH_TO_TEXT.md)** - **Speech-to-text guide** (OpenAI, Faster-Whisper, self-hosted compatible endpoints, fallback policy, browser mic requirements)
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (`grok-4.6` recommended default; also `grok-4.5`, `grok-4.3`, `grok-build-0.1`, native search/TTS, in-flight continuation) ⭐ RECOMMENDED
 - **[OPENAI_PROVIDER.md](OPENAI_PROVIDER.md)** - 🆕 **OpenAI provider** (Chat Completions default, optional Responses API routing, hosted tools, in-flight continuation)
@@ -158,6 +159,7 @@
 | **TOOL_CALLING_SYSTEM.md** | Tool orchestration and routing |
 | **TOOL_MANAGEMENT.md** | Manifest/profile/mode/Web precedence; enabled vs credential **available** (`--mode`) |
 | **[../skills/README.md](../skills/README.md)** (section *Tool profiles*) | Optional overlay JSON per profile; `JARVIS_TOOL_PROFILE`; `bin/manage-tools.py profile`; re-sync tools DB after changes |
+| **[tools/external-network-intel-tool/README.md](tools/external-network-intel-tool/README.md)** | Passive public IP/domain ownership, routing, DNS, and reputation lookup |
 | **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** | SerpApi search tool guide (setup, params, examples, troubleshooting) |
 | **[tools/travel-explore-tool/README.md](tools/travel-explore-tool/README.md)** | Flexible destination discovery and flight/hotel handoff guide |
 | **[tools/flight-search-tool/README.md](tools/flight-search-tool/README.md)** | Flight options and prices via SerpApi Google Flights or keyless fallback |

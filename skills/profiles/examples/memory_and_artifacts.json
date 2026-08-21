@@ -9,6 +9,7 @@
     "crypto_chart": false,
     "crypto_price": false,
     "docker_control": false,
+    "external_network_intel": false,
     "flight_search": false,
     "generate_image": false,
     "generate_music": false,

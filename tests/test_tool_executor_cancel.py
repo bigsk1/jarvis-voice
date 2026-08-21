@@ -226,6 +226,10 @@ class ToolExecutorCancelTests(unittest.TestCase):
         self.assertEqual(executor._get_subprocess_timeout("tmdb_movies"), 300)
         self.assertEqual(executor._get_subprocess_timeout("tmdb_tv_shows"), 300)
 
+    def test_external_network_intel_timeout_allows_passive_provider_chain(self):
+        executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
+        self.assertEqual(executor._get_subprocess_timeout("external_network_intel"), 180)
+
     def test_search_index_timeout_allows_deep_recall_request(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("serpapi_search_index"), 120)

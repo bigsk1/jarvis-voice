@@ -1494,6 +1494,7 @@ class JarvisApp {
       acknowledge_alerts: '✅',
       system_monitor: '📊',
       network_tools: '🌐',
+      external_network_intel: '🛰️',
       docker_control: '🐳',
       ssh_remote: '🔐',
       execute_bash: '⌨️',

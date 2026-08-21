@@ -75,6 +75,7 @@ const expectedTools = [
   'serpapi_maps_search',
   'serpapi_youtube_search',
   'weather',
+  'external_network_intel',
   'gpu_hot_status'
 ];
 if (JSON.stringify(renderer.registeredTools()) !== JSON.stringify(expectedTools)) process.exit(2);
@@ -1574,6 +1575,139 @@ const detailEmbeds = harness._collectYouTubeEmbeds('', '', {{
 if (detailEmbeds.length !== 1) process.exit(5);
 if (detailEmbeds[0].videoId !== 'selected123') process.exit(6);
 if (detailEmbeds[0].title !== 'Selected video') process.exit(7);
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
+def test_external_network_intel_renderer_separates_ownership_routing_and_reputation():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const escapeHtml = value => String(value)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const sandbox = {{
+  URL,
+  window: {{}},
+  console,
+  Utils: {{
+    escapeHtml,
+    safeHttpUrlForAttr: value => escapeHtml(new URL(String(value)).href)
+  }}
+}};
+vm.createContext(sandbox);
+vm.runInContext(source, sandbox);
+const html = sandbox.window.structuredResultsRenderer.render({{
+  external_network_intel: {{
+    target: '35.190.88.7',
+    target_type: 'ip',
+    query_type: 'full',
+    result_status: 'complete',
+    summary: {{
+      owner: 'Google LLC',
+      registered_network: 'GOOGLE-CLOUD',
+      announcing_asns: ['396982'],
+      routed_prefix: '35.190.0.0/16',
+      service_candidates: ['sessions.bugsnag.com'],
+    }},
+    registration: {{
+      start_address: '35.184.0.0',
+      end_address: '35.191.255.255',
+    }},
+    published_provider_range: {{
+      provider: 'Google Cloud', prefix: '35.190.64.0/19', service: 'Google Cloud', scope: 'global'
+    }},
+    reputation: {{
+      abuseipdb: {{
+        status: 'ok', abuse_confidence_score: 33, total_reports: 48,
+        last_reported_at: '2026-08-01T00:00:00Z'
+      }},
+      shodan_internetdb: {{hostnames: ['sessions.bugsnag.com'], ports: [80, 443], tags: ['cloud']}}
+    }}
+  }}
+}});
+for (const expected of [
+  'Passive network intelligence', '35.190.88.7', 'Ownership', 'Google LLC',
+  'Routing', 'AS396982', '35.190.64.0/19', 'DNS and service associations',
+  'sessions.bugsnag.com', 'Port 443', 'Reputation', '33% AbuseIPDB confidence',
+  '48 reports', 'structured-results-layout-metrics'
+]) {{
+  if (!html.includes(expected)) process.exit(2);
+}}
+"""
+
+    subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)
+
+
+def test_external_network_intel_renderer_formats_domain_dns_and_error_objects():
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const escapeHtml = value => String(value)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const sandbox = {{
+  URL,
+  window: {{}},
+  console,
+  Utils: {{
+    escapeHtml,
+    safeHttpUrlForAttr: value => escapeHtml(new URL(String(value)).href)
+  }}
+}};
+vm.createContext(sandbox);
+vm.runInContext(source, sandbox);
+const renderer = sandbox.window.structuredResultsRenderer;
+const domainHtml = renderer.render({{
+  external_network_intel: {{
+    target: 'example.com',
+    target_type: 'domain',
+    query_type: 'full',
+    result_status: 'complete',
+    registration: {{
+      ldh_name: 'EXAMPLE.COM',
+      nameservers: ['elliott.ns.cloudflare.com', 'hera.ns.cloudflare.com']
+    }},
+    dns: {{
+      resolved_ips: ['104.20.23.154'],
+      records: {{
+        A: {{answers: [{{name: 'example.com.', type: 1, ttl: 300, data: '104.20.23.154'}}]}},
+        MX: {{answers: [{{name: 'example.com.', type: 15, ttl: 300, data: '0 mail.example.com.'}}]}},
+        NS: {{answers: [{{name: 'example.com.', type: 2, ttl: 300, data: 'hera.ns.cloudflare.com.'}}]}}
+      }}
+    }}
+  }}
+}});
+for (const expected of [
+  'EXAMPLE.COM', 'elliott.ns.cloudflare.com', 'A 104.20.23.154',
+  'MX 0 mail.example.com.', 'NS hera.ns.cloudflare.com.'
+]) {{
+  if (!domainHtml.includes(expected)) process.exit(2);
+}}
+if (domainHtml.includes('[object Object]')) process.exit(3);
+
+const errorHtml = renderer.render({{
+  external_network_intel: {{
+    target: 'lookup.example',
+    target_type: 'domain',
+    query_type: 'full',
+    result_status: 'partial',
+    errors: [
+      {{source: 'RDAP', error: 'registry timeout'}},
+      {{source: 'Google Public DNS', error: 'resolver unavailable'}}
+    ]
+  }}
+}});
+for (const expected of [
+  'Lookup status', 'partial', 'RDAP: registry timeout',
+  'Google Public DNS: resolver unavailable'
+]) {{
+  if (!errorHtml.includes(expected)) process.exit(4);
+}}
+if (errorHtml.includes('[object Object]')) process.exit(5);
 """
 
     subprocess.run(["node", "-e", script], cwd=PROJECT_ROOT, check=True)

@@ -488,6 +488,11 @@
         "progress": ["NETWORK STATUS: ALIVE BUT QUESTIONING ITS CHOICES"]
       },
   
+      "external_network_intel": {
+        "start": ["ASKING THE INTERNET WHO OWNS THIS SUSPICIOUS NUMBER", "CONSULTING THE PASSIVE NETWORK ORACLES"],
+        "progress": ["NETWORK INTEL ACQUIRED, PARANOIA RECALIBRATED"]
+      },
+
       "youtube_transcript": {
         "start": ["EXTRACTING THE WORDS FROM SOME YOUTUBER'S MOUTH", "STEALING SUBTITLES LIKE A CAPTION BANDIT"],
         "progress": ["GOT THE TRANSCRIPT, NOW I KNOW TOO MUCH"]

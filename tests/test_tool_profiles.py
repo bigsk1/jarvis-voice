@@ -13,6 +13,55 @@ sys.path.insert(0, str(ROOT / "lib"))
 
 
 class TestToolProfiles(unittest.TestCase):
+    def test_profiles_gate_external_network_intel_by_online_lookup_scope(self):
+        examples_dir = ROOT / "skills" / "profiles" / "examples"
+        disabled_examples = {
+            "creative_media_lab.json",
+            "docs_kb_curator.json",
+            "home_routines.json",
+            "local_home_voice.json",
+            "memory_and_artifacts.json",
+            "offline.json",
+            "offline_lan_first.json",
+        }
+        retained_examples = {
+            "docker.json",
+            "local_daily_driver.json",
+            "local_minimal_assistant.json",
+            "local_research_lite.json",
+            "local_terminal_ops.json",
+            "research_pipeline.json",
+            "workstation_ops.json",
+        }
+
+        for profile_name in sorted(disabled_examples):
+            overrides = json.loads(
+                (examples_dir / profile_name).read_text(encoding="utf-8")
+            )["overrides"]
+            self.assertIs(overrides.get("external_network_intel"), False)
+
+        for profile_name in sorted(retained_examples):
+            overrides = json.loads(
+                (examples_dir / profile_name).read_text(encoding="utf-8")
+            )["overrides"]
+            self.assertIsNot(overrides.get("external_network_intel"), False)
+
+        profiles_dir = ROOT / "skills" / "profiles"
+        for profile_name in ("offline.json",):
+            overrides = json.loads(
+                (profiles_dir / profile_name).read_text(encoding="utf-8")
+            )["overrides"]
+            self.assertIs(overrides.get("external_network_intel"), False)
+
+        for profile_name in (
+            "default.json", "docker.json", "docker-mcp.json",
+            "local_minimal_assistant.json", "openai_only.json"
+        ):
+            overrides = json.loads(
+                (profiles_dir / profile_name).read_text(encoding="utf-8")
+            )["overrides"]
+            self.assertIsNot(overrides.get("external_network_intel"), False)
+
     def test_narrow_profiles_gate_document_ocr_when_document_work_is_out_of_scope(self):
         examples_dir = ROOT / "skills" / "profiles" / "examples"
         disabled_profiles = {

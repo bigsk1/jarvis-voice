@@ -65,6 +65,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'tmdb_movies',
     'tmdb_tv_shows',
     'flight_search',
+    'external_network_intel',
     'crawl_url',
     'mcp_brave_search_brave_web_search',
     'mcp_brave_search_brave_news_search',
@@ -304,6 +305,14 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'space_id', 'markdown_stash_ref', 'json_stash_ref',
         'output_stash_ref', 'page_results_stash_ref', 'response_json_stash_ref',
         'archive_stash_ref', 'error_code', 'retryable', 'retry_after_seconds',
+    ],
+    'external_network_intel': [
+        'action', 'query_type', 'target', 'target_type', 'checked_at',
+        'classification', 'event_context', 'registration', 'routing', 'dns',
+        'published_provider_range', 'summary', 'confidence_notes',
+        'suggested_web_queries', 'result_status', 'errors',
+        'external_content_trust', 'untrusted_external_content',
+        'handling_note', 'source',
     ],
     'convert_file': ['stash_ref', 'filename', 'source_format', 'target_format'],
     'qr_code_generator': ['stash_ref', 'filename'],
@@ -2299,6 +2308,53 @@ def _bounded_immersive_followup_value(value, *, max_chars: int):
     return _restore_immersive_page_tokens(value, compact)
 
 
+def _extract_external_network_intel_followup(payload: dict) -> dict:
+    """Keep useful reputation facts while excluding raw report narratives."""
+    reputation = payload.get('reputation')
+    if not isinstance(reputation, dict):
+        return {}
+
+    compact = {}
+    abuse = reputation.get('abuseipdb')
+    if isinstance(abuse, dict):
+        allowed_abuse_fields = (
+            'status', 'configured', 'source', 'source_url', 'max_age_days',
+            'abuse_confidence_score', 'total_reports', 'distinct_reporters',
+            'last_reported_at', 'is_whitelisted', 'is_tor', 'country_code',
+            'usage_type', 'isp', 'domain', 'hostnames', 'interpretation_note',
+        )
+        compact_abuse = {
+            field: abuse[field]
+            for field in allowed_abuse_fields
+            if abuse.get(field) not in (None, '', [], {})
+        }
+        if compact_abuse:
+            compact['abuseipdb'] = compact_abuse
+
+    internetdb = reputation.get('shodan_internetdb')
+    if isinstance(internetdb, dict):
+        allowed_internetdb_fields = (
+            'status', 'source', 'source_url', 'hostnames', 'ports', 'tags',
+            'cpes', 'vulnerabilities', 'data_age_notice',
+        )
+        compact_internetdb = {
+            field: internetdb[field]
+            for field in allowed_internetdb_fields
+            if internetdb.get(field) not in (None, '', [], {})
+        }
+        if compact_internetdb:
+            compact['shodan_internetdb'] = compact_internetdb
+
+    if not compact:
+        return {}
+    return {
+        'reputation': _bounded_structured_followup_value(
+            compact,
+            max_chars=FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS,
+        )
+    }
+
+
 def _extract_query_service_logs_followup(
     payload: dict,
     max_candidates: int,
@@ -2742,6 +2798,8 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             extracted.update(
                 _extract_spotify_followup(data, payload, max_candidates)
             )
+        elif key == 'external_network_intel':
+            extracted.update(_extract_external_network_intel_followup(payload))
         elif key.startswith('mcp_brave_search_'):
             extracted.update(
                 _extract_brave_search_followup(

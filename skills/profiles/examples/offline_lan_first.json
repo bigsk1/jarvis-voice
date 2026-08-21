@@ -9,6 +9,7 @@
     "crawl_url": false,
     "crypto_chart": false,
     "crypto_price": false,
+    "external_network_intel": false,
     "flight_search": false,
     "generate_image": false,
     "generate_music": false,
