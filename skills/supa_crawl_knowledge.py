@@ -103,6 +103,13 @@ def clean_base_url(value: str) -> str:
     return base_url
 
 
+def get_configured_base_url() -> str:
+    """Return the operator-configured Supa-Crawl origin."""
+    return clean_base_url(
+        str(get_config_value("SUPA_CRAWL_CHAT_URL", DEFAULT_BASE_URL))
+    )
+
+
 def trim_text(value: Any, max_chars: int) -> Any:
     if isinstance(value, str) and len(value) > max_chars:
         return value[:max_chars] + "...[truncated]"
@@ -157,13 +164,23 @@ def compact_result(
 
 
 def request_json(base_url: str, path: str, params: dict[str, Any] | None = None) -> dict[str, Any] | list[Any]:
+    if clean_base_url(base_url) != get_configured_base_url():
+        raise ValueError(
+            "Supa-Crawl-Chat request destination does not match "
+            "SUPA_CRAWL_CHAT_URL"
+        )
     headers = supa_api_headers()
     response = requests.get(
         urljoin(base_url + "/", path.lstrip("/")),
         params={k: v for k, v in (params or {}).items() if v is not None},
         headers=headers,
         timeout=20,
+        allow_redirects=False,
     )
+    if 300 <= response.status_code < 400:
+        raise RuntimeError(
+            "Supa-Crawl-Chat refused an HTTP redirect to protect configured credentials"
+        )
     if response.status_code == 401:
         raise RuntimeError(
             "Supa-Crawl-Chat returned 401. Set SUPA_API_KEY to match the server. "
@@ -383,9 +400,12 @@ def main() -> int:
         return 1
 
     try:
-        base_url = clean_base_url(
-            str(input_data.get("base_url") or get_config_value("SUPA_CRAWL_CHAT_URL", DEFAULT_BASE_URL))
-        )
+        if "base_url" in input_data:
+            raise ValueError(
+                "base_url cannot be provided as a tool argument; configure "
+                "SUPA_CRAWL_CHAT_URL in the active environment"
+            )
+        base_url = get_configured_base_url()
         action = str(input_data.get("action", "search")).strip().lower()
 
         actions = {

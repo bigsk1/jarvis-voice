@@ -112,10 +112,6 @@
         "type": "integer",
         "description": "For page/page_chunks: max content characters per item. Default 8000 for page, 4000 for chunks. Max 20000.",
         "default": 8000
-      },
-      "base_url": {
-        "type": "string",
-        "description": "Override Supa-Crawl-Chat base URL. Otherwise SUPA_CRAWL_CHAT_URL or http://localhost:8001."
       }
     },
     "required": []

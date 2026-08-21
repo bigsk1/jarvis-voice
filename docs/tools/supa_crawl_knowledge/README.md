@@ -68,7 +68,10 @@ Header style:
 - `SUPA_API_KEY_STYLE=x-api-key`:
   - `X-API-Key: $SUPA_API_KEY`
 
-The Jarvis tool reads these from env automatically. You do not pass secrets in tool arguments.
+The Jarvis tool reads these from env automatically. You do not pass secrets in
+tool arguments. `SUPA_CRAWL_CHAT_URL` is trusted operator configuration: tool
+calls cannot override it, and authenticated requests refuse redirects so the
+API key is sent only to that configured service origin.
 
 ## How Jarvis maps actions to the API
 

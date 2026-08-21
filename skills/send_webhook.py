@@ -41,8 +41,11 @@ def load_webhook_registry() -> dict:
 
 def substitute_env_vars(value: str) -> str:
     """
-    Substitute environment variables in a string.
+    Substitute environment variables in a trusted registry string.
     Supports ${VAR_NAME} syntax, looks in config first, then os.environ.
+
+    Do not call this with tool-supplied values. process_headers enforces that
+    boundary for request headers.
     """
     pattern = r'\$\{([^}]+)\}'
     
@@ -58,11 +61,24 @@ def substitute_env_vars(value: str) -> str:
     return re.sub(pattern, replacer, value)
 
 
+def validate_request_headers(request_headers: dict) -> None:
+    """Reject environment lookups selected by an untrusted tool call."""
+    for value in request_headers.values():
+        if isinstance(value, str) and re.search(r'\$\{[^}]+\}', value):
+            raise ValueError(
+                "Environment-variable placeholders are only allowed in "
+                "config/webhook_registry.json headers"
+            )
+
+
 def process_headers(webhook_config: dict, request_headers: dict) -> dict:
     """
     Merge headers from webhook config with request headers.
-    Request headers take precedence. Env vars are substituted.
+    Request headers take precedence. Environment placeholders are resolved only
+    in the operator-managed webhook registry, never in tool-call arguments.
     """
+    validate_request_headers(request_headers)
+
     # Start with registry headers
     merged = {}
     registry_headers = webhook_config.get('headers', {})
@@ -75,10 +91,7 @@ def process_headers(webhook_config: dict, request_headers: dict) -> dict:
     
     # Override with request headers (they take precedence)
     for key, value in request_headers.items():
-        if isinstance(value, str):
-            merged[key] = substitute_env_vars(value)
-        else:
-            merged[key] = value
+        merged[key] = value
     
     return merged
 
@@ -169,6 +182,14 @@ def main():
     url = input_data.get("url")  # Direct URL (backward compatible)
     data = input_data.get("data", {})
     headers = input_data.get("headers", {"Content-Type": "application/json"})
+
+    # Reject caller-selected environment lookups before URL resolution, DNS,
+    # rate-limit writes, or any outbound request can occur.
+    try:
+        validate_request_headers(headers)
+    except ValueError as e:
+        return_error(str(e))
+        return 1
     
     # Special command: list webhooks
     if webhook_name == "list" or input_data.get("list"):
@@ -218,8 +239,12 @@ def main():
         return_error(f"Missing required fields for this webhook: {', '.join(missing)}")
         return 1
     
-    # Merge headers from registry with request headers (with env var substitution)
-    merged_headers = process_headers(webhook_config, headers)
+    # Only trusted registry headers may resolve environment placeholders.
+    try:
+        merged_headers = process_headers(webhook_config, headers)
+    except ValueError as e:
+        return_error(str(e))
+        return 1
     
     # Ensure Content-Type is set
     if "Content-Type" not in merged_headers:

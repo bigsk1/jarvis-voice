@@ -119,10 +119,14 @@ conditionally render `$json.body.image_url`, `$json.body.link_url`, and
     "message": "Hello from Jarvis"
   },
   "headers": {                // Optional custom headers
-    "Authorization": "Bearer abc123"
+    "X-Trace-ID": "deployment-42"
   }
 }
 ```
+
+Tool-supplied headers are literal data. `${ENV_VAR}` placeholders are rejected
+there so a tool call cannot read arbitrary Jarvis credentials. Put credential
+headers in the operator-managed webhook registry instead.
 
 **OR use direct URL (backward compatible):**
 ```json
@@ -147,6 +151,9 @@ conditionally render `$json.body.image_url`, `$json.body.link_url`, and
     "webhook_name": {
       "url": "http://localhost:5678/webhook/endpoint",
       "description": "What this webhook does (shown to LLM)",
+      "headers": {
+        "Authorization": "Bearer ${WEBHOOK_NAME_TOKEN}"
+      },
       "required_fields": ["field1", "field2"],
       "rate_limit_seconds": 10,
       "enabled": true,
@@ -165,6 +172,7 @@ conditionally render `$json.body.image_url`, `$json.body.link_url`, and
 |-------|----------|-------------|
 | `url` | ✅ | Webhook endpoint URL |
 | `description` | ✅ | Clear description for LLM tool selection |
+| `headers` | ⚠️ | Trusted headers; explicitly named `${ENV_VAR}` placeholders are resolved from the active Jarvis environment |
 | `required_fields` | ⚠️ | Array of required data fields (validated before sending) |
 | `rate_limit_seconds` | ⚠️ | Min seconds between calls (default: 5) |
 | `enabled` | ⚠️ | Set to `false` to disable (default: true) |
@@ -201,27 +209,23 @@ conditionally render `$json.body.image_url`, `$json.body.link_url`, and
   "my_api": {
     "url": "https://api.example.com/webhook",
     "description": "Trigger API with bearer token",
+    "headers": {
+      "Authorization": "Bearer ${MY_API_WEBHOOK_TOKEN}"
+    },
     "required_fields": ["action"],
     "rate_limit_seconds": 10
   }
 }
 ```
 
-**Usage with auth header:**
+**Usage:**
 ```bash
-# Voice (LLM will handle header)
-./jarvis "trigger my_api webhook with action deploy and use bearer token abc123"
-
-# Programmatic (explicit)
-./orchestrator/orchestrator_v2.py cloud '{
-  "webhook": "my_api",
-  "data": {"action": "deploy"},
-  "headers": {"Authorization": "Bearer abc123"}
-}'
+./jarvis "trigger my_api webhook with action deploy"
 ```
 
-**Better approach - Store in n8n:**
-Instead of passing tokens in voice commands, create an n8n workflow:
+Set `MY_API_WEBHOOK_TOKEN` in the active Jarvis env. For rotating OAuth tokens,
+store and refresh the credential in n8n instead of passing tokens in voice
+commands:
 ```
 Webhook Trigger → HTTP Request with stored credentials → External API
 ```
@@ -254,20 +258,18 @@ For APIs requiring header:
   "my_service": {
     "url": "https://api.service.com/webhook",
     "description": "Service API (requires X-API-Key header)",
+    "headers": {
+      "X-API-Key": "${MY_SERVICE_WEBHOOK_KEY}"
+    },
     "required_fields": ["message"],
-    "auth_note": "Pass X-API-Key header via send_webhook tool"
+    "auth_note": "MY_SERVICE_WEBHOOK_KEY is configured in the active Jarvis env"
   }
 }
 ```
 
 **Usage:**
-```python
-# In Python tool/script
-result = send_webhook(
-    webhook="my_service",
-    data={"message": "hello"},
-    headers={"X-API-Key": "your-key-here"}
-)
+```bash
+./jarvis "trigger my_service with message hello"
 ```
 
 ---
@@ -294,16 +296,12 @@ result = send_webhook(
 Jarvis → n8n Webhook → HTTP Request (with stored credentials) → External API
 ```
 
-**Option B - Direct (base64 encode username:password):**
-```python
-import base64
-credentials = base64.b64encode(b"username:password").decode()
-
-send_webhook(
-    webhook="basic_auth_api",
-    data={"data": "payload"},
-    headers={"Authorization": f"Basic {credentials}"}
-)
+**Option B - Registry header:** Store the complete `Basic ...` header value in
+`BASIC_AUTH_WEBHOOK_HEADER`, then reference it from the named registry entry:
+```json
+"headers": {
+  "Authorization": "${BASIC_AUTH_WEBHOOK_HEADER}"
+}
 ```
 
 ---
@@ -349,6 +347,9 @@ This way Jarvis doesn't need to handle token refresh logic.
   "custom_api": {
     "url": "https://api.custom.com/webhook",
     "description": "API with custom headers",
+    "headers": {
+      "X-Custom-Auth": "${CUSTOM_API_WEBHOOK_SECRET}"
+    },
     "required_fields": ["payload"],
     "rate_limit_seconds": 5,
     "auth_note": "Requires X-Custom-Auth and X-Timestamp headers"
@@ -360,15 +361,9 @@ This way Jarvis doesn't need to handle token refresh logic.
 ```python
 import time
 
-send_webhook(
-    webhook="custom_api",
-    data={"payload": "data"},
-    headers={
-        "X-Custom-Auth": "your-secret",
-        "X-Timestamp": str(int(time.time())),
-        "X-Signature": "computed-hmac-signature"
-    }
-)
+# Non-secret dynamic headers remain valid tool inputs. Keep the secret header in
+# webhook_registry.json as shown above.
+headers = {"X-Timestamp": str(int(time.time()))}
 ```
 
 ---
@@ -803,16 +798,10 @@ Include `example` field for complex webhooks:
 ```
 
 ### Trigger with Auth
-```python
-# In Python code
-from skills.send_webhook import send_webhook
 
-send_webhook(
-    webhook="my_api",
-    data={"action": "deploy"},
-    headers={"Authorization": "Bearer token123"}
-)
-```
+Configure the named webhook's credential header in
+`config/webhook_registry.json`, then trigger it normally. Do not put the secret
+or an `${ENV_VAR}` placeholder in tool arguments.
 
 ### Send Email
 ```bash

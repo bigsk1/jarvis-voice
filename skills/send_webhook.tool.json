@@ -20,7 +20,7 @@
       },
       "headers": {
         "type": "object",
-        "description": "Optional HTTP headers to include in the request"
+        "description": "Optional literal HTTP headers to include in the request. Environment placeholders such as ${API_KEY} are rejected; configure credential headers in config/webhook_registry.json."
       }
     },
     "required": ["data"]
