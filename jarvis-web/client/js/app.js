@@ -41,6 +41,7 @@ class JarvisApp {
     
     // Audio playback state
     this.currentAudio = null;
+    this.currentAudioUrl = null;
     this.currentAudioKind = null;
     this.isPlaying = false;
     this.audioQueue = [];  // Queue for multiple audio clips
@@ -883,6 +884,17 @@ class JarvisApp {
   _applyGlowIntensity() {
     document.body.setAttribute('data-glow-intensity', this.glowIntensity);
   }
+
+  /**
+   * Release the object URL owned by the current audio element.
+   */
+  _releaseCurrentAudioUrl() {
+    const url = this.currentAudioUrl;
+    this.currentAudioUrl = null;
+    if (typeof url === 'string' && url.startsWith('blob:')) {
+      URL.revokeObjectURL(url);
+    }
+  }
   
   /**
    * Play audio response with controls
@@ -904,12 +916,14 @@ class JarvisApp {
     // Stop any currently playing audio
     if (this.currentAudio) {
       this.currentAudio.pause();
+      this._releaseCurrentAudioUrl();
       this.currentAudio = null;
       this.currentAudioKind = null;
     }
     
     const audio = new Audio(url);
     this.currentAudio = audio;
+    this.currentAudioUrl = url;
     this.currentAudioKind = kind;
     
     // Progress bar element
@@ -952,14 +966,10 @@ class JarvisApp {
       setTimeout(() => {
         // Only hide if this is still the same audio (not replaced by new audio)
         if (this.currentAudio === audio) {
+          this._releaseCurrentAudioUrl();
           this.currentAudio = null;
           this.currentAudioKind = null;
           this._updateSpeakerButton();
-          
-          // Revoke blob URL to free memory
-          if (url.startsWith('blob:')) {
-            URL.revokeObjectURL(url);
-          }
         }
       }, 10000);
     });
@@ -967,6 +977,8 @@ class JarvisApp {
     // Handle errors
     audio.addEventListener('error', (e) => {
       console.warn('[App] Audio error:', e);
+      if (this.currentAudio !== audio) return;
+      this._releaseCurrentAudioUrl();
       this.isPlaying = false;
       this.currentAudio = null;
       this.currentAudioKind = null;
@@ -978,7 +990,9 @@ class JarvisApp {
     
     audio.play().catch(err => {
       console.warn('[App] Audio playback failed:', err);
+      if (this.currentAudio !== audio) return;
       Utils.toast('Audio playback failed', 'error');
+      this._releaseCurrentAudioUrl();
       this.isPlaying = false;
       this.currentAudio = null;
       this.currentAudioKind = null;
@@ -1020,6 +1034,7 @@ class JarvisApp {
     
     this.currentAudio.pause();
     this.currentAudio.currentTime = 0;
+    this._releaseCurrentAudioUrl();
     this.isPlaying = false;
     this.currentAudio = null;
     this.currentAudioKind = null;
