@@ -80,6 +80,7 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
       - ./audio:/app/audio
+      - ./jarvis-intel:/app/jarvis-intel
       - ./jarvis-web/data/uploads:/app/jarvis-web/data/uploads
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:5001/api/status"]

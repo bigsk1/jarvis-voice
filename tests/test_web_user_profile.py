@@ -237,7 +237,9 @@ def test_web_profile_ui_has_release_link_safe_preview_and_intel_deep_link():
 
 def test_docker_services_share_canonical_intel_directory():
     compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
-    assert "./jarvis-intel:/app/jarvis-intel" in compose["x-jarvis-common"]["volumes"]
+    intel_mount = "./jarvis-intel:/app/jarvis-intel"
+    assert intel_mount in compose["x-jarvis-common"]["volumes"]
+    assert intel_mount in compose["services"]["jarvis-web"]["volumes"]
 
 
 def test_web_profile_bridge_returns_no_configured_secret_values(monkeypatch):
