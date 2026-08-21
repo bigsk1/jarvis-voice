@@ -49,6 +49,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 
 from config_loader import load_config, get_config_value
 from paths import assert_not_restricted_read_path
+from stash_helper import get_stash_dir, parse_stash_ref
 
 # Load config from correct env file (local.env or cloud.env based on JARVIS_MODE)
 load_config()
@@ -59,7 +60,6 @@ CLOUDFLARE_ACCOUNT_ID = get_config_value("CLOUDFLARE_ACCOUNT_ID", "")
 
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent
-STASH_DIR = PROJECT_ROOT / "data" / "stash"
 GENERATED_IMAGES_DIR = PROJECT_ROOT / "data" / "generated_images"
 
 # Supported image formats (per Cloudflare docs)
@@ -273,14 +273,13 @@ def resolve_stash_path(stash_ref: str) -> str | None:
         Local file path or None if not found
     """
     try:
-        from stash_helper import parse_stash_ref
-        
         space_id, file_id = parse_stash_ref(stash_ref)
         if not space_id or not file_id:
             return None
-        
+
+        stash_dir = get_stash_dir()
         # Load space metadata
-        meta_path = STASH_DIR / space_id / 'meta.json'
+        meta_path = stash_dir / space_id / 'meta.json'
         if not meta_path.exists():
             return None
         
@@ -290,7 +289,7 @@ def resolve_stash_path(stash_ref: str) -> str | None:
         # Find file by ID
         for file_info in meta.get('files', []):
             if file_info.get('file_id') == file_id:
-                return str(STASH_DIR / space_id / file_info.get('stored_name'))
+                return str(stash_dir / space_id / file_info.get('stored_name'))
         
         return None
     except Exception:
@@ -392,14 +391,13 @@ def get_stash_metadata(stash_ref: str) -> dict | None:
         Metadata dict or None if not found
     """
     try:
-        from stash_helper import parse_stash_ref
-        
         space_id, file_id = parse_stash_ref(stash_ref)
         if not space_id or not file_id:
             return None
-        
+
+        stash_dir = get_stash_dir()
         # Load space metadata
-        meta_path = STASH_DIR / space_id / 'meta.json'
+        meta_path = stash_dir / space_id / 'meta.json'
         if not meta_path.exists():
             return None
         
@@ -517,7 +515,7 @@ def upload_image(source: str, source_type: str = "auto", uploader: str = "jarvis
                         detected_category = "generated"
                 # Try stash directories
                 elif not os.path.exists(source):
-                    for space_dir in STASH_DIR.iterdir():
+                    for space_dir in get_stash_dir().iterdir():
                         if space_dir.is_dir():
                             potential = space_dir / source
                             if potential.exists():
