@@ -11,23 +11,22 @@ Supports:
 Input: { "webhook": "name" OR "url": "https://...", "data": {...} }
 Output: { "ok": bool, "speech": str, "data": dict }
 """
-import sys
-import os
-import json
-import time
 import hashlib
+import json
+import os
 import re
+import sys
+import time
+
 import requests
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import get_config_value, load_config
 
 # Rate limit storage
 RATE_LIMIT_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', '.webhook_rate_limit')
 DEFAULT_RATE_LIMIT = 5  # seconds
-
-
 def load_webhook_registry() -> dict:
     """Load webhook registry from config/webhook_registry.json"""
     registry_file = os.path.join(os.path.dirname(__file__), '..', 'config', 'webhook_registry.json')
@@ -210,7 +209,7 @@ def main():
     # SECURITY: If using direct URL (not registry), validate for SSRF
     if url and not webhook_name:
         try:
-            from stash_helper import validate_url, SecurityError
+            from stash_helper import SecurityError, validate_url
             validate_url(resolved_url)
         except SecurityError as e:
             return_error(f"URL blocked for security: {e}. Use a named webhook from registry instead.")
@@ -256,8 +255,24 @@ def main():
             resolved_url,
             json=data,
             headers=merged_headers,
-            timeout=15
+            timeout=15,
+            allow_redirects=False,
         )
+
+        if 300 <= response.status_code < 400:
+            return_error(
+                speech=(
+                    f"Webhook 3xx response refused for security (status {response.status_code}). "
+                    "Configure the webhook to return its final response directly."
+                ),
+                data={
+                    "webhook": webhook_name,
+                    "url": resolved_url,
+                    "status_code": response.status_code,
+                    "redirect_blocked": True,
+                },
+            )
+            return 1
         
         # Check response
         if 200 <= response.status_code < 300:

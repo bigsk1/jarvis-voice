@@ -12,7 +12,7 @@
       },
       "url": {
         "type": "string",
-        "description": "Direct webhook URL (alternative to named webhook)"
+        "description": "Final direct webhook URL (alternative to named webhook). All HTTP 3xx responses are refused for security."
       },
       "data": {
         "type": "object",

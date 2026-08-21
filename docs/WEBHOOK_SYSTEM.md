@@ -128,6 +128,10 @@ Tool-supplied headers are literal data. `${ENV_VAR}` placeholders are rejected
 there so a tool call cannot read arbitrary Jarvis credentials. Put credential
 headers in the operator-managed webhook registry instead.
 
+All HTTP 3xx webhook responses are refused without reading or returning their
+bodies. Configure named and direct webhooks to return their final response
+directly.
+
 **OR use direct URL (backward compatible):**
 ```json
 {

@@ -12,6 +12,8 @@ sys.path.insert(0, str(ROOT / "skills"))
 
 import send_webhook  # noqa: E402
 
+THREE_XX_STATUS_CODES = (300, 301, 302, 303, 304, 305, 306, 307, 308, 399)
+
 
 def test_registry_header_expands_only_explicit_placeholder(monkeypatch):
     requested = []
@@ -148,6 +150,99 @@ def test_main_sends_registry_credential_and_literal_tool_header(monkeypatch, cap
                     "Content-Type": "application/json",
                 },
                 "timeout": 15,
+                "allow_redirects": False,
             },
         )
     ]
+
+
+@pytest.mark.parametrize("status_code", THREE_XX_STATUS_CODES)
+def test_main_refuses_3xx_without_followup_request_or_body_output(
+    monkeypatch, capsys, status_code
+):
+    calls = []
+
+    class RedirectResponse:
+        text = "redirect body must not be returned"
+        headers = {"Location": "http://127.0.0.1/private"}
+
+        def __init__(self, code):
+            self.status_code = code
+
+    monkeypatch.setattr(send_webhook, "load_config", lambda: None)
+    monkeypatch.setattr(
+        send_webhook,
+        "load_webhook_registry",
+        lambda: {"named": {"url": "https://example.test/webhook"}},
+    )
+    monkeypatch.setattr(send_webhook, "check_rate_limit", lambda *_args: (True, 0))
+
+    def fake_post(url, **kwargs):
+        calls.append((url, kwargs))
+        return RedirectResponse(status_code)
+
+    monkeypatch.setattr(send_webhook.requests, "post", fake_post)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "send_webhook.py",
+            json.dumps({"webhook": "named", "data": {"event": "test"}}),
+        ],
+    )
+
+    assert send_webhook.main() == 1
+    output = capsys.readouterr().out
+    result = json.loads(output)
+    assert result["ok"] is False
+    assert result["data"]["redirect_blocked"] is True
+    assert f"status {status_code}" in result["error"]
+    assert "127.0.0.1" not in output
+    assert "redirect body" not in output
+    assert len(calls) == 1
+    assert calls[0][1]["allow_redirects"] is False
+
+
+def test_direct_url_redirect_is_refused_after_initial_validation(
+    monkeypatch, capsys
+):
+    import stash_helper
+
+    calls = []
+
+    class RedirectResponse:
+        status_code = 302
+        text = ""
+        headers = {"Location": "http://169.254.169.254/latest/meta-data"}
+
+    monkeypatch.setattr(send_webhook, "load_config", lambda: None)
+    monkeypatch.setattr(send_webhook, "load_webhook_registry", lambda: {})
+    monkeypatch.setattr(send_webhook, "check_rate_limit", lambda *_args: (True, 0))
+    monkeypatch.setattr(stash_helper, "validate_url", lambda url: url)
+
+    def fake_post(url, **kwargs):
+        calls.append((url, kwargs))
+        return RedirectResponse()
+
+    monkeypatch.setattr(send_webhook.requests, "post", fake_post)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "send_webhook.py",
+            json.dumps(
+                {
+                    "url": "https://public.example/webhook",
+                    "data": {"event": "test"},
+                }
+            ),
+        ],
+    )
+
+    assert send_webhook.main() == 1
+    output = capsys.readouterr().out
+    result = json.loads(output)
+    assert result["data"]["redirect_blocked"] is True
+    assert "169.254.169.254" not in output
+    assert len(calls) == 1
+    assert calls[0][1]["allow_redirects"] is False

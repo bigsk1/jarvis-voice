@@ -5,14 +5,14 @@ Makes HTTP API calls to REST endpoints.
 
 Security: Uses SSRF protection to block requests to internal networks.
 """
-import sys
-import os
 import json
+import os
+import sys
+
 import requests
 
 # Add lib to path for stash_helper
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-
 
 def main():
     """Make API call."""
@@ -40,8 +40,8 @@ def main():
     
     # SECURITY: Validate URL to prevent SSRF attacks
     try:
-        from stash_helper import validate_url, SecurityError
-        validated_url = validate_url(url)
+        from stash_helper import SecurityError, validate_url
+        validate_url(url)
     except SecurityError as e:
         return_error(f"URL blocked for security: {e}")
         return 1
@@ -59,13 +59,29 @@ def main():
             headers=headers,
             json=body if body else None,
             params=params,
-            timeout=15
+            timeout=15,
+            allow_redirects=False,
         )
+
+        if 300 <= response.status_code < 400:
+            return_error(
+                speech=(
+                    f"API 3xx response refused for security (status {response.status_code}). "
+                    "Use an endpoint that returns its response directly."
+                ),
+                data={
+                    "url": url,
+                    "method": method,
+                    "status_code": response.status_code,
+                    "redirect_blocked": True,
+                },
+            )
+            return 1
         
         # Try to parse JSON response
         try:
             response_data = response.json()
-        except:
+        except ValueError:
             response_data = {"raw": response.text[:500]}
         
         # Check response
@@ -139,4 +155,3 @@ def return_error(speech, data=None):
 
 if __name__ == "__main__":
     sys.exit(main())
-

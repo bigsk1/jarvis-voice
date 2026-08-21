@@ -8,7 +8,7 @@
     "properties": {
       "url": {
         "type": "string",
-        "description": "The API endpoint URL"
+        "description": "The final API endpoint URL. All HTTP 3xx responses are refused for security."
       },
       "method": {
         "type": "string",
