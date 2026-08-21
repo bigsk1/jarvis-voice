@@ -40,6 +40,8 @@ TTS_PROVIDER="${TTS_PROVIDER:-kokoro}"
 STATUS_CACHE_ENABLED="${STATUS_CACHE_ENABLED:-true}"
 CACHE_DIR="${HOME}/.cache/jarvis/status-tts-local"
 SILENCE_PAD_MS="${STATUS_SILENCE_PAD_MS:-250}"
+STATUS_TTS_CONNECT_TIMEOUT="${STATUS_TTS_CONNECT_TIMEOUT:-15}"
+STATUS_TTS_TIMEOUT="${STATUS_TTS_TIMEOUT:-25}"
 
 # Create cache dir if caching enabled
 if [ "$STATUS_CACHE_ENABLED" = "true" ]; then
@@ -98,10 +100,13 @@ else
         
         # Call Qwen3-TTS API
         TEMP_AUDIO="/tmp/jarvis-status-local-$$.${QWEN3_TTS_FORMAT}"
-        HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TEMP_AUDIO" \
+        if ! HTTP_CODE=$(jarvis_tts_http_to_file "Qwen3-TTS" "$TEMP_AUDIO" \
+          "$STATUS_TTS_CONNECT_TIMEOUT" "$STATUS_TTS_TIMEOUT" \
           -X POST "$QWEN3_TTS_URL" \
           -H "Content-Type: application/json" \
-          -d "$TTS_JSON")
+          -d "$TTS_JSON"); then
+            exit 1
+        fi
         
         if [ "$HTTP_CODE" != "200" ]; then
             echo "⚠️ Qwen3-TTS failed (HTTP $HTTP_CODE)" >&2
@@ -110,7 +115,11 @@ else
         fi
         
         # Convert to wav
-        ffmpeg -hide_banner -loglevel error -i "$TEMP_AUDIO" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null
+        if ! ffmpeg -hide_banner -loglevel error -i "$TEMP_AUDIO" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null; then
+            echo "⚠️ Qwen3-TTS audio decode failed" >&2
+            rm -f "$TEMP_AUDIO" "$OUTFILE"
+            exit 1
+        fi
         rm -f "$TEMP_AUDIO"
         
     else
@@ -133,14 +142,27 @@ else
           --arg speed "$KOKORO_SPEED" \
           '{voice:$voice, input:$input, speed:$speed}')
 
-        # Generate TTS audio via Kokoro
-        if ! curl -sS -X POST "$KOKORO_URL" \
-            -H "Content-Type: application/json" \
-            -d "$TTS_JSON" \
-            | ffmpeg -hide_banner -loglevel error -i - -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null; then
-            echo "⚠️ Local TTS generation failed" >&2
+        TEMP_AUDIO="/tmp/jarvis-status-local-kokoro-$$.rawaudio"
+        if ! HTTP_CODE=$(jarvis_tts_http_to_file "Kokoro TTS" "$TEMP_AUDIO" \
+          "$STATUS_TTS_CONNECT_TIMEOUT" "$STATUS_TTS_TIMEOUT" \
+          -X POST "$KOKORO_URL" \
+          -H "Content-Type: application/json" \
+          -d "$TTS_JSON"); then
             exit 1
         fi
+
+        if [ "$HTTP_CODE" != "200" ]; then
+            echo "⚠️ Kokoro TTS failed (HTTP $HTTP_CODE)" >&2
+            rm -f "$TEMP_AUDIO"
+            exit 1
+        fi
+
+        if ! ffmpeg -hide_banner -loglevel error -i "$TEMP_AUDIO" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null; then
+            echo "⚠️ Kokoro TTS audio decode failed" >&2
+            rm -f "$TEMP_AUDIO" "$OUTFILE"
+            exit 1
+        fi
+        rm -f "$TEMP_AUDIO"
     fi
 
     # Check if audio was generated
