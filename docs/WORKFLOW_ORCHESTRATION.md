@@ -31,7 +31,7 @@ Normal chat orchestration spends tokens on routing context: system prompts, tool
 | Tool selection | LLM chooses each step | JSON defines the steps |
 | Tool schemas in prompt | Often many tools | None for deterministic steps |
 | Multi-step memory | Conversation-dependent | Variables and step outputs |
-| Token usage | High for orchestration | Only helper LLM calls use tokens |
+| Token usage | High for orchestration | Only workflow-internal LLM calls use tokens |
 | Scheduling | Query can run, but output target is model-dependent | Recipe can update the same artifact every run |
 
 Only these workflow features use LLM tokens:
@@ -317,7 +317,8 @@ source ~/jarvis-venv/bin/activate
 | `steps` | Yes | Non-empty list of tool steps. |
 | `tool_defaults` | No | Default params per tool in this workflow. |
 | `validation_policy` | No | Workflow-wide retry limits such as `max_total_retries`. |
-| `disable_server_side_tools` | No | Disables provider-native tools for helper LLM calls only. |
+| `disable_server_side_tools` | No | Disables provider-native tools for workflow-internal LLM calls only. |
+| `workflow_llm_options` | No | Temporary options for the normal provider used by workflow-internal LLM calls, such as xAI reasoning effort and request timeout. This does not select the dedicated Jarvis Helper provider. |
 | `success_speech` | No | Resolved with variables on success. |
 | `success_speech_llm_prompt` | No | When set, LLM generates success speech (falls back to `success_speech`). |
 | `abort_speech` | No | Used when required steps fail. |
@@ -528,7 +529,7 @@ Use MCP tools directly as explicit workflow steps when the workflow needs those 
 }
 ```
 
-`disable_server_side_tools` does not disable explicit workflow steps. It only suppresses provider-native tools during helper LLM calls, such as xAI/OpenAI/Anthropic native search inside `llm_prompt` or validation calls.
+`disable_server_side_tools` does not disable explicit workflow steps. It only suppresses provider-native tools during workflow-internal LLM calls, such as xAI/OpenAI/Anthropic native search inside `llm_prompt` or validation calls.
 
 Use:
 
@@ -536,7 +537,26 @@ Use:
 "disable_server_side_tools": true
 ```
 
-when deterministic workflow steps already gathered the facts and the helper LLM should only synthesize from those variables.
+when deterministic workflow steps already gathered the facts and the workflow's normal LLM provider should only synthesize from those variables.
+
+Long-running workflows can also bound the latency of their internal xAI calls
+without changing normal Jarvis conversations:
+
+```json
+"workflow_llm_options": {
+  "xai_reasoning_effort": "low",
+  "xai_request_timeout_seconds": 600
+}
+```
+
+These options apply only while workflow-internal calls such as `llm_prompt`, LLM
+validation, or generated success speech are running. They modify the workflow's
+normal configured provider; they do not select the dedicated Jarvis Helper model
+configured by `JARVIS_HELPER_LLM_*`. The request timeout disables automatic OpenAI
+SDK retries so the configured ceiling is not spent repeatedly. It applies to
+xAI's OpenAI-compatible chat-completions path, not the native Agent Tools path;
+pair it with `disable_server_side_tools: true` when the workflow depends on this
+deadline.
 
 Use:
 
@@ -544,7 +564,7 @@ Use:
 "disable_server_side_tools": false
 ```
 
-or omit the field when helper LLM calls may use provider-native tools.
+or omit the field when workflow-internal LLM calls may use provider-native tools.
 
 ## Validation
 

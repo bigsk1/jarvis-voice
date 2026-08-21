@@ -865,15 +865,43 @@ class XAIProvider(LLMProvider):
         """Create a completion, refreshing a rejected OAuth session once."""
 
         self._refresh_xai_oauth_client_if_changed()
+
+        def create_completion():
+            client = self.client
+            timeout_seconds = self._xai_request_timeout_seconds()
+            if timeout_seconds is not None:
+                # A workflow-level deadline should be authoritative. Disable the
+                # OpenAI SDK's automatic retries so one slow request cannot use
+                # the full timeout multiple times.
+                client = client.with_options(
+                    timeout=timeout_seconds,
+                    max_retries=0,
+                )
+            return client.chat.completions.create(**params)
+
         try:
-            return self.client.chat.completions.create(**params)
+            return create_completion()
         except Exception as exc:
             if getattr(self, "auth_mode", "api_key") != "oauth" or not self._is_xai_authentication_error(exc):
                 raise
             from xai_oauth import refresh_xai_oauth_credentials
 
             self._rebuild_xai_oauth_client(refresh_xai_oauth_credentials())
-            return self.client.chat.completions.create(**params)
+            return create_completion()
+
+    @staticmethod
+    def _xai_request_timeout_seconds() -> float | None:
+        """Optional per-request timeout for xAI's OpenAI-compatible path."""
+        from config_loader import get_config_value
+
+        raw = str(get_config_value("XAI_REQUEST_TIMEOUT_SECONDS", "") or "").strip()
+        if not raw:
+            return None
+        try:
+            timeout_seconds = float(raw)
+        except ValueError:
+            return None
+        return timeout_seconds if timeout_seconds > 0 else None
     
     def chat(self, message: str, system_prompt: str | None = None, max_tokens: int = None) -> str:
         """Simple chat without tools. Uses xAI SDK Agent Tools when XAI_SEARCH=true."""
@@ -1018,7 +1046,9 @@ class XAIProvider(LLMProvider):
         Requires ``xai-sdk>=1.12.2`` for SDK (gRPC) chat: older releases only
         accepted ``low``/``high`` strings.
         """
-        raw = os.environ.get("XAI_REASONING_EFFORT", "").strip().lower()
+        from config_loader import get_config_value
+
+        raw = str(get_config_value("XAI_REASONING_EFFORT", "") or "").strip().lower()
         if not raw:
             return None
 

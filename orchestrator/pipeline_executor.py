@@ -13,7 +13,7 @@ import sys
 import json
 import re
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any
 from collections.abc import Callable
@@ -21,7 +21,12 @@ from datetime import date, datetime, timedelta
 
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import (
+    config_override_scope,
+    get_config_value,
+    get_scoped_config,
+    load_config,
+)
 from llm_provider import create_configured_provider
 from tool_logger import ToolLogger
 from llm_logger import LLMLogger
@@ -35,6 +40,10 @@ except ImportError:
         check_workflow_registry_availability,
         workflow_unavailable_message,
     )
+
+
+class _WorkflowLLMError(RuntimeError):
+    """A workflow-internal LLM request failed before producing usable content."""
 
 
 class PipelineExecutor:
@@ -56,6 +65,7 @@ class PipelineExecutor:
         self.logger = ToolLogger()
         self.llm_logger = LLMLogger()
         self._disable_server_side_tools = False
+        self._workflow_llm_options: dict[str, Any] = {}
         self._server_side_tools = {}
         
         # Track cumulative token usage for this workflow execution
@@ -79,37 +89,74 @@ class PipelineExecutor:
     
     @contextmanager
     def _workflow_llm_tool_scope(self):
-        """Temporarily suppress provider-native tools for workflow LLM helper calls."""
-        if not self._disable_server_side_tools:
+        """Apply workflow-local controls around workflow-internal LLM calls."""
+        env_overrides: dict[str, str] = {}
+        request_config_overrides: dict[str, str] = {}
+        if self._disable_server_side_tools:
+            env_overrides.update({
+                "XAI_DISABLE_SERVER_SIDE_TOOLS": "true",
+                "OPENAI_RESPONSES_DISABLE_SERVER_SIDE_TOOLS": "true",
+                "JARVIS_OVERRIDE_XAI_SEARCH": "false",
+                "JARVIS_OVERRIDE_ANTHROPIC_SEARCH": "false",
+            })
+
+        xai_reasoning_effort = str(
+            self._workflow_llm_options.get("xai_reasoning_effort") or ""
+        ).strip().lower()
+        if xai_reasoning_effort:
+            request_config_overrides["XAI_REASONING_EFFORT"] = xai_reasoning_effort
+
+        xai_timeout = self._workflow_llm_options.get("xai_request_timeout_seconds")
+        if xai_timeout is not None:
+            try:
+                timeout_seconds = int(xai_timeout)
+            except (TypeError, ValueError):
+                timeout_seconds = 0
+            if timeout_seconds > 0:
+                request_config_overrides["XAI_REQUEST_TIMEOUT_SECONDS"] = str(
+                    timeout_seconds
+                )
+
+        scoped_config_active = get_scoped_config() is not None
+        if not scoped_config_active:
+            # CLI callers have no request-local config scope, so temporarily
+            # expose the same values through the process environment.
+            env_overrides.update(request_config_overrides)
+
+        if not env_overrides and not request_config_overrides:
             yield
             return
 
-        env_overrides = {
-            "XAI_DISABLE_SERVER_SIDE_TOOLS": "true",
-            "OPENAI_RESPONSES_DISABLE_SERVER_SIDE_TOOLS": "true",
-            "JARVIS_OVERRIDE_XAI_SEARCH": "false",
-            "JARVIS_OVERRIDE_ANTHROPIC_SEARCH": "false",
-        }
         previous_env = {key: os.environ.get(key) for key in env_overrides}
         previous_enable_search = None
         provider = self.provider
 
-        if provider is not None and hasattr(provider, "enable_search"):
+        if (
+            self._disable_server_side_tools
+            and provider is not None
+            and hasattr(provider, "enable_search")
+        ):
             previous_enable_search = getattr(provider, "enable_search")
             setattr(provider, "enable_search", False)
 
-        try:
-            for key, value in env_overrides.items():
-                os.environ[key] = value
-            yield
-        finally:
-            if provider is not None and previous_enable_search is not None:
-                setattr(provider, "enable_search", previous_enable_search)
-            for key, previous in previous_env.items():
-                if previous is None:
-                    os.environ.pop(key, None)
-                else:
-                    os.environ[key] = previous
+        config_context = (
+            config_override_scope(request_config_overrides)
+            if scoped_config_active and request_config_overrides
+            else nullcontext()
+        )
+        with config_context:
+            try:
+                for key, value in env_overrides.items():
+                    os.environ[key] = value
+                yield
+            finally:
+                if provider is not None and previous_enable_search is not None:
+                    setattr(provider, "enable_search", previous_enable_search)
+                for key, previous in previous_env.items():
+                    if previous is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = previous
 
     def _chat_with_usage(self, message: str, system_prompt: str = None, max_tokens: int = 1024) -> str:
         """
@@ -128,6 +175,9 @@ class PipelineExecutor:
                     tools=[],  # No Jarvis tools; workflow may also disable provider-native tools.
                     system_prompt=system_prompt
                 )
+
+            if self._is_provider_error_text(text):
+                raise _WorkflowLLMError(str(text).strip())
             
             # Accumulate usage
             if usage_info:
@@ -177,13 +227,26 @@ class PipelineExecutor:
                         self._server_side_tools[tool_name] = self._server_side_tools.get(tool_name, 0) + count
             
             return text or ""
+        except _WorkflowLLMError:
+            raise
         except Exception as e:
             # Fallback to regular chat if chat_with_tools fails
             print(f"Warning: chat_with_usage failed, falling back: {e}", file=sys.stderr)
             if not self.provider:
                 return ""
-            with self._workflow_llm_tool_scope():
-                return self.provider.chat(message, system_prompt, max_tokens)
+            try:
+                with self._workflow_llm_tool_scope():
+                    text = self.provider.chat(message, system_prompt, max_tokens)
+            except Exception as fallback_error:
+                raise _WorkflowLLMError(str(fallback_error)) from fallback_error
+            if self._is_provider_error_text(text):
+                raise _WorkflowLLMError(str(text).strip())
+            return text
+
+    @staticmethod
+    def _is_provider_error_text(text: Any) -> bool:
+        """Recognize provider error envelopes before they become tool content."""
+        return isinstance(text, str) and text.lstrip().lower().startswith("error:")
 
     def _merge_component_usage(
         self,
@@ -607,6 +670,12 @@ class PipelineExecutor:
         tool_defaults = workflow.get("tool_defaults", {})
         validation_policy = workflow.get("validation_policy", {})
         self._disable_server_side_tools = bool(workflow.get("disable_server_side_tools", False))
+        workflow_llm_options = workflow.get("workflow_llm_options") or {}
+        self._workflow_llm_options = (
+            dict(workflow_llm_options)
+            if isinstance(workflow_llm_options, dict)
+            else {}
+        )
         
         # Track execution time
         start_time = time.time()
@@ -818,6 +887,13 @@ class PipelineExecutor:
         # LLM parameter filling if needed
         if step.get("llm_prompt") and self.provider:
             llm_params = self._llm_fill_params(step, variables)
+            llm_error = llm_params.pop("_workflow_llm_error", None)
+            if llm_error:
+                return {
+                    "ok": False,
+                    "error": llm_error,
+                    "speech": llm_error,
+                }
             llm_output_error = self._validate_llm_filled_params(step, llm_params)
             if llm_output_error:
                 return {
@@ -1741,9 +1817,12 @@ class PipelineExecutor:
             answer = response.strip().upper() if isinstance(response, str) else ""
             
             return answer.startswith("YES")
+        except _WorkflowLLMError as e:
+            print(f"LLM validation error: {e}", file=sys.stderr)
+            return False
         except Exception as e:
             print(f"LLM validation error: {e}", file=sys.stderr)
-            return True  # Default to valid on error
+            return True  # Preserve legacy behavior for non-provider failures.
     
     def _llm_should_execute(self, step: dict, variables: dict) -> bool:
         """Use LLM to decide if a step should execute."""
@@ -1763,6 +1842,8 @@ class PipelineExecutor:
             answer = response.strip().upper() if isinstance(response, str) else ""
             
             return answer.startswith("YES")
+        except _WorkflowLLMError:
+            return False
         except Exception:
             return True
 
@@ -1991,7 +2072,7 @@ class PipelineExecutor:
                 return {"content": content, "text": content, "body": content}
         except Exception as e:
             print(f"LLM param fill error: {e}", file=sys.stderr)
-            return {}
+            return {"_workflow_llm_error": f"Workflow-internal LLM failed: {e}"}
     
     def _build_success_response(self, workflow: dict, results: list[dict],
                                  variables: dict, tools_used: list[str],
@@ -2015,7 +2096,18 @@ class PipelineExecutor:
                 "Write a short voice-friendly workflow completion message. "
                 "Be direct and actionable. Keep it under 45 words."
             )
-            speech = self._chat_with_usage(str(resolved_prompt), system_prompt=system_prompt, max_tokens=120).strip()
+            try:
+                speech = self._chat_with_usage(
+                    str(resolved_prompt),
+                    system_prompt=system_prompt,
+                    max_tokens=120,
+                ).strip()
+            except Exception as e:
+                print(
+                    f"Workflow success speech generation failed; using static fallback: {e}",
+                    file=sys.stderr,
+                )
+                speech = ""
             if not speech:
                 speech_template = workflow.get("success_speech", "Workflow complete.")
                 speech = self._resolve_variable(speech_template, variables)

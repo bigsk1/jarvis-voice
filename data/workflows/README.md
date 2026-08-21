@@ -21,6 +21,7 @@ Private workflows can live in `data/workflows/personal/*.json`. That folder is g
 | `allow_workflow_tool` | boolean | Optional; defaults to `true`. Set `false` to block Jarvis from discovering, describing, or running this recipe through the autonomous `workflow` meta-tool while preserving explicit commands, API execution, and scheduled tasks. |
 | `triggers` | object | At minimum use `explicit`: list of command strings (e.g. `"/archive"`). |
 | `variables` | object | Optional; see **Variables** below. |
+| `workflow_llm_options` | object | Optional temporary options for the normal provider used by workflow-internal LLM calls. It does not select the dedicated Jarvis Helper provider. |
 | `success_speech` | string | Resolved with `${variables}` when workflow completes. |
 | `abort_speech` | string | Optional; used when workflow aborts. |
 

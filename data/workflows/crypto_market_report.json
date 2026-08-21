@@ -3,8 +3,12 @@
   "name": "Crypto Market Report Workflow",
   "description": "Get crypto prices, search market sentiment and news, analyze price movements, save to canvas/stash, and email report to Boss. Specify coins after /crypto or defaults to BTC and SOL.",
   "enabled": true,
-  "version": "1.1",
+  "version": "1.2",
   "disable_server_side_tools": true,
+  "workflow_llm_options": {
+    "xai_reasoning_effort": "low",
+    "xai_request_timeout_seconds": 600
+  },
   
   "triggers": {
     "patterns": [
@@ -175,7 +179,7 @@
         "stash_ref": "ref"
       },
       "required": true,
-      "description": "Save report to stash"
+      "description": "Generate and save report to stash"
     },
     {
       "step": 10,
@@ -185,7 +189,29 @@
         "title": "Workflows/Crypto/${report_date}",
         "tags": ["crypto", "market", "report", "workflow"]
       },
-      "llm_prompt": "Create a comprehensive crypto market report canvas page using ONLY plain markdown. Do NOT use mermaid or other graph syntax. You MUST include exactly two fenced `crypto-chart` blocks, one for each coin, with a short heading and description before each block so the charts are separated instead of appearing stacked without context.\n\nReport generated: ${report_date} at ${report_time}\n\n## Price Data\n- ${coin1_name}: $${coin1_price} (${coin1_change}% 24h change)\n- ${coin2_name}: $${coin2_price} (${coin2_change}% 24h change)\n\n## Chart Data Available\n- ${coin1_name}: ${coin1_chart_range} chart with ${coin1_chart_points} points\n- ${coin2_name}: ${coin2_chart_range} chart with ${coin2_chart_points} points\n\n## News & Sentiment\nBased on these articles:\n${validated_articles}\n\nGenerate a well-formatted markdown report including:\n1. **Executive Summary** - Quick overview of market conditions\n2. **Price Analysis** - Use a markdown table for prices. Use 🟢 for positive, 🔴 for negative changes.\n3. **7-Day Charts** - Create two subsections, one for ${coin1_name} and one for ${coin2_name}. Each subsection must include:\n   - A 1-2 sentence description of the recent trend\n   - Then a fenced `crypto-chart` block using the exact endpoint below\n4. **Market Sentiment** - What the news says about current conditions\n5. **Key Drivers** - What's affecting price movements today\n6. **Notable Headlines** - Top 3 stories with brief summaries\n7. **Stash Reference**: ${stash_ref}\n\nUse these exact chart embeds:\n\n### ${coin1_name} ${coin1_chart_range} Chart\n```crypto-chart\n{\"title\":\"${coin1_name} ${coin1_chart_range} Chart\",\"endpoint\":\"/api/prices/crypto/${coin1_id}/chart?days=7&points_limit=120\"}\n```\n\n### ${coin2_name} ${coin2_chart_range} Chart\n```crypto-chart\n{\"title\":\"${coin2_name} ${coin2_chart_range} Chart\",\"endpoint\":\"/api/prices/crypto/${coin2_id}/chart?days=7&points_limit=120\"}\n```\n\nIMPORTANT: Keep the headings and explanatory text OUTSIDE the fenced blocks. Use the actual values above and do not output placeholder syntax like ${var}.",
+      "llm_prompt": "Create a comprehensive crypto market report canvas page using ONLY plain markdown. Do NOT use mermaid or other graph syntax. You MUST include exactly two fenced `crypto-chart` blocks, one for each coin, with a short heading and description before each block so the charts are separated instead of appearing stacked without context.\n\nReport generated: ${report_date} at ${report_time}\n\nINPUT PRICE DATA:\n- ${coin1_name}: $${coin1_price} (${coin1_change}% 24h change)\n- ${coin2_name}: $${coin2_price} (${coin2_change}% 24h change)\n\nINPUT CHART DATA:\n- ${coin1_name}: ${coin1_chart_range} chart with ${coin1_chart_points} points\n- ${coin2_name}: ${coin2_chart_range} chart with ${coin2_chart_points} points\n\nINPUT NEWS AND SENTIMENT:\n${validated_articles}\n\nGenerate the report using these exact Markdown section headings:\n\n## Executive Summary\nGive a quick overview of market conditions.\n\n## Price Analysis\nUse a markdown table for prices. Use 🟢 for positive and 🔴 for negative changes.\n\n## 7-Day Charts\nCreate two subsections, one for ${coin1_name} and one for ${coin2_name}. Each subsection must include a 1-2 sentence description of the recent trend followed by its fenced `crypto-chart` block using the exact endpoint below.\n\n## Market Sentiment\nExplain what the news says about current conditions.\n\n## Key Drivers\nExplain what is affecting price movements today.\n\n## Notable Headlines\nInclude the top 3 stories with brief summaries.\n\n## Stash Reference\nInclude this reference: ${stash_ref}\n\nUse these exact chart embeds:\n\n### ${coin1_name} ${coin1_chart_range} Chart\n```crypto-chart\n{\"title\":\"${coin1_name} ${coin1_chart_range} Chart\",\"endpoint\":\"/api/prices/crypto/${coin1_id}/chart?days=7&points_limit=120\"}\n```\n\n### ${coin2_name} ${coin2_chart_range} Chart\n```crypto-chart\n{\"title\":\"${coin2_name} ${coin2_chart_range} Chart\",\"endpoint\":\"/api/prices/crypto/${coin2_id}/chart?days=7&points_limit=120\"}\n```\n\nIMPORTANT: Output every exact `##` section heading listed above. Keep headings and explanatory text OUTSIDE the fenced blocks. Use the actual values above and do not output placeholder syntax like ${var}.",
+      "llm_output_validation": {
+        "param": "content",
+        "min_length": 600,
+        "reject_patterns": [
+          "${",
+          "https://...",
+          "<!doctype",
+          "<html",
+          "<body",
+          "<pre",
+          "unable to create"
+        ],
+        "required_patterns": [
+          "## Executive Summary",
+          "## Price Analysis",
+          "## 7-Day Charts",
+          "## Market Sentiment",
+          "## Key Drivers",
+          "## Notable Headlines",
+          "```crypto-chart"
+        ]
+      },
       "extract": {
         "canvas_id": "page_id"
       },

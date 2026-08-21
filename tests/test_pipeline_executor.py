@@ -19,6 +19,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from orchestrator.pipeline_executor import PipelineExecutor
+from config_loader import config_scope, get_config_value
 
 
 class DummyProvider:
@@ -96,6 +97,14 @@ class EnvCapturingProvider:
                 "openai_disabled": os.environ.get("OPENAI_RESPONSES_DISABLE_SERVER_SIDE_TOOLS"),
                 "xai_search_override": os.environ.get("JARVIS_OVERRIDE_XAI_SEARCH"),
                 "anthropic_search_override": os.environ.get("JARVIS_OVERRIDE_ANTHROPIC_SEARCH"),
+                "xai_reasoning_effort": os.environ.get("XAI_REASONING_EFFORT"),
+                "xai_request_timeout": os.environ.get("XAI_REQUEST_TIMEOUT_SECONDS"),
+                "resolved_xai_reasoning_effort": get_config_value(
+                    "XAI_REASONING_EFFORT"
+                ),
+                "resolved_xai_request_timeout": get_config_value(
+                    "XAI_REQUEST_TIMEOUT_SECONDS"
+                ),
                 "tools": kwargs.get("tools"),
             }
         )
@@ -103,6 +112,22 @@ class EnvCapturingProvider:
 
     def chat(self, *_args):
         raise AssertionError("chat fallback should not be used")
+
+
+class ErrorTextProvider:
+    def chat_with_tools(self, **_kwargs):
+        return "Error: Request timed out.", None, None, None
+
+    def chat(self, *_args):
+        raise AssertionError("provider error text must not trigger a duplicate request")
+
+
+class TimeoutRaisingProvider:
+    def chat_with_tools(self, **_kwargs):
+        raise TimeoutError("primary request timed out")
+
+    def chat(self, *_args):
+        raise TimeoutError("fallback request timed out")
 
 
 class PromptCapturingProvider:
@@ -671,12 +696,16 @@ MIME type: application/pdf
         self.assertEqual(executor._total_usage["model_calls"], 2)
         self.assertEqual(executor._total_usage["peak_context_tokens"], 260)
 
-    def test_workflow_can_disable_provider_native_tools_for_llm_helpers(self):
+    def test_workflow_can_disable_provider_native_tools_for_internal_llm_calls(self):
         provider = EnvCapturingProvider()
         executed = []
 
         previous_xai_disable = os.environ.get("XAI_DISABLE_SERVER_SIDE_TOOLS")
+        previous_reasoning_effort = os.environ.get("XAI_REASONING_EFFORT")
+        previous_request_timeout = os.environ.get("XAI_REQUEST_TIMEOUT_SECONDS")
         os.environ["XAI_DISABLE_SERVER_SIDE_TOOLS"] = "previous"
+        os.environ["XAI_REASONING_EFFORT"] = "high"
+        os.environ["XAI_REQUEST_TIMEOUT_SECONDS"] = "90"
         try:
             executor = PipelineExecutor(
                 mode="cloud",
@@ -688,8 +717,12 @@ MIME type: application/pdf
             )
             result = executor.execute(
                 {
-                    "id": "native_tool_free_helpers",
+                    "id": "native_tool_free_internal_llm",
                     "disable_server_side_tools": True,
+                    "workflow_llm_options": {
+                        "xai_reasoning_effort": "low",
+                        "xai_request_timeout_seconds": 600,
+                    },
                     "steps": [
                         {
                             "step": 1,
@@ -703,11 +736,21 @@ MIME type: application/pdf
                 "/crypto bitcoin solana",
             )
             restored_xai_disable = os.environ.get("XAI_DISABLE_SERVER_SIDE_TOOLS")
+            restored_reasoning_effort = os.environ.get("XAI_REASONING_EFFORT")
+            restored_request_timeout = os.environ.get("XAI_REQUEST_TIMEOUT_SECONDS")
         finally:
             if previous_xai_disable is None:
                 os.environ.pop("XAI_DISABLE_SERVER_SIDE_TOOLS", None)
             else:
                 os.environ["XAI_DISABLE_SERVER_SIDE_TOOLS"] = previous_xai_disable
+            if previous_reasoning_effort is None:
+                os.environ.pop("XAI_REASONING_EFFORT", None)
+            else:
+                os.environ["XAI_REASONING_EFFORT"] = previous_reasoning_effort
+            if previous_request_timeout is None:
+                os.environ.pop("XAI_REQUEST_TIMEOUT_SECONDS", None)
+            else:
+                os.environ["XAI_REQUEST_TIMEOUT_SECONDS"] = previous_request_timeout
 
         self.assertTrue(result["ok"])
         self.assertEqual(executed, [("crypto_price", {"coin": "solana"})])
@@ -717,10 +760,181 @@ MIME type: application/pdf
         self.assertEqual(provider.calls[0]["openai_disabled"], "true")
         self.assertEqual(provider.calls[0]["xai_search_override"], "false")
         self.assertEqual(provider.calls[0]["anthropic_search_override"], "false")
+        self.assertEqual(provider.calls[0]["xai_reasoning_effort"], "low")
+        self.assertEqual(provider.calls[0]["xai_request_timeout"], "600")
+        self.assertEqual(provider.calls[0]["resolved_xai_reasoning_effort"], "low")
+        self.assertEqual(provider.calls[0]["resolved_xai_request_timeout"], "600")
         self.assertTrue(provider.enable_search)
         self.assertEqual(restored_xai_disable, "previous")
+        self.assertEqual(restored_reasoning_effort, "high")
+        self.assertEqual(restored_request_timeout, "90")
 
-    def test_workflow_llm_helpers_leave_native_tools_enabled_by_default(self):
+    def test_workflow_internal_llm_provider_error_aborts_before_tool_execution(self):
+        executed = []
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(
+                execute=lambda tool, params: executed.append((tool, params))
+                or {"ok": True}
+            ),
+            provider=ErrorTextProvider(),
+        )
+
+        result = executor.execute(
+            {
+                "id": "workflow_llm_error",
+                "steps": [
+                    {
+                        "step": 1,
+                        "tool": "stash",
+                        "action": "save",
+                        "params": {"space_id": "space_test"},
+                        "llm_prompt": "Generate the report.",
+                    }
+                ],
+            },
+            "/workflow_llm_error",
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(executed, [])
+        self.assertIn("Workflow-internal LLM failed", result["error"])
+        self.assertIn("Request timed out", result["error"])
+
+    def test_workflow_llm_options_override_blank_mode_timeout_inside_config_scope(self):
+        provider = EnvCapturingProvider()
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(
+                execute=lambda _tool, params: {
+                    "ok": True,
+                    "data": {"coin_id": params["coin"]},
+                }
+            ),
+            provider=provider,
+        )
+
+        def scoped_mode_config(mode):
+            if mode == "cloud":
+                return {
+                    "XAI_REASONING_EFFORT": "high",
+                    "XAI_REQUEST_TIMEOUT_SECONDS": "",
+                }
+            return {}
+
+        with (
+            patch("config_loader._load_mode_config", side_effect=scoped_mode_config),
+            config_scope("cloud"),
+        ):
+            result = executor.execute(
+                {
+                    "id": "scoped_workflow_llm_options",
+                    "workflow_llm_options": {
+                        "xai_reasoning_effort": "low",
+                        "xai_request_timeout_seconds": 600,
+                    },
+                    "steps": [
+                        {
+                            "step": 1,
+                            "tool": "crypto_price",
+                            "llm_prompt": "Extract the coin.",
+                        }
+                    ],
+                },
+                "/scoped_workflow_llm_options solana",
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(provider.calls[0]["resolved_xai_reasoning_effort"], "low")
+        self.assertEqual(provider.calls[0]["resolved_xai_request_timeout"], "600")
+
+    def test_workflow_internal_llm_error_fails_validation_closed(self):
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(
+                execute=lambda _tool, _params: {
+                    "ok": True,
+                    "speech": "Fetched candidate content",
+                    "data": {"content": "candidate content"},
+                }
+            ),
+            provider=ErrorTextProvider(),
+        )
+
+        result = executor.execute(
+            {
+                "id": "validation_error",
+                "steps": [
+                    {
+                        "step": 1,
+                        "tool": "crawl_url",
+                        "validation": {
+                            "type": "llm",
+                            "llm_prompt": "Is this content usable?",
+                        },
+                    }
+                ],
+            },
+            "/validation_error",
+        )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["data"]["aborted_at_step"], 1)
+        self.assertTrue(result["data"]["results"][0]["data"]["content"])
+
+    def test_workflow_internal_llm_timeout_skips_llm_decided_step(self):
+        executed = []
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(
+                execute=lambda tool, params: executed.append((tool, params))
+                or {"ok": True}
+            ),
+            provider=TimeoutRaisingProvider(),
+        )
+
+        result = executor.execute(
+            {
+                "id": "decision_error",
+                "steps": [
+                    {
+                        "step": 1,
+                        "tool": "send_email",
+                        "condition": "${llm_decides}",
+                        "llm_prompt": "Should this email be sent?",
+                    }
+                ],
+            },
+            "/decision_error",
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(executed, [])
+        self.assertTrue(result["data"]["results"][0]["skipped"])
+
+    def test_workflow_success_speech_error_uses_static_fallback(self):
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(
+                execute=lambda _tool, _params: {"ok": True, "data": {}}
+            ),
+            provider=ErrorTextProvider(),
+        )
+
+        result = executor.execute(
+            {
+                "id": "speech_error",
+                "success_speech_llm_prompt": "Summarize completion.",
+                "success_speech": "Workflow completed safely.",
+                "steps": [{"step": 1, "tool": "get_time"}],
+            },
+            "/speech_error",
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["speech"], "Workflow completed safely.")
+
+    def test_workflow_internal_llm_calls_leave_native_tools_enabled_by_default(self):
         provider = EnvCapturingProvider()
         executor = PipelineExecutor(
             mode="cloud",
@@ -1305,12 +1519,24 @@ MIME type: application/pdf
         crypto_crawl = next(step for step in crypto["steps"] if step["tool"] == "crawl_url")
 
         self.assertTrue(crypto["disable_server_side_tools"])
+        self.assertNotIn("helper_llm", crypto)
+        self.assertEqual(
+            crypto["workflow_llm_options"]["xai_reasoning_effort"], "low"
+        )
+        self.assertEqual(
+            crypto["workflow_llm_options"]["xai_request_timeout_seconds"], 600
+        )
         self.assertEqual(deep_crawl["validated_output_var"], "validated_articles")
         self.assertTrue(deep_stash["process_all"])
         self.assertEqual(crypto_crawl["validated_output_var"], "validated_articles")
 
         deep_canvas = next(step for step in deep["steps"] if step["tool"] == "canvas")
+        crypto_canvas = next(step for step in crypto["steps"] if step["tool"] == "canvas")
         self.assertEqual(deep_canvas["llm_output_validation"]["param"], "content")
+        for required_pattern in crypto_canvas["llm_output_validation"][
+            "required_patterns"
+        ]:
+            self.assertIn(required_pattern, crypto_canvas["llm_prompt"])
 
     def test_github_ai_radar_refreshes_single_canvas_page(self):
         workflow = json.loads(

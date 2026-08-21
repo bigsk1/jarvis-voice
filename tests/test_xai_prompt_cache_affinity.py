@@ -13,6 +13,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
 from llm_provider import XAIProvider  # noqa: E402
+from config_loader import config_override_scope, config_scope  # noqa: E402
 
 
 class _FakeCompletions:
@@ -86,6 +87,42 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
         self.assertIsNone(usage)
         self.assertIsNone(thinking)
         self.assertEqual(completions.last_kwargs["extra_headers"], {"x-grok-conv-id": "conv_chat"})
+
+    def test_chat_completions_request_timeout_disables_sdk_retries(self):
+        provider = self._provider_shell()
+        provider.auth_mode = "api_key"
+        completions = _FakeCompletions()
+
+        class OptionsCapturingClient:
+            def __init__(self):
+                self.chat = SimpleNamespace(completions=completions)
+                self.options = []
+
+            def with_options(self, **kwargs):
+                self.options.append(kwargs)
+                return self
+
+        client = OptionsCapturingClient()
+        provider.client = client
+
+        def scoped_mode_config(mode):
+            if mode == "cloud":
+                return {"XAI_REQUEST_TIMEOUT_SECONDS": ""}
+            return {}
+
+        with (
+            patch("config_loader._load_mode_config", side_effect=scoped_mode_config),
+            patch.dict(os.environ, {}, clear=True),
+            config_scope("cloud"),
+            config_override_scope({"XAI_REQUEST_TIMEOUT_SECONDS": "180"}),
+        ):
+            response = provider._xai_completion_create(
+                model="grok-test",
+                messages=[{"role": "user", "content": "hello"}],
+            )
+
+        self.assertEqual(response.choices[0].message.content, "ok")
+        self.assertEqual(client.options, [{"timeout": 180.0, "max_retries": 0}])
 
     def test_grok_43_reasoning_effort_is_sent_to_chat_completions(self):
         provider = self._provider_shell()
