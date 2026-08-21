@@ -169,7 +169,7 @@ def search_memory_db(query: str, limit: int, mode: str, date_filter: datetime = 
     try:
         db = get_memory_db()
         
-        if mode in ['comprehensive', 'keyword']:
+        if mode == 'keyword':
             # FTS5 keyword search
             keyword_results = db.search_memory(query=query, limit=limit)
             for mem in keyword_results:
@@ -191,7 +191,7 @@ def search_memory_db(query: str, limit: int, mode: str, date_filter: datetime = 
                 results.append(mem)
         
         if mode in ['comprehensive', 'semantic']:
-            # Semantic search
+            # MemoryDB semantic search already fuses keyword and dense results.
             semantic_results = db.semantic_search(query=query, limit=limit)
             semantic_meta = getattr(
                 db,

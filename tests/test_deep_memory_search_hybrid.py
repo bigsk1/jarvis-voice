@@ -55,3 +55,61 @@ def test_semantic_mode_preserves_keyword_only_channel_from_memory_db():
     assert meta["retrieval_mode"] == "keyword_only"
     assert results[0]["_source"] == "memory_keyword"
     assert results[0]["_source_display"] == "Memory (exact keyword match)"
+
+
+def test_comprehensive_mode_uses_memory_db_fused_ranking_without_retruncating():
+    class FakeDb:
+        last_semantic_search_meta = {
+            "retrieval_mode": "hybrid",
+            "semantic_disabled_reason": None,
+        }
+
+        def search_memory(self, query, limit):
+            assert query == "phone call"
+            assert limit == 3
+            return [
+                {"id": 1, "key": "keyword-1", "value": "one"},
+                {"id": 2, "key": "keyword-2", "value": "two"},
+                {"id": 3, "key": "keyword-3", "value": "three"},
+            ]
+
+        def semantic_search(self, query, limit):
+            assert query == "phone call"
+            assert limit == 3
+            return [
+                {
+                    "id": 1,
+                    "key": "keyword-1",
+                    "value": "one",
+                    "similarity": 0.8,
+                    "retrieval_channels": ["dense", "keyword"],
+                },
+                {
+                    "id": 4,
+                    "key": "semantic-1",
+                    "value": "four",
+                    "similarity": 0.7,
+                    "retrieval_channels": ["dense"],
+                },
+                {
+                    "id": 5,
+                    "key": "precise-1",
+                    "value": "five",
+                    "retrieval_channels": ["keyword"],
+                    "keyword_match_mode": "precise",
+                },
+            ]
+
+        def close(self):
+            pass
+
+    with patch("skills.deep_memory_search.get_memory_db", return_value=FakeDb()):
+        results, meta = search_memory_db("phone call", 3, "comprehensive")
+
+    assert meta["retrieval_mode"] == "hybrid"
+    assert [result["id"] for result in results] == [1, 4, 5]
+    assert [result["_source"] for result in results] == [
+        "memory_hybrid",
+        "memory_semantic",
+        "memory_keyword",
+    ]
