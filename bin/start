@@ -13,8 +13,8 @@
 #   ./bin/start --stop       # Stop all Jarvis sessions
 #
 # Session names (same as jarvis-dashboard):
-#   jarvis-api          - API server (port 8880) - does DB/evolution/tool-rag sync
-#   jarvis-services     - Background services - does DB/evolution/tool-rag sync  
+#   jarvis-api          - API server (port 8880) - does DB/tool-rag sync
+#   jarvis-services     - Background services - does DB/tool-rag sync
 #   jarvis-web          - Web UI (port 5001)
 #   jarvis-canvas       - Canvas viewer (port 8890)
 #   jarvis-memory       - Memory Browser UI (port 5002)
@@ -476,8 +476,8 @@ show_help() {
     echo "  --local may appear before or after an action; cloud remains the default"
     echo ""
     echo "Sessions:"
-    echo "  jarvis-api          API server (port 8880) - does DB/evolution/tool-rag sync"
-    echo "  jarvis-services     Background services - does DB/evolution/tool-rag sync"
+    echo "  jarvis-api          API server (port 8880) - does DB/tool-rag sync"
+    echo "  jarvis-services     Background services - does DB/tool-rag sync"
     echo "  jarvis-web          Web UI (port 5001)"
     echo "  jarvis-canvas       Canvas viewer (port 8890)"
     echo "  jarvis-memory       Memory Browser UI (port 5002)"

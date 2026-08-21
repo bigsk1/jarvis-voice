@@ -19,7 +19,7 @@
 #   - logs/baseline-*.json - Token baseline files
 #   - logs/test/          - Test logs (manually managed)
 #   - logs/feedback/      - Feedback logs (used by intelligence UI)
-#   - logs/evolution/    - Evolution prompts (manually managed)
+#   - logs/evolution/    - Legacy retired prompt-evolution history (manually managed)
 #   - logs/intelligence/ - Intelligence logs (manually managed)
 
 set -e
@@ -85,7 +85,7 @@ PATTERNS=(
     "*.jsonl"
 )
 
-# Directories to scan (feedback and evolution excluded - persist for intelligence UI)
+# Directories to scan (feedback and legacy evolution history excluded)
 DIRS=(
     "$LOGS_DIR"
     "$LOGS_DIR/api"

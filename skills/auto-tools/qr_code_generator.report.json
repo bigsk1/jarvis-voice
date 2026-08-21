@@ -6,7 +6,6 @@
   "gap_description": "QR code generator, Generate QR codes for URLs, text, WiFi config. Simple, no external APIs, easy to stash or and canvas or send via email.",
   "purpose": "Fill the gap of QR code generation - no external APIs needed, pure Python library, outputs to stash for downstream use",
   "feedback_ids": [],
-  "evolution_ids": [],
   "capabilities": [
     "Generate QR code for any URL",
     "Generate QR code for plain text",

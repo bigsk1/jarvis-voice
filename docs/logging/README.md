@@ -114,9 +114,7 @@ logs/
 │   └── opencode-YYYY-MM-DD.jsonl        # OpenCode session events
 ├── thinking/
 │   └── YYYY-MM-DD_decisions.jsonl       # Thinking/decision traces when enabled
-├── evolution/
-│   ├── evolution-YYYY-MM-DD.jsonl
-│   └── system_prompt_suggestion_*.md
+├── evolution/                            # Legacy retired prompt-evolution history
 ├── tool-builder/
 │   ├── tool-builder-YYYY-MM-DD.jsonl
 │   └── ouroboros-research-YYYY-MM-DD.jsonl
@@ -382,7 +380,6 @@ grep -iE "error|exception|traceback" logs/services/*-$(date +%F).log logs/*.log 
 | `logs/completion-guard/*.md` | Optional unresolved completion tickets |
 | `logs/opencode/opencode-YYYY-MM-DD.jsonl` | OpenCode session lifecycle and messages |
 | `logs/thinking/YYYY-MM-DD_decisions.jsonl` | Thinking/decision traces when enabled |
-| `logs/evolution/*` | Prompt evolution events and suggestions |
 | `logs/tool-builder/*` | Dynamic tool builder and research traces |
 | `logs/validate-system-prompt/*` | Prompt validation reports |
 | `logs/burn-test/*` | Explicit burn-test harness output |

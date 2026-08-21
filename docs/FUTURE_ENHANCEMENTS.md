@@ -1233,7 +1233,7 @@ Optional: Phase 3B tool recall filter only if search_memory noise returns
 ## 🔗 Related Documentation
 
 - **[WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md)** - Multi-tool workflow system (recipes, pipelines, tool chains)
-- **[ADVANCED_AI_TECHNIQUES.md](ADVANCED_AI_TECHNIQUES.md)** - Self-learning, prompt evolution, dynamic tool creation
+- **[ADVANCED_AI_TECHNIQUES.md](ADVANCED_AI_TECHNIQUES.md)** - Tool building, self-play, and advanced agent concepts
 - **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - Learning from interactions
 
 ---

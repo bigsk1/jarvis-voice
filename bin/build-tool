@@ -234,7 +234,6 @@ def cmd_info(args):
     print()
     print("🔗 Traceability:")
     print(f"   Feedback IDs: {', '.join(report.get('feedback_ids', []))}")
-    print(f"   Evolution IDs: {', '.join(report.get('evolution_ids', []))}")
     print()
     print("📦 Dependencies:")
     print(f"   Required: {', '.join(report.get('packages_required', [])) or 'None'}")
@@ -349,4 +348,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-

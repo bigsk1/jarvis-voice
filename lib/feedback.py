@@ -428,7 +428,7 @@ class FeedbackCollector:
         timestamp = datetime.now().isoformat()
         
         # Format system prompt - provide FULL context for accurate feedback
-        # Truncation can lead to missed context and bad evolution decisions
+        # Truncation can lead to missed context and poor feedback decisions.
         system_prompt_excerpt = system_prompt or "System prompt not provided for analysis."
         if len(system_prompt_excerpt) > 8000:
             # Only truncate if extremely long, keep most of it
@@ -547,18 +547,9 @@ If real-time data was needed and no tools were used, rate poorly."""
             feedback["feedback_provider"] = self.provider_name
             feedback["feedback_model"] = self.model_name
             
-            # Log feedback if there are issues (rating < 5) or always if configured
-            # Also log if there was an error (rating is None or has raw_response error)
-            rating = feedback.get("rating")
-            feedback.get("raw_response", "").startswith("Error:") or feedback.get("error")
-            
-            # Always log feedback - it's valuable for analysis and evolution
+            # Always log feedback - it is valuable for analysis and Intelligence.
             # Rating scale is 1-5: 5 = perfect, 4 = minor issues, 3 = some issues, 2 = significant, 1 = major
             self._log_feedback(feedback)
-            
-            # Record usage in prompt versioning system for evolution tracking
-            # Pass feedback to enable per-tool attribution when multiple tools used
-            self._record_prompt_usage(tools_used, rating, feedback)
             
             return feedback
             
@@ -609,94 +600,6 @@ If real-time data was needed and no tools were used, rate poorly."""
         
         with open(log_file, "a") as f:
             f.write(json.dumps(feedback) + "\n")
-    
-    def _record_prompt_usage(self, tools_used: list, rating: float, feedback: dict = None) -> None:
-        """Record usage for prompt evolution tracking.
-        
-        Uses per-tool ratings if available from feedback LLM.
-        Falls back to overall rating if per-tool ratings not provided.
-        """
-        try:
-            from prompt_versioning import PromptVersionDB, EVOLUTION_CONFIG
-            db = PromptVersionDB(self.mode)
-            
-            # Record for system prompt (always gets the overall rating)
-            db.record_usage('system_prompt', rating)
-            
-            # Check for per-tool ratings (new structured format)
-            tool_ratings = {}
-            if feedback and feedback.get('tool_ratings'):
-                tool_ratings = feedback['tool_ratings']
-            
-            # Record ratings for each tool
-            for tool in (tools_used or []):
-                component = f"tool:{tool}"
-                
-                if tool in tool_ratings:
-                    # Use per-tool rating (more accurate)
-                    tool_rating = tool_ratings[tool].get('rating', rating)
-                    db.record_usage(component, tool_rating)
-                else:
-                    # Fallback: use overall rating
-                    # This is less accurate but ensures we don't lose data
-                    db.record_usage(component, rating)
-            
-            # Check if auto-evolution is enabled
-            if EVOLUTION_CONFIG.get('auto_evolve_enabled', False):
-                self._maybe_trigger_auto_evolution()
-                
-        except Exception:
-            # Don't fail feedback collection if versioning fails
-            pass
-    
-    def _maybe_trigger_auto_evolution(self) -> None:
-        """Check if we should run auto-evolution based on feedback count."""
-        try:
-            # LOOP PREVENTION: Don't trigger evolution if we're in tool builder context
-            if os.environ.get('JARVIS_TOOL_BUILDER_CONTEXT') == 'true':
-                return
-            
-            from prompt_versioning import EVOLUTION_CONFIG
-            
-            # Count today's feedback entries
-            date_str = datetime.now().strftime("%Y-%m-%d")
-            log_file = self.log_dir / f"feedback-{date_str}.jsonl"
-            
-            if not log_file.exists():
-                return
-            
-            with open(log_file) as f:
-                count = sum(1 for _ in f)
-            
-            threshold = EVOLUTION_CONFIG.get('auto_check_after_feedback', 10)
-            
-            # Check if we've hit the threshold and haven't run yet today
-            marker_file = self.log_dir / f".auto_evolution_run_{date_str}"
-            
-            if count >= threshold and not marker_file.exists():
-                # Run evolution check in background
-                import subprocess
-                import sys
-                
-                evolve_script = Path(__file__).parent.parent / 'bin' / 'evolve-prompts'
-                
-                # Run async - don't block feedback return
-                subprocess.Popen(
-                    [sys.executable, str(evolve_script), '--mode', self.mode, 'auto', '--deploy', '--activate'],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
-                )
-                
-                # Mark as run today
-                marker_file.touch()
-                
-                # Log to stderr so it doesn't interfere with JSON output
-                import sys as _sys
-                print(f"🧬 Auto-evolution triggered ({count} feedback entries)", file=_sys.stderr)
-                
-        except Exception:
-            # Don't fail if auto-evolution check fails
-            pass
     
     def get_recent_feedback(self, days: int = 7) -> list:
         """Get feedback from recent days."""

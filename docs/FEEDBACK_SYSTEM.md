@@ -421,7 +421,7 @@ When multiple tools are used, each tool is rated **individually**:
 **Why this matters:**
 - Overall `rating` may be low (e.g., 2) due to LLM decision failures
 - But individual tools that worked well get high `tool_ratings` (e.g., 5)
-- Evolution system uses per-tool ratings to correctly attribute issues
+- Intelligence and human review use per-tool ratings to correctly attribute issues
 - Tools that work well aren't penalized for system prompt issues
 
 **Example:**
@@ -680,8 +680,8 @@ avg_over_time(
 5. **Per-Tool Performance** (Table)
    - Average tool_ratings per tool
 
-6. **Evolution Candidates** (Stat)
-   - Components with 2+ low ratings
+6. **Low-Rating Components** (Stat)
+   - Components that merit human review
 
 ---
 

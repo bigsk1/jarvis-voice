@@ -1826,7 +1826,6 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 - ✅ **Tool logs viewer**: See tool executions with expandable details (DONE!)
 - ✅ **`/logs` browser**: Dedicated auth-protected viewer for `.jsonl`, `.log`, and `.md` (DONE!)
 - 🔮 **Cost tracker**: Daily/weekly/monthly spend summary
-- 🔮 **A/B test viewer**: See prompt evolution experiments
 
 ### UX Improvements
 - **Keyboard shortcuts**: Ctrl+Enter send, Ctrl+N new chat, etc.

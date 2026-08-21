@@ -43,8 +43,7 @@ class FeedbackOpenAINativeSearchTests(unittest.TestCase):
             }.get(key, default)
 
         with patch.object(feedback, "get_config_value", side_effect=fake_config), \
-             patch.object(collector, "_log_feedback"), \
-             patch.object(collector, "_record_prompt_usage"):
+             patch.object(collector, "_log_feedback"):
             collector.collect(
                 query="what happened today?",
                 result={"ok": True, "speech": "Found it.", "raw_llm_response": "Found it."},
@@ -68,8 +67,7 @@ class FeedbackOpenAINativeSearchTests(unittest.TestCase):
             }.get(key, default)
 
         with patch.object(feedback, "get_config_value", side_effect=fake_config), \
-             patch.object(collector, "_log_feedback"), \
-             patch.object(collector, "_record_prompt_usage"):
+             patch.object(collector, "_log_feedback"):
             collector.collect(
                 query="what happened today?",
                 result={
@@ -89,8 +87,7 @@ class FeedbackOpenAINativeSearchTests(unittest.TestCase):
         collector = self._collector(provider)
 
         with patch.object(feedback, "get_config_value", return_value=""), \
-             patch.object(collector, "_log_feedback"), \
-             patch.object(collector, "_record_prompt_usage"):
+             patch.object(collector, "_log_feedback"):
             collector.collect(
                 query="research AI agents",
                 result={

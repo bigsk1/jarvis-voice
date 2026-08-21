@@ -11,46 +11,21 @@
 3. [Design Note: Runtime-Aware Capability Narration](#design-note-runtime-aware-capability-narration-qa)
 4. [Autonomous Workflow Orchestration](#autonomous-workflow-orchestration)
 5. [Design Note: Presentation Artifact Learning](#design-note-presentation-artifact-learning)
-6. [Phase 3: Self-Evolving Prompts](#phase-3-self-evolving-prompts)
-7. [Phase 4: Dynamic Tool Creation](#phase-4-dynamic-tool-creation)
-8. [Phase 5: Parallel Subagents](#phase-5-parallel-subagents)
-9. [Phase 6: Self-Play Optimization](#phase-6-self-play-optimization)
-10. [Phase 7: Versioned Prompts & Rollback](#phase-7-versioned-prompts--rollback)
-11. [Implementation Priority](#implementation-priority)
-12. [Safety & Guardrails](#safety--guardrails)
-13. [Implementation Status](#implementation-status)
-14. [🚨 Reality Check: Why Nothing Evolves](#-reality-check-why-nothing-evolves-feb-2026)
-15. [Phase 8: Swarm Mode](#phase-8-swarm-mode-research-parallelism)
-16. [Phase 9: Autonomous Maintenance Agent](#phase-9-autonomous-maintenance-agent)
-17. [Phase 10: Proactive Briefing Agent](#phase-10-proactive-briefing-agent)
+6. [Phase 4: Dynamic Tool Creation](#phase-4-dynamic-tool-creation)
+7. [Phase 5: Parallel Subagents](#phase-5-parallel-subagents)
+8. [Phase 6: Self-Play Optimization](#phase-6-self-play-optimization)
+9. [Implementation Priority](#implementation-priority)
+10. [Safety & Guardrails](#safety--guardrails)
+11. [Implementation Status](#implementation-status)
+12. [Phase 8: Swarm Mode](#phase-8-swarm-mode-research-parallelism)
+13. [Phase 9: Autonomous Maintenance Agent](#phase-9-autonomous-maintenance-agent)
+14. [Phase 10: Proactive Briefing Agent](#phase-10-proactive-briefing-agent)
 
 ---
 
-## TL;DR - Super Simple Explanation
+## Retired Experiment
 
-**What is Prompt Evolution?**
-Jarvis grades itself after every task. If a tool or the system prompt keeps getting bad grades, Jarvis automatically improves it.
-
-**How it Works:**
-1. **Feedback** → After each query, feedback LLM rates performance (1-5)
-2. **Track** → Ratings are stored per-tool and for system prompt
-3. **Detect** → If something has 2+ low ratings, it becomes an evolution candidate
-4. **Improve** → LLM generates a better description/prompt
-5. **Deploy** → Verified improvement gets deployed (tools auto, system prompt manual)
-
-**Manual Commands:**
-```bash
-# See what needs improvement
-./bin/evolve-prompts check --mode cloud
-
-# Generate improvements for candidates
-./bin/evolve-prompts auto --mode cloud
-
-# Review system prompt suggestions
-cat logs/evolution/system_prompt_suggestions.md
-```
-
-**Multi-Tool Fairness:** When 3 tools are used but only 1 failed, only that tool gets a bad rating. The other tools keep their good ratings.
+The legacy prompt-evolution and prompt-versioning experiment was retired in August 2026. Feedback grading and the Intelligence layer remain supported; prompt and tool-description changes now go through normal source review instead of an automatic mutation pipeline. Historical evolution tables and logs may remain in existing installations but are not active runtime inputs.
 
 ---
 
@@ -58,15 +33,15 @@ cat logs/evolution/system_prompt_suggestions.md
 
 ### Core Principles
 
-1. **High Standards, Not Arbitrary Changes**: Changes to prompts/tools require evidence from multiple feedback sessions, not single instances.
+1. **High Standards, Not Arbitrary Changes**: Changes to prompts and tools should be based on concrete evidence and reviewed source changes.
 
 2. **Audit Everything**: Every change must be traceable to a feedback session ID, with before/after snapshots.
 
-3. **Verify Before Deploy**: All auto-generated content (prompts, tools) must pass validation before becoming active.
+3. **Verify Before Deploy**: Auto-generated tools must pass validation before becoming active.
 
 4. **Separate Auto-Generated Content**: Auto-created tools live in `skills/auto-tools/` to distinguish from human-crafted tools.
 
-5. **Best Model for Critical Tasks**: Use `FEEDBACK_PROVIDER`/`FEEDBACK_MODEL` (strongest available) for verification and evolution tasks.
+5. **Best Model for Critical Tasks**: Use `FEEDBACK_PROVIDER`/`FEEDBACK_MODEL` for independent grading and the dedicated Tool Builder provider settings for code generation.
 
 ### Current Foundation (Already Built)
 
@@ -623,368 +598,17 @@ short response style + multi-item/multi-field deliverable + artifact tool availa
 
 ---
 
-## Phase 3: Self-Evolving Prompts
-
-### Concept
-
-Use accumulated feedback data to automatically improve system prompts and tool descriptions. Changes are version-controlled, A/B tested, and require verification.
-
-### Flow Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         PROMPT EVOLUTION PIPELINE                           │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌──────────────┐                                                           │
-│  │   Feedback   │  Accumulate ratings & suggestions                         │
-│  │     Logs     │  (logs/feedback/feedback-*.jsonl)                         │
-│  └──────┬───────┘                                                           │
-│         │                                                                   │
-│         ▼  Trigger: 5+ low ratings (<6) on same component                   │
-│  ┌──────────────┐                                                           │
-│  │   Analyze    │  Group feedback by component (system_prompt, tool:xyz)    │
-│  │   Patterns   │  Extract common complaints/suggestions                    │
-│  └──────┬───────┘                                                           │
-│         │                                                                   │
-│         ▼                                                                   │
-│  ┌──────────────┐                                                           │
-│  │   Generate   │  Use FEEDBACK_MODEL to propose improvements               │
-│  │   Variants   │  Creates 2-3 candidate versions                           │
-│  └──────┬───────┘                                                           │
-│         │                                                                   │
-│         ▼                                                                   │
-│  ┌──────────────┐                                                           │
-│  │   Verify     │  1. Syntax validation (JSON parseable, Python runs)       │
-│  │   Candidates │  2. Semantic check (required fields present)              │
-│  │              │  3. Test with synthetic queries                           │
-│  └──────┬───────┘                                                           │
-│         │                                                                   │
-│         ▼                                                                   │
-│  ┌──────────────┐                                                           │
-│  │   A/B Test   │  Random 50/50 split for N interactions                    │
-│  │   (Optional) │  Compare avg ratings                                      │
-│  └──────┬───────┘                                                           │
-│         │                                                                   │
-│         ▼                                                                   │
-│  ┌──────────────┐                                                           │
-│  │   Promote    │  Winner becomes active                                    │
-│  │   & Archive  │  Old version archived with full audit trail               │
-│  └─────────────┘                                                           │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Database Schema
-
-```sql
--- New table: prompt_versions
-CREATE TABLE prompt_versions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    -- What this prompt is for
-    component TEXT NOT NULL,           -- 'system_prompt', 'tool:search_memory', 'tool:execute_bash'
-    component_type TEXT NOT NULL,      -- 'system', 'tool_description', 'tool_schema'
-
-    -- Version tracking
-    version INTEGER NOT NULL,
-    content TEXT NOT NULL,             -- The actual prompt/description text
-
-    -- Lineage
-    parent_version_id INTEGER,         -- Which version this evolved from
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_by TEXT,                   -- 'human', 'auto_evolution', 'rollback'
-
-    -- Performance metrics
-    times_used INTEGER DEFAULT 0,
-    total_rating_sum REAL DEFAULT 0,
-    avg_rating REAL GENERATED ALWAYS AS (
-        CASE WHEN times_used > 0 THEN total_rating_sum / times_used ELSE NULL END
-    ) STORED,
-
-    -- Status
-    is_active BOOLEAN DEFAULT FALSE,
-    is_archived BOOLEAN DEFAULT FALSE,
-
-    -- Audit trail
-    trigger_feedback_ids TEXT,         -- JSON array of feedback IDs that triggered this
-    change_summary TEXT,               -- LLM-generated summary of what changed
-
-    FOREIGN KEY (parent_version_id) REFERENCES prompt_versions(id)
-);
-
--- Index for fast lookups
-CREATE INDEX idx_prompt_active ON prompt_versions(component, is_active);
-CREATE INDEX idx_prompt_performance ON prompt_versions(component, avg_rating);
-```
-
-### Configuration (Environment Variables)
-
-All evolution settings can be configured in `config/cloud.env` or `config/local.env`:
-
-```bash
-# --- Thresholds ---
-EVOLUTION_MIN_LOW_RATINGS=2      # Min low ratings to trigger (testing: 2, prod: 5)
-EVOLUTION_LOW_THRESHOLD=7        # Ratings below this are "low" (testing: 7, prod: 6)
-EVOLUTION_WINDOW_DAYS=3          # Days to look back (testing: 3, prod: 7)
-
-# --- Rate Limits ---
-EVOLUTION_MAX_PER_DAY=5          # Max evolutions per day (testing: 5, prod: 3)
-
-# --- Automation ---
-EVOLUTION_AUTO_ENABLED=false     # Auto-evolve after feedback threshold
-EVOLUTION_AUTO_CHECK_AFTER=10    # Feedback count to trigger auto-check
-
-# --- Random Feedback (Passive Learning) ---
-FEEDBACK_RANDOM_ENABLED=false    # Enable random feedback during normal queries
-FEEDBACK_RANDOM_CHANCE=0.1       # Chance per query (0.1 = 10%)
-
-# --- Degradation Detection ---
-EVOLUTION_DEGRADATION_ALERT_PCT=15    # Alert when perf drops by %
-EVOLUTION_DEGRADATION_ROLLBACK_PCT=25 # Auto-rollback when perf drops by %
-
-# --- A/B Testing ---
-EVOLUTION_AB_TEST_SIZE=10        # Sample size for A/B tests (testing: 10, prod: 20)
-```
-
-### Trigger Conditions
-
-Evolution is triggered when:
-- A component has `EVOLUTION_MIN_LOW_RATINGS` or more ratings below `EVOLUTION_LOW_THRESHOLD`
-- Within the last `EVOLUTION_WINDOW_DAYS` days
-- Rate limit (`EVOLUTION_MAX_PER_DAY`) not exceeded
-
-### When Does Evolution Run?
-
-**Current Behavior (Pull-Based)**
-
-Evolution only runs during active Jarvis queries, not on a schedule:
-
-```
-User Query → Feedback Collection → (if threshold met) → Auto-Evolution
-```
-
-Key points:
-- **Feedback only collected during queries** (with `--feedback` flag or `FEEDBACK_RANDOM_ENABLED`)
-- **Auto-evolution runs once per day** (marker file prevents re-runs)
-- **If Jarvis is idle for a week**, no evolution happens until next query
-
-**Scheduled Evolution (Optional)**
-
-For periodic evolution even when Jarvis is idle, add a cron job:
-
-```bash
-# Run evolution check daily at 2 AM
-0 2 * * * cd ~/jarvis-voice && source ~/jarvis-venv/bin/activate && ./bin/evolve-prompts --mode cloud auto --deploy --activate >> /tmp/jarvis-evolution.log 2>&1
-
-# Or weekly (every Sunday at 3 AM)
-0 3 * * 0 cd ~/jarvis-voice && source ~/jarvis-venv/bin/activate && ./bin/evolve-prompts --mode cloud auto --deploy --activate
-```
-
-**Tip**: Scheduled evolution uses the same feedback window (`EVOLUTION_WINDOW_DAYS`), so it will process accumulated feedback from days you didn't use Jarvis.
-
-### Multi-Tool Attribution (Per-Tool Ratings)
-
-**Problem**: Most queries use multiple tools. If overall rating is low, which tool is at fault?
-
-**Solution**: The feedback LLM rates each tool separately:
-
-```json
-{
-  "rating": 2,  // Overall: low because time was skipped
-  "tool_ratings": {
-    "remember": {"rating": 5, "note": "Correctly stored data"},
-    "search_memory": {"rating": 5, "note": "Found relevant memories"},
-    // get_time wasn't called, so no rating recorded
-  }
-}
-```
-
-**Attribution Logic**:
-
-| Scenario | System Prompt Rating | Tool Ratings |
-|----------|---------------------|--------------|
-| All tools worked, overall good | Overall rating | Per-tool ratings |
-| Tools worked, LLM made bad decision | Overall rating (low) | Per-tool ratings (high) |
-| Specific tool failed | Overall rating | That tool gets low rating |
-
-**Key Insight**: When the LLM fails to use a tool (like skipping `get_time` when user asks for time), the **system prompt** takes the rating hit, not the tools that were actually used. This correctly identifies that the LLM's routing decision was the problem, not the individual tool implementations.
-
-**Example Database State After Multi-Tool Tests**:
-
-```
-Component                | Uses | Avg Rating | Notes
--------------------------|------|------------|----------------------
-system_prompt           |   9  |    3.56    | Takes hit from LLM decision errors
-tool:remember           |   2  |    5.00    | Perfect uses
-tool:search_memory      |   1  |    5.00    | Per-tool rating preserved
-tool:weather            |   1  |    5.00    | Individual rating correct
-```
-
-### Audit Trail Example
-
-```json
-{
-  "version_id": 42,
-  "component": "tool:search_memory",
-  "component_type": "tool_description",
-  "version": 3,
-  "parent_version_id": 41,
-  "created_by": "auto_evolution",
-  "trigger_feedback_ids": ["fb_2025-12-01_001", "fb_2025-12-01_003", "fb_2025-12-01_007"],
-  "change_summary": "Added explicit guidance for verification-style questions. Previous version lacked instruction to report whether matches were found.",
-  "content_diff": {
-    "added": "FOR VERIFICATION QUESTIONS (e.g., 'Do I have X saved?'), explicitly report whether matching entries were found.",
-    "removed": null
-  },
-  "before_avg_rating": 5.2,
-  "after_avg_rating": 7.8,
-  "promoted_at": "2025-12-08T14:30:00Z"
-}
-```
-
-### Implementation Files
-
-```
-bin/
-├── evolve-prompts           # Main evolution CLI
-├── setup-prompt-versions.py # Database schema setup
-├── sync-evolution-db.py     # Sync evolution data between cloud/local
-
-lib/
-├── prompt_evolution.py      # Core evolution logic + LLM generation
-└── prompt_versioning.py     # DB operations + version tracking
-
-data/
-├── jarvis_memory.db         # Contains prompt_versions, prompt_evolution_log, prompt_backups
-└── jarvis_memory_local.db   # Same tables for local mode
-
-logs/evolution/
-└── evolution-YYYY-MM-DD.jsonl  # JSONL logs for Grafana/Loki
-```
-
-### Grafana Dashboard
-
-A dedicated dashboard for monitoring feedback and evolution:
-
-**Dashboard**: `Jarvis Feedback & Evolution`
-**URL**: http://localhost:3000/d/jarvis-feedback-evolution
-
-**Panels:**
-1. **Feedback Overview** - Total feedback entries (24h)
-2. **Average Rating** - Avg rating with color thresholds
-3. **Low Ratings** - Count of ratings < 4
-4. **Evolution Events** - Count of evolution events
-5. **Rating Trend** - Rating over time graph
-6. **Rating Distribution** - Pie chart of ratings 1-5
-7. **Evolution by Component** - Which components evolved
-8. **Recent Feedback Logs** - Live log stream
-9. **Evolution Event Log** - Evolution activity stream
-
-**LogQL Queries:**
-```logql
-# All feedback
-{job="jarvis", log_type="feedback"} | json
-
-# Low ratings
-{job="jarvis", log_type="feedback"} | json | rating < 4
-
-# Evolution events
-{job="jarvis", log_type="evolution"} | json
-
-# Rating trend
-avg_over_time({job="jarvis", log_type="feedback"} | json | unwrap rating [1h])
-```
-
-### Cloud ↔ Local Sync
-
-Evolution improvements can be synced between cloud and local databases:
-
-```bash
-# Sync cloud improvements to local (recommended)
-# Use stronger cloud models to evolve, then sync to local
-./bin/sync-evolution-db.py local --update-files
-./bin/sync-tools.py local
-
-# Sync local to cloud (if needed)
-./bin/sync-evolution-db.py cloud --update-files
-./bin/sync-tools.py cloud
-```
-
-**Recommended Workflow:**
-1. Run evolution with cloud mode (stronger LLMs for generation)
-2. Sync improvements to local: `./bin/sync-evolution-db.py local --update-files`
-3. Sync tool embeddings: `./bin/sync-tools.py local`
-
-### Logging & Monitoring
-
-Evolution events are logged in JSONL format for Grafana/Loki integration:
-
-```bash
-# View today's evolution logs
-cat logs/evolution/evolution-$(date +%Y-%m-%d).jsonl | jq '.'
-
-# Via dashboard
-jarvis-dashboard → 🧬 Evolution → Evolution Logs
-```
-
-**Logged Events:**
-- `evolution_check_started` - Check initiated
-- `evolution_deployed` - New version deployed
-- `evolution_verification_failed` - Candidate failed validation
-- `evolution_blocked` - Rate limit hit
-- `degradation_detected` - Performance drop detected
-- `auto_rollback` - Automatic rollback triggered
-
-### CLI Usage
-
-```bash
-# Check what needs evolution (based on feedback)  evolve prompt created but no prompt history A/B feature yet as of 12/5/25
-./bin/evolve-prompts check
-
-# Output:
-# Components with low ratings (past 7 days):
-#   tool:search_memory - 5 ratings avg 5.4 (threshold: 6.0)
-#   system_prompt - 3 ratings avg 6.8 (below threshold, needs 5+)
-
-# Generate candidates for a component
-./bin/evolve-prompts generate tool:search_memory
-
-# Output:
-# Generated 2 candidate versions for tool:search_memory
-# Candidate A: Added verification question guidance
-# Candidate B: Restructured with examples
-# Run validation...
-# ✅ Both candidates passed validation
-# Starting A/B test (need 20 interactions)
-
-# View prompt history
-./bin/evolve-prompts history tool:search_memory
-
-# Output:
-# Version 1 (human, 2025-11-01) - Original
-# Version 2 (auto_evolution, 2025-11-15) - Added FTS5 guidance
-#   Trigger: 7 low ratings, avg improved 5.1 → 7.2
-# Version 3 (auto_evolution, 2025-12-01) - Added verification guidance [ACTIVE]
-#   Trigger: 5 low ratings, avg improved 5.4 → 7.8
-
-# Rollback if needed
-./bin/evolve-prompts rollback tool:search_memory --to 2
-```
-
----
-
 ## Phase 4: Dynamic Tool Creation ✅ IMPLEMENTED
 
 > **Status**: Fully implemented. See [TOOL_BUILDER.md](TOOL_BUILDER.md) for complete documentation.
 
 ### Concept
 
-When feedback repeatedly suggests a missing capability, the in-house Tool Builder creates a new tool. Uses existing LLM providers (no external dependencies) with safety checks and full traceability.
+When an operator selects a missing capability, the in-house Tool Builder creates a candidate tool. Feedback and Intelligence can supply the evidence for that decision. The builder uses existing LLM providers (no external dependencies) with safety checks and full traceability.
 
 ### Key Safeguards
 
-1. **Consistent Gap Detection**: Requires 2+ feedback mentions of the same capability gap
+1. **Reviewed Gap Selection**: The operator confirms that a dedicated tool is warranted
 2. **In-House LLM Builder**: Uses existing providers (xAI, Anthropic, OpenAI, Ollama) - no OpenCode dependency
 3. **Separate Storage**: `skills/auto-tools/` directory (auto-discovered by sync-tools.py)
 4. **Report Cards**: Full traceability with `tool_name.report.json` linking to feedback IDs
@@ -1000,7 +624,7 @@ The Tool Builder can call Jarvis itself to research APIs and documentation befor
 ```
 Tool Builder needs API info
         ↓
-Calls Jarvis Orchestrator (JARVIS_TOOL_BUILDER_CONTEXT=true)
+Calls Jarvis Orchestrator
         ↓
 Jarvis uses its tools (Brave search, fetch, memory)
         ↓
@@ -1008,8 +632,6 @@ Returns research to Tool Builder
         ↓
 Better, more accurate tool created!
 ```
-
-**Loop Prevention**: Environment variable `JARVIS_TOOL_BUILDER_CONTEXT=true` prevents recursive building.
 
 **Auto-Triggers**: Research is automatic when gap description contains API-related keywords (weather, stock, api, oauth, etc.)
 8. **Local Mode Compatible**: Works with Ollama for fully offline operation
@@ -1021,7 +643,7 @@ Better, more accurate tool created!
 │                      DYNAMIC TOOL CREATION PIPELINE                         │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  Feedback identifies gap                                                    │
+│  Operator selects a reviewed capability gap                                 │
 │  "No tool for X" / "Had to use workaround"                                 │
 │         │                                                                   │
 │         ▼                                                                   │
@@ -1091,14 +713,9 @@ logs/tool-builder/
 ./bin/sync-tools.py cloud
 ```
 
-### Integration with Evolution
+### Building from Feedback Gaps
 
-Tool creation is automatically triggered during `./bin/evolve-prompts --mode cloud auto --deploy`:
-
-1. Evolution Step 5 detects capability gaps from feedback
-2. If gap mentioned 2+ times → auto-build tool
-3. Tool verified and deployed to `skills/auto-tools/`
-4. Sync runs automatically
+Feedback and Intelligence can reveal repeated capability gaps. Tool creation remains operator-driven: review the evidence, describe the selected gap to `build-tool`, inspect its report, and sync the approved tool.
 
 ### Configuration
 
@@ -1109,8 +726,6 @@ Tool creation is automatically triggered during `./bin/evolve-prompts --mode clo
 TOOL_BUILDER_PROVIDER=anthropic
 TOOL_BUILDER_MODEL=claude-sonnet-4-5-20250929
 
-# Minimum gap mentions to trigger auto-build
-EVOLUTION_MIN_GAP_COUNT=2
 ```
 
 ---
@@ -1348,7 +963,7 @@ human to author every test case.
 
 This is a live learning harness, not a mocked sandbox. It can incur provider and
 search API costs, and it intentionally writes selected-mode conversation,
-Intelligence experience, feedback, and prompt-usage records. External actions,
+Intelligence experience, and feedback records. External actions,
 artifact creation, persistent user-data mutations, and cross-mode Memory sync
 are blocked during self-play.
 
@@ -1405,8 +1020,8 @@ are blocked during self-play.
 │  │                    LEARNING EVIDENCE                                  │   │
 │  │                                                                       │   │
 │  │  - Normal selected-mode Intelligence experiences are recorded        │   │
-│  │  - Feedback updates experience outcomes and prompt usage             │   │
-│  │  - Session summaries support later human/evolution analysis          │   │
+│  │  - Feedback updates selected-mode Intelligence outcomes              │   │
+│  │  - Session summaries support later human analysis                    │   │
 │  │                                                                       │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
@@ -1462,109 +1077,19 @@ are blocked during self-play.
 
 ---
 
-## Phase 7: Versioned Prompts & Rollback
-
-### Concept
-
-Every prompt change is versioned. If performance degrades, automatically rollback to the previous stable version.
-
-### Degradation Detection
-
-```python
-DEGRADATION_THRESHOLDS = {
-    # If recent performance drops more than X% from historical average
-    "pct_drop_trigger": 20,  # 20% drop triggers alert
-
-    # Minimum samples before comparing
-    "min_recent_samples": 10,
-    "min_historical_samples": 50,
-
-    # Time windows
-    "recent_window_hours": 24,
-    "historical_window_days": 30,
-
-    # Auto-rollback vs alert-only
-    "auto_rollback_threshold": 30,  # 30%+ drop = auto rollback
-    "alert_only_threshold": 20,     # 20-30% = alert, manual decision
-}
-```
-
-### Rollback Flow
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         AUTOMATIC ROLLBACK                                  │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  On every orchestrator startup:                                             │
-│                                                                             │
-│  for each active prompt version:                                            │
-│      recent_avg = get_avg_rating(last 24 hours)                             │
-│      historical_avg = get_avg_rating(last 30 days)                          │
-│                                                                             │
-│      if recent_avg < historical_avg * 0.7:  # 30%+ drop                     │
-│          log_warning("Prompt degraded, auto-rolling back")                  │
-│          rollback_to_previous(prompt)                                       │
-│          notify_user("Rolled back {component} due to performance drop")     │
-│                                                                             │
-│      elif recent_avg < historical_avg * 0.8:  # 20-30% drop                 │
-│          log_warning("Prompt performance declining")                        │
-│          notify_user("Warning: {component} performance down 20%+")          │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Backup Strategy
-
-```bash
-# Automatic backups before any change
-data/
-├── jarvis_memory.db
-└── prompt_backups/
-    ├── 2025-12-01_pre_evolution_tool_search_memory.json
-    ├── 2025-12-01_pre_evolution_system_prompt.json
-    └── manifest.json  # Index of all backups
-```
-
-### Manual Rollback
-
-```bash
-# View version history with performance
-./bin/evolve-prompts history system_prompt
-
-# Output:
-# Version 1 (2025-11-01) avg: 7.2 samples: 150 [ARCHIVED]
-# Version 2 (2025-11-15) avg: 7.8 samples: 200 [ARCHIVED]
-# Version 3 (2025-12-01) avg: 6.1 samples: 25  [ACTIVE] ⚠️ DECLINING
-
-# Rollback
-./bin/evolve-prompts rollback system_prompt --to 2
-
-# Output:
-# Rolling back system_prompt from v3 to v2...
-# ✅ Backup created: prompt_backups/2025-12-01_rollback_system_prompt.json
-# ✅ Version 2 restored as active
-# ✅ Version 3 marked as archived (reason: manual_rollback)
-```
-
----
-
 ## Implementation Priority
 
 | Phase | Feature | Complexity | Impact | Prereqs | ETA |
 |-------|---------|------------|--------|---------|-----|
-| **3** | Self-Evolving Prompts | Medium | 🔥🔥🔥 | Feedback ✅ | 1-2 weeks |
-| **7** | Versioned Rollback | Low | 🔥🔥 | Phase 3 | +3 days |
 | **4** | Dynamic Tool Creation | High | 🔥🔥 | OpenCode ✅ | 2-3 weeks |
-| **6** | Self-Play | Medium | 🔥🔥 | Phases 3,7 | 1-2 weeks |
+| **6** | Self-Play | Medium | 🔥🔥 | Feedback ✅ | 1-2 weeks |
 | **5** | Parallel Subagents | High | 🔥🔥🔥 | Stable core | 3-4 weeks |
 
 ### Recommended Order
 
-1. **Phase 3 + 7 together** (prompt evolution + rollback safety)
-2. **Phase 4** (tool creation with verification)
-3. **Phase 6** (self-play to generate training data)
-4. **Phase 5** (parallelization for performance)
+1. **Phase 4** (tool creation with verification)
+2. **Phase 6** (guarded self-play and feedback collection)
+3. **Phase 5** (parallelization for performance)
 
 ---
 
@@ -1575,15 +1100,11 @@ data/
 ```python
 SAFETY_CONFIG = {
     # Rate limits
-    "max_evolutions_per_day": 3,
     "max_auto_tools_per_week": 2,
-    "max_rollbacks_per_day": 5,
 
     # Human approval required for
     "require_approval": [
-        "system_prompt_changes",      # Core behavior changes
         "dangerous_tool_creation",    # Tools with filesystem/network
-        "bulk_rollback",              # Rolling back multiple components
     ],
 
     # Auto-disable triggers
@@ -1595,47 +1116,13 @@ SAFETY_CONFIG = {
 
     # Sandbox settings
     "sandbox_new_tools_for": "24h",   # New tools sandboxed for 24h
-    "sandbox_new_prompts_for": "12h", # New prompts A/B tested for 12h
 }
 ```
-
-### Audit Log Format
-
-Every autonomous action is logged:
-
-```json
-{
-  "timestamp": "2025-12-01T14:30:00Z",
-  "action": "prompt_evolution",
-  "component": "tool:search_memory",
-  "trigger": {
-    "type": "low_feedback_threshold",
-    "feedback_ids": ["fb_001", "fb_002", "fb_003", "fb_004", "fb_005"],
-    "avg_rating": 5.2,
-    "threshold": 6.0
-  },
-  "change": {
-    "from_version": 2,
-    "to_version": 3,
-    "diff_summary": "Added verification question guidance"
-  },
-  "verification": {
-    "syntax_check": "passed",
-    "semantic_check": "passed",
-    "test_queries": ["passed", "passed", "passed"]
-  },
-  "status": "deployed_to_ab_test",
-  "rollback_available": true,
-  "backup_path": "prompt_backups/2025-12-01_pre_evolution.json"
-}
-```
-
----
 
 ## Related Documentation
 
 - [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md) - Current self-learning system
-- [FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md) - Feedback collection for evolution triggers
+- [FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md) - Feedback collection and Intelligence coordination
 - [opencode/OPENCODE_AGENTS.md](opencode/OPENCODE_AGENTS.md) - Subagent architecture
 - [TOOL_CALLING_SYSTEM.md](TOOL_CALLING_SYSTEM.md) - Tool execution flow
 
@@ -1645,11 +1132,9 @@ Every autonomous action is logged:
 
 This document outlines the path from Jarvis's current reactive assistant to a truly self-improving autonomous system:
 
-1. **Self-Evolving Prompts** - Close the feedback loop automatically
-2. **Dynamic Tool Creation** - Grow capabilities based on need
-3. **Parallel Execution** - Scale performance through concurrency
-4. **Self-Play** - Discover better strategies without human input
-5. **Versioned Rollback** - Safety net for autonomous changes
+1. **Dynamic Tool Creation** - Grow reviewed capabilities from concrete needs
+2. **Parallel Execution** - Scale performance through concurrency
+3. **Self-Play** - Discover better strategies through guarded evaluation
 
 Each phase builds on the previous, with safety guardrails ensuring stability.
 
@@ -1659,81 +1144,12 @@ Each phase builds on the previous, with safety guardrails ensuring stability.
 
 | Phase | Feature | Status | Files |
 |-------|---------|--------|-------|
-| **3** | Self-Evolving Prompts | ✅ Built, ⚠️ Not Triggering | `lib/prompt_evolution.py`, `lib/prompt_versioning.py`, `bin/evolve-prompts` |
-| **7** | Versioned Rollback | ✅ Built, Untested | Included in Phase 3 |
 | **4** | Dynamic Tool Creation | ✅ **IMPLEMENTED** | `lib/tool_builder.py`, `bin/build-tool`, Ouroboros research 🐍 |
 | **5** | Parallel Subagents | 📋 Planned | See Phase 8 below |
 | **6** | Self-Play Optimization | ✅ Implemented, guarded live execution | `lib/self_play.py`, `bin/jarvis-self-play` |
 | **8** | Swarm Mode | 📋 Brainstorming | `docs/swarm/BRAINSTORM.md` |
 | **9** | Autonomous Maintenance | 📋 Brainstorming | See below |
 | **10** | Proactive Briefing Agent | 📋 Brainstorming | See below |
-
----
-
-## 🚨 Reality Check: Why Nothing Evolves (Feb 2026)
-
-**The Problem:** Evolution infrastructure exists but hasn't triggered in 2+ months.
-
-### Root Causes
-
-| Issue | Why It Matters |
-|-------|----------------|
-| **Feedback rarely collected** | `--feedback` flag required, `FEEDBACK_RANDOM_ENABLED=false` by default |
-| **Thresholds too conservative** | Need 5+ low ratings (prod), 2+ (test) - but feedback is rare |
-| **No scheduled checks** | Evolution only runs during active queries |
-| **Cron not configured** | No nightly `evolve-prompts` job running |
-| **Self-play not built** | Would generate synthetic feedback, but doesn't exist yet |
-
-### Quick Fix Checklist
-
-```bash
-# 1. Enable random feedback collection (15% of queries)
-# In config/cloud.env:
-FEEDBACK_RANDOM_ENABLED=true
-FEEDBACK_RANDOM_CHANCE=0.15
-
-# 2. Lower thresholds for testing
-EVOLUTION_MIN_LOW_RATINGS=2
-EVOLUTION_LOW_THRESHOLD=7
-EVOLUTION_WINDOW_DAYS=14
-
-# 3. Add cron job for scheduled evolution
-crontab -e
-# Add:
-0 3 * * * cd ~/jarvis-voice && source ~/jarvis-venv/bin/activate && ./bin/evolve-prompts --mode cloud auto --deploy --activate >> /tmp/jarvis-evolution.log 2>&1
-
-# 4. Check current feedback state
-sqlite3 data/jarvis_memory.db "SELECT COUNT(*) FROM feedback WHERE rating < 6"
-./bin/evolve-prompts check --mode cloud
-```
-
-### The Deeper Problem: Reactive vs Autonomous
-
-All current systems are **reactive** (require user initiation):
-
-```
-Current Architecture:
-┌─────────────────────────────────────────────────┐
-│  User Query → Jarvis Processes → User Response  │
-│                    │                            │
-│              (optional feedback)                │
-│                    │                            │
-│        (optional evolution if thresholds met)   │
-└─────────────────────────────────────────────────┘
-
-What's Missing:
-┌─────────────────────────────────────────────────┐
-│           Autonomous Background Loop            │
-│                                                 │
-│  ┌─────────┐   ┌─────────┐   ┌─────────────┐   │
-│  │ Observe │ → │ Decide  │ → │ Act/Report  │   │
-│  └─────────┘   └─────────┘   └─────────────┘   │
-│       ↑                             │          │
-│       └─────────────────────────────┘          │
-│                                                 │
-│  Runs: Cron / Event-triggered / Always-on      │
-└─────────────────────────────────────────────────┘
-```
 
 ---
 
@@ -1822,7 +1238,7 @@ An always-on (or cron-scheduled) agent that monitors system health and takes act
 |------|--------------|------------------|
 | Memory cleanup | Manual or never | "500 memories, cleaned 200 stale" |
 | Tool health | User notices failures | "brave_search failed 10x, switching to fallback" |
-| Feedback analysis | `evolve-prompts check` | Auto-analyzes patterns, proposes fixes |
+| Feedback analysis | Feedback and Intelligence UI review | Auto-analyzes patterns, proposes fixes |
 | Proactive briefing | Hardcoded workflow | LLM decides what's worth mentioning |
 | Cost monitoring | Manual check | "Token usage 3x normal, investigating" |
 | Error patterns | Read logs manually | "Detected recurring timeout in X, added retry" |
@@ -1916,8 +1332,8 @@ MAINTENANCE_CHECKS = [
         "name": "feedback_patterns",
         "query": "SELECT component, AVG(rating) FROM feedback GROUP BY component",
         "action_threshold": {"avg_rating": 5.0},
-        "auto_action": "trigger_evolution_check",
-        "approval_required": False
+        "auto_action": "flag_for_human_review",
+        "approval_required": True
     },
     {
         "name": "cost_anomaly",
@@ -1940,17 +1356,17 @@ MAINTENANCE_CHECKS = [
 # 🔍 Observing system state...
 # ├── Memory: 523 total, 89 stale (>90d), 145 low importance
 # ├── Errors (24h): brave_search: 3, fetch: 1
-# ├── Feedback: 12 entries, avg 6.8, lowest: tool:search_memory (5.2)
+# ├── Feedback: 12 entries, avg 3.8, lowest: search_memory (2.5)
 # └── Tokens (24h): 45,231 (normal range)
 #
 # 🧠 Analysis:
 # ├── Memory cleanup recommended: 89 stale entries
 # ├── No tool health issues
-# └── search_memory flagged for evolution check
+# └── search_memory flagged for human review
 #
 # 📋 Proposed Actions (dry run):
 # 1. [AUTO] Archive 89 stale memories
-# 2. [AUTO] Trigger evolution check for search_memory
+# 2. [REVIEW] Inspect repeated search_memory feedback
 #
 # Run with --execute to perform actions
 
@@ -2039,4 +1455,4 @@ Output what the user NEEDS to know, not everything you CAN fetch.
 
 **Document Version:** 2.0
 **Last Updated:** 2026-02-02
-**Status:** Phases 3, 4, 7 built but underutilized. Phases 8-10 brainstorming.
+**Status:** Phases 4 and 6 implemented; Phase 5 planned; Phases 8-10 brainstorming. Legacy Phases 3 and 7 are retired.

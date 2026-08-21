@@ -1,8 +1,8 @@
-# Jarvis Tool Builder - Autonomous Tool Creation
+# Jarvis Tool Builder - LLM-Assisted Tool Creation
 
 > **Version:** 2.1  
 > **Updated:** January 21, 2026  
-> **Purpose**: Automatically create new tools when capability gaps are detected in feedback. Uses existing LLM providers (no external dependencies) with safety checks and full traceability.
+> **Purpose**: Build candidate tools for operator-selected capability gaps. Feedback and Intelligence can provide evidence; creation is explicitly invoked and remains subject to safety checks and review.
 
 ---
 
@@ -11,7 +11,7 @@
 1. [Overview](#overview)
 2. [How It Works](#how-it-works)
 3. [CLI Commands](#cli-commands)
-4. [Integration with Evolution](#integration-with-evolution)
+4. [Building from Feedback Gaps](#building-from-feedback-gaps)
 5. [Safety Features](#safety-features)
 6. [Configuration](#configuration)
 7. [Report Cards & Traceability](#report-cards--traceability)
@@ -22,9 +22,7 @@
 
 ## Overview
 
-The Tool Builder automatically creates new tools when:
-1. Feedback consistently mentions a missing capability
-2. Manual trigger via CLI
+The Tool Builder creates a candidate tool when an operator invokes it through the CLI with a concrete capability gap. Feedback and Intelligence can help identify and justify that gap, but they do not launch tool creation automatically.
 
 ### Key Features
 
@@ -47,7 +45,7 @@ The Tool Builder automatically creates new tools when:
 │                    TOOL CREATION FLOW                               │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  Feedback identifies gap                                            │
+│  Operator selects a reviewed capability gap                         │
 │  "No tool for X" / "Had to use workaround"                         │
 │         │                                                           │
 │         ▼                                                           │
@@ -169,39 +167,19 @@ Tools that need new packages go to `skills/pending/` for review:
 
 ---
 
-## Integration with Evolution
+## Building from Feedback Gaps
 
-The Tool Builder is automatically triggered during evolution checks when capability gaps are detected.
+Feedback can reveal a missing capability, but tool creation is operator-driven. Review repeated gaps in the Feedback or Intelligence UI, choose one that merits a dedicated tool, and pass a concrete description to `build-tool`.
 
-### Automatic Trigger
+### Useful Gap Evidence
 
-```bash
-# Run evolution with auto tool building
-./bin/evolve-prompts --mode cloud auto --deploy
-
-# Evolution Step 5 will:
-# 1. Detect capability gaps from feedback
-# 2. Auto-build tools for consistent gaps (mentioned 2+ times)
-```
-
-### Gap Detection Patterns
-
-The system looks for feedback mentioning:
+Useful feedback evidence includes repeated mentions such as:
 - "no tool for X"
 - "missing capability for X"
 - "couldn't find a tool to X"
 - "had to use workaround for X"
 - "would be useful to have X"
 - "needs a tool to X"
-
-### Configuration
-
-```bash
-# In config/cloud.env or config/local.env
-
-# Minimum times a gap must be mentioned to trigger tool creation
-EVOLUTION_MIN_GAP_COUNT=2
-```
 
 ---
 
@@ -448,7 +426,7 @@ The Tool Builder can use Jarvis itself to research APIs and documentation before
 ```
 Tool Builder needs API info
         ↓
-Calls Jarvis Orchestrator (with JARVIS_TOOL_BUILDER_CONTEXT=true)
+Calls Jarvis Orchestrator
         ↓
 Jarvis uses its tools:
   - mcp_brave_search (web search)
@@ -563,14 +541,6 @@ for symbol in ['TSLA', 'GC=F']:
 img_result = call_tool('generate_image', {'prompt': '...'})
 ```
 
-### Loop Prevention
-
-The environment variable `JARVIS_TOOL_BUILDER_CONTEXT=true` is set when Jarvis is called from the tool builder. This prevents:
-- Auto-evolution from triggering
-- Tool building from triggering (recursive)
-
----
-
 ### Local Mode
 
 Works with Ollama:
@@ -600,7 +570,6 @@ Every auto-generated tool has a `tool_name.report.json`:
   "gap_description": "Convert text to uppercase or lowercase",
   "purpose": "Fills the gap for text case conversion operations",
   "feedback_ids": ["fb_001", "fb_002"],
-  "evolution_ids": [],
   
   "capabilities": [
     "Convert text to uppercase",
@@ -704,11 +673,9 @@ sum(count_over_time({job="jarvis", log_type="tool_builder"} [24h]))
 ./orchestrator/orchestrator_v2.py cloud "convert hello to uppercase" --feedback
 # Feedback: "No tool for text case conversion, had to explain manually"
 
-# 2. Run evolution check (detects gap)
-./bin/evolve-prompts --mode cloud check
-# Step 5: Found 1 capability gap: "text case conversion"
+# 2. Review the feedback and decide whether the repeated gap merits a tool
 
-# 3. Auto-build (or manual)
+# 3. Build the selected tool
 ./bin/build-tool --mode cloud build "Convert text to uppercase or lowercase"
 
 # 4. Sync to enable

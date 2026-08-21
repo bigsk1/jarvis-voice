@@ -1153,7 +1153,7 @@ class Orchestrator:
     def _maybe_collect_feedback(self, result: dict[str, Any], transcript: str) -> dict[str, Any]:
         """
         Optionally collect feedback based on random chance (configured via env).
-        This enables the evolution/feedback system for both CLI and WebUI.
+        This enables sampled feedback for both CLI and WebUI.
         
         Uses FEEDBACK_RANDOM_ENABLED and FEEDBACK_RANDOM_CHANCE from config.
         """

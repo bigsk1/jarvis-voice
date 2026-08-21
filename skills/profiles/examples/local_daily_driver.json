@@ -2,7 +2,6 @@
   "description": "Copy to skills/profiles/local_daily_driver.json — Local Ollama daily use: weather, crypto, reminders, memory, canvas/stash, vision, light web via mcp_fetch/crawl (no analyze_image override). Disables SerpApi shopping and verticals, Playwright, OpenCode sessions, generators, and phone so the 5-slot RAG favors common asks.",
   "overrides": {
     "check_opencode_sessions": false,
-    "evolution_test": false,
     "flight_search": false,
     "generate_image": false,
     "generate_music": false,

@@ -104,7 +104,7 @@ class BuilderDirsMixin(unittest.TestCase):
         builder = self.make_builder()
         return builder._create_tool(
             spec=spec, gap_description="test gap", feedback_ids=[],
-            evolution_ids=[], existing_tools=[], retries=0,
+            existing_tools=[], retries=0,
         )
 
 

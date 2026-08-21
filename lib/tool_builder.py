@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tool Builder - Autonomous tool creation from feedback gaps.
+Tool Builder - LLM-assisted tool creation for operator-selected gaps.
 
 Uses existing LLM providers to generate new tools when consistent gaps
 are identified in feedback. Includes safety checks, verification, and
@@ -124,7 +124,6 @@ class ToolReportCard:
     gap_description: str
     purpose: str
     feedback_ids: list[str]
-    evolution_ids: list[str]
     
     # What it does
     capabilities: list[str]
@@ -808,8 +807,6 @@ class ToolBuilder:
         Uses the existing orchestrator with all its tools (web search, fetch, memory, etc.)
         to gather information needed for building better tools.
         
-        IMPORTANT: Sets JARVIS_TOOL_BUILDER_CONTEXT=true to prevent loops.
-        When Jarvis sees this flag, it should NOT trigger tool building.
         """
         import subprocess
         import time
@@ -830,17 +827,12 @@ class ToolBuilder:
         }
         
         try:
-            # Set environment to prevent recursive tool building
-            env = os.environ.copy()
-            env['JARVIS_TOOL_BUILDER_CONTEXT'] = 'true'
-            
             # Call Jarvis orchestrator
             result = subprocess.run(
                 [sys.executable, str(orchestrator_path), self.mode, question, '--json'],
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                env=env,
                 cwd=str(Path(__file__).parent.parent)  # Project root
             )
             
@@ -932,7 +924,6 @@ class ToolBuilder:
         self,
         gap_description: str,
         feedback_ids: list[str] = None,
-        evolution_ids: list[str] = None,
         feedback_context: str = "",
         max_retries: int = 3,
         enable_research: bool = True
@@ -940,7 +931,6 @@ class ToolBuilder:
         """Build a new tool to fill an identified gap."""
         
         feedback_ids = feedback_ids or []
-        evolution_ids = evolution_ids or []
         
         # Get ALL existing tools for duplicate check (not just MCP)
         existing_tools = self.get_existing_tools()
@@ -1047,7 +1037,6 @@ class ToolBuilder:
                     result,
                     gap_description,
                     feedback_ids,
-                    evolution_ids,
                     existing_tools,
                     retries
                 )
@@ -1273,7 +1262,6 @@ class ToolBuilder:
         spec: dict,
         gap_description: str,
         feedback_ids: list[str],
-        evolution_ids: list[str],
         existing_tools: list[str],
         retries: int
     ) -> ToolBuildResult:
@@ -1407,7 +1395,6 @@ class ToolBuilder:
             gap_description=gap_description,
             purpose=spec.get('purpose', ''),
             feedback_ids=feedback_ids,
-            evolution_ids=evolution_ids,
             capabilities=spec.get('capabilities', []),
             parameters={k: v.get('description', '') for k, v in spec.get('parameters', {}).get('properties', {}).items()},
             verification_passed=verification_passed,

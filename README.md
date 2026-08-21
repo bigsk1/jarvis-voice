@@ -476,7 +476,6 @@ jarvis-voice/
 │   ├── jarvis-intelligence   # Intelligence UI (port 5003)
 │   ├── jarvis-feedback       # Feedback CLI
 │   ├── build-tool            # Tool builder
-│   ├── evolve-prompts        # Prompt evolution
 │   ├── manage-tools.py       # Enable/disable tools, profile helpers
 │   ├── sync-memory-db.py     # Memory DB maintenance
 │   ├── sync-tools.py         # Tool RAG: embed registry into memory DB
@@ -1437,7 +1436,7 @@ Install the managed Bash/Zsh command set with `./update-aliases.sh`. Useful oper
 
 ### Tool Builder
 
-- [Tool Builder](docs/TOOL_BUILDER.md) - Automatically create new tools when capability gaps are detected in feedback or you want a new tool
+- [Tool Builder](docs/TOOL_BUILDER.md) - Build reviewed tools from an operator-selected capability gap
 
 
 ```bash
@@ -1516,10 +1515,6 @@ cp data/jarvis_memory_local.db data/jarvis_memory_local.db.backup
 # Tool RAG (tool_definitions) is per-mode and not copied by sync-memory-db — run separately:
 ./bin/sync-tools.py cloud   # or: local
 ./bin/sync-tools.py cloud --force   # re-embed every tool (e.g. after embedding model change)
-
-# Prompt evolution sync after using cloud/local prompt tuning
-./bin/sync-evolution-db.py local                # Sync cloud prompt versions → local
-./bin/sync-evolution-db.py local --update-files # Also refresh local tool description files
 
 # Verify mode-specific databases and embeddings without replacing them
 ./bin/check-embeddings-health.py --both --json
@@ -1632,7 +1627,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - ✅ **Jarvis Web UI `/logs`** — Auth-protected log browser: allowed extensions (`.jsonl`, `.log`, `.md`), stable folder navigation, folder search, YAML-style JSONL cards with modal expansion, markdown viewing, mobile drill-down
 - ✅ **Orchestrator: duplicate tools & follow-ups** — Repeated identical tool calls no longer end the turn immediately; bounded recovery with duplicate-guard context; better duplicate-prevention synthesis for transcript/stash-style answers; prior tool results carry `result_truncated` / char-count metadata; retries preserve tool cards and orchestrator state
 - ✅ **Stash & model overrides** — Conversation follow-ups keep real `stash` tool payloads (not upload-only); model prompt overrides strip `-latest` / `-cloud` suffixes for folder matching
-- ✅ **Ollama & install sync** — `OLLAMA_CONTEXT_WINDOW` applied broadly; explicit tool-contract guidance and retries; thinking disabled unless intended; `sync-memory-db` / `sync-evolution-db` repair paths for fresh targets and older DBs
+- ✅ **Ollama & install sync** — `OLLAMA_CONTEXT_WINDOW` applied broadly; explicit tool-contract guidance and retries; thinking disabled unless intended; `sync-memory-db` repair paths for fresh targets and older DBs
 - ✅ **SerpAPI / Amazon / Canvas** — Stronger Amazon shopping in `serpapi_amazon_search`; Web UI product preview cards; shortlist context for “tell me more” follow-ups; Canvas supports embedded images and recovers inline `Image: https://…` product lines
 - ✅ **Embeddings & routing hygiene** — Embedding failures are surfaced in tool results/logs without persisting synthetic vectors; OpenAI tool schemas sanitized for cross-provider compatibility; shared cloud model catalog; Web UI defaults follow env-configured models; prompt enhancer + shopping guidance tightened
 - ✅ **Scheduled task notifications** — Email, alerts, and webhooks on success/failure (deduped per run); run history shows delivery outcomes; notification UX polish
@@ -1937,16 +1932,8 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - ✅ **Text Summarizer** - Text processing and analysis
   - Extractive summarization, keyword extraction
   - Word/character/sentence counting, sentiment analysis
-- ✅ **Prompt Evolution System** - Self-evolving prompts ⭐ MAJOR
-  - Auto-improves tool descriptions based on feedback (1-5 rating scale)
-  - System prompt suggestions saved to Canvas for manual review
-  - A/B testing, versioning, auto-rollback on degradation
-  - Random feedback collection (`FEEDBACK_RANDOM_ENABLED=true`)
-  - `./bin/evolve-prompts check cloud` - See what needs improvement
-  - `./bin/evolve-prompts auto cloud` - Generate and deploy
-  - See: [`docs/ADVANCED_AI_TECHNIQUES.md`](docs/ADVANCED_AI_TECHNIQUES.md)
-- ✅ **Dynamic Tool Builder** - Autonomous tool creation ⭐ MAJOR
-  - Creates new tools when capability gaps detected
+- ✅ **Dynamic Tool Builder** - LLM-assisted tool creation ⭐ MAJOR
+  - Creates new tools from operator-described capability gaps
   - **Duplicate detection** - Checks ALL existing tools (local + MCP + auto-tools)
   - **Ouroboros Research** 🐍 - Tool Builder calls Jarvis for live API research!
   - API key awareness (flags tools needing new credentials)
@@ -1958,7 +1945,6 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - ✅ **Canvas System** - Visual knowledge viewer
   - Beautiful dark web UI at localhost:8890
   - Jarvis saves research, comparisons, code to visual pages
-  - Evolution suggestions now auto-create Canvas pages
   - Markdown rendering, syntax highlighting, live reload
   - Search, pin, edit, delete - all auto-saved to memory
   - Launch: `./bin/jarvis-canvas`
@@ -1972,8 +1958,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
   - Cross-model grading (FEEDBACK_PROVIDER/FEEDBACK_MODEL)
   - Per-tool rating attribution (multi-tool fairness)
   - Full context analysis (system prompt, tools, intelligence)
-- ✅ **Dashboard Enhancements** - 70+ commands
-  - Evolution commands (check, list versions, auto, history)
+- ✅ **Dashboard Enhancements** - 60+ commands
   - Tool builder commands (list pending, approve, reject)
   - Canvas, feedback, monitoring commands
   - Unique tmux sessions per service
@@ -2037,11 +2022,9 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - ✅ Conversation history
 
 **Planned (Advanced AI - See [`docs/ADVANCED_AI_TECHNIQUES.md`](docs/ADVANCED_AI_TECHNIQUES.md)):**
-- ✅ **Phase 3: Self-Evolving Prompts** - COMPLETE! Auto-improve prompts, A/B testing, rollback
 - ✅ **Phase 4: Dynamic Tool Creation** - COMPLETE! In-house tool builder with safety checks
 - **Phase 5: Parallel Subagents** - Concurrent execution for multi-part queries (3x speedup)
 - **Phase 6: Self-Play Optimization** - Nightly simulation to discover better routing strategies
-- ✅ **Phase 7: Versioned Prompts** - COMPLETE! Auto-rollback on performance degradation
 
 </details>
 
@@ -2052,7 +2035,7 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 Source Available — free for personal use, modification, and non-commercial redistribution with attribution. Commercial use requires permission. See [LICENSE](LICENSE) for details.
 
 
-**Current Version:** v2.55.5 (August 2026)
+**Current Version:** v2.55.6 (August 2026)
 **Status:** Production Ready ✅
 **Latest Features:** The August 2026 build expands Jarvis with 23 focused
 SerpApi tools, incident-aware outage diagnostics, and new shopping, local,

@@ -3,7 +3,7 @@
 Jarvis Self-Play CLI
 
 Run self-play sessions to generate training data, find tool gaps,
-and trigger evolution improvements.
+and surface tool gaps for review.
 
 Usage:
     ./bin/jarvis-self-play --queries 50 --mode cloud
@@ -101,7 +101,6 @@ def run_session(args):
     print(f"  ├── Total queries: {summary.total_queries}")
     print(f"  ├── Average rating: {summary.avg_rating:.1f}/5")
     print(f"  ├── Low ratings (<4): {summary.low_ratings}")
-    print(f"  ├── Evolution triggered: {'✅ Yes' if summary.evolution_triggered else '❌ No'}")
     print(f"  └── Tool gaps found: {len(summary.tool_gaps)}")
     print()
     
@@ -162,12 +161,11 @@ def list_sessions(args):
     
     print(f"Recent Self-Play Sessions (last {len(sessions)}):")
     print()
-    print(f"{'Session ID':<18} {'Mode':<6} {'Queries':<8} {'Avg':<5} {'Low':<5} {'Gaps':<5} {'Evolution'}")
-    print("─" * 75)
+    print(f"{'Session ID':<18} {'Mode':<6} {'Queries':<8} {'Avg':<5} {'Low':<5} {'Gaps':<5}")
+    print("─" * 65)
     
     for s in sessions:
-        evo = "✅" if s.get("evolution_triggered") else "❌"
-        print(f"{s['session_id']:<18} {s['mode']:<6} {s['total_queries']:<8} {s['avg_rating']:<5.1f} {s['low_ratings']:<5} {s['tool_gaps']:<5} {evo}")
+        print(f"{s['session_id']:<18} {s['mode']:<6} {s['total_queries']:<8} {s['avg_rating']:<5.1f} {s['low_ratings']:<5} {s['tool_gaps']:<5}")
     
     return 0
 

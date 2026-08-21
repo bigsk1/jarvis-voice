@@ -6,7 +6,6 @@
   "gap_description": "A youtube transcript downloader, when i paste a youtube url I want to be able to download the transcript .srt? file and convert it automaticly also to markdown, both files will be downloaded and use the other tool stash so it will be indexed and saved in the stash folder, I have yt-dlp installed via pip already",
   "purpose": "Fills the gap for downloading and converting YouTube transcripts to multiple formats, with automatic stash integration for indexing",
   "feedback_ids": [],
-  "evolution_ids": [],
   "capabilities": [
     "Download YouTube transcripts using yt-dlp",
     "Convert SRT format to clean markdown",

@@ -6,7 +6,6 @@
   "gap_description": "What it does: Controlled Docker actions list containers, restart, pull, tail logs, inspect health, manage compose stacks. Why You currently have query_service_logs and bash execution, but a structured docker tool is safer and easier to reason about than raw shell.",
   "purpose": "Provides structured Docker management without raw shell access. Safer and easier to reason about than execute_bash for Docker operations.",
   "feedback_ids": [],
-  "evolution_ids": [],
   "capabilities": [
     "List all containers with status and health",
     "Restart specific containers",

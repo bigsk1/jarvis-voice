@@ -6,7 +6,6 @@
   "gap_description": "create a network diagnostics tool, network_tools.py Gap: execute_bash works but no structured network utilities if packaged needed or libraries is ok but leave to you to solve",
   "purpose": "Provides structured network utilities without relying on bash commands - pure Python implementation for cross-platform network diagnostics",
   "feedback_ids": [],
-  "evolution_ids": [],
   "capabilities": [
     "ping hosts",
     "DNS resolution",
@@ -41,7 +40,6 @@
     "- list_alerts: List alerts from the proactive API system. ALWAYS use this tool for ANY alert-related query, including: 'any alerts?', 'what alerts do I have?', 'show",
     "- manage_intel: FILE MANAGER for jarvis-intel/ folder. Create, read, update, delete, or list FILES (not memory). Use when user says 'save to intel', 'create intel fil",
     "- acknowledge_reminders: Mark reminders as acknowledged/completed/cancelled. Use when user says 'cancel reminder', 'delete reminder', 'clear reminder', 'remove reminder', 'mar",
-    "- evolution_test: A test tool for validating evolutionary algorithm implementations and genetic programming systems. Use this tool when you need to verify mutation oper",
     "- list_reminders: List reminders by status. ALWAYS use this tool for ANY reminder-related query, including: 'when is my next reminder?', 'what reminders do I have?', 'c",
     "- get_recent_conversations: Get recent conversation history in chronological order. ALWAYS use this tool for temporal queries like: 'what was the last conversation?', 'what did I",
     "- send_webhook: Send webhook to trigger n8n workflows or external services. Supports named webhooks from config/webhook_registry.json (e.g., 'notify_slack', 'home_ass",

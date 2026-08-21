@@ -29,7 +29,7 @@ The Jarvis Playground encompasses several related concepts for testing, training
 
 | Concept | Purpose | Isolation Level |
 |---------|---------|-----------------|
-| **Self-Play** | Generate training data, find gaps, trigger evolution | Process (tmux/subprocess) |
+| **Self-Play** | Generate evaluation data, find gaps, enrich Intelligence | Process (tmux/subprocess) |
 | **Jarvis VM** | Dedicated workspace for Jarvis to do work | VM (Proxmox) |
 | **Docker Image** | Reproducible, portable deployment | Container |
 | **Digital Twin** | Experimental fork for risky changes | Separate instance |
@@ -41,10 +41,10 @@ The Jarvis Playground encompasses several related concepts for testing, training
 │                    IMPROVEMENT CYCLE                             │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│   Query Generator ──► Self-Play ──► Feedback ──► Evolution      │
+│   Query Generator ──► Self-Play ──► Feedback ──► Intelligence    │
 │         │                              │              │          │
 │         │                              ▼              ▼          │
-│         │                        Gap Detector   Better Prompts   │
+│         │                        Gap Detector   Review Evidence  │
 │         │                              │                         │
 │         │                              ▼                         │
 │         │                        Tool Builder                    │
@@ -64,7 +64,7 @@ The Jarvis Playground encompasses several related concepts for testing, training
 
 1. **Find tool gaps** - Identify where dedicated tools would beat Brave search
 2. **Generate diverse training data** - Novel queries, not repetitive history
-3. **Trigger evolution** - Feed the feedback/evolution loop with real scenarios
+3. **Record learning evidence** - Feed feedback and Intelligence with real scenarios
 4. **Safe experimentation** - Break things without affecting production
 
 ### Non-Goals (For Now)
@@ -168,9 +168,9 @@ Mini PC (voice + main orchestration)
 | Aspect | Deterministic pytest | Self-Play |
 |--------|---------------------|-----------|
 | **Queries** | Predefined, static | Novel, LLM-generated |
-| **Purpose** | Verify functionality | Find gaps, trigger evolution |
+| **Purpose** | Verify functionality | Find gaps and feedback patterns |
 | **Feedback** | Pass/fail | Full feedback grading (1-5) |
-| **Output** | Test report | Insights, tool gaps, evolution triggers |
+| **Output** | Test report | Insights, tool gaps, feedback evidence |
 
 ### Components
 
@@ -320,7 +320,6 @@ def run_self_play_session(
         "avg_rating": avg_rating,
         "low_ratings": len(low_ratings),
         "tool_gaps": gaps,
-        "evolution_triggered": check_evolution_triggered(),
     }
 ```
 
@@ -348,7 +347,6 @@ def run_self_play_session(
 # │   └── TOOL GAP: stock_prices (3 queries hit Brave)
 # └── Summary:
 #     ├── Low ratings (<4): 12
-#     ├── Evolution triggered: Yes
 #     └── Tool gaps found: 2
 
 # View results
@@ -698,7 +696,7 @@ Jarvis Canvas (existing)
 1. **Week 1:** Self-Play System
    - Query generator
    - Gap detector
-   - Integration with feedback/evolution
+   - Integration with feedback and Intelligence
 
 2. **Week 2:** Infrastructure
    - Jarvis VM setup
@@ -718,9 +716,9 @@ Jarvis Canvas (existing)
 **Decision:** Start with Self-Play (P0) before infrastructure
 
 **Rationale:**
-- Self-play directly feeds the existing feedback/evolution loop
+- Self-play directly feeds the existing feedback and Intelligence paths
 - No infrastructure changes needed
-- Immediate value (finds gaps, triggers improvements)
+- Immediate value (finds gaps and records reviewable evidence)
 - Docker/VM can come later for isolation
 
 **Decision:** Docker = CLI only, no audio
@@ -743,7 +741,7 @@ Jarvis Canvas (existing)
 
 ## Related Documentation
 
-- [ADVANCED_AI_TECHNIQUES.md](ADVANCED_AI_TECHNIQUES.md) - Self-evolving system
+- [ADVANCED_AI_TECHNIQUES.md](ADVANCED_AI_TECHNIQUES.md) - Advanced AI techniques and retired experiments
 - [FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md) - Feedback loop
 - [TOOL_BUILDER.md](TOOL_BUILDER.md) - Dynamic tool creation
 - [INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md) - Self-learning

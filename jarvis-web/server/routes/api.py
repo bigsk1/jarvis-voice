@@ -730,7 +730,7 @@ def get_system_config():
                 get_jarvis_setting('OLLAMA_MODEL', 'qwen3.5:latest') if mode == 'local' else get_provider_fallback_model('openai'),
             ),
             
-            # Feedback/Evolution System
+            # Feedback System
             'FEEDBACK_RANDOM_ENABLED': get_jarvis_setting('FEEDBACK_RANDOM_ENABLED', 'false'),
             'FEEDBACK_RANDOM_CHANCE': get_jarvis_setting('FEEDBACK_RANDOM_CHANCE', '0.0'),
             'FEEDBACK_PROVIDER': get_jarvis_setting('FEEDBACK_PROVIDER', 'anthropic'),

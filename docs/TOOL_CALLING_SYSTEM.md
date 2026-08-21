@@ -490,7 +490,7 @@ host list. See [ollama/README.md](ollama/README.md).
 - 📖 **TESTING.md** - Comprehensive testing guide
 - 📖 **orchestrator/README.md** - Orchestrator details
 - 📖 **skills/README.md** - Tool creation guide
-- 📖 **docs/TOOL_MANAGEMENT.md** - Tool management and evolution
+- 📖 **docs/TOOL_MANAGEMENT.md** - Tool management and profiles
 
 ## Inter-Tool Calling (Tools Calling Other Tools)
 

@@ -1512,7 +1512,6 @@ class JarvisApp {
       tool_search: '🧰',
       check_tool_logs: '📋',
       query_service_logs: '📋',
-      evolution_test: '🧬',
       samantha: '🤖',
       status_recap: '📋',
     };
@@ -2444,7 +2443,7 @@ class JarvisApp {
           </div>
 
           <div class="config-section">
-            <div class="config-section-title">🔄 Feedback/Evolution</div>
+            <div class="config-section-title">🔄 Feedback</div>
             <div class="config-item">
               <span class="config-label">FEEDBACK_RANDOM_ENABLED</span>
               <span class="config-value ${c.FEEDBACK_RANDOM_ENABLED === 'true' ? 'enabled' : 'disabled'}">${c.FEEDBACK_RANDOM_ENABLED}</span>

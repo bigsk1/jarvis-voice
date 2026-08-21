@@ -633,37 +633,6 @@ query_embedding = get_persistable_embedding(query, role="document", title="User 
 ./bin/sync-intelligence-db.py --reset local
 ```
 
----
-
-## 5. Prompt Evolution Sync (`sync-evolution-db.py`)
-
-### Purpose
-Synchronizes active `prompt_versions` between cloud and local memory databases so prompt-evolution improvements can move between environments.
-
-### What it Syncs
-- ✅ Active prompt versions from `prompt_versions`
-- ✅ Optional tool-description file refresh via `--update-files`
-- ❌ Does not regenerate tool embeddings by itself; run `sync-tools.py` after updating tool files when needed
-
-### Fresh-Install Behavior
-
-`sync-evolution-db.py` now supports newly recreated target databases:
-- Creates `prompt_versions`, `prompt_evolution_log`, and `prompt_backups` on the target if missing
-- Exits cleanly with a warning if the source DB has not been initialized with `prompt_versions` yet
-
-### When to Run
-
-```bash
-# Sync from cloud → local
-./bin/sync-evolution-db.py local
-
-# Preview before applying changes
-./bin/sync-evolution-db.py local --dry-run
-
-# Sync and refresh local tool description files
-./bin/sync-evolution-db.py local --update-files
-```
-
 ### Use Cases
 
 1. **After extended cloud session**: Sync learnings to local

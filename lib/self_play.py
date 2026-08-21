@@ -3,9 +3,7 @@
 Jarvis Self-Play System
 
 Generates novel queries, executes them through the orchestrator,
-collects feedback, and detects tool gaps for improvement.
-
-This feeds the feedback/evolution loop to make Jarvis smarter.
+collects feedback, and detects tool gaps for review through Intelligence.
 """
 
 import os
@@ -65,7 +63,6 @@ DEFAULT_EXCLUDED_TOOLS = [
     "youtube_transcript",
     "youtube_video",
     "git_release_notes",
-    "evolution_test",
     "network_tools",
 ]
 
@@ -299,7 +296,6 @@ class SessionSummary:
     avg_rating: float
     low_ratings: int
     tool_gaps: list[ToolGap]
-    evolution_triggered: bool
     duration_seconds: float
     results: list[dict[str, Any]]
 
@@ -717,9 +713,6 @@ Generate {count} queries:"""
         avg_rating = sum(ratings) / len(ratings) if ratings else 0.0
         low_ratings = len([r for r in ratings if r < 4])
         
-        # Check if evolution was triggered
-        evolution_triggered = self._check_evolution_triggered()
-        
         duration_seconds = (datetime.now() - start_time).total_seconds()
         
         summary = SessionSummary(
@@ -730,7 +723,6 @@ Generate {count} queries:"""
             avg_rating=round(avg_rating, 2),
             low_ratings=low_ratings,
             tool_gaps=tool_gaps,
-            evolution_triggered=evolution_triggered,
             duration_seconds=round(duration_seconds, 1),
             results=results,
         )
@@ -776,39 +768,12 @@ Generate {count} queries:"""
             "avg_rating": summary.avg_rating,
             "low_ratings": summary.low_ratings,
             "tool_gaps": [asdict(g) for g in summary.tool_gaps],
-            "evolution_triggered": summary.evolution_triggered,
             "duration_seconds": summary.duration_seconds,
             "results": summary.results,
         }
         
         with open(summary_file, "w") as f:
             json.dump(summary_dict, f, indent=2)
-    
-    def _check_evolution_triggered(self) -> bool:
-        """Check if evolution was triggered during the session."""
-        # Look for recent evolution log entries
-        evolution_log = self.project_root / "logs" / "evolution" / f"evolution-{datetime.now().strftime('%Y-%m-%d')}.jsonl"
-        
-        if not evolution_log.exists():
-            return False
-        
-        # Check for entries in the last minute
-        try:
-            with open(evolution_log) as f:
-                lines = f.readlines()
-                
-            for line in reversed(lines[-10:]):  # Check last 10 entries
-                try:
-                    entry = json.loads(line)
-                    entry_time = datetime.fromisoformat(entry.get("timestamp", ""))
-                    if (datetime.now() - entry_time).total_seconds() < 60:
-                        return True
-                except:
-                    continue
-        except:
-            pass
-        
-        return False
     
     def get_latest_session(self) -> dict[str, Any] | None:
         """Get the most recent session summary."""
@@ -837,7 +802,6 @@ Generate {count} queries:"""
                         "avg_rating": data["avg_rating"],
                         "low_ratings": data["low_ratings"],
                         "tool_gaps": len(data.get("tool_gaps", [])),
-                        "evolution_triggered": data.get("evolution_triggered", False),
                     })
             except:
                 continue
@@ -876,7 +840,6 @@ def main():
     print(f"  Avg rating: {summary.avg_rating}")
     print(f"  Low ratings: {summary.low_ratings}")
     print(f"  Tool gaps: {len(summary.tool_gaps)}")
-    print(f"  Evolution triggered: {summary.evolution_triggered}")
 
 
 if __name__ == "__main__":

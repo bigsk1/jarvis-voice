@@ -6,7 +6,6 @@
   "gap_description": "create a System Monitor Tool called system_monitor.py Gap: Limited system visibility (only logs via query_service_logs) Actions:\n\ncpu_usage - Current CPU usage %\nmemory_usage - RAM usage stats\ndisk_usage - Disk space per mount\nprocess_list - List running processes\nnetwork_stats - Network I/O statistics\nsystem_uptime - System uptime\nLibraries: psutil as an example, cover many possible system monitoring needs",
   "purpose": "Provides detailed system visibility beyond just service logs - monitors hardware resources, processes, and system health in real-time",
   "feedback_ids": [],
-  "evolution_ids": [],
   "capabilities": [
     "cpu_usage - Current CPU usage percentage and per-core stats",
     "memory_usage - RAM usage stats (total, used, available, percent)",
@@ -41,7 +40,6 @@
     "- list_alerts: List alerts from the proactive API system. ALWAYS use this tool for ANY alert-related query, including: 'any alerts?', 'what alerts do I have?', 'show",
     "- manage_intel: FILE MANAGER for jarvis-intel/ folder. Create, read, update, delete, or list FILES (not memory). Use when user says 'save to intel', 'create intel fil",
     "- acknowledge_reminders: Mark reminders as acknowledged/completed/cancelled. Use when user says 'cancel reminder', 'delete reminder', 'clear reminder', 'remove reminder', 'mar",
-    "- evolution_test: A test tool for validating evolutionary algorithm implementations and genetic programming systems. Use this tool when you need to verify mutation oper",
     "- list_reminders: List reminders by status. ALWAYS use this tool for ANY reminder-related query, including: 'when is my next reminder?', 'what reminders do I have?', 'c",
     "- get_recent_conversations: Get recent conversation history in chronological order. ALWAYS use this tool for temporal queries like: 'what was the last conversation?', 'what did I",
     "- send_webhook: Send webhook to trigger n8n workflows or external services. Supports named webhooks from config/webhook_registry.json (e.g., 'notify_slack', 'home_ass",
