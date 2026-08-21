@@ -461,6 +461,7 @@ class ChatUI {
     this.convertFileName = document.getElementById('convertFileName');
     this.convertPreview = document.getElementById('convertPreview');
     this.pendingConvertFile = null;  // {file, stashRef}
+    this.convertPreviewUrl = null;
     
     // Image action modal elements
     this.imageActionModal = document.getElementById('imageActionModal');
@@ -2748,6 +2749,16 @@ class ChatUI {
     const details = document.getElementById('convertAdvanced');
     if (details) details.removeAttribute('open');
   }
+
+  _clearConvertPreview() {
+    if (this.convertPreviewUrl) {
+      URL.revokeObjectURL(this.convertPreviewUrl);
+      this.convertPreviewUrl = null;
+    }
+    if (this.convertPreview) {
+      this.convertPreview.innerHTML = '';
+    }
+  }
   
   /**
    * Show the conversion modal with file preview
@@ -2770,10 +2781,11 @@ class ChatUI {
     this.convertFileName.textContent = `${file.name} (${sizeStr})`;
     
     // Show preview based on file type
-    this.convertPreview.innerHTML = '';
+    this._clearConvertPreview();
     if (file.type.startsWith('image/')) {
       const img = document.createElement('img');
-      img.src = URL.createObjectURL(file);
+      this.convertPreviewUrl = URL.createObjectURL(file);
+      img.src = this.convertPreviewUrl;
       img.style.maxWidth = '200px';
       img.style.maxHeight = '150px';
       img.style.borderRadius = 'var(--radius-md)';
@@ -2783,7 +2795,8 @@ class ChatUI {
       this._preselectFormat(file.name, 'image');
     } else if (file.type.startsWith('video/')) {
       const video = document.createElement('video');
-      video.src = URL.createObjectURL(file);
+      this.convertPreviewUrl = URL.createObjectURL(file);
+      video.src = this.convertPreviewUrl;
       video.style.maxWidth = '200px';
       video.style.maxHeight = '150px';
       video.style.borderRadius = 'var(--radius-md)';
@@ -2793,7 +2806,8 @@ class ChatUI {
       this._preselectFormat(file.name, 'video');
     } else if (file.type.startsWith('audio/')) {
       const audio = document.createElement('audio');
-      audio.src = URL.createObjectURL(file);
+      this.convertPreviewUrl = URL.createObjectURL(file);
+      audio.src = this.convertPreviewUrl;
       audio.controls = true;
       this.convertPreview.appendChild(audio);
       
@@ -2871,6 +2885,7 @@ class ChatUI {
     if (this.convertModal) {
       this.convertModal.classList.remove('active');
     }
+    this._clearConvertPreview();
     this.pendingConvertFile = null;
   }
   
