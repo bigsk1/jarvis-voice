@@ -279,6 +279,9 @@ else
         # ============================================================================
         # OPENAI TTS (default)
         # ============================================================================
+        OPENAI_TTS_CONNECT_TIMEOUT="${OPENAI_TTS_CONNECT_TIMEOUT:-15}"
+        OPENAI_TTS_TIMEOUT="${OPENAI_TTS_TIMEOUT:-180}"
+
         # Build TTS JSON with same settings as main responses (consistent voice)
         TTS_JSON=$(jq -n \
           --arg model "$TTS_MODEL" \
@@ -287,12 +290,35 @@ else
           --arg instructions "$TTS_INSTRUCTIONS" \
           '{model:$model, voice:$voice, input:$input, instructions:$instructions}')
 
-        # Generate TTS audio
-        curl -s -X POST "https://api.openai.com/v1/audio/speech" \
+        # Generate TTS audio with bounded network waits and explicit HTTP errors.
+        TEMP_AUDIO="/tmp/jarvis-status-openai-$$.raw"
+        if HTTP_CODE=$(curl -sS -w "%{http_code}" -o "$TEMP_AUDIO" \
+          --connect-timeout "$OPENAI_TTS_CONNECT_TIMEOUT" \
+          --max-time "$OPENAI_TTS_TIMEOUT" \
+          -X POST "https://api.openai.com/v1/audio/speech" \
           -H "Authorization: Bearer $OPENAI_API_KEY" \
           -H "Content-Type: application/json" \
-          -d "$TTS_JSON" \
-          | ffmpeg -hide_banner -loglevel error -i - -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null
+          -d "$TTS_JSON"); then
+            :
+        else
+            CURL_STATUS=$?
+            echo "⚠️ OpenAI TTS request failed (curl exit $CURL_STATUS)" >&2
+            rm -f "$TEMP_AUDIO"
+            exit 1
+        fi
+
+        if [ "$HTTP_CODE" != "200" ]; then
+            echo "⚠️ OpenAI TTS failed (HTTP $HTTP_CODE)" >&2
+            rm -f "$TEMP_AUDIO"
+            exit 1
+        fi
+
+        if ! ffmpeg -hide_banner -loglevel error -i "$TEMP_AUDIO" -ar "$RATE" -ac 2 -f wav -y "$OUTFILE" 2>/dev/null; then
+            echo "⚠️ OpenAI TTS audio decode failed" >&2
+            rm -f "$TEMP_AUDIO"
+            exit 1
+        fi
+        rm -f "$TEMP_AUDIO"
     fi
 
     # Check if audio was generated
