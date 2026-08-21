@@ -1,6 +1,29 @@
 #!/bin/bash
 # Shared native TTS playback helpers for Jarvis shell TTS scripts.
 
+jarvis_tts_http_to_file() {
+    local provider_label="$1"
+    local output_file="$2"
+    local connect_timeout="$3"
+    local request_timeout="$4"
+    shift 4
+
+    local http_code
+    local curl_status
+    if http_code=$(curl -sS -w "%{http_code}" -o "$output_file" \
+        --connect-timeout "$connect_timeout" \
+        --max-time "$request_timeout" \
+        "$@"); then
+        printf '%s' "$http_code"
+        return 0
+    else
+        curl_status=$?
+        echo "⚠️ ${provider_label} request failed (curl exit ${curl_status})" >&2
+        rm -f "$output_file"
+        return "$curl_status"
+    fi
+}
+
 jarvis_tts_require_audio_file() {
     local audio_file="$1"
     if [ ! -f "$audio_file" ] || [ ! -s "$audio_file" ]; then

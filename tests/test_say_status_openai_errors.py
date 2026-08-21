@@ -1,4 +1,4 @@
-"""Regression coverage for native OpenAI status-TTS request failures."""
+"""Regression coverage for native status-TTS request failures."""
 
 from __future__ import annotations
 
@@ -6,6 +6,8 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -17,6 +19,7 @@ def _write_executable(path: Path, content: str) -> None:
 
 def _isolated_status_script(
     tmp_path: Path,
+    provider: str = "openai",
 ) -> tuple[Path, dict[str, str], Path, Path, Path]:
     checkout = tmp_path / "checkout"
     bin_dir = checkout / "bin"
@@ -30,17 +33,22 @@ def _isolated_status_script(
     shutil.copy2(ROOT / "bin" / "tts-common.sh", bin_dir / "tts-common.sh")
     shutil.copy2(ROOT / "lib" / "config_loader.sh", lib_dir / "config_loader.sh")
     (config_dir / "cloud.env").write_text(
-        """TTS_PROVIDER=openai
+        f"""TTS_PROVIDER={provider}
 OPENAI_API_KEY=test-key
+XAI_API_KEY=test-xai-key
 TTS_MODEL=gpt-4o-mini-tts
 VOICE=onyx
 TTS_INSTRUCTIONS=neutral
+ELEVENLABS_API_KEY=test-elevenlabs-key
+ELEVENLABS_TTS_VOICE=test-voice
+QWEN3_TTS_URL=http://qwen.test/v1/audio/speech
+KOKORO_TTS_URL=http://kokoro.test/v1/audio/speech
 RATE=48000
 OUT_DEV=default
 STATUS_CACHE_ENABLED=false
 STATUS_SILENCE_PAD_MS=0
-OPENAI_TTS_CONNECT_TIMEOUT=7
-OPENAI_TTS_TIMEOUT=37
+STATUS_TTS_CONNECT_TIMEOUT=5
+STATUS_TTS_TIMEOUT=23
 """,
         encoding="utf-8",
     )
@@ -109,8 +117,61 @@ exit 1
 
 def _assert_request_deadlines(curl_args: Path) -> None:
     args = curl_args.read_text(encoding="utf-8").splitlines()
-    assert args[args.index("--connect-timeout") + 1] == "7"
-    assert args[args.index("--max-time") + 1] == "37"
+    assert args[args.index("--connect-timeout") + 1] == "5"
+    assert args[args.index("--max-time") + 1] == "23"
+
+
+@pytest.mark.parametrize(
+    ("provider", "provider_label"),
+    [
+        ("qwen3-tts", "Qwen3-TTS"),
+        ("elevenlabs", "ElevenLabs TTS"),
+        ("kokoro", "Kokoro TTS"),
+    ],
+)
+def test_status_tts_providers_share_request_deadlines_and_transport_errors(
+    tmp_path, provider, provider_label
+):
+    script, env, curl_args, curl_output, ffmpeg_log = _isolated_status_script(
+        tmp_path, provider
+    )
+
+    result = subprocess.run(
+        [str(script), "status check", "true"],
+        env={**env, "FAKE_CURL_MODE": "timeout"},
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert f"{provider_label} request failed (curl exit 28)" in result.stderr
+    args = curl_args.read_text(encoding="utf-8").splitlines()
+    assert args[args.index("--connect-timeout") + 1] == "5"
+    assert args[args.index("--max-time") + 1] == "23"
+    response_path = curl_output.read_text(encoding="utf-8")
+    assert response_path
+    assert not Path(response_path).exists()
+    assert not ffmpeg_log.exists()
+
+
+def test_xai_status_tts_uses_shared_request_deadlines(tmp_path):
+    script, env, curl_args, curl_output, _ = _isolated_status_script(tmp_path, "xai")
+
+    result = subprocess.run(
+        [str(script), "status check", "true"],
+        env={**env, "FAKE_CURL_MODE": "timeout"},
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert "xAI TTS request failed (curl exit 28)" in result.stderr
+    args = curl_args.read_text(encoding="utf-8").splitlines()
+    assert args[args.index("--connect-timeout") + 1] == "5"
+    assert args[args.index("--max-time") + 1] == "23"
+    response_path = curl_output.read_text(encoding="utf-8")
+    assert response_path
+    assert not Path(response_path).exists()
 
 
 def test_openai_status_tts_reports_http_error_and_cleans_response(tmp_path):

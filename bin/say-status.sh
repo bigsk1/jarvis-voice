@@ -41,6 +41,8 @@ STATUS_CACHE_ENABLED="${STATUS_CACHE_ENABLED:-true}"
 CACHE_DIR="${HOME}/.cache/jarvis/status-tts"
 SILENCE_PAD_MS="${STATUS_SILENCE_PAD_MS:-250}"
 STATUS_ELEVENLABS_TTS_MODEL="${ELEVENLABS_STATUS_TTS_MODEL:-${ELEVENLABS_TTS_MODEL:-}}"
+STATUS_TTS_CONNECT_TIMEOUT="${STATUS_TTS_CONNECT_TIMEOUT:-15}"
+STATUS_TTS_TIMEOUT="${STATUS_TTS_TIMEOUT:-25}"
 
 # Create cache dir if caching enabled
 if [ "$STATUS_CACHE_ENABLED" = "true" ]; then
@@ -103,10 +105,13 @@ else
         
         # Call Qwen3-TTS API
         TEMP_AUDIO="/tmp/jarvis-status-$$.${QWEN3_TTS_FORMAT}"
-        HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TEMP_AUDIO" \
+        if ! HTTP_CODE=$(jarvis_tts_http_to_file "Qwen3-TTS" "$TEMP_AUDIO" \
+          "$STATUS_TTS_CONNECT_TIMEOUT" "$STATUS_TTS_TIMEOUT" \
           -X POST "$QWEN3_TTS_URL" \
           -H "Content-Type: application/json" \
-          -d "$TTS_JSON")
+          -d "$TTS_JSON"); then
+            exit 1
+        fi
         
         if [ "$HTTP_CODE" != "200" ]; then
             echo "⚠️ Qwen3-TTS failed (HTTP $HTTP_CODE)" >&2
@@ -175,11 +180,14 @@ else
         
         # Call ElevenLabs TTS API
         TEMP_MP3="/tmp/jarvis-status-$$.mp3"
-        HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TEMP_MP3" \
+        if ! HTTP_CODE=$(jarvis_tts_http_to_file "ElevenLabs TTS" "$TEMP_MP3" \
+          "$STATUS_TTS_CONNECT_TIMEOUT" "$STATUS_TTS_TIMEOUT" \
           -X POST "https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_TTS_VOICE}" \
           -H "xi-api-key: $ELEVENLABS_API_KEY" \
           -H "Content-Type: application/json" \
-          -d "$TTS_JSON")
+          -d "$TTS_JSON"); then
+            exit 1
+        fi
         
         if [ "$HTTP_CODE" != "200" ]; then
             echo "⚠️ ElevenLabs TTS failed (HTTP $HTTP_CODE)" >&2
@@ -201,7 +209,6 @@ else
         XAI_TTS_SAMPLE_RATE="${XAI_TTS_SAMPLE_RATE:-24000}"
         XAI_TTS_BIT_RATE="${XAI_TTS_BIT_RATE:-128000}"
         XAI_TTS_MAX_CHARS="${XAI_TTS_MAX_CHARS:-5000}"
-        XAI_TTS_TIMEOUT="${XAI_TTS_TIMEOUT:-180}"
 
         if [ -z "$XAI_API_KEY" ]; then
             echo "❌ XAI_API_KEY not set" >&2
@@ -228,13 +235,14 @@ else
           }')
 
         TEMP_AUDIO="/tmp/jarvis-status-$$.${XAI_TTS_CODEC}"
-        HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TEMP_AUDIO" \
-          --connect-timeout 15 \
-          --max-time "$XAI_TTS_TIMEOUT" \
+        if ! HTTP_CODE=$(jarvis_tts_http_to_file "xAI TTS" "$TEMP_AUDIO" \
+          "$STATUS_TTS_CONNECT_TIMEOUT" "$STATUS_TTS_TIMEOUT" \
           -X POST "https://api.x.ai/v1/tts" \
           -H "Authorization: Bearer $XAI_API_KEY" \
           -H "Content-Type: application/json" \
-          -d "$TTS_JSON")
+          -d "$TTS_JSON"); then
+            exit 1
+        fi
 
         if [ "$HTTP_CODE" != "200" ]; then
             echo "⚠️ xAI TTS failed (HTTP $HTTP_CODE)" >&2
@@ -262,10 +270,13 @@ else
           '{model:$model, voice:$voice, input:$input, speed:($speed|tonumber)}')
 
         TEMP_RAW="/tmp/jarvis-status-kokoro-$$.rawaudio"
-        HTTP_CODE=$(curl -sS -w "%{http_code}" -o "$TEMP_RAW" \
+        if ! HTTP_CODE=$(jarvis_tts_http_to_file "Kokoro TTS" "$TEMP_RAW" \
+          "$STATUS_TTS_CONNECT_TIMEOUT" "$STATUS_TTS_TIMEOUT" \
           -X POST "$KOKORO_URL" \
           -H "Content-Type: application/json" \
-          -d "$TTS_JSON")
+          -d "$TTS_JSON"); then
+            exit 1
+        fi
 
         if [ "$HTTP_CODE" != "200" ]; then
             echo "⚠️ Kokoro TTS failed (HTTP $HTTP_CODE)" >&2
@@ -279,9 +290,6 @@ else
         # ============================================================================
         # OPENAI TTS (default)
         # ============================================================================
-        OPENAI_TTS_CONNECT_TIMEOUT="${OPENAI_TTS_CONNECT_TIMEOUT:-15}"
-        OPENAI_TTS_TIMEOUT="${OPENAI_TTS_TIMEOUT:-180}"
-
         # Build TTS JSON with same settings as main responses (consistent voice)
         TTS_JSON=$(jq -n \
           --arg model "$TTS_MODEL" \
@@ -292,18 +300,12 @@ else
 
         # Generate TTS audio with bounded network waits and explicit HTTP errors.
         TEMP_AUDIO="/tmp/jarvis-status-openai-$$.raw"
-        if HTTP_CODE=$(curl -sS -w "%{http_code}" -o "$TEMP_AUDIO" \
-          --connect-timeout "$OPENAI_TTS_CONNECT_TIMEOUT" \
-          --max-time "$OPENAI_TTS_TIMEOUT" \
+        if ! HTTP_CODE=$(jarvis_tts_http_to_file "OpenAI TTS" "$TEMP_AUDIO" \
+          "$STATUS_TTS_CONNECT_TIMEOUT" "$STATUS_TTS_TIMEOUT" \
           -X POST "https://api.openai.com/v1/audio/speech" \
           -H "Authorization: Bearer $OPENAI_API_KEY" \
           -H "Content-Type: application/json" \
           -d "$TTS_JSON"); then
-            :
-        else
-            CURL_STATUS=$?
-            echo "⚠️ OpenAI TTS request failed (curl exit $CURL_STATUS)" >&2
-            rm -f "$TEMP_AUDIO"
             exit 1
         fi
 

@@ -193,6 +193,8 @@ STATUS_UPDATE_INTERVAL=18
 STATUS_UPDATE_DEBOUNCE_MS=250
 STATUS_CACHE_ENABLED=true
 STATUS_LOGGING_ENABLED=true
+STATUS_TTS_CONNECT_TIMEOUT=15
+STATUS_TTS_TIMEOUT=25
 
 # Optional ElevenLabs split: expressive final answers, fast/cheaper statuses
 ELEVENLABS_TTS_MODEL=eleven_v3
@@ -215,6 +217,8 @@ Timing guidance:
 - Increase the debounce if fast tools still begin unnecessary speech.
 - Reduce the deadline if static fallback should win sooner.
 - Increase the interval if long tasks feel too chatty.
+- Keep the shared native status-TTS request timeout below the caller's
+  30-second supervision window.
 - Do not increase the deadline to improve phrase quality: it never blocks the
   tool now, but a long deadline makes useful fallback arrive later.
 
