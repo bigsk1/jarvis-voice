@@ -584,6 +584,12 @@ class AnthropicProvider(LLMProvider):
             }
             if tools_with_cache:
                 api_params["tools"] = tools_with_cache
+                # Jarvis executes client-side tools sequentially across router turns.
+                # Anthropic otherwise permits multiple tool_use blocks by default.
+                api_params["tool_choice"] = {
+                    "type": "auto",
+                    "disable_parallel_tool_use": True,
+                }
             
             # Add extra headers if any (reserved for future provider requirements)
             if extra_headers:
@@ -687,21 +693,32 @@ class AnthropicProvider(LLMProvider):
                         "SERVER_SIDE_TOOL_WEB_SEARCH": web_search_requests
                     }
             
-            # Check response type
-            # Anthropic may return BOTH text AND tool_use blocks
-            # Prioritize tool_use if present
-            tool_use_block = None
-            
-            for block in response.content:
-                if block.type == "tool_use":
-                    tool_use_block = block
-            
+            # Anthropic may return BOTH text AND tool_use blocks. Parallel tool
+            # use is disabled above, but retain a visible deterministic fallback
+            # if a provider response ever violates that single-call contract.
+            tool_use_blocks = [
+                block
+                for block in response.content
+                if getattr(block, "type", None) == "tool_use"
+            ]
+            if len(tool_use_blocks) > 1:
+                names = [getattr(block, "name", "unknown") for block in tool_use_blocks]
+                print(
+                    "WARNING: Anthropic returned multiple client-side tool calls; "
+                    f"Jarvis executes one per router turn, taking first deterministically: {names}",
+                    file=sys.stderr,
+                )
+
             # Return tool use if found (text is just explanatory)
-            if tool_use_block:
-                return None, {
+            if tool_use_blocks:
+                tool_use_block = tool_use_blocks[0]
+                payload = {
                     "name": tool_use_block.name,
-                    "arguments": tool_use_block.input
-                }, usage_info, thinking_text
+                    "arguments": tool_use_block.input,
+                }
+                if len(tool_use_blocks) > 1:
+                    payload["additional_tool_call_count"] = len(tool_use_blocks) - 1
+                return None, payload, usage_info, thinking_text
             
             # Otherwise return text response
             text_content = self._collect_anthropic_text_blocks(response.content)

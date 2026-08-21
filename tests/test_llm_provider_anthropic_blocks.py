@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Regression tests for Anthropic response block handling."""
 
+import io
 import sys
 import unittest
 from pathlib import Path
@@ -15,6 +16,89 @@ from llm_provider import AnthropicProvider
 
 
 class AnthropicBlockHandlingTests(unittest.TestCase):
+    def test_tool_requests_disable_parallel_tool_use(self):
+        captured = {}
+
+        def create(**params):
+            captured.update(params)
+            return SimpleNamespace(
+                usage=None,
+                content=[
+                    SimpleNamespace(
+                        type="tool_use",
+                        name="remember",
+                        input={"fact": "Prefers tea"},
+                    )
+                ],
+            )
+
+        provider = AnthropicProvider.__new__(AnthropicProvider)
+        provider.model = "claude-test"
+        provider.enable_search = False
+        provider.client = SimpleNamespace(messages=SimpleNamespace(create=create))
+
+        _text, tool_call, _usage, _thinking = provider.chat_with_tools(
+            [{"role": "user", "content": "Remember that I prefer tea."}],
+            [
+                {
+                    "name": "remember",
+                    "description": "Save a fact.",
+                    "input_schema": {"type": "object"},
+                }
+            ],
+        )
+
+        self.assertEqual(
+            captured["tool_choice"],
+            {"type": "auto", "disable_parallel_tool_use": True},
+        )
+        self.assertEqual(tool_call["name"], "remember")
+
+    def test_multiple_tool_blocks_warn_and_keep_first_for_sequential_router(self):
+        provider = AnthropicProvider.__new__(AnthropicProvider)
+        provider.model = "claude-test"
+        provider.enable_search = False
+        provider.client = SimpleNamespace(
+            messages=SimpleNamespace(
+                create=lambda **_: SimpleNamespace(
+                    usage=None,
+                    content=[
+                        SimpleNamespace(
+                            type="tool_use",
+                            name="remember",
+                            input={"fact": "Prefers tea"},
+                        ),
+                        SimpleNamespace(
+                            type="tool_use",
+                            name="calendar",
+                            input={"action": "list"},
+                        ),
+                    ],
+                )
+            )
+        )
+
+        with patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            _text, tool_call, _usage, _thinking = provider.chat_with_tools(
+                [{"role": "user", "content": "Remember this and check my calendar."}],
+                [
+                    {
+                        "name": "remember",
+                        "description": "Save a fact.",
+                        "input_schema": {"type": "object"},
+                    },
+                    {
+                        "name": "calendar",
+                        "description": "List calendar events.",
+                        "input_schema": {"type": "object"},
+                    },
+                ],
+            )
+
+        self.assertEqual(tool_call["name"], "remember")
+        self.assertEqual(tool_call["additional_tool_call_count"], 1)
+        self.assertIn("Anthropic returned multiple client-side tool calls", stderr.getvalue())
+
     @patch.dict("os.environ", {"ANTHROPIC_EFFORT": ""})
     def test_fable_debug_thinking_uses_catalog_adaptive_config(self):
         captured = {}
