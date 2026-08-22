@@ -19,6 +19,18 @@ spec.loader.exec_module(text_summarizer)
 
 
 class TextSummarizerTests(unittest.TestCase):
+    def test_llm_prompt_uses_stable_helper_task_identifier(self):
+        system_prompt, user_prompt = text_summarizer.llm_summary_prompt(
+            "Atlas 3.8.1 remains active.",
+            max_words=30,
+            style="concise",
+            focus="",
+            source_label="test input",
+        )
+
+        self.assertTrue(system_prompt.startswith("TASK=text_summary."))
+        self.assertIn("Atlas 3.8.1 remains active.", user_prompt)
+
     def test_short_summary_defaults_to_extractive(self):
         text = (
             "Artificial intelligence is transforming the world. "

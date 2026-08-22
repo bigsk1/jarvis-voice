@@ -222,7 +222,7 @@ The helper model also runs on an external Ollama daemon; it is not installed in
 the Jarvis image. Pull it on the daemon first:
 
 ```bash
-ollama pull bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1
+ollama pull bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v3
 ```
 
 When `JARVIS_HELPER_LLM_BASE_URL` is unset, the helper uses the effective

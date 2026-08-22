@@ -18,6 +18,7 @@ from typing import Any
 # Add lib to path
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import get_config_value, get_int
+from helper_task_prompts import STATUS_REWRITE_INSTRUCTION
 from ollama_utils import (
     get_ollama_execution_class,
     get_ollama_request_urls,
@@ -27,10 +28,6 @@ from ollama_utils import (
 
 _STATUS_CONTEXT_MAX_CHARS = 500
 _STATUS_CONTEXT_TRUNCATED = "... [truncated]"
-_HELPER_STATUS_INSTRUCTION = (
-    "Rewrite only as a 3-8 word progress phrase. Do not answer the task, "
-    "invent facts, claim completion unless stated, or use labels."
-)
 
 
 class StatusSummarizer:
@@ -303,7 +300,7 @@ Generate a natural 5-8 word status update:"""
             'complete': 'Finishing',
         }.get(event_type, 'Working on')
         state = f"{phase} {tool_label}. {context}"
-        return f"{_HELPER_STATUS_INSTRUCTION}\nSTATE: {state}\nPHRASE:"
+        return f"{STATUS_REWRITE_INSTRUCTION}\nSTATE: {state}\nPHRASE:"
     
     def _call_openai_compatible(self, prompt: str) -> str | None:
         """Call OpenAI-compatible API (OpenAI, xAI)."""

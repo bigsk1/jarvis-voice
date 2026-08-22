@@ -208,3 +208,6 @@ def test_stash_helper_stays_on_loopback_in_cloud_mode(tmp_path, monkeypatch):
     assert request.kwargs["json"]["model"] == "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1"
     assert request.kwargs["json"]["think"] is False
     assert request.kwargs["json"]["keep_alive"] == "30m"
+    assert request.kwargs["json"]["messages"][0]["content"].startswith(
+        "TASK=stash_summary."
+    )

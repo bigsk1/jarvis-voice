@@ -307,7 +307,7 @@ The optional Jarvis helper model uses the same external daemon by default.
 Pull it on that daemon:
 
 ```bash
-ollama pull bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1
+ollama pull bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v3
 ```
 
 Then opt in through the selected mode ENV, or use the commented

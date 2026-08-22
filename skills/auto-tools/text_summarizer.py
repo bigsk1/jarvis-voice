@@ -12,6 +12,7 @@ from typing import Any
 # IMPORTANT: This tool lives in skills/auto-tools/, so go up 2 levels to reach lib/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lib'))
 from config_loader import load_config, get_config_value
+from helper_task_prompts import TEXT_SUMMARY_SYSTEM_PROMPT
 from stash_helper import parse_stash_ref, resolve_file_path
 
 
@@ -319,11 +320,7 @@ def llm_summary_prompt(
     }.get(style, "Use a compact paragraph or short bullets.")
 
     focus_line = f"\nFocus especially on: {focus}" if focus else ""
-    system_prompt = (
-        "You are a precise summarizer for Jarvis. Summarize only the provided text. "
-        "Preserve important names, numbers, dates, prices, claims, caveats, and conclusions. "
-        "Do not invent facts. If the text is uncertain, keep that uncertainty."
-    )
+    system_prompt = TEXT_SUMMARY_SYSTEM_PROMPT
     user_prompt = f"""Summarize this text from {source_label}{chunk_label} in no more than {max_words} words.
 {style_hint}{focus_line}
 

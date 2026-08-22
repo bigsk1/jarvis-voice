@@ -2515,7 +2515,7 @@ def create_configured_provider(
         # An explicit per-call model override is still honored for diagnostics.
         model = explicit_model or get_config_value(
             "JARVIS_HELPER_LLM_MODEL",
-            "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1",
+            "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v3",
         )
         device = str(
             get_config_value("JARVIS_HELPER_LLM_DEVICE", "auto") or "auto"

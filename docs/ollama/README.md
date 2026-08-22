@@ -148,7 +148,7 @@ differs from the embedding daemon, then opt in each role explicitly:
 ```bash
 # Optional; defaults to OLLAMA_BASE_URL.
 # JARVIS_HELPER_LLM_BASE_URL="http://127.0.0.1:11434"
-JARVIS_HELPER_LLM_MODEL="bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1"
+JARVIS_HELPER_LLM_MODEL="bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v3"
 # Device options: auto or cpu
 JARVIS_HELPER_LLM_DEVICE="auto"
 JARVIS_HELPER_LLM_KEEP_ALIVE="30m"
@@ -165,6 +165,12 @@ uses Ollama Cloud routing. Only its daemon URL falls back to `OLLAMA_BASE_URL`;
 an explicit `JARVIS_HELPER_LLM_BASE_URL` always wins. Status generation retains
 its bounded background deadline and static fallback; stash and long-text
 summaries retain their existing truncation and extractive fallbacks.
+
+Prompt contract/versioning: a published helper fine-tune is coupled to the exact
+`TASK=` contracts in `lib/helper_task_prompts.py`. Do not edit that module in
+place after publishing the model. Introduce a new versioned prompt contract and
+helper-model tag, then migrate production call sites, training data, and
+benchmarks together.
 
 Compare forced CPU with Ollama's automatic accelerator selection:
 

@@ -235,7 +235,7 @@ def test_helper_provider_defaults_to_versioned_registry_model(
     )
 
     assert selected == "helper"
-    assert model == "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1"
+    assert model == "bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v3"
     assert provider.base_url == "http://ollama.test:11434"
 
 

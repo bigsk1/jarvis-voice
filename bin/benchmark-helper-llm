@@ -6,16 +6,41 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
 import statistics
 import time
+from pathlib import Path
 from typing import Any
 
 import requests
 
 
-STATUS_INSTRUCTION = (
-    "Rewrite only as a 3-8 word progress phrase. Do not answer the task, invent "
-    "facts, claim completion unless stated, or use labels."
+ROOT = Path(__file__).resolve().parents[1]
+LIB_DIR = ROOT / "lib"
+if str(LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(LIB_DIR))
+
+from helper_task_prompts import (  # noqa: E402
+    STATUS_REWRITE_INSTRUCTION,
+    STASH_SUMMARY_SYSTEM_PROMPT,
+    TEXT_SUMMARY_SYSTEM_PROMPT,
+)
+
+
+SUMMARY_TASKS = ("stash_summary", "text_summary")
+
+# Evaluation-only V3 training contract. Classification is not currently an
+# enabled Jarvis Helper production role, so it intentionally remains outside
+# lib/helper_task_prompts.py.
+CLASSIFICATION_EVAL_SYSTEM_PROMPT = (
+    "TASK=content_classification. Classify the meaning of the input, not its "
+    "sentence form. artifact is a file, upload, document, image, recording, "
+    "export, or stash item. preference is a user choice for future or repeated "
+    "behavior. fact is durable information about the world or a system. "
+    "transient is explicitly limited to the current request, session, run, "
+    "turn, or short-lived scratch work. An instruction is a preference unless "
+    "it explicitly has a temporary boundary. Return only the schema-conforming "
+    "JSON object."
 )
 
 STATUS_CASES = [
@@ -71,6 +96,29 @@ def percentile(values: list[float], fraction: float) -> float:
 
 def normalize(text: str) -> str:
     return " ".join((text or "").strip().strip('"').strip("'").split())
+
+
+def build_summary_messages(task: str, text: str) -> list[dict[str, str]]:
+    """Render a smoke case with the corresponding deployed prompt shape."""
+    if task == "stash_summary":
+        system_prompt = STASH_SUMMARY_SYSTEM_PROMPT
+        user_prompt = (
+            'Summarize this content from "benchmark.txt" in under 1200 characters, '
+            f"preserving all key facts:\n\n{text[:8000]}"
+        )
+    elif task == "text_summary":
+        system_prompt = TEXT_SUMMARY_SYSTEM_PROMPT
+        user_prompt = (
+            "Summarize this text from benchmark text in no more than 160 words.\n"
+            "Use a compact paragraph or short bullets.\n\n"
+            f"TEXT:\n{text}\n"
+        )
+    else:
+        raise ValueError(f"Unsupported summary task: {task}")
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
 
 
 def request_chat(
@@ -152,7 +200,10 @@ def run_suite(base_url: str, model: str, device: str) -> dict[str, Any]:
             [
                 {
                     "role": "user",
-                    "content": f"{STATUS_INSTRUCTION}\nSTATE: {case['state']}\nPHRASE:",
+                    "content": (
+                        f"{STATUS_REWRITE_INSTRUCTION}\n"
+                        f"STATE: {case['state']}\nPHRASE:"
+                    ),
                 },
             ],
             device=device,
@@ -178,27 +229,35 @@ def run_suite(base_url: str, model: str, device: str) -> dict[str, Any]:
 
     retained = 0
     total_facts = 0
-    for case in SUMMARY_CASES:
-        text, raw = request_chat(
-            base_url,
-            model,
-            [
-                {"role": "system", "content": "Summarize precisely. Preserve every name, number, date, and conclusion. Return only the summary."},
-                {"role": "user", "content": case["text"]},
-            ],
-            device=device,
-            max_tokens=180,
-            temperature=0.2,
-        )
-        found = [fact for fact in case["facts"] if fact.lower() in text.lower()]
-        retained += len(found)
-        total_facts += len(case["facts"])
-        outputs["summaries"].append(
-            {"text": text, "facts_retained": len(found), "facts_total": len(case["facts"])}
-        )
-        latencies.append(raw["wall_ms"])
-        role_latencies["summary"].append(raw["wall_ms"])
-        decode_rates.append(raw["decode_tokens_per_second"])
+    retained_by_summary_task = {
+        task: {"retained": 0, "total": 0} for task in SUMMARY_TASKS
+    }
+    for task in SUMMARY_TASKS:
+        for case in SUMMARY_CASES:
+            text, raw = request_chat(
+                base_url,
+                model,
+                build_summary_messages(task, case["text"]),
+                device=device,
+                max_tokens=180,
+                temperature=0.2,
+            )
+            found = [fact for fact in case["facts"] if fact.lower() in text.lower()]
+            retained += len(found)
+            total_facts += len(case["facts"])
+            retained_by_summary_task[task]["retained"] += len(found)
+            retained_by_summary_task[task]["total"] += len(case["facts"])
+            outputs["summaries"].append(
+                {
+                    "task": task,
+                    "text": text,
+                    "facts_retained": len(found),
+                    "facts_total": len(case["facts"]),
+                }
+            )
+            latencies.append(raw["wall_ms"])
+            role_latencies["summary"].append(raw["wall_ms"])
+            decode_rates.append(raw["decode_tokens_per_second"])
 
     json_valid = 0
     exact = 0
@@ -209,13 +268,7 @@ def run_suite(base_url: str, model: str, device: str) -> dict[str, Any]:
             [
                 {
                     "role": "system",
-                    "content": (
-                        "Classify the input using these definitions: artifact is a file, upload, "
-                        "document, image, or stash item; preference is a user choice for future "
-                        "behavior; fact is durable information about the world or a system; "
-                        "transient is temporary, session-only, scratch, or short-lived. Return "
-                        "only the schema-conforming JSON object."
-                    ),
+                    "content": CLASSIFICATION_EVAL_SYSTEM_PROMPT,
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -261,6 +314,10 @@ def run_suite(base_url: str, model: str, device: str) -> dict[str, Any]:
         "quality": {
             "status_format_pass_rate": round(status_valid / len(STATUS_CASES), 3),
             "summary_fact_retention": round(retained / total_facts, 3),
+            "summary_fact_retention_by_task": {
+                task: round(counts["retained"] / counts["total"], 3)
+                for task, counts in retained_by_summary_task.items()
+            },
             "classification_json_valid_rate": round(json_valid / len(CLASSIFICATION_CASES), 3),
             "classification_exact_rate": round(exact / len(CLASSIFICATION_CASES), 3),
         },
@@ -273,7 +330,7 @@ def main() -> int:
     parser.add_argument("--base-url", default="http://127.0.0.1:11434")
     parser.add_argument(
         "--model",
-        default="bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v1",
+        default="bigsk1/jarvis-helper:minicpm5-1b-q4_k_m-v3",
     )
     parser.add_argument("--devices", nargs="+", choices=("cpu", "auto"), default=("cpu", "auto"))
     args = parser.parse_args()

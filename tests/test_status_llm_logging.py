@@ -93,6 +93,7 @@ def test_helper_prompt_is_a_compact_rewrite_contract():
         "start",
     )
 
+    assert prompt.startswith("TASK=status_rewrite.")
     assert "Rewrite only as a 3-8 word progress phrase" in prompt
     assert "STATE: Starting weather. Getting Portland weather" in prompt
     assert prompt.endswith("PHRASE:")

@@ -21,6 +21,7 @@ from pathlib import Path
 # Add lib to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
+from helper_task_prompts import STASH_SUMMARY_SYSTEM_PROMPT
 from paths import assert_not_restricted_read_path
 from stash_helper import (
     open_space, get_space, list_spaces, cleanup_expired,
@@ -120,10 +121,7 @@ def _summarize_content_with_llm_and_usage(
     Uses the same auth routing as workflows and text_summarizer, including xAI
     Grok CLI OAuth and Ollama Cloud signed-in daemon access.
     """
-    system_prompt = """You are a precise summarizer. Extract and preserve ALL key facts, numbers, dates, names, and conclusions from the content. 
-Output a dense summary that captures the essential information for future reference.
-Do NOT add commentary or opinions - just the facts.
-Return only the summary. Do not include confidence scores, control tags, labels, or preambles."""
+    system_prompt = STASH_SUMMARY_SYSTEM_PROMPT
 
     user_prompt = f"""Summarize this content from "{file_name}" in under {max_length} characters, preserving all key facts:
 
