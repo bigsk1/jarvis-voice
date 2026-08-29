@@ -146,10 +146,18 @@ file still load. YAML cannot inject arbitrary provider request fields.
 
 `JARVIS_THINKING_EFFORT` (or the per-mode Web setting) selects a declared level.
 The same resolver can derive a profile from audited catalog metadata for
-providers such as xAI and Anthropic. Unsupported values are never sent. Unknown
+providers such as OpenAI, xAI, and Anthropic. A valid model YAML profile always
+takes precedence over catalog metadata, including its declared levels,
+`default_level`, and disable behavior. Unsupported values are never sent. Unknown
 or unprofiled models retain their existing provider behavior and
 provider-specific variables such as `OPENAI_REASONING_EFFORT`,
 `XAI_REASONING_EFFORT`, and `ANTHROPIC_EFFORT`.
+
+For providers such as OpenAI where traces are not exposed, `auto` still omits
+the generic effort request (or allows the provider-specific legacy setting).
+A YAML `default_level` keeps its trace-visible meaning; it does not silently
+turn `auto` into an explicit OpenAI effort. Explicit Web/env selections are
+still validated against the YAML profile before the catalog profile.
 
 Thinking generation and trace visibility are separate: a required-thinking
 model can run at its safe minimum while Jarvis discards the trace unless

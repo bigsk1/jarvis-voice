@@ -980,11 +980,48 @@ class WebSettingsModeTests(unittest.TestCase):
         from server.services.settings_manager import _model_thinking_effort_options
 
         options, profiled = _model_thinking_effort_options(
-            "openai", "gpt-5.4", "cloud"
+            "openai", "gpt-4o-mini", "cloud"
         )
 
         self.assertFalse(profiled)
         self.assertEqual(options, [])
+
+    def test_openai_web_effort_options_follow_selected_model_profile(self):
+        from server.services.settings_manager import _model_thinking_effort_options
+
+        gpt_56, profiled_56 = _model_thinking_effort_options(
+            "openai", "gpt-5.6-sol", "cloud"
+        )
+        gpt_5_mini, profiled_5_mini = _model_thinking_effort_options(
+            "openai", "gpt-5-mini", "cloud"
+        )
+
+        self.assertTrue(profiled_56)
+        self.assertEqual(gpt_56, ["none", "low", "medium", "high", "xhigh", "max"])
+        self.assertTrue(profiled_5_mini)
+        self.assertEqual(gpt_5_mini, ["minimal", "low", "medium", "high"])
+
+    def test_openai_yaml_thinking_profile_wins_in_web_options(self):
+        from model_prompt_overrides import ModelThinkingOverride
+        from server.services.settings_manager import _model_thinking_effort_options
+
+        yaml_profile = ModelThinkingOverride(
+            supported=True,
+            disable_supported=False,
+            levels=("low", "high"),
+            default_level="high",
+            disabled_fallback_level="low",
+        )
+        with patch(
+            "model_prompt_overrides.load_model_prompt_override",
+            return_value=MagicMock(thinking=yaml_profile),
+        ):
+            options, profiled = _model_thinking_effort_options(
+                "openai", "gpt-5.6-sol", "cloud"
+            )
+
+        self.assertTrue(profiled)
+        self.assertEqual(options, ["low", "high"])
 
     def test_thinking_effort_validation_uses_effective_model_levels(self):
         from server.services.settings_manager import SettingsManager, SettingsValidationError
@@ -1016,7 +1053,7 @@ class WebSettingsModeTests(unittest.TestCase):
             patch.object(
                 settings,
                 "_effective_llm_selection_for_overrides",
-                return_value=("openai", "gpt-5.4"),
+                return_value=("openai", "gpt-4o-mini"),
             ),
         ):
             with self.assertRaises(SettingsValidationError) as context:
@@ -1049,7 +1086,7 @@ class WebSettingsModeTests(unittest.TestCase):
         ):
             self.assertTrue(
                 settings.save_web_overrides(
-                    {"llm_provider": "openai", "llm_model": "gpt-5.4"}
+                    {"llm_provider": "openai", "llm_model": "gpt-4o-mini"}
                 )
             )
 

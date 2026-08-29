@@ -97,6 +97,135 @@ class OpenAIResponsesAdapterTests(unittest.TestCase):
         ):
             self.assertEqual(provider._openai_reasoning_effort(), "high")
 
+    def test_catalog_profile_preserves_openai_default_for_auto(self) -> None:
+        provider = OpenAIProvider.__new__(OpenAIProvider)
+        provider.model = "gpt-5.6-sol"
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertIsNone(provider._openai_reasoning_effort())
+
+    def test_auto_allows_legacy_openai_effort_fallback(self) -> None:
+        provider = OpenAIProvider.__new__(OpenAIProvider)
+        provider.model = "gpt-5.5"
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "JARVIS_THINKING_EFFORT": "auto",
+                "OPENAI_REASONING_EFFORT": "high",
+            },
+            clear=True,
+        ):
+            self.assertEqual(provider._openai_reasoning_effort(), "high")
+
+    def test_catalog_profiles_map_none_per_selected_openai_model(self) -> None:
+        modern = OpenAIProvider.__new__(OpenAIProvider)
+        modern.model = "gpt-5.4"
+        original = OpenAIProvider.__new__(OpenAIProvider)
+        original.model = "gpt-5-mini"
+
+        with mock.patch.dict(
+            os.environ,
+            {"JARVIS_THINKING_EFFORT": "off"},
+            clear=True,
+        ):
+            self.assertEqual(modern._openai_reasoning_effort(), "none")
+            self.assertEqual(original._openai_reasoning_effort(), "minimal")
+
+    def test_unsupported_generic_effort_is_omitted(self) -> None:
+        cases = (
+            ("gpt-5.5", "max"),
+            ("gpt-5.6-luna", "minimal"),
+            ("gpt-5-mini", "bogus"),
+        )
+
+        for model, effort in cases:
+            with self.subTest(model=model, effort=effort):
+                provider = OpenAIProvider.__new__(OpenAIProvider)
+                provider.model = model
+                with mock.patch.dict(
+                    os.environ,
+                    {"JARVIS_THINKING_EFFORT": effort},
+                    clear=True,
+                ):
+                    self.assertIsNone(provider._openai_reasoning_effort())
+
+    def test_invalid_generic_effort_does_not_fall_back_to_valid_legacy_value(self) -> None:
+        provider = OpenAIProvider.__new__(OpenAIProvider)
+        provider.model = "gpt-5.5"
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "JARVIS_THINKING_EFFORT": "max",
+                "OPENAI_REASONING_EFFORT": "high",
+            },
+            clear=True,
+        ):
+            self.assertIsNone(provider._openai_reasoning_effort())
+
+    def test_gpt_5_4_mini_tool_skip_remains_chat_only(self) -> None:
+        provider = OpenAIProvider.__new__(OpenAIProvider)
+        provider.model = "gpt-5.4-mini"
+
+        with mock.patch.dict(
+            os.environ,
+            {"JARVIS_THINKING_EFFORT": "high"},
+            clear=True,
+        ):
+            self.assertIsNone(
+                provider._openai_reasoning_effort(
+                    uses_tools=True,
+                    use_responses_path=False,
+                )
+            )
+            self.assertEqual(
+                provider._openai_reasoning_effort(
+                    uses_tools=True,
+                    use_responses_path=True,
+                ),
+                "high",
+            )
+
+    def test_yaml_thinking_profile_wins_over_openai_catalog_profile(self) -> None:
+        provider = OpenAIProvider.__new__(OpenAIProvider)
+        provider.model = "gpt-5.6-sol"
+        yaml_profile = ModelThinkingOverride(
+            supported=True,
+            disable_supported=False,
+            levels=("low", "high"),
+            default_level="low",
+            disabled_fallback_level="low",
+        )
+
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch(
+                "model_prompt_overrides.load_model_prompt_override",
+                return_value=SimpleNamespace(thinking=yaml_profile),
+            ),
+        ):
+            selected = provider._model_thinking_profile("openai")
+            resolved = provider._resolve_model_thinking("openai", show_trace=True)
+
+        self.assertIs(selected, yaml_profile)
+        self.assertEqual(selected.levels, ("low", "high"))
+        self.assertEqual(selected.default_level, "low")
+        self.assertEqual(resolved.value, "low")
+        self.assertEqual(resolved.source, "profile_default")
+
+        # OpenAI production requests keep ``auto`` as omission even when YAML
+        # declares a trace-visible default, but an explicit effort is resolved
+        # against the YAML profile rather than the broader catalog profile.
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertIsNone(provider._openai_reasoning_effort())
+        with mock.patch.dict(
+            os.environ,
+            {"JARVIS_THINKING_EFFORT": "high"},
+            clear=True,
+        ):
+            self.assertEqual(provider._openai_reasoning_effort(), "high")
+
     def test_parse_responses_result_text_from_message_blocks(self) -> None:
         out_msg = SimpleNamespace(
             type="message",

@@ -122,6 +122,39 @@ def test_xai_profile_uses_catalog_default_and_safe_minimum_for_required_reasonin
     assert profile.disabled_fallback_level == "low"
 
 
+def test_openai_catalog_profiles_match_audited_model_effort_sets():
+    cases = {
+        "gpt-5.6": (("none", "low", "medium", "high", "xhigh", "max"), "medium"),
+        "gpt-5.5": (("none", "low", "medium", "high", "xhigh"), "medium"),
+        "gpt-5.4-mini": (("none", "low", "medium", "high", "xhigh"), "none"),
+        "gpt-5.2-2025-12-11": (("none", "low", "medium", "high", "xhigh"), "none"),
+        "gpt-5.1": (("none", "low", "medium", "high"), "none"),
+        "gpt-5-mini": (("minimal", "low", "medium", "high"), "medium"),
+        "gpt-5-nano": (("minimal", "low", "medium", "high"), "medium"),
+    }
+
+    for model, (levels, default_level) in cases.items():
+        profile = get_catalog_thinking_profile("openai", model)
+        assert profile is not None, model
+        assert profile.levels == levels, model
+        assert profile.default_level == default_level, model
+        assert profile.disable_supported is ("none" in levels), model
+        assert profile.disabled_fallback_level == (
+            None if "none" in levels else levels[0]
+        ), model
+
+
+def test_openai_non_reasoning_and_unaudited_variants_remain_unprofiled():
+    for model in (
+        "gpt-4o-mini",
+        "gpt-4.1",
+        "gpt-5.2-chat-latest",
+        "gpt-5.1-chat-latest",
+        "gpt-5.1-codex",
+    ):
+        assert get_catalog_thinking_profile("openai", model) is None, model
+
+
 def test_xai_reasoning_only_model_without_effort_is_unprofiled():
     assert get_catalog_thinking_profile("xai", "grok-4.20-reasoning") is None
 

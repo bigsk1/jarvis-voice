@@ -200,6 +200,40 @@ class OpenAIProvider(LLMProvider):
         ).strip().lower()
         profile = self._model_thinking_profile("openai")
         if profile:
+            from thinking_policy import configured_thinking_effort
+
+            generic_level = configured_thinking_effort()
+            disabled_aliases = {"off", "false", "disabled", "none"}
+            if not generic_level and not legacy_value:
+                # ``auto`` preserves OpenAI's documented model default. Trace
+                # visibility is unrelated on this path and must not turn an
+                # omitted effort into a request for ``none`` or ``minimal``.
+                return None
+            if (
+                generic_level
+                and generic_level not in profile.levels
+                and generic_level not in disabled_aliases
+            ):
+                expected = ", ".join(profile.levels)
+                print(
+                    f"WARNING: Ignoring invalid JARVIS_THINKING_EFFORT={generic_level!r}; "
+                    f"expected {expected}",
+                    file=sys.stderr,
+                )
+                return None
+            if (
+                legacy_value
+                and not generic_level
+                and legacy_value not in profile.levels
+                and legacy_value not in disabled_aliases
+            ):
+                expected = ", ".join(profile.levels)
+                print(
+                    f"WARNING: Ignoring invalid OPENAI_REASONING_EFFORT={legacy_value!r}; "
+                    f"expected {expected}",
+                    file=sys.stderr,
+                )
+                return None
             resolved = self._resolve_model_thinking(
                 "openai",
                 show_trace=False,
@@ -234,8 +268,9 @@ class OpenAIProvider(LLMProvider):
             )
             return None
 
-        # OpenAI docs note models before GPT-5.1 do not support "none".
-        if value == "none" and not self.model.startswith("gpt-5.1"):
+        # Preserve the legacy fallback for unprofiled GPT-5-family slugs. An
+        # audited profile handles logical ``none`` exactly for known models.
+        if value == "none" and not profile and not self.model.startswith("gpt-5.1"):
             print(
                 f"WARNING: {self.model} does not support reasoning_effort='none'; "
                 "using 'minimal' instead",

@@ -95,7 +95,7 @@ POST /v1/chat/completions
 `parameters` are passed through `_sanitize_schema_for_openai`; see [`tests/test_openai_tool_schema.py`](../tests/test_openai_tool_schema.py).
 
 - **Tool choice**: `tool_choice="auto"` when tools are present.
-- **Reasoning-capable models** (`gpt-5*`): optional `reasoning_effort` from **`OPENAI_REASONING_EFFORT`** (`config_loader` / env). Older models omit it.
+- **Reasoning-capable models**: `lib/model_catalog.py` declares the exact audited effort values and documented default for supported GPT-5 models. An explicit **`JARVIS_THINKING_EFFORT`** value (including the per-mode Web setting) takes precedence over the legacy **`OPENAI_REASONING_EFFORT`** variable. `auto` delegates to that legacy variable when it is configured; when both are unset, Jarvis omits the parameter so OpenAI keeps the selected model's normal default. Non-reasoning or unaudited models, including GPT-4.1 and GPT-4o Mini, do not receive a speculative generic effort value.
   - Special case: **`gpt-5.4-mini` + tools on Chat Completions** — OpenAI rejects `reasoning_effort` together with tools; Jarvis skips `reasoning_effort` on that combination for the Chat path. On the Responses path (`use_responses_path=True`), reasoning may be supplied again according to config.
 
 ### Responses returned to Jarvis
@@ -187,7 +187,8 @@ Authoritative commented defaults live next to **`OPENAI_API_KEY`** in **[`config
 | `OPENAI_RESPONSES_FILE_SEARCH` / vector store IDs | Hosted file search |
 | `OPENAI_RESPONSES_CODE_INTERPRETER` / memory limit | Hosted code interpreter |
 | `OPENAI_RESPONSES_INCLUDE_WEB_SEARCH_SOURCES` | Extra `include` payload for auditing |
-| `OPENAI_REASONING_EFFORT` | Chat + Responses reasoning models (Chat has the `gpt-5.4-mini` + tools caveat above) |
+| `JARVIS_THINKING_EFFORT` | Validated model-aware effort override used by both Chat and Responses; exposed per mode in Web Settings; `auto` allows the legacy provider setting below |
+| `OPENAI_REASONING_EFFORT` | Legacy OpenAI-only fallback when no generic effort is selected (Chat has the `gpt-5.4-mini` + tools caveat above) |
 | `OPENAI_PROMPT_CACHE_KEY` | Explicit Responses `prompt_cache_key` (omit to use derived key) |
 | `OPENAI_PROMPT_CACHE_ENABLED` | When no explicit key: enable derived cache key (`true` default) |
 | `OPENAI_PROMPT_CACHE_NAMESPACE` | Salt for derived key |

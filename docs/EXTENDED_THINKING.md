@@ -40,11 +40,19 @@ its choices are rebuilt and validated whenever the provider or model changes.
 | Provider | What Jarvis does when enabled | What can be displayed |
 |---|---|---|
 | Anthropic | Reads audited thinking capabilities from `lib/model_catalog.py` and sends adaptive or enabled thinking parameters | Thinking block or adaptive summary returned by Claude |
-| OpenAI | Uses the model's normal reasoning behavior; `OPENAI_REASONING_EFFORT` is handled by the OpenAI provider | Raw chain-of-thought is not expected; a separate field is shown only if the API supplies one |
+| OpenAI | Reads audited GPT-5 effort values from `lib/model_catalog.py`; an explicit `JARVIS_THINKING_EFFORT` wins over legacy `OPENAI_REASONING_EFFORT`, while `auto` allows that legacy fallback or otherwise preserves the provider default | Raw chain-of-thought is not expected; a separate field is shown only if the API supplies one |
 | xAI | Uses audited per-model effort values for `JARVIS_THINKING_EFFORT`; `XAI_REASONING_EFFORT` remains the provider-specific fallback | Jarvis records reasoning-token usage but does not normally receive reasoning text |
 | Ollama | Sends the native `think` boolean for unprofiled models, or a validated effort level for profiled models | Structured `message.thinking` only when trace display is enabled |
 
 A model may reason internally without exposing that reasoning. Absence of a displayed thinking block does not mean the model performed no reasoning.
+
+For OpenAI, the catalog is deliberately model-specific. GPT-5.6 includes
+`max`; GPT-5.5, GPT-5.4, and GPT-5.2 top out at `xhigh`; GPT-5.1 tops out at
+`high`; and the original GPT-5 Mini/Nano family uses `minimal` rather than
+`none`. GPT-4.1, GPT-4o Mini, ChatGPT-aligned aliases, and Codex variants whose
+current model pages do not publish an exact effort set remain unprofiled. A
+model YAML thinking profile overrides this catalog metadata when one is needed
+for a verified model-specific exception.
 
 For xAI, omitting `reasoning_effort` means “use the provider default,” not
 “disable reasoning.” Jarvis therefore exposes no **Off** choice for models such

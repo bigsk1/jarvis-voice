@@ -31,6 +31,36 @@ def get_catalog_thinking_profile(
 ) -> ModelThinkingOverride | None:
     """Translate audited catalog capabilities into the shared profile shape."""
     provider = (provider or "").strip().lower()
+    if provider == "openai":
+        from model_catalog import get_model_metadata
+
+        metadata = get_model_metadata("openai", model) or {}
+        if not metadata.get("reasoning_effort"):
+            return None
+        raw_levels = metadata.get("reasoning_effort_values")
+        if not isinstance(raw_levels, list):
+            return None
+        levels = tuple(
+            str(level).strip().lower()
+            for level in raw_levels
+            if str(level).strip()
+        )
+        if not levels:
+            return None
+        configured_default = str(
+            metadata.get("reasoning_effort_default") or ""
+        ).strip().lower()
+        if configured_default not in levels:
+            return None
+        disable_supported = "none" in levels
+        return ModelThinkingOverride(
+            supported=True,
+            disable_supported=disable_supported,
+            levels=levels,
+            default_level=configured_default,
+            disabled_fallback_level=(None if disable_supported else levels[0]),
+        )
+
     if provider == "xai":
         from model_catalog import (
             get_model_metadata,

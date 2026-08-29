@@ -122,6 +122,40 @@ _OPENAI_TEXT_IMAGE_MODALITIES = {
     "output_modalities": ["text"],
 }
 
+# Audited against the per-model Reasoning.effort declarations in the official
+# OpenAI model catalog. Keep these profiles exact: the Web UI and provider
+# adapter use them as an allowlist, not as approximate family-wide guidance.
+_OPENAI_REASONING_5_6 = {
+    "reasoning": True,
+    "reasoning_effort": True,
+    "reasoning_effort_values": ["none", "low", "medium", "high", "xhigh", "max"],
+    "reasoning_effort_default": "medium",
+}
+_OPENAI_REASONING_5_5 = {
+    "reasoning": True,
+    "reasoning_effort": True,
+    "reasoning_effort_values": ["none", "low", "medium", "high", "xhigh"],
+    "reasoning_effort_default": "medium",
+}
+_OPENAI_REASONING_NONE_XHIGH = {
+    "reasoning": True,
+    "reasoning_effort": True,
+    "reasoning_effort_values": ["none", "low", "medium", "high", "xhigh"],
+    "reasoning_effort_default": "none",
+}
+_OPENAI_REASONING_NONE_HIGH = {
+    "reasoning": True,
+    "reasoning_effort": True,
+    "reasoning_effort_values": ["none", "low", "medium", "high"],
+    "reasoning_effort_default": "none",
+}
+_OPENAI_REASONING_MINIMAL_HIGH = {
+    "reasoning": True,
+    "reasoning_effort": True,
+    "reasoning_effort_values": ["minimal", "low", "medium", "high"],
+    "reasoning_effort_default": "medium",
+}
+
 
 def _context_label(tokens: int) -> str:
     """Format a context window for display."""
@@ -397,6 +431,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "context_tokens": 1_050_000,
             "max_output_tokens": 128_000,
             **_OPENAI_TEXT_IMAGE_MODALITIES,
+            **_OPENAI_REASONING_5_6,
             "pricing": {"input": 10.00, "output": 60.00, "cached": 1.00},
             "aliases": ["gpt-5.6"],
         },
@@ -406,6 +441,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "context_tokens": 1_050_000,
             "max_output_tokens": 128_000,
             **_OPENAI_TEXT_IMAGE_MODALITIES,
+            **_OPENAI_REASONING_5_6,
             "pricing": {"input": 5.00, "output": 5.00, "cached": 0.50},
         },
         {
@@ -415,6 +451,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "max_output_tokens": 128_000,
             "default": True,
             **_OPENAI_TEXT_IMAGE_MODALITIES,
+            **_OPENAI_REASONING_5_6,
             "pricing": {"input": 2.00, "output": 12.00, "cached": 0.20},
         },
         {
@@ -423,6 +460,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "context_tokens": 1_050_000,
             "max_output_tokens": 128_000,
             **_OPENAI_TEXT_IMAGE_MODALITIES,
+            **_OPENAI_REASONING_5_5,
             "pricing": {"input": 5.00, "output": 30.00, "cached": 0.50},
             "aliases": ["gpt-5.5-2026-04-23"],
         },
@@ -431,6 +469,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "name": "GPT-5.4",
             "context_tokens": 1_050_000,
             **_OPENAI_TEXT_IMAGE_MODALITIES,
+            **_OPENAI_REASONING_NONE_XHIGH,
             "pricing": {"input": 2.50, "output": 15.00, "cached": 0.25},
         },
         {
@@ -438,6 +477,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "name": "GPT-5.4 Mini",
             "context_tokens": 400_000,
             **_OPENAI_TEXT_IMAGE_MODALITIES,
+            **_OPENAI_REASONING_NONE_XHIGH,
             "pricing": {"input": 0.75, "output": 4.50, "cached": 0.075},
         },
         {
@@ -445,6 +485,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "name": "GPT-5.4 Nano",
             "context_tokens": 400_000,
             **_OPENAI_TEXT_IMAGE_MODALITIES,
+            **_OPENAI_REASONING_NONE_XHIGH,
             "pricing": {"input": 0.20, "output": 1.25, "cached": 0.02},
         },
         {
@@ -452,6 +493,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "name": "GPT-5.2",
             "context_tokens": 400_000,
             **_OPENAI_TEXT_IMAGE_MODALITIES,
+            **_OPENAI_REASONING_NONE_XHIGH,
             "pricing": {"input": 1.75, "output": 14.00, "cached": 0.17},
             "aliases": ["gpt-5.2-2025-12-11", "gpt-5.2-chat-latest"],
         },
@@ -467,6 +509,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "name": "GPT-5.2 (Dec 2025)",
             "context_tokens": 400_000,
             **_OPENAI_TEXT_IMAGE_MODALITIES,
+            **_OPENAI_REASONING_NONE_XHIGH,
             "pricing": {"input": 1.75, "output": 14.00, "cached": 0.17},
         },
         {
@@ -474,6 +517,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "name": "GPT-5.1",
             "context_tokens": 128_000,
             **_OPENAI_TEXT_IMAGE_MODALITIES,
+            **_OPENAI_REASONING_NONE_HIGH,
             "pricing": {"input": 1.25, "output": 10.00, "cached": 0.125},
             "aliases": ["gpt-5.1-2025-11-13"],
         },
@@ -503,6 +547,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "name": "GPT-5 Mini",
             "context_tokens": 128_000,
             **_OPENAI_TEXT_IMAGE_MODALITIES,
+            **_OPENAI_REASONING_MINIMAL_HIGH,
             "pricing": {"input": 0.25, "output": 2.00, "cached": 0.025},
             "aliases": ["gpt-5-mini-2025-08-07"],
         },
@@ -518,6 +563,7 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "name": "GPT-5 Nano (Aug 2025)",
             "context_tokens": 128_000,
             **_OPENAI_TEXT_IMAGE_MODALITIES,
+            **_OPENAI_REASONING_MINIMAL_HIGH,
             "pricing": {"input": 0.05, "output": 0.40, "cached": 0.005},
             "aliases": ["gpt-5-nano"],
         },
