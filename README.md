@@ -64,9 +64,6 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
 >
 > **macOS and Windows:** The experimental Docker Desktop path runs the Web UIs without a native Ubuntu or Python installation. See [Mac and Windows Docker Installation](docs/docker/MAC-WINDOWS.md) for Terminal, PowerShell, and Command Prompt steps, limitations, and troubleshooting.
 
-![jarvis-info-graph](docs/images/jarvis-info-graph.jpeg)
-
-
 ## ✨ Key Features
 
 ![jarvis-web](docs/images/jarvis-web.jpg)
@@ -387,8 +384,6 @@ Full detail: [`docs/JARVIS_WEB_UI.md`](docs/JARVIS_WEB_UI.md) (*`/logs` Read-Onl
 ---
 
 ### Speech Modes - Smart Adaptive Response System
-
-![speech-modes-info-graph](docs/images/speech-modes-info-graph.jpeg)
 
 Jarvis adapts its response style based on your environment and task complexity:
 
@@ -712,8 +707,6 @@ tmux attach -t jarvis-web
 
 Enable event-driven alerts, notifications, and smart reminders:
 
-![reactive-vs-proactive-info-graph](docs/images/reactive-vs-proactive-info-graph.jpeg)
-
 If you prefer to start services individually (instead of `./bin/start`):
 
 ```bash
@@ -744,8 +737,6 @@ See [Proactive API docs](docs/api/) and [Reminder System](docs/api/REMINDER_SYST
 ### 7. Remote Monitoring Agent (Optional)
 
 Deploy the **[Jarvis Monitor](./jarvis-monitor/README.md)** (Docker) on remote servers for health checks and alerts:
-
-![jarvis-monitoring-agent-info-graph](docs/images/jarvis-monitoring-agent-info-graph.jpeg)
 
 ```bash
 # On remote server (Docker required)
@@ -961,8 +952,6 @@ Turn 3: Q&A response → "Flask API running on port 8091"
 
 ### Managing Tools (Enable/Disable)
 
-![tool-rag-info-graph](docs/images/tool-rag-info-graph.jpeg)
-
 Control which tools are loaded to optimize context window and performance:
 
 ```bash
@@ -993,8 +982,6 @@ See [`docs/TOOL_MANAGEMENT.md`](docs/TOOL_MANAGEMENT.md) for details.
 ---
 
 ## 🔄 Workflow Orchestration
-
-![workflow-info-graph](docs/images/workflow-info-graph.jpeg)
 
 Workflows are deterministic multi-tool pipelines that execute predefined sequences of tools. Unlike normal LLM routing (where the LLM decides which tools to use), workflows guarantee consistent, repeatable execution.
 
@@ -1105,8 +1092,6 @@ See:
 
 Stores facts, preferences, and technical information with **hybrid search** (FTS5 + semantic):
 
-![memory-info-graph](docs/images/memory-info-graph.jpeg)
-
 ```bash
 # Store a fact
 "Remember my WireGuard VPN is 192.168.7.0/24"
@@ -1154,9 +1139,6 @@ Full conversation logging with metadata:
 ## 🧠 Intelligence Layer
 
 The Intelligence Layer is Jarvis's self-learning system. It observes interactions, reflects on what worked and what didn't, and applies learned insights to improve future routing decisions.
-
-![Intelligence Layer Info Graph](docs/images/intelligence-info-graph.jpeg)
-
 
 **Key Principles**:
 - Everything is continuous (vectors), not discrete rules
@@ -1209,8 +1191,6 @@ See [`docs/INTELLIGENCE_LAYER.md`](docs/INTELLIGENCE_LAYER.md) for details.
 
 OpenCode is an autonomous coding agent that can build entire projects.
 
-![opencode-info-graph](docs/images/opencode-info-graph.jpeg)
-
 ### Usage
 
 ```bash
@@ -1251,8 +1231,6 @@ See [`docs/opencode/OPENCODE.md`](docs/opencode/OPENCODE.md) for details.
 ### Memory Database (Dual System)
 
 Jarvis uses separate databases for cloud and local modes:
-
-![sync-info-graph](docs/images/sync-info-graph.jpeg)
 
 
 **Cloud Mode** - `data/jarvis_memory.db`:

@@ -723,6 +723,58 @@ store or ordered event log instead.
   stale schemas, recurrence advancement, deletion, and mode switching before a
   scheduler starts.
 
+### 15) Ollama Thinking-Effort Profiles and Optional Web Reasoning View
+**Priority:** Low / revisit only if required-thinking models become common or visible reasoning is requested
+**Status:** Deferred; use a different model for now
+
+An August 2026 live check found one model-specific compatibility edge:
+`glm-5.3` on Ollama Cloud ignored Jarvis's normal `think: false` request and
+returned untagged internal reasoning together with the final answer in
+`message.content`. Sending `think: "low"` returned the final answer cleanly in
+`message.content` and placed the trace in `message.thinking`. The separately
+tested `glm-5.3-flash` cloud model did not reproduce the leak, so this does not
+currently justify a new general subsystem by itself.
+
+#### Options if the issue becomes worth addressing
+
+1. **Keep the current behavior and avoid the affected model.** This is the
+   preferred near-term choice while the issue is isolated to one optional
+   model.
+2. **Add a narrow GLM-5.3 compatibility rule.** Map logical thinking-off to
+   `think: "low"`, discard the separated trace, and leave every other Ollama
+   model unchanged. This is the smallest code fix if GLM-5.3 becomes important.
+3. **Add model runtime profiles.** Reuse the existing
+   `config/models/<provider>/<model>/` family matching, but add a separate
+   runtime-capability file rather than putting API parameters in
+   `prompt_overrides.yaml`. A profile could declare whether thinking can be
+   disabled, supported effort values, and the safe fallback when "off" is not
+   supported. Both ENV-selected models and Web UI model overrides would resolve
+   through the same effective provider/model profile.
+4. **Add Web UI thinking controls and a collapsed reasoning panel.** Keep the
+   request setting (`auto`, `off`, `low`, `medium`, `high`, `max`) separate from
+   presentation (`hidden`, collapsed, expanded). Only offer values known to be
+   accepted by the selected model, and default the trace to hidden or collapsed.
+
+Do not statically enumerate every Ollama model in `CLOUD_MODEL_CATALOG`; model
+availability should continue to come from the configured Ollama host. A future
+runtime profile should supplement only missing capability/quirk metadata. Also
+do not rely on a custom Ollama Modelfile as the primary solution: `think` is a
+top-level chat request control, Jarvis currently sends it explicitly, and host
+aliases would have to be maintained consistently across local, signed-daemon,
+and direct-cloud paths.
+
+#### Implementation triggers and boundaries
+
+- Revisit when multiple actively used Ollama models cannot disable thinking,
+  GLM-5.3 becomes a preferred Jarvis model, or the Web UI gains a reasoning view.
+- Preserve today's boolean behavior for unknown or unprofiled Ollama models.
+- Apply request resolution consistently to simple chat, native tool chat, and
+  structured-tool fallback paths.
+- When thinking is logically hidden but a model requires a minimum effort,
+  discard the separated trace before UI output and thinking logs.
+- Keep provider-boundary tag sanitization as defense in depth for malformed
+  responses, but never guess where untagged natural-language reasoning ends.
+
 ---
 
 ## 📊 Implementation Priority
