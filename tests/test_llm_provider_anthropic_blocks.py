@@ -17,6 +17,46 @@ from model_prompt_overrides import ModelThinkingOverride
 
 
 class AnthropicBlockHandlingTests(unittest.TestCase):
+    def test_web_search_is_direct_when_parallel_tool_use_is_disabled(self):
+        captured = {}
+
+        def create(**params):
+            captured.update(params)
+            return SimpleNamespace(
+                usage=None,
+                content=[SimpleNamespace(type="text", text="Hello!")],
+            )
+
+        provider = AnthropicProvider.__new__(AnthropicProvider)
+        provider.model = "claude-sonnet-5"
+        provider.enable_search = True
+        provider.client = SimpleNamespace(messages=SimpleNamespace(create=create))
+
+        text, tool_call, usage, thinking = provider.chat_with_tools(
+            [{"role": "user", "content": "Hey, how are you?"}],
+            [
+                {
+                    "name": "remember",
+                    "description": "Save a fact.",
+                    "input_schema": {"type": "object"},
+                }
+            ],
+        )
+
+        web_search = next(
+            tool for tool in captured["tools"] if tool.get("name") == "web_search"
+        )
+        self.assertEqual(web_search["type"], "web_search_20260209")
+        self.assertEqual(web_search["allowed_callers"], ["direct"])
+        self.assertEqual(
+            captured["tool_choice"],
+            {"type": "auto", "disable_parallel_tool_use": True},
+        )
+        self.assertEqual(text, "Hello!")
+        self.assertIsNone(tool_call)
+        self.assertIsNone(usage)
+        self.assertIsNone(thinking)
+
     def test_tool_requests_disable_parallel_tool_use(self):
         captured = {}
 

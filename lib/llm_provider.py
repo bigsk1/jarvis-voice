@@ -647,7 +647,12 @@ class AnthropicProvider(LLMProvider):
                 web_search_tool = {
                     "type": "web_search_20260209",
                     "name": "web_search",
-                    "max_uses": 5  # Limit searches per request
+                    "max_uses": 5,  # Limit searches per request
+                    # Dynamic filtering defaults to programmatic code execution
+                    # for this tool version, which Anthropic forbids alongside
+                    # disable_parallel_tool_use. Jarvis deliberately executes
+                    # at most one tool per router turn, so keep search direct.
+                    "allowed_callers": ["direct"],
                 }
                 tools_with_cache.insert(0, web_search_tool)
                 # Required beta header for web search
