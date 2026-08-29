@@ -22,6 +22,7 @@
   "cloud": {
     "llm_provider": null,
     "llm_model": null,
+    "thinking_effort": null,
     "router_prompt_version": null,
     "image_provider": null,
     "video_provider": null,
@@ -46,6 +47,7 @@
   "local": {
     "llm_provider": null,
     "llm_model": null,
+    "thinking_effort": null,
     "router_prompt_version": null,
     "image_provider": null,
     "video_provider": null,

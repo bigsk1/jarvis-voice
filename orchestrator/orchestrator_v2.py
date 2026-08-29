@@ -4260,8 +4260,6 @@ def main():
     debug_thinking = "--debug-thinking" in sys.argv
     if debug_thinking:
         sys.argv.remove("--debug-thinking")
-        # Set env var for thinking module
-        os.environ['JARVIS_DEBUG_THINKING'] = '1'
     
     # Check for --feedback flag (LLM-as-QA mode)
     collect_feedback = "--feedback" in sys.argv
@@ -4307,6 +4305,13 @@ def main():
     
     # Load config early for random feedback check
     load_config(mode)
+    if debug_thinking:
+        # The CLI flag is authoritative over config/<mode>.env. Use the same
+        # override namespace as request/runtime settings so the second
+        # load_config() inside Orchestrator cannot replace it with the file's
+        # JARVIS_DEBUG_THINKING=false default.
+        os.environ['JARVIS_DEBUG_THINKING'] = '1'
+        os.environ['JARVIS_OVERRIDE_JARVIS_DEBUG_THINKING'] = '1'
     
     # Random feedback during normal operation (if enabled)
     if not collect_feedback:

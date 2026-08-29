@@ -271,6 +271,25 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
         with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "xhigh"}, clear=True):
             self.assertIsNone(provider._xai_reasoning_effort())
 
+    def test_model_profile_allows_generic_effort_without_catalog_entry(self):
+        from model_prompt_overrides import ModelThinkingOverride
+
+        provider = self._provider_shell()
+        provider.model = "future-xai-reasoner"
+        profile = ModelThinkingOverride(
+            supported=True,
+            disable_supported=False,
+            levels=("low", "high", "max"),
+            default_level="max",
+            disabled_fallback_level="low",
+        )
+
+        with (
+            patch.dict(os.environ, {"JARVIS_THINKING_EFFORT": "high"}, clear=True),
+            patch.object(provider, "_model_thinking_profile", return_value=profile),
+        ):
+            self.assertEqual(provider._xai_reasoning_effort(), "high")
+
     def test_xai_sdk_create_kwargs_passes_none_and_medium_strings(self):
         provider = self._provider_shell()
         provider.model = "grok-4.3"
@@ -285,6 +304,28 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
         with patch.dict(os.environ, {"XAI_REASONING_EFFORT": "none"}, clear=True):
             self.assertIsNone(provider._xai_reasoning_effort())
             self.assertNotIn("reasoning_effort", provider._xai_sdk_create_kwargs(tools=[]))
+
+    def test_generic_off_uses_truthful_xai_disable_or_safe_minimum(self):
+        provider = self._provider_shell()
+
+        provider.model = "grok-4.6"
+        with patch.dict(os.environ, {"JARVIS_THINKING_EFFORT": "off"}, clear=True):
+            self.assertEqual(provider._xai_reasoning_effort(), "low")
+
+        provider.model = "grok-4.3"
+        with patch.dict(os.environ, {"JARVIS_THINKING_EFFORT": "off"}, clear=True):
+            self.assertEqual(provider._xai_reasoning_effort(), "none")
+
+    def test_auto_effort_preserves_xai_provider_default(self):
+        provider = self._provider_shell()
+        provider.model = "grok-4.6"
+
+        with patch.dict(os.environ, {"JARVIS_THINKING_EFFORT": "auto"}, clear=True):
+            self.assertIsNone(provider._xai_reasoning_effort())
+            self.assertNotIn(
+                "reasoning_effort",
+                provider._xai_sdk_create_kwargs(tools=[]),
+            )
 
     def test_xai_reasoning_model_detection_does_not_match_non_reasoning(self):
         self.assertTrue(XAIProvider._xai_model_is_reasoning("grok-4.5"))

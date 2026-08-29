@@ -32,6 +32,52 @@ from provider_tool_policy import server_side_tools_disabled
 
 class LLMProvider(ABC):
     """Abstract base class for LLM providers."""
+
+    def _model_thinking_profile(self, provider: str):
+        """Load and cache the selected model's validated thinking profile."""
+        cache = getattr(self, "_model_thinking_profiles", None)
+        if cache is None:
+            cache = {}
+            self._model_thinking_profiles = cache
+
+        model = str(getattr(self, "model", "") or "")
+        from config_loader import get_active_config_mode
+
+        mode = get_active_config_mode()
+        key = (provider, model, mode)
+        if key not in cache:
+            from model_prompt_overrides import load_model_prompt_override
+            from thinking_policy import get_catalog_thinking_profile
+
+            yaml_profile = load_model_prompt_override(
+                provider=provider,
+                model=model,
+                mode=mode,
+            ).thinking
+            cache[key] = yaml_profile or get_catalog_thinking_profile(provider, model)
+        return cache[key]
+
+    def _resolve_model_thinking(
+        self,
+        provider: str,
+        *,
+        show_trace: bool,
+        force_disabled: bool = False,
+        unprofiled_value: bool | str | None = None,
+        legacy_level: str | None = None,
+    ):
+        """Resolve model generation effort separately from trace visibility."""
+        from thinking_policy import resolve_thinking_request
+
+        return resolve_thinking_request(
+            provider=provider,
+            model=str(getattr(self, "model", "") or ""),
+            profile=self._model_thinking_profile(provider),
+            show_trace=show_trace,
+            force_disabled=force_disabled,
+            unprofiled_value=unprofiled_value,
+            legacy_level=legacy_level,
+        )
     
     @abstractmethod
     def chat_with_tools(
@@ -147,16 +193,40 @@ class OpenAIProvider(LLMProvider):
         Chat Completions supports reasoning_effort on GPT-5 models, but it
         should be omitted for older non-reasoning chat families.
         """
-        if not self.model.startswith("gpt-5"):
-            return None
-
         from config_loader import get_config_value
 
-        value = (get_config_value("OPENAI_REASONING_EFFORT", "") or "").strip().lower()
+        legacy_value = (
+            get_config_value("OPENAI_REASONING_EFFORT", "") or ""
+        ).strip().lower()
+        profile = self._model_thinking_profile("openai")
+        if profile:
+            resolved = self._resolve_model_thinking(
+                "openai",
+                show_trace=False,
+                legacy_level=legacy_value,
+            )
+            value = resolved.value if isinstance(resolved.value, str) else ""
+        else:
+            # Resolve once so a generic setting on an unprofiled model is
+            # rejected explicitly instead of being sent speculatively.
+            self._resolve_model_thinking(
+                "openai",
+                show_trace=False,
+                legacy_level=None,
+            )
+            value = legacy_value
+
         if not value:
             return None
 
-        allowed = {"none", "minimal", "low", "medium", "high", "xhigh"}
+        if not self.model.startswith("gpt-5") and not profile:
+            return None
+
+        allowed = (
+            set(profile.levels)
+            if profile and profile.levels
+            else {"none", "minimal", "low", "medium", "high", "xhigh"}
+        )
         if value not in allowed:
             print(
                 f"WARNING: Ignoring invalid OPENAI_REASONING_EFFORT={value!r}",
@@ -531,6 +601,21 @@ class AnthropicProvider(LLMProvider):
             - thinking contains LLM reasoning (if enable_thinking=True and supported)
         """
         try:
+            from config_loader import get_config_value
+
+            profile = self._model_thinking_profile("anthropic")
+            legacy_effort = (
+                str(get_config_value("ANTHROPIC_EFFORT", "") or "").strip().lower()
+                if profile and enable_thinking
+                else None
+            )
+            thinking_request = self._resolve_model_thinking(
+                "anthropic",
+                show_trace=enable_thinking,
+                unprofiled_value=bool(enable_thinking),
+                legacy_level=legacy_effort,
+            )
+
             # Enable prompt caching for system prompt
             # Cache everything in the system prompt (saves 90% on cache hits) top of system prompt is static and only bottom is dynamic.
             system_blocks = [
@@ -596,9 +681,17 @@ class AnthropicProvider(LLMProvider):
                 api_params["extra_headers"] = extra_headers
             
             # Enable extended thinking for supported models
-            if enable_thinking:
+            if thinking_request.value:
                 from thinking import get_thinking_config
-                thinking_config = get_thinking_config("anthropic", self.model)
+                thinking_config = get_thinking_config(
+                    "anthropic",
+                    self.model,
+                    effort_override=(
+                        thinking_request.value
+                        if isinstance(thinking_request.value, str)
+                        else None
+                    ),
+                )
                 if thinking_config:
                     api_params["thinking"] = thinking_config["thinking"]
                     if thinking_config.get("output_config"):
@@ -621,7 +714,7 @@ class AnthropicProvider(LLMProvider):
             
             # Extract thinking if present
             thinking_text = None
-            if enable_thinking:
+            if thinking_request.show_trace:
                 from thinking import extract_thinking
                 thinking_text = extract_thinking(response, "anthropic")
                 if os.environ.get('JARVIS_DEBUG'):
@@ -1048,11 +1141,46 @@ class XAIProvider(LLMProvider):
         """
         from config_loader import get_config_value
 
-        raw = str(get_config_value("XAI_REASONING_EFFORT", "") or "").strip().lower()
+        legacy_raw = str(
+            get_config_value("XAI_REASONING_EFFORT", "") or ""
+        ).strip().lower()
+        profile = self._model_thinking_profile("xai")
+        if profile:
+            from thinking_policy import configured_thinking_effort
+
+            generic_level = configured_thinking_effort()
+            if not generic_level and not legacy_raw:
+                # ``auto`` means preserve xAI's catalog/provider default. Trace
+                # visibility is unrelated on this path, so a hidden trace must
+                # not be interpreted as a request for the safe-minimum effort.
+                return None
+            if legacy_raw and not generic_level and legacy_raw not in profile.levels:
+                expected = ", ".join(profile.levels)
+                print(
+                    f"WARNING: Ignoring invalid XAI_REASONING_EFFORT={legacy_raw!r}; "
+                    f"expected {expected}",
+                    file=sys.stderr,
+                )
+                return None
+            resolved = self._resolve_model_thinking(
+                "xai",
+                show_trace=False,
+                legacy_level=legacy_raw,
+            )
+            raw = resolved.value if isinstance(resolved.value, str) else ""
+            allowed_values = list(profile.levels)
+        else:
+            self._resolve_model_thinking(
+                "xai",
+                show_trace=False,
+                legacy_level=None,
+            )
+            raw = legacy_raw
+            allowed_values = get_model_xai_reasoning_effort_values("xai", self.model)
+
         if not raw:
             return None
 
-        allowed_values = get_model_xai_reasoning_effort_values("xai", self.model)
         allowed = set(allowed_values or ["none", "low", "medium", "high"])
         if raw not in allowed:
             expected = ", ".join(allowed_values or ["none", "low", "medium", "high"])
@@ -1063,7 +1191,7 @@ class XAIProvider(LLMProvider):
             )
             return None
 
-        if not self._xai_model_supports_reasoning_effort(self.model):
+        if not profile and not self._xai_model_supports_reasoning_effort(self.model):
             if os.environ.get("JARVIS_DEBUG"):
                 print(
                     f"DEBUG: {self.model} does not support XAI_REASONING_EFFORT; "
@@ -1735,6 +1863,24 @@ class OllamaProvider(LLMProvider):
         )
 
         return cleaned.strip()
+
+    @staticmethod
+    def _extract_json_object(text: str) -> str | None:
+        """Return the first parseable JSON object without exposing surrounding trace text."""
+        if not text:
+            return None
+
+        decoder = json.JSONDecoder()
+        for index, char in enumerate(text):
+            if char != "{":
+                continue
+            try:
+                value, _end = decoder.raw_decode(text[index:])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(value, dict):
+                return json.dumps(value, ensure_ascii=False)
+        return None
     
     def chat(self, message: str, system_prompt: str | None = None, max_tokens: int = None) -> str:
         """Simple chat without tools."""
@@ -1753,8 +1899,6 @@ class OllamaProvider(LLMProvider):
                 "messages": messages,
                 "stream": False
             }
-            if self.force_no_thinking:
-                request_data["think"] = False
             if self.keep_alive is not None:
                 request_data["keep_alive"] = self.keep_alive
 
@@ -1772,7 +1916,6 @@ class OllamaProvider(LLMProvider):
             is_cloud = self._is_cloud_model()
 
             if json_mode:
-                request_data["think"] = False
                 if '"recommended_action"' in prompt_text and not is_cloud:
                     request_data["format"] = {
                         "type": "object",
@@ -1814,6 +1957,23 @@ class OllamaProvider(LLMProvider):
                     }
                 else:
                     request_data["format"] = "json"
+
+            # Generation effort and trace visibility are separate. Required-
+            # thinking models use their declared lowest effort when Jarvis is
+            # logically "off"; unknown models retain the previous omit/false
+            # behavior exactly.
+            from thinking import should_enable_thinking
+
+            thinking_request = self._resolve_model_thinking(
+                "ollama",
+                show_trace=should_enable_thinking(),
+                force_disabled=self.force_no_thinking or json_mode,
+                unprofiled_value=(
+                    False if self.force_no_thinking or json_mode else None
+                ),
+            )
+            if thinking_request.profile_used or thinking_request.value is not None:
+                request_data["think"] = thinking_request.value
             
             # Extended context for capable models
             options = self._get_context_options()
@@ -1868,25 +2028,37 @@ class OllamaProvider(LLMProvider):
             msg = result.get("message", {})
             content = msg.get("content", "")
 
-            # Cloud models may exhaust the token budget on internal
-            # reasoning, leaving content empty.  Fall back to the
-            # separate thinking field which may contain extractable data.
+            # Cloud models may exhaust the token budget on internal reasoning,
+            # leaving content empty. Some still place the requested JSON object
+            # after prose in the separate thinking field. Recover only an
+            # actually parseable object; never promote the private prose itself
+            # into a caller-visible JSON response.
             if json_mode and not (content or '').strip():
+                from config_loader import get_bool
+
                 thinking_fallback = msg.get("thinking", "") or result.get("thinking", "")
-                if thinking_fallback:
-                    content = thinking_fallback
-                    if os.environ.get('JARVIS_DEBUG'):
+                json_fallback = self._extract_json_object(thinking_fallback)
+                if json_fallback is not None:
+                    content = json_fallback
+                    if get_bool("JARVIS_DEBUG", False):
                         print(
-                            f"DEBUG: Ollama cloud empty content, using thinking fallback "
-                            f"({len(thinking_fallback)} chars) - model={self.model}",
+                            f"DEBUG: Ollama cloud empty content, recovered JSON object "
+                            f"from thinking field - model={self.model}",
                             file=sys.stderr
                         )
                 else:
-                    preview = json.dumps(result, default=str)[:1200]
-                    print(
-                        f"DEBUG: Ollama JSON-mode empty content - model={self.model}, result={preview}",
-                        file=sys.stderr
-                    )
+                    if get_bool("JARVIS_DEBUG", False):
+                        # Report only structural diagnostics. The response may
+                        # contain private reasoning in ``message.thinking`` and
+                        # must never be serialized into logs, even in debug mode.
+                        print(
+                            "DEBUG: Ollama JSON-mode empty content; JSON recovery "
+                            f"failed - model={self.model}, "
+                            f"thinking_chars={len(str(thinking_fallback or ''))}, "
+                            f"prompt_tokens={prompt_eval_count}, "
+                            f"completion_tokens={eval_count}",
+                            file=sys.stderr,
+                        )
             return self._strip_reasoning_content(content)
         except Exception as e:
             print(f"Ollama API error: {e}", file=sys.stderr)
@@ -2106,12 +2278,18 @@ class OllamaProvider(LLMProvider):
         full_messages.extend(messages)
         
         try:
+            thinking_request = self._resolve_model_thinking(
+                "ollama",
+                show_trace=enable_thinking,
+                force_disabled=self.force_no_thinking,
+                unprofiled_value=bool(enable_thinking),
+            )
             # Build request
             request_data = {
                 "model": self.model,
                 "messages": full_messages,
                 "stream": False,
-                "think": False if self.force_no_thinking else bool(enable_thinking),
+                "think": thinking_request.value,
             }
             if self.keep_alive is not None:
                 request_data["keep_alive"] = self.keep_alive
@@ -2196,10 +2374,11 @@ class OllamaProvider(LLMProvider):
             
             # Extract thinking if present (qwen3.5:latest and other reasoning models)
             thinking = None
-            if "thinking" in message:
-                thinking = message["thinking"]
-            elif "thinking" in result:
-                thinking = result["thinking"]
+            if thinking_request.show_trace:
+                if "thinking" in message:
+                    thinking = message["thinking"]
+                elif "thinking" in result:
+                    thinking = result["thinking"]
             
             # Check if tool was called (native tool calling response)
             if tool_calls:
@@ -2297,11 +2476,17 @@ CRITICAL RULES:
         full_messages.extend(messages)
         
         try:
+            thinking_request = self._resolve_model_thinking(
+                "ollama",
+                show_trace=enable_thinking,
+                force_disabled=self.force_no_thinking,
+                unprofiled_value=bool(enable_thinking),
+            )
             request_data = {
                 "model": self.model,
                 "messages": full_messages,
                 "stream": False,
-                "think": False if self.force_no_thinking else bool(enable_thinking),
+                "think": thinking_request.value,
             }
             if self.keep_alive is not None:
                 request_data["keep_alive"] = self.keep_alive
@@ -2366,10 +2551,11 @@ CRITICAL RULES:
             
             # Extract thinking if present
             thinking = None
-            if "thinking" in result.get("message", {}):
-                thinking = result["message"]["thinking"]
-            elif "thinking" in result:
-                thinking = result["thinking"]
+            if thinking_request.show_trace:
+                if "thinking" in result.get("message", {}):
+                    thinking = result["message"]["thinking"]
+                elif "thinking" in result:
+                    thinking = result["thinking"]
             
             # Try to parse as tool call (handle markdown-wrapped JSON)
             try:

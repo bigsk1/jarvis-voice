@@ -142,6 +142,7 @@ def _scoped_by_mode(method):
         scoped_overrides = {}
         key_map = {
             'router_prompt_version': 'JARVIS_ROUTER_PROMPT_VERSION',
+            'thinking_effort': 'JARVIS_THINKING_EFFORT',
             'image_provider': 'IMAGE_TOOL_PROVIDER',
             'video_provider': 'VIDEO_TOOL_PROVIDER',
             'music_provider': 'MUSIC_TOOL_PROVIDER',

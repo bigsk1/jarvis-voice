@@ -7,6 +7,16 @@ applies_to_modes:
 # Put only small, surgical nudges here.
 # Omit any section you do not need.
 
+# Optional model thinking capability profile. Levels are model-declared values,
+# not arbitrary provider request fields. For models whose reasoning cannot be
+# disabled, disabled_fallback_level is required and must appear in levels.
+# thinking:
+#   supported: true
+#   disable_supported: false
+#   levels: [low, high, max]
+#   default_level: max
+#   disabled_fallback_level: low
+
 # routing_prepend:
 # Added BEFORE the main router system prompt.
 # Use this when the model chooses the wrong overall strategy or misses the main intent.

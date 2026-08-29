@@ -205,6 +205,79 @@ class ModelPromptOverrideTests(unittest.TestCase):
             self.assertFalse(override.enabled)
             self.assertEqual(override.sections, {})
 
+    def test_thinking_only_override_is_enabled_and_validated(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            override_dir = root / "ollama" / "required-reasoner"
+            override_dir.mkdir(parents=True)
+            (override_dir / "prompt_overrides.yaml").write_text(
+                """
+enabled: true
+thinking:
+  supported: true
+  disable_supported: false
+  levels: [low, high, max]
+  default_level: max
+  disabled_fallback_level: low
+""".strip(),
+                encoding="utf-8",
+            )
+
+            override = load_model_prompt_override(
+                provider="ollama",
+                model="required-reasoner:cloud",
+                mode="cloud",
+                config_root=root,
+            )
+
+            self.assertTrue(override.enabled)
+            self.assertEqual(override.sections, {})
+            self.assertIsNotNone(override.thinking)
+            self.assertFalse(override.thinking.disable_supported)
+            self.assertEqual(override.thinking.levels, ("low", "high", "max"))
+            self.assertEqual(override.thinking.default_level, "max")
+            self.assertEqual(override.thinking.disabled_fallback_level, "low")
+
+    def test_invalid_thinking_profile_does_not_disable_valid_prompt_sections(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            override_dir = root / "ollama" / "bad-reasoner"
+            override_dir.mkdir(parents=True)
+            (override_dir / "prompt_overrides.yaml").write_text(
+                """
+enabled: true
+qa_append: Keep the answer concise.
+thinking:
+  supported: true
+  disable_supported: false
+  levels: [low, high]
+  default_level: max
+  disabled_fallback_level: low
+""".strip(),
+                encoding="utf-8",
+            )
+
+            override = load_model_prompt_override(
+                provider="ollama",
+                model="bad-reasoner",
+                mode="cloud",
+                config_root=root,
+            )
+
+            self.assertTrue(override.enabled)
+            self.assertEqual(override.get("qa_append"), "Keep the answer concise.")
+            self.assertIsNone(override.thinking)
+
+    def test_glm_5_3_profiles_cover_both_cloud_models(self):
+        for model in ("glm-5.3:cloud", "glm-5.3-flash:cloud"):
+            for mode in ("cloud", "local"):
+                with self.subTest(model=model, mode=mode):
+                    override = load_model_prompt_override("ollama", model, mode)
+                    self.assertTrue(override.enabled)
+                    self.assertIsNotNone(override.thinking)
+                    self.assertFalse(override.thinking.disable_supported)
+                    self.assertEqual(override.thinking.disabled_fallback_level, "low")
+
     def test_apply_prompt_sections_wraps_prompt(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

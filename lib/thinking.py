@@ -65,9 +65,12 @@ def should_enable_thinking() -> bool:
     Returns:
         True if thinking should be enabled
     """
-    # Check environment variable
-    env_value = os.getenv("JARVIS_DEBUG_THINKING", "false").lower()
-    return env_value in ("true", "1", "yes", "on")
+    # Use the same request-scoped precedence as provider/model/effort settings.
+    # Reading os.environ directly leaks one process-global value across
+    # concurrent Web cloud/local requests and ignores config_scope overrides.
+    from config_loader import get_bool
+
+    return get_bool("JARVIS_DEBUG_THINKING", False)
 
 
 def uses_adaptive_thinking(provider: str, model: str) -> bool:
@@ -77,7 +80,7 @@ def uses_adaptive_thinking(provider: str, model: str) -> bool:
     return _anthropic_thinking_type_supported(model, "adaptive")
 
 
-def _anthropic_effort(model: str) -> str | None:
+def _anthropic_effort(model: str, requested_override: str | None = None) -> str | None:
     """Resolve and validate adaptive-thinking effort for an Anthropic model."""
     metadata = get_model_metadata("anthropic", model) or {}
     effort_capabilities = metadata.get("capabilities", {}).get("effort", {})
@@ -92,7 +95,11 @@ def _anthropic_effort(model: str) -> str | None:
     if not supported:
         return None
 
-    requested = os.getenv("ANTHROPIC_EFFORT", "").strip().lower()
+    requested = (
+        requested_override
+        if requested_override is not None
+        else os.getenv("ANTHROPIC_EFFORT", "")
+    ).strip().lower()
     if requested and requested in supported:
         return requested
     if requested:
@@ -107,7 +114,11 @@ def _anthropic_effort(model: str) -> str | None:
     return next(level for level in ("xhigh", "max", "high", "medium", "low") if level in supported)
 
 
-def get_thinking_config(provider: str, model: str) -> dict[str, Any] | None:
+def get_thinking_config(
+    provider: str,
+    model: str,
+    effort_override: str | None = None,
+) -> dict[str, Any] | None:
     """
     Get thinking configuration for a specific provider/model.
     
@@ -127,7 +138,7 @@ def get_thinking_config(provider: str, model: str) -> dict[str, Any] | None:
                 "thinking": {"type": "adaptive", "display": "summarized"},
                 "max_tokens": ANTHROPIC_ADAPTIVE_MAX_TOKENS,
             }
-            effort = _anthropic_effort(model)
+            effort = _anthropic_effort(model, requested_override=effort_override)
             if effort:
                 config["output_config"] = {"effort": effort}
             return config

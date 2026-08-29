@@ -38,6 +38,24 @@ class _ChatResponse:
         }
 
 
+class _ThinkingChatResponse(_ChatResponse):
+    def json(self):
+        payload = super().json()
+        payload["message"]["thinking"] = "private reasoning trace"
+        return payload
+
+
+class _ThinkingOnlyChatResponse(_ChatResponse):
+    def __init__(self, thinking):
+        super().__init__("")
+        self.thinking = thinking
+
+    def json(self):
+        payload = super().json()
+        payload["message"]["thinking"] = self.thinking
+        return payload
+
+
 class _PaymentRequiredResponse:
     status_code = 402
     reason = "Payment Required"
@@ -250,6 +268,125 @@ def test_native_tool_q_and_a_path_strips_glm_orphan_reasoning(monkeypatch):
     assert tool_call is None
     assert usage["total_tokens"] == 15
     assert thinking is None
+
+
+@pytest.mark.parametrize("model", ["glm-5.3:cloud", "glm-5.3-flash:cloud"])
+def test_required_glm_thinking_uses_low_and_hides_trace_by_default(monkeypatch, model):
+    provider = _provider(model, monkeypatch, mode="cloud")
+    response = _ThinkingChatResponse("Hello!")
+
+    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")) as mocked:
+        text, tool_call, usage, thinking = provider.chat_with_tools(
+            messages=[{"role": "user", "content": "Hello"}],
+            tools=[],
+        )
+
+    assert mocked.call_args.kwargs["json"]["think"] == "low"
+    assert text == "Hello!"
+    assert tool_call is None
+    assert usage["total_tokens"] == 15
+    assert thinking is None
+
+
+def test_required_glm_thinking_uses_default_and_returns_trace_when_enabled(monkeypatch):
+    provider = _provider("glm-5.3:cloud", monkeypatch, mode="cloud")
+    response = _ThinkingChatResponse("Hello!")
+
+    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")) as mocked:
+        text, _, _, thinking = provider.chat_with_tools(
+            messages=[{"role": "user", "content": "Hello"}],
+            tools=[],
+            enable_thinking=True,
+        )
+
+    assert mocked.call_args.kwargs["json"]["think"] == "max"
+    assert text == "Hello!"
+    assert thinking == "private reasoning trace"
+
+
+def test_required_glm_simple_chat_and_structured_fallback_use_low(monkeypatch):
+    provider = _provider("glm-5.3-flash:cloud", monkeypatch, mode="cloud")
+    response = _ThinkingChatResponse("Hello!")
+
+    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")) as mocked:
+        assert provider.chat("Hello") == "Hello!"
+        simple_request = mocked.call_args.kwargs["json"]
+        _, _, _, thinking = provider._chat_with_tools_structured(
+            messages=[{"role": "user", "content": "Hello"}],
+            tools=[],
+        )
+        structured_request = mocked.call_args.kwargs["json"]
+
+    assert simple_request["think"] == "low"
+    assert structured_request["think"] == "low"
+    assert thinking is None
+
+
+def test_json_mode_never_promotes_or_logs_reasoning_only_fallback(
+    monkeypatch,
+    capsys,
+):
+    provider = _provider("glm-5.3:cloud", monkeypatch, mode="cloud")
+    monkeypatch.setenv("JARVIS_DEBUG", "false")
+    private_trace = (
+        "SENSITIVE_PRIVATE_TRACE: I should inspect the task and decide which "
+        "fields belong in the result."
+    )
+    response = _ThinkingOnlyChatResponse(private_trace)
+    capsys.readouterr()
+
+    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")):
+        text = provider.chat(
+            "Evaluate this result.",
+            system_prompt="Return JSON only.",
+        )
+
+    assert text == ""
+    captured = capsys.readouterr()
+    assert private_trace not in captured.err
+    assert "JSON recovery failed" not in captured.err
+    assert "result=" not in captured.err
+
+
+def test_json_mode_failed_recovery_debug_log_contains_metadata_only(
+    monkeypatch,
+    capsys,
+):
+    provider = _provider("glm-5.3:cloud", monkeypatch, mode="cloud")
+    monkeypatch.setenv("JARVIS_DEBUG", "true")
+    private_trace = "SENSITIVE_PRIVATE_TRACE: internal analysis without JSON"
+    response = _ThinkingOnlyChatResponse(private_trace)
+    capsys.readouterr()
+
+    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")):
+        text = provider.chat(
+            "Evaluate this result.",
+            system_prompt="Return JSON only.",
+        )
+
+    assert text == ""
+    captured = capsys.readouterr()
+    assert "JSON recovery failed" in captured.err
+    assert f"thinking_chars={len(private_trace)}" in captured.err
+    assert "prompt_tokens=10" in captured.err
+    assert "completion_tokens=5" in captured.err
+    assert private_trace not in captured.err
+    assert "result=" not in captured.err
+
+
+def test_json_mode_recovers_only_parseable_object_from_thinking(monkeypatch):
+    provider = _provider("glm-5.3:cloud", monkeypatch, mode="cloud")
+    response = _ThinkingOnlyChatResponse(
+        'I should return the requested shape.\n```json\n{"ok": true, "score": 4}\n```'
+    )
+
+    with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")):
+        text = provider.chat(
+            "Evaluate this result.",
+            system_prompt="Return valid JSON only.",
+        )
+
+    assert text == '{"ok": true, "score": 4}'
 
 
 def test_native_tool_path_preserves_ollama_cloud_payment_error_body(monkeypatch):

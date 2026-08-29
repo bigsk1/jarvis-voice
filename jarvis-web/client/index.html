@@ -504,6 +504,16 @@
               </select>
               <span class="setting-model-detail" id="llm-model-capabilities"></span>
             </div>
+            <div class="setting-group" id="thinking-effort-group" hidden>
+              <label class="setting-label">
+                Thinking Effort
+                <span class="setting-default" id="thinking-effort-default"></span>
+              </label>
+              <select class="setting-input" id="setting-thinking-effort">
+                <option value="">Use env/model default</option>
+              </select>
+              <span class="setting-desc">Controls reasoning depth for models with a validated thinking profile. Reasoning text stays hidden unless debug thinking is enabled.</span>
+            </div>
             <div class="setting-group">
               <label class="setting-label">
                 Router System Prompt

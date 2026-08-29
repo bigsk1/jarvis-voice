@@ -763,7 +763,7 @@ def update_web_settings():
     settings = get_settings_manager()
 
     structured = any(k in data for k in [
-        'llm_provider', 'llm_model', 'router_prompt_version', 'image_provider', 'video_provider',
+        'llm_provider', 'llm_model', 'thinking_effort', 'router_prompt_version', 'image_provider', 'video_provider',
         'music_provider', 'status_llm_enabled', 'status_phrase_mode',
         'response_style', 'tool_rag_limit', 'qa_word_limit', 'multi_turn_word_limit',
         'completion_guard_enabled', 'completion_guard_mode',
@@ -875,6 +875,8 @@ def get_provider_models(provider):
         current_model = get_jarvis_setting(env_key_map.get(provider, ''), '').strip() if provider in env_key_map else ''
         models = settings._get_model_options_with_current(provider, current_model)
         default_model = settings._get_env_provider_model(provider)
+    from ..services.settings_manager import _annotate_model_thinking_effort_options
+    models = _annotate_model_thinking_effort_options(provider, models, mode)
     return jsonify({
         'ok': True,
         'provider': provider,

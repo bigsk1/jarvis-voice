@@ -245,6 +245,26 @@ class WebSettingsModeTests(unittest.TestCase):
         settings.validate_web_overrides.assert_called_once_with({"router_prompt_version": "v1"})
         settings.save_web_overrides.assert_called_once_with({"router_prompt_version": "v1"})
 
+    def test_save_routes_thinking_effort_through_structured_overrides(self):
+        settings = MagicMock()
+        settings.set_mode.return_value = True
+        settings.save_web_overrides.return_value = True
+
+        with (
+            self.app.test_request_context(
+                "/api/settings/web",
+                method="PUT",
+                json={"mode": "cloud", "thinking_effort": "low"},
+            ),
+            patch.object(self.api, "get_settings_manager", return_value=settings),
+            patch.object(self.api, "reload_web_config"),
+        ):
+            response = self.api.update_web_settings()
+
+        self.assertEqual(response.status_code, 200)
+        settings.validate_web_overrides.assert_called_once_with({"thinking_effort": "low"})
+        settings.save_web_overrides.assert_called_once_with({"thinking_effort": "low"})
+
     def test_save_routes_status_update_settings_through_structured_overrides(self):
         settings = MagicMock()
         settings.set_mode.return_value = True
@@ -881,6 +901,171 @@ class WebSettingsModeTests(unittest.TestCase):
                 {"id": "v4", "label": "v4 - Caveman-light hybrid prompt"},
             ],
         })
+
+    def test_settings_payload_describes_thinking_effort_default_and_override(self):
+        from server.services import settings_manager as settings_module
+        from server.services.settings_manager import SettingsManager
+
+        web_config = {
+            "cloud": {"thinking_effort": "low"},
+            "audio": {},
+            "ui": {},
+            "conversation": {},
+            "tools": {},
+        }
+        settings = SettingsManager("cloud")
+        with (
+            patch.object(settings, "_ensure_jarvis_config"),
+            patch.object(settings_module, "load_web_config", return_value=web_config),
+            patch.object(
+                settings_module,
+                "get_jarvis_setting",
+                side_effect=lambda key, default="": {
+                    "JARVIS_THINKING_EFFORT": "auto",
+                }.get(key, default),
+            ),
+            patch.object(settings, "_get_provider_models", return_value={}),
+            patch.object(settings, "_get_api_key_status", return_value={}),
+            patch.object(settings, "get_provider_availability", return_value={}),
+        ):
+            payload = settings.get_settings_for_ui()
+
+        self.assertEqual(payload["llm"]["thinking_effort"]["value"], "low")
+        self.assertEqual(payload["llm"]["thinking_effort"]["default"], "auto")
+        self.assertTrue(payload["llm"]["thinking_effort"]["is_override"])
+        self.assertIn("high", payload["llm"]["thinking_effort"]["options"])
+        self.assertTrue(payload["llm"]["thinking_effort"]["profiled"])
+
+    def test_thinking_effort_validation_rejects_unknown_value(self):
+        from server.services.settings_manager import SettingsManager, SettingsValidationError
+
+        settings = SettingsManager("cloud")
+        with patch.object(settings, "_ensure_jarvis_config"):
+            with self.assertRaises(SettingsValidationError) as context:
+                settings.validate_web_overrides({"thinking_effort": "ultra"})
+
+        self.assertEqual(context.exception.field, "thinking_effort")
+
+    def test_glm_web_effort_options_come_from_model_profile(self):
+        from server.services.settings_manager import _model_thinking_effort_options
+
+        options, profiled = _model_thinking_effort_options(
+            "ollama",
+            "glm-5.3-flash:cloud",
+            "cloud",
+        )
+
+        self.assertTrue(profiled)
+        self.assertEqual(options, ["low", "high", "max"])
+        self.assertNotIn("medium", options)
+
+    def test_xai_web_effort_options_distinguish_none_from_provider_default(self):
+        from server.services.settings_manager import _model_thinking_effort_options
+
+        grok_46, profiled_46 = _model_thinking_effort_options(
+            "xai", "grok-4.6", "cloud"
+        )
+        grok_43, profiled_43 = _model_thinking_effort_options(
+            "xai", "grok-4.3", "cloud"
+        )
+
+        self.assertTrue(profiled_46)
+        self.assertEqual(grok_46, ["low", "medium", "high", "xhigh"])
+        self.assertNotIn("off", grok_46)
+        self.assertTrue(profiled_43)
+        self.assertEqual(grok_43, ["none", "low", "medium", "high"])
+        self.assertNotIn("off", grok_43)
+
+    def test_unprofiled_model_has_no_web_effort_options(self):
+        from server.services.settings_manager import _model_thinking_effort_options
+
+        options, profiled = _model_thinking_effort_options(
+            "openai", "gpt-5.4", "cloud"
+        )
+
+        self.assertFalse(profiled)
+        self.assertEqual(options, [])
+
+    def test_thinking_effort_validation_uses_effective_model_levels(self):
+        from server.services.settings_manager import SettingsManager, SettingsValidationError
+
+        settings = SettingsManager("cloud")
+        with (
+            patch.object(settings, "_ensure_jarvis_config"),
+            patch.object(settings, "_validate_provider_overrides"),
+            patch.object(
+                settings,
+                "_effective_llm_selection_for_overrides",
+                return_value=("ollama", "glm-5.3:cloud"),
+            ),
+        ):
+            with self.assertRaises(SettingsValidationError) as context:
+                settings.validate_web_overrides({"thinking_effort": "medium"})
+            settings.validate_web_overrides({"thinking_effort": "high"})
+
+        self.assertEqual(context.exception.field, "thinking_effort")
+        self.assertIn("glm-5.3:cloud", context.exception.reason)
+
+    def test_thinking_effort_validation_rejects_unprofiled_model(self):
+        from server.services.settings_manager import SettingsManager, SettingsValidationError
+
+        settings = SettingsManager("cloud")
+        with (
+            patch.object(settings, "_ensure_jarvis_config"),
+            patch.object(settings, "_validate_provider_overrides"),
+            patch.object(
+                settings,
+                "_effective_llm_selection_for_overrides",
+                return_value=("openai", "gpt-5.4"),
+            ),
+        ):
+            with self.assertRaises(SettingsValidationError) as context:
+                settings.validate_web_overrides({"thinking_effort": "high"})
+
+        self.assertIn("unprofiled model", context.exception.reason)
+
+    def test_provider_only_save_clears_stale_incompatible_thinking_effort(self):
+        from server.services import settings_manager as settings_module
+        from server.services.settings_manager import SettingsManager
+
+        web_config = {
+            "cloud": {
+                "llm_provider": "ollama",
+                "llm_model": "glm-5.3:cloud",
+                "thinking_effort": "high",
+            }
+        }
+        settings = SettingsManager("cloud")
+        with (
+            patch.object(settings, "_ensure_jarvis_config"),
+            patch.object(settings, "_validate_provider_overrides"),
+            patch.object(settings_module, "load_web_config", return_value=web_config),
+            patch.object(
+                settings_module,
+                "get_jarvis_setting",
+                side_effect=lambda key, default="": default,
+            ),
+            patch.object(settings_module, "save_web_config", return_value=True),
+        ):
+            self.assertTrue(
+                settings.save_web_overrides(
+                    {"llm_provider": "openai", "llm_model": "gpt-5.4"}
+                )
+            )
+
+        self.assertIsNone(web_config["cloud"]["thinking_effort"])
+
+    def test_thinking_effort_control_is_loaded_and_saved_by_web_client(self):
+        index_html = (ROOT / "jarvis-web" / "client" / "index.html").read_text()
+        app_js = (ROOT / "jarvis-web" / "client" / "js" / "app.js").read_text()
+        chat_py = (ROOT / "jarvis-web" / "server" / "sockets" / "chat.py").read_text()
+
+        self.assertIn('id="setting-thinking-effort"', index_html)
+        self.assertIn('id="thinking-effort-group" hidden', index_html)
+        self.assertIn("s.llm?.thinking_effort", app_js)
+        self.assertIn("_updateThinkingEffortControl(provider)", app_js)
+        self.assertIn("thinking_effort: document.getElementById", app_js)
+        self.assertIn("'thinking_effort': 'JARVIS_THINKING_EFFORT'", chat_py)
 
 
 if __name__ == "__main__":

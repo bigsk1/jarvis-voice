@@ -17,6 +17,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
 from lib import openai_responses_adapter as ora  # noqa: E402
 from lib.llm_provider import OpenAIProvider  # noqa: E402
+from lib.model_prompt_overrides import ModelThinkingOverride  # noqa: E402
 
 
 class OpenAIResponsesAdapterTests(unittest.TestCase):
@@ -78,6 +79,23 @@ class OpenAIResponsesAdapterTests(unittest.TestCase):
 
         self.assertEqual(result, ("ok", None, {}, None))
         responses_call.assert_called_once()
+
+    def test_model_profile_allows_generic_effort_for_future_model(self) -> None:
+        provider = OpenAIProvider.__new__(OpenAIProvider)
+        provider.model = "future-openai-reasoner"
+        profile = ModelThinkingOverride(
+            supported=True,
+            disable_supported=False,
+            levels=("low", "high", "max"),
+            default_level="max",
+            disabled_fallback_level="low",
+        )
+
+        with (
+            mock.patch.dict(os.environ, {"JARVIS_THINKING_EFFORT": "high"}, clear=True),
+            mock.patch.object(provider, "_model_thinking_profile", return_value=profile),
+        ):
+            self.assertEqual(provider._openai_reasoning_effort(), "high")
 
     def test_parse_responses_result_text_from_message_blocks(self) -> None:
         out_msg = SimpleNamespace(

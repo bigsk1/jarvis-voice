@@ -724,54 +724,95 @@ store or ordered event log instead.
   scheduler starts.
 
 ### 15) Ollama Thinking-Effort Profiles and Optional Web Reasoning View
-**Priority:** Low / revisit only if required-thinking models become common or visible reasoning is requested
-**Status:** Deferred; use a different model for now
 
-An August 2026 live check found one model-specific compatibility edge:
-`glm-5.3` on Ollama Cloud ignored Jarvis's normal `think: false` request and
-returned untagged internal reasoning together with the final answer in
-`message.content`. Sending `think: "low"` returned the final answer cleanly in
-`message.content` and placed the trace in `message.thinking`. The separately
-tested `glm-5.3-flash` cloud model did not reproduce the leak, so this does not
-currently justify a new general subsystem by itself.
+**Priority:** Low for the remaining presentation work
+**Status:** Core request controls implemented; collapsed reasoning view deferred
 
-#### Options if the issue becomes worth addressing
+August 2026 checks found that both `glm-5.3` and `glm-5.3-flash` on Ollama
+Cloud require reasoning and can leak malformed or inline reasoning when sent a
+normal `think: false` request. Sending `think: "low"` keeps the final answer in
+`message.content` and the trace in `message.thinking` on successful responses.
 
-1. **Keep the current behavior and avoid the affected model.** This is the
-   preferred near-term choice while the issue is isolated to one optional
-   model.
-2. **Add a narrow GLM-5.3 compatibility rule.** Map logical thinking-off to
-   `think: "low"`, discard the separated trace, and leave every other Ollama
-   model unchanged. This is the smallest code fix if GLM-5.3 becomes important.
-3. **Add model runtime profiles.** Reuse the existing
-   `config/models/<provider>/<model>/` family matching, but add a separate
-   runtime-capability file rather than putting API parameters in
-   `prompt_overrides.yaml`. A profile could declare whether thinking can be
-   disabled, supported effort values, and the safe fallback when "off" is not
-   supported. Both ENV-selected models and Web UI model overrides would resolve
-   through the same effective provider/model profile.
-4. **Add Web UI thinking controls and a collapsed reasoning panel.** Keep the
-   request setting (`auto`, `off`, `low`, `medium`, `high`, `max`) separate from
-   presentation (`hidden`, collapsed, expanded). Only offer values known to be
-   accepted by the selected model, and default the trace to hidden or collapsed.
+#### Implemented core
+
+- Validated `thinking` metadata now lives alongside model prompt overrides and
+  declares disable support, accepted levels, defaults, and a safe off fallback.
+- `JARVIS_THINKING_EFFORT` and a per-mode Web setting select generation effort.
+- The Web control is model-aware: it is hidden for unprofiled models, exposes
+  only accepted values, and clears incompatible saved effort after a model or
+  provider change. Audited xAI catalog capabilities use the same policy.
+- Generation and presentation are separate. Required-thinking models run at
+  their safe minimum while hidden traces are discarded before UI/log output.
+- Unknown and unprofiled Ollama models preserve their previous boolean behavior.
+- Simple chat, native tool chat, and structured-tool fallback use the same
+  resolver.
+
+#### Deferred Web decision-trace view
+
+If visible model reasoning becomes useful for diagnosing tool choices or final
+answers, add it as a post-response diagnostic rather than replacing Jarvis's
+live status phrases and tool-progress cards. The first version should remain
+non-streaming: after the complete in-flight request finishes, show a
+**Reasoning / Decision trace** panel beneath the assistant response, collapsed
+by default and omitted when the provider returned no displayable trace.
+
+Do not concatenate a multi-tool run into one large reasoning block. Preserve a
+bounded chronological list of provider calls, for example:
+
+1. Initial routing reasoning -> selected `weather`
+2. Reasoning after the weather result -> selected `search_web`
+3. Final synthesis reasoning -> produced the response
+
+Each turn can be expanded independently inside the collapsed parent panel.
+Keep the existing tool cards authoritative for actual tool names, arguments,
+results, errors, ordering, and duration; provider-supplied reasoning is only
+supplemental diagnostic context. A trace will not always map one-to-one to a
+tool: explicit workflows may execute deterministic steps without another LLM
+call, while provider-native tools may execute multiple operations inside one
+provider request.
+
+The orchestrator currently retains only the first routing trace. A complete
+view would need a bounded `reasoning_trace` collection with turn/phase and
+selected-tool metadata, without copying tool results into every entry. Provider
+coverage must remain truthful and conditional: Anthropic and native Ollama can
+return displayable reasoning, the xAI OpenAI-compatible path may return
+`reasoning_content`, and other paths or models may provide only a summary or no
+trace at all. Never fabricate a trace or describe provider-supplied summaries
+as a complete internal chain of thought.
+
+Keep the three controls and data boundaries separate:
+
+- `thinking_effort` controls how much reasoning the model performs.
+- A future opt-in capture/visibility setting controls whether returned traces
+  are retained for Web display. When enabled, the UI disclosure remains closed
+  by default. The debug-thinking key is request-scope aware, but it is not
+  currently exposed as a per-mode Web capture preference.
+- Conversation context continues to include message text and deliberately
+  compact follow-up tool data, not saved reasoning. Store any trace under
+  private message metadata such as `_reasoning_trace` and explicitly add it to
+  `FOLLOWUP_DATA_SKIP_KEYS` so it cannot enter later model prompts.
+
+Bound both each entry and the total saved trace size to avoid conversation-file,
+history-payload, and browser-memory growth. Do not send reasoning to TTS. Warn
+that a returned trace may contain sensitive prompt or tool context, and retain
+provider-boundary response sanitization even when capture is enabled. Streaming
+reasoning can remain a separate, provider-specific enhancement if Jarvis later
+adopts streaming provider calls; the current live surface should continue to
+use status phrases and tool events.
 
 Do not statically enumerate every Ollama model in `CLOUD_MODEL_CATALOG`; model
-availability should continue to come from the configured Ollama host. A future
-runtime profile should supplement only missing capability/quirk metadata. Also
-do not rely on a custom Ollama Modelfile as the primary solution: `think` is a
-top-level chat request control, Jarvis currently sends it explicitly, and host
-aliases would have to be maintained consistently across local, signed-daemon,
-and direct-cloud paths.
+availability should continue to come from the configured Ollama host. Runtime
+profiles should supplement only missing capability/quirk metadata. Also do not
+rely on a custom Ollama Modelfile as the primary solution: `think` is a
+top-level chat request control, Jarvis sends it explicitly, and host aliases
+would have to be maintained consistently across local, signed-daemon, and
+direct-cloud paths.
 
-#### Implementation triggers and boundaries
+#### Boundaries for the deferred reasoning view
 
-- Revisit when multiple actively used Ollama models cannot disable thinking,
-  GLM-5.3 becomes a preferred Jarvis model, or the Web UI gains a reasoning view.
-- Preserve today's boolean behavior for unknown or unprofiled Ollama models.
-- Apply request resolution consistently to simple chat, native tool chat, and
-  structured-tool fallback paths.
-- When thinking is logically hidden but a model requires a minimum effort,
-  discard the separated trace before UI output and thinking logs.
+- Preserve boolean behavior for unknown or unprofiled Ollama models.
+- Keep effort selection independent from trace presentation.
+- Keep trace capture opt-in and default any displayed panel to collapsed.
 - Keep provider-boundary tag sanitization as defense in depth for malformed
   responses, but never guess where untagged natural-language reasoning ends.
 

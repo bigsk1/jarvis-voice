@@ -30,7 +30,27 @@ SUPPORTED_SECTIONS = {
     "intelligence_reflection_prepend",
 }
 
+SUPPORTED_TOP_LEVEL_KEYS = SUPPORTED_SECTIONS | {
+    "enabled",
+    "description",
+    "applies_to_modes",
+    "thinking",
+}
+
+_THINKING_LEVEL_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
+
 _KNOWN_RUNTIME_SUFFIXES = {"latest", "cloud"}
+
+
+@dataclass(frozen=True)
+class ModelThinkingOverride:
+    """Validated model-specific thinking capabilities and safe defaults."""
+
+    supported: bool = True
+    disable_supported: bool = True
+    levels: tuple[str, ...] = ()
+    default_level: str | None = None
+    disabled_fallback_level: str | None = None
 
 
 @dataclass(frozen=True)
@@ -45,6 +65,7 @@ class ModelPromptOverride:
     description: str = ""
     enabled: bool = False
     sections: dict[str, str] = field(default_factory=dict)
+    thinking: ModelThinkingOverride | None = None
 
     def get(self, key: str) -> str:
         return self.sections.get(key, "")
@@ -155,6 +176,142 @@ def _coerce_section_text(payload: dict, section: str) -> str:
     return ""
 
 
+def _coerce_thinking_level(value: object, field_name: str, path: Path) -> str | None:
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str):
+        logger.warning(
+            "[MODEL_PROMPTS] thinking.%s must be a string in %s",
+            field_name,
+            path,
+        )
+        return None
+    normalized = value.strip().lower()
+    if not _THINKING_LEVEL_RE.fullmatch(normalized):
+        logger.warning(
+            "[MODEL_PROMPTS] Invalid thinking.%s=%r in %s",
+            field_name,
+            value,
+            path,
+        )
+        return None
+    return normalized
+
+
+def _coerce_thinking_override(
+    payload: dict,
+    path: Path,
+) -> ModelThinkingOverride | None:
+    """Validate the optional provider-neutral ``thinking`` model profile."""
+    raw = payload.get("thinking")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        logger.warning(
+            "[MODEL_PROMPTS] thinking must be a mapping in %s; ignoring it",
+            path,
+        )
+        return None
+
+    supported = raw.get("supported", True)
+    disable_supported = raw.get("disable_supported", True)
+    if not isinstance(supported, bool) or not isinstance(disable_supported, bool):
+        logger.warning(
+            "[MODEL_PROMPTS] thinking.supported and thinking.disable_supported "
+            "must be booleans in %s; ignoring thinking profile",
+            path,
+        )
+        return None
+
+    levels_value = raw.get("levels", [])
+    if not isinstance(levels_value, list):
+        logger.warning(
+            "[MODEL_PROMPTS] thinking.levels must be a list in %s; ignoring thinking profile",
+            path,
+        )
+        return None
+
+    levels: list[str] = []
+    for value in levels_value:
+        level = _coerce_thinking_level(value, "levels", path)
+        if level is None:
+            logger.warning(
+                "[MODEL_PROMPTS] Ignoring invalid thinking profile in %s",
+                path,
+            )
+            return None
+        if level not in levels:
+            levels.append(level)
+
+    default_level = _coerce_thinking_level(raw.get("default_level"), "default_level", path)
+    disabled_fallback_level = _coerce_thinking_level(
+        raw.get("disabled_fallback_level"),
+        "disabled_fallback_level",
+        path,
+    )
+
+    if raw.get("default_level") not in (None, "") and default_level is None:
+        return None
+    if (
+        raw.get("disabled_fallback_level") not in (None, "")
+        and disabled_fallback_level is None
+    ):
+        return None
+
+    level_set = set(levels)
+    for field_name, value in (
+        ("default_level", default_level),
+        ("disabled_fallback_level", disabled_fallback_level),
+    ):
+        if value and value not in level_set:
+            logger.warning(
+                "[MODEL_PROMPTS] thinking.%s=%r is not listed in thinking.levels "
+                "for %s; ignoring thinking profile",
+                field_name,
+                value,
+                path,
+            )
+            return None
+
+    if supported and levels and not default_level:
+        logger.warning(
+            "[MODEL_PROMPTS] A level-based thinking profile requires "
+            "thinking.default_level in %s; ignoring thinking profile",
+            path,
+        )
+        return None
+    if supported and not disable_supported and not disabled_fallback_level:
+        logger.warning(
+            "[MODEL_PROMPTS] A required-thinking model must declare "
+            "thinking.disabled_fallback_level in %s; ignoring thinking profile",
+            path,
+        )
+        return None
+
+    known_keys = {
+        "supported",
+        "disable_supported",
+        "levels",
+        "default_level",
+        "disabled_fallback_level",
+    }
+    unknown_keys = sorted(set(raw) - known_keys)
+    if unknown_keys:
+        logger.debug(
+            "[MODEL_PROMPTS] Ignoring unknown thinking keys in %s: %s",
+            path,
+            ", ".join(unknown_keys),
+        )
+
+    return ModelThinkingOverride(
+        supported=supported,
+        disable_supported=disable_supported,
+        levels=tuple(levels),
+        default_level=default_level,
+        disabled_fallback_level=disabled_fallback_level,
+    )
+
+
 def load_model_prompt_override(
     provider: str,
     model: str,
@@ -215,7 +372,7 @@ def load_model_prompt_override(
             if mode and allowed_modes and mode not in allowed_modes:
                 return empty
 
-        unknown_keys = sorted(set(payload.keys()) - SUPPORTED_SECTIONS - {"enabled", "description", "applies_to_modes"})
+        unknown_keys = sorted(set(payload.keys()) - SUPPORTED_TOP_LEVEL_KEYS)
         if unknown_keys:
             logger.debug("[MODEL_PROMPTS] Ignoring unknown keys in %s: %s", path, ", ".join(unknown_keys))
 
@@ -224,6 +381,7 @@ def load_model_prompt_override(
             for section in SUPPORTED_SECTIONS
             if (text := _coerce_section_text(payload, section))
         }
+        thinking = _coerce_thinking_override(payload, path)
         override = ModelPromptOverride(
             provider=provider,
             model=model,
@@ -231,16 +389,20 @@ def load_model_prompt_override(
             matched_model=candidate,
             source_path=str(path),
             description=str(payload.get("description", "")).strip(),
-            enabled=bool(sections),
+            enabled=bool(sections or thinking),
             sections=sections,
+            thinking=thinking,
         )
-        if sections:
+        if sections or thinking:
+            loaded_parts = sorted(sections)
+            if thinking:
+                loaded_parts.append("thinking")
             logger.info(
                 "[MODEL_PROMPTS] Loaded override for %s/%s via %s (%s)",
                 provider,
                 model,
                 path,
-                ", ".join(sorted(sections)),
+                ", ".join(loaded_parts),
             )
         return override
 

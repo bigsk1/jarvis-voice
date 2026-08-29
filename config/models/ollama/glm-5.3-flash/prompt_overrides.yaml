@@ -1,0 +1,12 @@
+enabled: true
+description: "GLM-5.3-Flash requires thinking; use its lowest supported effort when traces are hidden"
+
+thinking:
+  supported: true
+  disable_supported: false
+  levels:
+    - low
+    - high
+    - max
+  default_level: max
+  disabled_fallback_level: low

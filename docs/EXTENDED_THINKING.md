@@ -1,10 +1,12 @@
 # Extended Thinking for Jarvis
 
-**Status**: Implemented and opt-in via `--debug-thinking` or `JARVIS_DEBUG_THINKING`
+**Status**: Implemented. Trace display is opt-in via `--debug-thinking` or `JARVIS_DEBUG_THINKING`; generation effort can be selected independently.
 
 Jarvis can request provider reasoning or thinking when the selected model supports it. Providers expose this differently: Anthropic can return summarized or explicit thinking blocks, Ollama may return a structured `thinking` field, while OpenAI and xAI generally perform reasoning internally and expose usage or effort controls rather than raw reasoning text.
 
-The feature is off by default, including in the Web UI. The Web UI's ordinary “thinking” status indicator means that a request is in progress; it is not provider reasoning text.
+Trace display is off by default, including in the Web UI. The Web UI's ordinary
+“thinking” status indicator means that a request is in progress; it is not
+provider reasoning text.
 
 ## Quick start
 
@@ -17,10 +19,21 @@ export JARVIS_DEBUG_THINKING=true
 ./orchestrator/orchestrator_v2.py cloud "What time is it?"
 
 # Focused regression tests
-~/jarvis-venv/bin/python -m pytest tests/test_thinking_adaptive.py
+.venv/bin/python -m pytest tests/test_thinking_policy.py tests/test_thinking_adaptive.py
 ```
 
-`--debug-thinking` sets `JARVIS_DEBUG_THINKING=1` only in the CLI process. Returned thinking is printed in a colored block and logged under `logs/thinking/`.
+`--debug-thinking` installs an authoritative process-local override after mode
+configuration loads, so `cloud.env` or `local.env` cannot silently turn the CLI
+flag back off. Returned thinking is printed in a colored block and logged under
+`logs/thinking/`.
+
+To select reasoning depth without displaying the trace, set
+`JARVIS_THINKING_EFFORT` or use the per-mode Web UI **Thinking Effort** control.
+The value is only sent when the selected model has a validated `thinking`
+profile from model YAML or audited catalog metadata. `off` maps to a real
+disable when supported, or to the model's declared safe minimum when reasoning
+is required. In Web Settings, the control is hidden for unprofiled models and
+its choices are rebuilt and validated whenever the provider or model changes.
 
 ## Provider behavior
 
@@ -28,10 +41,24 @@ export JARVIS_DEBUG_THINKING=true
 |---|---|---|
 | Anthropic | Reads audited thinking capabilities from `lib/model_catalog.py` and sends adaptive or enabled thinking parameters | Thinking block or adaptive summary returned by Claude |
 | OpenAI | Uses the model's normal reasoning behavior; `OPENAI_REASONING_EFFORT` is handled by the OpenAI provider | Raw chain-of-thought is not expected; a separate field is shown only if the API supplies one |
-| xAI | Uses `XAI_REASONING_EFFORT` independently of this debug flag | Jarvis records reasoning-token usage but does not normally receive reasoning text |
-| Ollama | Sends the native `think` boolean | Structured `message.thinking` when the selected Ollama model returns it |
+| xAI | Uses audited per-model effort values for `JARVIS_THINKING_EFFORT`; `XAI_REASONING_EFFORT` remains the provider-specific fallback | Jarvis records reasoning-token usage but does not normally receive reasoning text |
+| Ollama | Sends the native `think` boolean for unprofiled models, or a validated effort level for profiled models | Structured `message.thinking` only when trace display is enabled |
 
 A model may reason internally without exposing that reasoning. Absence of a displayed thinking block does not mean the model performed no reasoning.
+
+For xAI, omitting `reasoning_effort` means “use the provider default,” not
+“disable reasoning.” Jarvis therefore exposes no **Off** choice for models such
+as Grok 4.6 that do not accept a real disabled value; logical off resolves to
+their safest audited level. Models such as Grok 4.3 that accept `none` expose
+that exact value. Catalog defaults are preserved rather than inferred from the
+last value in the supported-level list, and `auto` continues to omit the
+parameter so xAI can apply that default.
+
+GLM-5.3 and GLM-5.3-Flash on Ollama Cloud are profiled as required-thinking
+models with `low`, `high`, and `max`. Their logical-off behavior is `low`, which
+keeps the trace in the provider's separate thinking field; Jarvis discards it
+by default. The same resolution is used by simple chat, native tool chat, and
+the structured-tool fallback.
 
 ## Anthropic source of truth
 
@@ -69,10 +96,15 @@ env | grep JARVIS_DEBUG_THINKING
 JARVIS_DEBUG=1 ./orchestrator/orchestrator_v2.py cloud "test" --debug-thinking
 ```
 
-If Anthropic thinking is skipped, verify that the exact selected model resolves in `lib/model_catalog.py`. For Ollama, verify that the selected local or cloud model accepts the native `think` option and returns a thinking field.
+If Anthropic or xAI thinking is skipped, verify that the exact selected model
+has audited capabilities in `lib/model_catalog.py`. For Ollama, verify that the
+selected local or cloud model accepts the native `think` option and returns a
+thinking field. In JSON mode, Jarvis may recover a parseable JSON object from a
+thinking-only response, but it never promotes raw reasoning prose into normal
+assistant content.
 
 ## Related historical material
 
 Older implementation notes live under `docs/archive/thinking/`. The sequential-thinking MCP design is a separate feature described in `docs/archive/SEQUENTIAL_THINKING_ARCHITECTURE.md`.
 
-**Last updated:** 2026-07-01
+**Last updated:** 2026-08-29

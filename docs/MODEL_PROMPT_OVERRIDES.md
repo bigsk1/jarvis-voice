@@ -1,6 +1,6 @@
 # Model Prompt Overrides
 
-> Purpose: Add small, surgical prompt overlays for specific provider/model combinations so Jarvis can correct stable model quirks without changing the global prompt behavior for the whole app.
+> Purpose: Add small, surgical prompt overlays and validated runtime thinking profiles for specific provider/model combinations without changing behavior for the whole app.
 
 ## Why This Exists
 
@@ -93,6 +93,13 @@ tool_calling_prepend: |
 
 completion_guard_eval_prepend: |
   Judge the answer based on whether it delivered the requested outcome, not just whether it sounded plausible.
+
+thinking:
+  supported: true
+  disable_supported: false
+  levels: [low, high, max]
+  default_level: max
+  disabled_fallback_level: low
 ```
 
 ## Supported Fields
@@ -120,6 +127,33 @@ completion_guard_eval_prepend: |
 - `tool_calling_prepend`
 - `completion_guard_eval_prepend`
 - `intelligence_reflection_prepend`
+
+### Thinking Profile
+
+The optional `thinking` mapping is provider-neutral capability metadata:
+
+- `supported`: whether the model supports reasoning controls
+- `disable_supported`: whether a real off request is accepted
+- `levels`: exact effort strings accepted by this model
+- `default_level`: effort used when visible debug thinking is enabled
+- `disabled_fallback_level`: safe minimum used when logical off is requested
+  but the model cannot disable thinking
+
+Level-based profiles require `default_level`. Required-thinking profiles also
+require `disabled_fallback_level`, and both values must occur in `levels`.
+Invalid profiles are ignored with a warning; valid prompt sections in the same
+file still load. YAML cannot inject arbitrary provider request fields.
+
+`JARVIS_THINKING_EFFORT` (or the per-mode Web setting) selects a declared level.
+The same resolver can derive a profile from audited catalog metadata for
+providers such as xAI and Anthropic. Unsupported values are never sent. Unknown
+or unprofiled models retain their existing provider behavior and
+provider-specific variables such as `OPENAI_REASONING_EFFORT`,
+`XAI_REASONING_EFFORT`, and `ANTHROPIC_EFFORT`.
+
+Thinking generation and trace visibility are separate: a required-thinking
+model can run at its safe minimum while Jarvis discards the trace unless
+`JARVIS_DEBUG_THINKING=true`.
 
 Future sections can be added later if they prove necessary, but the initial version should stay small.
 

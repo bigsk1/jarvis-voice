@@ -441,12 +441,14 @@ class JarvisApp {
       this._populateModelDropdown(provider);
       document.getElementById('setting-llm-model').value = '';  // Reset model selection
       this._updateModelCapabilityDetail('setting-llm-model', provider);
+      this._updateThinkingEffortControl(provider);
     });
 
     document.getElementById('setting-llm-model')?.addEventListener('change', () => {
       const provider = document.getElementById('setting-llm-provider')?.value
         || this._settingsData?.llm?.provider?.default || 'xai';
       this._updateModelCapabilityDetail('setting-llm-model', provider);
+      this._updateThinkingEffortControl(provider);
     });
 
     // Preview the selected mode's settings before Save. Without this, changing
@@ -1699,6 +1701,14 @@ class JarvisApp {
           modelDefault.className = 'setting-default';
         }
         this._updateModelCapabilityDetail('setting-llm-model', s.llm?.provider?.value || provEnvDefault);
+
+        // Populate model-aware thinking effort. This controls generation only;
+        // reasoning text remains hidden unless JARVIS_DEBUG_THINKING is enabled.
+        const thinkingEffortSetting = s.llm?.thinking_effort || {};
+        this._updateThinkingEffortControl(
+          s.llm?.provider?.value || provEnvDefault,
+          thinkingEffortSetting
+        );
 
         // Populate versioned router system prompt selection.
         const routerPromptSelect = document.getElementById('setting-router-prompt-version');
@@ -3095,6 +3105,46 @@ class JarvisApp {
     this._updateModelCapabilityDetail(selectId, provider);
   }
 
+  _updateThinkingEffortControl(provider, setting = null) {
+    const group = document.getElementById('thinking-effort-group');
+    const select = document.getElementById('setting-thinking-effort');
+    const defaultLabel = document.getElementById('thinking-effort-default');
+    const modelSelect = document.getElementById('setting-llm-model');
+    if (!group || !select || !defaultLabel || !modelSelect) return;
+
+    const selectedModel = modelSelect.value
+      || this._settingsData?.provider_model_defaults?.[provider]
+      || this._settingsData?.llm?.model?.default
+      || '';
+    const model = (this._settingsData?.provider_models?.[provider] || [])
+      .find(item => item.id === selectedModel);
+    const profile = model?.thinking_effort || {};
+    const options = Array.isArray(profile.options) ? profile.options : [];
+    const profiled = profile.profiled === true;
+    const requestedValue = setting?.is_override ? setting.value : select.value;
+
+    group.hidden = !profiled;
+    select.disabled = !profiled;
+    select.replaceChildren(new Option('Use env/model default', ''));
+    for (const effort of options) {
+      select.add(new Option(effort, effort));
+    }
+    select.value = profiled && options.includes(requestedValue) ? requestedValue : '';
+
+    const envFile = (this._settingsData?.mode || this.socket?.mode) === 'local'
+      ? 'local.env'
+      : 'cloud.env';
+    const envDefault = setting?.default
+      || this._settingsData?.llm?.thinking_effort?.default
+      || 'auto';
+    defaultLabel.className = select.value
+      ? 'setting-default setting-override'
+      : 'setting-default';
+    defaultLabel.textContent = select.value
+      ? `⚡ override: ${select.value} · (${envFile} default: ${envDefault})`
+      : `(${envFile}: ${envDefault})`;
+  }
+
   _formatModelCapabilitySummary(model) {
     if (!model) return '';
     const parts = [];
@@ -4140,6 +4190,7 @@ class JarvisApp {
         progress_events: document.getElementById('setting-progress-events').checked,
         llm_provider: document.getElementById('setting-llm-provider').value || null,
         llm_model: document.getElementById('setting-llm-model').value || null,
+        thinking_effort: document.getElementById('setting-thinking-effort').value || null,
         router_prompt_version: document.getElementById('setting-router-prompt-version').value || null,
         image_provider: document.getElementById('setting-image-provider').value || null,
         video_provider: document.getElementById('setting-video-provider').value || null,

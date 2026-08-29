@@ -13,6 +13,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
 from llm_provider import AnthropicProvider
+from model_prompt_overrides import ModelThinkingOverride
 
 
 class AnthropicBlockHandlingTests(unittest.TestCase):
@@ -131,6 +132,42 @@ class AnthropicBlockHandlingTests(unittest.TestCase):
         self.assertEqual(captured["thinking"], {"type": "adaptive", "display": "summarized"})
         self.assertEqual(captured["output_config"], {"effort": "xhigh"})
         self.assertEqual(captured["max_tokens"], 16_384)
+
+    @patch.dict("os.environ", {"JARVIS_THINKING_EFFORT": "low"}, clear=False)
+    def test_profile_effort_generates_reasoning_but_keeps_trace_hidden(self):
+        captured = {}
+
+        def create(**params):
+            captured.update(params)
+            return SimpleNamespace(
+                usage=None,
+                content=[
+                    SimpleNamespace(type="thinking", thinking="Private trace."),
+                    SimpleNamespace(type="text", text="Done"),
+                ],
+            )
+
+        provider = AnthropicProvider.__new__(AnthropicProvider)
+        provider.model = "claude-fable-5"
+        provider.enable_search = False
+        provider.client = SimpleNamespace(messages=SimpleNamespace(create=create))
+        profile = ModelThinkingOverride(
+            supported=True,
+            disable_supported=True,
+            levels=("low", "medium", "high", "max", "xhigh"),
+            default_level="xhigh",
+        )
+
+        with patch.object(provider, "_model_thinking_profile", return_value=profile):
+            text, _tool_call, _usage, thinking = provider.chat_with_tools(
+                [{"role": "user", "content": "hello"}],
+                [],
+                enable_thinking=False,
+            )
+
+        self.assertEqual(text, "Done")
+        self.assertEqual(captured["output_config"], {"effort": "low"})
+        self.assertIsNone(thinking)
 
     def test_collects_all_text_blocks_in_order(self):
         blocks = [

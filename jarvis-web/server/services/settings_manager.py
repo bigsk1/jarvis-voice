@@ -46,6 +46,55 @@ _OLLAMA_MODEL_METADATA_TTL_SECONDS = 600
 _OLLAMA_MODEL_METADATA_FAILURE_TTL_SECONDS = 30
 _OLLAMA_MODEL_METADATA_BATCH_TIMEOUT_SECONDS = 5
 
+THINKING_EFFORT_OPTIONS = (
+    "off",
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+)
+
+
+def _model_thinking_effort_options(provider: str, model: str, mode: str) -> tuple[list[str], bool]:
+    """Return model-declared Web effort choices and whether a profile exists."""
+    from model_prompt_overrides import load_model_prompt_override
+    from thinking_policy import get_catalog_thinking_profile
+
+    profile = load_model_prompt_override(provider, model, mode).thinking
+    profile = profile or get_catalog_thinking_profile(provider, model)
+    if not profile:
+        return [], False
+
+    options = list(profile.levels)
+    # Do not offer a generic Off value when omission means "use the provider
+    # default" or when the provider already exposes an explicit ``none`` level.
+    if profile.disable_supported and "none" not in options:
+        options.insert(0, "off")
+    return list(dict.fromkeys(options)), True
+
+
+def _annotate_model_thinking_effort_options(
+    provider: str,
+    models: list[dict[str, Any]],
+    mode: str,
+) -> list[dict[str, Any]]:
+    """Attach selected-model effort metadata used by the unsaved Web form."""
+    annotated = []
+    for model in models:
+        model_id = str(model.get("id") or "").strip()
+        options, profiled = _model_thinking_effort_options(provider, model_id, mode)
+        annotated.append({
+            **model,
+            "thinking_effort": {
+                "options": options,
+                "profiled": profiled,
+            },
+        })
+    return annotated
+
 
 def _compact_count(value: Any) -> str | None:
     try:
@@ -749,6 +798,9 @@ class SettingsManager:
         
         # Get env defaults for current mode
         env_provider = get_jarvis_setting('LLM_PROVIDER', 'xai' if self.mode == 'cloud' else 'ollama')
+        env_thinking_effort = str(
+            get_jarvis_setting('JARVIS_THINKING_EFFORT', 'auto') or 'auto'
+        ).strip().lower()
         env_router_prompt_version = normalize_router_prompt_version(
             get_jarvis_setting('JARVIS_ROUTER_PROMPT_VERSION', DEFAULT_ROUTER_PROMPT_VERSION)
         )
@@ -798,6 +850,9 @@ class SettingsManager:
         web_model = mode_overrides.get('llm_model')
         if provider_invalid:
             web_model = None
+        web_thinking_effort = mode_overrides.get('thinking_effort')
+        if web_thinking_effort not in (None, *THINKING_EFFORT_OPTIONS):
+            web_thinking_effort = None
         web_router_prompt_version = mode_overrides.get('router_prompt_version')
         if web_router_prompt_version not in (None, *available_router_prompt_versions()):
             web_router_prompt_version = None
@@ -833,6 +888,23 @@ class SettingsManager:
         if not self._model_is_compatible_with_provider(effective_provider, web_model):
             web_model = None
         effective_model = web_model or self._get_env_provider_model(effective_provider)
+        thinking_effort_options, thinking_profiled = _model_thinking_effort_options(
+            effective_provider,
+            effective_model,
+            self.mode,
+        )
+        if not thinking_profiled or web_thinking_effort not in thinking_effort_options:
+            web_thinking_effort = None
+        displayed_env_thinking_effort = (
+            env_thinking_effort
+            if (
+                env_thinking_effort == 'auto'
+                or env_thinking_effort in thinking_effort_options
+                or thinking_profiled and env_thinking_effort in {'off', 'none'}
+            )
+            else 'auto'
+        )
+        effective_thinking_effort = web_thinking_effort or displayed_env_thinking_effort
         effective_router_prompt_version = web_router_prompt_version or env_router_prompt_version
         effective_image = web_image or env_image_provider
         effective_video = web_video or env_video_provider
@@ -921,6 +993,13 @@ class SettingsManager:
                     'default': self._get_env_provider_model(effective_provider),
                     'is_override': web_model is not None,
                     'options': self._get_model_options_with_current(effective_provider, effective_model)
+                },
+                'thinking_effort': {
+                    'value': effective_thinking_effort,
+                    'default': displayed_env_thinking_effort,
+                    'is_override': web_thinking_effort is not None,
+                    'options': thinking_effort_options,
+                    'profiled': thinking_profiled,
                 }
             },
 
@@ -1185,7 +1264,14 @@ class SettingsManager:
             context = 'cloud' if (direct_cloud_api or is_ollama_cloud_model(default_model)) else 'local'
             models['ollama'] = [{'id': default_model, 'name': f'{default_model}', 'context': context}]
         
-        return models
+        return {
+            provider: _annotate_model_thinking_effort_options(
+                provider,
+                provider_models,
+                self.mode,
+            )
+            for provider, provider_models in models.items()
+        }
 
     def _ollama_env_default_model(self) -> str:
         """Resolve the env default Ollama model for this mode (cloud-aware).
@@ -1435,6 +1521,39 @@ class SettingsManager:
     def get_web_settings(self) -> dict:
         """Return web UI specific settings"""
         return load_web_config()
+
+    def _effective_llm_selection_for_overrides(
+        self,
+        overrides: dict[str, Any],
+    ) -> tuple[str, str]:
+        """Resolve the provider/model that a structured Web save would select."""
+        config = load_web_config()
+        mode_config = config.get(self.mode, {}) if isinstance(config, dict) else {}
+        env_provider = get_jarvis_setting(
+            'LLM_PROVIDER',
+            'xai' if self.mode == 'cloud' else 'ollama',
+        )
+        current_provider = mode_config.get('llm_provider') or env_provider
+
+        if 'llm_provider' in overrides:
+            provider = overrides.get('llm_provider') or env_provider
+        else:
+            provider = current_provider
+        if self.mode == 'local':
+            provider = 'ollama'
+
+        if 'llm_model' in overrides:
+            model = overrides.get('llm_model') or self._get_env_provider_model(provider)
+        elif provider == current_provider:
+            model = mode_config.get('llm_model') or self._get_env_provider_model(provider)
+        else:
+            # A provider switch without a matching model must not carry the old
+            # provider's saved model into capability validation.
+            model = self._get_env_provider_model(provider)
+
+        if not self._model_is_compatible_with_provider(provider, model):
+            model = self._get_env_provider_model(provider)
+        return str(provider), str(model)
     
     def validate_web_overrides(self, overrides: dict[str, Any]) -> None:
         """Validate a settings payload without mutating anything.
@@ -1460,6 +1579,42 @@ class SettingsManager:
                     f"{', '.join(available_router_prompt_versions())}"
                 ),
             )
+        if 'thinking_effort' in overrides and overrides['thinking_effort'] not in (
+            None,
+            '',
+            *THINKING_EFFORT_OPTIONS,
+        ):
+            requested = str(overrides['thinking_effort'])
+            raise SettingsValidationError(
+                field='thinking_effort',
+                provider=requested,
+                reason=(
+                    f"Unknown thinking effort '{requested}'. Available values: "
+                    f"{', '.join(THINKING_EFFORT_OPTIONS)}"
+                ),
+            )
+        if overrides.get('thinking_effort') not in (None, ''):
+            requested = str(overrides['thinking_effort'])
+            provider, model = self._effective_llm_selection_for_overrides(overrides)
+            options, profiled = _model_thinking_effort_options(provider, model, self.mode)
+            if not profiled:
+                raise SettingsValidationError(
+                    field='thinking_effort',
+                    provider=provider,
+                    reason=(
+                        f"Thinking effort is unavailable for unprofiled model "
+                        f"'{model}' ({provider})."
+                    ),
+                )
+            if requested not in options:
+                raise SettingsValidationError(
+                    field='thinking_effort',
+                    provider=provider,
+                    reason=(
+                        f"Thinking effort '{requested}' is not supported by "
+                        f"'{model}'. Available values: {', '.join(options)}"
+                    ),
+                )
         if 'tool_rag_limit' in overrides and overrides['tool_rag_limit'] not in (None, ''):
             try:
                 tool_rag_limit = int(overrides['tool_rag_limit'])
@@ -1529,6 +1684,39 @@ class SettingsManager:
             if not self._model_is_compatible_with_provider(effective_provider, value):
                 value = None
             mode_config['llm_model'] = value
+
+        if 'thinking_effort' in overrides:
+            mode_config['thinking_effort'] = overrides['thinking_effort'] or None
+        elif 'llm_provider' in overrides or 'llm_model' in overrides:
+            # Structured API callers are not required to echo every field. Do
+            # not carry a previously valid effort into a newly selected model
+            # when that model has no matching audited thinking profile.
+            effective_provider = (
+                mode_config.get('llm_provider')
+                or get_jarvis_setting(
+                    'LLM_PROVIDER',
+                    'xai' if self.mode == 'cloud' else 'ollama',
+                )
+            )
+            effective_model = mode_config.get('llm_model')
+            if not self._model_is_compatible_with_provider(
+                effective_provider,
+                effective_model,
+            ):
+                effective_model = None
+            effective_model = effective_model or self._get_env_provider_model(
+                effective_provider
+            )
+            effort_options, thinking_profiled = _model_thinking_effort_options(
+                effective_provider,
+                effective_model,
+                self.mode,
+            )
+            if (
+                not thinking_profiled
+                or mode_config.get('thinking_effort') not in effort_options
+            ):
+                mode_config['thinking_effort'] = None
 
         if 'router_prompt_version' in overrides:
             value = overrides['router_prompt_version'] or None
@@ -1675,6 +1863,7 @@ class SettingsManager:
         config[self.mode] = {
             'llm_provider': None,
             'llm_model': None,
+            'thinking_effort': None,
             'router_prompt_version': None,
             'image_provider': None,
             'video_provider': None,

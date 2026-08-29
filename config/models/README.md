@@ -1,6 +1,7 @@
 # Model Prompt Override Configs
 
-This folder holds small model/provider-specific prompt overlays.
+This folder holds small model/provider-specific prompt overlays and validated
+thinking-capability profiles.
 
 This helps to fine tune model behavior without changing the global prompt.
 
@@ -34,6 +35,10 @@ Notes:
 - Missing files are skipped silently.
 - Invalid YAML logs a warning and is ignored.
 - Supported sections include routing, QA, tool-calling, Completion Guard evaluation, and Intelligence Layer reflection prompt overlays.
+- An optional top-level `thinking` mapping declares supported effort values,
+  whether thinking can be disabled, and the safe fallback when it cannot.
+  Jarvis translates this semantic profile at the provider boundary; raw request
+  parameters are not accepted from YAML.
 
 Use the template file here as a starting point:
 
