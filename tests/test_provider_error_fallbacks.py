@@ -205,6 +205,7 @@ class ProviderErrorFallbackTests(unittest.TestCase):
             "total_tokens": None,
             "cost_usd": None,
             "duration_ms": 1947.54,
+            "reasoning_effort_sent": "high",
             "success": False,
             "response": {
                 "type": "text",
@@ -219,6 +220,7 @@ class ProviderErrorFallbackTests(unittest.TestCase):
         self.assertIn("0 tokens", entry.title)
         self.assertEqual(entry.details["input_tokens"], 0)
         self.assertEqual(entry.details["output_tokens"], 0)
+        self.assertEqual(entry.details["reasoning_effort_sent"], "high")
         self.assertEqual(entry.level, "error")
 
     def test_log_streamer_shortens_helper_title_without_losing_model_identity(self):

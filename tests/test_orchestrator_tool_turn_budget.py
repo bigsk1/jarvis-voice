@@ -45,9 +45,14 @@ class FakeRouter:
     system_prompt_version = "test"
     provider = None
 
-    def __init__(self, tool_name="serpapi_yelp_search"):
+    def __init__(self, tool_name="serpapi_yelp_search", usage_info=None):
         self.calls = 0
         self.tool_name = tool_name
+        self.usage_info = usage_info or {
+            "input_tokens": 1,
+            "output_tokens": 1,
+            "total_tokens": 2,
+        }
 
     def route(self, *_args, **_kwargs):
         self.calls += 1
@@ -55,7 +60,7 @@ class FakeRouter:
             "intent": "tool",
             "tool_name": self.tool_name,
             "arguments": {"find_desc": f"arcade games kids {self.calls}"},
-            "usage_info": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+            "usage_info": self.usage_info,
         }
 
 
@@ -198,6 +203,18 @@ class ToolTurnBudgetTests(unittest.TestCase):
         self.assertEqual(result["tool_name"], "generate_image")
         self.assertEqual(result["usage"]["model_calls"], 1)
         self.assertEqual(result["usage"]["total_tokens"], 2)
+
+    def test_reasoning_diagnostic_alone_is_not_counted_as_usage(self):
+        orchestrator = self._build_orchestrator(fail_on_calls=set())
+        orchestrator.router = FakeRouter(
+            usage_info={"reasoning_effort_sent": False},
+        )
+
+        result = self._run_with_max_turns(orchestrator, 1)
+
+        self.assertEqual(result["usage"]["model_calls"], 0)
+        self.assertEqual(result["usage"]["total_tokens"], 0)
+        self.assertEqual(result["usage"]["peak_context_tokens"], 0)
 
 
 if __name__ == "__main__":

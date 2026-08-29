@@ -111,6 +111,10 @@ class LLMLogger:
             "cache_read_cost_usd": usage_value("cache_read_cost_usd"),
             "cache_cost_usd": usage_value("cache_cost_usd"),
             "reasoning_tokens": usage_value("reasoning_tokens"),
+            "reasoning_effort_sent": usage_value(
+                "reasoning_effort_sent",
+                "xai_reasoning_effort",
+            ),
             "provider_continuation_mode": provider_route.get("provider_continuation_mode"),
             "provider_continuation_fallback_reason": provider_route.get("provider_continuation_fallback_reason"),
             "provider_previous_response_id_present": provider_route.get("provider_previous_response_id_present"),
@@ -132,7 +136,10 @@ class LLMLogger:
             log_entry.update({
                 "xai_prompt_text_tokens": usage_value("prompt_text_tokens"),
                 "xai_cached_prompt_text_tokens": usage_value("cached_prompt_text_tokens"),
-                "xai_reasoning_effort": usage_value("xai_reasoning_effort"),
+                "xai_reasoning_effort": usage_value(
+                    "xai_reasoning_effort",
+                    "reasoning_effort_sent",
+                ),
                 "xai_continuation_mode": provider_route.get("xai_continuation_mode"),
                 "xai_continuation_fallback_reason": provider_route.get("xai_continuation_fallback_reason"),
                 "xai_previous_response_id_present": provider_route.get("xai_previous_response_id_present"),

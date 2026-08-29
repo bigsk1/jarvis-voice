@@ -265,6 +265,7 @@ class LogStreamer:
                     'cost_known': not cost_unknown,
                     'billing_mode': billing_mode,
                     'duration_ms': duration,
+                    'reasoning_effort_sent': data.get('reasoning_effort_sent'),
                     'response_type': response_type,
                     'tool_called': tool_name or 'none',
                     'mode': data.get('mode', 'unknown')

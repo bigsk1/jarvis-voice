@@ -732,7 +732,7 @@ Jarvis's `LLMProvider` abstraction means **zero code changes** needed. Just upda
 
 ### Q: What about thinking mode?
 
-**A**: xAI reasoning happens provider-side. Grok 4.3 supports `reasoning_effort=low|medium|high`, and Jarvis can set it with `XAI_REASONING_EFFORT`. Jarvis does not request/stream Grok reasoning summaries by default, so `--debug-thinking` does not show Grok reasoning text; use `reasoning_tokens` and `xai_reasoning_effort` in LLM logs to measure it.
+**A**: xAI reasoning happens provider-side. Grok 4.3 supports `reasoning_effort=low|medium|high`, and Jarvis can set it with `XAI_REASONING_EFFORT`. Jarvis does not request/stream Grok reasoning summaries by default, so `--debug-thinking` does not show Grok reasoning text; use `reasoning_tokens` and the provider-neutral `reasoning_effort_sent` field in LLM logs to measure it. The existing `xai_reasoning_effort` alias remains available on xAI rows.
 
 ### Q: Does caching really work?
 

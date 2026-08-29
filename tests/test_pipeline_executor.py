@@ -20,6 +20,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from orchestrator.pipeline_executor import PipelineExecutor
 from config_loader import config_scope, get_config_value
+from llm_provider import has_usage_accounting_data
 
 
 class DummyProvider:
@@ -82,6 +83,11 @@ class SequencedUsageProvider:
 
     def chat_with_tools(self, **_kwargs):
         return "response", None, next(self.usages), None
+
+
+class DiagnosticOnlyUsageProvider:
+    def chat_with_tools(self, **_kwargs):
+        return "response", None, {"reasoning_effort_sent": False}, None
 
 
 class EnvCapturingProvider:
@@ -164,6 +170,24 @@ class PipelineExecutorResolutionTests(unittest.TestCase):
             resolved,
             "Cold watch for Portland, Oregon: tonight 33F on 2026-04-03",
         )
+
+    def test_usage_accounting_ignores_only_request_diagnostics(self):
+        self.assertFalse(
+            has_usage_accounting_data({"reasoning_effort_sent": False})
+        )
+        self.assertFalse(
+            has_usage_accounting_data({
+                "reasoning_effort_sent": "low",
+                "xai_reasoning_effort": "low",
+            })
+        )
+        self.assertTrue(
+            has_usage_accounting_data({
+                "reasoning_effort_sent": "low",
+                "server_side_tools": {"SERVER_SIDE_TOOL_WEB_SEARCH": 1},
+            })
+        )
+        self.assertTrue(has_usage_accounting_data({"input_tokens": 0}))
 
     def test_filename_timestamp_and_kebab_transform_are_filesystem_safe(self):
         variables = self.executor._extract_workflow_variables(
@@ -665,6 +689,21 @@ MIME type: application/pdf
         )
         self.assertEqual(executor._total_usage["model_calls"], 1)
         self.assertEqual(executor._total_usage["peak_context_tokens"], 5)
+
+    def test_reasoning_diagnostic_alone_is_not_counted_as_usage(self):
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(execute=lambda *args, **kwargs: {}),
+            provider=DiagnosticOnlyUsageProvider(),
+        )
+
+        result = executor._chat_with_usage("probe")
+
+        self.assertEqual(result, "response")
+        self.assertEqual(executor._total_usage["model_calls"], 0)
+        self.assertEqual(executor._total_usage["peak_context_tokens"], 0)
+        self.assertFalse(executor._total_usage["has_unknown_cost"])
+        self.assertTrue(executor._total_usage["cost_known"])
 
     def test_cache_cost_breakdown_survives_workflow_aggregation(self):
         executor = PipelineExecutor(

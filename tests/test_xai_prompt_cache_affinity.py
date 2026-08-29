@@ -139,7 +139,7 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
 
         self.assertEqual(text, "ok")
         self.assertIsNone(tool_call)
-        self.assertIsNone(usage)
+        self.assertEqual(usage["reasoning_effort_sent"], "low")
         self.assertIsNone(thinking)
         self.assertEqual(completions.last_kwargs["reasoning_effort"], "low")
 
@@ -158,6 +158,7 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
 
         self.assertEqual(text, "ok")
         self.assertIsNone(tool_call)
+        self.assertEqual(usage["reasoning_effort_sent"], "none")
         self.assertIsNone(thinking)
         self.assertEqual(completions.last_kwargs["reasoning_effort"], "none")
 
@@ -176,7 +177,7 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
 
         self.assertEqual(text, "ok")
         self.assertIsNone(tool_call)
-        self.assertIsNone(usage)
+        self.assertEqual(usage["reasoning_effort_sent"], "low")
         self.assertIsNone(thinking)
         self.assertEqual(completions.last_kwargs["reasoning_effort"], "low")
 

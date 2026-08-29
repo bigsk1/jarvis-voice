@@ -30,6 +30,32 @@ from ollama_utils import (
 from provider_tool_policy import server_side_tools_disabled
 
 
+_USAGE_REQUEST_DIAGNOSTIC_KEYS = frozenset({
+    "reasoning_effort_sent",
+    "xai_reasoning_effort",
+})
+
+
+def has_usage_accounting_data(usage_info: dict[str, Any] | None) -> bool:
+    """Whether a provider returned usage/cost data, not request diagnostics alone."""
+    return bool(usage_info) and not set(usage_info).issubset(
+        _USAGE_REQUEST_DIAGNOSTIC_KEYS
+    )
+
+
+def _with_reasoning_effort_sent(
+    usage_info: dict[str, Any] | None,
+    reasoning_effort: bool | str | None,
+) -> dict[str, Any] | None:
+    """Attach the provider-native reasoning value that was actually requested."""
+    if reasoning_effort is None:
+        return usage_info
+    if usage_info is None:
+        usage_info = {}
+    usage_info["reasoning_effort_sent"] = reasoning_effort
+    return usage_info
+
+
 class LLMProvider(ABC):
     """Abstract base class for LLM providers."""
 
@@ -356,6 +382,7 @@ class OpenAIProvider(LLMProvider):
             full_messages.append({"role": "system", "content": system_prompt})
         full_messages.extend(messages)
 
+        reasoning_effort = None
         try:
             request_params = {
                 "model": self.model,
@@ -381,6 +408,7 @@ class OpenAIProvider(LLMProvider):
                     input_tokens=response.usage.prompt_tokens,
                     output_tokens=response.usage.completion_tokens
                 )
+            usage_info = _with_reasoning_effort_sent(usage_info, reasoning_effort)
 
             if message.tool_calls:
                 tool_call = message.tool_calls[0]
@@ -399,7 +427,12 @@ class OpenAIProvider(LLMProvider):
 
         except Exception as e:
             print(f"OpenAI API error: {e}", file=sys.stderr)
-            return f"Error: {str(e)}", None, None, None
+            return (
+                f"Error: {str(e)}",
+                None,
+                _with_reasoning_effort_sent(None, reasoning_effort),
+                None,
+            )
 
     def _openai_chat_with_tools_responses(
         self,
@@ -513,7 +546,12 @@ class OpenAIProvider(LLMProvider):
                 model=self.model,
                 parallel_tool_calls_allowed=parallel_ok,
             )
-            return txt, tc, usage_info if usage_info is not None else {}, None
+            return (
+                txt,
+                tc,
+                _with_reasoning_effort_sent(usage_info, reasoning_effort) or {},
+                None,
+            )
 
         except Exception as e:
             err_text = f"Error: {str(e)}"
@@ -532,7 +570,12 @@ class OpenAIProvider(LLMProvider):
             else:
                 print(f"OpenAI Responses API error: {e}", file=sys.stderr)
 
-            return err_text, None, {}, None
+            return (
+                err_text,
+                None,
+                _with_reasoning_effort_sent(None, reasoning_effort) or {},
+                None,
+            )
 
 
 class AnthropicProvider(LLMProvider):
@@ -635,6 +678,7 @@ class AnthropicProvider(LLMProvider):
             - usage_info contains token counts, cost estimates, and cache metrics
             - thinking contains LLM reasoning (if enable_thinking=True and supported)
         """
+        reasoning_effort_sent = None
         try:
             from config_loader import get_config_value
 
@@ -736,6 +780,7 @@ class AnthropicProvider(LLMProvider):
                     api_params["thinking"] = thinking_config["thinking"]
                     if thinking_config.get("output_config"):
                         api_params["output_config"] = thinking_config["output_config"]
+                        reasoning_effort_sent = thinking_config["output_config"].get("effort")
                     api_params["max_tokens"] = thinking_config.get("max_tokens", base_max_tokens)
 
                     if os.environ.get('JARVIS_DEBUG'):
@@ -825,6 +870,10 @@ class AnthropicProvider(LLMProvider):
                     usage_info["server_side_tools"] = {
                         "SERVER_SIDE_TOOL_WEB_SEARCH": web_search_requests
                     }
+            usage_info = _with_reasoning_effort_sent(
+                usage_info,
+                reasoning_effort_sent,
+            )
             
             # Anthropic may return BOTH text AND tool_use blocks. Parallel tool
             # use is disabled above, but retain a visible deterministic fallback
@@ -862,7 +911,12 @@ class AnthropicProvider(LLMProvider):
             
         except Exception as e:
             print(f"Anthropic API error: {e}", file=sys.stderr)
-            return f"Error: {str(e)}", None, None, None
+            return (
+                f"Error: {str(e)}",
+                None,
+                _with_reasoning_effort_sent(None, reasoning_effort_sent),
+                None,
+            )
 
 
 class XAIProvider(LLMProvider):
@@ -1396,7 +1450,8 @@ class XAIProvider(LLMProvider):
         if system_prompt:
             full_messages.append({"role": "system", "content": system_prompt})
         full_messages.extend(messages)
-        
+
+        reasoning_effort = None
         try:
             # xAI uses OpenAI-compatible tool format
             request_params = {
@@ -1465,6 +1520,7 @@ class XAIProvider(LLMProvider):
                         billing_mode="xai_oauth_subscription",
                         note="xAI OAuth subscription; account quota is unavailable via API",
                     )
+            usage_info = _with_reasoning_effort_sent(usage_info, reasoning_effort)
             
             # Check if tool was called
             if message.tool_calls:
@@ -1479,7 +1535,12 @@ class XAIProvider(LLMProvider):
             
         except Exception as e:
             print(f"xAI API error: {e}", file=sys.stderr)
-            return f"Error: {str(e)}", None, None, None
+            return (
+                f"Error: {str(e)}",
+                None,
+                _with_reasoning_effort_sent(None, reasoning_effort),
+                None,
+            )
     
     def _convert_tool_to_xai_sdk(self, tool: dict[str, Any]):
         """Convert a client-side tool definition using xAI SDK's public helper."""
@@ -1694,6 +1755,7 @@ class XAIProvider(LLMProvider):
         keep the native xAI SDK path for hybrid multi-turn conversations.
         """
         use_continuation = False
+        reasoning_effort_sent = None
         try:
             from xai_sdk.chat import user, system as sys_msg, assistant, tool_result
             from xai_sdk.tools import get_tool_call_type
@@ -1715,6 +1777,7 @@ class XAIProvider(LLMProvider):
                 force_serial_tool_calls=True,
                 previous_response_id=previous_response_id,
             )
+            reasoning_effort_sent = create_kwargs.get("reasoning_effort")
             if os.environ.get('JARVIS_DEBUG') and use_continuation:
                 print(
                     "DEBUG: xAI using stored continuation with "
@@ -1753,7 +1816,10 @@ class XAIProvider(LLMProvider):
             # Get response (non-streaming for now)
             response = self._sample_xai_chat_with_retry(chat)
             
-            usage_info = self._extract_xai_sdk_usage(response)
+            usage_info = _with_reasoning_effort_sent(
+                self._extract_xai_sdk_usage(response),
+                reasoning_effort_sent,
+            )
             
             # Check for client-side tool calls (our custom tools)
             # Server-side tools (web_search, x_search) are handled automatically by xAI
@@ -1805,8 +1871,18 @@ class XAIProvider(LLMProvider):
                         "xAI stored continuation expired/not found; retrying with text context",
                         file=sys.stderr,
                     )
-                    return "Error: previous_response_not_found", None, None, None
-                return f"Error: xAI stored continuation failed: {str(e)}", None, None, None
+                    return (
+                        "Error: previous_response_not_found",
+                        None,
+                        _with_reasoning_effort_sent(None, reasoning_effort_sent),
+                        None,
+                    )
+                return (
+                    f"Error: xAI stored continuation failed: {str(e)}",
+                    None,
+                    _with_reasoning_effort_sent(None, reasoning_effort_sent),
+                    None,
+                )
             # Fallback to OpenAI SDK without search
             print("Falling back to OpenAI SDK without search", file=sys.stderr)
             return self._chat_with_tools_openai_sdk(messages, tools, system_prompt, enable_thinking)
@@ -2316,7 +2392,8 @@ class OllamaProvider(LLMProvider):
         if effective_system_prompt:
             full_messages.append({"role": "system", "content": effective_system_prompt})
         full_messages.extend(messages)
-        
+
+        reasoning_effort_sent = None
         try:
             thinking_request = self._resolve_model_thinking(
                 "ollama",
@@ -2331,6 +2408,7 @@ class OllamaProvider(LLMProvider):
                 "stream": False,
                 "think": thinking_request.value,
             }
+            reasoning_effort_sent = request_data.get("think")
             if self.keep_alive is not None:
                 request_data["keep_alive"] = self.keep_alive
             
@@ -2384,7 +2462,7 @@ class OllamaProvider(LLMProvider):
                     return (
                         f"Error: {response.status_code} {reason}: {error_detail}",
                         None,
-                        None,
+                        _with_reasoning_effort_sent(None, reasoning_effort_sent),
                         None,
                     )
             
@@ -2411,6 +2489,10 @@ class OllamaProvider(LLMProvider):
                 usage_info = self._build_usage(
                     prompt_eval_count, eval_count, input_estimated=input_estimated
                 )
+            usage_info = _with_reasoning_effort_sent(
+                usage_info,
+                reasoning_effort_sent,
+            )
             
             # Extract thinking if present (qwen3.5:latest and other reasoning models)
             thinking = None
@@ -2460,10 +2542,18 @@ class OllamaProvider(LLMProvider):
             return (
                 f"Error: Request timed out after {self.request_timeout}s. "
                 "The model may be overloaded."
-            ), None, None, None
+            ), None, _with_reasoning_effort_sent(
+                None,
+                reasoning_effort_sent,
+            ), None
         except Exception as e:
             print(f"Ollama API error: {e}", file=sys.stderr)
-            return f"Error: {str(e)}", None, None, None
+            return (
+                f"Error: {str(e)}",
+                None,
+                _with_reasoning_effort_sent(None, reasoning_effort_sent),
+                None,
+            )
     
     def _chat_with_tools_structured(
         self,
@@ -2514,7 +2604,8 @@ CRITICAL RULES:
         # Build full messages
         full_messages = [{"role": "system", "content": enhanced_system}]
         full_messages.extend(messages)
-        
+
+        reasoning_effort_sent = None
         try:
             thinking_request = self._resolve_model_thinking(
                 "ollama",
@@ -2528,6 +2619,7 @@ CRITICAL RULES:
                 "stream": False,
                 "think": thinking_request.value,
             }
+            reasoning_effort_sent = request_data.get("think")
             if self.keep_alive is not None:
                 request_data["keep_alive"] = self.keep_alive
             
@@ -2563,7 +2655,7 @@ CRITICAL RULES:
                     return (
                         f"Error: {response.status_code} {reason}: {error_detail}",
                         None,
-                        None,
+                        _with_reasoning_effort_sent(None, reasoning_effort_sent),
                         None,
                     )
             response.raise_for_status()
@@ -2588,6 +2680,10 @@ CRITICAL RULES:
                     note_suffix=" (structured prompting fallback)",
                     input_estimated=input_estimated,
                 )
+            usage_info = _with_reasoning_effort_sent(
+                usage_info,
+                reasoning_effort_sent,
+            )
             
             # Extract thinking if present
             thinking = None
@@ -2635,7 +2731,12 @@ CRITICAL RULES:
             
         except Exception as e:
             print(f"Ollama API error (structured fallback): {e}", file=sys.stderr)
-            return f"Error: {str(e)}", None, None, None
+            return (
+                f"Error: {str(e)}",
+                None,
+                _with_reasoning_effort_sent(None, reasoning_effort_sent),
+                None,
+            )
     
     def _format_tools_for_prompt(self, tools: list[dict[str, Any]]) -> str:
         """Format tools as text for fallback structured prompting."""

@@ -154,6 +154,7 @@ Written by `lib/llm_logger.py` from router/provider calls. These rows are the be
 | `input_tokens` / `output_tokens` / `total_tokens` | Provider token usage after adapter normalization |
 | `cost_usd` | Estimated cost |
 | `reasoning_tokens` | Provider-reported reasoning tokens when available |
+| `reasoning_effort_sent` | Provider-native reasoning/thinking value actually sent by Jarvis (`low`, `high`, `none`, Ollama `true`/`false`, etc.); `null` means no effort override was sent |
 | `cached_input_tokens` | Generic cache-read count when provider reports it |
 | `cached_prompt_text_tokens` | Generic prompt-cache count for providers that report prompt text cache reads |
 | `provider_continuation_mode` | Generic continuation mode, such as `text_fallback`, `stored_structural`, `responses_structural` |
@@ -201,7 +202,7 @@ xAI fields:
 
 ```bash
 # Latest LLM call, compact summary
-tail -1 logs/llm-calls-$(date +%F).jsonl | jq '{provider, model, response, input_tokens, output_tokens, duration_ms}'
+tail -1 logs/llm-calls-$(date +%F).jsonl | jq '{provider, model, reasoning_effort_sent, response, input_tokens, output_tokens, duration_ms}'
 
 # OpenAI Responses cache hits
 jq 'select(.provider == "openai") | {t:.timestamp, model, cache:.openai_cached_input_tokens, hit:.openai_cache_hit, key:.openai_prompt_cache_key_set}' \

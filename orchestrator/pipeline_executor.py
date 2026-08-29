@@ -27,7 +27,7 @@ from config_loader import (
     get_scoped_config,
     load_config,
 )
-from llm_provider import create_configured_provider
+from llm_provider import create_configured_provider, has_usage_accounting_data
 from tool_logger import ToolLogger
 from llm_logger import LLMLogger
 try:
@@ -180,7 +180,7 @@ class PipelineExecutor:
                 raise _WorkflowLLMError(str(text).strip())
             
             # Accumulate usage
-            if usage_info:
+            if has_usage_accounting_data(usage_info):
                 call_tokens = usage_info.get("total_tokens")
                 if not isinstance(call_tokens, (int, float)):
                     call_tokens = (
@@ -261,7 +261,7 @@ class PipelineExecutor:
         if not isinstance(usage, dict):
             usage = {}
 
-        if usage:
+        if has_usage_accounting_data(usage):
             explicit_calls = usage.get("model_calls")
             self._total_usage["model_calls"] += (
                 int(explicit_calls)

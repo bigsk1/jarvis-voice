@@ -30,6 +30,7 @@ from memory_db import (
     preference_slot_for_row,
 )
 from model_catalog import get_provider_fallback_model
+from llm_provider import has_usage_accounting_data
 from status_updater import StatusUpdater
 from security_utils import sanitize_for_speech
 
@@ -1793,8 +1794,8 @@ Mode: {self.mode}
                 print(f"DEBUG: Routing complete, intent={route.get('intent')}", file=sys.stderr)
             
             # Accumulate usage info if available
-            if route.get("usage_info"):
-                usage = route["usage_info"]
+            usage = route.get("usage_info")
+            if has_usage_accounting_data(usage):
                 call_tokens = usage.get("total_tokens")
                 if not isinstance(call_tokens, (int, float)):
                     call_tokens = (

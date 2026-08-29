@@ -226,6 +226,86 @@ class OpenAIResponsesAdapterTests(unittest.TestCase):
         ):
             self.assertEqual(provider._openai_reasoning_effort(), "high")
 
+    def test_chat_completions_usage_records_exact_reasoning_effort_sent(self) -> None:
+        captured = {}
+
+        def create(**kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content="ok", tool_calls=None))],
+                usage=None,
+            )
+
+        provider = OpenAIProvider.__new__(OpenAIProvider)
+        provider.model = "gpt-5.6-luna"
+        provider.client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+        )
+
+        with (
+            mock.patch(
+                "openai_responses_adapter.openai_should_use_responses_for_tools",
+                return_value=False,
+            ),
+            mock.patch.object(provider, "_openai_reasoning_effort", return_value="high"),
+        ):
+            text, tool_call, usage_info, thinking = provider.chat_with_tools(
+                messages=[{"role": "user", "content": "hello"}],
+                tools=[],
+            )
+
+        self.assertEqual(text, "ok")
+        self.assertIsNone(tool_call)
+        self.assertIsNone(thinking)
+        self.assertEqual(captured["reasoning_effort"], "high")
+        self.assertEqual(usage_info["reasoning_effort_sent"], "high")
+
+    def test_responses_error_records_attempted_reasoning_effort(self) -> None:
+        captured = {}
+
+        def create(**kwargs):
+            captured.update(kwargs)
+            raise RuntimeError("unsupported effort")
+
+        provider = OpenAIProvider.__new__(OpenAIProvider)
+        provider.model = "gpt-5.6-sol"
+        provider.client = SimpleNamespace(responses=SimpleNamespace(create=create))
+        provider._openai_responses_diag_holder = {}
+
+        with (
+            mock.patch.object(provider, "_openai_reasoning_effort", return_value="max"),
+            mock.patch.object(
+                provider,
+                "_openai_prompt_cache_key_for_responses",
+                return_value=None,
+            ),
+            mock.patch.object(
+                OpenAIProvider,
+                "_openai_prompt_cache_retention_for_responses",
+                return_value=None,
+            ),
+            mock.patch(
+                "openai_responses_adapter.build_openai_builtin_responses_tools",
+                return_value=[],
+            ),
+        ):
+            text, tool_call, usage_info, thinking = (
+                provider._openai_chat_with_tools_responses(
+                    messages=[{"role": "user", "content": "hello"}],
+                    tools=[],
+                    system_prompt=None,
+                    previous_response_id=None,
+                    continuation_attempt=False,
+                    responses_continuation_input=None,
+                )
+            )
+
+        self.assertIn("unsupported effort", text)
+        self.assertIsNone(tool_call)
+        self.assertIsNone(thinking)
+        self.assertEqual(captured["reasoning"], {"effort": "max"})
+        self.assertEqual(usage_info["reasoning_effort_sent"], "max")
+
     def test_parse_responses_result_text_from_message_blocks(self) -> None:
         out_msg = SimpleNamespace(
             type="message",

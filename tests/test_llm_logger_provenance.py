@@ -41,6 +41,34 @@ class LLMLoggerProvenanceTests(unittest.TestCase):
             self.assertEqual(entry["prompt_type"], "status_update")
             self.assertEqual(entry["call_metadata"], metadata)
             self.assertEqual(entry["total_tokens"], 46)
+            self.assertIsNone(entry["reasoning_effort_sent"])
+
+    def test_reasoning_effort_sent_is_flattened_without_losing_false(self):
+        cases = (
+            ("openai", "high"),
+            ("anthropic", "low"),
+            ("xai", "none"),
+            ("ollama", False),
+        )
+
+        for provider, effort in cases:
+            with self.subTest(provider=provider, effort=effort):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    logger = LLMLogger(log_dir=tmpdir)
+                    logger.log_llm_call(
+                        provider=provider,
+                        model="test-model",
+                        prompt_type="routing",
+                        messages=[],
+                        response_text="ok",
+                        tool_call=None,
+                        usage_info={"reasoning_effort_sent": effort},
+                        thinking=None,
+                        duration_ms=10,
+                    )
+
+                    entry = json.loads(logger.log_file.read_text().strip())
+                    self.assertEqual(entry["reasoning_effort_sent"], effort)
 
     def test_log_llm_call_persists_routing_provenance_and_flat_flags(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -171,6 +199,7 @@ class LLMLoggerProvenanceTests(unittest.TestCase):
                     "total_tokens": 15,
                     "prompt_text_tokens": 10,
                     "cached_prompt_text_tokens": 4,
+                    "xai_reasoning_effort": "high",
                     "server_side_tools": {"SERVER_SIDE_TOOL_WEB_SEARCH": 1},
                 },
                 thinking=None,
@@ -183,6 +212,8 @@ class LLMLoggerProvenanceTests(unittest.TestCase):
 
             entry = json.loads(logger.log_file.read_text().strip())
             self.assertEqual(entry["xai_cached_prompt_text_tokens"], 4)
+            self.assertEqual(entry["reasoning_effort_sent"], "high")
+            self.assertEqual(entry["xai_reasoning_effort"], "high")
             self.assertTrue(entry["xai_previous_response_id_used"])
             self.assertEqual(entry["xai_search_calls"], 1)
             self.assertNotIn("openai_cached_input_tokens", entry)

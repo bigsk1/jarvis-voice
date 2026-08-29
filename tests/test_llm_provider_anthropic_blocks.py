@@ -167,7 +167,7 @@ class AnthropicBlockHandlingTests(unittest.TestCase):
 
         self.assertEqual(text, "Done")
         self.assertIsNone(tool_call)
-        self.assertIsNone(usage)
+        self.assertEqual(usage["reasoning_effort_sent"], "xhigh")
         self.assertEqual(thinking, "A short summary.")
         self.assertEqual(captured["thinking"], {"type": "adaptive", "display": "summarized"})
         self.assertEqual(captured["output_config"], {"effort": "xhigh"})
@@ -199,7 +199,7 @@ class AnthropicBlockHandlingTests(unittest.TestCase):
         )
 
         with patch.object(provider, "_model_thinking_profile", return_value=profile):
-            text, _tool_call, _usage, thinking = provider.chat_with_tools(
+            text, _tool_call, usage, thinking = provider.chat_with_tools(
                 [{"role": "user", "content": "hello"}],
                 [],
                 enable_thinking=False,
@@ -207,6 +207,7 @@ class AnthropicBlockHandlingTests(unittest.TestCase):
 
         self.assertEqual(text, "Done")
         self.assertEqual(captured["output_config"], {"effort": "low"})
+        self.assertEqual(usage["reasoning_effort_sent"], "low")
         self.assertIsNone(thinking)
 
     def test_collects_all_text_blocks_in_order(self):

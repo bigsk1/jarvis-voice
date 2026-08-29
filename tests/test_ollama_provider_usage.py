@@ -208,7 +208,7 @@ def test_timeout_error_text_uses_configured_request_timeout(monkeypatch):
         )
     assert text.startswith("Error: Request timed out after 300s")
     assert tool_call is None
-    assert usage is None
+    assert usage["reasoning_effort_sent"] is False
     assert thinking is None
 
 
@@ -267,6 +267,7 @@ def test_native_tool_q_and_a_path_strips_glm_orphan_reasoning(monkeypatch):
     assert text == "**Solana (SOL) is currently at $77.89**, down 4.51%."
     assert tool_call is None
     assert usage["total_tokens"] == 15
+    assert usage["reasoning_effort_sent"] is False
     assert thinking is None
 
 
@@ -285,6 +286,7 @@ def test_required_glm_thinking_uses_low_and_hides_trace_by_default(monkeypatch, 
     assert text == "Hello!"
     assert tool_call is None
     assert usage["total_tokens"] == 15
+    assert usage["reasoning_effort_sent"] == "low"
     assert thinking is None
 
 
@@ -293,7 +295,7 @@ def test_required_glm_thinking_uses_default_and_returns_trace_when_enabled(monke
     response = _ThinkingChatResponse("Hello!")
 
     with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")) as mocked:
-        text, _, _, thinking = provider.chat_with_tools(
+        text, _, usage, thinking = provider.chat_with_tools(
             messages=[{"role": "user", "content": "Hello"}],
             tools=[],
             enable_thinking=True,
@@ -301,6 +303,7 @@ def test_required_glm_thinking_uses_default_and_returns_trace_when_enabled(monke
 
     assert mocked.call_args.kwargs["json"]["think"] == "max"
     assert text == "Hello!"
+    assert usage["reasoning_effort_sent"] == "max"
     assert thinking == "private reasoning trace"
 
 
@@ -311,7 +314,7 @@ def test_required_glm_simple_chat_and_structured_fallback_use_low(monkeypatch):
     with patch("llm_provider.request_ollama", return_value=(response, "https://ollama.com")) as mocked:
         assert provider.chat("Hello") == "Hello!"
         simple_request = mocked.call_args.kwargs["json"]
-        _, _, _, thinking = provider._chat_with_tools_structured(
+        _, _, usage, thinking = provider._chat_with_tools_structured(
             messages=[{"role": "user", "content": "Hello"}],
             tools=[],
         )
@@ -319,6 +322,7 @@ def test_required_glm_simple_chat_and_structured_fallback_use_low(monkeypatch):
 
     assert simple_request["think"] == "low"
     assert structured_request["think"] == "low"
+    assert usage["reasoning_effort_sent"] == "low"
     assert thinking is None
 
 
@@ -407,7 +411,7 @@ def test_native_tool_path_preserves_ollama_cloud_payment_error_body(monkeypatch)
         "(ref: test-ref-402)"
     )
     assert tool_call is None
-    assert usage is None
+    assert usage["reasoning_effort_sent"] is False
     assert thinking is None
     assert response.raise_for_status_calls == 0
 
@@ -438,7 +442,7 @@ def test_structured_path_preserves_ollama_cloud_payment_error_body(monkeypatch):
     assert text.startswith("Error: 402 Payment Required: this model uses extra usage only")
     assert "https://ollama.com/settings" in text
     assert tool_call is None
-    assert usage is None
+    assert usage["reasoning_effort_sent"] is False
     assert thinking is None
     assert response.raise_for_status_calls == 0
 

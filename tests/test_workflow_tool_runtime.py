@@ -294,6 +294,34 @@ def test_pipeline_merges_usage_reported_by_component_llm_tools():
     ]
 
 
+def test_pipeline_ignores_diagnostic_only_component_usage():
+    pipeline = object.__new__(PipelineExecutor)
+    pipeline._total_usage = {
+        "model_calls": 1,
+        "peak_context_tokens": 4,
+        "has_unknown_cost": False,
+    }
+    pipeline._server_side_tools = {}
+
+    pipeline._merge_component_usage(
+        {
+            "ok": False,
+            "usage": {
+                "reasoning_effort_sent": False,
+                "xai_reasoning_effort": False,
+            },
+        },
+        tool_name="text_summarizer",
+    )
+
+    assert pipeline._total_usage == {
+        "model_calls": 1,
+        "peak_context_tokens": 4,
+        "has_unknown_cost": False,
+    }
+    assert pipeline._server_side_tools == {}
+
+
 def test_workflow_env_variables_use_mode_scoped_config():
     pipeline = object.__new__(PipelineExecutor)
     workflow = {
