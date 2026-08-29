@@ -152,17 +152,28 @@ def test_tool_discovery_applies_profile_for_its_own_mode(tmp_path, monkeypatch):
     (tmp_path / "generate_image.tool.json").write_text(json.dumps(manifest))
     fake_db = MagicMock()
     fake_db.get_enabled_tool_names.return_value = []
-    monkeypatch.delenv("JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE", raising=False)
+    profile_modes = []
+
+    def scoped_profile_overrides():
+        mode = get_active_config_mode()
+        profile_modes.append(mode)
+        return {"generate_image": mode == "cloud"}
 
     import memory_db
 
     with (
         patch.object(tool_discovery, "get_web_setting", return_value=[]),
+        patch.object(
+            tool_discovery,
+            "_tool_profile_overrides",
+            side_effect=scoped_profile_overrides,
+        ),
         patch.object(memory_db, "get_memory_db", return_value=fake_db),
     ):
         cloud = tool_discovery.ToolDiscoveryService(tmp_path, mode="cloud")
         local = tool_discovery.ToolDiscoveryService(tmp_path, mode="local")
 
+    assert profile_modes == ["cloud", "local"]
     assert cloud.mode == "cloud"
     assert cloud.get_tool("generate_image") is not None
     assert local.mode == "local"
