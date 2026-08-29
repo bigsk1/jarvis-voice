@@ -21,9 +21,13 @@ def test_vacation_reconnaissance_is_explicit_location_required_and_crawl_free():
     assert workflow["disable_server_side_tools"] is True
     assert workflow["triggers"]["patterns"] == []
     assert workflow["triggers"]["keywords"] == []
-    assert workflow["variables"]["location"] == {
+    assert workflow["variables"]["request"] == {
         "from": "query",
         "extract": "main_subject",
+    }
+    assert workflow["variables"]["planning_context"] == {
+        "from": "query",
+        "extract": "location_date_context",
     }
     assert workflow["variables"]["daily_forecast"] == "none"
     assert workflow["variables"]["forecast_days"] == 0
@@ -33,7 +37,7 @@ def test_vacation_reconnaissance_is_explicit_location_required_and_crawl_free():
 
     weather_step = _step(workflow, "weather")
     assert weather_step["params"] == {
-        "location": "${location}",
+        "location": "${planning_context.location}",
         "forecast": True,
         "days": 7,
     }
@@ -41,11 +45,27 @@ def test_vacation_reconnaissance_is_explicit_location_required_and_crawl_free():
     for tripadvisor_step in (
         step for step in workflow["steps"] if step["tool"] == "serpapi_tripadvisor"
     ):
+        assert "${planning_context.location}" in tripadvisor_step["params"]["query"]
+        assert "${request}" not in tripadvisor_step["params"]["query"]
         assert tripadvisor_step["params"]["include_details"] is False
         assert tripadvisor_step["params"]["include_reviews"] is False
 
+    for tool in (
+        "serpapi_google_local",
+        "serpapi_google_news_light",
+        "serpapi_google_images_light",
+    ):
+        assert _step(workflow, tool)["params"]["location"] == (
+            "${planning_context.location}"
+        )
+
     image_step = _step(workflow, "serpapi_google_images_light")
     assert image_step["params"]["stash_after"] is False
+
+    canvas_step = _step(workflow, "canvas")
+    assert "Original request: ${request}" in canvas_step["llm_prompt"]
+    assert "Resolved location: ${planning_context.location}" in canvas_step["llm_prompt"]
+    assert "do not collapse that range" in canvas_step["llm_prompt"]
 
 
 def test_buying_brief_uses_three_bounded_searches_and_env_localization():
