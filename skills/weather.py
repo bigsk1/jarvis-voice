@@ -10,155 +10,111 @@ Providers:
 Input: { "location": "Seattle", "forecast": false }
 Output: { "ok": bool, "speech": str, "data": dict }
 """
-import sys
-import os
 import json
-from datetime import datetime, date
+import os
+import sys
+from datetime import date, datetime
 from typing import Any
+from urllib.parse import quote
 
 # Add lib to path for config_loader and http_client
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
-from http_client import http_request, get_proxy_config
+from config_loader import get_config_value, load_config
+from http_client import get_proxy_config, http_request
+from weather_location import (
+    ResolvedWeatherLocation,
+    candidate_match_score,
+    country_code,
+    country_display_name,
+    location_constraints,
+    open_meteo_queries,
+    openweathermap_queries,
+    pick_best_candidate,
+    resolve_us_state,
+)
 
 
-# ============================================================================
-# US STATE CODES (for location normalization)
-# ============================================================================
-
-US_STATE_CODES = {
-    'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
-    'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
-    'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
-    'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
-    'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
-}
-
-US_STATE_NAMES = {
-    'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas',
-    'CA': 'California', 'CO': 'Colorado', 'CT': 'Connecticut',
-    'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia', 'HI': 'Hawaii',
-    'ID': 'Idaho', 'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa',
-    'KS': 'Kansas', 'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine',
-    'MD': 'Maryland', 'MA': 'Massachusetts', 'MI': 'Michigan',
-    'MN': 'Minnesota', 'MS': 'Mississippi', 'MO': 'Missouri',
-    'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada',
-    'NH': 'New Hampshire', 'NJ': 'New Jersey', 'NM': 'New Mexico',
-    'NY': 'New York', 'NC': 'North Carolina', 'ND': 'North Dakota',
-    'OH': 'Ohio', 'OK': 'Oklahoma', 'OR': 'Oregon',
-    'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
-    'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah',
-    'VT': 'Vermont', 'VA': 'Virginia', 'WA': 'Washington',
-    'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming',
-    'DC': 'District of Columbia',
-}
-US_STATE_NAME_TO_CODE = {
-    state_name.upper(): state_code
-    for state_code, state_name in US_STATE_NAMES.items()
-}
-
-
-def resolve_us_state(region: str) -> tuple[str, str] | None:
-    """Return canonical (state code, state name) for a US state input."""
-    normalized = " ".join(str(region or "").replace(".", "").split()).upper()
-    if normalized in US_STATE_CODES:
-        return normalized, US_STATE_NAMES[normalized]
-    state_code = US_STATE_NAME_TO_CODE.get(normalized)
-    if state_code:
-        return state_code, US_STATE_NAMES[state_code]
-    return None
-
-def normalize_location(location: str) -> str:
-    """
-    Normalize location string for OpenWeatherMap API.
-    
-    Canonicalizes US state names/codes and adds the US country qualifier.
-    Examples:
-        "Portland, OR" -> "Portland,OR,US"
-        "Newport, Oregon" -> "Newport,OR,US"
-        "London, UK" -> "London,UK" (unchanged)
-        "Seattle" -> "Seattle" (unchanged)
-    """
-    # Split on comma
-    parts = [p.strip() for p in location.split(',')]
-    
-    if len(parts) == 2:
-        city, region = parts
-        state = resolve_us_state(region)
-        if state:
-            state_code, _state_name = state
-            return f"{city},{state_code},US"
-        # Otherwise keep as-is (might be country code)
-        return f"{city},{region}"
-    
-    # Single word or already formatted
-    return location
+def _provider_failure_reason(provider: str, exc: Exception) -> str:
+    """Return a bounded, credential-safe provider failure reason."""
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+    if status_code in {401, 403}:
+        return f"{provider} authentication failed (HTTP {status_code})"
+    if status_code:
+        return f"{provider} request failed (HTTP {status_code})"
+    error_name = type(exc).__name__
+    if "timeout" in error_name.lower() or "timeout" in str(exc).lower():
+        return f"{provider} request timed out"
+    if "connection" in error_name.lower():
+        return f"{provider} connection failed"
+    return f"{provider} request failed ({error_name})"
 
 
 # ============================================================================
 # PROVIDER IMPLEMENTATIONS
 # ============================================================================
 
-def geocode_location(location: str, api_key: str) -> tuple[float, float, str, str] | None:
-    """
-    Use OpenWeatherMap Geocoding API to get coordinates for a location.
-    
-    Returns: (lat, lon, city_name, country) or None if not found
-    """
-    # Normalize location for geocoding query
-    # Convert "City, STATE" to "City,STATE,US" for better US state matching
-    parts = [p.strip() for p in location.split(',')]
-    
-    if len(parts) == 2:
-        city, region = parts
-        state = resolve_us_state(region)
-        if state:
-            state_code, _state_name = state
-            query = f"{city},{state_code},US"
-        else:
-            query = f"{city},{region}"
-    else:
-        query = location
-    
-    geo_url = "http://api.openweathermap.org/geo/1.0/direct"
-    params = {
-        "q": query,
-        "limit": 1,
-        "appid": api_key
-    }
-    
-    try:
-        response = http_request(
-            'GET',
-            geo_url,
-            params=params,
-            timeout=10,
-            use_proxy=True,
-            fallback_on_proxy_fail=True
+def _geocode_openweathermap_resolution(
+    location: str,
+    api_key: str,
+) -> ResolvedWeatherLocation | None:
+    """Resolve a location through OpenWeatherMap and reject qualifier mismatches."""
+    constraints = location_constraints(location)
+    geo_url = "https://api.openweathermap.org/geo/1.0/direct"
+    item = None
+    for query in openweathermap_queries(location):
+        try:
+            response = http_request(
+                'GET',
+                geo_url,
+                params={"q": query, "limit": 5, "appid": api_key},
+                timeout=10,
+                use_proxy=True,
+                fallback_on_proxy_fail=True,
+            )
+            response.raise_for_status()
+            results = response.json()
+        except Exception as exc:
+            print(
+                f"[Weather] {_provider_failure_reason('OpenWeatherMap geocoding', exc)}",
+                file=sys.stderr,
+            )
+            return None
+
+        item = pick_best_candidate(
+            results,
+            constraints,
+            city_key="name",
+            region_key="state",
+            country_key="country",
+            country_code_key="country",
         )
-        response.raise_for_status()
-        results = response.json()
-        
-        if results and len(results) > 0:
-            loc = results[0]
-            city_name = loc.get("name", "Unknown")
-            country = loc.get("country", "")
-            state = loc.get("state", "")
-            
-            # Build display name with state for US locations
-            if country == "US" and state:
-                display_name = f"{city_name}, {state}"
-            else:
-                display_name = f"{city_name}, {country}" if country else city_name
-            
-            return (loc["lat"], loc["lon"], display_name, country)
-    except Exception as e:
-        print(f"[Weather] Geocoding failed: {e}", file=sys.stderr)
-    
-    return None
+        if item:
+            break
+
+    if not item:
+        print(f"[Weather] OpenWeatherMap returned no exact match for {location}", file=sys.stderr)
+        return None
+
+    country_code = str(item.get("country") or "").upper()
+    return ResolvedWeatherLocation(
+        requested_location=location,
+        latitude=float(item["lat"]),
+        longitude=float(item["lon"]),
+        city=str(item.get("name") or constraints.city or location),
+        region=str(item.get("state") or ""),
+        country=country_display_name(country_code, country_code),
+        country_code=country_code,
+        geocoder="OpenWeatherMap",
+    )
 
 
-def fetch_openweathermap(location: str, forecast: bool, api_key: str) -> tuple[dict[str, Any], str]:
+def fetch_openweathermap(
+    location: str,
+    forecast: bool,
+    api_key: str,
+    resolved_location: ResolvedWeatherLocation | None = None,
+) -> tuple[dict[str, Any], str]:
     """
     Fetch weather from OpenWeatherMap API.
     
@@ -172,27 +128,16 @@ def fetch_openweathermap(location: str, forecast: bool, api_key: str) -> tuple[d
     """
     base_url = "https://api.openweathermap.org/data/2.5"
     
-    # Step 1: Geocode location to get accurate lat/lon
-    geo_result = geocode_location(location, api_key)
-    
-    if geo_result:
-        lat, lon, location_str, country = geo_result
-        # Use coordinates for weather (most accurate)
-        params = {
-            "lat": lat,
-            "lon": lon,
-            "appid": api_key,
-            "units": "imperial"  # Fahrenheit
-        }
-    else:
-        # Fallback to city name query (less accurate)
-        normalized_location = normalize_location(location)
-        params = {
-            "q": normalized_location,
-            "appid": api_key,
-            "units": "imperial"
-        }
-        location_str = None  # Will get from response
+    resolved = resolved_location or resolve_weather_location(location, api_key)
+    if not resolved:
+        raise ValueError(f"Could not resolve an exact weather location for {location}")
+
+    params = {
+        "lat": resolved.latitude,
+        "lon": resolved.longitude,
+        "appid": api_key,
+        "units": "imperial",
+    }
     
     # Get current weather
     current_url = f"{base_url}/weather"
@@ -215,11 +160,11 @@ def fetch_openweathermap(location: str, forecast: bool, api_key: str) -> tuple[d
     condition = current["weather"][0]["description"]
     wind_speed = round(current["wind"]["speed"])
     
-    # Use geocoded location string if available, otherwise from response
-    if not location_str:
-        city_name = current["name"]
-        country = current["sys"].get("country", "")
-        location_str = f"{city_name}, {country}" if country else city_name
+    provider_city = str(current.get("name") or resolved.city)
+    provider_country = str(current.get("sys", {}).get("country") or "")
+    provider_location = (
+        f"{provider_city}, {provider_country}" if provider_country else provider_city
+    )
     
     # Get forecast if requested
     forecast_data = None
@@ -258,13 +203,13 @@ def fetch_openweathermap(location: str, forecast: bool, api_key: str) -> tuple[d
         forecast_speech = f" Today's high is {high}, low is {low}."
     
     # Build speech response
-    speech = f"It's currently {temp} degrees and {condition} in {location_str}."
+    speech = f"It's currently {temp} degrees and {condition} in {resolved.display_name}."
     if feels_like != temp:
         speech += f" Feels like {feels_like}."
     speech += forecast_speech
     
     data = {
-        "location": location_str,
+        "location": resolved.display_name,
         "temperature": temp,
         "feels_like": feels_like,
         "humidity": humidity,
@@ -272,92 +217,175 @@ def fetch_openweathermap(location: str, forecast: bool, api_key: str) -> tuple[d
         "wind_speed": wind_speed,
         "wind_unit": "mph",
         "provider": "OpenWeatherMap",
+        "current_weather_provider": "OpenWeatherMap",
+        "provider_location_used": provider_location,
         "forecast": forecast_data
     }
+    data.update(resolved.metadata())
     
     return data, speech
 
 
-def geocode_open_meteo(location: str) -> tuple[float, float, str] | None:
-    """
-    Geocode location via Open-Meteo geocoding API.
-
-    Returns: (lat, lon, display_name) or None
-    """
-    parts = [p.strip() for p in location.split(',')]
-    query = parts[0] if parts else location
+def _geocode_open_meteo_resolution(
+    location: str,
+) -> ResolvedWeatherLocation | None:
+    """Resolve a location through Open-Meteo and reject qualifier mismatches."""
+    constraints = location_constraints(location)
 
     geo_url = "https://geocoding-api.open-meteo.com/v1/search"
-    params = {
-        "name": query,
-        "count": 10,
-        "language": "en",
-        "format": "json"
-    }
+    item = None
+    query = location
+    for query in open_meteo_queries(location):
+        try:
+            response = http_request(
+                'GET',
+                geo_url,
+                params={
+                    "name": query,
+                    "count": 10,
+                    "language": "en",
+                    "format": "json",
+                },
+                timeout=10,
+                use_proxy=True,
+                fallback_on_proxy_fail=True,
+            )
+            response.raise_for_status()
+            data = response.json()
+        except Exception as exc:
+            print(
+                f"[Weather] {_provider_failure_reason('Open-Meteo geocoding', exc)}",
+                file=sys.stderr,
+            )
+            return None
 
-    response = http_request(
-        'GET',
-        geo_url,
-        params=params,
-        timeout=10,
-        use_proxy=True,
-        fallback_on_proxy_fail=True
+        item = pick_best_candidate(
+            data.get("results", []) if isinstance(data, dict) else [],
+            constraints,
+            city_key="name",
+            region_key="admin1",
+            country_key="country",
+            country_code_key="country_code",
+        )
+        if item:
+            break
+
+    if not item:
+        print(f"[Weather] Open-Meteo returned no exact match for {location}", file=sys.stderr)
+        return None
+    return ResolvedWeatherLocation(
+        requested_location=location,
+        latitude=float(item["latitude"]),
+        longitude=float(item["longitude"]),
+        city=str(item.get("name") or query),
+        region=str(item.get("admin1") or ""),
+        country=str(item.get("country") or ""),
+        country_code=str(item.get("country_code") or "").upper(),
+        geocoder="Open-Meteo",
     )
-    response.raise_for_status()
-    data = response.json()
-    results = data.get("results", [])
-    if not results:
+
+
+def _geocode_wttr_resolution(
+    location: str,
+) -> ResolvedWeatherLocation | None:
+    """Resolve through wttr.in as a final, validated geocoder fallback."""
+    encoded_location = quote(location, safe="")
+    url = f"https://wttr.in/{encoded_location}"
+    try:
+        response = http_request(
+            'GET',
+            url,
+            params={"format": "j1"},
+            headers={"User-Agent": "Jarvis-Weather/1.0"},
+            timeout=15,
+            use_proxy=True,
+            fallback_on_proxy_fail=True,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except Exception as exc:
+        print(f"[Weather] wttr.in geocoding failed: {exc}", file=sys.stderr)
         return None
 
-    target_region = parts[1] if len(parts) >= 2 else None
-    target_state = resolve_us_state(target_region) if target_region else None
-    best = None
-    for item in results:
-        country_code = (item.get("country_code") or "").upper()
-        admin1 = " ".join(str(item.get("admin1") or "").split())
-        if target_state and country_code == "US":
-            state_code, state_name = target_state
-            if admin1.upper() in {state_code, state_name.upper()}:
-                best = item
-                break
-    if target_state and best is None:
-        requested_state = target_state[1]
+    areas = data.get("nearest_area", []) if isinstance(data, dict) else []
+    if not areas or not isinstance(areas[0], dict):
+        return None
+
+    area = areas[0]
+    city = _wttr_area_value(area, "areaName")
+    region = _wttr_area_value(area, "region")
+    country = _wttr_area_value(area, "country")
+    score = candidate_match_score(
+        location_constraints(location),
+        city=city,
+        region=region,
+        country=country,
+        country_code_value="",
+        require_city_match=False,
+    )
+    if score is None:
         print(
-            f"[Weather] Geocoder returned no exact match for {query}, {requested_state}",
+            f"[Weather] wttr.in returned no exact match for {location}",
             file=sys.stderr,
         )
         return None
-    if best is None:
-        best = results[0]
 
-    city = best.get("name", query)
-    admin1 = best.get("admin1")
-    country = best.get("country")
-    if admin1 and country:
-        display_name = f"{city}, {admin1}, {country}"
-    elif country:
-        display_name = f"{city}, {country}"
-    else:
-        display_name = city
+    try:
+        latitude = float(area["latitude"])
+        longitude = float(area["longitude"])
+    except (KeyError, TypeError, ValueError):
+        return None
 
-    return (best["latitude"], best["longitude"], display_name)
+    resolved_country_code = country_code(country) or ""
+    state = resolve_us_state(region) if resolved_country_code == 'US' else None
+    canonical_region = state[1] if state else region
+    canonical_country = country_display_name(resolved_country_code, country)
+    constraints = location_constraints(location)
+    return ResolvedWeatherLocation(
+        requested_location=location,
+        latitude=latitude,
+        longitude=longitude,
+        city=city or constraints.city or location,
+        region=canonical_region,
+        country=canonical_country,
+        country_code=resolved_country_code,
+        geocoder="wttr.in",
+    )
 
 
-def fetch_open_meteo_daily_forecast(location: str, days: int) -> list[dict[str, Any]] | None:
+def resolve_weather_location(
+    location: str,
+    api_key: str = "",
+) -> ResolvedWeatherLocation | None:
+    """Resolve one exact location for all current and forecast providers."""
+    resolved = _geocode_open_meteo_resolution(location)
+    if resolved:
+        return resolved
+    if api_key:
+        resolved = _geocode_openweathermap_resolution(location, api_key)
+        if resolved:
+            return resolved
+    return _geocode_wttr_resolution(location)
+
+
+def fetch_open_meteo_daily_forecast(
+    location: str,
+    days: int,
+    resolved_location: ResolvedWeatherLocation | None = None,
+) -> list[dict[str, Any]] | None:
     """
     Fetch daily weather forecast from Open-Meteo (no API key required).
 
     Returns list of daily forecasts with high/low/precip data.
     """
-    geo = geocode_open_meteo(location)
-    if not geo:
+    resolved = resolved_location or resolve_weather_location(location)
+    if not resolved:
         return None
 
-    lat, lon, _ = geo
     forecast_url = "https://api.open-meteo.com/v1/forecast"
     params = {
-        "latitude": lat,
-        "longitude": lon,
+        "latitude": resolved.latitude,
+        "longitude": resolved.longitude,
         "timezone": "auto",
         "forecast_days": max(1, min(days, 10)),
         "temperature_unit": "fahrenheit",
@@ -441,15 +469,31 @@ def fetch_open_meteo_daily_forecast(location: str, days: int) -> list[dict[str, 
     return daily_forecast
 
 
-def fetch_wttr(location: str, forecast: bool) -> tuple[dict[str, Any], str]:
+def _wttr_area_value(area: dict[str, Any], key: str) -> str:
+    value = area.get(key)
+    if isinstance(value, list) and value and isinstance(value[0], dict):
+        return str(value[0].get("value") or "").strip()
+    return str(value or "").strip()
+
+
+def fetch_wttr(
+    location: str,
+    forecast: bool,
+    resolved_location: ResolvedWeatherLocation | None = None,
+) -> tuple[dict[str, Any], str]:
     """
     Fetch weather from wttr.in (no API key required).
     Fallback provider with basic data.
     
     Returns: (data_dict, speech_text)
     """
-    # Use JSON format
-    url = f"https://wttr.in/{location}"
+    resolved = resolved_location or resolve_weather_location(location)
+    if not resolved:
+        raise ValueError(f"Could not resolve an exact weather location for {location}")
+
+    # Query by the shared validated coordinates, never by an ambiguous free-form phrase.
+    coordinate_query = f"{resolved.latitude:.6f},{resolved.longitude:.6f}"
+    url = f"https://wttr.in/{coordinate_query}"
     params = {"format": "j1"}
     
     response = http_request(
@@ -470,13 +514,28 @@ def fetch_wttr(location: str, forecast: bool) -> tuple[dict[str, Any], str]:
     temp = int(current["temp_F"])
     feels_like = int(current["FeelsLikeF"])
     humidity = int(current["humidity"])
-    condition = current["weatherDesc"][0]["value"]
+    condition = str(current["weatherDesc"][0]["value"]).strip()
     wind_speed = int(current["windspeedMiles"])
     
-    # Build location string
-    city = area["areaName"][0]["value"]
-    country = area["country"][0]["value"]
-    location_str = f"{city}, {country}"
+    city = _wttr_area_value(area, "areaName")
+    region = _wttr_area_value(area, "region")
+    country = _wttr_area_value(area, "country")
+    provider_location_parts = [city, region, country]
+    provider_location = ", ".join(part for part in provider_location_parts if part)
+
+    score = candidate_match_score(
+        location_constraints(resolved.requested_location),
+        city=city,
+        region=region,
+        country=country,
+        country_code_value="",
+        require_city_match=False,
+    )
+    if score is None:
+        raise ValueError(
+            "wttr.in returned a location that conflicts with the requested region: "
+            f"{provider_location or 'unknown'}"
+        )
     
     # Get forecast if requested
     forecast_data = None
@@ -493,16 +552,18 @@ def fetch_wttr(location: str, forecast: bool) -> tuple[dict[str, Any], str]:
             "date": today["date"],
             "high": high,
             "low": low,
-            "condition": today["hourly"][4]["weatherDesc"][0]["value"]  # Midday
+            "condition": str(
+                today["hourly"][4]["weatherDesc"][0]["value"]
+            ).strip(),  # Midday
         }]
     
-    speech = f"It's currently {temp} degrees and {condition} in {location_str}."
+    speech = f"It's currently {temp} degrees and {condition} in {resolved.display_name}."
     if abs(feels_like - temp) >= 3:
         speech += f" Feels like {feels_like}."
     speech += forecast_speech
     
     result_data = {
-        "location": location_str,
+        "location": resolved.display_name,
         "temperature": temp,
         "feels_like": feels_like,
         "humidity": humidity,
@@ -510,8 +571,11 @@ def fetch_wttr(location: str, forecast: bool) -> tuple[dict[str, Any], str]:
         "wind_speed": wind_speed,
         "wind_unit": "mph",
         "provider": "wttr.in",
+        "current_weather_provider": "wttr.in",
+        "provider_location_used": provider_location,
         "forecast": forecast_data
     }
+    result_data.update(resolved.metadata())
     
     return result_data, speech
 
@@ -519,6 +583,7 @@ def fetch_wttr(location: str, forecast: bool) -> tuple[dict[str, Any], str]:
 # ============================================================================
 # MAIN
 # ============================================================================
+
 
 def main():
     """Get weather from configured provider."""
@@ -534,7 +599,7 @@ def main():
             return 1
         
         # Extract parameters
-        location = input_data.get("location", "").strip()
+        location = str(input_data.get("location") or "").strip()
         forecast = input_data.get("forecast", False)
         days_raw = input_data.get("days")
         if days_raw is None:
@@ -551,48 +616,89 @@ def main():
             return 1
         
         # Get provider config
-        provider = get_config_value('WEATHER_PROVIDER', 'openweathermap').lower()
-        api_key = get_config_value('OPENWEATHER_API_KEY', '')
+        provider = str(
+            get_config_value('WEATHER_PROVIDER', 'openweathermap') or 'openweathermap'
+        ).strip().lower()
+        api_key = str(get_config_value('OPENWEATHER_API_KEY', '') or '')
         
         # Check if API key is a placeholder
         if api_key and ('YOUR_' in api_key or 'REPLACE' in api_key or len(api_key) < 10):
             api_key = ''  # Treat as not set
         
-        # Fetch weather based on provider
-        if provider == 'openweathermap' and api_key:
-            try:
-                data, speech = fetch_openweathermap(location, forecast, api_key)
-            except Exception as e:
-                # Fallback to wttr.in if OpenWeatherMap fails
-                if "401" in str(e) or "403" in str(e):
-                    return_error(f"OpenWeatherMap API key invalid or expired")
-                    return 1
-                # Try fallback
-                data, speech = fetch_wttr(location, forecast)
-                speech += " (via wttr.in fallback)"
-        elif provider == 'wttr' or not api_key:
-            # Use wttr.in (no API key needed)
-            if provider == 'openweathermap' and not api_key:
-                # Warn but continue with fallback
-                pass
-            data, speech = fetch_wttr(location, forecast)
-        else:
+        if provider not in {'openweathermap', 'wttr'}:
             return_error(f"Unknown weather provider: {provider}")
             return 1
+
+        resolved = resolve_weather_location(location, api_key)
+        if not resolved:
+            return_error(
+                f"Weather location could not be resolved exactly: {location}. "
+                "Include a city with its state/region or country."
+            )
+            return 1
+
+        fallback_used = False
+        fallback_reason = None
+
+        if provider == 'openweathermap' and api_key:
+            try:
+                data, speech = fetch_openweathermap(
+                    location,
+                    forecast,
+                    api_key,
+                    resolved_location=resolved,
+                )
+            except Exception as exc:
+                fallback_used = True
+                fallback_reason = _provider_failure_reason("OpenWeatherMap", exc)
+                data, speech = fetch_wttr(
+                    location,
+                    forecast,
+                    resolved_location=resolved,
+                )
+        elif provider == 'openweathermap':
+            fallback_used = True
+            fallback_reason = "OpenWeatherMap API key is not configured"
+            data, speech = fetch_wttr(
+                location,
+                forecast,
+                resolved_location=resolved,
+            )
+        else:
+            data, speech = fetch_wttr(
+                location,
+                forecast,
+                resolved_location=resolved,
+            )
+
+        data.update(resolved.metadata())
+        data["provider_requested"] = provider
+        data["fallback_used"] = fallback_used
+        if fallback_reason:
+            data["fallback_reason"] = fallback_reason
         
         # Check if proxy was used
         proxy_enabled = get_proxy_config() is not None
         data["proxy_enabled"] = proxy_enabled
 
+        if forecast and data.get("forecast"):
+            data["forecast_provider"] = data.get("provider")
+
         # Add true multi-day forecast when requested.
         # OpenWeatherMap free endpoint is limited; Open-Meteo provides daily forecasts.
         if forecast and days > 1:
+            data["forecast_days"] = 0
             try:
-                daily_forecast = fetch_open_meteo_daily_forecast(location, days)
+                daily_forecast = fetch_open_meteo_daily_forecast(
+                    location,
+                    days,
+                    resolved_location=resolved,
+                )
                 if daily_forecast:
                     data["daily_forecast"] = daily_forecast
                     data["forecast_days"] = min(days, len(daily_forecast))
                     data["daily_forecast_provider"] = "Open-Meteo"
+                    data["daily_forecast_location"] = resolved.display_name
 
                     preview = daily_forecast[:3]
                     preview_parts = []
@@ -605,9 +711,15 @@ def main():
                             preview_parts.append(f"{day_label} {high}/{low} {condition}")
                     if preview_parts:
                         speech += " Next days: " + "; ".join(preview_parts) + "."
+                else:
+                    daily_reason = "Open-Meteo returned no daily forecast data"
+                    data["daily_forecast_error"] = daily_reason
+                    speech += f" I couldn't fetch a full {days}-day forecast."
             except Exception as daily_err:
                 # Keep current weather result but report capability limit honestly.
-                speech += f" I couldn't fetch a full {days}-day forecast right now: {daily_err}"
+                daily_reason = _provider_failure_reason("Open-Meteo", daily_err)
+                data["daily_forecast_error"] = daily_reason
+                speech += f" I couldn't fetch a full {days}-day forecast: {daily_reason}."
         
         return_success(speech=speech, data=data)
         return 0

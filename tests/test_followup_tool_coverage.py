@@ -1603,14 +1603,30 @@ LOCAL_TOOL_SAMPLES = {
     ),
     "weather": _case(
         {
-            "location": "Seattle",
+            "requested_location": "Newport, Oregon",
+            "location": "Newport, Oregon",
+            "resolved_location": "Newport, Oregon",
+            "location_region": "Oregon",
+            "location_country": "United States",
+            "location_country_code": "US",
+            "latitude": 44.6368,
+            "longitude": -124.0535,
+            "location_geocoder": "Open-Meteo",
+            "provider_requested": "openweathermap",
+            "provider_location_used": "Newport, US",
             "temperature": 72,
             "feels_like": 71,
             "condition": "Clear",
             "humidity": 48,
             "wind_speed": 5,
             "wind_unit": "mph",
-            "provider": "Open-Meteo",
+            "provider": "OpenWeatherMap",
+            "current_weather_provider": "OpenWeatherMap",
+            "fallback_used": False,
+            "forecast_provider": "OpenWeatherMap",
+            "daily_forecast_provider": "Open-Meteo",
+            "daily_forecast_location": "Newport, Oregon",
+            "forecast_days": 1,
             "daily_forecast": [
                 {
                     "date": "2026-07-30",
@@ -1813,6 +1829,58 @@ def test_document_ocr_followup_preserves_page_artifact_and_retry_guidance():
     assert compact["page_results_stash_ref"] == "stash://ocr/page-results"
     assert compact["retryable"] is True
     assert compact["retry_after_seconds"] == 5
+
+
+def test_weather_followup_preserves_resolved_location_and_provider_provenance():
+    payload, _ = LOCAL_TOOL_SAMPLES["weather"]
+
+    compact = followup.extract_followup_data({"weather": payload})["weather"]
+
+    assert compact["requested_location"] == "Newport, Oregon"
+    assert compact["resolved_location"] == "Newport, Oregon"
+    assert compact["location_region"] == "Oregon"
+    assert compact["location_country_code"] == "US"
+    assert compact["location_geocoder"] == "Open-Meteo"
+    assert "latitude" not in compact
+    assert "longitude" not in compact
+    assert compact["provider"] == "OpenWeatherMap"
+    assert compact["daily_forecast_provider"] == "Open-Meteo"
+    assert compact["daily_forecast_location"] == "Newport, Oregon"
+    assert compact["fallback_used"] is False
+    assert "forecast" not in compact
+    assert "candidates" not in compact
+    assert compact["daily_forecast"][0] == {
+        "date": "2026-07-30",
+        "high": 75,
+        "low": 58,
+        "condition": "Sunny",
+    }
+
+
+def test_weather_followup_keeps_all_ten_compact_daily_forecast_days():
+    days = [
+        {
+            "date": f"2026-08-{day:02d}",
+            "day": f"D{day}",
+            "high": 70 + day,
+            "low": 50 + day,
+            "condition": "Clear",
+            "precip_probability": day,
+            "weather_code": 0,
+            "wind_max": 12,
+        }
+        for day in range(1, 11)
+    ]
+
+    compact = followup.extract_followup_data(
+        {"weather": {"location": "Newport, Oregon", "daily_forecast": days}}
+    )["weather"]
+
+    assert len(compact["daily_forecast"]) == 10
+    assert compact["daily_forecast_count"] == 10
+    assert "weather_code" not in compact["daily_forecast"][0]
+    assert "wind_max" not in compact["daily_forecast"][0]
+    assert "candidates" not in compact
 
 
 def test_flight_search_followup_keeps_option_identity_without_nested_segments():

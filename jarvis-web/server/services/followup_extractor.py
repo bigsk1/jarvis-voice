@@ -38,6 +38,7 @@ _AMAZON_FOLLOWUP_TOOL_NAMES = frozenset({
     'serpapi_search',  # Read-only compatibility for saved pre-rename turns.
 })
 _DEDICATED_FOLLOWUP_BRANCHES = (
+    'weather',
     'serpapi_amazon_search',
     'serpapi_search',
     'serpapi_home_depot',
@@ -280,6 +281,17 @@ FOLLOWUP_DATA_SKIP_KEYS = frozenset({
 
 # @TOOL_CONFIG: follow-up data extraction — fields extracted from tool results for LLM context
 FOLLOWUP_FIELDS: dict[str, list[str]] = {
+    'weather': [
+        'requested_location', 'location', 'resolved_location',
+        'location_region', 'location_country', 'location_country_code',
+        'location_geocoder',
+        'provider_requested', 'provider', 'current_weather_provider',
+        'provider_location_used', 'fallback_used', 'fallback_reason',
+        'temperature', 'feels_like', 'condition', 'humidity',
+        'wind_speed', 'wind_unit', 'forecast_provider',
+        'daily_forecast_provider', 'daily_forecast_location',
+        'forecast_days', 'daily_forecast_error',
+    ],
     # --- Media generation ---
     'generate_video': ['provider', 'model', 'duration', 'aspect_ratio', 'resolution',
                        'video_id', 'video_url', 'generated_from', 'source_image'],
@@ -2431,6 +2443,54 @@ def _extract_system_monitor_followup(payload: dict) -> dict:
     return {'system_snapshot': snapshot} if snapshot else {}
 
 
+def _extract_weather_forecast_followup(payload: dict) -> dict:
+    """Keep a bounded weather outlook once, without raw/candidate duplication."""
+    daily = payload.get('daily_forecast')
+    if isinstance(daily, list) and daily:
+        compact_days = []
+        for item in daily[:10]:
+            if not isinstance(item, dict):
+                continue
+            compact = {
+                field: item[field]
+                for field in (
+                    'date', 'day', 'high', 'low', 'condition',
+                    'precip_probability',
+                )
+                if item.get(field) not in (None, '', [], {})
+            }
+            if compact:
+                compact_days.append(compact)
+        if compact_days:
+            extracted = {
+                'daily_forecast': compact_days,
+                'daily_forecast_count': len(daily),
+            }
+            if len(daily) > len(compact_days):
+                extracted['daily_forecast_truncated'] = True
+            return extracted
+
+    intraday = payload.get('forecast')
+    if isinstance(intraday, list) and intraday:
+        compact_periods = []
+        for item in intraday[:8]:
+            if not isinstance(item, dict):
+                continue
+            compact = {
+                field: item[field]
+                for field in ('time', 'date', 'temp', 'high', 'low', 'condition')
+                if item.get(field) not in (None, '', [], {})
+            }
+            if compact:
+                compact_periods.append(compact)
+        if compact_periods:
+            return {
+                'forecast': compact_periods,
+                'forecast_count': len(intraday),
+            }
+    return {}
+
+
 def _extract_gpu_hot_status_followup(payload: dict, max_candidates: int) -> dict:
     """Preserve the bounded remote GPU/host snapshot for later questions."""
     extracted = {}
@@ -2794,7 +2854,9 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             if field_value not in (None, '', [], {}):
                 extracted[field] = field_value
 
-        if key == 'spotify':
+        if key == 'weather':
+            extracted.update(_extract_weather_forecast_followup(payload))
+        elif key == 'spotify':
             extracted.update(
                 _extract_spotify_followup(data, payload, max_candidates)
             )
