@@ -17,7 +17,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 
-DEFAULT_MODEL = "glm-5.2:cloud"
+DEFAULT_MODEL = "glm-5.3:cloud"
 DEFAULT_PROVIDER = "ollama"
 MEMORY_RELATIVE_PATH = "docs/personal/bug-hunt-memory.md"
 RESULTS_RELATIVE_PATH = "docs/personal/bug-hunt-findings.jsonl"

@@ -358,6 +358,39 @@ def test_engine_can_create_xai_oauth_provider(tmp_path):
     )
 
 
+def test_default_ollama_model_is_pinned_independently_of_cloud_env(
+    tmp_path,
+    monkeypatch,
+):
+    _write(tmp_path, "lib/example.py", "safe test content\n")
+    monkeypatch.setenv("OLLAMA_CLOUD_MODEL", "environment-default:cloud")
+    created = object()
+    engine = BugHuntEngine(
+        tmp_path,
+        tracked_files={"lib/example.py"},
+    )
+
+    with (
+        patch("config_loader.get_config_value", return_value="http://ollama.test") as get_config,
+        patch(
+            "ollama_utils.get_effective_ollama_model",
+            return_value=DEFAULT_MODEL,
+        ) as resolve_model,
+        patch("llm_provider.create_provider", return_value=created) as create_provider,
+    ):
+        provider = engine._create_provider()
+
+    assert DEFAULT_MODEL == "glm-5.3:cloud"
+    assert provider is created
+    resolve_model.assert_called_once_with("cloud", model_override="glm-5.3:cloud")
+    get_config.assert_called_once_with("OLLAMA_BASE_URL", "http://localhost:11434")
+    create_provider.assert_called_once_with(
+        "ollama",
+        base_url="http://ollama.test",
+        model="glm-5.3:cloud",
+    )
+
+
 def test_xai_provider_receives_openai_style_tool_schema(tmp_path):
     _write(tmp_path, "lib/example.py", "safe test content\n")
     provider = _FakeProvider([json.dumps({"action": "no_finding"})])
