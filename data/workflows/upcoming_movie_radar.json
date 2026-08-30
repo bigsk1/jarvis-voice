@@ -8,9 +8,7 @@
   "disable_server_side_tools": true,
   "triggers": {
     "explicit": [
-      "/upcoming_movie_radar",
-      "/movie_release_radar",
-      "/upcoming_movies"
+      "/upcoming_movie_radar"
     ],
     "patterns": [],
     "keywords": []

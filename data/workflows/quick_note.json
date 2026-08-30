@@ -6,7 +6,7 @@
   "enabled": true,
   
   "triggers": {
-    "explicit": ["/note", "/quicknote", "/remember_this"],
+    "explicit": ["/note"],
     "patterns": [],
     "keywords": []
   },

@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "orchestrator"))
@@ -12,7 +14,8 @@ sys.path.insert(0, str(ROOT / "orchestrator"))
 from workflow_loader import WorkflowLoader  # noqa: E402
 
 
-def _write_workflow(path: Path, workflow_id: str, trigger: str, tool: str = "get_time"):
+def _write_workflow(path: Path, workflow_id: str, trigger, tool: str = "get_time"):
+    explicit = trigger if isinstance(trigger, list) else [trigger]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
@@ -20,14 +23,14 @@ def _write_workflow(path: Path, workflow_id: str, trigger: str, tool: str = "get
                 "id": workflow_id,
                 "name": workflow_id.replace("_", " ").title(),
                 "enabled": True,
-                "triggers": {"explicit": [trigger]},
+                "triggers": {"explicit": explicit},
                 "steps": [{"step": 1, "tool": tool, "params": {}}],
             }
         )
     )
 
 
-def test_serpapi_amazon_workflow_uses_renamed_tool_and_compatibility_trigger():
+def test_serpapi_amazon_workflow_uses_canonical_trigger():
     loader = WorkflowLoader(str(ROOT / "data" / "workflows"), explicit_only=True)
     workflow = loader.get_workflow("serpapi_amazon_search")
 
@@ -35,8 +38,41 @@ def test_serpapi_amazon_workflow_uses_renamed_tool_and_compatibility_trigger():
     assert loader.get_workflow("serpapi_search") is None
     assert workflow["steps"][0]["tool"] == "serpapi_amazon_search"
     assert loader.match("/serpapi_amazon usb c charger")["id"] == "serpapi_amazon_search"
-    assert loader.match("/amazon_search usb c charger")["id"] == "serpapi_amazon_search"
-    assert loader.match("/serpapi usb c charger")["id"] == "serpapi_amazon_search"
+
+
+def test_shared_workflows_each_have_one_canonical_trigger():
+    for path in sorted((ROOT / "data" / "workflows").glob("*.json")):
+        workflow = json.loads(path.read_text())
+        explicit = workflow.get("triggers", {}).get("explicit", [])
+        assert len(explicit) == 1, f"{path.name} has non-canonical triggers: {explicit}"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "/dive https://example.com",
+        "/daily",
+        "/garden_watch",
+        "/serpapi headphones",
+        "/what_to_watch funny and short",
+    ],
+)
+def test_retired_shared_aliases_no_longer_match(query):
+    loader = WorkflowLoader(str(ROOT / "data" / "workflows"), explicit_only=True)
+
+    assert loader.match(query) is None
+
+
+def test_loader_supports_deliberate_temporary_compatibility_aliases(tmp_path):
+    _write_workflow(
+        tmp_path / "renamed.json",
+        "renamed_workflow",
+        ["/canonical", "/legacy_compat"],
+    )
+    loader = WorkflowLoader(str(tmp_path), explicit_only=True)
+
+    assert loader.match("/canonical run it")["id"] == "renamed_workflow"
+    assert loader.match("/legacy_compat run it")["id"] == "renamed_workflow"
 
 
 def test_workflow_loader_includes_gitignored_personal_workflows(tmp_path):

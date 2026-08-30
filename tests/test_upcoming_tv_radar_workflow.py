@@ -35,11 +35,7 @@ def test_tv_radar_is_explicit_tmdb_first_and_requires_genre_filters():
     assert workflow["allow_workflow_tool"] is False
     assert workflow["disable_server_side_tools"] is True
     assert workflow["triggers"] == {
-        "explicit": [
-            "/upcoming_tv_radar",
-            "/tv_release_radar",
-            "/upcoming_tv_shows",
-        ],
+        "explicit": ["/upcoming_tv_radar"],
         "patterns": [],
         "keywords": [],
     }
@@ -168,4 +164,3 @@ def test_tv_radar_loader_matches_only_explicit_commands():
     assert loader.match("/upcoming_tv_radar science fiction")["id"] == (
         "upcoming_tv_radar"
     )
-    assert loader.match("/tv_release_radar comedy")["id"] == "upcoming_tv_radar"

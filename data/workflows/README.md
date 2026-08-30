@@ -25,7 +25,7 @@ Private workflows can live in `data/workflows/personal/*.json`. That folder is g
 | `success_speech` | string | Resolved with `${variables}` when workflow completes. |
 | `abort_speech` | string | Optional; used when workflow aborts. |
 
-**Triggers:** Production matching is **explicit-only** by default (slash commands). `patterns` / `keywords` exist in the schema but are not the normal path; prefer `explicit`. Matching is exact prefix (`startswith`) with no hyphen/underscore normalization—list every alias you care about in `explicit` (e.g. both `/status-visual` and `/status_visual` if you want both).
+**Triggers:** Production matching is **explicit-only** by default (slash commands). `patterns` / `keywords` exist in the schema but are not the normal path; prefer `explicit`. Give each workflow one canonical command in `explicit`. That command may be a short, memorable name rather than the full workflow id. The loader still supports additional entries for deliberate, temporary backward compatibility after a command rename, but aliases should not be added as general shortcuts. Matching is exact prefix (`startswith`) with no hyphen/underscore normalization.
 
 Normal orchestration can also discover workflows through the compact
 `workflow(search|describe|run)` meta-tool. This does not enable keyword/pattern
@@ -361,36 +361,36 @@ the same orchestration turn; it is not a durable background run.
 | File | Command | Description |
 |------|---------|-------------|
 | `bookmark_search.json` | `* <query>` | Search Firefox bookmarks using the same prefix as the Firefox address bar |
-| `buying_brief.json` | `/buying_brief <product>` (also `/price_compare`) | Compare Google Shopping Light, Amazon, and eBay results with configured localization, optional Stash evidence, and a Canvas recommendation |
+| `buying_brief.json` | `/buying_brief <product>` | Compare Google Shopping Light, Amazon, and eBay results with configured localization, optional Stash evidence, and a Canvas recommendation |
 | `crypto_market_report.json` | `/crypto [coins]` | Crypto prices with canvas report |
 | `daily_status.json` | `/status` | Weather, crypto (7d charts on Canvas), stocks, alerts, system health dashboard |
-| `daily_status_visual.json` | `/status_visual` (also `/status_image`, `/daily_visual`) | Same as `/status` (including crypto charts) plus `generate_image` and dashboard image at top of Canvas |
-| `deep_dive.json` | `/deep_dive <url>` (also `/dive`) | Screenshot + crawl + comprehensive canvas analysis with pros/cons and links |
+| `daily_status_visual.json` | `/status_visual` | Same as `/status` (including crypto charts) plus `generate_image` and dashboard image at top of Canvas |
+| `deep_dive.json` | `/deep_dive <url>` | Screenshot + crawl + comprehensive canvas analysis with pros/cons and links |
 | `deep_research.json` | `/research <topic>` | Multi-source research with validation |
-| `game_brief.json` | `/game_brief <sport> <team>` (also `/game_recap`, `/sports_brief`) | Create a current game Canvas brief from structured Google Sports details, with optional Brave narrative enrichment |
-| `github_ai_radar_daily.json` | `/github_ai_radar` (also `/ai_radar`, `/ai-radar`) | Search for current GitHub AI project signals with Brave MCP, optionally feature a YouTube result, gather Brave LLM Context, and keep one current Canvas page refreshed |
-| `jarvis_self_check.json` | `/jarvis_self_check` (also `/self_check`, `/jarvis_health`) | Local Jarvis host health check with deduped alerts and one refreshed Canvas health page |
+| `game_brief.json` | `/game_brief <sport> <team>` | Create a current game Canvas brief from structured Google Sports details, with optional Brave narrative enrichment |
+| `github_ai_radar_daily.json` | `/github_ai_radar` | Search for current GitHub AI project signals with Brave MCP, optionally feature a YouTube result, gather Brave LLM Context, and keep one current Canvas page refreshed |
+| `jarvis_self_check.json` | `/jarvis_self_check` | Local Jarvis host health check with deduped alerts and one refreshed Canvas health page |
 | `knowledge_snapshot.json` | `/knowledge <topic>` | Search active-mode Memory, Intel, and prior conversations without new web research, then create or refresh one source-attributed Canvas briefing per topic |
-| `local_services_compare.json` | `/local_services_compare <service>` (also `/service_compare`) | Compare Google Local Services, Google Local, and bounded Yelp review evidence using the active mode's configured location, optional Stash evidence, and a dated Canvas shortlist |
-| `memory_scan.json` | `/memory_scan` (also `/dedupe_memory`) | Run memory_deduper against the active cloud/local memory DB and save a labeled report to stash + canvas |
-| `movie_night.json` | `/movie_night <mood, constraints, or favorite movies>` (also `/what_to_watch`, `/movie_picker`) | Use required public Trakt metadata plus optional read-only account recommendations and deterministic watched filtering, TMDB artwork, YouTube trailers, and Brave streaming context to create a dated Canvas shortlist; no Trakt image hotlinking |
-| `night_out.json` | `/night_out <occasion or preference>` (also `/date_night`) | Build a date-aware evening plan from an explicit destination or the active mode default location/postal code and bounded local sources; weather runs only when no outing date is given or the parsed date fits the 10-day horizon |
-| `upcoming_movie_radar.json` | `/upcoming_movie_radar <genre criteria>` (also `/movie_release_radar`, `/upcoming_movies`) | Explicit/scheduled TMDB-first release radar with required included-genre inference, provider-side genre exclusion, a separate rolling Canvas page per resolved primary genre, optional Brave enrichment, public-poster email fields, and one shared sent-ID ledger for cross-genre deduplication after confirmed email delivery |
-| `upcoming_tv_radar.json` | `/upcoming_tv_radar <genre criteria>` (also `/tv_release_radar`, `/upcoming_tv_shows`) | Explicit/scheduled TMDB-first series-premiere radar with required included-genre inference, provider-side genre exclusion, a separate rolling Canvas page per resolved primary genre, optional Brave enrichment, public-poster email fields, and one shared sent-ID ledger for cross-genre deduplication after confirmed email delivery |
+| `local_services_compare.json` | `/local_services_compare <service>` | Compare Google Local Services, Google Local, and bounded Yelp review evidence using the active mode's configured location, optional Stash evidence, and a dated Canvas shortlist |
+| `memory_scan.json` | `/memory_scan` | Run memory_deduper against the active cloud/local memory DB and save a labeled report to stash + canvas |
+| `movie_night.json` | `/movie_night <mood, constraints, or favorite movies>` | Use required public Trakt metadata plus optional read-only account recommendations and deterministic watched filtering, TMDB artwork, YouTube trailers, and Brave streaming context to create a dated Canvas shortlist; no Trakt image hotlinking |
+| `night_out.json` | `/night_out <occasion or preference>` | Build a date-aware evening plan from an explicit destination or the active mode default location/postal code and bounded local sources; weather runs only when no outing date is given or the parsed date fits the 10-day horizon |
+| `upcoming_movie_radar.json` | `/upcoming_movie_radar <genre criteria>` | Explicit/scheduled TMDB-first release radar with required included-genre inference, provider-side genre exclusion, a separate rolling Canvas page per resolved primary genre, optional Brave enrichment, public-poster email fields, and one shared sent-ID ledger for cross-genre deduplication after confirmed email delivery |
+| `upcoming_tv_radar.json` | `/upcoming_tv_radar <genre criteria>` | Explicit/scheduled TMDB-first series-premiere radar with required included-genre inference, provider-side genre exclusion, a separate rolling Canvas page per resolved primary genre, optional Brave enrichment, public-poster email fields, and one shared sent-ID ledger for cross-genre deduplication after confirmed email delivery |
 | `pdf_ingest.json` | `/pdf_ingest <attached PDF, stash ref, or URL>` | Extract a PDF, create a semantic Intel file, ingest it synchronously, and publish a source-attributed Canvas briefing |
 | `quick_note.json` | `/note <text>` | Quick note to memory and canvas |
-| `serpapi_amazon_search.json` | `/serpapi_amazon <query>` (also `/amazon_search`, `/serpapi`) | Search Amazon, save a normalized Stash export, and create a Canvas comparison report |
+| `serpapi_amazon_search.json` | `/serpapi_amazon <query>` | Search Amazon, save a normalized Stash export, and create a Canvas comparison report |
 | `server_health_check.json` | `/health <host>` | SSH health check on remote server |
-| `team_outlook.json` | `/team_outlook <sport> <team>` (also `/season_outlook`) | Resolve one team ID for current games, focused team standings, and roster views, then add optional current news and a Canvas outlook; `football` means American football and `soccer` means association football |
-| `trend_reality_check.json` | `/trend_reality_check <topic>` (also `/trend_check`) | Compare topic-specific Google Trends with the seedless Trending Now feed, optional current news, indexed source candidates, and a Canvas assessment |
-| `tv_night.json` | `/tv_night <mood, constraints, or favorite shows>` (also `/what_show_to_watch`, `/tv_picker`) | Use required public Trakt TV metadata plus optional read-only account recommendations and deterministic watched filtering, TMDB artwork/series commitment facts, YouTube trailers, and Brave streaming context; episode runtime remains distinct from total commitment |
+| `team_outlook.json` | `/team_outlook <sport> <team>` | Resolve one team ID for current games, focused team standings, and roster views, then add optional current news and a Canvas outlook; `football` means American football and `soccer` means association football |
+| `trend_reality_check.json` | `/trend_reality_check <topic>` | Compare topic-specific Google Trends with the seedless Trending Now feed, optional current news, indexed source candidates, and a Canvas assessment |
+| `tv_night.json` | `/tv_night <mood, constraints, or favorite shows>` | Use required public Trakt TV metadata plus optional read-only account recommendations and deterministic watched filtering, TMDB artwork/series commitment facts, YouTube trailers, and Brave streaming context; episode runtime remains distinct from total commitment |
 | `url_ingest.json` | `/url_ingest <url>` | Fetch any URL, create intel file, ingest to memory for RAG queries |
-| `vacation_reconnaissance.json` | `/vacation_reconnaissance <location>` (also `/vacation_recon`, `/destination_scout`) | Create a crawl-free weather, attractions, dining, local pulse, image, Stash, and Canvas destination report for a required location |
-| `weather_watch.json` | `/weather_watch` (also `/garden_watch`) | Default-location weather watch with canvas report and condition-specific alerts |
+| `vacation_reconnaissance.json` | `/vacation_reconnaissance <location>` | Create a crawl-free weather, attractions, dining, local pulse, image, Stash, and Canvas destination report for a required location |
+| `weather_watch.json` | `/weather_watch` | Default-location weather watch with canvas report and condition-specific alerts |
 | `web_archive.json` | `/archive <url>` | Fetch URL, save to stash, create canvas summary |
 | `youtube_ingest.json` | `/youtube_ingest <url>` | Download video + transcript, extract important facts/keywords, create canvas briefing |
 | `youtube_research.json` | `/youtube_research <url> [notes]` | Download transcript, summarize, extract keywords, create canvas study notes |
-| `yt_dlp_release_watch.json` | `/yt_dlp_release_watch` (also `/yt-dlp-release-watch`) | Check for a stable yt-dlp release, create Canvas release notes, alert once, and acknowledge the handled version |
+| `yt_dlp_release_watch.json` | `/yt_dlp_release_watch` | Check for a stable yt-dlp release, create Canvas release notes, alert once, and acknowledge the handled version |
 
 ---
 

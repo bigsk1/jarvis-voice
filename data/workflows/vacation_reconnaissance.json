@@ -7,9 +7,7 @@
   "disable_server_side_tools": true,
   "triggers": {
     "explicit": [
-      "/vacation_reconnaissance",
-      "/vacation_recon",
-      "/destination_scout"
+      "/vacation_reconnaissance"
     ],
     "patterns": [],
     "keywords": []

@@ -105,7 +105,7 @@ def test_local_services_compare_uses_required_service_and_mode_location_defaults
 
     assert workflow["disable_server_side_tools"] is True
     assert workflow["triggers"] == {
-        "explicit": ["/local_services_compare", "/service_compare"],
+        "explicit": ["/local_services_compare"],
         "patterns": [],
         "keywords": [],
     }
@@ -146,7 +146,7 @@ def test_game_brief_uses_structured_sports_with_optional_web_enrichment():
 
     assert workflow["disable_server_side_tools"] is False
     assert workflow["triggers"] == {
-        "explicit": ["/game_brief", "/game_recap", "/sports_brief"],
+        "explicit": ["/game_brief"],
         "patterns": [],
         "keywords": [],
     }
@@ -200,7 +200,7 @@ def test_night_out_uses_explicit_or_mode_default_location_without_generic_images
 
     assert workflow["disable_server_side_tools"] is True
     assert workflow["triggers"] == {
-        "explicit": ["/night_out", "/date_night"],
+        "explicit": ["/night_out"],
         "patterns": [],
         "keywords": [],
     }
@@ -273,7 +273,7 @@ def test_trend_reality_check_keeps_trending_now_seedless_and_optional():
 
     assert workflow["disable_server_side_tools"] is True
     assert workflow["triggers"] == {
-        "explicit": ["/trend_reality_check", "/trend_check"],
+        "explicit": ["/trend_reality_check"],
         "patterns": [],
         "keywords": [],
     }
@@ -322,7 +322,7 @@ def test_team_outlook_reuses_resolved_team_kgmid_for_optional_views():
 
     assert workflow["disable_server_side_tools"] is True
     assert workflow["triggers"] == {
-        "explicit": ["/team_outlook", "/season_outlook"],
+        "explicit": ["/team_outlook"],
         "patterns": [],
         "keywords": [],
     }

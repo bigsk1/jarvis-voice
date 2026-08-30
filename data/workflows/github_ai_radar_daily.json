@@ -14,7 +14,7 @@
       "trending github ai projects"
     ],
     "keywords": ["github", "ai", "radar", "trending"],
-    "explicit": ["/github_ai_radar", "/ai_radar", "/ai-radar"]
+    "explicit": ["/github_ai_radar"]
   },
 
   "variables": {

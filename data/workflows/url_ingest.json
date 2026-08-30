@@ -6,7 +6,7 @@
   "version": "1.0",
 
   "triggers": {
-    "explicit": ["/url_ingest", "/ingest_url", "/learn_url"],
+    "explicit": ["/url_ingest"],
     "patterns": [
       "ingest this url",
       "learn this page",

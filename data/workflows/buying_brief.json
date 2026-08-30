@@ -7,8 +7,7 @@
   "disable_server_side_tools": true,
   "triggers": {
     "explicit": [
-      "/buying_brief",
-      "/price_compare"
+      "/buying_brief"
     ],
     "patterns": [],
     "keywords": []

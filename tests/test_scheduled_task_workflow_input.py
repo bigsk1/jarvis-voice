@@ -147,7 +147,7 @@ def test_runner_prefixes_workflow_input_with_trigger(monkeypatch):
             self.workflows = {
                 "deep_dive": {
                     "id": "deep_dive",
-                    "triggers": {"explicit": ["/deep_dive", "/dive"]},
+                    "triggers": {"explicit": ["/deep_dive"]},
                     "steps": [{"step": 1, "tool": "get_time"}],
                 }
             }

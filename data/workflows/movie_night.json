@@ -7,9 +7,7 @@
   "disable_server_side_tools": false,
   "triggers": {
     "explicit": [
-      "/movie_night",
-      "/what_to_watch",
-      "/movie_picker"
+      "/movie_night"
     ],
     "patterns": [],
     "keywords": []

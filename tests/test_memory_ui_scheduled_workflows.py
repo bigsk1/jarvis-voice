@@ -31,7 +31,7 @@ def test_scheduled_task_workflow_list_uses_loaded_workflows(monkeypatch):
                         "topic": {"from": "query", "extract": "main_subject"},
                         "style": {"from": "query", "extract": "remainder", "default": ""},
                     },
-                    "triggers": {"explicit": ["/daily_status", "/daily"]},
+                    "triggers": {"explicit": ["/daily_status"]},
                     "steps": [
                         {"step": 1, "tool": "get_time"},
                         {"step": 2, "tool": "canvas"},
@@ -71,7 +71,7 @@ def test_scheduled_task_workflow_list_uses_loaded_workflows(monkeypatch):
     ]
     assert payload["workflows"][0]["name"] == "Daily Status"
     assert payload["workflows"][0]["trigger"] == "/daily_status"
-    assert payload["workflows"][0]["triggers"] == ["/daily_status", "/daily"]
+    assert payload["workflows"][0]["triggers"] == ["/daily_status"]
     assert payload["workflows"][0]["requires_input"] is True
     assert payload["workflows"][0]["input_fields"] == [
         {"name": "topic", "extract": "main_subject", "required": True},

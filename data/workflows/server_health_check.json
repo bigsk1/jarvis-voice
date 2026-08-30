@@ -6,7 +6,7 @@
   "enabled": true,
   
   "triggers": {
-    "explicit": ["/health", "/server_check"],
+    "explicit": ["/health"],
     "patterns": [],
     "keywords": []
   },

@@ -614,7 +614,7 @@ The authoritative list is `data/workflows/*.json` plus any private `data/workflo
 | `memory_scan.json` | `/memory_scan` | Analyze the active memory database and save labeled Stash and Canvas reports. |
 | `night_out.json` | `/night_out` | Build a date-aware evening plan from an explicit destination or the active mode default location/postal code and bounded local sources; run weather only when the parsed outing date fits its 10-day horizon. |
 | `quick_note.json` | `/note` | Save a note to memory and Canvas. |
-| `serpapi_amazon_search.json` | `/serpapi_amazon` (also `/amazon_search`, `/serpapi`) | Search Amazon through SerpApi and save Stash and Canvas reports. |
+| `serpapi_amazon_search.json` | `/serpapi_amazon` | Search Amazon through SerpApi and save Stash and Canvas reports. |
 | `server_health_check.json` | `/health` | SSH health check for a remote server. |
 | `team_outlook.json` | `/team_outlook` | Resolve one team ID, prioritize its standings division before result bounding, and add direct roster plus optional current-news context. Jarvis-facing `football` means American football; `soccer` means association football. |
 | `trend_reality_check.json` | `/trend_reality_check` | Compare topic-specific Google Trends with seedless Trending Now, recent news, and indexed source candidates. |

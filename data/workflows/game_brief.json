@@ -7,9 +7,7 @@
   "disable_server_side_tools": false,
   "triggers": {
     "explicit": [
-      "/game_brief",
-      "/game_recap",
-      "/sports_brief"
+      "/game_brief"
     ],
     "patterns": [],
     "keywords": []

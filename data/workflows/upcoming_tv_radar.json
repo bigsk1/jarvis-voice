@@ -8,9 +8,7 @@
   "disable_server_side_tools": true,
   "triggers": {
     "explicit": [
-      "/upcoming_tv_radar",
-      "/tv_release_radar",
-      "/upcoming_tv_shows"
+      "/upcoming_tv_radar"
     ],
     "patterns": [],
     "keywords": []

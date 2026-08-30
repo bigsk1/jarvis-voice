@@ -6,7 +6,7 @@
   "enabled": true,
   
   "triggers": {
-    "explicit": ["/status", "/daily", "/briefing", "/recap"],
+    "explicit": ["/status"],
     "patterns": [],
     "keywords": []
   },

@@ -6,7 +6,7 @@
   "enabled": true,
   "allow_workflow_tool": false,
   "triggers": {
-    "explicit": ["/yt_dlp_release_watch", "/yt-dlp-release-watch"],
+    "explicit": ["/yt_dlp_release_watch"],
     "patterns": [],
     "keywords": []
   },

@@ -873,7 +873,7 @@ explicit-destination workflows fail-closed by omitting
 - `/archive bigsk1.com` → `url="https://bigsk1.com"`, `topic="bigsk1.com"`
 - `/health` → `host="vps2"` (default)
 - `/health vps20` → `host="vps20"`
-- `/dive https://cursor.com/pricing` → `url_domain="cursor.com"`
+- `/deep_dive https://cursor.com/pricing` → `url_domain="cursor.com"`
 
 ### Step Fields Reference
 
@@ -1042,7 +1042,7 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 | `crypto_market_report.json` | `/crypto [coins]` | Multiple crypto_price calls, LLM formatting |
 | `daily_status.json` | `/status` | Static variables, nested extracts, multi-tool dashboard |
 | `daily_status_visual.json` | `/status_visual` | Same crypto pipeline as `daily_status` (`crypto_chart`, fenced `crypto-chart` blocks); `generate_image` + `image_ref` at top of canvas |
-| `deep_dive.json` | `/dive <url>` | screenshot_url, stash file kind, vision as primary source, resilient crawl, url_domain transform, folder-structured canvas |
+| `deep_dive.json` | `/deep_dive <url>` | screenshot_url, stash file kind, vision as primary source, resilient crawl, url_domain transform, folder-structured canvas |
 | `deep_research.json` | `/research <topic>` | Search, for_each crawl, validation |
 | `github_ai_radar_daily.json` | `/github_ai_radar` | Brave search and LLM context, optional YouTube result, rolling Canvas update |
 | `jarvis_self_check.json` | `/jarvis_self_check` | Local system health, deduplicated alerts, full Canvas update |
@@ -1053,7 +1053,7 @@ cat "$(ls ~/jarvis-voice/data/canvas/page_* | tail -1)"
 | `upcoming_movie_radar.json` | `/upcoming_movie_radar <genre criteria>` | Explicit/scheduled TMDB discovery with hard included/excluded genres, regional theatrical date window, one shared sent-ID ledger, optional current context, per-primary-genre rolling Canvas replacement, and conditional poster-rich email |
 | `upcoming_tv_radar.json` | `/upcoming_tv_radar <genre criteria>` | Explicit/scheduled TMDB TV discovery with hard included/excluded genres, bounded first-air window, one shared sent-ID ledger, optional current context, per-primary-genre rolling Canvas replacement, and conditional poster-rich email |
 | `quick_note.json` | `/note <text>` | Simple text capture, remember, canvas |
-| `serpapi_amazon_search.json` | `/serpapi_amazon <query>` (also `/amazon_search`, `/serpapi`) | SerpApi Amazon listings, Stash export, Canvas comparison |
+| `serpapi_amazon_search.json` | `/serpapi_amazon <query>` | SerpApi Amazon listings, Stash export, Canvas comparison |
 | `server_health_check.json` | `/health [host]` | Default value, ssh_remote, get_time |
 | `team_outlook.json` | `/team_outlook <sport> <team>` | Resolve one team KGMID, prioritize its standings division before bounding, add direct roster/current-news context, and create validated Canvas; `football` means American football and `soccer` means association football |
 | `trend_reality_check.json` | `/trend_reality_check <topic>` | Topic-specific Trends plus seedless Trending Now cross-check, optional News Light and Search Index, validated Canvas |

@@ -7,7 +7,7 @@
   "disable_server_side_tools": true,
 
   "triggers": {
-    "explicit": ["/serpapi_amazon", "/amazon_search", "/serpapi"],
+    "explicit": ["/serpapi_amazon"],
     "patterns": [],
     "keywords": []
   },

@@ -7,9 +7,7 @@
   "disable_server_side_tools": true,
   "triggers": {
     "explicit": [
-      "/tv_night",
-      "/what_show_to_watch",
-      "/tv_picker"
+      "/tv_night"
     ],
     "patterns": [],
     "keywords": []

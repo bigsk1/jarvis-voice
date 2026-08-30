@@ -7,8 +7,7 @@
   "disable_server_side_tools": true,
   "triggers": {
     "explicit": [
-      "/team_outlook",
-      "/season_outlook"
+      "/team_outlook"
     ],
     "patterns": [],
     "keywords": []

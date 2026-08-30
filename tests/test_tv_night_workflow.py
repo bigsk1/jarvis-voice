@@ -22,7 +22,7 @@ def _workflow():
 def test_tv_night_is_explicit_and_keeps_enrichment_optional():
     workflow = _workflow()
     assert workflow["triggers"] == {
-        "explicit": ["/tv_night", "/what_show_to_watch", "/tv_picker"],
+        "explicit": ["/tv_night"],
         "patterns": [],
         "keywords": [],
     }
@@ -92,5 +92,3 @@ def test_tv_night_runs_without_optional_enrichment_but_requires_trakt():
 def test_tv_night_loader_matches_only_explicit_commands():
     loader = WorkflowLoader(str(ROOT / "data" / "workflows"), explicit_only=True)
     assert loader.match("/tv_night tense mystery")['id'] == "tv_night"
-    assert loader.match("/what_show_to_watch funny and short")['id'] == "tv_night"
-    assert loader.match("/tv_picker a completed drama")['id'] == "tv_night"

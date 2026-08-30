@@ -503,7 +503,7 @@ Pages are grouped into folders by splitting their title on `/`:
 | `/research` | `Workflows/Research/{short_title}` |
 | `/crypto` | `Workflows/Crypto/{date}` |
 | `/status` | `Workflows/Daily Status/{date}` |
-| `/dive` | `Workflows/Deep Dive/{domain}` |
+| `/deep_dive` | `Workflows/Deep Dive/{domain}` |
 | `/youtube_research` | `Workflows/YouTube/{video_title}` |
 
 ### Page View

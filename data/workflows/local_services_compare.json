@@ -7,8 +7,7 @@
   "disable_server_side_tools": true,
   "triggers": {
     "explicit": [
-      "/local_services_compare",
-      "/service_compare"
+      "/local_services_compare"
     ],
     "patterns": [],
     "keywords": []

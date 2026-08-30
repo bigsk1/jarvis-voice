@@ -35,11 +35,7 @@ def test_radar_is_explicit_tmdb_first_and_requires_genre_filters():
     assert workflow["allow_workflow_tool"] is False
     assert workflow["disable_server_side_tools"] is True
     assert workflow["triggers"] == {
-        "explicit": [
-            "/upcoming_movie_radar",
-            "/movie_release_radar",
-            "/upcoming_movies",
-        ],
+        "explicit": ["/upcoming_movie_radar"],
         "patterns": [],
         "keywords": [],
     }
@@ -183,4 +179,3 @@ def test_radar_remains_available_without_optional_context_or_email_tool():
 def test_radar_loader_matches_only_explicit_commands():
     loader = WorkflowLoader(str(ROOT / "data" / "workflows"), explicit_only=True)
     assert loader.match("/upcoming_movie_radar science fiction")['id'] == "upcoming_movie_radar"
-    assert loader.match("/movie_release_radar thriller")['id'] == "upcoming_movie_radar"

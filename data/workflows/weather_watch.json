@@ -5,7 +5,7 @@
   "version": "1.0",
   "enabled": true,
   "triggers": {
-    "explicit": ["/weather_watch", "/garden_watch"],
+    "explicit": ["/weather_watch"],
     "patterns": [],
     "keywords": []
   },

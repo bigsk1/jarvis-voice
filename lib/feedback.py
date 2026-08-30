@@ -131,7 +131,7 @@ Tools Used: {tools_used}
    - When workflows create canvas pages, stash files, or save to memory, the CONTENT is there
    - The spoken response should be a BRIEF CONFIRMATION, not a summary of all findings
    - Examples of CORRECT short responses:
-     → "/dive workflow created canvas" → "Deep dive complete. Canvas summary created." = RATE 5
+     → "/deep_dive workflow created canvas" → "Deep dive complete. Canvas summary created." = RATE 5
      → "/research workflow" → "Research complete. I found 5 sources and saved a report to your canvas." = RATE 5
      → "/note workflow" → "Note saved to memory and canvas." = RATE 5
    - DO NOT penalize for "not summarizing findings" when content is in canvas/stash

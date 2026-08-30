@@ -770,11 +770,9 @@ blocked by cookies, authentication, or transcript availability.
 
 The shared `data/workflows/serpapi_amazon_search.json` recipe runs
 `serpapi_amazon_search`, saves a normalized text export to Stash, and creates a
-Canvas comparison report. Supported explicit commands are:
+Canvas comparison report. Its explicit command is:
 
 - `/serpapi_amazon <query>`
-- `/amazon_search <query>`
-- `/serpapi <query>` for compatibility
 
 The workflow helper model receives only the normalized Amazon rows and has
 server-side tools disabled, so it cannot silently replace the deterministic
@@ -783,21 +781,20 @@ source step with another search provider.
 Seven additional shared recipes combine bounded SerpApi results without crawling
 source pages:
 
-- `/buying_brief <product>` (also `/price_compare`) compares Google Shopping
+- `/buying_brief <product>` compares Google Shopping
   Light, Amazon, and eBay. Google Shopping and Amazon use their existing
   active-mode location/postal defaults; eBay receives
   `JARVIS_DEFAULT_POSTAL_CODE` as a shipping-area bias when configured. The
   workflow makes three normal SerpApi searches, does not fan out into Amazon
   product details, optionally saves a compact Stash snapshot, and creates a
   dated Canvas recommendation.
-- `/vacation_reconnaissance <location>` (also `/vacation_recon` and
-  `/destination_scout`) requires an explicit destination and does not fall back
+- `/vacation_reconnaissance <location>` requires an explicit destination and does not fall back
   to Jarvis's configured home location. It combines a seven-day weather
   forecast with Tripadvisor attractions and restaurants, Google Local, Google
   News Light, and Google Images Light. It makes five normal SerpApi searches,
   does not request Tripadvisor enrichment, does not download images, optionally
   saves bounded evidence to Stash, and creates a dated Canvas report.
-- `/local_services_compare <service>` (also `/service_compare`) uses the active
+- `/local_services_compare <service>` uses the active
   mode's configured location to compare five bounded results each from Google
   Local Services, Google Local, and Yelp. Yelp adds up to three review excerpts
   for one selected result. The normal budget is four or five SerpApi searches,
@@ -806,12 +803,12 @@ source pages:
   The recipe does not crawl provider websites or contact businesses, optionally
   saves bounded evidence to Stash, and creates a dated Canvas shortlist and
   recommendation.
-- `/game_brief <sport> <team>` (also `/game_recap` and `/sports_brief`) resolves
+- `/game_brief <sport> <team>` resolves
   the latest game directly, builds a concise score, status, line or period score,
   player-performance, and watch-or-recap report, and publishes it to Canvas.
   Google Sports is required; Brave LLM Context and Brave MCP search are optional,
   and provider-native server-side search remains available to the Canvas helper.
-- `/night_out <occasion or preference>` (also `/date_night`) extracts an
+- `/night_out <occasion or preference>` extracts an
   explicitly stated destination or falls back to the active mode's
   `JARVIS_DEFAULT_LOCATION` and then `JARVIS_DEFAULT_POSTAL_CODE`. It combines a
   ten-day weather window with two bounded Google Local searches and optional
@@ -823,13 +820,13 @@ source pages:
   likewise treated as run-time-only and never as future-date availability.
   Generic image search is intentionally omitted because unspecific food and
   atmosphere images do not reliably represent a recommended venue.
-- `/trend_reality_check <topic>` (also `/trend_check`) measures a topic's
+- `/trend_reality_check <topic>` measures a topic's
   three-month interest curve and related searches, then uses the seedless US
   Trending Now feed, recent Google News Light, and Search Index results as
   optional cross-checks. The report treats Trends values as relative indices,
   not search counts, and absence from Trending Now as weak evidence rather than
   proof that a topic is not trending.
-- `/team_outlook <sport> <team>` (also `/season_outlook`) resolves the team once,
+- `/team_outlook <sport> <team>` resolves the team once,
   then uses direct team-games, team-standings, and team-roster calls before
   optionally adding Google News Light storylines. Team standings promote the
   selected team and its division or conference ahead of the general result

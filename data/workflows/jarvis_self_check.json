@@ -5,7 +5,7 @@
   "version": "1.0",
   "enabled": true,
   "triggers": {
-    "explicit": ["/jarvis_self_check", "/self_check", "/jarvis_health"],
+    "explicit": ["/jarvis_self_check"],
     "patterns": [],
     "keywords": []
   },

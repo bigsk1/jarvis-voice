@@ -286,32 +286,32 @@ HTTP Status: 404
 | Workflow ID | Triggers | Description |
 |-------------|----------|-------------|
 | `bookmark_search` | `*` | Search bookmarks (catch-all style trigger) |
-| `buying_brief` | `/buying_brief`, `/price_compare` | Google Shopping Light + Amazon + eBay comparison with optional Stash evidence and Canvas recommendation |
+| `buying_brief` | `/buying_brief` | Google Shopping Light + Amazon + eBay comparison with optional Stash evidence and Canvas recommendation |
 | `crypto_market_report` | `/crypto` | Crypto prices, news, analysis, email report (default: BTC, SOL) |
-| `daily_status` | `/status`, `/daily`, `/briefing`, `/recap` | Weather, crypto (+ 7d `crypto_chart` embeds), stocks, alerts, reminders, health → Canvas report |
-| `daily_status_visual` | `/status_visual`, `/status_image`, `/daily_visual` | Same as `daily_status` (including Canvas crypto charts) plus AI-generated dashboard image |
-| `deep_dive` | `/deep_dive`, `/dive` | Screenshot + crawl URL, create comprehensive Canvas summary with visual |
+| `daily_status` | `/status` | Weather, crypto (+ 7d `crypto_chart` embeds), stocks, alerts, reminders, health → Canvas report |
+| `daily_status_visual` | `/status_visual` | Same as `daily_status` (including Canvas crypto charts) plus AI-generated dashboard image |
+| `deep_dive` | `/deep_dive` | Screenshot + crawl URL, create comprehensive Canvas summary with visual |
 | `deep_research` | `/research` | Multi-source research with Brave + crawling, validates sources |
-| `github_ai_radar_daily` | `/github_ai_radar`, `/ai_radar`, `/ai-radar` | Daily GitHub AI radar report |
-| `jarvis_self_check` | `/jarvis_self_check`, `/self_check`, `/jarvis_health` | Self health / diagnostics workflow |
-| `local_services_compare` | `/local_services_compare`, `/service_compare` | Active-mode local provider comparison using Google Local Services, Google Local, bounded Yelp review evidence, optional Stash, and Canvas |
-| `memory_scan` | `/memory_scan`, `/dedupe_memory` | Scan/dedupe memory |
-| `quick_note` | `/note`, `/quicknote`, `/remember_this` | Save note to memory + Canvas |
-| `serpapi_amazon_search` | `/serpapi_amazon`, `/amazon_search`, `/serpapi` | Amazon listing search, Stash export, and Canvas comparison |
-| `server_health_check` | `/health`, `/server_check` | SSH health check using hosts from config/ssh.json |
-| `url_ingest` | `/url_ingest`, `/ingest_url`, `/learn_url` | Fetch URL, extract facts, create intel file, ingest to memory for RAG |
-| `vacation_reconnaissance` | `/vacation_reconnaissance`, `/vacation_recon`, `/destination_scout` | Required-location, crawl-free weather and destination reconnaissance with optional Stash evidence and Canvas |
-| `weather_watch` | `/weather_watch`, `/garden_watch` | Weather / garden watch |
+| `github_ai_radar_daily` | `/github_ai_radar` | Daily GitHub AI radar report |
+| `jarvis_self_check` | `/jarvis_self_check` | Self health / diagnostics workflow |
+| `local_services_compare` | `/local_services_compare` | Active-mode local provider comparison using Google Local Services, Google Local, bounded Yelp review evidence, optional Stash, and Canvas |
+| `memory_scan` | `/memory_scan` | Scan/dedupe memory |
+| `quick_note` | `/note` | Save note to memory + Canvas |
+| `serpapi_amazon_search` | `/serpapi_amazon` | Amazon listing search, Stash export, and Canvas comparison |
+| `server_health_check` | `/health` | SSH health check using hosts from config/ssh.json |
+| `url_ingest` | `/url_ingest` | Fetch URL, extract facts, create intel file, ingest to memory for RAG |
+| `vacation_reconnaissance` | `/vacation_reconnaissance` | Required-location, crawl-free weather and destination reconnaissance with optional Stash evidence and Canvas |
+| `weather_watch` | `/weather_watch` | Weather watch |
 | `web_archive` | `/archive` | Archive webpage to stash with Canvas summary |
-| `youtube_ingest` | `/youtube_ingest`, `/yt_ingest`, `/ingest_video` | Ingest YouTube video content |
-| `youtube_research` | `/youtube_research`, `/yt_research`, `/study_video` | Download transcript, summarize, create study notes on Canvas |
+| `youtube_ingest` | `/youtube_ingest` | Ingest YouTube video content |
+| `youtube_research` | `/youtube_research` | Download transcript, summarize, create study notes on Canvas |
 
-**Note:** Trigger matching is exact prefix (no hyphen/underscore normalization). Use the aliases exactly as listed. Workflows can be triggered via API using workflow ID or trigger alias:
+**Note:** Trigger matching is exact prefix (no hyphen/underscore normalization). Workflows can be triggered through the API using either their workflow ID or canonical trigger:
 ```bash
 # By workflow ID
 curl -X POST http://localhost:8880/api/workflows/server_health_check/execute
 
-# By trigger alias (also works!)
+# By canonical trigger without the leading slash
 curl -X POST http://localhost:8880/api/workflows/health/execute
 
 # With query parameter (for workflows that need input)

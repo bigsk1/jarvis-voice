@@ -27,7 +27,9 @@ def _load_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def _check_workflow(workflow: dict[str, Any]) -> tuple[list[str], list[str]]:
+def _check_workflow(
+    workflow: dict[str, Any], *, is_personal: bool = False
+) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -50,6 +52,11 @@ def _check_workflow(workflow: dict[str, Any]) -> tuple[list[str], list[str]]:
         for trigger in explicit:
             if not isinstance(trigger, str) or not trigger.startswith("/") or " " in trigger:
                 errors.append(f"Invalid explicit trigger: {trigger!r}")
+        if len(explicit) > 1 and not is_personal:
+            warnings.append(
+                "Shared workflows should define one canonical triggers.explicit command; "
+                "additional entries are only for temporary rename compatibility"
+            )
 
     seen_step_numbers: set[int] = set()
     for index, step in enumerate(steps, start=1):
@@ -116,7 +123,10 @@ def validate_workflow(path: Path) -> int:
         print(f"ERROR: {path}: {exc}", file=sys.stderr)
         return 1
 
-    errors, warnings = _check_workflow(workflow)
+    errors, warnings = _check_workflow(
+        workflow,
+        is_personal=path.parent.name == "personal",
+    )
     for warning in warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
     for error in errors:

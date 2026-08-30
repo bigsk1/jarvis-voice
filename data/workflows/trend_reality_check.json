@@ -7,8 +7,7 @@
   "disable_server_side_tools": true,
   "triggers": {
     "explicit": [
-      "/trend_reality_check",
-      "/trend_check"
+      "/trend_reality_check"
     ],
     "patterns": [],
     "keywords": []

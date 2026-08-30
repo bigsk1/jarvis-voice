@@ -7,8 +7,7 @@
   "disable_server_side_tools": true,
   "triggers": {
     "explicit": [
-      "/night_out",
-      "/date_night"
+      "/night_out"
     ],
     "patterns": [],
     "keywords": []

@@ -18,7 +18,7 @@ Use this repo-tracked skill when a future agent needs to create or repair a Jarv
 
 ## Build Procedure
 
-1. Define a stable `id`, `name`, `description`, `enabled: true`, and explicit slash triggers.
+1. Define a stable `id`, `name`, `description`, `enabled: true`, and one canonical explicit slash trigger. The command may be shorter than the workflow id; reserve additional triggers for deliberate, temporary rename compatibility.
 2. Add variables only when steps actually need extracted or defaulted values.
 3. Prefer deterministic tool steps over workflow-internal LLM calls when a value can be derived from prior tool output.
 4. For workflow-internal LLM steps, add `llm_output_validation` with `min_length`, `reject_patterns`, and `required_patterns` when structure matters.

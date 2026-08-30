@@ -299,18 +299,18 @@ their existing individual structured-result cards.
 |------------------|----------------|
 | `/research` | `deep_research.json` |
 | `/archive` | `web_archive.json` |
-| `/note`, `/quicknote` | `quick_note.json` |
-| `/health`, `/server_check` | `server_health_check.json` |
-| `/serpapi_amazon`, `/amazon_search`, `/serpapi` | `serpapi_amazon_search.json` |
-| `/youtube_research`, `/yt_research` | `youtube_research.json` |
-| `/youtube_ingest`, `/yt_ingest` | `youtube_ingest.json` |
-| `/url_ingest`, `/learn_url` | `url_ingest.json` |
-| `/deep_dive`, `/dive` | `deep_dive.json` |
+| `/note` | `quick_note.json` |
+| `/health` | `server_health_check.json` |
+| `/serpapi_amazon` | `serpapi_amazon_search.json` |
+| `/youtube_research` | `youtube_research.json` |
+| `/youtube_ingest` | `youtube_ingest.json` |
+| `/url_ingest` | `url_ingest.json` |
+| `/deep_dive` | `deep_dive.json` |
 | `/crypto` | `crypto_market_report.json` |
-| `/status`, `/daily`, `/briefing`, `/recap` | `daily_status.json` |
-| `/status_visual`, `/daily_visual`, `/status_image` | `daily_status_visual.json` |
-| `/weather_watch`, `/garden_watch` | `weather_watch.json` |
-| `/memory_scan`, `/dedupe_memory` | `memory_scan.json` |
+| `/status` | `daily_status.json` |
+| `/status_visual` | `daily_status_visual.json` |
+| `/weather_watch` | `weather_watch.json` |
+| `/memory_scan` | `memory_scan.json` |
 
 Authoring guide: [`data/workflows/AGENTS.md`](../data/workflows/AGENTS.md) · Overview: [`docs/WORKFLOW_ORCHESTRATION.md`](../docs/WORKFLOW_ORCHESTRATION.md)
 
