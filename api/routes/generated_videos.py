@@ -144,13 +144,13 @@ class DeleteResponse(BaseModel):
 class GenerateRequest(BaseModel):
     """Request to generate a new video."""
     prompt: str = Field(..., description="What to generate - describe the video content")
-    duration: int = Field(5, ge=1, le=15, description="Video duration: xAI 1-15s, OpenAI 4/8/12s, Gemini 4/6/8s")
-    aspect_ratio: str = Field("16:9", description="xAI: 16:9, 4:3, 1:1, 9:16, 3:4, 3:2, 2:3 | OpenAI/Gemini: 16:9 or 9:16")
-    resolution: str = Field("720p", description="xAI: 720p/480p | OpenAI: 720p/1080p | Gemini: 720p/1080p/4k")
+    duration: int = Field(5, ge=1, le=15, description="Video duration: xAI 1-15s, Gemini model-dependent")
+    aspect_ratio: str = Field("16:9", description="xAI: 16:9, 4:3, 1:1, 9:16, 3:4, 3:2, 2:3 | Gemini: 16:9 or 9:16")
+    resolution: str = Field("720p", description="xAI: 720p/480p | Gemini: 720p/1080p/4k")
     image_url: Optional[str] = Field(None, description="Image for image-to-video (all providers). Accepts: URL, local path, or stash ref (stash://space_xxx/file_id)")
-    video_url: Optional[str] = Field(None, description="Video to edit. xAI: MUST be a public http(s) URL (use source_url from /info endpoint, expires ~4h). Cannot change duration/aspect. OpenAI: video ID to remix (starts with 'video_').")
+    video_url: Optional[str] = Field(None, description="Video to edit with xAI. MUST be a public http(s) URL (use source_url from /info endpoint, expires ~4h). Cannot change duration/aspect.")
     negative_prompt: Optional[str] = Field(None, description="What to avoid in video (Gemini only)")
-    provider: Optional[str] = Field(None, description="Override provider: 'xai', 'openai', or 'gemini'")
+    provider: Optional[Literal["xai", "gemini"]] = Field(None, description="Override provider: 'xai' or 'gemini'")
     save: bool = Field(True, description="Save to disk and stash")
     mode: Literal["cloud", "local"] = Field(
         "cloud",
@@ -314,9 +314,8 @@ async def generate_video(request: GenerateRequest):
     """
     Generate a new video using the generate_video tool.
     
-    Supports three providers:
+    Supports two providers:
     - **xAI** (default): Grok Imagine Video - $0.05/s, 1-15s, many aspect ratios
-    - **OpenAI**: Sora 2 - $0.10/s, 4/8/12s, native audio, image-to-video
     - **Gemini**: Veo 3.1 - $0.15/s, 4/6/8s, native audio, up to 4K
     
     Generation can take 30-120+ seconds depending on provider and duration.
@@ -329,7 +328,7 @@ async def generate_video(request: GenerateRequest):
         "prompt": "A cat playing with a ball, slow motion",
         "duration": 5,
         "aspect_ratio": "16:9",
-        "provider": "openai"
+        "provider": "xai"
       }'
     ```
     
@@ -347,11 +346,11 @@ async def generate_video(request: GenerateRequest):
     ```json
     {
       "ok": true,
-      "speech": "Generated 5s video with openai: A cat playing...",
+      "speech": "Generated 5s video with xai: A cat playing...",
       "data": {
         "prompt": "A cat playing with a ball, slow motion",
-        "provider": "openai",
-        "model": "sora-2",
+        "provider": "xai",
+        "model": "grok-imagine-video",
         "duration": 5,
         "saved": {
           "path": "data/generated_videos/video_a_cat_playing_20260128_123456.mp4",

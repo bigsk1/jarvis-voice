@@ -42,6 +42,18 @@ def test_request_models_reject_unknown_modes(request_type, kwargs):
         request_type(**kwargs)
 
 
+@pytest.mark.parametrize("provider", ("xai", "gemini"))
+def test_generated_video_request_accepts_supported_providers(provider):
+    request = generated_videos.GenerateRequest(prompt="test video", provider=provider)
+
+    assert request.provider == provider
+
+
+def test_generated_video_request_rejects_removed_provider():
+    with pytest.raises(ValidationError):
+        generated_videos.GenerateRequest(prompt="test video", provider="retired")
+
+
 @pytest.fixture
 def isolated_mode_configs(monkeypatch):
     configs = {

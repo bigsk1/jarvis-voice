@@ -446,7 +446,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - `--debug-thinking` remains opt-in and process-local, Web UI provider reasoning remains off by default, and OpenAI/xAI/Ollama keep their provider-native reasoning controls rather than sharing misleading legacy model-name rules.
 - ✅ **OpenAI model-catalog availability audit**
   - Added `./bin/audit-openai-models.py --mode cloud`, machine-readable `--json`, and human `--show-all` output backed by the official OpenAI Models API.
-  - The audit checks every curated ID/alias against the active account and detects newer general-purpose GPT families while filtering specialized image, audio, realtime, embedding, moderation, Sora, search, Codex, and legacy inventory from actionable chat-catalog drift.
+  - The audit checks every curated ID/alias against the active account and detects newer general-purpose GPT families while filtering specialized image, audio, realtime, embedding, moderation, search, Codex, and legacy inventory from actionable chat-catalog drift.
   - OpenAI's endpoint exposes identity, creation time, ownership, and account availability only; context limits, capabilities, modalities, and pricing remain explicitly curated instead of being inferred from incomplete API data.
   - The first live audit found all 15 existing Jarvis options available and surfaced `gpt-5.5` plus its dated snapshot for manual metadata/pricing review; it was not automatically added or made default.
 - ✅ **Model-aware Anthropic cache cost tracking**
@@ -480,7 +480,7 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Raised the shared `google-genai` minimum to `2.10.0` and replaced retired Gemini image defaults with `gemini-3.1-flash-image`.
 - ✅ **Catalog-driven attachment video resolutions**
   - Image-to-video resolution choices now follow the effective provider model loaded from the active cloud/local env.
-  - Gemini's default Veo model exposes 720p, 1080p, and 4K; optional pins such as Sora Pro or Grok Imagine Video 1.5 expose their own supported resolutions.
+  - Gemini's default Veo model exposes 720p, 1080p, and 4K; optional pins such as Grok Imagine Video 1.5 expose their own supported resolutions.
 - ✅ **Dependency-upgrade compatibility and environment fixes**
   - Gemini video duration is now sent as an integer so Veo respects supported 4/6/8-second selection instead of always defaulting to 8 seconds.
   - Migrated deprecated Pydantic `class Config` schema examples to `ConfigDict`, updated the UV lock/install flow to use `~/jarvis-venv`, and corrected dashboard memory-sync commands for explicit `--from/--to` mode arguments.
@@ -508,7 +508,7 @@ tail -f logs/tools/tool-calls-*.jsonl
 
 **2026-06-24:**
 - ✅ **`create_social_clip` tool** — MoneyPrinterTurbo B-roll social videos (stock footage + narration + subtitles + BGM)
-  - Added `skills/create_social_clip.py` + `create_social_clip.tool.json`; distinct from `generate_video` (xAI/Sora/Veo AI animation)
+  - Added `skills/create_social_clip.py` + `create_social_clip.tool.json`; distinct from `generate_video` (Grok/Veo AI animation)
   - POST `/api/v1/videos` → poll task → download `final-*.mp4` → stash; 20-minute executor timeout, 429 retry, relative URL safety net
   - Env: `MONEYPRINTER_API_URL`, `MONEYPRINTER_VOICE`, `MONEYPRINTER_MAX_WAIT_SEC` in `config/cloud.env`
   - Web UI: modular inline `<video>` player for any tool result with stash video / `video/*` mime (not hardcoded per tool)
@@ -998,19 +998,6 @@ tail -f logs/tools/tool-calls-*.jsonl
   - Prevents JSON output corruption when tool subprocess writes debug info to stdout
 
 **2026-02-09:**
-- ✅ **OpenAI Sora Video Generation** - Third video provider with native audio
-  - 4/8/12s durations, 16:9 or 9:16 aspect ratios, 720p/1080p resolution
-  - Image-to-video support (auto-resizes input to match Sora's dimension requirements)
-  - Video remix support (extend/edit existing videos via video ID)
-  - Native audio generation (dialogue, sound effects)
-  - $0.10/s (sora-2) or $0.30-0.50/s (sora-2-pro for 1080p)
-  - Videos also viewable at platform.openai.com/playground/videos
-  - Web UI: Added OpenAI option to video provider dropdowns
-  - See: [`docs/tools/video/README.md`](tools/video/README.md)
-- ✅ **Video Gallery OpenAI Support** - Provider badges now include OpenAI
-  - Fixed provider detection to recognize `openai` tags in stash metadata
-  - Client-side fallback also checks tags (not just filenames)
-  - Temp file cleanup for Sora downloads
 - ✅ **Gemini Image-to-Video Fix** - Now properly resolves stash refs and local files
   - Previously only handled HTTP URLs, now uses `_resolve_image_source()` like other providers
 

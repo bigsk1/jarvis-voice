@@ -70,6 +70,7 @@ class SettingsAvailabilityTests(unittest.TestCase):
         self.assertEqual(llm["ollama"]["status"], "unknown")
         # Media domains use the same key logic
         self.assertEqual(availability["image"]["openai"]["status"], "available")
+        self.assertEqual(set(availability["video"]), {"xai", "gemini"})
         self.assertEqual(availability["image"]["gemini"]["status"], "unavailable")
         self.assertEqual(
             availability["image"]["gemini"]["reason"],
@@ -150,6 +151,32 @@ class SettingsAvailabilityTests(unittest.TestCase):
             result = manager.get_settings_for_ui()
         self.assertIn("provider_availability", result)
         self.assertEqual(result["provider_availability"]["llm"]["openai"]["status"], "available")
+
+    def test_settings_payload_ignores_removed_override_but_reports_invalid_env(self):
+        manager, patches = self._manager(
+            "cloud",
+            {"LLM_PROVIDER": "openai", "VIDEO_TOOL_PROVIDER": "retired"},
+        )
+        web_config = {
+            "cloud": {"video_provider": "retired"},
+            "audio": {},
+            "ui": {},
+            "conversation": {},
+            "tools": {},
+        }
+        with (
+            patches[0], patches[1],
+            patch.object(self.settings_module, "load_web_config", return_value=web_config),
+            patch.object(manager, "_get_provider_models", return_value={}),
+        ):
+            result = manager.get_settings_for_ui()
+
+        self.assertEqual(result["video"]["provider"], {
+            "value": "retired",
+            "default": "retired",
+            "is_override": False,
+            "options": ["xai", "gemini"],
+        })
 
     def test_music_provider_inherits_env_and_reports_web_override(self):
         env = {
@@ -284,6 +311,21 @@ class SettingsAvailabilityTests(unittest.TestCase):
             with self.assertRaises(SettingsValidationError) as ctx:
                 manager.save_web_overrides({"music_provider": "gemini"})
         self.assertEqual(ctx.exception.field, "music_provider")
+
+    def test_save_rejects_removed_video_provider(self):
+        from server.services.settings_manager import SettingsValidationError
+
+        manager, patches = self._manager("cloud", {"VIDEO_TOOL_PROVIDER": "xai"})
+        web_config = {"cloud": {}}
+        with (
+            patches[0], patches[1],
+            patch.object(self.settings_module, "load_web_config", return_value=web_config),
+            patch.object(self.settings_module, "save_web_config", return_value=True),
+        ):
+            with self.assertRaises(SettingsValidationError) as ctx:
+                manager.save_web_overrides({"video_provider": "retired"})
+        self.assertEqual(ctx.exception.field, "video_provider")
+        self.assertIn("not supported for video", ctx.exception.reason)
 
     def test_clearing_override_is_always_allowed(self):
         env = {"LLM_PROVIDER": "anthropic"}

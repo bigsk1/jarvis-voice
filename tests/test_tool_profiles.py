@@ -263,7 +263,6 @@ class TestToolProfiles(unittest.TestCase):
             "analyze_image",
             "canvas",
             "generate_image",
-            "generate_video",
             "pdf_create",
             "pdf_read",
             "stash",
@@ -277,6 +276,7 @@ class TestToolProfiles(unittest.TestCase):
         # credential availability metadata, so the starter profile gates them.
         for tool_name in (
             "check_opencode_sessions",
+            "generate_video",
             "opencode",
             "phone_call",
             "printer",

@@ -559,7 +559,7 @@ A single command that checks:
 ### 10) Per-Provider Media Model Pickers (Web AI Config)
 **Priority:** Medium
 
-**Problem:** Web Settings → AI config exposes image/video **provider** and **resolution**, but not the underlying model for that provider. For Gemini video this is especially limiting: switching between Veo (`veo-3.1-fast-generate-preview`, up to 4K) and Omni Flash (`gemini-omni-flash-preview`, 720p, Interactions API) still requires pinning `GEMINI_VIDEO_MODEL` in `cloud.env` / `local.env`. The same gap exists for other providers — e.g. OpenAI `sora-2` vs `sora-2-pro`, xAI Grok Imagine variants — where catalog metadata already knows the options but the UI does not expose them.
+**Problem:** Web Settings → AI config exposes image/video **provider** and **resolution**, but not the underlying model for that provider. For Gemini video this is especially limiting: switching between Veo (`veo-3.1-fast-generate-preview`, up to 4K) and Omni Flash (`gemini-omni-flash-preview`, 720p, Interactions API) still requires pinning `GEMINI_VIDEO_MODEL` in `cloud.env` / `local.env`. The same gap exists for xAI Grok Imagine variants, where catalog metadata already knows the options but the UI does not expose them.
 
 **Goal:** Let users pick any curated image or video model for the **currently selected provider** on the fly in Web AI config, without editing env files or restarting services.
 
@@ -572,7 +572,7 @@ A single command that checks:
 **Implementation notes:**
 - Source of truth for options: `lib/model_catalog.py` (`get_media_model_catalog`, `get_media_provider_options`)
 - Settings surface: `jarvis-web/server/services/settings_manager.py` + client settings UI
-- Runtime resolution: map web override → effective model (mirror `GEMINI_VIDEO_MODEL`, `OPENAI_VIDEO_MODEL`, etc.) in tool dispatch and media modal
+- Runtime resolution: map web override → effective model (mirror `GEMINI_VIDEO_MODEL`, `XAI_VIDEO_MODEL`, etc.) in tool dispatch and media modal
 - Env keys remain optional pins for headless/voice paths; web override wins when set
 
 **Acceptance criteria:**
@@ -837,7 +837,7 @@ direct-cloud paths.
   measured opaque-token pilot
 - Cache-aware Intelligence reflection processing with a safe chunked
   "Process up to 20" option
-- Per-provider media model pickers in Web AI config (Gemini Veo/Omni, Sora variants, etc.)
+- Per-provider media model pickers in Web AI config (Gemini Veo/Omni, Grok Imagine variants, etc.)
 - Credential-aware tool/provider availability + manual Tool Doctor diagnostics
 
 **Low Priority (Future):**

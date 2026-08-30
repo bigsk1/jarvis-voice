@@ -65,7 +65,7 @@ List all generated videos with metadata.
 **Fields**:
 | Field | Type | Description |
 |-------|------|-------------|
-| `provider` | string | AI provider: `xAI`, `OpenAI`, `Gemini` |
+| `provider` | string | AI provider: `xAI` or `Gemini` |
 | `aspect` | string | Aspect ratio: `16:9`, `9:16`, `1:1`, etc. |
 | `tags` | array | Tags from generation: `ai_generated`, `video`, provider, aspect |
 | `stash_ref` | string | Stash reference for cross-tool use (null if stash expired) |
@@ -196,7 +196,7 @@ curl -X DELETE http://localhost:8880/api/generated-videos/video_a_cat_playing_20
 POST /api/generated-videos/generate
 ```
 
-Generate a new AI video using xAI Grok, OpenAI Sora, or Google Gemini (Veo by default, Omni Flash when pinned).
+Generate a new AI video using xAI Grok or Google Gemini (Veo by default, Omni Flash when pinned).
 
 **Request Body**:
 
@@ -207,54 +207,53 @@ Generate a new AI video using xAI Grok, OpenAI Sora, or Google Gemini (Veo by de
 | `aspect_ratio` | string | No | `16:9` | Video shape |
 | `resolution` | string | No | `720p` | Video quality |
 | `image_url` | string | No | - | Image for image-to-video (all providers) |
-| `video_url` | string | No | - | Video to edit (xAI: public URL only, ≤8.7s source, expires ~4h) or remix (OpenAI video ID). Use `source_url` from `/info`. Cannot change duration/aspect/resolution. |
+| `video_url` | string | No | - | Video to edit with xAI (public URL only, ≤8.7s source, expires ~4h). Use `source_url` from `/info`. Cannot change duration/aspect/resolution. |
 | `negative_prompt` | string | No | - | What to avoid (Gemini only) |
-| `provider` | string | No | `xai` | Video provider: `xai`, `openai`, or `gemini` |
+| `provider` | string | No | `xai` | Video provider: `xai` or `gemini` |
 | `save` | bool | No | true | Save to disk and stash |
 | `mode` | string | No | `cloud` | Config mode (cloud/local) |
 
 **Provider Comparison**:
 
-| Feature | xAI Grok | OpenAI Sora | Google Gemini |
-|---------|----------|-------------|------------|
-| Duration | 1-15s (any) | 4, 8, or 12s | Veo: 4/6/8s; Omni: 3-10s |
-| Aspect Ratios | 7 options | 2 options | 2 options |
-| Resolution | 720p, 480p | 720p, 1080p | Veo: 720p-4k; Omni: 720p |
-| Native Audio | ❌ | ✅ | ✅ |
-| Image-to-Video | ✅ | ✅ | ✅ |
-| Video Editing | ✅ | ✅ (remix) | Omni API supports it; Jarvis follow-ups planned |
-| Negative Prompt | ❌ | ❌ | Veo: native; Omni: prompt guidance |
-| Cost/second | $0.05+ | $0.10-0.50 | $0.10+ |
+| Feature | xAI Grok | Google Gemini |
+|---------|----------|---------------|
+| Duration | 1-15s (any) | Veo: 4/6/8s; Omni: 3-10s |
+| Aspect Ratios | 7 options | 2 options |
+| Resolution | 720p, 480p | Veo: 720p-4k; Omni: 720p |
+| Native Audio | ❌ | ✅ |
+| Image-to-Video | ✅ | ✅ |
+| Video Editing | ✅ | Omni API supports it; Jarvis follow-ups planned |
+| Negative Prompt | ❌ | Veo: native; Omni: prompt guidance |
+| Cost/second | $0.05+ | $0.10+ |
 
 **Duration Options**:
 
 | Provider | Range | Notes |
 |----------|-------|-------|
 | xAI | 1-15 seconds | Any integer value |
-| OpenAI | 4, 8, or 12 seconds | Discrete values only |
 | Gemini Veo | 4, 6, or 8 seconds | Rounded to nearest |
 | Gemini Omni Flash | 3-10 seconds | Clamped to range |
 
 **Aspect Ratio Options**:
 
-| Value | Description | xAI | OpenAI | Gemini |
-|-------|-------------|-----|--------|--------|
-| `16:9` | Widescreen (default) | ✅ | ✅ | ✅ |
-| `4:3` | Classic | ✅ | ➡️ 16:9 | ➡️ 16:9 |
-| `1:1` | Square | ✅ | ➡️ 16:9 | ➡️ 16:9 |
-| `9:16` | Vertical | ✅ | ✅ | ✅ |
-| `3:4` | Portrait | ✅ | ➡️ 9:16 | ➡️ 9:16 |
-| `3:2` | Photo standard | ✅ | ➡️ 16:9 | ➡️ 16:9 |
-| `2:3` | Tall portrait | ✅ | ➡️ 9:16 | ➡️ 9:16 |
+| Value | Description | xAI | Gemini |
+|-------|-------------|-----|--------|
+| `16:9` | Widescreen (default) | ✅ | ✅ |
+| `4:3` | Classic | ✅ | ➡️ 16:9 |
+| `1:1` | Square | ✅ | ➡️ 16:9 |
+| `9:16` | Vertical | ✅ | ✅ |
+| `3:4` | Portrait | ✅ | ➡️ 9:16 |
+| `3:2` | Photo standard | ✅ | ➡️ 16:9 |
+| `2:3` | Tall portrait | ✅ | ➡️ 9:16 |
 
 **Resolution Options**:
 
-| Value | xAI | OpenAI | Gemini | Notes |
-|-------|-----|--------|--------|-------|
-| `720p` | ✅ | ✅ | ✅ | HD (default) |
-| `480p` | ✅ | ➡️ 720p | ➡️ 720p | SD |
-| `1080p` | ❌ | ✅ (pro) | ✅ Veo | Full HD |
-| `4k` | ❌ | ❌ | ✅ Veo | Ultra HD (Veo 8s only) |
+| Value | xAI | Gemini | Notes |
+|-------|-----|--------|-------|
+| `720p` | ✅ | ✅ | HD (default) |
+| `480p` | ✅ | ➡️ 720p | SD |
+| `1080p` | ❌ | ✅ Veo | Full HD |
+| `4k` | ❌ | ✅ Veo | Ultra HD (Veo 8s only) |
 
 **Response**:
 ```json
@@ -342,15 +341,6 @@ curl -X POST http://localhost:8880/api/generated-videos/generate \
     "provider": "gemini"
   }'
 
-# OpenAI Sora with audio
-curl -X POST http://localhost:8880/api/generated-videos/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "A close-up of a woman saying Hello world! in a cafe with background chatter",
-    "duration": 8,
-    "provider": "openai"
-  }'
-
 # Video with dialogue (Gemini)
 curl -X POST http://localhost:8880/api/generated-videos/generate \
   -H "Content-Type: application/json" \
@@ -374,14 +364,12 @@ curl -X POST http://localhost:8880/api/generated-videos/generate \
 **Notes**:
 - Generation takes 30-120+ seconds depending on provider, duration, and resolution
 - API timeout is 10 minutes
-- The `video_url` in response is the provider's temporary URL (xAI expires ~4h, OpenAI ~60min)
+- The `video_url` in response is the provider's temporary URL (xAI expires in about 4 hours)
 - Local file path and stash_ref are permanent storage
 - xAI video editing can only change visual content/style, not duration, aspect ratio, or resolution
 - xAI video editing requires a public http(s) URL (use `source_url` from `/info`, not `stash_ref`)
-- OpenAI and Gemini videos include native audio (dialogue, sound effects)
-- OpenAI 1080p requires sora-2-pro model ($0.30-0.50/s)
+- Gemini videos include native audio (dialogue and sound effects)
 - Gemini Veo 1080p/4k requires 8-second duration; Omni Flash is 720p only
-- OpenAI videos also viewable at platform.openai.com/playground/videos
 
 ---
 
@@ -402,8 +390,8 @@ Check video generation service status.
   "video_count": 5,
   "total_size": 16789012,
   "total_size_human": "16.0 MB",
-  "configured_provider": "openai",
-  "configured_model": "sora-2"
+  "configured_provider": "xai",
+  "configured_model": "grok-imagine-video"
 }
 ```
 

@@ -1,5 +1,5 @@
 {
-  "description": "OpenAI one-key starter profile. Keeps OpenAI-backed and credential-free tools, including OpenAI image/video generation and hosted web search. Disables integrations that require non-OpenAI credentials, personal configuration, or an external/self-hosted service.",
+  "description": "OpenAI one-key starter profile. Keeps OpenAI-backed and credential-free tools, including OpenAI image generation and hosted web search. Disables integrations that require non-OpenAI credentials, personal configuration, or an external/self-hosted service.",
   "overrides": {
     "brave_llm_context": false,
     "check_opencode_sessions": false,
@@ -7,6 +7,7 @@
     "create_social_clip": false,
     "document_ocr": false,
     "generate_music": false,
+    "generate_video": false,
     "mcp_brave_search_brave_image_search": false,
     "mcp_brave_search_brave_local_search": false,
     "mcp_brave_search_brave_news_search": false,

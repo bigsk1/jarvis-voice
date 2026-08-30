@@ -541,17 +541,17 @@ This often lets Jarvis repair by:
 
 instead of restarting the entire workflow.
 
-## Example Failure: Sora API "Shutdown" Claim
+## Example Failure: Premature Provider API "Shutdown" Claim
 
 Real-world style example from web conversation `ea584146`:
 
 ### User Request
 
-The user asked about the Sora API.
+The user asked about a video provider API.
 
 ### Bad First Result
 
-Jarvis responded that Sora API was shut down, gave a date, and created a canvas page reflecting that conclusion.
+Jarvis responded that the API was shut down, gave a date, and created a canvas page reflecting that conclusion.
 
 ### What Was Actually Wrong
 
@@ -562,7 +562,7 @@ Jarvis responded that Sora API was shut down, gave a date, and created a canvas 
 
 ### User Correction
 
-The user proved the claim was wrong by successfully generating a Sora video, then had to ask again to get the canvas fixed.
+The user proved the claim was wrong with a successful live request, then had to ask again to get the canvas fixed.
 
 ### What Completion Guard Should Have Done
 
@@ -585,7 +585,7 @@ The repair pass should then have done one of the following:
 
 Instead of repeating the incorrect claim, the repaired result should say something like:
 
-- there was an announcement affecting Sora/API access
+- there was an announcement affecting provider API access
 - the prior answer overstated that as a confirmed shutdown
 - I do not have evidence of a hard cutoff from the steps taken so far
 - if needed, I can verify live status with a direct check before updating the canvas

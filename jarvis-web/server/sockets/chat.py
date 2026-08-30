@@ -3419,7 +3419,7 @@ Previous structured data:
             # Modal overrides were also installed into the request scope by the
             # decorator; retain these messages for operator visibility.
             if image_data and image_data.get('action') == 'video':
-                # Image-to-video - use provider from modal settings (xai, openai, or gemini)
+                # Image-to-video - use provider from modal settings (xai or gemini)
                 modal_video_provider = image_data.get('settings', {}).get('provider', 'xai')
                 print(f"[CHAT] Image modal override - video provider: {modal_video_provider} (image-to-video)")
             elif image_data and image_data.get('action') == 'image':

@@ -6,7 +6,7 @@ Creates stock-footage B-roll social videos via MoneyPrinterTurbo (local Docker A
 Pipeline: AI script → stock clips (Pexels/Pixabay/Coverr) → TTS voiceover →
 subtitles → background music → final MP4.
 
-NOT the same as generate_video (xAI Grok / Sora / Gemini Veo AI animation).
+NOT the same as generate_video (xAI Grok / Gemini Veo AI animation).
 
 Configure via MONEYPRINTER_* settings in cloud.env / local.env
 """

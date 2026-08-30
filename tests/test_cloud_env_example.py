@@ -27,7 +27,7 @@ def test_cloud_template_defaults_to_openai_with_required_ollama_embeddings() -> 
     assert "OLLAMA_EMBEDDING_MODEL_DIGEST=" in text
     assert "TTS_PROVIDER=openai" in text
     assert 'IMAGE_TOOL_PROVIDER="openai"' in text
-    assert 'VIDEO_TOOL_PROVIDER="openai"' in text
+    assert 'VIDEO_TOOL_PROVIDER="xai"' in text
 
 
 def test_openai_only_profile_is_offered_but_not_selected_by_default() -> None:

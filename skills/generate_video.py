@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """
 Video Generation Tool for Jarvis
-Supports multiple providers: xAI Grok Video (default), Google Gemini, OpenAI Sora
+Supports xAI Grok Video (default) and Google Gemini
 
 Features:
   - xAI Grok: Text-to-video, image-to-video, video editing (1-15 seconds)
   - Gemini Veo: Text/image-to-video with native audio (4-8 seconds, up to 4K)
   - Gemini Omni Flash: Text/image-to-video with native audio (3-10 seconds, 720p)
-  - OpenAI Sora: Text-to-video, image-to-video with audio (4-12 seconds, remix support)
   - Multiple aspect ratios and resolutions
   - Saves to stash for use with other tools
 
 Providers:
   - xai: xAI Grok Imagine Video (default) - More duration options, cheapest
   - gemini: Google Veo 3.1 (default) or Omni Flash (opt-in model pin)
-  - openai: OpenAI Sora 2 - Native audio, remix support, visible in OpenAI Playground
 
 Configure via VIDEO_TOOL_PROVIDER in cloud.env (default: xai)
 """
@@ -69,21 +67,6 @@ GEMINI_DURATIONS = [4, 6, 8]  # seconds
 # Gemini Omni Flash duration range (Interactions API)
 GEMINI_OMNI_MIN_DURATION = 3
 GEMINI_OMNI_MAX_DURATION = 10
-
-# =============================================================================
-# Provider: OpenAI Sora
-# =============================================================================
-# Sora supported sizes (width x height format)
-# Maps to aspect ratios: 720x1280 = 9:16, 1280x720 = 16:9, etc.
-OPENAI_SIZES = {
-    "9:16": "720x1280",    # Portrait
-    "16:9": "1280x720",    # Landscape
-    "9:16_hd": "1024x1792",  # Portrait HD (sora-2-pro only)
-    "16:9_hd": "1792x1024",  # Landscape HD (sora-2-pro only)
-}
-
-# Sora duration options (discrete values)
-OPENAI_DURATIONS = [4, 8, 12]  # seconds
 
 # =============================================================================
 # Duration limits (for compatibility)
@@ -142,7 +125,6 @@ def _resolve_video_source(video_source: str) -> str | None:
             # Find file and check for source_url
             # Provider URL expiration limits (conservative estimates):
             #   xAI: ~8h+ observed, using 4h safe cutoff
-            #   OpenAI: 60min (but uses video_id for remix, not URLs)
             #   Gemini: unknown, using 4h
             VIDEO_URL_MAX_AGE_HOURS = 4
             
@@ -356,7 +338,7 @@ def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9
         
         # Add video_url for video editing
         # xAI requires a publicly accessible URL (no base64 for videos)
-        # Provider URLs expire: xAI ~4h, OpenAI 60min
+        # Provider URLs expire; use the conservative shared cutoff.
         if video_url:
             resolved_url = _resolve_video_source(video_url)
             if resolved_url:
@@ -634,199 +616,6 @@ def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "1
         raise Exception(f"Gemini Video generation failed: {str(e)}")
 
 
-def generate_video_openai(prompt: str, duration: int = 8, aspect_ratio: str = "16:9",
-                          resolution: str = "720p", image_path: str = None,
-                          remix_video_id: str = None) -> dict:
-    """
-    Generate a video using OpenAI Sora 2.
-    
-    Args:
-        prompt: What to generate (supports dialogue in quotes for speech)
-        duration: Video duration - must be 4, 8, or 12 seconds
-        aspect_ratio: 16:9 (landscape) or 9:16 (portrait)
-        resolution: 720p or 1080p (1080p requires sora-2-pro)
-        image_path: Optional local image path for image-to-video
-        remix_video_id: Optional video ID to remix (extend/edit)
-    
-    Returns:
-        dict with video_url, duration, model info
-    """
-    import asyncio
-    
-    api_key = get_config_value('OPENAI_API_KEY')
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY not configured. Add it to config/cloud.env")
-    
-    # Get model from env or use default
-    model_name = _resolve_configured_video_model("openai")
-    
-    # Validate and map duration to nearest supported value
-    if duration <= 6:
-        openai_duration = 4
-    elif duration <= 10:
-        openai_duration = 8
-    else:
-        openai_duration = 12
-    
-    # Determine size based on aspect ratio and resolution
-    # sora-2-pro supports higher res (1024x1792, 1792x1024)
-    is_pro = 'pro' in model_name.lower()
-    
-    if aspect_ratio in ["9:16", "3:4", "2:3"]:
-        # Portrait
-        if is_pro and resolution == "1080p":
-            size = "1024x1792"
-        else:
-            size = "720x1280"
-    else:
-        # Landscape (default)
-        if is_pro and resolution == "1080p":
-            size = "1792x1024"
-        else:
-            size = "1280x720"
-    
-    try:
-        from openai import AsyncOpenAI
-        
-        client = AsyncOpenAI(api_key=api_key)
-        
-        # Parse target dimensions from size string (e.g., "1280x720" -> (1280, 720))
-        target_width, target_height = map(int, size.split('x'))
-        
-        def resize_image_for_sora(image_path: str, target_w: int, target_h: int) -> str:
-            """
-            Resize image to match Sora's required dimensions.
-            OpenAI Sora requires input image to match the requested video size.
-            Returns path to resized image (temp file).
-            """
-            try:
-                from PIL import Image
-                import tempfile
-                
-                with Image.open(image_path) as img:
-                    # Convert to RGB if necessary (handles RGBA, etc.)
-                    if img.mode != 'RGB':
-                        img = img.convert('RGB')
-                    
-                    # Resize to exact target dimensions (Sora requirement)
-                    # Use LANCZOS for high-quality downscaling
-                    resized = img.resize((target_w, target_h), Image.LANCZOS)
-                    
-                    # Save to temp file
-                    temp_file = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
-                    resized.save(temp_file.name, 'JPEG', quality=95)
-                    print(f"[OPENAI VIDEO] Resized image from {img.size} to ({target_w}, {target_h})", file=sys.stderr)
-                    return temp_file.name
-            except ImportError:
-                raise ValueError("PIL/Pillow not installed. Run: pip install Pillow")
-            except Exception as e:
-                raise ValueError(f"Failed to resize image: {e}")
-        
-        used_input_reference = False
-
-        async def create_video():
-            nonlocal used_input_reference
-            # Build kwargs for video generation
-            kwargs = {
-                "model": model_name,
-                "prompt": prompt,
-                "seconds": str(openai_duration),
-                "size": size,
-            }
-            
-            # Handle image-to-video
-            if image_path:
-                # OpenAI expects input_reference as a local file upload. Remote
-                # Canvas/CDN sources are materialized first and never omitted.
-                with _materialize_video_image_source(image_path) as resolved_path:
-                    # Resize image to match target video dimensions (Sora requirement)
-                    resized_path = resize_image_for_sora(resolved_path, target_width, target_height)
-                    try:
-                        # Upload resized file as input_reference
-                        with open(resized_path, 'rb') as f:
-                            kwargs["input_reference"] = f
-                            used_input_reference = True
-                            # Use create_and_poll for automatic polling
-                            video = await client.videos.create_and_poll(**kwargs)
-                    finally:
-                        # Clean up temp file
-                        Path(resized_path).unlink(missing_ok=True)
-            else:
-                # Use create_and_poll for automatic polling
-                video = await client.videos.create_and_poll(**kwargs)
-            
-            return video
-        
-        async def remix_video():
-            # Remix an existing video with new prompt
-            video = await client.videos.remix(
-                video_id=remix_video_id,
-                prompt=prompt
-            )
-            # Poll for completion
-            while video.status in ("queued", "in_progress"):
-                await asyncio.sleep(5)
-                video = await client.videos.retrieve(video.id)
-            return video
-        
-        # Run the async function
-        if remix_video_id:
-            video = asyncio.run(remix_video())
-        else:
-            video = asyncio.run(create_video())
-        
-        # Check for errors
-        if video.status == "failed":
-            error_msg = getattr(video.error, 'message', str(video.error)) if video.error else "Unknown error"
-            raise Exception(f"Sora video generation failed: {error_msg}")
-        
-        if video.status != "completed":
-            raise Exception(f"Video generation did not complete. Status: {video.status}")
-        
-        # Download the video content
-        async def download_content():
-            return await client.videos.download_content(video.id)
-        
-        content_response = asyncio.run(download_content())
-        video_bytes = content_response.read() if hasattr(content_response, 'read') else content_response
-        
-        # Save to temp file
-        temp_dir = Path(__file__).parent.parent / 'data' / 'generated_videos'
-        temp_dir.mkdir(exist_ok=True)
-        temp_file = temp_dir / f"sora_temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
-        
-        if isinstance(video_bytes, bytes):
-            temp_file.write_bytes(video_bytes)
-        else:
-            # It might be a streaming response
-            with open(temp_file, 'wb') as f:
-                for chunk in video_bytes:
-                    f.write(chunk)
-        
-        # Map size back to aspect ratio for metadata
-        result_aspect = "9:16" if size.startswith("720x1280") or size.startswith("1024x1792") else "16:9"
-        
-        return {
-            "video_url": f"file://{temp_file}",
-            "video_bytes": temp_file.read_bytes(),
-            "video_id": video.id,  # OpenAI video ID for remix
-            "duration": openai_duration,
-            "prompt": prompt,
-            "model": model_name,
-            "provider": "openai",
-            "aspect_ratio": result_aspect,
-            "resolution": "1080p" if is_pro and "1792" in size else "720p",
-            "from_image": used_input_reference,
-            "has_audio": True,  # Sora 2 generates native audio
-            "remix_from": remix_video_id
-        }
-        
-    except ImportError:
-        raise ValueError("openai SDK not installed. Run: pip install openai")
-    except Exception as e:
-        raise Exception(f"OpenAI Sora video generation failed: {str(e)}")
-
-
 def generate_video(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
                    resolution: str = "720p", image_url: str = None,
                    video_url: str = None, negative_prompt: str = None,
@@ -839,19 +628,16 @@ def generate_video(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
         duration: Video duration in seconds
                   - xAI: 1-15 seconds (continuous range)
                   - Gemini: 4, 6, or 8 seconds (discrete values)
-                  - OpenAI: 4, 8, or 12 seconds (discrete values)
         aspect_ratio: Video shape
                   - xAI: 16:9, 4:3, 1:1, 9:16, 3:4, 3:2, 2:3
                   - Gemini: 16:9 or 9:16 only
-                  - OpenAI: 16:9 or 9:16 only
         resolution: Video quality
                   - xAI: 720p or 480p
                   - Gemini: 720p, 1080p, or 4k
-                  - OpenAI: 720p or 1080p (1080p requires sora-2-pro)
         image_url: Optional image URL for image-to-video
-        video_url: Optional video URL for editing (xAI only) or remix video ID (OpenAI)
+        video_url: Optional video URL for editing (xAI only)
         negative_prompt: What to avoid (Gemini only)
-        provider: Override provider (xai, gemini, or openai)
+        provider: Override provider (xai or gemini)
     """
     
     # Determine provider
@@ -860,24 +646,26 @@ def generate_video(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
     # when a config/override value exists.
     provider = get_config_value('VIDEO_TOOL_PROVIDER', provider or 'xai').lower()
 
+    supported_providers = {'xai', 'gemini'}
+    if provider not in supported_providers:
+        raise ValueError(
+            f"Unsupported video provider '{provider}'. Choose xai or gemini."
+        )
+
     # Credential preflight: fail with configured alternatives instead of a
     # provider-specific API error. Never auto-switches providers.
     from tool_availability import media_provider_preflight
-    preflight_error = media_provider_preflight(provider)
+    preflight_error = media_provider_preflight(
+        provider,
+        {
+            'xai': ['XAI_API_KEY'],
+            'gemini': ['GEMINI_API_KEY'],
+        },
+    )
     if preflight_error:
         raise ValueError(preflight_error)
 
-    if provider == 'openai':
-        # OpenAI Sora - video_url is treated as remix_video_id
-        return generate_video_openai(
-            prompt=prompt,
-            duration=duration,
-            aspect_ratio=aspect_ratio,
-            resolution=resolution,
-            image_path=image_url,
-            remix_video_id=video_url if video_url and video_url.startswith('video_') else None
-        )
-    elif provider == 'gemini':
+    if provider == 'gemini':
         return generate_video_gemini(
             prompt=prompt,
             duration=duration,
@@ -906,10 +694,10 @@ def download_video(video_url: str, filename: str, video_bytes: bytes = None) -> 
     
     video_path = videos_dir / filename
     
-    # If we already have bytes (Gemini/OpenAI may provide these directly), save them
+    # If we already have bytes (Gemini may provide these directly), save them
     if video_bytes:
         video_path.write_bytes(video_bytes)
-        # Clean up temp file if one was created (OpenAI Sora creates file:// temp files)
+        # Clean up a provider temp file if one was created.
         if video_url and video_url.startswith('file://'):
             temp_path = Path(video_url.replace('file://', ''))
             if temp_path.exists() and temp_path != video_path:
@@ -920,7 +708,7 @@ def download_video(video_url: str, filename: str, video_bytes: bytes = None) -> 
                     pass  # Ignore cleanup errors
         return video_path
     
-    # Handle file:// URLs (local temp files from Gemini/OpenAI)
+    # Handle file:// URLs from providers that return local temporary files.
     if video_url and video_url.startswith('file://'):
         temp_path = Path(video_url.replace('file://', ''))
         if temp_path.exists():
@@ -1017,7 +805,6 @@ def save_to_stash(video_path: Path, prompt: str, video_data: dict) -> dict:
     provider_name = {
         'xai': 'xAI',
         'gemini': 'Gemini',
-        'openai': 'OpenAI',
     }.get(str(provider).lower(), str(provider))
     try:
         upsert_video_catalog_entry(

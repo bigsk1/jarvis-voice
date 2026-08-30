@@ -2150,11 +2150,11 @@ class ChatUI {
 
   _getEffectiveVideoProvider() {
     const select = document.getElementById('setting-video-provider');
-    if (select?.value && ['xai', 'openai', 'gemini'].includes(select.value)) {
+    if (select?.value && ['xai', 'gemini'].includes(select.value)) {
       return select.value;
     }
     const value = window.jarvisApp?._settingsData?.video?.provider?.value;
-    return ['xai', 'openai', 'gemini'].includes(value) ? value : 'xai';
+    return ['xai', 'gemini'].includes(value) ? value : 'xai';
   }
 
   /**

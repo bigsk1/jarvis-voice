@@ -71,7 +71,6 @@ def upsert_video_catalog_entry(
 
 def _provider_from_tags(tags: list) -> Optional[str]:
     providers = {
-        'openai': 'OpenAI',
         'gemini': 'Gemini',
         'xai': 'xAI',
         'runway': 'Runway',

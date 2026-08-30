@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "generate_video",
-  "description": "Generate AI videos with xAI Grok, Google Gemini, or OpenAI Sora. Create videos from text prompts or images. Use when user says 'generate a video', 'create a video', 'make a video animation', 'animate this'. PROVIDERS: xAI Grok (default, 1-15s), OpenAI Sora (4-12s, audio), Google Gemini (Veo default: 4-8s and up to 4K; Omni Flash opt-in: 3-10s and 720p). Videos save to stash for use with other tools.",
+  "description": "Generate AI videos with xAI Grok or Google Gemini. Create videos from text prompts or images. Use when user says 'generate a video', 'create a video', 'make a video animation', 'animate this'. PROVIDERS: xAI Grok (default, 1-15s) and Google Gemini (Veo default: 4-8s and up to 4K; Omni Flash opt-in: 3-10s and 720p). Videos save to stash for use with other tools.",
   "script": "generate_video.py",
   "parameters": {
     "type": "object",
@@ -14,14 +14,13 @@
         "type": "string",
         "enum": [
           "xai",
-          "gemini",
-          "openai"
+          "gemini"
         ],
-        "description": "Video provider: 'xai' (default, Grok - 1-15s), 'openai' (Sora 2 - 4-12s, audio, remix), 'gemini' (Veo 3.1 by default; Omni Flash when configured). If not specified, uses VIDEO_TOOL_PROVIDER from config."
+        "description": "Video provider: 'xai' (default, Grok - 1-15s) or 'gemini' (Veo 3.1 by default; Omni Flash when configured). If not specified, uses VIDEO_TOOL_PROVIDER from config."
       },
       "duration": {
         "type": "integer",
-        "description": "Video duration in seconds. xAI: 1-15s (any). OpenAI: rounds to 4, 8, or 12s. Gemini Veo: rounds to 4, 6, or 8s. Gemini Omni Flash: clamps to 3-10s. Default: 5 seconds."
+        "description": "Video duration in seconds. xAI: 1-15s (any). Gemini Veo: rounds to 4, 6, or 8s. Gemini Omni Flash: clamps to 3-10s. Default: 5 seconds."
       },
       "aspect_ratio": {
         "type": "string",
@@ -34,7 +33,7 @@
           "3:2",
           "2:3"
         ],
-        "description": "Video shape. xAI supports all 7. Gemini/OpenAI only support '16:9' (widescreen) or '9:16' (vertical) - others mapped."
+        "description": "Video shape. xAI supports all 7. Gemini supports '16:9' (widescreen) or '9:16' (vertical); other values are mapped."
       },
       "resolution": {
         "type": "string",
@@ -44,7 +43,7 @@
           "1080p",
           "4k"
         ],
-        "description": "Video resolution. xAI: 720p/480p. OpenAI: 720p or 1080p (pro model). Gemini Veo: 720p-4k (1080p/4k requires 8s). Gemini Omni Flash: 720p only."
+        "description": "Video resolution. xAI: 720p/480p. Gemini Veo: 720p-4k (1080p/4k requires 8s). Gemini Omni Flash: 720p only."
       },
       "image_url": {
         "type": "string",
@@ -52,7 +51,7 @@
       },
       "video_url": {
         "type": "string",
-        "description": "Edit an existing video's visual content/style ONLY. xAI editing CANNOT change duration, aspect ratio, or resolution \u2014 only what happens visually. If user wants different duration/size, regenerate from source image using image_url instead. xAI: MUST be a public http(s) URL, stash refs will NOT work. OpenAI: video ID to remix (starts with 'video_'). Provider URLs expire after ~4 hours."
+        "description": "Edit an existing video's visual content/style ONLY. xAI editing CANNOT change duration, aspect ratio, or resolution \u2014 only what happens visually. If user wants different duration/size, regenerate from source image using image_url instead. xAI requires a public http(s) URL; stash refs will not work. Provider URLs expire after about 4 hours."
       },
       "negative_prompt": {
         "type": "string",
@@ -83,17 +82,12 @@
           "GEMINI_API_KEY"
         ]
       },
-      "openai": {
-        "all_of_env": [
-          "OPENAI_API_KEY"
-        ]
-      },
       "xai": {
         "all_of_env": [
           "XAI_API_KEY"
         ]
       }
     },
-    "setup_hint": "Configure at least one video provider API key (GEMINI_API_KEY, OPENAI_API_KEY, or XAI_API_KEY) in the active mode env file."
+    "setup_hint": "Configure at least one video provider API key (GEMINI_API_KEY or XAI_API_KEY) in the active mode env file."
   }
 }

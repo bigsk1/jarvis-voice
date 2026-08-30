@@ -294,7 +294,7 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
     ],
     # --- Media generation ---
     'generate_video': ['provider', 'model', 'duration', 'aspect_ratio', 'resolution',
-                       'video_id', 'video_url', 'generated_from', 'source_image'],
+                       'video_url', 'generated_from', 'source_image'],
     'generate_image': [
         'provider', 'model', 'aspect_ratio', 'image_size', 'size', 'quality',
         'style', 'is_edit', 'mime_type', 'filename',
@@ -2679,7 +2679,7 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
     Returns a dict of tool_name -> relevant fields for each tool result.
 
     This allows the LLM to:
-    - Edit/remix videos using stash_ref or video_id
+    - Edit videos using saved references or provider URLs
     - Reference previous images for variations
     - Act on created PDFs, converted files, transcripts, canvas pages
     - Continue multi-step workflows across separate API calls
@@ -4281,11 +4281,13 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 include_dynamic_scalars=key not in FOLLOWUP_FIELDS,
             )
             for field, generic_value in generic.items():
+                if key == 'generate_video' and field == 'video_id':
+                    continue
                 if field not in extracted:
                     extracted[field] = generic_value
 
         # @TOOL_CONFIG: video URL expiration — provider URLs have time limits
-        # xAI ~4h, OpenAI 60min
+        # xAI URLs are treated as usable for about four hours.
         if key == 'generate_video' and extracted.get('video_url'):
             try:
                 saved = payload.get('saved', {})

@@ -79,6 +79,39 @@ def _veo_config_value(key, default=None):
     return values.get(key, default)
 
 
+def test_unknown_video_provider_fails_closed_without_dispatch():
+    with patch.object(
+        generate_video,
+        "get_config_value",
+        side_effect=lambda key, default=None: "retired" if key == "VIDEO_TOOL_PROVIDER" else default,
+    ), patch.object(generate_video, "generate_video_gemini") as gemini, patch.object(
+        generate_video, "generate_video_xai"
+    ) as xai:
+        with pytest.raises(ValueError, match="Unsupported video provider"):
+            generate_video.generate_video("A test clip")
+
+    gemini.assert_not_called()
+    xai.assert_not_called()
+
+
+def test_video_preflight_receives_only_supported_provider_keys():
+    with patch.object(
+        generate_video,
+        "get_config_value",
+        side_effect=lambda key, default=None: "xai" if key == "VIDEO_TOOL_PROVIDER" else default,
+    ), patch("tool_availability.media_provider_preflight", return_value="blocked") as preflight:
+        with pytest.raises(ValueError, match="blocked"):
+            generate_video.generate_video("A test clip")
+
+    preflight.assert_called_once_with(
+        "xai",
+        {
+            "xai": ["XAI_API_KEY"],
+            "gemini": ["GEMINI_API_KEY"],
+        },
+    )
+
+
 def test_veo_model_stays_on_generate_videos_api_and_does_not_write_temp_files():
     captured = {}
     video = SimpleNamespace(video_bytes=b"veo-video-bytes", uri=None, url=None)

@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "create_social_clip",
-  "description": "Create stock-footage social media clips (B-roll + voiceover + subtitles + background music) via MoneyPrinterTurbo. Use for TikTok, Reels, Shorts, faceless YouTube, or 'b-roll video' requests. NOT for AI-generated video from a text prompt — use generate_video for Grok/Sora/Veo AI animation instead. Triggers: 'social clip', 'b-roll', 'reel', 'tiktok video', 'shorts video', 'faceless video', 'stock footage video with narration'. Output saves to stash for web UI playback.",
+  "description": "Create stock-footage social media clips (B-roll + voiceover + subtitles + background music) via MoneyPrinterTurbo. Use for TikTok, Reels, Shorts, faceless YouTube, or 'b-roll video' requests. NOT for AI-generated video from a text prompt — use generate_video for Grok/Veo AI animation instead. Triggers: 'social clip', 'b-roll', 'reel', 'tiktok video', 'shorts video', 'faceless video', 'stock footage video with narration'. Output saves to stash for web UI playback.",
   "complementary_tools": [
     "stash",
     "convert_file"

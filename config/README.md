@@ -143,7 +143,7 @@ OpenAI's Models API has a narrower identity-and-availability schema:
 ./bin/audit-openai-models.py --mode cloud --show-all
 ```
 
-The audit verifies that curated IDs or aliases are available to the selected API key and conservatively flags only newer general-purpose GPT families for review. Specialized image, audio, realtime, embedding, moderation, Sora, search, Codex, and legacy models remain visible in JSON/`--show-all` output without being misclassified as missing chat options. OpenAI's endpoint does not return context limits, capabilities, modalities, or pricing, so those fields remain manually curated and must be verified against their dedicated official documentation before adding a surfaced model.
+The audit verifies that curated IDs or aliases are available to the selected API key and conservatively flags only newer general-purpose GPT families for review. Specialized image, audio, realtime, embedding, moderation, search, Codex, and legacy models remain visible in JSON/`--show-all` output without being misclassified as missing chat options. OpenAI's endpoint does not return context limits, capabilities, modalities, or pricing, so those fields remain manually curated and must be verified against their dedicated official documentation before adding a surfaced model.
 
 When removing an old curated cloud chat model:
 1. Remove it from `lib/model_catalog.py`

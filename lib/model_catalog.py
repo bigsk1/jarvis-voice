@@ -596,7 +596,6 @@ MEDIA_MODEL_ENV_KEYS: dict[str, dict[str, str]] = {
     "video": {
         "xai": "XAI_VIDEO_MODEL",
         "gemini": "GEMINI_VIDEO_MODEL",
-        "openai": "OPENAI_VIDEO_MODEL",
     },
     "music": {
         "elevenlabs": "ELEVENLABS_MUSIC_MODEL",
@@ -794,30 +793,6 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
                     "pricing": {
                         "unit": "second",
                         "usd_by_resolution": {"720p": 0.10},
-                    },
-                },
-            ],
-        },
-        "openai": {
-            "name": "OpenAI Sora",
-            "models": [
-                {
-                    "id": "sora-2",
-                    "name": "Sora 2",
-                    "default": True,
-                    "aliases": ["sora-2-2025-10-06"],
-                    "capabilities": ["text_to_video", "image_to_video", "audio"],
-                    "resolutions": ["720p"],
-                    "pricing": {"unit": "second", "usd_by_resolution": {"720p": 0.10}},
-                },
-                {
-                    "id": "sora-2-pro",
-                    "name": "Sora 2 Pro",
-                    "capabilities": ["text_to_video", "image_to_video", "audio", "1080p"],
-                    "resolutions": ["720p", "1080p"],
-                    "pricing": {
-                        "unit": "second",
-                        "usd_by_resolution": {"720p": 0.30, "1080p": 0.50},
                     },
                 },
             ],

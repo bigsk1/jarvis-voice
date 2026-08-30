@@ -78,7 +78,7 @@
     "- api_call: Make an HTTP API call (GET or POST) to any REST API endpoint.\n\nUse this when:\n- User provides a specific API URL to call\n- User asks to fetch data fro",
     "- get_time: Get the current date and time, optionally for any location worldwide. Use for: 'what time is it', 'what time is it in Tokyo', 'what's the time in Pari",
     "- stock_price: Get current STOCK, FUTURES, or COMMODITY price from Yahoo Finance. NOT for cryptocurrencies (use crypto_price for Bitcoin, Ethereum spot prices). Supp",
-    "- generate_video: Generate AI videos with xAI Grok, Gemini Veo, or OpenAI Sora. Create videos from text prompts or images. Use when user says 'generate a video', 'creat",
+    "- generate_video: Generate AI videos with xAI Grok or Google Gemini. Create videos from text prompts or images. Use when user says 'generate a video', 'create a video'",
     "- pdf_read: Read and process EXISTING PDF files: extract text/images, merge, split, convert to images, search. This is for PDF INPUT processing, not creating new ",
     "- ssh_remote: Execute commands on remote hosts via SSH. Hosts configured in config/ssh.json. Actions: 'list_hosts' (show configured hosts), 'test' (test connectivit",
     "- send_email: Send an email to a contact, optionally with file attachments from stash. Use when user says 'email', 'send email to', 'email me that image', etc. Cont",

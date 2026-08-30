@@ -184,7 +184,6 @@ Do not migrate these APIs in the first pass:
 - STT: keep `/audio/transcriptions`
 - TTS: keep `/audio/speech` and OpenAI-compatible local TTS servers
 - image generation/editing: keep `/images/generations` and `/images/edits`
-- Sora video: keep the video SDK API
 - embeddings: keep the embeddings API
 - tiny status summaries: keep the current short OpenAI-compatible Chat Completions path unless a later cleanup pass says otherwise
 

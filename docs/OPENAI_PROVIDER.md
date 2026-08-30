@@ -16,7 +16,7 @@ Code entry points:
 | In-flight continuation state | [`orchestrator/orchestrator_v2.py`](../orchestrator/orchestrator_v2.py) |
 
 **Not migrated to Responses in this layer** (unchanged endpoints): Whisper STT,
-TTS, image/video APIs, and other callers that hit OpenAI separately from
+TTS, image APIs, and other callers that hit OpenAI separately from
 `OpenAIProvider.chat_with_tools`. Embeddings are not an OpenAI caller; both
 modes use Jarvis Embedding through Ollama. Simple `chat()` on `OpenAIProvider`
 always uses Chat Completions.

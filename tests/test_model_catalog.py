@@ -17,6 +17,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 from lib.model_catalog import (  # noqa: E402
     get_default_media_model_id,
     get_default_model_id,
+    get_media_catalog_providers,
     get_media_model_env_key,
     get_media_model_metadata,
     get_media_model_pricing,
@@ -40,14 +41,13 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(get_default_media_model_id("image", "openai"), "gpt-image-2")
         self.assertEqual(get_default_media_model_id("image", "xai"), "grok-imagine-image")
         self.assertEqual(get_default_media_model_id("video", "gemini"), "veo-3.1-fast-generate-preview")
-        self.assertEqual(get_default_media_model_id("video", "openai"), "sora-2")
         self.assertEqual(get_default_media_model_id("video", "xai"), "grok-imagine-video")
         self.assertEqual(get_default_media_model_id("music", "elevenlabs"), "music_v1")
         self.assertEqual(get_default_media_model_id("music", "gemini"), "lyria-3-clip-preview")
 
     def test_media_env_keys_and_ui_provider_metadata_come_from_catalog(self):
         self.assertEqual(get_media_model_env_key("image", "gemini"), "GEMINI_IMAGE_MODEL")
-        self.assertEqual(get_media_model_env_key("video", "openai"), "OPENAI_VIDEO_MODEL")
+        self.assertEqual(set(get_media_catalog_providers("video")), {"xai", "gemini"})
         self.assertEqual(get_media_model_env_key("music", "elevenlabs"), "ELEVENLABS_MUSIC_MODEL")
         self.assertEqual(get_media_model_env_key("music", "gemini"), "GEMINI_MUSIC_MODEL")
         self.assertEqual(get_media_provider_options("image")["gemini"]["model"], "gemini-3.1-flash-image")
@@ -74,13 +74,11 @@ class ModelCatalogTests(unittest.TestCase):
         options = get_media_provider_options(
             "video",
             {
-                "openai": "sora-2-pro",
                 "xai": "grok-imagine-video-1.5",
                 "gemini": "gemini-omni-flash-preview",
             },
         )
-        self.assertEqual(options["openai"]["model"], "sora-2-pro")
-        self.assertEqual(options["openai"]["resolutions"], ["720p", "1080p"])
+        self.assertEqual(set(options), {"xai", "gemini"})
         self.assertEqual(options["xai"]["resolutions"], ["1080p", "720p", "480p"])
         self.assertEqual(options["gemini"]["model"], "gemini-omni-flash-preview")
         self.assertEqual(options["gemini"]["resolutions"], ["720p"])

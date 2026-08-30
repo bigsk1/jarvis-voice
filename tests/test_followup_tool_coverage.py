@@ -2337,6 +2337,21 @@ def test_workflow_discovery_and_text_non_summary_actions_reach_fallbacks():
     assert result["text_summarizer"]["statistics"]["words"] == 20
 
 
+def test_generate_video_followup_drops_retired_provider_video_id():
+    compact = followup.extract_followup_data({
+        "generate_video": {
+            "provider": "xai",
+            "video_id": "retired-provider-id",
+            "video_url": "https://cdn.example.test/video.mp4",
+            "saved": {"stash_ref": "stash://videos/video_7"},
+        }
+    })["generate_video"]
+
+    assert compact["video_url"] == "https://cdn.example.test/video.mp4"
+    assert compact["stash_ref"] == "stash://videos/video_7"
+    assert "video_id" not in compact
+
+
 def test_artifact_and_entity_tools_preserve_their_followup_handles():
     expected_handles = {
         "analyze_image": {"stash_ref"},

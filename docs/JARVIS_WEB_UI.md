@@ -1700,7 +1700,7 @@ feedback flag for `tool_policy=none`. Passive thumbs reactions are unaffected.
 - [x] **Inline converted media** - Images/video/audio display with ⬇️ Download button
 - [x] **SVG/BMP/ICO/FLAC support** - Extended stash MIME types
 - [x] **Advanced convert options** - Resize, quality, bitrate, FPS, etc. in collapsible panel
-- [x] **Video provider dropdown** - Switch video generation between xAI Grok and Google Gemini Veo or Openai Sora on-the-fly
+- [x] **Video provider dropdown** - Switch video generation between xAI Grok and Google Gemini on the fly
 - [x] **Image provider xAI option** - Added xAI Grok as image provider alongside Gemini and OpenAI
 - [x] **JARVIS_OVERRIDE_ mechanism** - Provider overrides survive tool subprocess `load_config()` via prefixed env vars
 - [x] **Image gallery provider badges** - Shows xAI/Gemini/OpenAI badges on generated images in Canvas gallery
@@ -1882,7 +1882,6 @@ Use your NATIVE SEARCH - DO NOT use mcp_fetch, brave_search...
 *v2.1: Manual Feedback Analysis - 📊 toggle, --feedback inline, feedback cards - January 23, 2026*
 *v2.2: 🔄 File Conversion - convert button, format modal, inline media display with download - February 5, 2026*
 *v2.3: Provider switching - Video provider dropdown, xAI image option, JARVIS_OVERRIDE_ mechanism, gallery provider badges - February 6, 2026*
-*v2.4: OpenAI Sora - Third video provider with native audio, image-to-video, remix support - February 9, 2026*
 *v2.5: AI Config response-style overrides - Per-mode `JARVIS_RESPONSE_STYLE`, `JARVIS_QA_WORD_LIMIT`, and `JARVIS_MULTI_TURN_WORD_LIMIT` with live prompt/runtime alignment - March 29, 2026*
 *v2.6: Completion Guard - inline completion card, one-pass manual repair loop, tool-aware exclusions, repair tickets, and export metadata - March 30, 2026*
 *v2.7: Completion Guard auto mode - background evaluator, threshold override, persisted accept state, and intelligence-layer outcome tracking - March 30, 2026*

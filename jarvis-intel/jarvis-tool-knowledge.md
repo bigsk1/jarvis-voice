@@ -14,7 +14,7 @@ This file contains knowledge about Jarvis tools, provider limitations, common fa
 - If a tool fails or returns unexpected results, do not retry with the same parameters. Search memory first for known limitations.
 - If a provider ignores a parameter you set (like duration or resolution), that is an API limitation, not a fixable error. Inform the user.
 - Never retry an expensive tool (video, image, music generation) more than once per request. If the first result is not what the user wants, explain what happened and ask how to proceed.
-- When a tool returns a stash ref (stash://space_xxx/file_xxx), that ref is permanent. Provider URLs (like vidgen.x.ai or platform.openai.com links) expire and are temporary.
+- When a tool returns a stash ref (stash://space_xxx/file_xxx), that ref is permanent. Provider URLs expire and are temporary.
 
 ## Video Generation (generate_video)
 
@@ -26,14 +26,6 @@ This file contains knowledge about Jarvis tools, provider limitations, common fa
 - xAI public video URLs (vidgen.x.ai) expire after approximately 4 hours. After that, the video can only be referenced by its stash ref but cannot be edited.
 - xAI supports durations: 5 seconds and 10 seconds only (closest to requested). Maximum video length for editing is 8.7 seconds.
 - If you request 8 seconds on an edit, xAI will return 5 seconds. This is normal, not an error.
-
-### Provider: OpenAI (Sora)
-
-- OpenAI Sora supports 4, 8, and 12 second durations.
-- Sora uses video_id (starts with "video_") for remix/editing, not URLs.
-- OpenAI video URLs expire after approximately 60 minutes.
-- Sora supports native audio generation (dialogue and sound effects).
-- Sora aspect ratios: 16:9 and 9:16 only. Resolutions: 720p and 1080p.
 
 ### Provider: Google Gemini
 

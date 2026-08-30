@@ -359,7 +359,7 @@ See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
 ---
 
 - **Video Gallery UI**: Browse generated videos in Canvas web UI (Feb 2026)
-  - Grid view with hover preview, provider badges (xAI/OpenAI/Gemini)
+  - Grid view with hover preview, provider badges (xAI/Gemini)
   - Lightbox viewer with video controls
   - Search, sort by date/name/size/duration
   - Download and delete functionality
@@ -876,14 +876,13 @@ and the selected mode has a valid key.
   - Supports aspect ratios (1:1, 16:9, 9:16, etc.), styles, negative prompts
   - **Gemini Search Grounding** - Real-time data in images (weather, crypto prices, news)
   - Auto-saves original provider bytes to Generated Images storage and an unchanged Stash copy, with catalog metadata; public-URL reference inputs are strictly validated and bounded before provider upload
-- `generate_video` - **AI video generation**: xAI Grok, OpenAI Sora, or Gemini Veo
+- `generate_video` - **AI video generation**: xAI Grok or Gemini Veo
   - xAI: 1-15s duration, 7 aspect ratios, video editing ($0.05/s)
-  - OpenAI: 4/8/12s, native audio, image-to-video, remix ($0.10-0.50/s)
   - Gemini: 4/6/8s, native audio, up to 4K resolution ($0.15/s)
   - Text-to-video and image-to-video modes (all providers)
   - Auto-saves to stash + memory for cross-session recall
 - `create_social_clip` - **Social B-roll clips**: MoneyPrinterTurbo (self-hosted Docker) — stock footage + AI script + TTS + subtitles + BGM
-  - TikTok, Reels, Shorts, faceless YouTube — **not** `generate_video` (that tool is xAI/Sora/Veo AI animation)
+  - TikTok, Reels, Shorts, faceless YouTube — **not** `generate_video` (that tool is Grok/Veo AI animation)
   - Configure `MONEYPRINTER_API_URL`, `MONEYPRINTER_VOICE`, `MONEYPRINTER_MAX_WAIT_SEC` in `config/cloud.env`
   - Polls MPT `/api/v1/videos`, downloads `final-*.mp4`, saves to stash; web UI inline player for stash videos
 - `analyze_image` - **Vision analysis**: Analyze one or more images from URLs, files, or stash refs

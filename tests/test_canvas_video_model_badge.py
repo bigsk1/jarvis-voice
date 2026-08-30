@@ -73,3 +73,7 @@ def test_video_gallery_renders_model_badges_only_for_cataloged_models():
     assert "pointer-events: none" not in model_rule.group(1)
     assert "top: 38px" not in model_rule.group(1)
     assert ".video-badges" in VIDEO_CSS
+
+
+def test_video_gallery_does_not_guess_provider_from_generic_video_filename():
+    assert "lower.startsWith('video_')" not in VIDEO_JS

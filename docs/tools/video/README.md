@@ -1,6 +1,6 @@
 # Video Generation
 
-Generate AI videos using xAI Grok, OpenAI Sora, or Google Gemini directly from Jarvis.
+Generate AI videos using xAI Grok or Google Gemini directly from Jarvis.
 
 ## Overview
 
@@ -15,7 +15,7 @@ The `generate_video` tool creates AI-generated videos from text prompts or image
 jarvis cloud "Generate a video of a cat playing with a ball"
 
 # Specify provider
-jarvis cloud "Generate a video of a sunset over mountains" --provider openai
+jarvis cloud "Generate a video of a sunset over mountains" --provider gemini
 
 # Via API
 curl -X POST http://localhost:8880/api/generated-videos/generate \
@@ -28,19 +28,17 @@ curl -X POST http://localhost:8880/api/generated-videos/generate \
 | Provider | Model | Duration | Audio | Resolution | Cost/sec | Status |
 |----------|-------|----------|-------|------------|----------|--------|
 | xAI | `grok-imagine-video` | 1-15s | ❌ | 720p, 480p | $0.05-0.07 | ✅ Active |
-| OpenAI | `sora-2` / `sora-2-pro` | 4/8/12s | ✅ Native | 720p, 1080p | $0.10-0.50 | ✅ Active |
 | Gemini | `veo-3.1-fast-generate-preview` | 4/6/8s | ✅ Native | 720p-4k | $0.10-0.30 | ✅ Active |
 | Gemini | `gemini-omni-flash-preview` | 3-10s | ✅ Native | 720p | $0.10 | ⚠️ Preview, opt-in |
 
 Configure in `config/cloud.env`:
 ```bash
 # Choose default provider
-VIDEO_TOOL_PROVIDER="xai"  # or "openai" or "gemini"
+VIDEO_TOOL_PROVIDER="xai"  # or "gemini"
 
 # Optional model pins. Leave unset to follow the curated defaults in
 # lib/model_catalog.py and receive future default/retirement updates there.
 # XAI_VIDEO_MODEL="grok-imagine-video"
-# OPENAI_VIDEO_MODEL="sora-2-pro"  # higher resolution
 # GEMINI_VIDEO_MODEL="veo-3.1-generate-preview"  # standard instead of fast
 # GEMINI_VIDEO_MODEL="gemini-omni-flash-preview"  # Interactions API, 720p
 ```
@@ -51,17 +49,16 @@ existing generic estimate.
 
 ## Provider Comparison
 
-| Feature | xAI Grok | OpenAI Sora | Google Gemini |
-|---------|----------|-------------|------------|
-| **Duration Range** | 1-15s (any) | 4, 8, or 12s | Veo: 4/6/8s; Omni: 3-10s |
-| **Aspect Ratios** | 7 options | 2 options | 2 options |
-| **Resolution** | 720p, 480p | 720p, 1080p | Veo: 720p-4k; Omni: 720p |
-| **Native Audio** | ❌ No | ✅ Yes | ✅ Yes |
-| **Video Editing** | ✅ Style only | ✅ Yes (remix) | Veo: ❌; Omni: planned |
-| **Negative Prompt** | ❌ No | ❌ No | Veo: native; Omni: prompt guidance |
-| **Image-to-Video** | ✅ Yes | ✅ Yes | ✅ Yes |
-| **Cost/second** | $0.05-0.07 | $0.10-0.50 | $0.10-0.60 |
-| **Playground View** | ❌ No | ✅ Yes | ❌ No |
+| Feature | xAI Grok | Google Gemini |
+|---------|----------|---------------|
+| **Duration Range** | 1-15s (any) | Veo: 4/6/8s; Omni: 3-10s |
+| **Aspect Ratios** | 7 options | 2 options |
+| **Resolution** | 720p, 480p | Veo: 720p-4k; Omni: 720p |
+| **Native Audio** | ❌ No | ✅ Yes |
+| **Video Editing** | ✅ Style only | Veo: ❌; Omni: planned |
+| **Negative Prompt** | ❌ No | Veo: native; Omni: prompt guidance |
+| **Image-to-Video** | ✅ Yes | ✅ Yes |
+| **Cost/second** | $0.05-0.07 | $0.10-0.60 |
 
 ## Parameters
 
@@ -71,36 +68,33 @@ Video length in seconds.
 | Provider | Range | Notes |
 |----------|-------|-------|
 | xAI | 1-15 seconds | Any integer value |
-| OpenAI | 4, 8, or 12 seconds | Rounded to nearest |
 | Gemini Veo | 4, 6, or 8 seconds | Rounded to nearest |
 | Gemini Omni Flash | 3-10 seconds | Clamped to range |
 
-**Note**: Longer videos take more time to generate and cost more. Gemini Veo 1080p/4k requires 8s duration; Omni Flash always outputs 720p. OpenAI 12s is the longest single clip option.
+**Note**: Longer videos take more time to generate and cost more. Gemini Veo 1080p/4k requires 8s duration; Omni Flash always outputs 720p.
 
 ### Aspect Ratio
 Video shape/orientation.
 
-| Value | Description | xAI | OpenAI | Gemini |
-|-------|-------------|-----|--------|--------|
-| `16:9` | Widescreen (default) | ✅ | ✅ | ✅ |
-| `4:3` | Classic TV ratio | ✅ | ➡️ 16:9 | ➡️ 16:9 |
-| `1:1` | Square | ✅ | ➡️ 16:9 | ➡️ 16:9 |
-| `9:16` | Vertical | ✅ | ✅ | ✅ |
-| `3:4` | Portrait | ✅ | ➡️ 9:16 | ➡️ 9:16 |
-| `3:2` | Photo standard | ✅ | ➡️ 16:9 | ➡️ 16:9 |
-| `2:3` | Tall portrait | ✅ | ➡️ 9:16 | ➡️ 9:16 |
+| Value | Description | xAI | Gemini |
+|-------|-------------|-----|--------|
+| `16:9` | Widescreen (default) | ✅ | ✅ |
+| `4:3` | Classic TV ratio | ✅ | ➡️ 16:9 |
+| `1:1` | Square | ✅ | ➡️ 16:9 |
+| `9:16` | Vertical | ✅ | ✅ |
+| `3:4` | Portrait | ✅ | ➡️ 9:16 |
+| `3:2` | Photo standard | ✅ | ➡️ 16:9 |
+| `2:3` | Tall portrait | ✅ | ➡️ 9:16 |
 
 ### Resolution
 Video quality.
 
-| Value | xAI | OpenAI | Gemini | Notes |
-|-------|-----|--------|--------|-------|
-| `720p` | ✅ | ✅ | ✅ | HD (default) |
-| `480p` | ✅ | ➡️ 720p | ➡️ 720p | SD |
-| `1080p` | ❌ | ✅ (pro) | ✅ Veo | Full HD |
-| `4k` | ❌ | ❌ | ✅ Veo | Ultra HD (Veo 8s only) |
-
-**Note**: OpenAI 1080p requires `sora-2-pro` model ($0.30-0.50/sec).
+| Value | xAI | Gemini | Notes |
+|-------|-----|--------|-------|
+| `720p` | ✅ | ✅ | HD (default) |
+| `480p` | ✅ | ➡️ 720p | SD |
+| `1080p` | ❌ | ✅ Veo | Full HD |
+| `4k` | ❌ | ✅ Veo | Ultra HD (Veo 8s only) |
 
 ## Generation Modes
 
@@ -142,27 +136,15 @@ Edit an existing video's visual content or style:
 - Provider URLs expire after ~4 hours; check `edit_url_status` in the API
 - Input video must be ≤8.7 seconds
 
-### With Audio (OpenAI & Gemini)
-Both OpenAI Sora and Gemini Veo generate native audio including dialogue and sound effects:
+### With Audio (Gemini)
+Gemini Veo generates native audio including dialogue and sound effects:
 ```json
 {
   "prompt": "A close-up of a man saying 'Hello world!' with birds chirping in the background",
   "duration": 8,
-  "provider": "openai"
+  "provider": "gemini"
 }
 ```
-
-### Video Remix (OpenAI only)
-Extend or modify an existing Sora video using its video ID:
-```json
-{
-  "prompt": "Extend the scene with the cat taking a bow to the cheering audience",
-  "video_url": "video_123abc",
-  "provider": "openai"
-}
-```
-
-**Note**: The `video_url` parameter accepts OpenAI video IDs (format: `video_xxx`) for remixing. Generated videos are also visible in the [OpenAI Playground](https://platform.openai.com/playground/videos).
 
 ### Negative Prompt (Gemini only)
 Specify what to avoid:
@@ -302,11 +284,6 @@ See [API Documentation](../../api/GENERATED_VIDEOS.md) for full endpoint referen
 - `XAI_API_KEY` configured in cloud.env
 - Sufficient xAI API credits
 
-**For OpenAI:**
-- OpenAI SDK >= 2.24.0
-- `OPENAI_API_KEY` configured in cloud.env
-- Sufficient OpenAI API credits
-
 **For Gemini:**
 - google-genai >= 2.10.0
 - `GEMINI_API_KEY` configured in cloud.env
@@ -314,7 +291,7 @@ See [API Documentation](../../api/GENERATED_VIDEOS.md) for full endpoint referen
 
 Install all:
 ```bash
-pip install xai-sdk>=1.17.0 openai>=2.24.0 google-genai>=2.10.0
+pip install xai-sdk>=1.17.0 google-genai>=2.10.0
 ```
 
 ## Costs
@@ -324,16 +301,12 @@ Video generation costs vary by provider, duration, and resolution:
 | Provider | Model | Cost/second | Notes |
 |----------|-------|-------------|-------|
 | xAI | grok-imagine-video | $0.05 | Cheapest option |
-| OpenAI | sora-2 (720p) | $0.10 | Standard quality |
-| OpenAI | sora-2-pro (720p) | $0.30 | Higher quality |
-| OpenAI | sora-2-pro (1080p) | $0.50 | Full HD |
 | Gemini | veo-3.1-fast (720p) | $0.10 | Catalog default |
 | Gemini | veo-3.1-fast (1080p/4k) | $0.12/$0.30 | Higher resolution |
 | Gemini | gemini-omni-flash-preview | $0.10 | Opt-in, 720p only |
 
 **Links:**
 - xAI: [console.x.ai](https://console.x.ai)
-- OpenAI: [platform.openai.com/docs/pricing](https://platform.openai.com/docs/pricing)
 - Gemini: [ai.google.dev/pricing](https://ai.google.dev/gemini-api/docs/pricing#veo-3.1)
 
 ## YouTube Download Tool (`youtube_video`)
@@ -450,12 +423,6 @@ Upgrade xAI SDK:
 pip install --upgrade xai-sdk
 ```
 Requires version 1.17.0 or higher.
-
-### "openai SDK not installed" (OpenAI)
-Install OpenAI SDK:
-```bash
-pip install 'openai>=2.24.0'
-```
 
 ### "google-genai not installed" (Gemini)
 Install Google GenAI:

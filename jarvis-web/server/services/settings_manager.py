@@ -418,7 +418,7 @@ API_CREDENTIAL_SECTIONS = (
             {
                 'id': 'openai',
                 'name': 'OPENAI_API_KEY',
-                'description': 'OpenAI chat, vision, speech, image, and video',
+                'description': 'OpenAI chat, vision, speech, and image generation',
                 'all_of': ('OPENAI_API_KEY',),
             },
             {
@@ -859,6 +859,8 @@ class SettingsManager:
         web_image = mode_overrides.get('image_provider')
         web_video = mode_overrides.get('video_provider')
         web_music = mode_overrides.get('music_provider')
+        if web_video not in (None, *video_providers):
+            web_video = None
         web_tts = mode_overrides.get('tts_provider')
         tts_provider_options = self._get_tts_provider_options(env_tts_provider)
         if web_tts not in (None, *tts_provider_options):
@@ -1484,6 +1486,14 @@ class SettingsManager:
                 'tts_provider': 'tts',
                 'completion_guard_eval_provider': 'completion_guard',
             }[field]
+            if domain in {'image', 'video', 'music'}:
+                supported = set(get_media_catalog_providers(domain))
+                if requested not in supported:
+                    raise SettingsValidationError(
+                        field=field,
+                        provider=requested,
+                        reason=f"Provider '{requested}' is not supported for {domain}",
+                    )
             entry = self._provider_availability_entry(requested, domain)
             if entry['status'] == 'unavailable':
                 raise SettingsValidationError(
