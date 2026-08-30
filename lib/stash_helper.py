@@ -368,7 +368,7 @@ def get_retention_policy(labels: list[str] = None, scope: str = 'session') -> tu
         return 'generated_media', get_int('STASH_GENERATED_MEDIA_TTL_DAYS', 30)
     if scope in {'project', 'user'} or normalized & {
         'web_upload', 'uploaded', 'youtube_downloads', 'youtube_transcripts',
-        'pdf', 'pdf_images',
+        'audio_transcripts', 'audio_transcript', 'transcript', 'pdf', 'pdf_images',
     }:
         return 'source_artifact', get_int('STASH_SOURCE_ARTIFACT_TTL_DAYS', 120)
     return 'temporary', get_default_ttl()

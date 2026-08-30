@@ -484,6 +484,27 @@ LOCAL_TOOL_SAMPLES = {
         },
         {"action": "ocr", "stash_ref": "stash://uploads/scan"},
     ),
+    "transcribe_audio": _case(
+        {
+            "source_filename": "meeting.m4a",
+            "source_stash_ref": "stash://uploads/meeting",
+            "size_bytes": 18_203_276,
+            "duration_seconds": 1103.082,
+            "provider_requested": "openai-compatible",
+            "provider": "openai-compatible",
+            "model": "parakeet-en",
+            "fallback_used": False,
+            "fallback_reason": None,
+            "chunk_count": 2,
+            "transcript_excerpt": "The meeting covered the rollout plan.",
+            "transcript_chars": 14_200,
+            "transcript_truncated": True,
+            "transcript_stash_ref": "stash://transcripts/meeting_text",
+            "stash_ref": "stash://transcripts/meeting_text",
+            "space_id": "transcripts",
+        },
+        {"source": "stash://uploads/meeting"},
+    ),
     "phone_call": _case(
         {
             "call_id": "call_7",
@@ -1829,6 +1850,28 @@ def test_document_ocr_followup_preserves_page_artifact_and_retry_guidance():
     assert compact["page_results_stash_ref"] == "stash://ocr/page-results"
     assert compact["retryable"] is True
     assert compact["retry_after_seconds"] == 5
+
+
+def test_transcribe_audio_followup_keeps_bounded_text_and_durable_reference():
+    transcript = "Audio transcript sentence. " * 300
+    result = followup.extract_followup_data(
+        {
+            "transcribe_audio": {
+                "provider": "openai-compatible",
+                "model": "parakeet-en",
+                "transcript": transcript,
+                "transcript_chars": len(transcript),
+                "transcript_stash_ref": "stash://audio/f_text",
+                "stash_ref": "stash://audio/f_text",
+            }
+        }
+    )
+
+    compact = result["transcribe_audio"]
+    assert compact["transcript_stash_ref"] == "stash://audio/f_text"
+    assert compact["transcript_excerpt"].startswith("Audio transcript sentence")
+    assert "truncated for follow-up context" in compact["transcript_excerpt"]
+    assert "transcript" not in compact
 
 
 def test_weather_followup_preserves_resolved_location_and_provider_provenance():

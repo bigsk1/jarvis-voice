@@ -205,6 +205,14 @@ class ToolExecutorCancelTests(unittest.TestCase):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("document_ocr"), 1200)
 
+    def test_audio_transcription_timeout_tracks_batch_policy_with_cleanup_window(self):
+        executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
+        with patch.dict(
+            os.environ,
+            {"JARVIS_OVERRIDE_AUDIO_TRANSCRIBE_TIMEOUT_SECONDS": "321"},
+        ):
+            self.assertEqual(executor._get_subprocess_timeout("transcribe_audio"), 351)
+
     def test_tripadvisor_timeout_allows_three_sequential_http_calls(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("serpapi_tripadvisor"), 160)

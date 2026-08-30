@@ -35,12 +35,43 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_google_events"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("serpapi_travel_explore"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("document_ocr"), 6000)
+        self.assertEqual(self.orch._tool_context_max_chars("transcribe_audio"), 8000)
         self.assertEqual(self.orch._tool_context_max_chars("trakt_movies"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("tmdb_movies"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("trakt_tv_shows"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("trakt_account"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("tmdb_tv_shows"), 10000)
         self.assertEqual(self.orch._tool_context_max_chars("workflow"), 8000)
+
+    def test_transcribe_audio_preview_keeps_one_useful_text_field_and_ref(self):
+        transcript = "The meeting discussed provider boundaries. " * 130
+        result = {
+            "ok": True,
+            "speech": "Transcribed audio.",
+            "data": {
+                "provider": "openai-compatible",
+                "model": "parakeet-en",
+                "chunk_count": 3,
+                "transcript": transcript,
+                "transcript_chars": len(transcript),
+                "transcript_stash_ref": "stash://space_audio/f_text",
+                "stash_ref": "stash://space_audio/f_text",
+                "raw": "RAW_SENTINEL" * 1000,
+            },
+        }
+
+        preview, _total, shown, truncated = self.orch._build_llm_result_context_preview(
+            "transcribe_audio", result
+        )
+
+        payload = json.loads(preview)
+        data = payload["llm_context_preview"]["data_preview"]
+        self.assertTrue(truncated)
+        self.assertLessEqual(shown, 8000)
+        self.assertEqual(data["transcript"], transcript)
+        self.assertEqual(data["stash_ref"], "stash://space_audio/f_text")
+        self.assertNotIn("transcript_excerpt", data)
+        self.assertNotIn("RAW_SENTINEL", preview)
 
     def test_serpapi_youtube_preview_keeps_transcript_text_not_raw_payload(self):
         transcript_text = "Full normalized transcript sentence. " * 320

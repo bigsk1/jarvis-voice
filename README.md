@@ -860,6 +860,7 @@ and the selected mode has a valid key.
 
 **Artifact & Output Tools:**
 - [`document_ocr`](docs/tools/document-ocr-tool/README.md) - **Optional self-hosted OCR**: page-attributed Markdown from scanned PDFs/images, OVIS-hosted structured extraction, and ZIP artifacts with readiness preflight and Stash handoff
+- [`transcribe_audio`](docs/SPEECH_TO_TEXT.md#existing-audio-files-transcribe_audio) - **Existing audio to text**: Web uploads, Stash files, or approved local recordings through OpenAI, Faster-Whisper, or an OpenAI-compatible `/v1/audio/transcriptions` endpoint, with bounded long-file chunking and full transcript Stash handoff
 - `convert_file` - **Local media conversion**: ImageMagick, FFmpeg, Potrace
   - Images: JPG ↔ PNG ↔ WebP ↔ GIF ↔ BMP ↔ TIFF ↔ ICO
   - Raster to vector: PNG/JPG → SVG (Potrace tracing for logos, line art)

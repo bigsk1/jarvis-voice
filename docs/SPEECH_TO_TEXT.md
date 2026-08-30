@@ -27,7 +27,8 @@ The selected mode determines which file supplies the settings:
 - Local: `config/local.env`
 
 Web push-to-talk, wake-word transcription, and the native microphone scripts all
-use the same mode-specific STT configuration.
+use the same mode-specific STT configuration. Existing-file transcription is a
+separate first-class tool described below.
 
 ## OpenAI
 
@@ -103,6 +104,104 @@ STT_MODEL="parakeet-en"
 Keep the Parakeet `.env` and Jarvis mode ENV files out of Git. The public sample
 ENV files contain placeholders only.
 
+The current Parakeet gateway defaults `PARAKEET_MAX_UPLOAD_MB` to 64 MB, but its
+underlying `parakeet.cpp` engine can require substantially more device memory as
+audio duration grows. The upstream project has an
+[open long-audio memory report](https://github.com/mudler/parakeet.cpp/issues/55)
+where a 10-minute clip exhausts device memory while a 5-minute clip succeeds.
+Jarvis therefore ships 300-second file-tool chunks even though its conservative
+compatible upload cap remains 25 MB. Operators with a proven engine/GPU
+combination may raise the chunk duration; upload size alone is not evidence that
+a longer chunk is safe.
+
+## Existing audio files: `transcribe_audio`
+
+The `transcribe_audio` tool accepts an existing Stash artifact or a
+policy-approved local file. Web audio attachments are uploaded to Stash first;
+Internet audio should use `stash` with `kind=url` before transcription. The full
+transcript is saved as a new Stash text artifact, while only a bounded excerpt
+is placed in the immediate model context. That transcript reference can then be
+used with Canvas, `remember`, `manage_intel`, or summarization tools.
+
+This is a Python library/tool path, not a daemon. The native CLI and wake-word
+chain continue to call `bin/stt.py` and do not depend on Jarvis Web being up.
+
+By default the tool inherits the active mode's `STT_PROVIDER` and `STT_MODEL`:
+
+```env
+AUDIO_TRANSCRIBE_PROVIDER=""
+AUDIO_TRANSCRIBE_MODEL=""
+```
+
+Set a dedicated provider/model when short microphone requests and long file
+transcriptions need different hardware or quality:
+
+```env
+AUDIO_TRANSCRIBE_PROVIDER="openai-compatible"
+AUDIO_TRANSCRIBE_MODEL="parakeet-en"
+# Optional dedicated endpoint/key pair. When the URL is blank, both values
+# inherit from STT_BASE_URL/STT_API_KEY. A dedicated URL never inherits STT_API_KEY.
+AUDIO_TRANSCRIBE_BASE_URL="http://STT_HOST_IP:5092/v1"
+AUDIO_TRANSCRIBE_API_KEY="your-stt-server-key"
+```
+
+`openai-compatible` remains the standard multipart
+`/v1/audio/transcriptions` contract. It never receives `OPENAI_API_KEY`.
+`openai` always uses OpenAI's official endpoint and existing
+`OPENAI_API_KEY`. Provider/model are administrator policy and are not LLM tool
+arguments; Web/runtime overrides such as
+`JARVIS_OVERRIDE_AUDIO_TRANSCRIBE_PROVIDER` retain normal precedence.
+
+Long-file controls are intentionally separate from interactive STT:
+
+```env
+AUDIO_TRANSCRIBE_FALLBACK_PROVIDER=""
+# AUDIO_TRANSCRIBE_FALLBACK_MODEL="small.en"
+AUDIO_TRANSCRIBE_TIMEOUT_SECONDS="900"
+AUDIO_TRANSCRIBE_REQUEST_TIMEOUT_SECONDS="300"
+AUDIO_TRANSCRIBE_PROVIDER_MAX_MB="25"
+AUDIO_TRANSCRIBE_MAX_FILE_MB="250"
+AUDIO_TRANSCRIBE_MAX_DURATION_SECONDS="7200"
+AUDIO_TRANSCRIBE_CHUNK_SECONDS="300"
+# Optional Faster-Whisper overrides; blank values inherit STT_DEVICE/type.
+# AUDIO_TRANSCRIBE_DEVICE="cpu"
+# AUDIO_TRANSCRIBE_COMPUTE_TYPE="int8"
+```
+
+Jarvis inspects size, duration, and the presence of an audio stream before any
+provider request. Every remote input is normalized into mono 16 kHz PCM WAV so
+the accepted upload formats do not depend on the selected service. Recordings
+above the configured chunk duration are split near detected silence
+when possible, sent sequentially, and stitched without LLM rewriting. This
+remote normalization requires `ffmpeg`; Faster-Whisper continues to decode the
+original file directly. OpenAI's
+current documented per-file limit is 25 MB, which is why that is the shipped
+compatible default; raise or lower it only to match the selected endpoint.
+Files above the Jarvis hard size/duration limits fail before billable work.
+`AUDIO_TRANSCRIBE_TIMEOUT_SECONDS` is a monotonic deadline for inspection,
+conversion, every provider request, and local inference. Each request timeout is
+clamped to the remaining overall budget; the executor retains a 30-second
+cleanup window so a partial remote transcript can be saved if a later chunk
+fails or reaches the deadline.
+
+The Web upload route runs in the selected cloud/local config scope and uses the
+same bounded file-size and duration reader as the tool. A recording accepted by
+Web therefore cannot be rejected later because Web and the tool resolved
+different mode limits.
+
+File-tool fallback does **not** inherit `STT_FALLBACK_PROVIDER`. Configure
+`AUDIO_TRANSCRIBE_FALLBACK_PROVIDER` explicitly if desired. This avoids a
+short-form microphone policy silently moving a long recording to a billed or
+external provider. A tool profile may disable `transcribe_audio` entirely on a
+host that should not process long recordings.
+
+Complete transcripts are durable source artifacts in Stash. `save_to_stash`
+must be a JSON boolean. When false, a transcript that exceeds the inline limit
+is still forced into Stash so paid output is not discarded. If Stash saving
+fails after provider work, the complete transcript is returned inline and the
+result reports `transcript_save_error`. The result emits `transcript` or
+`transcript_excerpt`, never both.
+
 ## Failure and fallback behavior
 
 STT hard-fails by default:
@@ -169,6 +268,13 @@ Test the same mode-aware command used by native Jarvis microphone flows:
 ```bash
 ./bin/stt.py --mode cloud /path/to/recording.wav
 ./bin/stt.py --mode local /path/to/recording.wav
+```
+
+Test the first-class existing-file tool without starting Jarvis Web:
+
+```bash
+.venv/bin/python skills/transcribe_audio.py \
+  '{"source":"/path/to/recording.m4a"}'
 ```
 
 For the Parakeet server itself, use the contract and SDK tests included in the

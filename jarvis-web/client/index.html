@@ -248,14 +248,21 @@
             </div>
             <div class="image-preview-strip" id="imagePreviewStrip"></div>
           </div>
-          <!-- Document preview (shown when .md/.txt/PDF attached) -->
+          <!-- File preview (shown when .md/.txt/PDF/audio attached) -->
           <div class="file-preview-container" id="filePreviewContainer" style="display: none;">
             <div class="file-preview">
-              <span class="file-icon">📄</span>
+              <span class="file-icon" id="filePreviewIcon">📄</span>
               <span class="file-name" id="filePreviewName"></span>
               <span class="file-size" id="filePreviewSize"></span>
               <button class="remove-image-btn" id="removeFileBtn" title="Remove file">&times;</button>
             </div>
+            <audio
+              controls
+              preload="metadata"
+              class="audio-player file-audio-player"
+              id="fileAudioPreview"
+              style="display: none;"
+            ></audio>
           </div>
           <div class="tool-hints-container" id="toolHintsContainer" style="display: none;"></div>
           <div class="ambient-tool-suggestions" id="ambientToolSuggestions" style="display: none;"></div>
@@ -285,7 +292,7 @@
               <button class="icon-btn upload-btn" id="uploadBtn" title="Attach file">
                 📎
               </button>
-              <input type="file" id="fileInput" accept="image/*,.md,.txt,.pdf,text/plain,text/markdown,application/pdf" multiple style="display: none;">
+              <input type="file" id="fileInput" accept="image/*,audio/*,.md,.txt,.pdf,.aac,.flac,.m4a,.mp3,.mp4,.mpeg,.mpga,.ogg,.wav,.webm,text/plain,text/markdown,application/pdf" multiple style="display: none;">
               <button class="icon-btn convert-btn" id="convertBtn" title="Convert file format (image/video/audio)">
                 🔄
               </button>

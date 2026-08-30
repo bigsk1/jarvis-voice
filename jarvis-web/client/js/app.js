@@ -4032,11 +4032,20 @@ class JarvisApp {
         const pdfAttachment = Array.isArray(msg.data?.attachments)
           ? msg.data.attachments.find((item) => item?.kind === 'pdf' && item?.filename)
           : null;
-        const userContent = pdfAttachment
-          ? `📄 ${pdfAttachment.filename}${msg.content ? `\n${msg.content}` : ''}`
-          : msg.content;
+        const audioAttachment = Array.isArray(msg.data?.attachments)
+          ? msg.data.attachments.find((item) => item?.kind === 'audio')
+          : null;
+        let userContent = msg.content;
+        if (pdfAttachment) {
+          userContent = `📄 ${pdfAttachment.filename}${msg.content ? `\n${msg.content}` : ''}`;
+        }
         const activeBadge = window.commandSystem?.getPersistedDisplay?.(msg.data) || '';
-        this.chat.addUserMessage(userContent, imageData, activeBadge);
+        this.chat.addUserMessage(
+          userContent,
+          imageData,
+          activeBadge,
+          audioAttachment ? [audioAttachment] : null
+        );
       } else if (msg.role === 'assistant') {
         // Pass as separate parameters: text, toolsUsed, data
         this.chat.addAssistantMessage(

@@ -318,6 +318,14 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'output_stash_ref', 'page_results_stash_ref', 'response_json_stash_ref',
         'archive_stash_ref', 'error_code', 'retryable', 'retry_after_seconds',
     ],
+    'transcribe_audio': [
+        'source_filename', 'source_stash_ref', 'size_bytes', 'duration_seconds',
+        'provider_requested', 'provider', 'model', 'fallback_used',
+        'fallback_reason', 'chunk_count', 'transcript_excerpt',
+        'transcript_chars', 'transcript_truncated', 'transcript_stash_ref',
+        'stash_ref', 'space_id', 'stash_forced', 'transcript_save_error',
+        'partial', 'completed_chunks', 'error_code', 'retryable',
+    ],
     'external_network_intel': [
         'action', 'query_type', 'target', 'target_type', 'checked_at',
         'classification', 'event_context', 'registration', 'routing', 'dns',
@@ -2581,6 +2589,10 @@ def _extract_bounded_content_followup(
             ('parsed_json', 'parsed_json', FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS),
             ('parsed_json_excerpt', 'parsed_json_excerpt', FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS),
             ('page_outputs', 'page_outputs', FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS),
+        ),
+        'transcribe_audio': (
+            ('transcript', 'transcript_excerpt', 6000),
+            ('transcript_excerpt', 'transcript_excerpt', 6000),
         ),
         'execute_bash': (
             ('stdout', 'stdout_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),

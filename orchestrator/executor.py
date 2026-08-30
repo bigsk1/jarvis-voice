@@ -187,6 +187,11 @@ class ToolExecutor:
             return 600  # 10 minutes for video generation (typically 2-3 min, up to 5 min for 4k)
         if tool_name == "document_ocr":
             return 1200  # 20 minutes for large GPU OCR jobs plus optional local extraction
+        if tool_name == "transcribe_audio":
+            # Long recordings may be split into several sequential provider
+            # requests. The tool owns the request-level deadlines; retain a
+            # cleanup window outside its configured overall allowance.
+            return max(60, get_int("AUDIO_TRANSCRIBE_TIMEOUT_SECONDS", 900)) + 30
         if tool_name == "create_social_clip":
             return 1200  # 20 minutes — MoneyPrinterTurbo script + stock + TTS + render + download
         if tool_name == "weather":

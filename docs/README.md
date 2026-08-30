@@ -12,7 +12,7 @@
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
 - **[tools/external-network-intel-tool/README.md](tools/external-network-intel-tool/README.md)** - **Passive public IP/domain intelligence** (RDAP, routing, DNS, official cloud ranges, Shodan InternetDB, optional AbuseIPDB; no scanning)
-- **[SPEECH_TO_TEXT.md](SPEECH_TO_TEXT.md)** - **Speech-to-text guide** (OpenAI, Faster-Whisper, self-hosted compatible endpoints, fallback policy, browser mic requirements)
+- **[SPEECH_TO_TEXT.md](SPEECH_TO_TEXT.md)** - **Speech-to-text guide** (OpenAI, Faster-Whisper, self-hosted compatible endpoints, browser/wake-word STT, and long-file `transcribe_audio` policy)
 - **[XAI_PROVIDER.md](XAI_PROVIDER.md)** - 🆕 **xAI Grok provider** (`grok-4.6` recommended default; also `grok-4.5`, `grok-4.3`, `grok-build-0.1`, native search/TTS, in-flight continuation) ⭐ RECOMMENDED
 - **[OPENAI_PROVIDER.md](OPENAI_PROVIDER.md)** - 🆕 **OpenAI provider** (Chat Completions default, optional Responses API routing, hosted tools, in-flight continuation)
 - **[ollama/README.md](ollama/README.md)** - **Ollama local + Ollama Cloud guide** (`OLLAMA_MODEL` vs `OLLAMA_CLOUD_MODEL`, vision uses cloud model in cloud mode / `OLLAMA_VISION_MODEL` in local mode, signed-in daemon, Docker addressing, troubleshooting)

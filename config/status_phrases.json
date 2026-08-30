@@ -185,6 +185,7 @@
     "check_opencode_sessions": "opencode",
     "check_tool_logs": "_family_developer_ops",
     "convert_file": "_family_files",
+    "transcribe_audio": "_family_files",
     "create_alert": "_family_alerts",
     "create_reminder": "_family_reminders",
     "create_social_clip": "_family_video",

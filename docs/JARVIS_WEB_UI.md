@@ -882,6 +882,34 @@ safest fallback because it adds no network egress or API billing.
 
 **Keyboard:** Press `Esc` to cancel recording
 
+### Existing Audio Attachment Transcription
+
+The regular 📎 attachment picker also accepts AAC, FLAC, M4A, MP3, MP4,
+MPEG/MPGA, OGG, WAV, and WebM recordings. Selection alone is local: the file
+is uploaded only after Send, inspected server-side, and committed atomically to
+Stash. The chat turn receives trusted metadata and an exact `stash://` reference,
+then uses `transcribe_audio`; it never treats the filename as a transcript.
+The upload includes the visible cloud/local mode and uses the same bounded
+size/duration policy as the transcription tool.
+
+The browser shows a local, non-autoplaying player while the recording is
+selected. After Send, a player for the exact Stash copy sits directly beneath
+the user-message bubble; conversation reload restores it from the persisted
+attachment metadata.
+Generic audio downloaded to Stash by a tool is rendered after the assistant
+response. Every player includes an open/download fallback for formats the
+browser cannot decode even though the transcription provider accepts them.
+
+This path is separate from push-to-talk and wake-word STT. It uses
+`AUDIO_TRANSCRIBE_*` limits/provider policy, supports the same OpenAI-compatible
+`/v1/audio/transcriptions` contract, chunks long remote recordings, and saves
+the complete transcript back to Stash. See
+[Speech-to-Text](SPEECH_TO_TEXT.md#existing-audio-files-transcribe_audio).
+
+Chat only must be off because transcription is a tool action. A host can also
+disable `transcribe_audio` in its active tool profile without affecting the mic,
+wake-word scripts, or `bin/stt.py`.
+
 ```python
 # In api.py - mode-aware STT
 @api_bp.route('/stt', methods=['POST'])

@@ -20,6 +20,12 @@ from ..services.pdf_upload import (
     get_pdf_upload_max_bytes,
     save_pdf_upload,
 )
+from ..services.audio_upload import (
+    AudioUploadError,
+    check_audio_upload_rate,
+    get_audio_upload_limits,
+    save_audio_upload,
+)
 from ..services.tool_discovery import get_tool_service
 from ..services.usage_metadata import format_usage_markdown
 from ..services.user_profile_service import (
@@ -2946,6 +2952,8 @@ def serve_stash_file(space_id, file_id):
         '.ogg': 'audio/ogg',
         '.opus': 'audio/opus',
         '.m4a': 'audio/mp4',
+        '.mpeg': 'audio/mpeg',
+        '.mpga': 'audio/mpeg',
         '.mp4': 'video/mp4',
         '.webm': 'video/webm',
         '.mov': 'video/quicktime',
@@ -3316,6 +3324,76 @@ def upload_pdf():
         )
         return jsonify(error.to_payload()), error.status_code
 
+
+@api_bp.route('/upload-audio', methods=['POST'])
+@_scoped_request_config
+def upload_audio():
+    """Atomically upload one inspected audio recording directly into Stash."""
+    allowed, retry_after = check_audio_upload_rate(request.remote_addr or "unknown")
+    if not allowed:
+        response = jsonify({
+            "ok": False,
+            "error": f"Too many audio uploads. Try again in {retry_after} seconds.",
+            "error_code": "audio_upload_rate_limited",
+            "retryable": True,
+        })
+        response.status_code = 429
+        response.headers["Retry-After"] = str(retry_after)
+        return response
+
+    try:
+        limits = get_audio_upload_limits()
+        max_bytes = limits.max_file_bytes
+        max_duration_seconds = limits.max_duration_seconds
+    except ValueError:
+        error = AudioUploadError(
+            "Audio transcription limits are invalid in the selected mode.",
+            error_code="audio_upload_configuration_invalid",
+            status_code=500,
+        )
+        return jsonify(error.to_payload()), error.status_code
+    if request.content_length and request.content_length > max_bytes + 1024 * 1024:
+        error = AudioUploadError(
+            f"Audio is too large (max {max_bytes // (1024 * 1024)}MB).",
+            error_code="audio_upload_too_large",
+            status_code=413,
+        )
+        return jsonify(error.to_payload()), error.status_code
+
+    files = request.files.getlist("file")
+    if len(files) != 1 or not files[0].filename:
+        error = AudioUploadError(
+            "Select exactly one audio file.",
+            error_code="audio_upload_missing",
+        )
+        return jsonify(error.to_payload()), error.status_code
+
+    try:
+        attachment, idempotent_replay = save_audio_upload(
+            files[0],
+            request.form.get("upload_id", ""),
+            max_bytes=max_bytes,
+            max_duration_seconds=max_duration_seconds,
+        )
+        return jsonify({
+            "ok": True,
+            "attachment": attachment,
+            "idempotent_replay": idempotent_replay,
+        })
+    except AudioUploadError as exc:
+        return jsonify(exc.to_payload()), exc.status_code
+    except Exception as exc:
+        print(
+            f"[Audio Upload] Unexpected upload failure: {type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        error = AudioUploadError(
+            "The audio file could not be stored. Please retry.",
+            error_code="audio_upload_failed",
+            status_code=500,
+            retryable=True,
+        )
+        return jsonify(error.to_payload()), error.status_code
 
 @api_bp.route('/upload-images', methods=['POST'])
 def upload_images():

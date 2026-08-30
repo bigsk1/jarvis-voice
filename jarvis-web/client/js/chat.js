@@ -439,7 +439,7 @@ class ChatUI {
     this.enhanceBtn = document.getElementById('enhanceBtn');
     this.stopBtn = document.getElementById('stopBtn');
     
-    // File upload elements (images + text files + one PDF)
+    // File upload elements (images + text files + one PDF/audio artifact)
     this.uploadBtn = document.getElementById('uploadBtn');
     this.fileInput = document.getElementById('fileInput');
     this.imagePreviewContainer = document.getElementById('imagePreviewContainer');
@@ -447,11 +447,14 @@ class ChatUI {
     this.imageActionBadge = document.getElementById('imageActionBadge');
     this.clearAllImagesBtn = document.getElementById('clearAllImagesBtn');
     
-    // Text/PDF preview elements
+    // Text/PDF/audio preview elements
     this.filePreviewContainer = document.getElementById('filePreviewContainer');
+    this.filePreviewIcon = document.getElementById('filePreviewIcon');
     this.filePreviewName = document.getElementById('filePreviewName');
     this.filePreviewSize = document.getElementById('filePreviewSize');
     this.removeFileBtn = document.getElementById('removeFileBtn');
+    this.fileAudioPreview = document.getElementById('fileAudioPreview');
+    this.fileAudioPreviewUrl = null;
     
     // File conversion elements
     this.convertBtn = document.getElementById('convertBtn');
@@ -1813,11 +1816,13 @@ class ChatUI {
       return;
     }
     
-    // Attached text/PDF state. PDFs retain one stable upload ID so a retry
-    // after a lost HTTP response resolves to the same Stash artifact.
+    // Attached text/PDF/audio state. Binary artifacts retain one stable upload
+    // ID so a retry after a lost HTTP response resolves to the same Stash item.
     this.attachedFile = null;
     this.attachedPdf = null;
+    this.attachedAudio = null;
     this.pdfUploadPromise = null;
+    this.audioUploadPromise = null;
     
     // Click upload button -> trigger file input
     this.uploadBtn.addEventListener('click', () => {
@@ -1842,14 +1847,14 @@ class ChatUI {
       });
     }
     
-    // Remove text/PDF button
+    // Remove text/PDF/audio button
     if (this.removeFileBtn) {
       this.removeFileBtn.addEventListener('click', () => {
         this.clearAttachedFile();
       });
     }
     
-    // Drag and drop support (images + text files + one PDF)
+    // Drag and drop support (images + text files + one PDF/audio artifact)
     const container = document.querySelector('.chat-input-container');
     if (container) {
       container.addEventListener('dragover', (e) => {
@@ -2487,8 +2492,8 @@ class ChatUI {
   }
 
   async attachImageFiles(files) {
-    if (this.pdfUploadPromise) {
-      Utils.toast('Wait for the current PDF upload to finish', 'info');
+    if (this.pdfUploadPromise || this.audioUploadPromise) {
+      Utils.toast('Wait for the current file upload to finish', 'info');
       return;
     }
     const imageFiles = Array.from(files).filter((file) => file.type.startsWith('image/'));
@@ -2546,18 +2551,19 @@ class ChatUI {
   }
 
   async _attachMultipleFiles(files) {
-    if (this.pdfUploadPromise) {
-      Utils.toast('Wait for the current PDF upload to finish', 'info');
+    if (this.pdfUploadPromise || this.audioUploadPromise) {
+      Utils.toast('Wait for the current file upload to finish', 'info');
       return;
     }
     const imageFiles = files.filter((file) => file.type.startsWith('image/'));
     const pdfFiles = files.filter((file) => this._isPdfFile(file));
+    const audioFiles = files.filter((file) => this._isAudioFile(file));
     const textFiles = files.filter((file) => {
       const ext = file.name.split('.').pop().toLowerCase();
       return ext === 'md' || ext === 'txt' || file.type === 'text/plain' || file.type === 'text/markdown';
     });
 
-    if (imageFiles.length && !textFiles.length && !pdfFiles.length) {
+    if (imageFiles.length && !textFiles.length && !pdfFiles.length && !audioFiles.length) {
       await this.attachImageFiles(imageFiles);
       return;
     }
@@ -2567,12 +2573,12 @@ class ChatUI {
       return;
     }
 
-    if (pdfFiles.length) {
-      Utils.toast('Attach one PDF at a time', 'error');
+    if (pdfFiles.length || audioFiles.length) {
+      Utils.toast('Attach one PDF or audio file at a time', 'error');
       return;
     }
 
-    Utils.toast('Select either images or a single text file', 'error');
+    Utils.toast('Select images or one text, PDF, or audio file', 'error');
   }
 
   /**
@@ -2965,8 +2971,8 @@ class ChatUI {
    */
   async attachFile(file) {
     if (!file) return;
-    if (this.pdfUploadPromise) {
-      Utils.toast('Wait for the current PDF upload to finish', 'info');
+    if (this.pdfUploadPromise || this.audioUploadPromise) {
+      Utils.toast('Wait for the current file upload to finish', 'info');
       return;
     }
     
@@ -2977,10 +2983,12 @@ class ChatUI {
       await this.attachImage(file);
     } else if (this._isPdfFile(file)) {
       await this.attachPdf(file);
+    } else if (this._isAudioFile(file)) {
+      await this.attachAudio(file);
     } else if (isText) {
       await this.attachTextFile(file);
     } else {
-      Utils.toast('Unsupported file type. Use images, PDF, .md, or .txt files.', 'error');
+      Utils.toast('Unsupported file type. Use images, audio, PDF, .md, or .txt files.', 'error');
     }
   }
 
@@ -2991,7 +2999,13 @@ class ChatUI {
     return ext === 'pdf' || mime === 'application/pdf' || mime === 'application/x-pdf';
   }
 
-  _createPdfUploadId() {
+  _isAudioFile(file) {
+    if (!file) return false;
+    const ext = String(file.name || '').split('.').pop().toLowerCase();
+    return ['aac', 'flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'ogg', 'wav', 'webm'].includes(ext);
+  }
+
+  _createArtifactUploadId() {
     if (window.crypto?.randomUUID) {
       return window.crypto.randomUUID();
     }
@@ -3030,12 +3044,35 @@ class ChatUI {
     this.clearAttachedFile();
     this.attachedPdf = {
       file,
-      uploadId: this._createPdfUploadId(),
+      uploadId: this._createArtifactUploadId(),
       attachment: null
     };
-    this._showFilePreview(file.name, file.size);
+    this._showFilePreview(file.name, file.size, 'pdf');
     Utils.toast(`Attached ${file.name}`, 'info', 1500);
     console.log(`[Chat] PDF selected: ${file.name} (${file.size} bytes)`);
+  }
+
+  /**
+   * Select one audio recording locally. Upload is deferred until Send, just
+   * like PDFs, so selection alone never creates a Stash artifact or provider call.
+   */
+  async attachAudio(file) {
+    if (!this._isAudioFile(file)) {
+      Utils.toast('Select a supported audio file', 'error');
+      return;
+    }
+
+    this.clearAttachedImage();
+    this.clearAttachedFile();
+    this.attachedAudio = {
+      file,
+      uploadId: this._createArtifactUploadId(),
+      attachment: null
+    };
+    this._showFilePreview(file.name, file.size, 'audio');
+    this._showPendingAudioPreview(file);
+    Utils.toast(`Attached ${file.name}`, 'info', 1500);
+    console.log(`[Chat] Audio selected: ${file.name} (${file.size} bytes)`);
   }
   
   /**
@@ -3069,7 +3106,7 @@ class ChatUI {
       };
       
       // Show text file preview
-      this._showFilePreview(file.name, file.size);
+      this._showFilePreview(file.name, file.size, 'text');
       
       Utils.toast(`Attached ${file.name}`, 'info', 1500);
       console.log(`[Chat] Text file attached: ${file.name} (${file.size} bytes)`);
@@ -3081,10 +3118,13 @@ class ChatUI {
   }
   
   /**
-   * Show text/PDF file preview indicator.
+   * Show text/PDF/audio file preview indicator.
    */
-  _showFilePreview(name, size) {
+  _showFilePreview(name, size, kind = 'document') {
     if (this.filePreviewContainer && this.filePreviewName && this.filePreviewSize) {
+      if (this.filePreviewIcon) {
+        this.filePreviewIcon.textContent = kind === 'audio' ? '🎵' : '📄';
+      }
       this.filePreviewName.textContent = name;
       const sizeLabel = size >= 1024 * 1024
         ? `${(size / (1024 * 1024)).toFixed(1)} MB`
@@ -3093,18 +3133,48 @@ class ChatUI {
       this.filePreviewContainer.style.display = 'block';
     }
   }
+
+  /**
+   * Preview a browser-selected audio file without uploading it or exposing a
+   * local path. The object URL exists only until the attachment is cleared.
+   */
+  _showPendingAudioPreview(file) {
+    this._clearPendingAudioPreview();
+    if (!file || !this.fileAudioPreview || !window.URL?.createObjectURL) return;
+
+    this.fileAudioPreviewUrl = window.URL.createObjectURL(file);
+    this.fileAudioPreview.src = this.fileAudioPreviewUrl;
+    this.fileAudioPreview.style.display = 'block';
+    this.fileAudioPreview.load?.();
+  }
+
+  _clearPendingAudioPreview() {
+    if (this.fileAudioPreview) {
+      this.fileAudioPreview.pause?.();
+      this.fileAudioPreview.removeAttribute('src');
+      this.fileAudioPreview.style.display = 'none';
+      this.fileAudioPreview.load?.();
+    }
+    if (this.fileAudioPreviewUrl && window.URL?.revokeObjectURL) {
+      window.URL.revokeObjectURL(this.fileAudioPreviewUrl);
+    }
+    this.fileAudioPreviewUrl = null;
+  }
   
   /**
-   * Clear the attached text file or PDF.
+   * Clear the attached text file, PDF, or audio recording.
    */
   clearAttachedFile() {
-    if (this.pdfUploadPromise) {
-      Utils.toast('Wait for the current PDF upload to finish', 'info');
+    if (this.pdfUploadPromise || this.audioUploadPromise) {
+      Utils.toast('Wait for the current file upload to finish', 'info');
       return false;
     }
     this.attachedFile = null;
     this.attachedPdf = null;
+    this.attachedAudio = null;
     this.pdfUploadPromise = null;
+    this.audioUploadPromise = null;
+    this._clearPendingAudioPreview();
     if (this.filePreviewContainer) {
       this.filePreviewContainer.style.display = 'none';
     }
@@ -3113,6 +3183,9 @@ class ChatUI {
     }
     if (this.filePreviewSize) {
       this.filePreviewSize.textContent = '';
+    }
+    if (this.filePreviewIcon) {
+      this.filePreviewIcon.textContent = '📄';
     }
     return true;
   }
@@ -3157,6 +3230,48 @@ class ChatUI {
       }
     }
   }
+
+  async _uploadAttachedAudio(audioState) {
+    if (audioState?.attachment) {
+      return audioState.attachment;
+    }
+    if (!audioState?.file || !audioState?.uploadId) {
+      throw new Error('The selected audio file is no longer available. Please attach it again.');
+    }
+    if (this.audioUploadPromise) {
+      return this.audioUploadPromise;
+    }
+
+    const formData = new FormData();
+    formData.append('file', audioState.file);
+    formData.append('upload_id', audioState.uploadId);
+    formData.append('mode', this.socket?.mode || window.jarvisSocket?.mode || 'cloud');
+
+    const uploadPromise = (async () => {
+      const response = await fetch('/api/upload-audio', {
+        method: 'POST',
+        body: formData
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.ok || !payload.attachment?.stash_ref) {
+        const error = new Error(payload.error || 'Audio upload failed. Please retry.');
+        error.code = payload.error_code || 'audio_upload_failed';
+        error.retryable = Boolean(payload.retryable);
+        throw error;
+      }
+      audioState.attachment = payload.attachment;
+      return payload.attachment;
+    })();
+
+    this.audioUploadPromise = uploadPromise;
+    try {
+      return await uploadPromise;
+    } finally {
+      if (this.audioUploadPromise === uploadPromise) {
+        this.audioUploadPromise = null;
+      }
+    }
+  }
   
   /**
    * Attach an image file (upload to server, then show action modal)
@@ -3179,7 +3294,7 @@ class ChatUI {
   }
 
   /**
-   * Send a message with optional image(s), browser-read text, or one PDF.
+   * Send a message with optional image(s), browser-read text, PDF, or audio.
    */
   async sendMessage() {
     let rawMessage = this.inputField.value.trim();
@@ -3187,8 +3302,10 @@ class ChatUI {
     const imagePayload = this._getImageAttachmentPayload();
     const hasTextFile = this.attachedFile !== null;
     const pdfState = this.attachedPdf;
-    const hasPdf = pdfState !== null;
-    const hasFile = hasTextFile || hasPdf;
+    const audioState = this.attachedAudio;
+    const hasPdf = pdfState != null;
+    const hasAudio = audioState != null;
+    const hasFile = hasTextFile || hasPdf || hasAudio;
     const hasSelectedToolHints = this.selectedToolHints.length > 0;
     
     // Need either message, image, or file
@@ -3224,8 +3341,8 @@ class ChatUI {
       Utils.toast('Turn off Chat only before using tools or workflows', 'info');
       return;
     }
-    if (effectiveChatOnly && (hasImage || hasPdf)) {
-      Utils.toast('Turn off Chat only before analyzing images or PDFs', 'info');
+    if (effectiveChatOnly && (hasImage || hasPdf || hasAudio)) {
+      Utils.toast('Turn off Chat only before analyzing images, PDFs, or audio', 'info');
       return;
     }
     if (!parsed.message && requestedChatOnly && !hasImage && !hasFile) {
@@ -3271,17 +3388,22 @@ class ChatUI {
       activeBadge += (activeBadge ? ' ' : '') + '<span class="badge badge-feedback">📊</span>';
     }
     
-    // Add a document indicator without exposing local browser paths.
-    if (hasFile) {
-      const fileLabel = `📄 ${hasPdf ? pdfState.file.name : this.attachedFile.name}`;
+    // Add an artifact indicator without exposing local browser paths. Audio
+    // gets a richer player inside the message bubble after its Stash upload.
+    if (hasFile && !hasAudio) {
+      const fileName = hasPdf
+        ? pdfState.file.name
+        : this.attachedFile.name;
+      const fileLabel = `📄 ${fileName}`;
       displayMessage = displayMessage ? `${fileLabel}\n${displayMessage}` : fileLabel;
     }
 
-    // Block duplicate sends while the PDF is uploaded. On failure the browser
-    // File, upload ID, and typed message all remain available for a clean retry.
+    // Block duplicate sends while a binary artifact is uploaded. On failure
+    // the browser File, upload ID, and typed message remain available to retry.
     this.isProcessing = true;
     this.updateSendButton();
     let pdfAttachment = null;
+    let audioAttachment = null;
     if (hasPdf) {
       try {
         Utils.toast('Uploading PDF to Stash…', 'info', 1500);
@@ -3294,6 +3416,23 @@ class ChatUI {
         return;
       }
       if (this.attachedPdf !== pdfState) {
+        this.isProcessing = false;
+        this.updateSendButton();
+        return;
+      }
+    }
+    if (hasAudio) {
+      try {
+        Utils.toast('Uploading audio to Stash…', 'info', 1500);
+        audioAttachment = await this._uploadAttachedAudio(audioState);
+      } catch (err) {
+        console.error('[Chat] Audio upload failed:', err);
+        this.isProcessing = false;
+        this.updateSendButton();
+        Utils.toast(err.message || 'Audio upload failed. Please retry.', 'error', 4000);
+        return;
+      }
+      if (this.attachedAudio !== audioState) {
         this.isProcessing = false;
         this.updateSendButton();
         return;
@@ -3315,7 +3454,8 @@ class ChatUI {
       prompt_name: parsed.prompt,
       tool_hints: toolHints,
       tool_policy: this.chatOnlyEnabled ? 'none' : 'auto'
-    }, requestFeedback, this.attachedFile, pdfAttachment ? [pdfAttachment] : null);
+    }, requestFeedback, this.attachedFile,
+      pdfAttachment ? [pdfAttachment] : (audioAttachment ? [audioAttachment] : null));
     if (!sent) {
       this.isProcessing = false;
       this.updateSendButton();
@@ -3324,7 +3464,15 @@ class ChatUI {
     }
 
     // Commit the local UI only after the upload and socket handoff both succeed.
-    this.addUserMessage(displayMessage, imagePayload, activeBadge);
+    if (hasAudio && !displayMessage) {
+      displayMessage = 'Transcribe this audio recording.';
+    }
+    this.addUserMessage(
+      displayMessage,
+      imagePayload,
+      activeBadge,
+      audioAttachment ? [audioAttachment] : null
+    );
     this.inputField.value = '';
     this.selectedToolHints = [];
     this._renderToolHintChips();
@@ -3337,9 +3485,9 @@ class ChatUI {
   }
 
   /**
-   * Add user message to chat (with optional image(s) and active badge)
+   * Add user message to chat with optional image/audio attachments and badge.
    */
-  addUserMessage(text, imageData = null, activeBadge = '') {
+  addUserMessage(text, imageData = null, activeBadge = '', attachments = null) {
     const messageEl = document.createElement('div');
     messageEl.className = 'message user';
     
@@ -3368,8 +3516,18 @@ class ChatUI {
       // Don't escape - activeBadge may contain valid HTML (like feedback badge)
       badgeHtml = `<div class="command-badge">${activeBadge}</div>`;
     }
+
+    const audioAttachment = Array.isArray(attachments)
+      ? attachments.find((item) => item?.kind === 'audio')
+      : null;
+    const normalizedAudio = this._normalizeAudioAttachment(audioAttachment);
+    const audioHtml = normalizedAudio
+      ? this._renderAudioPlayerHtml(normalizedAudio, { cardClass: 'user-audio-attachment' })
+      : '';
     
-    const defaultPromptText = images.length > 1 ? 'What\'s in these images?' : 'What\'s in this image?';
+    const defaultPromptText = normalizedAudio
+      ? 'Transcribe this audio recording.'
+      : (images.length > 1 ? 'What\'s in these images?' : 'What\'s in this image?');
     const defaultPrompt = `<em>${defaultPromptText}</em>`;
     messageEl._jarvisMarkdownContent = text || defaultPromptText;
 
@@ -3379,6 +3537,7 @@ class ChatUI {
         ${imageHtml}
         ${text ? Utils.escapeHtml(text) : defaultPrompt}
       </div>
+      ${audioHtml}
     `;
     
     this.messagesContainer.appendChild(messageEl);
@@ -3579,6 +3738,10 @@ class ChatUI {
     let audioHtml = '';
     let audioUrl = null;
     let audioTitle = 'Generated Music';
+    let audioFilename = 'generated-audio.mp3';
+    let audioMimeType = 'audio/mpeg';
+    let audioDuration = '';
+    let genericStashAudio = false;
     
     // Method 1: Check data.generate_music object
     const musicData = data.generate_music;
@@ -3589,21 +3752,33 @@ class ChatUI {
         || musicData.file_url;
       
       // If we have a stash reference, convert to API URL
-      if (!audioUrl && musicData.stash_ref) {
-        const stashMatch = musicData.stash_ref.match(/stash:\/\/([^/]+)\/(.+)/);
-        if (stashMatch) {
-          audioUrl = `/api/stash/${stashMatch[1]}/${stashMatch[2]}`;
-        }
+      if (!audioUrl) {
+        audioUrl = Utils.stashRefToApiUrl(
+          musicData.stash_ref || musicData.data?.stash_ref
+        );
       }
       
       // Or get the filename from file_path
       if (!audioUrl && musicData.file_path) {
         const musicFilename = musicData.file_path.split('/').pop();
-        audioUrl = `/api/music/${musicFilename}`;
+        audioUrl = `/api/music/${encodeURIComponent(musicFilename)}`;
       }
       
       // Get title
       audioTitle = musicData.title || musicData.data?.title || 'Generated Music';
+      audioFilename = musicData.filename
+        || musicData.data?.filename
+        || (musicData.file_path ? musicData.file_path.split('/').pop() : audioFilename);
+      audioMimeType = this._inferAudioMimeType(
+        audioUrl,
+        audioFilename,
+        musicData.mime_type || musicData.data?.mime_type
+      );
+      audioDuration = musicData.duration_seconds
+        || musicData.duration
+        || musicData.data?.duration_seconds
+        || musicData.data?.duration
+        || '';
     }
     
     // Method 2: Search in tool results data
@@ -3616,35 +3791,59 @@ class ChatUI {
           || musicResult.data?.audio_url
           || musicResult.file_url;
         
-        if (!audioUrl && musicResult.stash_ref) {
-          const stashMatch = musicResult.stash_ref.match(/stash:\/\/([^/]+)\/(.+)/);
-          if (stashMatch) {
-            audioUrl = `/api/stash/${stashMatch[1]}/${stashMatch[2]}`;
-          }
+        if (!audioUrl) {
+          audioUrl = Utils.stashRefToApiUrl(
+            musicResult.stash_ref || musicResult.data?.stash_ref
+          );
         }
         
         if (!audioUrl && musicResult.file_path) {
           const musicFilename = musicResult.file_path.split('/').pop();
-          audioUrl = `/api/music/${musicFilename}`;
+          audioUrl = `/api/music/${encodeURIComponent(musicFilename)}`;
         }
         
         audioTitle = musicResult.title || musicResult.data?.title || audioTitle;
+        audioFilename = musicResult.filename
+          || musicResult.data?.filename
+          || (musicResult.file_path ? musicResult.file_path.split('/').pop() : audioFilename);
+        audioMimeType = this._inferAudioMimeType(
+          audioUrl,
+          audioFilename,
+          musicResult.mime_type || musicResult.data?.mime_type
+        );
+        audioDuration = musicResult.duration_seconds
+          || musicResult.duration
+          || musicResult.data?.duration_seconds
+          || musicResult.data?.duration
+          || '';
       }
     }
-    
+
+    // Generic Stash audio: downloaded public recordings and audio artifacts
+    // from any tool get a player without hardcoding each tool name.
+    if (!audioUrl) {
+      const genericAudio = this._findAudioFromToolResults(
+        toolResultsData,
+        ['convert_file']
+      );
+      if (genericAudio) {
+        audioUrl = genericAudio.audioUrl;
+        audioTitle = genericAudio.audioTitle;
+        audioFilename = genericAudio.audioFilename;
+        audioMimeType = genericAudio.audioMimeType;
+        audioDuration = genericAudio.audioDuration;
+        genericStashAudio = true;
+      }
+    }
+
     if (audioUrl) {
-      audioHtml = `
-        <div class="message-audio">
-          <div class="audio-header">
-            <span class="audio-icon">🎵</span>
-            <span class="audio-title">${Utils.escapeHtml(audioTitle)}</span>
-          </div>
-          <audio controls preload="metadata" class="audio-player">
-            <source src="${audioUrl}" type="audio/mpeg">
-            Your browser does not support audio playback.
-          </audio>
-        </div>
-      `;
+      audioHtml = this._renderAudioPlayerHtml({
+        audioUrl,
+        audioTitle,
+        audioFilename,
+        audioMimeType,
+        audioDuration,
+      });
     }
     
     // Check for generated video
@@ -4169,11 +4368,12 @@ class ChatUI {
       ${shoppingHtml}
       ${imageHtml}
       ${convertedFileHtml}
-      ${audioHtml}
+      ${genericStashAudio ? '' : audioHtml}
       ${videoHtml}
       ${youtubeEmbedsHtml}
       ${canvasPreviewHtml}
       ${messageBubbleHtml}
+      ${genericStashAudio ? audioHtml : ''}
     `;
     
     // Add click handler for details toggle
@@ -4579,6 +4779,148 @@ class ChatUI {
     return `${excerpt}... [truncated]`;
   }
 
+  _safeMediaUrlForAttr(raw) {
+    const value = String(raw || '').trim();
+    if (!value) return '';
+    if (value.startsWith('/') && !value.startsWith('//')) {
+      return Utils.escapeHtml(value);
+    }
+    return Utils.safeHttpUrlForAttr(value);
+  }
+
+  _inferAudioMimeType(urlOrPath = '', filename = '', declaredMime = '') {
+    const normalizedMime = String(declaredMime || '').split(';', 1)[0].trim().toLowerCase();
+    if (normalizedMime.startsWith('audio/')) return normalizedMime;
+
+    const candidate = String(filename || urlOrPath || '').toLowerCase().split(/[?#]/, 1)[0];
+    if (candidate.endsWith('.wav')) return 'audio/wav';
+    if (candidate.endsWith('.flac')) return 'audio/flac';
+    if (candidate.endsWith('.ogg')) return 'audio/ogg';
+    if (candidate.endsWith('.opus')) return 'audio/opus';
+    if (candidate.endsWith('.aac')) return 'audio/aac';
+    if (candidate.endsWith('.webm')) return 'audio/webm';
+    if (candidate.endsWith('.m4a') || candidate.endsWith('.mp4')) return 'audio/mp4';
+    return 'audio/mpeg';
+  }
+
+  _isAudioMedia(filename = '', mimeType = '', directUrl = '') {
+    const audioExtensions = /\.(aac|flac|m4a|mp3|mpeg|mpga|ogg|opus|wav)(\?|$|#)/i;
+    if (String(mimeType || '').toLowerCase().startsWith('audio/')) return true;
+    if (audioExtensions.test(String(filename))) return true;
+    return Boolean(directUrl && audioExtensions.test(String(directUrl)));
+  }
+
+  _formatAudioDuration(value) {
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds) || seconds <= 0) return '';
+    const rounded = Math.round(seconds);
+    const minutes = Math.floor(rounded / 60);
+    const remainder = String(rounded % 60).padStart(2, '0');
+    return minutes > 0 ? `${minutes}:${remainder}` : `${rounded}s`;
+  }
+
+  _normalizeAudioAttachment(attachment) {
+    if (!attachment || typeof attachment !== 'object' || attachment.kind !== 'audio') {
+      return null;
+    }
+    const audioUrl = Utils.stashRefToApiUrl(attachment.stash_ref);
+    if (!audioUrl) return null;
+
+    const filename = String(attachment.filename || attachment.name || 'Audio recording');
+    return {
+      audioUrl,
+      audioTitle: filename,
+      audioFilename: filename,
+      audioMimeType: this._inferAudioMimeType(
+        audioUrl,
+        filename,
+        attachment.mime_type
+      ),
+      audioDuration: attachment.duration_seconds || attachment.duration || '',
+    };
+  }
+
+  _renderAudioPlayerHtml(audio, options = {}) {
+    if (!audio || typeof audio !== 'object') return '';
+    const audioUrl = this._safeMediaUrlForAttr(audio.audioUrl);
+    if (!audioUrl) return '';
+
+    const title = String(audio.audioTitle || audio.audioFilename || 'Audio');
+    const filename = String(audio.audioFilename || 'audio');
+    const mimeType = this._inferAudioMimeType(
+      audio.audioUrl,
+      filename,
+      audio.audioMimeType
+    );
+    const duration = this._formatAudioDuration(audio.audioDuration);
+    const cardClass = options.cardClass === 'user-audio-attachment'
+      ? ' user-audio-attachment'
+      : '';
+
+    return `
+      <div class="message-audio${cardClass}">
+        <div class="audio-header">
+          <span class="audio-icon">🎵</span>
+          <span class="audio-title">${Utils.escapeHtml(title)}</span>
+        </div>
+        <audio controls preload="metadata" class="audio-player">
+          <source src="${audioUrl}" type="${Utils.escapeHtml(mimeType)}">
+          Your browser does not support audio playback.
+        </audio>
+        <div class="audio-info">
+          ${duration ? `<span>${Utils.escapeHtml(duration)}</span>` : '<span></span>'}
+          <span class="audio-actions">
+            <a
+              href="${audioUrl}"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="audio-open-link"
+            >Open</a>
+            <a
+              href="${audioUrl}"
+              download="${Utils.escapeHtml(filename)}"
+              class="audio-download-link"
+            >Download</a>
+          </span>
+        </div>
+      </div>
+    `;
+  }
+
+  /** Find the first generic Stash-backed audio artifact from any tool result. */
+  _findAudioFromToolResults(toolResultsData, excludeTools = []) {
+    if (!toolResultsData || typeof toolResultsData !== 'object') return null;
+
+    for (const [toolName, toolResult] of Object.entries(toolResultsData)) {
+      if (excludeTools.includes(toolName)) continue;
+
+      const candidates = Array.isArray(toolResult) ? toolResult : [toolResult];
+      for (const candidate of candidates) {
+        const media = this._extractMediaFieldsFromToolResult(candidate);
+        if (!media) continue;
+        if (!this._isAudioMedia(media.filename, media.mimeType, media.directUrl)) continue;
+
+        const audioUrl = Utils.stashRefToApiUrl(media.stashRef);
+        if (!audioUrl) continue;
+        const title = String(media.title || media.filename || 'Audio');
+
+        return {
+          audioUrl,
+          audioTitle: title.length > 80 ? `${title.substring(0, 80)}...` : title,
+          audioFilename: media.filename || 'audio',
+          audioMimeType: this._inferAudioMimeType(
+            audioUrl,
+            media.filename,
+            media.mimeType
+          ),
+          audioDuration: media.duration,
+        };
+      }
+    }
+
+    return null;
+  }
+
   _inferVideoMimeType(urlOrPath = '', filename = '', declaredMime = '') {
     if (declaredMime && String(declaredMime).toLowerCase().startsWith('video/')) {
       return String(declaredMime).toLowerCase();
@@ -4598,25 +4940,58 @@ class ChatUI {
     if (!toolResult || typeof toolResult !== 'object') return null;
 
     const saved = toolResult.saved || toolResult.data?.saved || {};
-    const filePath = toolResult.file_path || saved.path || saved.file_path || '';
+    const nested = toolResult.data && typeof toolResult.data === 'object'
+      ? toolResult.data
+      : {};
+    const filePath = toolResult.file_path
+      || nested.file_path
+      || saved.path
+      || saved.file_path
+      || '';
     const filename = toolResult.filename
       || toolResult.name
+      || nested.filename
+      || nested.name
       || saved.filename
       || (filePath ? String(filePath).split('/').pop() : '');
 
     return {
-      stashRef: toolResult.stash_ref || toolResult.ref || saved.stash_ref || saved.ref || null,
+      stashRef: toolResult.stash_ref
+        || toolResult.ref
+        || nested.stash_ref
+        || nested.ref
+        || saved.stash_ref
+        || saved.ref
+        || null,
       filename,
-      mimeType: String(toolResult.mime_type || saved.mime_type || '').toLowerCase(),
-      directUrl: toolResult.video_url || toolResult.file_url || toolResult.url || null,
+      mimeType: String(
+        toolResult.mime_type || nested.mime_type || saved.mime_type || ''
+      ).toLowerCase(),
+      directUrl: toolResult.audio_url
+        || toolResult.video_url
+        || toolResult.file_url
+        || nested.audio_url
+        || nested.video_url
+        || nested.file_url
+        || toolResult.url
+        || nested.url
+        || null,
       title: toolResult.video_title
         || toolResult.title
         || toolResult.prompt
         || toolResult.subject
+        || nested.video_title
+        || nested.title
+        || nested.prompt
+        || nested.subject
         || null,
-      duration: toolResult.duration_seconds || toolResult.duration || toolResult.data?.duration || '',
-      hasAudio: toolResult.has_audio || false,
-      provider: toolResult.provider || '',
+      duration: toolResult.duration_seconds
+        || toolResult.duration
+        || nested.duration_seconds
+        || nested.duration
+        || '',
+      hasAudio: toolResult.has_audio || nested.has_audio || false,
+      provider: toolResult.provider || nested.provider || '',
     };
   }
 

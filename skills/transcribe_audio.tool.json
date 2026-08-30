@@ -1,0 +1,43 @@
+{
+  "enabled": true,
+  "name": "transcribe_audio",
+  "description": "Transcribe an existing audio recording into text. Accepts a Jarvis Stash reference or policy-approved local audio path in AAC, FLAC, M4A, MP3, MP4, MPEG, MPGA, OGG, WAV, or WebM format. Use this for uploaded recordings, downloaded public audio already saved with stash, meeting notes, interviews, voice memos, podcasts, and workflow audio artifacts. Long remote files are bounded, split near silence when possible, transcribed sequentially, stitched without LLM rewriting, and saved as a full Stash transcript with a bounded inline excerpt. Pair the returned transcript_stash_ref with stash, canvas, remember, manage_intel, or text_summarizer. Do not use convert_file when the user wants words rather than another media format.",
+  "complementary_tools": [
+    "stash",
+    "canvas",
+    "remember",
+    "manage_intel",
+    "text_summarizer"
+  ],
+  "script": "transcribe_audio.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "source": {
+        "type": "string",
+        "description": "Audio source as stash://space_id/file_id or a policy-approved local file path. Save Internet audio with stash kind=url first."
+      },
+      "save_to_stash": {
+        "type": "boolean",
+        "description": "Save the complete transcript as a durable Stash text artifact. Default true. Long transcripts are forced into Stash even when false so provider output is not discarded."
+      },
+      "output_space_id": {
+        "type": "string",
+        "description": "Optional existing Stash space for the transcript."
+      },
+      "output_name": {
+        "type": "string",
+        "description": "Optional safe .txt or .md filename for the saved transcript."
+      }
+    },
+    "required": ["source"],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": true,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  }
+}

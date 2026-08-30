@@ -788,6 +788,10 @@ class ContextAssembler:
             # and Stash refs. Preserve enough page-attributed text or structured
             # extraction output for the immediate answer.
             return 6000
+        if lowered == "transcribe_audio":
+            # Full transcripts live in Stash. Preserve the bounded excerpt,
+            # provider provenance, and artifact reference for the answer turn.
+            return 8000
         if lowered in {"trakt_movies", "trakt_tv_shows", "trakt_account"}:
             # Preserve useful public or account-aware media context, exact
             # links, constraints, and safe account metadata.
@@ -1726,6 +1730,45 @@ class ContextAssembler:
             )
             if isinstance((value := data.get(key)), list)
         }
+        return preview
+
+    def build_transcribe_audio_data_preview(self, data: Any) -> dict[str, Any]:
+        """Preserve one bounded transcript field plus durable artifact metadata."""
+
+        if not isinstance(data, dict):
+            return {}
+        preview = {
+            key: data[key]
+            for key in (
+                "source_filename",
+                "source_stash_ref",
+                "size_bytes",
+                "duration_seconds",
+                "provider_requested",
+                "provider",
+                "model",
+                "fallback_used",
+                "fallback_reason",
+                "chunk_count",
+                "completed_chunks",
+                "partial",
+                "transcript_chars",
+                "transcript_truncated",
+                "transcript_stash_ref",
+                "stash_ref",
+                "space_id",
+                "stash_forced",
+                "transcript_save_error",
+                "error_code",
+                "retryable",
+            )
+            if data.get(key) not in (None, "", [], {})
+        }
+        for field in ("transcript", "transcript_excerpt"):
+            value = data.get(field)
+            if isinstance(value, str) and value:
+                preview[field] = self.truncate_preview_text(value, 6000)
+                break
         return preview
 
     def build_yelp_data_preview(self, data: Any) -> dict[str, Any]:
@@ -3075,6 +3118,7 @@ class ContextAssembler:
             # small, so an upstream regression cannot hand OAuth material to
             # the response model or follow-up context.
             "trakt_account",
+            "transcribe_audio",
         }
         if result_chars_total <= max_chars and not force_compact_projection:
             return full_serialized, result_chars_total, result_chars_total, False
@@ -3164,6 +3208,8 @@ class ContextAssembler:
                 data_preview = self.build_tmdb_data_preview(data)
             elif normalized_tool_name == "flight_search":
                 data_preview = self.build_flight_data_preview(data)
+            elif normalized_tool_name == "transcribe_audio":
+                data_preview = self.build_transcribe_audio_data_preview(data)
             else:
                 data_preview = self.build_preview_value(data, parent_key="data")
             preview_payload = {

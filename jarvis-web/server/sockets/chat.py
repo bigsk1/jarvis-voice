@@ -40,6 +40,7 @@ from ..services.followup_extractor import (
     FOLLOWUP_SUMMARY_MAX_CHARS as _FOLLOWUP_SUMMARY_MAX_CHARS,
 )
 from ..services.pdf_upload import PDFUploadError, validate_pdf_attachments
+from ..services.audio_upload import AudioUploadError, validate_audio_attachments
 
 
 _WEB_VISION_GROUNDING_INSTRUCTION = """Perform the visual analysis now using only the attached image pixels.
@@ -360,6 +361,30 @@ class ChatHandler:
         )
 
     @staticmethod
+    def _format_audio_attachment_context(attachment: dict) -> str:
+        """Render trusted audio metadata without pretending it is a transcript."""
+        filename = str(attachment.get("filename") or "recording").replace("\n", " ")
+        stash_ref = str(attachment.get("stash_ref") or "")
+        size_bytes = int(attachment.get("size_bytes") or 0)
+        duration_seconds = float(attachment.get("duration_seconds") or 0)
+        mime_type = str(attachment.get("mime_type") or "audio/*").replace("\n", " ")
+        return (
+            "[ATTACHED AUDIO ARTIFACT]\n"
+            f"Filename: {filename}\n"
+            f"Stash reference: {stash_ref}\n"
+            f"Size: {size_bytes} bytes\n"
+            f"MIME type: {mime_type}\n"
+            f"Duration: {duration_seconds:.3f} seconds\n"
+            "Audio access rule: This metadata does not reveal the spoken content. "
+            "Do not claim to know, summarize, or answer questions about the recording "
+            "until the exact artifact is transcribed. Use transcribe_audio with the exact "
+            "Stash reference as source. The tool returns a bounded excerpt and saves the "
+            "complete transcript as a new Stash artifact for follow-up tools. Provider-native "
+            "models cannot access stash:// directly.\n"
+            "[END ATTACHED AUDIO ARTIFACT]"
+        )
+
+    @staticmethod
     def _stored_pdf_attachments(message_data: object) -> list[dict]:
         """Return the bounded server-persisted attachment collection for history."""
         if not isinstance(message_data, dict):
@@ -372,6 +397,25 @@ class ChatHandler:
             not isinstance(attachment, dict)
             or attachment.get("kind") != "pdf"
             or not str(attachment.get("stash_ref") or "").startswith("stash://space_web_pdf_")
+        ):
+            return []
+        return [attachment]
+
+    @staticmethod
+    def _stored_audio_attachments(message_data: object) -> list[dict]:
+        """Return bounded server-persisted Web audio metadata for history."""
+        if not isinstance(message_data, dict):
+            return []
+        attachments = message_data.get("attachments")
+        if not isinstance(attachments, list) or len(attachments) != 1:
+            return []
+        attachment = attachments[0]
+        if (
+            not isinstance(attachment, dict)
+            or attachment.get("kind") != "audio"
+            or not str(attachment.get("stash_ref") or "").startswith(
+                "stash://space_web_audio_"
+            )
         ):
             return []
         return [attachment]
@@ -2297,12 +2341,23 @@ Previous structured data:
             # Text file context (read client-side, no server upload needed)
             file_context = data.get('file_context')  # {name, content, size}
 
-            # PDF attachments are uploaded first through the authenticated HTTP
-            # endpoint. Resolve the client reference back to server-owned Stash
-            # metadata before persisting or exposing it to orchestration.
+            # Binary document/audio attachments are uploaded first through an
+            # authenticated HTTP endpoint. Resolve the client reference back to
+            # server-owned Stash metadata before persistence or orchestration.
+            pdf_attachments = []
+            audio_attachments = []
             try:
-                pdf_attachments = validate_pdf_attachments(data.get('attachments'))
-            except PDFUploadError as exc:
+                raw_attachments = data.get('attachments')
+                attachment_kind = None
+                if isinstance(raw_attachments, list) and len(raw_attachments) == 1:
+                    candidate = raw_attachments[0]
+                    if isinstance(candidate, dict):
+                        attachment_kind = candidate.get('kind')
+                if attachment_kind == 'audio':
+                    audio_attachments = validate_audio_attachments(raw_attachments)
+                else:
+                    pdf_attachments = validate_pdf_attachments(raw_attachments)
+            except (PDFUploadError, AudioUploadError) as exc:
                 emit('chat:error', {
                     'error': str(exc),
                     'error_code': exc.error_code,
@@ -2346,14 +2401,22 @@ Previous structured data:
             from vision_multimodal import max_vision_images, normalize_web_image_payload
             normalized_image = normalize_web_image_payload(image_data)
 
-            if prompt_meta['tool_policy'] == 'none' and (normalized_image or pdf_attachments):
+            if prompt_meta['tool_policy'] == 'none' and (
+                normalized_image or pdf_attachments or audio_attachments
+            ):
                 emit('chat:error', {
-                    'error': 'Turn off Chat only before analyzing images or PDFs.',
+                    'error': 'Turn off Chat only before analyzing images, PDFs, or audio.',
                     'conversation_id': conversation_id,
                 })
                 return
 
-            if not message and not normalized_image and not file_context and not pdf_attachments:
+            if (
+                not message
+                and not normalized_image
+                and not file_context
+                and not pdf_attachments
+                and not audio_attachments
+            ):
                 emit('chat:error', {
                     'error': 'Empty message',
                     'conversation_id': conversation_id
@@ -2373,6 +2436,9 @@ Previous structured data:
             # user action. Selection/upload alone never starts orchestration.
             if not message and pdf_attachments:
                 message = "What's in this PDF?"
+
+            if not message and audio_attachments:
+                message = "Transcribe this audio recording."
 
             image_limit = max_vision_images(mode)
             if normalized_image:
@@ -2431,6 +2497,9 @@ Previous structured data:
             if pdf_attachments:
                 user_msg_data['attachments'] = pdf_attachments
                 user_msg_data['attached_file'] = pdf_attachments[0]['filename']
+            if audio_attachments:
+                user_msg_data['attachments'] = audio_attachments
+                user_msg_data['attached_file'] = audio_attachments[0]['filename']
             if prompt_meta.get('prompt_name'):
                 user_msg_data['prompt'] = prompt_meta['prompt_name']
             if prompt_meta.get('tool_hints'):
@@ -2472,6 +2541,7 @@ Previous structured data:
                 request_feedback,
                 file_context,
                 pdf_attachments,
+                audio_attachments,
                 name=f"jarvis-chat-{message_id[:8]}",
             )
 
@@ -3024,11 +3094,19 @@ Previous structured data:
                 role = msg.get('role', 'user')
                 content = msg.get('content', '')
                 if role == 'user':
-                    attachments = self._stored_pdf_attachments(msg.get('data'))
-                    if attachments:
+                    pdf_attachments = self._stored_pdf_attachments(msg.get('data'))
+                    audio_attachments = self._stored_audio_attachments(msg.get('data'))
+                    if pdf_attachments:
                         # Put the compact artifact reference before the user's prose
                         # so normal history truncation cannot silently drop it.
-                        attachment_context = self._format_pdf_attachment_context(attachments[0])
+                        attachment_context = self._format_pdf_attachment_context(
+                            pdf_attachments[0]
+                        )
+                        content = f"{attachment_context}\n\nUser's request: {content}"
+                    elif audio_attachments:
+                        attachment_context = self._format_audio_attachment_context(
+                            audio_attachments[0]
+                        )
                         content = f"{attachment_context}\n\nUser's request: {content}"
                 if content:
                     entry = {'role': role, 'content': content}
@@ -3343,12 +3421,14 @@ Previous structured data:
     def _process_message(self, session_id: str, message: str, mode: str,
                          message_id: str, conversation_id: str, image_data: dict = None,
                          prompt_meta: dict = None, request_feedback: bool = False,
-                         file_context: dict = None, pdf_attachments: list[dict] = None):
-        """Process chat with optional vision, text, or trusted PDF metadata."""
+                         file_context: dict = None, pdf_attachments: list[dict] = None,
+                         audio_attachments: list[dict] = None):
+        """Process chat with optional vision, text, PDF, or audio metadata."""
         start_time = time.time()
         delivery_room = self._delivery_room(session_id, conversation_id)
         original_user_message = message
         pdf_attachments = pdf_attachments or []
+        audio_attachments = audio_attachments or []
         prompt_meta = prompt_meta or {}
         request_feedback = self._sanitize_feedback_request(
             request_feedback,
@@ -3361,7 +3441,8 @@ Previous structured data:
         print(
             f"[CHAT] Processing message: {message[:50]}... "
             f"(mode={mode}, session={session_id[:8]}, has_image={image_data is not None}, "
-            f"has_pdf={bool(pdf_attachments)}{prompt_info}{hint_info}{policy_info}{feedback_info})"
+            f"has_pdf={bool(pdf_attachments)}, has_audio={bool(audio_attachments)}"
+            f"{prompt_info}{hint_info}{policy_info}{feedback_info})"
         )
         
         try:
@@ -3449,6 +3530,20 @@ Previous structured data:
                     "[CHAT] PDF attachment available: "
                     f"{pdf_attachments[0]['stash_ref']} "
                     f"({pdf_attachments[0]['size_bytes']} bytes)"
+                )
+
+            if audio_attachments:
+                audio_context = self._format_audio_attachment_context(
+                    audio_attachments[0]
+                )
+                # Preserve explicit workflow triggers at the start of the
+                # request, as with PDF artifact metadata.
+                message = f"{message}\n\n{audio_context}"
+                print(
+                    "[CHAT] Audio attachment available: "
+                    f"{audio_attachments[0]['stash_ref']} "
+                    f"({audio_attachments[0]['size_bytes']} bytes, "
+                    f"{audio_attachments[0]['duration_seconds']} seconds)"
                 )
             
             # Handle image if provided - route based on action
