@@ -183,16 +183,7 @@ Main chat/tool path in `lib/llm_provider.py` already uses the Anthropic SDK (thi
 **Not urgent:** Current raw HTTP paths work; this is maintainability, not a user-facing feature.
 NOTE: The same can be said about xAI and Openai as they also send POST requests to their respective API endpoints and dont use the SDK.
 
-### 5) Lift FastAPI `<0.137` Cap (Post prometheus-instrumentator 8.x)
-**Priority:** Low / infra
-
-`pyproject.toml` and `requirements.txt` cap FastAPI below 0.137 because prometheus-fastapi-instrumentator had issues with FastAPI `_IncludedRouter` ([#370](https://github.com/trallnag/prometheus-fastapi-instrumentator/issues/370)). After the dependency refresh, the stack runs fastapi 0.136.3 + prometheus-fastapi-instrumentator 8.0.2 with metrics and routing working in smoke tests.
-
-**Goal:** Verify `/metrics` and instrumentator behavior with all included routers, then remove the `<0.137` cap if stable.
-
-**Files:** `pyproject.toml`, `requirements.txt`, `docs/docker/README.md`
-
-### 6) Replace Werkzeug for Jarvis Web Socket.IO Serving
+### 5) Replace Werkzeug for Jarvis Web Socket.IO Serving
 **Priority:** Low / runtime hardening
 
 Jarvis Web currently uses Flask-SocketIO in `threading` mode with `simple-websocket`, served through Werkzeug via `socketio.run(..., allow_unsafe_werkzeug=True)`. This applies to both native and Docker launches.
@@ -234,7 +225,7 @@ lifecycle/supervision benefits only.
 
 **Likely files:** `jarvis-web/server/app.py`, `bin/jarvis-web`, `docker/entrypoint.sh`, `Dockerfile`, dependency manifests, Web runtime tests, and Docker/native deployment docs.
 
-### 7) Ollama Cloud Account Quota and Usage Status
+### 6) Ollama Cloud Account Quota and Usage Status
 **Priority:** Blocked upstream / integrate when Ollama exposes a supported API
 
 Jarvis can currently identify the Ollama Cloud connection path and authentication state:
@@ -264,7 +255,7 @@ It cannot retrieve account-level session or weekly usage, remaining quota, reset
 - [ollama/ollama#15663 — Expose account quota/usage details via the Cloud API](https://github.com/ollama/ollama/issues/15663) — closed as a duplicate of #12532; documents the missing headers/body/endpoint options
 - [ollama/ollama#16448 — API endpoint to check Cloud Usage/Quota limits](https://github.com/ollama/ollama/issues/16448) — closed as a duplicate of #12532
 
-### 8) Latency-Aware Status Updates Across Web, CLI, and Wake Word - this is done
+### 7) Latency-Aware Status Updates Across Web, CLI, and Wake Word - this is done
 **Priority:** Medium–High usability / latency
 **Status:** Implemented (2026-07-04); tune timing from live use
 

@@ -8,14 +8,12 @@ xai-sdk>=1.17.0  # Video generation requires 1.6.0+
 google-genai>=2.10.0
 
 # API Server (Proactive Assistant)
-# Cap <0.137 until prometheus-fastapi-instrumentator handles FastAPI _IncludedRouter
-# (https://github.com/trallnag/prometheus-fastapi-instrumentator/issues/370)
-fastapi>=0.100.0,<0.137
+fastapi>=0.137.0
 uvicorn[standard]>=0.23.0
 pydantic>=2.0.0
 python-multipart>=0.0.22  # Required for form data uploads
 # Prometheus metrics
-prometheus-fastapi-instrumentator>=6.0.0  
+prometheus-fastapi-instrumentator>=8.1.0
 
 # Web UIs (jarvis-web, jarvis-canvas, jarvis-memory, jarvis-intelligence)
 flask>=3.0.0

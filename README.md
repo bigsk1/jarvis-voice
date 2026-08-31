@@ -29,7 +29,7 @@ Deterministic workflows are Jarvis's reliable automation path. Instead of asking
 Bare minimum to try Jarvis in the **browser** (Web UI chat — no local mic or speakers required):
 
 Every mode requires an [Ollama](docs/ollama/README.md) daemon reachable through
-`OLLAMA_BASE_URL`, on this machine or a LAN host, with the pinned
+`OLLAMA_BASE_URL`, on localhost or a LAN host, with the pinned
 [Jarvis Embedding](docs/ollama/JARVIS_EMBEDDING_MODEL.md) artifact installed:
 
 ```bash

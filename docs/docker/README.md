@@ -479,10 +479,6 @@ Usually native watchdog or host daemons still running. Run `./bin/jarvis-service
 
 Ensure extras profile is up: `docker compose --profile extras ps`.
 
-**API 500 on every request after rebuild**
-
-Pin `fastapi<0.137` in `requirements.txt` (prometheus instrumentator compatibility) — rebuild image.
-
 **Files owned by root in `./data` or `./logs`**
 
 Set `JARVIS_DOCKER_UID` / `JARVIS_DOCKER_GID` in `.env` to your host user (`id -u` / `id -g`).
