@@ -10,7 +10,7 @@ export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-$JARVIS_VENV}"
 # Remove aliases from older Jarvis setup blocks before defining current functions.
 unalias jarvis jarvis-local jarvis-cli jarvis-local-cli 2>/dev/null || true
 unalias jarvis-cli-json jarvis-local-cli-json jarvis-d 2>/dev/null || true
-unalias jarvis-start jarvis-start-local jarvis-stop jarvis-status 2>/dev/null || true
+unalias jarvis-start jarvis-start-local jarvis-stop jarvis-status jarvis-k 2>/dev/null || true
 unalias jarvis-web jarvis-web-local jarvis-web-stop jarvis-api jarvis-api-local 2>/dev/null || true
 unalias jarvis-cd jarvis-env jarvis-logs jarvis-help 2>/dev/null || true
 
@@ -44,6 +44,7 @@ jarvis-start() { _jarvis_run ./bin/start "$@"; }
 jarvis-start-local() { _jarvis_run ./bin/start --local "$@"; }
 jarvis-stop() { _jarvis_run ./bin/start --stop; }
 jarvis-status() { _jarvis_run ./bin/start --list; }
+jarvis-k() { _jarvis_run ./bin/kiosk.sh "$@"; }
 
 # Individual Web/API services.
 jarvis-web() { _jarvis_run ./bin/start web; }
@@ -99,6 +100,7 @@ Services
   jarvis-start-local             Start the complete local stack
   jarvis-stop                    Stop all managed tmux sessions
   jarvis-status                  Show every managed session status
+  jarvis-k <start|stop|status>   Control the manual Jarvis Head VT kiosk
   jarvis-web                     Start cloud Web UI
   jarvis-web-local               Start local Web UI
   jarvis-web-stop                Stop the Web UI tmux session

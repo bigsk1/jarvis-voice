@@ -108,6 +108,7 @@ def test_canonical_commands_use_current_launchers_and_external_venv():
         "jarvis-start-local()",
         "jarvis-stop()",
         "jarvis-status()",
+        "jarvis-k()",
         "jarvis-web-local()",
         "jarvis-web-stop()",
         "jarvis-api-local()",
@@ -128,6 +129,7 @@ def test_jarvis_help_lists_operator_commands():
         "jarvis-start-local",
         "jarvis-stop",
         "jarvis-status",
+        "jarvis-k",
         "jarvis-web-local",
         "jarvis-web-stop",
         "jarvis-api-local",
@@ -174,6 +176,43 @@ jarvis-api-local
         "api",
         "--local api",
     ]
+
+
+def test_kiosk_shortcut_activates_environment_and_forwards_arguments(tmp_path: Path):
+    checkout = tmp_path / "checkout"
+    venv = tmp_path / "venv"
+    log = tmp_path / "commands.log"
+    after = tmp_path / "after.log"
+    (checkout / "bin").mkdir(parents=True)
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin" / "activate").write_text("export TEST_VENV_ACTIVE=yes\n")
+    kiosk = checkout / "bin" / "kiosk.sh"
+    kiosk.write_text(
+        '#!/usr/bin/env bash\nprintf "%s|%s|%s\\n" "$PWD" '
+        '"${TEST_VENV_ACTIVE:-no}" "$*" >> "$COMMAND_LOG"\n'
+    )
+    kiosk.chmod(0o755)
+
+    command = f"""
+export JARVIS_ROOT={checkout!s}
+export JARVIS_VENV={venv!s}
+export COMMAND_LOG={log!s}
+source {ALIASES!s}
+jarvis-k start -- --fps 20 --color red
+pwd > {after!s}
+"""
+    result = subprocess.run(
+        ["bash", "-c", command],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert log.read_text().strip() == (
+        f"{checkout}|yes|start -- --fps 20 --color red"
+    )
+    assert after.read_text().strip() == str(tmp_path)
 
 
 def test_web_stop_shortcut_stops_only_web_tmux_session(tmp_path: Path):
