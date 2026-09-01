@@ -12,7 +12,13 @@ from PIL import Image
 HEAD_ROOT = Path(__file__).resolve().parents[1] / "jarvis-head"
 sys.path.insert(0, str(HEAD_ROOT))
 
-from app import DemoTimelinePlayer, FaceGlyphLayer, IdleFaceMotion, RainPalette  # noqa: E402
+from app import (  # noqa: E402
+    DemoTimelinePlayer,
+    FaceGlyphLayer,
+    FaceVisibilityTransition,
+    IdleFaceMotion,
+    RainPalette,
+)
 from mask import SemanticFaceMasks, SemanticMask  # noqa: E402
 from visemes import MouthShape, VisemeTimeline  # noqa: E402
 
@@ -60,6 +66,22 @@ def test_fixed_seed_keeps_face_animation_repeatable():
         first.update(dt)
         second.update(dt)
         assert _snapshot(first) == _snapshot(second)
+
+
+def test_face_coalesces_and_dissipates_in_a_repeatable_scatter():
+    first = FaceGlyphLayer(_fitted_test_mask(), seed=42)
+    second = FaceGlyphLayer(_fitted_test_mask(), seed=42)
+
+    assert tuple(first.visible_cells(0.0)) == ()
+    halfway = tuple(first.visible_cells(0.5))
+    assert 0 < len(halfway) < len(first.cells)
+    assert [(cell.x, cell.y) for cell in halfway] == [
+        (cell.x, cell.y) for cell in second.visible_cells(0.5)
+    ]
+    assert tuple(first.visible_cells(1.0)) == tuple(first.cells)
+
+    with pytest.raises(ValueError, match="between"):
+        tuple(first.visible_cells(-0.01))
 
 
 def test_invalid_face_animation_values_are_rejected():
@@ -139,6 +161,35 @@ def test_idle_motion_is_repeatable_and_remains_inside_two_cell_bounds():
     ]
     assert blink_runs
     assert all(length in (2, 3) for length in blink_runs)
+
+
+def test_default_idle_drift_waits_at_least_three_seconds_before_repositioning():
+    motion = IdleFaceMotion(fps=20, seed=9)
+
+    motion.update(2.99)
+
+    assert motion.offset == (0, 0)
+
+    motion.update(4.01)
+
+    assert motion.offset != (0, 0)
+    assert abs(motion.offset[0]) <= 2
+    assert abs(motion.offset[1]) <= 1
+
+
+def test_face_visibility_transition_reverses_without_jumping():
+    transition = FaceVisibilityTransition(
+        coalesce_seconds=1.0,
+        dissipate_seconds=2.0,
+    )
+
+    assert transition.update(0.25, target_visible=True) == pytest.approx(0.25)
+    assert transition.update(0.75, target_visible=True) == pytest.approx(1.0)
+    assert transition.update(1.0, target_visible=False) == pytest.approx(0.5)
+    assert transition.update(0.25, target_visible=True) == pytest.approx(0.75)
+
+    with pytest.raises(ValueError, match="negative"):
+        transition.update(-0.01, target_visible=True)
 
 
 def test_demo_timeline_loops_with_a_neutral_pause():

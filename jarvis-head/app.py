@@ -19,9 +19,11 @@ DEFAULT_FPS = 30.0
 MAX_FRAME_DT = 0.25
 FACE_GLYPH_TICK = 0.1
 FACE_GLYPH_CHANGE_CHANCE = 0.12
+FACE_COALESCE_SECONDS = 1.0
+FACE_DISSIPATE_SECONDS = 1.2
 BLINK_INTERVAL = (2.0, 6.0)
 BLINK_FRAMES = (2, 3)
-DRIFT_TARGET_INTERVAL = (1.5, 3.5)
+DRIFT_TARGET_INTERVAL = (3.0, 7.0)
 DRIFT_STEP_INTERVAL = 0.35
 DRIFT_TARGETS = (
     (-2, 0),
@@ -128,6 +130,8 @@ class FaceGlyphLayer:
             )
             for cell in fitted_mask.cells
         ]
+        transition_rng = random.Random(_derived_seed(seed, 0xC0A1))
+        self._transition_points = [transition_rng.random() for _cell in self.cells]
 
     def update(self, dt: float) -> None:
         """Change scattered glyphs on a slower cadence than the rain."""
@@ -155,6 +159,20 @@ class FaceGlyphLayer:
                 glyph_cell.char = " "
             elif was_dark:
                 glyph_cell.char = self.rng.choice(BACKGROUND_CHARS)
+
+    def visible_cells(self, progress: float):
+        """Yield a deterministic scattered subset for coalescence/dissipation."""
+
+        if not 0 <= progress <= 1:
+            raise ValueError("face visibility progress must be between 0 and 1")
+        eased = progress * progress * (3.0 - 2.0 * progress)
+        for cell, transition_point in zip(
+            self.cells,
+            self._transition_points,
+            strict=True,
+        ):
+            if transition_point < eased:
+                yield cell
 
     def _replacement_char(self, current: str) -> str:
         replacement = self.rng.choice(BACKGROUND_CHARS)
@@ -231,6 +249,31 @@ class IdleFaceMotion:
                 _step_toward(self.offset[0], self._drift_target[0]),
                 _step_toward(self.offset[1], self._drift_target[1]),
             )
+
+
+class FaceVisibilityTransition:
+    """Time-based face coalescence that reverses cleanly mid-transition."""
+
+    def __init__(
+        self,
+        *,
+        coalesce_seconds: float = FACE_COALESCE_SECONDS,
+        dissipate_seconds: float = FACE_DISSIPATE_SECONDS,
+    ) -> None:
+        if coalesce_seconds <= 0 or dissipate_seconds <= 0:
+            raise ValueError("face transition durations must be positive")
+        self.coalesce_seconds = coalesce_seconds
+        self.dissipate_seconds = dissipate_seconds
+        self.progress = 0.0
+
+    def update(self, dt: float, *, target_visible: bool) -> float:
+        if dt < 0:
+            raise ValueError("dt must not be negative")
+        if target_visible:
+            self.progress = min(1.0, self.progress + dt / self.coalesce_seconds)
+        else:
+            self.progress = max(0.0, self.progress - dt / self.dissipate_seconds)
+        return self.progress
 
 
 class DemoTimelinePlayer:
@@ -350,6 +393,7 @@ def _run_loop(
     fitted_faces = _fit_face_masks(face_masks, field, cell_aspect)
     face_layer = _new_face_layer(fitted_faces, seed)
     motion = IdleFaceMotion(fps=fps, seed=seed) if face_layer is not None else None
+    face_transition = FaceVisibilityTransition() if face_layer is not None else None
     timeline_player = DemoTimelinePlayer(timeline) if timeline is not None else None
     mouth_shape = MouthShape.REST
     face_visible = state_machine is None
@@ -399,6 +443,11 @@ def _run_loop(
                 motion.update(dt)
             if timeline_player is not None:
                 mouth_shape = timeline_player.update(dt)
+            face_progress = (
+                face_transition.update(dt, target_visible=face_visible)
+                if face_transition is not None
+                else 0.0
+            )
 
             desired_expression = (
                 motion.blinking if motion is not None else False,
@@ -421,8 +470,9 @@ def _run_loop(
                 stdscr,
                 field,
                 palette,
-                face_layer=face_layer if face_visible else None,
+                face_layer=face_layer if face_progress > 0 else None,
                 face_offset=motion.offset if motion is not None else (0, 0),
+                face_progress=face_progress,
             )
 
             key = stdscr.getch()
@@ -450,6 +500,7 @@ def _draw_frame(
     *,
     face_layer: FaceGlyphLayer | None = None,
     face_offset: tuple[int, int] = (0, 0),
+    face_progress: float = 1.0,
 ) -> None:
     stdscr.erase()
     for cell in field.visible_cells():
@@ -466,7 +517,7 @@ def _draw_frame(
             continue
 
     if face_layer is not None:
-        for cell in face_layer.cells:
+        for cell in face_layer.visible_cells(face_progress):
             draw_x = cell.x + face_offset[0]
             draw_y = cell.y + face_offset[1]
             if not 0 <= draw_x < field.width or not 0 <= draw_y < field.height:

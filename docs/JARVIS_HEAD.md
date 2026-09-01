@@ -1,5 +1,7 @@
 # Jarvis Head (matrix kiosk)
 
+![Jarvis Talking Head](images/jarvis-talking-head.jpg)
+
 **Status:** Phases 0–5 accepted. Optional host display, not part of install or Docker.
 
 **Startup policy:** Manual only for v1, including Phase 5. Nothing starts the head from an existing tmux session, `start-all`, the Jarvis dashboard, an installer, an enabled systemd unit, or the wake process. Hooks only send optional datagrams; they never launch or supervise the display. `bin/kiosk.sh start` creates a bounded **transient** systemd service only when explicitly requested; it is never installed or enabled at boot.
