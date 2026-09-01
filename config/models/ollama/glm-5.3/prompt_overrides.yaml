@@ -1,5 +1,7 @@
 enabled: true
 description: "GLM-5.3 requires thinking; use its lowest supported effort when traces are hidden"
+applies_to_modes:
+  - cloud
 
 thinking:
   supported: true
@@ -10,3 +12,6 @@ thinking:
     - max
   default_level: max
   disabled_fallback_level: low
+
+tool_calling_prepend: |
+  You always have access to tool_search for web search tools unless you're in chat-only mode. Never reply with no web search tool in my current toolset. 
