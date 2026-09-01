@@ -12,6 +12,7 @@ SCRIPT_DIR = os.path.dirname(SCRIPT_PATH)
 # Add lib to path
 sys.path.insert(0, os.path.join(SCRIPT_DIR, '..', 'lib'))
 from config_loader import load_config, get_config_value, get_int, get_float
+from head_events import emit as emit_head_event
 from tts_normalizer import normalize_tts_text
 
 import warnings
@@ -52,6 +53,7 @@ TRIGGER_THRESHOLD = get_float("TRIGGER_THRESHOLD", 0.2)
 HIT_FRAMES_REQUIRED = get_int("HIT_FRAMES_REQUIRED", 4)
 MIN_RMS = get_float("MIN_RMS", 2e-4)
 COOLDOWN_AFTER_QA = get_float("COOLDOWN_AFTER_QA", 2.8)
+HEAD_QA_KEEPALIVE_INTERVAL = 30.0
 DEVICE_NAME_HINT = get_config_value("DEVICE_NAME_HINT", "TONOR")
 VAD_THRESHOLD = get_float("VAD_THRESHOLD", 0.40)
 
@@ -197,8 +199,29 @@ def start_stream():
     stream = build_stream()
     stream.start()
 
+def run_question_with_head_keepalive(command):
+    """Run one Q&A process while renewing the optional head's listen lease."""
+    stop_keepalive = threading.Event()
+
+    def keep_head_listening():
+        while not stop_keepalive.wait(HEAD_QA_KEEPALIVE_INTERVAL):
+            emit_head_event("listen")
+
+    keepalive = threading.Thread(
+        target=keep_head_listening,
+        name="jarvis-head-qa-keepalive",
+        daemon=True,
+    )
+    keepalive.start()
+    try:
+        return subprocess.run(command, check=False)
+    finally:
+        stop_keepalive.set()
+        keepalive.join(timeout=1.0)
+
 def handle_trigger():
     print("🟢🟢🟢  Wake word detected → Q&A… 🟢🟢🟢")
+    emit_head_event("listen")
     stop_stream()
 
     # Quick local acknowledgement with random greeting
@@ -215,12 +238,13 @@ def handle_trigger():
     # Local pipeline
     should_exit = False
     try:
-        result = subprocess.run([ASK], check=False)
+        result = run_question_with_head_keepalive([ASK])
         should_exit = result.returncode == 20
     except Exception as e:
         print(f"question-mic-local.sh failed: {e}", file=sys.stderr)
 
     if should_exit:
+        emit_head_event("sleep")
         print("🛑 Wake loop stopped by voice command.")
         return False
 
@@ -230,13 +254,14 @@ def handle_trigger():
         armed = True
         last_arm_ts = time.time()
         start_stream()
+    emit_head_event("sleep")
     print("🟡 Re-armed, listening again 🎙️  Say --> Hey Jarvis")
     return True
 
 def main():
     print(f"🎙️  Listening for '{WAKE_MODEL.replace('_',' ')}'... Ctrl+C to quit.")
-    start_stream()
     try:
+        start_stream()
         while True:
             if trigger_evt.wait(timeout=0.2):
                 trigger_evt.clear()
@@ -245,7 +270,10 @@ def main():
     except KeyboardInterrupt:
         print("\n👋 Bye.")
     finally:
-        stop_stream()
+        try:
+            stop_stream()
+        finally:
+            emit_head_event("sleep")
 
 if __name__ == "__main__":
     main()

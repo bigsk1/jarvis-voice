@@ -1,0 +1,247 @@
+#!/usr/bin/env python3
+"""Launch the standalone Jarvis Head matrix display."""
+
+from __future__ import annotations
+
+import argparse
+import math
+import os
+import sys
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).parent.resolve()
+JARVIS_ROOT = SCRIPT_DIR.parent
+HEAD_ROOT = JARVIS_ROOT / "jarvis-head"
+REPO_VENV = JARVIS_ROOT / ".venv"
+REPO_PYTHON = REPO_VENV / "bin" / "python"
+DIRECT_EMIT = sys.argv[1:2] == ["emit"]
+
+# The face renderer needs Pillow. Keep the documented direct command reliable
+# even when the operator has not activated the repository environment first.
+if (
+    not DIRECT_EMIT
+    and REPO_PYTHON.is_file()
+    and Path(sys.prefix).resolve() != REPO_VENV.resolve()
+):
+    os.execv(
+        str(REPO_PYTHON),
+        [str(REPO_PYTHON), str(Path(__file__).resolve()), *sys.argv[1:]],
+    )
+
+sys.path.insert(0, str(HEAD_ROOT))
+sys.path.insert(1, str(JARVIS_ROOT))
+
+
+def _fps_value(value: str) -> float:
+    try:
+        fps = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("FPS must be a number") from exc
+    if not 1 <= fps <= 120:
+        raise argparse.ArgumentTypeError("FPS must be between 1 and 120")
+    return fps
+
+
+def _cell_aspect_value(value: str) -> float:
+    try:
+        cell_aspect = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("cell aspect must be a number") from exc
+    if not 0.1 <= cell_aspect <= 2.0:
+        raise argparse.ArgumentTypeError("cell aspect must be between 0.1 and 2.0")
+    return cell_aspect
+
+
+def _positive_seconds(value: str) -> float:
+    try:
+        seconds = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("value must be a number") from exc
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise argparse.ArgumentTypeError("value must be a positive finite number")
+    return seconds
+
+
+def _epoch_value(value: str) -> float:
+    timestamp = _positive_seconds(value)
+    return timestamp
+
+
+def _playback_id(value: str) -> str:
+    if not value or len(value) > 128 or "\x00" in value:
+        raise argparse.ArgumentTypeError("playback id must contain 1-128 characters")
+    return value
+
+
+def _bool_value(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise argparse.ArgumentTypeError("value must be true or false")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Jarvis Head Phase 3 - Matrix face display and local event receiver",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  ./bin/jarvis-head
+  ./bin/jarvis-head --preset reference
+  ./bin/jarvis-head --preset kiosk --fps 45
+  ./bin/jarvis-head --seed 42
+  ./bin/jarvis-head --demo-face
+  ./bin/jarvis-head --demo-face --cell-aspect 0.4
+  ./bin/jarvis-head --demo-wav /path/to/speech.wav
+  ./bin/jarvis-head emit listen
+  ./bin/jarvis-head emit speak --wav /path/to/speech.wav --playback-id ID --t0 EPOCH
+
+The WAV demo loops its visual timeline but never plays audio.
+Press q, Escape, or Ctrl+C to exit.
+        """,
+    )
+    parser.add_argument(
+        "--preset",
+        choices=("kiosk", "reference"),
+        default="kiosk",
+        help="Rain density preset (default: kiosk)",
+    )
+    parser.add_argument(
+        "--fps",
+        type=_fps_value,
+        default=30.0,
+        help="Maximum render frames per second, 1-120 (default: 30)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Fixed random seed for repeatable visual comparisons",
+    )
+    parser.add_argument(
+        "--color",
+        choices=("green", "cyan", "blue", "red", "yellow", "magenta", "white"),
+        default="green",
+        help="Rain color (default: green)",
+    )
+    demo_group = parser.add_mutually_exclusive_group()
+    demo_group.add_argument(
+        "--demo-face",
+        action="store_true",
+        help="Force the animated authored face on top of the rain",
+    )
+    demo_group.add_argument(
+        "--demo-wav",
+        type=Path,
+        metavar="PATH",
+        help="Loop a bounded local PCM WAV mouth timeline without playing audio",
+    )
+    parser.add_argument(
+        "--cell-aspect",
+        type=_cell_aspect_value,
+        default=None,
+        metavar="RATIO",
+        help=(
+            "Terminal cell width/height ratio; defaults to "
+            "JARVIS_HEAD_CELL_ASPECT or 0.4"
+        ),
+    )
+    return parser
+
+
+def build_emit_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="jarvis-head emit",
+        description="Fire-and-forget an event to a running Jarvis Head display",
+    )
+    commands = parser.add_subparsers(dest="event_type", required=True)
+    commands.add_parser("listen", help="Show the listening face")
+    commands.add_parser("think", help="Show the thinking face")
+    commands.add_parser("sleep", help="Return the base state to rain")
+
+    speak = commands.add_parser("speak", help="Start a WAV-backed speech overlay")
+    speak.add_argument("--wav", type=Path, required=True, metavar="PATH")
+    speak.add_argument("--playback-id", type=_playback_id, required=True, metavar="ID")
+    speak.add_argument("--t0", type=_epoch_value, required=True, metavar="EPOCH")
+
+    speak_end = commands.add_parser("speak_end", help="Finish the active speech overlay")
+    speak_end.add_argument("--playback-id", type=_playback_id, required=True, metavar="ID")
+    speak_end.add_argument("--ok", type=_bool_value, required=True, metavar="true|false")
+    return parser
+
+
+def _emit_main(argv: list[str]) -> int:
+    args = build_emit_parser().parse_args(argv)
+    from lib.head_events import emit
+
+    payload: dict[str, object] = {}
+    if args.event_type == "speak":
+        payload = {
+            "wav": os.fspath(args.wav.expanduser()),
+            "playback_id": args.playback_id,
+            "t0": args.t0,
+        }
+    elif args.event_type == "speak_end":
+        payload = {"playback_id": args.playback_id, "ok": args.ok}
+    emit(args.event_type, **payload)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    effective_argv = list(sys.argv[1:] if argv is None else argv)
+    if effective_argv[:1] == ["emit"]:
+        return _emit_main(effective_argv[1:])
+
+    parser = build_parser()
+    args = parser.parse_args(effective_argv)
+    try:
+        from app import run_display
+    except ModuleNotFoundError as exc:
+        if exc.name == "PIL":
+            parser.error("Pillow is unavailable; run `uv sync --dev` in the repository")
+        raise
+
+    from head_socket import HeadSocketError
+    from visemes import WavAnalysisError
+
+    from lib.config_loader import get_config_value
+    from lib.head_events import get_socket_path
+
+    if args.cell_aspect is None:
+        configured_aspect = get_config_value("JARVIS_HEAD_CELL_ASPECT", 0.4)
+        try:
+            args.cell_aspect = _cell_aspect_value(str(configured_aspect))
+        except argparse.ArgumentTypeError as exc:
+            parser.error(f"invalid JARVIS_HEAD_CELL_ASPECT: {exc}")
+
+    configured_socket = str(get_config_value("JARVIS_HEAD_SOCKET", "") or "").strip()
+    event_socket_path = get_socket_path(configured_socket)
+    configured_idle_timeout = get_config_value("JARVIS_HEAD_IDLE_TIMEOUT", 120)
+    try:
+        idle_timeout = _positive_seconds(str(configured_idle_timeout))
+    except argparse.ArgumentTypeError as exc:
+        parser.error(f"invalid JARVIS_HEAD_IDLE_TIMEOUT: {exc}")
+
+    try:
+        run_display(
+            preset=args.preset,
+            fps=args.fps,
+            seed=args.seed,
+            color=args.color,
+            demo_face=args.demo_face,
+            demo_wav=args.demo_wav,
+            asset_dir=HEAD_ROOT / "assets",
+            cell_aspect=args.cell_aspect,
+            event_socket_path=event_socket_path,
+            event_socket_default=not bool(configured_socket),
+            idle_timeout=idle_timeout,
+        )
+    except (HeadSocketError, WavAnalysisError) as exc:
+        parser.error(str(exc))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
