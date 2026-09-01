@@ -14,18 +14,32 @@ JARVIS_ROOT = SCRIPT_DIR.parent
 HEAD_ROOT = JARVIS_ROOT / "jarvis-head"
 REPO_VENV = JARVIS_ROOT / ".venv"
 REPO_PYTHON = REPO_VENV / "bin" / "python"
+LEGACY_VENV = Path.home() / "jarvis-venv"
+LEGACY_PYTHON = LEGACY_VENV / "bin" / "python"
 DIRECT_EMIT = sys.argv[1:2] == ["emit"]
 
+
+def _display_python() -> tuple[Path, Path] | None:
+    """Return the preferred environment and interpreter for the display."""
+
+    for environment, interpreter in (
+        (REPO_VENV, REPO_PYTHON),
+        (LEGACY_VENV, LEGACY_PYTHON),
+    ):
+        if interpreter.is_file():
+            return environment, interpreter
+    return None
+
+
 # The face renderer needs Pillow. Keep the documented direct command reliable
-# even when the operator has not activated the repository environment first.
-if (
-    not DIRECT_EMIT
-    and REPO_PYTHON.is_file()
-    and Path(sys.prefix).resolve() != REPO_VENV.resolve()
-):
+# even when the operator has not activated an environment first. Prefer the
+# repository environment, then the legacy operator environment used by wake.
+DISPLAY_PYTHON = None if DIRECT_EMIT else _display_python()
+if DISPLAY_PYTHON and Path(sys.prefix).resolve() != DISPLAY_PYTHON[0].resolve():
+    interpreter = DISPLAY_PYTHON[1]
     os.execv(
-        str(REPO_PYTHON),
-        [str(REPO_PYTHON), str(Path(__file__).resolve()), *sys.argv[1:]],
+        str(interpreter),
+        [str(interpreter), str(Path(__file__).resolve()), *sys.argv[1:]],
     )
 
 sys.path.insert(0, str(HEAD_ROOT))
@@ -80,6 +94,38 @@ def _bool_value(value: str) -> bool:
     if normalized == "false":
         return False
     raise argparse.ArgumentTypeError("value must be true or false")
+
+
+DISPLAY_CONFIG_KEYS = (
+    "JARVIS_HEAD_SOCKET",
+    "JARVIS_HEAD_CELL_ASPECT",
+    "JARVIS_HEAD_IDLE_TIMEOUT",
+)
+
+
+def _load_display_config() -> None:
+    """Hydrate only optional display settings from the selected mode file."""
+
+    from lib.config_loader import (
+        get_active_config_mode,
+        get_project_root,
+        load_env_file,
+    )
+
+    mode = get_active_config_mode()
+    values = load_env_file(get_project_root() / "config" / f"{mode}.env")
+    home = os.environ.get("HOME", "")
+    for key in DISPLAY_CONFIG_KEYS:
+        if key in os.environ or f"JARVIS_OVERRIDE_{key}" in os.environ:
+            continue
+        value = values.get(key)
+        if value is None:
+            continue
+        if home:
+            value = value.replace("${HOME}", home).replace("$HOME", home)
+        if value.startswith("~"):
+            value = os.path.expanduser(value)
+        os.environ[key] = value
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -194,6 +240,13 @@ def main(argv: list[str] | None = None) -> int:
     if effective_argv[:1] == ["emit"]:
         return _emit_main(effective_argv[1:])
 
+    # The display is mode-independent, but its optional settings live in the
+    # selected Jarvis env file. Do not hydrate unrelated provider credentials
+    # into the deliberately clean kiosk process.
+    from lib.config_loader import get_config_value
+
+    _load_display_config()
+
     parser = build_parser()
     args = parser.parse_args(effective_argv)
     try:
@@ -206,7 +259,6 @@ def main(argv: list[str] | None = None) -> int:
     from head_socket import HeadSocketError
     from visemes import WavAnalysisError
 
-    from lib.config_loader import get_config_value
     from lib.head_events import get_socket_path
 
     if args.cell_aspect is None:
@@ -217,7 +269,10 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(f"invalid JARVIS_HEAD_CELL_ASPECT: {exc}")
 
     configured_socket = str(get_config_value("JARVIS_HEAD_SOCKET", "") or "").strip()
-    event_socket_path = get_socket_path(configured_socket)
+    try:
+        event_socket_path = get_socket_path(configured_socket)
+    except ValueError as exc:
+        parser.error(str(exc))
     configured_idle_timeout = get_config_value("JARVIS_HEAD_IDLE_TIMEOUT", 120)
     try:
         idle_timeout = _positive_seconds(str(configured_idle_timeout))

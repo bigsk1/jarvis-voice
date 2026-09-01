@@ -34,16 +34,32 @@ def _enable_publisher(monkeypatch, socket_path: Path, *, debug: bool = False) ->
         monkeypatch.delenv(key, raising=False)
 
 
-def test_socket_path_defaults_use_real_uid_and_xdg_runtime():
-    assert head_events.get_socket_path(uid=1234, xdg_runtime_dir="") == Path(
+def test_socket_path_default_is_stable_across_login_runtime(monkeypatch):
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/1234")
+    assert head_events.get_socket_path(uid=1234) == Path(
         "/tmp/jarvis-head-1234/head.sock"
-    )
-    assert head_events.get_socket_path(uid=1234, xdg_runtime_dir="/run/user/1234") == Path(
-        "/run/user/1234/jarvis/head.sock"
     )
     assert head_events.get_socket_path("/private/head.sock", uid=1234) == Path(
         "/private/head.sock"
     )
+
+
+def test_relative_socket_override_is_rejected_and_emit_stays_fail_open(
+    monkeypatch, capsys
+):
+    with pytest.raises(ValueError, match="absolute path"):
+        head_events.get_socket_path("relative/head.sock")
+
+    monkeypatch.setenv("JARVIS_HEAD_ENABLED", "true")
+    monkeypatch.setenv("JARVIS_HEAD_SOCKET", "relative/head.sock")
+    for key in (
+        "JARVIS_OVERRIDE_JARVIS_HEAD_ENABLED",
+        "JARVIS_OVERRIDE_JARVIS_HEAD_SOCKET",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    assert head_events.emit("listen") is False
+    assert capsys.readouterr().err == ""
 
 
 def test_emit_is_disabled_by_default_and_missing_receiver_is_silent(

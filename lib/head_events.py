@@ -17,7 +17,6 @@ def get_socket_path(
     override: str | os.PathLike[str] | None = None,
     *,
     uid: int | None = None,
-    xdg_runtime_dir: str | os.PathLike[str] | None = None,
 ) -> Path:
     """Resolve the configured socket path without requiring the display stack."""
 
@@ -25,13 +24,10 @@ def get_socket_path(
         override = _config_value("JARVIS_HEAD_SOCKET", "")
     configured = str(override or "").strip()
     if configured:
-        return Path(configured).expanduser()
-
-    if xdg_runtime_dir is None:
-        xdg_runtime_dir = os.environ.get("XDG_RUNTIME_DIR", "")
-    runtime_dir = str(xdg_runtime_dir or "").strip()
-    if runtime_dir:
-        return Path(runtime_dir).expanduser() / "jarvis" / "head.sock"
+        configured_path = Path(configured).expanduser()
+        if not configured_path.is_absolute():
+            raise ValueError("JARVIS_HEAD_SOCKET must be an absolute path")
+        return configured_path
 
     resolved_uid = os.getuid() if uid is None else uid
     return Path("/tmp") / f"jarvis-head-{resolved_uid}" / "head.sock"

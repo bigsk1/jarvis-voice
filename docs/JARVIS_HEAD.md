@@ -1,8 +1,8 @@
 # Jarvis Head (matrix kiosk)
 
-**Status:** Phases 0–3 accepted. Phase 4 is implemented and automated/fake-playback verified; live wake/TTS visual acceptance is pending. Phase 5 remains design only. Optional host display, not part of install or Docker.
+**Status:** Phases 0–5 accepted. Optional host display, not part of install or Docker.
 
-**Startup policy:** Manual only for v1, including Phase 5. Nothing starts the head from an existing tmux session, `start-all`, the Jarvis dashboard, an installer, systemd, or the wake process. Hooks only send optional datagrams; they never launch or supervise the display. Phase 5 packages placement as one manual kiosk command; it does not add autostart.
+**Startup policy:** Manual only for v1, including Phase 5. Nothing starts the head from an existing tmux session, `start-all`, the Jarvis dashboard, an installer, an enabled systemd unit, or the wake process. Hooks only send optional datagrams; they never launch or supervise the display. `bin/kiosk.sh start` creates a bounded **transient** systemd service only when explicitly requested; it is never installed or enabled at boot.
 
 A fullscreen terminal on a monitor plugged into the Jarvis host. Idle is matrix rain. Wake word coalesces a face out of the rain. Blink and a little drift while listening. Mouth tracks TTS while `aplay` runs.
 
@@ -35,6 +35,7 @@ Application directory, same idea as `jarvis-canvas/`: `bin/jarvis-head` puts tha
 
 ```
 bin/jarvis-head              # display, demo, emit
+bin/kiosk.sh                 # manual Linux-VT start / stop / status wrapper
 lib/head_events.py           # fire-and-forget Unix datagram send
 jarvis-head/                 # application directory (not a Python package)
   app.py                     # curses loop + nonblocking event polling
@@ -44,7 +45,6 @@ jarvis-head/                 # application directory (not a Python package)
   rain.py                    # MatrixColumn, adapted from matrix-crypto
   mask.py                    # authored masks → cell intensities (aspect-corrected)
   visemes.py                 # wav → mouth timeline (four-aperture envelope first)
-  kiosk.sh                   # launch terminal with a stable app id; compositor places it
   assets/
     face.png                 # authored semantic mask: 0 outside the head
     face-blink.png           # authored eyes-closed control
@@ -54,7 +54,7 @@ jarvis-head/                 # application directory (not a Python package)
     mouth-closed.png
 ```
 
-Phase 0–3 commands implemented now:
+Core display and event commands:
 
 ```bash
 ./bin/jarvis-head                    # kiosk preset (solid field)
@@ -79,9 +79,9 @@ Python callers (wake scripts) import `lib/head_events.py`. Bash callers use `emi
 
 Unix datagram socket.
 
-Default path: `$XDG_RUNTIME_DIR/jarvis/head.sock` if `XDG_RUNTIME_DIR` is set, else `/tmp/jarvis-head-$UID/head.sock` (compute the uid with `os.getuid()`, not an assumed exported `$UID`). Override with `JARVIS_HEAD_SOCKET`.
+Default path: `/tmp/jarvis-head-$UID/head.sock` (compute the uid with `os.getuid()`, not an assumed exported `$UID`). Its per-user directory is private (`0700`) and remains available if the launching SSH/logind session ends; this keeps the independently running display, wake, and TTS processes on one endpoint. Override with an absolute `JARVIS_HEAD_SOCKET`; relative paths are rejected so processes with different working directories cannot split across sockets.
 
-For either default, create the leaf runtime directory mode `0700`; socket mode `0600`. For a custom path, do not chmod an arbitrary existing parent directory: require a safe writable parent or create only the missing leaf directory.
+For the default, create the leaf runtime directory mode `0700`; socket mode `0600`. For a custom path, do not chmod an arbitrary existing parent directory: require a safe writable parent or create only the missing leaf directory.
 
 Bind rules:
 
@@ -228,32 +228,34 @@ Rhubarb (or any viseme map) has to earn its way in with a side-by-side demo agai
 
 Never drive the jaw from live microphone volume.
 
-## Dedicated monitor (compositor places the window)
+## Dedicated monitor (Linux virtual terminal)
 
 Wake tmux and the head do not share a terminal.
 
-`DISPLAY=:0` names an X server, not a panel. `foot` is Wayland-oriented. Kitty documents that explicit OS-window positioning does not work on Wayland and may be ignored elsewhere. The kiosk script must **not** try to move or resize onto an output.
+The supported Phase 5 target is a systemd-based Linux host with kernel virtual consoles and the `kbd`/`util-linux` commands `openvt`, `chvt`, `fgconsole`, and `runuser`. This is normal on headless Ubuntu and broadly reproducible across comparable Linux servers. Systems without `/dev/ttyN`, systemd, or these commands can still run `bin/jarvis-head` directly in an attached terminal, but cannot use this wrapper.
 
-Launch a terminal with a **stable window class / app id** (for example kitty `--class` / `--app-id` `jarvis-head`). Pin that class to the dedicated output in the compositor or window manager the host already runs (Hyprland workspace rule, Sway output, KWin window rule, etc.). Hide the cursor inside curses (`curs_set(0)`). Opaque background.
+`bin/kiosk.sh start` captures the currently active VT, refuses `tty1`, refuses a target with an active getty, and launches the head on `JARVIS_HEAD_KIOSK_VT` (`tty8` by default). It uses `openvt -s -w` inside a manually created transient systemd service. The service survives loss of the launching SSH connection, has one control group for reliable stop, and is constrained to 50% of one CPU and 256 MiB by default. The wrapper itself runs with console privileges, but uses `runuser` so the display runs as the invoking non-root user and therefore shares the same UID-owned event socket as wake and TTS. Running `start` again while the unit is active switches the physical panel back to its configured kiosk VT without creating a second unit.
 
-If the panel is a raw Linux VT, skip the GUI terminal and run `bin/jarvis-head` on that tty. Same binary.
+Normal exits (`q`, Escape, or Ctrl+C), failures, and `bin/kiosk.sh stop` return the monitor to the captured VT. If curses stops responding, Linux handles `Ctrl+Alt+F1` below the application and returns to the primary login console. Keep `getty@tty1.service` enabled; an optional second getty is additional recovery, not a kiosk dependency.
 
-For v1, start the head yourself. Do not add it to existing Jarvis tmux sessions, `start-all`, the dashboard, or systemd. Phase 5 may add a separate manual kiosk launcher that opens the dedicated terminal on the configured output, but it must not add boot or login autostart.
+`DISPLAY=:0` names an X server, not a monitor. This headless-host wrapper does not install a GUI terminal, window-manager rule, compositor, persistent service, or autostart. Do not add it to existing Jarvis tmux sessions, `bin/start`, or the dashboard. A future persistent service or explicit `bin/start --with-head` remains an opt-in follow-up after live acceptance.
 
-## Config keys (examples only; add to env examples in Phase 5)
+## Config keys
 
-Add commented keys to `config/cloud.env.example` and `config/local.env.example`:
+The same commented examples live in `config/cloud.env.example` and `config/local.env.example`:
 
 ```bash
 # Optional matrix face kiosk on a host monitor. Emit is a no-op unless enabled
 # and bin/jarvis-head is bound to the socket.
 # JARVIS_HEAD_ENABLED=false
-# JARVIS_HEAD_SOCKET=   # default: $XDG_RUNTIME_DIR/jarvis/head.sock or /tmp/jarvis-head-$UID/head.sock
-# JARVIS_HEAD_TERM=kitty
-# JARVIS_HEAD_APP_ID=jarvis-head
-# JARVIS_HEAD_COLOR=green
+# JARVIS_HEAD_SOCKET=   # optional absolute path; otherwise use the private default
 # JARVIS_HEAD_CELL_ASPECT=0.4
 # JARVIS_HEAD_IDLE_TIMEOUT=120
+# JARVIS_HEAD_KIOSK_VT=8
+# JARVIS_HEAD_RETURN_VT=   # default: active VT when kiosk.sh starts
+# JARVIS_HEAD_KIOSK_USER=  # default: invoking non-root user
+# JARVIS_HEAD_KIOSK_CPU_QUOTA=50%
+# JARVIS_HEAD_KIOSK_MEMORY_MAX=256M
 ```
 
 Do not invent a new mode. Cloud vs local already chooses `say.sh` vs `say-local.sh`. The head does not care which LLM ran.
@@ -269,7 +271,7 @@ Stop after any phase if the look is wrong; later phases will not save a bad mask
 | 2 | Blink, 1–2 cell drift, `--demo-wav` four-aperture envelope | Idle looks alive. Mouth tracks a canned wav without `aplay` or wake |
 | 3 | Socket + state machine **tests** (no live TTS required) | Speech-from-sleep, retry ids, stale events, missing/malformed wavs, malformed datagrams, idle timeout, singleton lock, stale-socket recovery, clean socket unlink |
 | 4 | Live hooks: emit inside `jarvis_tts_play_audio_once`, both wake scripts | UniFi / `say-status` / wake greeting move the mouth. TTS still plays with a missing, crashed, or failing head. Shell tests prove emit happens **after** flock and cannot change playback status |
-| 5 | Manual `kiosk.sh` + compositor window rule + env keys | One explicit command opens a fullscreen, opaque head window on the dedicated output; closing it returns the monitor to the desktop. No tmux, boot, login, service, or `start-all` integration |
+| 5 | Manual `bin/kiosk.sh` + transient systemd unit + dedicated Linux VT | One explicit command switches the physical monitor to an unused VT; every stop/exit path restores the prior console. No tmux, boot, login, persistent-service, or `bin/start` integration |
 
 Phase 0 automated verification (2026-09-01): fixed-seed model tests pass; ruff passes; kiosk `q` exit and reference Ctrl+C exit both returned 0 in a 200×50 pseudo-TTY. At 30 FPS that harness measured approximately 13% CPU and 16 MiB RSS. The dedicated host monitor was visually accepted; Termius is known to wash out the black background and is not the acceptance target.
 
@@ -281,11 +283,63 @@ Phase 3 automated verification (2026-09-01): 44 focused Phase 0–3 tests pass, 
 
 Phase 4 automated verification (2026-09-01): 64 focused Phase 0–4 tests pass. The wake and playback test files also pass in both collection orders, proving their standard-library mocks are restored between tests. Shell tests prove disabled mode never invokes the emitter; each retry emits a unique id after the playback lock, followed by a matching success/failure end; terminating a blocked playback process group emits its matching failed end; a queued waiter emits nothing until it owns the lock; and an emitter failure cannot change retry count or playback success. Behavioral cloud/local wake tests cover normal re-arm, voice exit, question-process failure, long-Q&A keepalive, Ctrl+C, and startup failure, with every path returning the head to `SLEEP`. A pseudo-TTY display accepted the real emitter around a real cached WAV while a fake `aplay` returned success; no audio played, both processes returned 0, and the socket was cleaned up. The face palette test keeps all mask intensities in the selected color while reserving white for rain leads. No startup, tmux, dashboard, installer, or service file is changed.
 
+Phase 5 verification and operator acceptance (2026-09-01): six fake command/config tests plus an absolute-socket regression bring the focused Phase 0–5 suite to 71 tests. They cover selected-mode head-only config hydration with explicit-override preservation, repo/legacy venv selection, a logout-stable private socket, relative-socket rejection, transient-unit construction, CPU/memory limits, head argument forwarding, non-root display ownership, active-start VT switching, `start`/`stop`/`status`, primary-console protection, active-getty refusal, and return-VT cleanup after display exit. On the real headless host, the transient unit switched the attached monitor to `tty8`, stopped cleanly, and allowed a direct SSH-terminal launch afterward; attempting that launch while the kiosk held the singleton produced the expected warning. Red and green palettes were accepted. On the small panel, reducing the explicit cap from 30 to 20 FPS looked the same while observed CPU fell from approximately 42% to 30.5%. The default remains 30 FPS; 20 FPS is an available operator tuning choice. No persistent unit, alias, tmux session, dashboard action, boot hook, or `bin/start` change is installed.
+
 Optional later: Rhubarb vs envelope side-by-side. Hook `question.sh` / `question-local.sh` / `question-mic.sh` only if those leftover `aplay` paths still matter.
 
 ## Manual command reference
 
 Run these from the repository root. The head always starts manually; emit, TTS, and wake commands never launch it.
+
+### Start on the dedicated physical monitor
+
+Stop any copy of `bin/jarvis-head` already running directly on the local console, then run from SSH:
+
+```bash
+./bin/kiosk.sh start
+./bin/kiosk.sh status
+./bin/kiosk.sh stop
+```
+
+`start` may request sudo authentication for VT control. It returns after creating the transient unit; losing SSH does not stop the kiosk. On the physical keyboard, use `q`, Escape, or Ctrl+C for a clean exit, or `Ctrl+Alt+F1` to switch directly to the primary login console. Starting again while active switches the panel back to the kiosk VT without creating another unit.
+
+Pass display arguments after `--`:
+
+```bash
+./bin/kiosk.sh start -- --fps 45 --color green --cell-aspect 0.4
+```
+
+Useful kiosk recipes:
+
+```bash
+# Lower-redraw mode accepted on the small VT panel.
+./bin/kiosk.sh start -- --fps 20
+
+# Lower-redraw red variant with the accepted panel geometry.
+./bin/kiosk.sh start -- --fps 20 --color red --cell-aspect 0.4
+
+# Original guttered Matrix density instead of the solid kiosk field.
+./bin/kiosk.sh start -- --preset reference --fps 20
+
+# Repeatable visual sequence for comparisons and screenshots.
+./bin/kiosk.sh start -- --seed 42 --fps 20
+```
+
+An active kiosk keeps its original arguments; another `start` only switches the panel back to its VT. To apply different flags, stop it first and start it again:
+
+```bash
+./bin/kiosk.sh stop
+./bin/kiosk.sh start -- --fps 20 --color red
+```
+
+Choose another unused VT or an explicit return console when needed:
+
+```bash
+JARVIS_HEAD_KIOSK_VT=9 JARVIS_HEAD_RETURN_VT=1 ./bin/kiosk.sh start
+JARVIS_MODE=local ./bin/kiosk.sh start  # read optional head settings from local.env
+```
+
+The wrapper reads optional settings from the selected `cloud.env` or `local.env`; explicit command-environment values win. It refuses `tty1` and a target with an active getty. It does not enable itself at boot.
 
 ### Start and tune the display
 
@@ -299,6 +353,18 @@ Run these from the repository root. The head always starts manually; emit, TTS, 
 ```
 
 Color choices are `green`, `cyan`, `blue`, `red`, `yellow`, `magenta`, and `white`. Press `q`, Escape, or Ctrl+C to exit.
+
+Color examples for a direct terminal launch:
+
+```bash
+./bin/jarvis-head --color green
+./bin/jarvis-head --color cyan
+./bin/jarvis-head --color blue
+./bin/jarvis-head --color red
+./bin/jarvis-head --color yellow
+./bin/jarvis-head --color magenta
+./bin/jarvis-head --color white
+```
 
 ### Visual-only face and WAV demos
 
@@ -386,6 +452,7 @@ Required:
 - Idle timeout forces `SLEEP` after a listen with no further events
 - Shell test: `jarvis_tts_play_audio` holds flock, **then** emit `speak`, then fake `aplay`; a second waiter does not see `speak` until the lock is held
 - Shell test: disabled mode never invokes the emitter; emitter failure before/after fake `aplay` cannot suppress playback, change its exit status, or prevent retry
+- Kiosk shell tests: transient unit is manual and bounded; `tty1` and active gettys are refused; stop uses the unit control group; session exit restores the captured VT
 - Wake tests: normal re-arm, voice exit, exception, and Ctrl+C/finally paths all leave the display's base state at `SLEEP`
 
 ## What not to copy from the old talking-head notes
