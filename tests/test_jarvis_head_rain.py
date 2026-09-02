@@ -16,8 +16,7 @@ from rain import KIOSK_PRESET, REFERENCE_PRESET, MatrixColumn, RainField, RainPr
 
 def _snapshot(field: RainField) -> tuple[tuple[int, int, str, int, bool], ...]:
     return tuple(
-        (cell.x, cell.y, cell.char, cell.intensity, cell.is_lead)
-        for cell in field.visible_cells()
+        (cell.x, cell.y, cell.char, cell.intensity, cell.is_lead) for cell in field.visible_cells()
     )
 
 
@@ -83,3 +82,22 @@ def test_invalid_field_dimensions_and_negative_time_are_rejected():
     field = RainField(5, 5, seed=1)
     with pytest.raises(ValueError, match="negative"):
         field.update(-0.01)
+
+
+@pytest.mark.parametrize("preset", (KIOSK_PRESET, REFERENCE_PRESET))
+@pytest.mark.parametrize("seed", (1, 7, 42))
+def test_visible_spans_reproduce_visible_cells_exactly(preset, seed):
+    field = RainField(9, 11, preset, seed=seed)
+
+    for _ in range(60):
+        field.update(0.05)
+        from_spans = set()
+        for x, span in field.visible_spans():
+            assert 0 <= span.y_start < span.y_end <= field.height
+            assert len(span.chars) == len(span.intensities) == span.y_end - span.y_start
+            for offset, (char, intensity) in enumerate(
+                zip(span.chars, span.intensities, strict=True)
+            ):
+                y = span.y_start + offset
+                from_spans.add((x, y, char, intensity, y == span.lead_y))
+        assert from_spans == set(_snapshot(field))

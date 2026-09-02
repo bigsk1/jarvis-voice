@@ -117,6 +117,14 @@ class HeadStateMachine:
         wall = time.time() if now_wall is None else now_wall
         return self.speech_overlay.timeline.shape_at(wall - self.speech_overlay.t0)
 
+    def mouth_energy(self, *, now_wall: float | None = None) -> float:
+        """Loudness 0-1 of the active speech overlay at ``now_wall``; 0 when silent."""
+
+        if self.speech_overlay is None:
+            return 0.0
+        wall = time.time() if now_wall is None else now_wall
+        return self.speech_overlay.timeline.level_at(wall - self.speech_overlay.t0)
+
     def _start_speech(self, event: HeadEvent, *, now_wall: float) -> bool:
         if event.playback_id is None or event.wav is None or event.t0 is None:
             return False

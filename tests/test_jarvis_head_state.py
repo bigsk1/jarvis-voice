@@ -6,6 +6,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 HEAD_ROOT = PROJECT_ROOT / "jarvis-head"
 sys.path.insert(0, str(HEAD_ROOT))
@@ -51,6 +53,31 @@ def test_speech_from_sleep_shows_face_then_returns_to_rain_on_duration_failsafe(
     state.tick(now_wall=103.0, now_mono=8.0)
     assert state.active_playback_id is None
     assert state.face_visible is False
+
+
+def test_speech_energy_follows_the_active_overlay_and_is_silent_otherwise():
+    loud = VisemeTimeline(
+        duration=1.0,
+        frame_seconds=0.5,
+        shapes=(MouthShape.AE, MouthShape.CLOSED),
+        levels=(0.9, 0.2),
+    )
+    state = HeadStateMachine(idle_timeout=120.0, wav_loader=lambda _path: loud)
+    assert state.mouth_energy(now_wall=100.0) == 0.0
+
+    assert state.handle(_speak("one", 100.0), now_wall=100.0, now_mono=5.0)
+    assert state.mouth_energy(now_wall=100.1) == pytest.approx(0.9)
+    assert state.mouth_energy(now_wall=100.6) == pytest.approx(0.2)
+    assert state.mouth_energy(now_wall=101.5) == 0.0  # past the clip, before the failsafe
+
+    assert state.handle(_end("one"), now_wall=100.7, now_mono=5.7)
+    assert state.mouth_energy(now_wall=100.7) == 0.0
+
+    # Timelines without measured levels (older loaders) animate aperture only.
+    unmeasured = _machine()
+    assert unmeasured.handle(_speak("two", 200.0), now_wall=200.0, now_mono=9.0)
+    assert unmeasured.mouth_shape(now_wall=200.1) is MouthShape.AE
+    assert unmeasured.mouth_energy(now_wall=200.1) == 0.0
 
 
 def test_speech_from_listen_returns_to_the_listening_face():

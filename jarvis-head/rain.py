@@ -16,10 +16,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 
 BACKGROUND_CHARS = (
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    "abcdefghijklmnopqrstuvwxyz"
-    "0123456789"
-    "!@#$%^&*()_+-=[]{}|;:,.<>?/\\"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?/\\"
 )
 
 
@@ -159,6 +156,32 @@ class MatrixColumn:
             self.top = -self.length
             self._initialize_column()
 
+    def visible_span(self) -> ColumnSpan | None:
+        """Return the contiguous on-screen slice of this column, if any.
+
+        This is the same geometry ``visible_cells`` walks cell by cell, exposed
+        as slices so a vectorized renderer can fill a grid per column instead of
+        per cell. The two must agree; tests hold them together.
+        """
+
+        visible_length = min(self.length, self.height - self.top)
+        if visible_length <= 0:
+            return None
+        y_start = max(self.top, 0)
+        y_end = min(self.top + visible_length, self.height)
+        if y_start >= y_end:
+            return None
+        source_start = y_start - self.top
+        source_end = y_end - self.top
+        lead_y = self.top + visible_length - 1
+        return ColumnSpan(
+            y_start=y_start,
+            y_end=y_end,
+            chars=self.chars[source_start:source_end],
+            intensities=self.intensities[source_start:source_end],
+            lead_y=lead_y if y_start <= lead_y < y_end and lead_y < self.height - 1 else None,
+        )
+
     def visible_cells(self) -> Iterator[tuple[int, str, int, bool]]:
         """Yield ``(y, char, intensity, is_lead)`` for visible nonblank cells."""
 
@@ -174,6 +197,17 @@ class MatrixColumn:
                 self.intensities[source_index],
                 is_lead,
             )
+
+
+@dataclass(frozen=True, slots=True)
+class ColumnSpan:
+    """One column's visible rows as slices: ``chars[i]`` belongs to row ``y_start + i``."""
+
+    y_start: int
+    y_end: int
+    chars: list[str]
+    intensities: list[int]
+    lead_y: int | None
 
 
 class RainField:
@@ -217,6 +251,14 @@ class RainField:
     def update(self, dt: float) -> None:
         for _x, column in self.columns:
             column.update(dt)
+
+    def visible_spans(self) -> Iterator[tuple[int, ColumnSpan]]:
+        """Yield ``(x, span)`` for every column with on-screen cells."""
+
+        for x, column in self.columns:
+            span = column.visible_span()
+            if span is not None:
+                yield x, span
 
     def visible_cells(self) -> Iterator[RainCell]:
         for x, column in self.columns:

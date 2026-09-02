@@ -44,16 +44,34 @@ class VisemeTimeline:
     duration: float
     frame_seconds: float
     shapes: tuple[MouthShape, ...]
+    # Per-frame loudness, 0-1 relative to the clip's peak, 0 for silence. Empty
+    # means "not measured"; renderers then get 0 energy and animate aperture only.
+    levels: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
         if self.duration <= 0 or self.frame_seconds <= 0 or not self.shapes:
             raise ValueError("timeline values must be positive and non-empty")
+        if self.levels and len(self.levels) != len(self.shapes):
+            raise ValueError("levels must be empty or one per shape")
+        if any(not 0.0 <= level <= 1.0 for level in self.levels):
+            raise ValueError("levels must be within 0-1")
+
+    def _index_at(self, elapsed: float) -> int | None:
+        if elapsed < 0 or elapsed >= self.duration:
+            return None
+        return min(int(elapsed / self.frame_seconds), len(self.shapes) - 1)
 
     def shape_at(self, elapsed: float) -> MouthShape:
-        if elapsed < 0 or elapsed >= self.duration:
-            return MouthShape.REST
-        index = min(int(elapsed / self.frame_seconds), len(self.shapes) - 1)
-        return self.shapes[index]
+        index = self._index_at(elapsed)
+        return MouthShape.REST if index is None else self.shapes[index]
+
+    def level_at(self, elapsed: float) -> float:
+        """Speech energy at ``elapsed``; 0 outside the clip or when unmeasured."""
+
+        index = self._index_at(elapsed)
+        if index is None or not self.levels:
+            return 0.0
+        return self.levels[index]
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,9 +128,7 @@ def _analyze_pcm_wav(wav_file: wave.Wave_read, path: Path) -> VisemeTimeline:
 
     declared_duration = declared_frames / sample_rate
     if declared_duration > MAX_WAV_SECONDS:
-        raise WavAnalysisError(
-            f"WAV exceeds the {int(MAX_WAV_SECONDS)} second demo limit: {path}"
-        )
+        raise WavAnalysisError(f"WAV exceeds the {int(MAX_WAV_SECONDS)} second demo limit: {path}")
 
     frames_per_window = max(1, round(sample_rate * FRAME_SECONDS))
     audio_frames: list[_AudioFrame] = []
@@ -133,14 +149,20 @@ def _analyze_pcm_wav(wav_file: wave.Wave_read, path: Path) -> VisemeTimeline:
     peak_rms = max(frame.rms for frame in audio_frames)
     silence_rms = max(ABSOLUTE_SILENCE_RMS, peak_rms * RELATIVE_SILENCE)
     shapes = tuple(
-        _classify_frame(frame, peak_rms=peak_rms, silence_rms=silence_rms)
-        for frame in audio_frames
+        _classify_frame(frame, peak_rms=peak_rms, silence_rms=silence_rms) for frame in audio_frames
     )
     shapes = _smooth_single_frame_changes(shapes)
+    # Keep the loudness the classifier used to throw away: it drives the
+    # lower-face pulse while the aperture drives the mouth shape.
+    levels = tuple(
+        0.0 if frame.rms <= silence_rms else min(1.0, frame.rms / peak_rms)
+        for frame in audio_frames
+    )
     return VisemeTimeline(
         duration=frames_read / sample_rate,
         frame_seconds=frames_per_window / sample_rate,
         shapes=shapes,
+        levels=levels,
     )
 
 
@@ -206,14 +228,9 @@ def _classify_frame(
         return MouthShape.REST
 
     relative_level = frame.rms / peak_rms
-    if relative_level < CLOSED_LEVEL or (
-        relative_level < 0.55 and frame.zero_crossing_rate > 0.28
-    ):
+    if relative_level < CLOSED_LEVEL or (relative_level < 0.55 and frame.zero_crossing_rate > 0.28):
         return MouthShape.CLOSED
-    if (
-        frame.centroid_hz <= ROUND_CENTROID_HZ
-        and frame.low_band_ratio >= ROUND_LOW_BAND_RATIO
-    ):
+    if frame.centroid_hz <= ROUND_CENTROID_HZ and frame.low_band_ratio >= ROUND_LOW_BAND_RATIO:
         return MouthShape.ROUND
     return MouthShape.AE
 

@@ -100,7 +100,54 @@ DISPLAY_CONFIG_KEYS = (
     "JARVIS_HEAD_SOCKET",
     "JARVIS_HEAD_CELL_ASPECT",
     "JARVIS_HEAD_IDLE_TIMEOUT",
+    "JARVIS_HEAD_RENDERER",
+    "JARVIS_HEAD_FRAMEBUFFER",
+    "JARVIS_HEAD_FONT",
+    "JARVIS_HEAD_FONT_PX",
+    "JARVIS_HEAD_FACE_BRIGHTNESS",
+    "JARVIS_HEAD_FACE_PRESENCE",
 )
+RENDERERS = ("curses", "fb")
+
+
+def _font_px_value(value: str) -> int:
+    try:
+        font_px = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("font size must be an integer") from exc
+    if not 6 <= font_px <= 24:
+        raise argparse.ArgumentTypeError("font size must be between 6 and 24 pixels")
+    return font_px
+
+
+def _face_brightness_value(value: str) -> float:
+    try:
+        gain = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("face brightness must be a number") from exc
+    if not math.isfinite(gain) or not 0.2 <= gain <= 1.5:
+        raise argparse.ArgumentTypeError("face brightness must be between 0.2 and 1.5")
+    return gain
+
+
+def _face_presence_value(value: str) -> float:
+    try:
+        presence = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("face presence must be a number") from exc
+    if not math.isfinite(presence) or not 0.3 <= presence <= 1.0:
+        raise argparse.ArgumentTypeError("face presence must be between 0.3 and 1.0")
+    return presence
+
+
+def _snapshot_seconds(value: str) -> float:
+    try:
+        seconds = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("snapshot time must be a number") from exc
+    if not math.isfinite(seconds) or seconds < 0 or seconds > 600:
+        raise argparse.ArgumentTypeError("snapshot time must be 0-600 seconds")
+    return seconds
 
 
 def _load_display_config() -> None:
@@ -130,7 +177,7 @@ def _load_display_config() -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Jarvis Head Phase 3 - Matrix face display and local event receiver",
+        description="Jarvis Head - Matrix face display and local event receiver",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -141,12 +188,79 @@ Examples:
   ./bin/jarvis-head --demo-face
   ./bin/jarvis-head --demo-face --cell-aspect 0.4
   ./bin/jarvis-head --demo-wav /path/to/speech.wav
+  ./bin/jarvis-head --renderer fb --demo-face          # pixels on the VT framebuffer
+  ./bin/jarvis-head --renderer fb --demo-think         # the THINK scanline, no wake needed
+  ./bin/jarvis-head --renderer fb --demo-face --face-brightness 0.8
+  ./bin/jarvis-head --renderer fb --demo-face --face-presence 0.45   # features veiled in rain
+  ./bin/jarvis-head --renderer fb --snapshot /tmp/head.png --snapshot-at 6
   ./bin/jarvis-head emit listen
   ./bin/jarvis-head emit speak --wav /path/to/speech.wav --playback-id ID --t0 EPOCH
 
 The WAV demo loops its visual timeline but never plays audio.
+The fb renderer needs a Linux virtual console (bin/kiosk.sh) unless --snapshot
+is used, which renders one PNG offscreen and exits.
 Press q, Escape, or Ctrl+C to exit.
         """,
+    )
+    parser.add_argument(
+        "--renderer",
+        choices=RENDERERS,
+        default=None,
+        help="curses cells or fb pixels; defaults to JARVIS_HEAD_RENDERER or curses",
+    )
+    parser.add_argument(
+        "--framebuffer",
+        default=None,
+        metavar="DEVICE",
+        help="Framebuffer device for --renderer fb (default: JARVIS_HEAD_FRAMEBUFFER or /dev/fb0)",
+    )
+    parser.add_argument(
+        "--font",
+        default=None,
+        metavar="PATH",
+        help="Monospace TrueType font for --renderer fb (default: JARVIS_HEAD_FONT or DejaVu Sans Mono)",
+    )
+    parser.add_argument(
+        "--font-px",
+        type=_font_px_value,
+        default=None,
+        metavar="PX",
+        help="Glyph size for --renderer fb, 6-24 (default: JARVIS_HEAD_FONT_PX or 10)",
+    )
+    parser.add_argument(
+        "--face-brightness",
+        type=_face_brightness_value,
+        default=None,
+        metavar="GAIN",
+        help=(
+            "Scale the face above the rain floor for --renderer fb, 0.2-1.5 "
+            "(default: JARVIS_HEAD_FACE_BRIGHTNESS or 1.0)"
+        ),
+    )
+    parser.add_argument(
+        "--face-presence",
+        type=_face_presence_value,
+        default=None,
+        metavar="FRACTION",
+        help=(
+            "How far the face condenses out of the rain, 0.3-1.0; 1.0 is the whole "
+            "head, ~0.45 keeps the features visible while the skull stays veiled "
+            "(default: JARVIS_HEAD_FACE_PRESENCE or 1.0)"
+        ),
+    )
+    parser.add_argument(
+        "--snapshot",
+        type=Path,
+        default=None,
+        metavar="PNG",
+        help="Render one offscreen frame with the fb renderer to PNG and exit (implies demo)",
+    )
+    parser.add_argument(
+        "--snapshot-at",
+        type=_snapshot_seconds,
+        default=4.0,
+        metavar="SECONDS",
+        help="Simulated seconds before the snapshot frame (default: 4)",
     )
     parser.add_argument(
         "--preset",
@@ -179,6 +293,11 @@ Press q, Escape, or Ctrl+C to exit.
         help="Force the animated authored face on top of the rain",
     )
     demo_group.add_argument(
+        "--demo-think",
+        action="store_true",
+        help="Like --demo-face but in the THINK state (scanline sweep)",
+    )
+    demo_group.add_argument(
         "--demo-wav",
         type=Path,
         metavar="PATH",
@@ -191,7 +310,8 @@ Press q, Escape, or Ctrl+C to exit.
         metavar="RATIO",
         help=(
             "Terminal cell width/height ratio; defaults to "
-            "JARVIS_HEAD_CELL_ASPECT or 0.4"
+            "JARVIS_HEAD_CELL_ASPECT or 0.4 for curses, and to the "
+            "rasterized font's own cell ratio for --renderer fb"
         ),
     )
     return parser
@@ -256,17 +376,52 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("Pillow is unavailable; run `uv sync --dev` in the repository")
         raise
 
+    from display_errors import DisplaySetupError
     from head_socket import HeadSocketError
     from visemes import WavAnalysisError
 
     from lib.head_events import get_socket_path
 
-    if args.cell_aspect is None:
+    renderer = args.renderer or str(get_config_value("JARVIS_HEAD_RENDERER", "curses")).strip()
+    if renderer not in RENDERERS:
+        parser.error(f"invalid JARVIS_HEAD_RENDERER: choose from {', '.join(RENDERERS)}")
+    if args.snapshot is not None and args.renderer is None:
+        renderer = "fb"
+    if args.snapshot is not None and renderer != "fb":
+        parser.error("--snapshot requires --renderer fb")
+
+    # The curses aspect describes the console font. The fb renderer measures
+    # its own rasterized cells, so only an explicit --cell-aspect overrides it.
+    if args.cell_aspect is None and renderer == "curses":
         configured_aspect = get_config_value("JARVIS_HEAD_CELL_ASPECT", 0.4)
         try:
             args.cell_aspect = _cell_aspect_value(str(configured_aspect))
         except argparse.ArgumentTypeError as exc:
             parser.error(f"invalid JARVIS_HEAD_CELL_ASPECT: {exc}")
+
+    framebuffer_path = args.framebuffer or str(
+        get_config_value("JARVIS_HEAD_FRAMEBUFFER", "/dev/fb0") or "/dev/fb0"
+    )
+    font_path = args.font or (str(get_config_value("JARVIS_HEAD_FONT", "") or "").strip() or None)
+    if args.font_px is None:
+        try:
+            args.font_px = _font_px_value(str(get_config_value("JARVIS_HEAD_FONT_PX", 10)))
+        except argparse.ArgumentTypeError as exc:
+            parser.error(f"invalid JARVIS_HEAD_FONT_PX: {exc}")
+    if args.face_brightness is None:
+        try:
+            args.face_brightness = _face_brightness_value(
+                str(get_config_value("JARVIS_HEAD_FACE_BRIGHTNESS", 1.0))
+            )
+        except argparse.ArgumentTypeError as exc:
+            parser.error(f"invalid JARVIS_HEAD_FACE_BRIGHTNESS: {exc}")
+    if args.face_presence is None:
+        try:
+            args.face_presence = _face_presence_value(
+                str(get_config_value("JARVIS_HEAD_FACE_PRESENCE", 1.0))
+            )
+        except argparse.ArgumentTypeError as exc:
+            parser.error(f"invalid JARVIS_HEAD_FACE_PRESENCE: {exc}")
 
     configured_socket = str(get_config_value("JARVIS_HEAD_SOCKET", "") or "").strip()
     try:
@@ -286,15 +441,28 @@ def main(argv: list[str] | None = None) -> int:
             seed=args.seed,
             color=args.color,
             demo_face=args.demo_face,
+            demo_think=args.demo_think,
             demo_wav=args.demo_wav,
             asset_dir=HEAD_ROOT / "assets",
             cell_aspect=args.cell_aspect,
             event_socket_path=event_socket_path,
             event_socket_default=not bool(configured_socket),
             idle_timeout=idle_timeout,
+            renderer=renderer,
+            framebuffer_path=framebuffer_path,
+            font_path=font_path,
+            font_px=args.font_px,
+            snapshot_path=args.snapshot,
+            snapshot_at=args.snapshot_at,
+            face_brightness=args.face_brightness,
+            face_presence=args.face_presence,
         )
-    except (HeadSocketError, WavAnalysisError) as exc:
+    except (HeadSocketError, WavAnalysisError, DisplaySetupError) as exc:
         parser.error(str(exc))
+    except ModuleNotFoundError as exc:
+        if exc.name == "numpy" and renderer == "fb":
+            parser.error("NumPy is unavailable; run `uv sync --dev` in the repository")
+        raise
     return 0
 
 

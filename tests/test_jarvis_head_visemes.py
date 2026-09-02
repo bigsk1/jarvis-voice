@@ -31,9 +31,7 @@ def _write_segmented_wav(path: Path, *, sample_rate: int = 16_000) -> Path:
             value = 0
             if frequency:
                 value = round(
-                    32_767
-                    * amplitude
-                    * math.sin(2 * math.pi * frequency * index / sample_rate)
+                    32_767 * amplitude * math.sin(2 * math.pi * frequency * index / sample_rate)
                 )
             samples.append(value)
 
@@ -56,6 +54,28 @@ def test_wav_analysis_quantizes_all_four_apertures(tmp_path):
     assert timeline.shape_at(0.7) is MouthShape.AE
     assert timeline.shape_at(1.0) is MouthShape.ROUND
     assert timeline.shape_at(timeline.duration) is MouthShape.REST
+
+
+def test_wav_analysis_keeps_relative_loudness_for_the_speech_pulse(tmp_path):
+    timeline = analyze_wav(_write_segmented_wav(tmp_path / "speech.wav"))
+
+    assert len(timeline.levels) == len(timeline.shapes)
+    assert timeline.level_at(0.1) == 0.0  # leading silence
+    assert timeline.level_at(-0.1) == 0.0 and timeline.level_at(timeline.duration) == 0.0
+    quiet, loud = timeline.level_at(0.4), timeline.level_at(0.7)
+    assert 0 < quiet < loud <= 1.0
+    assert loud == pytest.approx(1.0)  # the loudest segment sets the scale
+    assert quiet == pytest.approx(0.10 / 0.75, abs=0.02)
+
+
+def test_timeline_levels_are_optional_but_must_align_and_stay_normalized():
+    shapes = (MouthShape.AE, MouthShape.REST)
+    unmeasured = visemes.VisemeTimeline(duration=0.1, frame_seconds=0.05, shapes=shapes)
+    assert unmeasured.level_at(0.02) == 0.0
+    with pytest.raises(ValueError, match="one per shape"):
+        visemes.VisemeTimeline(duration=0.1, frame_seconds=0.05, shapes=shapes, levels=(1.0,))
+    with pytest.raises(ValueError, match="0-1"):
+        visemes.VisemeTimeline(duration=0.1, frame_seconds=0.05, shapes=shapes, levels=(1.2, 0.0))
 
 
 def test_wav_analysis_rejects_non_wav_and_non_regular_paths(tmp_path):
