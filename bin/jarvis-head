@@ -76,6 +76,26 @@ def _positive_seconds(value: str) -> float:
     return seconds
 
 
+def _nonnegative_seconds(value: str) -> float:
+    try:
+        seconds = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("value must be a number") from exc
+    if not math.isfinite(seconds) or seconds < 0:
+        raise argparse.ArgumentTypeError("value must be a nonnegative finite number")
+    return seconds
+
+
+def _unit_interval(value: str) -> float:
+    try:
+        fraction = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("value must be a number") from exc
+    if not math.isfinite(fraction) or not 0 <= fraction <= 1:
+        raise argparse.ArgumentTypeError("value must be between 0 and 1")
+    return fraction
+
+
 def _epoch_value(value: str) -> float:
     timestamp = _positive_seconds(value)
     return timestamp
@@ -106,6 +126,12 @@ DISPLAY_CONFIG_KEYS = (
     "JARVIS_HEAD_FONT_PX",
     "JARVIS_HEAD_FACE_BRIGHTNESS",
     "JARVIS_HEAD_FACE_PRESENCE",
+    "JARVIS_HEAD_SCAN_LEVELS",
+    "JARVIS_HEAD_AMBIENT_SCAN",
+    "JARVIS_HEAD_AMBIENT_SCAN_FIRST_SECONDS",
+    "JARVIS_HEAD_AMBIENT_SCAN_MIN_SECONDS",
+    "JARVIS_HEAD_AMBIENT_SCAN_MAX_SECONDS",
+    "JARVIS_HEAD_AMBIENT_SCAN_DOUBLE_CHANCE",
 )
 RENDERERS = ("curses", "fb")
 
@@ -138,6 +164,16 @@ def _face_presence_value(value: str) -> float:
     if not math.isfinite(presence) or not 0.3 <= presence <= 1.0:
         raise argparse.ArgumentTypeError("face presence must be between 0.3 and 1.0")
     return presence
+
+
+def _scan_levels_value(value: str) -> int:
+    try:
+        levels = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("scan levels must be an integer") from exc
+    if not -255 <= levels <= 255:
+        raise argparse.ArgumentTypeError("scan levels must be between -255 and 255")
+    return levels
 
 
 def _snapshot_seconds(value: str) -> float:
@@ -190,6 +226,7 @@ Examples:
   ./bin/jarvis-head --demo-wav /path/to/speech.wav
   ./bin/jarvis-head --renderer fb --demo-face          # pixels on the VT framebuffer
   ./bin/jarvis-head --renderer fb --demo-think         # the THINK scanline, no wake needed
+  ./bin/jarvis-head --renderer fb --demo-think --scan-levels -48  # dark sweep
   ./bin/jarvis-head --renderer fb --demo-face --face-brightness 0.8
   ./bin/jarvis-head --renderer fb --demo-face --face-presence 0.45   # features veiled in rain
   ./bin/jarvis-head --renderer fb --snapshot /tmp/head.png --snapshot-at 6
@@ -246,6 +283,17 @@ Press q, Escape, or Ctrl+C to exit.
             "How far the face condenses out of the rain, 0.3-1.0; 1.0 is the whole "
             "head, ~0.45 keeps the features visible while the skull stays veiled "
             "(default: JARVIS_HEAD_FACE_PRESENCE or 1.0)"
+        ),
+    )
+    parser.add_argument(
+        "--scan-levels",
+        type=_scan_levels_value,
+        default=None,
+        metavar="OFFSET",
+        help=(
+            "Signed framebuffer scanline brightness offset, -255..255; positive "
+            "brightens, 0 hides the band, negative darkens "
+            "(default: JARVIS_HEAD_SCAN_LEVELS or 72)"
         ),
     )
     parser.add_argument(
@@ -422,6 +470,13 @@ def main(argv: list[str] | None = None) -> int:
             )
         except argparse.ArgumentTypeError as exc:
             parser.error(f"invalid JARVIS_HEAD_FACE_PRESENCE: {exc}")
+    if args.scan_levels is None:
+        try:
+            args.scan_levels = _scan_levels_value(
+                str(get_config_value("JARVIS_HEAD_SCAN_LEVELS", 72))
+            )
+        except argparse.ArgumentTypeError as exc:
+            parser.error(f"invalid JARVIS_HEAD_SCAN_LEVELS: {exc}")
 
     configured_socket = str(get_config_value("JARVIS_HEAD_SOCKET", "") or "").strip()
     try:
@@ -433,6 +488,40 @@ def main(argv: list[str] | None = None) -> int:
         idle_timeout = _positive_seconds(str(configured_idle_timeout))
     except argparse.ArgumentTypeError as exc:
         parser.error(f"invalid JARVIS_HEAD_IDLE_TIMEOUT: {exc}")
+
+    try:
+        ambient_scan = _bool_value(str(get_config_value("JARVIS_HEAD_AMBIENT_SCAN", False)))
+        ambient_scan_first_seconds = _nonnegative_seconds(
+            str(get_config_value("JARVIS_HEAD_AMBIENT_SCAN_FIRST_SECONDS", 3.0))
+        )
+        ambient_scan_min_seconds = _positive_seconds(
+            str(get_config_value("JARVIS_HEAD_AMBIENT_SCAN_MIN_SECONDS", 10.0))
+        )
+        ambient_scan_max_seconds = _positive_seconds(
+            str(get_config_value("JARVIS_HEAD_AMBIENT_SCAN_MAX_SECONDS", 14.0))
+        )
+        ambient_scan_double_chance = _unit_interval(
+            str(get_config_value("JARVIS_HEAD_AMBIENT_SCAN_DOUBLE_CHANCE", 0.15))
+        )
+    except argparse.ArgumentTypeError as exc:
+        parser.error(f"invalid ambient scan configuration: {exc}")
+    if (
+        max(
+            ambient_scan_first_seconds,
+            ambient_scan_min_seconds,
+            ambient_scan_max_seconds,
+        )
+        > 600
+    ):
+        parser.error(
+            "invalid ambient scan configuration: timing values must not exceed 600 seconds"
+        )
+    if ambient_scan_max_seconds < ambient_scan_min_seconds:
+        parser.error(
+            "invalid ambient scan configuration: "
+            "JARVIS_HEAD_AMBIENT_SCAN_MAX_SECONDS must be at least "
+            "JARVIS_HEAD_AMBIENT_SCAN_MIN_SECONDS"
+        )
 
     try:
         run_display(
@@ -456,6 +545,12 @@ def main(argv: list[str] | None = None) -> int:
             snapshot_at=args.snapshot_at,
             face_brightness=args.face_brightness,
             face_presence=args.face_presence,
+            scan_levels=args.scan_levels,
+            ambient_scan=ambient_scan,
+            ambient_scan_first_seconds=ambient_scan_first_seconds,
+            ambient_scan_min_seconds=ambient_scan_min_seconds,
+            ambient_scan_max_seconds=ambient_scan_max_seconds,
+            ambient_scan_double_chance=ambient_scan_double_chance,
         )
     except (HeadSocketError, WavAnalysisError, DisplaySetupError) as exc:
         parser.error(str(exc))

@@ -14,9 +14,11 @@ sys.path.insert(0, str(HEAD_ROOT))
 
 from app import (  # noqa: E402
     EYE_ANCHOR_VALUE,
+    AmbientScanScheduler,
     DemoTimelinePlayer,
     FaceGlyphLayer,
     FaceVisibilityTransition,
+    HeadScene,
     IdleFaceMotion,
     RainPalette,
     eye_clusters,
@@ -232,6 +234,121 @@ def test_default_idle_drift_waits_at_least_three_seconds_before_repositioning():
     assert motion.offset != (0, 0)
     assert abs(motion.offset[0]) <= 2
     assert abs(motion.offset[1]) <= 1
+
+
+def test_ambient_scan_waits_for_a_visible_face_and_resets_when_it_hides():
+    scheduler = AmbientScanScheduler(
+        seed=9,
+        first_seconds=1.0,
+        min_seconds=10.0,
+        max_seconds=10.0,
+        double_chance=0.0,
+        sweep_seconds=1.0,
+    )
+
+    assert scheduler.update(5.0, face_visible=False) == (None, False)
+    assert scheduler.update(0.75, face_visible=True) == (None, False)
+    phase, nudge = scheduler.update(0.25, face_visible=True)
+    assert phase == pytest.approx(0.0)
+    assert nudge is False
+    assert scheduler.update(0.5, face_visible=True) == (pytest.approx(0.5), False)
+    assert scheduler.update(0.5, face_visible=True) == (None, False)
+    assert scheduler.update(9.99, face_visible=True) == (None, False)
+    phase, nudge = scheduler.update(0.01, face_visible=True)
+    assert phase == pytest.approx(0.0)
+    assert nudge is False
+
+    assert scheduler.update(0.0, face_visible=False) == (None, False)
+    assert scheduler.update(0.99, face_visible=True) == (None, False)
+    phase, _nudge = scheduler.update(0.01, face_visible=True)
+    assert phase == pytest.approx(0.0)
+
+
+def test_ambient_scan_double_pass_requests_one_glitch_nudge():
+    scheduler = AmbientScanScheduler(
+        seed=4,
+        first_seconds=0.0,
+        min_seconds=10.0,
+        max_seconds=10.0,
+        double_chance=1.0,
+        sweep_seconds=1.0,
+        double_gap_seconds=0.2,
+    )
+
+    assert scheduler.update(0.0, face_visible=True) == (pytest.approx(0.0), False)
+    assert scheduler.update(1.0, face_visible=True) == (None, False)
+    assert scheduler.update(0.19, face_visible=True) == (None, False)
+    phase, nudge = scheduler.update(0.01, face_visible=True)
+    assert phase == pytest.approx(0.0)
+    assert nudge is True
+    assert scheduler.update(0.5, face_visible=True) == (pytest.approx(0.5), False)
+
+
+def test_ambient_scan_timing_is_seeded_and_rejects_invalid_ranges():
+    first = AmbientScanScheduler(seed=42, first_seconds=0.0)
+    second = AmbientScanScheduler(seed=42, first_seconds=0.0)
+    samples = []
+    for _ in range(400):
+        left = first.update(0.1, face_visible=True)
+        right = second.update(0.1, face_visible=True)
+        assert left == right
+        samples.append(left)
+    assert sum(phase is not None for phase, _nudge in samples) > 20
+
+    with pytest.raises(ValueError, match="first delay"):
+        AmbientScanScheduler(seed=1, first_seconds=-1)
+    with pytest.raises(ValueError, match="interval"):
+        AmbientScanScheduler(seed=1, min_seconds=2, max_seconds=1)
+    with pytest.raises(ValueError, match="double chance"):
+        AmbientScanScheduler(seed=1, double_chance=1.1)
+
+
+def test_scan_glitch_nudge_is_repeatable_and_stays_nearby():
+    first = IdleFaceMotion(fps=20, seed=11)
+    second = IdleFaceMotion(fps=20, seed=11)
+
+    for _ in range(20):
+        before = first.offset
+        first.nudge()
+        second.nudge()
+        assert first.offset == second.offset
+        assert first.offset != before
+        assert abs(first.offset[0] - before[0]) <= 1
+        assert abs(first.offset[1] - before[1]) <= 1
+
+
+def test_head_scene_runs_ambient_scan_during_speech_and_applies_double_nudge():
+    scene = HeadScene(
+        height=60,
+        width=100,
+        preset="kiosk",
+        fps=20,
+        seed=11,
+        face_masks=SemanticFaceMasks.from_directory(HEAD_ROOT / "assets"),
+        timeline=None,
+        cell_aspect=0.5,
+        event_socket=None,
+        state_machine=None,
+        ambient_scan=True,
+        ambient_scan_first_seconds=0.0,
+        ambient_scan_min_seconds=10.0,
+        ambient_scan_max_seconds=10.0,
+        ambient_scan_double_chance=1.0,
+    )
+    scene.speech_energy = 0.75
+    before = scene.face_offset
+
+    scene.step(0.0)
+    assert scene.scan_phase == pytest.approx(0.0)
+    assert scene.thinking is False
+    assert scene.speech_energy == 0.75
+    scene.step(1.2)
+    assert scene.scan_phase is None
+    scene.step(0.2)
+
+    assert scene.scan_phase == pytest.approx(0.0)
+    assert scene.face_offset != before
+    assert scene.speech_energy == 0.75
 
 
 def test_face_visibility_transition_reverses_without_jumping():

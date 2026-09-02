@@ -45,6 +45,10 @@ FACE_GAMMA = 2.2
 # panel reads brighter than a PNG of the same frame, so the floor is generous.
 DEFAULT_FACE_BRIGHTNESS = 1.0
 FACE_BRIGHTNESS_RANGE = (0.2, 1.5)
+# Signed scanline offset in 256-level framebuffer ramp units. Positive values
+# brighten the band, zero hides it, and negative values create a dark sweep.
+DEFAULT_SCAN_LEVELS = 72
+SCAN_LEVELS_RANGE = (-255, 255)
 
 _XTERM_CUBE_LEVELS = (0, 95, 135, 175, 215, 255)
 NEUTRAL_CHROMA_LIMIT = 24

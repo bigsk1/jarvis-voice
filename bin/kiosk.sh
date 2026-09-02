@@ -21,6 +21,12 @@ RENDERER_CONFIG_KEYS=(
     JARVIS_HEAD_FONT_PX
     JARVIS_HEAD_FACE_BRIGHTNESS
     JARVIS_HEAD_FACE_PRESENCE
+    JARVIS_HEAD_SCAN_LEVELS
+    JARVIS_HEAD_AMBIENT_SCAN
+    JARVIS_HEAD_AMBIENT_SCAN_FIRST_SECONDS
+    JARVIS_HEAD_AMBIENT_SCAN_MIN_SECONDS
+    JARVIS_HEAD_AMBIENT_SCAN_MAX_SECONDS
+    JARVIS_HEAD_AMBIENT_SCAN_DOUBLE_CHANCE
 )
 HEAD_CONFIG_KEYS=(
     JARVIS_HEAD_SOCKET
@@ -56,12 +62,19 @@ Environment overrides:
   JARVIS_HEAD_FONT_PX=10          fb glyph size, 6-24
   JARVIS_HEAD_FACE_BRIGHTNESS=1.0 fb face gain above the rain floor, 0.2-1.5
   JARVIS_HEAD_FACE_PRESENCE=1.0   how far the face condenses, 0.3-1.0
+  JARVIS_HEAD_SCAN_LEVELS=72      signed scan offset; negative makes a dark sweep
+  JARVIS_HEAD_AMBIENT_SCAN=false  visual-only scan while the face is visible
+  JARVIS_HEAD_AMBIENT_SCAN_FIRST_SECONDS=3.0
+  JARVIS_HEAD_AMBIENT_SCAN_MIN_SECONDS=10.0
+  JARVIS_HEAD_AMBIENT_SCAN_MAX_SECONDS=14.0
+  JARVIS_HEAD_AMBIENT_SCAN_DOUBLE_CHANCE=0.15
 
 Examples:
   ./bin/kiosk.sh start
   ./bin/kiosk.sh start -- --fps 45 --color green --cell-aspect 0.4
   ./bin/kiosk.sh start -- --renderer fb --font-px 9
   ./bin/kiosk.sh start -- --renderer fb --face-presence 0.45 --face-brightness 0.4
+  ./bin/kiosk.sh start -- --renderer fb --scan-levels -48
   ./bin/kiosk.sh status
   ./bin/kiosk.sh stop
 EOF
@@ -151,6 +164,18 @@ check_number_in_range() {
     if ! [[ "$value" =~ ^[-+]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][-+]?[0-9]+)?$ ]] \
         || ! awk -v v="$value" -v lo="$low" -v hi="$high" 'BEGIN { exit !(v + 0 >= lo + 0 && v + 0 <= hi + 0) }'; then
         die "$label must be a number between $low and $high (got '$value')"
+    fi
+}
+
+check_integer_in_range() {
+    local label="$1" value="$2" low="$3" high="$4" given="${5:-}"
+    if [[ -z "$value" && -z "$given" ]]; then
+        return 0
+    fi
+    if ! [[ "$value" =~ ^[-+]?[0-9]+$ ]] \
+        || ! awk -v v="$value" -v lo="$low" -v hi="$high" \
+            'BEGIN { exit !(v + 0 >= lo + 0 && v + 0 <= hi + 0) }'; then
+        die "$label must be an integer between $low and $high (got '$value')"
     fi
 }
 
@@ -260,7 +285,13 @@ start_kiosk() {
     local effective_framebuffer="${JARVIS_HEAD_FRAMEBUFFER:-/dev/fb0}"
     local effective_face_brightness="${JARVIS_HEAD_FACE_BRIGHTNESS:-}"
     local effective_face_presence="${JARVIS_HEAD_FACE_PRESENCE:-}"
-    local face_brightness_given="" face_presence_given=""
+    local effective_scan_levels="${JARVIS_HEAD_SCAN_LEVELS:-}"
+    local ambient_scan="${JARVIS_HEAD_AMBIENT_SCAN:-false}"
+    local ambient_first="${JARVIS_HEAD_AMBIENT_SCAN_FIRST_SECONDS:-3.0}"
+    local ambient_min="${JARVIS_HEAD_AMBIENT_SCAN_MIN_SECONDS:-10.0}"
+    local ambient_max="${JARVIS_HEAD_AMBIENT_SCAN_MAX_SECONDS:-14.0}"
+    local ambient_double="${JARVIS_HEAD_AMBIENT_SCAN_DOUBLE_CHANCE:-0.15}"
+    local face_brightness_given="" face_presence_given="" scan_levels_given=""
     local -i index=0
     while ((index < ${#head_args[@]})); do
         case "${head_args[index]}" in
@@ -296,6 +327,15 @@ start_kiosk() {
                 effective_face_presence="${head_args[index]#--face-presence=}"
                 face_presence_given=given
                 ;;
+            --scan-levels)
+                effective_scan_levels="${head_args[index + 1]:-}"
+                scan_levels_given=given
+                index+=1
+                ;;
+            --scan-levels=*)
+                effective_scan_levels="${head_args[index]#--scan-levels=}"
+                scan_levels_given=given
+                ;;
             --snapshot|--snapshot=*)
                 die "--snapshot renders a PNG and exits; run bin/jarvis-head directly instead of the kiosk"
                 ;;
@@ -315,6 +355,19 @@ start_kiosk() {
         "$effective_face_brightness" 0.2 1.5 "$face_brightness_given"
     check_number_in_range "face presence (JARVIS_HEAD_FACE_PRESENCE / --face-presence)" \
         "$effective_face_presence" 0.3 1.0 "$face_presence_given"
+    check_integer_in_range "scan levels (JARVIS_HEAD_SCAN_LEVELS / --scan-levels)" \
+        "$effective_scan_levels" -255 255 "$scan_levels_given"
+    case "${ambient_scan,,}" in
+        true|false) ;;
+        *) die "JARVIS_HEAD_AMBIENT_SCAN must be true or false (got '$ambient_scan')" ;;
+    esac
+    check_number_in_range "JARVIS_HEAD_AMBIENT_SCAN_FIRST_SECONDS" "$ambient_first" 0 600 given
+    check_number_in_range "JARVIS_HEAD_AMBIENT_SCAN_MIN_SECONDS" "$ambient_min" 0.1 600 given
+    check_number_in_range "JARVIS_HEAD_AMBIENT_SCAN_MAX_SECONDS" "$ambient_max" 0.1 600 given
+    check_number_in_range "JARVIS_HEAD_AMBIENT_SCAN_DOUBLE_CHANCE" "$ambient_double" 0 1 given
+    if ! awk -v lo="$ambient_min" -v hi="$ambient_max" 'BEGIN { exit !(hi + 0 >= lo + 0) }'; then
+        die "JARVIS_HEAD_AMBIENT_SCAN_MAX_SECONDS must be at least JARVIS_HEAD_AMBIENT_SCAN_MIN_SECONDS"
+    fi
 
     if [[ -n "$socket_override" && "$socket_override" != /* ]]; then
         die "JARVIS_HEAD_SOCKET must be an absolute path"

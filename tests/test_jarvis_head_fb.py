@@ -307,6 +307,7 @@ class _ChoreographedScene(_BareScene):
     thinking = False
     elapsed = 0.0
     speech_energy = 0.0
+    scan_phase = None
 
 
 def _lead_cells(field) -> list[tuple[int, int]]:
@@ -473,9 +474,20 @@ def test_breath_think_and_speech_energy_shift_face_brightness_where_intended():
     think = _ChoreographedScene(still, layer, offset=offset)
     think.thinking = True
     think.elapsed = 1.2 * 0.5  # halfway: band around the middle row
+    think.scan_phase = 0.0  # semantic THINK takes precedence over ambient timing
     scanned = levels(think, mid_row_cells)
     assert (scanned > plain).all()
     assert (levels(think, forehead) == levels(base, forehead)).all()
+
+    # Ambient choreography uses the same band without claiming THINK and can
+    # coexist with speech energy.
+    ambient = _ChoreographedScene(still, layer, offset=offset)
+    ambient.scan_phase = 0.5
+    ambient.speech_energy = 1.0
+    assert ambient.thinking is False
+    assert (levels(ambient, mid_row_cells) > plain).all()
+    assert (levels(ambient, chin) > levels(base, chin)).all()
+    assert (levels(ambient, forehead) == levels(base, forehead)).all()
 
     # Speech energy: the chin pulses, the forehead does not.
     talking = _ChoreographedScene(still, layer, offset=offset)
@@ -491,6 +503,45 @@ def test_breath_think_and_speech_energy_shift_face_brightness_where_intended():
     talking.thinking = True
     talking.breath = 1.0
     assert holes and (levels(talking, holes) == 0).all()
+
+
+@needs_font
+def test_scan_levels_are_signed_and_independent_of_face_brightness():
+    atlas = GlyphAtlas(FONT, 10)
+    rows, cols = 40, 100
+    scene = _face_scene(atlas, rows, cols)
+    scene.step(1 / 30)
+    layer = scene.face_layer
+    assert layer is not None
+    still = _still_scene(rows, cols)
+    still.columns = []
+    lit = [cell for cell in layer.cells if cell.value > 0]
+    top = min(cell.y for cell in lit)
+    bottom = max(cell.y for cell in lit)
+    middle = [cell for cell in lit if cell.y == top + (bottom - top + 1) // 2]
+    probe = _ChoreographedScene(still, layer, offset=scene.face_offset)
+    probe.scan_phase = 0.5
+    ox, oy = scene.face_offset
+
+    def mean_level(scan_levels: int, *, face_brightness: float = 0.4) -> float:
+        composer = FrameComposer(
+            atlas,
+            color="green",
+            rows=rows,
+            cols=cols,
+            face_brightness=face_brightness,
+            scan_levels=scan_levels,
+        )
+        composer.compose(probe)
+        return float(np.mean([composer.level_grid[cell.y + oy, cell.x + ox] for cell in middle]))
+
+    assert mean_level(-72) < mean_level(0) < mean_level(72)
+    assert mean_level(-48, face_brightness=0.4) < mean_level(0, face_brightness=0.4)
+    assert mean_level(48, face_brightness=0.4) > mean_level(0, face_brightness=0.4)
+
+    for invalid in (-256, 256, 1.5, True):
+        with pytest.raises(ValueError, match="scan_levels"):
+            FrameComposer(atlas, color="green", rows=rows, cols=cols, scan_levels=invalid)
 
 
 @needs_font

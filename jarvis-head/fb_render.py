@@ -27,7 +27,9 @@ from glyphs import GlyphAtlas, resolve_font_path
 from palette import (
     BASE_HUES,
     DEFAULT_FACE_BRIGHTNESS,
+    DEFAULT_SCAN_LEVELS,
     FACE_BRIGHTNESS_RANGE,
+    SCAN_LEVELS_RANGE,
     build_ramp,
     face_shade_index,
     rain_shade_index,
@@ -56,9 +58,8 @@ RIPPLE_LEVELS = 48
 SKIN_GLOW_DECAY = 0.78
 AFTERGLOW_LEVELS = 36
 RAIN_AFTERGLOW_DECAY = 0.55
-# THINK: a bright band sweeps down the face once per period.
+# THINK/ambient choreography: a signed band sweeps down the face once per period.
 SCAN_PERIOD_SECONDS = 1.2
-SCAN_LEVELS = 72
 SCAN_HALF_WIDTH_ROWS = 2.5
 # Speech loudness pulses the lower face; the aperture mask still does the mouth.
 SPEECH_LEVELS = 40
@@ -93,6 +94,7 @@ class SceneLike(Protocol):
     thinking: bool
     elapsed: float
     speech_energy: float
+    scan_phase: float | None
 
     def step(self, dt: float) -> None: ...
 
@@ -127,17 +129,26 @@ class FrameComposer:
         cols: int,
         channel_offsets: tuple[int, int, int] = BGRX_OFFSETS,
         face_brightness: float = DEFAULT_FACE_BRIGHTNESS,
+        scan_levels: int = DEFAULT_SCAN_LEVELS,
     ) -> None:
         if rows < 1 or cols < 1:
             raise ValueError("the grid needs at least one row and one column")
         low, high = FACE_BRIGHTNESS_RANGE
         if not low <= face_brightness <= high:
             raise ValueError(f"face_brightness must be between {low} and {high}")
+        scan_low, scan_high = SCAN_LEVELS_RANGE
+        if (
+            isinstance(scan_levels, bool)
+            or not isinstance(scan_levels, int)
+            or not scan_low <= scan_levels <= scan_high
+        ):
+            raise ValueError(f"scan_levels must be an integer between {scan_low} and {scan_high}")
         self.atlas = atlas
         self.rows = rows
         self.cols = cols
         self.channel_offsets = channel_offsets
         self.face_brightness = face_brightness
+        self.scan_levels = scan_levels
         self.lut = np.asarray(build_ramp(BASE_HUES[color], LEVELS), dtype=np.uint32)
         self.packed = _pack_atlas(atlas.alphas, self.lut, channel_offsets)
         self.rain_levels = np.asarray(
@@ -260,10 +271,17 @@ class FrameComposer:
         target = self.face_levels[values].astype(np.float32)
         target += getattr(scene, "breath", 0.0) * BREATH_LEVELS
         target += self.skin_glow[ys, xs] * RIPPLE_LEVELS
+        scan_phase = None
         if getattr(scene, "thinking", False):
-            phase = (getattr(scene, "elapsed", 0.0) % SCAN_PERIOD_SECONDS) / SCAN_PERIOD_SECONDS
+            scan_phase = (
+                getattr(scene, "elapsed", 0.0) % SCAN_PERIOD_SECONDS
+            ) / SCAN_PERIOD_SECONDS
+        else:
+            scan_phase = getattr(scene, "scan_phase", None)
+        if scan_phase is not None:
+            phase = float(np.clip(scan_phase, 0.0, 1.0))
             scan_row = geometry.top - 1 + phase * (geometry.height + 2)
-            target += SCAN_LEVELS * np.clip(
+            target += self.scan_levels * np.clip(
                 1.0 - np.abs(mask_rows - scan_row) / SCAN_HALF_WIDTH_ROWS, 0.0, 1.0
             )
         energy = getattr(scene, "speech_energy", 0.0)
@@ -379,6 +397,7 @@ def render_snapshot(
     font_path: str | Path | None,
     font_px: int,
     face_brightness: float = DEFAULT_FACE_BRIGHTNESS,
+    scan_levels: int = DEFAULT_SCAN_LEVELS,
     size: tuple[int, int] = DEFAULT_SNAPSHOT_SIZE,
 ) -> Path:
     """Simulate ``at_seconds`` with a fixed step and write one PNG. No device needed."""
@@ -387,7 +406,12 @@ def render_snapshot(
     width, height = size
     rows, cols, x_origin, y_origin = grid_for(atlas, width, height)
     composer = FrameComposer(
-        atlas, color=color, rows=rows, cols=cols, face_brightness=face_brightness
+        atlas,
+        color=color,
+        rows=rows,
+        cols=cols,
+        face_brightness=face_brightness,
+        scan_levels=scan_levels,
     )
     scene = scene_factory(rows, cols, atlas.cell_aspect)
 
@@ -412,6 +436,7 @@ def run_framebuffer_display(
     font_path: str | Path | None,
     font_px: int,
     face_brightness: float = DEFAULT_FACE_BRIGHTNESS,
+    scan_levels: int = DEFAULT_SCAN_LEVELS,
 ) -> None:
     """Drive the scene onto the physical framebuffer until a quit key or signal."""
 
@@ -433,6 +458,7 @@ def run_framebuffer_display(
             cols=cols,
             channel_offsets=(info.red_offset, info.green_offset, info.blue_offset),
             face_brightness=face_brightness,
+            scan_levels=scan_levels,
         )
         scene = scene_factory(rows, cols, atlas.cell_aspect)
         frame_interval = 1.0 / fps

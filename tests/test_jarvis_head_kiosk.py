@@ -288,6 +288,12 @@ def test_direct_display_hydrates_only_head_config_without_losing_explicit_env(
             "JARVIS_HEAD_RENDERER": "fb",
             "JARVIS_HEAD_FONT_PX": "9",
             "JARVIS_HEAD_FACE_BRIGHTNESS": "1.2",
+            "JARVIS_HEAD_SCAN_LEVELS": "-48",
+            "JARVIS_HEAD_AMBIENT_SCAN": "true",
+            "JARVIS_HEAD_AMBIENT_SCAN_FIRST_SECONDS": "2.5",
+            "JARVIS_HEAD_AMBIENT_SCAN_MIN_SECONDS": "9",
+            "JARVIS_HEAD_AMBIENT_SCAN_MAX_SECONDS": "13",
+            "JARVIS_HEAD_AMBIENT_SCAN_DOUBLE_CHANCE": "0.25",
             "OPENAI_API_KEY": "must-not-enter-kiosk-env",
         }
 
@@ -297,6 +303,12 @@ def test_direct_display_hydrates_only_head_config_without_losing_explicit_env(
         "JARVIS_HEAD_RENDERER",
         "JARVIS_HEAD_FONT_PX",
         "JARVIS_HEAD_FACE_BRIGHTNESS",
+        "JARVIS_HEAD_SCAN_LEVELS",
+        "JARVIS_HEAD_AMBIENT_SCAN",
+        "JARVIS_HEAD_AMBIENT_SCAN_FIRST_SECONDS",
+        "JARVIS_HEAD_AMBIENT_SCAN_MIN_SECONDS",
+        "JARVIS_HEAD_AMBIENT_SCAN_MAX_SECONDS",
+        "JARVIS_HEAD_AMBIENT_SCAN_DOUBLE_CHANCE",
         "OPENAI_API_KEY",
     ):
         # delenv on an absent key records nothing, so the launcher's writes
@@ -315,7 +327,47 @@ def test_direct_display_hydrates_only_head_config_without_losing_explicit_env(
     assert os.environ["JARVIS_HEAD_RENDERER"] == "fb"
     assert os.environ["JARVIS_HEAD_FONT_PX"] == "9"
     assert os.environ["JARVIS_HEAD_FACE_BRIGHTNESS"] == "1.2"
+    assert os.environ["JARVIS_HEAD_SCAN_LEVELS"] == "-48"
+    assert os.environ["JARVIS_HEAD_AMBIENT_SCAN"] == "true"
+    assert os.environ["JARVIS_HEAD_AMBIENT_SCAN_FIRST_SECONDS"] == "2.5"
+    assert os.environ["JARVIS_HEAD_AMBIENT_SCAN_MIN_SECONDS"] == "9"
+    assert os.environ["JARVIS_HEAD_AMBIENT_SCAN_MAX_SECONDS"] == "13"
+    assert os.environ["JARVIS_HEAD_AMBIENT_SCAN_DOUBLE_CHANCE"] == "0.25"
     assert "OPENAI_API_KEY" not in os.environ
+
+
+def test_launcher_passes_validated_choreography_config_to_the_scene(monkeypatch):
+    module_name = "test_jarvis_head_launcher_ambient"
+    loader = importlib.machinery.SourceFileLoader(module_name, str(HEAD))
+    spec = importlib.util.spec_from_loader(module_name, loader)
+    assert spec is not None and spec.loader is not None
+    launcher = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, module_name, launcher)
+    spec.loader.exec_module(launcher)
+
+    seen = {}
+
+    def fake_run_display(**kwargs):
+        seen.update(kwargs)
+
+    import app
+
+    monkeypatch.setattr(app, "run_display", fake_run_display)
+    monkeypatch.setattr(config_loader, "load_env_file", lambda _path: {})
+    monkeypatch.setenv("JARVIS_HEAD_AMBIENT_SCAN", "true")
+    monkeypatch.setenv("JARVIS_HEAD_SCAN_LEVELS", "-48")
+    monkeypatch.setenv("JARVIS_HEAD_AMBIENT_SCAN_FIRST_SECONDS", "2.5")
+    monkeypatch.setenv("JARVIS_HEAD_AMBIENT_SCAN_MIN_SECONDS", "9")
+    monkeypatch.setenv("JARVIS_HEAD_AMBIENT_SCAN_MAX_SECONDS", "13")
+    monkeypatch.setenv("JARVIS_HEAD_AMBIENT_SCAN_DOUBLE_CHANCE", "0.25")
+
+    assert launcher.main(["--demo-face"]) == 0
+    assert seen["ambient_scan"] is True
+    assert seen["scan_levels"] == -48
+    assert seen["ambient_scan_first_seconds"] == 2.5
+    assert seen["ambient_scan_min_seconds"] == 9.0
+    assert seen["ambient_scan_max_seconds"] == 13.0
+    assert seen["ambient_scan_double_chance"] == 0.25
 
 
 def test_start_forwards_and_preflights_face_brightness(tmp_path: Path):
@@ -333,6 +385,88 @@ def test_start_forwards_and_preflights_face_brightness(tmp_path: Path):
         assert result.returncode == 2, result.stdout
         assert "JARVIS_HEAD_FACE_BRIGHTNESS" in result.stderr
         log = tmp_path / f"bad-{bad}" / "commands.log"
+        assert not log.exists() or "systemd-run|" not in log.read_text()
+
+
+def test_start_forwards_and_preflights_ambient_scan_settings(tmp_path: Path):
+    settings = {
+        "JARVIS_HEAD_AMBIENT_SCAN": "true",
+        "JARVIS_HEAD_AMBIENT_SCAN_FIRST_SECONDS": "2.5",
+        "JARVIS_HEAD_AMBIENT_SCAN_MIN_SECONDS": "9",
+        "JARVIS_HEAD_AMBIENT_SCAN_MAX_SECONDS": "13",
+        "JARVIS_HEAD_AMBIENT_SCAN_DOUBLE_CHANCE": "0.25",
+        "JARVIS_HEAD_SCAN_LEVELS": "-48",
+    }
+    good = _run(tmp_path / "good-ambient", "start", **settings)
+    assert good.returncode == 0, good.stderr
+    launch = next(
+        line
+        for line in (tmp_path / "good-ambient" / "commands.log").read_text().splitlines()
+        if line.startswith("systemd-run|")
+    )
+    for key, value in settings.items():
+        assert f"--env {key}={value}" in launch
+
+    invalid_settings = (
+        {"JARVIS_HEAD_AMBIENT_SCAN": "sometimes"},
+        {"JARVIS_HEAD_AMBIENT_SCAN_FIRST_SECONDS": "-1"},
+        {"JARVIS_HEAD_AMBIENT_SCAN_MIN_SECONDS": "0"},
+        {"JARVIS_HEAD_AMBIENT_SCAN_MAX_SECONDS": "601"},
+        {"JARVIS_HEAD_AMBIENT_SCAN_DOUBLE_CHANCE": "1.1"},
+        {
+            "JARVIS_HEAD_AMBIENT_SCAN_MIN_SECONDS": "15",
+            "JARVIS_HEAD_AMBIENT_SCAN_MAX_SECONDS": "10",
+        },
+    )
+    for index, values in enumerate(invalid_settings):
+        path = tmp_path / f"bad-ambient-{index}"
+        result = _run(path, "start", **values)
+        assert result.returncode == 2, result.stdout
+        assert "AMBIENT_SCAN" in result.stderr
+        log = path / "commands.log"
+        assert not log.exists() or "systemd-run|" not in log.read_text()
+
+
+def test_scan_levels_flag_wins_over_config_and_is_preflighted(tmp_path: Path):
+    for flags in (("--scan-levels", "-48"), ("--scan-levels=-48",)):
+        result = _run(
+            tmp_path / ("good-" + "-".join(flags)),
+            "start",
+            "--",
+            *flags,
+            JARVIS_HEAD_SCAN_LEVELS="999",
+        )
+        assert result.returncode == 0, result.stderr
+        launch = next(
+            line
+            for line in (tmp_path / ("good-" + "-".join(flags)) / "commands.log")
+            .read_text()
+            .splitlines()
+            if line.startswith("systemd-run|")
+        )
+        assert " ".join(flags) in launch
+
+    for flags in (
+        ("--scan-levels", "256"),
+        ("--scan-levels=-256",),
+        ("--scan-levels", "1.5"),
+        ("--scan-levels=",),
+        ("--scan-levels",),
+        ("--scan-levels", "--renderer", "curses"),
+    ):
+        path = tmp_path / ("bad-" + "-".join(flags).strip("-"))
+        result = _run(path, "start", "--", *flags)
+        assert result.returncode == 2, result.stdout
+        assert "scan levels" in result.stderr
+        log = path / "commands.log"
+        assert not log.exists() or "systemd-run|" not in log.read_text()
+
+    for value in ("256", "-256", "1.5", "dark"):
+        path = tmp_path / f"bad-env-{value}"
+        result = _run(path, "start", JARVIS_HEAD_SCAN_LEVELS=value)
+        assert result.returncode == 2, result.stdout
+        assert "JARVIS_HEAD_SCAN_LEVELS" in result.stderr
+        log = path / "commands.log"
         assert not log.exists() or "systemd-run|" not in log.read_text()
 
 
@@ -433,10 +567,10 @@ def test_start_forwards_explicit_renderer_settings_into_the_clean_session(tmp_pa
         for line in (tmp_path / "ok" / "commands.log").read_text().splitlines()
         if line.startswith("systemd-run|")
     )
-    assert (
-        "--env JARVIS_HEAD_RENDERER=fb --env JARVIS_HEAD_FRAMEBUFFER=/dev/null "
-        "--env JARVIS_HEAD_FONT_PX=9 -- --renderer fb"
-    ) in launch
+    assert "--env JARVIS_HEAD_RENDERER=fb" in launch
+    assert "--env JARVIS_HEAD_FRAMEBUFFER=/dev/null" in launch
+    assert "--env JARVIS_HEAD_FONT_PX=9" in launch
+    assert launch.endswith("-- --renderer fb")
 
 
 def test_start_preflights_the_renderer_and_device_named_on_the_command_line(tmp_path: Path):

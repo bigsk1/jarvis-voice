@@ -24,6 +24,14 @@ Deterministic workflows are Jarvis's reliable automation path. Instead of asking
 
 [![Jarvis Voice runtime architecture](docs/diagrams/jarvis-voice-runtime.svg)](https://bigsk1.com/jarvis-voice/docs/diagrams/jarvis-runtime-architecture.html)
 
+## Jarvis Head
+
+Jarvis Head is an optional Matrix-style face and Linux virtual-console kiosk. It coalesces from the rain when Jarvis wakes, reacts to listening and speech, tracks TTS with audio-driven mouth shapes, and dissolves back into the rain without owning or supervising the core voice processes.
+
+https://github.com/user-attachments/assets/101c682d-7ed3-4734-b156-fc238d2d4077
+
+[Setup, rendering options, configuration, and troubleshooting](docs/JARVIS_HEAD.md)
+
 ## Prerequisites
 
 Bare minimum to try Jarvis in the **browser** (Web UI chat — no local mic or speakers required):

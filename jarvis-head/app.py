@@ -20,8 +20,10 @@ from palette import (
     BASE_HUES,
     CONSOLE_COLOR_SLOTS,
     DEFAULT_FACE_BRIGHTNESS,
+    DEFAULT_SCAN_LEVELS,
     FACE_BRIGHTNESS_RANGE,
     LINUX_PALETTE_RESET,
+    SCAN_LEVELS_RANGE,
     SHADE_COUNT,
     build_ramp,
     face_shade_index,
@@ -88,6 +90,12 @@ EYE_DISTANCE_WEIGHT = 0.65
 # Rows are about twice as tall as cells are wide; distances use screen shape.
 EYE_DISTANCE_ROW_SCALE = 2.0
 BREATH_PERIOD_SECONDS = 4.2
+AMBIENT_SCAN_FIRST_SECONDS = 3.0
+AMBIENT_SCAN_MIN_SECONDS = 10.0
+AMBIENT_SCAN_MAX_SECONDS = 14.0
+AMBIENT_SCAN_SWEEP_SECONDS = 1.2
+AMBIENT_SCAN_DOUBLE_CHANCE = 0.15
+AMBIENT_SCAN_DOUBLE_GAP_SECONDS = 0.2
 # How far the coalesce goes when the face is "visible". 1.0 is the whole head;
 # lower values hold the face mid-condensation: features resolved, the skull
 # still veiled in rain. The mouth is a reveal anchor too, so it stays readable.
@@ -551,6 +559,21 @@ class IdleFaceMotion:
         self._breath_phase = (self._breath_phase + dt) % BREATH_PERIOD_SECONDS
         self.breath = math.sin(2.0 * math.pi * self._breath_phase / BREATH_PERIOD_SECONDS)
 
+    def nudge(self) -> None:
+        """Jump one nearby cell for an occasional scan-linked glitch."""
+
+        choices = tuple(
+            target
+            for target in DRIFT_TARGETS
+            if target != self.offset
+            and abs(target[0] - self.offset[0]) <= 1
+            and abs(target[1] - self.offset[1]) <= 1
+        )
+        if choices:
+            self.offset = self.rng.choice(choices)
+            self._drift_target = self.offset
+            self._next_drift_target = self.rng.uniform(*self.drift_target_interval)
+
     def _update_blink(self, dt: float) -> None:
         if self.blinking:
             self._blink_remaining -= dt
@@ -578,6 +601,106 @@ class IdleFaceMotion:
                 _step_toward(self.offset[0], self._drift_target[0]),
                 _step_toward(self.offset[1], self._drift_target[1]),
             )
+
+
+class AmbientScanScheduler:
+    """Occasionally trigger a visual scan without changing Jarvis state."""
+
+    def __init__(
+        self,
+        *,
+        seed: int | None,
+        first_seconds: float = AMBIENT_SCAN_FIRST_SECONDS,
+        min_seconds: float = AMBIENT_SCAN_MIN_SECONDS,
+        max_seconds: float = AMBIENT_SCAN_MAX_SECONDS,
+        double_chance: float = AMBIENT_SCAN_DOUBLE_CHANCE,
+        sweep_seconds: float = AMBIENT_SCAN_SWEEP_SECONDS,
+        double_gap_seconds: float = AMBIENT_SCAN_DOUBLE_GAP_SECONDS,
+    ) -> None:
+        if not math.isfinite(first_seconds) or first_seconds < 0:
+            raise ValueError("ambient scan first delay must not be negative")
+        if (
+            not math.isfinite(min_seconds)
+            or not math.isfinite(max_seconds)
+            or min_seconds <= 0
+            or max_seconds < min_seconds
+        ):
+            raise ValueError("ambient scan interval must contain positive ordered values")
+        if not math.isfinite(double_chance) or not 0 <= double_chance <= 1:
+            raise ValueError("ambient scan double chance must be between 0 and 1")
+        if (
+            not math.isfinite(sweep_seconds)
+            or not math.isfinite(double_gap_seconds)
+            or sweep_seconds <= 0
+            or double_gap_seconds < 0
+        ):
+            raise ValueError("ambient scan sweep timing must be valid")
+
+        self.rng = random.Random(_derived_seed(seed, 0x5CA7))
+        self.first_seconds = first_seconds
+        self.interval = (min_seconds, max_seconds)
+        self.double_chance = double_chance
+        self.sweep_seconds = sweep_seconds
+        self.double_gap_seconds = double_gap_seconds
+        self.phase: float | None = None
+        self._visible = False
+        self._active = False
+        self._active_elapsed = 0.0
+        self._countdown = first_seconds
+        self._double_pending = False
+        self._next_is_double = False
+
+    def update(self, dt: float, *, face_visible: bool) -> tuple[float | None, bool]:
+        """Return the current normalized sweep phase and whether to nudge."""
+
+        if dt < 0:
+            raise ValueError("dt must not be negative")
+        if not face_visible:
+            self._visible = False
+            self._active = False
+            self._active_elapsed = 0.0
+            self._countdown = self.first_seconds
+            self._double_pending = False
+            self._next_is_double = False
+            self.phase = None
+            return None, False
+
+        if not self._visible:
+            self._visible = True
+            self._countdown = self.first_seconds
+
+        if self._active:
+            self._active_elapsed += dt
+            if self._active_elapsed < self.sweep_seconds:
+                self.phase = self._active_elapsed / self.sweep_seconds
+                return self.phase, False
+
+            overshoot = self._active_elapsed - self.sweep_seconds
+            self._active = False
+            self._active_elapsed = 0.0
+            self.phase = None
+            if self._double_pending:
+                self._countdown = self.double_gap_seconds - overshoot
+                self._double_pending = False
+                self._next_is_double = True
+            else:
+                self._countdown = self.rng.uniform(*self.interval) - overshoot
+                self._next_is_double = False
+        else:
+            self._countdown -= dt
+
+        if self._countdown > 1e-9:
+            return None, False
+
+        overshoot = max(0.0, -self._countdown)
+        is_double = self._next_is_double
+        self._next_is_double = False
+        self._active = True
+        self._active_elapsed = min(overshoot, self.sweep_seconds)
+        if not is_double:
+            self._double_pending = self.rng.random() < self.double_chance
+        self.phase = self._active_elapsed / self.sweep_seconds
+        return self.phase, is_double
 
 
 class FaceVisibilityTransition:
@@ -653,6 +776,11 @@ class HeadScene:
         state_machine: HeadStateMachine | None,
         demo_thinking: bool = False,
         face_presence: float = DEFAULT_FACE_PRESENCE,
+        ambient_scan: bool = False,
+        ambient_scan_first_seconds: float = AMBIENT_SCAN_FIRST_SECONDS,
+        ambient_scan_min_seconds: float = AMBIENT_SCAN_MIN_SECONDS,
+        ambient_scan_max_seconds: float = AMBIENT_SCAN_MAX_SECONDS,
+        ambient_scan_double_chance: float = AMBIENT_SCAN_DOUBLE_CHANCE,
     ) -> None:
         self.seed = seed
         self.face_masks = face_masks
@@ -662,11 +790,23 @@ class HeadScene:
         self.demo_thinking = demo_thinking
         self.elapsed = 0.0
         self.speech_energy = 0.0
+        self.scan_phase: float | None = None
         self.field = RainField(max(height, 1), max(width, 1), preset, seed=seed)
         self.fitted_faces = _fit_face_masks(face_masks, self.field, cell_aspect)
         self.face_layer = _new_face_layer(self.fitted_faces, seed)
         has_face = self.face_layer is not None
         self.motion = IdleFaceMotion(fps=fps, seed=seed) if has_face else None
+        self.ambient_scan = (
+            AmbientScanScheduler(
+                seed=seed,
+                first_seconds=ambient_scan_first_seconds,
+                min_seconds=ambient_scan_min_seconds,
+                max_seconds=ambient_scan_max_seconds,
+                double_chance=ambient_scan_double_chance,
+            )
+            if has_face and ambient_scan
+            else None
+        )
         self.face_transition = (
             FaceVisibilityTransition(presence=face_presence) if has_face else None
         )
@@ -732,6 +872,13 @@ class HeadScene:
             self.face_layer.update(dt)
         if self.motion is not None:
             self.motion.update(dt)
+        if self.ambient_scan is not None:
+            self.scan_phase, nudge = self.ambient_scan.update(
+                dt,
+                face_visible=self.face_visible,
+            )
+            if nudge and self.motion is not None:
+                self.motion.nudge()
         if self.timeline_player is not None:
             self.mouth_shape = self.timeline_player.update(dt)
             self.speech_energy = self.timeline_player.energy
@@ -775,6 +922,12 @@ def run_display(
     demo_think: bool = False,
     face_brightness: float = DEFAULT_FACE_BRIGHTNESS,
     face_presence: float = DEFAULT_FACE_PRESENCE,
+    scan_levels: int = DEFAULT_SCAN_LEVELS,
+    ambient_scan: bool = False,
+    ambient_scan_first_seconds: float = AMBIENT_SCAN_FIRST_SECONDS,
+    ambient_scan_min_seconds: float = AMBIENT_SCAN_MIN_SECONDS,
+    ambient_scan_max_seconds: float = AMBIENT_SCAN_MAX_SECONDS,
+    ambient_scan_double_chance: float = AMBIENT_SCAN_DOUBLE_CHANCE,
 ) -> None:
     """Run the standalone display and restore the terminal on every exit path."""
 
@@ -801,6 +954,22 @@ def run_display(
         raise ValueError("face_brightness must be between 0.2 and 1.5")
     if not FACE_PRESENCE_RANGE[0] <= face_presence <= FACE_PRESENCE_RANGE[1]:
         raise ValueError("face_presence must be between 0.3 and 1.0")
+    scan_low, scan_high = SCAN_LEVELS_RANGE
+    if isinstance(scan_levels, bool) or not isinstance(scan_levels, int):
+        raise ValueError("scan_levels must be an integer")
+    if not scan_low <= scan_levels <= scan_high:
+        raise ValueError(f"scan_levels must be between {scan_low} and {scan_high}")
+    if not math.isfinite(ambient_scan_first_seconds) or ambient_scan_first_seconds < 0:
+        raise ValueError("ambient scan first delay must not be negative")
+    if (
+        not math.isfinite(ambient_scan_min_seconds)
+        or not math.isfinite(ambient_scan_max_seconds)
+        or ambient_scan_min_seconds <= 0
+        or ambient_scan_max_seconds < ambient_scan_min_seconds
+    ):
+        raise ValueError("ambient scan interval must contain positive ordered values")
+    if not math.isfinite(ambient_scan_double_chance) or not 0 <= ambient_scan_double_chance <= 1:
+        raise ValueError("ambient scan double chance must be between 0 and 1")
     if demo_think:
         demo_face = True
 
@@ -850,6 +1019,11 @@ def run_display(
                     state_machine=state_machine,
                     demo_thinking=demo_think,
                     face_presence=face_presence,
+                    ambient_scan=ambient_scan,
+                    ambient_scan_first_seconds=ambient_scan_first_seconds,
+                    ambient_scan_min_seconds=ambient_scan_min_seconds,
+                    ambient_scan_max_seconds=ambient_scan_max_seconds,
+                    ambient_scan_double_chance=ambient_scan_double_chance,
                 )
 
             if snapshot_path is not None:
@@ -862,6 +1036,7 @@ def run_display(
                     font_path=font_path,
                     font_px=font_px,
                     face_brightness=face_brightness,
+                    scan_levels=scan_levels,
                 )
             else:
                 run_framebuffer_display(
@@ -872,6 +1047,7 @@ def run_display(
                     font_path=font_path,
                     font_px=font_px,
                     face_brightness=face_brightness,
+                    scan_levels=scan_levels,
                 )
             return
 
@@ -888,6 +1064,13 @@ def run_display(
             state_machine=state_machine,
             demo_think=demo_think,
             face_presence=face_presence,
+            # The scan band is framebuffer choreography. Curses has no scan
+            # compositor, so do not run its double-pass nudge there by itself.
+            ambient_scan=False,
+            ambient_scan_first_seconds=ambient_scan_first_seconds,
+            ambient_scan_min_seconds=ambient_scan_min_seconds,
+            ambient_scan_max_seconds=ambient_scan_max_seconds,
+            ambient_scan_double_chance=ambient_scan_double_chance,
         )
     except KeyboardInterrupt:
         # curses.wrapper has already restored echo/cbreak/cursor state.
@@ -913,6 +1096,11 @@ def _run_loop(
     state_machine: HeadStateMachine | None,
     demo_think: bool = False,
     face_presence: float = DEFAULT_FACE_PRESENCE,
+    ambient_scan: bool = False,
+    ambient_scan_first_seconds: float = AMBIENT_SCAN_FIRST_SECONDS,
+    ambient_scan_min_seconds: float = AMBIENT_SCAN_MIN_SECONDS,
+    ambient_scan_max_seconds: float = AMBIENT_SCAN_MAX_SECONDS,
+    ambient_scan_double_chance: float = AMBIENT_SCAN_DOUBLE_CHANCE,
 ) -> None:
     try:
         curses.curs_set(0)
@@ -937,6 +1125,11 @@ def _run_loop(
         state_machine=state_machine,
         demo_thinking=demo_think,
         face_presence=face_presence,
+        ambient_scan=ambient_scan,
+        ambient_scan_first_seconds=ambient_scan_first_seconds,
+        ambient_scan_min_seconds=ambient_scan_min_seconds,
+        ambient_scan_max_seconds=ambient_scan_max_seconds,
+        ambient_scan_double_chance=ambient_scan_double_chance,
     )
     frame_interval = 1.0 / fps
     last_frame = time.monotonic()
