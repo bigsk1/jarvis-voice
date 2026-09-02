@@ -11,6 +11,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/config_loader.sh"
 load_config "local"
+START_THRESH="${START_THRESH:-${THRESH:-3%}}"
+STOP_THRESH="${STOP_THRESH:-${THRESH:-5%}}"
+MIC_HIGHPASS_HZ="${MIC_HIGHPASS_HZ:-300}"
 
 OUTDIR="${AUDIO_DIR}"
 MIC_DIR="$OUTDIR/mic"
@@ -23,8 +26,8 @@ echo "🎤 Speak your question… (auto-stops after ${POST_SIL}s silence or ${MA
 
 sox -t alsa "$IN_DEV" -r "$RATE" -c "$CHAN" -b 16 "$RAW_WAV" \
     trim 0 "$MAX_RECORD_TIME" \
-    highpass 300 \
-    silence 1 "$PRE_SIL" "3%" 1 "$POST_SIL" "5%"
+    highpass "$MIC_HIGHPASS_HZ" \
+    silence 1 "$PRE_SIL" "$START_THRESH" 1 "$POST_SIL" "$STOP_THRESH"
 
 BYTES=$(stat -c%s "$RAW_WAV" || echo 0)
 if [ "$BYTES" -lt 20000 ]; then

@@ -15,6 +15,12 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$PROJECT_ROOT/lib/config_loader.sh"
 load_config "local"
 
+# Keep wake-word sensitivity separate from question-recording silence detection.
+# THRESH remains a compatibility fallback for older private config files.
+START_THRESH="${START_THRESH:-${THRESH:-3%}}"
+STOP_THRESH="${STOP_THRESH:-${THRESH:-5%}}"
+MIC_HIGHPASS_HZ="${MIC_HIGHPASS_HZ:-300}"
+
 # Script paths
 STT_SCRIPT="$PROJECT_ROOT/bin/stt.py"
 SAY_SCRIPT="$PROJECT_ROOT/bin/say-local.sh"
@@ -82,7 +88,8 @@ else
         -r "$RATE" -c "$CHAN" -b 16 \
         "$MIC_WAV" \
         trim 0 "$MAX_RECORD_TIME" \
-        silence 1 "$PRE_SIL" "$THRESH" 1 "$POST_SIL" "$THRESH"
+        highpass "$MIC_HIGHPASS_HZ" \
+        silence 1 "$PRE_SIL" "$START_THRESH" 1 "$POST_SIL" "$STOP_THRESH"
     
     # Transcribe with the configured local-mode STT provider
     echo "📝 Transcribing…"
