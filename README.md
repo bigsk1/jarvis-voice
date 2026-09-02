@@ -640,7 +640,7 @@ docker compose --profile extras up -d
 
 The safe Docker tool profile is enabled by default. Hybrid users can select the full `default` profile and block container-incompatible tools only in Web UI Settings. See the **[Docker Guide](docs/docker/README.md)** for setup, LAN access, authentication, shell/CLI examples, and native/Docker coexistence.
 
-### 4. Run Jarvis
+### 4. Run Wake Word or CLI
 
 ```bash
 source ~/jarvis-venv/bin/activate
@@ -670,7 +670,7 @@ Say **"Hey Jarvis"** to wake it up!
 
 ### 5. Start All Services (Recommended)
 
-Start everything with one command using tmux sessions (make sure they are all setup first):
+Start everything with one command using tmux sessions (make sure cloud.env and/or local.env is all setup first!):
 
 ```bash
 # Start ALL services (API, background services, all UIs)
