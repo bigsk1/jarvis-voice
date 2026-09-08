@@ -4353,18 +4353,11 @@ body {
 /* Settings Panel Styles */
 .settings-tabs {
   display: flex;
+  flex-wrap: wrap; /* Keep every section visible when the modal is narrow. */
   gap: var(--space-xs);
   margin-bottom: var(--space-lg);
   border-bottom: 1px solid var(--border-primary);
   padding-bottom: var(--space-sm);
-  overflow-x: auto; /* Horizontal scroll on mobile */
-  flex-wrap: nowrap;
-  -webkit-overflow-scrolling: touch; /* Smooth scroll on iOS */
-  scrollbar-width: none; /* Hide scrollbar Firefox */
-}
-
-.settings-tabs::-webkit-scrollbar {
-  display: none; /* Hide scrollbar Chrome/Safari */
 }
 
 .settings-tab {
@@ -4390,8 +4383,23 @@ body {
   background: var(--bg-tertiary);
 }
 
+@media (max-width: 640px) {
+  .settings-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .settings-tab {
+    min-width: 0;
+    min-height: 44px;
+    padding: var(--space-sm);
+    white-space: normal;
+  }
+}
+
 .settings-panel {
   display: none;
+  overflow-wrap: anywhere;
 }
 
 .settings-panel.active {
@@ -5064,7 +5072,9 @@ body {
   font-size: var(--text-sm);
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .config-value {
@@ -5093,6 +5103,24 @@ body {
   display: block;
   max-width: 100%;
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .config-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-xs);
+  }
+
+  .config-label,
+  .config-value {
+    max-width: 100%;
+    text-align: left;
+  }
+
+  .config-value-list {
+    align-items: flex-start;
+  }
 }
 
 .config-value.enabled {
