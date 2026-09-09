@@ -350,6 +350,11 @@ Auto-context test recipe:
 
 ### I. Live Trace Logs
 
+Embedding hosts can have an optional `OLLAMA_EMBEDDING_FALLBACK_URL` in each
+mode file. This extends embedding requests only; it does not change chat-model
+routing. Web chat distinguishes successful fallback-host use from unavailable
+embeddings with a toast. See [Embedding Health Checks](EMBEDDING_HEALTH_CHECKS.md#embedding-only-fallback).
+
 Enable Tool RAG tracing while tuning:
 
 ```bash

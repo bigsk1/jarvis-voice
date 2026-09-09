@@ -199,7 +199,27 @@ def _scoped_by_mode(method):
                 scoped_overrides['IMAGE_TOOL_PROVIDER'] = str(modal_provider)
 
         from config_loader import config_scope
-        with config_scope(mode, overrides=scoped_overrides):
+        from embeddings import embedding_status_scope
+
+        record = arguments.get('record') or {}
+        session_id = arguments.get('session_id')
+        message_id = (
+            arguments.get('source_message_id')
+            or arguments.get('message_id')
+            or record.get('message_id')
+        )
+        conversation_id = arguments.get('conversation_id') or record.get('conversation_id')
+
+        def embedding_status_callback(status):
+            handler = args[0]
+            handler.socketio.emit('embedding:status', {
+                'message_id': message_id,
+                'conversation_id': conversation_id,
+                'status': status,
+            }, room=handler._delivery_room(session_id, conversation_id))
+
+        callback = embedding_status_callback if session_id and message_id else None
+        with config_scope(mode, overrides=scoped_overrides), embedding_status_scope(callback):
             return method(*args, **kwargs)
 
     return wrapper

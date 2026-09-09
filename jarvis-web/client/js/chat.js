@@ -1669,6 +1669,25 @@ class ChatUI {
     socket.on('modeChanged', (data) => {
       this._handleImageAttachmentsForMode(data.mode);
     });
+
+    socket.on('embeddingStatus', (data) => {
+      if (!data?.message_id) return;
+      if (data.conversation_id && data.conversation_id !== socket.conversationId) return;
+      const notices = {
+        fallback: 'Using a fallback embedding host; semantic search is working.',
+        unavailable: 'Embeddings unavailable; semantic retrieval may be limited.'
+      };
+      const notice = notices[data.status];
+      if (!notice) return;
+      this._embeddingNotices ??= new Set();
+      const key = `${data.conversation_id}:${data.message_id}:${data.status}`;
+      if (this._embeddingNotices.has(key)) return;
+      this._embeddingNotices.add(key);
+      if (this._embeddingNotices.size > 100) {
+        this._embeddingNotices.delete(this._embeddingNotices.values().next().value);
+      }
+      Utils.toast(notice, 'warning', 6000);
+    });
     
     socket.on('response', (data) => {
       this._activatePendingToolsForMessage(data.message_id);

@@ -28,6 +28,28 @@ The runtime-only preflight is the appropriate fresh-install check after editing
 `config/cloud.env` and `config/local.env`. Jarvis does not assume Ollama runs on
 localhost and does not install Ollama or pull the Jarvis model automatically.
 
+## Embedding-only fallback
+
+Set `OLLAMA_EMBEDDING_FALLBACK_URL` in each desired mode file to append a host
+only for embeddings, leaving chat/helper host selection unchanged. For a native
+installation with the pinned model available on this machine:
+
+```bash
+OLLAMA_EMBEDDING_FALLBACK_URL="http://localhost:11434"
+```
+
+Blank adds no extra host; existing `OLLAMA_BASE_URL` behavior is preserved.
+Docker must use a daemon URL reachable from the container instead of assuming
+localhost means the host machine. The fallback uses the same digest and vector
+contract, so adding it requires no database rebuild. Ollama chooses GPU/CPU
+placement normally.
+
+Web chat shows a toast when an embedding request succeeds on a host other than
+the first configured host. Semantic search is still working in that case. A
+separate toast reports embedding request failure, when semantic retrieval may
+be limited. Notices are scoped to the conversation and deduplicated per message.
+These are request-time notices, not background machine monitoring.
+
 Memory health covers:
 
 - `memory.knowledge_base.embedding`

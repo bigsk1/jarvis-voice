@@ -104,6 +104,10 @@ class JarvisSocket {
       this._emit('status', data);
     });
 
+    this.socket.on('embedding:status', (data) => {
+      this._emit('embeddingStatus', data);
+    });
+
     // Feedback events (async analysis after response)
     this.socket.on('feedback:start', (data) => {
       this._emit('feedbackStart', data);

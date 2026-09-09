@@ -13,11 +13,13 @@ import logging
 import math
 import threading
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Literal, Sequence
+from typing import Callable, Literal, Sequence
 
 from config_loader import get_config_value, get_int
-from ollama_utils import get_ollama_base_urls, request_ollama
+from ollama_utils import get_ollama_base_urls, parse_ollama_base_urls, request_ollama
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +64,54 @@ class EmbeddingRuntime:
     base_urls: tuple[str, ...]
     unavailable_hosts: tuple[str, ...] = ()
     missing_model_hosts: tuple[str, ...] = ()
+    configured_base_urls: tuple[str, ...] = ()
 
 
 _RUNTIME_CACHE_LOCK = threading.Lock()
 _RUNTIME_CACHE: dict[tuple, tuple[float, EmbeddingRuntime]] = {}
 _RUNTIME_CACHE_SECONDS = 300.0
+
+# UI listeners belong to one request, never to the shared runtime cache.
+_STATUS_OBSERVER: ContextVar[tuple[Callable[[str], None], set[str]] | None] = ContextVar(
+    "embedding_status_observer", default=None
+)
+
+
+@contextmanager
+def embedding_status_scope(callback: Callable[[str], None] | None):
+    """Report fallback/unavailable status once each in this request context."""
+    token = _STATUS_OBSERVER.set((callback, set()) if callback else None)
+    try:
+        yield
+    finally:
+        _STATUS_OBSERVER.reset(token)
+
+
+def _notify_embedding_status(status: str) -> None:
+    observer = _STATUS_OBSERVER.get()
+    if observer is None:
+        return
+    callback, seen = observer
+    if status in seen:
+        return
+    seen.add(status)
+    try:
+        callback(status)
+    except Exception:
+        logger.warning("Could not deliver embedding status notification", exc_info=True)
+
+
+def get_embedding_base_urls() -> list[str]:
+    """Append an optional embedding-only fallback to the daemon host chain."""
+    hosts = get_ollama_base_urls()
+    extra_hosts = parse_ollama_base_urls(
+        get_config_value("OLLAMA_EMBEDDING_FALLBACK_URL", ""),
+        default="",
+        include_localhost_fallback=False,
+    )
+    return parse_ollama_base_urls(
+        [*hosts, *extra_hosts], default="", include_localhost_fallback=False
+    )
 
 
 def get_effective_embedding_provider(mode: str | None = None) -> str:
@@ -158,7 +203,7 @@ def _resolve_embedding_runtime(*, force_refresh: bool = False) -> EmbeddingRunti
     """Verify model digests and return only compatible daemon hosts."""
     model = get_embedding_model()
     expected_digest = get_embedding_model_digest()
-    base_urls = tuple(get_ollama_base_urls())
+    base_urls = tuple(get_embedding_base_urls())
     cache_key = (model, expected_digest, base_urls)
     now = time.monotonic()
 
@@ -234,6 +279,7 @@ def _resolve_embedding_runtime(*, force_refresh: bool = False) -> EmbeddingRunti
         base_urls=tuple(compatible),
         unavailable_hosts=tuple(unavailable),
         missing_model_hosts=tuple(missing),
+        configured_base_urls=base_urls,
     )
     with _RUNTIME_CACHE_LOCK:
         _RUNTIME_CACHE[cache_key] = (now, runtime)
@@ -280,6 +326,7 @@ def get_embedding_runtime_status(*, force_refresh: bool = False) -> dict:
         "compatible_hosts": list(runtime.base_urls),
         "unavailable_hosts": list(runtime.unavailable_hosts),
         "missing_model_hosts": list(runtime.missing_model_hosts),
+        "configured_hosts": list(runtime.configured_base_urls),
         "error": None,
     }
 
@@ -337,6 +384,14 @@ def _validate_vectors(vectors: Sequence[Sequence[float]], expected_count: int) -
 
 
 def _request_embeddings(formatted_inputs: list[str]) -> list[list[float]]:
+    try:
+        return _request_embeddings_from_runtime(formatted_inputs)
+    except Exception:
+        _notify_embedding_status("unavailable")
+        raise
+
+
+def _request_embeddings_from_runtime(formatted_inputs: list[str]) -> list[list[float]]:
     runtime = _resolve_embedding_runtime()
     options = _get_ollama_embedding_options()
     prompt_variants = [formatted_inputs]
@@ -346,7 +401,7 @@ def _request_embeddings(formatted_inputs: list[str]) -> list[list[float]]:
             prompt_variants.append(compacted)
 
     for index, prompts in enumerate(prompt_variants):
-        response, _ = request_ollama(
+        response, used_host = request_ollama(
             "post",
             "/api/embed",
             base_urls=list(runtime.base_urls),
@@ -362,7 +417,12 @@ def _request_embeddings(formatted_inputs: list[str]) -> list[list[float]]:
         )
 
         if response.status_code == 200:
-            return _validate_vectors(_extract_ollama_embeddings(response.json()), len(prompts))
+            vectors = _validate_vectors(_extract_ollama_embeddings(response.json()), len(prompts))
+            preferred_host = (runtime.configured_base_urls or runtime.base_urls)[0]
+            if used_host != preferred_host:
+                logger.info("Embedding request used a fallback host")
+                _notify_embedding_status("fallback")
+            return vectors
 
         error_text = response.text
         if _is_ollama_context_length_error(error_text) and index < len(prompt_variants) - 1:
