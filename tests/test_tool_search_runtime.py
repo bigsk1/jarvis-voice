@@ -7,6 +7,7 @@ import unittest
 from contextlib import redirect_stdout
 from datetime import datetime
 from io import StringIO
+from itertools import product
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -17,8 +18,13 @@ sys.path.insert(0, os.path.join(ROOT, "skills"))
 
 import tool_search as tool_search_script  # noqa: E402
 from context_assembler import ContextAssembler  # noqa: E402
-from tool_schema import ToolRegistry, ToolSchema, _merged_ghost_tool_names  # noqa: E402
 from tool_logger import ToolLogger  # noqa: E402
+from tool_schema import (  # noqa: E402
+    ToolRegistry,
+    ToolSchema,
+    _merged_ghost_tool_names,
+    _select_tool_candidates,
+)
 from tool_search_runtime import search_tools_runtime  # noqa: E402
 
 
@@ -351,6 +357,214 @@ class ToolSearchRuntimeTests(unittest.TestCase):
             "serpapi_google_news_light",
             registry.last_tool_search_meta["segment_supported_tools"],
         )
+
+    def test_youtube_summary_keeps_both_actions_and_the_full_request_url(self):
+        query = "Get this YouTube video and summarize it https://www.youtube.com/watch?v=4JofSJIrjwU"
+        registry = ToolRegistry.__new__(ToolRegistry)
+        names = ["youtube_video", "serpapi_youtube", "serpapi_youtube_search", "text_summarizer"]
+        registry.tools = {
+            name: ToolSchema(name=name, description=name, parameters={}, script_path=f"{name}.py")
+            for name in names
+        }
+        registry.tools.update({self.tool_search.name: self.tool_search, self.search_memory.name: self.search_memory})
+        # Rounded scores from the live request: the full-query shortlist alone
+        # loses the summarizer once the first YouTube clause is promoted.
+        db = _QueryAwareFakeDB({
+            query: [
+                {"name": "serpapi_youtube", "hybrid_score": 0.72},
+                {"name": "youtube_video", "hybrid_score": 0.65},
+                {"name": "text_summarizer", "hybrid_score": 0.65},
+                {"name": "serpapi_youtube_search", "hybrid_score": 0.356},
+            ],
+            "Get this YouTube video": [
+                {"name": "youtube_video", "hybrid_score": 1.0},
+                {"name": "serpapi_youtube", "hybrid_score": 0.881},
+            ],
+            "summarize it": [
+                {"name": "text_summarizer", "hybrid_score": 1.0},
+            ],
+        })
+        with patch("memory_db.get_memory_db", return_value=db), patch(
+            "config_loader.get_config_value", return_value="search_memory"
+        ), patch("tool_schema.expand_tool_rag_query_for_typo_hints", side_effect=lambda text, *_args, **_kwargs: (text, [])):
+            selected = registry.find_tools(query, limit=15, similarity_threshold=0.27)
+
+        self.assertEqual(db.queries, [query, "Get this YouTube video", "summarize it"])
+        self.assertIn("youtube_video", [tool.name for tool in selected])
+        self.assertIn("text_summarizer", [tool.name for tool in selected])
+
+    def test_ghost_and_unavailable_rows_do_not_consume_action_budget(self):
+        registry = ToolRegistry.__new__(ToolRegistry)
+        self.weather.permissions["enabled"] = False
+        registry.tools = {tool.name: tool for tool in [self.search_memory, self.tool_search, self.weather, self.send_email]}
+        db = _FakeDB([
+            {"name": name, "hybrid_score": 1.0 - index * 0.02}
+            for index, name in enumerate([
+                "stale_tool", "search_memory", "tool_search", "another_stale_tool", "weather", "send_email",
+            ])
+        ])
+        with patch("memory_db.get_memory_db", return_value=db), patch(
+            "config_loader.get_config_value", return_value="search_memory"
+        ), patch("tool_schema.expand_tool_rag_query_for_typo_hints", side_effect=lambda text, *_args, **_kwargs: (text, [])):
+            selected = registry.find_tools("send the report", limit=15, similarity_threshold=0.27)
+
+        self.assertEqual([tool.name for tool in selected], ["search_memory", "tool_search", "send_email"])
+        self.assertEqual(registry.last_tool_search_meta["adaptive_selection"]["selected_count"], 1)
+
+    def test_pasted_youtube_link_supplements_the_action_within_normal_and_tight_caps(self):
+        registry = ToolRegistry.__new__(ToolRegistry)
+        names = ["youtube_video", "youtube_transcript", "serpapi_youtube", "text_summarizer", "workflow"]
+        registry.tools = {
+            name: ToolSchema(name=name, description=name, parameters={}, script_path=f"{name}.py")
+            for name in names
+        }
+        registry.tools.update({self.tool_search.name: self.tool_search, self.search_memory.name: self.search_memory})
+        for url in [
+            "https://www.youtube.com/watch?v=4JofSJIrjwU",
+            "youtu.be/4JofSJIrjwU",
+            "youtube.com/watch?v=4JofSJIrjwU",
+            "m.youtube.com/watch?v=4JofSJIrjwU",
+        ]:
+            for limit in [4, 6, 15]:
+                with self.subTest(url=url, limit=limit):
+                    query = f"Get this {url} and summarize it"
+                    # Rounded live HTTPS scores: the primary query has no
+                    # youtube_video candidate. Its source clause must supply it.
+                    db = _QueryAwareFakeDB({
+                        query: [
+                            {"name": "serpapi_youtube", "hybrid_score": 0.72, "similarity": 0.317},
+                            {"name": "text_summarizer", "hybrid_score": 0.65},
+                            {"name": "youtube_transcript", "hybrid_score": 0.238, "similarity": 0.285},
+                        ],
+                        f"Get this {url}": [
+                            {"name": "youtube_video", "hybrid_score": 0.72, "similarity": 0.323},
+                            {"name": "youtube_transcript", "hybrid_score": 0.670, "similarity": 0.320},
+                        ],
+                        "summarize it": [{"name": "text_summarizer", "hybrid_score": 1.0, "similarity": 0.398}],
+                    })
+                    with patch("memory_db.get_memory_db", return_value=db), patch(
+                        "config_loader.get_config_value", return_value="search_memory"
+                    ), patch(
+                        "tool_schema.expand_tool_rag_query_for_typo_hints",
+                        side_effect=lambda text, *_args, **_kwargs: (text, []),
+                    ):
+                        selected = registry.find_tools(query, limit=limit, similarity_threshold=0.27)
+                    self.assertEqual(db.queries, [query, f"Get this {url}", "summarize it"])
+                    selected_names = [tool.name for tool in selected]
+                    self.assertIn("youtube_video", selected_names)
+                    self.assertIn("text_summarizer", selected_names)
+                    self.assertLessEqual(
+                        registry.last_tool_search_meta["adaptive_selection"]["selected_count"],
+                        min(5, limit - 2),
+                    )
+
+    def test_weaker_clause_winners_do_not_displace_stronger_full_query_matches(self):
+        primary = [
+            {"name": name, "hybrid_score": score}
+            for name, score in [
+                ("youtube_video", 0.99), ("text_summarizer", 0.98), ("send_email", 0.96),
+                ("serpapi_youtube", 0.4), ("status_recap", 0.3),
+            ]
+        ]
+        segments = [
+            ("Get this YouTube video", [
+                {"name": "serpapi_youtube", "hybrid_score": 0.85},
+                {"name": "youtube_video", "hybrid_score": 0.84},
+            ]),
+            ("summarize it", [
+                {"name": "status_recap", "hybrid_score": 0.83},
+                {"name": "text_summarizer", "hybrid_score": 0.82},
+            ]),
+            ("email the summary", [{"name": "send_email", "hybrid_score": 0.8}]),
+        ]
+        for budget in [0, 1, 2, 3, 5]:
+            for clause_order in [segments, list(reversed(segments))]:
+                with self.subTest(budget=budget, clause_order=[clause for clause, _ in clause_order]):
+                    selected, meta, _ = _select_tool_candidates(
+                        primary, clause_order, budget=budget,
+                        enabled_names={row["name"] for row in primary}, ghost_tools=[],
+                    )
+                    names = [row["name"] for row in selected]
+                    self.assertEqual(names, [row["name"] for row in primary[:budget]])
+                    self.assertEqual(meta["selected_count"], len(names))
+
+    def test_source_verbs_and_paste_separators_retrieve_both_action_tools(self):
+        registry = ToolRegistry.__new__(ToolRegistry)
+        registry.tools = {
+            name: ToolSchema(name=name, description=name, parameters={}, script_path=f"{name}.py")
+            for name in ["youtube_video", "text_summarizer", "serpapi_youtube", "workflow", "tool_search"]
+        }
+        url = "https://youtu.be/abc123"
+        # The full query favors search and cannot supply the desired pair.
+        # Both clause lookups must contribute to recover source + summarizer.
+        for prefix, separator in product(
+            ["", "Get this ", "Open this ", "Watch ", "Download ", "Fetch "],
+            [" and ", " then ", ", ", ": ", "; ", ". ", "\n"],
+        ):
+            with self.subTest(prefix=prefix, separator=separator):
+                source = f"{prefix}{url}"
+                query = f"{source}{separator}summarize it"
+                db = _QueryAwareFakeDB({
+                    query: [{"name": "serpapi_youtube", "hybrid_score": 0.65}],
+                    source: [{"name": "youtube_video", "hybrid_score": 0.72}],
+                    "summarize it": [{"name": "text_summarizer", "hybrid_score": 1.0}],
+                })
+                with patch("memory_db.get_memory_db", return_value=db), patch(
+                    "config_loader.get_config_value", return_value=""
+                ), patch(
+                    "tool_schema.expand_tool_rag_query_for_typo_hints",
+                    side_effect=lambda text, *_args, **_kwargs: (text, []),
+                ):
+                    selected = registry.find_tools(query, limit=4, similarity_threshold=0.27)
+                names = {tool.name for tool in selected}
+                self.assertTrue({"youtube_video", "text_summarizer"}.issubset(names))
+                self.assertNotIn("serpapi_youtube", names)
+                self.assertEqual(db.queries[0], query)
+
+    def test_reaction_clause_cannot_promote_junk_tools_or_hide_later_actions(self):
+        registry = ToolRegistry.__new__(ToolRegistry)
+        registry.tools = {
+            name: ToolSchema(name=name, description=name, parameters={}, script_path=f"{name}.py")
+            for name in ["youtube_video", "text_summarizer", "send_email", "crazy_taxi_tool", "pdf_read", "workflow", "tool_search"]
+        }
+        url = "https://youtu.be/abc123"
+        query = f"{url}. Crazy right? Summarize it and email the summary. Thanks!"
+        db = _QueryAwareFakeDB({
+            query: [{"name": "youtube_video", "hybrid_score": 0.90}],
+            url: [{"name": "youtube_video", "hybrid_score": 0.90}],
+            "Summarize it": [{"name": "text_summarizer", "hybrid_score": 0.89}],
+            "email the summary": [{"name": "send_email", "hybrid_score": 0.88}],
+            "Crazy right": [
+                {"name": "crazy_taxi_tool", "hybrid_score": 1.0},
+                {"name": "pdf_read", "hybrid_score": 0.99},
+            ],
+        })
+        with patch("memory_db.get_memory_db", return_value=db), patch(
+            "config_loader.get_config_value", return_value=""
+        ), patch(
+            "tool_schema.expand_tool_rag_query_for_typo_hints",
+            side_effect=lambda text, *_args, **_kwargs: (text, []),
+        ):
+            selected = registry.find_tools(query, limit=5, similarity_threshold=0.27)
+        names = {tool.name for tool in selected}
+        self.assertTrue({"youtube_video", "text_summarizer", "send_email"}.issubset(names))
+        self.assertTrue(names.isdisjoint({"crazy_taxi_tool", "pdf_read"}))
+        self.assertEqual(db.queries, [query, url, "Summarize it", "email the summary"])
+
+    def test_weak_clause_does_not_override_a_dominant_match_or_its_diagnostics(self):
+        primary = [
+            {"name": "text_summarizer", "hybrid_score": 1.0},
+            {"name": "pdf_read", "hybrid_score": 0.1},
+        ]
+        for clause in ["Read", "S", "v2"]:
+            with self.subTest(clause=clause):
+                selected, meta, _ = _select_tool_candidates(
+                    primary, [(clause, [{"name": "pdf_read", "hybrid_score": 0.2}])], budget=3,
+                    enabled_names={row["name"] for row in primary}, ghost_tools=[],
+                )
+                self.assertEqual([row["name"] for row in selected], ["text_summarizer"])
+                self.assertEqual(meta["reason"], "dominant_top_result")
+                self.assertEqual(meta["selected_count"], 1)
 
     def test_registry_promotes_general_web_search_from_compound_clause(self):
         registry = ToolRegistry.__new__(ToolRegistry)

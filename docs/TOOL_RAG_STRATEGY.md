@@ -87,12 +87,32 @@ The adaptive selector does not classify phrases or maintain an intent-to-tool
 lookup table. It operates on each query's dense/keyword evidence and score
 distribution. The helper LLM is not part of this latency-sensitive path.
 
-Clause-level retrieval follows the same rule: it splits only longer requests at
-structural punctuation or conjunction boundaries, retrieves at most three
-clauses, and keeps a tight adaptive shortlist from each before applying the
-existing global dynamic budget. Short requests continue to use one retrieval
-query. Diagnostics expose `compound_segments`, `segment_searches`, and
-`segment_supported_tools` in the Tool RAG metadata.
+Clause-level retrieval splits detailed requests at structural punctuation or
+conjunction boundaries and retrieves at most three distinct supplemental
+queries. URLs, dotted filenames, versions, and initialisms such as `U.S.` stay
+intact; a comma, colon, or newline after a pasted link can introduce a follow-up.
+Markdown links and autolinks are normalized without leftover delimiters.
+
+The full request is always searched unchanged. Bare links and direct first-clause
+references such as `Open this <url>` keep their URL in supplemental retrieval;
+descriptive clauses such as `Get this YouTube video <url>` and follow-up clauses
+use their text without URLs. This uses the direct-reference grammatical form,
+not FTS stop words or a list of tool/action names. At least two eligible clauses
+are required. Standalone greetings, acknowledgements, short reaction questions,
+and unsequenced one-word fragments do not receive supplemental searches. Queries
+are deduplicated after URL cleanup. This is conservative structural filtering,
+not a general intent parser; the full request remains available to the router.
+
+Ghost tools and unavailable registry entries are removed before spending the
+action budget. Clause candidates compete in the merged adaptive ranking; no
+clause gets a reserved slot. Diagnostics expose `compound_segments`,
+`segment_searches`, `segment_supported_tools`, and the final cutoff and count
+in `adaptive_selection`. Discovery remains available when ranking misses a
+needed tool or the model is unsure which visible tool to use.
+
+Per-clause scores still use the existing `max(full, clause)` merge, so ranking
+can promote a weak clause match or lose a needed tool at a score gap. At a tight
+final cap, discovery and action tools can also displace optional memory ghosts.
 
 ### The "Ghost Tool" Pattern
 These tools are priority candidates, ensuring basic functionality gets first chance inside the final schema cap when retrieval misses:

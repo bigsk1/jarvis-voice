@@ -39,7 +39,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "orchestrator"))
 from config_loader import get_config_value, get_float, load_config
-from hybrid_retrieval import adaptive_rank_cutoff, query_segments
+from hybrid_retrieval import query_segments
 from memory_db import get_memory_db
 from router_v2 import (
     _cap_tool_names_for_schema,
@@ -54,8 +54,8 @@ from tool_schema import (
     _ADAPTIVE_DYNAMIC_TOOL_MAX,
     _MANDATORY_GHOST_TOOLS,
     ToolRegistry,
-    _merge_compound_segment_rankings,
     _merged_ghost_tool_names,
+    _select_tool_candidates,
 )
 
 
@@ -77,7 +77,7 @@ def _build_live_registry() -> ToolRegistry:
 
 
 def _enabled_tool_names_from_registry(registry: ToolRegistry) -> list[str]:
-    return list(registry.tools.keys())
+    return [name for name, tool in registry.tools.items() if tool.permissions.get("enabled", True)]
 
 
 def _active_ghost_tools(enabled_tool_names: list[str]) -> list[str]:
@@ -157,19 +157,6 @@ def _production_initial_names(
     return names
 
 
-def _adaptive_tools(
-    ranked_tools: list[dict],
-    retrieval_limit: int,
-    ghost_tools: list[str],
-) -> tuple[list[dict], dict]:
-    mandatory_count = sum(name in ghost_tools for name in _MANDATORY_GHOST_TOOLS)
-    dynamic_budget = max(
-        1,
-        min(_ADAPTIVE_DYNAMIC_TOOL_MAX, retrieval_limit - mandatory_count),
-    )
-    return adaptive_rank_cutoff(ranked_tools, budget=dynamic_budget)
-
-
 def _print_production_block(
     title: str,
     transcript: str,
@@ -201,15 +188,15 @@ def _print_production_block(
     primary_meta = getattr(db, "last_tool_search_meta", {})
     compound_segments = query_segments(signals.query)
     segment_rankings: list[tuple[str, list[dict]]] = []
+    mandatory_count = sum(name in ghost_tools for name in _MANDATORY_GHOST_TOOLS)
+    dynamic_budget = max(
+        1,
+        min(_ADAPTIVE_DYNAMIC_TOOL_MAX, retrieval_limit - mandatory_count),
+    )
     if not (
         isinstance(primary_meta, dict)
         and primary_meta.get("semantic_disabled_reason")
     ):
-        mandatory_count = sum(name in ghost_tools for name in _MANDATORY_GHOST_TOOLS)
-        dynamic_budget = max(
-            1,
-            min(_ADAPTIVE_DYNAMIC_TOOL_MAX, retrieval_limit - mandatory_count),
-        )
         for segment in compound_segments:
             rows = db.search_tools(
                 segment,
@@ -222,14 +209,12 @@ def _print_production_block(
                 and segment_meta.get("semantic_disabled_reason")
             ):
                 segment_rankings.append((segment, rows))
-    ranked_candidates, compound_meta = _merge_compound_segment_rankings(
+    retrieved_tools, adaptive_meta, compound_meta = _select_tool_candidates(
         ranked_candidates,
         segment_rankings,
-    )
-    retrieved_tools, adaptive_meta = _adaptive_tools(
-        ranked_candidates,
-        retrieval_limit,
-        ghost_tools,
+        budget=dynamic_budget,
+        enabled_names=enabled_tool_names,
+        ghost_tools=ghost_tools,
     )
     initial_names = _production_initial_names(retrieved_tools, ghost_tools, enabled_tool_names)
     final_names, signal_meta = merge_tool_signal_names(
@@ -255,7 +240,7 @@ def _print_production_block(
     )
     score_by_name = {tool["name"]: tool.get("similarity", 0.0) for tool in all_tools}
     score_by_name.update(
-        {tool["name"]: tool.get("similarity", 0.0) for tool in ranked_candidates}
+        {tool["name"]: tool.get("similarity", 0.0) for tool in retrieved_tools}
     )
 
     print(title)

@@ -101,6 +101,27 @@ def _merged_ghost_tool_names(raw_value: str | None, available_names: set[str]) -
     return names
 
 
+def _select_tool_candidates(
+    primary: list[dict[str, Any]],
+    segment_rankings: list[tuple[str, list[dict[str, Any]]]],
+    *,
+    budget: int,
+    enabled_names: list[str] | set[str],
+    ghost_tools: list[str] | set[str],
+) -> tuple[list[dict[str, Any]], dict[str, Any], list[dict[str, Any]]]:
+    """Apply the adaptive budget to enabled action tools, excluding ghosts."""
+    eligible = set(enabled_names) - set(ghost_tools)
+    ranked, segment_meta = _merge_compound_segment_rankings(
+        [row for row in primary if row.get("name") in eligible],
+        [
+            (segment, [row for row in rows if row.get("name") in eligible])
+            for segment, rows in segment_rankings
+        ],
+    )
+    selected, adaptive_meta = adaptive_rank_cutoff(ranked, budget=budget)
+    return selected, adaptive_meta, segment_meta
+
+
 def _json_type_for_const(value: Any) -> str | None:
     """Infer a JSON Schema primitive type for a const value."""
     if isinstance(value, bool):
@@ -405,6 +426,7 @@ class ToolRegistry:
             mcp_config_path: Path to MCP servers config (optional)
         """
         import sys
+
         from tool_profiles import (
             describe_active_profile,
             get_active_profile_name,
@@ -547,6 +569,7 @@ class ToolRegistry:
         """Discover tools from MCP servers with proper startup sequence."""
         import sys
         import time
+
         from mcp_client import MCPManager
         
         # Only show verbose output if in TTY mode or not in JSON mode
@@ -834,13 +857,12 @@ class ToolRegistry:
                             exc,
                         )
 
-            relevant_tools_data, segment_meta = _merge_compound_segment_rankings(
+            relevant_tools_data, adaptive_meta, segment_meta = _select_tool_candidates(
                 relevant_tools_data,
                 segment_rankings,
-            )
-            relevant_tools_data, adaptive_meta = adaptive_rank_cutoff(
-                relevant_tools_data,
                 budget=dynamic_budget,
+                enabled_names=enabled_names,
+                ghost_tools=CORE_TOOLS,
             )
             self.last_tool_search_meta["adaptive_selection"] = adaptive_meta
             self.last_tool_search_meta["compound_segments"] = compound_segments

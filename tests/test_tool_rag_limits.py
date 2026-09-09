@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Regression tests for Tool RAG final schema limits."""
 
-import os
 import logging
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -15,9 +15,9 @@ sys.path.insert(0, str(PROJECT_ROOT / "orchestrator"))
 
 from router_v2 import (  # noqa: E402
     _cap_tool_names_for_schema,
-    expand_prerequisite_tool_names,
     _log_tool_rag_signal_meta,
     _resolve_tool_rag_limit,
+    expand_prerequisite_tool_names,
 )
 
 
@@ -96,6 +96,14 @@ class ToolRagLimitTests(unittest.TestCase):
         }):
             self.assertEqual(_resolve_tool_rag_limit("cloud"), 9)
             self.assertEqual(_resolve_tool_rag_limit("local"), 4)
+
+    def test_full_local_action_budget_leaves_discovery_but_no_optional_memory_ghosts(self):
+        ghosts = ["search_memory", "remember", "tool_search", "workflow"]
+        actions = ["youtube_video", "text_summarizer", "send_email", "pdf_read"]
+        self.assertEqual(
+            _cap_tool_names_for_schema(ghosts + actions, 6, ghost_tools=ghosts),
+            ["tool_search", "workflow", *actions],
+        )
 
     def test_local_default_covers_default_ghosts_plus_discovery(self):
         with patch.dict(os.environ, {}, clear=True):

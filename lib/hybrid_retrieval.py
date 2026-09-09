@@ -76,6 +76,63 @@ _QUERY_STOP_WORDS = frozenset(
     }
 )
 
+_SEGMENT_URL_RE = re.compile(
+    r"(?<![\w./@-])(?:[a-z][a-z0-9+.-]*://|www\.|"
+    r"(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?/)[^\s<>\"`]+",
+    re.IGNORECASE,
+)
+_INITIALISM_RE = re.compile(r"\b(?:[A-Za-z]\.){2,}")
+_ACKNOWLEDGEMENT_RE = re.compile(
+    r"(?:(?:hi|hello|hey)(?: there| jarvis)?|(?:thanks|thank you)"
+    r"(?: again| a lot| (?:very|so) much)?|ok(?:ay)?|sure|cool|wow|great|nice|awesome)",
+    re.IGNORECASE,
+)
+# Recognize compact URL references: one leading word plus reference words.
+# This shape check does not classify verbs, use FTS query terms, or enumerate
+# tool/action names. Polite request wrappers do not change the form.
+_URL_REFERENCE_CLAUSE_RE = re.compile(
+    r"(?:(?:can|could|would|will) you\s+)?(?:please\s+)?"
+    r"[\w'-]+(?:\s+(?:this|that|these|those|it|them|one|ones|the|following|for|me|us))*"
+    r"(?:\s+please)?",
+    re.IGNORECASE,
+)
+
+
+def _normalize_query_links(text: str) -> str:
+    """Flatten Markdown links to their label and URL without losing either."""
+    if "](" not in text and "<" not in text:
+        return text
+
+    from markdown_it import MarkdownIt
+
+    parts: list[str] = []
+    label: list[str] = []
+    href: str | None = None
+    for token in MarkdownIt("commonmark").parseInline(text)[0].children or []:
+        if token.type == "link_open":
+            href = token.attrGet("href")
+            label = []
+        elif token.type == "link_close":
+            label_text = "".join(label)
+            parts.append(label_text if label_text == href else f"{label_text} {href or ''}")
+            href = None
+        else:
+            content = "\n" if token.type in {"softbreak", "hardbreak"} else token.content
+            (label if href is not None else parts).append(content)
+    return "".join(parts)
+
+
+def _is_conversational_fragment(text: str) -> bool:
+    """Exclude standalone courtesy phrases and short reaction questions."""
+    words = re.findall(r"[A-Za-z]+", text.lower())
+    if _ACKNOWLEDGEMENT_RE.fullmatch(" ".join(words)):
+        return True
+    return (
+        1 <= len(words) <= 4
+        and words[-1] in {"right", "huh", "eh"}
+        and text.rstrip().endswith("?")
+    )
+
 
 def query_terms(text: str) -> list[str]:
     """Return stable, de-duplicated lexical terms for FTS and diagnostics."""
@@ -95,35 +152,78 @@ def query_segments(
     minimum_query_terms: int = 5,
     max_segments: int = 3,
 ) -> list[str]:
-    """Split a sufficiently detailed request into structural retrieval clauses.
+    """Build bounded, distinct retrieval views of a compound request.
 
     This deliberately uses punctuation and conjunction boundaries rather than
-    phrase-to-tool or intent rules. Short requests stay on the single-vector
-    path; longer compound requests receive a small number of supplemental
-    retrieval views so one dominant action cannot erase a secondary action.
+    phrase-to-tool or intent rules. Longer compound requests receive a small
+    number of supplemental retrieval views. Linked requests can also supplement
+    a short action clause whose signal would otherwise compete with the URL.
     """
-    normalized = re.sub(r"\s+", " ", str(text or "")).strip()
-    if len(query_terms(normalized)) < max(1, int(minimum_query_terms)):
+    normalized = re.sub(r"[^\S\n]+", " ", _normalize_query_links(str(text or ""))).strip()
+    url_matches = list(_SEGMENT_URL_RE.finditer(normalized))
+    if not url_matches and len(query_terms(normalized)) < max(1, int(minimum_query_terms)):
         return []
 
-    raw_segments = re.split(
-        r"(?:[.!?;]+|\s*,\s*(?:and|then|also)\s+|\s+(?:and then|and|then|also)\s+)",
+    # URL punctuation describes the artifact, not another requested action.
+    # Keep the original URL in its clause, while still allowing a sentence
+    # boundary immediately after it (including a Markdown link's closing ')').
+    url_spans = [
+        (match.start(), match.start() + len(match.group().rstrip(".,;:!?)]}")))
+        for match in url_matches
+    ]
+    protected_spans = url_spans + [match.span() for match in _INITIALISM_RE.finditer(normalized)]
+    url_ends = {right for left, right in url_spans}
+    # Dots within filenames, versions, and hostnames are not sentence breaks.
+    # Initialisms also protect their final dot before whitespace (e.g. U.S.).
+    boundaries = re.finditer(
+        r"(?:[.!?]+(?=\s|$)|;+|[,:]+(?=\s|$)|\n+|\s*,\s*(?:and|then|also)\s+|\s+(?:and then|and|then|also)\s+)",
         normalized,
         flags=re.IGNORECASE,
     )
-    segments: list[str] = []
-    seen: set[str] = set()
-    for raw_segment in raw_segments:
+    raw_segments: list[tuple[str, bool]] = []
+    start = 0
+    follows_sequence = False
+    for boundary in boundaries:
+        if any(left <= boundary.start() < right for left, right in protected_spans):
+            continue
+        # Add comma/colon boundaries only immediately after a link; ordinary
+        # lists, times, and prose keep their existing grouping.
+        if set(boundary.group()) <= {",", ":"} and boundary.start() not in url_ends:
+            continue
+        clause_end = boundary.end() if boundary.group().startswith((".", "!", "?")) else boundary.start()
+        raw_segments.append((normalized[start:clause_end], follows_sequence))
+        follows_sequence = bool(re.search(r"\b(?:and|then|also)\b|[,;:]", boundary.group(), re.IGNORECASE))
+        start = boundary.end()
+    raw_segments.append((normalized[start:], follows_sequence))
+    clauses: list[str] = []
+    for raw_segment, sequenced in raw_segments:
+        if _is_conversational_fragment(raw_segment):
+            continue
         segment = raw_segment.strip(" \t\r\n,;:.!?")
-        identity = segment.casefold()
-        if not query_terms(segment) or identity in seen:
+        if not _SEGMENT_URL_RE.search(segment):
+            if not query_terms(segment):
+                continue
+            # Isolated one-word sentences are too ambiguous for an extra
+            # retrieval view. Explicit chaining still permits "and summarize".
+            if not sequenced and len(re.findall(r"[A-Za-z0-9]+", segment)) < 2:
+                continue
+        clauses.append(segment)
+
+    # A URL alone cannot waive this check: require a second eligible clause.
+    if len(clauses) < 2:
+        return []
+    queries: list[str] = []
+    seen: set[str] = set()
+    for index, clause in enumerate(clauses):
+        query = segment_retrieval_query(clause, source_clause=index == 0)
+        identity = query.casefold()
+        if identity in seen:
             continue
         seen.add(identity)
-        segments.append(segment)
-        if len(segments) >= max(2, int(max_segments)):
+        queries.append(query)
+        if len(queries) >= max(2, int(max_segments)):
             break
-
-    return segments if len(segments) >= 2 else []
+    return queries
 
 
 def fts5_query(terms: Iterable[str], operator: str = "OR") -> str:
@@ -131,6 +231,18 @@ def fts5_query(terms: Iterable[str], operator: str = "OR") -> str:
     joiner = " AND " if str(operator).upper() == "AND" else " OR "
     quoted = [f'"{str(term).replace(chr(34), chr(34) * 2)}"' for term in terms if term]
     return joiner.join(quoted)
+
+
+def segment_retrieval_query(segment: str, *, source_clause: bool = False) -> str:
+    """Keep direct URL references; focus descriptive and follow-up action views."""
+    segment = re.sub(r"\s+", " ", _normalize_query_links(segment)).strip()
+    action_text = re.sub(r"\s+", " ", _SEGMENT_URL_RE.sub(" ", segment)).strip()
+    # A bare link is itself a source view. First-clause references such as
+    # "Open this <url>" retain their URL; "Read the annual report <url>" can
+    # retrieve from its descriptive text. Follow-up views omit URL payloads.
+    if not action_text or (source_clause and _URL_REFERENCE_CLAUSE_RE.fullmatch(action_text)):
+        return segment
+    return action_text
 
 
 def lexical_coverage(terms: Iterable[str], *texts: str) -> float:
