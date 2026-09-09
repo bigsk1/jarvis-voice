@@ -14,7 +14,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from lib.model_prompt_overrides import (
+from lib.model_prompt_overrides import (  # noqa: E402
     apply_prompt_override_sections,
     get_model_override_candidates,
     load_model_prompt_override,
@@ -268,15 +268,25 @@ thinking:
             self.assertEqual(override.get("qa_append"), "Keep the answer concise.")
             self.assertIsNone(override.thinking)
 
-    def test_glm_5_3_profiles_cover_both_cloud_models(self):
-        for model in ("glm-5.3:cloud", "glm-5.3-flash:cloud"):
-            for mode in ("cloud", "local"):
-                with self.subTest(model=model, mode=mode):
-                    override = load_model_prompt_override("ollama", model, mode)
-                    self.assertTrue(override.enabled)
-                    self.assertIsNotNone(override.thinking)
-                    self.assertFalse(override.thinking.disable_supported)
-                    self.assertEqual(override.thinking.disabled_fallback_level, "low")
+    def test_glm_5_3_profiles_cover_their_configured_modes(self):
+        for model, mode in (
+            ("glm-5.3:cloud", "cloud"),
+            ("glm-5.3-flash:cloud", "cloud"),
+            ("glm-5.3-flash:cloud", "local"),
+        ):
+            with self.subTest(model=model, mode=mode):
+                override = load_model_prompt_override("ollama", model, mode)
+                self.assertTrue(override.enabled)
+                self.assertIsNotNone(override.thinking)
+                self.assertFalse(override.thinking.disable_supported)
+                self.assertEqual(override.thinking.disabled_fallback_level, "low")
+
+    def test_glm_5_3_cloud_scoped_override_is_not_applied_in_local_mode(self):
+        override = load_model_prompt_override("ollama", "glm-5.3:cloud", "local")
+
+        self.assertFalse(override.enabled)
+        self.assertIsNone(override.thinking)
+        self.assertEqual(override.get("tool_calling_prepend"), "")
 
     def test_apply_prompt_sections_wraps_prompt(self):
         with tempfile.TemporaryDirectory() as tmpdir:
