@@ -269,7 +269,7 @@ class ContextAssembler:
                 isinstance(result, dict)
                 and isinstance(result.get("results") or result.get("summaries"), list)
                 for tool, result in message["tool_results"].items()
-                if tool in {"pdf_read", "document_ocr", "transcribe_audio", "stash", "text_summarizer"}
+                if tool in {"pdf_read", "document_ocr", "transcribe_audio", "analyze_video", "stash", "text_summarizer"}
             )
             for message in recent
         ):
@@ -280,6 +280,24 @@ class ContextAssembler:
                 "stash_ref/transcript_stash_ref values identify extracted output, not the original "
                 "PDF or audio. Reuse the matching saved output for follow-ups; "
                 "bounded excerpts are not the complete source."
+            )
+        if any(
+            (isinstance(message.get("tool_results"), dict)
+             and "analyze_video" in message["tool_results"])
+            or (isinstance(message.get("attachment_context"), str)
+                and "(video)" in message["attachment_context"])
+            for message in recent
+        ):
+            context_lines.append(
+                "Video evidence covers only the recorded interval and sampled timestamps. "
+                "Do not infer unseen events or missing speech. For another moment, call "
+                "analyze_video with the original source_stash_ref and start_seconds/end_seconds; "
+                "audio_status and visual_status describe which evidence was available."
+            )
+            context_lines.append(
+                "Selected tool hints: analyze_video. This source reader is available for new "
+                "visual questions or another interval. Reuse existing evidence when sufficient; "
+                "saving findings to Canvas alone does not require reading the video again."
             )
         last_msg = recent[-1]
         last_role = last_msg.get("role", "user")
@@ -820,6 +838,8 @@ class ContextAssembler:
             # Full transcripts live in Stash. Preserve the bounded excerpt,
             # provider provenance, and artifact reference for the answer turn.
             return 8000
+        if lowered == "analyze_video":
+            return 10000
         if lowered in {"trakt_movies", "trakt_tv_shows", "trakt_account"}:
             # Preserve useful public or account-aware media context, exact
             # links, constraints, and safe account metadata.
@@ -1758,6 +1778,23 @@ class ContextAssembler:
             )
             if isinstance((value := data.get(key)), list)
         }
+        return preview
+
+    def build_video_analysis_data_preview(self, data: Any) -> dict[str, Any]:
+        """Keep interval/source attribution alongside bounded video evidence."""
+        if not isinstance(data, dict):
+            return {}
+        preview = {
+            key: data[key] for key in (
+                "source_filename", "source_ref", "source_stash_ref", "original_path", "mode",
+                "duration_seconds", "start_seconds", "end_seconds", "frame_timestamps", "analyzed_frame_timestamps",
+                "visual_status", "audio_status", "has_audio", "partial", "warnings",
+                "transcript_truncated", "error_code",
+            ) if key in data
+        }
+        for key in ("analysis", "transcript"):
+            if isinstance(data.get(key), str) and data[key]:
+                preview[key] = self.truncate_preview_text(data[key], 3500)
         return preview
 
     def build_transcribe_audio_data_preview(self, data: Any) -> dict[str, Any]:
@@ -3147,6 +3184,7 @@ class ContextAssembler:
             # the response model or follow-up context.
             "trakt_account",
             "transcribe_audio",
+            "analyze_video",
         }
         if result_chars_total <= max_chars and not force_compact_projection:
             return full_serialized, result_chars_total, result_chars_total, False
@@ -3238,6 +3276,8 @@ class ContextAssembler:
                 data_preview = self.build_flight_data_preview(data)
             elif normalized_tool_name == "transcribe_audio":
                 data_preview = self.build_transcribe_audio_data_preview(data)
+            elif normalized_tool_name == "analyze_video":
+                data_preview = self.build_video_analysis_data_preview(data)
             else:
                 data_preview = self.build_preview_value(data, parent_key="data")
             preview_payload = {

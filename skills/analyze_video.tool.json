@@ -1,0 +1,24 @@
+{
+  "enabled": true,
+  "name": "analyze_video",
+  "description": "Understand an existing video or screen recording using timestamped sampled frames and optional audio transcription. Accepts a Jarvis Stash reference or allowed local MP4, WebM, MOV, MKV, AVI, M4V, or MPEG file. Works with silent videos. Use for explaining screen recordings, demonstrations, visible events, comparing a video with documents, and questions about a particular time range. Inspects up to six frames per request; brief events between samples may be missed. Defaults to the first 300 seconds, and can inspect another interval up to 300 seconds with start_seconds/end_seconds. Returns visual findings, exact sampled timestamps, selected interval, transcript status, source references, and explicit coverage warnings. The source file is retained by its existing Stash policy; temporary frames/audio are not saved. For follow-up or Canvas, preserve the exact source_ref and timestamp/coverage metadata. Remote URLs must first be downloaded into Stash using the appropriate existing download tool.",
+  "complementary_tools": ["stash", "canvas", "transcribe_audio", "analyze_image", "pdf_read"],
+  "script": "analyze_video.py",
+  "availability": {
+    "all_of_commands": ["ffmpeg", "ffprobe"],
+    "setup_hint": "Install FFmpeg (including ffprobe) on the Jarvis host and select a vision-capable model."
+  },
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "source": {"type": "string", "description": "Existing video as stash://space_id/file_id or an allowed local file path. Remote URLs are not accepted."},
+      "question": {"type": "string", "maxLength": 4000, "description": "What to learn from the recording. Default describes visible events and spoken content."},
+      "start_seconds": {"type": "number", "minimum": 0, "description": "Start of the selected interval, in seconds from the beginning. Default 0."},
+      "end_seconds": {"type": "number", "minimum": 0, "description": "Exclusive end in seconds. Must be within the video and at most 300 seconds after start. Defaults to the next 300 seconds or end of video."},
+      "include_audio": {"type": "boolean", "description": "Transcribe audio from the selected interval when present. Default true. Set false for visual-only analysis; audio is then explicitly marked skipped."}
+    },
+    "required": ["source"],
+    "additionalProperties": false
+  },
+  "permissions": {"dangerous": false, "bash": true, "network": true, "filesystem": true, "auto_approve": true}
+}

@@ -47,6 +47,25 @@ class EnvVarCleanupMixin:
 
 
 class TestAvailabilityEvaluator(EnvVarCleanupMixin, unittest.TestCase):
+    def test_video_requires_both_media_commands_without_executing_them(self):
+        manifest = json.loads((ROOT / "skills/analyze_video.tool.json").read_text())
+        with patch("tool_availability.shutil.which", side_effect=lambda name: (
+            "/usr/bin/ffprobe" if name == "ffprobe" else None
+        )):
+            result = check_tool_availability(manifest)
+        self.assertFalse(result.available)
+        self.assertEqual(result.missing, ["command: ffmpeg"])
+        self.assertIn("FFmpeg", result.setup_hint)
+        with patch("tool_availability.shutil.which", return_value="/usr/bin/tool"):
+            self.assertTrue(check_tool_availability(manifest).available)
+
+    def test_command_requirements_reject_malformed_names(self):
+        for names in ([], "ffmpeg", ["ffmpeg; echo nope"], ["../ffmpeg"], [None]):
+            self.assertEqual(
+                check_availability_block({"all_of_commands": names}).missing,
+                [MALFORMED_MARKER],
+            )
+
     def test_spotify_manifest_requires_credentials_and_oauth_cache(self):
         manifest = json.loads((ROOT / "skills" / "spotify.tool.json").read_text())
         availability = manifest["availability"]

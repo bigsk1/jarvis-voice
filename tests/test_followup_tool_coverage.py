@@ -24,6 +24,20 @@ def _case(payload, arguments=None):
 # One representative successful data payload per enabled local tool. Complex,
 # multi-action adapters have additional focused tests below.
 LOCAL_TOOL_SAMPLES = {
+    "analyze_video": _case(
+        {
+            "source_stash_ref": "stash://clips/demo",
+            "source_filename": "demo.mp4",
+            "start_seconds": 15.0,
+            "end_seconds": 30.0,
+            "frame_timestamps": [15.0, 22.5, 29.9],
+            "analysis": "At 22.5 seconds the screen shows a failed connection.",
+            "visual_status": "complete",
+            "audio_status": "no_audio",
+            "warnings": ["Only sampled frames were inspected."],
+        },
+        {"source": "stash://clips/demo", "start_seconds": 15, "end_seconds": 30},
+    ),
     "acknowledge_alerts": _case({"alert_id": 7, "acknowledged": True}),
     "acknowledge_reminders": _case(
         {"acknowledged_count": 2, "acknowledged_ids": [11, 12]}

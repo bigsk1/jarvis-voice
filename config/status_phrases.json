@@ -452,6 +452,10 @@
       "start": ["Analyzing the image", "Looking at that picture"],
       "progress": ["Vision analysis complete"]
     },
+    "analyze_video": {
+      "start": ["Reviewing the video", "Checking the video frames and audio"],
+      "progress": ["Video analysis complete"]
+    },
     
     "canvas": {
       "start": ["Saving to canvas", "Creating a page"],

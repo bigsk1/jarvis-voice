@@ -904,7 +904,7 @@ safest fallback because it adds no network egress or API billing.
 ### Mixed-source attachments
 
 Use the paperclip or drag-and-drop to combine PDFs, UTF-8 text/Markdown notes,
-recordings, and analysis images in one request. The shared limit is 6 sources
+recordings, videos, and analysis images in one request. The shared limit is 6 sources
 in cloud mode and 2 in local mode; text files must total at most 100KB.
 Each source has its own preview/removal control, and saved references remain
 available for follow-up questions after reload. Failed uploads keep the draft
@@ -912,6 +912,15 @@ available for retry instead of submitting a partial selection.
 
 See [Mixed-source requests](MIXED_SOURCE_ATTACHMENTS.md) for limits, source
 grounding, partial failures, cancellation, retention, and verification steps.
+
+### Video understanding
+
+Attach a video or silent screen recording and ask about visible steps, errors,
+or spoken content. Jarvis samples timestamped frames and optionally transcribes
+the same interval, with a readable result card and original-source playback.
+Follow up about a narrower time range or save the findings to Canvas.
+See [Video analysis](tools/video/ANALYSIS.md) for limits, provider selection,
+partial results, and setup.
 
 ### Existing Audio Attachment Transcription
 
@@ -922,6 +931,8 @@ Stash. The chat turn receives trusted metadata and an exact `stash://` reference
 then uses `transcribe_audio`; it never treats the filename as a transcript.
 The upload includes the visible cloud/local mode and uses the same bounded
 size/duration policy as the transcription tool.
+Containers with a video stream use video understanding; audio-only containers
+continue through transcription.
 
 The browser shows a local, non-autoplaying player while the recording is
 selected. After Send, a player for the exact Stash copy sits directly beneath

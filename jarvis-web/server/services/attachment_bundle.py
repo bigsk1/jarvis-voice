@@ -12,8 +12,9 @@ from vision_multimodal import max_vision_images
 from .audio_upload import AudioUploadError, validate_audio_attachment
 from .pdf_upload import PDFUploadError, validate_pdf_attachment
 from .text_upload import MAX_TEXT_BYTES, TextUploadError, validate_text_attachment
+from .video_upload import VideoUploadError, validate_video_attachment
 
-_REFERENCE_RE = re.compile(r"stash://(space_web_(pdf|audio|text)_[0-9a-f]{32})/(f_[0-9a-f]{12})")
+_REFERENCE_RE = re.compile(r"stash://(space_web_(pdf|audio|video|text)_[0-9a-f]{32})/(f_[0-9a-f]{12})")
 
 
 class AttachmentBundleError(ValueError):
@@ -59,11 +60,11 @@ def validate_attachments(raw: object, mode: str, image_count: int = 0) -> list[d
     seen = set()
     text_bytes = 0
     validators = {"pdf": validate_pdf_attachment, "audio": validate_audio_attachment,
-                  "text": validate_text_attachment}
+                  "text": validate_text_attachment, "video": validate_video_attachment}
     for item in raw:
         match = _reference(item)
         if match is None:
-            raise AttachmentBundleError("Each attachment must reference a Jarvis Web PDF, audio, or text upload.")
+            raise AttachmentBundleError("Each attachment must reference a Jarvis Web PDF, audio, video, or text upload.")
         reference = item["stash_ref"]
         if reference in seen:
             raise AttachmentBundleError("The same source is attached more than once.",
@@ -77,7 +78,7 @@ def validate_attachments(raw: object, mode: str, image_count: int = 0) -> list[d
                                         error_code="attachment_unavailable", status_code=409)
         try:
             attachment = validators[match.group(2)](item)
-        except (PDFUploadError, AudioUploadError, TextUploadError) as exc:
+        except (PDFUploadError, AudioUploadError, TextUploadError, VideoUploadError) as exc:
             raise AttachmentBundleError(str(exc), error_code=exc.error_code,
                                         status_code=exc.status_code, retryable=exc.retryable) from exc
         path = space / attachment["filename"]
@@ -138,6 +139,8 @@ def stored_attachments(message_data: object) -> list[dict]:
             duration = item.get("duration_seconds")
             if type(duration) in (int, float) and math.isfinite(duration) and duration > 0:
                 attachment["duration_seconds"] = duration
+            if kind == "video" and isinstance(item.get("has_audio"), bool):
+                attachment["has_audio"] = item["has_audio"]
         digest = item.get("sha256")
         if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest):
             attachment["sha256"] = digest

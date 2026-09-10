@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import mimetypes
 import os
 import re
@@ -17,6 +18,8 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import BinaryIO
+
+from filelock import FileLock
 
 JARVIS_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(JARVIS_ROOT / "lib"))
@@ -162,6 +165,8 @@ def _stream_to_stage(
     output_path: Path,
     *,
     max_bytes: int,
+    kind: str = "audio",
+    error_type: type[AudioUploadError] = AudioUploadError,
 ) -> tuple[int, str]:
     digest = hashlib.sha256()
     total = 0
@@ -175,9 +180,9 @@ def _stream_to_stage(
                     raise TypeError("Upload stream returned non-binary data")
                 total += len(chunk)
                 if total > max_bytes:
-                    raise AudioUploadError(
-                        f"Audio is too large (max {max_bytes // (1024 * 1024)}MB).",
-                        error_code="audio_upload_too_large",
+                    raise error_type(
+                        f"{kind.capitalize()} is too large (max {max_bytes // (1024 * 1024)}MB).",
+                        error_code=f"{kind}_upload_too_large",
                         status_code=413,
                     )
                 digest.update(chunk)
@@ -187,16 +192,16 @@ def _stream_to_stage(
     except AudioUploadError:
         raise
     except Exception as exc:
-        raise AudioUploadError(
-            "The audio upload was interrupted. Please retry.",
-            error_code="audio_upload_interrupted",
+        raise error_type(
+            f"The {kind} upload was interrupted. Please retry.",
+            error_code=f"{kind}_upload_interrupted",
             status_code=500,
             retryable=True,
         ) from exc
     if total < 1:
-        raise AudioUploadError(
-            "The selected audio file is empty.",
-            error_code="audio_upload_empty",
+        raise error_type(
+            f"The selected {kind} file is empty.",
+            error_code=f"{kind}_upload_empty",
         )
     return total, digest.hexdigest()
 
@@ -205,8 +210,14 @@ def _attachment_from_committed_space(
     space_path: Path,
     *,
     expected_hash: str | None = None,
+    kind: str = "audio",
+    extensions=None,
+    error_type: type[AudioUploadError] = AudioUploadError,
 ) -> dict:
     try:
+        extensions = SUPPORTED_AUDIO_EXTENSIONS if extensions is None else extensions
+        if space_path.is_symlink() or (space_path / "meta.json").is_symlink():
+            raise ValueError("linked upload metadata")
         meta = json.loads((space_path / "meta.json").read_text(encoding="utf-8"))
         files = meta.get("files")
         file_meta = files[0] if isinstance(files, list) and len(files) == 1 else None
@@ -222,34 +233,42 @@ def _attachment_from_committed_space(
         duration_seconds = float(file_meta.get("duration_seconds", 0))
         labels = set(meta.get("labels") or [])
         if (
-            not _AUDIO_SPACE_RE.fullmatch(space_id)
+            not re.fullmatch(rf"space_web_{kind}_[0-9a-f]{{32}}", space_id)
             or space_path.name != space_id
             or not _AUDIO_FILE_RE.fullmatch(file_id)
-            or meta.get("source") != "web_audio_upload"
-            or not {"web_upload", "audio"}.issubset(labels)
-            or file_meta.get("tool_origin") != "web_audio_upload"
+            or meta.get("source") != f"web_{kind}_upload"
+            or not {"web_upload", kind}.issubset(labels)
+            or file_meta.get("tool_origin") != f"web_{kind}_upload"
             or display_name != stored_name
             or stored_name != sanitize_filename(stored_name)
-            or Path(stored_name).suffix.lower() not in SUPPORTED_AUDIO_EXTENSIONS
+            or Path(stored_name).suffix.lower() not in extensions
             or not re.fullmatch(r"[0-9a-f]{64}", file_hash)
             or size_bytes < 1
-            or duration_seconds <= 0
+            or not math.isfinite(duration_seconds) or duration_seconds <= 0
+            or file_id != f"f_{file_hash[:12]}"
         ):
             raise ValueError("invalid audio upload provenance")
-        upload_id = _validated_upload_id(meta.get("upload_id"))
+        upload_id = str(uuid.UUID(str(meta.get("upload_id") or "")))
+        if space_id != f"space_web_{kind}_{uuid.UUID(upload_id).hex}":
+            raise ValueError("upload ID does not match storage")
         stored_path = space_path / stored_name
-        if not stored_path.is_file():
+        if stored_path.is_symlink() or not stored_path.is_file():
             raise ValueError("missing stored audio")
         if expected_hash and file_hash != expected_hash:
-            raise AudioUploadError(
-                "This upload ID was already used for a different audio file.",
-                error_code="audio_upload_id_conflict",
+            raise error_type(
+                f"This upload ID was already used for a different {kind} file.",
+                error_code=f"{kind}_upload_id_conflict",
                 status_code=409,
             )
         if stored_path.stat().st_size != size_bytes:
             raise ValueError("stored audio size mismatch")
-        return {
-            "kind": "audio",
+        # Size alone cannot establish that the stored bytes still match the
+        # attachment the browser uploaded (or an idempotency retry).
+        with stored_path.open("rb") as stream:
+            if hashlib.file_digest(stream, "sha256").hexdigest() != file_hash:
+                raise ValueError("stored media digest mismatch")
+        attachment = {
+            "kind": kind,
             "stash_ref": f"stash://{space_id}/{file_id}",
             "space_id": space_id,
             "file_id": file_id,
@@ -260,12 +279,20 @@ def _attachment_from_committed_space(
             "duration_seconds": round(duration_seconds, 3),
             "upload_id": upload_id,
         }
+        if kind == "video":
+            width, height = file_meta.get("width"), file_meta.get("height")
+            has_audio = file_meta.get("has_audio")
+            if (type(width) is not int or type(height) is not int
+                    or width < 1 or height < 1 or not isinstance(has_audio, bool)):
+                raise ValueError("invalid video stream metadata")
+            attachment.update(width=width, height=height, has_audio=has_audio)
+        return attachment
     except AudioUploadError:
         raise
     except Exception as exc:
-        raise AudioUploadError(
-            "The stored audio attachment is unavailable.",
-            error_code="audio_attachment_unavailable",
+        raise error_type(
+            f"The stored {kind} attachment is unavailable.",
+            error_code=f"{kind}_attachment_unavailable",
             status_code=409,
             retryable=True,
         ) from exc
@@ -279,18 +306,6 @@ def save_audio_upload(
     max_duration_seconds: int | None = None,
 ) -> tuple[dict, bool]:
     """Stream, inspect, and atomically commit one audio upload to Stash."""
-
-    canonical_upload_id = _validated_upload_id(upload_id)
-    safe_name, mime_type = _validate_filename_and_mime(
-        getattr(file_storage, "filename", ""),
-        getattr(file_storage, "content_type", ""),
-    )
-    stream = getattr(file_storage, "stream", None)
-    if stream is None:
-        raise AudioUploadError(
-            "No audio file was provided.", error_code="audio_upload_missing"
-        )
-
     if max_bytes is None or max_duration_seconds is None:
         limits = get_audio_upload_limits()
         max_bytes = limits.max_file_bytes if max_bytes is None else max_bytes
@@ -299,38 +314,81 @@ def save_audio_upload(
             if max_duration_seconds is None
             else max_duration_seconds
         )
-    max_bytes = int(max_bytes)
-    max_duration_seconds = int(max_duration_seconds)
+    def inspect_media(path, byte_limit, duration_limit):
+        return "audio", inspect_audio_file(
+            path, max_file_bytes=byte_limit, max_duration_seconds=duration_limit
+        )
+
+    return _save_media_upload(
+        file_storage, upload_id, kind="audio", max_bytes=int(max_bytes),
+        max_duration_seconds=int(max_duration_seconds), inspect_media=inspect_media,
+        validate_filename=_validate_filename_and_mime,
+        extensions=SUPPORTED_AUDIO_EXTENSIONS,
+    )
+
+
+def _save_media_upload(
+    file_storage, upload_id, *, kind, max_bytes, max_duration_seconds,
+    inspect_media, validate_filename, extensions, error_type=AudioUploadError,
+) -> tuple[dict, bool]:
+    """Shared bounded streaming and atomic Stash commit for inspected media.
+
+    The inspector determines the committed kind, allowing video containers
+    containing only audio to retain the established audio attachment contract.
+    """
+    try:
+        canonical_upload_id = _validated_upload_id(upload_id)
+    except AudioUploadError as exc:
+        raise error_type(str(exc), error_code=f"{kind}_upload_id_invalid") from exc
+    safe_name, mime_type = validate_filename(
+        getattr(file_storage, "filename", ""), getattr(file_storage, "content_type", "")
+    )
+    stream = getattr(file_storage, "stream", None)
+    if stream is None:
+        raise error_type(f"No {kind} file was provided.", error_code=f"{kind}_upload_missing")
     stash_root = get_stash_dir()
     stash_root.mkdir(parents=True, exist_ok=True)
     incoming_root = stash_root / ".incoming"
+    if incoming_root.is_symlink():
+        raise error_type("Upload storage is unavailable.", status_code=409)
     incoming_root.mkdir(parents=True, exist_ok=True)
 
-    space_id = f"space_web_audio_{uuid.UUID(canonical_upload_id).hex}"
-    final_path = stash_root / space_id
+    space_id = f"space_web_{kind}_{uuid.UUID(canonical_upload_id).hex}"
     stage_path = Path(tempfile.mkdtemp(prefix=f"{space_id}.", dir=incoming_root))
     committed = False
     try:
         staged_audio = stage_path / safe_name
         size_bytes, file_hash = _stream_to_stage(
-            stream, staged_audio, max_bytes=max_bytes
+            stream, staged_audio, max_bytes=max_bytes, kind=kind, error_type=error_type
         )
         try:
-            info = inspect_audio_file(
-                staged_audio,
-                max_file_bytes=max_bytes,
-                max_duration_seconds=max_duration_seconds,
-            )
+            committed_kind, info = inspect_media(staged_audio, max_bytes, max_duration_seconds)
         except ValueError as exc:
-            raise AudioUploadError(
+            raise error_type(
                 str(exc),
-                error_code="audio_upload_invalid",
+                error_code=f"{kind}_upload_invalid",
                 status_code=422,
             ) from exc
 
+        space_id = f"space_web_{committed_kind}_{uuid.UUID(canonical_upload_id).hex}"
+        final_path = stash_root / space_id
+        committed_extensions = SUPPORTED_AUDIO_EXTENSIONS if committed_kind == "audio" else extensions
+        if committed_kind == "video":
+            mime_type = info.mime_type
+        elif kind == "video":
+            mime_type = {
+                ".webm": "audio/webm", ".mp4": "audio/mp4", ".mpeg": "audio/mpeg",
+            }.get(staged_audio.suffix.lower(), mime_type)
+
+        def read_attachment():
+            return _attachment_from_committed_space(
+                final_path, expected_hash=file_hash, kind=committed_kind,
+                extensions=committed_extensions, error_type=error_type,
+            )
+
         file_id = f"f_{file_hash[:12]}"
         now = _utc_now()
-        labels = ["web_upload", "audio"]
+        labels = ["web_upload", committed_kind]
         retention_policy, ttl_days = get_retention_policy(labels, "session")
         meta = {
             "space_id": space_id,
@@ -343,7 +401,7 @@ def save_audio_upload(
             "retention_policy": retention_policy,
             "pinned": False,
             "upload_id": canonical_upload_id,
-            "source": "web_audio_upload",
+            "source": f"web_{committed_kind}_upload",
             "files": [
                 {
                     "file_id": file_id,
@@ -354,12 +412,14 @@ def save_audio_upload(
                     "hash_sha256": file_hash,
                     "duration_seconds": round(info.duration_seconds, 3),
                     "format_name": info.format_name,
-                    "tags": ["user_upload", "audio", "web_upload"],
-                    "tool_origin": "web_audio_upload",
+                    "tags": ["user_upload", committed_kind, "web_upload"],
+                    "tool_origin": f"web_{committed_kind}_upload",
                     "created_at": now,
                 }
             ],
         }
+        if committed_kind == "video":
+            meta["files"][0].update(width=info.width, height=info.height, has_audio=info.has_audio)
         meta_path = stage_path / "meta.json"
         with meta_path.open("x", encoding="utf-8") as meta_file:
             json.dump(meta, meta_file, indent=2)
@@ -367,17 +427,32 @@ def save_audio_upload(
             meta_file.flush()
             os.fsync(meta_file.fileno())
 
-        with _COMMIT_LOCK:
-            if final_path.exists():
-                return (
-                    _attachment_from_committed_space(
-                        final_path, expected_hash=file_hash
-                    ),
-                    True,
+        # Keep the lock inode stable across retries/processes while bounding
+        # retained coordination files to 256 for this Stash root.
+        lock_path = incoming_root / f".media-{uuid.UUID(canonical_upload_id).hex[:2]}.lock"
+        if lock_path.is_symlink():
+            raise error_type("Upload storage is unavailable.", status_code=409)
+        with _COMMIT_LOCK, FileLock(lock_path, timeout=30):
+            # An ID cannot switch kind on a retry (including audio-only MP4).
+            other_kind = "audio" if committed_kind == "video" else "video"
+            other_path = stash_root / f"space_web_{other_kind}_{uuid.UUID(canonical_upload_id).hex}"
+            if other_path.exists() or other_path.is_symlink():
+                raise error_type(
+                    "This upload ID was already used for different media.",
+                    error_code=f"{kind}_upload_id_conflict", status_code=409,
                 )
-            os.replace(stage_path, final_path)
+            if final_path.exists() or final_path.is_symlink():
+                return read_attachment(), True
+            try:
+                os.replace(stage_path, final_path)
+            except OSError:
+                # Another process can commit the same ID between existence
+                # checking and rename; verify its complete immutable artifact.
+                if final_path.exists() or final_path.is_symlink():
+                    return read_attachment(), True
+                raise
             committed = True
-        return _attachment_from_committed_space(final_path), False
+        return read_attachment(), False
     finally:
         if not committed and stage_path.exists():
             shutil.rmtree(stage_path, ignore_errors=True)

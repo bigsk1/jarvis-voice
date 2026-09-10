@@ -1,6 +1,6 @@
 # Mixed-source requests in Jarvis Web
 
-Attach several PDFs, notes, recordings, and images to one message, then ask
+Attach several PDFs, notes, recordings, videos, and images to one message, then ask
 Jarvis to compare them, extract decisions, or build a report from the combined
 material. For example: attach two proposals, a screenshot, and a voice note,
 then ask “Compare the proposals against the requirements in my recording and
@@ -21,14 +21,16 @@ Remove individual cards before sending if needed.
 | PDF | Existing 50MB default per-file upload limit |
 | Images | Existing 30MB per-image upload limit; choose Analyze for mixed requests |
 | Recordings | Existing `AUDIO_TRANSCRIBE_*` size, duration, and provider limits |
+| Videos | Up to 250MB / two hours; analyze up to five minutes and six sampled frames per tool call |
 | Image editing/video generation | One reference image; send other sources separately |
-| Chat only | Text notes allowed; images, PDFs, and recordings require tools enabled |
+| Chat only | Text notes allowed; images, PDFs, recordings, and videos require tools enabled |
 
 The same Web behavior is available natively and in Docker. Uploads and their
 validation use the selected cloud/local configuration. Local mode retains its
 existing provider and tool-profile restrictions; uploading a source does not
-enable an unavailable transcription, OCR, or vision provider. MP4/WebM
-recordings use the existing audio transcription path, not video frame analysis.
+enable an unavailable transcription, OCR, or vision provider. Video containers
+use [video analysis](tools/video/ANALYSIS.md), including silent clips; audio-only
+MP4/WebM containers retain the audio transcription path.
 Switching to local mode never silently drops excess sources: remove enough
 cards before sending.
 

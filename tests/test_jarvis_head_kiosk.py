@@ -109,12 +109,16 @@ echo "$calls" > "$counter"
     )
 
     env = os.environ.copy()
+    # These fixtures provide virtual TTYs, not a framebuffer. Earlier app
+    # imports may load the owner's fb renderer into the process environment.
+    env.pop("JARVIS_OVERRIDE_JARVIS_HEAD_RENDERER", None)
     env.update(
         {
             "PATH": f"{fake_bin}:{env['PATH']}",
             "KIOSK_TEST_LOG": str(log),
             "JARVIS_HEAD_KIOSK_DEV_ROOT": str(dev_root),
             "JARVIS_HEAD_KIOSK_CONFIG_DIR": str(config_dir),
+            "JARVIS_HEAD_RENDERER": "curses",
         }
     )
     return env

@@ -27,6 +27,12 @@ from ..services.audio_upload import (
     get_audio_upload_limits,
     save_audio_upload,
 )
+from ..services.video_upload import (
+    VideoUploadError,
+    check_video_upload_rate,
+    get_video_upload_limits,
+    save_video_upload,
+)
 from ..services.text_upload import (
     MAX_TEXT_BYTES,
     TextUploadError,
@@ -3428,6 +3434,55 @@ def upload_audio():
             retryable=True,
         )
         return jsonify(error.to_payload()), error.status_code
+
+@api_bp.route('/upload-video', methods=['POST'])
+@_scoped_request_config
+def upload_video():
+    """Store inspected video; audio-only containers retain audio attachments."""
+    allowed, retry_after = check_video_upload_rate(request.remote_addr or "unknown")
+    if not allowed:
+        error = VideoUploadError(
+            f"Too many video uploads. Try again in {retry_after} seconds.",
+            error_code="video_upload_rate_limited", status_code=429, retryable=True,
+        )
+        response = jsonify(error.to_payload())
+        response.status_code = 429
+        response.headers["Retry-After"] = str(retry_after)
+        return response
+    try:
+        limits = get_video_upload_limits()
+    except ValueError:
+        error = VideoUploadError(
+            "Video analysis limits are invalid in the selected mode.",
+            error_code="video_upload_configuration_invalid", status_code=500,
+        )
+        return jsonify(error.to_payload()), error.status_code
+    if request.content_length and request.content_length > limits.max_file_bytes + 1024 * 1024:
+        error = VideoUploadError(
+            f"Video is too large (max {limits.max_file_bytes // (1024 * 1024)}MB).",
+            error_code="video_upload_too_large", status_code=413,
+        )
+        return jsonify(error.to_payload()), error.status_code
+    files = request.files.getlist("file")
+    if len(files) != 1 or not files[0].filename:
+        error = VideoUploadError("Select exactly one video file.", error_code="video_upload_missing")
+        return jsonify(error.to_payload()), error.status_code
+    try:
+        attachment, replay = save_video_upload(
+            files[0], request.form.get("upload_id", ""),
+            max_bytes=limits.max_file_bytes, max_duration_seconds=limits.max_duration_seconds,
+        )
+        return jsonify({"ok": True, "attachment": attachment, "idempotent_replay": replay})
+    except VideoUploadError as exc:
+        return jsonify(exc.to_payload()), exc.status_code
+    except Exception as exc:
+        print(f"[Video Upload] Unexpected upload failure: {type(exc).__name__}: {exc}", flush=True)
+        error = VideoUploadError(
+            "The video file could not be stored. Please retry.",
+            error_code="video_upload_failed", status_code=500, retryable=True,
+        )
+        return jsonify(error.to_payload()), error.status_code
+
 
 @api_bp.route('/upload-text', methods=['POST'])
 @_scoped_request_config

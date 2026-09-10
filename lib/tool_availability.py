@@ -31,6 +31,8 @@ Semantics:
   - any_of_env: at least one named key must be present and non-blank
   - config_files: every project-relative (or absolute/~) path must be a
     non-empty regular file; contents are never read
+  - all_of_commands: every named executable must be available on PATH;
+    commands are never executed during discovery
   - webhook_registry: each named entry in config/webhook_registry.json must
     exist, not be explicitly disabled, and have a non-blank URL after ${ENV_VAR}
     substitution (values never logged)
@@ -50,6 +52,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -222,12 +225,12 @@ def check_availability_block(block: Any) -> AvailabilityResult:
         setup_hint = None
 
     known_keys = {
-        "all_of_env", "any_of_env", "config_files", "webhook_registry",
+        "all_of_env", "any_of_env", "config_files", "webhook_registry", "all_of_commands",
         "provider_setting", "provider_default", "provider_requirements",
         "setup_hint",
     }
     requirement_keys = {
-        "all_of_env", "any_of_env", "config_files", "webhook_registry",
+        "all_of_env", "any_of_env", "config_files", "webhook_registry", "all_of_commands",
         "provider_requirements",
     }
     present = set(block.keys())
@@ -240,6 +243,13 @@ def check_availability_block(block: Any) -> AvailabilityResult:
         return AvailabilityResult(status="available", setup_hint=setup_hint)
 
     missing: list[str] = []
+
+    commands = block.get("all_of_commands")
+    if commands is not None:
+        names = _validate_env_names(commands)
+        if names is None or any(not re.fullmatch(r"[A-Za-z0-9_.+-]+", name) for name in names):
+            return _malformed(setup_hint)
+        missing.extend(f"command: {name}" for name in names if not shutil.which(name))
 
     all_of = block.get("all_of_env")
     if all_of is not None:

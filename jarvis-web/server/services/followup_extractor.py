@@ -104,11 +104,11 @@ FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS = 3000
 FOLLOWUP_SOURCE_MAX_RUNS = 6
 FOLLOWUP_SOURCE_CONTENT_MAX_CHARS = 6000
 _SOURCE_RESULT_TOOLS = frozenset({
-    'pdf_read', 'document_ocr', 'transcribe_audio', 'stash', 'text_summarizer',
+    'pdf_read', 'document_ocr', 'transcribe_audio', 'analyze_video', 'stash', 'text_summarizer',
 })
 _SOURCE_CONTENT_FIELDS = frozenset({
     'text_excerpt', 'content_excerpt', 'transcript_excerpt', 'markdown_excerpt',
-    'output_excerpt', 'parsed_json', 'parsed_json_excerpt', 'page_outputs', 'summary',
+    'output_excerpt', 'parsed_json', 'parsed_json_excerpt', 'page_outputs', 'summary', 'analysis',
 })
 _FOLLOWUP_INLINE_TRUNCATION_SUFFIX = "... [truncated for follow-up context]"
 _FOLLOWUP_STRUCTURAL_TRUNCATION_KEY = "_followup_truncated"
@@ -337,6 +337,12 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'transcript_chars', 'transcript_truncated', 'transcript_stash_ref',
         'stash_ref', 'space_id', 'stash_forced', 'transcript_save_error',
         'partial', 'completed_chunks', 'error_code', 'retryable',
+    ],
+    'analyze_video': [
+        'source_filename', 'source_ref', 'source_stash_ref', 'original_path', 'mode',
+        'duration_seconds', 'start_seconds', 'end_seconds', 'frame_timestamps', 'analyzed_frame_timestamps',
+        'visual_status', 'audio_status', 'has_audio', 'partial', 'warnings',
+        'transcript_truncated', 'error_code', 'retryable',
     ],
     'external_network_intel': [
         'action', 'query_type', 'target', 'target_type', 'checked_at',
@@ -2599,6 +2605,10 @@ def _extract_bounded_content_followup(
     text_fields = {
         'analyze_image': (
             ('analysis', 'analysis', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
+        ),
+        'analyze_video': (
+            ('analysis', 'analysis', 3000),
+            ('transcript', 'transcript_excerpt', 3000),
         ),
         'canvas': (
             ('content', 'content_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),

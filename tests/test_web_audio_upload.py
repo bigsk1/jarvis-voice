@@ -248,7 +248,8 @@ def test_browser_audio_contract_uploads_on_send_and_restores_history_badge():
     assert "mime.startsWith('audio/')" not in audio_file_matcher
     # Full bundle send and reload behavior executes in test_web_attachment_bundle_ui.
     assert "const attachments = Array.isArray(msg.data?.attachments)" in app_js
-    assert "sources.filter(item => item?.kind === 'audio')" in chat_js
+    assert "const mediaHtml = sources.map(item =>" in chat_js
+    assert "if (item?.kind === 'audio')" in chat_js
 
 
 
@@ -264,7 +265,7 @@ def test_browser_audio_contract_renders_pending_and_persisted_players():
     assert "controls preload=\"metadata\"" in chat_js
     assert ">Open</a>" in chat_js
     assert ">Download</a>" in chat_js
-    assert "</div>\n      ${audioHtml}" in chat_js
+    assert "</div>\n      ${mediaHtml}" in chat_js
     assert "this._findAudioFromToolResults(" in chat_js
     assert chat_js.index("${messageBubbleHtml}") < chat_js.index(
         "${genericStashAudio ? audioHtml : ''}"

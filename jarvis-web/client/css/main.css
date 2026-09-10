@@ -1072,6 +1072,33 @@ body {
   display: block;
 }
 
+.tool-card-body.video-analysis-result {
+  font-family: inherit;
+  white-space: normal;
+}
+
+.video-analysis-result p,
+.video-analysis-result ul,
+.video-analysis-result details,
+.video-analysis-text {
+  margin-bottom: var(--space-sm);
+}
+
+.video-analysis-text {
+  white-space: pre-wrap;
+}
+
+.video-analysis-warning {
+  color: var(--text-primary);
+  border-left: 3px solid var(--warning);
+  padding-left: var(--space-md);
+}
+
+.video-analysis-transcript summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
 .tool-card.success .tool-card-title::before {
   content: '✅';
 }
@@ -5742,6 +5769,28 @@ body {
   margin-top: var(--space-sm);
 }
 
+.file-video-player {
+  display: block;
+  width: min(100%, 420px);
+  max-height: 240px;
+  margin-top: var(--space-sm);
+}
+
+.user-video-attachment {
+  width: min(100%, 560px);
+  margin-bottom: 0;
+}
+
+.user-video-attachment .video-info {
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.user-video-attachment .video-actions a {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
 .upload-btn {
   font-size: 1.1rem;
 }
@@ -5825,7 +5874,7 @@ body {
 }
 
 .chat-input-container.drag-over::after {
-  content: 'Drop image here';
+  content: 'Drop sources here';
   position: absolute;
   top: 50%;
   left: 50%;

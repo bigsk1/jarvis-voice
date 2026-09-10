@@ -413,6 +413,10 @@
         "start": ["STARING INTO THE PIXEL ABYSS", "MY EYES ARE BLEEDING BUT I'LL LOOK ANYWAY"],
         "progress": ["I'VE SEEN TOO MUCH, BUT HERE'S WHAT I FOUND"]
       },
+      "analyze_video": {
+        "start": ["INSPECTING THE MOVING PIXEL EVIDENCE", "CHECKING THE FRAMES AND LISTENING FOR TROUBLE"],
+        "progress": ["VIDEO EVIDENCE REVIEWED"]
+      },
   
       "canvas": {
         "start": ["IMMORTALIZING THIS IN THE HALLS OF MADNESS", "CARVING INTO THE DIGITAL STONE TABLETS"],

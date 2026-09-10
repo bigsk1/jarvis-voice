@@ -2,6 +2,8 @@
 
 Generate AI videos using xAI Grok or Google Gemini directly from Jarvis.
 
+To understand an existing clip or screen recording, see [Video analysis](ANALYSIS.md).
+
 ## Overview
 
 The `generate_video` tool creates AI-generated videos from text prompts or images. Videos are saved locally and indexed in stash for use with other tools.

@@ -447,7 +447,7 @@ class ChatUI {
     this.imageActionBadge = document.getElementById('imageActionBadge');
     this.clearAllImagesBtn = document.getElementById('clearAllImagesBtn');
     
-    // Text/PDF/audio previews are rendered one row per selected source.
+    // Text/PDF/audio/video previews are rendered one row per selected source.
     this.filePreviewContainer = document.getElementById('filePreviewContainer');
     this.attachedDocuments = [];
     this._attachmentEpoch = 0;
@@ -2696,6 +2696,7 @@ class ChatUI {
   _attachmentKind(file) {
     if (String(file?.type || '').startsWith('image/')) return 'image';
     if (this._isPdfFile(file)) return 'pdf';
+    if (this._isVideoFile(file)) return 'video';
     if (this._isAudioFile(file)) return 'audio';
     const extension = String(file?.name || '').split('.').pop().toLowerCase();
     if (['txt', 'md'].includes(extension)) return 'text';
@@ -2720,7 +2721,7 @@ class ChatUI {
       .reduce((sum, item) => sum + item.file.size, 0);
     for (const file of files) {
       const kind = this._attachmentKind(file);
-      if (!kind) return `Unsupported file: ${file.name}. Use images, audio, PDF, .md, or .txt files.`;
+      if (!kind) return `Unsupported file: ${file.name}. Use images, video, audio, PDF, .md, or .txt files.`;
       if (kind === 'pdf' && !String(file.name).toLowerCase().endsWith('.pdf')) {
         return 'Select PDF files with a .pdf extension.';
       }
@@ -3251,6 +3252,18 @@ class ChatUI {
     return ['aac', 'flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'ogg', 'wav', 'webm'].includes(ext);
   }
 
+  _isVideoFile(file) {
+    if (!file) return false;
+    const ext = String(file.name || '').split('.').pop().toLowerCase();
+    const mime = String(file.type || '').split(';', 1)[0].trim().toLowerCase();
+    // An audio/mpeg .mpeg can be an MP3 bitstream rather than a video
+    // container. Preserve its established audio inspection/transcription path.
+    if (ext === 'mpeg' && mime === 'audio/mpeg') return false;
+    // Containers can contain audio alone. The server inspects their streams
+    // and returns kind=audio when there are no video frames to analyze.
+    return mime.startsWith('video/') || ['mp4', 'webm', 'mov', 'mkv', 'avi', 'm4v', 'mpeg', 'mpg'].includes(ext);
+  }
+
   _createArtifactUploadId() {
     if (window.crypto?.randomUUID) {
       return window.crypto.randomUUID();
@@ -3273,7 +3286,9 @@ class ChatUI {
 
   _renderDocumentPreviews() {
     if (!this.filePreviewContainer) return;
-    this.filePreviewContainer.querySelectorAll('audio').forEach(audio => audio.pause?.());
+    for (const kind of ['audio', 'video']) {
+      this.filePreviewContainer.querySelectorAll(kind).forEach(media => media.pause?.());
+    }
     this.filePreviewContainer.replaceChildren();
     this.filePreviewContainer.style.display = this.attachedDocuments.length ? 'block' : 'none';
     this.attachedDocuments.forEach((item, index) => {
@@ -3297,14 +3312,16 @@ class ChatUI {
       remove.addEventListener('click', () => this._removeAttachedDocument(item));
       info.append(label, size, remove);
       row.appendChild(info);
-      if (item.kind === 'audio' && window.URL?.createObjectURL) {
+      const mediaKind = item.attachment?.kind || item.kind;
+      if (['audio', 'video'].includes(mediaKind) && window.URL?.createObjectURL) {
         item.previewUrl ||= window.URL.createObjectURL(item.file);
-        const audio = document.createElement('audio');
-        audio.controls = true;
-        audio.preload = 'metadata';
-        audio.className = 'audio-player file-audio-player';
-        audio.src = item.previewUrl;
-        row.appendChild(audio);
+        const media = document.createElement(mediaKind);
+        media.controls = true;
+        media.preload = 'metadata';
+        media.className = `${mediaKind}-player file-${mediaKind}-player`;
+        media.src = item.previewUrl;
+        if (mediaKind === 'video') media.playsInline = true;
+        row.appendChild(media);
       }
       this.filePreviewContainer.appendChild(row);
     });
@@ -3337,7 +3354,9 @@ class ChatUI {
       method: 'POST', body: formData, signal: context.controller.signal
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.ok || !payload.attachment?.stash_ref || payload.attachment.kind !== item.kind) {
+    const returnedKind = payload.attachment?.kind;
+    const compatibleKind = returnedKind === item.kind || (item.kind === 'video' && returnedKind === 'audio');
+    if (!response.ok || !payload.ok || !payload.attachment?.stash_ref || !compatibleKind) {
       throw new Error(payload.error || `${item.file.name} could not be uploaded. Please retry.`);
     }
     // Cache even after cancellation if a late successful response arrives. A
@@ -3387,6 +3406,7 @@ class ChatUI {
     const documentStates = [...this.attachedDocuments];
     const hasPdf = documentStates.some(item => item.kind === 'pdf');
     const hasAudio = documentStates.some(item => item.kind === 'audio');
+    const hasVideo = documentStates.some(item => item.kind === 'video');
     const hasFile = documentStates.length > 0;
     const hasSelectedToolHints = this.selectedToolHints.length > 0;
     
@@ -3432,8 +3452,8 @@ class ChatUI {
       Utils.toast('Turn off Chat only before using tools or workflows', 'info');
       return;
     }
-    if (effectiveChatOnly && (hasImage || hasPdf || hasAudio)) {
-      Utils.toast('Turn off Chat only before analyzing images, PDFs, or audio', 'info');
+    if (effectiveChatOnly && (hasImage || hasPdf || hasAudio || hasVideo)) {
+      Utils.toast('Turn off Chat only before analyzing images, PDFs, audio, or video', 'info');
       return;
     }
     if (!parsed.message && requestedChatOnly && !hasImage && !hasFile) {
@@ -3571,7 +3591,7 @@ class ChatUI {
   }
 
   /**
-   * Add user message to chat with optional image/audio attachments and badge.
+   * Add user message to chat with optional source attachments and badge.
    */
   addUserMessage(text, imageData = null, activeBadge = '', attachments = null) {
     const messageEl = document.createElement('div');
@@ -3604,11 +3624,13 @@ class ChatUI {
     }
 
     const sources = Array.isArray(attachments) ? attachments : [];
-    const audioHtml = sources.filter(item => item?.kind === 'audio')
-      .map(item => this._normalizeAudioAttachment(item))
-      .filter(Boolean)
-      .map(item => this._renderAudioPlayerHtml(item, { cardClass: 'user-audio-attachment' }))
-      .join('');
+    const mediaHtml = sources.map(item => {
+      if (item?.kind === 'video') return this._renderVideoAttachmentHtml(item);
+      if (item?.kind === 'audio') {
+        return this._renderAudioPlayerHtml(this._normalizeAudioAttachment(item), { cardClass: 'user-audio-attachment' });
+      }
+      return '';
+    }).join('');
     const sourceHtml = sources.length
       ? `<ul class="message-source-list">${sources.map((item, index) => {
           const filename = Utils.escapeHtml(item.filename || 'Attached file');
@@ -3625,11 +3647,13 @@ class ChatUI {
       ? 'Review these attached sources.'
       : sources[0]?.kind === 'audio'
         ? 'Transcribe this audio recording.'
-        : sources[0]?.kind === 'pdf'
-          ? "What's in this PDF?"
-          : sources[0]?.kind === 'text'
-            ? 'Summarize this file.'
-            : "What's in this image?";
+        : sources[0]?.kind === 'video'
+          ? 'Analyze this video.'
+          : sources[0]?.kind === 'pdf'
+            ? "What's in this PDF?"
+            : sources[0]?.kind === 'text'
+              ? 'Summarize this file.'
+              : "What's in this image?";
     const defaultPrompt = `<em>${defaultPromptText}</em>`;
     messageEl._jarvisMarkdownContent = text || defaultPromptText;
 
@@ -3640,7 +3664,7 @@ class ChatUI {
         ${sourceHtml}
         ${text ? Utils.escapeHtml(text) : defaultPrompt}
       </div>
-      ${audioHtml}
+      ${mediaHtml}
     `;
     
     this.messagesContainer.appendChild(messageEl);
@@ -3929,7 +3953,7 @@ class ChatUI {
     if (!audioUrl) {
       const genericAudio = this._findAudioFromToolResults(
         toolResultsData,
-        ['convert_file']
+        ['convert_file', 'analyze_video']
       );
       if (genericAudio) {
         audioUrl = genericAudio.audioUrl;
@@ -4004,7 +4028,7 @@ class ChatUI {
     // Method 1.5: Generic video from any tool (youtube_video, create_social_clip, etc.)
     // Modular: detects video by filename/mime/stash_ref — not by tool name
     if (!videoUrl) {
-      const genericVideo = this._findVideoFromToolResults(toolResultsData, ['convert_file']);
+      const genericVideo = this._findVideoFromToolResults(toolResultsData, ['convert_file', 'analyze_video']);
       if (genericVideo) {
         videoUrl = genericVideo.videoUrl;
         videoTitle = genericVideo.videoTitle;
@@ -4952,6 +4976,92 @@ class ChatUI {
       ),
       audioDuration: attachment.duration_seconds || attachment.duration || '',
     };
+  }
+
+  _renderVideoAttachmentHtml(attachment) {
+    const sourceUrl = this._sourceAttachmentUrl(attachment);
+    if (!sourceUrl) return '';
+    const videoUrl = this._safeMediaUrlForAttr(sourceUrl);
+    if (!videoUrl) return '';
+    const filename = String(attachment.filename || 'Video');
+    const title = Utils.escapeHtml(filename);
+    const mimeType = this._inferVideoMimeType(sourceUrl, filename, attachment.mime_type);
+    const duration = this._formatAudioDuration(attachment.duration_seconds || attachment.duration);
+    const audioLabel = attachment.has_audio === false ? 'No audio track'
+      : attachment.has_audio === true ? 'Includes audio' : '';
+    const details = [duration, audioLabel].filter(Boolean).join(' · ');
+    return `
+      <div class="message-video user-video-attachment">
+        <div class="video-header">
+          <span class="video-icon">🎬</span>
+          <span class="video-title">${title}</span>
+        </div>
+        <video controls playsinline preload="metadata" class="video-player" aria-label="${title}">
+          <source src="${videoUrl}"${mimeType ? ` type="${Utils.escapeHtml(mimeType)}"` : ''}>
+          Your browser does not support this video format. Open or download the original below.
+        </video>
+        <div class="video-info">
+          <span>${Utils.escapeHtml(details)}</span>
+          <span class="video-actions">
+            <a href="${videoUrl}" target="_blank" rel="noopener noreferrer">Open original</a>
+            <a href="${videoUrl}" download="${title}">Download</a>
+          </span>
+        </div>
+      </div>
+    `;
+  }
+
+  _formatVideoTimestamp(value) {
+    if (value === null || value === undefined || value === '') return '';
+    const seconds = Math.round(Number(value) * 100) / 100;
+    if (!Number.isFinite(seconds) || seconds < 0) return '';
+    const minutes = Math.floor(seconds / 60);
+    const remainder = (seconds % 60).toFixed(2).replace(/\.?0+$/, '');
+    return `${minutes}:${remainder.split('.')[0].padStart(2, '0')}${remainder.includes('.') ? `.${remainder.split('.')[1]}` : ''}`;
+  }
+
+  _renderVideoAnalysisResult(result) {
+    if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
+    const data = result.data && typeof result.data === 'object' ? result.data : result;
+    if (!data.visual_status && !data.audio_status && !data.analysis && !Array.isArray(data.frame_timestamps)) return null;
+    const excerpt = (value, limit) => {
+      const text = String(value || '');
+      return Utils.escapeHtml(text.length > limit ? `${text.slice(0, limit)}… [excerpt truncated]` : text);
+    };
+    const visualLabels = {complete:'Sampled frames analyzed', partial:'Some frames analyzed', unavailable:'Visual analysis unavailable'};
+    const audioLabels = {no_audio:'No audio track', skipped:'Audio not requested', transcribed:'Transcribed', no_speech:'No speech detected', partial:'Partial transcript', unavailable:'Audio transcription unavailable'};
+    const start = this._formatVideoTimestamp(data.start_seconds);
+    const end = this._formatVideoTimestamp(data.end_seconds);
+    const timestamps = (Array.isArray(data.frame_timestamps) ? data.frame_timestamps : [])
+      .slice(0, 6).map(value => this._formatVideoTimestamp(value)).filter(Boolean);
+    const analyzedTimestamps = Array.isArray(data.analyzed_frame_timestamps)
+      ? data.analyzed_frame_timestamps.slice(0, 6).map(value => this._formatVideoTimestamp(value)).filter(Boolean)
+      : null;
+    const incompleteFrameAnalysis = analyzedTimestamps !== null
+      && (analyzedTimestamps.length !== timestamps.length
+          || analyzedTimestamps.some((value, index) => value !== timestamps[index]));
+    const warnings = (Array.isArray(data.warnings) ? data.warnings : []).slice(0, 8);
+    const error = data.error || result.error;
+    const source = {
+      kind:'video', stash_ref:data.source_stash_ref || data.source_ref,
+      filename:data.source_filename || data.filename || 'Video source',
+      duration_seconds:data.duration_seconds, mime_type:data.mime_type,
+      has_audio:data.has_audio ?? (data.audio_status === 'no_audio' ? false : undefined),
+      mode:data.mode || result.mode
+    };
+    return `
+      ${data.partial ? '<p class="video-analysis-warning"><strong>Partial analysis</strong></p>' : ''}
+      ${start && end ? `<p><strong>Requested interval:</strong> ${start}–${end}</p>` : ''}
+      <p><strong>Frames sampled:</strong> ${timestamps.length ? timestamps.join(', ') : 'None'}. Samples do not cover every frame.</p>
+      ${incompleteFrameAnalysis ? `<p><strong>Frames analyzed:</strong> ${analyzedTimestamps.length ? analyzedTimestamps.join(', ') : 'None'}.</p>` : ''}
+      <p><strong>Visuals:</strong> ${Utils.escapeHtml(visualLabels[data.visual_status] || 'Status not reported')}<br>
+        <strong>Audio:</strong> ${Utils.escapeHtml(audioLabels[data.audio_status] || 'Status not reported')}</p>
+      ${warnings.length ? `<ul class="video-analysis-warning">${warnings.map(warning => `<li>${excerpt(warning, 500)}</li>`).join('')}</ul>` : ''}
+      ${error ? `<p class="video-analysis-warning">${excerpt(error, 1000)}</p>` : ''}
+      ${data.analysis ? `<p><strong>Analysis</strong></p><div class="video-analysis-text">${excerpt(data.analysis, 10000)}</div>` : ''}
+      ${data.transcript ? `<details class="video-analysis-transcript"><summary>Transcript</summary><div class="video-analysis-text">${excerpt(data.transcript, 8000)}</div></details>` : ''}
+      ${this._renderVideoAttachmentHtml(source)}
+    `;
   }
 
   _renderAudioPlayerHtml(audio, options = {}) {
@@ -6072,6 +6182,7 @@ class ChatUI {
     this._resetProcessingPhase();
     const thinkingEl = this.messagesContainer.querySelector('.thinking-message');
     if (thinkingEl) {
+      thinkingEl.querySelectorAll('video').forEach(video => video.pause?.());
       thinkingEl.remove();
     }
     
@@ -6365,12 +6476,15 @@ class ChatUI {
       return;
     }
     
-    card.className = `tool-card ${status}`;
+    const videoAnalysisHtml = toolName === 'analyze_video' ? this._renderVideoAnalysisResult(result) : null;
+    card.className = `tool-card ${status}${videoAnalysisHtml ? ' expanded' : ''}`;
     
     const statusEl = card.querySelector('.tool-card-status');
     if (statusEl) {
       if (status === 'success') {
-        statusEl.innerHTML = `✅ ${duration ? Utils.formatDuration(duration) : 'Complete'}`;
+        statusEl.innerHTML = videoAnalysisHtml && (result.data?.partial ?? result.partial) === true
+          ? '⚠️ Partial analysis'
+          : `✅ ${duration ? Utils.formatDuration(duration) : 'Complete'}`;
       } else if (status === 'error') {
         statusEl.innerHTML = `❌ Failed`;
       } else if (status === 'skipped') {
@@ -6382,8 +6496,13 @@ class ChatUI {
     
     const bodyEl = card.querySelector('.tool-card-body');
     if (bodyEl && result) {
-      const summary = typeof result === 'object' ? Utils.formatJson(result) : String(result);
-      bodyEl.innerHTML = Utils.escapeHtmlAndLinkify(summary);
+      if (videoAnalysisHtml) {
+        bodyEl.querySelectorAll('video').forEach(video => video.pause?.());
+        bodyEl.innerHTML = videoAnalysisHtml;
+      } else {
+        const summary = typeof result === 'object' ? Utils.formatJson(result) : String(result);
+        bodyEl.innerHTML = Utils.escapeHtmlAndLinkify(summary);
+      }
     }
   }
 
@@ -6447,17 +6566,22 @@ class ChatUI {
    * Create tool card HTML
    */
   _createToolCardHtml(toolName, status, data, duration = null) {
+    const videoAnalysisHtml = toolName === 'analyze_video' ? this._renderVideoAnalysisResult(data) : null;
     const statusText = status === 'pending'
       ? '⏳ Running...'
       : status === 'success'
-        ? `✅ ${duration ? Utils.formatDuration(duration) : 'Complete'}`
+        ? videoAnalysisHtml && (data.data?.partial ?? data.partial) === true
+          ? '⚠️ Partial analysis'
+          : `✅ ${duration ? Utils.formatDuration(duration) : 'Complete'}`
         : status === 'skipped'
           ? '⏭ Skipped'
           : '❌ Failed';
     
     // Show full JSON - user can scroll in expanded view
     let summary = '';
-    if (data && typeof data === 'object') {
+    if (videoAnalysisHtml) {
+      summary = '';
+    } else if (data && typeof data === 'object') {
       summary = Utils.formatJson(data);
     } else if (data) {
       summary = String(data);
@@ -6478,13 +6602,15 @@ class ChatUI {
     }
     
     return `
-      <div class="tool-card ${status}">
+      <div class="tool-card ${status}${videoAnalysisHtml ? ' expanded' : ''}">
         <div class="tool-card-header">
-          <span class="tool-card-title">${Utils.escapeHtml(toolName)}</span>
+          <span class="tool-card-title">${Utils.escapeHtml(toolName === 'analyze_video' ? 'Video analysis' : toolName)}</span>
           <span class="tool-card-status">${statusText}</span>
         </div>
         ${detailsLinkHtml}
-        <pre class="tool-card-body">${Utils.escapeHtmlAndLinkify(summary)}</pre>
+        ${toolName === 'analyze_video'
+          ? `<div class="tool-card-body video-analysis-result">${videoAnalysisHtml || Utils.escapeHtmlAndLinkify(summary)}</div>`
+          : `<pre class="tool-card-body">${Utils.escapeHtmlAndLinkify(summary)}</pre>`}
       </div>
     `;
   }
@@ -7266,6 +7392,7 @@ class ChatUI {
     this._resetPendingToolState();
 
     // Keep only the welcome message
+    this.messagesContainer.querySelectorAll('video').forEach(video => video.pause?.());
     const messages = this.messagesContainer.querySelectorAll('.message');
     messages.forEach((msg, index) => {
       if (index > 0) msg.remove();

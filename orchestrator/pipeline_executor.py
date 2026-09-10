@@ -929,7 +929,7 @@ class PipelineExecutor:
         """
         result.pop("_workflow_source_arguments", None)
         if (
-            tool_name not in {"pdf_read", "document_ocr", "transcribe_audio", "stash", "text_summarizer"}
+            tool_name not in {"pdf_read", "document_ocr", "transcribe_audio", "analyze_video", "stash", "text_summarizer"}
             or not result.get("ok")
             or result.get("cancelled")
             or result.get("validation_failed")

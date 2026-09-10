@@ -625,3 +625,79 @@ def test_failed_conversation_load_identifies_the_requested_thread(journey):
         'error_code': 'conversation_not_found',
         'conversation_id': 'missing-thread',
     }
+
+
+@pytest.fixture
+def video_source(journey):
+    import subprocess
+
+    from jarvis_bundle_chat_test.services import video_upload
+
+    path = journey.tmp / 'silent.mp4'
+    subprocess.run([
+        'ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=160x96:r=5',
+        '-t', '1', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', str(path),
+    ], check=True, capture_output=True, timeout=15)
+    with path.open('rb') as stream:
+        return video_upload.save_video_upload(
+            FileStorage(stream, filename='silent.mp4', content_type='video/mp4'), str(uuid.uuid4())
+        )[0]
+
+
+def test_video_and_note_admit_route_and_restore_with_original_evidence_scope(
+    journey, video_source, monkeypatch,
+):
+    # Provider work remains mocked; real upload validation and conversation storage
+    # use the fixture's disposable destinations.
+    monkeypatch.setattr(journey.handler, '_sanitize_tool_hints', lambda hints, **kwargs: hints or [])
+    journey.provider_result.update({
+        'tools_used': ['analyze_video'],
+        'data': {'analyze_video': {'ok': True, 'data': {
+            'source_stash_ref': video_source['stash_ref'], 'source_filename': 'silent.mp4',
+            'analysis': 'The sampled frames show a blue screen.', 'start_seconds': 0,
+            'end_seconds': 1, 'frame_timestamps': [0, 0.8], 'audio_status': 'no_audio',
+            'visual_status': 'complete',
+        }}},
+    })
+    journey.send(attachments=[video_source, note('Compare the screen color.')], mode='local')
+    journey.process()
+    prompt = journey.routes[0][0]
+    assert 'Source 1: silent.mp4 (video)' in prompt
+    assert 'Audio stream: absent' in prompt
+    assert 'Use analyze_video' in prompt
+    assert 'Selected tool hints: analyze_video' in prompt
+    assert 'samples do not establish what happened between frames' in prompt
+    cid = journey.handler.sessions['client']['conversation_id']
+    restored = conversation_store.ConversationStore(journey.tmp / 'conversations').get_conversation(cid)
+    source = restored['messages'][0]['data']['attachments'][0]
+    assert source['kind'] == 'video' and source['mode'] == 'local'
+    assert source['has_audio'] is False
+    journey.send(message='Save those findings to Canvas.', mode='local', conversation_id=cid)
+    journey.process()
+    history = journey.routes[-1][1]['conversation_history']
+    assert video_source['stash_ref'] in history[0]['attachment_context']
+    assert history[-1]['tool_results']['analyze_video']['audio_status'] == 'no_audio'
+
+
+def test_video_rejects_chat_only_before_admission(journey, video_source):
+    journey.send(attachments=[video_source], tool_policy='none')
+    assert not journey.pending
+    assert not list((journey.tmp / 'conversations').glob('*.json'))
+    assert journey.socket.events[-1][0] == 'chat:error'
+    assert 'Chat only' in journey.socket.events[-1][1]['error']
+
+
+def test_video_default_question_and_preparation_cancel_are_durable(journey, video_source):
+    journey.send(message='', attachments=[video_source])
+    assert len(journey.pending) == 1
+    cid = journey.handler.sessions['client']['conversation_id']
+    message = journey.store.get_conversation(cid)['messages'][0]
+    assert 'video' in message['content']
+    request_id = next(data['message_id'] for event, data, _ in journey.socket.events
+                      if event == 'chat:thinking')
+    journey.handler.pending_cancellations[request_id] = True
+    journey.process()
+    assert not journey.routes
+    saved = journey.store.get_conversation(cid)
+    assert saved['messages'][0]['data']['attachments'][0]['stash_ref'] == video_source['stash_ref']
+    assert saved['messages'][-1]['data']['cancelled'] is True
