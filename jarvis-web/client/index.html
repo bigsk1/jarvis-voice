@@ -536,6 +536,15 @@
                 <option value="gemini">Google Gemini</option>
                 <option value="openai">OpenAI GPT Image</option>
               </select>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                Image Model
+                <span class="setting-default" id="image-model-default"></span>
+              </label>
+              <select class="setting-input" id="setting-image-model">
+                <option value="">Use env/catalog default</option>
+              </select>
               <span class="setting-model-detail" id="image-provider-capabilities"></span>
             </div>
             <div class="setting-group">
@@ -547,6 +556,15 @@
                 <option value="">Use env default</option>
                 <option value="xai">xAI Grok ($0.05/s)</option>
                 <option value="gemini">Google Gemini ($0.10+/s)</option>
+              </select>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">
+                Video Model
+                <span class="setting-default" id="video-model-default"></span>
+              </label>
+              <select class="setting-input" id="setting-video-model">
+                <option value="">Use env/catalog default</option>
               </select>
               <span class="setting-model-detail" id="video-provider-capabilities"></span>
             </div>
@@ -1137,6 +1155,11 @@
               </select>
             </div>
             <div class="setting-group">
+              <label class="setting-label">Video Model</label>
+              <select class="setting-input" id="imgActionVideoModel"></select>
+              <span class="setting-desc" id="imgActionVideoModelDesc"></span>
+            </div>
+            <div class="setting-group">
               <label class="setting-label">Aspect Ratio</label>
               <select class="setting-input" id="imgActionVideoRatio">
                 <option value="16:9">16:9 (Widescreen)</option>
@@ -1151,7 +1174,7 @@
             <div class="setting-group">
               <label class="setting-label">Duration (seconds)</label>
               <input type="number" class="setting-input" id="imgActionVideoDuration" min="1" max="15" value="5" placeholder="1-15">
-              <span class="setting-desc">xAI: 1-15s, Gemini: model-dependent</span>
+              <span class="setting-desc" id="imgActionVideoDurationDesc">Model-dependent duration</span>
             </div>
             <div class="setting-group">
               <label class="setting-label">Resolution</label>
@@ -1171,6 +1194,10 @@
                 <option value="openai">OpenAI GPT Image</option>
                 <option value="xai">xAI (fast)</option>
               </select>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label">Image Model</label>
+              <select class="setting-input" id="imgActionImageModel"></select>
               <span class="setting-desc" id="imgActionImageModelDesc"></span>
             </div>
             <div class="setting-group">

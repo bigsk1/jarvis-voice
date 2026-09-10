@@ -75,9 +75,12 @@ MIN_DURATION = 1
 MAX_DURATION = 15
 
 
-def _resolve_configured_video_model(provider: str) -> str:
+def _resolve_configured_video_model(
+    provider: str,
+    requested_model: str | None = None,
+) -> str:
     env_key = get_media_model_env_key("video", provider)
-    configured = get_config_value(env_key, "") if env_key else ""
+    configured = requested_model or (get_config_value(env_key, "") if env_key else "")
     return resolve_media_model("video", provider, configured)
 
 
@@ -261,7 +264,7 @@ def _materialize_video_image_source(image_source: str):
 
 def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
                        resolution: str = "720p", image_url: str = None,
-                       video_url: str = None) -> dict:
+                       video_url: str = None, model: str | None = None) -> dict:
     """
     Generate a video using xAI Grok Imagine Video.
     
@@ -282,7 +285,8 @@ def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9
         raise ValueError("XAI_API_KEY not configured. Add it to config/cloud.env")
     
     # Get model from env or use default
-    model_name = _resolve_configured_video_model("xai")
+    model_name = _resolve_configured_video_model("xai", model)
+    model_metadata = get_media_model_metadata("video", "xai", model_name) or {}
     
     # Validate duration
     duration = max(MIN_DURATION, min(MAX_DURATION, duration))
@@ -291,8 +295,10 @@ def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9
     if aspect_ratio not in XAI_ASPECT_RATIOS:
         aspect_ratio = "16:9"
     
-    # Validate resolution
-    if resolution not in XAI_RESOLUTIONS:
+    # Validate resolution against the selected model, not only the legacy
+    # provider-wide set (Grok Imagine Video 1.5 adds 1080p).
+    supported_resolutions = model_metadata.get("resolutions") or XAI_RESOLUTIONS
+    if resolution not in supported_resolutions:
         resolution = "720p"
     
     try:
@@ -475,7 +481,7 @@ def _generate_video_gemini_omni(client, model_name: str, prompt: str, duration: 
 
 def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "16:9",
                           resolution: str = "720p", image_url: str = None,
-                          negative_prompt: str = None) -> dict:
+                          negative_prompt: str = None, model: str | None = None) -> dict:
     """
     Generate a video using the configured Google Gemini video model.
     
@@ -496,7 +502,7 @@ def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "1
         raise ValueError("GEMINI_API_KEY not configured. Add it to config/cloud.env")
     
     # Get model from env or use default
-    model_name = _resolve_configured_video_model("gemini")
+    model_name = _resolve_configured_video_model("gemini", model)
     
     try:
         from google import genai
@@ -530,8 +536,10 @@ def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "1
         else:
             aspect_ratio = "16:9"
     
-    # Validate resolution
-    if resolution not in GEMINI_RESOLUTIONS:
+    # Validate resolution against the selected Veo variant. For example, Lite
+    # has no 4K output even though other Veo models do.
+    supported_resolutions = model_metadata.get("resolutions") or GEMINI_RESOLUTIONS
+    if resolution not in supported_resolutions:
         resolution = "720p"
     
     # 1080p and 4k only support 8 second videos
@@ -619,7 +627,7 @@ def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "1
 def generate_video(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
                    resolution: str = "720p", image_url: str = None,
                    video_url: str = None, negative_prompt: str = None,
-                   provider: str = None) -> dict:
+                   provider: str = None, model: str | None = None) -> dict:
     """
     Generate a video using configured provider.
     
@@ -638,6 +646,7 @@ def generate_video(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
         video_url: Optional video URL for editing (xAI only)
         negative_prompt: What to avoid (Gemini only)
         provider: Override provider (xai or gemini)
+        model: Explicit provider-specific model; otherwise use Web/ENV/catalog defaults
     """
     
     # Determine provider
@@ -672,7 +681,8 @@ def generate_video(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
             aspect_ratio=aspect_ratio,
             resolution=resolution,
             image_url=image_url,
-            negative_prompt=negative_prompt
+            negative_prompt=negative_prompt,
+            model=model,
         )
     else:
         # Default to xAI
@@ -682,7 +692,8 @@ def generate_video(prompt: str, duration: int = 5, aspect_ratio: str = "16:9",
             aspect_ratio=aspect_ratio,
             resolution=resolution,
             image_url=image_url,
-            video_url=video_url
+            video_url=video_url,
+            model=model,
         )
 
 
@@ -856,6 +867,7 @@ def main():
         negative_prompt = args.get('negative_prompt')  # For Gemini
         save = args.get('save', True)
         provider = args.get('provider')  # Override provider if specified
+        model = args.get('model')  # Explicit model wins over Web/ENV defaults
         
         # Generate the video
         result = generate_video(
@@ -866,7 +878,8 @@ def main():
             image_url=image_url,
             video_url=video_url,
             negative_prompt=negative_prompt,
-            provider=provider
+            provider=provider,
+            model=model,
         )
         
         # Download and save video

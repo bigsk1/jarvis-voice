@@ -481,8 +481,10 @@ socket.on('feedback:complete', {
 |---------|----------|---------|
 | LLM Provider | AI Config → LLM Provider | xAI, Anthropic, OpenAI, Ollama |
 | LLM Model | AI Config → Model | Dynamic per provider |
-| Image Provider | AI Config → Image Provider | xAI Grok, Google Gemini, OpenAI DALL-E |
+| Image Provider | AI Config → Image Provider | xAI Grok, Google Gemini, OpenAI GPT Image |
+| Image Model | AI Config → Image Model | Catalog models for the selected image provider |
 | Video Provider | AI Config → Video Provider | xAI Grok, Google Gemini Veo |
+| Video Model | AI Config → Video Model | Catalog models for the selected video provider |
 | Music Provider | AI Config → Music Provider | ElevenLabs Music, Google Gemini Lyria |
 
 **Credential-aware provider availability:** dropdown options for providers
@@ -518,7 +520,9 @@ values. AI Config separately shows whether a per-mode Web override is active.
     "llm_model": null,       // null = use cloud.env model
     "router_prompt_version": null,
     "image_provider": null,  // null = use cloud.env IMAGE_TOOL_PROVIDER
+    "image_models": {},      // provider -> model; absent = env/catalog default
     "video_provider": null,  // null = use cloud.env VIDEO_TOOL_PROVIDER
+    "video_models": {},      // provider -> model; absent = env/catalog default
     "music_provider": null,  // null = use cloud.env MUSIC_TOOL_PROVIDER
     "tts_provider": null,
     "response_style": null,
@@ -531,7 +535,9 @@ values. AI Config separately shows whether a per-mode Web override is active.
     "llm_model": null,       // null = use local.env model
     "router_prompt_version": null,
     "image_provider": null,  // null = use local.env IMAGE_TOOL_PROVIDER
+    "image_models": {},      // provider -> model; absent = env/catalog default
     "video_provider": null,  // null = use local.env VIDEO_TOOL_PROVIDER
+    "video_models": {},      // provider -> model; absent = env/catalog default
     "music_provider": null,  // null = use local.env MUSIC_TOOL_PROVIDER
     "tts_provider": null,
     "response_style": null,
@@ -553,10 +559,16 @@ values. AI Config separately shows whether a per-mode Web override is active.
 
 ### Request Scopes and `JARVIS_OVERRIDE_` Child Exports
 
-Web UI settings for image/video providers live in a request-local config scope.
+Web UI settings for image/video providers and their provider-scoped model pins
+live in a request-local config scope.
 When Jarvis launches a child tool, the scoped values are exported to that
 child with a `JARVIS_OVERRIDE_` prefix so the tool can safely reload its env
 file without losing the request choice.
+
+The image-action modal is a final, one-request override: its provider/model is
+forced into that tool call and is not written back to AI Config. For ordinary
+tool calls, an explicit `model` argument wins; when omitted, the tool uses the
+request-scoped Web/ENV pin and then the catalog default.
 
 **The Problem:**
 Child tool scripts (for example `generate_image.py`) call `load_config()` in
@@ -567,12 +579,16 @@ authoritative child-export form.
 **The Solution:**
 ```
 chat.py scope:    IMAGE_TOOL_PROVIDER=gemini
+                  GEMINI_IMAGE_MODEL=gemini-3.1-flash-image
                   VIDEO_TOOL_PROVIDER=gemini
+                  GEMINI_VIDEO_MODEL=gemini-omni-flash-preview
                   MUSIC_TOOL_PROVIDER=gemini
         ↓
 executor.py:      export_config_environment() builds child-only env
                   JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER=gemini
+                  JARVIS_OVERRIDE_GEMINI_IMAGE_MODEL=gemini-3.1-flash-image
                   JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER=gemini
+                  JARVIS_OVERRIDE_GEMINI_VIDEO_MODEL=gemini-omni-flash-preview
                   JARVIS_OVERRIDE_MUSIC_TOOL_PROVIDER=gemini
         ↓
 tool main():      load_config() → skips IMAGE_TOOL_PROVIDER because
@@ -592,7 +608,9 @@ tool reads:       get_config_value('IMAGE_TOOL_PROVIDER')
 |---------|---------|-------------|---------|
 | Router Prompt Version | `JARVIS_ROUTER_PROMPT_VERSION` | `JARVIS_OVERRIDE_JARVIS_ROUTER_PROMPT_VERSION` | v1, v2, … |
 | Image Provider | `IMAGE_TOOL_PROVIDER` | `JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER` | xai, gemini, openai |
+| Image Model | `XAI_IMAGE_MODEL` / `GEMINI_IMAGE_MODEL` / `OPENAI_IMAGE_MODEL` | Matching `JARVIS_OVERRIDE_…` var | Catalog models for selected provider |
 | Video Provider | `VIDEO_TOOL_PROVIDER` | `JARVIS_OVERRIDE_VIDEO_TOOL_PROVIDER` | xai, gemini |
+| Video Model | `XAI_VIDEO_MODEL` / `GEMINI_VIDEO_MODEL` | Matching `JARVIS_OVERRIDE_…` var | Catalog models for selected provider |
 | Music Provider | `MUSIC_TOOL_PROVIDER` | `JARVIS_OVERRIDE_MUSIC_TOOL_PROVIDER` | elevenlabs, gemini |
 | TTS Provider | `TTS_PROVIDER` | `JARVIS_OVERRIDE_TTS_PROVIDER` | cloud: openai, elevenlabs, xai, qwen3-tts; local: kokoro, qwen3-tts |
 | Response Style | `JARVIS_RESPONSE_STYLE` | `JARVIS_OVERRIDE_JARVIS_RESPONSE_STYLE` | auto, casual, detailed |

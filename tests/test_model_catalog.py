@@ -18,6 +18,7 @@ from lib.model_catalog import (  # noqa: E402
     get_default_media_model_id,
     get_default_model_id,
     get_media_catalog_providers,
+    get_media_model_catalog,
     get_media_model_env_key,
     get_media_model_metadata,
     get_media_model_pricing,
@@ -54,6 +55,14 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(get_media_provider_options("image")["gemini"]["model_name"], "Gemini 3.1 Flash Image")
         self.assertEqual(get_media_provider_options("video")["xai"]["model"], "grok-imagine-video")
         self.assertEqual(
+            [model["id"] for model in get_media_provider_options("image")["openai"]["models"]],
+            [model["id"] for model in get_media_model_catalog("image", "openai")],
+        )
+        self.assertIn(
+            "grok-imagine-video-1.5",
+            [model["id"] for model in get_media_provider_options("video")["xai"]["models"]],
+        )
+        self.assertEqual(
             get_media_provider_options("video")["gemini"]["resolutions"],
             ["720p", "1080p", "4k"],
         )
@@ -82,9 +91,23 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(options["xai"]["resolutions"], ["1080p", "720p", "480p"])
         self.assertEqual(options["gemini"]["model"], "gemini-omni-flash-preview")
         self.assertEqual(options["gemini"]["resolutions"], ["720p"])
+        self.assertEqual(options["gemini"]["aspect_ratios"], ["16:9", "9:16"])
+        self.assertEqual(options["gemini"]["duration_seconds"], {"min": 3, "max": 10})
         self.assertEqual(
             get_media_model_metadata("video", "gemini", "gemini-omni-flash-preview")["api"],
             "interactions",
+        )
+
+        veo = get_media_model_metadata(
+            "video", "gemini", "veo-3.1-fast-generate-preview"
+        )
+        self.assertEqual(veo["aspect_ratios"], ["16:9", "9:16"])
+        self.assertEqual(
+            veo["duration_seconds"],
+            {
+                "values": [4, 6, 8],
+                "by_resolution": {"1080p": [8], "4k": [8]},
+            },
         )
 
         openai_image = get_media_provider_options(
@@ -106,6 +129,12 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(openai_flare["model_name"], "GPT Image 2.5 Flare")
         self.assertEqual(openai_flare["resolutions"], ["1K", "2K", "4K"])
         self.assertIn("transparent_background", openai_flare["capabilities"])
+
+        custom = get_media_provider_options(
+            "image", {"openai": "future-image-model"}
+        )["openai"]
+        self.assertEqual(custom["models"][0]["id"], "future-image-model")
+        self.assertIn("configured custom", custom["models"][0]["name"])
 
     def test_media_resolution_defaults_empty_values_and_preserves_unknown_pins(self):
         self.assertEqual(resolve_media_model("image", "openai"), "gpt-image-2.5-sunburst")

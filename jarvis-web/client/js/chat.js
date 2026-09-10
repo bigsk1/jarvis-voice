@@ -1986,13 +1986,25 @@ class ChatUI {
     // Image provider change -> show/hide provider-specific options
     const imageProviderSelect = document.getElementById('imgActionImageProvider');
     if (imageProviderSelect) {
-      imageProviderSelect.addEventListener('change', () => this._updateImageProviderOptions());
+      imageProviderSelect.addEventListener('change', () => this._updateImageProviderOptions(true));
     }
+    document.getElementById('imgActionImageModel')?.addEventListener(
+      'change', () => this._updateImageProviderOptions()
+    );
 
     const videoProviderSelect = document.getElementById('imgActionVideoProvider');
     if (videoProviderSelect) {
-      videoProviderSelect.addEventListener('change', () => this._updateVideoProviderOptions());
+      videoProviderSelect.addEventListener('change', () => this._updateVideoProviderOptions(true));
     }
+    document.getElementById('imgActionVideoModel')?.addEventListener(
+      'change', () => this._updateVideoProviderOptions()
+    );
+    document.getElementById('imgActionVideoDuration')?.addEventListener(
+      'change', () => this._updateVideoProviderOptions()
+    );
+    document.getElementById('imgActionVideoResolution')?.addEventListener(
+      'change', () => this._updateVideoProviderOptions()
+    );
     
     console.log('[Chat] Image action modal ready');
   }
@@ -2095,6 +2107,8 @@ class ChatUI {
     // Update provider-specific options if image panel is now visible
     if (selected === 'image') {
       this._updateImageProviderOptions();
+    } else if (selected === 'video') {
+      this._updateVideoProviderOptions();
     }
   }
 
@@ -2120,9 +2134,44 @@ class ChatUI {
   }
   
   /**
+   * Populate a request-scoped image/video model selector from the shared catalog.
+   */
+  _populateImageActionModel(mediaType, resetModel = false) {
+    const title = mediaType === 'image' ? 'Image' : 'Video';
+    const provider = document.getElementById(`imgAction${title}Provider`)?.value;
+    const select = document.getElementById(`imgAction${title}Model`);
+    const providerMetadata = window.jarvisApp?._settingsData?.[`${mediaType}_providers`]?.[provider];
+    const models = Array.isArray(providerMetadata?.models) ? providerMetadata.models : [];
+    if (!select) return { providerMetadata, modelMetadata: null };
+
+    const previous = select.value;
+    select.replaceChildren();
+    for (const model of models) {
+      if (!model?.id) continue;
+      select.add(new Option(model.name || model.id, model.id));
+    }
+
+    const available = models.map(model => model.id);
+    const effectiveModel = providerMetadata?.model;
+    const selected = !resetModel && available.includes(previous)
+      ? previous
+      : available.includes(effectiveModel)
+        ? effectiveModel
+        : available[0] || effectiveModel || '';
+    if (selected && !available.includes(selected)) {
+      select.add(new Option(selected, selected));
+    }
+    select.value = selected;
+    return {
+      providerMetadata,
+      modelMetadata: models.find(model => model.id === selected) || providerMetadata,
+    };
+  }
+
+  /**
    * Show/hide provider-specific options for Image to Image
    */
-  _updateImageProviderOptions() {
+  _updateImageProviderOptions(resetModel = false) {
     const provider = document.getElementById('imgActionImageProvider')?.value || 'gemini';
     
     const geminiOpts = document.getElementById('imgActionGeminiOpts');
@@ -2133,21 +2182,37 @@ class ChatUI {
     if (openaiOpts) openaiOpts.style.display = provider === 'openai' ? 'block' : 'none';
     if (xaiOpts) xaiOpts.style.display = provider === 'xai' ? 'block' : 'none';
 
-    const providerMetadata = window.jarvisApp?._settingsData?.image_providers?.[provider];
-    const openaiMetadata = window.jarvisApp?._settingsData?.image_providers?.openai;
-    const openaiModel = openaiMetadata?.model || 'gpt-image-2.5-sunburst';
-    const openaiCapabilities = Array.isArray(openaiMetadata?.capabilities)
-      ? openaiMetadata.capabilities
+    const { providerMetadata, modelMetadata } = this._populateImageActionModel('image', resetModel);
+    const selectedModel = document.getElementById('imgActionImageModel')?.value
+      || providerMetadata?.model || '';
+    const selectedCapabilities = Array.isArray(modelMetadata?.capabilities)
+      ? modelMetadata.capabilities
       : [];
     const transparent = document.getElementById('imgActionTransparent');
     const transparentDesc = document.getElementById('imgActionTransparentDesc');
     const modelDesc = document.getElementById('imgActionImageModelDesc');
-    const isGptImage2 = /^gpt-image-2(?:$|-)/.test(String(openaiModel));
-    const supportsTransparent = openaiCapabilities.includes('transparent_background')
-      || (openaiCapabilities.length === 0 && !isGptImage2);
+    const isGptImage2 = /^gpt-image-2(?:$|-)/.test(String(selectedModel));
+    const supportsTransparent = selectedCapabilities.includes('transparent_background')
+      || (selectedCapabilities.length === 0 && !isGptImage2);
     if (modelDesc) {
-      const effectiveModel = providerMetadata?.model_name || providerMetadata?.model;
-      modelDesc.textContent = effectiveModel ? `Effective model: ${effectiveModel}` : '';
+      const selectedName = modelMetadata?.name || selectedModel;
+      modelDesc.textContent = selectedName ? `Selected model: ${selectedName}` : '';
+    }
+
+    const imageSize = document.getElementById('imgActionImageSize');
+    const catalogImageSizes = Array.isArray(modelMetadata?.resolutions)
+      ? modelMetadata.resolutions.filter(value => /^\d+(?:\.\d+)?K$/i.test(String(value)))
+      : [];
+    const imageSizes = catalogImageSizes.length ? catalogImageSizes : ['1K', '2K', '4K'];
+    if (imageSize) {
+      const previous = imageSize.value;
+      imageSize.replaceChildren();
+      for (const size of imageSizes) {
+        imageSize.add(new Option(`${size}${size === '2K' ? ' (Default)' : ''}`, size));
+      }
+      imageSize.value = imageSizes.includes(previous)
+        ? previous
+        : (imageSizes.includes('2K') ? '2K' : imageSizes[0]);
     }
     if (transparent) {
       transparent.disabled = provider === 'openai' && !supportsTransparent;
@@ -2156,41 +2221,119 @@ class ChatUI {
     if (transparentDesc) {
       transparentDesc.textContent = supportsTransparent
         ? 'For logos, sprites, overlays (png/webp)'
-        : `${openaiModel} does not support transparent backgrounds`;
+        : `${selectedModel} does not support transparent backgrounds`;
     }
   }
 
   /**
    * Populate video resolutions from the effective model in the shared catalog.
    */
-  _updateVideoProviderOptions() {
+  _updateVideoProviderOptions(resetModel = false) {
     const provider = document.getElementById('imgActionVideoProvider')?.value || 'xai';
     const select = document.getElementById('imgActionVideoResolution');
-    const resolutions = window.jarvisApp?._settingsData?.video_providers?.[provider]?.resolutions;
-    if (!select || !Array.isArray(resolutions) || resolutions.length === 0) return;
+    const { modelMetadata } = this._populateImageActionModel('video', resetModel);
+    const resolutions = Array.isArray(modelMetadata?.resolutions) && modelMetadata.resolutions.length
+      ? modelMetadata.resolutions
+      : (provider === 'gemini' ? ['720p', '1080p', '4k'] : ['720p', '480p']);
+    const modelDesc = document.getElementById('imgActionVideoModelDesc');
+    if (modelDesc) {
+      const selectedModel = document.getElementById('imgActionVideoModel')?.value;
+      modelDesc.textContent = selectedModel
+        ? `Selected model: ${modelMetadata?.name || selectedModel}`
+        : '';
+    }
 
-    const previous = select.value;
-    select.innerHTML = '';
-    resolutions.forEach((resolution) => {
-      const option = document.createElement('option');
-      option.value = resolution;
-      const normalized = String(resolution).toLowerCase();
-      const label = normalized === '4k'
-        ? '4K (Ultra HD)'
-        : normalized === '1080p'
-          ? '1080p (Full HD)'
-          : normalized === '720p'
-            ? '720p (HD)'
-            : normalized === '480p'
-              ? '480p (SD)'
-              : resolution;
-      option.textContent = label;
-      select.appendChild(option);
-    });
+    const ratioSelect = document.getElementById('imgActionVideoRatio');
+    const catalogAspectRatios = Array.isArray(modelMetadata?.aspect_ratios)
+      ? modelMetadata.aspect_ratios
+      : [];
+    const aspectRatios = catalogAspectRatios.length
+      ? catalogAspectRatios
+      : (provider === 'gemini'
+        ? ['16:9', '9:16']
+        : ['16:9', '4:3', '1:1', '9:16', '3:4', '3:2', '2:3']);
+    if (ratioSelect) {
+      const previous = ratioSelect.value;
+      const ratioLabels = {
+        '16:9': '16:9 (Widescreen)',
+        '9:16': '9:16 (Vertical)',
+        '3:4': '3:4 (Portrait)',
+        '4:3': '4:3 (Classic TV)',
+        '1:1': '1:1 (Square)',
+        '3:2': '3:2 (Photo)',
+        '2:3': '2:3 (Tall Portrait)',
+      };
+      ratioSelect.replaceChildren();
+      for (const ratio of aspectRatios) {
+        ratioSelect.add(new Option(ratioLabels[ratio] || ratio, ratio));
+      }
+      ratioSelect.value = aspectRatios.includes(previous)
+        ? previous
+        : (aspectRatios.includes('16:9') ? '16:9' : aspectRatios[0]);
+    }
 
-    select.value = resolutions.includes(previous)
-      ? previous
-      : (resolutions.includes('720p') ? '720p' : resolutions[0]);
+    if (select && Array.isArray(resolutions) && resolutions.length) {
+      const previous = select.value;
+      select.replaceChildren();
+      resolutions.forEach((resolution) => {
+        const option = document.createElement('option');
+        option.value = resolution;
+        const normalized = String(resolution).toLowerCase();
+        const label = normalized === '4k'
+          ? '4K (Ultra HD)'
+          : normalized === '1080p'
+            ? '1080p (Full HD)'
+            : normalized === '720p'
+              ? '720p (HD)'
+              : normalized === '480p'
+                ? '480p (SD)'
+                : resolution;
+        option.textContent = label;
+        select.appendChild(option);
+      });
+
+      select.value = resolutions.includes(previous)
+        ? previous
+        : (resolutions.includes('720p') ? '720p' : resolutions[0]);
+    }
+
+    // Resolution must be final before applying duration-by-resolution rules.
+    const durationInput = document.getElementById('imgActionVideoDuration');
+    const durationDesc = document.getElementById('imgActionVideoDurationDesc');
+    const durationRules = modelMetadata?.duration_seconds
+      || (provider === 'gemini' ? { values: [4, 6, 8] } : { min: 1, max: 15 });
+    const resolutionDurationValues = durationRules.by_resolution?.[select?.value];
+    const allowedDurationValues = Array.isArray(resolutionDurationValues)
+      ? resolutionDurationValues
+      : durationRules.values;
+    const durationValues = Array.isArray(allowedDurationValues)
+      ? allowedDurationValues.map(Number).filter(Number.isFinite).sort((a, b) => a - b)
+      : [];
+    if (durationInput && durationValues.length) {
+      const requested = Number.parseInt(durationInput.value, 10);
+      const nearest = durationValues.reduce((best, value) => (
+        Math.abs(value - requested) < Math.abs(best - requested) ? value : best
+      ), durationValues[0]);
+      durationInput.min = String(durationValues[0]);
+      durationInput.max = String(durationValues[durationValues.length - 1]);
+      durationInput.step = durationValues.length > 1
+        ? String(durationValues[1] - durationValues[0])
+        : '1';
+      durationInput.value = String(nearest);
+      if (durationDesc) durationDesc.textContent = `Allowed: ${durationValues.join(', ')} seconds`;
+    } else if (durationInput && Number.isFinite(Number(durationRules.min)) && Number.isFinite(Number(durationRules.max))) {
+      const minimum = Number(durationRules.min);
+      const maximum = Number(durationRules.max);
+      const requested = Number.parseInt(durationInput.value, 10);
+      const clamped = Number.isFinite(requested)
+        ? Math.max(minimum, Math.min(maximum, requested))
+        : minimum;
+      durationInput.min = String(minimum);
+      durationInput.max = String(maximum);
+      durationInput.step = '1';
+      durationInput.value = String(clamped);
+      if (durationDesc) durationDesc.textContent = `${minimum}-${maximum} seconds`;
+    }
   }
   
   /**
@@ -2253,10 +2396,14 @@ class ChatUI {
     if (videoProvider) videoProvider.value = this._getEffectiveVideoProvider();
     if (videoRatio) videoRatio.value = '16:9';
     if (videoDuration) videoDuration.value = '5';
-    this._updateVideoProviderOptions();
+    this._updateVideoProviderOptions(true);
     this._applyMediaProviderAvailability(videoProvider, 'video');
     if (videoResolution && [...videoResolution.options].some(option => option.value === '720p')) {
       videoResolution.value = '720p';
+      // Restore the intended reset duration before applying the now-final
+      // resolution's duration constraints.
+      if (videoDuration) videoDuration.value = '5';
+      this._updateVideoProviderOptions();
     }
     
     // Image options
@@ -2287,7 +2434,7 @@ class ChatUI {
     if (count) count.value = '1';
     
     // Reset provider-specific visibility
-    this._updateImageProviderOptions();
+    this._updateImageProviderOptions(true);
   }
   
   /**
@@ -2298,13 +2445,16 @@ class ChatUI {
     const settings = {};
     
     if (action === 'video') {
+      this._updateVideoProviderOptions();
       settings.aspect_ratio = document.getElementById('imgActionVideoRatio')?.value || '16:9';
       settings.duration = parseInt(document.getElementById('imgActionVideoDuration')?.value) || 5;
       settings.resolution = document.getElementById('imgActionVideoResolution')?.value || '720p';
       settings.provider = document.getElementById('imgActionVideoProvider')?.value || 'xai';
+      settings.model = document.getElementById('imgActionVideoModel')?.value || undefined;
     } else if (action === 'image') {
       const provider = document.getElementById('imgActionImageProvider')?.value || 'gemini';
       settings.provider = provider;
+      settings.model = document.getElementById('imgActionImageModel')?.value || undefined;
       
       const ratio = document.getElementById('imgActionImageRatio')?.value;
       if (ratio) settings.aspect_ratio = ratio;

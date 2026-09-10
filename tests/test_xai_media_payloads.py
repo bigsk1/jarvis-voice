@@ -69,6 +69,49 @@ class XAIMediaPayloadTests(unittest.TestCase):
 
         self.assertEqual(model, "grok-imagine-video")
 
+    def test_explicit_video_model_wins_and_config_is_the_fallback(self):
+        with patch.object(
+            generate_video,
+            "get_config_value",
+            return_value="grok-imagine-video",
+        ) as get_config:
+            requested = generate_video._resolve_configured_video_model(
+                "xai", "grok-imagine-video-1.5"
+            )
+        self.assertEqual(requested, "grok-imagine-video-1.5")
+        get_config.assert_not_called()
+
+        with patch.object(generate_video, "get_config_value", return_value="grok-imagine-video"):
+            configured = generate_video._resolve_configured_video_model("xai")
+        self.assertEqual(configured, "grok-imagine-video")
+
+    def test_main_forwards_explicit_model_to_generate_video(self):
+        result = {
+            "provider": "gemini",
+            "model": "gemini-omni-flash-preview",
+            "duration": 5,
+            "aspect_ratio": "16:9",
+            "resolution": "720p",
+            "video_url": None,
+        }
+        argv = [
+            "generate_video.py",
+            '{"prompt":"animate it","provider":"gemini",'
+            '"model":"gemini-omni-flash-preview","save":false}',
+        ]
+        with (
+            patch.object(generate_video, "load_config"),
+            patch.object(generate_video, "generate_video", return_value=result) as generate,
+            patch.object(generate_video.sys, "argv", argv),
+            patch("builtins.print"),
+        ):
+            generate_video.main()
+
+        self.assertEqual(
+            generate.call_args.kwargs["model"],
+            "gemini-omni-flash-preview",
+        )
+
     def test_image_generation_uses_media_payload_only(self):
         captured = {}
 
@@ -206,8 +249,9 @@ class XAIMediaPayloadTests(unittest.TestCase):
                 "make a short clean test video",
                 duration=5,
                 aspect_ratio="16:9",
-                resolution="720p",
+                resolution="1080p",
                 image_url="",
+                model="grok-imagine-video-1.5",
             )
 
         self.assertEqual(result["provider"], "xai")
@@ -217,10 +261,10 @@ class XAIMediaPayloadTests(unittest.TestCase):
             captured["generate_kwargs"],
             {
                 "prompt": "make a short clean test video",
-                "model": "grok-imagine-video",
+                "model": "grok-imagine-video-1.5",
                 "duration": 5,
                 "aspect_ratio": "16:9",
-                "resolution": "720p",
+                "resolution": "1080p",
             },
         )
         self.assertFalse(CHAT_ONLY_KEYS.intersection(captured["generate_kwargs"]))

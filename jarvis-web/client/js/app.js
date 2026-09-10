@@ -511,6 +511,22 @@ class JarvisApp {
 
     for (const mediaType of ['image', 'video', 'music', 'tts']) {
       document.getElementById(`setting-${mediaType}-provider`)?.addEventListener('change', () => {
+        if (mediaType === 'image' || mediaType === 'video') {
+          this._populateMediaModelDropdown(mediaType);
+        }
+        this._updateMediaProviderDetail(mediaType);
+      });
+    }
+    for (const mediaType of ['image', 'video']) {
+      document.getElementById(`setting-${mediaType}-model`)?.addEventListener('change', (event) => {
+        const provider = document.getElementById(`setting-${mediaType}-provider`)?.value
+          || this._settingsData?.[mediaType]?.provider?.default;
+        const metadata = this._settingsData?.[`${mediaType}_providers`]?.[provider];
+        if (metadata) {
+          metadata.model_is_override = !!event.target.value;
+          metadata.model = event.target.value || metadata.model_default;
+        }
+        this._populateMediaModelDropdown(mediaType);
         this._updateMediaProviderDetail(mediaType);
       });
     }
@@ -1780,6 +1796,7 @@ class JarvisApp {
         if (s.image?.provider?.is_override) {
           imageDefault.textContent = `⚡ override: ${s.image.provider.value}`;
         }
+        this._populateMediaModelDropdown('image');
         this._updateMediaProviderDetail('image');
         
         // Populate Video Provider
@@ -1792,6 +1809,7 @@ class JarvisApp {
         if (s.video?.provider?.is_override) {
           videoDefault.textContent = `⚡ override: ${s.video.provider.value}`;
         }
+        this._populateMediaModelDropdown('video');
         this._updateMediaProviderDetail('video');
 
         // Populate Music Provider
@@ -3220,6 +3238,44 @@ class JarvisApp {
     }
   }
 
+  _populateMediaModelDropdown(mediaType) {
+    const select = document.getElementById(`setting-${mediaType}-model`);
+    if (!select) return;
+    const provider = document.getElementById(`setting-${mediaType}-provider`)?.value
+      || this._settingsData?.[mediaType]?.provider?.default;
+    const metadata = this._settingsData?.[`${mediaType}_providers`]?.[provider] || {};
+    const models = Array.isArray(metadata.models) ? metadata.models : [];
+    const defaultModel = metadata.model_default || metadata.model || '';
+    const defaultName = metadata.model_default_name || defaultModel;
+
+    select.replaceChildren();
+    select.add(new Option(
+      defaultName ? `Use env/catalog default — ${defaultName}` : 'Use env/catalog default',
+      ''
+    ));
+    for (const model of models) {
+      if (!model?.id) continue;
+      const summary = this._formatMediaProviderSummary(model, mediaType, true);
+      select.add(new Option(
+        `${model.name || model.id}${summary ? ` — ${summary}` : ''}`,
+        model.id
+      ));
+    }
+    select.value = metadata.model_is_override ? (metadata.model || '') : '';
+
+    const envFile = this._settingsData?.mode === 'local' ? 'local.env' : 'cloud.env';
+    const defaultLabel = document.getElementById(`${mediaType}-model-default`);
+    if (defaultLabel) {
+      if (metadata.model_is_override) {
+        defaultLabel.textContent = `⚡ override: ${metadata.model} · (${envFile} default: ${defaultModel})`;
+        defaultLabel.className = 'setting-default setting-override';
+      } else {
+        defaultLabel.textContent = `(${envFile}: ${defaultModel || 'catalog default'})`;
+        defaultLabel.className = 'setting-default';
+      }
+    }
+  }
+
   _formatMediaProviderSummary(metadata, mediaType, compact = false) {
     if (!metadata) return '';
     const capabilityLabels = {
@@ -3303,15 +3359,19 @@ class JarvisApp {
     if (!select || !detail) return;
     const defaultProvider = this._settingsData?.[mediaType]?.provider?.default;
     const provider = select.value || defaultProvider;
-    const metadata = this._settingsData?.[`${mediaType}_providers`]?.[provider];
+    const providerMetadata = this._settingsData?.[`${mediaType}_providers`]?.[provider];
+    const modelSelect = document.getElementById(`setting-${mediaType}-model`);
+    const modelId = modelSelect?.value || providerMetadata?.model_default || providerMetadata?.model;
+    const modelMetadata = providerMetadata?.models?.find(model => model.id === modelId);
+    const metadata = modelMetadata || providerMetadata;
     const summary = this._formatMediaProviderSummary(metadata, mediaType);
-    const model = metadata?.model_name || metadata?.model;
+    const model = modelMetadata?.name || providerMetadata?.model_name || modelId;
     const voice = metadata?.voice_name || metadata?.voice;
     const parts = [];
     if (model) parts.push(mediaType === 'tts' ? `Model: ${model}` : model);
     if (voice) parts.push(`Voice: ${voice}`);
     if (summary) parts.push(summary);
-    detail.textContent = metadata ? parts.join(' · ') : '';
+    detail.textContent = providerMetadata ? parts.join(' · ') : '';
   }
 
   async _ensureProviderModelsLoaded(provider) {
@@ -4349,7 +4409,9 @@ class JarvisApp {
         thinking_effort: document.getElementById('setting-thinking-effort').value || null,
         router_prompt_version: document.getElementById('setting-router-prompt-version').value || null,
         image_provider: document.getElementById('setting-image-provider').value || null,
+        image_model: document.getElementById('setting-image-model').value || null,
         video_provider: document.getElementById('setting-video-provider').value || null,
+        video_model: document.getElementById('setting-video-model').value || null,
         music_provider: document.getElementById('setting-music-provider').value || null,
         tts_provider: document.getElementById('setting-tts-provider').value || null,
         response_style: responseStyleInput.value || null,

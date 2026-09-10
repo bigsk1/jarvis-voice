@@ -106,6 +106,9 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
         child = export_config_environment(mode)
         return {
             "image": get_config_value("IMAGE_TOOL_PROVIDER"),
+            "openai_image_model": get_config_value("OPENAI_IMAGE_MODEL"),
+            "gemini_image_model": get_config_value("GEMINI_IMAGE_MODEL"),
+            "xai_video_model": get_config_value("XAI_VIDEO_MODEL"),
             "music": get_config_value("MUSIC_TOOL_PROVIDER"),
             "tts": get_config_value("TTS_PROVIDER"),
             "tool_rag": get_config_value("CLOUD_TOOL_RAG_LIMIT"),
@@ -114,6 +117,8 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
             "status_llm_enabled": get_config_value("STATUS_LLM_ENABLED"),
             "status_phrase_mode": get_config_value("STATUS_PHRASE_MODE"),
             "child_image": child.get("JARVIS_OVERRIDE_IMAGE_TOOL_PROVIDER"),
+            "child_openai_image_model": child.get("JARVIS_OVERRIDE_OPENAI_IMAGE_MODEL"),
+            "child_xai_video_model": child.get("JARVIS_OVERRIDE_XAI_VIDEO_MODEL"),
             "child_music": child.get("JARVIS_OVERRIDE_MUSIC_TOOL_PROVIDER"),
             "child_tts": child.get("JARVIS_OVERRIDE_TTS_PROVIDER"),
             "child_tool_rag": child.get("JARVIS_OVERRIDE_CLOUD_TOOL_RAG_LIMIT"),
@@ -134,6 +139,11 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
     web_config = {
         "cloud": {
             "image_provider": "gemini",
+            "image_models": {
+                "gemini": "gemini-3-pro-image",
+                "openai": "gpt-image-2",
+            },
+            "video_models": {"xai": "grok-imagine-video-1.5"},
             "music_provider": "gemini",
             "tts_provider": "elevenlabs",
             "tool_rag_limit": 9,
@@ -143,13 +153,22 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
             "status_phrase_mode": "unhinged",
         }
     }
-    image_data = {"action": "image", "settings": {"provider": "openai"}}
+    image_data = {
+        "action": "image",
+        "settings": {
+            "provider": "openai",
+            "model": "gpt-image-2.5-flare",
+        },
+    }
     before = dict(os.environ)
     with patch("jarvis_web_test_server.config.load_web_config", return_value=web_config):
         result = probe("cloud", image_data=image_data)
 
     assert result == {
         "image": "openai",
+        "openai_image_model": "gpt-image-2.5-flare",
+        "gemini_image_model": "gemini-3-pro-image",
+        "xai_video_model": "grok-imagine-video-1.5",
         "music": "gemini",
         "tts": "elevenlabs",
         "tool_rag": "9",
@@ -158,6 +177,8 @@ def test_web_chat_overrides_are_scoped_and_exported_to_children():
         "status_llm_enabled": "false",
         "status_phrase_mode": "unhinged",
         "child_image": "openai",
+        "child_openai_image_model": "gpt-image-2.5-flare",
+        "child_xai_video_model": "grok-imagine-video-1.5",
         "child_music": "gemini",
         "child_tts": "elevenlabs",
         "child_tool_rag": "9",

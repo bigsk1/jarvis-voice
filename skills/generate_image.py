@@ -216,9 +216,12 @@ IMAGE_SIZES = ["1K", "2K", "4K"]
 OPENAI_EDIT_API = "https://api.openai.com/v1/images/edits"
 
 
-def _resolve_configured_image_model(provider: str) -> str:
+def _resolve_configured_image_model(
+    provider: str,
+    requested_model: str | None = None,
+) -> str:
     env_key = get_media_model_env_key("image", provider)
-    configured = get_config_value(env_key, "") if env_key else ""
+    configured = requested_model or (get_config_value(env_key, "") if env_key else "")
     return resolve_media_model("image", provider, configured)
 
 
@@ -295,7 +298,7 @@ def _resolve_image_to_base64(image_source: str) -> tuple[str, str]:
 
 def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = None,
                        negative_prompt: str = None, n: int = 1,
-                       reference_image: str = None) -> dict:
+                       reference_image: str = None, model: str | None = None) -> dict:
     """
     Generate or edit an image using xAI Grok Imagine API.
     
@@ -313,7 +316,7 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
         raise ValueError("XAI_API_KEY not configured. Add it to config/cloud.env")
     
     # Get model from env or use default
-    model_name = _resolve_configured_image_model("xai")
+    model_name = _resolve_configured_image_model("xai", model)
     
     # Build the prompt
     full_prompt = prompt
@@ -430,7 +433,7 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
 def generate_image_gemini(prompt: str, aspect_ratio: str = "square", image_size: str = "2K",
                           use_grounding: bool = False, style: str = None, 
                           negative_prompt: str = None, context_data: str = None,
-                          reference_image: str = None) -> dict:
+                          reference_image: str = None, model: str | None = None) -> dict:
     """
     Generate or edit an image using Google Gemini API.
     
@@ -450,7 +453,7 @@ def generate_image_gemini(prompt: str, aspect_ratio: str = "square", image_size:
         raise ValueError("GEMINI_API_KEY not configured. Add it to config/cloud.env")
     
     # Get model from env or use default
-    model_name = _resolve_configured_image_model("gemini")
+    model_name = _resolve_configured_image_model("gemini", model)
     
     # Build the prompt
     full_prompt = prompt
@@ -564,7 +567,7 @@ def generate_image_gemini(prompt: str, aspect_ratio: str = "square", image_size:
 def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: str = "medium",
                           style: str = None, negative_prompt: str = None,
                           transparent: bool = False, output_format: str = "png",
-                          reference_image: str = None) -> dict:
+                          reference_image: str = None, model: str | None = None) -> dict:
     """
     Generate or edit an image using OpenAI GPT Image API.
     
@@ -587,7 +590,7 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
         raise ValueError("OPENAI_API_KEY not configured. Add it to config/cloud.env")
     
     # Get model from env or use default
-    model_name = _resolve_configured_image_model("openai")
+    model_name = _resolve_configured_image_model("openai", model)
     
     # Build the prompt
     full_prompt = prompt
@@ -740,7 +743,7 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
                    negative_prompt: str = None, context_data: str = None,
                    transparent: bool = False, output_format: str = "png",
                    provider: str = None, n: int = 1,
-                   reference_image: str = None) -> dict:
+                   reference_image: str = None, model: str | None = None) -> dict:
     """
     Generate or edit an image using configured provider (Gemini, OpenAI, or xAI).
     
@@ -758,6 +761,7 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
         transparent: Enable transparent background (OpenAI only, png/webp)
         output_format: png, jpeg, or webp (OpenAI only)
         provider: Override provider (gemini, openai, or xai)
+        model: Explicit provider-specific model; otherwise use Web/ENV/catalog defaults
         n: Number of images to generate (xAI only, 1-10)
         reference_image: Source image for editing (stash ref, path, URL, or data URI)
     """
@@ -789,7 +793,8 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
             negative_prompt=negative_prompt,
             transparent=transparent,
             output_format=output_format,
-            reference_image=reference_image
+            reference_image=reference_image,
+            model=model,
         )
     elif provider == 'xai':
         return generate_image_xai(
@@ -798,7 +803,8 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
             style=style,
             negative_prompt=negative_prompt,
             n=n,
-            reference_image=reference_image
+            reference_image=reference_image,
+            model=model,
         )
     else:
         # Default to Gemini
@@ -810,7 +816,8 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
             style=style,
             negative_prompt=negative_prompt,
             context_data=context_data,
-            reference_image=reference_image
+            reference_image=reference_image,
+            model=model,
         )
 
 
@@ -1033,6 +1040,7 @@ def main():
         transparent = args.get('transparent', False)
         output_format = args.get('output_format', 'png')
         provider = args.get('provider')  # Override provider if specified
+        model = args.get('model')  # Explicit model wins over Web/ENV defaults
         
         # xAI-specific parameters
         n = args.get('n', 1)  # Number of images (xAI supports 1-10)
@@ -1052,6 +1060,7 @@ def main():
             transparent=transparent,
             output_format=output_format,
             provider=provider,
+            model=model,
             n=n,
             reference_image=reference_image
         )

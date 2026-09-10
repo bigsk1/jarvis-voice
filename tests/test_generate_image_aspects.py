@@ -62,6 +62,43 @@ class GenerateImageAspectTests(unittest.TestCase):
 
         self.assertEqual(model, "gemini-3.1-flash-image")
 
+    def test_explicit_request_model_wins_and_config_is_the_fallback(self):
+        with patch.object(
+            generate_image,
+            "get_config_value",
+            return_value="gpt-image-2",
+        ) as get_config:
+            requested = generate_image._resolve_configured_image_model(
+                "openai", "gpt-image-2.5-flare"
+            )
+        self.assertEqual(requested, "gpt-image-2.5-flare")
+        get_config.assert_not_called()
+
+        with patch.object(generate_image, "get_config_value", return_value="gpt-image-2"):
+            configured = generate_image._resolve_configured_image_model("openai")
+        self.assertEqual(configured, "gpt-image-2")
+
+    def test_main_forwards_explicit_model_to_generate_image(self):
+        result = {
+            "provider": "openai",
+            "model": "gpt-image-2.5-flare",
+            "mime_type": "image/png",
+        }
+        argv = [
+            "generate_image.py",
+            '{"prompt":"draw it","provider":"openai",'
+            '"model":"gpt-image-2.5-flare","save":false}',
+        ]
+        with (
+            patch.object(generate_image, "load_config"),
+            patch.object(generate_image, "generate_image", return_value=result) as generate,
+            patch.object(generate_image.sys, "argv", argv),
+            patch("builtins.print"),
+        ):
+            generate_image.main()
+
+        self.assertEqual(generate.call_args.kwargs["model"], "gpt-image-2.5-flare")
+
     def test_gemini_literal_ratios_from_tool_schema(self):
         """LLM often passes enum values like 16:9; must not fall back to 1:1."""
         for key, expected in (

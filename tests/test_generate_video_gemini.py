@@ -133,6 +133,30 @@ def test_veo_model_stays_on_generate_videos_api_and_does_not_write_temp_files():
     assert result["duration"] == 4
 
 
+def test_veo_resolution_is_validated_against_selected_model():
+    captured = {}
+    video = SimpleNamespace(video_bytes=b"lite-video-bytes", uri=None, url=None)
+    operation = SimpleNamespace(
+        done=True,
+        response=SimpleNamespace(generated_videos=[SimpleNamespace(video=video)]),
+    )
+    fake_client = _FakeVeoClient(operation, captured)
+
+    with patch.object(generate_video, "get_config_value", side_effect=_veo_config_value), patch.object(
+        genai, "Client", return_value=fake_client
+    ):
+        result = generate_video.generate_video_gemini(
+            "A Lite clip",
+            duration=8,
+            resolution="4k",
+            model="veo-3.1-lite-generate-preview",
+        )
+
+    assert captured["model"] == "veo-3.1-lite-generate-preview"
+    assert captured["config"].resolution == "720p"
+    assert result["resolution"] == "720p"
+
+
 def test_omni_text_video_uses_interactions_api_and_requested_duration():
     captured = {}
     encoded_video = base64.b64encode(b"inline-video-bytes").decode("ascii")

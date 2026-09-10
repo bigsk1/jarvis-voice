@@ -235,6 +235,148 @@ class SettingsAvailabilityTests(unittest.TestCase):
 
         self.assertEqual(web_config["cloud"]["music_provider"], "gemini")
 
+    def test_media_model_overrides_are_provider_scoped_in_settings_payload(self):
+        env = {
+            "IMAGE_TOOL_PROVIDER": "openai",
+            "OPENAI_IMAGE_MODEL": "gpt-image-2",
+            "VIDEO_TOOL_PROVIDER": "gemini",
+            "GEMINI_VIDEO_MODEL": "veo-3.1-fast-generate-preview",
+            "OPENAI_API_KEY": "openai-key",
+            "GEMINI_API_KEY": "gemini-key",
+        }
+        manager, patches = self._manager("cloud", env)
+        web_config = {
+            "cloud": {
+                "image_models": {"openai": "gpt-image-2.5-flare"},
+                "video_models": {"gemini": "gemini-omni-flash-preview"},
+            },
+            "audio": {},
+            "ui": {},
+            "conversation": {},
+            "tools": {},
+        }
+        with (
+            patches[0], patches[1],
+            patch.object(self.settings_module, "load_web_config", return_value=web_config),
+            patch.object(manager, "_get_provider_models", return_value={}),
+        ):
+            result = manager.get_settings_for_ui()
+
+        self.assertEqual(result["image"]["model"]["value"], "gpt-image-2.5-flare")
+        self.assertEqual(result["image"]["model"]["default"], "gpt-image-2")
+        self.assertTrue(result["image"]["model"]["is_override"])
+        self.assertIn("gpt-image-2.5-sunburst", result["image"]["model"]["options"])
+        self.assertEqual(result["video"]["model"]["value"], "gemini-omni-flash-preview")
+        self.assertEqual(
+            result["video_providers"]["gemini"]["model_default"],
+            "veo-3.1-fast-generate-preview",
+        )
+
+    def test_media_model_overrides_save_and_clear_for_selected_provider(self):
+        env = {
+            "IMAGE_TOOL_PROVIDER": "gemini",
+            "VIDEO_TOOL_PROVIDER": "xai",
+            "OPENAI_API_KEY": "openai-key",
+            "GEMINI_API_KEY": "gemini-key",
+            "XAI_API_KEY": "xai-key",
+        }
+        manager, patches = self._manager("cloud", env)
+        web_config = {"cloud": {}}
+        with (
+            patches[0], patches[1],
+            patch.object(self.settings_module, "load_web_config", return_value=web_config),
+            patch.object(self.settings_module, "save_web_config", return_value=True),
+        ):
+            self.assertTrue(manager.save_web_overrides({
+                "image_provider": "openai",
+                "image_model": "gpt-image-2.5-sunburst",
+                "video_provider": "gemini",
+                "video_model": "gemini-omni-flash-preview",
+            }))
+            self.assertEqual(
+                web_config["cloud"]["image_models"],
+                {"openai": "gpt-image-2.5-sunburst"},
+            )
+            self.assertEqual(
+                web_config["cloud"]["video_models"],
+                {"gemini": "gemini-omni-flash-preview"},
+            )
+
+            self.assertTrue(manager.save_web_overrides({"image_model": None}))
+
+        self.assertEqual(web_config["cloud"]["image_models"], {})
+        self.assertEqual(
+            web_config["cloud"]["video_models"],
+            {"gemini": "gemini-omni-flash-preview"},
+        )
+
+    def test_media_model_override_rejects_provider_model_mismatch(self):
+        from server.services.settings_manager import SettingsValidationError
+
+        env = {
+            "IMAGE_TOOL_PROVIDER": "gemini",
+            "GEMINI_API_KEY": "gemini-key",
+        }
+        manager, patches = self._manager("cloud", env)
+        web_config = {"cloud": {}}
+        with (
+            patches[0], patches[1],
+            patch.object(self.settings_module, "load_web_config", return_value=web_config),
+            patch.object(self.settings_module, "save_web_config", return_value=True) as save_cfg,
+        ):
+            with self.assertRaises(SettingsValidationError) as context:
+                manager.save_web_overrides({
+                    "image_provider": "gemini",
+                    "image_model": "gpt-image-2.5-sunburst",
+                })
+
+        save_cfg.assert_not_called()
+        self.assertEqual(context.exception.field, "image_model")
+        self.assertIn("not available", context.exception.reason)
+
+    def test_current_custom_env_model_is_selectable_and_saveable(self):
+        env = {
+            "IMAGE_TOOL_PROVIDER": "openai",
+            "OPENAI_IMAGE_MODEL": "future-image-model",
+            "OPENAI_API_KEY": "openai-key",
+        }
+        manager, patches = self._manager("cloud", env)
+        web_config = {"cloud": {}}
+        with (
+            patches[0], patches[1],
+            patch.object(self.settings_module, "load_web_config", return_value=web_config),
+            patch.object(self.settings_module, "save_web_config", return_value=True),
+        ):
+            options = manager._get_effective_media_providers("image")
+            self.assertEqual(options["openai"]["models"][0]["id"], "future-image-model")
+            self.assertIn("configured custom", options["openai"]["models"][0]["name"])
+            self.assertTrue(manager.save_web_overrides({"image_model": "future-image-model"}))
+
+        self.assertEqual(
+            web_config["cloud"]["image_models"],
+            {"openai": "future-image-model"},
+        )
+
+    def test_arbitrary_uncatalogued_media_model_is_rejected(self):
+        from server.services.settings_manager import SettingsValidationError
+
+        env = {
+            "IMAGE_TOOL_PROVIDER": "openai",
+            "OPENAI_IMAGE_MODEL": "future-image-model",
+            "OPENAI_API_KEY": "openai-key",
+        }
+        manager, patches = self._manager("cloud", env)
+        web_config = {"cloud": {}}
+        with (
+            patches[0], patches[1],
+            patch.object(self.settings_module, "load_web_config", return_value=web_config),
+            patch.object(self.settings_module, "save_web_config", return_value=True) as save_cfg,
+        ):
+            with self.assertRaises(SettingsValidationError):
+                manager.save_web_overrides({"image_model": "different-unknown-model"})
+
+        save_cfg.assert_not_called()
+
     def test_save_rejects_newly_selected_unavailable_provider(self):
         from server.services.settings_manager import SettingsValidationError
 

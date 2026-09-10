@@ -18,6 +18,10 @@
         ],
         "description": "Video provider: 'xai' (default, Grok - 1-15s) or 'gemini' (Veo 3.1 by default; Omni Flash when configured). If not specified, uses VIDEO_TOOL_PROVIDER from config."
       },
+      "model": {
+        "type": "string",
+        "description": "Explicit provider-specific video model. Only set when the user requests a particular model; otherwise omit it to use the Jarvis Web override, provider ENV pin, or catalog default."
+      },
       "duration": {
         "type": "integer",
         "description": "Video duration in seconds. xAI: 1-15s (any). Gemini Veo: rounds to 4, 6, or 8s. Gemini Omni Flash: clamps to 3-10s. Default: 5 seconds."

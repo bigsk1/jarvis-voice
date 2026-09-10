@@ -313,6 +313,30 @@ class WebSettingsModeTests(unittest.TestCase):
             {"music_provider": "gemini"}
         )
 
+    def test_save_routes_media_models_through_structured_overrides(self):
+        settings = MagicMock()
+        settings.set_mode.return_value = True
+        settings.save_web_overrides.return_value = True
+        payload = {
+            "image_model": "gpt-image-2.5-flare",
+            "video_model": "grok-imagine-video-1.5",
+        }
+
+        with (
+            self.app.test_request_context(
+                "/api/settings/web",
+                method="PUT",
+                json={"mode": "cloud", **payload},
+            ),
+            patch.object(self.api, "get_settings_manager", return_value=settings),
+            patch.object(self.api, "reload_web_config"),
+        ):
+            response = self.api.update_web_settings()
+
+        self.assertEqual(response.status_code, 200)
+        settings.validate_web_overrides.assert_called_once_with(payload)
+        settings.save_web_overrides.assert_called_once_with(payload)
+
     def test_settings_reject_invalid_mode(self):
         with self.app.test_request_context("/api/settings?mode=hybrid"):
             response, status = self.api.get_settings()
@@ -390,8 +414,14 @@ class WebSettingsModeTests(unittest.TestCase):
         reset_keys = set(reset_config["cloud"])
         self.assertEqual(set(example["cloud"]), reset_keys)
         self.assertEqual(set(example["local"]), reset_keys)
-        self.assertTrue(all(value is None for value in example["cloud"].values()))
-        self.assertTrue(all(value is None for value in example["local"].values()))
+        for mode in ("cloud", "local"):
+            self.assertEqual(example[mode]["image_models"], {})
+            self.assertEqual(example[mode]["video_models"], {})
+            self.assertTrue(all(
+                value is None
+                for key, value in example[mode].items()
+                if key not in {"image_models", "video_models"}
+            ))
 
     def test_ollama_default_follows_effective_provider_not_env_provider(self):
         from server.services import settings_manager as settings_module

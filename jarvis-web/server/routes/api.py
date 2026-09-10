@@ -793,7 +793,8 @@ def update_web_settings():
     settings = get_settings_manager()
 
     structured = any(k in data for k in [
-        'llm_provider', 'llm_model', 'thinking_effort', 'router_prompt_version', 'image_provider', 'video_provider',
+        'llm_provider', 'llm_model', 'thinking_effort', 'router_prompt_version',
+        'image_provider', 'image_model', 'video_provider', 'video_model',
         'music_provider', 'status_llm_enabled', 'status_phrase_mode',
         'response_style', 'tool_rag_limit', 'qa_word_limit', 'multi_turn_word_limit',
         'completion_guard_enabled', 'completion_guard_mode',

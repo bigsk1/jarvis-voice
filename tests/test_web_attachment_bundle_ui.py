@@ -196,6 +196,145 @@ assert.equal(ui.attachedImages.length,1);
 """)
 
 
+def test_image_action_modal_models_follow_provider_catalog_and_are_request_scoped():
+    run_browser(r"""
+const ui=chat();
+sandbox.Option=class {constructor(text,value){this.textContent=text;this.value=value;}};
+const makeSelect=value=>({value,children:[],add(item){this.children.push(item);},replaceChildren(){this.children=[];}});
+const elements={
+  imgActionImageProvider:makeSelect('openai'),
+  imgActionImageModel:makeSelect(''),
+  imgActionImageModelDesc:new Element(),
+  imgActionImageSize:makeSelect('4K'),
+  imgActionTransparent:Object.assign(new Element('input'),{checked:true,disabled:false}),
+  imgActionTransparentDesc:new Element(),
+};
+sandbox.document.getElementById=id=>elements[id]||null;
+sandbox.window.jarvisApp={_settingsData:{image_providers:{
+  openai:{
+    model:'gpt-image-2.5-flare',
+    models:[
+      {id:'gpt-image-2.5-flare',name:'GPT Image 2.5 Flare',capabilities:['transparent_background'],resolutions:['1K','2K','4K']},
+      {id:'gpt-image-2',name:'GPT Image 2',capabilities:[]},
+    ],
+  },
+  xai:{
+    model:'grok-imagine-image-2.0',
+    models:[
+      {id:'grok-imagine-image-2.0',name:'Grok Imagine Image 2.0',capabilities:['quality_control'],resolutions:['1K','2K']},
+    ],
+  },
+}}};
+ui._updateImageProviderOptions(true);
+assert.equal(elements.imgActionImageModel.value,'gpt-image-2.5-flare');
+assert.equal(elements.imgActionTransparent.disabled,false);
+elements.imgActionImageModel.value='gpt-image-2';
+ui._updateImageProviderOptions();
+assert.equal(elements.imgActionImageModel.value,'gpt-image-2');
+assert.equal(elements.imgActionTransparent.disabled,true);
+elements.imgActionImageProvider.value='xai';
+elements.imgActionImageSize.value='4K';
+ui._updateImageProviderOptions(true);
+assert.equal(elements.imgActionImageModel.value,'grok-imagine-image-2.0');
+assert.deepEqual(Array.from(elements.imgActionImageSize.children,item=>item.value),['1K','2K']);
+assert.equal(elements.imgActionImageSize.value,'2K');
+ui.imageActionModal={querySelector:()=>({value:'image'})};
+const result=ui._collectImageActionSettings();
+assert.equal(result.settings.provider,'xai');
+assert.equal(result.settings.model,'grok-imagine-image-2.0');
+assert.equal(result.settings.image_size,'2K');
+assert.equal(requests.length,0);
+""")
+
+
+def test_video_action_modal_model_changes_clamp_dependent_controls():
+    run_browser(r"""
+const ui=chat();
+sandbox.Option=class {constructor(text,value){this.textContent=text;this.value=value;}};
+const makeSelect=value=>({value,children:[],add(item){this.children.push(item);},replaceChildren(){this.children=[];},appendChild(item){this.children.push(item);}});
+const elements={
+  imgActionVideoProvider:makeSelect('gemini'),
+  imgActionVideoModel:makeSelect(''),
+  imgActionVideoModelDesc:new Element(),
+  imgActionVideoResolution:makeSelect('4k'),
+  imgActionVideoRatio:makeSelect('4:3'),
+  imgActionVideoDuration:Object.assign(new Element('input'),{value:'1'}),
+  imgActionVideoDurationDesc:new Element(),
+};
+sandbox.document.getElementById=id=>elements[id]||null;
+sandbox.window.jarvisApp={_settingsData:{video_providers:{gemini:{
+  model:'veo-3.1-fast-generate-preview',
+  models:[
+      {id:'veo-3.1-fast-generate-preview',name:'Veo 3.1 Fast',resolutions:['720p','1080p','4k'],aspect_ratios:['16:9','9:16'],duration_seconds:{values:[4,6,8],by_resolution:{'1080p':[8],'4k':[8]}}},
+    {id:'gemini-omni-flash-preview',name:'Gemini Omni Flash',resolutions:['720p'],aspect_ratios:['16:9','9:16'],duration_seconds:{min:3,max:10}},
+  ],
+}}}};
+ui._updateVideoProviderOptions(true);
+assert.equal(elements.imgActionVideoModel.value,'veo-3.1-fast-generate-preview');
+assert.deepEqual(Array.from(elements.imgActionVideoResolution.children,item=>item.value),['720p','1080p','4k']);
+assert.deepEqual(Array.from(elements.imgActionVideoRatio.children,item=>item.value),['16:9','9:16']);
+assert.equal(elements.imgActionVideoRatio.value,'16:9');
+assert.equal(elements.imgActionVideoDuration.value,'8');
+assert.equal(elements.imgActionVideoDuration.step,'1');
+elements.imgActionVideoModel.value='gemini-omni-flash-preview';
+elements.imgActionVideoResolution.value='4k';
+elements.imgActionVideoDuration.value='12';
+ui._updateVideoProviderOptions();
+assert.deepEqual(Array.from(elements.imgActionVideoResolution.children,item=>item.value),['720p']);
+assert.equal(elements.imgActionVideoResolution.value,'720p');
+assert.equal(elements.imgActionVideoDuration.value,'10');
+assert.equal(elements.imgActionVideoDuration.min,'3');
+assert.equal(elements.imgActionVideoDuration.max,'10');
+ui.imageActionModal={querySelector:()=>({value:'video'})};
+const result=ui._collectImageActionSettings();
+assert.equal(result.settings.provider,'gemini');
+assert.equal(result.settings.model,'gemini-omni-flash-preview');
+assert.equal(result.settings.resolution,'720p');
+assert.equal(result.settings.duration,10);
+assert.equal(result.settings.aspect_ratio,'16:9');
+assert.equal(requests.length,0);
+""")
+
+
+def test_video_action_reset_reclamps_default_duration_after_stale_4k():
+    run_browser(r"""
+const ui=chat();
+sandbox.Option=class {constructor(text,value){this.textContent=text;this.value=value;}};
+const makeSelect=value=>({
+  value,
+  children:[],
+  get options(){return this.children;},
+  add(item){this.children.push(item);},
+  replaceChildren(){this.children=[];},
+  appendChild(item){this.children.push(item);},
+});
+const elements={
+  imgActionVideoProvider:makeSelect('gemini'),
+  imgActionVideoModel:makeSelect('veo-3.1-fast-generate-preview'),
+  imgActionVideoModelDesc:new Element(),
+  imgActionVideoResolution:makeSelect('4k'),
+  imgActionVideoRatio:makeSelect('16:9'),
+  imgActionVideoDuration:Object.assign(new Element('input'),{value:'8'}),
+  imgActionVideoDurationDesc:new Element(),
+};
+sandbox.document.getElementById=id=>elements[id]||null;
+sandbox.window.jarvisApp={_settingsData:{
+  video:{provider:{value:'gemini'}},
+  video_providers:{gemini:{
+    model:'veo-3.1-fast-generate-preview',
+    models:[
+      {id:'veo-3.1-fast-generate-preview',name:'Veo 3.1 Fast',resolutions:['720p','1080p','4k'],aspect_ratios:['16:9','9:16'],duration_seconds:{values:[4,6,8],by_resolution:{'1080p':[8],'4k':[8]}}},
+    ],
+  }},
+}};
+ui._resetImageActionOptions();
+assert.equal(elements.imgActionVideoResolution.value,'720p');
+assert.equal(elements.imgActionVideoDuration.value,'4');
+assert.equal(elements.imgActionVideoDuration.step,'2');
+assert.equal(requests.length,0);
+""")
+
+
 def test_text_only_chat_only_sends_durable_sources_but_pdf_is_blocked():
     run_browser(r"""
 const ui=chat();

@@ -29,7 +29,7 @@ sys.path.insert(0, str(JARVIS_ROOT / 'orchestrator'))
 from config_loader import DEFAULT_JARVIS_QA_WORD_LIMIT, DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT
 
 from model_prompt_overrides import apply_prompt_override_sections, load_model_prompt_override
-from model_catalog import get_provider_fallback_model
+from model_catalog import get_media_model_env_key, get_provider_fallback_model
 from ..services.usage_metadata import enrich_usage_metadata
 from ..services.completion_guard import CompletionGuardPolicy
 from ..services.followup_extractor import (
@@ -170,6 +170,15 @@ def _scoped_by_mode(method):
             if value is not None:
                 scoped_overrides[config_key] = str(value).lower() if isinstance(value, bool) else str(value)
 
+        for media_type in ('image', 'video'):
+            model_overrides = mode_overrides.get(f'{media_type}_models')
+            if not isinstance(model_overrides, dict):
+                continue
+            for provider, model in model_overrides.items():
+                env_key = get_media_model_env_key(media_type, str(provider))
+                if env_key and model:
+                    scoped_overrides[env_key] = str(model)
+
         status_llm_enabled = mode_overrides.get('status_llm_enabled')
         if isinstance(status_llm_enabled, bool):
             scoped_overrides['STATUS_LLM_ENABLED'] = 'true' if status_llm_enabled else 'false'
@@ -205,11 +214,21 @@ def _scoped_by_mode(method):
         image_data = arguments.get('image_data')
         if isinstance(image_data, dict):
             action = image_data.get('action')
-            modal_provider = (image_data.get('settings') or {}).get('provider')
+            modal_settings = image_data.get('settings') or {}
+            modal_provider = modal_settings.get('provider')
+            modal_model = modal_settings.get('model')
             if action == 'video':
-                scoped_overrides['VIDEO_TOOL_PROVIDER'] = str(modal_provider or 'xai')
+                modal_provider = str(modal_provider or 'xai')
+                scoped_overrides['VIDEO_TOOL_PROVIDER'] = modal_provider
+                model_env_key = get_media_model_env_key('video', modal_provider)
+                if model_env_key and modal_model:
+                    scoped_overrides[model_env_key] = str(modal_model)
             elif action == 'image' and modal_provider:
-                scoped_overrides['IMAGE_TOOL_PROVIDER'] = str(modal_provider)
+                modal_provider = str(modal_provider)
+                scoped_overrides['IMAGE_TOOL_PROVIDER'] = modal_provider
+                model_env_key = get_media_model_env_key('image', modal_provider)
+                if model_env_key and modal_model:
+                    scoped_overrides[model_env_key] = str(modal_model)
 
         from config_loader import config_scope
         from embeddings import embedding_status_scope
@@ -3779,6 +3798,7 @@ Previous structured data:
                     duration = image_settings.get('duration', 5)
                     resolution = image_settings.get('resolution', '720p')
                     video_provider = image_settings.get('provider', 'xai')
+                    video_model = image_settings.get('model')
                     
                     tool_overrides['generate_video'] = {
                         # No vision analysis runs in this branch, so the routing LLM
@@ -3791,13 +3811,16 @@ Previous structured data:
                         'resolution': resolution,
                         'provider': video_provider,
                     }
+                    if video_model:
+                        tool_overrides['generate_video']['model'] = video_model
                     
                     message = (
                         f"[User uploaded an image for VIDEO generation (image-to-video).\n"
                         f"Image stashed at: {stash_ref}\n"
                         f"Use generate_video tool. IMPORTANT: The user has pre-selected these video "
                         f"settings via the UI and they will be applied automatically as overrides:\n"
-                        f"  aspect_ratio={aspect_ratio}, duration={duration}s, resolution={resolution}, provider={video_provider}\n"
+                        f"  aspect_ratio={aspect_ratio}, duration={duration}s, resolution={resolution}, "
+                        f"provider={video_provider}, model={video_model or '(effective default)'}\n"
                         f"These parameters are USER-CONTROLLED and will override whatever you pass. "
                         f"Do NOT worry if the tool result shows different values than what you sent - "
                         f"that is expected and correct. The user's chosen settings take priority.\n"
@@ -3807,7 +3830,10 @@ Previous structured data:
                         f"Do NOT retry if the result looks successful.]\n\n"
                         f"User's video instructions: {user_video_prompt}"
                     )
-                    print(f"[CHAT] Image-to-video - forced overrides: {aspect_ratio}, {duration}s, {resolution}, provider={video_provider}")
+                    print(
+                        f"[CHAT] Image-to-video - forced overrides: {aspect_ratio}, {duration}s, "
+                        f"{resolution}, provider={video_provider}, model={video_model or '(effective default)'}"
+                    )
                     
                 elif image_action == 'image':
                     # IMAGE TO IMAGE: Skip vision, stash image, force params via overrides
@@ -3838,11 +3864,19 @@ Previous structured data:
                     
                     print(f"[CHAT] Auto-stashed image for editing: {stash_ref}")
                     
-                    # Build forced overrides for generate_image
+                    # Build forced overrides for generate_image. Keep the model
+                    # assignment explicit so the modal remains the final,
+                    # request-scoped choice even if the generic settings copy
+                    # changes later.
+                    image_model = image_settings.get('model')
                     img_overrides = {}
                     for key, val in image_settings.items():
+                        if key == 'model':
+                            continue
                         if val is not None and val != '' and val is not False:
                             img_overrides[key] = val
+                    if image_model:
+                        img_overrides['model'] = image_model
                     
                     # Pass the reference image so the tool actually edits it
                     img_overrides['reference_image'] = stash_ref

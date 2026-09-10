@@ -631,6 +631,7 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
                     "name": "Grok Imagine Image",
                     "default": True,
                     "capabilities": ["generation", "editing", "batch"],
+                    "resolutions": ["1K", "2K"],
                     "pricing": {
                         "unit": "image",
                         "usd_by_size": {"1K": 0.02, "2K": 0.02},
@@ -641,6 +642,7 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
                     "id": "grok-imagine-image-quality",
                     "name": "Grok Imagine Image Quality",
                     "capabilities": ["generation", "editing", "batch"],
+                    "resolutions": ["1K", "2K"],
                     "pricing": {
                         "unit": "image",
                         "usd_by_size": {"1K": 0.05, "2K": 0.07},
@@ -661,6 +663,7 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
                         "gemini-2.0-flash-preview-image-generation",
                     ],
                     "capabilities": ["generation", "editing", "grounding", "1K", "2K", "4K"],
+                    "resolutions": ["1K", "2K", "4K"],
                     "pricing": {
                         "unit": "image",
                         "usd_by_size": {"0.5K": 0.045, "1K": 0.067, "2K": 0.101, "4K": 0.151},
@@ -672,6 +675,7 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
                     "name": "Gemini 3 Pro Image",
                     "replaces": ["gemini-3-pro-image-preview"],
                     "capabilities": ["generation", "editing", "grounding", "1K", "2K", "4K"],
+                    "resolutions": ["1K", "2K", "4K"],
                     "pricing": {
                         "unit": "image",
                         "usd_by_size": {"1K": 0.134, "2K": 0.134, "4K": 0.24},
@@ -762,6 +766,8 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
                     "default": True,
                     "capabilities": ["text_to_video", "image_to_video", "video_editing"],
                     "resolutions": ["720p", "480p"],
+                    "aspect_ratios": ["16:9", "4:3", "1:1", "9:16", "3:4", "3:2", "2:3"],
+                    "duration_seconds": {"min": 1, "max": 15},
                     "pricing": {
                         "unit": "second",
                         "usd_by_resolution": {"480p": 0.05, "720p": 0.07},
@@ -774,6 +780,8 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
                     "name": "Grok Imagine Video 1.5",
                     "capabilities": ["text_to_video", "image_to_video"],
                     "resolutions": ["1080p", "720p", "480p"],
+                    "aspect_ratios": ["16:9", "4:3", "1:1", "9:16", "3:4", "3:2", "2:3"],
+                    "duration_seconds": {"min": 1, "max": 15},
                     "pricing": {
                         "unit": "second",
                         "usd_by_resolution": {"480p": 0.08, "720p": 0.14, "1080p": 0.25},
@@ -793,6 +801,11 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
                     "replaces": ["veo-3.0-fast-generate-001"],
                     "capabilities": ["text_to_video", "image_to_video", "audio", "4K"],
                     "resolutions": ["720p", "1080p", "4k"],
+                    "aspect_ratios": ["16:9", "9:16"],
+                    "duration_seconds": {
+                        "values": [4, 6, 8],
+                        "by_resolution": {"1080p": [8], "4k": [8]},
+                    },
                     "pricing": {
                         "unit": "second",
                         "usd_by_resolution": {"720p": 0.10, "1080p": 0.12, "4k": 0.30},
@@ -805,6 +818,11 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
                     "replaces": ["veo-3.0-generate-001"],
                     "capabilities": ["text_to_video", "image_to_video", "audio", "4K"],
                     "resolutions": ["720p", "1080p", "4k"],
+                    "aspect_ratios": ["16:9", "9:16"],
+                    "duration_seconds": {
+                        "values": [4, 6, 8],
+                        "by_resolution": {"1080p": [8], "4k": [8]},
+                    },
                     "pricing": {
                         "unit": "second",
                         "usd_by_resolution": {"720p": 0.40, "1080p": 0.40, "4k": 0.60},
@@ -816,6 +834,11 @@ MEDIA_MODEL_CATALOG: dict[str, dict[str, dict[str, Any]]] = {
                     "api": "generate_videos",
                     "capabilities": ["text_to_video", "image_to_video", "audio"],
                     "resolutions": ["720p", "1080p"],
+                    "aspect_ratios": ["16:9", "9:16"],
+                    "duration_seconds": {
+                        "values": [4, 6, 8],
+                        "by_resolution": {"1080p": [8]},
+                    },
                     "pricing": {
                         "unit": "second",
                         "usd_by_resolution": {"720p": 0.05, "1080p": 0.08},
@@ -1021,18 +1044,45 @@ def get_media_provider_options(
     media_type: str,
     configured_models: dict[str, str | None] | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """Return provider metadata for catalog defaults or optional model pins."""
+    """Return provider metadata and selectable models for optional model pins."""
     options = {}
     for provider, entry in MEDIA_MODEL_CATALOG.get(media_type, {}).items():
         configured_model = (configured_models or {}).get(provider)
         model = resolve_media_model(media_type, provider, configured_model)
         metadata = get_media_model_metadata(media_type, provider, model) or {}
+        models = get_media_model_catalog(media_type, provider)
+        if not any(candidate.get("id") == model for candidate in models):
+            if metadata:
+                canonical_id = metadata.get("id")
+                models = [
+                    {
+                        **candidate,
+                        "id": model,
+                        "name": f"{candidate.get('name', model)} (configured alias)",
+                    }
+                    if candidate.get("id") == canonical_id
+                    else candidate
+                    for candidate in models
+                ]
+            elif model:
+                models = [
+                    {"id": model, "name": f"{model} (configured custom)"},
+                    *models,
+                ]
         option = {
             "name": entry.get("name", provider),
             "model": model,
             "model_name": metadata.get("name", model),
+            "models": models,
         }
-        for key in ("capabilities", "resolutions", "pricing"):
+        for key in (
+            "capabilities",
+            "resolutions",
+            "aspect_ratios",
+            "duration_seconds",
+            "qualities",
+            "pricing",
+        ):
             if key in metadata:
                 value = metadata[key]
                 option[key] = dict(value) if isinstance(value, dict) else list(value)

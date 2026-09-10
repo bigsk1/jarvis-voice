@@ -18,6 +18,7 @@ from model_catalog import (
     get_model_metadata,
     get_media_catalog_providers,
     get_media_model_env_key,
+    get_media_model_metadata,
     get_media_provider_options,
     get_provider_catalog,
     get_provider_model_options,
@@ -657,13 +658,38 @@ class SettingsManager:
         ]
 
     @staticmethod
-    def _get_effective_media_providers(media_type: str) -> dict[str, dict[str, Any]]:
-        """Resolve mode-loaded optional media model pins into UI capabilities."""
-        configured_models = {}
+    def _get_effective_media_providers(
+        media_type: str,
+        model_overrides: dict[str, Any] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Resolve ENV defaults plus provider-scoped Web model overrides."""
+        env_models = {}
+        effective_models = {}
+        valid_overrides = {}
         for provider in get_media_catalog_providers(media_type):
             env_key = get_media_model_env_key(media_type, provider)
-            configured_models[provider] = get_jarvis_setting(env_key, '') if env_key else ''
-        return get_media_provider_options(media_type, configured_models)
+            env_model = get_jarvis_setting(env_key, '') if env_key else ''
+            env_models[provider] = env_model
+            requested = (model_overrides or {}).get(provider)
+            requested = str(requested or '').strip()
+            env_model = str(env_model or '').strip()
+            if requested and (
+                get_media_model_metadata(media_type, provider, requested)
+                or requested == env_model
+            ):
+                effective_models[provider] = requested
+                valid_overrides[provider] = requested
+            else:
+                effective_models[provider] = env_model
+
+        options = get_media_provider_options(media_type, effective_models)
+        env_options = get_media_provider_options(media_type, env_models)
+        for provider, metadata in options.items():
+            env_metadata = env_options.get(provider, {})
+            metadata['model_default'] = env_metadata.get('model', '')
+            metadata['model_default_name'] = env_metadata.get('model_name', '')
+            metadata['model_is_override'] = provider in valid_overrides
+        return options
 
     def _get_llm_provider_options(self) -> list[str]:
         """Return provider choices that make sense for the current mode."""
@@ -838,8 +864,14 @@ class SettingsManager:
         # Get per-mode web overrides (null = use env default)
         mode_overrides = web_config.get(self.mode, {})
         llm_provider_options = self._get_llm_provider_options()
-        image_providers = self._get_effective_media_providers('image')
-        video_providers = self._get_effective_media_providers('video')
+        web_image_models = mode_overrides.get('image_models')
+        if not isinstance(web_image_models, dict):
+            web_image_models = {}
+        web_video_models = mode_overrides.get('video_models')
+        if not isinstance(web_video_models, dict):
+            web_video_models = {}
+        image_providers = self._get_effective_media_providers('image', web_image_models)
+        video_providers = self._get_effective_media_providers('video', web_video_models)
         music_providers = self._get_effective_media_providers('music')
         tts_providers = self._get_tts_providers_for_ui()
         web_provider = mode_overrides.get('llm_provider')
@@ -859,6 +891,8 @@ class SettingsManager:
         web_image = mode_overrides.get('image_provider')
         web_video = mode_overrides.get('video_provider')
         web_music = mode_overrides.get('music_provider')
+        if web_image not in (None, *image_providers):
+            web_image = None
         if web_video not in (None, *video_providers):
             web_video = None
         web_tts = mode_overrides.get('tts_provider')
@@ -910,6 +944,8 @@ class SettingsManager:
         effective_router_prompt_version = web_router_prompt_version or env_router_prompt_version
         effective_image = web_image or env_image_provider
         effective_video = web_video or env_video_provider
+        image_model_metadata = image_providers.get(effective_image, {})
+        video_model_metadata = video_providers.get(effective_video, {})
         effective_music = web_music or env_music_provider
         effective_tts = web_tts or env_tts_provider
         effective_response_style = web_response_style or env_response_style
@@ -1029,6 +1065,16 @@ class SettingsManager:
                     'default': env_image_provider,
                     'is_override': web_image is not None,
                     'options': list(image_providers.keys())
+                },
+                'model': {
+                    'value': image_model_metadata.get('model', ''),
+                    'default': image_model_metadata.get('model_default', ''),
+                    'is_override': image_model_metadata.get('model_is_override', False),
+                    'options': [
+                        model.get('id')
+                        for model in image_model_metadata.get('models', [])
+                        if model.get('id')
+                    ],
                 }
             },
             
@@ -1039,6 +1085,16 @@ class SettingsManager:
                     'default': env_video_provider,
                     'is_override': web_video is not None,
                     'options': list(video_providers.keys())
+                },
+                'model': {
+                    'value': video_model_metadata.get('model', ''),
+                    'default': video_model_metadata.get('model_default', ''),
+                    'is_override': video_model_metadata.get('model_is_override', False),
+                    'options': [
+                        model.get('id')
+                        for model in video_model_metadata.get('models', [])
+                        if model.get('id')
+                    ],
                 }
             },
 
@@ -1501,6 +1557,41 @@ class SettingsManager:
                     provider=requested,
                     reason=entry['reason'] or f"Provider '{requested}' is not configured",
                 )
+
+    def _validate_media_model_overrides(self, overrides: dict[str, Any]) -> None:
+        """Ensure image/video model selections belong to the selected provider."""
+        config = load_web_config()
+        mode_config = config.get(self.mode, {}) if isinstance(config, dict) else {}
+        provider_defaults = {
+            'image': get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini'),
+            'video': get_jarvis_setting('VIDEO_TOOL_PROVIDER', 'xai'),
+        }
+
+        for media_type in ('image', 'video'):
+            model_field = f'{media_type}_model'
+            if model_field not in overrides or not overrides.get(model_field):
+                continue
+            provider_field = f'{media_type}_provider'
+            if provider_field in overrides:
+                provider = overrides.get(provider_field) or provider_defaults[media_type]
+            else:
+                provider = mode_config.get(provider_field) or provider_defaults[media_type]
+            provider = str(provider or '').strip().lower()
+            requested = str(overrides[model_field]).strip()
+            env_key = get_media_model_env_key(media_type, provider)
+            env_model = str(get_jarvis_setting(env_key, '') if env_key else '').strip()
+            if (
+                not get_media_model_metadata(media_type, provider, requested)
+                and requested != env_model
+            ):
+                raise SettingsValidationError(
+                    field=model_field,
+                    provider=provider,
+                    reason=(
+                        f"Model '{requested}' is not available for {media_type} "
+                        f"provider '{provider}'"
+                    ),
+                )
     
     def get_settings_with_status(self) -> dict[str, dict]:
         """Return settings with configured status (for backward compat)"""
@@ -1575,6 +1666,7 @@ class SettingsManager:
         """
         self._ensure_jarvis_config()
         self._validate_provider_overrides(overrides)
+        self._validate_media_model_overrides(overrides)
         if 'router_prompt_version' in overrides and overrides['router_prompt_version'] not in (
             None,
             '',
@@ -1735,10 +1827,38 @@ class SettingsManager:
         # Handle image overrides (per-mode)
         if 'image_provider' in overrides:
             mode_config['image_provider'] = overrides['image_provider'] or None
+
+        if 'image_model' in overrides:
+            provider = (
+                mode_config.get('image_provider')
+                or get_jarvis_setting('IMAGE_TOOL_PROVIDER', 'gemini')
+            )
+            model_overrides = mode_config.get('image_models')
+            model_overrides = dict(model_overrides) if isinstance(model_overrides, dict) else {}
+            value = str(overrides.get('image_model') or '').strip()
+            if value:
+                model_overrides[provider] = value
+            else:
+                model_overrides.pop(provider, None)
+            mode_config['image_models'] = model_overrides
         
         # Handle video overrides (per-mode)
         if 'video_provider' in overrides:
             mode_config['video_provider'] = overrides['video_provider'] or None
+
+        if 'video_model' in overrides:
+            provider = (
+                mode_config.get('video_provider')
+                or get_jarvis_setting('VIDEO_TOOL_PROVIDER', 'xai')
+            )
+            model_overrides = mode_config.get('video_models')
+            model_overrides = dict(model_overrides) if isinstance(model_overrides, dict) else {}
+            value = str(overrides.get('video_model') or '').strip()
+            if value:
+                model_overrides[provider] = value
+            else:
+                model_overrides.pop(provider, None)
+            mode_config['video_models'] = model_overrides
 
         # Handle music overrides (per-mode)
         if 'music_provider' in overrides:
@@ -1876,7 +1996,9 @@ class SettingsManager:
             'thinking_effort': None,
             'router_prompt_version': None,
             'image_provider': None,
+            'image_models': {},
             'video_provider': None,
+            'video_models': {},
             'music_provider': None,
             'tts_provider': None,
             'response_style': None,
