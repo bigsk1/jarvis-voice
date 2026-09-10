@@ -2,6 +2,7 @@
 """Regression tests that xAI chat-only options do not leak into media tools."""
 
 import base64
+import io
 import os
 import sys
 import types
@@ -10,15 +11,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from PIL import Image
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT / "skills"))
 sys.path.insert(0, str(PROJECT_ROOT / "lib"))
 
-import generate_image
-import generate_video
-import vision_provider
-
+import generate_image  # noqa: E402
+import generate_video  # noqa: E402
+import vision_provider  # noqa: E402
 
 CHAT_ONLY_KEYS = {
     "messages",
@@ -45,13 +46,21 @@ CACHE_AND_REASONING_KEYS = {
 }
 
 
+def _encoded_image(image_format="JPEG", size=(160, 90)):
+    buffer = io.BytesIO()
+    Image.new("RGB", size, color="orange").save(buffer, format=image_format)
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+
 class _FakeImageResponse:
     status_code = 200
     text = "{}"
 
+    def __init__(self, image_format="JPEG", size=(160, 90)):
+        self.encoded = _encoded_image(image_format, size)
+
     def json(self):
-        encoded = base64.b64encode(b"fake-png").decode("utf-8")
-        return {"data": [{"b64_json": encoded}]}
+        return {"data": [{"b64_json": self.encoded}]}
 
 
 class _FakeVisionResponse:
@@ -158,12 +167,40 @@ class XAIMediaPayloadTests(unittest.TestCase):
                 "model": "grok-imagine-image",
                 "prompt": "make a clean test image",
                 "n": 1,
-                "response_format": "b64_json",
                 "aspect_ratio": "16:9",
+                "resolution": "2k",
+                "response_format": "b64_json",
             },
         )
         self.assertFalse(CHAT_ONLY_KEYS.intersection(captured["payload"]))
         self.assertNotIn("x-grok-conv-id", captured["headers"])
+
+    def test_square_is_explicit_and_response_metadata_comes_from_image_bytes(self):
+        captured = {}
+
+        def fake_post(_url, **kwargs):
+            captured["payload"] = kwargs["json"]
+            return _FakeImageResponse(image_format="JPEG", size=(832, 1248))
+
+        with patch.object(
+            generate_image,
+            "get_config_value",
+            side_effect=lambda key, default=None: "xai-test-key" if key == "XAI_API_KEY" else default,
+        ), patch.object(generate_image.requests, "post", side_effect=fake_post):
+            result = generate_image.generate_image_xai(
+                "a square cat",
+                aspect_ratio="square",
+                image_size="4K",
+                model="grok-imagine-image-2.0",
+            )
+
+        self.assertEqual(captured["payload"]["aspect_ratio"], "1:1")
+        self.assertEqual(captured["payload"]["resolution"], "2k")
+        self.assertEqual(result["requested_aspect_ratio"], "1:1")
+        self.assertEqual(result["aspect_ratio"], "2:3")
+        self.assertEqual(result["mime_type"], "image/jpeg")
+        self.assertEqual((result["width"], result["height"]), (832, 1248))
+        self.assertEqual(result["image_size"], "2K")
 
     def test_vision_analysis_uses_minimal_chat_payload_without_cache_or_reasoning(self):
         captured = {}

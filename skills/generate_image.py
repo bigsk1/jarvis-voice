@@ -19,17 +19,21 @@ Providers:
 Configure via IMAGE_TOOL_PROVIDER in cloud.env (default: gemini)
 """
 
-import sys
-import json
 import base64
+import io
+import json
+import math
 import mimetypes
-import requests
-from pathlib import Path
+import sys
 from datetime import datetime
+from pathlib import Path
+
+import requests
+from PIL import Image
 
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import get_config_value, load_config
 from image_catalog import upsert_image_catalog_entry
 from model_catalog import get_media_model_env_key, get_media_model_metadata, resolve_media_model
 from paths import assert_not_restricted_read_path
@@ -211,6 +215,7 @@ XAI_ASPECT_RATIOS = {
 
 # Shared image sizes
 IMAGE_SIZES = ["1K", "2K", "4K"]
+XAI_IMAGE_SIZES = ["1K", "2K"]
 
 # OpenAI edit endpoint (separate from generations)
 OPENAI_EDIT_API = "https://api.openai.com/v1/images/edits"
@@ -223,6 +228,57 @@ def _resolve_configured_image_model(
     env_key = get_media_model_env_key("image", provider)
     configured = requested_model or (get_config_value(env_key, "") if env_key else "")
     return resolve_media_model("image", provider, configured)
+
+
+def _resolve_xai_image_size(model_name: str, image_size: str | None) -> str:
+    """Resolve xAI's 1K/2K resolution from catalog metadata."""
+    metadata = get_media_model_metadata("image", "xai", model_name) or {}
+    supported = [str(value).upper() for value in metadata.get("resolutions", [])]
+    if not supported:
+        supported = XAI_IMAGE_SIZES
+
+    requested = str(image_size or "2K").strip().upper()
+    if requested in supported:
+        return requested
+    if "2K" in supported:
+        return "2K"
+    return supported[0]
+
+
+def _inspect_generated_image(image_b64: str) -> dict:
+    """Return MIME type and exact dimensions/aspect from encoded image bytes."""
+    try:
+        image_bytes = base64.b64decode(image_b64)
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            image.load()
+            width, height = image.size
+            image_format = str(image.format or "").upper()
+    except (ValueError, OSError) as exc:
+        raise ValueError("Provider returned invalid image data") from exc
+
+    mime_type = {
+        "JPEG": "image/jpeg",
+        "PNG": "image/png",
+        "WEBP": "image/webp",
+    }.get(image_format)
+    if not mime_type:
+        raise ValueError(f"Provider returned unsupported image format: {image_format or 'unknown'}")
+
+    divisor = math.gcd(width, height)
+    return {
+        "mime_type": mime_type,
+        "width": width,
+        "height": height,
+        "aspect_ratio": f"{width // divisor}:{height // divisor}",
+    }
+
+
+def _extension_for_image_mime(mime_type: str) -> str:
+    return {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+    }.get(str(mime_type or "").lower(), "png")
 
 
 # =============================================================================
@@ -298,13 +354,15 @@ def _resolve_image_to_base64(image_source: str) -> tuple[str, str]:
 
 def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = None,
                        negative_prompt: str = None, n: int = 1,
-                       reference_image: str = None, model: str | None = None) -> dict:
+                       reference_image: str = None, model: str | None = None,
+                       image_size: str = "2K") -> dict:
     """
     Generate or edit an image using xAI Grok Imagine API.
     
     Args:
         prompt: What to generate or edit instructions
         aspect_ratio: square, landscape, portrait, wide, tall, 4:3, 3:4, etc.
+        image_size: 1K or 2K resolution
         style: Optional art style to prepend
         negative_prompt: Things to avoid (appended to prompt)
         n: Number of images to generate (1-10)
@@ -328,6 +386,7 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
     # Map aspect ratio
     aspect_key = str(aspect_ratio or "square").strip().lower()
     ar = XAI_ASPECT_RATIOS.get(aspect_key, "1:1")
+    size = _resolve_xai_image_size(model_name, image_size)
     
     # Validate n (1-10), force n=1 when editing
     if reference_image:
@@ -343,7 +402,10 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
     payload = {
         "model": model_name,
         "prompt": full_prompt,
-        "n": n
+        "n": n,
+        # xAI defaults an omitted ratio to "auto", not square.
+        "aspect_ratio": ar,
+        "resolution": size.lower(),
     }
     
     # Use URL format for batch (n > 1), base64 for single
@@ -354,10 +416,6 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
     else:
         payload["response_format"] = "b64_json"
     
-    # Add aspect ratio if not default
-    if ar != "1:1":
-        payload["aspect_ratio"] = ar
-    
     # Add reference image for editing (image-to-image)
     # xAI /v1/images/edits requires: "image": { "url": "data:<mime>;base64,<data>" }
     is_edit = False
@@ -365,7 +423,7 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
         is_edit = True
         img_b64, img_mime = _resolve_image_to_base64(reference_image)
         payload["image"] = {"url": f"data:{img_mime};base64,{img_b64}"}
-        print(f"[generate_image] xAI image editing mode - using /v1/images/edits endpoint", file=sys.stderr)
+        print("[generate_image] xAI image editing mode - using /v1/images/edits endpoint", file=sys.stderr)
     
     # Use /v1/images/edits for editing, /v1/images/generations for new images
     api_url = XAI_EDIT_API if is_edit else XAI_API_BASE
@@ -384,7 +442,7 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
         try:
             error_data = response.json()
             error_msg = error_data.get('error', {}).get('message', response.text)
-        except:
+        except (TypeError, ValueError):
             pass
         raise Exception(f"xAI API error ({response.status_code}): {error_msg}")
     
@@ -413,18 +471,24 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
     
     if not images:
         raise Exception("No image data in response")
+
+    delivered = _inspect_generated_image(images[0])
     
     return {
         "image_base64": images[0],  # Primary image
         "all_images": images if len(images) > 1 else None,  # All images if multiple returned
         "image_count": len(images),
         "requested_count": n,
-        "mime_type": "image/png",  # xAI returns PNG
+        "mime_type": delivered["mime_type"],
         "prompt": prompt,
         "full_prompt": full_prompt,
         "model": model_name,
         "provider": "xai",
-        "aspect_ratio": ar,
+        "requested_aspect_ratio": ar,
+        "aspect_ratio": delivered["aspect_ratio"],
+        "width": delivered["width"],
+        "height": delivered["height"],
+        "image_size": size,
         "is_edit": reference_image is not None,
         "used_grounding": False
     }
@@ -627,7 +691,7 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
     
     if reference_image:
         # ---- IMAGE EDITING: POST /v1/images/edits (multipart/form-data) ----
-        print(f"[generate_image] OpenAI image editing mode - reference image resolved", file=sys.stderr)
+        print("[generate_image] OpenAI image editing mode - reference image resolved", file=sys.stderr)
         
         img_b64, img_mime = _resolve_image_to_base64(reference_image)
         img_bytes = base64.b64decode(img_b64)
@@ -699,7 +763,7 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
         try:
             error_data = response.json()
             error_msg = error_data.get('error', {}).get('message', response.text)
-        except:
+        except (TypeError, ValueError):
             pass
         raise Exception(f"OpenAI API error ({response.status_code}): {error_msg}")
     
@@ -800,6 +864,7 @@ def generate_image(prompt: str, aspect_ratio: str = "square", image_size: str = 
         return generate_image_xai(
             prompt=prompt,
             aspect_ratio=aspect_ratio,
+            image_size=image_size,
             style=style,
             negative_prompt=negative_prompt,
             n=n,
@@ -831,7 +896,7 @@ def save_to_stash(image_data: dict, prompt: str) -> dict:
     
     # Determine extension from mime type
     mime = image_data.get('mime_type', 'image/png')
-    ext = 'png' if 'png' in mime else 'jpg' if 'jpeg' in mime or 'jpg' in mime else 'webp' if 'webp' in mime else 'png'
+    ext = _extension_for_image_mime(mime)
     filename = f"generated_{safe_prompt}_{timestamp}.{ext}"
     
     # Decode image
@@ -859,7 +924,7 @@ def save_to_stash(image_data: dict, prompt: str) -> dict:
     # Use stash helper directly to avoid subprocess overhead
     try:
         sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
-        from stash_helper import open_space, StashFile
+        from stash_helper import StashFile, open_space
         
         space, _ = open_space(scope='session', labels=['generated_images'])
         stash_file = StashFile(space)
@@ -904,6 +969,10 @@ def save_to_stash(image_data: dict, prompt: str) -> dict:
                 "provider": provider_name,
                 "model": model or None,
                 "aspect": image_data.get('aspect_ratio'),
+                "requested_aspect": image_data.get('requested_aspect_ratio'),
+                "width": image_data.get('width'),
+                "height": image_data.get('height'),
+                "mime_type": mime,
                 "tags": tags,
                 "tool_origin": "generate_image",
                 "created_at": datetime.now().isoformat(),
@@ -947,14 +1016,17 @@ def save_additional_images(
     if space_id:
         try:
             sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
-            from stash_helper import StashSpace, StashFile
+            from stash_helper import StashFile, StashSpace
             space = StashSpace(space_id)
             stash_file = StashFile(space)
         except Exception as e:
             print(f"Warning: Could not open stash space {space_id}: {e}", file=sys.stderr)
     
     for i, img_b64 in enumerate(all_images[1:], start=2):
-        filename = f"generated_{safe_prompt}_{timestamp}_{i}.png"
+        delivered = _inspect_generated_image(img_b64)
+        mime = delivered["mime_type"]
+        ext = _extension_for_image_mime(mime)
+        filename = f"generated_{safe_prompt}_{timestamp}_{i}.{ext}"
         image_bytes = base64.b64decode(img_b64)
         
         # Save to generated_images
@@ -963,7 +1035,11 @@ def save_additional_images(
         
         file_info = {
             "filename": filename,
-            "path": str(image_path)
+            "path": str(image_path),
+            "mime_type": mime,
+            "aspect_ratio": delivered["aspect_ratio"],
+            "width": delivered["width"],
+            "height": delivered["height"],
         }
         
         # Also add to stash (same space as first image)
@@ -972,7 +1048,7 @@ def save_additional_images(
                 result = stash_file.save_binary(
                     data=image_bytes,
                     name=filename,
-                    mime_type="image/png",
+                    mime_type=mime,
                     on_conflict='overwrite',
                     tags=['ai_generated', provider, 'batch'],
                     tool_origin='generate_image'
@@ -1000,6 +1076,10 @@ def save_additional_images(
                 {
                     "provider": provider_name,
                     "model": model,
+                    "aspect": delivered["aspect_ratio"],
+                    "width": delivered["width"],
+                    "height": delivered["height"],
+                    "mime_type": mime,
                     "tags": ['ai_generated', provider, 'batch'],
                     "tool_origin": "generate_image",
                     "created_at": datetime.now().isoformat(),
@@ -1134,6 +1214,10 @@ def main():
             if result.get('revised_prompt'):
                 response["data"]["revised_prompt"] = result['revised_prompt']
         elif provider_used == 'xai':
+            response["data"]["requested_aspect_ratio"] = result.get('requested_aspect_ratio')
+            response["data"]["width"] = result.get('width')
+            response["data"]["height"] = result.get('height')
+            response["data"]["image_size"] = result.get('image_size')
             if result.get('image_count', 1) > 1:
                 response["data"]["image_count"] = result['image_count']
                 response["speech"] += f" ({result['image_count']} images)"

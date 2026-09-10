@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import base64
 import importlib.util
+import io
 import json
 import sys
 from pathlib import Path
 
+from PIL import Image
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LIB_ROOT = PROJECT_ROOT / "lib"
@@ -58,6 +60,60 @@ def test_generate_image_catalog_keeps_model_when_stash_fails(tmp_path, monkeypat
     assert entry["provider"] == "OpenAI"
     assert entry["model"] == "gpt-image-2"
     assert entry["aspect"] == "16:9"
+
+
+def test_xai_jpeg_uses_delivered_format_and_dimensions_when_saved(tmp_path, monkeypatch):
+    generate_image = _load_module(
+        "generate_image_xai_format_test",
+        PROJECT_ROOT / "skills" / "generate_image.py",
+    )
+    monkeypatch.setattr(generate_image, "GENERATED_IMAGES_DIR", tmp_path)
+    monkeypatch.setattr(
+        generate_image,
+        "IMAGE_CATALOG_FILE",
+        tmp_path / "image_catalog.json",
+    )
+
+    import stash_helper
+
+    monkeypatch.setattr(
+        stash_helper,
+        "open_space",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("stash unavailable")),
+    )
+
+    image_buffer = io.BytesIO()
+    Image.new("RGB", (832, 1248), color="orange").save(image_buffer, format="JPEG")
+    encoded = base64.b64encode(image_buffer.getvalue()).decode()
+
+    class FakeResponse:
+        status_code = 200
+        text = "{}"
+
+        def json(self):
+            return {"data": [{"b64_json": encoded}]}
+
+    monkeypatch.setattr(
+        generate_image,
+        "get_config_value",
+        lambda key, default=None: "xai-test-key" if key == "XAI_API_KEY" else default,
+    )
+    monkeypatch.setattr(generate_image.requests, "post", lambda *_args, **_kwargs: FakeResponse())
+
+    image_data = generate_image.generate_image_xai(
+        "A square cat",
+        aspect_ratio="square",
+        model="grok-imagine-image-2.0",
+    )
+    result = generate_image.save_to_stash(image_data, "A square cat")
+
+    catalog = json.loads((tmp_path / "image_catalog.json").read_text())
+    entry = catalog[result["filename"]]
+    assert result["filename"].endswith(".jpg")
+    assert entry["mime_type"] == "image/jpeg"
+    assert entry["requested_aspect"] == "1:1"
+    assert entry["aspect"] == "2:3"
+    assert (entry["width"], entry["height"]) == (832, 1248)
 
 
 def test_generate_video_catalog_keeps_model_when_stash_fails(tmp_path, monkeypatch):

@@ -53,7 +53,7 @@
           "2K",
           "4K"
         ],
-        "description": "Resolution/Quality: '1K' (fast/low), '2K' (default/medium), '4K' (best/high). For OpenAI GPT Image 2 and 2.5, also maps to larger size dimensions where supported."
+        "description": "Resolution/Quality: '1K' (fast/low), '2K' (default/medium), '4K' (best/high). xAI supports 1K/2K; an unsupported 4K request is clamped to 2K. For OpenAI GPT Image 2 and 2.5, this also maps to larger size dimensions where supported."
       },
       "use_grounding": {
         "type": "boolean",
