@@ -95,6 +95,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - **Conversation search/export**: Filter, deep search, JSON/Markdown export, pinned-safe 90-day cleanup via `cleanup-all`
   - **Completion Guard**: Manual `Completed correctly?` card plus auto-evaluator mode, one bounded repair pass, stop/cancel support for repair runs, follow-up tickets, workflow/fire-and-forget exclusions, exported metadata, and intelligence-layer corrected-path learning
   - **Image upload**: Drag-drop/paste/click with multi-image vision analysis (up to 6 cloud / 2 local)
+  - **[Mixed attachments](docs/MIXED_SOURCE_ATTACHMENTS.md)**: Combine PDFs, notes, recordings, and analysis images in one request; keep source references for follow-ups (6 total cloud / 2 local)
   - **Structured result previews**: Focused cards, lists, metrics, and image galleries for search, shopping, local, travel, trends, and news tools
   - **Mode-aware TTS/STT**: Cloud vs Local providers
   - Dynamic LLM/model switching on-the-fly
@@ -1101,8 +1102,8 @@ See:
 Stores facts, preferences, and technical information with **hybrid search** (FTS5 + semantic):
 
 ```bash
-# Store a fact
-"Remember my WireGuard VPN is 192.168.7.0/24"
+# Store a fact (substitute your network range)
+"Remember my WireGuard VPN uses <vpn-subnet>"
 
 # Retrieve via keyword search (FTS5 with BM25 ranking)
 "Search for VPN network"  # Uses FTS5 for fast, accurate results

@@ -882,6 +882,18 @@ safest fallback because it adds no network egress or API billing.
 
 **Keyboard:** Press `Esc` to cancel recording
 
+### Mixed-source attachments
+
+Use the paperclip or drag-and-drop to combine PDFs, UTF-8 text/Markdown notes,
+recordings, and analysis images in one request. The shared limit is 6 sources
+in cloud mode and 2 in local mode; text files must total at most 100KB.
+Each source has its own preview/removal control, and saved references remain
+available for follow-up questions after reload. Failed uploads keep the draft
+available for retry instead of submitting a partial selection.
+
+See [Mixed-source requests](MIXED_SOURCE_ATTACHMENTS.md) for limits, source
+grounding, partial failures, cancellation, retention, and verification steps.
+
 ### Existing Audio Attachment Transcription
 
 The regular 📎 attachment picker also accepts AAC, FLAC, M4A, MP3, MP4,
@@ -923,7 +935,7 @@ def speech_to_text():
 
 ### Image Upload & Vision Analysis (Built-in, NOT a tool)
 
-The web UI has **native image upload** - this is NOT a tool call, it's built directly into the chat. Analyze mode supports multiple images in one message: up to 6 images in cloud mode and 2 images in local mode. Image-to-image and image-to-video still use the first uploaded image as the reference image.
+The web UI has **native image upload** - this is NOT a tool call, it's built directly into the chat. Analyze mode supports multiple images alongside other attachments: up to 6 total sources in cloud mode and 2 in local mode. Image-to-image and image-to-video require exactly one reference image.
 
 **How to Upload:**
 1. **Click** the 🖼️ button next to input
@@ -1320,10 +1332,10 @@ Let's continue discussing the tradeoffs #chat_only
 - Client-side tools, autonomous workflows, and `/workflow` execution
 - Provider-hosted tools such as native web/search or code execution
 - `#tool` hints, ambient tool suggestions, and the ✨ Enhance path
-- Image/PDF analysis and **Send to Canvas**
+- Image/PDF/audio analysis and **Send to Canvas**
 - Manual/inline LLM Feedback Analysis and random feedback sampling
 
-Image/PDF sends, tool hints, and workflows conflict with Chat only and are
+Image/PDF/audio sends, tool hints, and workflows conflict with Chat only and are
 rejected with a toast. A rejected send does not silently arm Chat only or clear
 existing tool chips. Turn the mode off first when the task genuinely requires
 retrieval, file/vision analysis, an artifact, or an action.
@@ -1345,7 +1357,7 @@ retrieval, file/vision analysis, an artifact, or an action.
 
 **Defense in depth:** the client sends only the recognized value
 `tool_policy: "none"`; the socket clears stale tool metadata and rejects
-image/PDF payloads; the router supplies zero tool schemas and disables hosted
+image/PDF/audio payloads; the router supplies zero tool schemas and disables hosted
 tools; workflows and learned routing insights are skipped; and the orchestrator
 converts any anomalous model-emitted tool route into a non-executing QA response.
 The policy and `tool_rag_skipped` state are retained in routing/LLM provenance

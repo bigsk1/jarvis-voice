@@ -31,6 +31,7 @@ class _Socket:
 def test_image_edit_stash_failure_aborts_before_orchestration():
     handler = ChatHandler.__new__(ChatHandler)
     handler.socketio = _Socket()
+    handler.pending_cancellations = {}
     handler._delivery_room = lambda session_id, conversation_id: conversation_id
     handler._get_completion_guard_config = lambda mode: {"enabled": False}
     handler._auto_stash_image = lambda image, analysis, mode: None
@@ -70,6 +71,7 @@ def test_image_edit_stash_failure_aborts_before_orchestration():
 def test_image_video_stash_failure_aborts_before_orchestration():
     handler = ChatHandler.__new__(ChatHandler)
     handler.socketio = _Socket()
+    handler.pending_cancellations = {}
     handler._delivery_room = lambda session_id, conversation_id: conversation_id
     handler._get_completion_guard_config = lambda mode: {"enabled": False}
     handler._auto_stash_image = lambda image, analysis, mode: None

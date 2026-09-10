@@ -248,22 +248,8 @@
             </div>
             <div class="image-preview-strip" id="imagePreviewStrip"></div>
           </div>
-          <!-- File preview (shown when .md/.txt/PDF/audio attached) -->
-          <div class="file-preview-container" id="filePreviewContainer" style="display: none;">
-            <div class="file-preview">
-              <span class="file-icon" id="filePreviewIcon">📄</span>
-              <span class="file-name" id="filePreviewName"></span>
-              <span class="file-size" id="filePreviewSize"></span>
-              <button class="remove-image-btn" id="removeFileBtn" title="Remove file">&times;</button>
-            </div>
-            <audio
-              controls
-              preload="metadata"
-              class="audio-player file-audio-player"
-              id="fileAudioPreview"
-              style="display: none;"
-            ></audio>
-          </div>
+          <!-- Selected text, PDF and audio sources; one removable row per file. -->
+          <div class="file-preview-container" id="filePreviewContainer" aria-label="Attached sources" style="display: none;"></div>
           <div class="tool-hints-container" id="toolHintsContainer" style="display: none;"></div>
           <div class="ambient-tool-suggestions" id="ambientToolSuggestions" style="display: none;"></div>
           

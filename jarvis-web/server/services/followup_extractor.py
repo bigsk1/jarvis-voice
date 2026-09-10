@@ -99,6 +99,17 @@ FOLLOWUP_FETCH_EXCERPT_MAX_CHARS = 2000
 _FOLLOWUP_FETCH_TRUNCATION_MARKER = "\n...[content truncated for follow-up context]...\n"
 FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS = 2000
 FOLLOWUP_DOCUMENT_EXCERPT_MAX_CHARS = 3000
+# Uploaded sources are an ordered bundle, not a ranked search shortlist. Keep
+# every source in the largest supported Web bundle even when search keeps five.
+FOLLOWUP_SOURCE_MAX_RUNS = 6
+FOLLOWUP_SOURCE_CONTENT_MAX_CHARS = 6000
+_SOURCE_RESULT_TOOLS = frozenset({
+    'pdf_read', 'document_ocr', 'transcribe_audio', 'stash', 'text_summarizer',
+})
+_SOURCE_CONTENT_FIELDS = frozenset({
+    'text_excerpt', 'content_excerpt', 'transcript_excerpt', 'markdown_excerpt',
+    'output_excerpt', 'parsed_json', 'parsed_json_excerpt', 'page_outputs', 'summary',
+})
 _FOLLOWUP_INLINE_TRUNCATION_SUFFIX = "... [truncated for follow-up context]"
 _FOLLOWUP_STRUCTURAL_TRUNCATION_KEY = "_followup_truncated"
 MANAGE_INTEL_DIR = Path(__file__).resolve().parents[3] / "jarvis-intel"
@@ -270,6 +281,7 @@ FOLLOWUP_DATA_SKIP_KEYS = frozenset({
     '_error',
     '_effective_evidence',
     '_web_message_id',
+    '_web_upload_stash',
     '_completion_guard',
     'speech',
     'server_side_tools',
@@ -703,10 +715,20 @@ def workflow_step_tool_results(workflow_data: dict) -> dict:
 
     flattened: dict = {}
 
-    def add(tool_name, payload):
+    def add(tool_name, payload, envelope):
         name = str(tool_name or '').strip()
         if not name or name == 'unknown' or payload in (None, ''):
             return
+        arguments = envelope.get('_workflow_source_arguments')
+        if (
+            name in _SOURCE_RESULT_TOOLS
+            and isinstance(payload, dict)
+            and isinstance(arguments, dict)
+            and envelope.get('ok') is True
+            and not envelope.get('validation_failed')
+            and not envelope.get('cancelled')
+        ):
+            payload = {**payload, '_workflow_source_arguments': arguments}
         if name not in flattened:
             flattened[name] = payload
             return
@@ -726,7 +748,7 @@ def workflow_step_tool_results(workflow_data: dict) -> dict:
                     payload = output.get('data') if isinstance(output.get('data'), dict) else output
                 else:
                     payload = output
-                add(tool_name, payload)
+                add(tool_name, payload, output if isinstance(output, dict) else {})
             continue
 
         payload = step.get('data')
@@ -736,7 +758,7 @@ def workflow_step_tool_results(workflow_data: dict) -> dict:
                 payload = {
                     'error': _truncate_followup_text(str(error), 500),
                 }
-        add(tool_name, payload)
+        add(tool_name, payload, step)
 
     return flattened
 
@@ -1653,6 +1675,10 @@ def compact_text_summarizer_item(
     """Compact any text_summarizer operation for history/evidence storage."""
     if not isinstance(item, dict):
         return None
+    if isinstance(item.get('data'), dict) and not any(
+        field in item for field in ('summary', 'source', 'summary_meta', 'keywords', 'statistics', 'sentiment')
+    ):
+        item = item['data']
 
     extracted = {}
     summary = item.get('summary')
@@ -2685,6 +2711,130 @@ def _extract_bounded_content_followup(
     return extracted
 
 
+def _source_ref_for_run(tool_name: str, payload: dict, request: dict) -> str | None:
+    """Keep input identity distinct from generated text/transcript stash refs."""
+    source = payload.get('source')
+    candidates = [payload.get('source_stash_ref')]
+    if isinstance(source, dict):
+        candidates.append(source.get('stash_ref'))
+    candidates.extend((request.get('stash_ref'), request.get('source')))
+    space_id, file_id = request.get('space_id'), request.get('file_id')
+    if (
+        tool_name in {'pdf_read', 'document_ocr', 'stash'}
+        and (tool_name != 'stash' or request.get('action') == 'read')
+        and isinstance(space_id, str) and space_id
+        and isinstance(file_id, str) and file_id
+        and '/' not in space_id and '/' not in file_id
+    ):
+        candidates.append(f'stash://{space_id}/{file_id}')
+    if tool_name == 'stash' and ('content' in payload or request.get('action') == 'read'):
+        candidates.append(payload.get('ref'))
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.startswith('stash://'):
+            return candidate
+    return None
+
+
+def _workflow_source_arguments(run) -> dict | None:
+    """Read arguments bound to this result, never an outer workflow trace."""
+    if not isinstance(run, dict):
+        return None
+    arguments = run.get('_workflow_source_arguments')
+    if not isinstance(arguments, dict):
+        payload = run.get('data')
+        arguments = payload.get('_workflow_source_arguments') if isinstance(payload, dict) else None
+    return arguments if isinstance(arguments, dict) else None
+
+
+def _compact_source_request_arguments(arguments: dict) -> dict:
+    """Keep complete bounded input identities rather than shortened fake refs."""
+    compact = _compact_request_arguments(arguments)
+    for field in ('stash_ref', 'source', 'space_id', 'file_id', 'file_path', 'path'):
+        value = arguments.get(field)
+        if isinstance(value, str):
+            compact.pop(field, None)
+            if 0 < len(value) <= 2048:
+                compact[field] = value
+    return compact
+
+
+def _extract_source_runs_followup(
+    data: dict,
+    tool_name: str,
+    runs: list,
+    max_candidates: int,
+) -> dict | None:
+    """Preserve each source result and its own successful request in order."""
+    run_limit = max(
+        FOLLOWUP_SOURCE_MAX_RUNS,
+        min(max_candidates, FOLLOWUP_EVIDENCE_MAX_CANDIDATES),
+    )
+    selected = runs[:run_limit]
+    arguments = _successful_tool_trace_arguments(data, tool_name)
+    # Only successful results are accumulated by the orchestrator. Legacy or
+    # partial traces cannot safely identify which request produced each result.
+    paired_arguments = arguments if len(arguments) == len(runs) else []
+    content_budget = FOLLOWUP_SOURCE_CONTENT_MAX_CHARS // max(1, len(selected))
+    results = []
+    unsupported_ordinals = []
+    for index, run in enumerate(selected):
+        if not isinstance(run, dict):
+            unsupported_ordinals.append(index + 1)
+            continue
+        payload = run.get('data') if isinstance(run.get('data'), dict) else run
+        single = {tool_name: run}
+        request = {}
+        run_arguments = _workflow_source_arguments(run)
+        if run_arguments is None and paired_arguments:
+            run_arguments = paired_arguments[index]
+        if run_arguments is not None:
+            request = _compact_source_request_arguments(run_arguments)
+            single['_tool_trace'] = [{
+                'tool': tool_name, 'ok': True, 'arguments': run_arguments,
+            }]
+        compact = (extract_followup_data(single, max_candidates=max_candidates) or {}).get(tool_name)
+        if not isinstance(compact, dict) or not compact:
+            unsupported_ordinals.append(index + 1)
+            continue
+        if request:
+            compact['request'] = request
+        # Execution order, not the uploaded Source N inventory: filtering must
+        # not renumber a surviving second run as the first one.
+        compact['run_ordinal'] = index + 1
+        source_ref = _source_ref_for_run(tool_name, payload, request)
+        if source_ref:
+            compact['source_stash_ref'] = source_ref
+        content_fields = [field for field in compact if field in _SOURCE_CONTENT_FIELDS]
+        field_budget = content_budget // max(1, len(content_fields))
+        for field in content_fields:
+            value = compact[field]
+            compact[field] = (
+                _bounded_content_excerpt(value, max_chars=field_budget)
+                if isinstance(value, str)
+                else _bounded_structured_followup_value(value, max_chars=field_budget)
+            )
+        results.append(compact)
+    if tool_name == 'text_summarizer':
+        extracted = {'results_count': len(runs)}
+        if results and all(item.get('summary') for item in results):
+            extracted['summaries'] = results
+        else:
+            if results:
+                extracted['latest'] = results[-1]
+            extracted['results'] = results
+        if results and results[-1].get('stash_ref'):
+            extracted['latest_stash_ref'] = results[-1]['stash_ref']
+    else:
+        extracted = {'runs_count': len(runs), 'results': results}
+    if unsupported_ordinals:
+        extracted['unsupported_runs_count'] = len(unsupported_ordinals)
+        extracted['unsupported_run_ordinals'] = unsupported_ordinals
+    if len(runs) > run_limit:
+        extracted['results_truncated'] = True
+        extracted['truncated_runs_count'] = len(runs) - run_limit
+    return extracted
+
+
 def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict | None:
     """
     Extract key data from tool results that enables follow-up actions.
@@ -2711,6 +2861,18 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         if key in FOLLOWUP_DATA_SKIP_KEYS:
             continue
         request_context = _extract_generic_tool_request(data, key)
+        bound_arguments = _workflow_source_arguments(value) if key in _SOURCE_RESULT_TOOLS else None
+        if bound_arguments is not None:
+            request_context = _compact_source_request_arguments(bound_arguments)
+        if (
+            key in _SOURCE_RESULT_TOOLS
+            and isinstance(value, list)
+            and value
+        ):
+            extracted = _extract_source_runs_followup(data, key, value, max_candidates)
+            if extracted:
+                followup[key] = extracted
+            continue
         if (
             key == 'spotify'
             and isinstance(value, list)
@@ -2735,6 +2897,10 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                 extracted = extracted or {}
                 extracted.setdefault('request', request_context)
             if extracted:
+                if bound_arguments is not None:
+                    source_ref = _source_ref_for_run(key, value, request_context)
+                    if source_ref:
+                        extracted['source_stash_ref'] = source_ref
                 followup[key] = extracted
             continue
         if key == 'workflow':
@@ -2769,7 +2935,7 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                                 component_followup.get('serpapi_amazon_search'),
                             )
                         continue
-                    if isinstance(component_value, list) and component_name != 'text_summarizer':
+                    if isinstance(component_value, list) and component_name not in _SOURCE_RESULT_TOOLS:
                         runs = []
                         for run_value in component_value[:max_candidates]:
                             run_followup = extract_followup_data(
@@ -2833,6 +2999,10 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             continue
 
         extracted = {}
+        if bound_arguments is not None:
+            source_ref = _source_ref_for_run(key, payload, request_context)
+            if source_ref:
+                extracted['source_stash_ref'] = source_ref
         if (
             request_context
             and key != 'spotify'
@@ -4315,17 +4485,17 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         if extracted:
             followup[key] = extracted
 
-    # Also extract top-level upload stash info (from image uploads)
+    # Upload metadata has its own slot so it never replaces actual stash reads.
+    # Older saved turns only have the legacy stash alias.
+    stash = data.get('_web_upload_stash', data.get('stash'))
     if (
-        data.get('stash')
-        and isinstance(data['stash'], dict)
-        and data['stash'].get('stash_ref')
+        isinstance(stash, dict)
+        and stash.get('stash_ref')
         and (
-            data['stash'].get('tool_origin') == 'web_upload'
-            or not any(marker in data['stash'] for marker in ('ref', 'content', 'mime_type', 'size_bytes', 'name'))
+            stash.get('tool_origin') == 'web_upload'
+            or not any(marker in stash for marker in ('ref', 'content', 'mime_type', 'size_bytes', 'name'))
         )
     ):
-        stash = data['stash']
         uploaded_images = []
         if isinstance(stash.get('uploaded_images'), list):
             for item in stash['uploaded_images'][:max(max_candidates, 6)]:

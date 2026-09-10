@@ -860,6 +860,8 @@ class PipelineExecutor:
                     "tool": tool_name,
                     "ok": step_result.get("ok", False),
                     "data": step_result.get("data"),
+                    **({"_workflow_source_arguments": step_result["_workflow_source_arguments"]}
+                       if "_workflow_source_arguments" in step_result else {}),
                     "error": step_result.get("error"),
                     "speech": step_result.get("speech"),
                     "duration_ms": step_duration_ms
@@ -904,6 +906,7 @@ class PipelineExecutor:
             params.update(llm_params)
         
         # Execute tool
+        source_params = params.copy()
         result = self.executor.execute(tool_name, params)
         self._merge_component_usage(result, tool_name=tool_name)
         
@@ -913,7 +916,35 @@ class PipelineExecutor:
                 result["ok"] = False
                 result["validation_failed"] = True
         
+        self._capture_source_arguments(result, tool_name, source_params)
         return result
+
+    @staticmethod
+    def _capture_source_arguments(result: dict, tool_name: str, params: dict) -> None:
+        """Bind bounded source identifiers to this successful workflow result.
+
+        Outer orchestration only traces the workflow call. Keep the resolved
+        input on each component envelope so flattening never pairs by a guessed
+        trace position or mistakes a generated Stash artifact for its input.
+        """
+        result.pop("_workflow_source_arguments", None)
+        if (
+            tool_name not in {"pdf_read", "document_ocr", "transcribe_audio", "stash", "text_summarizer"}
+            or not result.get("ok")
+            or result.get("cancelled")
+            or result.get("validation_failed")
+        ):
+            return
+        # Do not persist full text, credentials, or internal usage options.
+        # Oversized identities are omitted, never shortened into different refs.
+        arguments = {
+            key: value for key in (
+                "action", "operation", "stash_ref", "source", "space_id", "file_id", "file_path", "path",
+            )
+            if isinstance(value := params.get(key), str) and 0 < len(value) <= 2048
+        }
+        if arguments:
+            result["_workflow_source_arguments"] = arguments
 
     def _validate_llm_filled_params(self, step: dict, llm_params: dict) -> str | None:
         """Validate generated tool parameters when a workflow explicitly opts in."""
@@ -1083,10 +1114,14 @@ class PipelineExecutor:
                             params["name"] = f"{topic[:20].replace(' ', '_')}_source_{item_index + 1}.md"
                 else:
                     # Default: merge item dict into params
-                    params.update(item)
+                    params.update({
+                        key: value for key, value in item.items()
+                        if key != "_workflow_source_arguments"
+                    })
             
             # Execute tool
             item_start_time = time.time()
+            source_params = params.copy()
             result = self.executor.execute(tool_name, params)
             self._merge_component_usage(result, tool_name=tool_name)
             item_duration_ms = int((time.time() - item_start_time) * 1000)
@@ -1121,6 +1156,8 @@ class PipelineExecutor:
             else:
                 retries += 1
                 outputs.append(result)
+
+            self._capture_source_arguments(result, tool_name, source_params)
             
             item_index += 1
         

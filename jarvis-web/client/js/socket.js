@@ -183,8 +183,8 @@ class JarvisSocket {
    * @param {Object} imageData - Optional image payload {action, settings, images: [{url, filename}]}
    * @param {Object} promptMeta - Optional prompt metadata {system_instruction, prompt_name, tool_hints, tool_policy, request_kind, tool_rag_limit}
    * @param {boolean} requestFeedback - Whether to request feedback analysis after response
-   * @param {Object} fileContext - Optional text file data {name, content, size, type}
-   * @param {Array} attachments - Optional server-issued artifact metadata
+   * @param {Object} fileContext - Legacy inline text context; new text files use attachments.
+   * @param {Array} attachments - Ordered server-issued PDF/audio/text source metadata
    */
   sendMessage(
     message,

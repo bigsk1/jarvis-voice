@@ -439,7 +439,7 @@ class ChatUI {
     this.enhanceBtn = document.getElementById('enhanceBtn');
     this.stopBtn = document.getElementById('stopBtn');
     
-    // File upload elements (images + text files + one PDF/audio artifact)
+    // A bounded source bundle: analysis images and durable document artifacts.
     this.uploadBtn = document.getElementById('uploadBtn');
     this.fileInput = document.getElementById('fileInput');
     this.imagePreviewContainer = document.getElementById('imagePreviewContainer');
@@ -447,14 +447,14 @@ class ChatUI {
     this.imageActionBadge = document.getElementById('imageActionBadge');
     this.clearAllImagesBtn = document.getElementById('clearAllImagesBtn');
     
-    // Text/PDF/audio preview elements
+    // Text/PDF/audio previews are rendered one row per selected source.
     this.filePreviewContainer = document.getElementById('filePreviewContainer');
-    this.filePreviewIcon = document.getElementById('filePreviewIcon');
-    this.filePreviewName = document.getElementById('filePreviewName');
-    this.filePreviewSize = document.getElementById('filePreviewSize');
-    this.removeFileBtn = document.getElementById('removeFileBtn');
-    this.fileAudioPreview = document.getElementById('fileAudioPreview');
-    this.fileAudioPreviewUrl = null;
+    this.attachedDocuments = [];
+    this._attachmentEpoch = 0;
+    this._attachmentSend = null;
+    this._imageUpload = null;
+    this.pendingImageFiles = [];
+    this._conversationLoadPending = false;
     
     // File conversion elements
     this.convertBtn = document.getElementById('convertBtn');
@@ -1667,6 +1667,7 @@ class ChatUI {
     });
 
     socket.on('modeChanged', (data) => {
+      this.cancelAttachmentPreparation();
       this._handleImageAttachmentsForMode(data.mode);
     });
 
@@ -1731,7 +1732,7 @@ class ChatUI {
       this.addErrorMessage(data.error);
       this._clearPendingToolsForMessage(data.message_id);
       if (
-        ['vision_model_unsupported', 'vision_analysis_failed', 'image_edit_stash_failed', 'image_video_stash_failed'].includes(data.error_code)
+        ['vision_model_unsupported', 'vision_analysis_failed', 'image_edit_stash_failed', 'image_video_stash_failed', 'image_bundle_stash_failed'].includes(data.error_code)
         && this.pendingVisionRetryPayload
       ) {
         const retryPayload = this.pendingVisionRetryPayload;
@@ -1745,7 +1746,9 @@ class ChatUI {
             ? 'Image restored — retry the edit'
             : data.error_code === 'image_video_stash_failed'
               ? 'Image restored — retry video generation'
-              : 'Image restored — switch to a vision-capable model and resend';
+              : data.error_code === 'image_bundle_stash_failed'
+                ? 'Images restored — retry preparing the attached sources'
+                : 'Image restored — switch to a vision-capable model and resend';
           Utils.toast(retryMessage, 'info', 5000);
         }
       }
@@ -1835,14 +1838,6 @@ class ChatUI {
       return;
     }
     
-    // Attached text/PDF/audio state. Binary artifacts retain one stable upload
-    // ID so a retry after a lost HTTP response resolves to the same Stash item.
-    this.attachedFile = null;
-    this.attachedPdf = null;
-    this.attachedAudio = null;
-    this.pdfUploadPromise = null;
-    this.audioUploadPromise = null;
-    
     // Click upload button -> trigger file input
     this.uploadBtn.addEventListener('click', () => {
       this.fileInput.click();
@@ -1866,14 +1861,7 @@ class ChatUI {
       });
     }
     
-    // Remove text/PDF/audio button
-    if (this.removeFileBtn) {
-      this.removeFileBtn.addEventListener('click', () => {
-        this.clearAttachedFile();
-      });
-    }
-    
-    // Drag and drop support (images + text files + one PDF/audio artifact)
+    // Drag and drop supports the same bounded bundle as the picker.
     const container = document.querySelector('.chat-input-container');
     if (container) {
       container.addEventListener('dragover', (e) => {
@@ -1976,7 +1964,7 @@ class ChatUI {
   /**
    * Show the image action modal with preview
    */
-  async _showImageActionModal(uploadDataOrArray, preferredAction = 'analyze') {
+  async _showImageActionModal(uploadDataOrArray, preferredAction = 'analyze', context = this._attachmentContext()) {
     if (!this.imageActionModal) return;
 
     try {
@@ -1984,6 +1972,7 @@ class ChatUI {
     } catch (error) {
       console.warn('[Chat] Could not refresh media model settings:', error);
     }
+    if (!this._attachmentContextIsCurrent(context)) return;
     
     const uploads = Array.isArray(uploadDataOrArray) ? uploadDataOrArray : [uploadDataOrArray];
     this.pendingImageBatch = uploads;
@@ -2031,9 +2020,16 @@ class ChatUI {
       throw new Error('Jarvis Web received an invalid image handoff');
     }
 
-    this.clearAttachedFile();
-    this.clearAttachedImage();
-    await this._showImageActionModal(uploadData, preferredAction);
+    if (this.isProcessing || this.attachedDocuments.length || this.attachedImages.length || this.pendingImageFiles?.length || this._imageUpload || this._attachmentSend) {
+      throw new Error('Remove the current attachments before importing a reference image.');
+    }
+    const context = this._attachmentContext();
+    this._imageUpload = context;
+    try {
+      await this._showImageActionModal(uploadData, preferredAction, context);
+    } finally {
+      if (this._imageUpload === context) this._imageUpload = null;
+    }
   }
   
   /**
@@ -2307,17 +2303,21 @@ class ChatUI {
    * Confirm the image action and attach image with settings
    */
   _confirmImageAction() {
+    if (this._conversationLoadPending) return;
     if (!this.pendingImageBatch?.length) return;
     
     const { action, settings } = this._collectImageActionSettings();
-    let batch = this.pendingImageBatch;
+    const batch = this.pendingImageBatch;
     
     if (action === 'video' || action === 'image') {
-      if (batch.length > 1) {
-        Utils.toast('Using first image for Video/Image mode', 'info', 2000);
+      if (batch.length !== 1 || this.attachedImages.length || this.attachedDocuments.length) {
+        Utils.toast('Image editing and video generation require one reference image only. Choose Analyze for multiple sources.', 'error', 5000);
+        return;
       }
-      batch = [batch[0]];
-      this.attachedImages = [];
+    }
+    if (batch.length + this.attachedImages.length + this.attachedDocuments.length > this._getMaxImages()) {
+      Utils.toast(`Maximum ${this._getMaxImages()} sources in this mode. Remove sources before adding these images.`, 'error');
+      return;
     }
     
     this.imageAttachmentAction = action;
@@ -2330,6 +2330,7 @@ class ChatUI {
       });
     });
 
+    this._clearPendingImageFiles();
     this._renderImagePreviews();
     this._hideImageActionModal();
     this.inputField.focus();
@@ -2388,7 +2389,8 @@ class ChatUI {
 
     strip.innerHTML = '';
 
-    if (!this.attachedImages.length) {
+    const pending = this.pendingImageFiles || [];
+    if (!this.attachedImages.length && !pending.length) {
       container.style.display = 'none';
       if (this.imageActionBadge) {
         this.imageActionBadge.textContent = '';
@@ -2398,26 +2400,46 @@ class ChatUI {
 
     container.style.display = 'block';
 
-    this.attachedImages.forEach((img, index) => {
+    const previews = [
+      ...this.attachedImages,
+      ...pending.map(item => ({ url: item.previewUrl, filename: item.file.name, pending: item }))
+    ];
+    previews.forEach((img, index) => {
       const thumb = document.createElement('div');
       thumb.className = 'image-preview-thumb';
 
       const imageEl = document.createElement('img');
       imageEl.src = img.url;
-      imageEl.alt = `Preview ${index + 1}`;
+      imageEl.alt = `Image ${index + 1}: ${img.filename || 'attached image'}`;
+      imageEl.title = imageEl.alt;
       thumb.appendChild(imageEl);
+      const label = document.createElement('span');
+      label.className = 'attachment-image-label';
+      label.textContent = `Image ${index + 1}${img.pending ? ' · Pending' : ''}`;
+      thumb.appendChild(label);
 
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
       removeBtn.className = 'remove-image-btn';
       removeBtn.title = 'Remove image';
       removeBtn.textContent = '×';
-      removeBtn.addEventListener('click', () => this._removeAttachedImageAt(index));
+      removeBtn.disabled = Boolean(this._attachmentSend || this._imageUpload);
+      removeBtn.addEventListener('click', () => img.pending
+        ? this._removePendingImage(img.pending)
+        : this._removeAttachedImageAt(index));
       thumb.appendChild(removeBtn);
 
       strip.appendChild(thumb);
     });
 
+    if (pending.length && !this._imageUpload) {
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'btn btn-secondary';
+      retry.textContent = 'Retry image upload';
+      retry.addEventListener('click', () => this._retryPendingImages());
+      strip.appendChild(retry);
+    }
     if (this.imageActionBadge) {
       const badgeText = this._buildActionBadgeText(this.imageAttachmentAction, this.imageAttachmentSettings);
       const countSuffix = this.attachedImages.length > 1 ? ` (${this.attachedImages.length})` : '';
@@ -2426,6 +2448,7 @@ class ChatUI {
   }
 
   _removeAttachedImageAt(index) {
+    if (this._attachmentSend || this._imageUpload) return;
     if (index < 0 || index >= this.attachedImages.length) return;
     this.attachedImages.splice(index, 1);
     if (!this.attachedImages.length) {
@@ -2436,74 +2459,111 @@ class ChatUI {
   }
 
   _handleImageAttachmentsForMode(mode, options = {}) {
-    if (!this._hasAttachedImages() || this.imageAttachmentAction !== 'analyze') return;
-    const maxImages = mode === 'local' ? 2 : 6;
-    if (this.attachedImages.length <= maxImages) return;
-
-    this.attachedImages = this.attachedImages.slice(0, maxImages);
-    this._renderImagePreviews();
-    if (options.toast !== false) {
-      Utils.toast(`Kept first ${maxImages} image(s) for ${mode} mode`, 'info', 2500);
+    const limit = mode === 'local' ? 2 : 6;
+    if (this.attachedImages.length + this.attachedDocuments.length + (this.pendingImageFiles?.length || 0) > limit && options.toast !== false) {
+      Utils.toast(`This draft has more than ${limit} sources. Remove sources or switch back before sending.`, 'warning', 5000);
     }
   }
-  
-  async _uploadImageFiles(files) {
-    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
-    if (!imageFiles.length) return [];
 
+  _attachmentContext() {
+    return {
+      epoch: this._attachmentEpoch,
+      mode: window.jarvisSocket?.mode || 'cloud',
+      conversationId: window.jarvisSocket?.conversationId || null,
+      controller: new AbortController()
+    };
+  }
+
+  _attachmentContextIsCurrent(context) {
+    return context.epoch === this._attachmentEpoch
+      && !context.controller.signal.aborted
+      && context.mode === (window.jarvisSocket?.mode || 'cloud')
+      && context.conversationId === (window.jarvisSocket?.conversationId || null);
+  }
+
+  cancelAttachmentPreparation({ preserveModal = false } = {}) {
+    this._attachmentEpoch += 1;
+    const wasPreparing = Boolean(this._attachmentSend || this._imageUpload);
+    this._attachmentSend?.controller.abort();
+    this._imageUpload?.controller.abort();
+    this._attachmentSend = null;
+    this._imageUpload = null;
+    if (!preserveModal) this._hideImageActionModal();
+    if (wasPreparing) {
+      this.isProcessing = false;
+      this.hideThinking();
+      this.clearStatus();
+      this.updateSendButton();
+      this._renderDocumentPreviews();
+      this._renderImagePreviews();
+    }
+    return wasPreparing;
+  }
+
+  setConversationLoading(loading) {
+    if (loading) this.cancelAttachmentPreparation({ preserveModal: true });
+    this._conversationLoadPending = Boolean(loading);
+    this.updateSendButton();
+  }
+
+  _attachmentKind(file) {
+    if (String(file?.type || '').startsWith('image/')) return 'image';
+    if (this._isPdfFile(file)) return 'pdf';
+    if (this._isAudioFile(file)) return 'audio';
+    const extension = String(file?.name || '').split('.').pop().toLowerCase();
+    if (['txt', 'md'].includes(extension)) return 'text';
+    return null;
+  }
+
+  _validateAttachmentSelection(files) {
+    if (this._conversationLoadPending) return 'Wait for the conversation to finish loading.';
+    if (this._attachmentSend || this._imageUpload || this.pendingImageBatch?.length) {
+      return 'Finish or cancel the current attachment preparation first.';
+    }
+    if (this.pendingImageFiles?.length) return 'Retry or remove the pending images before adding sources or sending.';
+    if (files.length && this.isProcessing) return 'Wait for the current request to finish before attaching sources.';
+    const total = this.attachedImages.length + this.attachedDocuments.length + files.length;
+    if (total > this._getMaxImages()) {
+      return `Maximum ${this._getMaxImages()} sources in ${window.jarvisSocket?.mode || 'cloud'} mode. No files were added.`;
+    }
+    if (files.length && this._hasAttachedImages() && this.imageAttachmentAction !== 'analyze') {
+      return 'Image editing and video generation use one reference image. Remove it before attaching more sources.';
+    }
+    let textBytes = this.attachedDocuments.filter(item => item.kind === 'text')
+      .reduce((sum, item) => sum + item.file.size, 0);
+    for (const file of files) {
+      const kind = this._attachmentKind(file);
+      if (!kind) return `Unsupported file: ${file.name}. Use images, audio, PDF, .md, or .txt files.`;
+      if (kind === 'pdf' && !String(file.name).toLowerCase().endsWith('.pdf')) {
+        return 'Select PDF files with a .pdf extension.';
+      }
+      const limit = kind === 'image' ? 30 * 1024 * 1024 : kind === 'pdf' ? 50 * 1024 * 1024 : kind === 'text' ? 100 * 1024 : null;
+      if (limit && file.size > limit) return `${file.name} is too large (max ${kind === 'text' ? '100KB' : `${limit / 1024 / 1024}MB`}).`;
+      if (kind === 'text') textBytes += file.size;
+    }
+    if (textBytes > 100 * 1024) return 'Attached text files exceed the combined 100KB limit.';
+    return null;
+  }
+
+  async _uploadImageFiles(files, context) {
     const formData = new FormData();
-    imageFiles.forEach((file) => formData.append('images', file));
-    formData.append('mode', window.jarvisSocket?.mode || 'cloud');
+    files.forEach((file) => formData.append('images', file));
+    formData.append('mode', context.mode);
     formData.append('include_base64', 'false');
     formData.append('current_image_count', String(this.attachedImages.length));
-
-    try {
-      const response = await fetch('/api/upload-images', {
-        method: 'POST',
-        body: formData
-      });
-      const data = await response.json();
-      if (data.ok && Array.isArray(data.images) && data.images.length) {
-        if (data.errors?.length) {
-          Utils.toast(data.errors[0], 'warning', 2500);
-        }
-        return data.images;
-      }
-      if (data.error) {
-        Utils.toast(data.error, 'error');
-        return [];
-      }
-    } catch (err) {
-      console.warn('[Chat] Batch upload failed, falling back to single uploads:', err);
+    const response = await fetch('/api/upload-images', {
+      method: 'POST', body: formData, signal: context.controller.signal
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok || !Array.isArray(data.images) || data.images.length !== files.length || data.errors?.length) {
+      throw new Error(data.errors?.join('; ') || data.error || 'Image upload was incomplete. Use Retry image upload.');
     }
-
-    const uploaded = [];
-    for (const file of imageFiles) {
-      const singleForm = new FormData();
-      singleForm.append('image', file);
-      singleForm.append('mode', window.jarvisSocket?.mode || 'cloud');
-      singleForm.append('include_base64', 'false');
-      singleForm.append('current_image_count', String(this.attachedImages.length + uploaded.length));
-      const response = await fetch('/api/upload-image', {
-        method: 'POST',
-        body: singleForm
-      });
-      const data = await response.json();
-      if (data.ok) {
-        uploaded.push(data);
-      } else if (data.error) {
-        Utils.toast(data.error, 'error');
-      }
-    }
-    return uploaded;
+    return data.images;
   }
 
   _appendAnalyzeImages(uploadResults) {
     uploadResults.forEach((uploadData) => {
-      this.attachedImages.push({
-        url: uploadData.url,
-        filename: uploadData.filename
-      });
+      this.attachedImages.push({ url: uploadData.url, filename: uploadData.filename });
     });
     this.imageAttachmentAction = 'analyze';
     this.imageAttachmentSettings = {};
@@ -2511,93 +2571,92 @@ class ChatUI {
   }
 
   async attachImageFiles(files) {
-    if (this.pdfUploadPromise || this.audioUploadPromise) {
-      Utils.toast('Wait for the current file upload to finish', 'info');
-      return;
-    }
-    const imageFiles = Array.from(files).filter((file) => file.type.startsWith('image/'));
-    if (!imageFiles.length) {
-      Utils.toast('Please select image files', 'error');
-      return;
-    }
-
-    this.clearAttachedFile();
-
-    if (this._hasAttachedImages() && this.imageAttachmentAction !== 'analyze') {
-      Utils.toast('Video/Image mode allows one reference image only', 'error');
-      return;
-    }
-
-    const maxTotal = this._getMaxImages();
-    const slots = maxTotal - this.attachedImages.length;
-    if (slots <= 0) {
-      Utils.toast(`Maximum ${maxTotal} images (${window.jarvisSocket?.mode === 'local' ? 'local' : 'cloud'} mode)`, 'error');
-      return;
-    }
-
-    const toUpload = imageFiles.slice(0, slots);
-    if (imageFiles.length > slots) {
-      Utils.toast(`Only ${slots} more image(s) allowed (max ${maxTotal})`, 'info', 2500);
-    }
-
-    for (const file of toUpload) {
-      if (file.size > 30 * 1024 * 1024) {
-        Utils.toast(`${file.name} too large (max 30MB)`, 'error');
-        return;
-      }
-    }
-
-    try {
-      Utils.toast(`Uploading ${toUpload.length} image(s)...`, 'info', 1500);
-      const uploads = await this._uploadImageFiles(toUpload);
-      if (!uploads.length) {
-        Utils.toast('Failed to upload images', 'error');
-        return;
-      }
-
-      if (this._canAppendWithoutModal()) {
-        this._appendAnalyzeImages(uploads);
-        Utils.toast(`Added ${uploads.length} image(s)`, 'success', 1500);
-        this.inputField.focus();
-        return;
-      }
-
-      await this._showImageActionModal(uploads);
-    } catch (err) {
-      console.error('[Chat] Image upload error:', err);
-      Utils.toast('Failed to upload image', 'error');
-    }
+    return this._attachMultipleFiles(Array.from(files));
   }
 
   async _attachMultipleFiles(files) {
-    if (this.pdfUploadPromise || this.audioUploadPromise) {
-      Utils.toast('Wait for the current file upload to finish', 'info');
+    if (!files.length) return;
+    const error = this._validateAttachmentSelection(files);
+    if (error) {
+      Utils.toast(error, 'error', 4000);
       return;
     }
-    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
-    const pdfFiles = files.filter((file) => this._isPdfFile(file));
-    const audioFiles = files.filter((file) => this._isAudioFile(file));
-    const textFiles = files.filter((file) => {
-      const ext = file.name.split('.').pop().toLowerCase();
-      return ext === 'md' || ext === 'txt' || file.type === 'text/plain' || file.type === 'text/markdown';
+    const imageFiles = [];
+    for (const file of files) {
+      const kind = this._attachmentKind(file);
+      if (kind === 'image') {
+        imageFiles.push(file);
+      } else {
+        this.attachedDocuments.push({ kind, file, uploadId: this._createArtifactUploadId(), attachment: null, previewUrl: null });
+      }
+    }
+    this._renderDocumentPreviews();
+    if (!imageFiles.length) return;
+
+    this.pendingImageFiles = imageFiles.map(file => ({
+      file, previewUrl: window.URL?.createObjectURL?.(file) || ''
+    }));
+    await this._retryPendingImages();
+  }
+
+  _clearPendingImageFiles() {
+    (this.pendingImageFiles || []).forEach(item => {
+      if (item.previewUrl) window.URL?.revokeObjectURL(item.previewUrl);
     });
+    this.pendingImageFiles = [];
+  }
 
-    if (imageFiles.length && !textFiles.length && !pdfFiles.length && !audioFiles.length) {
-      await this.attachImageFiles(imageFiles);
+  _removePendingImage(item) {
+    if (this._imageUpload || this._attachmentSend) return;
+    this._hideImageActionModal();
+    if (item.previewUrl) window.URL?.revokeObjectURL(item.previewUrl);
+    this.pendingImageFiles = this.pendingImageFiles.filter(candidate => candidate !== item);
+    this._renderImagePreviews();
+  }
+
+  async _retryPendingImages() {
+    if (this._conversationLoadPending) {
+      Utils.toast('Wait for the conversation to finish loading.', 'info');
       return;
     }
-
-    if (files.length === 1) {
-      await this.attachFile(files[0]);
+    if (!this.pendingImageFiles?.length || this.isProcessing || this.pendingImageBatch?.length) return;
+    if (this.attachedImages.length + this.attachedDocuments.length + this.pendingImageFiles.length > this._getMaxImages()) {
+      Utils.toast(`Maximum ${this._getMaxImages()} sources in this mode. Remove sources before retrying.`, 'error');
       return;
     }
-
-    if (pdfFiles.length || audioFiles.length) {
-      Utils.toast('Attach one PDF or audio file at a time', 'error');
-      return;
+    const imageFiles = this.pendingImageFiles.map(item => item.file);
+    const context = this._attachmentContext();
+    this._imageUpload = context;
+    this.isProcessing = true;
+    this.updateSendButton();
+    this.showThinking();
+    this.showProgressStatus('Uploading images…');
+    this._renderImagePreviews();
+    try {
+      const uploads = await this._uploadImageFiles(imageFiles, context);
+      if (!this._attachmentContextIsCurrent(context)) return;
+      if (this.attachedDocuments.length || this._canAppendWithoutModal()) {
+        this._clearPendingImageFiles();
+        this._appendAnalyzeImages(uploads);
+      } else {
+        // Keep browser Files until the action is confirmed. Model settings can
+        // still be loading when Stop or a mode change dismisses this modal.
+        await this._showImageActionModal(uploads, 'analyze', context);
+      }
+    } catch (err) {
+      if (this._attachmentContextIsCurrent(context)) {
+        Utils.toast(`${err.message || 'Image upload failed.'} Your selected images are ready to retry.`, 'error', 5000);
+      }
+    } finally {
+      if (this._imageUpload === context) {
+        this._imageUpload = null;
+        this.isProcessing = false;
+        this.hideThinking();
+        this.clearStatus();
+        this.updateSendButton();
+        this._renderImagePreviews();
+      }
     }
-
-    Utils.toast('Select images or one text, PDF, or audio file', 'error');
   }
 
   /**
@@ -2989,26 +3048,7 @@ class ChatUI {
    * Route file attachment by type.
    */
   async attachFile(file) {
-    if (!file) return;
-    if (this.pdfUploadPromise || this.audioUploadPromise) {
-      Utils.toast('Wait for the current file upload to finish', 'info');
-      return;
-    }
-    
-    const ext = file.name.split('.').pop().toLowerCase();
-    const isText = ext === 'md' || ext === 'txt' || file.type === 'text/plain' || file.type === 'text/markdown';
-    
-    if (file.type.startsWith('image/')) {
-      await this.attachImage(file);
-    } else if (this._isPdfFile(file)) {
-      await this.attachPdf(file);
-    } else if (this._isAudioFile(file)) {
-      await this.attachAudio(file);
-    } else if (isText) {
-      await this.attachTextFile(file);
-    } else {
-      Utils.toast('Unsupported file type. Use images, audio, PDF, .md, or .txt files.', 'error');
-    }
+    if (file) await this._attachMultipleFiles([file]);
   }
 
   _isPdfFile(file) {
@@ -3044,254 +3084,81 @@ class ChatUI {
     });
   }
 
-  /**
-   * Select one PDF locally. The HTTP upload is deferred until Send so merely
-   * choosing a file never starts orchestration or creates an unused Stash item.
-   */
-  async attachPdf(file) {
-    const maxBytes = 50 * 1024 * 1024;
-    if (file.size > maxBytes) {
-      Utils.toast('PDF too large (max 50MB)', 'error');
-      return;
-    }
-    if (!String(file.name || '').toLowerCase().endsWith('.pdf')) {
-      Utils.toast('Select a file with a .pdf extension', 'error');
-      return;
-    }
-
-    this.clearAttachedImage();
-    this.clearAttachedFile();
-    this.attachedPdf = {
-      file,
-      uploadId: this._createArtifactUploadId(),
-      attachment: null
-    };
-    this._showFilePreview(file.name, file.size, 'pdf');
-    Utils.toast(`Attached ${file.name}`, 'info', 1500);
-    console.log(`[Chat] PDF selected: ${file.name} (${file.size} bytes)`);
-  }
-
-  /**
-   * Select one audio recording locally. Upload is deferred until Send, just
-   * like PDFs, so selection alone never creates a Stash artifact or provider call.
-   */
-  async attachAudio(file) {
-    if (!this._isAudioFile(file)) {
-      Utils.toast('Select a supported audio file', 'error');
-      return;
-    }
-
-    this.clearAttachedImage();
-    this.clearAttachedFile();
-    this.attachedAudio = {
-      file,
-      uploadId: this._createArtifactUploadId(),
-      attachment: null
-    };
-    this._showFilePreview(file.name, file.size, 'audio');
-    this._showPendingAudioPreview(file);
-    Utils.toast(`Attached ${file.name}`, 'info', 1500);
-    console.log(`[Chat] Audio selected: ${file.name} (${file.size} bytes)`);
-  }
-  
-  /**
-   * Attach a text file (.md, .txt) — read in browser, no server upload
-   */
-  async attachTextFile(file) {
-    // Validate size (100KB max — ~25K tokens)
-    if (file.size > 100 * 1024) {
-      Utils.toast('Text file too large (max 100KB)', 'error');
-      return;
-    }
-    
-    try {
-      const content = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsText(file);
-      });
-      
-      // Clear any existing image/document attachment
-      this.clearAttachedImage();
-      this.clearAttachedFile();
-      
-      // Store text file data
-      this.attachedFile = {
-        name: file.name,
-        size: file.size,
-        content: content,
-        type: 'text'
-      };
-      
-      // Show text file preview
-      this._showFilePreview(file.name, file.size, 'text');
-      
-      Utils.toast(`Attached ${file.name}`, 'info', 1500);
-      console.log(`[Chat] Text file attached: ${file.name} (${file.size} bytes)`);
-      
-    } catch (err) {
-      console.error('[Chat] Text file read error:', err);
-      Utils.toast('Failed to read text file', 'error');
-    }
-  }
-  
-  /**
-   * Show text/PDF/audio file preview indicator.
-   */
-  _showFilePreview(name, size, kind = 'document') {
-    if (this.filePreviewContainer && this.filePreviewName && this.filePreviewSize) {
-      if (this.filePreviewIcon) {
-        this.filePreviewIcon.textContent = kind === 'audio' ? '🎵' : '📄';
+  _renderDocumentPreviews() {
+    if (!this.filePreviewContainer) return;
+    this.filePreviewContainer.querySelectorAll('audio').forEach(audio => audio.pause?.());
+    this.filePreviewContainer.replaceChildren();
+    this.filePreviewContainer.style.display = this.attachedDocuments.length ? 'block' : 'none';
+    this.attachedDocuments.forEach((item, index) => {
+      const row = document.createElement('div');
+      row.className = 'attachment-source';
+      const info = document.createElement('div');
+      info.className = 'file-preview';
+      const label = document.createElement('span');
+      label.className = 'file-name';
+      label.textContent = `Source ${index + 1}: ${item.file.name}`;
+      const size = document.createElement('span');
+      size.className = 'file-size';
+      size.textContent = `${(item.file.size / 1024).toFixed(1)} KB`;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'attachment-remove';
+      remove.textContent = '×';
+      remove.title = `Remove ${item.file.name}`;
+      remove.setAttribute('aria-label', remove.title);
+      remove.disabled = Boolean(this._attachmentSend);
+      remove.addEventListener('click', () => this._removeAttachedDocument(item));
+      info.append(label, size, remove);
+      row.appendChild(info);
+      if (item.kind === 'audio' && window.URL?.createObjectURL) {
+        item.previewUrl ||= window.URL.createObjectURL(item.file);
+        const audio = document.createElement('audio');
+        audio.controls = true;
+        audio.preload = 'metadata';
+        audio.className = 'audio-player file-audio-player';
+        audio.src = item.previewUrl;
+        row.appendChild(audio);
       }
-      this.filePreviewName.textContent = name;
-      const sizeLabel = size >= 1024 * 1024
-        ? `${(size / (1024 * 1024)).toFixed(1)} MB`
-        : `${(size / 1024).toFixed(1)} KB`;
-      this.filePreviewSize.textContent = `(${sizeLabel})`;
-      this.filePreviewContainer.style.display = 'block';
-    }
+      this.filePreviewContainer.appendChild(row);
+    });
   }
 
-  /**
-   * Preview a browser-selected audio file without uploading it or exposing a
-   * local path. The object URL exists only until the attachment is cleared.
-   */
-  _showPendingAudioPreview(file) {
-    this._clearPendingAudioPreview();
-    if (!file || !this.fileAudioPreview || !window.URL?.createObjectURL) return;
-
-    this.fileAudioPreviewUrl = window.URL.createObjectURL(file);
-    this.fileAudioPreview.src = this.fileAudioPreviewUrl;
-    this.fileAudioPreview.style.display = 'block';
-    this.fileAudioPreview.load?.();
+  _removeAttachedDocument(item) {
+    if (this._attachmentSend) return;
+    if (item.previewUrl) window.URL?.revokeObjectURL(item.previewUrl);
+    this.attachedDocuments = this.attachedDocuments.filter(candidate => candidate !== item);
+    this._renderDocumentPreviews();
   }
 
-  _clearPendingAudioPreview() {
-    if (this.fileAudioPreview) {
-      this.fileAudioPreview.pause?.();
-      this.fileAudioPreview.removeAttribute('src');
-      this.fileAudioPreview.style.display = 'none';
-      this.fileAudioPreview.load?.();
-    }
-    if (this.fileAudioPreviewUrl && window.URL?.revokeObjectURL) {
-      window.URL.revokeObjectURL(this.fileAudioPreviewUrl);
-    }
-    this.fileAudioPreviewUrl = null;
-  }
-  
-  /**
-   * Clear the attached text file, PDF, or audio recording.
-   */
   clearAttachedFile() {
-    if (this.pdfUploadPromise || this.audioUploadPromise) {
-      Utils.toast('Wait for the current file upload to finish', 'info');
-      return false;
-    }
-    this.attachedFile = null;
-    this.attachedPdf = null;
-    this.attachedAudio = null;
-    this.pdfUploadPromise = null;
-    this.audioUploadPromise = null;
-    this._clearPendingAudioPreview();
-    if (this.filePreviewContainer) {
-      this.filePreviewContainer.style.display = 'none';
-    }
-    if (this.filePreviewName) {
-      this.filePreviewName.textContent = '';
-    }
-    if (this.filePreviewSize) {
-      this.filePreviewSize.textContent = '';
-    }
-    if (this.filePreviewIcon) {
-      this.filePreviewIcon.textContent = '📄';
-    }
+    if (this._attachmentSend) return false;
+    this.attachedDocuments.forEach(item => {
+      if (item.previewUrl) window.URL?.revokeObjectURL(item.previewUrl);
+    });
+    this.attachedDocuments = [];
+    this._renderDocumentPreviews();
     return true;
   }
 
-  async _uploadAttachedPdf(pdfState) {
-    if (pdfState?.attachment) {
-      return pdfState.attachment;
-    }
-    if (!pdfState?.file || !pdfState?.uploadId) {
-      throw new Error('The selected PDF is no longer available. Please attach it again.');
-    }
-    if (this.pdfUploadPromise) {
-      return this.pdfUploadPromise;
-    }
-
+  async _uploadAttachedDocument(item, context) {
+    if (item.attachment?.mode === context.mode) return item.attachment;
     const formData = new FormData();
-    formData.append('file', pdfState.file);
-    formData.append('upload_id', pdfState.uploadId);
-
-    const uploadPromise = (async () => {
-      const response = await fetch('/api/upload-pdf', {
-        method: 'POST',
-        body: formData
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !payload.ok || !payload.attachment?.stash_ref) {
-        const error = new Error(payload.error || 'PDF upload failed. Please retry.');
-        error.code = payload.error_code || 'pdf_upload_failed';
-        error.retryable = Boolean(payload.retryable);
-        throw error;
-      }
-      pdfState.attachment = payload.attachment;
-      return payload.attachment;
-    })();
-
-    this.pdfUploadPromise = uploadPromise;
-    try {
-      return await uploadPromise;
-    } finally {
-      if (this.pdfUploadPromise === uploadPromise) {
-        this.pdfUploadPromise = null;
-      }
+    formData.append('file', item.file);
+    formData.append('upload_id', item.uploadId);
+    formData.append('mode', context.mode);
+    const response = await fetch(`/api/upload-${item.kind}`, {
+      method: 'POST', body: formData, signal: context.controller.signal
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok || !payload.attachment?.stash_ref || payload.attachment.kind !== item.kind) {
+      throw new Error(payload.error || `${item.file.name} could not be uploaded. Please retry.`);
     }
+    // Cache even after cancellation if a late successful response arrives. A
+    // retry uses the same committed artifact and never submits the stale turn.
+    item.attachment = { ...payload.attachment, mode: context.mode };
+    return item.attachment;
   }
 
-  async _uploadAttachedAudio(audioState) {
-    if (audioState?.attachment) {
-      return audioState.attachment;
-    }
-    if (!audioState?.file || !audioState?.uploadId) {
-      throw new Error('The selected audio file is no longer available. Please attach it again.');
-    }
-    if (this.audioUploadPromise) {
-      return this.audioUploadPromise;
-    }
-
-    const formData = new FormData();
-    formData.append('file', audioState.file);
-    formData.append('upload_id', audioState.uploadId);
-    formData.append('mode', this.socket?.mode || window.jarvisSocket?.mode || 'cloud');
-
-    const uploadPromise = (async () => {
-      const response = await fetch('/api/upload-audio', {
-        method: 'POST',
-        body: formData
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !payload.ok || !payload.attachment?.stash_ref) {
-        const error = new Error(payload.error || 'Audio upload failed. Please retry.');
-        error.code = payload.error_code || 'audio_upload_failed';
-        error.retryable = Boolean(payload.retryable);
-        throw error;
-      }
-      audioState.attachment = payload.attachment;
-      return payload.attachment;
-    })();
-
-    this.audioUploadPromise = uploadPromise;
-    try {
-      return await uploadPromise;
-    } finally {
-      if (this.audioUploadPromise === uploadPromise) {
-        this.audioUploadPromise = null;
-      }
-    }
-  }
-  
   /**
    * Attach an image file (upload to server, then show action modal)
    */
@@ -3303,6 +3170,9 @@ class ChatUI {
    * Clear attached images
    */
   clearAttachedImage(options = {}) {
+    if (this._attachmentSend) return;
+    if (this._imageUpload) this.cancelAttachmentPreparation();
+    this._clearPendingImageFiles();
     this.attachedImages = [];
     this.imageAttachmentAction = 'analyze';
     this.imageAttachmentSettings = {};
@@ -3313,23 +3183,38 @@ class ChatUI {
   }
 
   /**
-   * Send a message with optional image(s), browser-read text, PDF, or audio.
+   * Upload the entire selected source bundle before sending one chat request.
    */
   async sendMessage() {
+    if (this._conversationLoadPending) {
+      Utils.toast('Wait for the conversation to finish loading.', 'info');
+      return;
+    }
+    if (this.pendingImageFiles?.length) {
+      Utils.toast('Retry or remove the pending images before sending.', 'info', 4000);
+      return;
+    }
     let rawMessage = this.inputField.value.trim();
     const hasImage = this._hasAttachedImages();
     const imagePayload = this._getImageAttachmentPayload();
-    const hasTextFile = this.attachedFile !== null;
-    const pdfState = this.attachedPdf;
-    const audioState = this.attachedAudio;
-    const hasPdf = pdfState != null;
-    const hasAudio = audioState != null;
-    const hasFile = hasTextFile || hasPdf || hasAudio;
+    const documentStates = [...this.attachedDocuments];
+    const hasPdf = documentStates.some(item => item.kind === 'pdf');
+    const hasAudio = documentStates.some(item => item.kind === 'audio');
+    const hasFile = documentStates.length > 0;
     const hasSelectedToolHints = this.selectedToolHints.length > 0;
     
     // Need either message, image, or file
     if (!rawMessage && !hasImage && !hasFile && !hasSelectedToolHints) return;
     if (this.isProcessing) return;
+    const attachmentError = this._validateAttachmentSelection([]);
+    if (attachmentError) {
+      Utils.toast(attachmentError, 'error', 4000);
+      return;
+    }
+    if (hasImage && this.imageAttachmentAction !== 'analyze' && (hasFile || this.attachedImages.length !== 1)) {
+      Utils.toast('Image editing and video generation require one reference image only.', 'error');
+      return;
+    }
     if (!window.jarvisSocket?.connected) {
       Utils.toast('Jarvis is not connected', 'error');
       return;
@@ -3407,56 +3292,45 @@ class ChatUI {
       activeBadge += (activeBadge ? ' ' : '') + '<span class="badge badge-feedback">📊</span>';
     }
     
-    // Add an artifact indicator without exposing local browser paths. Audio
-    // gets a richer player inside the message bubble after its Stash upload.
-    if (hasFile && !hasAudio) {
-      const fileName = hasPdf
-        ? pdfState.file.name
-        : this.attachedFile.name;
-      const fileLabel = `📄 ${fileName}`;
-      displayMessage = displayMessage ? `${fileLabel}\n${displayMessage}` : fileLabel;
-    }
-
-    // Block duplicate sends while a binary artifact is uploaded. On failure
-    // the browser File, upload ID, and typed message remain available to retry.
+    // Upload sequentially so one failure never launches later uploads or a
+    // partial chat. Successful references and retry UUIDs remain in the draft.
+    const context = this._attachmentContext();
+    const draftText = this.inputField.value;
+    this._attachmentSend = context;
     this.isProcessing = true;
     this.updateSendButton();
-    let pdfAttachment = null;
-    let audioAttachment = null;
-    if (hasPdf) {
-      try {
-        Utils.toast('Uploading PDF to Stash…', 'info', 1500);
-        pdfAttachment = await this._uploadAttachedPdf(pdfState);
-      } catch (err) {
-        console.error('[Chat] PDF upload failed:', err);
-        this.isProcessing = false;
-        this.updateSendButton();
-        Utils.toast(err.message || 'PDF upload failed. Please retry.', 'error', 4000);
+    this._renderDocumentPreviews();
+    const attachments = [];
+    try {
+      for (const item of documentStates) {
+        if (!this._attachmentContextIsCurrent(context)) return;
+        this.showThinking();
+        this.showProgressStatus(`Preparing ${item.file.name}…`);
+        attachments.push(await this._uploadAttachedDocument(item, context));
+      }
+      if (!this._attachmentContextIsCurrent(context)) return;
+      if (this.inputField.value !== draftText) {
+        Utils.toast('Your draft changed during upload. Review it and send when ready.', 'info', 4000);
         return;
       }
-      if (this.attachedPdf !== pdfState) {
-        this.isProcessing = false;
-        this.updateSendButton();
-        return;
+    } catch (err) {
+      if (this._attachmentContextIsCurrent(context)) {
+        Utils.toast(err.message || 'Attachment upload failed. Your draft is ready to retry.', 'error', 5000);
       }
-    }
-    if (hasAudio) {
-      try {
-        Utils.toast('Uploading audio to Stash…', 'info', 1500);
-        audioAttachment = await this._uploadAttachedAudio(audioState);
-      } catch (err) {
-        console.error('[Chat] Audio upload failed:', err);
+      return;
+    } finally {
+      if (this._attachmentSend === context) {
+        this._attachmentSend = null;
+        this.hideThinking();
+        this.clearStatus();
         this.isProcessing = false;
         this.updateSendButton();
-        Utils.toast(err.message || 'Audio upload failed. Please retry.', 'error', 4000);
-        return;
-      }
-      if (this.attachedAudio !== audioState) {
-        this.isProcessing = false;
-        this.updateSendButton();
-        return;
+        this._renderDocumentPreviews();
       }
     }
+    if (!this._attachmentContextIsCurrent(context)) return;
+    this.isProcessing = true;
+    this.updateSendButton();
 
     this._resetPendingToolState();
     this.pendingVisionRetryPayload = ['analyze', 'image', 'video'].includes(imagePayload?.action)
@@ -3472,9 +3346,8 @@ class ChatUI {
       system_instruction: parsed.instruction,
       prompt_name: parsed.prompt,
       tool_hints: toolHints,
-      tool_policy: this.chatOnlyEnabled ? 'none' : 'auto'
-    }, requestFeedback, this.attachedFile,
-      pdfAttachment ? [pdfAttachment] : (audioAttachment ? [audioAttachment] : null));
+      tool_policy: effectiveChatOnly ? 'none' : 'auto'
+    }, requestFeedback, null, attachments);
     if (!sent) {
       this.isProcessing = false;
       this.updateSendButton();
@@ -3483,14 +3356,11 @@ class ChatUI {
     }
 
     // Commit the local UI only after the upload and socket handoff both succeed.
-    if (hasAudio && !displayMessage) {
-      displayMessage = 'Transcribe this audio recording.';
-    }
     this.addUserMessage(
       displayMessage,
       imagePayload,
       activeBadge,
-      audioAttachment ? [audioAttachment] : null
+      attachments
     );
     this.inputField.value = '';
     this.selectedToolHints = [];
@@ -3515,17 +3385,17 @@ class ChatUI {
     if (images.length === 1) {
       imageHtml = `
         <div class="message-image" onclick="window.showImageLightbox('${images[0].url}')">
-          <img src="${images[0].url}" alt="Attached image" loading="lazy">
+          <img src="${images[0].url}" alt="Image 1" loading="lazy">
           <div class="image-overlay">
-            <span>🔍 Click to expand</span>
+            <span>🔍 Image 1 · Click to expand</span>
           </div>
         </div>`;
     } else if (images.length > 1) {
       imageHtml = `<div class="message-images">${images.map((img, index) => `
         <div class="message-image" onclick="window.showImageLightbox('${img.url}')">
-          <img src="${img.url}" alt="Attached image ${index + 1}" loading="lazy">
+          <img src="${img.url}" alt="Image ${index + 1}" loading="lazy">
           <div class="image-overlay">
-            <span>🔍 ${index + 1}/${images.length}</span>
+            <span>🔍 Image ${index + 1}</span>
           </div>
         </div>`).join('')}</div>`;
     }
@@ -3536,17 +3406,33 @@ class ChatUI {
       badgeHtml = `<div class="command-badge">${activeBadge}</div>`;
     }
 
-    const audioAttachment = Array.isArray(attachments)
-      ? attachments.find((item) => item?.kind === 'audio')
-      : null;
-    const normalizedAudio = this._normalizeAudioAttachment(audioAttachment);
-    const audioHtml = normalizedAudio
-      ? this._renderAudioPlayerHtml(normalizedAudio, { cardClass: 'user-audio-attachment' })
+    const sources = Array.isArray(attachments) ? attachments : [];
+    const audioHtml = sources.filter(item => item?.kind === 'audio')
+      .map(item => this._normalizeAudioAttachment(item))
+      .filter(Boolean)
+      .map(item => this._renderAudioPlayerHtml(item, { cardClass: 'user-audio-attachment' }))
+      .join('');
+    const sourceHtml = sources.length
+      ? `<ul class="message-source-list">${sources.map((item, index) => {
+          const filename = Utils.escapeHtml(item.filename || 'Attached file');
+          const label = `Source ${index + 1}: ${filename}`;
+          const sourceUrl = ['pdf', 'text'].includes(item.kind)
+            ? this._sourceAttachmentUrl(item)
+            : null;
+          if (!sourceUrl) return `<li>${label}</li>`;
+          const url = Utils.escapeHtml(sourceUrl);
+          return `<li><a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a> <a href="${url}" download="${filename}" aria-label="Download ${filename}">Download</a></li>`;
+        }).join('')}</ul>`
       : '';
-    
-    const defaultPromptText = normalizedAudio
-      ? 'Transcribe this audio recording.'
-      : (images.length > 1 ? 'What\'s in these images?' : 'What\'s in this image?');
+    const defaultPromptText = sources.length + images.length > 1
+      ? 'Review these attached sources.'
+      : sources[0]?.kind === 'audio'
+        ? 'Transcribe this audio recording.'
+        : sources[0]?.kind === 'pdf'
+          ? "What's in this PDF?"
+          : sources[0]?.kind === 'text'
+            ? 'Summarize this file.'
+            : "What's in this image?";
     const defaultPrompt = `<em>${defaultPromptText}</em>`;
     messageEl._jarvisMarkdownContent = text || defaultPromptText;
 
@@ -3554,6 +3440,7 @@ class ChatUI {
       <div class="message-bubble">
         ${badgeHtml}
         ${imageHtml}
+        ${sourceHtml}
         ${text ? Utils.escapeHtml(text) : defaultPrompt}
       </div>
       ${audioHtml}
@@ -4838,11 +4725,20 @@ class ChatUI {
     return minutes > 0 ? `${minutes}:${remainder}` : `${rounded}s`;
   }
 
+  _sourceAttachmentUrl(attachment) {
+    const url = Utils.stashRefToApiUrl(attachment?.stash_ref);
+    if (!url) return null;
+    const mode = ['cloud', 'local'].includes(attachment.mode)
+      ? attachment.mode
+      : globalThis.window?.jarvisSocket?.mode;
+    return ['cloud', 'local'].includes(mode) ? `${url}?mode=${mode}` : url;
+  }
+
   _normalizeAudioAttachment(attachment) {
     if (!attachment || typeof attachment !== 'object' || attachment.kind !== 'audio') {
       return null;
     }
-    const audioUrl = Utils.stashRefToApiUrl(attachment.stash_ref);
+    const audioUrl = this._sourceAttachmentUrl(attachment);
     if (!audioUrl) return null;
 
     const filename = String(attachment.filename || attachment.name || 'Audio recording');
@@ -6731,14 +6627,19 @@ class ChatUI {
    * Update send button state
    */
   updateSendButton() {
-    this.sendBtn.disabled = this.isProcessing;
-    this.sendBtn.innerHTML = this.isProcessing ? '⏳' : '➤';
+    const busy = Boolean(this.isProcessing || this._conversationLoadPending);
+    this.sendBtn.disabled = busy;
+    this.sendBtn.innerHTML = busy ? '⏳' : '➤';
   }
   
   /**
    * Cancel current processing
    */
   cancelProcessing() {
+    if (this.cancelAttachmentPreparation()) {
+      Utils.toast('Attachment preparation stopped. Your draft is ready to retry.', 'info', 3000);
+      return;
+    }
     if (!this.isProcessing && !this.currentMessageId) return;
     
     console.log('[ChatUI] Canceling processing...');
@@ -7089,7 +6990,18 @@ class ChatUI {
   /**
    * Clear chat history
    */
-  clearChat() {
+  clearChat({ preserveAttachments = false } = {}) {
+    const clearedSources = !preserveAttachments && Boolean(
+      this.attachedDocuments.length || this.attachedImages.length
+      || this.pendingImageFiles?.length || this.pendingImageBatch?.length
+      || this.pendingVisionRetryPayload?.images?.length
+    );
+    if (!preserveAttachments) {
+      this.cancelAttachmentPreparation();
+      this.clearAttachedFile();
+      this.clearAttachedImage();
+    }
+    this._conversationLoadPending = false;
     this._resetProcessingUi();
     this.currentMessageId = null;
     this._resetPendingToolState();
@@ -7102,6 +7014,7 @@ class ChatUI {
     
     // Reset token counter for new chat
     this._resetTokenCounter();
+    return clearedSources;
   }
 }
 

@@ -51,6 +51,9 @@ class JarvisApp {
     this._connectionConnected = false;
     this._toolSyncWarningTimer = null;
     this._mediaHandoffStarted = false;
+    this._displayedConversationId = this.socket.conversationId || null;
+    this._pendingConversationLoad = null;
+    this._requestedConversationId = undefined;
     
     this._initialize();
   }
@@ -81,6 +84,7 @@ class JarvisApp {
   _setupSocketListeners() {
     this.socket.on('connectionChange', (data) => {
       this._updateConnectionStatus(data.connected);
+      if (!data.connected) this._releaseConversationLoad();
     });
     
     this.socket.on('sessionReady', (data) => {
@@ -196,6 +200,10 @@ class JarvisApp {
 
     for (const terminalEvent of ['error', 'cancelled']) {
       this.socket.on(terminalEvent, (data) => {
+        if (terminalEvent === 'error' && this._pendingConversationLoad && !data?.message_id
+            && (!data?.conversation_id || data.conversation_id === this._pendingConversationLoad.id)) {
+          this._releaseConversationLoad();
+        }
         if (data?.message_id) this._completedResponseIds.add(data.message_id);
         this._cancelStatusTTS();
       });
@@ -205,6 +213,11 @@ class JarvisApp {
     this.socket.on('conversationCreated', (data) => {
       console.log('[App] New conversation created:', data);
       this.socket.conversationId = data.conversation_id;
+      this._displayedConversationId = data.conversation_id;
+      if (!this._pendingConversationLoad) this._requestedConversationId = data.conversation_id;
+      if (this._pendingConversationLoad && this._pendingConversationLoad.originId == null) {
+        this._pendingConversationLoad.originId = data.conversation_id;
+      }
       this._updateConvIdBadge(data.conversation_id);
       this._loadConversationHistory();
     });
@@ -3417,12 +3430,15 @@ class JarvisApp {
    * Start a new chat
    */
   _startNewChat() {
+    this._pendingConversationLoad = null;
+    this._requestedConversationId = null;
+    this._displayedConversationId = null;
     this.socket.conversationId = null;
-    this.chat.clearChat();
+    const clearedSources = this.chat.clearChat();
     this.chat.refreshContextWindow();
     this._updateActiveConversation(null);
     this._updateConvIdBadge(null);
-    Utils.toast('Started new chat', 'info');
+    Utils.toast(clearedSources ? 'Started new chat. Attached sources cleared.' : 'Started new chat', 'info');
   }
 
   /**
@@ -3449,6 +3465,7 @@ class JarvisApp {
     }
 
     this._startNewChat();
+    const handoffContext = this.chat._attachmentContext();
 
     try {
       const response = await fetch('/api/media-handoff/import', {
@@ -3457,6 +3474,7 @@ class JarvisApp {
         body: JSON.stringify({ media_type: mediaType, filename })
       });
       const data = await response.json();
+      if (!this.chat._attachmentContextIsCurrent(handoffContext)) return;
       if (!response.ok || !data.ok) {
         throw new Error(data.error || 'Failed to import image');
       }
@@ -3466,6 +3484,7 @@ class JarvisApp {
         : 'analyze';
       await this.chat.attachImportedImage(data, action);
     } catch (error) {
+      if (!this.chat._attachmentContextIsCurrent(handoffContext)) return;
       console.error('[App] Media handoff failed:', error);
       Utils.toast(error.message || 'Failed to attach Canvas image', 'error');
     }
@@ -3956,7 +3975,27 @@ class JarvisApp {
    */
   loadConversation(convId) {
     console.log('[App] Loading conversation:', convId);
+    if (!convId || !this.socket.connected) {
+      Utils.toast('Connect to Jarvis before loading a conversation.', 'info');
+      return;
+    }
+    // Capture the displayed owner before JarvisSocket changes its ID when the
+    // response arrives. Keep the draft until the requested load succeeds.
+    const originId = this._displayedConversationId !== undefined
+      ? this._displayedConversationId
+      : (this.socket.conversationId || null);
+    this._displayedConversationId = originId;
+    this._requestedConversationId = convId;
+    this._pendingConversationLoad = { id: convId, originId };
+    this.chat.setConversationLoading(true);
     this.socket.emit('conversation:load', { conversation_id: convId });
+  }
+
+  _releaseConversationLoad() {
+    if (!this._pendingConversationLoad) return;
+    this._requestedConversationId = this._displayedConversationId;
+    this._pendingConversationLoad = null;
+    this.chat.setConversationLoading(false);
   }
   
   /**
@@ -3991,6 +4030,21 @@ class JarvisApp {
    */
   async _displayLoadedConversation(conversation) {
     if (!conversation) return;
+    if (this._requestedConversationId !== undefined && this._requestedConversationId !== conversation.id) {
+      // Ignore an older load completed after another selection or New chat.
+      this.socket.conversationId = this._displayedConversationId || null;
+      return;
+    }
+    const originId = this._pendingConversationLoad
+      ? this._pendingConversationLoad.originId
+      : this._displayedConversationId !== undefined
+        ? this._displayedConversationId
+        : this.socket.conversationId;
+    const switched = originId !== conversation.id;
+    this._pendingConversationLoad = null;
+    this._requestedConversationId = conversation.id;
+    this._displayedConversationId = conversation.id;
+    this.chat.setConversationLoading(false);
     
     // Update socket's conversation ID
     this.socket.conversationId = conversation.id;
@@ -3998,7 +4052,8 @@ class JarvisApp {
     this._updateConvIdBadge(conversation.id);
     
     // Clear and rebuild chat
-    this.chat.clearChat();
+    const clearedSources = this.chat.clearChat({ preserveAttachments: !switched });
+    if (clearedSources) Utils.toast('Attached sources cleared for this conversation.', 'info', 3000);
     
     // Calculate cumulative token usage from historical messages
     let cumulativeTokens = { input: 0, output: 0, total: 0 };
@@ -4029,22 +4084,13 @@ class JarvisApp {
         const imageData = imageUrls.length
           ? { images: imageUrls.map((url) => ({ url })) }
           : null;
-        const pdfAttachment = Array.isArray(msg.data?.attachments)
-          ? msg.data.attachments.find((item) => item?.kind === 'pdf' && item?.filename)
-          : null;
-        const audioAttachment = Array.isArray(msg.data?.attachments)
-          ? msg.data.attachments.find((item) => item?.kind === 'audio')
-          : null;
-        let userContent = msg.content;
-        if (pdfAttachment) {
-          userContent = `📄 ${pdfAttachment.filename}${msg.content ? `\n${msg.content}` : ''}`;
-        }
+        const attachments = Array.isArray(msg.data?.attachments) ? msg.data.attachments : [];
         const activeBadge = window.commandSystem?.getPersistedDisplay?.(msg.data) || '';
         this.chat.addUserMessage(
-          userContent,
+          msg.content,
           imageData,
           activeBadge,
-          audioAttachment ? [audioAttachment] : null
+          attachments
         );
       } else if (msg.role === 'assistant') {
         // Pass as separate parameters: text, toolsUsed, data

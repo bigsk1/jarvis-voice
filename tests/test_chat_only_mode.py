@@ -215,8 +215,12 @@ const makeChat = ({parsed, hasImage = false, selected = []}) => {
   const chat = Object.create(global.ChatUI.prototype);
   Object.assign(chat, {
     inputField: {value: '#chat_only request', focus: () => {}},
-    attachedFile: null,
-    attachedPdf: null,
+    attachedDocuments: [],
+    attachedImages: hasImage ? [{url: 'image'}] : [],
+    imageAttachmentAction: 'analyze',
+    pendingImageBatch: null,
+    _attachmentSend: null,
+    _imageUpload: null,
     selectedToolHints: [...selected],
     chatOnlyEnabled: false,
     feedbackEnabled: false,

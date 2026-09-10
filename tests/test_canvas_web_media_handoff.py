@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CANVAS_JS = (PROJECT_ROOT / "jarvis-canvas/client/static/js/gallery.js").read_text()
 CANVAS_HTML = (PROJECT_ROOT / "jarvis-canvas/client/templates/gallery.html").read_text()
@@ -41,5 +40,5 @@ def test_web_handoff_explicitly_starts_new_chat_before_importing_attachment():
 
 def test_web_uses_normal_image_action_modal_with_video_preselected():
     assert "attachImportedImage(uploadData, preferredAction = 'analyze')" in WEB_CHAT_JS
-    assert "_showImageActionModal(uploadData, preferredAction)" in WEB_CHAT_JS
+    assert "_showImageActionModal(uploadData, preferredAction, context)" in WEB_CHAT_JS
     assert "const allowedActions = new Set(['analyze', 'video', 'image'])" in WEB_CHAT_JS

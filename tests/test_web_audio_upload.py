@@ -229,9 +229,9 @@ def test_prior_audio_reference_survives_conversation_history(monkeypatch):
     monkeypatch.setattr(web_config, "get_web_setting", lambda _key, default: default)
 
     history = ChatHandler.__new__(ChatHandler)._get_conversation_context("conversation")
-    assert history[0]["content"].startswith("[ATTACHED AUDIO ARTIFACT]")
-    assert attachment["stash_ref"] in history[0]["content"]
-    assert "User's request: Keep this." in history[0]["content"]
+    assert history[0]["attachment_context"].startswith("[ATTACHED AUDIO ARTIFACT]")
+    assert attachment["stash_ref"] in history[0]["attachment_context"]
+    assert history[0]["content"] == "Keep this."
 
 
 def test_browser_audio_contract_uploads_on_send_and_restores_history_badge():
@@ -240,28 +240,26 @@ def test_browser_audio_contract_uploads_on_send_and_restores_history_badge():
     app_js = (ROOT / "jarvis-web/client/js/app.js").read_text(encoding="utf-8")
 
     assert "audio/*" in index_html and ".m4a" in index_html and ".mp3" in index_html
-    assert "fetch('/api/upload-audio'" in chat_js
-    assert "formData.append('mode', this.socket?.mode" in chat_js
+    assert "fetch(`/api/upload-${item.kind}`" in chat_js
+    assert "formData.append('mode', context.mode)" in chat_js
     audio_file_matcher = chat_js[
         chat_js.index("  _isAudioFile(") : chat_js.index("  _createArtifactUploadId(")
     ]
     assert "mime.startsWith('audio/')" not in audio_file_matcher
-    assert "this.attachedAudio !== audioState" in chat_js
-    assert "audioAttachment ? [audioAttachment]" in chat_js
-    assert "item?.kind === 'audio'" in app_js
-    assert "audioAttachment ? [audioAttachment] : null" in app_js
-    assert "`🎵 ${audioAttachment.filename}" not in app_js
-    assert "item?.kind === 'audio' && item?.filename" not in app_js
+    # Full bundle send and reload behavior executes in test_web_attachment_bundle_ui.
+    assert "const attachments = Array.isArray(msg.data?.attachments)" in app_js
+    assert "sources.filter(item => item?.kind === 'audio')" in chat_js
+
 
 
 def test_browser_audio_contract_renders_pending_and_persisted_players():
     index_html = (ROOT / "jarvis-web/client/index.html").read_text(encoding="utf-8")
     chat_js = (ROOT / "jarvis-web/client/js/chat.js").read_text(encoding="utf-8")
 
-    assert 'id="fileAudioPreview"' in index_html
-    assert "window.URL.createObjectURL(file)" in chat_js
-    assert "window.URL.revokeObjectURL(this.fileAudioPreviewUrl)" in chat_js
-    assert "this._normalizeAudioAttachment(audioAttachment)" in chat_js
+    assert 'id="filePreviewContainer"' in index_html
+    assert "window.URL.createObjectURL(item.file)" in chat_js
+    assert "window.URL?.revokeObjectURL(item.previewUrl)" in chat_js
+    assert "this._normalizeAudioAttachment(item)" in chat_js
     assert "user-audio-attachment" in chat_js
     assert "controls preload=\"metadata\"" in chat_js
     assert ">Open</a>" in chat_js

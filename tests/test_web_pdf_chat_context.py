@@ -7,7 +7,6 @@ from pathlib import Path
 
 from server_package_utils import load_server_package
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "jarvis-web"))
@@ -15,8 +14,7 @@ load_server_package("jarvis_web_pdf_chat_test", PROJECT_ROOT / "jarvis-web" / "s
 
 from jarvis_web_pdf_chat_test import config as web_config  # noqa: E402
 from jarvis_web_pdf_chat_test.services import conversation_store  # noqa: E402
-from jarvis_web_pdf_chat_test.sockets.chat import ChatHandler  # noqa: E402
-
+from jarvis_web_pdf_chat_test.sockets.chat import ChatHandler, stored_attachments  # noqa: E402
 
 ATTACHMENT = {
     "kind": "pdf",
@@ -28,7 +26,7 @@ ATTACHMENT = {
     "mime_type": "application/pdf",
     "sha256": "c" * 64,
     "page_count": 3,
-    "upload_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "upload_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
 }
 
 
@@ -81,18 +79,18 @@ def test_prior_user_pdf_reference_survives_into_later_turn_context(monkeypatch):
 
     assert len(history) == 2
     assert history[0]["role"] == "user"
-    assert history[0]["content"].startswith("[ATTACHED PDF ARTIFACT]")
-    assert ATTACHMENT["stash_ref"] in history[0]["content"]
-    assert "User's request: Keep this handy." in history[0]["content"]
+    assert history[0]["attachment_context"].startswith("[ATTACHED PDF ARTIFACT]")
+    assert ATTACHMENT["stash_ref"] in history[0]["attachment_context"]
+    assert history[0]["content"] == "Keep this handy."
     assert history[1]["content"] == "The PDF is attached, but I have not read it."
 
 
 def test_untrusted_or_unbounded_stored_attachment_shape_is_not_prompted():
-    stored = ChatHandler._stored_pdf_attachments
+    stored = stored_attachments
 
     assert stored(None) == []
     assert stored({"attachments": []}) == []
-    assert stored({"attachments": [ATTACHMENT, ATTACHMENT]}) == []
+    assert len(stored({"attachments": [ATTACHMENT, ATTACHMENT]})) == 1
     assert stored({"attachments": [{**ATTACHMENT, "kind": "other"}]}) == []
     assert stored({"attachments": [ATTACHMENT]}) == [ATTACHMENT]
 
@@ -106,18 +104,18 @@ def test_browser_pdf_contract_is_stash_only_and_retryable():
     assert ".pdf" in index_html
     assert "application/pdf" in index_html
     assert "async sendMessage()" in chat_js
-    assert "fetch('/api/upload-pdf'" in chat_js
-    assert "formData.append('upload_id', pdfState.uploadId)" in chat_js
-    assert "pdfState.attachment = payload.attachment" in chat_js
-    assert "this.attachedPdf !== pdfState" in chat_js
+    # Executed retry/cancellation coverage lives in test_web_attachment_bundle_ui.
+    assert "fetch(`/api/upload-${item.kind}`" in chat_js
+    assert "formData.append('upload_id', item.uploadId)" in chat_js
+    assert "item.attachment = { ...payload.attachment, mode: context.mode }" in chat_js
     assert "payload.attachments = attachments" in socket_js
     assert "msg.data?.attachments" in app_js
-    assert "`📄 ${pdfAttachment.filename}" in app_js
+    assert "Source ${index + 1}:" in chat_js
 
     pdf_section = chat_js[
-        chat_js.index("async _uploadAttachedPdf"):chat_js.index(
+        chat_js.index("async _uploadAttachedDocument"):chat_js.index(
             "/**\n   * Attach an image file",
-            chat_js.index("async _uploadAttachedPdf"),
+            chat_js.index("async _uploadAttachedDocument"),
         )
     ]
     assert "/api/stash/upload" not in pdf_section

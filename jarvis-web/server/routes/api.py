@@ -26,6 +26,12 @@ from ..services.audio_upload import (
     get_audio_upload_limits,
     save_audio_upload,
 )
+from ..services.text_upload import (
+    MAX_TEXT_BYTES,
+    TextUploadError,
+    check_text_upload_rate,
+    save_text_upload,
+)
 from ..services.tool_discovery import get_tool_service
 from ..services.usage_metadata import format_usage_markdown
 from ..services.user_profile_service import (
@@ -2903,6 +2909,19 @@ def serve_video_thumbnail(filename):
 
 @api_bp.route('/stash/<space_id>/<file_id>', methods=['GET'])
 def serve_stash_file(space_id, file_id):
+    """Serve source links in their explicit mode, retaining legacy default URLs."""
+    mode = request.args.get('mode')
+    if mode is None:
+        return _serve_stash_file(space_id, file_id)
+    if mode not in ('cloud', 'local'):
+        return jsonify({'ok': False, 'error': 'Mode must be "cloud" or "local"'}), 400
+    from config_loader import config_scope
+
+    with config_scope(mode):
+        return _serve_stash_file(space_id, file_id)
+
+
+def _serve_stash_file(space_id, file_id):
     """
     Serve files from the stash system.
     Resolves file_id via meta.json to get actual filename.
@@ -3265,6 +3284,7 @@ def upload_image():
 
 
 @api_bp.route('/upload-pdf', methods=['POST'])
+@_scoped_request_config
 def upload_pdf():
     """Atomically upload one validated PDF directly into Stash."""
     allowed, retry_after = check_pdf_upload_rate(request.remote_addr or "unknown")
@@ -3394,6 +3414,40 @@ def upload_audio():
             retryable=True,
         )
         return jsonify(error.to_payload()), error.status_code
+
+@api_bp.route('/upload-text', methods=['POST'])
+@_scoped_request_config
+def upload_text():
+    """Store one bounded UTF-8 note for this request and later follow-ups."""
+    allowed, retry_after = check_text_upload_rate(request.remote_addr or "unknown")
+    if not allowed:
+        error = TextUploadError(
+            f"Too many text uploads. Try again in {retry_after} seconds.",
+            error_code="text_upload_rate_limited", status_code=429, retryable=True,
+        )
+        response = jsonify(error.to_payload())
+        response.status_code = error.status_code
+        response.headers["Retry-After"] = str(retry_after)
+        return response
+    if request.content_length and request.content_length > MAX_TEXT_BYTES + 1024 * 1024:
+        error = TextUploadError("Text is too large (max 100KB).",
+                                error_code="text_upload_too_large", status_code=413)
+        return jsonify(error.to_payload()), error.status_code
+    files = request.files.getlist("file")
+    if len(files) != 1 or not files[0].filename:
+        error = TextUploadError("Select exactly one text file.", error_code="text_upload_missing")
+        return jsonify(error.to_payload()), error.status_code
+    try:
+        attachment, replay = save_text_upload(files[0], request.form.get("upload_id", ""))
+        return jsonify({"ok": True, "attachment": attachment, "idempotent_replay": replay})
+    except TextUploadError as exc:
+        return jsonify(exc.to_payload()), exc.status_code
+    except Exception as exc:
+        print(f"[Text Upload] Unexpected upload failure: {type(exc).__name__}: {exc}", flush=True)
+        error = TextUploadError("The text file could not be stored. Please retry.",
+                                error_code="text_upload_failed", status_code=500, retryable=True)
+        return jsonify(error.to_payload()), error.status_code
+
 
 @api_bp.route('/upload-images', methods=['POST'])
 def upload_images():

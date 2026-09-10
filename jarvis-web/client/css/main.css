@@ -5629,7 +5629,82 @@ body {
   padding: var(--space-sm) var(--space-md);
   background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border-primary);
+  max-height: 250px;
+  overflow-y: auto;
 }
+
+.attachment-source + .attachment-source { margin-top: var(--space-sm); }
+.attachment-source .file-preview { display: flex; width: 100%; padding-right: var(--space-sm); }
+.attachment-source .file-name { flex: 1; max-width: none; }
+.attachment-remove { border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 1.3rem; }
+.attachment-remove:hover { color: var(--error); }
+.attachment-remove:disabled { opacity: .4; cursor: default; }
+.message.user .message-source-list {
+  display: grid;
+  gap: var(--space-sm);
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--space-sm);
+  overflow-wrap: anywhere;
+}
+
+.message.user .message-source-list > li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-md);
+  margin: 0;
+  padding: var(--space-sm) 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.message.user .message-source-list a,
+.message.user .message-source-list a:visited {
+  color: #fff;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.6);
+  text-underline-offset: 3px;
+}
+
+.message.user .message-source-list a:not([download]) {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.message.user .message-source-list a:hover {
+  text-decoration-color: #fff;
+}
+
+.message.user .message-source-list a[download] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.16);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.message.user .message-source-list a[download]:hover {
+  background: rgba(0, 0, 0, 0.28);
+  border-color: rgba(255, 255, 255, 0.65);
+}
+
+.message.user .message-source-list a:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+.attachment-image-label { position: absolute; bottom: 0; left: 0; right: 0; padding: 2px; background: rgba(0, 0, 0, .7); color: white; font-size: var(--text-xs); text-align: center; }
 
 .file-preview {
   position: relative;

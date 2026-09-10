@@ -263,6 +263,24 @@ class ContextAssembler:
         context_lines.append(
             "Do NOT reconstruct detailed artifacts from prior assistant prose when structured tool_results are available."
         )
+        if any(
+            isinstance(message.get("tool_results"), dict)
+            and any(
+                isinstance(result, dict)
+                and isinstance(result.get("results") or result.get("summaries"), list)
+                for tool, result in message["tool_results"].items()
+                if tool in {"pdf_read", "document_ocr", "transcribe_audio", "stash", "text_summarizer"}
+            )
+            for message in recent
+        ):
+            context_lines.append(
+                "Multiple source results: each results/summaries entry belongs to its own input. "
+                "Match source_stash_ref or that entry's request to the uploaded source inventory; "
+                "execution order is not upload order. For PDF/OCR/audio rows, generated "
+                "stash_ref/transcript_stash_ref values identify extracted output, not the original "
+                "PDF or audio. Reuse the matching saved output for follow-ups; "
+                "bounded excerpts are not the complete source."
+            )
         last_msg = recent[-1]
         last_role = last_msg.get("role", "user")
         last_msg_dt = None
@@ -329,6 +347,16 @@ class ContextAssembler:
                     context_lines.append(f"{prefix} [tools: {tools_str}]: {content}")
             else:
                 context_lines.append(f"{prefix}: {content}")
+
+            # Uploaded references and per-source excerpts have their own shared
+            # budget. Truncating them with ordinary user prose could erase a
+            # later source or cut its stash reference in the middle.
+            attachment_context = message.get("attachment_context")
+            if role == "user" and isinstance(attachment_context, str) and attachment_context:
+                if len(attachment_context) > 8000:
+                    suffix = "\n... [attachment context truncated for follow-up context]"
+                    attachment_context = attachment_context[:8000 - len(suffix)].rstrip() + suffix
+                context_lines.append(f"  Attached source context:\n{attachment_context}")
 
         for message in recent:
             tool_results = message.get("tool_results", {}) or {}
