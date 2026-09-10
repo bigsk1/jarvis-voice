@@ -1604,6 +1604,7 @@ class ChatUI {
     const socket = window.jarvisSocket;
     
     socket.on('thinking', (data) => {
+      if (this._pendingSend?.requestId === data.message_id) this._pendingSend = null;
       this.currentMessageId = data.message_id;
       this._activatePendingToolsForMessage(data.message_id, true);
       this.isProcessing = true;
@@ -1691,6 +1692,7 @@ class ChatUI {
     });
     
     socket.on('response', (data) => {
+      if (this._pendingSend?.requestId === data.message_id) this._pendingSend = null;
       this._activatePendingToolsForMessage(data.message_id);
       this.hideThinking();
       this.clearStatus();  // Clear any status messages
@@ -1699,6 +1701,10 @@ class ChatUI {
       this.currentMessageId = null;
       this.isProcessing = false;
       this.updateSendButton();
+      if (this._serverRunState?.message_id === data.message_id
+          && ['running', 'stopping'].includes(this._serverRunState.status)) {
+        this.restoreRunState(this._serverRunState, { fromSnapshot: true });
+      }
       
       // Update token counter if usage data available
       if (data.usage) {
@@ -1730,6 +1736,7 @@ class ChatUI {
       this.hideThinking();
       this.clearStatus();
       this.addErrorMessage(data.error);
+      this.rememberRenderedMessage('error', data.message_id);
       this._clearPendingToolsForMessage(data.message_id);
       if (
         ['vision_model_unsupported', 'vision_analysis_failed', 'image_edit_stash_failed', 'image_video_stash_failed', 'image_bundle_stash_failed'].includes(data.error_code)
@@ -1769,12 +1776,50 @@ class ChatUI {
     });
 
     socket.on('cancelAck', (data) => {
-      if (!data?.message_id || !this.currentMessageId || this.currentMessageId === data.message_id) {
-        this._resetProcessingUi();
-        this.currentMessageId = null;
+      if (data?.message_id && this.currentMessageId === data.message_id) {
+        if (data.status === 'not_running') {
+          window.jarvisApp?.loadConversation(socket.conversationId);
+        } else {
+          this.showProgressStatus('Stopping…');
+          this.stopBtn.disabled = true;
+        }
       }
+    });
 
-      Utils.toast('Stopping current task...', 'info', 1500);
+    socket.on('runState', (data) => this.restoreRunState(data));
+    socket.on('rejected', (data) => {
+      socket.clearPendingRequest?.();
+      const pending = this._pendingSend;
+      if (pending?.requestId === data.message_id) {
+        pending.element?.remove();
+        this._renderedMessageIds?.delete(`user:${pending.requestId}`);
+        const newerDraft = this.inputField.value;
+        this.inputField.value = newerDraft && newerDraft !== pending.text
+          ? `${pending.text}\n\n${newerDraft}` : pending.text;
+        if (!this.attachedDocuments.length) this.attachedDocuments = pending.documents;
+        if (!this.attachedImages.length) {
+          this.attachedImages = pending.images;
+          this.imageAttachmentAction = pending.imageAction;
+          this.imageAttachmentSettings = pending.imageSettings;
+        }
+        if (!this.selectedToolHints.length) this.selectedToolHints = pending.toolHints || [];
+        this._renderToolHintChips();
+        this._renderDocumentPreviews();
+        this._renderImagePreviews();
+        Utils.autoResize(this.inputField);
+        this._pendingSend = null;
+      }
+      this._resetProcessingUi();
+      this.currentMessageId = null;
+      Utils.toast(`${data.error} Your unsent draft is available below.`, 'warning', 6000);
+      if (data.conversation_id) window.jarvisApp?.loadConversation(data.conversation_id, { reconcile: true });
+    });
+    socket.on('connectionChange', (data) => {
+      this.updateSendButton();
+      if (!data.connected && this.isProcessing) {
+        this.showProgressStatus('Connection lost. Reconnecting to the task…');
+        this.stopBtn.disabled = true;
+      }
     });
     
     // Feedback events (async analysis after response)
@@ -1789,15 +1834,10 @@ class ChatUI {
     });
 
     socket.on('completionGuardUpdated', (data) => {
-      this._handleCompletionGuardTerminalUi(data);
       this._updateCompletionGuardCard(data);
     });
 
     socket.on('completionGuardTicketCreated', (data) => {
-      this._handleCompletionGuardTerminalUi({
-        ...data,
-        status: 'ticket_created'
-      });
       this._updateCompletionGuardCard({
         ...data,
         status: 'ticket_created'
@@ -1807,10 +1847,6 @@ class ChatUI {
 
     socket.on('completionGuardError', (data) => {
       const staleContext = /expired|not found|missing_session_context/i.test(data?.error || '');
-      this._handleCompletionGuardTerminalUi({
-        ...data,
-        status: staleContext ? 'expired' : 'error'
-      });
       this._updateCompletionGuardCard({
         ...data,
         status: staleContext ? 'expired' : 'error'
@@ -2500,8 +2536,8 @@ class ChatUI {
     return wasPreparing;
   }
 
-  setConversationLoading(loading) {
-    if (loading) this.cancelAttachmentPreparation({ preserveModal: true });
+  setConversationLoading(loading, { preservePreparation = false } = {}) {
+    if (loading && !preservePreparation) this.cancelAttachmentPreparation({ preserveModal: true });
     this._conversationLoadPending = Boolean(loading);
     this.updateSendButton();
   }
@@ -3355,13 +3391,23 @@ class ChatUI {
       return;
     }
 
+    this.currentMessageId = window.jarvisSocket.lastRequestId;
+    this._pendingSend = {
+      requestId: this.currentMessageId, text: draftText,
+      documents: documentStates.map(item => ({ ...item, previewUrl: null })),
+      images: [...this.attachedImages], toolHints: [...this.selectedToolHints],
+      imageAction: this.imageAttachmentAction,
+      imageSettings: { ...this.imageAttachmentSettings },
+    };
+
     // Commit the local UI only after the upload and socket handoff both succeed.
-    this.addUserMessage(
+    this._pendingSend.element = this.addUserMessage(
       displayMessage,
       imagePayload,
       activeBadge,
       attachments
     );
+    this.rememberRenderedMessage('user', this.currentMessageId);
     this.inputField.value = '';
     this.selectedToolHints = [];
     this._renderToolHintChips();
@@ -3448,6 +3494,7 @@ class ChatUI {
     
     this.messagesContainer.appendChild(messageEl);
     Utils.scrollToBottom(this.messagesContainer);
+    return messageEl;
   }
 
   /**
@@ -3482,6 +3529,7 @@ class ChatUI {
     const messageEl = document.createElement('div');
     messageEl.className = 'message assistant new-message';
     const liveMessageId = data.message_id || data._web_message_id || data.data?._web_message_id || '';
+    this.rememberRenderedMessage('assistant', liveMessageId);
     const conversationId = data.conversation_id || data.data?.conversation_id || window.jarvisSocket?.conversationId || '';
     if (liveMessageId) {
       messageEl.dataset.messageId = liveMessageId;
@@ -5305,6 +5353,9 @@ class ChatUI {
       } else if (persistedStatus === 'cancelled') {
         statusText = 'Cancelled';
         summaryText = 'Repair was stopped before it finished. You can leave it as-is or try again.';
+      } else if (persistedStatus === 'interrupted') {
+        statusText = 'Interrupted';
+        summaryText = 'The Web server restarted during this repair. It was not retried.';
       } else if (persistedStatus === 'unresolved') {
         statusText = 'Unresolved';
         summaryText = ticketPath
@@ -5757,7 +5808,7 @@ class ChatUI {
     });
     const status = actions.querySelector('.message-reaction-status');
     if (status) status.textContent = 'Saved for Intelligence';
-    Utils.toast(
+    if (!data.restored) Utils.toast(
       data.reaction === 'up'
         ? 'Helpful response promoted for Intelligence'
         : 'Response marked unsatisfactory for Intelligence',
@@ -5809,8 +5860,11 @@ class ChatUI {
    * Show thinking indicator
    */
   showThinking() {
-    // Remove existing thinking indicator
-    this.hideThinking();
+    // Reuse the container: live tool cards are nested beneath it.
+    if (this.messagesContainer.querySelector('.thinking-message')) {
+      if (this.stopBtn) this.stopBtn.style.display = 'flex';
+      return;
+    }
     
     // Show stop button
     if (this.stopBtn) {
@@ -5938,16 +5992,63 @@ class ChatUI {
     this.updateSendButton();
   }
 
-  _handleCompletionGuardTerminalUi(data) {
-    const terminalStatuses = new Set(['tighten_only', 'cancelled', 'ticket_created', 'error']);
-    if (!terminalStatuses.has(data?.status)) {
+  rememberRenderedMessage(role, id) {
+    this._renderedMessageIds ||= new Set();
+    if (id) this._renderedMessageIds.add(`${role}:${id}`);
+  }
+
+  reconcileLiveActions(conversation) {
+    for (const message of conversation.messages || []) {
+      const data = message.data || {};
+      const id = data._web_message_id;
+      if (!id) continue;
+      if (id !== conversation.reaction_message_id && !data._user_feedback) {
+        const actions = this.messagesContainer.querySelector(`.message-response-actions[data-message-id="${id}"]`);
+        actions?.querySelectorAll('[data-reaction], .message-reaction-status').forEach(item => item.remove());
+      }
+      if (data._completion_guard?.status === 'pending' && !conversation.completion_guards?.[id]
+          && this.messagesContainer.querySelector(`.completion-guard-card[data-message-id="${id}"]`)) {
+        this._updateCompletionGuardCard({message_id: id, status: 'expired'});
+      }
+    }
+  }
+
+  restoreRunState(run, { fromSnapshot = false, responseSaved = false, preservePreparation = false } = {}) {
+    const active = run && ['running', 'stopping'].includes(run.status);
+    if (!fromSnapshot && !active && run?.message_id && this.currentMessageId
+        && run.message_id !== this.currentMessageId) return;
+    if (!fromSnapshot && run?.started_at < this._serverRunState?.started_at) return;
+    this._serverRunState = run || null;
+    if (preservePreparation && (this._attachmentSend || this._imageUpload)) {
+      this.stopBtn.disabled = !window.jarvisSocket.connected;
+      this.stopBtn.style.opacity = this.stopBtn.disabled ? '0.5' : '1';
+      this.showProgressStatus('Preparing attached sources…');
       return;
     }
-
-    this._resetProcessingUi();
-    this.currentMessageId = null;
+    if (!fromSnapshot && active && this.currentMessageId !== run.message_id) {
+      // Another tab started a task. Load its user turn as well as its state.
+      window.jarvisApp?.loadConversation(run.conversation_id);
+      return;
+    }
+    if (active) {
+      const alreadyVisible = this.isProcessing && this.currentMessageId === run.message_id;
+      this.currentMessageId = run.message_id;
+      this.isProcessing = true;
+      this.updateSendButton();
+      if (!alreadyVisible) this.showThinking();
+      this.showProgressStatus(run.status === 'stopping' ? 'Stopping…' : (run.status_text || 'Working…'));
+      this.stopBtn.disabled = run.status === 'stopping' || !window.jarvisSocket.connected;
+      this.stopBtn.style.opacity = this.stopBtn.disabled ? '0.5' : '1';
+    } else {
+      this._resetProcessingUi();
+      this.currentMessageId = null;
+      if (fromSnapshot && !responseSaved && run && ['failed', 'interrupted'].includes(run.status)) {
+        this.addErrorMessage(run.error || 'This task did not finish successfully.');
+      }
+    }
+    if (run?.persistence_error) Utils.toast(run.persistence_error, 'error', 10000);
   }
-  
+
   /**
    * Show an ephemeral status message (progress update)
    * Delayed by 1 second to sync with TTS audio playback
@@ -6491,10 +6592,11 @@ class ChatUI {
         : '#feedback-card'
     );
     if (!card) {
-      // Card doesn't exist, create it and retry
+      if (data?.message_id && !this.messagesContainer.querySelector(`.message.assistant[data-message-id="${data.message_id}"]`)) return;
       this._showFeedbackCard('analyzing', data?.message_id);
-      setTimeout(() => this._updateFeedbackCard(data), 100);
-      return;
+      card = this.messagesContainer.querySelector(data?.message_id
+        ? `.tool-card.feedback[data-message-id="${data.message_id}"]` : '#feedback-card');
+      if (!card) return;
     }
     
     // Update status
@@ -6627,7 +6729,7 @@ class ChatUI {
    * Update send button state
    */
   updateSendButton() {
-    const busy = Boolean(this.isProcessing || this._conversationLoadPending);
+    const busy = Boolean(this.isProcessing || this._conversationLoadPending || window.jarvisSocket?.connected === false);
     this.sendBtn.disabled = busy;
     this.sendBtn.innerHTML = busy ? '⏳' : '➤';
   }
@@ -6645,10 +6747,9 @@ class ChatUI {
     console.log('[ChatUI] Canceling processing...');
     
     // Send cancel event to server
-    if (window.jarvisSocket && window.jarvisSocket.socket) {
-      window.jarvisSocket.socket.emit('cancel', {
-        message_id: this.currentMessageId
-      });
+    if (!window.jarvisSocket?.cancel(window.jarvisSocket.conversationId, this.currentMessageId)) {
+      Utils.toast('Reconnect to Jarvis to stop this task.', 'info', 3000);
+      return;
     }
     
     // Show cancellation status
@@ -6976,10 +7077,15 @@ class ChatUI {
     const mode = meta?.mode || null;
     const billingMode = meta?.billingMode || null;
     let contextWindow = meta?.contextWindow || null;
+    const restoredMeta = { provider, model, mode, billingMode, contextWindow };
+    this.tokenStatsMeta = restoredMeta;
     if (!contextWindow && provider) {
       contextWindow = await this._resolveContextWindowForProviderModel(provider, model, mode);
     }
-    this.tokenStatsMeta = { provider, model, mode, billingMode, contextWindow };
+    // A live response or another conversation can arrive during metadata lookup.
+    if (this.tokenStatsMeta !== restoredMeta || restoredMeta.provider !== provider
+        || restoredMeta.model !== model || restoredMeta.mode !== mode) return;
+    this.tokenStatsMeta.contextWindow = contextWindow;
 
     this._renderTokenCount();
     this._renderCostLabel();
@@ -6990,19 +7096,21 @@ class ChatUI {
   /**
    * Clear chat history
    */
-  clearChat({ preserveAttachments = false } = {}) {
+  clearChat({ preserveAttachments = false, preservePreparation = false } = {}) {
+    this._renderedMessageIds = new Set();
     const clearedSources = !preserveAttachments && Boolean(
       this.attachedDocuments.length || this.attachedImages.length
       || this.pendingImageFiles?.length || this.pendingImageBatch?.length
       || this.pendingVisionRetryPayload?.images?.length
     );
     if (!preserveAttachments) {
+      this._pendingSend = null;
       this.cancelAttachmentPreparation();
       this.clearAttachedFile();
       this.clearAttachedImage();
     }
     this._conversationLoadPending = false;
-    this._resetProcessingUi();
+    if (!preservePreparation || !(this._attachmentSend || this._imageUpload)) this._resetProcessingUi();
     this.currentMessageId = null;
     this._resetPendingToolState();
 

@@ -46,16 +46,17 @@ class TestToolProfiles(unittest.TestCase):
             )["overrides"]
             self.assertIsNot(overrides.get("external_network_intel"), False)
 
-        profiles_dir = ROOT / "skills" / "profiles"
+        # User-installed copies are gitignored; validate the shipped templates.
         for profile_name in ("offline.json",):
             overrides = json.loads(
-                (profiles_dir / profile_name).read_text(encoding="utf-8")
+                (examples_dir / profile_name).read_text(encoding="utf-8")
             )["overrides"]
             self.assertIs(overrides.get("external_network_intel"), False)
 
+        profiles_dir = ROOT / "skills" / "profiles"
         for profile_name in (
             "default.json", "docker.json", "docker-mcp.json",
-            "local_minimal_assistant.json", "openai_only.json"
+            "examples/local_minimal_assistant.json", "openai_only.json"
         ):
             overrides = json.loads(
                 (profiles_dir / profile_name).read_text(encoding="utf-8")

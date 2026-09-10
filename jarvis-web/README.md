@@ -9,6 +9,7 @@ A modern, feature-rich web interface for Jarvis with real-time streaming, voice 
 ### 💬 Chat & Conversations
 - **Real-time Streaming** - See responses and tool execution as they happen via WebSocket
 - **Conversation History** - Full CRUD with persistent storage
+- **[Task Recovery](../docs/WEB_TASK_RECOVERY.md)** - Reconnect to running work and Stop; recover missed answers without replaying speech
 - **Deep Search** - Search across all conversation messages
 - **Export/Import** - Export to JSON or Markdown, import previous conversations
 - **Auto-title Generation** - Conversations are auto-titled based on content
@@ -228,7 +229,8 @@ Event names below are what the **server** emits / the **client** sends (see `cli
 | Event | Description |
 |-------|-------------|
 | `chat:send` | Send a message (supports image attachment) |
-| `chat:cancel` | Cancel current processing |
+| `chat:cancel` | Request Stop for a conversation and message ID; wait for terminal state |
+| `chat:resume` | Find an accepted request by ID without resending work |
 | `completion_guard:submit` | Completion Guard feedback / repair flow |
 | `message_reaction:submit` | Record one human reaction for the latest pending response |
 | `conversation:load` | Load a conversation by id |
@@ -243,12 +245,14 @@ Event names below are what the **server** emits / the **client** sends (see `cli
 |-------|-------------|
 | `connected` | Session established |
 | `chat:thinking` | Processing started |
+| `chat:run` | Conversation-owned running, stopping, or terminal state |
+| `chat:rejected` / `chat:resume_missing` | Admission or request-recovery explanation |
 | `chat:status` | Deadline-bound intermediate status line; browser may request cached status TTS |
 | `tool:start` / `tool:progress` / `tool:complete` / `tool:error` | Tool execution lifecycle |
 | `chat:response` | Final response payload (text, usage, completion guard snapshot, …) |
 | `chat:error` / `chat:cancelled` | Errors and user cancel |
-| `conversation:created` / `conversation:loaded` | Sidebar sync |
-| `mode:changed` / `tools:updated` | Settings-driven updates |
+| `conversation:created` / `conversation:loaded` | Sidebar sync / authoritative history with current run state |
+| `mode:changed` / `mode:rejected` / `tools:updated` | Acknowledged mode/settings changes or active-task rejection |
 | `cancel:ack` | Ack after cancel |
 | `completion_guard:updated` / `completion_guard:ticket_created` / `completion_guard:error` | Completion Guard UI |
 | `message_reaction:updated` / `message_reaction:error` | Latest-response human reaction result |

@@ -13,11 +13,14 @@ import copy
 import threading
 import functools
 import inspect
+from collections import OrderedDict
 from urllib.parse import urlparse
 from datetime import datetime
 from pathlib import Path
 from flask_socketio import emit, join_room, leave_room
 from flask import request
+from ..services.chat_runs import ChatRuns
+from ..services.conversation_store import ConversationBusyError
 
 # Add Jarvis libs to path
 JARVIS_ROOT = Path(__file__).parent.parent.parent.parent
@@ -248,8 +251,10 @@ class ChatHandler:
     }
     def __init__(self, socketio):
         self.socketio = socketio
+        self.runs = ChatRuns(self._conversation_store, socketio.emit)
         self.sessions = {}  # session_id -> {mode, conversation_id, ...}
         self.pending_cancellations = {}  # message_id -> True (to signal orchestrator to stop)
+        self._completion_records = OrderedDict()
         self.completion_guard_policy = CompletionGuardPolicy(
             parse_bool_fn=self._parse_bool,
             normalize_server_side_tool_names_fn=self._normalize_server_side_tool_names,
@@ -257,6 +262,35 @@ class ChatHandler:
             default_excluded_tools=set(self.DEFAULT_COMPLETION_GUARD_EXCLUDED_TOOLS),
         )
         self._register_handlers()
+
+    @staticmethod
+    def _conversation_store():
+        from ..services.conversation_store import get_conversation_store
+        return get_conversation_store()
+
+    def _emit_run_event(self, event, data, **kwargs):
+        if hasattr(self, 'runs'):
+            self.runs.event(event, data, **kwargs)
+        else:
+            self.socketio.emit(event, data, **kwargs)
+
+    def _execute_chat_run(self, *args):
+        session_id, _, _, message_id, conversation_id = args[:5]
+        try:
+            self._process_message(*args)
+        except Exception as exc:
+            # Includes failures entering the request's config scope.
+            self._emit_run_event('chat:error', {
+                'message_id': message_id, 'conversation_id': conversation_id,
+                'error': str(exc),
+            }, room=self._delivery_room(session_id, conversation_id))
+        finally:
+            with self.runs.conversation_lock(conversation_id):
+                settled = self.runs.finish(conversation_id, message_id, 'failed',
+                                          'The task ended without a result.')
+                if settled:
+                    self.socketio.emit('chat:run', settled, room=self._delivery_room(session_id, conversation_id))
+            self.pending_cancellations.pop(message_id, None)
 
     def _get_completion_guard_policy(self) -> CompletionGuardPolicy:
         """Lazily build the Completion Guard policy helper for tests using __new__."""
@@ -494,8 +528,8 @@ class ChatHandler:
         return self._get_completion_guard_policy().should_auto_evaluate(config, tools_used)
 
     def _remember_completion_guard_record(self, session_id: str, message_id: str, record: dict):
-        """Keep a small per-session record so a later 'No' can create a useful ticket."""
-        session = self.sessions.setdefault(session_id, {})
+        """Retain bounded review context across socket changes in this server lifetime."""
+        session = self.sessions.get(session_id, {})
         records = session.setdefault('completion_guard_records', {})
         record['timestamp'] = float(record.get('timestamp') or time.time())
         record.setdefault('status', 'pending')
@@ -504,6 +538,12 @@ class ChatHandler:
         if record.get('completion_guard_prompt') and ttl_seconds > 0:
             record.setdefault('expires_at', record['timestamp'] + ttl_seconds)
         records[message_id] = record
+        if not hasattr(self, '_completion_records'):
+            self._completion_records = OrderedDict()
+        self._completion_records[message_id] = record
+        self._completion_records.move_to_end(message_id)
+        while len(self._completion_records) > 50:
+            self._completion_records.popitem(last=False)
 
         # Keep recent records bounded per session.
         if len(records) > 50:
@@ -513,7 +553,8 @@ class ChatHandler:
 
     def _get_completion_guard_record(self, session_id: str, message_id: str) -> dict | None:
         """Fetch a stored Completion Guard record for this web session."""
-        return self.sessions.get(session_id, {}).get('completion_guard_records', {}).get(message_id)
+        return (self.sessions.get(session_id, {}).get('completion_guard_records', {}).get(message_id)
+                or getattr(self, '_completion_records', {}).get(message_id))
 
     @staticmethod
     def _completion_guard_record_expired(record: dict) -> bool:
@@ -774,7 +815,7 @@ class ChatHandler:
         except Exception as e:
             print(f"[COMPLETION_GUARD] Failed to persist {status} state: {e}")
 
-        self.socketio.emit('completion_guard:updated', {
+        self._emit_run_event('completion_guard:updated', {
             'message_id': message_id,
             'conversation_id': conversation_id,
             'status': status,
@@ -805,7 +846,8 @@ class ChatHandler:
 
     def _supersede_pending_completion_guards(self, session_id: str, conversation_id: str) -> None:
         """Mark older unanswered manual guard prompts inactive when the user continues chatting."""
-        records = self.sessions.get(session_id, {}).get('completion_guard_records', {})
+        records = {**getattr(self, '_completion_records', {}),
+                   **self.sessions.get(session_id, {}).get('completion_guard_records', {})}
         for record in list(records.values()):
             if record.get('conversation_id') != conversation_id:
                 continue
@@ -1217,11 +1259,8 @@ Important:
         if reaction not in {'up', 'down'}:
             return {**failure, 'reason': 'invalid_reaction'}
 
-        records = (
-            self.sessions.get(session_id, {}).get('completion_guard_records', {})
-            if isinstance(getattr(self, 'sessions', None), dict)
-            else {}
-        )
+        records = {**getattr(self, '_completion_records', {}),
+                   **self.sessions.get(session_id, {}).get('completion_guard_records', {})}
         live_record = records.get(message_id)
         if not live_record:
             live_record = next(
@@ -1327,7 +1366,7 @@ Important:
             'user_satisfied': reaction == 'up',
             'priority': update.get('priority'),
         }
-        self.socketio.emit(
+        self._emit_run_event(
             'message_reaction:updated',
             payload,
             room=self._delivery_room(session_id, conversation_id),
@@ -1669,23 +1708,6 @@ Returned tool data:
             if attempts >= 1:
                 return
 
-            record['status'] = 'repairing'
-            record['user_note'] = note
-            record['repair_attempts'] = attempts + 1
-            store.update_message_data_by_web_message_id(
-                conversation_id,
-                message_id,
-                {
-                    '_completion_guard': {
-                        'status': 'repairing',
-                        'note': note,
-                        'auto_triggered': True,
-                        'auto_evaluation': evaluation,
-                        'started_at': datetime.now().isoformat()
-                    }
-                }
-            )
-
             self._run_completion_guard_repair(session_id, record, note)
 
         except Exception as e:
@@ -1700,30 +1722,101 @@ Returned tool data:
                 'none'
             )
 
+    def _run_completion_guard_repair(self, session_id: str, record: dict, note: str = '', *, background=False):
+        """Persist repair admission before reporting repairing or starting a worker."""
+        conversation_id = record.get('conversation_id')
+        repair_message_id = str(uuid.uuid4())
+        runs = getattr(self, 'runs', None)
+        claimed = False
+        started = False
+        try:
+            if runs:
+                claimed = runs.claim(
+                    conversation_id, repair_message_id, record.get('mode', 'cloud'),
+                    kind='repair', parent_message_id=record.get('message_id'),
+                    data={'note': note, 'auto_triggered': bool(record.get('auto_evaluation')),
+                          'auto_evaluation': record.get('auto_evaluation')},
+                )
+                if not claimed:
+                    return
+            record['status'] = 'repairing'
+            record['user_note'] = note
+            record['repair_attempts'] = int(record.get('repair_attempts', 0) or 0) + 1
+            if runs:
+                self._emit_run_event('chat:run', runs.public(runs.active[conversation_id]),
+                                     room=self._delivery_room(session_id, conversation_id))
+            if background:
+                self._start_blocking_task(
+                    self._execute_completion_guard_repair, session_id, record, note, repair_message_id,
+                    name=f"completion-guard-repair-{repair_message_id[:8]}",
+                )
+            else:
+                self._execute_completion_guard_repair(session_id, record, note, repair_message_id)
+            started = True
+        except ConversationBusyError as exc:
+            record['status'] = 'superseded'
+            self._emit_run_event('completion_guard:updated', {
+                'conversation_id': conversation_id, 'message_id': record.get('message_id'),
+                'status': 'superseded', 'reason': str(exc),
+            }, room=self._delivery_room(session_id, conversation_id))
+        except Exception as exc:
+            record['status'] = 'error'
+            self._emit_run_event('completion_guard:error', {
+                'conversation_id': conversation_id, 'message_id': record.get('message_id'),
+                'error': f'The repair could not be started: {exc}',
+            }, room=self._delivery_room(session_id, conversation_id))
+        finally:
+            if claimed and not started:
+                with runs.conversation_lock(conversation_id):
+                    settled = runs.finish(conversation_id, repair_message_id, 'failed', 'The repair worker could not be started.')
+                    if settled:
+                        self.socketio.emit('chat:run', settled, room=self._delivery_room(session_id, conversation_id))
+
+    def _execute_completion_guard_repair(self, session_id, record, note, repair_message_id):
+        runs = getattr(self, 'runs', None)
+        conversation_id = record.get('conversation_id')
+        try:
+            self._process_completion_guard_repair(session_id, record, note, repair_message_id)
+        except Exception as exc:
+            record['status'] = 'error'
+            self._emit_run_event('completion_guard:error', {
+                'conversation_id': conversation_id, 'message_id': record.get('message_id'),
+                'error': f'The repair failed: {exc}',
+            }, room=self._delivery_room(session_id, conversation_id))
+        finally:
+            self.pending_cancellations.pop(repair_message_id, None)
+            if runs:
+                status = record.get('status')
+                outcome = ('cancelled' if status == 'cancelled' else 'completed'
+                           if status in ('repaired', 'tighten_only') else 'failed')
+                with runs.conversation_lock(conversation_id):
+                    settled = runs.finish(conversation_id, repair_message_id, outcome)
+                    if settled:
+                        self.socketio.emit('chat:run', settled, room=self._delivery_room(session_id, conversation_id))
+
     @_scoped_by_mode
-    def _run_completion_guard_repair(self, session_id: str, record: dict, note: str = ''):
+    def _process_completion_guard_repair(self, session_id, record, note, repair_message_id):
         """Run one bounded repair attempt before falling back to ticketing."""
         conversation_id = record.get('conversation_id')
         parent_message_id = record.get('message_id')
         mode = record.get('mode', 'cloud')
         repair_tool_policy = self._sanitize_tool_policy(record.get('tool_policy'))
-        repair_message_id = str(uuid.uuid4())
         start_time = time.time()
         delivery_room = self._delivery_room(session_id, conversation_id)
 
-        self.socketio.emit('completion_guard:updated', {
+        self._emit_run_event('completion_guard:updated', {
             'message_id': parent_message_id,
             'conversation_id': conversation_id,
             'status': 'repairing',
             'auto_triggered': bool(record.get('auto_evaluation'))
         }, room=delivery_room)
 
-        self.socketio.emit('chat:thinking', {
+        self._emit_run_event('chat:thinking', {
             'message_id': repair_message_id,
             'conversation_id': conversation_id
         }, room=delivery_room)
 
-        self.socketio.emit('chat:status', {
+        self._emit_run_event('chat:status', {
             'message_id': repair_message_id,
             'conversation_id': conversation_id,
             'status': "Let's see if we can find a better solution.",
@@ -1747,7 +1840,7 @@ Returned tool data:
             )
 
             def status_callback(status_message: str):
-                self.socketio.emit('chat:status', {
+                self._emit_run_event('chat:status', {
                     'message_id': repair_message_id,
                     'conversation_id': conversation_id,
                     'status': status_message,
@@ -1758,7 +1851,7 @@ Returned tool data:
                 if event_type == 'tool_start':
                     tool_name = kwargs.get('tool')
                     call_index = kwargs.get('call_index', 0)
-                    self.socketio.emit('tool:start', {
+                    self._emit_run_event('tool:start', {
                         'message_id': repair_message_id,
                         'tool': tool_name,
                         'call_index': call_index,
@@ -1785,15 +1878,15 @@ Returned tool data:
                         payload['success'] = True
                     else:
                         payload['error'] = kwargs.get('error', 'Unknown error')
-                    self.socketio.emit(event_name, payload, room=delivery_room)
+                    self._emit_run_event(event_name, payload, room=delivery_room)
                 elif event_type == 'routing':
-                    self.socketio.emit('tool:progress', {
+                    self._emit_run_event('tool:progress', {
                         'message_id': repair_message_id,
                         'status': kwargs.get('message'),
                         'timestamp': time.time()
                     }, room=delivery_room)
                 elif event_type == 'tool_progress':
-                    self.socketio.emit('tool:progress', {
+                    self._emit_run_event('tool:progress', {
                         'message_id': repair_message_id,
                         'tool': kwargs.get('tool'),
                         'call_index': kwargs.get('call_index', 0),
@@ -1921,13 +2014,13 @@ Previous structured data:
                         }
                     }
                 )
-                self.socketio.emit('completion_guard:updated', {
+                self._emit_run_event('completion_guard:updated', {
                     'message_id': parent_message_id,
                     'conversation_id': conversation_id,
                     'status': 'cancelled',
                     'note': note
                 }, room=delivery_room)
-                self.socketio.emit('chat:cancelled', {
+                self._emit_run_event('chat:cancelled', {
                     'conversation_id': conversation_id,
                     'message_id': repair_message_id
                 }, room=delivery_room)
@@ -2044,6 +2137,7 @@ Previous structured data:
             if repair_usage:
                 save_data['usage'] = repair_usage
             save_data['_web_message_id'] = repair_message_id
+            save_data['_run_status'] = 'completed' if repaired else 'failed'
             save_data['_llm_provider'] = record.get('provider', '')
             save_data['_llm_model'] = record.get('model', '')
             if record.get('experience_id'):
@@ -2136,7 +2230,7 @@ Previous structured data:
                 except Exception as tts_err:
                     print(f"[COMPLETION_GUARD] TTS generation failed: {tts_err}")
 
-            self.socketio.emit('completion_guard:updated', {
+            self._emit_run_event('completion_guard:updated', {
                 'message_id': parent_message_id,
                 'conversation_id': conversation_id,
                 'status': 'tighten_only' if tighten_only else ('repaired' if repaired else 'unresolved'),
@@ -2145,7 +2239,7 @@ Previous structured data:
             }, room=delivery_room)
 
             if not tighten_only:
-                self.socketio.emit('chat:response', {
+                self._emit_run_event('chat:response', {
                     'message_id': repair_message_id,
                     'conversation_id': conversation_id,
                     'text': response_text,
@@ -2153,6 +2247,7 @@ Previous structured data:
                     'data': save_data,
                     'tools_used': result.get('tools_used', []),
                     'ok': result.get('ok', True),
+                    'run_status': 'completed' if repaired else 'failed',
                     'cancelled': False,
                     'duration_ms': int((time.time() - start_time) * 1000),
                     'usage': repair_usage or {},
@@ -2213,7 +2308,7 @@ Previous structured data:
                         'auto_evaluation': record.get('auto_evaluation')
                     }
                 )
-                self.socketio.emit('completion_guard:ticket_created', {
+                self._emit_run_event('completion_guard:ticket_created', {
                     'message_id': parent_message_id,
                     'conversation_id': conversation_id,
                     'ticket_path': rel_path,
@@ -2284,7 +2379,7 @@ Previous structured data:
                             'auto_evaluation': record.get('auto_evaluation')
                         }
                     )
-                    self.socketio.emit('completion_guard:ticket_created', {
+                    self._emit_run_event('completion_guard:ticket_created', {
                         'message_id': parent_message_id,
                         'conversation_id': conversation_id,
                         'ticket_path': rel_path,
@@ -2300,12 +2395,12 @@ Previous structured data:
                         'ticket_created'
                     )
                 except Exception as ticket_err:
-                    self.socketio.emit('completion_guard:error', {
+                    self._emit_run_event('completion_guard:error', {
                         'message_id': parent_message_id,
                         'error': f'Completion Guard repair and ticketing failed: {ticket_err}'
                     }, room=delivery_room)
             else:
-                self.socketio.emit('completion_guard:error', {
+                self._emit_run_event('completion_guard:error', {
                     'message_id': parent_message_id,
                     'error': f'Completion Guard repair failed: {e}'
                 }, room=delivery_room)
@@ -2370,20 +2465,17 @@ Previous structured data:
         
         @self.socketio.on('cancel')
         def handle_cancel(data):
-            """Handle request to cancel current processing"""
             session_id = request.sid
+            data = data or {}
+            conversation_id = data.get('conversation_id') or self.sessions.get(session_id, {}).get('conversation_id')
             message_id = data.get('message_id')
-            
-            if message_id:
-                self.pending_cancellations[message_id] = True
-                print(f"[WS] Cancel requested for message {message_id}")
-                
-                # Acknowledge cancellation request
-                emit('cancel:ack', {
-                    'message_id': message_id,
-                    'status': 'stopping'
-                }, room=session_id)
-        
+            run = self.runs.cancel(conversation_id, message_id, self.pending_cancellations)
+            if run:
+                emit('cancel:ack', run, room=session_id)
+            else:
+                emit('cancel:ack', {'message_id': message_id, 'conversation_id': conversation_id,
+                                    'status': 'not_running'}, room=session_id)
+
         @self.socketio.on('chat:send')
         def handle_chat_send(data):
             """Handle incoming chat message and its bounded attachment metadata."""
@@ -2391,6 +2483,11 @@ Previous structured data:
             message = data.get('message', '').strip()
             mode = data.get('mode', self.sessions.get(session_id, {}).get('mode', 'cloud'))
             conversation_id = data.get('conversation_id')
+            try:
+                message_id = str(uuid.UUID(data['request_id'])) if data.get('request_id') else str(uuid.uuid4())
+            except (ValueError, TypeError, AttributeError):
+                emit('chat:error', {'admitted': False, 'message_id': data.get('request_id'),'error': 'Invalid request ID', 'conversation_id': conversation_id})
+                return
             
             # Image data (with optional action routing and settings)
             image_data = data.get('image')  # {images: [...], action?, settings?} or legacy single shape
@@ -2423,7 +2520,7 @@ Previous structured data:
                                 'Use Analyze to combine images with other files.'
                             )
             except (AttachmentBundleError, PDFUploadError, AudioUploadError, TextUploadError) as exc:
-                emit('chat:error', {
+                emit('chat:error', {'admitted': False, 'message_id': data.get('request_id'),
                     'error': str(exc),
                     'error_code': exc.error_code,
                     'retryable': exc.retryable,
@@ -2469,7 +2566,7 @@ Previous structured data:
             if prompt_meta['tool_policy'] == 'none' and (
                 normalized_image or pdf_attachments or audio_attachments
             ):
-                emit('chat:error', {
+                emit('chat:error', {'admitted': False, 'message_id': data.get('request_id'),
                     'error': 'Turn off Chat only before analyzing images, PDFs, or audio.',
                     'conversation_id': conversation_id,
                 })
@@ -2481,7 +2578,7 @@ Previous structured data:
                 and not file_context
                 and not attachments
             ):
-                emit('chat:error', {
+                emit('chat:error', {'admitted': False, 'message_id': data.get('request_id'),
                     'error': 'Empty message',
                     'conversation_id': conversation_id
                 })
@@ -2521,7 +2618,7 @@ Previous structured data:
                         'timestamp': time.time()
                     })
                 elif image_action == 'analyze' and image_count > image_limit:
-                    emit('chat:error', {
+                    emit('chat:error', {'admitted': False, 'message_id': data.get('request_id'),
                         'error': f'Maximum {image_limit} images allowed in {mode} mode',
                         'conversation_id': conversation_id
                     })
@@ -2531,88 +2628,119 @@ Previous structured data:
                         normalized_image, authoritative=bool(attachments)
                     )
                     if hydrate_error:
-                        emit('chat:error', {
+                        emit('chat:error', {'admitted': False, 'message_id': data.get('request_id'),
                             'error': hydrate_error,
                             'conversation_id': conversation_id
                         })
                         return
                 image_data = normalized_image
             
-            # Create or get conversation
-            from ..services.conversation_store import get_conversation_store
-            store = get_conversation_store()
-            
-            if not conversation_id:
-                # Create new conversation
-                conv = store.create_conversation()
-                conversation_id = conv['id']
-                # Notify client of new conversation
-                emit('conversation:created', {
-                    'conversation_id': conversation_id,
-                    'title': conv['title']
+            with self.runs.conversation_lock(conversation_id or self._conversation_store().request_conversation_id(message_id)):
+                try:
+                    self.runs.check_mode(mode)
+                except ConversationBusyError as exc:
+                    emit('chat:rejected', {'message_id': message_id, 'conversation_id': conversation_id,
+                                           'error': str(exc), 'retryable': True})
+                    return
+                # Create or get conversation
+                from ..services.conversation_store import get_conversation_store
+                try:
+                    store = get_conversation_store()
+                    if not conversation_id:
+                        conversation_id = store.find_request_conversation(message_id, recover=False)
+                    if not conversation_id:
+                        conv = store.create_conversation(request_id=message_id)
+                        conversation_id = conv['id']
+                        emit('conversation:created', {
+                            'conversation_id': conversation_id,
+                            'title': conv['title']
+                        })
+                except (OSError, ValueError) as exc:
+                    emit('chat:rejected', {'message_id': message_id, 'conversation_id': conversation_id,
+                                           'error': str(exc), 'retryable': True})
+                    return
+
+
+                # Save user message (include image URL(s), file info, and prompt info if present)
+                user_msg_data = {}
+                if image_data:
+                    image_urls = [img.get('url') for img in image_data.get('images', []) if img.get('url')]
+                    if image_urls:
+                        user_msg_data['image_urls'] = image_urls
+                        user_msg_data['image_url'] = image_urls[0]
+                    if image_data.get('action'):
+                        user_msg_data['image_action'] = image_data.get('action')
+                if file_context:
+                    user_msg_data['attached_file'] = file_context.get('name')
+                if attachments:
+                    user_msg_data['attachments'] = attachments
+                    user_msg_data['attached_file'] = attachments[0]['filename']
+                if prompt_meta.get('prompt_name'):
+                    user_msg_data['prompt'] = prompt_meta['prompt_name']
+                if prompt_meta.get('tool_hints'):
+                    user_msg_data['tool_hints'] = prompt_meta['tool_hints']
+                if prompt_meta.get('request_kind'):
+                    user_msg_data['request_kind'] = prompt_meta['request_kind']
+                if prompt_meta.get('tool_rag_limit'):
+                    user_msg_data['tool_rag_limit'] = prompt_meta['tool_rag_limit']
+                if prompt_meta.get('tool_policy') == 'none':
+                    user_msg_data['tool_policy'] = 'none'
+                try:
+                    with self.runs.conversation_lock(conversation_id):
+                        claimed = self.runs.claim(conversation_id, message_id, mode,
+                                                  message=message, data=user_msg_data)
+                        if not claimed:
+                            self._join_conversation_room(session_id, conversation_id)
+                            handle_load_conversation({'conversation_id': conversation_id, 'reconnect_only': True})
+                            return
+                except (ConversationBusyError, OSError, ValueError) as exc:
+                    emit('chat:rejected', {
+                        'message_id': message_id, 'conversation_id': conversation_id,
+                        'error': str(exc), 'retryable': True,
+                    })
+                    return
+
+                self._supersede_pending_completion_guards(session_id, conversation_id)
+
+                # Update session
+                if session_id in self.sessions:
+                    self.sessions[session_id]['mode'] = mode
+                    self.sessions[session_id]['conversation_id'] = conversation_id
+                self._join_conversation_room(session_id, conversation_id)
+
+
+                # Emit thinking state
+                emit('chat:thinking', {
+                    'message_id': message_id,
+                    'conversation_id': conversation_id
                 })
 
-            self._supersede_pending_completion_guards(session_id, conversation_id)
-            
-            # Save user message (include image URL(s), file info, and prompt info if present)
-            user_msg_data = {}
-            if image_data:
-                image_urls = [img.get('url') for img in image_data.get('images', []) if img.get('url')]
-                if image_urls:
-                    user_msg_data['image_urls'] = image_urls
-                    user_msg_data['image_url'] = image_urls[0]
-                if image_data.get('action'):
-                    user_msg_data['image_action'] = image_data.get('action')
-            if file_context:
-                user_msg_data['attached_file'] = file_context.get('name')
-            if attachments:
-                user_msg_data['attachments'] = attachments
-                user_msg_data['attached_file'] = attachments[0]['filename']
-            if prompt_meta.get('prompt_name'):
-                user_msg_data['prompt'] = prompt_meta['prompt_name']
-            if prompt_meta.get('tool_hints'):
-                user_msg_data['tool_hints'] = prompt_meta['tool_hints']
-            if prompt_meta.get('request_kind'):
-                user_msg_data['request_kind'] = prompt_meta['request_kind']
-            if prompt_meta.get('tool_rag_limit'):
-                user_msg_data['tool_rag_limit'] = prompt_meta['tool_rag_limit']
-            if prompt_meta.get('tool_policy') == 'none':
-                user_msg_data['tool_policy'] = 'none'
-            store.add_message(conversation_id, 'user', message, data=user_msg_data if user_msg_data else None)
-            
-            # Update session
-            if session_id in self.sessions:
-                self.sessions[session_id]['mode'] = mode
-                self.sessions[session_id]['conversation_id'] = conversation_id
-            self._join_conversation_room(session_id, conversation_id)
-            
-            # Generate message ID
-            message_id = str(uuid.uuid4())
-            
-            # Emit thinking state
-            emit('chat:thinking', {
-                'message_id': message_id,
-                'conversation_id': conversation_id
-            })
-            
-            # Process in a real thread so long provider/tool calls do not block
-            # Eventlet heartbeats and disconnect the browser mid-response.
-            self._start_blocking_task(
-                self._process_message,
-                session_id,
-                message,
-                mode,
-                message_id,
-                conversation_id,
-                image_data,
-                prompt_meta,
-                request_feedback,
-                file_context,
-                pdf_attachments,
-                audio_attachments,
-                attachments,
-                name=f"jarvis-chat-{message_id[:8]}",
-            )
+                self._emit_run_event('chat:run', self.runs.public(self.runs.active[conversation_id]),
+                                     room=self._delivery_room(session_id, conversation_id))
+
+                # Keep socket event handlers free while provider/tool calls run.
+                try:
+                    self._start_blocking_task(
+                        self._execute_chat_run,
+                        session_id,
+                        message,
+                        mode,
+                        message_id,
+                        conversation_id,
+                        image_data,
+                        prompt_meta,
+                        request_feedback,
+                        file_context,
+                        pdf_attachments,
+                        audio_attachments,
+                        attachments,
+                        name=f"jarvis-chat-{message_id[:8]}",
+                    )
+                except Exception as exc:
+                    self._emit_run_event('chat:error', {
+                        'message_id': message_id, 'conversation_id': conversation_id,
+                        'error': f'Could not start task: {exc}',
+                    }, room=self._delivery_room(session_id, conversation_id))
 
         @self.socketio.on('completion_guard:submit')
         def handle_completion_guard_submit(data):
@@ -2624,8 +2752,9 @@ Previous structured data:
             note = (data.get('note') or '').strip()
 
             session = self.sessions.get(session_id, {})
-            records = session.get('completion_guard_records', {})
-            record = records.get(message_id)
+            record = self._get_completion_guard_record(session_id, message_id)
+            if record and record.get('conversation_id') != (conversation_id or session.get('conversation_id')):
+                record = None
 
             if not message_id:
                 emit('completion_guard:error', {
@@ -2789,7 +2918,7 @@ Previous structured data:
                         }
                     )
 
-                    self.socketio.emit('completion_guard:ticket_created', {
+                    self._emit_run_event('completion_guard:ticket_created', {
                         'message_id': message_id,
                         'conversation_id': conversation_id or record.get('conversation_id'),
                         'ticket_path': rel_path,
@@ -2812,38 +2941,7 @@ Previous structured data:
                     })
                 return
 
-            record['status'] = 'repairing'
-            record['user_note'] = note
-            record['repair_attempts'] = attempts + 1
-
-            try:
-                from ..services.conversation_store import get_conversation_store
-                store = get_conversation_store()
-                store.update_message_data_by_web_message_id(
-                    record.get('conversation_id'),
-                    message_id,
-                    {
-                        '_completion_guard': {
-                            'status': 'repairing',
-                            'note': note,
-                            'started_at': datetime.now().isoformat()
-                        }
-                    }
-                )
-
-                self._start_blocking_task(
-                    self._run_completion_guard_repair,
-                    session_id,
-                    record,
-                    note,
-                    name=f"completion-guard-repair-{message_id[:8]}",
-                )
-            except Exception as e:
-                print(f"[COMPLETION_GUARD] Failed to start repair: {e}")
-                emit('completion_guard:error', {
-                    'message_id': message_id,
-                    'error': f'Failed to start repair: {e}'
-                })
+            self._run_completion_guard_repair(session_id, record, note, background=True)
 
         @self.socketio.on('message_reaction:submit')
         def handle_message_reaction_submit(data):
@@ -2853,59 +2951,76 @@ Previous structured data:
             if not result.get('ok'):
                 emit('message_reaction:error', result)
         
+        @self.socketio.on('chat:resume')
+        def handle_resume_request(data):
+            try:
+                request_id = str(uuid.UUID((data or {}).get('request_id', '')))
+                conversation_id = self._conversation_store().find_request_conversation(request_id)
+            except OSError as exc:
+                emit('chat:resume_missing', {'error': f'The previous request could not be checked: {exc}. No work was retried.'})
+                return
+            except (ValueError, TypeError, AttributeError):
+                conversation_id = None
+            if conversation_id:
+                handle_load_conversation({'conversation_id': conversation_id})
+            else:
+                emit('chat:resume_missing', {'error': 'The previous request could not be confirmed. Check recent conversations before trying it again.'})
+
         @self.socketio.on('conversation:load')
         def handle_load_conversation(data):
             """Load a conversation history"""
             session_id = request.sid
             conv_id = data.get('conversation_id')
-            reconnect_only = self._parse_bool(data.get('reconnect_only'))
-            
             if not conv_id:
                 emit('chat:error', {'error': 'No conversation_id provided'})
                 return
-            
-            from ..services.conversation_store import get_conversation_store
-            store = get_conversation_store()
-            
-            conversation = store.get_conversation(conv_id)
-            if conversation:
-                # Update session
-                if session_id in self.sessions:
-                    self.sessions[session_id]['conversation_id'] = conv_id
-                self._join_conversation_room(session_id, conv_id)
-
-                if reconnect_only:
+            with self.runs.conversation_lock(conv_id):
+                try:
+                    conversation = self.runs.snapshot(conv_id)
+                except (ValueError, OSError) as exc:
+                    emit('chat:error', {'error': str(exc), 'conversation_id': conv_id})
                     return
+                if conversation:
+                    if session_id in self.sessions:
+                        self.sessions[session_id]['conversation_id'] = conv_id
+                    self._join_conversation_room(session_id, conv_id)
+                    guards = {}
+                    for message_id, record in list(self._completion_records.items()):
+                        if (record.get('conversation_id') != conv_id
+                                or record.get('status') != 'pending'
+                                or not record.get('completion_guard_prompt')
+                                or self._completion_guard_record_expired(record)):
+                            continue
+                        config = record.get('completion_guard', {})
+                        remaining = max(0, int((record.get('expires_at', time.time()) - time.time()) * 1000))
+                        guards[message_id] = {
+                            'enabled': True, 'mode': config.get('mode', 'manual'),
+                            'prompt_user': True, 'ticket_on_fail': config.get('ticket_on_fail', True),
+                            'expires_in_ms': remaining if record.get('expires_at') else None,
+                        }
+                    if guards:
+                        conversation['completion_guards'] = guards
+                    latest = (conversation.get('messages') or [{}])[-1]
+                    latest_data = latest.get('data') or {}
+                    latest_id = latest_data.get('_web_message_id')
+                    live_record = next((record for record in self._completion_records.values()
+                                        if record.get('conversation_id') == conv_id
+                                        and latest_id in (record.get('message_id'), record.get('repair_message_id'))), None)
+                    if (latest.get('role') == 'assistant' and latest_data.get('_human_reaction_eligible')
+                            and live_record and not live_record.get('feedback_requested')):
+                        conversation['reaction_message_id'] = latest_id
+                    emit('conversation:loaded', {'conversation': conversation,
+                                                  'reconnect_only': self._parse_bool(data.get('reconnect_only'))})
+                else:
+                    emit('chat:error', {
+                        'error': 'Conversation not found', 'error_code': 'conversation_not_found',
+                        'conversation_id': conv_id,
+                    })
 
-                emit('conversation:loaded', {
-                    'conversation': conversation
-                })
-            else:
-                emit('chat:error', {
-                    'error': 'Conversation not found',
-                    'error_code': 'conversation_not_found',
-                    'conversation_id': conv_id,
-                })
-        
         @self.socketio.on('chat:cancel')
         def handle_chat_cancel(data):
-            """Backward-compatible cancel alias for older clients."""
-            session_id = request.sid
-            message_id = data.get('message_id')
+            handle_cancel(data)
 
-            if message_id:
-                self.pending_cancellations[message_id] = True
-                print(f"[WS] Cancel requested via chat:cancel for message {message_id}")
-                emit('cancel:ack', {
-                    'message_id': message_id,
-                    'status': 'stopping'
-                }, room=session_id)
-                return
-
-            emit('chat:cancelled', {
-                'conversation_id': data.get('conversation_id')
-            }, room=session_id)
-        
         @self.socketio.on('mode:set')
         def handle_mode_set(data):
             """Set the mode for this session and reload settings"""
@@ -2913,41 +3028,49 @@ Previous structured data:
             mode = data.get('mode', 'cloud')
             
             if mode in ['cloud', 'local']:
-                if session_id in self.sessions:
-                    self.sessions[session_id]['mode'] = mode
-                
-                # Update settings manager and reload config for new mode
-                from ..services.settings_manager import get_settings_manager
-                from ..config import reload_web_config
-                
-                settings = get_settings_manager()
-                settings.set_mode(mode)
-                reload_web_config()
-                
-                # Intelligence instances are resolved per request/data mode.
-                # Do not close them here: another in-flight chat may still be
-                # recording to the other mode's database.
-                
-                # Reset tool registry (cleans up MCP containers)
                 try:
-                    from tool_schema import reset_tool_registry
+                    with self.runs.mode_change(mode) as can_reset:
+                        apply_socket_mode(session_id, mode, can_reset)
+                except ConversationBusyError as exc:
+                    emit('mode:rejected', {'error': str(exc)})
+
+        def apply_socket_mode(session_id, mode, can_reset):
+            if session_id in self.sessions:
+                self.sessions[session_id]['mode'] = mode
+
+            # Update settings manager and reload config for new mode
+            from ..services.settings_manager import get_settings_manager
+            from ..config import reload_web_config
+
+            settings = get_settings_manager()
+            settings.set_mode(mode)
+            reload_web_config()
+
+            # Intelligence instances are resolved per request/data mode.
+            # Do not close them here: another in-flight chat may still be
+            # recording to the other mode's database.
+
+            # Reset tool registry (cleans up MCP containers)
+            try:
+                from tool_schema import reset_tool_registry
+                if can_reset:
                     reset_tool_registry()
                     print(f"[MODE] Reset tool registry for {mode} mode")
-                except Exception as e:
-                    print(f"[MODE] Warning: Could not reset tool registry: {e}")
+            except Exception as e:
+                print(f"[MODE] Warning: Could not reset tool registry: {e}")
 
-                # Prompt visibility uses the same enabled/available tool view as
-                # the Web UI. Refresh it before the mode-changed event tells the
-                # browser to reload both registries.
-                try:
-                    from ..services.tool_discovery import get_tool_service
-                    get_tool_service(mode).refresh()
-                    print(f"[MODE] Refreshed Web tool discovery for {mode} mode")
-                except Exception as e:
-                    print(f"[MODE] Warning: Could not refresh Web tool discovery: {e}")
-                
-                emit('mode:changed', {'mode': mode})
-        
+            # Prompt visibility uses the same enabled/available tool view as
+            # the Web UI. Refresh it before the mode-changed event tells the
+            # browser to reload both registries.
+            try:
+                from ..services.tool_discovery import get_tool_service
+                get_tool_service(mode).refresh()
+                print(f"[MODE] Refreshed Web tool discovery for {mode} mode")
+            except Exception as e:
+                print(f"[MODE] Warning: Could not refresh Web tool discovery: {e}")
+
+            emit('mode:changed', {'mode': mode})
+
         @self.socketio.on('tools:refresh')
         def handle_tools_refresh():
             """Refresh tools list"""
@@ -3624,7 +3747,7 @@ Previous structured data:
                     # IMAGE TO VIDEO: Skip vision, stash image, force params via overrides
                     print(f"[CHAT] Image-to-video mode - skipping vision analysis")
                     user_video_prompt = message.strip()
-                    self.socketio.emit('chat:status', {
+                    self._emit_run_event('chat:status', {
                         'message_id': message_id,
                         'conversation_id': conversation_id,
                         'status': 'Preparing image for video generation...',
@@ -3635,7 +3758,7 @@ Previous structured data:
                     stash_ref = stash_info.get('stash_ref', '') if stash_info else ''
 
                     if not stash_ref:
-                        self.socketio.emit('chat:error', {
+                        self._emit_run_event('chat:error', {
                             'message_id': message_id,
                             'conversation_id': conversation_id,
                             'error': (
@@ -3689,7 +3812,7 @@ Previous structured data:
                 elif image_action == 'image':
                     # IMAGE TO IMAGE: Skip vision, stash image, force params via overrides
                     print(f"[CHAT] Image-to-image mode - skipping vision analysis")
-                    self.socketio.emit('chat:status', {
+                    self._emit_run_event('chat:status', {
                         'message_id': message_id,
                         'conversation_id': conversation_id,
                         'status': 'Preparing image for editing...',
@@ -3700,7 +3823,7 @@ Previous structured data:
                     stash_ref = stash_info.get('stash_ref', '') if stash_info else ''
 
                     if not stash_ref:
-                        self.socketio.emit('chat:error', {
+                        self._emit_run_event('chat:error', {
                             'message_id': message_id,
                             'conversation_id': conversation_id,
                             'error': (
@@ -3761,7 +3884,7 @@ Previous structured data:
                     image_count = len(image_items)
                     status_label = f'Analyzing {image_count} images...' if image_count > 1 else 'Analyzing image...'
                     print(f"[CHAT] Processing {image_count} image(s) with vision model...")
-                    self.socketio.emit('chat:status', {
+                    self._emit_run_event('chat:status', {
                         'message_id': message_id,
                         'conversation_id': conversation_id,
                         'status': status_label,
@@ -3796,7 +3919,7 @@ Previous structured data:
                             error_code = 'vision_analysis_failed'
                         check_preparation_cancelled()
                         if not attachments:
-                            self.socketio.emit('chat:error', {
+                            self._emit_run_event('chat:error', {
                                 'message_id': message_id,
                                 'conversation_id': conversation_id,
                                 'error': error_message,
@@ -3817,7 +3940,7 @@ Previous structured data:
                             'sources, explain the missing evidence, and do not claim to have reviewed '
                             'the images. [END UNAVAILABLE IMAGE SOURCES]'
                         )
-                        self.socketio.emit('chat:status', {
+                        self._emit_run_event('chat:status', {
                             'message_id': message_id,
                             'conversation_id': conversation_id,
                             'status': 'Image analysis unavailable; continuing with the other sources.',
@@ -3855,7 +3978,7 @@ Previous structured data:
                                 mode
                             )
                             if attachments and not (stashed and stashed.get('stash_ref')):
-                                self.socketio.emit('chat:error', {
+                                self._emit_run_event('chat:error', {
                                     'message_id': message_id,
                                     'conversation_id': conversation_id,
                                     'error': (
@@ -3920,7 +4043,7 @@ Previous structured data:
             def status_callback(status_message: str):
                 """Send status updates to browser via WebSocket"""
                 print(f"[CHAT] Status update: {status_message}")
-                self.socketio.emit('chat:status', {
+                self._emit_run_event('chat:status', {
                     'message_id': message_id,
                     'conversation_id': conversation_id,
                     'status': status_message,
@@ -3945,7 +4068,7 @@ Previous structured data:
                         tool_name = kwargs.get('tool')
                         call_index = kwargs.get('call_index', 0)
                         print(f"[CHAT] Tool starting: {tool_name}[{call_index}] (turn {kwargs.get('turn')}/{kwargs.get('max_turns')})")
-                        self.socketio.emit('tool:start', {
+                        self._emit_run_event('tool:start', {
                             'message_id': message_id,
                             'tool': tool_name,
                             'call_index': call_index,  # For unique card IDs when same tool called multiple times
@@ -3964,7 +4087,7 @@ Previous structured data:
                         
                         if success:
                             print(f"[CHAT] Tool completed: {tool_name}[{call_index}] ({duration_ms}ms)")
-                            self.socketio.emit('tool:complete', {
+                            self._emit_run_event('tool:complete', {
                                 'message_id': message_id,
                                 'tool': tool_name,
                                 'call_index': call_index,  # For matching unique card ID
@@ -3975,7 +4098,7 @@ Previous structured data:
                             }, room=delivery_room)
                         else:
                             print(f"[CHAT] Tool failed: {tool_name}[{call_index}] - {kwargs.get('error', 'unknown')}")
-                            self.socketio.emit('tool:error', {
+                            self._emit_run_event('tool:error', {
                                 'message_id': message_id,
                                 'tool': tool_name,
                                 'call_index': call_index,
@@ -3986,7 +4109,7 @@ Previous structured data:
                     
                     elif event_type == 'routing':
                         print(f"[CHAT] Routing: {kwargs.get('message')}")
-                        self.socketio.emit('tool:progress', {
+                        self._emit_run_event('tool:progress', {
                             'message_id': message_id,
                             'status': kwargs.get('message'),
                             'timestamp': time.time()
@@ -3996,7 +4119,7 @@ Previous structured data:
                             f"[CHAT] Tool progress: {kwargs.get('tool')} - "
                             f"{kwargs.get('status')}"
                         )
-                        self.socketio.emit('tool:progress', {
+                        self._emit_run_event('tool:progress', {
                             'message_id': message_id,
                             'tool': kwargs.get('tool'),
                             'call_index': kwargs.get('call_index', 0),
@@ -4137,7 +4260,7 @@ Previous structured data:
                             output_duration = output.get('duration_ms') if isinstance(output, dict) else None
                             step_duration = step_data.get('duration_ms')
                             event_duration = output_duration if output_duration is not None else (step_duration or 0)
-                            self.socketio.emit('tool:complete', {
+                            self._emit_run_event('tool:complete', {
                                 'tool': tool,
                                 'result': output_data,
                                 'duration_ms': event_duration,
@@ -4168,7 +4291,7 @@ Previous structured data:
                                 'skipped': True,
                                 'reason': step_data.get('reason') or 'Condition evaluated to false',
                             })
-                        self.socketio.emit(
+                        self._emit_run_event(
                             'tool:complete', completion_payload, room=delivery_room
                         )
                         emit_index += 1
@@ -4193,7 +4316,7 @@ Previous structured data:
                         
                         tool_counts[tool] = tool_idx + 1
                         
-                        self.socketio.emit('tool:complete', {
+                        self._emit_run_event('tool:complete', {
                             'tool': tool,
                             'result': tool_result,
                             'duration_ms': duration_ms // max(len(tools_used), 1),
@@ -4245,6 +4368,8 @@ Previous structured data:
                     save_data['_web_upload_stash'] = stash_info
                     save_data.setdefault('stash', stash_info)
                 save_data['_web_message_id'] = message_id
+                save_data['_run_status'] = 'cancelled' if was_cancelled else ('completed' if result.get('ok', True) else 'failed')
+                save_data['cancelled'] = was_cancelled
                 save_data['_llm_provider'] = effective_provider
                 save_data['_llm_model'] = effective_model
                 if result.get('experience_id'):
@@ -4298,7 +4423,7 @@ Previous structured data:
                     model=effective_model,
                 )
             except Exception as save_err:
-                print(f"[CHAT] Failed to save response: {save_err}")
+                raise RuntimeError(f"The task ran, but its response could not be saved: {save_err}") from save_err
             
             # Generate TTS if enabled
             audio_url = None
@@ -4389,7 +4514,7 @@ Previous structured data:
                 'completion_guard_prompt': bool(completion_guard_prompt),
             })
             
-            self.socketio.emit('chat:response', {
+            self._emit_run_event('chat:response', {
                 'message_id': message_id,
                 'conversation_id': conversation_id,
                 'text': response_text,
@@ -4424,7 +4549,7 @@ Previous structured data:
                 self._start_blocking_task(
                     self._run_completion_guard_auto_eval,
                     session_id,
-                    self.sessions.get(session_id, {}).get('completion_guard_records', {}).get(message_id, {}),
+                    self._get_completion_guard_record(session_id, message_id) or {},
                     name=f"completion-guard-auto-{message_id[:8]}",
                 )
 
@@ -4458,12 +4583,12 @@ Previous structured data:
                 # Orchestrator already collected feedback (for example random trigger), emit that result
                 print(f"[CHAT] Using orchestrator's feedback (pre-collected)")
                 feedback = result.get('feedback', {})
-                self.socketio.emit('feedback:start', {
+                self._emit_run_event('feedback:start', {
                     'message_id': message_id,
                     'conversation_id': conversation_id,
                     'status': 'complete'  # Already done
                 }, room=delivery_room)
-                self.socketio.emit('feedback:complete', {
+                self._emit_run_event('feedback:complete', {
                     'message_id': message_id,
                     'conversation_id': conversation_id,
                     'rating': feedback.get('rating'),
@@ -4484,12 +4609,12 @@ Previous structured data:
             try:
                 get_conversation_store().add_message(
                     conversation_id, 'assistant', stopped_text,
-                    data={'_web_message_id': message_id, 'cancelled': True},
+                    data={'_web_message_id': message_id, 'cancelled': True, '_run_status': 'cancelled'},
                 )
             except (OSError, ValueError) as exc:
                 print(f'[CHAT] Could not save attachment cancellation: {exc}')
                 stopped_text += ' This stopped state could not be saved to conversation history.'
-            self.socketio.emit('chat:response', {
+            self._emit_run_event('chat:response', {
                 'message_id': message_id,
                 'conversation_id': conversation_id,
                 'text': stopped_text,
@@ -4504,7 +4629,7 @@ Previous structured data:
             print(f"[CHAT] ERROR: {error_msg}")
             traceback.print_exc()
             
-            self.socketio.emit('chat:error', {
+            self._emit_run_event('chat:error', {
                 'message_id': message_id,
                 'conversation_id': conversation_id,
                 'error': error_msg,
@@ -4528,7 +4653,7 @@ Previous structured data:
         
         try:
             # Emit feedback:start event so UI can show the card
-            self.socketio.emit('feedback:start', {
+            self._emit_run_event('feedback:start', {
                 'message_id': message_id,
                 'conversation_id': conversation_id,
                 'status': 'analyzing'
@@ -4663,7 +4788,7 @@ Mode: {mode}
             
             # Emit feedback:complete event with all fields
             try:
-                self.socketio.emit('feedback:complete', {
+                self._emit_run_event('feedback:complete', {
                     'message_id': message_id,
                     'conversation_id': conversation_id,
                     'rating': rating,
@@ -4688,7 +4813,7 @@ Mode: {mode}
             
             # Emit error state
             try:
-                self.socketio.emit('feedback:complete', {
+                self._emit_run_event('feedback:complete', {
                     'message_id': message_id,
                     'conversation_id': conversation_id,
                     'error': str(e),

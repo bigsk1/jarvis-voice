@@ -68,6 +68,7 @@ setup_error_logging(app, 'web-ui')
 
 # Initialize chat handler
 chat_handler = ChatHandler(socketio)
+app.extensions['jarvis_chat_runs'] = chat_handler.runs
 
 
 # =============================================================================

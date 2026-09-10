@@ -108,11 +108,14 @@ class JarvisApp {
       // in-flight responses continue streaming to the browser.
       if (this.socket.conversationId) {
         console.log('[App] Rejoining active conversation after reconnect:', this.socket.conversationId);
-        this.socket.emit('conversation:load', {
-          conversation_id: this.socket.conversationId,
-          reconnect_only: true
-        });
+        this.loadConversation(this.socket.conversationId, { reconcile: this._sessionReadyOnce === true });
+      } else if (this.socket.pendingRequestId) {
+        this._requestedConversationId = undefined;
+        this._pendingConversationLoad = { id: null, originId: null };
+        this.chat.setConversationLoading(true);
+        this.socket.emit('chat:resume', { request_id: this.socket.pendingRequestId });
       }
+      this._sessionReadyOnce = true;
       
       // Initialize proactive notifications
       if (!this.proactive && window.ProactiveManager) {
@@ -132,6 +135,9 @@ class JarvisApp {
         this._toolSyncWarningTimer = setInterval(() => {
           if (this._connectionConnected) {
             this._checkToolSyncWarning(this.modeSelect?.value || this.socket.mode || data.mode);
+            if (this._conversations?.some(conv => ['running', 'stopping'].includes(conv.run_status))) {
+              this._loadConversationHistory();
+            }
           }
         }, 30000);
       }
@@ -140,10 +146,19 @@ class JarvisApp {
     this.socket.on('connectionError', (data) => {
       Utils.toast(`Connection error: ${data.error}`, 'error');
     });
+    this.socket.on('resumeMissing', (data) => {
+      this._releaseConversationLoad();
+      Utils.toast(data.error, 'warning', 8000);
+    });
+    this.socket.on('conversationLoadError', (data) => {
+      this._releaseConversationLoad();
+      Utils.toast(data.error, 'error', 8000);
+    });
     
     this.socket.on('modeChanged', async (data) => {
       this._cancelStatusTTS();
       this.modeSelect.value = data.mode;
+      window.chatUI?._handleImageAttachmentsForMode?.(data.mode, { toast: false });
       Utils.toast(`Mode changed to ${data.mode}`, 'info');
       this._checkToolSyncWarning(data.mode);
       
@@ -225,8 +240,19 @@ class JarvisApp {
     // Handle conversation loaded
     this.socket.on('conversationLoaded', (data) => {
       console.log('[App] Conversation loaded:', data);
-      this._displayLoadedConversation(data.conversation);
+      this._displayLoadedConversation(data.conversation, { reconcile: data.reconnect_only === true });
     });
+    this.socket.on('runState', () => {
+      if (this.modeSelect) this.modeSelect.disabled = ['running', 'stopping'].includes(this.chat._serverRunState?.status);
+      this._loadConversationHistory();
+    });
+    this.socket.on('modeRejected', (data) => {
+      this.modeSelect.value = this.socket.mode;
+      Utils.toast(data.error, 'warning', 6000);
+    });
+    for (const event of ['feedbackStart', 'feedbackComplete']) {
+      this.socket.on(event, (data) => { this._feedbackRevision = data.feedback_revision; });
+    }
   }
 
   async _checkToolSyncWarning(mode) {
@@ -302,17 +328,10 @@ class JarvisApp {
     }
     
     // Mode selector
-    this.modeSelect.addEventListener('change', async (e) => {
+    this.modeSelect.addEventListener('change', (e) => {
       const newMode = e.target.value;
+      this.modeSelect.value = this.socket.mode;
       this.socket.setMode(newMode);
-      window.chatUI?._handleImageAttachmentsForMode?.(newMode, { toast: false });
-      // Suggest refresh for clean state (embeddings, caches, etc. are mode-specific)
-      Utils.toast(`Switched to ${newMode} mode. Refresh page for cleanest state.`, 'info', 5000);
-      
-      // Update token counter context window for new mode
-      if (window.chatUI) {
-        await window.chatUI.refreshContextWindow(newMode);
-      }
     });
     
     // Audio toggle (enable/disable TTS)
@@ -3430,6 +3449,8 @@ class JarvisApp {
    * Start a new chat
    */
   _startNewChat() {
+    if (this.modeSelect) this.modeSelect.disabled = false;
+    this.socket.clearPendingRequest?.();
     this._pendingConversationLoad = null;
     this._requestedConversationId = null;
     this._displayedConversationId = null;
@@ -3562,6 +3583,8 @@ class JarvisApp {
     const date = this._formatRelativeDate(conv.updated_at);
     const fullTitle = conv.title || 'Untitled';
     const archiveBadge = conv.archived ? '<span class="history-state-pill">Archived</span>' : '';
+    const runLabel = { running: 'Running', stopping: 'Stopping', interrupted: 'Interrupted' }[conv.run_status];
+    const runBadge = runLabel ? `<span class="history-state-pill">${runLabel}</span>` : '';
     const pinBadge = conv.pinned ? '<span class="history-pin" title="Pinned conversation">📌</span>' : '';
     const renameAction = (conv.message_count || 0) > 0 ? `
       <button class="history-menu-item" type="button"
@@ -3579,7 +3602,7 @@ class JarvisApp {
         <div class="history-item-content">
           <div class="history-title-row">
             <div class="history-title">${pinBadge}${Utils.escapeHtml(fullTitle)}</div>
-            ${archiveBadge}
+            ${runBadge}${archiveBadge}
           </div>
           <div class="history-date">${date} · ${conv.message_count || 0} messages</div>
         </div>
@@ -3973,7 +3996,7 @@ class JarvisApp {
   /**
    * Load a specific conversation
    */
-  loadConversation(convId) {
+  loadConversation(convId, { reconcile = false } = {}) {
     console.log('[App] Loading conversation:', convId);
     if (!convId || !this.socket.connected) {
       Utils.toast('Connect to Jarvis before loading a conversation.', 'info');
@@ -3986,9 +4009,9 @@ class JarvisApp {
       : (this.socket.conversationId || null);
     this._displayedConversationId = originId;
     this._requestedConversationId = convId;
-    this._pendingConversationLoad = { id: convId, originId };
-    this.chat.setConversationLoading(true);
-    this.socket.emit('conversation:load', { conversation_id: convId });
+    this._pendingConversationLoad = { id: convId, originId, reconcile };
+    this.chat.setConversationLoading(true, { preservePreparation: reconcile });
+    this.socket.emit('conversation:load', { conversation_id: convId, reconnect_only: reconcile });
   }
 
   _releaseConversationLoad() {
@@ -4018,7 +4041,7 @@ class JarvisApp {
         this._loadConversationHistory();
         Utils.toast('Conversation deleted', 'info');
       } else {
-        Utils.toast('Failed to delete conversation', 'error');
+        Utils.toast(data.error || 'Failed to delete conversation', 'error');
       }
     } catch (err) {
       Utils.toast(`Error: ${err.message}`, 'error');
@@ -4028,7 +4051,7 @@ class JarvisApp {
   /**
    * Display a loaded conversation in the chat
    */
-  async _displayLoadedConversation(conversation) {
+  async _displayLoadedConversation(conversation, { reconcile = false } = {}) {
     if (!conversation) return;
     if (this._requestedConversationId !== undefined && this._requestedConversationId !== conversation.id) {
       // Ignore an older load completed after another selection or New chat.
@@ -4041,6 +4064,7 @@ class JarvisApp {
         ? this._displayedConversationId
         : this.socket.conversationId;
     const switched = originId !== conversation.id;
+    reconcile = reconcile && !switched;
     this._pendingConversationLoad = null;
     this._requestedConversationId = conversation.id;
     this._displayedConversationId = conversation.id;
@@ -4051,8 +4075,31 @@ class JarvisApp {
     this._updateActiveConversation(conversation.id);
     this._updateConvIdBadge(conversation.id);
     
+    for (const msg of conversation.messages || []) {
+      if (msg.data?._request_id === this.chat._pendingSend?.requestId && this.chat._pendingSend) {
+        this.chat._pendingSend = null;
+      }
+      if (msg.role === 'assistant') {
+        this.socket.rememberResponse?.(msg.data?._web_message_id);
+        if (msg.data?._web_message_id) {
+          this._completedResponseIds.add(msg.data._web_message_id);
+          if (this._completedResponseIds.size > 500) {
+            this._completedResponseIds.delete(this._completedResponseIds.values().next().value);
+          }
+        }
+      }
+    }
+
     // Clear and rebuild chat
-    const clearedSources = this.chat.clearChat({ preserveAttachments: !switched });
+    const savedMessageIds = new Set((conversation.messages || []).map(msg =>
+      `${msg.role}:${msg.data?._request_id || msg.data?._web_message_id || msg.id}`));
+    const clearedElsewhere = reconcile && [...(this.chat._renderedMessageIds || [])].some(id =>
+      /^(user|assistant):/.test(id) && !savedMessageIds.has(id)
+      && id !== `user:${this.chat._pendingSend?.requestId}`
+      && !(conversation.run?.persistence_error && id === `assistant:${conversation.run.message_id}`));
+    const rebuild = !reconcile || clearedElsewhere;
+    const clearedSources = rebuild && this.chat.clearChat({ preserveAttachments: !switched, preservePreparation: reconcile });
+    if (rebuild) this._feedbackRevision = undefined;
     if (clearedSources) Utils.toast('Attached sources cleared for this conversation.', 'info', 3000);
     
     // Calculate cumulative token usage from historical messages
@@ -4078,6 +4125,8 @@ class JarvisApp {
     
     // Add each message
     for (const msg of conversation.messages || []) {
+      const identity = msg.data?._request_id || msg.data?._web_message_id || msg.id;
+      const exists = reconcile && this.chat._renderedMessageIds?.has(`${msg.role}:${identity}`);
       if (msg.role === 'user') {
         // Check if user message had an attached image
         const imageUrls = msg.data?.image_urls || (msg.data?.image_url ? [msg.data.image_url] : []);
@@ -4086,20 +4135,49 @@ class JarvisApp {
           : null;
         const attachments = Array.isArray(msg.data?.attachments) ? msg.data.attachments : [];
         const activeBadge = window.commandSystem?.getPersistedDisplay?.(msg.data) || '';
-        this.chat.addUserMessage(
+        if (!exists) this.chat.addUserMessage(
           msg.content,
           imageData,
           activeBadge,
           attachments
         );
+        const run = msg.data?._run;
+        if (run && ['failed', 'interrupted', 'cancelled'].includes(run.status)) {
+          this.socket.rememberResponse?.(run.message_id);
+        }
+        if (run && ['failed', 'interrupted'].includes(run.status)
+            && !this.chat._renderedMessageIds?.has(`error:${run.message_id}`)
+            && !(conversation.messages || []).some(item => item.role === 'assistant'
+              && item.data?._web_message_id === run.message_id)) {
+          this.chat.addErrorMessage(run.error || 'This task did not finish successfully.');
+          this.chat.rememberRenderedMessage('error', run.message_id);
+        }
       } else if (msg.role === 'assistant') {
         // Pass as separate parameters: text, toolsUsed, data
-        this.chat.addAssistantMessage(
+        if (!exists) this.chat.addAssistantMessage(
           msg.content || '',
           msg.tools_used || [],
-          msg.data || {},
-          { allowReaction: false }
+          { ...(msg.data || {}), completion_guard: conversation.completion_guards?.[msg.data?._web_message_id] },
+          { allowReaction: identity === conversation.reaction_message_id }
         );
+        if (exists && msg.data?._completion_guard?.status
+            && !['none', 'pending', 'repair_response'].includes(msg.data._completion_guard.status)) {
+          this.chat._updateCompletionGuardCard({ message_id: identity, ...msg.data._completion_guard });
+        }
+        if (exists && msg.data?._user_feedback) {
+          this.chat._updateMessageReactionActions({message_id: identity, ...msg.data._user_feedback, restored: true});
+        }
+        const repair = msg.data?._repair_run;
+        if (repair && ['failed', 'interrupted', 'cancelled'].includes(repair.status)) {
+          this.socket.rememberResponse?.(repair.message_id);
+        }
+        if (repair && ['failed', 'interrupted'].includes(repair.status)
+            && !this.chat._renderedMessageIds?.has(`error:${repair.message_id}`)
+            && !(conversation.messages || []).some(item => item.role === 'assistant'
+              && item.data?._web_message_id === repair.message_id)) {
+          this.chat.addErrorMessage(repair.error || 'The repair did not finish successfully.');
+          this.chat.rememberRenderedMessage('error', repair.message_id);
+        }
         
         // Sum up token usage from saved data
         const usage = msg.data?.usage;
@@ -4141,8 +4219,31 @@ class JarvisApp {
           tokenBillingMode = usage.billing_mode || null;
         }
       }
+      this.chat.rememberRenderedMessage(msg.role, identity);
     }
     
+    // Restore the active request before any await can interleave a terminal event.
+    if (reconcile) this.chat.reconcileLiveActions(conversation);
+    this.chat.restoreRunState(conversation.run, {
+      fromSnapshot: true,
+      preservePreparation: reconcile,
+      responseSaved: (conversation.messages || []).some(msg =>
+        msg.data?._run?.message_id === conversation.run?.message_id
+        || msg.data?._repair_run?.message_id === conversation.run?.message_id
+        || (msg.role === 'assistant' && msg.data?._web_message_id === conversation.run?.message_id)),
+    });
+    if (this.modeSelect) this.modeSelect.disabled = ['running', 'stopping'].includes(conversation.run?.status);
+    if (conversation.feedback && conversation.feedback.data.feedback_revision !== this._feedbackRevision) {
+      const event = conversation.feedback.event === 'feedback:complete' ? 'feedbackComplete' : 'feedbackStart';
+      this.socket._emit(event, conversation.feedback.data);
+    } else if (reconcile && !conversation.feedback && this.chat.pendingFeedback
+        && conversation.messages?.some(msg => msg.data?._web_message_id === this.chat.pendingFeedback.message_id)) {
+      this.socket._emit('feedbackComplete', {
+        conversation_id: conversation.id, message_id: this.chat.pendingFeedback.message_id,
+        success: false, error: 'Feedback context is no longer available. It was not retried.',
+      });
+    }
+
     // Restore token counter state if we have historical data
     if (cumulativeTokens.total > 0) {
       await this.chat.restoreTokenCounter(
@@ -4188,7 +4289,7 @@ class JarvisApp {
     if (!this.convIdBadge || !this.convIdText) return;
     
     if (convId) {
-      this.convIdText.textContent = convId;
+      this.convIdText.textContent = convId.slice(0, 8);
       this.convIdBadge.style.display = 'block';
     } else {
       this.convIdBadge.style.display = 'none';
@@ -4326,8 +4427,6 @@ class JarvisApp {
         const newMode = selectedMode;
         if (newMode !== this.socket.mode) {
           this.socket.setMode(newMode);
-          this.modeSelect.value = newMode;
-          window.chatUI?._handleImageAttachmentsForMode?.(newMode, { toast: false });
         }
         
         // Update audio setting

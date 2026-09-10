@@ -43,7 +43,7 @@ class Socket:
 
 
 @pytest.fixture
-def journey(tmp_path, monkeypatch):
+def journey(tmp_path, monkeypatch, request):
     import config_loader
     import orchestrator_v2
 
@@ -59,6 +59,7 @@ def journey(tmp_path, monkeypatch):
     socket = Socket()
     monkeypatch.setattr(chat, 'emit', socket.emit)
     handler = chat.ChatHandler(socket)
+    request.addfinalizer(lambda: [lease.release() for lease in handler.runs.leases.values()])
     handler.sessions['client'] = {'mode': 'cloud'}
     monkeypatch.setattr(handler, '_join_conversation_room', lambda *args: None)
     monkeypatch.setattr(handler, '_get_completion_guard_config', lambda mode: {'enabled': False})
@@ -91,8 +92,8 @@ def journey(tmp_path, monkeypatch):
     app = Flask(__name__)
 
     def send(**payload):
-        with app.test_request_context('/'):
-            request.sid = 'client'
+        with app.test_request_context('/') as context:
+            context.request.sid = 'client'
             socket.handlers['chat:send']({'message': 'Compare these sources.', 'mode': 'cloud', **payload})
 
     def process():

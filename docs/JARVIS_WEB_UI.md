@@ -48,6 +48,7 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 | Feature | Status | Details |
 |---------|--------|---------|
 | Conversation history | ✅ | Save/load/delete, sidebar list |
+| [Task recovery](WEB_TASK_RECOVERY.md) | ✅ | Restore running work and Stop after reload; recover missed answers; reject overlapping turns |
 | Tool execution cards | ✅ | Expandable with args/results |
 | Image display | ✅ | Thumbnails + lightbox with download |
 | Settings panel | ✅ | Six-tab modal: General, AI Config, Tools, System, API Keys, Profile |

@@ -113,7 +113,10 @@ class SyncMemoryDbUserModelTests(unittest.TestCase):
                 cloud_db.close()
                 local_db.close()
 
-            with patch("embeddings.get_embedding", return_value=[1.0, 0.0, 0.0]):
+            with (
+                patch.object(self.module, "get_embedding_runtime_status", return_value={"ok": True}),
+                patch("embeddings.get_embedding", return_value=[1.0, 0.0, 0.0]),
+            ):
                 self.assertTrue(
                     self.module.sync_databases(
                         source_mode="cloud",

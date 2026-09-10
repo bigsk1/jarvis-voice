@@ -69,6 +69,7 @@ def main() -> int:
     print(f"{action} {count} unpinned conversation(s), {_human_size(result['freed_bytes'])}")
     print(f"Preserved {result['preserved_pinned']} pinned conversation(s)")
     print(f"Preserved {result['preserved_recent']} recent unpinned conversation(s)")
+    print(f"Preserved {result['preserved_active']} conversation(s) with active tasks")
     if result["missing_files"]:
         print(f"Found {result['missing_files']} index entry/entries with missing conversation files")
     if result["skipped_invalid_timestamp"]:

@@ -79,6 +79,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
 ### Web Interface
 - **Jarvis Web UI** - Full-featured chat interface at localhost:5001
   - Real-time WebSocket communication with tool streaming
+  - **[Task recovery](docs/WEB_TASK_RECOVERY.md)**: Reload or reconnect to running work, restore Stop, and recover missed answers without replaying speech
   - Mode switching (cloud/local) with per-mode settings
   - **Audio playback controls**: Speaker button with pause/resume/stop
   - **Music generation**: ElevenLabs music plays inline in chat

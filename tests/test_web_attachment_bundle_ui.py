@@ -38,6 +38,7 @@ function response(kind, name, id = ++fileCounter) {
 function deferred() { let resolve, reject; const promise = new Promise((a,b) => {resolve=a;reject=b;}); return {promise,resolve,reject}; }
 const socket = {connected: true, mode: 'cloud', conversationId: 'a', sendMessage(...args) {sent.push(args); return this.connected;}, socket: {emit() {}}};
 const sandbox = {
+  crypto: require('node:crypto').webcrypto,
   console, URL, AbortController, FormData: FormDataFake, setTimeout, clearTimeout, history: {replaceState(){}},
   document: {createElement: tag => new Element(tag), querySelectorAll: () => []},
   Utils: {toast: (...args) => notices.push(args), autoResize(){}, scrollToBottom(){}, escapeHtml: value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'), storage: {get: (_key, fallback) => fallback}},

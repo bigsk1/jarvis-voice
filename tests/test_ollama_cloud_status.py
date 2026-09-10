@@ -186,7 +186,18 @@ def test_system_config_reflects_status_web_overrides():
     assert payload["config"]["STATUS_PHRASE_MODE"] == "normal"
 
 
-def test_local_web_chat_keeps_analyze_image_on_pinned_ollama_vision_model():
+def test_local_web_chat_keeps_analyze_image_on_pinned_ollama_vision_model(tmp_path, monkeypatch):
+    import config_loader
+
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "cloud.env").write_text("")
+    (config_dir / "local.env").write_text(
+        "LLM_PROVIDER=ollama\nOLLAMA_VISION_MODEL=test-pinned-vision\n"
+    )
+    monkeypatch.setattr(config_loader, "get_project_root", lambda: tmp_path)
+    monkeypatch.delenv("JARVIS_OVERRIDE_OLLAMA_VISION_MODEL", raising=False)
+
     @_scoped_by_mode
     def probe(mode):
         child = export_config_environment(mode)
@@ -215,4 +226,4 @@ def test_local_web_chat_keeps_analyze_image_on_pinned_ollama_vision_model():
     assert result["analyze_model"] is None
     assert result["child_analyze_provider"] is None
     assert result["child_analyze_model"] is None
-    assert result["ollama_vision_model"]
+    assert result["ollama_vision_model"] == "test-pinned-vision"

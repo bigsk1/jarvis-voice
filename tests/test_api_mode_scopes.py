@@ -27,7 +27,17 @@ import config_loader  # noqa: E402
 from config_loader import get_active_config_mode, get_config_value  # noqa: E402
 
 
-def test_query_route_uses_scope_without_mutating_parent_environment():
+@pytest.fixture
+def local_mode_config(tmp_path, monkeypatch):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "cloud.env").write_text("LLM_PROVIDER=xai\n")
+    (config_dir / "local.env").write_text("LLM_PROVIDER=ollama\n")
+    monkeypatch.setattr(config_loader, "get_project_root", lambda: tmp_path)
+    monkeypatch.delenv("JARVIS_OVERRIDE_LLM_PROVIDER", raising=False)
+
+
+def test_query_route_uses_scope_without_mutating_parent_environment(local_mode_config):
     observed = {}
 
     class FakeOrchestrator:
@@ -52,7 +62,7 @@ def test_query_route_uses_scope_without_mutating_parent_environment():
     assert dict(os.environ) == before
 
 
-def test_workflow_route_uses_scope_without_mutating_parent_environment():
+def test_workflow_route_uses_scope_without_mutating_parent_environment(local_mode_config):
     observed = {}
     shared_registry = SimpleNamespace(
         list_tools=lambda: ["get_time", "ssh_remote", "stash", "canvas"],

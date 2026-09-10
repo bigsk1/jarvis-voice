@@ -466,7 +466,7 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
                     "jarvis_web_test_server.config.get_web_setting",
                     return_value=False,
                 ):
-                    ChatHandler._run_completion_guard_repair.__wrapped__(
+                    ChatHandler._run_completion_guard_repair(
                         handler,
                         "session-marker-only",
                         record,
@@ -524,8 +524,10 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
                 record,
             )
 
-        self.assertEqual(record["status"], "repairing")
-        self.assertEqual(record["repair_attempts"], 1)
+        # Admission owns these changes; evaluation alone cannot leave a durable
+        # repairing prompt when no worker has been admitted.
+        self.assertEqual(record["status"], "pending")
+        self.assertEqual(record["repair_attempts"], 0)
         handler._run_completion_guard_repair.assert_called_once_with(
             "session-auto-chat-only",
             record,

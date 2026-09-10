@@ -7,9 +7,38 @@ class JarvisSocket {
     this.socket = null;
     this.connected = false;
     this.sessionId = null;
-    this.conversationId = null;
+    this._conversationId = null;
     this.mode = Utils.storage.get('mode', 'cloud');
     this.listeners = {};
+    this.completedResponses = new Set();
+    this.pendingRequestId = null;
+    try {
+      this.conversationId = window.sessionStorage.getItem('jarvis.activeConversation') || null;
+      this.pendingRequestId = window.sessionStorage.getItem('jarvis.pendingRequest') || null;
+    } catch (_) { /* Storage is optional in restricted browsers. */ }
+  }
+
+  get conversationId() { return this._conversationId || null; }
+
+  set conversationId(value) {
+    this._conversationId = value || null;
+    try {
+      if (value) window.sessionStorage.setItem('jarvis.activeConversation', value);
+      else window.sessionStorage.removeItem('jarvis.activeConversation');
+    } catch (_) { /* The live connection still works without session storage. */ }
+  }
+
+  rememberResponse(messageId) {
+    if (!messageId) return;
+    this.completedResponses.add(messageId);
+    if (this.completedResponses.size > 500) {
+      this.completedResponses.delete(this.completedResponses.values().next().value);
+    }
+  }
+
+  clearPendingRequest() {
+    this.pendingRequestId = null;
+    try { window.sessionStorage.removeItem('jarvis.pendingRequest'); } catch (_) { /* Optional. */ }
   }
 
   /**
@@ -56,11 +85,15 @@ class JarvisSocket {
     // Custom events from server
     this.socket.on('connected', (data) => {
       console.log('[Socket] Session established:', data);
+      // Socket.IO drains buffered server events before its connect callback.
+      // Session-ready listeners must already be able to load/resume the thread.
+      this.connected = true;
       this.sessionId = data.session_id;
       this._emit('sessionReady', data);
     });
 
     this.socket.on('chat:thinking', (data) => {
+      if (data.message_id === this.pendingRequestId) this.clearPendingRequest();
       this._emit('thinking', data);
     });
 
@@ -99,6 +132,10 @@ class JarvisSocket {
     this.socket.on('cancel:ack', (data) => {
       this._emit('cancelAck', data);
     });
+
+    this.socket.on('chat:run', (data) => this._emit('runState', data));
+    this.socket.on('chat:rejected', (data) => this._emit('rejected', data));
+    this.socket.on('chat:resume_missing', (data) => this._emit('resumeMissing', data));
 
     this.socket.on('chat:status', (data) => {
       this._emit('status', data);
@@ -142,6 +179,7 @@ class JarvisSocket {
       Utils.storage.set('mode', data.mode);
       this._emit('modeChanged', data);
     });
+    this.socket.on('mode:rejected', (data) => this._emit('modeRejected', data));
 
     this.socket.on('tools:updated', (data) => {
       this._emit('toolsUpdated', data);
@@ -172,6 +210,9 @@ class JarvisSocket {
     this.socket.on('conversation:loaded', (data) => {
       if (data.conversation) {
         this.conversationId = data.conversation.id;
+        if ((data.conversation.messages || []).some(msg => msg.data?._request_id === this.pendingRequestId)) {
+          this.clearPendingRequest();
+        }
       }
       this._emit('conversationLoaded', data);
     });
@@ -202,8 +243,17 @@ class JarvisSocket {
     const payload = {
       message,
       mode: this.mode,
-      conversation_id: this.conversationId
+      conversation_id: this.conversationId,
+      request_id: typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+            const value = crypto.getRandomValues(new Uint8Array(1))[0] & 15;
+            return (char === 'x' ? value : (value & 3) | 8).toString(16);
+          })
     };
+    this.lastRequestId = payload.request_id;
+    this.pendingRequestId = payload.request_id;
+    try { window.sessionStorage.setItem('jarvis.pendingRequest', payload.request_id); } catch (_) { /* Optional. */ }
     
     // Include image data if provided
     if (imageData) {
@@ -267,10 +317,12 @@ class JarvisSocket {
   /**
    * Cancel current processing
    */
-  cancel(conversationId) {
+  cancel(conversationId, messageId) {
     if (this.connected) {
-      this.socket.emit('chat:cancel', { conversation_id: conversationId });
+      this.socket.emit('chat:cancel', { conversation_id: conversationId, message_id: messageId });
+      return true;
     }
+    return false;
   }
 
   /**
@@ -280,8 +332,6 @@ class JarvisSocket {
     if (this.connected) {
       this.socket.emit('mode:set', { mode });
     }
-    this.mode = mode;
-    Utils.storage.set('mode', mode);
   }
 
   /**
@@ -316,6 +366,31 @@ class JarvisSocket {
    * Emit event to listeners
    */
   _emit(event, data) {
+    if (event === 'error' && data?.admitted === false && data.message_id === this.pendingRequestId) {
+      this.clearPendingRequest();
+      this._emit('rejected', data);
+      return;
+    }
+    const pendingLoad = window.jarvisApp?._pendingConversationLoad;
+    if (event === 'error' && !data?.message_id && pendingLoad
+        && (!pendingLoad.id || !data?.conversation_id || pendingLoad.id === data.conversation_id)) {
+      this._emit('conversationLoadError', data);
+      return;
+    }
+    const scoped = new Set([
+      'thinking', 'toolStart', 'toolProgress', 'toolComplete', 'toolError', 'response',
+      'stream', 'error', 'cancelled', 'cancelAck', 'status', 'runState', 'rejected',
+      'feedbackStart', 'feedbackComplete', 'completionGuardUpdated',
+      'completionGuardTicketCreated', 'completionGuardError'
+    ]);
+    if (scoped.has(event) && data?.conversation_id && data.conversation_id !== this.conversationId) return;
+    if (['response', 'error', 'cancelled'].includes(event)) {
+      if (this.completedResponses.has(data?.message_id)) return;
+      this.rememberResponse(data?.message_id);
+    } else if (['thinking', 'toolStart', 'toolProgress', 'toolComplete', 'toolError', 'stream', 'status'].includes(event)
+        && this.completedResponses.has(data?.message_id)) {
+      return;
+    }
     if (this.listeners[event]) {
       this.listeners[event].forEach(callback => callback(data));
     }

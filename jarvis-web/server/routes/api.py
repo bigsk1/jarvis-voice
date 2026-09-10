@@ -11,7 +11,8 @@ from datetime import datetime
 from pathlib import Path
 
 import yaml
-from flask import Blueprint, jsonify, request, send_file, send_from_directory, abort
+from flask import Blueprint, current_app, jsonify, request, send_file, send_from_directory, abort
+from ..services.conversation_store import ConversationBusyError
 from werkzeug.datastructures import FileStorage
 from ..services.log_explorer import get_log_explorer, LogExplorerError
 from ..services.pdf_upload import (
@@ -755,7 +756,24 @@ def get_system_config():
     })
 
 
+def _guard_mode_change(handler):
+    """Reserve HTTP settings changes without holding the run mutex during I/O."""
+    @functools.wraps(handler)
+    def guarded(*args, **kwargs):
+        runs = current_app.extensions.get('jarvis_chat_runs')
+        if runs is None:
+            return handler(*args, **kwargs)
+        mode = (request.get_json(silent=True) or {}).get('mode') or request.args.get('mode')
+        try:
+            with runs.mode_change(mode if mode in ('cloud', 'local') else None):
+                return handler(*args, **kwargs)
+        except ConversationBusyError as exc:
+            return jsonify({'ok': False, 'error': str(exc)}), 409
+    return guarded
+
+
 @api_bp.route('/settings/web', methods=['PUT'])
+@_guard_mode_change
 @_scoped_request_config
 def update_web_settings():
     """Update web UI settings/overrides"""
@@ -830,6 +848,7 @@ def update_web_settings():
 
 
 @api_bp.route('/settings/reset', methods=['POST'])
+@_guard_mode_change
 @_scoped_request_config
 def reset_settings():
     """Reset web overrides to the explicitly scoped mode's env defaults."""
@@ -1557,6 +1576,7 @@ def get_mode():
 
 
 @api_bp.route('/mode', methods=['PUT'])
+@_guard_mode_change
 def set_mode():
     """Switch mode (cloud/local)"""
     settings = get_settings_manager()
@@ -1640,7 +1660,11 @@ def delete_conversation(conv_id):
     from ..services.conversation_store import get_conversation_store
     store = get_conversation_store()
     
-    store.delete_conversation(conv_id)
+    from ..services.conversation_store import ConversationBusyError
+    try:
+        store.delete_conversation(conv_id)
+    except ConversationBusyError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 409
     
     return jsonify({
         'ok': True,
@@ -1733,7 +1757,12 @@ def clear_conversation(conv_id):
     from ..services.conversation_store import get_conversation_store
     store = get_conversation_store()
 
-    if store.clear_conversation(conv_id):
+    from ..services.conversation_store import ConversationBusyError
+    try:
+        cleared = store.clear_conversation(conv_id)
+    except ConversationBusyError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 409
+    if cleared:
         return jsonify({
             'ok': True,
             'message': 'Conversation cleared'
@@ -1980,23 +2009,7 @@ def import_conversation():
         if conversation_data.get('llm_model'):
             conv['llm_model'] = conversation_data['llm_model']
         
-        # Save updated conversation
-        conv_file = store.conversations_dir / f"{new_conv['id']}.json"
-        with open(conv_file, 'w') as f:
-            json.dump(conv, f, indent=2)
-        
-        # Update index
-        for idx_conv in store._index['conversations']:
-            if idx_conv['id'] == new_conv['id']:
-                idx_conv['title'] = conv['title']
-                idx_conv['message_count'] = len(conv['messages'])
-                idx_conv['updated_at'] = conv.get('updated_at', datetime.now().isoformat())
-                idx_conv['pinned'] = conv.get('pinned', False)
-                idx_conv['archived'] = conv.get('archived', False)
-                idx_conv['pinned_at'] = conv.get('pinned_at')
-                idx_conv['archived_at'] = conv.get('archived_at')
-                break
-        store._save_index()
+        store.save_import(conv)
         
         return jsonify({
             'ok': True,
