@@ -31,7 +31,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
 from image_catalog import upsert_image_catalog_entry
-from model_catalog import get_media_model_env_key, resolve_media_model
+from model_catalog import get_media_model_env_key, get_media_model_metadata, resolve_media_model
 from paths import assert_not_restricted_read_path
 from stash_helper import safe_download_image
 
@@ -82,8 +82,8 @@ OPENAI_SIZES = {
     "1:1": "1024x1024"
 }
 
-# gpt-image-2 supports flexible sizes that satisfy API constraints. Keep the
-# public 1K/2K/4K control and map it to useful dimensions per aspect ratio.
+# GPT Image 2 and 2.5 support flexible sizes that satisfy API constraints. Keep
+# the public 1K/2K/4K control and map it to useful dimensions per aspect ratio.
 OPENAI_IMAGE_2_SIZES = {
     "1K": {
         "square": "1024x1024",
@@ -155,6 +155,14 @@ OPENAI_QUALITY_MAP = {
 
 def _is_gpt_image_2(model_name: str) -> bool:
     return str(model_name or "").startswith("gpt-image-2")
+
+
+def _supports_openai_transparency(model_name: str) -> bool:
+    metadata = get_media_model_metadata("image", "openai", model_name)
+    if metadata:
+        return "transparent_background" in metadata.get("capabilities", [])
+    # Preserve the conservative behavior for unknown GPT Image 2 variants.
+    return not _is_gpt_image_2(model_name)
 
 
 def _resolve_openai_size(model_name: str, aspect_ratio: str, quality: str) -> str:
@@ -592,12 +600,16 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
     quality_setting = OPENAI_QUALITY_MAP.get(quality.upper() if quality else "2K", 
                                               OPENAI_QUALITY_MAP.get(quality.lower() if quality else "medium", "medium"))
 
-    # Map aspect ratio and requested size to OpenAI dimensions. gpt-image-2
+    # Map aspect ratio and requested size to OpenAI dimensions. GPT Image 2+
     # supports larger flexible sizes, while earlier models keep the legacy set.
     size = _resolve_openai_size(model_name, aspect_ratio, quality)
 
-    if transparent and _is_gpt_image_2(model_name):
-        print("[generate_image] OpenAI gpt-image-2 does not support transparent backgrounds; using default background", file=sys.stderr)
+    if transparent and not _supports_openai_transparency(model_name):
+        print(
+            f"[generate_image] OpenAI model {model_name} does not support transparent backgrounds; "
+            "using default background",
+            file=sys.stderr,
+        )
         transparent = False
 
     endpoint_label = "edits" if reference_image else "generations"
@@ -664,7 +676,7 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
             "n": 1
         }
         
-        # Handle transparent background (gpt-image-2 does not support this)
+        # Handle transparent background when supported by the selected model.
         if transparent and output_format in ("png", "webp"):
             payload["background"] = "transparent"
         

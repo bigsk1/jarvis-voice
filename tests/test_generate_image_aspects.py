@@ -207,6 +207,44 @@ class GenerateImageAspectTests(unittest.TestCase):
         self.assertEqual(captured["data"]["background"], "transparent")
         self.assertTrue(result["transparent"])
 
+    def test_openai_generation_uses_gpt_image_2_5_default_with_transparency(self):
+        captured = {}
+
+        class FakeResponse:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json():
+                return {"data": [{"b64_json": base64.b64encode(b"generated").decode("ascii")}]}
+
+        def fake_post(url, **kwargs):
+            captured["url"] = url
+            captured.update(kwargs)
+            return FakeResponse()
+
+        def fake_config(key, default=None):
+            return {"OPENAI_API_KEY": "test-key"}.get(key, default)
+
+        with patch.object(generate_image, "get_config_value", side_effect=fake_config), patch.object(
+            generate_image.requests, "post", side_effect=fake_post
+        ):
+            result = generate_image.generate_image_openai(
+                "A transparent product icon",
+                aspect_ratio="16:9",
+                quality="4K",
+                transparent=True,
+                output_format="webp",
+            )
+
+        self.assertTrue(captured["url"].endswith("/v1/images/generations"))
+        self.assertEqual(captured["json"]["model"], "gpt-image-2.5-sunburst")
+        self.assertEqual(captured["json"]["size"], "3840x2160")
+        self.assertEqual(captured["json"]["quality"], "high")
+        self.assertEqual(captured["json"]["background"], "transparent")
+        self.assertEqual(captured["json"]["output_format"], "webp")
+        self.assertTrue(result["transparent"])
+
 
 if __name__ == "__main__":
     unittest.main()

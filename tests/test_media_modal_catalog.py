@@ -58,6 +58,16 @@ def test_system_features_show_music_env_provider():
 def test_image_modal_loads_and_displays_effective_model_capabilities():
     assert "await window.jarvisApp?._ensureSettingsData?." in CHAT_JS
     assert "openaiCapabilities.includes('transparent_background')" in CHAT_JS
+    assert "openaiMetadata?.model || 'gpt-image-2.5-sunburst'" in CHAT_JS
+    assert "const isGptImage2 = /^gpt-image-2(?:$|-)/" in CHAT_JS
     assert "Effective model:" in CHAT_JS
     assert 'id="imgActionImageModelDesc"' in INDEX_HTML
     assert "this._settingsData = data.settings" in APP_JS
+
+
+def test_image_action_choices_follow_analysis_image_video_progression():
+    analyze = INDEX_HTML.index('name="imageAction" value="analyze"')
+    image = INDEX_HTML.index('name="imageAction" value="image"')
+    video = INDEX_HTML.index('name="imageAction" value="video"')
+
+    assert analyze < image < video

@@ -2135,15 +2135,16 @@ class ChatUI {
 
     const providerMetadata = window.jarvisApp?._settingsData?.image_providers?.[provider];
     const openaiMetadata = window.jarvisApp?._settingsData?.image_providers?.openai;
-    const openaiModel = openaiMetadata?.model || 'gpt-image-2';
+    const openaiModel = openaiMetadata?.model || 'gpt-image-2.5-sunburst';
     const openaiCapabilities = Array.isArray(openaiMetadata?.capabilities)
       ? openaiMetadata.capabilities
       : [];
     const transparent = document.getElementById('imgActionTransparent');
     const transparentDesc = document.getElementById('imgActionTransparentDesc');
     const modelDesc = document.getElementById('imgActionImageModelDesc');
+    const isGptImage2 = /^gpt-image-2(?:$|-)/.test(String(openaiModel));
     const supportsTransparent = openaiCapabilities.includes('transparent_background')
-      || (openaiCapabilities.length === 0 && !String(openaiModel).startsWith('gpt-image-2'));
+      || (openaiCapabilities.length === 0 && !isGptImage2);
     if (modelDesc) {
       const effectiveModel = providerMetadata?.model_name || providerMetadata?.model;
       modelDesc.textContent = effectiveModel ? `Effective model: ${effectiveModel}` : '';

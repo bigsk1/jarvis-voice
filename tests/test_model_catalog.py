@@ -38,7 +38,7 @@ from lib.model_catalog import (  # noqa: E402
 class ModelCatalogTests(unittest.TestCase):
     def test_media_defaults_are_centralized(self):
         self.assertEqual(get_default_media_model_id("image", "gemini"), "gemini-3.1-flash-image")
-        self.assertEqual(get_default_media_model_id("image", "openai"), "gpt-image-2")
+        self.assertEqual(get_default_media_model_id("image", "openai"), "gpt-image-2.5-sunburst")
         self.assertEqual(get_default_media_model_id("image", "xai"), "grok-imagine-image")
         self.assertEqual(get_default_media_model_id("video", "gemini"), "veo-3.1-fast-generate-preview")
         self.assertEqual(get_default_media_model_id("video", "xai"), "grok-imagine-video")
@@ -100,9 +100,16 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(xai_image["resolutions"], ["1K", "2K"])
         self.assertIn("quality_control", xai_image["capabilities"])
 
+        openai_flare = get_media_provider_options(
+            "image", {"openai": "gpt-image-2.5-flare-2026-09-08"}
+        )["openai"]
+        self.assertEqual(openai_flare["model_name"], "GPT Image 2.5 Flare")
+        self.assertEqual(openai_flare["resolutions"], ["1K", "2K", "4K"])
+        self.assertIn("transparent_background", openai_flare["capabilities"])
+
     def test_media_resolution_defaults_empty_values_and_preserves_unknown_pins(self):
-        self.assertEqual(resolve_media_model("image", "openai"), "gpt-image-2")
-        self.assertEqual(resolve_media_model("image", "openai", ""), "gpt-image-2")
+        self.assertEqual(resolve_media_model("image", "openai"), "gpt-image-2.5-sunburst")
+        self.assertEqual(resolve_media_model("image", "openai", ""), "gpt-image-2.5-sunburst")
         self.assertEqual(resolve_media_model("image", "openai", "future-image-model"), "future-image-model")
         self.assertEqual(resolve_media_model("music", "elevenlabs", "music_v2"), "music_v2")
 
@@ -141,6 +148,11 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(lyria, {"unit": "request", "usd": 0.04})
         lyria_pro = get_media_model_pricing("music", "gemini", "lyria-3-pro-preview")
         self.assertEqual(lyria_pro, {"unit": "request", "usd": 0.08})
+
+        sunburst = get_media_model_metadata("image", "openai", "gpt-image-2.5-sunburst-2026-09-08")
+        self.assertEqual(sunburst["id"], "gpt-image-2.5-sunburst")
+        self.assertEqual(sunburst["qualities"], ["low", "medium", "high", "xhigh", "max", "auto"])
+        self.assertEqual(sunburst["pricing"]["image_output_usd_per_million"], 30.0)
 
     def test_openai_options_are_newest_first(self):
         models = [entry["id"] for entry in get_provider_model_options("openai")]

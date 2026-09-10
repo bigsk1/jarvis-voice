@@ -466,7 +466,7 @@ IMAGE_TOOL_PROVIDER="gemini"
 # Optional model pins. Leave unset to follow the curated defaults in
 # lib/model_catalog.py and receive future default/retirement updates there.
 # GEMINI_IMAGE_MODEL="gemini-3-pro-image"
-# OPENAI_IMAGE_MODEL="gpt-image-2"
+# OPENAI_IMAGE_MODEL="gpt-image-2.5-sunburst"
 # XAI_IMAGE_MODEL="grok-imagine-image"
 ```
 
@@ -476,11 +476,11 @@ You can override the provider per-request using the `provider` parameter.
 
 | Feature | Gemini | OpenAI | xAI |
 |---------|--------|--------|-----|
-| Catalog default | gemini-3.1-flash-image | gpt-image-2 | grok-imagine-image |
+| Catalog default | gemini-3.1-flash-image | gpt-image-2.5-sunburst | grok-imagine-image |
 | Image-to-image editing | ✅ | ✅ | ✅ |
 | Grounding (real-time data) | ✅ | ❌ | ❌ |
 | Text rendering | Good | Best | Good |
-| Transparent backgrounds | ❌ | ✅ on gpt-image-1.5/1/1-mini; not gpt-image-2 | ❌ |
+| Transparent backgrounds | ❌ | ✅ on GPT Image 2.5 and 1.x; not GPT Image 2 | ❌ |
 | Batch generation (n > 1) | ❌ | ❌ | ✅ (1-10 images) |
 | Quality parameter | ✅ (1K/2K/4K) | ✅ (low/med/high) | ❌ (not supported) |
 | Speed | Medium | Slow | Fast |

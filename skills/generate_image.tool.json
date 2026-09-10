@@ -49,7 +49,7 @@
           "2K",
           "4K"
         ],
-        "description": "Resolution/Quality: '1K' (fast/low), '2K' (default/medium), '4K' (best/high). For OpenAI gpt-image-2, also maps to larger size dimensions where supported."
+        "description": "Resolution/Quality: '1K' (fast/low), '2K' (default/medium), '4K' (best/high). For OpenAI GPT Image 2 and 2.5, also maps to larger size dimensions where supported."
       },
       "use_grounding": {
         "type": "boolean",
@@ -69,7 +69,7 @@
       },
       "transparent": {
         "type": "boolean",
-        "description": "OPENAI ONLY: Enable transparent background. Works with png/webp output on gpt-image-1.5/1/1-mini. gpt-image-2 does not currently support transparent backgrounds."
+        "description": "OPENAI ONLY: Enable transparent background with png/webp output. Supported by GPT Image 2.5 and GPT Image 1.x; not supported by GPT Image 2."
       },
       "output_format": {
         "type": "string",

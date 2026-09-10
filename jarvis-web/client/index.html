@@ -1117,12 +1117,12 @@
                 <span>🔍 <strong>Analyze Image</strong> <span style="color: var(--text-secondary); font-size: var(--text-xs);">— Vision analysis, then chat</span></span>
               </label>
               <label class="image-action-radio" style="display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-                <input type="radio" name="imageAction" value="video">
-                <span>🎬 <strong>Image to Video</strong> <span style="color: var(--text-secondary); font-size: var(--text-xs);">— Animate this image</span></span>
-              </label>
-              <label class="image-action-radio" style="display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
                 <input type="radio" name="imageAction" value="image">
                 <span>🎨 <strong>Image to Image</strong> <span style="color: var(--text-secondary); font-size: var(--text-xs);">— Generate new image from reference</span></span>
+              </label>
+              <label class="image-action-radio" style="display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                <input type="radio" name="imageAction" value="video">
+                <span>🎬 <strong>Image to Video</strong> <span style="color: var(--text-secondary); font-size: var(--text-xs);">— Animate this image</span></span>
               </label>
             </div>
           </div>
@@ -1222,7 +1222,7 @@
                 <label class="setting-label">
                   <input type="checkbox" id="imgActionTransparent"> Transparent background
                 </label>
-                <span class="setting-desc" id="imgActionTransparentDesc">For logos, sprites, overlays (png/webp; not supported by gpt-image-2)</span>
+                <span class="setting-desc" id="imgActionTransparentDesc">For logos, sprites, overlays (png/webp; supported by GPT Image 2.5, not GPT Image 2)</span>
               </div>
               <div class="setting-group">
                 <label class="setting-label">Output Format</label>
