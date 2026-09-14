@@ -3293,23 +3293,13 @@ class ChatUI {
     // Build tool cards HTML from pendingTools (supports duplicate tools with unique keys)
     let toolResultsData = data.data || data || {};
     toolResultsData = this._flattenWorkflowToolResults(toolResultsData);
-    let toolCardsHtml = '';
+    let toolCardEntries = [];
     const toolTraceEntries = this._getToolTraceEntries(toolResultsData);
     this._reconcilePendingToolsWithFinalList(toolsUsed, toolTraceEntries);
     const pendingToolEntries = Object.entries(this.pendingTools);
     if (pendingToolEntries.length > 0) {
-      toolCardsHtml = '<div class="tool-cards">';
-      for (const entry of this._getPendingToolCardEntries(toolResultsData, pendingToolEntries)) {
-        toolCardsHtml += this._createToolCardHtml(
-          entry.displayName,
-          entry.status,
-          entry.result,
-          entry.duration
-        );
-      }
-      toolCardsHtml += '</div>';
+      toolCardEntries = this._getPendingToolCardEntries(toolResultsData, pendingToolEntries);
     } else if (toolTraceEntries.length > 0) {
-      toolCardsHtml = '<div class="tool-cards">';
       const toolOccurrenceCounts = {};
       const successfulToolOccurrenceCounts = {};
       for (const entry of toolTraceEntries) {
@@ -3338,31 +3328,31 @@ class ChatUI {
             fallback
           )
           : fallback;
-        toolCardsHtml += this._createToolCardHtml(
-          tool,
+        toolCardEntries.push({
+          displayName: tool,
           status,
-          toolResult,
-          entry.duration_ms ?? null
-        );
+          result: toolResult,
+          duration: entry.duration_ms ?? null
+        });
       }
-      toolCardsHtml += '</div>';
     } else if (toolsUsed.length > 0) {
       // Fallback for non-workflow responses
-      toolCardsHtml = '<div class="tool-cards">';
       const toolOccurrenceCounts = {};
       for (const tool of toolsUsed) {
         const occurrenceIndex = toolOccurrenceCounts[tool] || 0;
         toolOccurrenceCounts[tool] = occurrenceIndex + 1;
         const toolResult = this._getToolResultForOccurrence(toolResultsData, tool, occurrenceIndex);
-        toolCardsHtml += this._createToolCardHtml(tool, 'success', toolResult, null);
+        toolCardEntries.push({displayName: tool, status: 'success', result: toolResult, duration: null});
       }
-      toolCardsHtml += '</div>';
     }
-    
+    const toolCardsHtml = window.assistantMessageRenderer.renderToolCards(
+      toolCardEntries,
+      entry => this._createToolCardHtml(entry.displayName, entry.status, entry.result, entry.duration)
+    );
+
     // Check for generated images
     let imageHtml = '';
     let filename = null;
-    let shoppingHtml = '';
     
     // Method 1: Check data.generate_image object
     const imageData = data.generate_image;
@@ -3673,114 +3663,13 @@ class ChatUI {
       `;
     }
     
-    // Check for converted files (from convert_file tool)
-    let convertedFileHtml = '';
-    const hasConvertTool = toolsUsed.includes('convert_file') || 
+    // Converted-file display is separate from the composer's conversion flow.
+    const hasConvertTool = toolsUsed.includes('convert_file') ||
       Object.keys(this.pendingTools).some(k => k.startsWith('convert_file'));
-    
-    if (hasConvertTool) {
-      const convertResult = toolResultsData['convert_file'] || data.convert_file;
-      if (convertResult && convertResult.stash_ref) {
-        const stashMatch = convertResult.stash_ref.match(/stash:\/\/([^/]+)\/(.+)/);
-        if (stashMatch) {
-          // Use existing stash route: /api/stash/{space_id}/{file_id}
-          const stashUrl = `/api/stash/${stashMatch[1]}/${stashMatch[2]}`;
-          const targetFormat = convertResult.target_format || '';
-          const filename = convertResult.filename || 'converted file';
-          const sizeChange = convertResult.size_change || '';
-          
-          // Check if it's an image format
-          const imageFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'];
-          const isImage = imageFormats.includes(targetFormat.toLowerCase());
-          
-          // Check if it's a video format
-          const videoFormats = ['mp4', 'webm', 'mov', 'avi', 'mkv'];
-          const isVideo = videoFormats.includes(targetFormat.toLowerCase());
-          
-          // Check if it's an audio format
-          const audioFormats = ['mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a'];
-          const isAudio = audioFormats.includes(targetFormat.toLowerCase());
-          
-          // Download button HTML (reusable)
-          const downloadBtn = `
-            <a href="${stashUrl}" download="${filename}" class="convert-download-btn" title="Download ${filename}">
-              ⬇️ Download ${targetFormat.toUpperCase()}
-            </a>
-          `;
-          
-          if (isImage) {
-            // Display image inline with download button
-            convertedFileHtml = `
-              <div class="converted-media-container">
-                <div class="message-image converted-file" onclick="window.showImageLightbox('${stashUrl}')">
-                  <img src="${stashUrl}" alt="Converted ${targetFormat.toUpperCase()}" loading="lazy">
-                  <div class="image-overlay">
-                    <span>🔍 Click to expand</span>
-                  </div>
-                </div>
-                <div class="convert-actions">
-                  <span class="convert-info">${Utils.escapeHtml(filename)} ${sizeChange ? `(${sizeChange})` : ''}</span>
-                  ${downloadBtn}
-                </div>
-              </div>
-            `;
-          } else if (isVideo) {
-            // Display video player with download button
-            convertedFileHtml = `
-              <div class="converted-media-container">
-                <div class="message-video converted-file">
-                  <div class="video-header">
-                    <span class="video-icon">🎬</span>
-                    <span class="video-title">Converted: ${Utils.escapeHtml(filename)}</span>
-                  </div>
-                  <video controls preload="metadata" class="video-player">
-                    <source src="${stashUrl}" type="video/${targetFormat}">
-                    Your browser does not support video playback.
-                  </video>
-                </div>
-                <div class="convert-actions">
-                  <span class="convert-info">${sizeChange ? `Size: ${sizeChange}` : ''}</span>
-                  ${downloadBtn}
-                </div>
-              </div>
-            `;
-          } else if (isAudio) {
-            // Display audio player with download button
-            convertedFileHtml = `
-              <div class="converted-media-container">
-                <div class="message-audio converted-file">
-                  <div class="audio-header">
-                    <span class="audio-icon">🎵</span>
-                    <span class="audio-title">Converted: ${Utils.escapeHtml(filename)}</span>
-                  </div>
-                  <audio controls preload="metadata" class="audio-player">
-                    <source src="${stashUrl}" type="audio/${targetFormat}">
-                    Your browser does not support audio playback.
-                  </audio>
-                </div>
-                <div class="convert-actions">
-                  <span class="convert-info">${sizeChange ? `Size: ${sizeChange}` : ''}</span>
-                  ${downloadBtn}
-                </div>
-              </div>
-            `;
-          } else {
-            // Download link for other formats
-            convertedFileHtml = `
-              <div class="message-file converted-file">
-                <a href="${stashUrl}" download="${filename}" class="file-download-link">
-                  <span class="file-icon">📁</span>
-                  <span class="file-name">${Utils.escapeHtml(filename)}</span>
-                  ${sizeChange ? `<span class="file-size">(${sizeChange})</span>` : ''}
-                  <span class="download-icon">⬇️</span>
-                </a>
-              </div>
-            `;
-          }
-        }
-      }
-    }
-    
+    const convertedFileHtml = hasConvertTool
+      ? window.assistantMessageRenderer.renderConvertedFile(toolResultsData['convert_file'] || data.convert_file)
+      : '';
+
     // raw_llm_response is inside data.data (nested), also check top level for loaded conversations
     const innerData = data.data || data || {};
     let rawResponse = innerData.raw_llm_response || innerData.vision_analysis || data.raw_llm_response || data.vision_analysis || '';
@@ -3789,186 +3678,9 @@ class ChatUI {
     const storedSpeech = Utils.stripLlmCitationArtifacts(String(innerData.speech || data.speech || ''));
     text = Utils.stripLlmCitationArtifacts(text);
 
-    // Legacy fallback when the shared structured-results renderer is unavailable.
-    if (!window.structuredResultsRenderer) {
-    // Shopping/product preview card for focused SerpApi product lookups
-    // and single clear product results where a link + image is helpful.
-    const serpapiPayload = toolResultsData.serpapi_amazon_search
-      || data.serpapi_amazon_search
-      || toolResultsData.serpapi_search
-      || data.serpapi_search;
-    const latestSerpapi = Array.isArray(serpapiPayload)
-      ? serpapiPayload[serpapiPayload.length - 1]
-      : serpapiPayload;
-
-    if (latestSerpapi && typeof latestSerpapi === 'object') {
-      const engine = latestSerpapi.engine;
-      const results = Array.isArray(latestSerpapi.top_results) && latestSerpapi.top_results.length > 0
-        ? latestSerpapi.top_results
-        : (Array.isArray(latestSerpapi.results) ? latestSerpapi.results : []);
-      const product = results[0];
-      const isFocusedProduct =
-        engine === 'amazon_product'
-        || Boolean(latestSerpapi.asin)
-        || (results.length === 1 && engine === 'amazon');
-
-      if (isFocusedProduct && product && product.url && product.title) {
-        const title = Utils.escapeHtml(product.title);
-        const link = Utils.escapeHtml(product.url);
-        const image = (product.image_url || product.thumbnail) ? Utils.escapeHtml(product.image_url || product.thumbnail) : '';
-        const price = product.price ? Utils.escapeHtml(String(product.price)) : '';
-        const rating = product.rating != null ? Utils.escapeHtml(String(product.rating)) : '';
-        const reviews = product.reviews != null ? Utils.escapeHtml(String(product.reviews)) : '';
-        const asin = product.asin ? Utils.escapeHtml(String(product.asin)) : '';
-        const metaParts = [];
-        if (price) metaParts.push(`<span class="product-chip price">${price}</span>`);
-        if (rating) metaParts.push(`<span class="product-chip">⭐ ${rating}</span>`);
-        if (reviews) metaParts.push(`<span class="product-chip">${reviews} reviews</span>`);
-        if (asin) metaParts.push(`<span class="product-chip">ASIN ${asin}</span>`);
-
-        shoppingHtml = `
-          <div class="product-preview-card">
-            ${image ? `
-              <a class="product-preview-image" href="${link}" target="_blank" rel="noopener noreferrer">
-                <img src="${image}" alt="${title}" loading="lazy" referrerpolicy="no-referrer">
-              </a>
-            ` : ''}
-            <div class="product-preview-body">
-              <div class="product-preview-label">Amazon Product</div>
-              <a class="product-preview-title" href="${link}" target="_blank" rel="noopener noreferrer">${title}</a>
-              ${metaParts.length ? `<div class="product-preview-meta">${metaParts.join('')}</div>` : ''}
-              <div class="product-preview-actions">
-                <a class="product-preview-link" href="${link}" target="_blank" rel="noopener noreferrer">Open product</a>
-              </div>
-            </div>
-          </div>
-        `;
-      }
-    }
-
-    const homeDepotPayload = toolResultsData.serpapi_home_depot || data.serpapi_home_depot;
-    const latestHomeDepot = Array.isArray(homeDepotPayload)
-      ? homeDepotPayload[homeDepotPayload.length - 1]
-      : homeDepotPayload;
-
-    if (!shoppingHtml && latestHomeDepot && typeof latestHomeDepot === 'object') {
-      const results = Array.isArray(latestHomeDepot.top_results) && latestHomeDepot.top_results.length > 0
-        ? latestHomeDepot.top_results
-        : (Array.isArray(latestHomeDepot.results) ? latestHomeDepot.results : []);
-      const product = latestHomeDepot.product_details || results[0];
-
-      if (product && product.url && product.title) {
-        const title = Utils.escapeHtml(product.title);
-        const link = Utils.escapeHtml(product.url);
-        const image = (product.image_url || product.thumbnail || latestHomeDepot.top_image_url)
-          ? Utils.escapeHtml(product.image_url || product.thumbnail || latestHomeDepot.top_image_url)
-          : '';
-        const price = (product.price_formatted || product.price) ? Utils.escapeHtml(String(product.price_formatted || product.price)) : '';
-        const rating = product.rating != null ? Utils.escapeHtml(String(product.rating)) : '';
-        const reviews = product.reviews != null ? Utils.escapeHtml(String(product.reviews)) : '';
-        const productId = product.product_id ? Utils.escapeHtml(String(product.product_id)) : '';
-        const metaParts = [];
-        if (price) metaParts.push(`<span class="product-chip price">${price}</span>`);
-        if (rating) metaParts.push(`<span class="product-chip">⭐ ${rating}</span>`);
-        if (reviews) metaParts.push(`<span class="product-chip">${reviews} reviews</span>`);
-        if (productId) metaParts.push(`<span class="product-chip">Product ID ${productId}</span>`);
-
-        shoppingHtml = `
-          <div class="product-preview-card">
-            ${image ? `
-              <a class="product-preview-image" href="${link}" target="_blank" rel="noopener noreferrer">
-                <img src="${image}" alt="${title}" loading="lazy" referrerpolicy="no-referrer">
-              </a>
-            ` : ''}
-            <div class="product-preview-body">
-              <div class="product-preview-label">Home Depot Product</div>
-              <a class="product-preview-title" href="${link}" target="_blank" rel="noopener noreferrer">${title}</a>
-              ${metaParts.length ? `<div class="product-preview-meta">${metaParts.join('')}</div>` : ''}
-              <div class="product-preview-actions">
-                <a class="product-preview-link" href="${link}" target="_blank" rel="noopener noreferrer">Open product</a>
-              </div>
-            </div>
-          </div>
-        `;
-      }
-    }
-
-    const ebayProductPayload = toolResultsData.serpapi_ebay_product || data.serpapi_ebay_product;
-    const latestEbayProduct = Array.isArray(ebayProductPayload)
-      ? ebayProductPayload[ebayProductPayload.length - 1]
-      : ebayProductPayload;
-
-    if (!shoppingHtml && latestEbayProduct && typeof latestEbayProduct === 'object') {
-      const results = Array.isArray(latestEbayProduct.top_results) && latestEbayProduct.top_results.length > 0
-        ? latestEbayProduct.top_results
-        : (Array.isArray(latestEbayProduct.results) ? latestEbayProduct.results : []);
-      const summary = latestEbayProduct.product_summary;
-      const product = (summary && typeof summary === 'object') ? summary : results[0];
-
-      if (product && product.title) {
-        const linkRaw = product.url || (results[0] && results[0].url);
-        if (linkRaw) {
-          const title = Utils.escapeHtml(product.title);
-          const link = Utils.safeHttpUrlForAttr(linkRaw) || Utils.escapeHtml(linkRaw);
-          let image = '';
-          if (summary && Array.isArray(summary.image_urls) && summary.image_urls.length > 0) {
-            image = Utils.safeHttpUrlForAttr(summary.image_urls[summary.image_urls.length - 1])
-              || Utils.safeHttpUrlForAttr(summary.image_urls[0]);
-          }
-          if (!image && product.thumbnail) {
-            image = Utils.safeHttpUrlForAttr(product.thumbnail);
-          }
-          if (!image && latestEbayProduct.top_image_url) {
-            image = Utils.safeHttpUrlForAttr(latestEbayProduct.top_image_url);
-          }
-
-          let priceStr = '';
-          const buy = summary && typeof summary.buy === 'object' ? summary.buy : null;
-          if (buy && buy.buy_it_now && typeof buy.buy_it_now === 'object') {
-            const pr = buy.buy_it_now.price;
-            if (pr && pr.amount != null && pr.currency) {
-              priceStr = `${pr.currency} ${pr.amount}`;
-            }
-          }
-          if (!priceStr && buy && buy.bid && typeof buy.bid === 'object') {
-            const pr = buy.bid.price;
-            if (pr && pr.amount != null && pr.currency) {
-              priceStr = `Bid ${pr.currency} ${pr.amount}`;
-            }
-          }
-
-          const rating = product.rating != null ? Utils.escapeHtml(String(product.rating)) : '';
-          const reviews = product.review_count != null ? Utils.escapeHtml(String(product.review_count)) : '';
-          const productId = (latestEbayProduct.product_id || product.product_id)
-            ? Utils.escapeHtml(String(latestEbayProduct.product_id || product.product_id))
-            : '';
-          const metaParts = [];
-          if (priceStr) metaParts.push(`<span class="product-chip price">${Utils.escapeHtml(priceStr)}</span>`);
-          if (rating) metaParts.push(`<span class="product-chip">⭐ ${rating}</span>`);
-          if (reviews) metaParts.push(`<span class="product-chip">${reviews} reviews</span>`);
-          if (productId) metaParts.push(`<span class="product-chip">Item ${productId}</span>`);
-
-          shoppingHtml = `
-          <div class="product-preview-card">
-            ${image ? `
-              <a class="product-preview-image" href="${link}" target="_blank" rel="noopener noreferrer">
-                <img src="${image}" alt="${title}" loading="lazy">
-              </a>
-            ` : ''}
-            <div class="product-preview-body">
-              <div class="product-preview-label">eBay Product</div>
-              <a class="product-preview-title" href="${link}" target="_blank" rel="noopener noreferrer">${title}</a>
-              ${metaParts.length ? `<div class="product-preview-meta">${metaParts.join('')}</div>` : ''}
-              <div class="product-preview-actions">
-                <a class="product-preview-link" href="${link}" target="_blank" rel="noopener noreferrer">Open listing</a>
-              </div>
-            </div>
-          </div>
-        `;
-        }
-      }
-    }
-    }
+    const shoppingHtml = window.structuredResultsRenderer
+      ? ''
+      : window.assistantMessageRenderer.renderShoppingFallback(toolResultsData, data);
 
     const canvasPreview = this._extractCanvasPreview(toolResultsData, data);
     const canvasPreviewHtml = canvasPreview

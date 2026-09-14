@@ -3,10 +3,10 @@
 
 import importlib.util
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
-
 from server_package_utils import load_server_package
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -1905,6 +1905,95 @@ def test_family_followups_keep_shared_metadata_order_and_false_zero_values():
         "rating": 0, "reviews": 0, "sponsored": False,
     }]
     assert result["error"]["retries"] == 0
+    assert followup.extract_followup_data(data, max_candidates=1) == result
+
+
+@pytest.mark.parametrize("tool_name", ["serpapi_amazon_search", "serpapi_search"])
+def test_amazon_merge_keeps_alias_policy_and_independent_output(tool_name, monkeypatch):
+    monkeypatch.setattr(followup, "GENERIC_FOLLOWUP_STRING_MAX_CHARS", 80)
+    data = {
+        tool_name: [
+            {
+                "engine": "amazon", "query": "chargers", "results_count": 2,
+                "query_was_optimized": False, "stash_ref": "stash://search/common",
+                "provider": "serpapi", "saved": {"filename": "search.json"},
+                "results": [
+                    {"asin": "FIRST", "title": "Discovery title " * 20,
+                     "url": "https://example.test/discovery", "price": 5},
+                    {"asin": "SECOND", "title": "Second charger"},
+                ],
+            },
+            {"ok": True, "data": {
+                "engine": "amazon_product", "asin": "FIRST",
+                "results": [{
+                    "asin": "FIRST", "title": "Detail title",
+                    "url": "https://example.test/detail", "price": 0,
+                    "prime": False, "prime_eligible": False,
+                    "delivery": ["Delivery " * 100] * 4,
+                    "badges": ["Badge " * 40] * 6,
+                }],
+            }},
+        ],
+        "_tool_trace": [{
+            "tool": tool_name, "ok": True, "arguments": {"query": "chargers"},
+        }],
+    }
+    before = deepcopy(data)
+    result = followup.extract_followup_data(data, max_candidates=1)
+
+    assert list(result) == ["serpapi_amazon_search"]
+    amazon = result["serpapi_amazon_search"]
+    assert amazon["query_was_optimized"] is False
+    assert amazon["runs_count"] == 2
+    assert amazon["candidates_truncated"] is True
+    assert not {"request", "stash_ref", "filename", "provider"} & amazon.keys()
+    candidate = amazon["candidates"][0]
+    assert candidate["asin"] == "FIRST"
+    assert candidate["url"] == "https://example.test/discovery"
+    assert candidate["title"].startswith("Discovery title")
+    assert len(candidate["title"]) <= 80
+    assert "truncated" in candidate["title"]
+    assert candidate["price"] == 0
+    assert candidate["prime"] is False
+    assert candidate["prime_eligible"] is False
+    assert len(candidate["delivery"]) == 4
+    assert len(candidate["delivery"][0]) == 500
+    assert "1 items truncated" in candidate["delivery"][-1]
+    assert len(candidate["badges"]) == 6
+    assert len(candidate["badges"][0]) == 120
+    assert "1 items truncated" in candidate["badges"][-1]
+    assert data == before
+    result["serpapi_amazon_search"]["candidates"][0]["price"] = 99
+    assert followup.extract_followup_data(data, max_candidates=1)[
+        "serpapi_amazon_search"
+    ]["candidates"][0]["price"] == 0
+
+
+@pytest.mark.parametrize("tool_name", [
+    "trakt_movies", "trakt_tv_shows", "trakt_account",
+    "tmdb_movies", "tmdb_tv_shows", "flight_search",
+])
+def test_media_and_flight_projection_keeps_common_metadata_and_candidates(tool_name):
+    payload, arguments = deepcopy(LOCAL_TOOL_SAMPLES[tool_name])
+    payload.update({
+        "stash_ref": "stash://results/selected",
+        "saved": {"filename": "selected.json"},
+        "provider": "test-provider",
+    })
+    data = {tool_name: {"ok": True, "data": payload}}
+    request = arguments or {"query": "selected", "start": 0}
+    data["_tool_trace"] = [{"tool": tool_name, "ok": True, "arguments": request}]
+    before = deepcopy(data)
+
+    result = followup.extract_followup_data(data, max_candidates=1)
+
+    compact = result[tool_name]
+    assert compact["stash_ref"] == "stash://results/selected"
+    assert compact["filename"] == "selected.json"
+    assert compact["provider"] == "test-provider"
+    assert compact["request"]
+    assert len(compact["candidates"]) == 1
+    assert data == before
     assert followup.extract_followup_data(data, max_candidates=1) == result
 
 

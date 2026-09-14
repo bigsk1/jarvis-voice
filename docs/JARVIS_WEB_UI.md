@@ -182,6 +182,9 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 - Routing status text can include turn-aware messages like `Turn 3: using serpapi_amazon_search...`, which follow the orchestrator's `MAX_TOOL_TURNS` loop.
 - Tool cards rendered after a page reload are rebuilt from the saved conversation message, not from the original live WebSocket event stream.
 - Because of that, historical reload is best at restoring successful tool outcomes. Live-only per-call events such as intermediate failures or duplicate-guard status lines are not guaranteed to reappear unless they were explicitly persisted in the saved message data.
+- `client/js/assistant-message-renderer.js` renders tool-card lists, converted-file
+  previews, and the legacy shopping fallback from supplied message data. It loads
+  before `chat.js`; ChatUI retains request lifecycle and media selection.
 
 ### Structured Result Previews
 
@@ -196,9 +199,10 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
   records, and `metrics` for compact measurements. Overflowing rails expose
   previous/next controls in the preview header without covering card content;
   touch swiping and the native scrollbar remain available.
-- Shopping and search adapters live in `client/js/structured-results-shopping.js`
-  and `client/js/structured-results-search.js`. They load before the renderer
-  as classic scripts and receive its shared formatting helpers.
+- Shopping, search, and local/travel adapters live in
+  `client/js/structured-results-shopping.js`, `structured-results-search.js`,
+  and `structured-results-local-travel.js`. They load before the renderer as
+  classic scripts and receive its shared formatting helpers.
 - When the response is a completed workflow, the same adapters are composed
   into one workflow result surface in workflow step order. Each tool keeps its
   own heading, metadata, safe links, and layout inside that surface. A section
@@ -289,6 +293,7 @@ jarvis-web/
 │           ├── __init__.py
 │           ├── shopping.py
 │           ├── search.py
+│           ├── media.py
 │           └── local_travel.py
 │
 ├── client/
@@ -305,10 +310,12 @@ jarvis-web/
 │   ├── js/
 │   │   ├── app.js                  # Shell, settings, navigation
 │   │   ├── chat.js                 # Messages, tools, uploads, workflows
+│   │   ├── assistant-message-renderer.js # Tool cards, converted files, legacy shopping
 │   │   ├── command-system.js       # Slash commands, prompt selection, and tool hints
 │   │   ├── structured-results.js   # Adapter registry and shared result rendering
 │   │   ├── structured-results-shopping.js # Shopping payload adapters
 │   │   ├── structured-results-search.js   # Search payload adapters
+│   │   ├── structured-results-local-travel.js # Local/travel payload adapters
 │   │   ├── socket.js               # WebSocket client
 │   │   ├── logs.js                 # In-app server log panel
 │   │   ├── log-viewer.js           # /logs folder + file viewer
@@ -799,6 +806,11 @@ tool-specific state where later turns need them. Meaningful `false` and `0`
 values survive, while empty values may be omitted. Intentional text truncation
 is labeled `truncated for follow-up context`, and structural compaction uses
 `_followup_truncated` metadata instead of sliced JSON.
+
+The sibling `followup/` package groups shopping, search, local/travel, and media
+projections. `media.py` handles Trakt and TMDB; `shopping.py` also joins Amazon
+discovery and product-detail runs. The facade retains shared metadata, workflow
+handling, and output bounds.
 
 When adding or changing a tool, add its representative payload to
 `tests/test_followup_tool_coverage.py`, then add a `FOLLOWUP_FIELDS` entry or

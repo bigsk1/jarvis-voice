@@ -1,0 +1,258 @@
+"""Exercise the real assistant-message entry point with browser I/O isolated."""
+
+import json
+import subprocess
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+
+HARNESS = r"""
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const effects = [], timers = [];
+const escape = value => String(value).replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+// Only the DOM operations used by message insertion and its disclosure buttons.
+// Result selection, HTML generation, IDs and pending-tool cleanup are production code.
+class Element {
+  constructor() {
+    this.children = []; this.dataset = {}; this.style = {}; this.events = {};
+    this.className = ''; this._html = ''; this.parentElement = null;
+    this.classList = {
+      contains: name => this.className.split(' ').includes(name),
+      add: name => { if (!this.classList.contains(name)) this.className += ' ' + name; },
+      remove: name => { this.className = this.className.split(' ').filter(x => x !== name).join(' '); },
+      toggle: name => this.classList.contains(name) ? this.classList.remove(name) : this.classList.add(name)
+    };
+  }
+  set textContent(value) { this._text = value; this._html = escape(value); }
+  get textContent() { return this._text || ''; }
+  set innerHTML(value) {
+    this._html = value; this.parts = {};
+    this.headers = [...value.matchAll(/<div class="tool-card ([^"]*)">/g)].map(match => {
+      const card = new Element(), header = new Element();
+      card.className = 'tool-card ' + match[1]; header.parentElement = card;
+      return header;
+    });
+    if (value.includes('class="details-toggle"')) {
+      const details = new Element(), toggle = new Element();
+      details.className = 'message-details collapsed'; toggle.parentElement = details;
+      toggle.parts = {'.toggle-icon': new Element(), '.toggle-text': new Element()};
+      this.parts['.details-toggle'] = toggle;
+    }
+  }
+  get innerHTML() { return this._html; }
+  querySelector(selector) { return this.parts?.[selector] || null; }
+  querySelectorAll(selector) { return selector === '.tool-card-header' ? this.headers || [] : []; }
+  closest() { return this.parentElement; }
+  addEventListener(name, handler) { this.events[name] = handler; }
+  appendChild(child) { this.children.push(child); child.parentElement = this; effects.push('append'); }
+  remove() {}
+}
+const storage = {getItem: () => null, setItem() {}, removeItem() {}};
+const sandbox = {
+  console, URL, localStorage: storage,
+  document: {createElement: () => new Element(), addEventListener() {}, querySelectorAll: () => []},
+  window: {sessionStorage: storage, location:{origin:'https://jarvis.test'}, addEventListener() {}},
+  setTimeout: fn => {timers.push(fn); return timers.length;}, clearTimeout() {},
+  fetch: async () => ({ok: true, json: async () => ({tools: [], prompts: {}, workflows: {}})})
+};
+vm.createContext(sandbox);
+const clientPath = ROOT + '/jarvis-web/client';
+// Use the shipped order so a new renderer dependency must be wired in HTML too.
+const html = fs.readFileSync(clientPath + '/index.html', 'utf8');
+const scripts = [...html.matchAll(/<script\b[^>]*src="(\/js\/[^"?]+)"[^>]*>/g)].map(m => m[1]);
+for (const path of scripts.slice(0, scripts.indexOf('/js/chat.js'))) {
+  vm.runInContext(fs.readFileSync(clientPath + path, 'utf8'), sandbox, {filename: path});
+}
+const Utils = vm.runInContext('Utils', sandbox);
+Utils.hydrateRichContent = () => effects.push('hydrate');
+Utils.scrollToBottom = () => effects.push('scroll');
+function loadClass(file, name, terminator) {
+  const source = fs.readFileSync(clientPath + '/js/' + file, 'utf8');
+  return vm.runInContext(source.slice(0, source.lastIndexOf(terminator)) + '\n' + name, sandbox);
+}
+const ChatUI = loadClass('chat.js', 'ChatUI', '// Create global instance');
+const JarvisApp = loadClass('app.js', 'JarvisApp', '// Initialize app');
+const socket = sandbox.window.jarvisSocket;
+socket.conversationId = 'thread';
+function chat() {
+  const ui = Object.create(ChatUI.prototype);
+  Object.assign(ui, {
+    messagesContainer: new Element(), pendingTools: {}, pendingToolsByMessage: new Map(),
+    pendingToolMessageId: null, chatOnlyEnabled: false,
+    _clearMessageResponseActions: () => effects.push('clear-actions'),
+    _attachCompletionGuardCard: (_el, data) => effects.push(['guard', data.completion_guard]),
+    _attachMessageResponseActions: (_el, text, _data, options) => effects.push(['actions', text, options]),
+    _hydrateCanvasPreview: () => effects.push('canvas-hydrate')
+  });
+  return ui;
+}
+function message(ui) { return ui.messagesContainer.children.at(-1); }
+function render(ui, text, tools, payload, live = true, options = {}) {
+  const data = live
+    ? {message_id: 'answer', conversation_id: 'thread', data: payload}
+    : {...payload, _web_message_id: 'answer'};
+  ui._activatePendingToolsForMessage('answer');
+  ui.addAssistantMessage(text, tools, data, options);
+  return message(ui).innerHTML;
+}
+"""
+
+
+def run_message_browser(body: str) -> None:
+    script = f"const ROOT = {json.dumps(str(ROOT))};\n" + HARNESS
+    script += "\n(async () => {\n" + body + "\n})().catch(error => {console.error(error); process.exit(1);});"
+    result = subprocess.run(["node", "-e", script], cwd=ROOT, capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("live", [True, False])
+@pytest.mark.parametrize("target,tag,mime", [
+    ("PNG", "img", None), ("mp4", "video", "video/mp4"),
+    ("ogg", "audio", "audio/ogg"), ("pdf", "a", None),
+])
+def test_converted_result_display_for_live_and_saved_messages(live, target, tag, mime):
+    run_message_browser(f"const live = {json.dumps(live)}, target = {json.dumps(target)}, tag = {json.dumps(tag)}, mime = {json.dumps(mime)};\n" + r"""
+const ui = chat();
+const payload = {convert_file: {stash_ref: 'stash://space_test/f_converted',
+  filename: 'Converted <example>.' + target, target_format: target, size_change: '-25%'}};
+const before = JSON.stringify(payload);
+const html = render(ui, 'Ready', ['convert_file'], payload, live);
+assert.ok(html.includes('<' + tag));
+assert.ok(html.includes('/api/stash/space_test/f_converted'));
+assert.ok(html.includes('Converted &lt;example&gt;'));
+assert.ok(html.includes('-25%'));
+if (mime) assert.ok(html.includes('type="' + mime + '"'));
+assert.equal((html.match(/class="(?:message-image|message-video|message-audio|message-file) converted-file"/g) || []).length, 1);
+assert.ok(html.indexOf('converted-file') < html.indexOf('class="message-bubble"'));
+assert.equal(JSON.stringify(payload), before);
+assert.equal(message(ui).dataset.messageId, 'answer');
+assert.equal(message(ui).dataset.conversationId, 'thread');
+assert.ok(ui._renderedMessageIds.has('assistant:answer'));
+assert.equal(ui.pendingToolsByMessage.has('answer'), false);
+assert.deepEqual(effects.filter(x => typeof x === 'string'), ['clear-actions', 'append', 'hydrate', 'scroll']);
+""")
+
+
+def test_missing_invalid_or_unannounced_conversion_has_no_preview():
+    run_message_browser(r"""
+for (const [tools, result] of [
+  [[], {stash_ref:'stash://space_test/f_file', target_format:'png'}],
+  [['convert_file'], {}], [['convert_file'], {stash_ref:'invalid'}]
+]) {
+  const html = render(chat(), 'Ready', tools, {convert_file:result});
+  assert.ok(!html.includes('converted-file'));
+}
+const ui = chat();
+ui._activatePendingToolsForMessage('answer');
+ui.pendingTools.convert_file_step2 = {toolName:'convert_file',status:'success'};
+ui.addAssistantMessage('Ready', [], {message_id:'answer', data:{convert_file:{
+  stash_ref:'stash://space_test/f_file',target_format:'png'
+}}});
+assert.ok(message(ui).innerHTML.includes('converted-file'));
+""")
+
+
+@pytest.mark.parametrize("live", [True, False])
+def test_repeated_tool_results_keep_trace_order_and_per_message_cleanup(live):
+    run_message_browser(f"const live = {json.dumps(live)};\n" + r"""
+const ui = chat();
+const other = {later_step1:{toolName:'later',status:'pending'}};
+ui.pendingToolsByMessage.set('other-answer', other);
+const html = render(ui, 'Done', ['search_web'], {
+  search_web:[{title:'FIRST_SUCCESS'}, {title:'SECOND_SUCCESS'}],
+  _tool_trace:[
+    {tool:'search_web',ok:true,duration_ms:12},
+    {tool:'search_web',ok:false,error:'MIDDLE_FAILURE'},
+    {tool:'search_web',skipped:true,reason:'DO_NOT_RUN'},
+    {tool:'search_web',ok:true,duration_ms:24}
+  ]
+}, live);
+const markers = ['FIRST_SUCCESS','MIDDLE_FAILURE','DO_NOT_RUN','SECOND_SUCCESS'];
+for (const marker of markers) assert.ok(html.includes(marker), marker);
+for (let i=1;i<markers.length;i++) assert.ok(html.indexOf(markers[i-1]) < html.indexOf(markers[i]));
+assert.equal((html.match(/class="tool-card success"/g)||[]).length,2);
+assert.equal((html.match(/class="tool-card error"/g)||[]).length,1);
+assert.equal((html.match(/class="tool-card skipped"/g)||[]).length,1);
+assert.equal(ui.pendingToolsByMessage.get('other-answer'),other);
+assert.equal(ui.pendingToolsByMessage.has('answer'),false);
+const header = message(ui).querySelectorAll('.tool-card-header')[0];
+header.events.click();
+assert.ok(header.parentElement.classList.contains('expanded'));
+""")
+
+
+@pytest.mark.parametrize("family", ["amazon", "home_depot", "ebay"])
+def test_product_fallback_only_runs_without_shared_renderer(family):
+    run_message_browser(f"const family = {json.dumps(family)};\n" + r"""
+const payloads = {
+  amazon: {serpapi_search:{engine:'amazon',results:[{title:'PRODUCT <safe>',url:'https://example.test/amazon'}]}},
+  home_depot: {serpapi_home_depot:{product_details:{title:'PRODUCT <safe>',url:'https://example.test/depot'}}},
+  ebay: {serpapi_ebay_product:{product_summary:{title:'PRODUCT <safe>',url:'https://example.test/ebay'}}}
+};
+const payload = payloads[family], tools = Object.keys(payload), before = JSON.stringify(payload);
+const shared = render(chat(), 'Found it', tools, payload);
+assert.ok(!shared.includes('class="product-preview-card"'));
+delete sandbox.window.structuredResultsRenderer;
+const fallback = render(chat(), 'Found it', tools, payload, false);
+assert.ok(fallback.includes('class="product-preview-card"'));
+assert.ok(fallback.includes('PRODUCT &lt;safe&gt;'));
+assert.equal(JSON.stringify(payload), before);
+""")
+
+
+def test_dedicated_media_details_and_message_hooks_keep_their_order():
+    run_message_browser(r"""
+const ui = chat();
+const html = render(ui, 'A short answer', ['serpapi_youtube_search'], {
+  raw_llm_response:'A different, much longer raw response with further context and explanation.',
+  serpapi_youtube_search:{results:[{title:'VIDEO <safe>',url:'https://www.youtube.com/watch?v=dQw4w9WgXcQ'}]},
+  recording:{stash_ref:'stash://space_test/f_audio', filename:'recording.ogg', mime_type:'audio/ogg'}
+}, true, {allowReaction:false});
+assert.equal((html.match(/class="video-embed-frame"/g)||[]).length,1);
+assert.ok(html.indexOf('youtube-embed') < html.indexOf('class="message-bubble"'));
+assert.ok(html.indexOf('class="message-bubble"') < html.indexOf('class="message-audio"'));
+assert.ok(!html.includes('structured-results-section'));
+const toggle = message(ui).querySelector('.details-toggle');
+assert.ok(toggle);
+let stopped = false;
+toggle.events.click({stopPropagation:()=>{stopped=true;}});
+assert.equal(stopped,true);
+assert.equal(toggle.parentElement.classList.contains('collapsed'),false);
+assert.equal(toggle.querySelector('.toggle-text').textContent,'Hide details');
+const actions = effects.find(x=>Array.isArray(x)&&x[0]==='actions');
+assert.equal(actions[1],'A short answer');
+assert.equal(actions[2].allowReaction,false);
+assert.equal(actions[2].allowCanvas,true);
+timers.forEach(fn=>fn());
+assert.equal(message(ui).classList.contains('new-message'),false);
+""")
+
+
+def test_conversation_replay_calls_real_message_renderer_and_reconciles_once():
+    run_message_browser(r"""
+const ui = chat();
+Object.assign(ui, {
+  setConversationLoading(){}, restoreRunState(){}, reconcileLiveActions(){},
+  clearChat(){this.messagesContainer.children=[];this._renderedMessageIds=new Set();}
+});
+const app = Object.create(JarvisApp.prototype);
+Object.assign(app, {chat:ui,socket,_completedResponseIds:new Set(),
+  _updateActiveConversation(){},_updateConvIdBadge(){},_loadConversationHistory(){}});
+const conversation = {id:'thread',reaction_message_id:'answer',messages:[{
+  role:'assistant',content:'Saved result',tools_used:['convert_file'],data:{
+    _web_message_id:'answer',convert_file:{stash_ref:'stash://space_test/f_saved',filename:'saved.pdf',target_format:'pdf'}
+  }
+}]};
+await app._displayLoadedConversation(conversation);
+assert.equal(ui.messagesContainer.children.length,1);
+assert.ok(message(ui).innerHTML.includes('saved.pdf'));
+assert.ok(message(ui).innerHTML.includes('Saved result'));
+await app._displayLoadedConversation(conversation,{reconcile:true});
+assert.equal(ui.messagesContainer.children.length,1);
+assert.ok(app._completedResponseIds.has('answer'));
+""")

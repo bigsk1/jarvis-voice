@@ -11,6 +11,7 @@ RENDERER_JS = PROJECT_ROOT / "jarvis-web" / "client" / "js" / "structured-result
 RENDERER_SCRIPTS = [
     RENDERER_JS.with_name("structured-results-shopping.js"),
     RENDERER_JS.with_name("structured-results-search.js"),
+    RENDERER_JS.with_name("structured-results-local-travel.js"),
     RENDERER_JS,
 ]
 CHAT_JS = PROJECT_ROOT / "jarvis-web" / "client" / "js" / "chat.js"

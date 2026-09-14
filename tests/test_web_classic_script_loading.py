@@ -95,6 +95,20 @@ for (const source of SOURCES) {
   }});
   assert.ok(html.includes('Coffee &lt;grinder&gt;'));
   assert.ok(!html.includes('Coffee <grinder>'));
+  const localHtml = renderer.render({serpapi_google_local: {
+    query: 'coffee',
+    results: [{title: 'Cafe <corner>', website: 'https://example.test/cafe'}]
+  }});
+  assert.ok(localHtml.includes('Cafe &lt;corner&gt;'));
+  assert.ok(localHtml.includes('Open website'));
+
+  const messageRenderer = sandbox.window.assistantMessageRenderer;
+  assert.ok(messageRenderer, 'Assistant message renderer must load before ChatUI');
+  const converted = messageRenderer.renderConvertedFile({
+    stash_ref: 'stash://space_test/f_preview', filename: 'Preview <file>.pdf', target_format: 'pdf'
+  });
+  assert.ok(converted.includes('/api/stash/space_test/f_preview'));
+  assert.ok(converted.includes('Preview &lt;file&gt;.pdf'));
 })().catch(error => {console.error(error); process.exit(1);});
 """
     prelude = f"const CLIENT = {json.dumps(str(CLIENT))};\n"

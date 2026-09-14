@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .followup import local_travel as _local_travel_followup
+from .followup import media as _media_followup
 from .followup import search as _search_followup
 from .followup import shopping as _shopping_followup
 
@@ -2024,182 +2025,6 @@ def _extract_manage_intel_followup(data: dict, max_candidates: int) -> dict | No
     return extracted
 
 
-_SERPAPI_CANDIDATE_FIELDS = (
-    'title',
-    'asin',
-    'url',
-    'thumbnail',
-    'price',
-    'extracted_price',
-    'old_price',
-    'extracted_old_price',
-    'rating',
-    'reviews',
-    'prime',
-    'prime_eligible',
-    'delivery',
-    'shipping',
-    'stock',
-    'availability',
-    'bought_last_month',
-    'badges',
-    'save_with_coupon',
-)
-
-
-def _compact_serpapi_list(field: str, value: list) -> list:
-    """Bound the few small list fields retained for shopping follow-ups."""
-    limit = 3 if field == 'delivery' else 5
-    max_chars = 500 if field == 'delivery' else 120
-    compact = [
-        _truncate_followup_text(str(item), max_chars)
-        for item in value[:limit]
-        if item not in (None, '', [], {})
-    ]
-    if len(value) > limit:
-        compact.append(
-            f"... [{len(value) - limit} items truncated for follow-up context]"
-        )
-    return compact
-
-
-def _compact_serpapi_candidate(item: dict) -> dict:
-    """Keep product identity plus decision-relevant shopping signals."""
-    candidate = {}
-    for field in _SERPAPI_CANDIDATE_FIELDS:
-        field_value = item.get(field)
-        if field_value in (None, '', [], {}):
-            continue
-        if isinstance(field_value, list):
-            compact_list = _compact_serpapi_list(field, field_value)
-            if compact_list:
-                candidate[field] = compact_list
-            continue
-        compact_value = _compact_generic_scalar(field, field_value)
-        if compact_value not in (None, '', [], {}):
-            candidate[field] = compact_value
-    return candidate
-
-
-def _serpapi_result_rows(payload: dict) -> list[dict]:
-    rows = payload.get('results') or payload.get('top_results') or []
-    if not isinstance(rows, list):
-        return []
-    return [row for row in rows if isinstance(row, dict)]
-
-
-def _merge_serpapi_candidate(base: dict, detail: dict) -> dict:
-    """Overlay richer detail signals while preserving the discovery identity."""
-    merged = dict(base)
-    for field, field_value in detail.items():
-        if field in {'title', 'url', 'thumbnail'} and merged.get(field):
-            continue
-        merged[field] = field_value
-    return merged
-
-
-def _extract_serpapi_followup(value, max_candidates: int) -> dict:
-    """Join discovery and product-detail runs into one compact shortlist."""
-    raw_runs = value if isinstance(value, list) else [value]
-    runs = []
-    for raw_run in raw_runs:
-        if not isinstance(raw_run, dict):
-            continue
-        payload = (
-            raw_run.get('data')
-            if isinstance(raw_run.get('data'), dict)
-            else raw_run
-        )
-        if isinstance(payload, dict):
-            runs.append(payload)
-
-    if not runs:
-        return {}
-
-    discovery = next(
-        (
-            run for run in runs
-            if run.get('engine') != 'amazon_product'
-            and _serpapi_result_rows(run)
-        ),
-        None,
-    )
-    primary = discovery or runs[0]
-
-    details_by_asin = {}
-    for run in runs:
-        if run.get('engine') != 'amazon_product':
-            continue
-        for row in _serpapi_result_rows(run):
-            candidate = _compact_serpapi_candidate(row)
-            asin = candidate.get('asin') or run.get('asin')
-            if not asin:
-                continue
-            candidate.setdefault('asin', asin)
-            prior = details_by_asin.get(asin, {})
-            details_by_asin[asin] = _merge_serpapi_candidate(prior, candidate)
-
-    candidates = []
-    seen = set()
-    candidate_runs = [discovery] if discovery else runs
-    for run in candidate_runs:
-        if not isinstance(run, dict):
-            continue
-        for row in _serpapi_result_rows(run):
-            candidate = _compact_serpapi_candidate(row)
-            if not candidate:
-                continue
-            if run.get('engine') == 'amazon_product' and run.get('asin'):
-                candidate.setdefault('asin', run['asin'])
-            identity = (
-                candidate.get('asin')
-                or candidate.get('url')
-                or candidate.get('title')
-            )
-            if identity in seen:
-                continue
-            seen.add(identity)
-            detail = details_by_asin.get(candidate.get('asin'))
-            if detail:
-                candidate = _merge_serpapi_candidate(candidate, detail)
-            candidates.append(candidate)
-            if len(candidates) >= max_candidates:
-                break
-        if len(candidates) >= max_candidates:
-            break
-
-    extracted = {}
-    for field in (
-        'engine',
-        'query',
-        'query_effective',
-        'query_was_optimized',
-        'asin',
-        'delivery_localized',
-        'delivery_location_source',
-        'shipping_location',
-    ):
-        field_value = primary.get(field)
-        if field_value not in (None, '', [], {}):
-            extracted[field] = field_value
-
-    extracted['runs_count'] = len(runs)
-    extracted['results_count'] = primary.get('results_count', len(candidates))
-    if primary.get('top_url'):
-        extracted['top_url'] = primary['top_url']
-
-    if candidates:
-        first = candidates[0]
-        for field, field_value in first.items():
-            if field == 'url':
-                extracted.setdefault('top_url', field_value)
-            else:
-                extracted.setdefault(field, field_value)
-        extracted['candidates'] = candidates
-
-    return extracted
-
-
 def _bounded_content_excerpt(
     value,
     *,
@@ -2975,7 +2800,11 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                         followup.update(component_followup)
                 continue
         if key in _AMAZON_FOLLOWUP_TOOL_NAMES:
-            extracted = _extract_serpapi_followup(value, max_candidates)
+            extracted = _shopping_followup.extract_amazon_followup(
+                value, max_candidates,
+                truncate_text=_truncate_followup_text,
+                compact_scalar=_compact_generic_scalar,
+            )
             if extracted:
                 followup['serpapi_amazon_search'] = extracted
             continue
@@ -3198,100 +3027,16 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             _search_followup.extend_google_sports(payload, extracted, max_candidates)
 
         if key in {'trakt_movies', 'trakt_tv_shows', 'trakt_account'}:
-            results = payload.get('candidates') or payload.get('results') or payload.get('top_results') or []
-            if isinstance(results, list) and results:
-                extracted['results_count'] = payload.get('results_count', len(results))
-                candidates = []
-                for item in results[:max_candidates]:
-                    if not isinstance(item, dict):
-                        continue
-                    candidate = {
-                        field: item[field]
-                        for field in (
-                            'title', 'year', 'ids', 'trakt_url', 'imdb_url',
-                            'tagline', 'runtime_minutes', 'rating', 'votes',
-                            'episode_runtime_minutes', 'network', 'status',
-                            'show_type', 'aired_episodes', 'first_aired', 'airs',
-                            'genres', 'subgenres', 'certification', 'trailer_url',
-                            'source_signals', 'related_to', 'match_score',
-                            'streaming_signal', 'videos',
-                            'media_type', 'user_rating', 'rated_at', 'watched_at',
-                            'listed_at', 'history_id', 'progress', 'notes',
-                            'privacy', 'share_link', 'item_count', 'comment_count',
-                            'name', 'description', 'sort_by', 'sort_how',
-                            'display_numbers',
-                        )
-                        if item.get(field) not in (None, '', [], {})
-                    }
-                    if item.get('overview'):
-                        candidate['overview'] = _truncate_followup_text(
-                            str(item['overview']), 700
-                        )
-                    if candidate.get('title') or candidate.get('trakt_url'):
-                        candidates.append(candidate)
-                if candidates:
-                    extracted['candidates'] = candidates
+            _media_followup.extend_trakt(
+                payload, extracted, max_candidates,
+                truncate_text=_truncate_followup_text,
+            )
 
         if key in {'tmdb_movies', 'tmdb_tv_shows'}:
-            media_key = 'show' if key == 'tmdb_tv_shows' else 'movie'
-            media = payload.get(media_key)
-            if isinstance(media, dict):
-                extracted[media_key] = {
-                    field: media[field]
-                    for field in (
-                        'id', 'tmdb_id', 'title', 'original_title', 'release_date',
-                        'first_air_date', 'last_air_date', 'year', 'overview',
-                        'tagline', 'runtime_minutes', 'episode_runtime_minutes',
-                        'episode_run_times', 'rating', 'votes', 'genres',
-                        'certification', 'content_rating', 'status', 'show_type',
-                        'number_of_seasons', 'number_of_episodes', 'created_by',
-                        'networks', 'origin_countries', 'next_episode', 'last_episode',
-                        'collection',
-                        'tmdb_url', 'imdb_id', 'imdb_url', 'poster_url',
-                        'poster_thumbnail', 'poster_original_url', 'backdrop_url',
-                        'backdrop_thumbnail', 'backdrop_original_url',
-                    )
-                    if media.get(field) not in (None, '', [], {})
-                }
-
-            results = payload.get('results') or payload.get('top_results') or []
-            if isinstance(results, list) and results:
-                extracted['results_count'] = payload.get('results_count', len(results))
-                candidates = []
-                for item in results[:max_candidates]:
-                    if not isinstance(item, dict):
-                        continue
-                    candidate = {
-                        field: item[field]
-                        for field in (
-                            'id', 'tmdb_id', 'title', 'name', 'year', 'release_date',
-                            'first_air_date', 'runtime_minutes',
-                            'episode_runtime_minutes', 'rating', 'votes', 'genres',
-                            'certification', 'content_rating', 'status', 'show_type',
-                            'number_of_seasons', 'number_of_episodes', 'networks',
-                            'tmdb_url', 'imdb_url', 'source_signal',
-                            'image_type', 'width', 'height', 'language',
-                            'thumbnail', 'image_url', 'original_url', 'source_url',
-                            'character', 'job', 'profile_thumbnail', 'profile_url',
-                            'url', 'site', 'type', 'official', 'published_at',
-                        )
-                        if item.get(field) not in (None, '', [], {})
-                    }
-                    if item.get('overview'):
-                        candidate['overview'] = _truncate_followup_text(
-                            str(item['overview']), 700
-                        )
-                    if candidate.get('title') or candidate.get('name') or candidate.get('image_url'):
-                        candidates.append(candidate)
-                if candidates:
-                    extracted['candidates'] = candidates
-
-            for source_key in (
-                'images', 'cast', 'crew', 'videos', 'recommendations', 'similar', 'seasons'
-            ):
-                rows = payload.get(source_key)
-                if isinstance(rows, list) and rows:
-                    extracted[source_key] = rows[:max_candidates]
+            _media_followup.extend_tmdb(
+                key, payload, extracted, max_candidates,
+                truncate_text=_truncate_followup_text,
+            )
 
         if key == 'serpapi_google_events':
             _local_travel_followup.extend_google_events(payload, extracted, max_candidates)
@@ -3322,31 +3067,7 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         # Keep the shortlist needed to compare or refer to a specific option on
         # a later turn ("compare the second one", "when does the cheapest land?").
         if key == 'flight_search':
-            results = payload.get('results') or []
-            if isinstance(results, list) and results:
-                extracted['results_count'] = payload.get('results_count', len(results))
-                candidates = []
-                for item in results[:max_candidates]:
-                    if not isinstance(item, dict):
-                        continue
-                    candidate = {}
-                    for field in (
-                        'price', 'departure_time', 'arrival_time', 'duration_display',
-                        'stops_label', 'departure_airport', 'arrival_airport',
-                    ):
-                        field_value = item.get(field)
-                        if field_value not in (None, '', [], {}):
-                            candidate[field] = field_value
-                    airlines = item.get('airlines')
-                    if isinstance(airlines, list) and airlines:
-                        candidate['airlines'] = ', '.join(str(name) for name in airlines[:3])
-                    numbers = item.get('flight_numbers')
-                    if isinstance(numbers, list) and numbers:
-                        candidate['flight_numbers'] = ', '.join(str(num) for num in numbers[:4])
-                    if candidate:
-                        candidates.append(candidate)
-                if candidates:
-                    extracted['candidates'] = candidates
+            _local_travel_followup.extend_flight_search(payload, extracted, max_candidates)
 
         # --- crawl_url: nested list of runs, each with results[{url, title, success}] ---
         # Preserve the list of crawled URLs so follow-up turns don't re-crawl the same pages.

@@ -114,20 +114,32 @@ jarvis-web/
 │       ├── proactive_service.py
 │       ├── completion_guard.py
 │       ├── followup_extractor.py # Stable follow-up entry point and output bounds
-│       └── followup/             # Shopping, search, and local/travel field extraction
+│       └── followup/             # Tool-family field extraction
+│           ├── shopping.py
+│           ├── search.py
+│           ├── media.py          # Trakt and TMDB
+│           └── local_travel.py
 ├── client/
 │   ├── index.html
 │   ├── login.html
 │   ├── logs.html
 │   ├── stash-viewer.html     # Render stash text/markdown via `/stash/view/<space>/<file>`
 │   ├── css/ …
-│   └── js/ (app, chat, command-system, structured-results*, socket, logs, …)
+│   └── js/
+│       ├── assistant-message-renderer.js # Tool cards, converted files, legacy shopping
+│       ├── structured-results-local-travel.js # Local/travel payload adapters
+│       └── … (app, chat, command-system, structured-results*, socket, logs)
 ├── config/web_config.json
 ├── data/                     # Per-UI: conversations, prompts, uploads
 └── requirements.txt
 
 Workflow definitions live at repo root: ../data/workflows/*.json (not under jarvis-web/).
 ```
+
+Adapter scripts load before `structured-results.js`; `assistant-message-renderer.js`
+loads before `chat.js` and renders supplied message data. ChatUI retains request
+lifecycle and media selection. The follow-up facade keeps shared metadata and
+output bounds while its family modules handle provider-specific fields.
 
 ## Retention Cleanup
 

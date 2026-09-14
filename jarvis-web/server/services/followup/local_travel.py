@@ -546,3 +546,36 @@ def extend_travel_explore(
                 candidates.append(candidate)
         if candidates:
             extracted['candidates'] = candidates
+
+
+def extend_flight_search(
+    payload: dict,
+    extracted: dict,
+    max_candidates: int,
+) -> None:
+    """Add flight_search fields to the common follow-up output."""
+    results = payload.get('results') or []
+    if isinstance(results, list) and results:
+        extracted['results_count'] = payload.get('results_count', len(results))
+        candidates = []
+        for item in results[:max_candidates]:
+            if not isinstance(item, dict):
+                continue
+            candidate = {}
+            for field in (
+                'price', 'departure_time', 'arrival_time', 'duration_display',
+                'stops_label', 'departure_airport', 'arrival_airport',
+            ):
+                field_value = item.get(field)
+                if field_value not in (None, '', [], {}):
+                    candidate[field] = field_value
+            airlines = item.get('airlines')
+            if isinstance(airlines, list) and airlines:
+                candidate['airlines'] = ', '.join(str(name) for name in airlines[:3])
+            numbers = item.get('flight_numbers')
+            if isinstance(numbers, list) and numbers:
+                candidate['flight_numbers'] = ', '.join(str(num) for num in numbers[:4])
+            if candidate:
+                candidates.append(candidate)
+        if candidates:
+            extracted['candidates'] = candidates

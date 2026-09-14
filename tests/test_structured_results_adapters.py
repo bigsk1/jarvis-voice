@@ -1,4 +1,4 @@
-"""Behavior at the extracted shopping/search adapter boundary."""
+"""Behavior at the extracted structured-result adapter boundaries."""
 
 import json
 import subprocess
@@ -12,6 +12,7 @@ def _run_renderer_assertions(assertions):
     scripts = [
         CLIENT_JS / "structured-results-shopping.js",
         CLIENT_JS / "structured-results-search.js",
+        CLIENT_JS / "structured-results-local-travel.js",
         CLIENT_JS / "structured-results.js",
     ]
     script = f"""
@@ -134,4 +135,60 @@ const trendNews = renderer.render({serpapi_google_trending_now: {
 assert.ok(trendNews.includes('Google Trends News'));
 assert.ok(trendNews.includes('Follow-up trend'));
 assert.ok(trendNews.includes('Trend article'));
+""")
+
+
+def test_local_travel_helpers_preserve_currency_zero_prices_and_provider_times():
+    _run_renderer_assertions("""
+const flights = renderer.render({flight_search: {
+  currency: 'EUR', departure_id: 'AMS', arrival_id: 'CDG',
+  results: [{
+    price: 0, airlines: 'Example Air', flight_numbers: 'EA 123',
+    departure_time: '2099-08-11 00:05', arrival_time: '2099-08-11 12:30',
+  }],
+}});
+for (const text of [
+  'EUR 0', 'AMS → CDG', 'Example Air', 'EA 123',
+  'Departs 08/11/2099 · 12:05 AM', 'Arrives 08/11/2099 · 12:30 PM',
+]) assert.ok(flights.includes(text), text);
+
+const travel = renderer.render({serpapi_travel_explore: {
+  currency: 'EUR', departure_id: 'AMS',
+  results: [{name: 'Paris', flight_price: 0, hotel_price: 0}],
+}});
+assert.ok(travel.includes('EUR 0 flight signal'));
+assert.ok(travel.includes('Hotel signal EUR 0'));
+""")
+
+
+def test_local_places_keep_organic_ad_and_discovery_order_and_independent_limits():
+    _run_renderer_assertions("""
+const html = renderer.render({serpapi_google_local: {
+  results: Array.from({length: 6}, (_, index) => ({
+    title: `Organic ${index + 1}`, website: 'https://example.test/cafe',
+    description: '<script>Untrusted text</script>',
+    service_options: {dine_in: true, takeout: true, delivery: false},
+  })),
+  ads: Array.from({length: 4}, (_, index) => ({title: `Advert ${index + 1}`})),
+  discover_more_places: Array.from({length: 4}, (_, index) => ({
+    title: `Discovery ${index + 1}`, places: ['Cafe One', 'Cafe Two'],
+  })),
+}});
+for (const text of [
+  'Organic 5', 'Advert 3', 'Discovery 3', 'Sponsored', 'Dine In', 'Takeout',
+  'Cafe One · Cafe Two', 'Open website', '&lt;script&gt;Untrusted text&lt;/script&gt;',
+]) assert.ok(html.includes(text), text);
+for (const text of ['Organic 6', 'Advert 4', 'Discovery 4', '<script>', 'Delivery']) {
+  assert.ok(!html.includes(text), text);
+}
+assert.ok(html.indexOf('Organic 5') < html.indexOf('Advert 1'));
+assert.ok(html.indexOf('Advert 3') < html.indexOf('Discovery 1'));
+
+const provider = renderer.render({serpapi_google_local_services: {
+  mode: 'provider_details',
+  results: [{title: 'Provider', website: 'https://example.test/provider',
+    years_in_business: 1, bookings_nearby: 0, services: ['Repair', 'Install']}],
+}});
+for (const text of ['Provider details', '1 year in business', '0 bookings nearby',
+  'Repair · Install', 'Open website']) assert.ok(provider.includes(text), text);
 """)
