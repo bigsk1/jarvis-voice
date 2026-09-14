@@ -113,14 +113,15 @@ jarvis-web/
 │       ├── log_streamer.py   # Live tail to clients
 │       ├── proactive_service.py
 │       ├── completion_guard.py
-│       └── followup_extractor.py
+│       ├── followup_extractor.py # Stable follow-up entry point and output bounds
+│       └── followup/             # Shopping, search, and local/travel field extraction
 ├── client/
 │   ├── index.html
 │   ├── login.html
 │   ├── logs.html
 │   ├── stash-viewer.html     # Render stash text/markdown via `/stash/view/<space>/<file>`
 │   ├── css/ …
-│   └── js/ (app, chat, socket, logs, log-viewer, proactive, utils, …)
+│   └── js/ (app, chat, command-system, structured-results*, socket, logs, …)
 ├── config/web_config.json
 ├── data/                     # Per-UI: conversations, prompts, uploads
 └── requirements.txt

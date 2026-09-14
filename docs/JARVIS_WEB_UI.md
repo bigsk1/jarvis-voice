@@ -196,6 +196,9 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
   records, and `metrics` for compact measurements. Overflowing rails expose
   previous/next controls in the preview header without covering card content;
   touch swiping and the native scrollbar remain available.
+- Shopping and search adapters live in `client/js/structured-results-shopping.js`
+  and `client/js/structured-results-search.js`. They load before the renderer
+  as classic scripts and receive its shared formatting helpers.
 - When the response is a completed workflow, the same adapters are composed
   into one workflow result surface in workflow step order. Each tool keeps its
   own heading, metadata, safe links, and layout inside that surface. A section
@@ -281,7 +284,12 @@ jarvis-web/
 │       ├── log_streamer.py         # Live log tail to connected clients
 │       ├── proactive_service.py    # Proactive alerts / reminders over WebSocket
 │       ├── completion_guard.py     # Post-turn quality check and bounded repair
-│       └── followup_extractor.py   # Follow-up ticket extraction from guard feedback
+│       ├── followup_extractor.py   # Stable follow-up entry point, metadata, and output bounds
+│       └── followup/               # Tool-family field extraction
+│           ├── __init__.py
+│           ├── shopping.py
+│           ├── search.py
+│           └── local_travel.py
 │
 ├── client/
 │   ├── index.html                  # Main chat UI
@@ -297,6 +305,10 @@ jarvis-web/
 │   ├── js/
 │   │   ├── app.js                  # Shell, settings, navigation
 │   │   ├── chat.js                 # Messages, tools, uploads, workflows
+│   │   ├── command-system.js       # Slash commands, prompt selection, and tool hints
+│   │   ├── structured-results.js   # Adapter registry and shared result rendering
+│   │   ├── structured-results-shopping.js # Shopping payload adapters
+│   │   ├── structured-results-search.js   # Search payload adapters
 │   │   ├── socket.js               # WebSocket client
 │   │   ├── logs.js                 # In-app server log panel
 │   │   ├── log-viewer.js           # /logs folder + file viewer

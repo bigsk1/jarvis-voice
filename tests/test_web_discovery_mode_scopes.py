@@ -227,7 +227,7 @@ def test_tool_hint_validation_uses_chat_message_mode(monkeypatch):
 def test_browser_registry_requests_mode_and_ignores_stale_mode_response():
     script = r"""
 const fs = require('fs');
-const source = fs.readFileSync('jarvis-web/client/js/chat.js', 'utf8')
+const source = fs.readFileSync('jarvis-web/client/js/command-system.js', 'utf8')
   .split('// Global command system instance')[0];
 global.window = {jarvisSocket: {mode: 'cloud'}};
 global.Utils = {storage: {get: () => 'cloud'}};

@@ -8,6 +8,11 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RENDERER_JS = PROJECT_ROOT / "jarvis-web" / "client" / "js" / "structured-results.js"
+RENDERER_SCRIPTS = [
+    RENDERER_JS.with_name("structured-results-shopping.js"),
+    RENDERER_JS.with_name("structured-results-search.js"),
+    RENDERER_JS,
+]
 CHAT_JS = PROJECT_ROOT / "jarvis-web" / "client" / "js" / "chat.js"
 INDEX_HTML = PROJECT_ROOT / "jarvis-web" / "client" / "index.html"
 MAIN_CSS = PROJECT_ROOT / "jarvis-web" / "client" / "css" / "main.css"
@@ -17,7 +22,8 @@ def test_shared_renderer_formats_registered_hotel_yelp_flight_and_maps_results()
     script = f"""
 const fs = require('fs');
 const vm = require('vm');
-const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const source = {json.dumps([str(path) for path in RENDERER_SCRIPTS])}
+  .map(path => fs.readFileSync(path, 'utf8')).join("\\n");
 const escapeHtml = value => String(value)
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -626,7 +632,8 @@ def test_google_sports_renderer_formats_standings_and_league_stats():
 process.env.TZ = 'America/Los_Angeles';
 const fs = require('fs');
 const vm = require('vm');
-const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const source = {json.dumps([str(path) for path in RENDERER_SCRIPTS])}
+  .map(path => fs.readFileSync(path, 'utf8')).join("\\n");
 const escapeHtml = value => String(value)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -714,7 +721,8 @@ def test_google_trends_renderer_formats_regional_and_related_views():
     script = f"""
 const fs = require('fs');
 const vm = require('vm');
-const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const source = {json.dumps([str(path) for path in RENDERER_SCRIPTS])}
+  .map(path => fs.readFileSync(path, 'utf8')).join("\\n");
 const escapeHtml = value => String(value)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -791,7 +799,8 @@ def test_restaurant_review_renderers_format_details_and_review_cards():
     script = f"""
 const fs = require('fs');
 const vm = require('vm');
-const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const source = {json.dumps([str(path) for path in RENDERER_SCRIPTS])}
+  .map(path => fs.readFileSync(path, 'utf8')).join("\\n");
 const escapeHtml = value => String(value)
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -941,7 +950,8 @@ def test_shared_renderer_escapes_content_and_rejects_unsafe_urls():
     script = f"""
 const fs = require('fs');
 const vm = require('vm');
-const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const source = {json.dumps([str(path) for path in RENDERER_SCRIPTS])}
+  .map(path => fs.readFileSync(path, 'utf8')).join("\\n");
 const escapeHtml = value => String(value)
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -990,7 +1000,8 @@ def test_trakt_renderer_shows_metadata_without_hotlinking_provider_images():
     script = f"""
 const fs = require('fs');
 const vm = require('vm');
-const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const source = {json.dumps([str(path) for path in RENDERER_SCRIPTS])}
+  .map(path => fs.readFileSync(path, 'utf8')).join("\\n");
 const escapeHtml = value => String(value)
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -1055,7 +1066,8 @@ def test_trakt_account_renderer_labels_personal_data_read_only():
     script = f"""
 const fs = require('fs');
 const vm = require('vm');
-const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const source = {json.dumps([str(path) for path in RENDERER_SCRIPTS])}
+  .map(path => fs.readFileSync(path, 'utf8')).join("\\n");
 const escapeHtml = value => String(value)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/\"/g, '&quot;').replace(/'/g, '&#39;');
@@ -1094,7 +1106,8 @@ def test_tmdb_renderer_uses_tmdb_gallery_and_required_attribution():
     script = f"""
 const fs = require('fs');
 const vm = require('vm');
-const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const source = {json.dumps([str(path) for path in RENDERER_SCRIPTS])}
+  .map(path => fs.readFileSync(path, 'utf8')).join("\\n");
 const escapeHtml = value => String(value)
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -1177,7 +1190,8 @@ def test_tv_show_renderers_distinguish_episode_runtime_and_tmdb_artwork():
     script = f"""
 const fs = require('fs');
 const vm = require('vm');
-const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const source = {json.dumps([str(path) for path in RENDERER_SCRIPTS])}
+  .map(path => fs.readFileSync(path, 'utf8')).join("\\n");
 const escapeHtml = value => String(value)
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -1255,7 +1269,8 @@ def test_direct_orchestration_renderer_preserves_occurrences_and_skips_empty_or_
     script = f"""
 const fs = require('fs');
 const vm = require('vm');
-const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const source = {json.dumps([str(path) for path in RENDERER_SCRIPTS])}
+  .map(path => fs.readFileSync(path, 'utf8')).join("\\n");
 const escapeHtml = value => String(value)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -1425,7 +1440,8 @@ def test_workflow_renderer_composes_supported_tools_in_step_order_without_youtub
     script = f"""
 const fs = require('fs');
 const vm = require('vm');
-const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const source = {json.dumps([str(path) for path in RENDERER_SCRIPTS])}
+  .map(path => fs.readFileSync(path, 'utf8')).join("\\n");
 const escapeHtml = value => String(value)
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -1584,7 +1600,8 @@ def test_external_network_intel_renderer_separates_ownership_routing_and_reputat
     script = f"""
 const fs = require('fs');
 const vm = require('vm');
-const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const source = {json.dumps([str(path) for path in RENDERER_SCRIPTS])}
+  .map(path => fs.readFileSync(path, 'utf8')).join("\\n");
 const escapeHtml = value => String(value)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -1645,7 +1662,8 @@ def test_external_network_intel_renderer_formats_domain_dns_and_error_objects():
     script = f"""
 const fs = require('fs');
 const vm = require('vm');
-const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const source = {json.dumps([str(path) for path in RENDERER_SCRIPTS])}
+  .map(path => fs.readFileSync(path, 'utf8')).join("\\n");
 const escapeHtml = value => String(value)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -1717,7 +1735,8 @@ def test_gpu_hot_renderer_formats_gpu_host_and_process_metrics():
     script = f"""
 const fs = require('fs');
 const vm = require('vm');
-const source = fs.readFileSync({json.dumps(str(RENDERER_JS))}, 'utf8');
+const source = {json.dumps([str(path) for path in RENDERER_SCRIPTS])}
+  .map(path => fs.readFileSync(path, 'utf8')).join("\\n");
 const escapeHtml = value => String(value)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -1763,6 +1782,8 @@ def test_renderer_is_loaded_before_chat_and_uses_shared_responsive_styles():
     chat = CHAT_JS.read_text(encoding="utf-8")
     css = MAIN_CSS.read_text(encoding="utf-8")
 
+    for path in RENDERER_SCRIPTS[:-1]:
+        assert index.index(f'/js/{path.name}') < index.index('/js/structured-results.js')
     assert index.index('/js/structured-results.js') < index.index('/js/chat.js')
     assert "window.structuredResultsRenderer.render(toolResultsData, data, toolsUsed)" in chat
     assert "${structuredResultsHtml}" in chat

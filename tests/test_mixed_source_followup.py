@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from server_package_utils import load_server_package
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -17,8 +19,9 @@ def _load_module(name, path):
     return module
 
 
+load_server_package("mixed_source_server", ROOT / "jarvis-web/server")
 followup = _load_module(
-    "mixed_source_followup",
+    "mixed_source_server.services.followup_extractor",
     ROOT / "jarvis-web/server/services/followup_extractor.py",
 )
 context = _load_module("mixed_source_context", ROOT / "orchestrator/context_assembler.py")

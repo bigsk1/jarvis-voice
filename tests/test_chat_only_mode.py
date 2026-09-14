@@ -109,7 +109,7 @@ class _StatusUpdater:
 def test_web_command_parser_exposes_virtual_chat_only_policy():
     script = r"""
 const fs = require('fs');
-const source = fs.readFileSync('jarvis-web/client/js/chat.js', 'utf8')
+const source = fs.readFileSync('jarvis-web/client/js/command-system.js', 'utf8')
   .split('// Global command system instance')[0];
 global.fetch = async () => { throw new Error('registry loading disabled in test'); };
 eval(source + '\nglobal.CommandSystem = CommandSystem;');

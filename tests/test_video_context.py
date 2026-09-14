@@ -14,9 +14,12 @@ from executor import ToolExecutor  # noqa: E402
 from orchestrator_v2 import Orchestrator  # noqa: E402
 from pipeline_executor import PipelineExecutor  # noqa: E402
 from router_v2 import build_tool_retrieval_signals, merge_tool_signal_names  # noqa: E402
+from server_package_utils import load_server_package  # noqa: E402
 
+load_server_package('video_context_server', ROOT / 'jarvis-web/server')
 spec = importlib.util.spec_from_file_location(
-    'video_followup_test', ROOT / 'jarvis-web/server/services/followup_extractor.py'
+    'video_context_server.services.followup_extractor',
+    ROOT / 'jarvis-web/server/services/followup_extractor.py'
 )
 followup = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(followup)

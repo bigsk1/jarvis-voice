@@ -7,11 +7,16 @@ from pathlib import Path
 
 import pytest
 
+from server_package_utils import load_server_package
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 EXTRACTOR_PATH = (
     PROJECT_ROOT / "jarvis-web" / "server" / "services" / "followup_extractor.py"
 )
-SPEC = importlib.util.spec_from_file_location("followup_extractor_coverage", EXTRACTOR_PATH)
+load_server_package("followup_coverage_server", PROJECT_ROOT / "jarvis-web" / "server")
+SPEC = importlib.util.spec_from_file_location(
+    "followup_coverage_server.services.followup_extractor", EXTRACTOR_PATH
+)
 followup = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(followup)
@@ -1811,6 +1816,96 @@ def _enabled_local_tool_names():
 
 def test_every_enabled_local_tool_has_an_audited_payload_sample():
     assert set(LOCAL_TOOL_SAMPLES) == _enabled_local_tool_names()
+
+
+def test_facade_package_and_path_imports_keep_public_exports_and_search_results():
+    """The path-loaded test facade and normal server import share one contract."""
+    imported = importlib.import_module(
+        "followup_coverage_server.services.followup_extractor"
+    )
+    assert Path(imported.__file__) == EXTRACTOR_PATH
+    for name in (
+        "extract_followup_data", "extract_text_summarizer_followup",
+        "compact_text_summarizer_item", "truncate_followup_summary",
+        "workflow_result_payload", "workflow_step_tool_results",
+    ):
+        assert callable(getattr(imported, name))
+        assert callable(getattr(followup, name))
+    for name in (
+        "FOLLOWUP_FIELDS", "FOLLOWUP_DEFAULT_MAX_CANDIDATES",
+        "FOLLOWUP_EVIDENCE_MAX_CANDIDATES", "FOLLOWUP_SUMMARY_MAX_CHARS",
+    ):
+        assert getattr(imported, name) == getattr(followup, name)
+
+    for tool_name, (payload, arguments) in LOCAL_TOOL_SAMPLES.items():
+        if not tool_name.startswith("serpapi_"):
+            continue
+        data = {tool_name: payload}
+        if arguments is not None:
+            data["_tool_trace"] = [
+                {"tool": tool_name, "ok": True, "arguments": arguments}
+            ]
+        assert imported.extract_followup_data(data) == followup.extract_followup_data(data), tool_name
+
+
+def test_family_followups_keep_shared_metadata_order_and_false_zero_values():
+    data = {
+        "serpapi_home_depot": {
+            "product_id": "selected-product",
+            "top_url": "https://example.test/selected",
+            "stash_ref": "stash://search/products",
+            "results_count": 2,
+            "results": [
+                {"title": "First", "product_id": "first", "price": 0},
+                {"title": "Second", "product_id": "second", "price": 10},
+            ],
+        },
+        "serpapi_google_images_light": {
+            "results": [{
+                "title": "Image", "url": "https://example.test/image",
+                "is_product": False, "in_stock": False, "unsafe": False,
+            }],
+            "pagination": {"start": 0, "has_more": False, "next_start": 0},
+        },
+        "serpapi_google_local": {
+            "results": [{
+                "title": "Place", "place_id": "place-1",
+                "rating": 0, "reviews": 0, "sponsored": False,
+            }],
+        },
+        "_tool_trace": [{
+            "tool": "serpapi_home_depot", "ok": True,
+            "arguments": {"query": "free products", "start": 0},
+        }],
+        "_error": {
+            "tool_failed": "serpapi_google_local", "message": "Unavailable",
+            "retries": 0,
+        },
+    }
+    result = followup.extract_followup_data(data, max_candidates=1)
+
+    assert list(result) == [
+        "serpapi_home_depot", "serpapi_google_images_light",
+        "serpapi_google_local", "error",
+    ]
+    shopping = result["serpapi_home_depot"]
+    assert shopping["product_id"] == "selected-product"
+    assert shopping["top_url"] == "https://example.test/selected"
+    assert shopping["stash_ref"] == "stash://search/products"
+    assert shopping["request"] == {"query": "free products", "start": 0}
+    assert shopping["candidates"] == [{"title": "First", "product_id": "first", "price": 0}]
+    assert shopping["candidates_truncated"] is True
+    images = result["serpapi_google_images_light"]
+    assert images["candidates"][0]["is_product"] is False
+    assert images["candidates"][0]["in_stock"] is False
+    assert images["candidates"][0]["unsafe"] is False
+    assert images["pagination"] == {"start": 0, "has_more": False, "next_start": 0}
+    assert result["serpapi_google_local"]["candidates"] == [{
+        "title": "Place", "place_id": "place-1",
+        "rating": 0, "reviews": 0, "sponsored": False,
+    }]
+    assert result["error"]["retries"] == 0
+    assert followup.extract_followup_data(data, max_candidates=1) == result
 
 
 @pytest.mark.parametrize(
