@@ -13,14 +13,29 @@ window.assistantMessageRenderer = {
 
   renderConvertedFile(convertResult) {
     let convertedFileHtml = '';
-    if (convertResult && convertResult.stash_ref) {
-      const stashMatch = convertResult.stash_ref.match(/stash:\/\/([^/]+)\/(.+)/);
-      if (stashMatch) {
-        // Use existing stash route: /api/stash/{space_id}/{file_id}
-        const stashUrl = `/api/stash/${stashMatch[1]}/${stashMatch[2]}`;
-        const targetFormat = convertResult.target_format || '';
-        const filename = convertResult.filename || 'converted file';
-        const sizeChange = convertResult.size_change || '';
+    const stashRef = convertResult?.stash_ref;
+    if (typeof stashRef === 'string' && !/[\\\u0000-\u001f\u007f]/.test(stashRef)) {
+      const stashMatch = stashRef.match(/^stash:\/\/([^/]+)\/([^/]+)$/);
+      if (stashMatch && stashMatch[0] === stashRef
+          && stashMatch.slice(1).every(part => part !== '.' && !part.includes('..'))) {
+        // Keep custom space names and legacy filename refs, but never interpret
+        // their characters as URL structure. Percent sequences are literal IDs.
+        let stashUrl;
+        try {
+          stashUrl = `/api/stash/${encodeURIComponent(stashMatch[1])}/${encodeURIComponent(stashMatch[2])}`;
+        } catch {
+          // Imported JSON may contain invalid UTF-16; omit that unusable preview.
+          return '';
+        }
+        const escapeAttr = value => Utils.escapeHtml(value).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const targetFormat = typeof convertResult.target_format === 'string' ? convertResult.target_format : '';
+        const filename = typeof convertResult.filename === 'string' && convertResult.filename
+          ? convertResult.filename : 'converted file';
+        const sizeChange = Utils.escapeHtml(typeof convertResult.size_change === 'string' ? convertResult.size_change : '');
+        const stashUrlAttr = escapeAttr(stashUrl);
+        const filenameAttr = escapeAttr(filename);
+        const formatAttr = escapeAttr(targetFormat);
+        const formatLabel = escapeAttr(targetFormat.toUpperCase());
 
         // Check if it's an image format
         const imageFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'];
@@ -36,8 +51,8 @@ window.assistantMessageRenderer = {
 
         // Download button HTML (reusable)
         const downloadBtn = `
-            <a href="${stashUrl}" download="${filename}" class="convert-download-btn" title="Download ${filename}">
-              ⬇️ Download ${targetFormat.toUpperCase()}
+            <a href="${stashUrlAttr}" download="${filenameAttr}" class="convert-download-btn" title="Download ${filenameAttr}">
+              ⬇️ Download ${formatLabel}
             </a>
           `;
 
@@ -45,8 +60,8 @@ window.assistantMessageRenderer = {
           // Display image inline with download button
           convertedFileHtml = `
               <div class="converted-media-container">
-                <div class="message-image converted-file" onclick="window.showImageLightbox('${stashUrl}')">
-                  <img src="${stashUrl}" alt="Converted ${targetFormat.toUpperCase()}" loading="lazy">
+                <div class="message-image converted-file" data-converted-image-url="${stashUrlAttr}">
+                  <img src="${stashUrlAttr}" alt="Converted ${formatLabel}" loading="lazy">
                   <div class="image-overlay">
                     <span>🔍 Click to expand</span>
                   </div>
@@ -67,7 +82,7 @@ window.assistantMessageRenderer = {
                     <span class="video-title">Converted: ${Utils.escapeHtml(filename)}</span>
                   </div>
                   <video controls preload="metadata" class="video-player">
-                    <source src="${stashUrl}" type="video/${targetFormat}">
+                    <source src="${stashUrlAttr}" type="video/${formatAttr}">
                     Your browser does not support video playback.
                   </video>
                 </div>
@@ -87,7 +102,7 @@ window.assistantMessageRenderer = {
                     <span class="audio-title">Converted: ${Utils.escapeHtml(filename)}</span>
                   </div>
                   <audio controls preload="metadata" class="audio-player">
-                    <source src="${stashUrl}" type="audio/${targetFormat}">
+                    <source src="${stashUrlAttr}" type="audio/${formatAttr}">
                     Your browser does not support audio playback.
                   </audio>
                 </div>
@@ -101,7 +116,7 @@ window.assistantMessageRenderer = {
           // Download link for other formats
           convertedFileHtml = `
               <div class="message-file converted-file">
-                <a href="${stashUrl}" download="${filename}" class="file-download-link">
+                <a href="${stashUrlAttr}" download="${filenameAttr}" class="file-download-link">
                   <span class="file-icon">📁</span>
                   <span class="file-name">${Utils.escapeHtml(filename)}</span>
                   ${sizeChange ? `<span class="file-size">(${sizeChange})</span>` : ''}

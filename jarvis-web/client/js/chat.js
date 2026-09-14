@@ -3811,6 +3811,12 @@ class ChatUI {
       });
     });
 
+    messageEl.querySelectorAll('.message-image.converted-file[data-converted-image-url]').forEach(image => {
+      image.addEventListener('click', () => {
+        window.showImageLightbox(image.dataset.convertedImageUrl);
+      });
+    });
+
     this._attachCompletionGuardCard(messageEl, data, toolsUsed);
     this._attachMessageResponseActions(messageEl, text, data, {
       allowReaction: options.allowReaction !== false,

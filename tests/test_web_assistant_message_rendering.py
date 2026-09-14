@@ -37,6 +37,12 @@ class Element {
       card.className = 'tool-card ' + match[1]; header.parentElement = card;
       return header;
     });
+    this.convertedImages = [...value.matchAll(/<div\b[^>]*data-converted-image-url="([^"]*)"/g)].map(match => {
+      const image = new Element();
+      image.dataset.convertedImageUrl = match[1].replace(/&(?:amp|quot|#39|lt|gt);/g,
+        entity => ({'&amp;':'&', '&quot;':'"', '&#39;':"'", '&lt;':'<', '&gt;':'>'}[entity]));
+      return image;
+    });
     if (value.includes('class="details-toggle"')) {
       const details = new Element(), toggle = new Element();
       details.className = 'message-details collapsed'; toggle.parentElement = details;
@@ -46,7 +52,11 @@ class Element {
   }
   get innerHTML() { return this._html; }
   querySelector(selector) { return this.parts?.[selector] || null; }
-  querySelectorAll(selector) { return selector === '.tool-card-header' ? this.headers || [] : []; }
+  querySelectorAll(selector) {
+    if (selector === '.tool-card-header') return this.headers || [];
+    if (selector === '.message-image.converted-file[data-converted-image-url]') return this.convertedImages || [];
+    return [];
+  }
   closest() { return this.parentElement; }
   addEventListener(name, handler) { this.events[name] = handler; }
   appendChild(child) { this.children.push(child); child.parentElement = this; effects.push('append'); }
@@ -154,6 +164,24 @@ ui.addAssistantMessage('Ready', [], {message_id:'answer', data:{convert_file:{
   stash_ref:'stash://space_test/f_file',target_format:'png'
 }}});
 assert.ok(message(ui).innerHTML.includes('converted-file'));
+""")
+
+
+@pytest.mark.parametrize("live", [True, False])
+def test_converted_image_lightbox_uses_bound_url_data_for_live_and_saved_messages(live):
+    run_message_browser(f"const live = {json.dumps(live)};\n" + r"""
+const ui = chat(), opened = [];
+sandbox.window.showImageLightbox = url => opened.push(url);
+const html = render(ui, 'Ready', ['convert_file'], {
+  convert_file: {stash_ref:"stash://Custom space/image');window.__injected=1;('.png", target_format:'png'}
+}, live);
+assert.ok(!html.includes('onclick='));
+const images = message(ui).querySelectorAll('.message-image.converted-file[data-converted-image-url]');
+assert.equal(images.length, 1);
+images[0].events.click();
+assert.deepEqual(opened, ["/api/stash/Custom%20space/image')%3Bwindow.__injected%3D1%3B('.png"]);
+assert.equal(sandbox.window.__injected, undefined);
+assert.equal(ui.pendingToolsByMessage.has('answer'), false);
 """)
 
 
