@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Jarvis Companion",
+  "version": "0.1.2",
+  "description": "Chat with your Jarvis server and ask about screenshots, selected text, and links.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "jarvis-companion@bigsk1.com",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": ["authenticationInfo", "personalCommunications", "websiteContent", "browsingActivity"]
+      }
+    }
+  },
+  "permissions": ["storage", "activeTab", "menus"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "incognito": "not_allowed",
+  "background": { "scripts": ["background.js"], "type": "module" },
+  "action": {
+    "default_title": "Open Jarvis sidebar",
+    "default_icon": "assets/jarvis.svg"
+  },
+  "icons": { "48": "assets/jarvis.svg", "96": "assets/jarvis.svg" },
+  "sidebar_action": {
+    "default_title": "Jarvis",
+    "default_icon": "assets/jarvis.svg",
+    "default_panel": "ui/panel.html",
+    "open_at_install": false
+  },
+  "options_ui": { "page": "ui/panel.html", "open_in_tab": true },
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; script-src 'self'; object-src 'none'; img-src 'self' data: blob:; style-src 'self'; connect-src https: wss: http: ws:; base-uri 'none'; form-action 'none'"
+  }
+}

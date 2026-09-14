@@ -275,6 +275,7 @@ jarvis-web/
 ├── server/                         # Flask + SocketIO (threading + WebSocket)
 │   ├── app.py                      # App entry; serves /, /logs, /login, /stash/view/...
 │   ├── config.py                   # Loads cloud.env / local.env + web_config
+│   ├── socket_auth.py              # WebUI token checks and socket expiry
 │   ├── routes/
 │   │   ├── api.py                  # REST: tools, settings, conversations, media, workflows, prompts, logs
 │   │   └── auth.py                 # Optional auth (/api/auth/login, /api/auth/status, …)
@@ -390,6 +391,13 @@ Repo root (shared with core Jarvis — outside jarvis-web/):
 | GET | `/api/logs/content` | Fetch paged content for the selected log file |
 
 ### WebSocket Events
+
+When `features.auth` is true in public `/api/status`, connect with the WebUI
+token in Socket.IO `auth: {token}` and use the same bearer for HTTP uploads and
+conversation requests. Every event is authenticated; token expiry also removes
+idle subscriptions and emits `auth:required` before disconnection. Server-owned
+runs remain recoverable after sign-in. Public `extension.api: 1` and
+`extension.features` advertise the independently installed companion contract.
 
 #### Client → Server
 

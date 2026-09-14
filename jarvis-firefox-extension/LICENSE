@@ -1,0 +1,83 @@
+# Jarvis Voice Assistant - Source Available License
+
+**Copyright (c) 2024-2026 BigSk1**
+
+## Terms and Conditions
+
+### 1. Permissions
+
+You are granted permission to:
+
+- ✅ **View** - Access and read the source code
+- ✅ **Learn** - Study the code for educational purposes
+- ✅ **Fork** - Create personal copies of the repository
+- ✅ **Modify** - Make changes and improvements for personal use
+- ✅ **Share** - Redistribute with attribution for non-commercial purposes
+- ✅ **Personal Projects** - Use in your own non-commercial projects
+
+### 2. Requirements
+
+Any use of this software must:
+
+- 📝 **Attribution Required** - You must give appropriate credit to the original author (BigSk1), provide a link to the original repository, and indicate if changes were made. You may do so in any reasonable manner, but not in any way that suggests the author endorses you or your use.
+
+- 📋 **License Notice** - You must include a copy of this license in any redistribution.
+
+- 🔗 **Link Back** - Any public forks or derivatives must include a prominent link to: https://github.com/bigsk1/jarvis-voice
+
+### 3. Restrictions
+
+You may NOT:
+
+- ❌ **Commercial Use** - Use this software, or any derivative works, for commercial purposes without explicit written permission from the copyright holder. Commercial purposes include but are not limited to:
+  - Selling the software or derivatives
+  - Using the software in a commercial product or service
+  - Using the software to provide paid services
+  - Including the software in a product that is sold
+  - Using the software for any revenue-generating activity
+
+- ❌ **Remove Attribution** - Remove, alter, or obscure any copyright notices, attribution, or license information.
+
+- ❌ **Trademark Use** - Use the name "Jarvis", "BigSk1", or any associated branding to endorse or promote products derived from this software without prior written permission.
+
+- ❌ **Patent Claims** - Make patent claims against the author related to this software.
+
+### 4. Commercial Licensing
+
+If you wish to use this software for commercial purposes, please contact the author to discuss commercial licensing options.
+
+Contact: https://github.com/bigsk1
+
+### 5. Contributions
+
+By submitting contributions (pull requests, issues, suggestions) to this project, you agree that:
+
+- Your contributions will be licensed under the same terms as this license
+- You grant the copyright holder a perpetual, worldwide, non-exclusive, royalty-free license to use, modify, and distribute your contributions
+
+### 6. Disclaimer
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+### 7. Termination
+
+Your rights under this license will terminate automatically if you fail to comply with any of its terms. Upon termination, you must destroy all copies of the software in your possession.
+
+---
+
+**Summary (not legally binding):**
+
+| Action | Allowed? |
+|--------|----------|
+| Personal use | ✅ Yes |
+| Educational use | ✅ Yes |
+| Modification | ✅ Yes |
+| Non-commercial redistribution | ✅ Yes (with attribution) |
+| Commercial use | ❌ No (contact for license) |
+| Remove credits | ❌ No |
+
+---
+
+This license is inspired by the [Creative Commons BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) and [PolyForm Noncommercial](https://polyformproject.org/licenses/noncommercial/1.0.0/) licenses.
+
+For questions about this license, open an issue at: https://github.com/bigsk1/jarvis-voice

@@ -100,6 +100,7 @@ jarvis-web/
 ├── server/                    # Flask + SocketIO (threading + WebSocket)
 │   ├── app.py                # App factory, `/`, `/logs`, `/login`, `/stash/view/...`
 │   ├── config.py             # Configuration loader
+│   ├── socket_auth.py        # Shared WebUI auth for socket events and expiry
 │   ├── routes/
 │   │   ├── api.py            # REST API (tools, settings, conversations, media, workflows, prompts)
 │   │   └── auth.py           # Optional auth: `/api/auth/login`, `/api/auth/status`, …
@@ -214,6 +215,19 @@ Saved Web UI conversations live under `data/web_conversations/`. The normal cron
 | `/api/auth/status` | GET | Whether auth is required + metadata |
 | `/api/auth/login` | POST | Password login → JWT for session |
 
+Socket.IO clients send the same token as `auth: {token}` on every connection
+and reconnect. HTTP requests use `Authorization: Bearer <token>`. Existing
+same-origin browser cookies remain supported; cross-origin clients must present
+the token explicitly. When authentication is enabled, every socket event checks
+the token and expiry disconnects even idle subscribers. `auth:required` means
+sign in again; disconnecting preserves server-owned runs for later recovery.
+
+Public `/api/status` advertises `extension.api: 1`, `extension.socket_auth: true`,
+and `extension.features` for `chat`, `images`, `conversations`, `recovery`, and
+`cancel`. `features.auth` states whether this installation requires sign-in.
+This additive capability contract lets independently installed companions check
+server compatibility before opening a conversation.
+
 ### Workflows & Prompts
 
 | Endpoint | Method | Description |
@@ -257,6 +271,7 @@ Event names below are what the **server** emits / the **client** sends (see `cli
 | Event | Description |
 |-------|-------------|
 | `connected` | Session established |
+| `auth:required` | Sign in again; socket disconnects and existing runs remain recoverable |
 | `chat:thinking` | Processing started |
 | `chat:run` | Conversation-owned running, stopping, or terminal state |
 | `chat:rejected` / `chat:resume_missing` | Admission or request-recovery explanation |

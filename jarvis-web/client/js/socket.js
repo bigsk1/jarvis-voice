@@ -54,7 +54,13 @@ class JarvisSocket {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000
+      reconnectionDelay: 1000,
+      // Socket.IO invokes this again on reconnect, so a renewed login is used.
+      auth: (callback) => {
+        let token = null;
+        try { token = Utils.auth.getToken(); } catch (_) { /* Cookie fallback. */ }
+        callback(token ? { token } : {});
+      }
     });
 
     this._setupEventHandlers();
@@ -80,7 +86,10 @@ class JarvisSocket {
     this.socket.on('connect_error', (error) => {
       console.error('[Socket] Connection error:', error);
       this._emit('connectionError', { error: error.message });
+      if (error.data?.code === 'authentication_required') this._requireLogin();
     });
+
+    this.socket.on('auth:required', () => this._requireLogin());
 
     // Custom events from server
     this.socket.on('connected', (data) => {
@@ -216,6 +225,13 @@ class JarvisSocket {
       }
       this._emit('conversationLoaded', data);
     });
+  }
+
+  _requireLogin() {
+    // Keep pending request/conversation IDs for recovery after sign-in.
+    this.socket.disconnect();
+    try { Utils.auth.clearToken(); } catch (_) { /* Storage may be unavailable. */ }
+    window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
   }
 
   /**

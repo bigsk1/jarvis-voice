@@ -2449,7 +2449,7 @@ Previous structured data:
         """Register all socket event handlers"""
         
         @self.socketio.on('connect')
-        def handle_connect():
+        def handle_connect(auth=None):
             session_id = request.sid
             
             # Use startup mode as default for new sessions
@@ -2484,7 +2484,7 @@ Previous structured data:
             print(f"[WS] Client connected: {session_id} (default mode: {default_mode})")
         
         @self.socketio.on('disconnect')
-        def handle_disconnect():
+        def handle_disconnect(reason=None):
             session_id = request.sid
             if session_id in self.sessions:
                 prior_room = self.sessions[session_id].get('conversation_room')

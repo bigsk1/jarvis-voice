@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Jarvis · Browser companion</title>
+  <link rel="icon" href="../assets/jarvis.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="panel.css">
+  <script type="module" src="panel.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="brand"><img src="../assets/jarvis.svg" width="36" height="36" alt=""><div><span class="brand-name">JARVIS</span><span class="brand-caption">Browser companion</span></div></div>
+      <div class="header-actions">
+        <span id="connection-badge" class="connection-badge" title="Connection status"><span class="status-dot"></span><span id="connection-label">Set up</span></span>
+        <button id="popout-button" class="icon-button" type="button" title="Open pop-out" aria-label="Open pop-out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6m0-6-9 9M10 4H4v16h16v-6"/></svg></button>
+        <button id="history-button" class="icon-button" type="button" title="Conversations" aria-label="Conversations" aria-expanded="false" aria-controls="history-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h12M4 17h8"/></svg></button>
+        <button id="settings-button" class="icon-button" type="button" title="Connection settings" aria-label="Connection settings" aria-expanded="false" aria-controls="settings-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M12 4v16M19 4v16M2 8h6M9 16h6M16 9h6"/></svg></button>
+      </div>
+    </header>
+
+    <section id="settings-panel" class="drawer" aria-labelledby="settings-heading" hidden>
+      <div class="section-heading"><h2 id="settings-heading">Connect to Jarvis</h2><button id="settings-close" class="text-button" type="button">Done</button></div>
+      <p class="helper">Use the address of your Jarvis Web chat server.</p>
+      <form id="settings-form">
+        <label class="field-label" for="server-url">Server URL</label>
+        <div class="input-action"><input id="server-url" name="server-url" type="url" placeholder="https://jarvis.example.com" autocomplete="url" spellcheck="false" required><button id="save-settings" class="button button-primary" type="submit">Connect</button></div>
+        <label class="checkbox-label"><input id="allow-insecure" type="checkbox"><span>Allow HTTP for a local development server</span></label>
+        <p id="insecure-warning" class="inline-warning" hidden>HTTP sends your password, messages, and screenshots without encryption. Use this only on a trusted local network.</p>
+      </form>
+      <form id="login-form" class="login-form" hidden>
+        <label class="field-label" for="password">Jarvis Web password</label>
+        <div class="input-action"><input id="password" name="password" type="password" autocomplete="current-password" placeholder="Your Jarvis password"><button id="login-button" class="button button-primary" type="submit">Sign in</button></div>
+      </form>
+      <div class="settings-footer"><span id="settings-status" class="helper" role="status">Set a server address to get started.</span><div class="heading-actions"><button id="reconnect-button" class="text-button accent-text" type="button" hidden>Reconnect</button><button id="logout-button" class="text-button" type="button" hidden>Log out</button></div></div>
+    </section>
+
+    <section id="history-panel" class="drawer history-panel" aria-labelledby="history-heading" hidden>
+      <div class="section-heading"><h2 id="history-heading">Conversations</h2><div class="heading-actions"><button id="refresh-history" class="text-button" type="button">Refresh</button><button id="history-close" class="text-button" type="button">Done</button></div></div>
+      <div id="conversation-list" class="conversation-list"><p class="helper">Connect to load your conversations.</p></div>
+    </section>
+
+    <div class="thread-toolbar"><span id="thread-title" class="thread-title">New conversation</span><button id="new-conversation" class="text-button" type="button"><span aria-hidden="true">＋</span> New chat</button></div>
+    <div id="notice" class="notice" role="status" hidden></div>
+    <main id="thread" class="thread" aria-label="Conversation" aria-live="polite" aria-relevant="additions text">
+      <section id="empty-state" class="empty-state">
+        <div class="empty-orbit"><img src="../assets/jarvis.svg" width="64" height="64" alt=""></div>
+        <span class="eyebrow">A second set of eyes</span>
+        <h1>Bring Jarvis into<br>the picture.</h1>
+        <p>Capture your browser view, add a question, and work through it together.</p>
+        <button id="empty-capture" class="button button-secondary" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5h4m8 0h4v3m0 8v3h-4m-8 0H4v-3M8 9h8v6H8z"/></svg>Capture browser view</button>
+        <span class="empty-hint">You choose what to capture and when to send it.</span>
+      </section>
+      <div id="messages" class="messages"></div>
+    </main>
+
+    <footer class="composer-area">
+      <div id="progress-area" class="progress-area" role="status" hidden><span class="activity-dot" aria-hidden="true"></span><span id="progress-text">Working…</span><button id="cancel-button" class="button button-stop" type="button">Stop</button></div>
+      <section id="attachment-panel" class="attachment-panel" aria-label="Captured screenshot" hidden>
+        <button id="preview-button" class="preview-button" type="button" title="Enlarge screenshot" aria-label="Enlarge screenshot"><img id="attachment-preview" alt="Screenshot ready to send"></button>
+        <div class="attachment-details"><span class="eyebrow">Screenshot ready</span><strong id="attachment-title">Browser view</strong><span id="attachment-meta" class="helper"></span><div class="attachment-actions"><button id="recapture-button" class="text-button" type="button">Capture again</button><button id="analyze-button" class="text-button accent-text" type="button">Analyze screenshot</button></div></div>
+        <button id="remove-attachment" class="icon-button remove-button" type="button" title="Remove screenshot" aria-label="Remove screenshot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </section>
+      <section id="context-panel" class="context-panel" aria-label="Shared page context" hidden><span class="context-icon" aria-hidden="true">↳</span><div><strong id="context-title">Shared from Firefox</strong><p id="context-text"></p></div><button id="remove-context" class="icon-button" type="button" title="Remove shared context" aria-label="Remove shared context"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></section>
+      <form id="composer-form" class="composer">
+        <label class="sr-only" for="message-input">Message Jarvis</label>
+        <textarea id="message-input" rows="2" placeholder="Ask Jarvis anything…" spellcheck="true"></textarea>
+        <div class="composer-controls"><div class="composer-left"><button id="capture-button" class="icon-button" type="button" title="Capture browser view" aria-label="Capture browser view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5h4m8 0h4v3m0 8v3h-4m-8 0H4v-3M8 9h8v6H8z"/></svg></button><label class="mode-control" for="mode-select"><span class="sr-only">Jarvis mode</span><select id="mode-select"><option value="cloud">Cloud</option><option value="local">Local</option></select></label></div><button id="send-button" class="button button-send" type="submit" disabled>Send<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></div>
+      </form>
+      <div class="composer-caption"><span id="source-caption">Capture adds a preview to your next message.</span><span class="keyboard-hint">Enter to send</span></div>
+    </footer>
+  </div>
+  <dialog id="preview-dialog" class="preview-dialog"><div class="preview-heading"><span>Screenshot preview</span><button id="close-preview" class="button button-secondary" type="button">Close</button></div><img id="large-preview" alt="Full captured screenshot"></dialog>
+</body>
+</html>

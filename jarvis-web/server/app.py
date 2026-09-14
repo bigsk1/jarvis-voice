@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 
 from flask import Flask, send_from_directory
-from flask_socketio import SocketIO
 from flask_cors import CORS
 
 # Setup paths
@@ -26,6 +25,7 @@ from .sockets.chat import ChatHandler
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 from webui_auth import is_auth_enabled, get_token_from_request, verify_token
 from flask_error_logger import setup_error_logging
+from .socket_auth import AuthenticatedSocketIO
 
 # Global to track startup mode (set in run_server)
 _startup_mode = 'cloud'
@@ -43,7 +43,7 @@ app = Flask(__name__,
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Configure SocketIO
-socketio = SocketIO(
+socketio = AuthenticatedSocketIO(
     app,
     cors_allowed_origins="*",
     # Threading + simple-websocket avoids monkey-patching gRPC, subprocess,

@@ -495,6 +495,17 @@ def get_status():
             'tts': get_web_setting('audio.tts_enabled', False),
             'stt': get_web_setting('audio.stt_enabled', False),
             'auth': is_auth_enabled()  # Dynamic from WEBUI_PASSWORD env var
+        },
+        'extension': {
+            'api': 1,
+            'socket_auth': True,
+            'features': {
+                'chat': True,
+                'images': True,
+                'conversations': True,
+                'recovery': True,
+                'cancel': True,
+            },
         }
     })
 
