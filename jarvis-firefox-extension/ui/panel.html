@@ -7,12 +7,13 @@
   <title>Jarvis · Browser companion</title>
   <link rel="icon" href="../assets/jarvis.svg" type="image/svg+xml">
   <link rel="stylesheet" href="panel.css">
+  <script type="module" src="hud-logo.js"></script>
   <script type="module" src="panel.js"></script>
 </head>
 <body>
   <div class="app-shell">
     <header class="app-header">
-      <div class="brand"><img src="../assets/jarvis.svg" width="36" height="36" alt=""><div><span class="brand-name">JARVIS</span><span class="brand-caption">Browser companion</span></div></div>
+      <div class="brand"><span id="header-logo" class="jarvis-logo" aria-hidden="true"><img src="../assets/jarvis.svg" width="44" height="44" alt=""></span><div><span class="brand-name">JARVIS</span><span class="brand-caption">Browser companion</span></div></div>
       <div class="header-actions">
         <span id="connection-badge" class="connection-badge" title="Connection status"><span class="status-dot"></span><span id="connection-label">Set up</span></span>
         <button id="popout-button" class="icon-button" type="button" title="Open pop-out" aria-label="Open pop-out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6m0-6-9 9M10 4H4v16h16v-6"/></svg></button>
@@ -53,12 +54,11 @@
     <div id="notice" class="notice" role="status" hidden></div>
     <main id="thread" class="thread" aria-label="Conversation" aria-live="polite" aria-relevant="additions text">
       <section id="empty-state" class="empty-state">
-        <div class="empty-orbit"><img src="../assets/jarvis.svg" width="64" height="64" alt=""></div>
-        <span class="eyebrow">A second set of eyes</span>
-        <h1>Bring Jarvis into<br>the picture.</h1>
-        <p>Capture your browser view, add a question, and work through it together.</p>
+        <div id="welcome-logo" class="jarvis-logo welcome-logo" aria-hidden="true"><img src="../assets/jarvis.svg" width="128" height="128" alt=""></div>
+        <h1>What are we working on?</h1>
+        <p>Ask Jarvis a question, or capture this page to show what you mean.</p>
         <button id="empty-capture" class="button button-secondary" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5h4m8 0h4v3m0 8v3h-4m-8 0H4v-3M8 9h8v6H8z"/></svg>Capture browser view</button>
-        <span class="empty-hint">You choose what to capture and when to send it.</span>
+        <span class="empty-hint">Review your capture before sending.</span>
       </section>
       <div id="messages" class="messages"></div>
     </main>

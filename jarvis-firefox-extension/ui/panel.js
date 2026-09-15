@@ -118,6 +118,7 @@ function renderNotice() {
 
 function renderConnection() {
   const status = state?.connection?.status || 'unconfigured';
+  for (const id of ['header-logo', 'welcome-logo']) $(id).dataset.connected = String(status === 'connected');
   $('connection-badge').dataset.status = status;
   $('connection-label').textContent = status === 'recovering' && sending ? 'Sending' : labels[status] || status;
   $('connection-badge').title = state?.settings?.serverUrl || 'Set up your Jarvis connection';

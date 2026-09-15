@@ -22,6 +22,16 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .app-shell > * { min-width: 0; max-width: 100%; }
 .app-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 17px 20px; border-bottom: 1px solid var(--border-primary); background: var(--bg-secondary); }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.jarvis-logo { display: block; width: 44px; height: 44px; flex: 0 0 auto; }
+.jarvis-logo > :is(img, svg) { display: block; width: 100%; height: 100%; fill: none; stroke: none; stroke-width: 1; stroke-linecap: butt; stroke-linejoin: miter; }
+.jarvis-logo .jhl-status-arc { stroke: #cc4444; opacity: .55; }
+.jarvis-logo .jhl-status-dots { fill: #cc4444; opacity: .45; }
+.jarvis-logo :is(.jhl-tick-ring, .jhl-hud-arcs) { opacity: .65; }
+.jarvis-logo :is(.jhl-status-arc, .jhl-status-dots) { transition: stroke .35s ease, fill .35s ease, opacity .35s ease; }
+.jarvis-logo[data-connected="true"] .jhl-status-sweep { transform-origin: 100px 100px; animation: jarvis-hud-scan 14s linear infinite; }
+.jarvis-logo[data-connected="true"] .jhl-status-arc { stroke: #ff9900; opacity: 1; }
+.jarvis-logo[data-connected="true"] .jhl-status-dots { fill: #ff9900; opacity: 1; }
+.jarvis-logo[data-connected="true"] :is(.jhl-tick-ring, .jhl-hud-arcs) { opacity: 1; }
 .brand-name { display: block; font-size: 15px; letter-spacing: .17em; font-weight: 700; line-height: 1.25; }
 .brand-caption { display: block; font-size: 10px; color: var(--text-secondary); letter-spacing: .035em; margin-top: 3px; }
 .header-actions, .heading-actions { display: flex; align-items: center; gap: 7px; }
@@ -67,14 +77,14 @@ input::placeholder, textarea::placeholder { color: var(--text-tertiary); opacity
 .notice[data-error="true"] { background: #ef44440c; color: #fca5a5; border-color: #ef44442b; }
 .thread { flex: 1; overflow-y: auto; min-height: 0; scrollbar-color: var(--border-primary) transparent; scrollbar-width: thin; }
 .empty-state { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 38px 25px; }
-.empty-orbit { width: 96px; height: 96px; display: grid; place-items: center; margin-bottom: 25px; border-radius: 50%; border: 1px solid #6366f126; background: radial-gradient(circle, #6366f111 0%, transparent 70%); box-shadow: 0 0 0 12px #6366f105; }
+.welcome-logo { width: 128px; height: 128px; margin-bottom: 20px; }
 .eyebrow { display: block; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; color: var(--accent-tertiary); }
-.empty-state h1 { font-size: clamp(25px, 5.5vw, 34px); line-height: 1.2; font-weight: 600; letter-spacing: -.04em; margin: 11px 0; }
+.empty-state h1 { max-width: 340px; font-size: clamp(25px, 5.5vw, 30px); line-height: 1.2; font-weight: 600; letter-spacing: -.035em; text-wrap: balance; margin: 11px 0; }
 .empty-state p { max-width: 290px; color: var(--text-secondary); font-size: 12px; line-height: 1.75; margin: 0 0 23px; }
 .empty-state .button { padding: 10px 15px; }
 .empty-hint { color: var(--text-tertiary); font-size: 10px; margin-top: 16px; }
 .drawer:not([hidden]) ~ .thread .empty-state { padding: 20px; }
-.drawer:not([hidden]) ~ .thread .empty-orbit, .drawer:not([hidden]) ~ .thread .empty-hint { display: none; }
+.drawer:not([hidden]) ~ .thread .welcome-logo, .drawer:not([hidden]) ~ .thread .empty-hint { display: none; }
 .drawer:not([hidden]) ~ .thread .empty-state h1 { font-size: 25px; margin: 8px 0; }
 .drawer:not([hidden]) ~ .thread .empty-state p { margin-bottom: 14px; }
 .messages { padding: 12px 20px 24px; }
@@ -159,12 +169,13 @@ textarea:focus-visible { outline: none; }
 .preview-dialog > img { display: block; max-width: 100%; max-height: calc(100dvh - 115px); object-fit: contain; margin: auto; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 @keyframes pulse { 50% { opacity: .3; } }
+@keyframes jarvis-hud-scan { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 @media (max-width: 410px) { .app-header { padding: 12px; gap: 6px; } .header-actions { gap: 2px; } .connection-badge { padding: 4px 6px; font-size: 9px; } .brand { gap: 7px; } .brand-caption { font-size: 9px; } .thread-toolbar, .drawer { padding-right: 14px; padding-left: 14px; } .messages { padding-right: 14px; padding-left: 14px; } .composer-area { padding-right: 10px; padding-left: 10px; } .keyboard-hint { display: none; } .preview-button { width: 67px; height: 57px; } }
-@media (max-height: 650px) { .empty-state { padding: 22px; } .empty-orbit { width: 72px; height: 72px; margin-bottom: 16px; } .empty-orbit img { width: 48px; height: 48px; } .empty-state h1 { font-size: 25px; } .empty-hint { display: none; } }
+@media (max-height: 650px) { .empty-state { padding: 22px; } .welcome-logo { width: 88px; height: 88px; margin-bottom: 16px; } .empty-state h1 { font-size: 25px; } .empty-hint { display: none; } }
 @media (max-width: 320px) {
   .app-header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; padding: 9px 12px; }
   .brand { justify-content: center; }
-  .brand img { width: 25px; height: 25px; }
+  .brand .jarvis-logo { width: 32px; height: 32px; }
   .brand-caption { display: none; }
   .header-actions { justify-content: space-between; flex-wrap: nowrap; }
   .connection-badge { margin-right: auto; }

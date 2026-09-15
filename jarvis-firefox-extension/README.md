@@ -120,6 +120,8 @@ scripts/        Vendor copying and package creation
 
 Keep new feature screens behind the client/capability contract. Do not import files from `../jarvis-web/` or load executable libraries from a CDN. Keep this directory as the authoritative source until a deliberate repository extraction; copying to another repository does not establish automatic synchronization.
 
+The packaged `assets/jarvis.svg` uses the artwork from Jarvis Web's `client/assets/jarvis-hud-logo.svg`. The panel inlines this local asset and keeps its animation rules in `ui/panel.css` to support both logo instances under the extension's Content Security Policy. The ring rotates amber when connected and rests red when offline; reduced-motion preferences disable rotation. Toolbar and reply icons use the static SVG, and `assets/jarvis-96.png` is its 96-pixel export for desktop notifications. Keep these packaged copies together when updating the artwork.
+
 ## License
 
 Copyright © 2024–2026 BigSk1. This extension uses the parent project's [Source Available License](LICENSE), including attribution and non-commercial restrictions. See the original [Jarvis Voice repository](https://github.com/bigsk1/jarvis-voice). Vendored dependencies retain their own accompanying licenses.

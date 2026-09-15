@@ -30,6 +30,6 @@
   },
   "options_ui": { "page": "ui/panel.html", "open_in_tab": true },
   "content_security_policy": {
-    "extension_pages": "default-src 'self'; script-src 'self'; object-src 'none'; img-src 'self' data: blob:; style-src 'self'; connect-src https: wss: http: ws:; base-uri 'none'; form-action 'none'"
+    "extension_pages": "default-src 'self'; script-src 'self'; object-src 'none'; img-src 'self' data: blob:; style-src 'self'; connect-src 'self' https: wss: http: ws:; base-uri 'none'; form-action 'none'"
   }
 }
