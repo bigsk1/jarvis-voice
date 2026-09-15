@@ -11,6 +11,7 @@
 | [MCP_QUICKSTART.md](./MCP_QUICKSTART.md) | Getting started, adding servers, testing |
 | [MCP_NAMING_CONVENTIONS.md](./MCP_NAMING_CONVENTIONS.md) | **Critical**: Use snake_case for server names |
 | [MCP_REMOTE_TRANSPORT.md](./MCP_REMOTE_TRANSPORT.md) | SSE and Streamable HTTP transport setup |
+| [DEEPWIKI.md](./DEEPWIKI.md) | Public GitHub repository research, citations, Stash, and Canvas |
 | [MCP_SECURITY_AUDIT.md](./MCP_SECURITY_AUDIT.md) | Security best practices, auditing tools |
 | [MCP_REGRESSION_FIX.md](./MCP_REGRESSION_FIX.md) | Parser fix for underscore server names |
 

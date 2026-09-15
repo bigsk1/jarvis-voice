@@ -1,5 +1,11 @@
 {
   "mcpServers": {
+    "deepwiki": {
+      "type": "http",
+      "url": "https://mcp.deepwiki.com/mcp",
+      "description": "Public GitHub repository documentation and code Q&A through DeepWiki. Prefer focused questions; indexed documentation may lag the latest source revision.",
+      "enabled": true
+    },
     "fetch": {
       "command": "docker",
       "args": [

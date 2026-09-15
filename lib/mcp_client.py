@@ -44,6 +44,7 @@ def _normalize_call_tool_result(
     result: dict[str, Any] | None,
     *,
     server_name: str = "",
+    arguments: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Convert an MCP CallToolResult into Jarvis success/error semantics."""
     if not result:
@@ -52,6 +53,12 @@ def _normalize_call_tool_result(
             "speech": f"MCP tool {tool_name} returned no result",
             "error": "Empty result",
         }
+
+    if server_name == "deepwiki":
+        from deepwiki import DEEPWIKI_TOOL_NAMES, normalize_deepwiki_result
+
+        if f"mcp_deepwiki_{tool_name}" in DEEPWIKI_TOOL_NAMES:
+            return normalize_deepwiki_result(tool_name, result, arguments)
 
     content = result.get("content", [])
     text_parts = []
@@ -655,6 +662,7 @@ class MCPClient:
                 tool_name,
                 response_holder.get("result"),
                 server_name=self.name,
+                arguments=arguments,
             )
             
         except Exception as e:
@@ -1205,6 +1213,7 @@ class MCPRemoteClient:
                 tool_name,
                 response_holder.get("result"),
                 server_name=self.name,
+                arguments=arguments,
             )
             
         except Exception as e:

@@ -105,6 +105,16 @@ false; arbitrary `Error:` text from other servers is not globally reclassified.
 
 ## Available Remote MCP Servers
 
+### DeepWiki
+
+- **URL**: `https://mcp.deepwiki.com/mcp`
+- **Transport**: Streamable HTTP (`type: "http"`)
+- **Authentication**: None; public GitHub repositories only
+- **Tools**: `read_wiki_structure`, `read_wiki_contents`, `ask_question`
+
+Jarvis includes answer/citation handling, bounded follow-up context, and Stash
+storage for oversized results. See [DeepWiki setup and usage](DEEPWIKI.md).
+
 ### CoinGecko
 - **URL**: `https://mcp.api.coingecko.com/mcp`
 - **Transport**: Streamable HTTP

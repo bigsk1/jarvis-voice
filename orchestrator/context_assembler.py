@@ -18,6 +18,13 @@ import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
+try:  # Launchers expose repo/lib directly; package imports also support tests.
+    from deepwiki_context import DEEPWIKI_TOOL_NAMES, project_deepwiki_data
+except ModuleNotFoundError as exc:
+    if exc.name != "deepwiki_context":
+        raise
+    from lib.deepwiki_context import DEEPWIKI_TOOL_NAMES, project_deepwiki_data
+
 
 def _json_safe_followup_value(value):
     """Normalize legacy values so router follow-up blocks are always strict JSON."""
@@ -200,6 +207,13 @@ class ContextAssembler:
             tool_info = []
             for item in items:
                 if isinstance(item, dict):
+                    if tool_name in DEEPWIKI_TOOL_NAMES:
+                        tool_info.append(json.dumps(
+                            project_deepwiki_data(item, max_chars=7500),
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        ))
+                        continue
                     if tool_name == "text_summarizer" and isinstance(item.get("summary"), str):
                         source = item.get("source") if isinstance(item.get("source"), dict) else {}
                         source_label = (
@@ -766,6 +780,20 @@ class ContextAssembler:
         except Exception:
             pass
 
+        if tool_name in DEEPWIKI_TOOL_NAMES and available >= 600:
+            # Re-project the evidence at the provider's actual continuation
+            # budget. Truncating serialized JSON here could lose the sources
+            # and Stash handle retained by the ordinary 10K preview.
+            projected = self.build_deepwiki_result_preview(
+                result, arguments=arguments, max_chars=available - 60,
+            )
+            rendered = json.dumps(
+                {"result": projected, "result_truncated": True},
+                separators=(",", ":"),
+            )
+            if len(rendered) <= available:
+                return finish(rendered, truncated=True)
+
         # Keep the Result block valid JSON even when the preview has to shrink.
         # The previous text context can still carry richer previews; this string
         # is only for provider-native tool_result(...) continuation.
@@ -812,6 +840,10 @@ class ContextAssembler:
 
     def tool_context_max_chars(self, tool_name: str) -> int:
         lowered = (tool_name or "").lower()
+        if lowered in DEEPWIKI_TOOL_NAMES:
+            # Repository answers are the research evidence, not short status
+            # messages. The projection keeps one answer plus complete sources.
+            return 10000
         if lowered == "workflow":
             # Workflow runs return several component results at once. Give the
             # compact workflow projection enough room to retain every current
@@ -3150,6 +3182,30 @@ class ContextAssembler:
                 else raw_step.get("outputs")
             )
             if component_payload not in (None, {}, []):
+                if raw_step.get("tool") in DEEPWIKI_TOOL_NAMES:
+                    if isinstance(component_payload, list):
+                        # Foreach steps expose envelopes in outputs[]. Keep a
+                        # usable latest result inside the shared step budget.
+                        component_context = {
+                            "runs_count": len(component_payload),
+                            "results_truncated": len(component_payload) > 1,
+                            "latest_result": project_deepwiki_data(
+                                component_payload[-1], max_chars=max(256, per_step_chars - 100),
+                            ),
+                        }
+                    else:
+                        component_context = project_deepwiki_data(
+                            {"ok": raw_step.get("ok", True), "error": raw_step.get("error"),
+                             "data": component_payload},
+                            arguments=raw_step.get("_workflow_source_arguments"),
+                            max_chars=per_step_chars,
+                        )
+                    step_preview["result_preview"] = json.dumps(
+                        component_context,
+                        separators=(",", ":"),
+                    )
+                    step_previews.append(step_preview)
+                    continue
                 component_preview = self.build_preview_value(
                     component_payload,
                     parent_key="data",
@@ -3199,10 +3255,37 @@ class ContextAssembler:
             workflow_preview["error"] = self.truncate_preview_text(result["error"], 300)
         return workflow_preview
 
+    def build_deepwiki_result_preview(
+        self,
+        result: dict[str, Any],
+        *,
+        arguments: dict[str, Any] | None = None,
+        max_chars: int = 10000,
+    ) -> dict[str, Any]:
+        """Preserve one useful research answer, source links, and artifact refs."""
+        data = project_deepwiki_data(
+            result, arguments=arguments, max_chars=max_chars - 80,
+        )
+        return {"ok": data.get("ok", True), "data": data}
+
     def build_llm_result_context_preview(self, tool_name: str, result: dict[str, Any]) -> tuple[str, int, int, bool]:
         full_serialized = json.dumps(result, indent=2, default=str)
         result_chars_total = len(full_serialized)
         max_chars = self.tool_context_max_chars(tool_name)
+
+        if (tool_name or "").lower() in DEEPWIKI_TOOL_NAMES:
+            # Always project, including small results, so legacy MCP raw/text
+            # copies and arbitrary remote fields cannot crowd out the answer.
+            projected = self.build_deepwiki_result_preview(result, max_chars=max_chars)
+            serialized = json.dumps(projected, separators=(",", ":"))
+            # Removing duplicated speech/raw wrappers is not missing evidence.
+            # Report omitted answer/source content, so complete answers do not
+            # invite an unnecessary "coverage was truncated" disclaimer.
+            truncated = any(projected["data"].get(field) for field in (
+                "answer_truncated", "sources_truncated", "repo_names_truncated",
+                "question_truncated", "error_truncated",
+            ))
+            return serialized, result_chars_total, len(serialized), truncated
 
         force_compact_projection = (tool_name or "").lower() in {
             "flight_search",

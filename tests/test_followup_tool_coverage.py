@@ -1713,6 +1713,18 @@ LOCAL_TOOL_SAMPLES = {
 
 
 MCP_TOOL_SAMPLES = {
+    "mcp_deepwiki_ask_question": _case(
+        {"full_text": "Requests are dispatched using Flask's routing map.\nhttps://deepwiki.com/pallets/flask"},
+        {"repoName": "pallets/flask", "question": "How are requests dispatched?"},
+    ),
+    "mcp_deepwiki_read_wiki_structure": _case(
+        {"full_text": "1 Overview\n2 Request handling"},
+        {"repoName": "pallets/flask"},
+    ),
+    "mcp_deepwiki_read_wiki_contents": _case(
+        {"full_text": "# Overview\nFlask is a web application framework."},
+        {"repoName": "pallets/flask"},
+    ),
     "mcp_brave_search_brave_image_search": _case(
         {
             "raw": [

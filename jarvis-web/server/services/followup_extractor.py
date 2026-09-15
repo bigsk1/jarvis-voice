@@ -18,6 +18,13 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+try:  # Launchers expose repo/lib directly; package imports also support tests.
+    from deepwiki_context import DEEPWIKI_TOOL_NAMES, project_deepwiki_data
+except ModuleNotFoundError as exc:
+    if exc.name != "deepwiki_context":
+        raise
+    from lib.deepwiki_context import DEEPWIKI_TOOL_NAMES, project_deepwiki_data
+
 from .followup import local_travel as _local_travel_followup
 from .followup import media as _media_followup
 from .followup import search as _search_followup
@@ -732,9 +739,14 @@ def workflow_step_tool_results(workflow_data: dict) -> dict:
         name = str(tool_name or '').strip()
         if not name or name == 'unknown' or payload in (None, ''):
             return
+        if name in DEEPWIKI_TOOL_NAMES and isinstance(payload, dict) and envelope.get('ok') is False:
+            payload = {
+                **payload, 'ok': False,
+                'error': envelope.get('error') or payload.get('error') or 'DeepWiki request failed.',
+            }
         arguments = envelope.get('_workflow_source_arguments')
         if (
-            name in _SOURCE_RESULT_TOOLS
+            (name in _SOURCE_RESULT_TOOLS or name in DEEPWIKI_TOOL_NAMES)
             and isinstance(payload, dict)
             and isinstance(arguments, dict)
             and envelope.get('ok') is True
@@ -2676,6 +2688,38 @@ def _extract_source_runs_followup(
     return extracted
 
 
+def _extract_deepwiki_followup(data: dict, key: str, value, max_candidates: int) -> dict:
+    """Keep bounded research runs with their own repository/question identity."""
+    runs = value if isinstance(value, list) else [value]
+    trace_arguments = _successful_tool_trace_arguments(data, key)
+    # Partial traces must not bind a later repository/question to an earlier
+    # result. New normalized payloads already carry their own request fields.
+    matched_trace = len(trace_arguments) == len(runs)
+    limit = max(1, min(max_candidates, 5))
+    selected = list(enumerate(runs))[-limit:]
+    per_run_budget = 7000 // max(1, len(selected))
+    compact_runs = []
+    for index, run in selected:
+        if not isinstance(run, dict):
+            continue
+        arguments = _workflow_source_arguments(run)
+        if arguments is None:
+            arguments = trace_arguments[index] if matched_trace else {}
+        compact_runs.append(project_deepwiki_data(
+            run, arguments=arguments, max_chars=per_run_budget,
+            max_sources=max_candidates,
+        ))
+    if not compact_runs:
+        return {}
+    if len(runs) == 1:
+        return compact_runs[0]
+    return {
+        'runs_count': len(runs),
+        'results': compact_runs,
+        'results_truncated': len(compact_runs) < len(runs),
+    }
+
+
 def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict | None:
     """
     Extract key data from tool results that enables follow-up actions.
@@ -2700,6 +2744,11 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
 
     for key, value in data.items():
         if key in FOLLOWUP_DATA_SKIP_KEYS:
+            continue
+        if key in DEEPWIKI_TOOL_NAMES:
+            extracted = _extract_deepwiki_followup(data, key, value, max_candidates)
+            if extracted:
+                followup[key] = extracted
             continue
         request_context = _extract_generic_tool_request(data, key)
         bound_arguments = _workflow_source_arguments(value) if key in _SOURCE_RESULT_TOOLS else None
@@ -2776,7 +2825,9 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
                                 component_followup.get('serpapi_amazon_search'),
                             )
                         continue
-                    if isinstance(component_value, list) and component_name not in _SOURCE_RESULT_TOOLS:
+                    if (isinstance(component_value, list)
+                            and component_name not in _SOURCE_RESULT_TOOLS
+                            and component_name not in DEEPWIKI_TOOL_NAMES):
                         runs = []
                         for run_value in component_value[:max_candidates]:
                             run_followup = extract_followup_data(
