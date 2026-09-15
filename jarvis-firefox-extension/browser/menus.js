@@ -20,7 +20,7 @@ export function setupMenus(browserApi, onAction) {
         contexts: ['page', 'selection', 'link', 'image'],
         documentUrlPatterns: ['http://*/*', 'https://*/*'],
       });
-      menus.create({ id: MENU_IDS.capture, parentId: MENU_IDS.root, title: 'Capture page view', contexts: ['page', 'selection', 'link', 'image'] });
+      menus.create({ id: MENU_IDS.capture, parentId: MENU_IDS.root, title: 'Capture this page', contexts: ['page', 'selection', 'link', 'image'] });
       menus.create({ id: MENU_IDS.selection, parentId: MENU_IDS.root, title: 'Ask about selected text', contexts: ['selection'] });
       menus.create({ id: MENU_IDS.link, parentId: MENU_IDS.root, title: 'Ask about this link', contexts: ['link'] });
       menus.create({ id: MENU_IDS.image, parentId: MENU_IDS.root, title: 'Analyze this image', contexts: ['image'] });

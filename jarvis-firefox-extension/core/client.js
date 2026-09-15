@@ -1,10 +1,13 @@
-import {normalizeServerUrl, originPermission, assertCapabilities} from './connection.js';
+import {normalizeServerUrl, originPermission, assertCapabilities, pageTextSupported} from './connection.js';
 import {initialState, checkpointState, savedMessages, publicRun, ACTIVE_STATUSES, normalizePreferences, submittedRequests, mergeImageStageText} from './state.js';
 import {JarvisTransport} from './transport.js';
+import {normalizeProfile} from './profile.js';
 
 const SESSION_KEY = 'jarvisSession';
 const SETTINGS_KEY = 'jarvisSettings';
-const DEFAULT_PROMPT = 'Analyze this screenshot. Explain what is visible and highlight relevant errors or useful next steps.';
+const DEFAULT_SCREENSHOT_PROMPT = 'Analyze this screenshot. Explain what is visible and highlight relevant errors or useful next steps.';
+const DEFAULT_PAGE_PROMPT = 'Review this page. Use the screenshot for layout and the attached page text for the actual content.';
+const DEFAULT_TEXT_PROMPT = 'Review the attached page text and answer from that source.';
 
 /** Browser-independent application client; background.js is its only owner. */
 export class JarvisClient {
@@ -24,6 +27,7 @@ export class JarvisClient {
     this.pendingDraft = null;
     this.modeTimer = null;
     this.authScope = crypto.randomUUID();
+    this.profileRequestId = 0;
   }
 
   async restore() {
@@ -42,6 +46,10 @@ export class JarvisClient {
       if (typeof saved.authScope === 'string' && saved.authScope.length <= 150) this.authScope = saved.authScope;
     }
     this.state.submittedRequests = submittedRequests(this.state.submittedRequests);
+    this.state.draft = {
+      text: '', attachment: null, context: null, page: null,
+      ...(this.state.draft || {}),
+    };
     this.state.connection = {
       status: settings.serverUrl ? 'disconnected' : 'unconfigured',
       authRequired: this.state.connection.authRequired === true, error: null,
@@ -50,6 +58,11 @@ export class JarvisClient {
     if (this.state.run?.status === 'sending' || this.pendingRequestId) {
       this.state.run = {...this.state.run, status: 'recovering'};
     }
+    this.state.capabilities = {
+      text: this.state.capabilities?.text === true ? true : this.state.capabilities?.text === false ? false : null,
+      profile: false,
+    };
+    this.state.profile = null;
     this.publish();
     return this.state;
   }
@@ -130,6 +143,8 @@ export class JarvisClient {
   }
 
   close() {
+    this.profileRequestId++;
+    this.state.profile = null;
     this.generation++;
     this.connectPromise = null;
     clearTimeout(this.recoveryTimer);
@@ -169,6 +184,7 @@ export class JarvisClient {
       const status = await transport.status();
       if (this.transport !== transport) return;
       assertCapabilities(status);
+      this.state.capabilities = {text: pageTextSupported(status), profile: status.extension?.features?.profile === true};
       this.state.connection.authRequired = status.features.auth;
       if (status.features.auth && !this.token) {
         this.state.connection.status = 'auth_required';
@@ -238,7 +254,7 @@ export class JarvisClient {
     const names = ['connected', 'disconnect', 'connect_error', 'auth:expired', 'auth:error', 'auth:required',
       'conversation:created', 'conversation:loaded', 'chat:thinking', 'chat:run', 'chat:status',
       'chat:response', 'chat:error', 'chat:cancelled', 'chat:rejected', 'chat:resume_missing',
-      'tool:start', 'tool:progress', 'tool:complete', 'tool:error', 'cancel:ack', 'mode:changed', 'mode:rejected'];
+      'tool:start', 'tool:progress', 'tool:complete', 'tool:error', 'cancel:ack', 'mode:changed', 'mode:rejected', 'profile:changed'];
     transport.open(Object.fromEntries(names.map(event => [event, handle(event)])));
   }
 
@@ -251,6 +267,18 @@ export class JarvisClient {
       this.changed();
     }, 20000);
     this.recoveryTimer.unref?.();
+  }
+
+  async refreshProfile() {
+    const transport = this.transport;
+    if (!transport || !this.state.capabilities.profile) return;
+    const id = ++this.profileRequestId;
+    try {
+      const result = await transport.profile();
+      if (this.transport !== transport || id !== this.profileRequestId) return;
+      this.state.profile = normalizeProfile(result.profile);
+      this.publish();
+    } catch { /* Appearance is optional; an unavailable profile never blocks chat. */ }
   }
 
   recover() {
@@ -283,7 +311,7 @@ export class JarvisClient {
   restorePendingDraft() {
     if (this.pendingDraft) {
       const draft = this.state.draft;
-      if (!draft.text && !draft.attachment && !draft.context || this.isSubmittedDraft()) {
+      if ((!draft.text && !draft.attachment && !draft.context && !draft.page) || this.isSubmittedDraft()) {
         this.state.draft = this.pendingDraft;
         this.state.messages = this.state.messages.filter(message => message.id !== `user-${this.pendingRequestId}`);
       } else {
@@ -302,7 +330,7 @@ export class JarvisClient {
   }
 
   acceptPendingDraft() {
-    if (this.isSubmittedDraft()) this.state.draft = {text: '', attachment: null, context: null};
+    if (this.isSubmittedDraft()) this.state.draft = {text: '', attachment: null, context: null, page: null};
     this.pendingDraft = null;
   }
 
@@ -315,6 +343,9 @@ export class JarvisClient {
       }
       this.recover();
       this.listConversations().catch(() => {});
+      void this.refreshProfile();
+    } else if (event === 'profile:changed') {
+      void this.refreshProfile();
     } else if (event === 'disconnect') {
       this.state.connection.status = 'disconnected';
       this.state.notice = 'Connection lost. Accepted work continues on Jarvis; reconnecting will recover its state.';
@@ -516,7 +547,7 @@ export class JarvisClient {
     this.state.progress = [];
     this.state.run = null;
     this.state.notice = null;
-    this.state.draft = {text: '', attachment: null, context: null};
+    this.state.draft = {text: '', attachment: null, context: null, page: null};
     // Reconnect to leave the previous conversation's delivery room.
     this.close();
     this.state.connection.status = 'disconnected';
@@ -558,7 +589,7 @@ export class JarvisClient {
     this.publish();
   }
 
-  async stage({attachment = null, context = null, source = this.state.source}) {
+  async stage({attachment = null, context = null, page = null, source = this.state.source} = {}) {
     this.requireIdle();
     if (context?.kind === 'image') {
       let url;
@@ -570,15 +601,48 @@ export class JarvisClient {
       const text = mergeImageStageText(this.state.draft.text, context);
       this.state.draft.text = text;
     }
+    if (page) {
+      if (typeof page.markdown !== 'string' || !page.markdown.trim() || typeof page.uploadId !== 'string') {
+        throw new Error('The captured page text is invalid. Capture the page again.');
+      }
+      page = {
+        title: String(page.title || 'Captured page').slice(0, 300),
+        url: String(page.url || source?.url || '').slice(0, 2000),
+        markdown: page.markdown,
+        charCount: Number.isFinite(page.charCount) ? page.charCount : page.markdown.length,
+        truncated: page.truncated === true,
+        capturedAt: typeof page.capturedAt === 'string' ? page.capturedAt : '',
+        filename: page.filename || 'browser-page.md',
+        uploadId: page.uploadId,
+        source: page.source || source,
+      };
+    }
     this.state.source = source;
     this.state.draft.attachment = attachment;
     this.state.draft.context = context;
+    this.state.draft.page = page;
     this.state.notice = null;
     await this.checkpoint();
     this.publish();
   }
 
-  async removeAttachment() { return this.stage({}); }
+  async removeAttachment() {
+    return this.stage({
+      attachment: null, context: this.state.draft.context, page: this.state.draft.page, source: this.state.source,
+    });
+  }
+
+  async removeContext() {
+    return this.stage({
+      attachment: this.state.draft.attachment, context: null, page: this.state.draft.page, source: this.state.source,
+    });
+  }
+
+  async removePage() {
+    return this.stage({
+      attachment: this.state.draft.attachment, context: this.state.draft.context, page: null, source: this.state.source,
+    });
+  }
 
   clearImageHint() {
     if (this.state.draft.context?.kind === 'image') this.state.draft.context = null;
@@ -590,25 +654,37 @@ export class JarvisClient {
     const transport = this.transport;
     const attachment = this.state.draft.attachment;
     const context = this.state.draft.context;
+    const page = this.state.draft.page;
     const original = String(text ?? this.state.draft.text).trim().slice(0, 32000);
     const toolHints = context?.kind === 'image' && original.includes(context.url) && !original.startsWith('/') ? ['analyze_image'] : [];
-    let message = original || (attachment ? DEFAULT_PROMPT : context ? 'Explain this selected browser content.' : '');
-    if (!message) throw new Error('Enter a message or capture a screenshot.');
-    if (attachment?.source) {
+    let message = original;
+    if (!message) {
+      if (attachment && page) message = DEFAULT_PAGE_PROMPT;
+      else if (attachment) message = DEFAULT_SCREENSHOT_PROMPT;
+      else if (page) message = DEFAULT_TEXT_PROMPT;
+      else if (context) message = 'Explain this selected browser content.';
+    }
+    if (!message) throw new Error('Enter a message or capture a page.');
+    if (page && this.state.capabilities?.text === false) {
+      throw new Error('This Jarvis server cannot store captured page text. Remove the page capture to send the screenshot, or update and restart Jarvis Web.');
+    }
+    if (attachment?.source && !page) {
       message += `\n\nScreenshot source: ${attachment.source.title}\n${attachment.source.url}\nCaptured: ${attachment.capturedAt}`;
     }
     if (context && context.kind !== 'image') {
       message += `\n\nBrowser content supplied for reference:\nTitle: ${context.title || ''}\nURL: ${context.url || ''}\n${context.text || ''}`;
     }
     let image;
+    let textAttachment;
     this.uploading = true;
     this.state.draft.text = original;
     this.state.connection.status = 'recovering';
-    this.state.notice = attachment ? 'Uploading screenshot…' : null;
+    this.state.notice = page && attachment ? 'Uploading page capture…' : page ? 'Uploading page text…' : attachment ? 'Uploading screenshot…' : null;
     this.publish();
     try {
       await this.checkpoint();
       if (attachment) image = {action: 'analyze', images: [await transport.upload(attachment, this.state.mode)]};
+      if (page) textAttachment = await transport.uploadText(page, this.state.mode);
       if (transport !== this.transport || !transport.socket?.connected) throw new Error('Disconnected before sending. The draft is retained; reconnect first.');
       const requestId = this.uuid();
       this.pendingRequestId = requestId;
@@ -618,16 +694,20 @@ export class JarvisClient {
         mode: this.state.mode, startedAt: new Date().toISOString(), status: 'sending'});
       this.state.submittedRequests = submittedRequests(this.state.submittedRequests);
       this.state.messages.push({id: `user-${requestId}`, role: 'user', content: message,
-        createdAt: new Date().toISOString(), attachments: attachment ? [{previewUrl: attachment.previewUrl}] : []});
+        createdAt: new Date().toISOString(), attachments: [
+          ...(attachment ? [{previewUrl: attachment.previewUrl}] : []),
+          ...(page ? [{label: 'Page text'}] : []),
+        ]});
       this.state.progress = [];
       this.state.notice = null;
       this.state.connection.status = 'connected';
       // Crash before/after this write is safe: recovery only looks up this ID.
       // Never persist a payload that an automatic retry could execute again.
       await this.checkpoint();
-      this.state.draft = {text: '', attachment: null, context: null};
+      this.state.draft = {text: '', attachment: null, context: null, page: null};
       transport.emit('chat:send', {message, mode: this.state.mode,
         conversation_id: this.state.conversationId, request_id: requestId, ...(image ? {image} : {}),
+        ...(textAttachment ? {attachments: [textAttachment]} : {}),
         ...(toolHints.length ? {tool_hints: toolHints} : {})});
       if (this.pendingRequestId) this.armRecoveryTimeout();
       this.changed();

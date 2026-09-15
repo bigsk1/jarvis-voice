@@ -189,6 +189,15 @@ def test_interrupted_stream_can_retry_same_identity(stash):
     assert _post(upload_id=upload_id).status_code == 200
 
 
+def test_browser_page_markdown_filename_is_accepted(stash):
+    response = _post(b"# GPU error\nThe worker hit a thermal limit.\n", name="browser-page.md")
+    assert response.status_code == 200
+    attachment = response.get_json()["attachment"]
+    assert attachment["filename"] == "browser-page.md"
+    assert attachment["kind"] == "text"
+    assert attachment["mime_type"] == "text/markdown"
+
+
 def test_endpoint_validates_upload_id_and_requested_mode():
     assert _post(upload_id="not-an-id").get_json()["error_code"] == "text_upload_id_invalid"
     assert _post(mode="invalid").status_code == 400

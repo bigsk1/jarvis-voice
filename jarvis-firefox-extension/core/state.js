@@ -30,8 +30,8 @@ export function initialState(settings = {}) {
     settings: {serverUrl: '', allowInsecureLocal: false, ...settings, preferences: normalizePreferences(settings.preferences)},
     connection: {status: 'unconfigured', authRequired: false, error: null},
     source: null, conversationId: null, conversations: [], messages: [],
-    draft: {text: '', attachment: null, context: null}, run: null, progress: [],
-    mode: 'cloud', notice: null, submittedRequests: [],
+    draft: {text: '', attachment: null, context: null, page: null}, run: null, progress: [],
+    mode: 'cloud', notice: null, submittedRequests: [], capabilities: {text: null, profile: false}, profile: null,
   };
 }
 
@@ -53,7 +53,13 @@ export function savedMessages(messages) {
     role: message.role === 'user' ? 'user' : 'assistant',
     content: String(message.content ?? message.text ?? '').slice(0, 80000),
     createdAt: message.timestamp || message.created_at || '',
-    attachments: message.data?.image_url || message.data?.image_urls?.length ? [{label: 'Screenshot / image'}] : [],
+    attachments: [
+      ...(message.data?.image_url || message.data?.image_urls?.length ? [{label: 'Screenshot / image'}] : []),
+      ...((Array.isArray(message.data?.attachments) ? message.data.attachments : [])
+        .filter(item => item?.kind === 'text')
+        .slice(0, 4)
+        .map(item => ({label: String(item.filename || 'Page text').slice(0, 80)}))),
+    ],
   }));
 }
 
@@ -62,11 +68,15 @@ export function checkpointState(state) {
   // offline view and only the one unsent screenshot, below storage.session's cap.
   return {
     ...state,
+    // Reload private appearance from the authenticated server after reconnect.
+    profile: null,
     submittedRequests: submittedRequests(state.submittedRequests),
     conversations: state.conversations.slice(0, 100),
     messages: state.messages.slice(-50).map(message => ({
       ...message, content: String(message.content).slice(0, 12000),
-      attachments: (message.attachments || []).map(() => ({label: 'Screenshot / image'})),
+      attachments: (message.attachments || []).map(item => ({
+        label: String(item?.label || 'Screenshot / image').slice(0, 80),
+      })),
     })),
     progress: state.progress.slice(-20),
   };

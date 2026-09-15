@@ -49,7 +49,7 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
   let state = {
     settings: { serverUrl: '', allowInsecureLocal: false }, connection: { status: 'unconfigured', error: null },
     mode: 'cloud', messages: [], conversations: [], conversationId: null,
-    draft: { text: '', attachment: null, context: null }, progress: [], run: null,
+    draft: { text: '', attachment: null, context: null, page: null }, progress: [], run: null,
   };
   const commands = [];
   const permissions = [];
@@ -70,12 +70,15 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
         ...state.settings.preferences, ...message.payload,
       };
       if (message.action === 'connect') state.connection = { status: 'connected', authRequired: false };
-      if (message.action === 'capture') state.draft.attachment = { previewUrl: 'data:image/png;base64,aGVsbG8=', width: 1920, height: 1080, source: { title: 'Error dashboard' } };
+      if (message.action === 'capture') {
+        state.draft.attachment = { previewUrl: 'data:image/png;base64,aGVsbG8=', width: 1920, height: 1080, source: { title: 'Error dashboard' } };
+        state.draft.page = { title: 'Error dashboard', url: 'https://example.test/error', markdown: '# Error dashboard\n\n## Page\nTraceback in worker\n', charCount: 48 };
+      }
       if (message.action === 'setDraft') state.draft.text = message.payload.text;
       if (message.action === 'setMode') state.pendingMode = message.payload.mode;
       if (message.action === 'send') {
         state.messages.push({ id: 'm1', role: 'user', content: message.payload.text });
-        state.draft = { text: '', attachment: null, context: null };
+        state.draft = { text: '', attachment: null, context: null, page: null };
         state.run = { messageId: 'r1', conversationId: 'conversation-1', status: 'running' };
       }
       if (message.action === 'cancel') state.run.status = 'stopping';
@@ -182,7 +185,7 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
     $('message-input').value = 'A different question';
     await $('message-input').fire('input');
     assert.equal($('context-hint').hidden, true, 'Editing out the URL removes the image-analysis hint immediately');
-    state.draft = {text: '', attachment: null, context: null};
+    state.draft = {text: '', attachment: null, context: null, page: null};
 
     // Let a pre-staging edit reach the background, but hold its acknowledgment.
     let releaseDraftReply;
@@ -249,8 +252,14 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
     await $('capture-button').fire('click');
     assert.equal(commands.at(-1).payload.windowId, 4, 'Sidebar capture identifies its browser window');
     assert.equal($('attachment-panel').hidden, false);
+    assert.equal($('page-panel').hidden, false);
+    assert.equal($('page-title').textContent, 'Error dashboard');
     assert.equal($('attachment-title').textContent, 'Error dashboard');
     assert.equal($('send-button').disabled, false, 'A staged screenshot can be sent without typed text');
+    assert.equal($('analyze-button').textContent, 'Analyze page');
+    await $('page-preview-button').fire('click');
+    assert.equal($('page-preview-dialog').open, true);
+    assert.equal($('page-preview-text').textContent, state.draft.page.markdown);
 
     $('message-input').value = 'Why did this fail?';
     await $('message-input').fire('input');
@@ -261,8 +270,20 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
     assert.equal(commands.find(command => command.action === 'send').payload.text, 'Why did this fail?');
     assert.equal($('message-input').value, '');
     assert.equal($('attachment-panel').hidden, true);
+    assert.equal($('page-panel').hidden, true);
     assert.equal($('send-button').disabled, true);
     assert.equal($('cancel-button').disabled, false);
+
+    state.profile = {display_name: 'Morgan', avatar: 'data:image/png;base64,aGVsbG8='};
+    pushState({type: 'state', state: structuredClone(state)});
+    const profileMessage = $('messages').children[0];
+    assert.equal(profileMessage.children[0].children[1].textContent, 'Morgan');
+    assert.equal(profileMessage.children[0].children[0].children[0].src, state.profile.avatar);
+    pushState({type: 'state', state: structuredClone(state)});
+    assert.equal($('messages').children[0], profileMessage, 'Unchanged profile updates preserve selectable message nodes');
+    state.profile = null;
+    pushState({type: 'state', state: structuredClone(state)});
+    assert.equal($('messages').children[0].children[0].children[1].textContent, 'You');
 
     disconnect();
     assert.equal($('cancel-button').disabled, true, 'Stop must wait for a restored background bridge');

@@ -16,7 +16,7 @@ export class JarvisTransport {
     try {
       response = await this.fetchImpl(`${this.serverUrl}${path}`, {
         method, headers, body, credentials: 'omit', redirect: 'error', cache: 'no-store',
-        signal: AbortSignal.timeout(path === '/api/upload-image' ? 60000 : 15000),
+        signal: AbortSignal.timeout(path === '/api/upload-image' || path === '/api/upload-text' ? 60000 : 15000),
       });
     } catch {
       throw new Error('Could not reach Jarvis. Check the address, certificate, server, and Firefox permission.');
@@ -30,6 +30,7 @@ export class JarvisTransport {
   }
 
   status() { return this.request('/api/status', {authenticated: false}); }
+  profile() { return this.request('/api/profile-appearance'); }
   login(password) { return this.request('/api/auth/login', {method: 'POST', body: {password}, authenticated: false}); }
   listConversations() { return this.request('/api/conversations?limit=100&include_archived=false'); }
 
@@ -48,6 +49,34 @@ export class JarvisTransport {
       throw new Error('Jarvis returned invalid image metadata.');
     }
     return {filename: result.filename, url: result.url};
+  }
+
+  async uploadText(page, mode) {
+    const markdown = String(page?.markdown || '');
+    const bytes = new TextEncoder().encode(markdown);
+    if (!markdown.trim() || bytes.length > 100 * 1024) {
+      throw new Error('The staged page text is invalid. Capture the page again.');
+    }
+    if (!/^[0-9a-f-]{36}$/i.test(page.uploadId || '')) {
+      throw new Error('The staged page text is invalid. Capture the page again.');
+    }
+    const form = new FormData();
+    form.set('file', new Blob([bytes], {type: 'text/markdown'}), page.filename || 'browser-page.md');
+    form.set('upload_id', page.uploadId);
+    form.set('mode', mode);
+    const result = await this.request('/api/upload-text', {method: 'POST', body: form});
+    const attachment = result.attachment;
+    if (attachment?.kind !== 'text'
+        || !/^stash:\/\/space_web_text_[0-9a-f]{32}\/f_[0-9a-f]{12}$/.test(attachment.stash_ref || '')
+        || attachment.filename !== (page.filename || 'browser-page.md')) {
+      throw new Error('Jarvis returned invalid text metadata.');
+    }
+    return {
+      kind: 'text',
+      stash_ref: attachment.stash_ref,
+      filename: attachment.filename,
+      upload_id: attachment.upload_id,
+    };
   }
 
   open(handlers) {

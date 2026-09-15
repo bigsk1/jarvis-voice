@@ -6,7 +6,14 @@ const ORIGIN = 'https://jarvis.example';
 const ID = '9c892f85-b79a-44c3-9be1-6b66d2f73145';
 const NEXT = '9c892f85-b79a-44c3-9be1-6b66d2f73146';
 const CAPABILITIES = {features: {auth: false}, extension: {api: 1, socket_auth: true,
-  features: {chat: true, images: true, conversations: true, recovery: true, cancel: true}}};
+  features: {chat: true, images: true, conversations: true, recovery: true, cancel: true, text: true}}};
+const TEXT_REF = 'stash://space_web_text_0123456789abcdef0123456789abcdef/f_0123456789ab';
+const PAGE = {
+  title: 'Install guide', url: 'https://page.example/install',
+  markdown: '# Install guide\n\n- URL: https://page.example/install\n\n## Page\nUse uv.\n',
+  charCount: 72, truncated: false, capturedAt: '2026-09-15T12:00:00Z',
+  filename: 'browser-page.md', uploadId: '9c892f85-b79a-44c3-9be1-6b66d2f73147',
+};
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 function area(initial = {}) {
@@ -23,11 +30,20 @@ function harness(options = {}) {
     requests.push({url, init});
     let body = {ok: true};
     if (url.endsWith('/api/status')) body = options.capabilities || CAPABILITIES;
+    if (url.endsWith('/api/profile-appearance')) {
+      if (options.profileFailure) throw new Error('profile unavailable');
+      body = {ok: true, profile: typeof options.profile === 'function' ? await options.profile() : options.profile};
+    }
     if (url.includes('/api/conversations?')) body.conversations = [];
     if (url.endsWith('/api/auth/login')) body.token = 'session-secret';
     if (url.endsWith('/api/upload-image')) {
       if (options.uploadFailure) throw new Error('offline');
       body = {ok: true, filename: 'upload_test.jpg', url: '/api/uploads/upload_test.jpg'};
+    }
+    if (url.endsWith('/api/upload-text')) {
+      if (options.textUploadFailure) throw new Error('offline');
+      body = {ok: true, attachment: {kind: 'text', stash_ref: TEXT_REF, filename: 'browser-page.md',
+        upload_id: PAGE.uploadId}};
     }
     return {ok: true, status: 200, json: async () => body};
   };
@@ -62,6 +78,70 @@ test('fresh profile initializes without a saved session', async () => {
   const h = harness(); await h.client.restore();
   assert.equal(h.client.state.connection.status, 'unconfigured');
   assert.equal(h.client.token, '');
+});
+
+const PROFILE_CAPABILITIES = {...CAPABILITIES, extension: {...CAPABILITIES.extension,
+  features: {...CAPABILITIES.extension.features, profile: true}}};
+const PROFILE = {display_name: 'Morgan', avatar: 'data:image/png;base64,iVBORw0KGgo='};
+
+test('profile is authenticated, refreshed on change, and omitted from recovery storage', async () => {
+  let profile = PROFILE;
+  const h = harness({capabilities: {...PROFILE_CAPABILITIES, features: {auth: true}}, profile: () => profile});
+  await h.start();
+  assert.equal(h.requests.some(request => request.url.endsWith('/api/profile-appearance')), false);
+  await h.client.login('test');
+  h.sockets.at(-1).receive('connected');
+  await tick();
+  assert.deepEqual(h.client.state.profile, PROFILE);
+  const request = h.requests.find(request => request.url.endsWith('/api/profile-appearance'));
+  assert.equal(request.init.headers.Authorization, 'Bearer session-secret');
+  assert.equal(request.init.credentials, 'omit');
+  profile = {display_name: 'Alex', avatar: null};
+  h.sockets.at(-1).receive('profile:changed');
+  await tick();
+  assert.deepEqual(h.client.state.profile, profile);
+  await h.client.checkpoint();
+  assert.equal(h.storage.session.data.jarvisSession.state.profile, null);
+  assert.doesNotMatch(JSON.stringify(h.storage.local.data), /Morgan|Alex|iVBOR/);
+  await h.client.logout();
+  assert.equal(h.client.state.profile, null);
+});
+
+test('older servers and unavailable appearance still allow chat', async () => {
+  const old = harness(); await old.start();
+  assert.equal(old.requests.some(request => request.url.endsWith('/api/profile-appearance')), false);
+  assert.equal(old.client.state.profile, null);
+  const h = harness({capabilities: PROFILE_CAPABILITIES, profileFailure: true});
+  await h.start();
+  assert.equal(h.client.state.connection.status, 'connected');
+  await h.client.send('Still usable');
+  assert.equal(h.sockets.at(-1).sent.at(-1).name, 'chat:send');
+});
+
+test('a stale profile response cannot cross a server change or sign-out', async () => {
+  for (const action of ['switch', 'logout']) {
+    let resolve;
+    const h = harness({capabilities: PROFILE_CAPABILITIES, profile: () => new Promise(done => { resolve = done; })});
+    await h.start();
+    if (action === 'switch') await h.client.configure({serverUrl: 'https://another.example'});
+    else await h.client.logout();
+    resolve(PROFILE);
+    await tick();
+    assert.equal(h.client.state.profile, null);
+  }
+});
+
+test('the latest profile refresh wins over an older in-flight response', async () => {
+  const resolves = [];
+  const h = harness({capabilities: PROFILE_CAPABILITIES, profile: () => new Promise(done => resolves.push(done))});
+  await h.start();
+  h.sockets.at(-1).receive('profile:changed');
+  await tick();
+  resolves[1]({display_name: 'Latest', avatar: null});
+  await tick();
+  resolves[0](PROFILE);
+  await tick();
+  assert.equal(h.client.state.profile.display_name, 'Latest');
 });
 
 test('an incompatible server is rejected before login or socket creation', async () => {
@@ -193,6 +273,131 @@ test('capture remains local until send; upload sends bounded JPEG and only metad
   assert.doesNotMatch(JSON.stringify(send), /base64/); h.client.close();
 });
 
+test('page text stays local until send and is uploaded as a durable text source', async () => {
+  const h = harness(); await h.start();
+  await h.client.stage({page: PAGE});
+  assert.equal(h.requests.filter(item => item.url.includes('upload')).length, 0);
+  await h.client.send('What does this page require?');
+  const upload = h.requests.find(item => item.url.endsWith('/api/upload-text'));
+  assert.equal(upload.init.body.get('file').type, 'text/markdown');
+  assert.equal(upload.init.body.get('upload_id'), PAGE.uploadId);
+  const send = h.sockets[0].sent.find(item => item.name === 'chat:send');
+  assert.deepEqual(send.data.attachments, [{kind: 'text', stash_ref: TEXT_REF, filename: 'browser-page.md', upload_id: PAGE.uploadId}]);
+  assert.doesNotMatch(send.data.message, /Use uv/);
+  assert.equal(send.data.image, undefined);
+  h.client.close();
+});
+
+test('screenshot plus page text uploads both and keeps page body out of the chat message', async () => {
+  const h = harness(); await h.start();
+  await h.client.stage({
+    attachment: {previewUrl: 'data:image/jpeg;base64,/9j/2Q==', width: 1024, height: 640,
+      source: {title: 'Install guide', url: PAGE.url}, capturedAt: PAGE.capturedAt},
+    page: PAGE,
+  });
+  await h.client.send('');
+  const send = h.sockets[0].sent.find(item => item.name === 'chat:send');
+  assert.ok(h.requests.some(item => item.url.endsWith('/api/upload-image')));
+  assert.ok(h.requests.some(item => item.url.endsWith('/api/upload-text')));
+  assert.equal(send.data.image.action, 'analyze');
+  assert.equal(send.data.attachments[0].stash_ref, TEXT_REF);
+  assert.match(send.data.message, /attached page text/);
+  assert.doesNotMatch(send.data.message, /Use uv/);
+  h.client.close();
+});
+
+test('staged selection remains in the outgoing request when page text is also attached', async () => {
+  const h = harness(); await h.start();
+  await h.client.stage({
+    page: PAGE,
+    context: {kind: 'selection', title: 'Install guide', url: PAGE.url, text: 'The worker must use CUDA 12.'},
+  });
+  await h.client.send('Compare this requirement');
+  const send = h.sockets[0].sent.find(item => item.name === 'chat:send');
+  assert.match(send.data.message, /CUDA 12/);
+  assert.match(send.data.message, /Browser content supplied for reference/);
+  assert.equal(send.data.attachments[0].stash_ref, TEXT_REF);
+  h.client.close();
+});
+
+test('older servers without page-text still connect for chat and screenshots', async () => {
+  const features = {chat: true, images: true, conversations: true, recovery: true, cancel: true};
+  const h = harness({capabilities: {features: {auth: false}, extension: {api: 1, socket_auth: true, features}}});
+  await h.start();
+  assert.equal(h.client.state.connection.status, 'connected');
+  assert.equal(h.client.state.capabilities.text, false);
+  await h.client.stage({page: PAGE});
+  await assert.rejects(h.client.send('Keep this page'), /cannot store captured page text/);
+  assert.equal(h.sockets[0].sent.length, 0);
+  await h.client.removePage();
+  await h.client.send('Hello from an older server');
+  assert.equal(h.sockets[0].sent.at(-1).name, 'chat:send');
+  h.client.close();
+});
+
+test('failed page-text upload retains the staged page and sends no chat request', async () => {
+  const h = harness({textUploadFailure: true}); await h.start();
+  await h.client.stage({page: PAGE});
+  await assert.rejects(h.client.send('Keep this page'), /reach Jarvis/);
+  assert.equal(h.client.state.draft.page.markdown, PAGE.markdown);
+  assert.equal(h.client.pendingRequestId, null);
+  assert.equal(h.sockets[0].sent.length, 0); h.client.close();
+});
+
+test('rejection restores a submitted page and keeps a later staged page', async () => {
+  const h = harness(); await h.start();
+  await h.client.stage({page: PAGE});
+  const submitted = structuredClone(h.client.state.draft.page);
+  await h.client.send('First capture');
+  h.sockets[0].receive('chat:rejected', {message_id: ID, error: 'Busy'});
+  assert.deepEqual(h.client.state.draft.page, submitted);
+  h.client.close();
+
+  const later = harness(); await later.start();
+  await later.client.stage({page: PAGE});
+  await later.client.send('First capture');
+  const newer = {...PAGE, uploadId: '9c892f85-b79a-44c3-9be1-6b66d2f73148', markdown: '# Newer page\n'};
+  later.client.state.draft.page = newer;
+  later.sockets[0].receive('chat:rejected', {message_id: ID, error: 'Busy'});
+  assert.equal(later.client.state.draft.page.markdown, newer.markdown);
+  assert.match(later.client.state.messages[0].content, /^\[Not sent/);
+  later.client.close();
+});
+
+test('restored conversations keep page-text attachment labels', async () => {
+  const h = harness(); await h.start();
+  await h.client.loadConversation('conversation-a');
+  h.sockets[0].receive('conversation:loaded', {conversation: {
+    id: 'conversation-a',
+    messages: [{
+      role: 'user', content: 'Review this page',
+      data: {
+        _request_id: ID,
+        image_url: '/api/uploads/upload_test.jpg',
+        attachments: [{kind: 'text', filename: 'browser-page.md'}],
+      },
+    }],
+    run: {message_id: ID, conversation_id: 'conversation-a', status: 'completed'},
+  }});
+  assert.deepEqual(h.client.state.messages[0].attachments, [
+    {label: 'Screenshot / image'},
+    {label: 'browser-page.md'},
+  ]);
+  h.client.close();
+});
+
+test('removing page text keeps a staged screenshot', async () => {
+  const h = harness(); await h.start();
+  await h.client.stage({
+    attachment: {previewUrl: 'data:image/jpeg;base64,/9j/2Q==', width: 10, height: 10},
+    page: PAGE,
+  });
+  await h.client.removePage();
+  assert.equal(h.client.state.draft.page, null);
+  assert.ok(h.client.state.draft.attachment);
+  h.client.close();
+});
+
 test('failed image upload retains the preview and sends no chat request', async () => {
   const h = harness({uploadFailure: true}); await h.start();
   await h.client.stage({attachment: {previewUrl: 'data:image/jpeg;base64,/9j/2Q==', width: 10, height: 10}});
@@ -221,7 +426,7 @@ test('rejection preserves newly typed draft while marking the rejected content',
 test('accepted recovery clears only the unchanged submitted draft from a pre-send checkpoint', async () => {
   for (const changed of [false, true]) {
     const h = harness(); await h.start(); await h.client.send('Submitted question');
-    h.client.state.draft = changed ? {text: 'Newer question', attachment: null, context: null} : structuredClone(h.client.pendingDraft);
+    h.client.state.draft = changed ? {text: 'Newer question', attachment: null, context: null, page: null} : structuredClone(h.client.pendingDraft);
     await h.client.checkpoint(); h.client.close();
     const restored = harness({storage: h.storage});
     await restored.client.restore(); await restored.client.connect(); const socket = restored.sockets[0];
@@ -253,7 +458,7 @@ test('image action stages an editable URL, preserves draft, and sends a separate
   assert.deepEqual(send.data.tool_hints, ['analyze_image']);
   assert.equal(send.data.image, undefined, 'remote URL does not use the screenshot upload contract');
   assert.equal(h.requests.some(item => item.url.includes('upload-image')), false);
-  assert.deepEqual(h.client.state.draft, {text: '', attachment: null, context: null});
+  assert.deepEqual(h.client.state.draft, {text: '', attachment: null, context: null, page: null});
   h.client.close();
 });
 
@@ -327,7 +532,7 @@ test('oversized image staging retains the original draft without a truncated URL
 test('image hints clear after removing context or editing away the URL, and never attach to workflows', async () => {
   for (const change of ['remove', 'replace', 'workflow', 'other-context']) {
     const h = harness(); await h.start(); await h.client.stage({context: imageContext()});
-    if (change === 'remove') await h.client.removeAttachment();
+    if (change === 'remove') await h.client.removeContext();
     if (change === 'replace') await h.client.setDraft('Ask an unrelated question');
     if (change === 'workflow') await h.client.setDraft(`/deep_dive ${IMAGE_URL}`);
     if (change === 'other-context') await h.client.stage({context: {kind: 'link', url: 'https://example.com/page', text: '', title: 'A different page'}});
@@ -371,7 +576,7 @@ test('rejected image send restores its draft and hint; accepted recovery clears 
   socket.receive('conversation:loaded', {conversation: {id: 'conversation-a', messages: [
     {role: 'user', content: draft.text, data: {_request_id: NEXT}},
   ], run: {message_id: NEXT, conversation_id: 'conversation-a', status: 'running'}}});
-  assert.deepEqual(restored.client.state.draft, {text: '', attachment: null, context: null});
+  assert.deepEqual(restored.client.state.draft, {text: '', attachment: null, context: null, page: null});
   assert.equal(restored.client.state.submittedRequests[1].conversationId, 'conversation-a');
   assert.equal(restored.client.state.submittedRequests[1].status, 'running');
   restored.client.close();

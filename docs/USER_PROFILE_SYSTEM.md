@@ -128,6 +128,10 @@ Current-turn instructions and active scoped preferences override conflicting Pro
 
 ---
 
+## Display name and avatar
+
+Web **Settings → Profile → Appearance** controls the profile header and Firefox companion message identity. It is stored separately in `data/web_profile_appearance.json`, shared across cloud/local modes, and does not affect this Profile Card, ingestion, or how Jarvis addresses you in answers. Use **Save appearance** for the name/image; use **Save & ingest** for the Intelligence profile.
+
 ## Correction learning → lessons (not profile)
 
 When `USER_CORRECTION_LEARNING_MODE=apply`:

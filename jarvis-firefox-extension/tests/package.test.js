@@ -8,12 +8,17 @@ const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 test('standalone manifest declares consent and least required permissions with packaged runtime assets', async () => {
   const manifest = JSON.parse(await readFile(path.join(root, 'manifest.json')));
+  const pkg = JSON.parse(await readFile(path.join(root, 'package.json')));
+  const lock = JSON.parse(await readFile(path.join(root, 'package-lock.json')));
+  assert.equal(manifest.version, pkg.version);
+  assert.equal(lock.version, pkg.version);
+  assert.equal(lock.packages[''].version, pkg.version);
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.incognito, 'not_allowed');
   assert.equal(manifest.browser_specific_settings.gecko.strict_min_version, '140.0');
   assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions.required,
     ['authenticationInfo', 'personalCommunications', 'websiteContent', 'browsingActivity']);
-  assert.deepEqual(manifest.permissions, ['storage', 'activeTab', 'menus', 'alarms']);
+  assert.deepEqual(manifest.permissions, ['storage', 'activeTab', 'menus', 'alarms', 'scripting']);
   assert.deepEqual(manifest.optional_permissions, ['notifications']);
   const icon = await readFile(new URL('../assets/jarvis-96.png', import.meta.url));
   assert.equal(icon.subarray(1, 4).toString(), 'PNG');

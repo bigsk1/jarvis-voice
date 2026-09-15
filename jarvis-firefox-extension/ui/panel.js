@@ -1,5 +1,5 @@
 import { normalizeServerUrl, originPermission } from '../core/connection.js';
-import { DEFAULT_SCREENSHOT_PROMPT, DraftBuffer, canSend, displayTime, imageContextHint, isBusy, isRunActive, noticeText, notificationPreferences, safePreviewUrl } from './view-model.js';
+import { DEFAULT_PAGE_PROMPT, DEFAULT_SCREENSHOT_PROMPT, DEFAULT_TEXT_PROMPT, DraftBuffer, canSend, displayTime, imageContextHint, isBusy, isRunActive, noticeText, notificationPreferences, safePreviewUrl } from './view-model.js';
 import { renderMessage } from './render.js';
 
 const $ = id => document.getElementById(id);
@@ -54,13 +54,21 @@ function updateDraftInput() {
   }
 }
 
+function defaultCapturePrompt(current) {
+  if (current?.draft?.page && current?.draft?.attachment) return DEFAULT_PAGE_PROMPT;
+  if (current?.draft?.page) return DEFAULT_TEXT_PROMPT;
+  return DEFAULT_SCREENSHOT_PROMPT;
+}
+
 function renderControls() {
   const active = isRunActive(state);
   const busy = isBusy(state);
   $('send-button').disabled = sending || configurationBusy || !canSend(state, draft.value);
   $('send-button').title = state?.pendingMode ? 'Waiting for Jarvis to confirm the mode change.' : active ? 'Wait for this reply or stop the current request.' : state?.connection?.status !== 'connected' ? 'Connect to Jarvis to send a message.' : 'Send message';
-  $('analyze-button').disabled = sending || configurationBusy || !canSend(state, DEFAULT_SCREENSHOT_PROMPT) || !state?.draft?.attachment;
-  for (const id of ['capture-button', 'recapture-button', 'empty-capture', 'remove-attachment', 'remove-context']) $(id).disabled = busyCount > 0 || sending || busy;
+  const analyzePrompt = defaultCapturePrompt(state);
+  $('analyze-button').disabled = sending || configurationBusy || !canSend(state, analyzePrompt) || !(state?.draft?.attachment || state?.draft?.page);
+  $('analyze-button').textContent = state?.draft?.page && state?.draft?.attachment ? 'Analyze page' : state?.draft?.page ? 'Analyze page text' : 'Analyze screenshot';
+  for (const id of ['capture-button', 'recapture-button', 'empty-capture', 'remove-attachment', 'remove-context', 'remove-page', 'page-preview-button']) $(id).disabled = busyCount > 0 || sending || busy;
   $('mode-select').disabled = busy || configurationBusy || sending;
   $('new-conversation').disabled = busy || sending;
   $('history-button').disabled = Boolean(state?.pendingMode);
@@ -71,7 +79,7 @@ function renderControls() {
   $('logout-button').disabled = configurationBusy || busy;
   $('reconnect-button').disabled = configurationBusy || ['connecting', 'recovering'].includes(state?.connection?.status);
   $('refresh-history').disabled = state?.connection?.status !== 'connected' || Boolean(state?.pendingMode);
-  $('message-input').placeholder = state?.draft?.attachment ? 'Ask about this screenshot…' : state?.draft?.context?.kind === 'image' ? 'Ask about this image…' : state?.draft?.context ? 'Ask about this page or selection…' : 'Ask Jarvis anything…';
+  $('message-input').placeholder = state?.draft?.page ? 'Ask about this page…' : state?.draft?.attachment ? 'Ask about this screenshot…' : state?.draft?.context?.kind === 'image' ? 'Ask about this image…' : state?.draft?.context ? 'Ask about this page or selection…' : 'Ask Jarvis anything…';
 }
 
 function renderPreferences() {
@@ -145,13 +153,13 @@ function renderConnection() {
 function renderMessages() {
   const list = Array.isArray(state?.messages) ? state.messages : [];
   // Progress updates must not rebuild selectable reply text or steal focus.
-  const key = JSON.stringify([state?.conversationId, list]);
+  const key = JSON.stringify([state?.conversationId, list, state?.profile]);
   if (key !== messagesKey) {
     const thread = $('thread');
     const nearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 100;
     const wasEmpty = $('messages').childElementCount === 0;
     messagesKey = key;
-    $('messages').replaceChildren(...list.map(message => renderMessage(document, message)));
+    $('messages').replaceChildren(...list.map(message => renderMessage(document, message, state?.profile)));
     $('empty-state').hidden = list.length > 0;
     if (nearBottom || wasEmpty) thread.scrollTop = thread.scrollHeight;
   }
@@ -228,7 +236,23 @@ function renderAttachments() {
   const hint = imageContextHint(context, draft.value);
   $('context-hint').textContent = hint;
   $('context-hint').hidden = !hint;
-  $('source-caption').textContent = attachment ? 'Capture again when the page changes.' : 'Capture adds a preview to your next message.';
+  const page = state?.draft?.page;
+  $('page-panel').hidden = !page;
+  $('page-title').textContent = page?.title || 'Captured page';
+  $('page-title').title = page?.url || '';
+  const pageBody = String(page?.markdown || '').split('## Page').at(-1) || page?.markdown || '';
+  $('page-excerpt').textContent = pageBody.replace(/^[\s#-]*/, '').slice(0, 220);
+  const size = page ? `${Math.max(1, Math.round((page.charCount || page.markdown.length) / 1000))} KB` : '';
+  $('page-meta').textContent = [page?.truncated ? 'Truncated' : '', size, page?.url].filter(Boolean).join(' · ');
+  $('page-preview-button').disabled = !page || busyCount > 0 || sending || isBusy(state);
+  const canStorePage = state?.capabilities?.text !== false;
+  $('source-caption').textContent = !canStorePage && state?.connection?.status === 'connected'
+    ? 'This server cannot store page text. Capture still takes a screenshot.'
+    : page && attachment
+      ? 'Capture again when the page changes. Jarvis reads the attached text, not only the screenshot.'
+      : page ? 'Page text is ready to send as a Jarvis source. Review the full text before sending.'
+        : attachment ? 'Capture again when the page changes.'
+          : 'Capture adds a screenshot and the page’s readable text.';
 }
 
 function renderProgress() {
@@ -466,9 +490,10 @@ $('message-input').addEventListener('keydown', event => {
 });
 $('composer-form').addEventListener('submit', event => { event.preventDefault(); void send(draft.value); });
 for (const id of ['capture-button', 'recapture-button', 'empty-capture']) $(id).addEventListener('click', capture);
-$('analyze-button').addEventListener('click', () => send(draft.value.trim() || DEFAULT_SCREENSHOT_PROMPT));
+$('analyze-button').addEventListener('click', () => send(draft.value.trim() || defaultCapturePrompt(state)));
 $('remove-attachment').addEventListener('click', () => command('removeAttachment'));
-$('remove-context').addEventListener('click', () => command('removeAttachment'));
+$('remove-context').addEventListener('click', () => command('removeContext'));
+$('remove-page').addEventListener('click', () => command('removePage'));
 $('cancel-button').addEventListener('click', () => command('cancel'));
 $('preview-button').addEventListener('click', () => {
   const preview = safePreviewUrl(state?.draft?.attachment?.previewUrl);
@@ -478,6 +503,14 @@ $('preview-button').addEventListener('click', () => {
 });
 $('close-preview').addEventListener('click', () => $('preview-dialog').close());
 $('preview-dialog').addEventListener('close', () => $('large-preview').removeAttribute('src'));
+$('page-preview-button').addEventListener('click', () => {
+  const markdown = state?.draft?.page?.markdown;
+  if (typeof markdown !== 'string' || !markdown) return;
+  $('page-preview-text').textContent = markdown;
+  $('page-preview-dialog').showModal();
+});
+$('close-page-preview').addEventListener('click', () => $('page-preview-dialog').close());
+$('page-preview-dialog').addEventListener('close', () => { $('page-preview-text').textContent = ''; });
 window.addEventListener('focus', sendViewStatus);
 window.addEventListener('blur', sendViewStatus);
 document.addEventListener('visibilitychange', sendViewStatus);

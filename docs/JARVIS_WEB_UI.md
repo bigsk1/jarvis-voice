@@ -401,7 +401,11 @@ token in Socket.IO `auth: {token}` and use the same bearer for HTTP uploads and
 conversation requests. Every event is authenticated; token expiry also removes
 idle subscriptions and emits `auth:required` before disconnection. Server-owned
 runs remain recoverable after sign-in. Public `extension.api: 1` and
-`extension.features` advertise the independently installed companion contract.
+`extension.features` advertise the independently installed companion contract
+(`chat`, `images`, `conversations`, `recovery`, `cancel`, and optional `text` for
+page-text uploads). Companions can connect without `text`; capturing page
+content as a durable source requires it. Restart Jarvis Web after adding that
+feature before expecting page-text uploads.
 
 #### Client → Server
 
@@ -707,6 +711,7 @@ not keep showing the startup mode's catalog.
 - **System Tab**: Mode-specific .env values (thresholds, TTS settings, features), plus a SerpApi quota card fetched only when the tab is opened. The card stays absent when the selected mode has no valid `SERP_API_KEY`; SerpApi does not count Account API lookups against monthly search quota.
 - **API Keys Tab**: Status indicators (configured/missing)
 - **Profile Tab**: Current version linked to GitHub releases, auth/mode status, and a safe rendered view/editor for `jarvis-intel/user-profile.md`. **Save & ingest** uses the existing FastAPI Intel CRUD route; the Profile Card cache refreshes immediately for the selected mode plus an already-existing, configured sibling while background ingestion updates Profile Reference facts in those same modes.
+- **Profile Appearance**: Set a display name and upload a PNG, JPEG, or WebP avatar (up to 5 MB and 16 million pixels), then **Save appearance**. The server crops the image to 256×256, removes metadata, and stores it with the name in the ignored `data/web_profile_appearance.json`. **Use default image** restores the existing Jarvis image; a blank name restores **Administrator**. Appearance is shared across modes and connected Firefox companions through the authenticated `/api/profile-appearance` endpoint. It changes display only; login credentials and the Intelligence Profile Card are separate.
 
 ---
 

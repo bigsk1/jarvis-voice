@@ -66,6 +66,7 @@ class JarvisApp {
    * Initialize the application
    */
   _initialize() {
+    this.profileAppearance = window.ProfileAppearance ? new window.ProfileAppearance() : null;
     this._setupSocketListeners();
     this._setupHudLogo();
     this._setupUIListeners();
@@ -86,12 +87,14 @@ class JarvisApp {
    * Setup socket event listeners
    */
   _setupSocketListeners() {
+    this.socket.on('profileChanged', () => this.profileAppearance?.load());
     this.socket.on('connectionChange', (data) => {
       this._updateConnectionStatus(data.connected);
       if (!data.connected) this._releaseConversationLoad();
     });
     
     this.socket.on('sessionReady', (data) => {
+      this.profileAppearance?.load();
       console.log('[App] Session ready:', data);
       this.deployment = data.deployment === 'docker' ? 'docker' : 'native';
       this._updateConnectionStatus(true);
@@ -389,6 +392,7 @@ class JarvisApp {
     // Settings modal
     this.settingsBtn.addEventListener('click', () => {
       this.settingsModal.classList.add('active');
+      this.profileAppearance?.load();
       this._loadSettings();
       if (document.getElementById('settings-profile')?.classList.contains('active')) {
         this._loadTailscaleStatus();
@@ -397,10 +401,12 @@ class JarvisApp {
     
     this.closeSettings.addEventListener('click', () => {
       this.settingsModal.classList.remove('active');
+      this.profileAppearance?.reset();
     });
     
     this.closeSettingsBtn.addEventListener('click', () => {
       this.settingsModal.classList.remove('active');
+      this.profileAppearance?.reset();
     });
     
     // Save settings button
@@ -412,6 +418,8 @@ class JarvisApp {
     document.querySelectorAll('.settings-tab').forEach(tab => {
       tab.addEventListener('click', () => {
         const tabName = tab.dataset.settingsTab;
+        const saveSettingsButton = document.getElementById('saveSettingsBtn');
+        if (saveSettingsButton) saveSettingsButton.hidden = tabName === 'profile';
         
         // Update active tab
         document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
@@ -433,6 +441,7 @@ class JarvisApp {
           this._loadProxyStatus();
         }
         if (tabName === 'profile') {
+          this.profileAppearance?.load();
           this._loadUserProfileSummary();
           this._loadTailscaleStatus();
         }
@@ -564,6 +573,7 @@ class JarvisApp {
     this.settingsModal.addEventListener('click', (e) => {
       if (e.target === this.settingsModal) {
         this.settingsModal.classList.remove('active');
+        this.profileAppearance?.reset();
       }
     });
     
@@ -793,6 +803,7 @@ class JarvisApp {
           this._closeUserProfileModal();
         } else if (this.settingsModal.classList.contains('active')) {
           this.settingsModal.classList.remove('active');
+          this.profileAppearance?.reset();
         } else if (this.currentAudio && this.isPlaying) {
           // Stop audio on Escape if playing
           this.stopAudioPlayback();

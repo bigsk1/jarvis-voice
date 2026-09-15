@@ -2,6 +2,8 @@ import { mergeImageStageText } from '../core/state.js';
 
 /** Pure presentation rules shared by the panel and its regression tests. */
 export const DEFAULT_SCREENSHOT_PROMPT = 'Analyze this screenshot. Explain what is shown and highlight any errors or useful next steps.';
+export const DEFAULT_PAGE_PROMPT = 'Review this page. Use the screenshot for layout and the attached page text for the actual content.';
+export const DEFAULT_TEXT_PROMPT = 'Review the attached page text and answer from that source.';
 
 const TERMINAL_RUN_STATUSES = new Set(['completed', 'complete', 'cancelled', 'canceled', 'failed', 'error', 'interrupted', 'idle', 'not_running']);
 
@@ -16,7 +18,7 @@ export function isBusy(state) {
 
 export function canSend(state, draftText) {
   return state?.connection?.status === 'connected' && !isBusy(state)
-    && Boolean(String(draftText || '').trim() || state?.draft?.attachment || state?.draft?.context);
+    && Boolean(String(draftText || '').trim() || state?.draft?.attachment || state?.draft?.page || state?.draft?.context);
 }
 
 export function safeLinkUrl(value) {

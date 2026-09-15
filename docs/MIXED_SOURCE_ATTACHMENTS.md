@@ -25,8 +25,12 @@ Remove individual cards before sending if needed.
 | Image editing/video generation | One reference image; send other sources separately |
 | Chat only | Text notes allowed; images, PDFs, recordings, and videos require tools enabled |
 
-The same Web behavior is available natively and in Docker. Uploads and their
-validation use the selected cloud/local configuration. Local mode retains its
+The same Web behavior is available natively and in Docker. The Firefox
+companion can also capture the current page's readable text and upload it
+through `/api/upload-text`, so follow-ups use the same durable source
+references. That requires Companion API `extension.features.text`; without it
+the companion still chats and sends screenshots. Uploads and their validation
+use the selected cloud/local configuration. Local mode retains its
 existing provider and tool-profile restrictions; uploading a source does not
 enable an unavailable transcription, OCR, or vision provider. Video containers
 use [video analysis](tools/video/ANALYSIS.md), including silent clips; audio-only

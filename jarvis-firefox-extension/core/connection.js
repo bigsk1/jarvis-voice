@@ -31,11 +31,15 @@ export function originPermission(serverUrl) {
   return `${url.protocol}//${url.hostname}/*`;
 }
 
+export function pageTextSupported(status) {
+  return status?.extension?.features?.text === true;
+}
+
 export function assertCapabilities(status) {
   const contract = status?.extension;
   if (contract?.api !== 1 || contract.socket_auth !== true ||
       ['chat', 'images', 'conversations', 'recovery', 'cancel'].some(key => contract.features?.[key] !== true)) {
-    throw new Error('This Jarvis server does not support Companion API 1 with authenticated sockets. Update Jarvis before connecting.');
+    throw new Error('This Jarvis server does not support Companion API 1 with authenticated sockets. Update Jarvis Web before connecting.');
   }
   if (typeof status?.features?.auth !== 'boolean') throw new Error('The server did not advertise its authentication requirements.');
   return contract;

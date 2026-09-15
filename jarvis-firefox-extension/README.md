@@ -1,6 +1,6 @@
 # Jarvis Companion for Firefox
 
-A Firefox client for [Jarvis Voice](https://github.com/bigsk1/jarvis-voice): chat in a sidebar or detached window, capture a webpage, and ask follow-up questions without saving screenshots by hand.
+A Firefox client for [Jarvis Voice](https://github.com/bigsk1/jarvis-voice): chat in a sidebar or detached window, capture a webpage's screenshot **and readable text**, and ask follow-up questions without saving screenshots or copying articles by hand.
 
 This is an independently versioned development extension. It lives in `jarvis-firefox-extension/` for now and can be copied into its own repository without importing code from the parent checkout.
 
@@ -8,11 +8,13 @@ This is an independently versioned development extension. It lives in `jarvis-fi
 
 - Opens the Jarvis sidebar from the toolbar, with an **Open pop-out** button for a detached window.
 - Stages a visible-tab screenshot with a preview, source title, URL, and capture time.
-- Sends your question or an **Analyze screenshot** prompt through your Jarvis Web server.
-- Provides right-click **Jarvis** actions for a screenshot, selected text, a link, or an image URL.
+- Stages the page's readable text as a durable Jarvis source (same 100KB text-upload path as Web notes). Follow-ups can refer to that captured page after reload.
+- Sends your question or an **Analyze page** / **Analyze screenshot** prompt through your Jarvis Web server.
+- Provides right-click **Jarvis** actions for a page capture, selected text, a link, or an image URL.
 - Shows task and tool progress, completed answers, conversation history with pinned labels, and **Stop**.
 - Reconnects to accepted work by its request/conversation ID without automatically sending the question again.
 - Shows a toolbar badge for pending work and unread results, with optional desktop notifications.
+- Uses the display name and profile image saved in Jarvis Web **Settings → Profile → Appearance** on your messages. Changes sync automatically while connected; the default avatar is the Jarvis HUD logo.
 
 Chat uses the tools enabled by the connected Jarvis server. Dedicated Intel, Stash, workflow, media, and voice screens are not part of this first version. Intermediate tool events missed during a disconnect cannot all be replayed; saved answers and current run status are recovered.
 
@@ -21,10 +23,13 @@ Replies support headings, ordered/unordered lists with nesting, fenced code, bol
 ## Requirements
 
 - Firefox **140 or newer**.
-- A reachable **Jarvis Web** server with Companion API **1** and socket authentication support. Use the Web chat server address, commonly port `5001`, rather than the separate FastAPI server on `8880`.
+- A reachable **Jarvis Web** server with Companion API **1** and authenticated sockets. Use the Web chat server address, commonly port `5001`, rather than the separate FastAPI server on `8880`.
+- Page-text upload requires `extension.features.text` on that server (restart Jarvis Web after updating). Older servers still support chat, screenshots, and image URLs.
 - Node.js **22 or newer** and npm to install development dependencies or build the package.
 
-The extension checks `/api/status` for the capability contract and rejects older servers before sending chat content. The contract is independent of the extension and Jarvis release numbers. Restart an updated Jarvis Web server before testing the extension against new server code.
+The extension checks `/api/status` for the capability contract and rejects servers that lack Companion API 1 before sending chat content. Missing `features.text` does not block that connection; Capture then takes a screenshot only. The contract is independent of the extension and Jarvis release numbers.
+
+Profile appearance is also optional (`extension.features.profile`). On older servers, user messages show **You** with the packaged HUD icon. Restart an updated Web server to enable profile sync, then reload the companion. Appearance is shared by clients of that server across cloud/local mode; it does not change login credentials or the Intelligence Profile Card.
 
 ## Load it temporarily
 
@@ -56,7 +61,7 @@ Current `web-ext` reports two warnings: the unmodified Socket.IO 4.7.2 bundle co
 1. Open the webpage you want to discuss and click the Jarvis toolbar icon. This grants temporary tab access and opens the sidebar. Its **Open pop-out** button keeps the detached window available.
 2. In **Connection settings**, enter the full Web server origin, such as `https://jarvis.example.com`, including a port when needed. Omit `/api` and other paths.
 3. Click **Connect** and grant Firefox access to that server. If Jarvis authentication is enabled, enter the existing **Jarvis Web password** and sign in. Servers with authentication disabled do not require a password.
-4. Click **Capture browser view**. Review the screenshot, enter a question, then **Send**. **Analyze screenshot** sends the displayed capture with its default question.
+4. Click **Capture this page**. Review the screenshot and page-text cards, open **Review full text** to inspect the exact Markdown that will be uploaded, then **Send**. **Analyze page** sends the displayed capture with its default question. Remove either card if you only want the screenshot or only the text. A staged selection or link stays in the composer and is included with the request.
 5. After changing the webpage or switching tabs, use **Capture again** and ask “Check it now.” Each click selects the currently active tab in that sidebar's window. The pop-out selects the most recently used normal browser window. If Firefox requests tab access, click the Jarvis toolbar icon on that webpage and retry.
 
 Right-click selected text or a link to stage that content in the same composer. These actions do not fetch the page or send its contents until you choose **Send**. Screenshots are also kept locally until Send/Analyze; removing an unsent attachment prevents its upload.
@@ -79,13 +84,13 @@ Only requests submitted by this extension produce completion signals. A result a
 
 Closing the sidebar/pop-out does not stop accepted work. While requests are pending, the extension checks saved request status about once a minute, including after Firefox unloads its background page. These are authenticated read-only checks; they never resubmit the question. Checks stop when all tracked requests have settled. Firefox must remain running; browser sleep or a disconnected server can delay alerts. Pending tracking expires after seven days, and ending the extension session clears it. Results remain in Jarvis history.
 
-Capture covers the **visible webpage viewport**, not the full scrolling page, Firefox browser chrome, another application, or the desktop. The selected tab must remain active in its normal, restored browser window. Jarvis checks the tab ID, window ID, URL, and window state before and after capture; it refuses a source that changes during capture. Minimized windows, private browsing, and non-HTTP(S) pages are unsupported.
+Capture covers the **visible webpage viewport** for the screenshot, plus a one-shot read of the page's visible text (not password fields, form inputs, or other tabs). It does not capture the full scrolling screenshot, Firefox browser chrome, another application, or the desktop. Pages that are only images or canvases may have no readable text; the screenshot can still be sent. Very long articles are truncated to Jarvis Web's existing 100KB text-upload limit. The selected tab must remain active in its normal, restored browser window. Jarvis checks the tab ID, window ID, URL, and window state before and after capture; it refuses a source that changes during capture. Minimized windows, private browsing, and non-HTTP(S) pages are unsupported.
 
 Screenshots are resized locally to a maximum **1,024 pixels on the longest edge**, preserving aspect ratio without upscaling, and encoded as JPEG at quality **0.85**. The server keeps its existing resize safeguard. This limit is intentional for Jarvis's image/provider transport. There is no continuous screen sharing or background screenshot collection.
 
 ## Connection and privacy
 
-HTTPS/WSS is the default. **Allow HTTP for a local development server** enables an explicit exception for localhost or a private IP, for example `http://192.168.1.20:5001`. HTTP does not encrypt passwords, tokens, messages, or screenshots. Public HTTP endpoints are refused; an invalid HTTPS certificate is not bypassed.
+HTTPS/WSS is the default. **Allow HTTP for a local development server** enables an explicit exception for localhost or a private IP, for example `http://192.168.1.20:5001`. HTTP does not encrypt passwords, tokens, messages, screenshots, or page text. Public HTTP endpoints are refused; an invalid HTTPS certificate is not bypassed.
 
 For private HTTPS without publishing your Jarvis server, follow the
 [Jarvis Tailscale HTTPS guide](https://github.com/bigsk1/jarvis-voice/blob/main/docs/TAILSCALE_HTTPS.md).
@@ -93,7 +98,7 @@ Use the resulting Web HTTPS origin in the extension's connection settings.
 
 The server address and preferences use `storage.local`. The login token and bounded recovery/draft state use in-memory `storage.session`; the extension does not persist the password, save the token to disk storage, or synchronize it. Expect to sign in after Firefox restarts. Logout clears the extension credential but does not revoke the server's existing stateless token or cancel already accepted work.
 
-**Jarvis stores submitted content.** Image upload writes to the server, and the normal chat path can preserve screenshots in Stash and memory as well as save conversation history. Your server may forward content to its configured model and tool providers. Removing an attachment after sending, logging out, or uninstalling the extension does not delete those server records. Read [PRIVACY.md](PRIVACY.md) before connecting to a server you do not operate.
+**Jarvis stores submitted content.** Image upload writes to the server, page-text upload writes a bounded note through the existing Web text-attachment path, and the normal chat path can preserve screenshots in Stash and memory as well as save conversation history. Your server may forward content to its configured model and tool providers. Removing an attachment after sending, logging out, or uninstalling the extension does not delete those server records. Read [PRIVACY.md](PRIVACY.md) before connecting to a server you do not operate.
 
 ## Development
 
@@ -110,7 +115,7 @@ The background event page owns the client and connection. While a sidebar or pop
 ```text
 background.js   Browser lifecycle, view messages, and action wiring
 core/           Authentication, server transport, client state, and recovery
-browser/        Source selection, screenshots, context menus, completion signals
+browser/        Source selection, screenshots, page-text capture, context menus, completion signals
 ui/             Sidebar, pop-out, connection settings, and rendering
 assets/         Packaged icons and styling assets
 vendor/         Pinned third-party runtime code and its license
@@ -120,7 +125,7 @@ scripts/        Vendor copying and package creation
 
 Keep new feature screens behind the client/capability contract. Do not import files from `../jarvis-web/` or load executable libraries from a CDN. Keep this directory as the authoritative source until a deliberate repository extraction; copying to another repository does not establish automatic synchronization.
 
-The packaged `assets/jarvis.svg` uses the artwork from Jarvis Web's `client/assets/jarvis-hud-logo.svg`. The panel inlines this local asset and keeps its animation rules in `ui/panel.css` to support both logo instances under the extension's Content Security Policy. The ring rotates amber when connected and rests red when offline; reduced-motion preferences disable rotation. Toolbar and reply icons use the static SVG, and `assets/jarvis-96.png` is its 96-pixel export for desktop notifications. Keep these packaged copies together when updating the artwork.
+Page-text capture uses a one-shot `scripting.executeScript` after a toolbar, capture-button, or context-menu gesture. It does not register a persistent content script. The packaged `assets/jarvis.svg` uses the artwork from Jarvis Web's `client/assets/jarvis-hud-logo.svg`. The panel inlines this local asset and keeps its animation rules in `ui/panel.css` to support both logo instances under the extension's Content Security Policy. The ring rotates amber when connected and rests red when offline; reduced-motion preferences disable rotation. Toolbar and reply icons use the static SVG, and `assets/jarvis-96.png` is its 96-pixel export for desktop notifications. Keep these packaged copies together when updating the artwork.
 
 ## License
 

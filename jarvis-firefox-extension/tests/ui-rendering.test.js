@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { DraftBuffer, canSend, imageContextHint, inlineParts, isRunActive, messageBlocks, notificationPreferences, safeLinkUrl, safePreviewUrl } from '../ui/view-model.js';
 import { renderMessageContent, renderMessage } from '../ui/render.js';
+import { normalizeProfile } from '../core/profile.js';
 
 // Deliberately has no innerHTML API: renderer output must consist of DOM nodes.
 class Node {
@@ -18,6 +19,29 @@ const document = {
   createDocumentFragment: () => new Node('#fragment'),
 };
 function descendants(node) { return [node, ...node.children.flatMap(child => typeof child === 'object' ? descendants(child) : [])]; }
+
+test('user messages display the shared name and raster avatar while assistant identity stays Jarvis', () => {
+  const profile = {display_name: 'Morgan <script>literal</script>', avatar: 'data:image/png;base64,iVBORw0KGgo='};
+  const user = renderMessage(document, {role: 'user', content: 'Hello'}, profile);
+  assert.ok(user.textContent.startsWith(profile.display_name));
+  assert.equal(descendants(user).find(node => node.tagName === 'img').src, profile.avatar);
+  assert.equal(descendants(user).some(node => node.tagName === 'script'), false);
+  const assistant = renderMessage(document, {role: 'assistant', content: 'Hello'}, profile);
+  assert.ok(assistant.textContent.startsWith('Jarvis'));
+  assert.equal(descendants(assistant).find(node => node.tagName === 'img').src, '../assets/jarvis.svg');
+});
+
+test('missing profile and unsafe avatar URLs retain a local HUD icon', () => {
+  for (const avatar of ['https://tracking.example/avatar.png', 'javascript:alert(1)', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:image/png;base64,' + 'a'.repeat(400001)]) {
+    const normalized = normalizeProfile({display_name: 'Chosen name', avatar});
+    assert.equal(normalized.avatar, null);
+    const rendered = renderMessage(document, {role: 'user', content: 'Hello'}, normalized);
+    assert.equal(descendants(rendered).find(node => node.tagName === 'img').src, '../assets/jarvis.svg');
+  }
+  const fallback = renderMessage(document, {role: 'user', content: 'Hello'});
+  assert.ok(fallback.textContent.startsWith('You'));
+  assert.equal(descendants(fallback).find(node => node.tagName === 'img').src, '../assets/jarvis.svg');
+});
 
 test('provider HTML and unsafe Markdown URLs remain inert text', () => {
   const payload = '<img src=x onerror="alert(1)"> [run](javascript:alert) [data](data:text/html,bad) **result**';
@@ -140,7 +164,7 @@ test('previews only accept raster data, never direct server requests or SVG', ()
   assert.equal(safePreviewUrl('data:image/png;base64,aGVsbG8='), 'data:image/png;base64,aGVsbG8=');
   for (const value of ['https://jarvis.test/api/uploads/file.png', '/api/uploads/file.png', 'data:image/svg+xml;base64,aGVsbG8=', 'javascript:alert(1)', 'blob:https://evil.test/123']) assert.equal(safePreviewUrl(value), null);
   const rendered = renderMessage(document, { role: 'user', content: 'Look at this', attachments: [{ previewUrl: 'https://jarvis.test/private.png', label: 'Screenshot / image' }] });
-  assert.equal(descendants(rendered).some(node => node.tagName === 'img'), false);
+  assert.deepEqual(descendants(rendered).filter(node => node.tagName === 'img').map(node => node.src), ['../assets/jarvis.svg']);
   assert.ok(rendered.textContent.includes('Screenshot / image'));
 });
 
@@ -156,6 +180,7 @@ test('send is disabled during reconnect recovery and active work, including unkn
   assert.equal(canSend(state, 'Hello'), true);
   assert.equal(canSend(state, '  '), false);
   assert.equal(canSend({ ...state, draft: { attachment: {} } }, ''), true);
+  assert.equal(canSend({ ...state, draft: { page: { markdown: '# Page' } } }, ''), true);
   assert.equal(canSend({ ...state, draft: { context: {} } }, ''), true);
   for (const status of ['running', 'sending', 'stopping', 'recovering', 'new-server-state']) {
     assert.equal(canSend({ ...state, run: { status } }, 'Hello'), false);

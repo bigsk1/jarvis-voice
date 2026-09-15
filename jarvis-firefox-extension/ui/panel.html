@@ -29,7 +29,7 @@
         <label class="field-label" for="server-url">Server URL</label>
         <div class="input-action"><input id="server-url" name="server-url" type="url" placeholder="https://jarvis.example.com" autocomplete="url" spellcheck="false" required><button id="save-settings" class="button button-primary" type="submit">Connect</button></div>
         <label class="checkbox-label"><input id="allow-insecure" type="checkbox"><span>Allow HTTP for a local development server</span></label>
-        <p id="insecure-warning" class="inline-warning" hidden>HTTP sends your password, messages, and screenshots without encryption. Use this only on a trusted local network.</p>
+        <p id="insecure-warning" class="inline-warning" hidden>HTTP sends your password, messages, screenshots, and page text without encryption. Use this only on a trusted local network.</p>
       </form>
       <form id="login-form" class="login-form" hidden>
         <label class="field-label" for="password">Jarvis Web password</label>
@@ -56,9 +56,9 @@
       <section id="empty-state" class="empty-state">
         <div id="welcome-logo" class="jarvis-logo welcome-logo" aria-hidden="true"><img src="../assets/jarvis.svg" width="128" height="128" alt=""></div>
         <h1>What are we working on?</h1>
-        <p>Ask Jarvis a question, or capture this page to show what you mean.</p>
-        <button id="empty-capture" class="button button-secondary" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5h4m8 0h4v3m0 8v3h-4m-8 0H4v-3M8 9h8v6H8z"/></svg>Capture browser view</button>
-        <span class="empty-hint">Review your capture before sending.</span>
+        <p>Ask Jarvis a question, or capture this page to send what you see and the readable text.</p>
+        <button id="empty-capture" class="button button-secondary" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5h4m8 0h4v3m0 8v3h-4m-8 0H4v-3M8 9h8v6H8z"/></svg>Capture this page</button>
+        <span class="empty-hint">Review the screenshot and page text before sending.</span>
       </section>
       <div id="messages" class="messages"></div>
     </main>
@@ -70,15 +70,27 @@
         <div class="attachment-details"><span class="eyebrow">Screenshot ready</span><strong id="attachment-title">Browser view</strong><span id="attachment-meta" class="helper"></span><div class="attachment-actions"><button id="recapture-button" class="text-button" type="button">Capture again</button><button id="analyze-button" class="text-button accent-text" type="button">Analyze screenshot</button></div></div>
         <button id="remove-attachment" class="icon-button remove-button" type="button" title="Remove screenshot" aria-label="Remove screenshot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
       </section>
+      <section id="page-panel" class="context-panel page-panel" aria-label="Captured page text" hidden>
+        <span class="context-icon" aria-hidden="true">¶</span>
+        <div>
+          <span class="eyebrow">Page text ready</span>
+          <strong id="page-title">Captured page</strong>
+          <p id="page-excerpt"></p>
+          <p id="page-meta" class="helper"></p>
+          <button id="page-preview-button" class="text-button accent-text" type="button">Review full text</button>
+        </div>
+        <button id="remove-page" class="icon-button" type="button" title="Remove page text" aria-label="Remove page text"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </section>
       <section id="context-panel" class="context-panel" aria-label="Shared page context" hidden><span class="context-icon" aria-hidden="true">↳</span><div><strong id="context-title">Shared from Firefox</strong><p id="context-text"></p><p id="context-hint" class="context-hint" hidden></p></div><button id="remove-context" class="icon-button" type="button" title="Remove shared context" aria-label="Remove shared context"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></section>
       <form id="composer-form" class="composer">
         <label class="sr-only" for="message-input">Message Jarvis</label>
         <textarea id="message-input" rows="2" placeholder="Ask Jarvis anything…" spellcheck="true"></textarea>
-        <div class="composer-controls"><div class="composer-left"><button id="capture-button" class="icon-button" type="button" title="Capture browser view" aria-label="Capture browser view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5h4m8 0h4v3m0 8v3h-4m-8 0H4v-3M8 9h8v6H8z"/></svg></button><label class="mode-control" for="mode-select"><span class="sr-only">Jarvis mode</span><select id="mode-select"><option value="cloud">Cloud</option><option value="local">Local</option></select></label></div><button id="send-button" class="button button-send" type="submit" disabled>Send<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></div>
+        <div class="composer-controls"><div class="composer-left"><button id="capture-button" class="icon-button" type="button" title="Capture this page" aria-label="Capture this page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5h4m8 0h4v3m0 8v3h-4m-8 0H4v-3M8 9h8v6H8z"/></svg></button><label class="mode-control" for="mode-select"><span class="sr-only">Jarvis mode</span><select id="mode-select"><option value="cloud">Cloud</option><option value="local">Local</option></select></label></div><button id="send-button" class="button button-send" type="submit" disabled>Send<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></div>
       </form>
-      <div class="composer-caption"><span id="source-caption">Capture adds a preview to your next message.</span><span class="keyboard-hint">Enter to send</span></div>
+      <div class="composer-caption"><span id="source-caption">Capture adds a screenshot and the page’s readable text.</span><span class="keyboard-hint">Enter to send</span></div>
     </footer>
   </div>
   <dialog id="preview-dialog" class="preview-dialog"><div class="preview-heading"><span>Screenshot preview</span><button id="close-preview" class="button button-secondary" type="button">Close</button></div><img id="large-preview" alt="Full captured screenshot"></dialog>
+  <dialog id="page-preview-dialog" class="preview-dialog"><div class="preview-heading"><span>Page text</span><button id="close-page-preview" class="button button-secondary" type="button">Close</button></div><pre id="page-preview-text" class="page-preview-text"></pre></dialog>
 </body>
 </html>

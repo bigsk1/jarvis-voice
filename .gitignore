@@ -152,6 +152,8 @@ data/..trakt_oauth.json.*
 data/.phone_call_lock
 data/.phone_call_in_progress
 data/.webui_secret
+data/web_profile_appearance.json
+data/.web-profile-*.tmp
 
 characters/
 data/generated_images/*

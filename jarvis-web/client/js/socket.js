@@ -183,6 +183,8 @@ class JarvisSocket {
       this._emit('messageReactionError', data);
     });
 
+    this.socket.on('profile:changed', () => this._emit('profileChanged', {}));
+
     this.socket.on('mode:changed', (data) => {
       this.mode = data.mode;
       Utils.storage.set('mode', data.mode);

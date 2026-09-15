@@ -1,6 +1,7 @@
 import './vendor/socket.io.min.js';
 import {JarvisClient} from './core/client.js';
 import {captureSource} from './browser/capture.js';
+import {capturePageContent} from './browser/page-content.js';
 import {normalizeSource, resolveCurrentSource} from './browser/source.js';
 import {setupMenus} from './browser/menus.js';
 import {setupCompletionSignals} from './browser/completion.js';
@@ -177,12 +178,32 @@ const actions = {
   loadConversation: payload => client.loadConversation(payload.conversationId),
   newConversation: () => client.newConversation(),
   removeAttachment: () => client.removeAttachment(),
+  removeContext: () => client.removeContext(),
+  removePage: () => client.removePage(),
   capture: async payload => {
     client.requireIdle();
     await focusUpdates;
     const source = await resolveCurrentSource(browser, payload.windowId ?? null, lastBrowserWindowId);
-    const attachment = await captureSource(browser, source);
-    await client.stage({attachment, source: attachment.source});
+    let page = null;
+    let attachment = null;
+    let pageError = null;
+    if (client.state.capabilities?.text !== false) {
+      try { page = await capturePageContent(browser, source); }
+      catch (error) { pageError = error; }
+    }
+    try { attachment = await captureSource(browser, source); }
+    catch (error) {
+      if (!page) throw pageError || error;
+      pageError = pageError || error;
+    }
+    await client.stage({
+      attachment, page, source: attachment?.source || page.source,
+      context: client.state.draft.context,
+    });
+    if (pageError) {
+      client.state.notice = pageError.message;
+      client.changed();
+    }
   },
 };
 
@@ -226,8 +247,26 @@ const menus = setupMenus(browser, async action => {
       await rememberBrowserWindow(source.windowId);
       client.requireIdle();
       if (action.kind === 'capture') {
-        const attachment = await captureSource(browser, source);
-        await client.stage({attachment, source});
+        let page = null;
+        let attachment = null;
+        let pageError = null;
+        if (client.state.capabilities?.text !== false) {
+          try { page = await capturePageContent(browser, source); }
+          catch (error) { pageError = error; }
+        }
+        try { attachment = await captureSource(browser, source); }
+        catch (error) {
+          if (!page) throw pageError || error;
+          pageError = pageError || error;
+        }
+        await client.stage({
+          attachment, page, source: attachment?.source || page.source,
+          context: client.state.draft.context,
+        });
+        if (pageError) {
+          client.state.notice = pageError.message;
+          client.changed();
+        }
       } else if (action.kind === 'image') {
         await client.stage({source, context: {kind: 'image', url: action.imageUrl, title: source.title, text: ''}});
       } else {

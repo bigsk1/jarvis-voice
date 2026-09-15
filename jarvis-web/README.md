@@ -223,8 +223,9 @@ the token and expiry disconnects even idle subscribers. `auth:required` means
 sign in again; disconnecting preserves server-owned runs for later recovery.
 
 Public `/api/status` advertises `extension.api: 1`, `extension.socket_auth: true`,
-and `extension.features` for `chat`, `images`, `conversations`, `recovery`, and
-`cancel`. `features.auth` states whether this installation requires sign-in.
+and `extension.features` for `chat`, `images`, `conversations`, `recovery`,
+`cancel`, and `text`. `text` is additive: companions may connect without it and
+still chat or send screenshots. `features.auth` states whether this installation requires sign-in.
 This additive capability contract lets independently installed companions check
 server compatibility before opening a conversation.
 

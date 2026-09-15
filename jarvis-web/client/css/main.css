@@ -4163,6 +4163,7 @@ body {
 
 .profile-info {
   flex: 1;
+  min-width: 0;
 }
 
 .profile-name {
@@ -4170,6 +4171,18 @@ body {
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: var(--space-xs);
+  overflow-wrap: anywhere;
+}
+
+.profile-appearance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.profile-appearance .setting-note {
+  margin-top: var(--space-sm);
 }
 
 .profile-role {

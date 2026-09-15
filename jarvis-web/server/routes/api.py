@@ -46,6 +46,11 @@ from ..services.user_profile_service import (
     get_user_profile,
     save_user_profile,
 )
+from ..services.profile_appearance import (
+    MAX_AVATAR_BYTES,
+    get_profile_appearance,
+    save_profile_appearance,
+)
 from ..services.settings_manager import (
     CLOUD_TTS_PROVIDER_OPTIONS,
     LOCAL_TTS_PROVIDER_OPTIONS,
@@ -59,7 +64,7 @@ from ..config import (
     DEFAULT_JARVIS_QA_WORD_LIMIT,
     DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT,
 )
-from webui_auth import is_auth_enabled
+from webui_auth import is_auth_enabled, require_auth
 import sys
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -505,9 +510,48 @@ def get_status():
                 'conversations': True,
                 'recovery': True,
                 'cancel': True,
+                'text': True,
+                'profile': True,
             },
         }
     })
+
+
+@api_bp.route('/profile-appearance', methods=['GET', 'PUT'])
+@require_auth
+def profile_appearance():
+    """Private display identity, shared across modes and authenticated clients."""
+    from werkzeug.exceptions import RequestEntityTooLarge
+
+    try:
+        if request.method == 'GET':
+            profile = get_profile_appearance()
+        else:
+            request.max_content_length = MAX_AVATAR_BYTES + 64 * 1024
+            if request.mimetype != 'multipart/form-data':
+                return jsonify({'ok': False, 'error': 'Submit the profile as form data.'}), 400
+            remove = request.form.get('remove_avatar', 'false')
+            if remove not in {'true', 'false'}:
+                raise ValueError('Invalid restore-default option.')
+            profile = save_profile_appearance(
+                request.form.get('display_name'),
+                avatar=request.files.get('avatar'),
+                remove_avatar=remove == 'true',
+            )
+            socket = current_app.extensions.get('socketio')
+            if socket is not None:
+                # Broadcast only invalidation. Each client fetches with its own auth.
+                socket.emit('profile:changed', {})
+        response = jsonify({'ok': True, 'profile': profile})
+        response.headers['Cache-Control'] = 'private, no-store'
+        return response
+    except RequestEntityTooLarge:
+        return jsonify({'ok': False, 'error': 'Choose an image smaller than 5 MB.'}), 413
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    except OSError:
+        current_app.logger.exception('Profile appearance storage failed')
+        return jsonify({'ok': False, 'error': 'Profile appearance could not be saved or loaded.'}), 500
 
 
 @api_bp.route('/tailscale/status', methods=['GET'])

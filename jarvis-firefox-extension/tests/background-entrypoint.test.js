@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { captureSource as captureActual } from '../browser/capture.js';
+import { capturePageContent as capturePageActual } from '../browser/page-content.js';
 import { normalizeSource, resolveCurrentSource } from '../browser/source.js';
 import { setupMenus, MENU_IDS } from '../browser/menus.js';
 import { setupCompletionSignals, COMPLETION_ALARM } from '../browser/completion.js';
@@ -53,6 +54,18 @@ async function boot({ deferRestore = false, deferCapture = false } = {}) {
       query: async ({windowId}) => [...normalTabs.values()].filter(tab => tab.windowId === windowId && tab.active),
       captureVisibleTab: async (windowId, options) => { calls.captures.push({ windowId, options }); if (deferCapture) await captureGate; return 'data:image/png;base64,c291cmNl'; },
     },
+    scripting: {
+      executeScript: async ({ target }) => {
+        const tab = normalTabs.get(target.tabId);
+        calls.scripts = calls.scripts || [];
+        calls.scripts.push(target.tabId);
+        return [{ result: {
+          title: tab.title, url: tab.url, empty: false, truncated: false, charCount: 24,
+          markdown: `# ${tab.title}\n\n- URL: ${tab.url}\n\n## Page\nDashboard body\n`,
+          capturedAt: '2026-09-14T00:00:00.000Z',
+        } }];
+      },
+    },
   };
   let restored;
   const restoring = new Promise(resolve => { restored = resolve; });
@@ -61,7 +74,7 @@ async function boot({ deferRestore = false, deferCapture = false } = {}) {
     constructor(options) {
       client = this;
       this.options = options;
-      this.state = { settings: {}, connection: { status: 'connected' }, source: null, draft: { text: '', attachment: null, context: null }, messages: [], conversations: [], run: null };
+      this.state = { settings: {}, connection: { status: 'connected' }, source: null, draft: { text: '', attachment: null, context: null, page: null }, messages: [], conversations: [], run: null };
       this.intent = true;
       this.authScope = 'test-session';
       this.transport = { socket: { connected: true }, close: () => { calls.closes += 1; }, upload: () => { calls.uploads += 1; } };
@@ -71,9 +84,9 @@ async function boot({ deferRestore = false, deferCapture = false } = {}) {
     async checkpoint() { calls.checkpoints += 1; }
     publish() { this.options.onState(this.state); }
     changed() { this.publish(); }
-    async stage(value) { calls.stages.push(value); this.state.source = value.source; this.state.draft.attachment = value.attachment || null; this.state.draft.context = value.context || null; this.publish(); }
+    async stage(value) { calls.stages.push(value); this.state.source = value.source; this.state.draft.attachment = value.attachment || null; this.state.draft.context = value.context || null; this.state.draft.page = value.page || null; this.publish(); }
     async setDraft(text) { this.state.draft.text = text; this.publish(); }
-    async configure(settings) { this.state.settings = settings; this.state.draft = {text: '', attachment: null, context: null}; }
+    async configure(settings) { this.state.settings = settings; this.state.draft = {text: '', attachment: null, context: null, page: null}; }
     async connect() { calls.connects += 1; }
     recover() { this.publish(); }
     async updatePreferences(value) { this.state.settings.preferences = {...this.state.settings.preferences, ...value}; this.publish(); }
@@ -88,7 +101,10 @@ async function boot({ deferRestore = false, deferCapture = false } = {}) {
     createCanvas: () => ({ getContext: () => ({ fillRect() {}, drawImage() {} }), toDataURL: () => 'data:image/jpeg;base64,c291cmNl' }),
     now: () => '2026-09-14T00:00:00.000Z',
   });
-  const sandbox = { browser, JarvisClient: Client, captureSource, normalizeSource, resolveCurrentSource, setupMenus, setupCompletionSignals, originPermission, URL, console, setTimeout, clearTimeout, fetch: () => { calls.network += 1; throw new Error('Unexpected network request'); } };
+  const capturePageContent = (api, source) => capturePageActual(api, source, {
+    now: () => '2026-09-14T00:00:00.000Z',
+  });
+  const sandbox = { browser, JarvisClient: Client, captureSource, capturePageContent, normalizeSource, resolveCurrentSource, setupMenus, setupCompletionSignals, originPermission, URL, console, setTimeout, clearTimeout, fetch: () => { calls.network += 1; throw new Error('Unexpected network request'); } };
   const context = vm.createContext(sandbox);
   const vendor = await readFile(new URL('../vendor/socket.io.min.js', import.meta.url), 'utf8');
   // Execute the actual browser distribution with undefined top-level `this`,
@@ -173,6 +189,8 @@ test('toolbar selects its browser source and capture stages that window without 
   assert.equal(app.calls.captures[0].windowId, 4, 'Capture must use the selected browser window, never the focused pop-out');
   assert.equal(app.client.state.draft.attachment.source.url, app.sourceTab.url);
   assert.equal(app.client.state.draft.attachment.width, 1024);
+  assert.equal(app.client.state.draft.page.url, app.sourceTab.url);
+  assert.match(app.client.state.draft.page.markdown, /Dashboard body/);
   assert.equal(app.calls.uploads, 0);
   assert.equal(app.calls.sends, 0);
   assert.equal(app.calls.network, 0);

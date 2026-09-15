@@ -6,15 +6,18 @@ Jarvis Companion is a client for the Jarvis Web server you configure. The extens
 
 When you connect, the extension checks server status and capabilities. Signing in sends your Jarvis Web password to that server's login endpoint. Subsequent authenticated REST requests use a Bearer token; Socket.IO supplies the token in its authentication handshake, not in a URL.
 
-When you choose **Send** or **Analyze screenshot**, the extension can transmit:
+If supported, the extension retrieves your saved display name and avatar from that same server after connecting and when the server reports a profile change. These are displayed on your messages and held in memory, omitted from recovery storage, and cleared on sign-out or server changes. Avatar pixels arrive in the authenticated response; the panel does not fetch an external avatar URL. Edit or remove the image in Jarvis Web **Settings → Profile → Appearance**.
+
+When you choose **Send**, **Analyze page**, or **Analyze screenshot**, the extension can transmit:
 
 - The message you composed or the displayed action's default question.
 - The staged screenshot, resized to JPEG with a maximum edge of 1,024 pixels at quality 0.85.
+- The staged page text as a UTF-8 Markdown note, truncated to Jarvis Web's existing 100KB text-upload limit. Password fields, form inputs, contenteditable drafts, CSS-hidden nodes, scripts, and other tabs are not included. **Review full text** shows the exact Markdown before Send.
 - The selected text, link, or image URL you explicitly staged and left in the message.
-- Source page titles, URLs, and screenshot capture time included with that content.
+- Source page titles, URLs, and capture time included with that content.
 - Conversation/request identifiers and the selected Jarvis cloud/local mode.
 
-Connection recovery, opening history, and background completion checks can retrieve saved conversations without another Send action. While extension-submitted requests are pending, checks run about once a minute even with the sidebar/pop-out closed, provided Firefox is running and the session is available. They stop when requests settle, expire after seven days, or the session ends. They only check existing work and never resubmit it. Normal HTTP/socket communication also exposes network information such as your address to the server. The extension does not continuously capture tabs, read browsing history, inject page scripts, or upload a screenshot merely because its preview is visible.
+Connection recovery, opening history, and background completion checks can retrieve saved conversations without another Send action. While extension-submitted requests are pending, checks run about once a minute even with the sidebar/pop-out closed, provided Firefox is running and the session is available. They stop when requests settle, expire after seven days, or the session ends. They only check existing work and never resubmit it. Normal HTTP/socket communication also exposes network information such as your address to the server. The extension does not continuously capture tabs, read browsing history, inject a persistent page script, or upload a screenshot or page text merely because its preview is visible. Page-text reading uses a one-shot script after a capture gesture.
 
 Image URL staging does not fetch the image or copy the webpage's cookies. After Send, Jarvis's normal tool path can fetch that URL. An `analyze_image` tool hint accompanies an applicable staged image draft; server configuration determines which tools can run.
 
@@ -35,7 +38,8 @@ The toolbar badge is enabled by default. Desktop notifications and answer previe
 
 ## Permissions
 
-- **`activeTab`:** temporary access after a toolbar or context-menu action, used for the selected webpage and visible capture.
+- **`activeTab`:** temporary access after a toolbar or context-menu action, used for the selected webpage, visible capture, and one-shot page-text read.
+- **`scripting`:** run that one-shot page-text reader in the selected tab after the capture gesture. No persistent content script is registered.
 - **`menus`:** Jarvis actions for page capture, selected text, links, and image URLs.
 - **`storage`:** settings and session recovery.
 - **`alarms`:** wake the background for saved-request checks while extension-submitted work is pending.
@@ -48,7 +52,7 @@ The extension declares optional HTTP(S) host patterns so users can enter their o
 
 Use HTTPS/WSS for encrypted transport. A clearly labeled local-development setting permits HTTP only for localhost/private-IP servers. That exception is unencrypted, including login credentials and page content. The extension does not bypass invalid TLS certificates.
 
-After upload, content follows your Jarvis server's normal processing and retention rules. In the current Web implementation, uploaded screenshots are written to disk, image processing can copy them into Stash and record memory references, and chat saves conversations and answers. Tools, logs, and configured model providers can retain additional records according to their own configuration and policies. A user-owned server can still send data onward to cloud model or tool providers; selecting local mode is not an extension-level guarantee that every enabled tool is local.
+After upload, content follows your Jarvis server's normal processing and retention rules. In the current Web implementation, uploaded screenshots are written to disk, page text is stored as a Web text attachment, image processing can copy screenshots into Stash and record memory references, and chat saves conversations and answers. Tools, logs, and configured model providers can retain additional records according to their own configuration and policies. A user-owned server can still send data onward to cloud model or tool providers; selecting local mode is not an extension-level guarantee that every enabled tool is local.
 
 There is no server-side ephemeral/private-chat mode in this extension. Removing an unsent preview prevents its upload. Removing a sent preview, clearing local extension state, logging out, or uninstalling does not remove content already held by Jarvis or its providers. Use the server's conversation, Stash, memory, and retention controls for those records; consult the server operator when you do not control that deployment.
 

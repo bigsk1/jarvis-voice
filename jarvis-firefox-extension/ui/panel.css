@@ -93,6 +93,11 @@ input::placeholder, textarea::placeholder { color: var(--text-tertiary); opacity
 .message-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 11px; font-weight: 600; }
 .message-avatar { width: 23px; height: 23px; display: grid; place-items: center; border-radius: 7px; background: var(--bg-card); font-size: 10px; color: var(--text-secondary); }
 .message-avatar img { width: 23px; height: 23px; }
+.message-avatar { flex-shrink: 0; }
+.message[data-role="user"] .message-avatar,
+.message[data-role="user"] .message-avatar img { border-radius: 50%; object-fit: cover; }
+.message-author { min-width: 0; overflow-wrap: anywhere; }
+.message-time { flex-shrink: 0; }
 .message-time { margin-left: auto; color: var(--text-tertiary); font-size: 10px; font-weight: 400; }
 .message-body { font-size: 13px; line-height: 1.75; }
 .message[data-role="user"] .message-body { border: 1px solid #6366f129; background: #6366f10b; border-radius: 3px 12px 12px 12px; padding: 11px 13px; }
@@ -149,7 +154,11 @@ textarea:focus-visible { outline: none; }
 .context-panel .icon-button { width: 25px; height: 25px; padding: 4px; }
 .context-panel strong { display: block; font-size: 10px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .context-panel p { font-size: 11px; color: var(--text-secondary); margin: 2px 0 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-.context-panel .context-hint { display: block; color: var(--accent-tertiary); font-size: 10px; margin-top: 5px; }
+.page-panel { border-left-color: var(--accent-tertiary); }
+.page-panel .eyebrow { margin-bottom: 2px; }
+.page-panel .helper { margin: 4px 0 0; font-size: 9px; }
+.page-panel .text-button { margin-top: 6px; padding: 0; }
+.page-preview-text { margin: 0; max-height: calc(100dvh - 115px); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--bg-primary); border: 1px solid var(--border-primary); border-radius: 8px; padding: 12px; }
 .progress-area { display: flex; align-items: center; gap: 8px; min-height: 43px; padding: 7px 3px; }
 .activity-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-tertiary); animation: pulse 1.8s ease-in-out infinite; flex-shrink: 0; }
 #progress-text { flex: 1; color: var(--text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

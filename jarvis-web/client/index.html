@@ -848,14 +848,31 @@
           <div class="settings-panel" id="settings-profile">
             <div class="profile-card">
               <div class="profile-avatar">
-                <img src="/assets/jarvis-voice.png" alt="Jarvis" class="profile-avatar-img">
+                <img src="/assets/jarvis-voice.png" alt="Your profile image" class="profile-avatar-img" id="profileAvatar">
               </div>
               <div class="profile-info">
-                <div class="profile-name">Administrator</div>
+                <div class="profile-name" id="profileDisplayLabel">Administrator</div>
                 <div class="profile-role">Jarvis Voice Assistant</div>
               </div>
             </div>
             
+            <section class="profile-section profile-appearance" aria-labelledby="profileAppearanceTitle">
+              <h4 class="profile-section-title" id="profileAppearanceTitle">Appearance</h4>
+              <label class="setting-label" for="profileDisplayName">Display name</label>
+              <input class="setting-input" id="profileDisplayName" type="text" maxlength="80" placeholder="Administrator" autocomplete="nickname" disabled>
+              <div class="profile-appearance-actions">
+                <input id="profileAvatarFile" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+                <button type="button" class="btn-secondary" id="uploadProfileAvatar" disabled>Upload image</button>
+                <button type="button" class="btn-secondary" id="removeProfileAvatar" disabled>Use default image</button>
+              </div>
+              <p class="setting-note">Your name and image appear here and on your Firefox companion messages. Images are cropped to a square. PNG, JPEG, or WebP, up to 5 MB.</p>
+              <div class="profile-appearance-actions">
+                <button type="button" class="btn-primary" id="saveProfileAppearance" disabled>Save appearance</button>
+                <button type="button" class="btn-secondary" id="retryProfileAppearance" hidden>Retry</button>
+              </div>
+              <p class="setting-note" id="profileAppearanceStatus" role="status" aria-live="polite"></p>
+            </section>
+
             <div class="profile-section">
               <h4 class="profile-section-title">System Info</h4>
               <div class="profile-stats">
@@ -1316,6 +1333,7 @@
   <script src="/js/chat.js"></script>
   <script src="/js/proactive.js"></script>
   <script src="/js/logs.js"></script>
+  <script src="/js/profile-appearance.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>
