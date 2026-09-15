@@ -2,7 +2,6 @@
 Tool Discovery Service
 Auto-loads tools from skills/*.tool.json AND memory_db (includes MCP tools)
 """
-import json
 import sys
 import threading
 from pathlib import Path
@@ -53,16 +52,16 @@ class ToolDiscoveryService:
         profile_overrides = _tool_profile_overrides()
         _ensure_lib_path()
         from tool_availability import check_tool_availability
+        from tool_manifest_files import iter_tool_manifests
         from tool_profiles import effective_enabled
 
-        # 1. Load local tools from skills/**/*.tool.json (including subdirectories like auto-tools/)
+        # 1. Use the runtime's supported folders and duplicate-name ownership.
+        local_names = set()
         if self.skills_path.exists():
-            for tool_file in self.skills_path.glob('**/*.tool.json'):
+            for tool_file, tool in iter_tool_manifests(self.skills_path):
                 try:
-                    with open(tool_file, 'r') as f:
-                        tool = json.load(f)
-
                     name = tool.get('name', tool_file.stem.replace('.tool', ''))
+                    local_names.add(name)
                     is_blocked = name in blocked_tools
                     base_enabled = tool.get('enabled', True)
                     effective = effective_enabled(name, base_enabled, profile_overrides)
@@ -105,7 +104,7 @@ class ToolDiscoveryService:
             
             for tool_name in all_db_tools:
                 # Only add if not already loaded from local files
-                if tool_name not in self.tools:
+                if tool_name not in local_names:
                     # DB says enabled=1; still respect profile overrides (same as ToolRegistry)
                     if not effective_enabled(tool_name, True, profile_overrides):
                         continue

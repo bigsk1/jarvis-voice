@@ -121,3 +121,6 @@ skills/profiles/*
 !skills/profiles/openai_only.json
 !skills/profiles/examples/
 !skills/profiles/examples/**
+# Personal tools are supplied separately at runtime, never baked into images.
+skills/personal/*
+!skills/personal/README.md

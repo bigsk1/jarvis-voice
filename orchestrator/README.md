@@ -89,7 +89,8 @@ Owns final answer shaping after the LLM/tool loop:
 - QA prompt override application for final-response synthesis
 
 ### `executor.py` (Tool Executor)
-Executes tools/skills from `skills/` and `skills/auto-tools/`:
+Executes tools/skills from `skills/`, `skills/auto-tools/`, and the ignored
+`skills/personal/` folder:
 - Manages timeouts and error handling
 - Handles JSON I/O with tools
 - Supports MCP server tools

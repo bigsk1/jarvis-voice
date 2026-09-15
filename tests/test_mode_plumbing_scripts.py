@@ -376,6 +376,88 @@ exit 0
     assert launch_log.read_text().strip() == "web:local"
 
 
+def test_docker_personal_manifest_changes_resync_on_startup(tmp_path):
+    checkout, env, _ = _docker_checkout(tmp_path)
+    fake_bin = checkout / "fake-bin"
+    fake_bin.mkdir()
+    sync_log = checkout / "sync.log"
+    _write_executable(
+        fake_bin / "python",
+        """#!/usr/bin/env bash
+if [ "$1" = "bin/sync-tools.py" ]; then
+  printf '%s\n' "$2" >> "$DOCKER_SYNC_LOG"
+fi
+touch data/jarvis_memory_local.db
+""",
+    )
+    for key in (
+        "JARVIS_SKIP_INIT", "JARVIS_FORCE_SYNC", "JARVIS_DEFER_TOOL_SYNC",
+        "JARVIS_SYNC_MODES", "JARVIS_TOOL_PROFILE", "JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE",
+    ):
+        env.pop(key, None)
+    env.update({"PATH": f"{fake_bin}{os.pathsep}{env['PATH']}", "DOCKER_SYNC_LOG": str(sync_log)})
+
+    def start(expected_syncs):
+        result = subprocess.run(
+            ["bash", str(checkout / "docker" / "entrypoint.sh"), "web"],
+            cwd=checkout, env=env, text=True, capture_output=True,
+        )
+        assert result.returncode == 0, result.stderr + result.stdout
+        assert sync_log.read_text().splitlines() == ["local"] * expected_syncs
+        return (checkout / "data" / ".docker_tool_profile_synced").read_text()
+
+    empty_marker = start(1)
+    personal = checkout / "skills" / "personal"
+    personal.mkdir(parents=True)
+    (personal / "README.md").write_text("Personal tools go here.\n")
+    assert start(1) == empty_marker
+
+    manifest = personal / "private_check.tool.json"
+    manifest.write_text(json.dumps({"name": "private_check", "description": "Check", "enabled": True}))
+    enabled_marker = start(2)
+    assert enabled_marker != empty_marker
+    assert start(2) == enabled_marker
+
+    manifest.write_text(json.dumps({"name": "private_check", "description": "Check my services", "enabled": True}))
+    description_marker = start(3)
+    assert description_marker != enabled_marker
+
+    manifest.write_text(json.dumps({"name": "private_check", "description": "Check my services", "enabled": False}))
+    disabled_marker = start(4)
+    assert disabled_marker != description_marker
+
+    # Filename changes matter too: the manifest controls the sibling script path.
+    renamed = personal / "renamed.tool.json"
+    manifest.rename(renamed)
+    renamed_marker = start(5)
+    assert renamed_marker != disabled_marker
+
+    # Support files and unsupported nested manifests do not change Tool RAG.
+    (personal / "private_check.py").write_text("print('updated script')\n")
+    (personal / "README.md").write_text("Updated instructions.\n")
+    nested = personal / "nested"
+    nested.mkdir()
+    (nested / "ignored.tool.json").write_text('{"name": "nested_tool"}')
+    assert start(5) == renamed_marker
+
+    # Path.glob also discovers dot-prefixed manifests; fingerprint them equally.
+    hidden = personal / ".hidden.tool.json"
+    hidden.write_text('{"name": "hidden_tool", "enabled": false}')
+    hidden_marker = start(6)
+    assert hidden_marker != renamed_marker
+    hidden.unlink()
+    assert start(7) == renamed_marker
+
+    renamed.unlink()
+    assert start(8) == empty_marker
+    assert start(8) == empty_marker
+
+    # Existing deployments upgrade their old profile-only marker once.
+    (checkout / "data" / ".docker_tool_profile_synced").write_text("v3:default:local:missing")
+    assert start(9) == empty_marker
+    assert start(9) == empty_marker
+
+
 def test_native_launchers_report_tool_sync_failure_without_false_success():
     for script_name in ("jarvis-api", "jarvis-services"):
         script = (ROOT / "bin" / script_name).read_text()

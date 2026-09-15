@@ -1,8 +1,8 @@
 # Skills / Tools
 
-This directory contains 80+ built-in executable tools, plus Tool Builder output
-under `auto-tools/`. Each tool is a Python script paired with a JSON definition
-file.
+This directory contains 80+ built-in executable tools, Tool Builder output under
+`auto-tools/`, and optional private tools under `personal/`. Each tool is a Python
+script paired with a JSON definition file.
 
 ---
 
@@ -16,6 +16,10 @@ skills/
 │   ├── *.py
 │   ├── *.tool.json
 │   └── *.report.json # Build audit reports
+├── personal/         # Private tools and supporting files (gitignored)
+│   ├── README.md     # Tracked setup guide
+│   ├── *.py
+│   └── *.tool.json
 └── profiles/         # Tool profile overlays (tracked baselines + examples/)
 ```
 
@@ -84,7 +88,10 @@ Tools are automatically discovered when they have:
 2. A JSON definition: `toolname.tool.json`
 3. Executable permission: `chmod +x toolname.py`
 
-The orchestrator loads tools from both `skills/` and `skills/auto-tools/`.
+The orchestrator loads tools from `skills/`, `skills/auto-tools/`, and
+`skills/personal/`. Personal tools use the same manifest, execution, and Tool RAG
+sync paths. See [personal tool setup](personal/README.md) for adding a private tool
+and refreshing discovery.
 
 `ToolRegistry.list_tools()` returns the names that survived manifest enablement,
 the active profile, mode-specific availability, and credential/config checks.

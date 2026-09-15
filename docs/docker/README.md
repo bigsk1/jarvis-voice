@@ -118,7 +118,7 @@ docker compose up -d --force-recreate
 
 ### Pulling updates from Git
 
-The image contains the app code (`COPY . /app` in `Dockerfile`). Bind mounts are for live config and runtime state: `config/*.env`, `data/`, `logs/`, `audio/`, Web UI settings, and uploads.
+The image contains the app code (`COPY . /app` in `Dockerfile`). Bind mounts provide live config, personal tools, and runtime state: `config/`, `skills/personal/`, `data/`, `logs/`, `audio/`, Web UI settings, and uploads.
 
 After changing only bind-mounted config or runtime files, recreate containers without rebuilding:
 
@@ -271,6 +271,30 @@ This is a layered system:
 3. Web UI `tools.blocked` removes tools only from Web UI requests.
 
 The `docker` profile remains the safer choice when all requests execute inside containers. The `default` plus Web UI blocklist approach is useful for hybrid operation, but direct API/tool execution outside Web UI does not receive that Web UI-only blocklist.
+
+### Personal tools
+
+Compose automatically mounts `./skills/personal` at `/app/skills/personal` in
+every Jarvis service, including when using the MCP override. No extra mount or
+override file is needed. A fresh clone contains only the README and adds no
+personal tools. Private files remain excluded from Git and the image build.
+
+Put your scripts and `.tool.json` manifests directly in that folder. Docker
+startup detects added, changed, or removed personal manifests and syncs Tool RAG
+for the configured startup modes (`JARVIS_SYNC_MODES`, or `JARVIS_MODE` by
+default). After editing personal tools, restart the stack so sync runs and the
+running processes reload their registries:
+
+```bash
+docker compose restart
+```
+
+When first upgrading to this feature, rebuild and recreate the containers as
+described above so they receive the new code and mount. Later personal-tool
+edits do not require rebuilding unless you add dependencies to the image.
+Normal profile and availability rules still apply; tools need their dependencies
+and configuration inside the container. See the
+[personal tools guide](../../skills/personal/README.md) for the manifest format.
 
 ### Optional Docker MCP tools
 

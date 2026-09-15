@@ -26,17 +26,39 @@ from dataclasses import dataclass, asdict
 sys.path.insert(0, os.path.dirname(__file__))
 from config_loader import load_config, get_config_value
 from llm_provider import create_configured_provider
+from tool_manifest_files import iter_tool_manifest_files
 
 # Directories
 SKILLS_DIR = Path(__file__).parent.parent / "skills"
 AUTO_TOOLS_DIR = SKILLS_DIR / "auto-tools"
 PENDING_DIR = SKILLS_DIR / "pending"
 LOGS_DIR = Path(__file__).parent.parent / "logs" / "tool-builder"
+_PERSONAL_TOOL_RESERVATION = "Personal tool; name reserved"
 
 # Ensure directories exist
 AUTO_TOOLS_DIR.mkdir(exist_ok=True)
 PENDING_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _local_tool_manifests():
+    """Read every supported manifest, including disabled and duplicate names."""
+    for path in iter_tool_manifest_files(SKILLS_DIR):
+        try:
+            with path.open() as manifest_file:
+                manifest = json.load(manifest_file)
+        except (OSError, ValueError):
+            continue
+        if isinstance(manifest, dict):
+            yield path, manifest
+
+
+def _existing_tool_manifest(tool_name: str) -> Path | None:
+    for path, manifest in _local_tool_manifests():
+        if manifest.get("name") == tool_name:
+            return path
+    return None
+
 
 # Packages already available (no pip install needed)
 AVAILABLE_PACKAGES = {
@@ -675,28 +697,21 @@ class ToolBuilder:
         return mcp_tools
     
     def get_existing_tools(self) -> list[str]:
-        """Get ALL existing tools (local + MCP + auto-tools) for duplicate checking."""
+        """List installed tool names for the builder's duplicate-avoidance prompt."""
         existing_tools = []
-        try:
-            # Check skills/ directory
-            for f in SKILLS_DIR.glob("*.tool.json"):
-                with open(f) as file:
-                    data = json.load(file)
-                    if data.get('enabled', True):
-                        name = data.get('name', f.stem)
-                        desc = data.get('description', '')[:150]
-                        existing_tools.append(f"- {name}: {desc}")
-            
-            # Check skills/auto-tools/ directory
-            for f in AUTO_TOOLS_DIR.glob("*.tool.json"):
-                with open(f) as file:
-                    data = json.load(file)
-                    if data.get('enabled', True):
-                        name = data.get('name', f.stem)
-                        desc = data.get('description', '')[:150]
-                        existing_tools.append(f"- {name}: {desc}")
-        except Exception:
-            pass
+        for path, manifest in _local_tool_manifests():
+            name = manifest.get("name")
+            if not isinstance(name, str) or not name:
+                continue
+            if path.parent == SKILLS_DIR / "personal":
+                # Names suffice to reserve them; private descriptions need not
+                # become extra builder context or generated report content.
+                desc = _PERSONAL_TOOL_RESERVATION
+            else:
+                desc = str(manifest.get("description", ""))[:150]
+            if not manifest.get("enabled", True):
+                desc += " (disabled; name reserved)"
+            existing_tools.append(f"- {name}: {desc}")
         return existing_tools
     
     def _needs_research(self, gap_description: str) -> bool:
@@ -1270,6 +1285,15 @@ class ToolBuilder:
         tool_name = spec.get('tool_name', '').strip()
         if not tool_name or not re.match(r'^[a-z][a-z0-9_]*$', tool_name):
             raise ValueError(f"Invalid tool name: {tool_name}")
+
+        # The prompt is advisory and may be stale after generation. Reserve
+        # disabled names too, and reject collisions before writing any files.
+        if _existing_tool_manifest(tool_name) is not None:
+            raise ValueError(f"Tool name already exists: {tool_name}")
+        for directory in (AUTO_TOOLS_DIR, PENDING_DIR):
+            for suffix in (".py", ".tool.json", ".report.json"):
+                if (directory / f"{tool_name}{suffix}").exists():
+                    raise ValueError(f"Tool files already exist: {tool_name}")
         
         # Check for new packages needed
         packages_needed = spec.get('packages_needed', [])
@@ -1386,6 +1410,21 @@ class ToolBuilder:
                 json_path.unlink(missing_ok=True)
                 raise ValueError(f"Verification failed: {verification_output}")
         
+        # Reports can be tracked alongside generated tools. Do not copy the
+        # builder's personal-name reservations into those public artifacts.
+        personal_prefixes = tuple(
+            f"- {manifest['name']}:"
+            for path, manifest in _local_tool_manifests()
+            if path.parent == SKILLS_DIR / "personal" and manifest.get("name")
+        )
+        report_existing_tools = [
+            entry for entry in existing_tools
+            if not entry.startswith(personal_prefixes)
+            # The manifest may have been removed during generation; its
+            # original prompt entry still retains the private classification.
+            and not entry.partition(": ")[2].startswith(_PERSONAL_TOOL_RESERVATION)
+        ]
+
         # Create report card
         report_card = ToolReportCard(
             tool_name=tool_name,
@@ -1403,7 +1442,7 @@ class ToolBuilder:
             test_output=test_output,
             packages_required=packages_needed,
             packages_new=new_packages,
-            mcp_alternatives_checked=existing_tools,
+            mcp_alternatives_checked=report_existing_tools,
             mcp_overlap_reason="No existing tool found for this specific use case",
             builder_provider=self.provider_type,
             builder_model=self.model,
@@ -1743,6 +1782,13 @@ def approve_pending_tool(tool_name: str, install_packages: bool = False) -> tupl
                 manifest = json.load(f)
         except (OSError, json.JSONDecodeError) as e:
             return False, f"Cannot read pending manifest: {e}"
+
+    # A personal or shared tool may have been added while this build awaited
+    # review. Check again before verification, package installs, or promotion.
+    if _existing_tool_manifest(manifest.get("name") or tool_name) is not None:
+        return False, f"Tool name already exists: {manifest.get('name') or tool_name}"
+    if any((AUTO_TOOLS_DIR / src.name).exists() for src in (py_path, json_path, report_path)):
+        return False, f"Tool files already exist: {tool_name}"
 
     # Availability gate in the ORIGINAL build mode's config scope: the
     # required key must have been added before approval can proceed.

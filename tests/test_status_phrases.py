@@ -2,6 +2,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lib"))
@@ -15,12 +17,15 @@ PHRASE_CONFIGS = (
 )
 
 
-def _enabled_manifest_tools() -> set[str]:
+def _enabled_public_manifest_tools() -> set[str]:
     names: set[str] = set()
-    for path in (ROOT / "skills").rglob("*.tool.json"):
-        manifest = json.loads(path.read_text(encoding="utf-8"))
-        if manifest.get("enabled") is not False:
-            names.add(manifest["name"])
+    # Private tool names must not require entries in the public phrase configs.
+    skills_dir = ROOT / "skills"
+    for manifest_dir in (skills_dir, skills_dir / "auto-tools"):
+        for path in manifest_dir.glob("*.tool.json"):
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            if manifest.get("enabled") is not False:
+                names.add(manifest["name"])
     return names
 
 
@@ -34,8 +39,8 @@ def test_tool_alias_uses_family_phrase_and_direct_override_still_wins():
     assert selector.get_phrase("task_start", "document_ocr") in ocr_start
 
 
-def test_normal_and_unhinged_configs_cover_every_enabled_local_tool():
-    enabled_tools = _enabled_manifest_tools()
+def test_normal_and_unhinged_configs_cover_every_enabled_public_tool():
+    enabled_tools = _enabled_public_manifest_tools()
     alias_sets: list[set[str]] = []
 
     for config_path in PHRASE_CONFIGS:
@@ -63,6 +68,18 @@ def test_normal_and_unhinged_configs_cover_every_enabled_local_tool():
         )
 
     assert alias_sets[0] == alias_sets[1]
+
+
+@pytest.mark.parametrize("config_path,mode", list(zip(PHRASE_CONFIGS, ("normal", "unhinged"))))
+@pytest.mark.parametrize("category", ("task_start", "progress", "error_retry"))
+def test_unknown_personal_tool_uses_generic_status_phrases(config_path, mode, category):
+    selector = StatusPhrases(config_path=str(config_path), mode=mode)
+    tool_name = "private_tool_without_public_phrases"
+    assert tool_name not in selector.tool_specific
+    assert tool_name not in selector.tool_aliases
+
+    selector.update_settings(humor_enabled=False, encouragement=False)
+    assert selector.get_phrase(category, tool_name) in selector.categories[category]["standard"]
 
 
 def test_aliases_are_reported_as_tool_overrides():

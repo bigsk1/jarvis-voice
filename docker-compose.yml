@@ -36,6 +36,7 @@ x-jarvis-common: &jarvis-common
     JARVIS_DOCKER_TEXT_SUMMARIZER_LLM_PROVIDER: "${JARVIS_DOCKER_TEXT_SUMMARIZER_LLM_PROVIDER:-}"
   volumes: &jarvis-volumes
     - ./config:/app/config:ro
+    - ./skills/personal:/app/skills/personal
     - ./data:/app/data
     - ./logs:/app/logs
     - ./audio:/app/audio
@@ -72,6 +73,7 @@ services:
       - "${JARVIS_WEB_PORT:-5001}:5001"
     volumes:
       - ./config:/app/config:ro
+      - ./skills/personal:/app/skills/personal
       - type: bind
         source: ./jarvis-web/config/web_config.json
         target: /app/jarvis-web/config/web_config.json

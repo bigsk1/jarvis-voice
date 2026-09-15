@@ -65,9 +65,23 @@ run_init() {
     if [ -f "$profile_path" ]; then
       profile_hash="$(sha256sum "$profile_path" | cut -d' ' -f1)"
     fi
+    # Personal tools are bind-mounted, so their definitions can change without
+    # an image rebuild. Include names and contents, even for disabled tools, so
+    # additions, edits, and removals trigger the normal startup sync.
+    local personal_hash
+    personal_hash="$(
+      (
+        export LC_ALL=C
+        shopt -s nullglob dotglob
+        for manifest in skills/personal/*.tool.json; do
+          [ -f "$manifest" ] || continue
+          sha256sum -- "$manifest" || exit "$?"
+        done
+      ) | sha256sum | cut -d' ' -f1
+    )" || return "$?"
     local marker="data/.docker_tool_profile_synced"
     # Bump when marker semantics change so older partial-sync markers are retried.
-    local marker_value="v3:${profile}:${sync_modes}:${profile_hash}"
+    local marker_value="v4:${profile}:${sync_modes}:${profile_hash}:${personal_hash}"
     local needs_sync=0
     local can_sync_profile=1
 

@@ -513,11 +513,12 @@ jarvis-voice/
 │   ├── workflow_loader.py
 │   ├── workflow_tool_runtime.py # Autonomous workflow search/describe/run
 │   └── pipeline_executor.py
-├── skills/                   # Tools: *.py + *.tool.json + auto-tools/
+├── skills/                   # Tools: *.py + *.tool.json
 │   ├── profiles/             # Tool profile overlays (JARVIS_TOOL_PROFILE)
 │   │   ├── default.json
 │   │   └── examples/         # Tracked templates (copy to profiles/<name>.json)
 │   ├── auto-tools/           # Tool-builder outputs (docker_control, text_summarizer, …)
+│   ├── personal/             # Private scripts/manifests (only README tracked)
 │   ├── tool_search.py        # Summary-first discovery
 │   ├── workflow.py           # Compact deterministic-workflow meta-tool
 │   ├── canvas.py / stash.py / memory tools / generate_* / crawl_url / serpapi_* …

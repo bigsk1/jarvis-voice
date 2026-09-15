@@ -74,11 +74,12 @@ def test_default_tool_blocklist_keeps_unconfigured_services_hidden() -> None:
     assert "supa_crawl_knowledge" in blocked.group(1).split(",")
 
 
-def test_manifest_environment_requirements_are_documented() -> None:
-    """Every credential-aware tool requirement should have a visible example."""
-
+def _public_manifest_environment_requirements(skills_dir: Path) -> set[str]:
+    """Private tools must not require entries in the tracked ENV template."""
     required_names: set[str] = set()
-    for manifest_path in (ROOT / "skills").glob("**/*.tool.json"):
+    manifests = list(skills_dir.glob("*.tool.json"))
+    manifests.extend((skills_dir / "auto-tools").glob("*.tool.json"))
+    for manifest_path in manifests:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         availability = manifest.get("availability") or {}
 
@@ -93,6 +94,12 @@ def test_manifest_environment_requirements_are_documented() -> None:
             for key in ("all_of_env", "any_of_env"):
                 required_names.update(requirements.get(key) or ())
 
+    return required_names
+
+
+def test_manifest_environment_requirements_are_documented() -> None:
+    """Every public credential-aware tool requirement has a visible example."""
+    required_names = _public_manifest_environment_requirements(ROOT / "skills")
     text = CLOUD_TEMPLATE.read_text(encoding="utf-8")
     missing = sorted(required_names - _setting_names(text))
 
@@ -100,3 +107,23 @@ def test_manifest_environment_requirements_are_documented() -> None:
         "Tool manifest environment requirements are missing from "
         f"config/cloud.env.example: {missing}"
     )
+
+
+def test_public_environment_coverage_excludes_personal_tools(tmp_path: Path) -> None:
+    skills_dir = tmp_path / "skills"
+    for directory, name, env_name in (
+        (skills_dir, "shared_fixture", "SHARED_FIXTURE_KEY"),
+        (skills_dir / "auto-tools", "generated_fixture", "GENERATED_FIXTURE_KEY"),
+        (skills_dir / "personal", "private_fixture", "PRIVATE_FIXTURE_KEY"),
+        (skills_dir / "personal" / "nested", "nested_fixture", "PRIVATE_NESTED_KEY"),
+    ):
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / f"{name}.tool.json").write_text(json.dumps({
+            "name": name,
+            "enabled": True,
+            "availability": {"all_of_env": [env_name]},
+        }), encoding="utf-8")
+
+    assert _public_manifest_environment_requirements(skills_dir) == {
+        "SHARED_FIXTURE_KEY", "GENERATED_FIXTURE_KEY",
+    }

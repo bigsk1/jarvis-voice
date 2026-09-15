@@ -372,9 +372,14 @@ override during a recreate replaces `jarvis-web` with the base image and removes
 its Docker socket configuration.
 
 Bind mounts include the read-only `config/` directory,
-`jarvis-web/config/web_config.json`, `data/`, `logs/`, `audio/`, and uploads.
+`jarvis-web/config/web_config.json`, `skills/personal/`, `data/`, `logs/`,
+`audio/`, and uploads.
 Root `.env` is read by Compose for interpolation; it is not mounted into a
 container.
+
+Personal tools are mounted automatically. An empty folder adds no tools;
+changes to personal manifests trigger Tool RAG sync on the next container start.
+See [Personal tools](README.md#personal-tools) for restart and upgrade details.
 
 ### Config change cheat sheet
 

@@ -12,6 +12,7 @@ from typing import Any
 from http_client import normalize_proxy_policy
 from hybrid_retrieval import adaptive_rank_cutoff, query_segments
 from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
+from tool_manifest_files import iter_tool_manifests
 
 _logger = logging.getLogger(__name__)
 _MANDATORY_GHOST_TOOLS = ("tool_search", "workflow")
@@ -487,20 +488,8 @@ class ToolRegistry:
         # Check if OpenCode is enabled (legacy config support)
         opencode_enabled = get_config_value('OPENCODE_ENABLED', 'false').lower() == 'true'
 
-        # Sort tool files alphabetically by name for consistent ordering
-        # Include root skills/ and subdirectories like auto-tools/
-        tool_files = sorted(self.skills_dir.glob("*.tool.json"))
-
-        # Also include auto-tools subdirectory (auto-generated tools)
-        auto_tools_dir = self.skills_dir / "auto-tools"
-        if auto_tools_dir.exists():
-            tool_files.extend(sorted(auto_tools_dir.glob("*.tool.json")))
-
-        for tool_file in tool_files:
+        for tool_file, tool_config in iter_tool_manifests(self.skills_dir):
             try:
-                with open(tool_file, 'r') as f:
-                    tool_config = json.load(f)
-
                 name = tool_config.get('name', tool_file.stem)
                 base_enabled = tool_config.get('enabled', True)
                 effective = effective_enabled(name, base_enabled, self._profile_overrides)

@@ -20,10 +20,10 @@ Usage (run with -h / --help on this script or on a subcommand for full flags):
 
   ./bin/manage-tools.py enable <tool_name>
   ./bin/manage-tools.py disable <tool_name>
-      Set "enabled" in the tool file (resolves name in skills/ and skills/auto-tools/).
+      Set "enabled" in the tool file (skills/, auto-tools/, or personal/).
 
   ./bin/manage-tools.py enable-all
-      Set enabled true on every tool file (root + auto-tools).
+      Set enabled true on every tool file (root + auto-tools + personal).
 
   ./bin/manage-tools.py init
       Add missing "enabled": true to tool JSON (migration helper).
@@ -84,11 +84,12 @@ def _ensure_lib_path():
 
 
 def iter_tool_files(skills_dir: Path):
-    """All *.tool.json under skills/ and skills/auto-tools/."""
-    yield from sorted(skills_dir.glob("*.tool.json"))
-    auto = skills_dir / "auto-tools"
-    if auto.is_dir():
-        yield from sorted(auto.glob("*.tool.json"))
+    """Use the same uniquely named manifests as runtime and Web discovery."""
+    _ensure_lib_path()
+    from tool_manifest_files import iter_tool_manifests
+
+    for path, _manifest in iter_tool_manifests(skills_dir):
+        yield path
 
 
 def list_tools(verbose: bool = False) -> None:
@@ -151,7 +152,7 @@ def list_tools(verbose: bool = False) -> None:
 
 
 def resolve_tool_file(skills_dir: Path, tool_name: str) -> Path | None:
-    """Find skills/**/<name>.tool.json by JSON ``name`` field (includes auto-tools/)."""
+    """Find a shared, generated, or personal manifest by its JSON ``name``."""
     for tool_file in iter_tool_files(skills_dir):
         try:
             with open(tool_file, 'r') as f:
@@ -416,4 +417,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

@@ -3,8 +3,8 @@
 Credential-aware tool availability evaluator.
 
 Tools declare optional hard configuration requirements in their manifest
-(skills/*.tool.json or skills/auto-tools/*.tool.json) under an "availability"
-key. This module evaluates those requirements against the active config scope
+(skills/*.tool.json, skills/auto-tools/*.tool.json, or skills/personal/*.tool.json)
+under an "availability" key. This module evaluates those requirements against the active config scope
 (cloud.env / local.env via config_loader) WITHOUT ever reading or exposing
 secret values — only presence/non-blankness is checked, and results contain
 requirement names or safe config-file paths only.

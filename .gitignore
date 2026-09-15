@@ -76,6 +76,9 @@ skills/profiles/*
 !skills/profiles/openai_only.json
 !skills/profiles/examples/
 !skills/profiles/examples/**
+# Personal tools and their supporting files stay local; keep the usage guide.
+skills/personal/*
+!skills/personal/README.md
 
 # ===== Backup & Temp Files =====
 *.bak
