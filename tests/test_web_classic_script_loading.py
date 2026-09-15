@@ -43,16 +43,18 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const requested = [];
+const commandEvents = [];
 const storage = {
   getItem: () => null, setItem() {}, removeItem() {}
 };
 const sandbox = {
   URL,
+  Event,
   console: {log() {}, warn() {}},
   localStorage: storage,
   window: {sessionStorage: storage, addEventListener() {}},
-  document: {
-    addEventListener() {}, querySelectorAll: () => [],
+  document: Object.assign(new EventTarget(), {
+    querySelectorAll: () => [],
     createElement: () => ({
       textContent: '',
       get innerHTML() {
@@ -60,7 +62,7 @@ const sandbox = {
           .replaceAll('<', '&lt;').replaceAll('>', '&gt;');
       }
     })
-  },
+  }),
   setTimeout: () => 0,
   fetch: async url => {
     requested.push(url);
@@ -71,6 +73,9 @@ const sandbox = {
         : {workflows: {research: {triggers: ['/research']}}}};
   }
 };
+sandbox.document.addEventListener('jarvis:commands-updated', event => {
+  commandEvents.push(event.type);
+});
 vm.createContext(sandbox);
 for (const source of SOURCES) {
   const filename = source === '/ui-navigation.js' ? NAVIGATION_SOURCE : CLIENT + source;
@@ -83,6 +88,7 @@ for (const source of SOURCES) {
   await new Promise(resolve => setImmediate(resolve));
   const commands = sandbox.window.commandSystem;
   assert.ok(commands?.loaded, 'Command registry must be ready before use');
+  assert.deepEqual(commandEvents, ['jarvis:commands-updated']);
   assert.equal(requested.length, 3, 'Only one command singleton should fetch registries');
   assert.ok(requested.every(url => url.includes('mode=cloud')));
   assert.equal(commands.parseInput('/research coffee').workflow, 'research');

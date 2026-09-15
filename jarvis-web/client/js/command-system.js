@@ -36,32 +36,42 @@ class CommandSystem {
         fetch(`/api/tools?summary=true&include_blocked=false&${modeQuery}`)
       ]);
 
-      // A rapid mode switch can finish requests out of order. Only the newest
-      // selected-mode snapshot may update slash commands and tool hints.
+      if (!promptsRes.ok || !workflowsRes.ok || !toolsRes.ok) {
+        throw new Error('A command registry request failed');
+      }
+
+      const [promptsData, workflowsData, toolsData] = await Promise.all([
+        promptsRes.json(), workflowsRes.json(), toolsRes.json()
+      ]);
+
+      // Response headers can arrive before an older JSON body finishes. Commit
+      // only a complete snapshot that still belongs to the newest request.
       if (requestId !== this._registryRequestId) return;
 
-      if (promptsRes.ok) {
-        const data = await promptsRes.json();
-        this.prompts = data.prompts || {};
-      }
-
-      if (workflowsRes.ok) {
-        const data = await workflowsRes.json();
-        this.workflows = data.workflows || {};
-      }
-
-      if (toolsRes.ok) {
-        const data = await toolsRes.json();
-        this._setToolsFromList(data.tools || []);
-      }
+      this.prompts = promptsData.prompts || {};
+      this.workflows = workflowsData.workflows || {};
+      this._setToolsFromList(toolsData.tools || []);
 
       this.loaded = true;
+      this._notifyRegistryUpdated();
       console.log('[Commands] Loaded:', Object.keys(this.prompts).length, 'prompts,',
                   Object.keys(this.workflows || {}).length, 'workflows,',
                   Object.keys(this.tools || {}).length, 'tools');
     } catch (err) {
+      if (requestId !== this._registryRequestId) return;
+      // A partial refresh cannot prove which workflows remain available. Drop
+      // the previous snapshot rather than advertise a newly disabled command.
+      this.prompts = {};
+      this.workflows = {};
+      this.tools = {};
+      this.loaded = false;
+      this._notifyRegistryUpdated();
       console.warn('[Commands] Failed to load registry:', err);
     }
+  }
+
+  _notifyRegistryUpdated() {
+    document.dispatchEvent(new Event('jarvis:commands-updated'));
   }
 
   _setToolsFromList(tools) {
@@ -73,31 +83,7 @@ class CommandSystem {
   }
 
   async refreshTools(mode = null) {
-    const selectedMode = this._resolveMode(mode);
-    const modeQuery = `mode=${encodeURIComponent(selectedMode)}`;
-    const requestId = ++this._registryRequestId;
-    try {
-      const [toolsRes, promptsRes, workflowsRes] = await Promise.all([
-        fetch(`/api/tools?summary=true&include_blocked=false&${modeQuery}`),
-        fetch(`/api/prompts?${modeQuery}`),
-        fetch(`/api/workflows?${modeQuery}`)
-      ]);
-      if (requestId !== this._registryRequestId) return;
-      if (toolsRes.ok) {
-        const data = await toolsRes.json();
-        this._setToolsFromList(data.tools || []);
-      }
-      if (promptsRes.ok) {
-        const data = await promptsRes.json();
-        this.prompts = data.prompts || {};
-      }
-      if (workflowsRes.ok) {
-        const data = await workflowsRes.json();
-        this.workflows = data.workflows || {};
-      }
-    } catch (err) {
-      console.warn('[Commands] Failed to refresh tools/prompts/workflows:', err);
-    }
+    return this._loadRegistry(mode);
   }
 
   _toolMatchesQuery(name, query) {

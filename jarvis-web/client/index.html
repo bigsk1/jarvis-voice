@@ -255,12 +255,22 @@
           <div class="ambient-tool-suggestions" id="ambientToolSuggestions" style="display: none;"></div>
           
           <div class="chat-input-wrapper">
-            <textarea 
-              class="chat-input" 
-              id="chatInput" 
-              placeholder="# tool hints / workflows and @ prompts"
-              rows="1"
-            ></textarea>
+            <div class="chat-input-field">
+              <textarea
+                class="chat-input"
+                id="chatInput"
+                placeholder=""
+                aria-label="Message to Jarvis"
+                rows="1"
+              ></textarea>
+              <div class="composer-hint" id="composerHint" aria-hidden="true">
+                <span class="composer-hint-lead">Use</span>
+                <div class="composer-hint-viewport">
+                  <div class="composer-hint-track" id="composerHintTrack"></div>
+                </div>
+                <div class="composer-hint-dots" id="composerHintDots"></div>
+              </div>
+            </div>
             <div class="input-actions">
               <!-- Stop button (far left, red) - appears during processing -->
               <button class="icon-btn stop-btn" id="stopBtn" title="Stop processing" style="display: none;">

@@ -231,6 +231,7 @@ const source = fs.readFileSync('jarvis-web/client/js/command-system.js', 'utf8')
   .split('// Global command system instance')[0];
 global.window = {jarvisSocket: {mode: 'cloud'}};
 global.Utils = {storage: {get: () => 'cloud'}};
+global.document = new EventTarget();
 const pendingCloud = [];
 const seen = [];
 const responseFor = (url, mode) => ({

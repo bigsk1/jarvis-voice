@@ -112,8 +112,15 @@ class ChatUI {
       contextWindow: null,
     };
     this.systemConfig = {};
+    this.composerHintEl = document.getElementById('composerHint');
+    this.composerHintTrack = document.getElementById('composerHintTrack');
+    this.composerHintDots = document.getElementById('composerHintDots');
+    this._composerHintIndex = 0;
+    this._composerHintPaused = false;
+    this._composerHintTimer = null;
     
     this._setupEventListeners();
+    this._setupComposerHints();
     this._setupSocketListeners();
     this._setupVoiceRecording();
     this._setupImageUpload();
@@ -124,6 +131,158 @@ class ChatUI {
     this._renderToolHintChips();
     this._hideAmbientToolSuggestions();
     this.refreshContextWindow();  // Get actual context window for current model
+  }
+
+  _setupComposerHints() {
+    this.inputField.placeholder = '';
+
+    if (!this.composerHintEl || !this.composerHintTrack || !this.composerHintDots) {
+      this.inputField.placeholder = 'Type / to use workflows';
+      return;
+    }
+
+    // The overlay passes pointer events through to the textarea. Observe the
+    // containing field so hovering still pauses rotation, including over keys.
+    const hintHoverTarget = this.composerHintEl.parentElement;
+    hintHoverTarget.addEventListener('mouseenter', () => {
+      this._composerHintPaused = true;
+    });
+    hintHoverTarget.addEventListener('mouseleave', () => {
+      this._composerHintPaused = false;
+    });
+    this.composerHintTrack.addEventListener('transitionend', (event) => {
+      if (event.propertyName !== 'transform') return;
+      const count = this._composerHints?.length || 0;
+      if (!count || this._composerHintIndex < count) return;
+      this._composerHintIndex = 0;
+      this._applyComposerHintIndex({ jump: true });
+    });
+    document.addEventListener('jarvis:commands-updated', () => {
+      this._renderComposerHintItems();
+    });
+
+    this._renderComposerHintItems();
+    this._syncComposerHint();
+
+    window.clearInterval(this._composerHintTimer);
+    this._composerHintTimer = window.setInterval(() => {
+      this._advanceComposerHint();
+    }, 5200);
+  }
+
+  _composerHintDefinitions() {
+    const hints = [
+      { key: '/', label: 'for workflows', title: 'Insert / and browse workflows' },
+      { key: '#', label: 'for tool hints', title: 'Insert # and browse tools' },
+      { key: '@', label: 'for saved prompts', title: 'Insert @ and browse prompts' },
+    ];
+    // * is a bookmark_search workflow trigger. Hide it unless that workflow
+    // is actually offered (tool enabled, not blocked, available in this mode).
+    if (window.commandSystem?.getSuggestions?.('*')?.length) {
+      hints.push({ key: '*', label: 'for bookmarks', title: 'Insert * and search bookmarks' });
+    }
+    return hints;
+  }
+
+  _renderComposerHintItems() {
+    if (!this.composerHintTrack || !this.composerHintDots) return;
+
+    const hints = this._composerHintDefinitions();
+    const prevKey = this._composerHints?.[this._composerHintIndex % Math.max(this._composerHints.length, 1)]?.key;
+    this._composerHints = hints;
+    if (!hints.length) return;
+
+    const items = [...hints, hints[0]];
+    this.composerHintTrack.replaceChildren(...items.map((hint) => {
+      const item = document.createElement('div');
+      item.className = 'composer-hint-item';
+
+      const key = document.createElement('button');
+      key.type = 'button';
+      key.className = 'composer-hint-key';
+      key.dataset.prefix = hint.key;
+      key.title = hint.title;
+      key.tabIndex = -1;
+      key.setAttribute('aria-label', hint.title);
+      key.textContent = hint.key;
+      key.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this._insertComposerHint(hint.key);
+      });
+
+      const label = document.createElement('span');
+      label.className = 'composer-hint-label';
+      label.textContent = hint.label;
+
+      item.append(key, label);
+      return item;
+    }));
+
+    this.composerHintDots.replaceChildren(...hints.map(() => {
+      const dot = document.createElement('span');
+      dot.className = 'composer-hint-dot';
+      return dot;
+    }));
+
+    const kept = hints.findIndex(hint => hint.key === prevKey);
+    this._composerHintIndex = kept >= 0 ? kept : 0;
+    this._applyComposerHintIndex({ jump: true });
+  }
+
+  _composerHintIsIdle() {
+    return Boolean(this.inputField)
+      && !this.inputField.value
+      && !this.inputField.disabled
+      && !this.inputField.readOnly
+      && !this._voiceSession
+      && !this.isProcessing
+      && !this._conversationLoadPending;
+  }
+
+  _syncComposerHint() {
+    if (!this.composerHintEl) return;
+    const idle = this._composerHintIsIdle();
+    this.composerHintEl.classList.toggle('is-hidden', !idle);
+    this.composerHintEl.setAttribute('aria-hidden', String(!idle));
+  }
+
+  _applyComposerHintIndex({ jump = false } = {}) {
+    if (!this.composerHintTrack || !this.composerHintDots) return;
+    const count = this._composerHints?.length || 0;
+    this.composerHintTrack.classList.toggle('is-jumping', jump);
+    this.composerHintTrack.style.setProperty('--hint-index', String(this._composerHintIndex));
+    if (jump) {
+      void this.composerHintTrack.offsetHeight;
+      this.composerHintTrack.classList.remove('is-jumping');
+    }
+    const active = count ? this._composerHintIndex % count : 0;
+    this.composerHintDots.querySelectorAll('.composer-hint-dot').forEach((dot, index) => {
+      dot.classList.toggle('is-active', index === active);
+    });
+  }
+
+  _advanceComposerHint() {
+    if (document.hidden || this._composerHintPaused || !this._composerHintIsIdle()) {
+      this._syncComposerHint();
+      return;
+    }
+    const count = this._composerHints?.length || 0;
+    if (!count) return;
+    this._composerHintIndex += 1;
+    this._applyComposerHintIndex();
+    this._syncComposerHint();
+  }
+
+  _insertComposerHint(prefix) {
+    if (!this._composerHintIsIdle() || !prefix) return;
+    this.inputField.value = prefix;
+    this.inputField.focus();
+    this.inputField.setSelectionRange(prefix.length, prefix.length);
+    Utils.autoResize(this.inputField);
+    this._checkAutocomplete();
+    this._updateAmbientToolSuggestions();
+    this._syncComposerHint();
   }
   
   /**
@@ -325,6 +484,7 @@ class ChatUI {
       Utils.autoResize(this.inputField);
       this._checkAutocomplete();
       this._updateAmbientToolSuggestions();
+      this._syncComposerHint();
     });
   }
   
@@ -858,6 +1018,7 @@ class ChatUI {
       this.inputField.setSelectionRange(cursor, cursor);
       Utils.autoResize(this.inputField);
       this._hideAutocomplete();
+      this._syncComposerHint();
       return;
     }
 
@@ -874,6 +1035,7 @@ class ChatUI {
       Utils.autoResize(this.inputField);
       this._hideAutocomplete();
       this._updateAmbientToolSuggestions();
+      this._syncComposerHint();
       return;
     }
     
@@ -885,6 +1047,7 @@ class ChatUI {
     
     this.inputField.focus();
     this._hideAutocomplete();
+    this._syncComposerHint();
   }
 
   /**
@@ -6346,6 +6509,7 @@ class ChatUI {
     this.sendBtn.classList.toggle('cancel-dictation', dictating);
     this.sendBtn.title = dictating ? 'Cancel dictation (Esc)' : 'Send Message';
     this.sendBtn.setAttribute('aria-label', dictating ? 'Cancel dictation' : 'Send Message');
+    this._syncComposerHint();
   }
   
   /**
