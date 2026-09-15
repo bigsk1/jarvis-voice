@@ -10,6 +10,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import re
+import socket
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -157,7 +158,14 @@ def classify_target(value: str) -> tuple[str, str, IpAddress | None]:
     try:
         address = ipaddress.ip_address(raw)
     except ValueError:
-        return _normalize_domain(raw), "domain", None
+        try:
+            # Recognize numeric IPv4 spellings before considering domain
+            # lookup. inet_aton performs no DNS or network request.
+            address = ipaddress.IPv4Address(socket.inet_aton(raw.rstrip(".")))
+        except OSError:
+            return _normalize_domain(raw), "domain", None
+    # Classify mapped IPv4 by its real destination, including shared CGNAT space.
+    address = getattr(address, "ipv4_mapped", None) or address
     return str(address), "ip", address
 
 

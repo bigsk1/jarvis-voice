@@ -74,6 +74,7 @@ ALLOWED_MIME_TYPES = [
 BLOCKED_IP_NETWORKS = [
     ipaddress.ip_network('127.0.0.0/8'),       # Loopback
     ipaddress.ip_network('10.0.0.0/8'),        # Private Class A
+    ipaddress.ip_network('100.64.0.0/10'),     # Shared/CGNAT space, including Tailscale
     ipaddress.ip_network('172.16.0.0/12'),     # Private Class B
     ipaddress.ip_network('192.168.0.0/16'),    # Private Class C
     ipaddress.ip_network('169.254.0.0/16'),    # Link-local
@@ -84,6 +85,7 @@ BLOCKED_IP_NETWORKS = [
 
 # IPv6 blocked ranges
 BLOCKED_IP6_NETWORKS = [
+    ipaddress.ip_network('::/128'),            # Unspecified/local destination
     ipaddress.ip_network('::1/128'),           # Loopback
     ipaddress.ip_network('fe80::/10'),         # Link-local
     ipaddress.ip_network('fc00::/7'),          # Unique local
@@ -100,6 +102,10 @@ def is_blocked_ip(ip_str: str) -> bool:
     """Check if an IP address is in a blocked range."""
     try:
         ip = ipaddress.ip_address(ip_str)
+        # Mapped IPv6 connects to the embedded IPv4 destination. Classify that
+        # address explicitly; Python versions differ on mapped is_global flags.
+        if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+            ip = ip.ipv4_mapped
         
         if isinstance(ip, ipaddress.IPv4Address):
             return any(ip in network for network in BLOCKED_IP_NETWORKS)
@@ -116,12 +122,23 @@ def validate_url(url: str) -> str:
     
     Checks:
     - Scheme is http/https
-    - Host resolves to a non-private IP
+    - Every resolved address passes the internal-address block list
     - Returns the validated URL
+
+    This is a preflight check. The HTTP client/proxy resolves again when it
+    connects, so this function does not provide DNS pinning.
     
     Raises SecurityError if validation fails.
     """
-    parsed = urlparse(url)
+    # Requests treats a raw backslash as a path separator, while urlparse can
+    # treat it as userinfo (internal-IP\\@public-host). Reject that ambiguity
+    # before DNS; an intentional backslash in a URL must be percent encoded.
+    if '\\' in url:
+        raise SecurityError("URL contains an ambiguous backslash; use percent encoding")
+    try:
+        parsed = urlparse(url)
+    except ValueError as exc:
+        raise SecurityError("URL is malformed") from exc
     
     # Check scheme
     if parsed.scheme not in ALLOWED_SCHEMES:
@@ -136,6 +153,8 @@ def validate_url(url: str) -> str:
         # Get all IPs for the hostname
         ips = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
         resolved_ips = set(ip[4][0] for ip in ips)
+        if not resolved_ips:
+            raise SecurityError(f"Cannot resolve hostname '{hostname}': no addresses")
         
         for ip_str in resolved_ips:
             if is_blocked_ip(ip_str):
@@ -667,9 +686,9 @@ class StashFile:
         """
         Download content from URL and save to stash.
         
-        Includes full SSRF protection:
+        Includes URL download checks:
         - Validates URL scheme (http/https only)
-        - Blocks private/internal IP ranges
+        - Blocks private/internal IP ranges, including CGNAT/Tailscale
         - Validates redirect URLs
         - Checks content type
         - Enforces size limits

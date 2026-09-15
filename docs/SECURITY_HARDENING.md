@@ -460,20 +460,16 @@ QUERY_RATE_LIMIT_PER_MINUTE=15   # Shipped default: 15 requests/min per IP (code
 
 ### stash_helper.py SSRF Protection
 
-```python
-# lib/stash_helper.py - USE THIS PATTERN
-BLOCKED_IP_NETWORKS = [
-    ipaddress.ip_network('127.0.0.0/8'),       # Loopback
-    ipaddress.ip_network('10.0.0.0/8'),        # Private Class A
-    ipaddress.ip_network('172.16.0.0/12'),     # Private Class B
-    ipaddress.ip_network('192.168.0.0/16'),    # Private Class C
-    ipaddress.ip_network('169.254.0.0/16'),    # Link-local/metadata
-]
+Use `stash_helper.validate_url()` for the shared URL/DNS preflight and
+`stash_helper.safe_download()` for bounded artifact downloads. The central
+address list covers private/LAN, loopback, IPv6 unique-local, and Tailscale's
+shared `100.64.0.0/10` range, including IPv4-mapped IPv6 forms. Do not duplicate
+it with substring checks. Tools must refuse an untrusted URL when the validator
+is unavailable.
 
-def validate_url(url: str) -> str:
-    """Validate URL for safe downloading."""
-    # Checks scheme, resolves hostname, blocks private IPs
-```
+DNS preflight does not pin the subsequent HTTP/proxy connection. See
+[Stash URL security](STASH_SYSTEM.md#41-url-download-security-redirect-aware-ssrf-protection)
+for scope, callers, and remaining resolution limits.
 
 ### analyze_image.py URL Loading
 

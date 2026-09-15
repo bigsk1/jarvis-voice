@@ -1128,9 +1128,11 @@ A dedicated tool for analyzing images from various sources:
 
 **Security:**
 - Uses `safe_download()` from stash_helper for URL downloads
-- SSRF protection (blocks private IPs: localhost, 192.168.x.x, 10.x.x.x)
+- URL/DNS checks block internal addresses, including Tailscale's `100.64.0.0/10` range, IPv6 unique-local addresses, and IPv4-mapped equivalents; redirects are checked too
 - `sanitize_filename()` prevents path traversal attacks
 - 20MB max download size
+
+These are outbound download checks. They do not restrict browser/extension access through Tailscale or reading existing `stash://` files. The downloader does not pin DNS across validation and HTTP/proxy connection; see [Stash URL security](STASH_SYSTEM.md#41-url-download-security-redirect-aware-ssrf-protection).
 
 **Example Usage:**
 ```

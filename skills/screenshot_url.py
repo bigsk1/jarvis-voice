@@ -67,18 +67,15 @@ def main():
     
     # SECURITY: Validate URL to prevent SSRF
     try:
-        from stash_helper import validate_url, SecurityError
+        from stash_helper import SecurityError, validate_url
+    except ImportError:
+        return_error("URL security validation unavailable; screenshot was not requested")
+        return 1
+    try:
         validate_url(url)
     except SecurityError as e:
         return_error(f"URL blocked for security: {e}")
         return 1
-    except ImportError:
-        # Fallback basic check
-        url_lower = url.lower()
-        blocked = ['169.254', '127.0.0.1', 'localhost', '10.', '192.168.', '172.16.']
-        if any(b in url_lower for b in blocked):
-            return_error("URL blocked: internal/private addresses not allowed for screenshots")
-            return 1
     
     wait_seconds = input_data.get("wait", 2)  # Wait before screenshot
     analyze = input_data.get("analyze", False)  # Run vision analysis

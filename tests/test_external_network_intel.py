@@ -173,19 +173,62 @@ def test_missing_abuseipdb_key_keeps_keyless_lookup_available():
 
 @pytest.mark.parametrize(
     "target",
-    ["127.0.0.1", "10.0.0.8", "192.168.1.1", "169.254.10.20", "::1"],
+    [
+        "127.0.0.1",
+        "10.0.0.8",
+        "192.168.1.1",
+        "169.254.10.20",
+        "::1",
+        "100.64.0.0",
+        "100.64.0.1",
+        "100.127.255.255",
+        "100.64.0.1.",
+        "0144.0100.0.1",
+        "100.64.1",
+        "1681915905",
+        "0x64400001",
+        "::ffff:100.64.0.1",
+        "[::ffff:100.64.0.1]",
+        "::ffff:647f:ffff",
+        "fd7a:115c:a1e0::1",
+    ],
 )
 def test_non_global_ip_is_never_sent_to_public_providers(target):
-    with patch.object(
-        network_intel,
-        "_request_json",
-        side_effect=AssertionError("public provider must not be called"),
+    with (
+        patch.object(network_intel, "lookup_dns") as dns,
+        patch.object(network_intel, "_request_json") as request,
     ):
         result = network_intel.run_lookup({"target": target})
 
+    dns.assert_not_called()
+    request.assert_not_called()
     assert result["classification"]["is_global"] is False
     assert "external_lookup_skipped" in result
     assert result["sources"] == []
+
+
+@pytest.mark.parametrize("target", [
+    "[::ffff:8.8.8.8]", "8.8.8.8.", "0x08080808", "134744072",
+    "010.010.010.010", "8.8.2056",
+])
+def test_public_ip_lookup_uses_normalized_ipv4_target(target):
+    with (
+        patch.object(network_intel, "lookup_dns", return_value={"ptr": []}) as lookup_dns,
+        patch.object(network_intel, "http_request") as request,
+    ):
+        result = network_intel.run_lookup(
+            {"target": target, "query_type": "dns"}
+        )
+
+    lookup_dns.assert_called_once_with(
+        "8.8.8.8", "ip", list(network_intel.DEFAULT_DOMAIN_RECORD_TYPES)
+    )
+    request.assert_not_called()
+    assert result["target"] == "8.8.8.8"
+    assert result["classification"]["version"] == 4
+    assert result["classification"]["is_global"] is True
+    assert "external_lookup_skipped" not in result
+    assert result["sources"][0]["status"] == "ok"
 
 
 @pytest.mark.parametrize(

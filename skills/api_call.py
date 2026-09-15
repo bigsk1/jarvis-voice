@@ -41,15 +41,14 @@ def main():
     # SECURITY: Validate URL to prevent SSRF attacks
     try:
         from stash_helper import SecurityError, validate_url
+    except ImportError:
+        return_error("URL security validation unavailable; request was not sent")
+        return 1
+    try:
         validate_url(url)
     except SecurityError as e:
         return_error(f"URL blocked for security: {e}")
         return 1
-    except ImportError:
-        # If stash_helper not available, do basic check
-        if any(blocked in url.lower() for blocked in ['169.254', '127.0.0.1', 'localhost', '10.', '192.168.', '172.16.']):
-            return_error("URL blocked: internal/private addresses not allowed")
-            return 1
     
     # Make API call
     try:

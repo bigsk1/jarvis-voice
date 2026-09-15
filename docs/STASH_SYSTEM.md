@@ -749,99 +749,54 @@ All terms must match somewhere in the combined text.
 - Redirect-based SSRF bypass (benign.com → 127.0.0.1)
 - Large file DoS
 
-**Mitigations:**
+**Runtime enforcement:** [lib/stash_helper.py](../lib/stash_helper.py) owns the
+shared `is_blocked_ip()`, `validate_url()`, and `safe_download()` checks. Reuse
+these helpers instead of copying an address list or a downloader:
 
 ```python
-# In stash.save when kind="url"
-import socket
-import ipaddress
+from stash_helper import safe_download
 
-ALLOWED_SCHEMES = ['http', 'https']
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
-MAX_REDIRECTS = 3
-ALLOWED_MIME_TYPES = [
-    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-    'application/pdf',
-    'text/plain', 'text/csv', 'text/html',
-    'application/json',
-]
-
-# Block private/internal IP ranges
-BLOCKED_IP_RANGES = [
-    ipaddress.ip_network('127.0.0.0/8'),       # Loopback
-    ipaddress.ip_network('10.0.0.0/8'),        # Private
-    ipaddress.ip_network('172.16.0.0/12'),     # Private
-    ipaddress.ip_network('192.168.0.0/16'),    # Private
-    ipaddress.ip_network('169.254.0.0/16'),    # Link-local
-    ipaddress.ip_network('::1/128'),           # IPv6 loopback
-    ipaddress.ip_network('fe80::/10'),         # IPv6 link-local
-    ipaddress.ip_network('fc00::/7'),          # IPv6 private
-]
-
-def is_blocked_ip(ip_str: str) -> bool:
-    """Check if IP is in blocked ranges."""
-    try:
-        ip = ipaddress.ip_address(ip_str)
-        return any(ip in network for network in BLOCKED_IP_RANGES)
-    except ValueError:
-        return True  # Invalid IP = blocked
-
-def validate_url_with_dns(url: str) -> bool:
-    """Validate URL including DNS resolution to prevent SSRF."""
-    parsed = urlparse(url)
-
-    # Check scheme
-    if parsed.scheme not in ALLOWED_SCHEMES:
-        raise SecurityError(f"Scheme {parsed.scheme} not allowed")
-
-    # Resolve hostname to IP and check
-    hostname = parsed.hostname
-    try:
-        ip = socket.gethostbyname(hostname)
-        if is_blocked_ip(ip):
-            raise SecurityError(f"Host {hostname} resolves to blocked IP {ip}")
-    except socket.gaierror:
-        raise SecurityError(f"Cannot resolve hostname {hostname}")
-
-    return True
-
-def safe_download(url: str, max_size: int = MAX_FILE_SIZE) -> bytes:
-    """Download with redirect handling, size limit, and content-type check."""
-
-    # Disable auto-redirects, handle manually
-    session = requests.Session()
-    response = session.get(url, stream=True, timeout=30, allow_redirects=False)
-
-    redirects = 0
-    while response.is_redirect and redirects < MAX_REDIRECTS:
-        redirect_url = response.headers.get('Location')
-        # Re-validate each redirect URL!
-        validate_url_with_dns(redirect_url)
-        response = session.get(redirect_url, stream=True, timeout=30, allow_redirects=False)
-        redirects += 1
-
-    if response.is_redirect:
-        raise SecurityError(f"Too many redirects (>{MAX_REDIRECTS})")
-
-    # Check content-type
-    content_type = response.headers.get('Content-Type', '').split(';')[0]
-    if content_type not in ALLOWED_MIME_TYPES:
-        raise SecurityError(f"Content-Type {content_type} not allowed")
-
-    # Check content-length
-    content_length = int(response.headers.get('Content-Length', 0))
-    if content_length > max_size:
-        raise SecurityError(f"File too large: {content_length} bytes")
-
-    # Stream download with size check
-    data = b''
-    for chunk in response.iter_content(chunk_size=8192):
-        data += chunk
-        if len(data) > max_size:
-            raise SecurityError(f"File exceeded max size during download")
-
-    return data
+data, content_type, final_url = safe_download(url, max_size=20 * 1024 * 1024)
 ```
+
+- Only HTTP/HTTPS URLs are accepted. Every DNS result is checked; unresolved
+  hosts and hosts with any blocked address are rejected before a request.
+- Raw backslashes are rejected to prevent differences between URL parsers
+  from changing the destination after validation. Percent-encoded path text
+  remains supported.
+- The internal-address list includes loopback, LAN, link-local, IPv6 unique-local,
+  and the whole shared/CGNAT IPv4 range `100.64.0.0/10` used by Tailscale.
+  IPv4-mapped IPv6 is checked as the underlying IPv4 address. No personal
+  Tailscale IP, device name, or tailnet hostname is hardcoded.
+- Redirect targets pass the same validation, with a maximum of three redirects.
+- Downloads have byte limits and allowed MIME types; strict image URL imports
+  additionally decode and resize supported raster images.
+
+Both `stash.save(kind="url")` and `kind="image_url"` use this boundary, as do
+image-analysis/reference-image downloads. `api_call`, `screenshot_url`, and
+**direct-URL** `send_webhook` calls reuse `validate_url()` and refuse execution
+if the validator cannot be imported. `security_utils.is_safe_url()` is a boolean
+wrapper over the same DNS check, not a separate substring filter.
+
+This policy governs outbound URLs. It does not prevent devices from connecting
+to Jarvis through Tailscale HTTPS, filter IP addresses out of saved notes, or
+restrict local `stash://` reads. Operator-configured provider/service endpoints
+and named webhooks retain their existing configuration trust boundary.
+Filesystem path checks, filename sanitization, and UI/API authentication are
+separate controls.
+
+Canvas PDF export also removes private numeric IP links from its public
+projection, including shortened/octal/hex IPv4 spellings. Its remote-media
+downloader checks resolved addresses before connecting. The external network
+intelligence tool normalizes numeric and IPv4-mapped inputs so non-global IPs
+are classified locally instead of being sent to public lookup providers.
+
+**Limit:** Stash validation is a DNS preflight, not a pinned network connection.
+The HTTP client, configured proxy, or remote screenshot service can resolve the
+hostname again. The range checks do not eliminate DNS rebinding or differences
+between local and remote resolution. Canvas PDF remote-image downloads have a
+separate implementation that connects to their validated DNS addresses; PDF
+link filtering itself does not perform DNS resolution.
 
 ### 4.2 File Type Validation
 

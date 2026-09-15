@@ -102,11 +102,13 @@ _MARKDOWN_LINK_RE = re.compile(
     r"(?<!!)\[([^\]]+)\]\(\s*([^\s)]+)(?:\s+[\"'][^)]*[\"'])?\s*\)",
     re.IGNORECASE,
 )
+# Keep IPv6 brackets intact so later URL parsing can classify their addresses.
+_URL_DESTINATION_PATTERN = r"(?:\[[^\s<>()[\]`\"']+\]|[^\s<>()[\]`\"'])+"
 _STANDALONE_HTTPS_URL_RE = re.compile(
-    r"^[ \t]*(https://[^\s<>)\]`\"']+)[ \t]*$",
+    rf"^[ \t]*(https://{_URL_DESTINATION_PATTERN})[ \t]*$",
     re.IGNORECASE | re.MULTILINE,
 )
-_URL_RE = re.compile(r"https?://[^\s<>)\]`\"']+", re.IGNORECASE)
+_URL_RE = re.compile(rf"https?://{_URL_DESTINATION_PATTERN}", re.IGNORECASE)
 _LOCAL_PATH_RE = re.compile(
     r"(?<![\w:/])(?:/(?:home|Users)/[^\s)`\"']+|[A-Za-z]:\\(?:Users|Documents)\\[^\s)`\"']+)",
 )
@@ -187,12 +189,21 @@ def _append_once(findings: list[dict], finding: dict) -> None:
 def _is_private_or_local_url(raw_url: str) -> bool:
     try:
         parsed = urlparse(raw_url)
-        host = (parsed.hostname or "").strip().lower()
+        host = (parsed.hostname or "").strip().rstrip(".").lower()
         if host in {"localhost", "localhost.localdomain"} or host.endswith(".local"):
             return True
-        address = ipaddress.ip_address(host)
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            # inet_aton is numeric-only (no DNS), and also recognizes the
+            # shortened, integer, hex and octal IPv4 forms browsers accept.
+            try:
+                address = ipaddress.IPv4Address(socket.inet_aton(host))
+            except OSError:
+                return False
+        address = getattr(address, "ipv4_mapped", None) or address
         return bool(
-            address.is_private
+            not address.is_global
             or address.is_loopback
             or address.is_link_local
             or address.is_reserved
@@ -298,6 +309,7 @@ def _public_https_target(raw_url: str) -> tuple[str, str, list[tuple]]:
     seen = set()
     for family, socktype, proto, canonname, sockaddr in addresses:
         address = ipaddress.ip_address(sockaddr[0])
+        address = getattr(address, "ipv4_mapped", None) or address
         if not address.is_global:
             raise _UnsafeRemoteMedia("Remote media resolved to a non-public address")
         key = (family, sockaddr)

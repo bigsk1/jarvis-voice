@@ -28,6 +28,15 @@ and firewall allow. In a standard native installation they bind to `0.0.0.0`;
 LAN HTTP traffic remains plaintext. Making the entire deployment accessible
 exclusively through Tailscale would require separate listener/firewall changes.
 
+Jarvis's URL download guard also treats Tailscale destinations as internal:
+it blocks the generic `100.64.0.0/10` IPv4 range and IPv6 unique-local addresses,
+including IPv4-mapped forms. This applies to tool-supplied URLs and Stash URL
+imports, including DNS names that resolve to those addresses. No personal IP
+or hostname is built into the rule. Your browser/extension connection, local
+`stash://` reads, and explicitly configured service endpoints use separate
+paths. See [Stash URL security](STASH_SYSTEM.md#41-url-download-security-redirect-aware-ssrf-protection)
+for the shared callers and DNS/proxy limitations.
+
 | UI | Existing local backend | Suggested private HTTPS URL |
 | --- | --- | --- |
 | Web chat | `http://127.0.0.1:5001` | `https://jarvis.example.ts.net` |

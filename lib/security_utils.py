@@ -342,37 +342,22 @@ def sanitize_for_speech(text: str, *, preserve_xai_tags: bool = False) -> str:
 
 
 def is_safe_url(url: str) -> bool:
-    """
-    Quick check if URL is potentially safe.
-    For comprehensive SSRF protection, use stash_helper.validate_url().
+    """Apply the shared URL/DNS preflight check, returning False on rejection.
+
+    This does not download the URL or pin DNS for a later connection.
     """
     if not url:
         return False
-    
-    url_lower = url.lower()
-    
-    # Block obvious internal URLs
-    blocked_hosts = [
-        'localhost',
-        '127.0.0.1',
-        '0.0.0.0',
-        '169.254.',  # Link-local/cloud metadata
-        '10.',
-        '192.168.',
-        '172.16.', '172.17.', '172.18.', '172.19.',
-        '172.20.', '172.21.', '172.22.', '172.23.',
-        '172.24.', '172.25.', '172.26.', '172.27.',
-        '172.28.', '172.29.', '172.30.', '172.31.',
-    ]
-    
-    for blocked in blocked_hosts:
-        if blocked in url_lower:
-            return False
-    
-    # Block non-http schemes
-    if not (url_lower.startswith('http://') or url_lower.startswith('https://')):
+    # Lazy import: stash_helper's HTTP client also imports this module for
+    # credential redaction. Do not create a second, weaker URL block list.
+    try:
+        from stash_helper import SecurityError, validate_url
+    except ImportError:
         return False
-    
+    try:
+        validate_url(url)
+    except (SecurityError, ValueError, TypeError):
+        return False
     return True
 
 

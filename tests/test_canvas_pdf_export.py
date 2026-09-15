@@ -95,6 +95,61 @@ def test_youtube_source_list_and_labeled_source_formats_receive_cards():
     assert labeled_source["public_media"][0]["label"] == "Why We Stopped Using RAG"
 
 
+@pytest.mark.parametrize(
+    "host",
+    [
+        "100.64.0.0",
+        "100.64.0.1",
+        "100.127.255.255",
+        "100.64.0.1.",
+        "0x64400001",
+        "1681915905",
+        "0144.0100.0.1",
+        "100.64.1",
+        "[::ffff:100.64.0.1]",
+        "user@[::ffff:100.64.0.1]",
+        "[::ffff:647f:ffff]",
+        "[fd7a:115c:a1e0::1]",
+    ],
+)
+def test_projection_omits_shared_and_mapped_private_links_without_dns(monkeypatch, host):
+    def reject_dns(*_args, **_kwargs):
+        raise AssertionError("PDF projection must not resolve hosts")
+
+    monkeypatch.setattr(socket, "getaddrinfo", reject_dns)
+    projection = build_canvas_pdf_projection(
+        {
+            "title": "Private links",
+            "content": (
+                f"[Internal report](https://{host}/report)\n\n"
+                f"![Internal image](https://{host}/image.png)\n\n"
+                f"https://{host}/bare\n\n"
+                "[Public report](https://example.com/report)"
+            ),
+            "tags": [f"https://{host}/metadata"],
+        }
+    )
+
+    assert host not in projection["content_markdown"]
+    assert projection["public_media"] == []
+    assert all(host not in tag for tag in projection["tags"])
+    assert "https://example.com/report" in projection["content_markdown"]
+    assert {"local_link_omitted", "local_image_omitted"} <= {
+        item["code"] for item in projection["findings"]
+    }
+
+
+@pytest.mark.parametrize("host", ["100.63.255.255", "100.128.0.0", "[::ffff:8.8.8.8]"])
+def test_public_ip_links_are_preserved(host):
+    url = f"https://{host}/report"
+    projection = build_canvas_pdf_projection(
+        {"title": "Public links", "content": f"[Public report]({url})\n\n{url}"}
+    )
+
+    assert not pdf_export._is_private_or_local_url(url)
+    assert projection["content_markdown"].count(url) == 2
+
+
 def test_ordinary_inline_youtube_citation_stays_a_compact_link():
     projection = build_canvas_pdf_projection(
         {
@@ -306,12 +361,30 @@ def test_embedded_media_pdf_budget_uses_link_fallback(monkeypatch):
     assert "public_media_pdf_budget_reached" in codes
 
 
-def test_remote_media_downloader_rejects_private_dns_before_connect(monkeypatch):
+@pytest.mark.parametrize(
+    "address",
+    [
+        "127.0.0.1",
+        "100.64.0.0",
+        "100.64.0.1",
+        "100.127.255.255",
+        "::ffff:100.64.0.1",
+        "::ffff:647f:ffff",
+        "fd7a:115c:a1e0::1",
+    ],
+)
+@pytest.mark.parametrize("literal_url", [False, True])
+def test_remote_media_downloader_rejects_private_dns_before_connect(
+    monkeypatch, address, literal_url
+):
+    family = socket.AF_INET6 if ":" in address else socket.AF_INET
+    sockaddr = (address, 443, 0, 0) if family == socket.AF_INET6 else (address, 443)
     monkeypatch.setattr(
         socket,
         "getaddrinfo",
         lambda *_args, **_kwargs: [
-            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", 443))
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("8.8.8.8", 443)),
+            (family, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", sockaddr),
         ],
     )
 
@@ -319,11 +392,36 @@ def test_remote_media_downloader_rejects_private_dns_before_connect(monkeypatch)
         raise AssertionError("Private media targets must be rejected before connecting")
 
     monkeypatch.setattr(socket, "socket", reject_socket)
+    host = f"[{address}]" if ":" in address else address
+    if not literal_url:
+        host = "images.example.com"
     with pytest.raises(pdf_export._UnsafeRemoteMedia):
         pdf_export._download_public_https(
-            "https://images.example.com/private.png",
+            f"https://{host}/private.png",
             timeout=0.25,
         )
+
+
+def test_public_dns_targets_keep_validated_connection_addresses(monkeypatch):
+    addresses = [
+        (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("8.8.8.8", 443)),
+        (
+            socket.AF_INET6,
+            socket.SOCK_STREAM,
+            socket.IPPROTO_TCP,
+            "",
+            ("::ffff:8.8.8.8", 443, 0, 0),
+        ),
+    ]
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_args, **_kwargs: addresses)
+
+    host, target, pinned_addresses = pdf_export._public_https_target(
+        "https://images.example.com/public.png?size=small"
+    )
+
+    assert host == "images.example.com"
+    assert target == "/public.png?size=small"
+    assert pinned_addresses == addresses
 
 
 def test_blocking_secret_scan_skips_remote_media_fetch(monkeypatch):
