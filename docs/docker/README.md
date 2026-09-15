@@ -4,6 +4,10 @@ Run Jarvis **Web UIs, API, and background services** in Docker on your own machi
 
 For architecture notes, networking deep-dives, and the original design doc, see **[DOCKER_PLANNING.md](../archive/docker/DOCKER_PLANNING.md)**.
 
+For optional private HTTPS, see [Tailscale HTTPS](../TAILSCALE_HTTPS.md#docker-notes).
+Serve runs on the Docker host and forwards to published UI ports; the shipped
+Compose file already mounts the optional navigation configuration.
+
 ---
 
 ## What Docker covers

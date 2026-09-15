@@ -510,6 +510,16 @@ def get_status():
     })
 
 
+@api_bp.route('/tailscale/status', methods=['GET'])
+def get_tailscale_status_route():
+    """Lazy host diagnostics, protected by the normal WebUI authentication gate."""
+    from ..services.tailscale_status import get_tailscale_status
+
+    response = jsonify(get_tailscale_status())
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
+
+
 @api_bp.route('/logs/folders', methods=['GET'])
 def list_log_folders():
     """List folders under logs/ that contain supported view-only files."""

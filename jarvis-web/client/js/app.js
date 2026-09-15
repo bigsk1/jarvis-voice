@@ -38,6 +38,10 @@ class JarvisApp {
     this._userProfileRequestId = 0;
     this._userProfileState = null;
     this._userProfileEditing = false;
+    this._tailscaleRequestId = 0;
+    this._tailscaleStatus = null;
+    this._tailscaleLoading = false;
+    this._tailscaleError = false;
     
     // Audio playback state
     this.currentAudio = null;
@@ -386,6 +390,9 @@ class JarvisApp {
     this.settingsBtn.addEventListener('click', () => {
       this.settingsModal.classList.add('active');
       this._loadSettings();
+      if (document.getElementById('settings-profile')?.classList.contains('active')) {
+        this._loadTailscaleStatus();
+      }
     });
     
     this.closeSettings.addEventListener('click', () => {
@@ -427,12 +434,17 @@ class JarvisApp {
         }
         if (tabName === 'profile') {
           this._loadUserProfileSummary();
+          this._loadTailscaleStatus();
         }
       });
     });
 
     document.getElementById('refreshProxyStatusBtn')?.addEventListener('click', () => {
       this._loadProxyStatus(true);
+    });
+
+    document.getElementById('refreshTailscaleStatusBtn')?.addEventListener('click', () => {
+      this._loadTailscaleStatus();
     });
 
     document.getElementById('manageUserProfileBtn')?.addEventListener('click', () => {
@@ -899,6 +911,7 @@ class JarvisApp {
   _updateConnectionStatus(connected) {
     this._connectionConnected = connected;
     this._syncJarvisHudLogo(connected);
+    this._renderTailscaleStatus();
 
     // HAL eye in the welcome bubble powers down on disconnect
     const awakeningCore = document.getElementById('awakeningCore');
@@ -2700,9 +2713,108 @@ class JarvisApp {
     }
   }
 
+  _getTailscalePresentation(status, location = window.location, chatConnected = this._connectionConnected) {
+    const neutral = (label, detail) => ({ label, detail, tone: 'neutral' });
+    const https = location?.protocol === 'https:';
+    const unverified = () => neutral('Unverified', https
+      ? 'This page uses HTTPS; Tailscale could not be verified.'
+      : 'Tailscale status could not be verified.');
+    if (!status || status.ok !== true || !['native', 'docker'].includes(status.deployment)) return unverified();
+    if (status.deployment === 'docker' && ['not_installed', 'unavailable'].includes(status.state)) {
+      return neutral('Unverified', 'Host status is unavailable from this container.');
+    }
+    if (status.state === 'not_installed' && status.deployment === 'native') {
+      return neutral('Not enabled', 'Tailscale was not detected on this server.');
+    }
+    if (status.state === 'stopped') {
+      return neutral('Disconnected', 'Tailscale is not connected on this server.');
+    }
+    if (status.state !== 'running') return unverified();
+    if (status.online === false) return neutral('Disconnected', 'Tailscale is offline on this server.');
+    if (status.online !== true) return unverified();
+    if (!https) return neutral('Not in use', 'Tailscale is running; this page uses HTTP.');
+
+    const normalizeHost = value => typeof value === 'string' ? value.toLowerCase().replace(/\.$/, '') : '';
+    const hostname = normalizeHost(location?.hostname);
+    const port = location?.port ? Number(location.port) : 443;
+    const listeners = status.serve?.listeners;
+    if (status.serve?.state === 'not_configured') {
+      return neutral('Not in use', 'Tailscale is running; this page is not using Tailscale HTTPS.');
+    }
+    if (!hostname || !Array.isArray(listeners)) return unverified();
+    const matching = listeners.filter(listener => listener?.https === true
+      && normalizeHost(listener.hostname) === hostname && listener.port === port);
+    if (matching.some(listener => listener.funnel === true)) {
+      return { label: 'Public HTTPS', detail: 'Tailscale Funnel makes this HTTPS address public.', tone: 'warning' };
+    }
+    if (status.serve?.state !== 'configured') return unverified();
+    if (listeners.some(listener => !listener || !normalizeHost(listener.hostname)
+        || !Number.isInteger(listener.port) || listener.port < 1 || listener.port > 65535
+        || listener.https !== true)) return unverified();
+    if (!matching.length) {
+      return neutral('Not in use', 'Tailscale is running; this page uses a different address.');
+    }
+    if (!matching.every(listener => listener.funnel === false)) return unverified();
+    return chatConnected
+      ? { label: 'Connected', detail: 'Private Tailscale HTTPS.', tone: 'positive' }
+      : { label: 'Reconnecting', detail: 'Private Tailscale HTTPS; chat is reconnecting.', tone: 'warning' };
+  }
+
+  _renderTailscaleStatus() {
+    const card = document.getElementById('tailscale-status');
+    const label = document.getElementById('tailscale-status-label');
+    const detail = document.getElementById('tailscale-status-detail');
+    const refresh = document.getElementById('refreshTailscaleStatusBtn');
+    if (!card || !label || !detail || !refresh) return;
+    let view;
+    if (this._tailscaleLoading) {
+      view = { label: 'Checking…', detail: 'Checking this connection…', tone: 'neutral' };
+    } else if (this._tailscaleError) {
+      view = { label: 'Unavailable', detail: 'Could not check Tailscale. Try Refresh.', tone: 'neutral' };
+    } else if (!this._tailscaleStatus) {
+      view = { label: 'Not checked', detail: 'Open Profile to check this connection.', tone: 'neutral' };
+    } else {
+      view = this._getTailscalePresentation(this._tailscaleStatus);
+    }
+    label.textContent = view.label;
+    detail.textContent = view.detail;
+    card.dataset.tone = view.tone;
+    card.setAttribute('aria-busy', String(!!this._tailscaleLoading));
+    refresh.disabled = !!this._tailscaleLoading;
+  }
+
+  async _loadTailscaleStatus() {
+    if (!this.settingsModal?.classList.contains('active')
+        || !document.getElementById('settings-profile')?.classList.contains('active')) return null;
+    const requestId = this._tailscaleRequestId = (this._tailscaleRequestId || 0) + 1;
+    this._tailscaleStatus = null;
+    this._tailscaleError = false;
+    this._tailscaleLoading = true;
+    this._renderTailscaleStatus();
+    try {
+      const response = await Utils.auth.fetch('/api/tailscale/status', { signal: AbortSignal.timeout(7000) });
+      const status = await response.json();
+      if (!response.ok || status?.ok !== true) throw new Error('Tailscale status unavailable');
+      if (requestId !== this._tailscaleRequestId) return null;
+      this._tailscaleStatus = status;
+      return status;
+    } catch (_) {
+      if (requestId !== this._tailscaleRequestId) return null;
+      this._tailscaleError = true;
+      return null;
+    } finally {
+      if (requestId === this._tailscaleRequestId) {
+        this._tailscaleLoading = false;
+        this._renderTailscaleStatus();
+      }
+    }
+  }
+
   _getMemoryIntelUrl() {
     const hostname = window.location.hostname || 'localhost';
-    return `http://${hostname}:5002/#intel`;
+    const fallback = `http://${hostname}:5002`;
+    const origin = window.JarvisUINavigation?.url('memory', fallback) || fallback;
+    return `${origin}/#intel`;
   }
 
   _updateUserProfileSummary(profile = null, error = null) {

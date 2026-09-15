@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Intelligence Dashboard</title>
+  <script src="/ui-navigation.js"></script>
   
   <!-- Self-hosted fonts (symlink → jarvis-web/client/fonts) -->
   <link rel="stylesheet" href="/css/fonts.css">
@@ -44,10 +45,10 @@
             </select>
           </div>
           
-          <a href="#" class="btn btn-secondary" title="Memory Browser" onclick="window.open('http://' + window.location.hostname + ':5002', '_blank'); return false;">
+          <a href="#" class="btn btn-secondary" title="Memory Browser" onclick="window.open(window.JarvisUINavigation?.url('memory', 'http://' + window.location.hostname + ':5002') || 'http://' + window.location.hostname + ':5002', '_blank'); return false;">
             🧠
           </a>
-          <a href="#" class="btn btn-secondary btn-jarvis" title="Back to Jarvis Web" onclick="window.open('http://' + window.location.hostname + ':5001', '_blank'); return false;">
+          <a href="#" class="btn btn-secondary btn-jarvis" title="Back to Jarvis Web" onclick="window.open(window.JarvisUINavigation?.url('web', 'http://' + window.location.hostname + ':5001') || 'http://' + window.location.hostname + ':5001', '_blank'); return false;">
             <img src="/assets/jarvis-voice.png" alt="Jarvis" class="jarvis-mark">
           </a>
         </div>

@@ -11,6 +11,8 @@ config/contacts.json
 config/webhook_registry.json
 config/elevenlabs_voices.json
 config/ssh.json
+# Personal browser-host-specific navigation URLs; keep the example portable.
+config/ui_urls.json
 jarvis-monitor/.env
 jarvis-web/config/web_config.json
 config/webhook_registry.json.template

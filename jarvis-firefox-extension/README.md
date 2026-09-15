@@ -66,6 +66,10 @@ Screenshots are resized locally to a maximum **1,024 pixels on the longest edge*
 
 HTTPS/WSS is the default. **Allow HTTP for a local development server** enables an explicit exception for localhost or a private IP, for example `http://192.168.1.20:5001`. HTTP does not encrypt passwords, tokens, messages, or screenshots. Public HTTP endpoints are refused; an invalid HTTPS certificate is not bypassed.
 
+For private HTTPS without publishing your Jarvis server, follow the
+[Jarvis Tailscale HTTPS guide](https://github.com/bigsk1/jarvis-voice/blob/main/docs/TAILSCALE_HTTPS.md).
+Use the resulting Web HTTPS origin in the extension's connection settings.
+
 The server address and preferences use `storage.local`. The login token and bounded recovery/draft state use in-memory `storage.session`; the extension does not persist the password, save the token to disk storage, or synchronize it. Expect to sign in after Firefox restarts. Logout clears the extension credential but does not revoke the server's existing stateless token or cancel already accepted work.
 
 **Jarvis stores submitted content.** Image upload writes to the server, and the normal chat path can preserve screenshots in Stash and memory as well as save conversation history. Your server may forward content to its configured model and tool providers. Removing an attachment after sending, logging out, or uninstalling the extension does not delete those server records. Read [PRIVACY.md](PRIVACY.md) before connecting to a server you do not operate.

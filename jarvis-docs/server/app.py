@@ -22,6 +22,7 @@ sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 
 from config_loader import load_config
 from flask_error_logger import setup_error_logging
+from ui_navigation import register_ui_navigation
 from webui_auth import get_token_from_request, is_auth_enabled, verify_token
 
 from .routes.auth import auth_bp
@@ -46,6 +47,7 @@ app = Flask(__name__, static_folder=str(CLIENT_PATH), static_url_path='')
 app.config['docs_explorer'] = get_docs_explorer(DOCS_PATH)
 
 CORS(app, resources={r"/*": {"origins": "*"}})
+register_ui_navigation(app)
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(docs_bp)

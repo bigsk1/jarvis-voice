@@ -1290,6 +1290,7 @@ LIMIT 7;"
 - [`config/README.md`](config/README.md) - Configuration guide
 - [`config/models/README.md`](config/models/README.md) - Model prompt override config layout
 - [`docs/QUICKSTART.md`](docs/QUICKSTART.md) - Quick setup guide
+- [`docs/TAILSCALE_HTTPS.md`](docs/TAILSCALE_HTTPS.md) - Optional private HTTPS with Tailscale: UI setup, navigation, troubleshooting, and rollback
 - [`docs/TOOL_CALLING_SYSTEM.md`](docs/TOOL_CALLING_SYSTEM.md) - How tools work
 - [`docs/MODEL_PROMPT_OVERRIDES.md`](docs/MODEL_PROMPT_OVERRIDES.md) - Provider/model-specific runtime prompt tuning
 - [`docs/SPEECH_TO_TEXT.md`](docs/SPEECH_TO_TEXT.md) - **Speech-to-text** providers, self-hosted Parakeet, fallback behavior, and browser microphone requirements

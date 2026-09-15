@@ -25,6 +25,7 @@ from .sockets.chat import ChatHandler
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 from webui_auth import is_auth_enabled, get_token_from_request, verify_token
 from flask_error_logger import setup_error_logging
+from ui_navigation import register_ui_navigation
 from .socket_auth import AuthenticatedSocketIO
 
 # Global to track startup mode (set in run_server)
@@ -41,6 +42,7 @@ app = Flask(__name__,
 
 # Configure CORS - allow all origins for local network
 CORS(app, resources={r"/*": {"origins": "*"}})
+register_ui_navigation(app)
 
 # Configure SocketIO
 socketio = AuthenticatedSocketIO(

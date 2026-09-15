@@ -20,7 +20,7 @@
             <a href="/" class="header-link" title="Back to Canvas">📝 <span>Canvas</span></a>
             <a href="/gallery" class="header-link" title="Image Gallery">🖼️ <span>Images</span></a>
             <a href="/video-gallery" class="header-link" title="Video Gallery">🎬 <span>Videos</span></a>
-            <a href="#" class="header-link" onclick="window.open('http://' + window.location.hostname + ':5001', '_blank'); return false;" title="Jarvis Web"><img src="/static/assets/jarvis-voice.png" alt="" class="jarvis-mark" aria-hidden="true"> <span>Jarvis</span></a>
+            <a href="#" class="header-link" onclick="window.open(window.JarvisUINavigation?.url('web', 'http://' + window.location.hostname + ':5001') || 'http://' + window.location.hostname + ':5001', '_blank'); return false;" title="Jarvis Web"><img src="/static/assets/jarvis-voice.png" alt="" class="jarvis-mark" aria-hidden="true"> <span>Jarvis</span></a>
         </div>
     </header>
 

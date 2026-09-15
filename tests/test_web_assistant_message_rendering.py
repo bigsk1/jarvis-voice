@@ -74,9 +74,10 @@ vm.createContext(sandbox);
 const clientPath = ROOT + '/jarvis-web/client';
 // Use the shipped order so a new renderer dependency must be wired in HTML too.
 const html = fs.readFileSync(clientPath + '/index.html', 'utf8');
-const scripts = [...html.matchAll(/<script\b[^>]*src="(\/js\/[^"?]+)"[^>]*>/g)].map(m => m[1]);
+const scripts = [...html.matchAll(/<script\b[^>]*src="(\/js\/[^"?]+|\/ui-navigation\.js)"[^>]*>/g)].map(m => m[1]);
 for (const path of scripts.slice(0, scripts.indexOf('/js/chat.js'))) {
-  vm.runInContext(fs.readFileSync(clientPath + path, 'utf8'), sandbox, {filename: path});
+  const sourcePath = path === '/ui-navigation.js' ? ROOT + '/lib/static/ui-navigation.js' : clientPath + path;
+  vm.runInContext(fs.readFileSync(sourcePath, 'utf8'), sandbox, {filename: path});
 }
 const Utils = vm.runInContext('Utils', sandbox);
 Utils.hydrateRichContent = () => effects.push('hydrate');

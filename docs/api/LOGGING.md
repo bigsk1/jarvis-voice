@@ -23,7 +23,7 @@ The Jarvis API logs all requests to `logs/api/` for troubleshooting and monitori
   "query": null,
   "status": 400,
   "duration_ms": 12.5,
-  "client_ip": "100.70.158.18"
+  "client_ip": "100.1.1.111"
 }
 ```
 

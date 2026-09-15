@@ -16,7 +16,8 @@ class ApplicationScripts(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         attributes = dict(attrs)
-        if tag == "script" and attributes.get("src", "").startswith("/js/"):
+        source = attributes.get("src", "")
+        if tag == "script" and (source.startswith("/js/") or source == "/ui-navigation.js"):
             self.scripts.append(attributes)
 
 
@@ -29,7 +30,9 @@ def test_chat_dependencies_boot_from_the_shipped_script_order():
     for script in scripts:
         assert "async" not in script and "defer" not in script
         assert script.get("type", "text/javascript") == "text/javascript"
-        assert (CLIENT / script["src"].lstrip("/")).is_file()
+        source_path = (ROOT / "lib/static/ui-navigation.js" if script["src"] == "/ui-navigation.js"
+                       else CLIENT / script["src"].lstrip("/"))
+        assert source_path.is_file()
 
     # Load every production dependency preceding ChatUI, including the real
     # utilities, socket singleton, adapter factories and command singleton.
@@ -70,9 +73,12 @@ const sandbox = {
 };
 vm.createContext(sandbox);
 for (const source of SOURCES) {
-  vm.runInContext(fs.readFileSync(CLIENT + source, 'utf8'), sandbox, {filename: source});
+  const filename = source === '/ui-navigation.js' ? NAVIGATION_SOURCE : CLIENT + source;
+  vm.runInContext(fs.readFileSync(filename, 'utf8'), sandbox, {filename: source});
 }
 (async () => {
+  assert.equal(sandbox.window.JarvisUINavigation.url('canvas', 'http://localhost:8890'),
+    'http://localhost:8890', 'The navigation helper must boot with defaults');
   // Complete the singleton's asynchronous registry loading without network I/O.
   await new Promise(resolve => setImmediate(resolve));
   const commands = sandbox.window.commandSystem;
@@ -113,4 +119,5 @@ for (const source of SOURCES) {
 """
     prelude = f"const CLIENT = {json.dumps(str(CLIENT))};\n"
     prelude += f"const SOURCES = {json.dumps(dependencies)};\n"
+    prelude += f"const NAVIGATION_SOURCE = {json.dumps(str(ROOT / 'lib/static/ui-navigation.js'))};\n"
     subprocess.run(["node", "-e", prelude + script], cwd=ROOT, check=True, timeout=15)

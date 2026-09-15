@@ -9,6 +9,7 @@
 - **[QUICKSTART.md](QUICKSTART.md)** - Quick setup guide
 - **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)** - 🆕 **Complete installation guide** (clone to `~/jarvis-voice`, run `./install.sh`, then configure keys/audio) ⭐ CRITICAL
 - **[docker/README.md](docker/README.md)** - 🐳 **Docker guide** — run Web UIs + API in containers (commands, `.env`, hybrid mode)
+- **[TAILSCALE_HTTPS.md](TAILSCALE_HTTPS.md)** - Private HTTPS for the UIs and Firefox extension: Serve setup, navigation, troubleshooting, and rollback
 - **[../config/README.md](../config/README.md)** - Configuration guide
 - **[NETWORK_PROXY.md](NETWORK_PROXY.md)** - **HTTP proxy chain** (`LOCAL_PROXY` / `LOCAL_PROXY2`, `http_client`, yt-dlp, stock tool)
 - **[tools/external-network-intel-tool/README.md](tools/external-network-intel-tool/README.md)** - **Passive public IP/domain intelligence** (RDAP, routing, DNS, official cloud ranges, Shodan InternetDB, optional AbuseIPDB; no scanning)

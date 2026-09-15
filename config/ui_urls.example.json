@@ -1,0 +1,11 @@
+{
+  "hosts": {
+    "jarvis.example.ts.net": {
+      "web": "https://jarvis.example.ts.net",
+      "canvas": "https://jarvis.example.ts.net:8443",
+      "memory": "https://jarvis.example.ts.net:8444",
+      "intelligence": "https://jarvis.example.ts.net:8445",
+      "docs": "https://jarvis.example.ts.net:8446"
+    }
+  }
+}

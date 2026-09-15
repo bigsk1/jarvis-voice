@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#0a0a0f">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Jarvis Logs</title>
+  <script src="/ui-navigation.js"></script>
 
   <link rel="stylesheet" href="/css/fonts.css">
   <link rel="stylesheet" href="/css/variables.css">
@@ -32,9 +33,9 @@
 
       <div class="header-right">
         <a href="/" class="icon-btn icon-btn-mark" title="Back to chat"><img src="/assets/jarvis-voice.png" alt="Jarvis" class="jarvis-mark"></a>
-        <a href="#" class="icon-btn" title="Open Canvas" onclick="window.open('http://' + window.location.hostname + ':8890', '_blank'); return false;">📄</a>
-        <a href="#" class="icon-btn" title="Memory Browser" onclick="window.open('http://' + window.location.hostname + ':5002', '_blank'); return false;">🧠</a>
-        <a href="#" class="icon-btn" title="Intelligence Dashboard" onclick="window.open('http://' + window.location.hostname + ':5003', '_blank'); return false;">📊</a>
+        <a href="#" class="icon-btn" title="Open Canvas" onclick="window.open(window.JarvisUINavigation?.url('canvas', 'http://' + window.location.hostname + ':8890') || 'http://' + window.location.hostname + ':8890', '_blank'); return false;">📄</a>
+        <a href="#" class="icon-btn" title="Memory Browser" onclick="window.open(window.JarvisUINavigation?.url('memory', 'http://' + window.location.hostname + ':5002') || 'http://' + window.location.hostname + ':5002', '_blank'); return false;">🧠</a>
+        <a href="#" class="icon-btn" title="Intelligence Dashboard" onclick="window.open(window.JarvisUINavigation?.url('intelligence', 'http://' + window.location.hostname + ':5003') || 'http://' + window.location.hostname + ':5003', '_blank'); return false;">📊</a>
       </div>
     </header>
 

@@ -20,6 +20,7 @@ sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 
 from webui_auth import is_auth_enabled, get_token_from_request, verify_token
 from flask_error_logger import setup_error_logging
+from ui_navigation import register_ui_navigation
 from config_loader import load_config
 
 _startup_mode = 'cloud'
@@ -61,6 +62,7 @@ app = Flask(__name__,
 
 # Configure CORS
 CORS(app, resources={r"/*": {"origins": "*"}})
+register_ui_navigation(app)
 
 # Register blueprints
 app.register_blueprint(experiences_bp)

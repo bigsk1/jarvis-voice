@@ -4060,8 +4060,12 @@ class ChatUI {
       }
 
       try {
-        const parsed = new URL(pageUrl);
+        let parsed = new URL(pageUrl);
         if (!['http:', 'https:'].includes(parsed.protocol)) continue;
+        const origin = window.JarvisUINavigation?.url('canvas', parsed.origin) || parsed.origin;
+        if (origin !== parsed.origin) {
+          parsed = new URL(`${origin}${parsed.pathname}${parsed.search}${parsed.hash}`);
+        }
         return {
           pageId: String(pageId),
           title,

@@ -13,6 +13,8 @@ config/contacts.json
 config/webhook_registry.json
 config/elevenlabs_voices.json
 config/ssh.json
+config/ui_urls.json
+config/ui_urls.json.bak
 # Legacy pre-data location; never bake private thresholds into an image.
 config/price-alerts.yaml
 jarvis-monitor/.env

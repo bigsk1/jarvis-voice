@@ -421,6 +421,28 @@ Quick access to other Jarvis UIs via header icons:
 - 📊 **Intelligence Dashboard** (port 5003) - Self-learning insights
 - 📚 **Jarvis Docs** (port **5004**) - Browse repo `docs/` — [`jarvis-docs/README.md`](../jarvis-docs/README.md)
 
+For HTTPS proxies or different public ports, copy
+[`config/ui_urls.example.json`](../config/ui_urls.example.json) to ignored
+`config/ui_urls.json` and configure the browser hostname and service origins.
+Only browsers using a configured hostname receive those navigation URLs; other
+hosts retain the existing links. The shared `/ui-navigation.js` helper also keeps
+Canvas page previews, the Memory profile shortcut, and gallery handoffs on the
+configured origins. It does not change listeners, authentication, or proxy setup.
+Restart each UI once when installing this helper; subsequent URL edits apply on
+page reload. Configure origins only (no path prefixes, credentials, queries, or
+fragments). The live configuration is excluded from Git and Docker images; Docker
+deployments must expose it at `/app/config/ui_urls.json` if they use overrides;
+the shipped Compose file already does this through its `config/` mount.
+
+For a complete private HTTPS setup, follow the
+[Tailscale HTTPS guide](../docs/TAILSCALE_HTTPS.md): Web-first setup, all UI ports,
+navigation, Docker, status checks, troubleshooting, and rollback.
+
+**Settings → Profile** includes a read-only Tailscale status box. It distinguishes
+verified private HTTPS, public Funnel, a different current connection, and
+unavailable host status (including typical Docker deployments). Checks run on
+Profile open or Refresh, with a short server cache; Tailscale is optional.
+
 ## Troubleshooting
 
 ### WebSocket connection fails

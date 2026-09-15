@@ -16,6 +16,7 @@ sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 
 from config_loader import get_config_value, load_config  # noqa: E402
 from flask_error_logger import setup_error_logging  # noqa: E402
+from ui_navigation import register_ui_navigation  # noqa: E402
 from webui_auth import (  # noqa: E402
     get_token_from_request,
     is_auth_enabled,
@@ -41,6 +42,7 @@ def create_app(mode='cloud'):
     )
     
     CORS(app)
+    register_ui_navigation(app)
     app.config['JARVIS_STARTUP_MODE'] = mode
     
     # Load Jarvis config for auth

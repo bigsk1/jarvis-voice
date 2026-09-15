@@ -567,8 +567,10 @@ function navigateImage(direction) {
 // ============ Jarvis Web Media Handoff ============
 
 function buildJarvisWebMediaHandoffUrl(filename, mediaType = 'image', action = 'video') {
-    const url = new URL(window.location.href);
-    url.port = '5001';
+    const fallback = new URL(window.location.href);
+    fallback.port = '5001';
+    const origin = window.JarvisUINavigation?.url('web', fallback.origin) || fallback.origin;
+    const url = new URL(origin);
     url.pathname = '/';
     url.search = '';
     url.hash = '';

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from contextlib import nullcontext
 from pathlib import Path
@@ -230,7 +231,18 @@ def test_web_profile_ui_has_release_link_safe_preview_and_intel_deep_link():
     assert "Utils.parseMarkdown(Utils.escapeHtml" in CLIENT_JS
     assert "['href', 'title', 'target', 'rel'].includes" in CLIENT_JS
     assert "['http:', 'https:'].includes(parsed.protocol)" in CLIENT_JS
-    assert "http://${hostname}:5002/#intel" in CLIENT_JS
+    method = CLIENT_JS[CLIENT_JS.index("  _getMemoryIntelUrl() {"):
+                       CLIENT_JS.index("  _updateUserProfileSummary(")]
+    subprocess.run(["node", "-e", """
+const assert = require('node:assert/strict');
+const window = {location: {hostname: 'jarvis.example.test'}};
+const app = {
+""" + method + """
+};
+assert.equal(app._getMemoryIntelUrl(), 'http://jarvis.example.test:5002/#intel');
+window.JarvisUINavigation = {url: () => 'https://jarvis.example.test:8444'};
+assert.equal(app._getMemoryIntelUrl(), 'https://jarvis.example.test:8444/#intel');
+"""], check=True, capture_output=True, text=True, timeout=10)
     assert "window.location.hash.slice(1)" in MEMORY_JS
     assert "switchTab(requestedTab, { load: false })" in MEMORY_JS
 

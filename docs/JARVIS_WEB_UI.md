@@ -26,6 +26,10 @@ A **standalone web application** (`jarvis-web`) providing the full Jarvis experi
 
 ![jarvis-web](images/jarvis-web.jpg)
 
+For private HTTPS access from your other devices, see the
+[Tailscale HTTPS guide](TAILSCALE_HTTPS.md). It covers Serve commands for all five
+UIs, optional navigation URLs, browser microphone checks, and troubleshooting.
+
 ---
 
 ## ✅ Implemented Features
