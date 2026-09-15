@@ -68,7 +68,7 @@ UIs, optional navigation URLs, browser microphone checks, and troubleshooting.
 | TTS playback | ✅ | Toggle audio, plays responses in browser |
 | Mode-aware TTS | ✅ | Cloud=ElevenLabs, Local=Kokoro or Qwen3-TTS via provider-specific URL settings |
 | Status TTS | ✅ | Cached, cancellable status speech when enabled; final audio has priority |
-| **Push-to-talk STT** | ✅ | Click mic → speak → click again → transcribe → send |
+| **Voice dictation** | ✅ | Click mic → speak → stop → review/edit transcript → Send |
 | **Mode-aware STT** | ✅ | Cloud=OpenAI, Local=faster-whisper; compatible endpoint opt-in in either mode |
 | **Audio playback controls** | ✅ | Speaker button with pause/resume/stop, progress animation  |
 | Wake word | ⏳ | Planned - browser-based VAD |
@@ -931,11 +931,29 @@ safest fallback because it adds no network egress or API billing.
 **User Flow:**
 1. Click mic button 🎤 → Blue "preparing" state
 2. Grant mic permission (first time only)
-3. Green "recording" state → Speak your message
+3. Red recording indicator → Speak your message
 4. Click mic again → Yellow "processing" state
-5. Audio sent to `/api/stt` → Transcribed → Auto-sent as chat
+5. Audio sent to `/api/stt` → Transcript appended to the current input
+6. Review, edit, or record another section → Click Send when ready
 
-**Keyboard:** Press `Esc` to cancel recording
+Dictation never sends the chat automatically. The existing Send button temporarily
+becomes **× Cancel dictation** while preparing, recording, or transcribing; it
+returns to Send afterward. No additional composer button is added. Cancel or
+`Esc` discards the current dictation and keeps the existing draft. Text typed or
+edited while transcription runs is preserved. Changing conversation or mode
+discards pending dictation so it cannot appear in another chat.
+
+Transcription appears after stopping; the current STT endpoint does not stream
+partial text. Cancelling a pending transcription ignores its result and aborts
+the browser request; server/provider processing may already be underway.
+
+On mobile, Jarvis's microphone button remains hidden to preserve composer space.
+Use the phone keyboard's dictation microphone to enter and review text instead.
+
+Web microphone audio is temporary: the server removes the uploaded recording
+after transcription. Local faster-whisper also removes its converted WAV after
+use, including partial WAV output from failed or timed-out conversions. These
+microphone clips are not archived in Stash or conversation history.
 
 ### Mixed-source attachments
 
@@ -1722,8 +1740,8 @@ feedback flag for `tool_policy=none`. Passive thumbs reactions are unaffected.
 - [x] **Browser STT** - Push-to-talk with mic button ✅ DONE
   - Click-to-toggle: click to start, click again to stop
   - Mode-aware defaults plus OpenAI-compatible endpoint opt-in in either mode
-  - Visual states: preparing (blue), recording (green), processing (yellow)
-  - Auto-sends transcript as chat message
+  - Visual states: preparing (blue), recording (red), processing (yellow)
+  - Appends transcript to the draft for review before Send
 - [x] **Proactive integration** - Show alerts/reminders in UI ✅ DONE
   - Polls jarvis-api every 10 seconds for pending alerts/triggered reminders
   - Browser notifications (Notifications API) for new items

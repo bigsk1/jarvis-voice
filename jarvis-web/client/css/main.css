@@ -1283,7 +1283,16 @@ body {
   cursor: not-allowed;
 }
 
-/* Mic button - Push to talk */
+.send-btn.cancel-dictation {
+  background: var(--error);
+  font-size: 24px;
+}
+
+.send-btn.cancel-dictation:hover {
+  background: var(--error);
+}
+
+/* Mic button - dictate into the editable draft */
 .mic-btn {
   position: relative;
   cursor: pointer;

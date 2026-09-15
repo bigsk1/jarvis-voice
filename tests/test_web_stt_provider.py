@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import subprocess
 import sys
 from pathlib import Path
 
@@ -121,3 +122,108 @@ def test_web_unknown_provider_does_not_fall_through_to_openai(monkeypatch):
 
     assert response.status_code == 500
     assert "Unsupported STT_PROVIDER" in response.get_json()["error"]
+
+
+@pytest.mark.parametrize("failure", ["error", "timeout"])
+def test_web_wav_conversion_removes_partial_output_on_failure(
+    failure, tmp_path, monkeypatch
+):
+    source = tmp_path / "recording.webm"
+    source.write_bytes(b"original recording")
+    output = source.with_suffix(".wav")
+    error = (
+        subprocess.CalledProcessError(1, "ffmpeg", stderr=b"invalid audio")
+        if failure == "error"
+        else subprocess.TimeoutExpired("ffmpeg", timeout=30)
+    )
+
+    def fail_conversion(command, **_kwargs):
+        Path(command[-1]).write_bytes(b"partial converted recording")
+        raise error
+
+    monkeypatch.setattr(subprocess, "run", fail_conversion)
+
+    if failure == "error":
+        assert api._convert_to_wav(str(source)) == str(source)
+    else:
+        with pytest.raises(subprocess.TimeoutExpired) as raised:
+            api._convert_to_wav(str(source))
+        assert raised.value is error
+
+    assert source.read_bytes() == b"original recording"
+    assert not output.exists()
+
+
+def test_web_wav_conversion_keeps_successful_output_for_transcription(
+    tmp_path, monkeypatch
+):
+    source = tmp_path / "recording.webm"
+    source.write_bytes(b"original recording")
+    output = source.with_suffix(".wav")
+
+    def convert(command, **_kwargs):
+        Path(command[-1]).write_bytes(b"converted recording")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(subprocess, "run", convert)
+
+    assert api._convert_to_wav(str(source)) == str(output)
+    assert output.read_bytes() == b"converted recording"
+    assert source.read_bytes() == b"original recording"
+
+
+def test_web_wav_conversion_preserves_existing_wav(tmp_path, monkeypatch):
+    source = tmp_path / "recording.WAV"
+    source.write_bytes(b"original recording")
+
+    def unexpected_conversion(*_args, **_kwargs):
+        pytest.fail("WAV input must pass through without conversion")
+
+    monkeypatch.setattr(subprocess, "run", unexpected_conversion)
+
+    assert api._convert_to_wav(str(source)) == str(source)
+    assert source.read_bytes() == b"original recording"
+
+
+@pytest.mark.parametrize("outcome", ["success", "error", "timeout"])
+def test_web_faster_whisper_removes_converted_wav_after_transcription(
+    outcome, tmp_path, monkeypatch
+):
+    source = tmp_path / "recording.webm"
+    source.write_bytes(b"original recording")
+    output = source.with_suffix(".wav")
+    calls = []
+
+    def run(command, **_kwargs):
+        calls.append(command)
+        if command[0] == "ffmpeg":
+            Path(command[-1]).write_bytes(b"converted recording")
+            return subprocess.CompletedProcess(command, 0)
+
+        assert command[-1] == str(output)
+        assert output.read_bytes() == b"converted recording"
+        if outcome == "timeout":
+            raise subprocess.TimeoutExpired(command, timeout=10)
+        return subprocess.CompletedProcess(
+            command,
+            3 if outcome == "error" else 0,
+            stdout="transcribed words\n",
+            stderr="transcription failed" if outcome == "error" else "",
+        )
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(api, "_stt_timeout", lambda: 10)
+
+    if outcome == "success":
+        assert (
+            api._transcribe_faster_whisper(str(source), "local", "small.en")
+            == "transcribed words"
+        )
+    else:
+        message = "timed out" if outcome == "timeout" else "process failed"
+        with pytest.raises(STTProviderError, match=message):
+            api._transcribe_faster_whisper(str(source), "local", "small.en")
+
+    assert len(calls) == 2
+    assert source.read_bytes() == b"original recording"
+    assert not output.exists()

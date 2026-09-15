@@ -2403,6 +2403,7 @@ def _convert_to_wav(input_path: str) -> str:
     
     # Create output path
     wav_path = input_path.rsplit('.', 1)[0] + '.wav'
+    conversion_succeeded = False
     
     try:
         subprocess.run([
@@ -2412,7 +2413,8 @@ def _convert_to_wav(input_path: str) -> str:
             '-f', 'wav',
             wav_path
         ], capture_output=True, check=True, timeout=30)
-        
+
+        conversion_succeeded = True
         return wav_path
     except subprocess.CalledProcessError as e:
         print(f"[STT] ffmpeg conversion failed: {e.stderr}", flush=True)
@@ -2421,6 +2423,11 @@ def _convert_to_wav(input_path: str) -> str:
     except FileNotFoundError:
         print("[STT] ffmpeg not found, using original file", flush=True)
         return input_path
+    finally:
+        # Failed/timed-out ffmpeg can leave output before the caller owns a WAV.
+        # Successful output is removed by _transcribe_faster_whisper after use.
+        if not conversion_succeeded:
+            Path(wav_path).unlink(missing_ok=True)
 
 
 @api_bp.route('/tts', methods=['POST'])

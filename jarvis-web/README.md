@@ -19,7 +19,7 @@ A modern, feature-rich web interface for Jarvis with real-time streaming, voice 
 - **Token usage** - Footer hint with cumulative tokens and estimated cost when the model returns usage; hover shows input/output, cache-write/read tokens and costs, savings from cache hits, provider/model provenance, and context percentage
 
 ### 🎤 Voice I/O
-- **Speech-to-Text (STT)** - Browser microphone recording
+- **Speech-to-Text (STT)** - Dictate into an editable draft, add more recordings, and review before sending; Send temporarily becomes Cancel during dictation
   - Cloud: OpenAI Whisper API
   - Local: faster-whisper
 - **Text-to-Speech (TTS)** - Audio playback in browser (provider from `TTS_PROVIDER` in env)

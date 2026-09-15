@@ -62,6 +62,7 @@ class ChatUI {
     this.audioChunks = [];
     this.isRecording = false;
     this.recordingIndicator = null;
+    this._voiceSession = null;
     
     // Image upload state
     this.attachedImages = [];  // [{ url, filename }]
@@ -270,8 +271,21 @@ class ChatUI {
    * Setup DOM event listeners
    */
   _setupEventListeners() {
-    // Send button
-    this.sendBtn.addEventListener('click', () => this.sendMessage());
+    // Keep a Cancel press a cancellation if STT finishes before its click fires.
+    this.sendBtn.addEventListener('pointerdown', () => {
+      this._sendClickCancelsDictation = Boolean(this._voiceSession);
+    });
+    this.sendBtn.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) {
+        this._sendClickCancelsDictation = Boolean(this._voiceSession);
+      }
+    });
+    this.sendBtn.addEventListener('click', () => {
+      const cancel = this._sendClickCancelsDictation || this._voiceSession;
+      this._sendClickCancelsDictation = false;
+      if (cancel) this._cancelRecording();
+      else this.sendMessage();
+    });
     
     // Stop button - cancel processing
     this.stopBtn.addEventListener('click', () => this.cancelProcessing());
@@ -517,6 +531,7 @@ class ChatUI {
    * Transforms rough user input into an optimal prompt using full Jarvis knowledge
    */
   async _enhancePrompt() {
+    if (this._voiceSession) return;
     const input = this.inputField.value.trim();
 
     if (this.chatOnlyEnabled) {
@@ -874,7 +889,7 @@ class ChatUI {
 
   /**
    * Setup voice recording (click-to-toggle mode)
-   * Click once to start recording, click again to stop and send
+   * Click once to record, click again to transcribe into the editable draft.
    */
   _setupVoiceRecording() {
     if (!this.micBtn) return;
@@ -905,36 +920,47 @@ class ChatUI {
       }
     });
     
-    // Keyboard support: Space to toggle recording
-    this.micBtn.addEventListener('keydown', (e) => {
-      if (e.code === 'Space') {
-        e.preventDefault();
-        if (this.isRecording) {
-          this._stopRecording();
-        } else {
-          this._startRecording();
-        }
-      }
-    });
-    
+    // Native button activation handles Space and Enter once per key press.
     // Escape to cancel
     document.addEventListener('keydown', (e) => {
-      if (e.code === 'Escape' && this.isRecording) {
+      if (e.code === 'Escape' && this._voiceSession) {
         this._cancelRecording();
       }
     });
+    window.addEventListener('pagehide', () => this._cancelRecording({ silent: true }));
+  }
+
+  _voiceContextIsCurrent(session) {
+    return this._voiceSession === session && !session.controller.signal.aborted
+      && !this._conversationLoadPending
+      && session.mode === (window.jarvisSocket?.mode || 'cloud')
+      && session.conversationId === (window.jarvisSocket?.conversationId || null);
   }
   
   /**
    * Start voice recording with ready indicator
    */
   async _startRecording() {
-    if (this.isRecording || this.isProcessing) return;
-    
-    // Show "preparing" state
+    if (this._voiceSession || this.isProcessing || this._conversationLoadPending
+        || this.enhanceBtn?.classList.contains('enhancing')) return;
+
+    // Own permission requests, recorder events and transcription as one operation.
+    const session = {
+      phase: 'preparing',
+      mode: window.jarvisSocket?.mode || 'cloud',
+      conversationId: window.jarvisSocket?.conversationId || null,
+      controller: new AbortController(),
+      stream: null,
+      recorder: null,
+      chunks: []
+    };
+    this._voiceSession = session;
     this.micBtn.classList.add('preparing');
     this.micBtn.title = 'Preparing...';
-    
+    this.micBtn.setAttribute('aria-label', this.micBtn.title);
+    this.micBtn.disabled = true;
+    this.updateSendButton();
+
     try {
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -946,55 +972,55 @@ class ChatUI {
         }
       });
       
-      // Create MediaRecorder
+      if (!this._voiceContextIsCurrent(session)) {
+        stream.getTracks().forEach(track => track.stop());
+        this._resetMicButton(session);
+        return;
+      }
+      session.stream = stream;
       const mimeType = this._getSupportedMimeType();
-      this.mediaRecorder = new MediaRecorder(stream, { mimeType });
-      this.audioChunks = [];
-      this._recordingStream = stream; // Store for cleanup
-      
-      this.mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          this.audioChunks.push(e.data);
+      const recorder = session.recorder = new MediaRecorder(stream, { mimeType });
+      this.mediaRecorder = recorder;
+      this.audioChunks = session.chunks;
+      this._recordingStream = stream;
+
+      recorder.ondataavailable = (e) => {
+        if (this._voiceContextIsCurrent(session) && e.data.size > 0) {
+          session.chunks.push(e.data);
         }
       };
-      
-      this.mediaRecorder.onstop = () => {
-        // Stop all tracks
-        if (this._recordingStream) {
-          this._recordingStream.getTracks().forEach(track => track.stop());
-          this._recordingStream = null;
+
+      recorder.onstop = () => {
+        stream.getTracks().forEach(track => track.stop());
+        if (this._voiceContextIsCurrent(session)) {
+          this._processRecording(session);
+        } else {
+          this._resetMicButton(session);
         }
-        
-        // Process the recording
-        this._processRecording();
       };
-      
-      // Brief delay to let user see "ready" state before recording
-      this.micBtn.classList.remove('preparing');
-      this.micBtn.classList.add('ready');
-      this.micBtn.title = 'Listening... Click again when done';
-      
-      // Show toast with instruction
-      Utils.toast('🎤 Listening... Click mic again when done', 'info', 3000);
-      
-      // Small delay so user knows to start speaking
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Start recording
-      this.mediaRecorder.start(100); // Collect data every 100ms
+      recorder.onerror = () => {
+        if (this._voiceContextIsCurrent(session)) {
+          Utils.toast('Recording failed. Your draft is unchanged.', 'error');
+        }
+        this._resetMicButton(session);
+      };
+
+      recorder.start(100);
+      session.phase = 'recording';
       this.isRecording = true;
-      
-      // Update UI to recording state
-      this.micBtn.classList.remove('ready');
+      this.micBtn.disabled = false;
+      this.micBtn.classList.remove('preparing');
       this.micBtn.classList.add('recording');
+      this.micBtn.title = 'Stop recording and add text to draft';
+      this.micBtn.setAttribute('aria-label', this.micBtn.title);
+      this.micBtn.setAttribute('aria-pressed', 'true');
       this._showRecordingIndicator();
-      
-      console.log('[Chat] Recording started');
-      
+      Utils.toast('🎤 Listening. Click mic to finish; × to cancel.', 'info', 3000);
     } catch (err) {
-      console.error('[Chat] Failed to start recording:', err);
-      this.micBtn.classList.remove('preparing', 'ready');
-      
+      if (!this._voiceContextIsCurrent(session)) {
+        this._resetMicButton(session);
+        return;
+      }
       if (err.name === 'NotAllowedError') {
         Utils.toast('Microphone access denied. Click the lock icon in your browser address bar to allow.', 'error', 5000);
       } else if (err.name === 'NotFoundError') {
@@ -1002,8 +1028,7 @@ class ChatUI {
       } else {
         Utils.toast('Failed to start recording: ' + err.message, 'error');
       }
-      
-      this.micBtn.title = 'Click to record';
+      this._resetMicButton(session);
     }
   }
   
@@ -1011,120 +1036,129 @@ class ChatUI {
    * Stop voice recording
    */
   _stopRecording() {
-    if (!this.isRecording || !this.mediaRecorder) return;
-    
-    console.log('[Chat] Stopping recording...');
+    const session = this._voiceSession;
+    if (session?.phase !== 'recording') return;
+    if (!this._voiceContextIsCurrent(session)) {
+      this._resetMicButton(session);
+      return;
+    }
     this.isRecording = false;
-    this.mediaRecorder.stop();
-    
-    // Update UI
+    session.phase = 'transcribing';
     this.micBtn.classList.remove('recording', 'ready');
     this.micBtn.classList.add('processing');
     this.micBtn.title = 'Transcribing...';
+    this.micBtn.setAttribute('aria-label', this.micBtn.title);
+    this.micBtn.setAttribute('aria-pressed', 'false');
+    this.micBtn.disabled = true;
     this._hideRecordingIndicator();
+    this.updateSendButton();
+    if (session.recorder.state !== 'inactive') session.recorder.stop();
   }
   
   /**
-   * Cancel recording without sending
+   * Discard this dictation while retaining the existing draft.
    */
-  _cancelRecording() {
-    if (!this.isRecording) return;
-    
-    console.log('[Chat] Recording cancelled');
-    this.isRecording = false;
-    this.audioChunks = [];
-    
-    // Stop stream directly
-    if (this._recordingStream) {
-      this._recordingStream.getTracks().forEach(track => track.stop());
-      this._recordingStream = null;
-    }
-    
-    // Stop recorder without processing
-    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      this.mediaRecorder.onstop = () => {}; // Clear handler
-      this.mediaRecorder.stop();
-    }
-    
-    // Update UI
-    this.micBtn.classList.remove('recording', 'ready', 'preparing');
-    this.micBtn.title = 'Click to record';
-    this._hideRecordingIndicator();
-    
-    Utils.toast('Recording cancelled (Esc)', 'info');
+  _cancelRecording({ silent = false } = {}) {
+    if (!this._voiceSession) return;
+    this._resetMicButton();
+    if (!silent) Utils.toast('Dictation cancelled. Your draft is unchanged.', 'info');
   }
   
   /**
    * Process recorded audio - send to STT API
    */
-  async _processRecording() {
-    this._hideRecordingIndicator();
-    
-    if (this.audioChunks.length === 0) {
-      console.log('[Chat] No audio recorded');
-      this._resetMicButton();
+  async _processRecording(session = this._voiceSession) {
+    if (!session || !this._voiceContextIsCurrent(session)) {
+      this._resetMicButton(session);
       return;
     }
-    
-    const audioBlob = new Blob(this.audioChunks, { type: this._getSupportedMimeType() });
-    console.log('[Chat] Audio blob size:', audioBlob.size, 'type:', audioBlob.type);
+    // A device can end recording itself, without a click on the mic.
+    session.phase = 'transcribing';
+    this.isRecording = false;
+    this.micBtn.classList.remove('recording', 'ready');
+    this.micBtn.classList.add('processing');
+    this.micBtn.title = 'Transcribing...';
+    this.micBtn.setAttribute('aria-label', this.micBtn.title);
+    this.micBtn.setAttribute('aria-pressed', 'false');
+    this.micBtn.disabled = true;
+    this.updateSendButton();
+    this._hideRecordingIndicator();
+
+    if (session.chunks.length === 0) {
+      this._resetMicButton(session);
+      return;
+    }
+
+    const mimeType = session.recorder.mimeType || this._getSupportedMimeType();
+    const audioBlob = new Blob(session.chunks, { type: mimeType });
     
     // Check minimum size (very short recordings won't have speech)
     if (audioBlob.size < 5000) {
-      console.log('[Chat] Recording too short');
       Utils.toast('Recording too short - speak longer before clicking again', 'warning');
-      this._resetMicButton();
+      this._resetMicButton(session);
       return;
     }
     
     try {
       // Send to STT API
       const formData = new FormData();
-      formData.append('audio', audioBlob, 'recording.webm');
-      formData.append('mode', window.jarvisSocket?.mode || 'cloud');
-      
-      console.log('[Chat] Sending audio for transcription...');
-      
-      const response = await fetch('/api/stt', {
+      const extension = { 'audio/mp4': 'mp4', 'audio/ogg': 'ogg', 'audio/wav': 'wav' }[mimeType.split(';')[0]] || 'webm';
+      formData.append('audio', audioBlob, `recording.${extension}`);
+      formData.append('mode', session.mode);
+
+      const response = await Utils.auth.fetch('/api/stt', {
         method: 'POST',
-        body: formData
+        body: formData,
+        signal: session.controller.signal
       });
-      
       const data = await response.json();
-      
-      if (data.ok && data.text) {
-        console.log('[Chat] Transcribed:', data.text);
-        
-        // Put text in input field
-        this.inputField.value = data.text;
-        Utils.autoResize(this.inputField);
-        
-        // Auto-send the message
-        this.sendMessage();
-        
-        Utils.toast('🎤 ' + Utils.truncate(data.text, 30), 'success', 2000);
+      if (!this._voiceContextIsCurrent(session)) return;
+      const text = typeof data.text === 'string' ? data.text.trim() : '';
+      if (response.ok && data.ok && text) {
+        // Read the current draft so typing and corrections during STT survive.
+        const draft = this.inputField.value;
+        this.inputField.value = draft + (draft && !/\s$/.test(draft) ? ' ' : '') + text;
+        this.inputField.focus();
+        this.inputField.setSelectionRange(this.inputField.value.length, this.inputField.value.length);
+        this.inputField.dispatchEvent(new Event('input', { bubbles: true }));
+        Utils.toast('Dictation added. Review your message, then Send.', 'success', 3000);
       } else {
-        console.warn('[Chat] STT failed:', data.error);
-        Utils.toast(data.error || 'Speech recognition failed', 'error');
+        Utils.toast(data.error || 'No speech detected. Your draft is unchanged.', 'error');
       }
-      
     } catch (err) {
-      console.error('[Chat] STT error:', err);
-      Utils.toast('Failed to process audio: ' + err.message, 'error');
+      if (this._voiceContextIsCurrent(session)) {
+        Utils.toast('Could not transcribe audio. Your draft is unchanged.', 'error');
+      }
     } finally {
-      this._resetMicButton();
+      this._resetMicButton(session);
     }
   }
   
   /**
    * Reset mic button to default state
    */
-  _resetMicButton() {
+  _resetMicButton(session = this._voiceSession) {
+    if (!session || this._voiceSession !== session) return;
+    this._voiceSession = null;
+    session.controller.abort();
+    if (session.recorder) {
+      session.recorder.onstop = null;
+      session.recorder.ondataavailable = null;
+      session.recorder.onerror = null;
+      if (session.recorder.state !== 'inactive') session.recorder.stop();
+    }
+    session.stream?.getTracks().forEach(track => track.stop());
+    this.isRecording = false;
     this.micBtn.classList.remove('recording', 'processing', 'ready', 'preparing');
-    this.micBtn.title = 'Click to record';
+    this.micBtn.title = 'Dictate a message';
+    this.micBtn.setAttribute('aria-label', this.micBtn.title);
+    this.micBtn.setAttribute('aria-pressed', 'false');
+    this.micBtn.disabled = false;
     this.audioChunks = [];
     this.mediaRecorder = null;
     this._recordingStream = null;
+    this._hideRecordingIndicator();
+    this.updateSendButton();
   }
   
   /**
@@ -1240,6 +1274,7 @@ class ChatUI {
     });
 
     socket.on('modeChanged', (data) => {
+      this._cancelRecording({ silent: true });
       this.cancelAttachmentPreparation();
       this._handleImageAttachmentsForMode(data.mode);
     });
@@ -2260,6 +2295,7 @@ class ChatUI {
   }
 
   setConversationLoading(loading, { preservePreparation = false } = {}) {
+    if (loading) this._cancelRecording({ silent: true });
     if (loading && !preservePreparation) this.cancelAttachmentPreparation({ preserveModal: true });
     this._conversationLoadPending = Boolean(loading);
     this.updateSendButton();
@@ -2964,6 +3000,7 @@ class ChatUI {
    * Upload the entire selected source bundle before sending one chat request.
    */
   async sendMessage() {
+    if (this._voiceSession) return;
     if (this._conversationLoadPending) {
       Utils.toast('Wait for the conversation to finish loading.', 'info');
       return;
@@ -6300,9 +6337,13 @@ class ChatUI {
    * Update send button state
    */
   updateSendButton() {
+    const dictating = Boolean(this._voiceSession);
     const busy = Boolean(this.isProcessing || this._conversationLoadPending || window.jarvisSocket?.connected === false);
-    this.sendBtn.disabled = busy;
-    this.sendBtn.innerHTML = busy ? '⏳' : '➤';
+    this.sendBtn.disabled = !dictating && busy;
+    this.sendBtn.textContent = dictating ? '×' : busy ? '⏳' : '➤';
+    this.sendBtn.classList.toggle('cancel-dictation', dictating);
+    this.sendBtn.title = dictating ? 'Cancel dictation (Esc)' : 'Send Message';
+    this.sendBtn.setAttribute('aria-label', dictating ? 'Cancel dictation' : 'Send Message');
   }
   
   /**
@@ -6668,6 +6709,7 @@ class ChatUI {
    * Clear chat history
    */
   clearChat({ preserveAttachments = false, preservePreparation = false } = {}) {
+    this._cancelRecording({ silent: true });
     this._renderedMessageIds = new Set();
     const clearedSources = !preserveAttachments && Boolean(
       this.attachedDocuments.length || this.attachedImages.length
