@@ -46,6 +46,13 @@ input::placeholder, textarea::placeholder { color: var(--text-tertiary); opacity
 .inline-warning { padding: 9px 11px; background: #f59e0b0c; border: 1px solid #f59e0b33; border-radius: 8px; font-size: 11px; color: #e9b65a; }
 .settings-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
 .settings-footer .helper { margin: 0; overflow-wrap: anywhere; }
+.notification-settings { min-width: 0; margin: 18px 0 0; padding: 12px 0 0; border: 0; border-top: 1px solid var(--border-primary); }
+.notification-settings legend { padding: 0 8px 0 0; color: var(--text-primary); font-size: 12px; font-weight: 600; }
+.notification-settings .checkbox-label { align-items: flex-start; }
+.notification-settings input { flex: 0 0 auto; margin: 3px 0 0; }
+.notification-settings .checkbox-label:has(input:disabled) { opacity: .6; }
+.notification-help { margin-bottom: 0; overflow-wrap: anywhere; }
+.notification-help[data-error="true"] { color: #fca5a5; }
 .button { display: inline-flex; justify-content: center; align-items: center; gap: 8px; border: 1px solid transparent; border-radius: 8px; font-size: 12px; font-weight: 600; padding: 8px 12px; white-space: nowrap; }
 .button-primary, .button-send { background: var(--accent-primary); color: #fff; }
 .button-primary:hover:not(:disabled), .button-send:hover:not(:disabled) { background: #7477fa; }
@@ -81,6 +88,17 @@ input::placeholder, textarea::placeholder { color: var(--text-tertiary); opacity
 .message[data-role="user"] .message-body { border: 1px solid #6366f129; background: #6366f10b; border-radius: 3px 12px 12px 12px; padding: 11px 13px; }
 .message-body p { white-space: pre-wrap; margin: 0 0 10px; }
 .message-body p:last-child { margin-bottom: 0; }
+.message-body :is(h1, h2, h3, h4, h5, h6) { margin: 18px 0 8px; font-weight: 600; line-height: 1.4; }
+.message-body h1 { font-size: 1.4em; }
+.message-body h2 { font-size: 1.25em; }
+.message-body h3 { font-size: 1.1em; }
+.message-body :is(h4, h5, h6) { font-size: 1em; }
+.message-body > :first-child { margin-top: 0; }
+.message-body :is(ul, ol) { margin: 0 0 10px; padding-inline-start: 1.65em; }
+.message-body li { margin: 4px 0; min-width: 0; }
+.message-body li > p { margin-bottom: 4px; }
+.message-body li > :is(ul, ol) { margin: 4px 0; }
+.message-body li > :last-child { margin-bottom: 0; }
 .message-body a { color: #67e8f9; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .message-body a:hover { color: #a5f3fc; }
 .message-body code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 11px; border-radius: 4px; background: var(--bg-card); padding: 2px 4px; }
@@ -121,6 +139,7 @@ textarea:focus-visible { outline: none; }
 .context-panel .icon-button { width: 25px; height: 25px; padding: 4px; }
 .context-panel strong { display: block; font-size: 10px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .context-panel p { font-size: 11px; color: var(--text-secondary); margin: 2px 0 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.context-panel .context-hint { display: block; color: var(--accent-tertiary); font-size: 10px; margin-top: 5px; }
 .progress-area { display: flex; align-items: center; gap: 8px; min-height: 43px; padding: 7px 3px; }
 .activity-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-tertiary); animation: pulse 1.8s ease-in-out infinite; flex-shrink: 0; }
 #progress-text { flex: 1; color: var(--text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

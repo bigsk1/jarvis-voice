@@ -717,24 +717,31 @@ class ContextAssembler:
         ]
         if duration_ms is not None:
             header.append(f"Duration: {duration_ms} ms")
-        header.append(
-            "Result Meta: "
-            f"result_truncated={metadata['result_truncated']}, "
-            f"result_chars_shown={metadata['result_chars_shown']}, "
-            f"result_chars_total={metadata['result_chars_total']}"
-        )
-        header.append("Result:")
-        prefix = "\n".join(header) + "\n"
-        available = max_chars - len(prefix)
+
+        def result_prefix(*, truncated: bool, shown: int) -> str:
+            result_header = (
+                "Result Meta: "
+                f"result_truncated={truncated}, "
+                f"result_chars_shown={shown}, "
+                f"result_chars_total={metadata['result_chars_total']}"
+            )
+            return "\n".join([*header, result_header, "Result:"]) + "\n"
+
+        def finish(rendered: str, *, truncated: bool) -> tuple[str, dict[str, Any]]:
+            metadata["result_truncated"] = truncated
+            metadata["result_chars_shown"] = len(rendered)
+            return result_prefix(truncated=truncated, shown=len(rendered)) + rendered, metadata
+
+        # Reserve the longest final flag and character count before selecting a
+        # body. Rendering its actual metadata afterwards cannot exceed the cap.
+        available = max_chars - len(result_prefix(truncated=False, shown=max_chars))
         if available <= 160:
             payload = {
                 "preview_notice": "Result omitted because metadata consumed the provider result budget.",
                 "result_truncated": True,
             }
             rendered = json.dumps(payload, default=str, separators=(",", ":"))
-            metadata["result_truncated"] = True
-            metadata["result_chars_shown"] = len(rendered)
-            return prefix + rendered, metadata
+            return finish(rendered, truncated=True)
 
         try:
             parsed_summary = json.loads(result_summary)
@@ -747,8 +754,15 @@ class ContextAssembler:
                 default=str,
             )
             if len(rendered) <= available:
-                metadata["result_chars_shown"] = len(rendered)
-                return prefix + rendered, metadata
+                return finish(rendered, truncated=metadata["result_truncated"])
+            # Whitespace can push a complete result over the continuation
+            # budget. Compact the same JSON before discarding any evidence.
+            rendered = json.dumps(
+                {"result": parsed_summary, "result_truncated": metadata["result_truncated"]},
+                default=str, separators=(",", ":"),
+            )
+            if len(rendered) <= available:
+                return finish(rendered, truncated=metadata["result_truncated"])
         except Exception:
             pass
 
@@ -767,9 +781,7 @@ class ContextAssembler:
             }
             rendered = json.dumps(payload, default=str, separators=(",", ":"))
             if len(rendered) <= available:
-                metadata["result_truncated"] = True
-                metadata["result_chars_shown"] = len(rendered)
-                return prefix + rendered, metadata
+                return finish(rendered, truncated=True)
             preview_budget = preview_budget // 2
 
         rendered = json.dumps(
@@ -781,9 +793,7 @@ class ContextAssembler:
             default=str,
             separators=(",", ":"),
         )
-        metadata["result_truncated"] = True
-        metadata["result_chars_shown"] = len(rendered)
-        return prefix + rendered, metadata
+        return finish(rendered, truncated=True)
 
     def build_arguments_context_preview(
         self,
@@ -838,7 +848,9 @@ class ContextAssembler:
             # Full transcripts live in Stash. Preserve the bounded excerpt,
             # provider provenance, and artifact reference for the answer turn.
             return 8000
-        if lowered == "analyze_video":
+        if lowered in {"analyze_image", "analyze_video"}:
+            # Vision analysis is the evidence for the answer, not a short
+            # status string. Keep detailed labels/layout/color observations.
             return 10000
         if lowered in {"trakt_movies", "trakt_tv_shows", "trakt_account"}:
             # Preserve useful public or account-aware media context, exact
@@ -1778,6 +1790,26 @@ class ContextAssembler:
             )
             if isinstance((value := data.get(key)), list)
         }
+        return preview
+
+    def build_image_analysis_data_preview(self, data: Any) -> dict[str, Any]:
+        """Preserve a useful vision report when the complete result is large."""
+        if not isinstance(data, dict):
+            return {}
+        preview = {
+            key: self.build_preview_value(data[key], parent_key=key, max_depth=2)
+            for key in (
+                "source_count", "sources", "source", "original_path", "filename",
+                "mime_type", "size_bytes", "processed_size_bytes",
+                "original_width", "original_height", "processed_width", "processed_height",
+                "resized_for_vision", "recompressed_for_vision", "stash_ref", "stash_refs",
+            ) if key in data
+        }
+        analysis = data.get("analysis")
+        if isinstance(analysis, str):
+            preview["analysis"] = self.truncate_preview_text(analysis, 8000)
+            preview["analysis_chars_total"] = len(analysis)
+            preview["analysis_truncated"] = preview["analysis"] != analysis
         return preview
 
     def build_video_analysis_data_preview(self, data: Any) -> dict[str, Any]:
@@ -3276,6 +3308,8 @@ class ContextAssembler:
                 data_preview = self.build_flight_data_preview(data)
             elif normalized_tool_name == "transcribe_audio":
                 data_preview = self.build_transcribe_audio_data_preview(data)
+            elif normalized_tool_name == "analyze_image":
+                data_preview = self.build_image_analysis_data_preview(data)
             elif normalized_tool_name == "analyze_video":
                 data_preview = self.build_video_analysis_data_preview(data)
             else:
@@ -3329,6 +3363,19 @@ class ContextAssembler:
         preview_compact = json.dumps(preview_payload, separators=(",", ":"), default=str)
         if len(preview_compact) <= max_chars:
             return preview_compact, result_chars_total, len(preview_compact), True
+
+        if (tool_name or "").lower() == "analyze_image":
+            # JSON escaping (especially non-ASCII OCR text) also consumes the
+            # budget. Shorten the report while retaining its typed metadata;
+            # the generic fallback would cut analysis back to 240 characters.
+            analysis = data_preview.get("analysis", "")
+            while len(analysis) > 120:
+                analysis = self.truncate_preview_text(analysis, len(analysis) * 3 // 4)
+                data_preview["analysis"] = analysis
+                data_preview["analysis_truncated"] = True
+                preview_compact = json.dumps(preview_payload, separators=(",", ":"), default=str)
+                if len(preview_compact) <= max_chars:
+                    return preview_compact, result_chars_total, len(preview_compact), True
 
         if (tool_name or "").lower() == "serpapi_travel_explore":
             # Keep the specialized schema and complete destination rows when

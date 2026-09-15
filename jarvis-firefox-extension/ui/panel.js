@@ -1,5 +1,5 @@
 import { normalizeServerUrl, originPermission } from '../core/connection.js';
-import { DEFAULT_SCREENSHOT_PROMPT, DraftBuffer, canSend, displayTime, isBusy, isRunActive, noticeText, safePreviewUrl } from './view-model.js';
+import { DEFAULT_SCREENSHOT_PROMPT, DraftBuffer, canSend, displayTime, imageContextHint, isBusy, isRunActive, noticeText, notificationPreferences, safePreviewUrl } from './view-model.js';
 import { renderMessage } from './render.js';
 
 const $ = id => document.getElementById(id);
@@ -18,6 +18,11 @@ let initialized = false;
 let sending = false;
 let configurationBusy = false;
 let closing = false;
+let preferencesBusy = false;
+let preferencesNotice = '';
+let lastViewStatusKey = '';
+
+const notificationHelp = 'Notifications use a generic message unless you enable previews. Previews may appear on your lock screen.';
 
 const labels = {
   unconfigured: 'Set up', disconnected: 'Offline', connecting: 'Connecting',
@@ -66,7 +71,42 @@ function renderControls() {
   $('logout-button').disabled = configurationBusy || busy;
   $('reconnect-button').disabled = configurationBusy || ['connecting', 'recovering'].includes(state?.connection?.status);
   $('refresh-history').disabled = state?.connection?.status !== 'connected' || Boolean(state?.pendingMode);
-  $('message-input').placeholder = state?.draft?.attachment ? 'Ask about this screenshot…' : state?.draft?.context ? 'Ask about this page or selection…' : 'Ask Jarvis anything…';
+  $('message-input').placeholder = state?.draft?.attachment ? 'Ask about this screenshot…' : state?.draft?.context?.kind === 'image' ? 'Ask about this image…' : state?.draft?.context ? 'Ask about this page or selection…' : 'Ask Jarvis anything…';
+}
+
+function renderPreferences() {
+  const preferences = notificationPreferences(state?.settings?.preferences);
+  if (!preferencesBusy) {
+    $('show-badge').checked = preferences.showBadge;
+    $('desktop-notifications').checked = preferences.desktopNotifications;
+    $('notification-preview').checked = preferences.notificationPreview;
+  }
+  $('show-badge').disabled = preferencesBusy;
+  $('desktop-notifications').disabled = preferencesBusy;
+  $('notification-preview').disabled = preferencesBusy || !preferences.desktopNotifications;
+  $('notification-help').textContent = preferencesBusy ? 'Saving notification preferences…' : preferencesNotice || notificationHelp;
+  $('notification-help').dataset.error = String(Boolean(preferencesNotice));
+}
+
+async function updatePreference(name, value) {
+  if (preferencesBusy) return;
+  preferencesBusy = true;
+  preferencesNotice = '';
+  renderPreferences();
+  try {
+    // Firefox requires this request to remain in the checkbox's user gesture.
+    if (name === 'desktopNotifications' && value) {
+      const granted = await browser.permissions.request({permissions: ['notifications']});
+      if (!granted) throw new Error('Notifications were not allowed. Enable them again to grant Firefox permission.');
+    }
+    const result = await command('updatePreferences', {[name]: value});
+    if (!result.ok) preferencesNotice = result.error || 'Notification preferences could not be saved.';
+  } catch (error) {
+    preferencesNotice = error?.message || 'Notification preferences could not be saved.';
+  } finally {
+    preferencesBusy = false;
+    renderPreferences();
+  }
 }
 
 function renderNotice() {
@@ -180,9 +220,13 @@ function renderAttachments() {
   $('attachment-meta').textContent = [dimensions, captured ? `Captured ${captured}` : 'Ready to send'].filter(Boolean).join(' · ');
   const context = state?.draft?.context;
   $('context-panel').hidden = !context;
-  $('context-title').textContent = context?.title || 'Shared from Firefox';
-  $('context-text').textContent = context?.text || context?.url || '';
+  $('context-panel').setAttribute('aria-label', context?.kind === 'image' ? 'Shared image URL' : 'Shared page context');
+  $('context-title').textContent = context?.kind === 'image' ? 'Image URL' : context?.title || 'Shared from Firefox';
+  $('context-text').textContent = context?.kind === 'image' ? context?.url || '' : context?.text || context?.url || '';
   $('context-title').title = context?.url || '';
+  const hint = imageContextHint(context, draft.value);
+  $('context-hint').textContent = hint;
+  $('context-hint').hidden = !hint;
   $('source-caption').textContent = attachment ? 'Capture again when the page changes.' : 'Capture adds a preview to your next message.';
 }
 
@@ -199,11 +243,24 @@ function renderProgress() {
 function renderState(next, forceDraft = false) {
   if (!next) return;
   const previousStatus = state?.connection?.status;
+  const previousImageStage = state?.draft?.context?.stageId;
   state = next;
+  const context = state.draft?.context;
+  const newImageStage = context?.kind === 'image' && context.stageId && context.stageId !== previousImageStage;
+  let syncImageDraft = false;
+  if (newImageStage && draft.dirty && !forceDraft) {
+    // A menu action may arrive before the previous typing debounce was saved.
+    // Keep the local question and add the image that was explicitly staged.
+    cancelDraftTimer();
+    try { draft.mergeImage(context); syncImageDraft = true; }
+    catch (error) { localError = error.message; }
+  }
   draft.accept(state.draft?.text, forceDraft);
+  if (syncImageDraft && draft.dirty) scheduleDraft();
   updateDraftInput();
   $('mode-select').value = state.pendingMode || state.mode || 'cloud';
   renderConnection();
+  renderPreferences();
   renderMessages();
   renderHistory();
   renderAttachments();
@@ -213,18 +270,41 @@ function renderState(next, forceDraft = false) {
   if ((!initialized && ['unconfigured', 'auth_required'].includes(state.connection?.status))
       || (state.connection?.status === 'auth_required' && previousStatus !== 'auth_required')) openDrawer('settings');
   initialized = true;
+  sendViewStatus();
+}
+
+function sendViewStatus() {
+  if (closing || !port) return;
+  const status = {
+    type: 'viewStatus', visible: !document.hidden && document.hasFocus(),
+    conversationId: state?.conversationId || null,
+  };
+  const key = JSON.stringify(status);
+  if (key === lastViewStatusKey) return;
+  try { port.postMessage(status); lastViewStatusKey = key; }
+  catch { /* The port disconnect handler restores the bridge. */ }
+}
+
+function draftScopeKey() {
+  return JSON.stringify([state?.settings?.serverUrl, state?.conversationId, state?.mode,
+    state?.draft?.context?.stageId || null]);
 }
 
 async function command(action, payload = {}, options = {}) {
+  const scope = draftScopeKey();
+  if (action === 'setDraft') payload = {...payload, imageStageId: state?.draft?.context?.stageId || null};
   if (!options.quiet) { localError = ''; renderNotice(); }
   try {
     const result = await browser.runtime.sendMessage({ type: 'jarvis:command', action, payload });
+    // The port may already have delivered a new stage or conversation while a
+    // prior draft command's acknowledgment was still crossing the bridge.
+    const staleDraft = action === 'setDraft' && scope !== draftScopeKey();
     if (!result?.ok) {
-      if (result?.state) renderState(result.state);
+      if (result?.state && !staleDraft) renderState(result.state);
       throw new Error(result?.error || 'Jarvis could not complete this action.');
     }
     if (options.beforeRender) options.beforeRender(result.state);
-    if (result.state) renderState(result.state, options.forceDraft);
+    if (result.state && !staleDraft) renderState(result.state, options.forceDraft);
     return result;
   } catch (error) {
     localError = error?.message || String(error);
@@ -282,6 +362,7 @@ function subscribe() {
   clearInterval(keepAliveTimer);
   try {
     port = browser.runtime.connect({ name: 'jarvis-ui' });
+    lastViewStatusKey = '';
     const connectedPort = port;
     const ping = () => {
       if (closing || port !== connectedPort) return;
@@ -300,9 +381,11 @@ function subscribe() {
     });
     keepAliveTimer = setInterval(ping, 10000);
     ping();
+    sendViewStatus();
+    const snapshotScope = draftScopeKey();
     void browser.runtime.sendMessage({ type: 'jarvis:state' }).then(response => {
       const next = response?.state || (response?.settings ? response : null);
-      if (next) { localError = ''; renderState(next); }
+      if (next && snapshotScope === draftScopeKey()) { localError = ''; renderState(next); }
     }).catch(error => { localError = error.message; renderNotice(); });
   } catch (error) {
     localError = error.message;
@@ -325,6 +408,9 @@ $('refresh-history').addEventListener('click', () => command('listConversations'
 $('new-conversation').addEventListener('click', () => changeConversation('newConversation'));
 $('server-url').addEventListener('input', () => { settingsDirty = true; });
 $('allow-insecure').addEventListener('change', () => { settingsDirty = true; $('insecure-warning').hidden = !$('allow-insecure').checked; });
+for (const [id, name] of [['show-badge', 'showBadge'], ['desktop-notifications', 'desktopNotifications'], ['notification-preview', 'notificationPreview']]) {
+  $(id).addEventListener('change', () => updatePreference(name, $(id).checked));
+}
 
 $('settings-form').addEventListener('submit', async event => {
   event.preventDefault();
@@ -373,7 +459,7 @@ $('mode-select').addEventListener('change', async () => {
   await command('setMode', { mode: requestedMode });
   $('mode-select').value = state?.pendingMode || state?.mode || 'cloud';
 });
-$('message-input').addEventListener('input', () => { draft.edit($('message-input').value); resizeInput(); renderControls(); scheduleDraft(); });
+$('message-input').addEventListener('input', () => { draft.edit($('message-input').value); resizeInput(); renderControls(); renderAttachments(); scheduleDraft(); });
 $('message-input').addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void send(draft.value); }
 });
@@ -391,12 +477,17 @@ $('preview-button').addEventListener('click', () => {
 });
 $('close-preview').addEventListener('click', () => $('preview-dialog').close());
 $('preview-dialog').addEventListener('close', () => $('large-preview').removeAttribute('src'));
+window.addEventListener('focus', sendViewStatus);
+window.addEventListener('blur', sendViewStatus);
+document.addEventListener('visibilitychange', sendViewStatus);
 window.addEventListener('pagehide', () => {
   closing = true;
   cancelDraftTimer();
   clearTimeout(reconnectTimer);
   clearInterval(keepAliveTimer);
-  if (draft.dirty) void browser.runtime.sendMessage({ type: 'jarvis:command', action: 'setDraft', payload: { text: draft.value } }).catch(() => {});
+  if (draft.dirty) void browser.runtime.sendMessage({ type: 'jarvis:command', action: 'setDraft', payload: {
+    text: draft.value, imageStageId: state?.draft?.context?.stageId || null,
+  } }).catch(() => {});
   port?.disconnect();
 });
 

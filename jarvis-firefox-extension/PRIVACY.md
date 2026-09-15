@@ -10,11 +10,13 @@ When you choose **Send** or **Analyze screenshot**, the extension can transmit:
 
 - The message you composed or the displayed action's default question.
 - The staged screenshot, resized to JPEG with a maximum edge of 1,024 pixels at quality 0.85.
-- The selected text or link you explicitly staged.
+- The selected text, link, or image URL you explicitly staged and left in the message.
 - Source page titles, URLs, and screenshot capture time included with that content.
 - Conversation/request identifiers and the selected Jarvis cloud/local mode.
 
-Connection recovery and opening history can retrieve saved conversations without another Send action. Normal HTTP/socket communication also exposes network information such as your address to the server. The extension does not continuously capture tabs, read browsing history, inject page scripts, or upload a screenshot merely because its preview is visible.
+Connection recovery, opening history, and background completion checks can retrieve saved conversations without another Send action. While extension-submitted requests are pending, checks run about once a minute even with the sidebar/pop-out closed, provided Firefox is running and the session is available. They stop when requests settle, expire after seven days, or the session ends. They only check existing work and never resubmit it. Normal HTTP/socket communication also exposes network information such as your address to the server. The extension does not continuously capture tabs, read browsing history, inject page scripts, or upload a screenshot merely because its preview is visible.
+
+Image URL staging does not fetch the image or copy the webpage's cookies. After Send, Jarvis's normal tool path can fetch that URL. An `analyze_image` tool hint accompanies an applicable staged image draft; server configuration determines which tools can run.
 
 Firefox's declared data categories are `authenticationInfo`, `personalCommunications`, `websiteContent`, and `browsingActivity`. Transmission to a user-owned Jarvis server is still transmission. The extension does not declare or implement optional analytics collection.
 
@@ -22,18 +24,22 @@ Firefox's declared data categories are `authenticationInfo`, `personalCommunicat
 
 | Storage | Contents | Lifetime |
 | --- | --- | --- |
-| `storage.local` | Server URL and connection preferences | Until changed or extension data is removed. |
-| `storage.session` | Login token, bounded chat/recovery state, source metadata, and unsent draft/attachment | In memory during the extension session; cleared when Firefox exits or the extension is disabled/reloaded. |
+| `storage.local` | Server URL, connection preferences, and completion-notification preferences | Until changed or extension data is removed. |
+| `storage.session` | Login token, bounded chat/recovery state, source metadata, unsent draft/attachment, and completion IDs/unread/deduplication state | In memory during the extension session; cleared when Firefox exits or the extension is disabled/reloaded. |
 
 The extension does not persist your password, put credentials in page scripts or URLs, use synchronized extension storage, or save the token in `storage.local`. An open sidebar or pop-out exchanges a small local ping/pong with the background every ten seconds; it contains no page data or credentials and is not transmitted to the server. Closing the view stops its timer. Session storage is not an encrypted credential vault. Password-manager behavior and operating-system memory handling are controlled by Firefox and your system.
 
 Closing the pop-out does not erase the session or cancel an accepted Jarvis request. Logging out removes the extension's token; the current Jarvis server token model does not individually revoke that token. Sign in again to recover previously accepted work.
 
+The toolbar badge is enabled by default. Desktop notifications and answer previews are disabled by default. Enabling desktop notifications requests Firefox permission; their default text does not include page URLs or answer content. Enabling answer previews allows a bounded excerpt to appear in operating-system notifications, potentially on the lock screen or in notification history. Turning a setting off affects future alerts; notification history retained by the operating system is outside the extension's control. Completion bookkeeping is scoped to the configured server and sign-in session and contains no separate copy of answer previews or credentials.
+
 ## Permissions
 
 - **`activeTab`:** temporary access after a toolbar or context-menu action, used for the selected webpage and visible capture.
-- **`menus`:** Jarvis actions for page capture, selected text, and links.
+- **`menus`:** Jarvis actions for page capture, selected text, links, and image URLs.
 - **`storage`:** settings and session recovery.
+- **`alarms`:** wake the background for saved-request checks while extension-submitted work is pending.
+- **Optional `notifications`:** requested only when you enable desktop completion notifications.
 - **Optional host access:** requested for the server you enter in settings. Firefox host match patterns cover the host rather than a single port; the extension still directs requests to the exact configured origin.
 
 The extension declares optional HTTP(S) host patterns so users can enter their own server. This is not a blanket grant at installation. It does not request access to every visited site. Private browsing is disabled, and capture also rejects private tabs and browser/extension pages.

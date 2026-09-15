@@ -28,6 +28,11 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
   const elements = new Map();
   const doc = {
     activeElement: null,
+    hidden: false,
+    focused: true,
+    listeners: new Map(),
+    hasFocus() { return this.focused; },
+    addEventListener(name, handler) { this.listeners.set(name, handler); },
     getElementById: id => elements.get(id),
     createElement: tag => new Element(tag, doc),
     createElementNS: (_namespace, tag) => new Element(tag, doc),
@@ -49,6 +54,8 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
   const commands = [];
   const permissions = [];
   let granted = false;
+  let notificationPermission = false;
+  let draftReplyGate = null;
   let pushState;
   let disconnect;
   const pings = [];
@@ -58,6 +65,10 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
       if (message.type === 'jarvis:state') return { ok: true, state: structuredClone(state) };
       commands.push(message);
       if (message.action === 'configure') state.settings = message.payload;
+      if (message.action === 'updatePreferences') state.settings.preferences = {
+        showBadge: true, desktopNotifications: false, notificationPreview: false,
+        ...state.settings.preferences, ...message.payload,
+      };
       if (message.action === 'connect') state.connection = { status: 'connected', authRequired: false };
       if (message.action === 'capture') state.draft.attachment = { previewUrl: 'data:image/png;base64,aGVsbG8=', width: 1920, height: 1080, source: { title: 'Error dashboard' } };
       if (message.action === 'setDraft') state.draft.text = message.payload.text;
@@ -68,18 +79,31 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
         state.run = { messageId: 'r1', conversationId: 'conversation-1', status: 'running' };
       }
       if (message.action === 'cancel') state.run.status = 'stopping';
-      return { ok: true, state: structuredClone(state) };
+      const response = { ok: true, state: structuredClone(state) };
+      if (message.action === 'setDraft' && draftReplyGate) {
+        const waiting = draftReplyGate;
+        draftReplyGate = null;
+        await waiting;
+      }
+      return response;
     },
   };
   globalThis.document = doc;
   globalThis.window = win;
-  globalThis.browser = { runtime, windows: {getCurrent: async () => ({id: 4, type: 'normal'})}, permissions: { request: async permission => { permissions.push(permission); return granted; } } };
+  globalThis.browser = { runtime, windows: {getCurrent: async () => ({id: 4, type: 'normal'})}, permissions: { request: async permission => {
+    permissions.push(permission);
+    return permission.permissions ? notificationPermission : granted;
+  } } };
   try {
     await import('../ui/panel.js');
     await new Promise(resolve => setImmediate(resolve));
     assert.equal($('settings-panel').hidden, false);
     assert.equal($('send-button').disabled, true);
-    assert.deepEqual(pings, [{type: 'ping'}], 'Open view starts lightweight background activity');
+    assert.deepEqual(pings, [{type: 'ping'}, {type: 'viewStatus', visible: true, conversationId: null}], 'Open view reports visibility once alongside lightweight background activity');
+    assert.equal($('show-badge').checked, true);
+    assert.equal($('desktop-notifications').checked, false);
+    assert.equal($('notification-preview').checked, false);
+    assert.equal($('notification-preview').disabled, true);
     await $('popout-button').fire('click');
     assert.equal(commands.at(-1).action, 'openPopout');
 
@@ -92,6 +116,107 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
     await $('settings-form').fire('submit');
     assert.deepEqual(commands.slice(-2).map(command => command.action), ['configure', 'connect']);
     assert.equal($('connection-label').textContent, 'Connected');
+
+    const configurationCommands = commands.filter(command => ['configure', 'connect'].includes(command.action)).length;
+    $('desktop-notifications').checked = true;
+    await $('desktop-notifications').fire('change');
+    assert.deepEqual(permissions.at(-1), {permissions: ['notifications']});
+    assert.equal($('desktop-notifications').checked, false, 'Denied permission restores the unchecked setting');
+    assert.match($('notification-help').textContent, /not allowed/);
+    assert.equal(commands.some(command => command.action === 'updatePreferences'), false, 'No preference is enabled after permission denial');
+    notificationPermission = true;
+    $('desktop-notifications').checked = true;
+    const enableNotifications = $('desktop-notifications').fire('change');
+    assert.deepEqual(permissions.at(-1), {permissions: ['notifications']}, 'Permission request starts inside the checkbox user gesture');
+    assert.equal($('desktop-notifications').disabled, true);
+    pushState({ type: 'state', state: structuredClone(state) });
+    assert.equal($('desktop-notifications').checked, true, 'Progress updates do not overwrite a permission decision in flight');
+    await enableNotifications;
+    assert.deepEqual(commands.at(-1), {type: 'jarvis:command', action: 'updatePreferences', payload: {desktopNotifications: true}});
+    assert.equal($('notification-preview').disabled, false);
+    $('notification-preview').checked = true;
+    await $('notification-preview').fire('change');
+    assert.deepEqual(commands.at(-1).payload, {notificationPreview: true});
+    const permissionCount = permissions.length;
+    $('show-badge').checked = false;
+    await $('show-badge').fire('change');
+    assert.deepEqual(commands.at(-1).payload, {showBadge: false});
+    assert.equal(permissions.length, permissionCount, 'Badge and preview preferences need no additional permission request');
+    assert.equal(commands.filter(command => ['configure', 'connect'].includes(command.action)).length, configurationCommands, 'Preference changes do not reconnect Jarvis');
+    state.settings.preferences.desktopNotifications = false;
+    pushState({ type: 'state', state: structuredClone(state) });
+    assert.equal($('desktop-notifications').checked, false, 'Background permission removal is reflected in Settings');
+    assert.equal($('notification-preview').disabled, true);
+
+    const viewMessages = () => pings.filter(message => message.type === 'viewStatus');
+    const initialViewMessages = viewMessages().length;
+    pushState({ type: 'state', state: structuredClone(state) });
+    pushState({ type: 'state', state: structuredClone(state) });
+    assert.equal(viewMessages().length, initialViewMessages, 'State broadcasts cannot create a view-status feedback loop');
+    doc.focused = false;
+    await win.fire('blur');
+    assert.deepEqual(viewMessages().at(-1), {type: 'viewStatus', visible: false, conversationId: null});
+    doc.focused = true;
+    await win.fire('focus');
+    assert.equal(viewMessages().at(-1).visible, true);
+    doc.hidden = true;
+    doc.listeners.get('visibilitychange')();
+    assert.equal(viewMessages().at(-1).visible, false, 'A focused but hidden view is not being read');
+    doc.hidden = false;
+    doc.listeners.get('visibilitychange')();
+    state.conversationId = 'read-conversation';
+    pushState({ type: 'state', state: structuredClone(state) });
+    assert.deepEqual(viewMessages().at(-1), {type: 'viewStatus', visible: true, conversationId: 'read-conversation'});
+
+    const imageUrl = 'https://images.example.test/picture.png?value=%3Cimg%3E';
+    state.draft = {text: `Analyze this image: ${imageUrl}`, attachment: null, context: {kind: 'image', url: imageUrl, title: '<img src=x>', text: 'Default image question'}};
+    pushState({ type: 'state', state: structuredClone(state) });
+    assert.equal($('context-title').textContent, 'Image URL');
+    assert.equal($('context-text').textContent, imageUrl);
+    assert.equal($('context-hint').hidden, false);
+    assert.equal($('attachment-panel').hidden, true, 'An image URL is not fetched for a preview');
+    assert.equal($('message-input').placeholder, 'Ask about this image…');
+    $('message-input').value = `/research ${imageUrl}`;
+    await $('message-input').fire('input');
+    assert.equal($('context-hint').hidden, true, 'A slash command does not advertise an automatic image-analysis hint');
+    $('message-input').value = 'A different question';
+    await $('message-input').fire('input');
+    assert.equal($('context-hint').hidden, true, 'Editing out the URL removes the image-analysis hint immediately');
+    state.draft = {text: '', attachment: null, context: null};
+
+    // Let a pre-staging edit reach the background, but hold its acknowledgment.
+    let releaseDraftReply;
+    draftReplyGate = new Promise(resolve => { releaseDraftReply = resolve; });
+    await new Promise(resolve => setTimeout(resolve, 280));
+    assert.equal(commands.at(-1).action, 'setDraft');
+    assert.equal(commands.at(-1).payload.imageStageId, null);
+    $('message-input').value = 'Keep this newer local question';
+    await $('message-input').fire('input');
+    state.draft = {
+      text: `Older saved question\n\nAnalyze this image:\n${imageUrl}`,
+      attachment: null,
+      context: {kind: 'image', stageId: 'image-stage-new', url: imageUrl, title: 'Image'},
+    };
+    pushState({type: 'state', state: structuredClone(state)});
+    const mergedText = `Keep this newer local question\n\nAnalyze this image:\n${imageUrl}`;
+    assert.equal($('message-input').value, mergedText, 'A new image stage merges with dirty local text');
+    assert.equal($('context-hint').hidden, false);
+    releaseDraftReply();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal($('context-panel').hidden, false, 'A late pre-staging acknowledgment cannot erase the new image');
+    assert.equal($('message-input').value, mergedText);
+    await new Promise(resolve => setTimeout(resolve, 280));
+    assert.deepEqual(commands.at(-1).payload, {text: mergedText, imageStageId: 'image-stage-new'});
+    pushState({type: 'state', state: structuredClone(state)});
+    assert.equal($('message-input').value, mergedText, 'Repeated state broadcasts do not duplicate the image URL');
+    $('message-input').value = 'Continue without the image';
+    await $('message-input').fire('input');
+    await new Promise(resolve => setTimeout(resolve, 280));
+    assert.deepEqual(commands.at(-1).payload, {text: 'Continue without the image', imageStageId: 'image-stage-new'},
+      'Intentional removal is tagged with the stage the user actually saw');
+    state.draft.context = null;
+    pushState({type: 'state', state: structuredClone(state)});
+    assert.equal($('context-panel').hidden, true);
 
     state.conversations = [
       { id: 'recent', title: 'First from server', pinned: false },

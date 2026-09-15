@@ -169,6 +169,48 @@ assert.ok(message(ui).innerHTML.includes('converted-file'));
 
 
 @pytest.mark.parametrize("live", [True, False])
+def test_ocr_artifacts_keep_file_links_without_image_previews(live):
+    run_message_browser(f"const live = {json.dumps(live)};\n" + r"""
+for (const [action, artifactKey] of [
+  ['ocr', 'markdown_stash_ref'], ['extract', 'output_stash_ref'], ['archive', 'archive_stash_ref']
+]) {
+  const result = {action, filename:'screenshot.jpg', document_type:'image',
+    stash_ref:'stash://space_test/f_document', [artifactKey]:'stash://space_test/f_document',
+    json_stash_ref:'stash://space_test/f_json'};
+  const payload = {document_ocr:result}, before = JSON.stringify(payload);
+  const html = render(chat(), 'Saved the document artifacts.', ['document_ocr'], payload, live);
+  assert.ok(html.includes('tool-card success'));
+  assert.ok(html.includes('href="/stash/view/space_test/f_document"'));
+  assert.ok(html.includes('href="/stash/view/space_test/f_json"'));
+  assert.ok(!html.includes('<img'), action + ' must not treat the input filename as an output image');
+  assert.ok(!html.includes('showImageLightbox'));
+  assert.equal(JSON.stringify(payload), before);
+}
+""")
+
+
+@pytest.mark.parametrize("live", [True, False])
+def test_stash_image_preview_uses_artifact_mime_before_filename(live):
+    run_message_browser(f"const live = {json.dumps(live)};\n" + r"""
+for (const [metadata, expected] of [
+  [{filename:'screenshot.png'}, true],
+  [{mime_type:'IMAGE/PNG'}, true],
+  [{filename:'drawing', mime_type:'image/svg+xml'}, true],
+  [{filename:'screenshot.jpg', mime_type:'text/plain'}, false],
+  [{filename:'result.json', mime_type:'application/json'}, false],
+  [{filename:'source.png', tool_origin:'web_upload', action:'analyze'}, false]
+]) {
+  const html = render(chat(), 'Saved.', ['stash'], {
+    stash:{stash_ref:'stash://space_test/f_artifact', ...metadata}
+  }, live);
+  assert.equal(html.includes('<img src="/api/stash/space_test/f_artifact"'), expected,
+    JSON.stringify(metadata));
+  assert.equal(html.includes('showImageLightbox'), expected);
+}
+""")
+
+
+@pytest.mark.parametrize("live", [True, False])
 def test_converted_image_lightbox_uses_bound_url_data_for_live_and_saved_messages(live):
     run_message_browser(f"const live = {json.dumps(live)};\n" + r"""
 const ui = chat(), opened = [];

@@ -3431,20 +3431,22 @@ class ChatUI {
     }
     
     // Method 3: Generic stash_ref image (qr_code_generator, screenshot_url, any tool saving images to stash)
-    // Modular: no hardcoded tool names - any tool with stash_ref + image indicator displays
     // Skip tools that have their own display blocks (convert_file, generate_image)
     const toolsWithOwnImageDisplay = ['convert_file', 'generate_image'];
     if (!imageHtml) {
       const imageExtensions = /\.(png|jpg|jpeg|gif|webp|bmp|ico|tiff?|svg)$/i;
       for (const [toolName, toolResult] of Object.entries(toolResultsData)) {
         if (toolsWithOwnImageDisplay.includes(toolName)) continue;
+        // OCR filenames describe the input image; its stash refs point to
+        // Markdown, JSON or archive outputs, including in saved conversations.
+        if (toolName === 'document_ocr') continue;
         if (!toolResult || typeof toolResult !== 'object') continue;
         if (this._shouldSkipAssistantInlineImage(toolResult)) continue;
         const ref = toolResult.stash_ref || toolResult.ref;
         if (!ref) continue;
         const fn = toolResult.filename || toolResult.name || '';
-        const mime = (toolResult.mime_type || '').toLowerCase();
-        const isImage = imageExtensions.test(fn) || mime.startsWith('image/');
+        const mime = (toolResult.mime_type || '').trim().toLowerCase();
+        const isImage = mime ? mime.startsWith('image/') : imageExtensions.test(fn);
         if (!isImage) continue;
         const stashMatch = ref.match(/stash:\/\/([^/]+)\/(.+)/);
         if (stashMatch) {

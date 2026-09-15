@@ -1,12 +1,37 @@
 export const ACTIVE_STATUSES = new Set(['sending', 'running', 'stopping', 'recovering']);
+export const DEFAULT_PREFERENCES = Object.freeze({showBadge: true, desktopNotifications: false, notificationPreview: false});
+
+export function normalizePreferences(preferences = {}) {
+  return Object.fromEntries(Object.entries(DEFAULT_PREFERENCES).map(([key, fallback]) =>
+    [key, typeof preferences?.[key] === 'boolean' ? preferences[key] : fallback]));
+}
+
+export function mergeImageStageText(text, context) {
+  const draft = String(text || '');
+  const merged = draft.includes(context.url) ? draft :
+    `${draft}${draft.trim() ? '\n\n' : ''}Analyze this image:\n${context.url}`;
+  if (merged.length > 32000) throw new Error('The draft is too long to add this image URL. Shorten it and try again.');
+  return merged;
+}
+
+export function submittedRequests(requests) {
+  return (Array.isArray(requests) ? requests : []).slice(-64).filter(request =>
+    typeof request?.requestId === 'string' && request.requestId.length <= 150).map(request => ({
+    requestId: request.requestId,
+    conversationId: typeof request.conversationId === 'string' ? request.conversationId.slice(0, 150) : null,
+    mode: request.mode === 'local' ? 'local' : 'cloud',
+    startedAt: typeof request.startedAt === 'string' ? request.startedAt.slice(0, 40) : '',
+    status: typeof request.status === 'string' ? request.status.slice(0, 30) : 'sending',
+  }));
+}
 
 export function initialState(settings = {}) {
   return {
-    settings: {serverUrl: '', allowInsecureLocal: false, ...settings},
+    settings: {serverUrl: '', allowInsecureLocal: false, ...settings, preferences: normalizePreferences(settings.preferences)},
     connection: {status: 'unconfigured', authRequired: false, error: null},
     source: null, conversationId: null, conversations: [], messages: [],
     draft: {text: '', attachment: null, context: null}, run: null, progress: [],
-    mode: 'cloud', notice: null,
+    mode: 'cloud', notice: null, submittedRequests: [],
   };
 }
 
@@ -37,6 +62,7 @@ export function checkpointState(state) {
   // offline view and only the one unsent screenshot, below storage.session's cap.
   return {
     ...state,
+    submittedRequests: submittedRequests(state.submittedRequests),
     conversations: state.conversations.slice(0, 100),
     messages: state.messages.slice(-50).map(message => ({
       ...message, content: String(message.content).slice(0, 12000),

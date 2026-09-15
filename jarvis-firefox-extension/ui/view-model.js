@@ -1,3 +1,5 @@
+import { mergeImageStageText } from '../core/state.js';
+
 /** Pure presentation rules shared by the panel and its regression tests. */
 export const DEFAULT_SCREENSHOT_PROMPT = 'Analyze this screenshot. Explain what is shown and highlight any errors or useful next steps.';
 
@@ -43,10 +45,26 @@ export function noticeText(notice) {
   return notice?.message || notice?.text || '';
 }
 
+export function notificationPreferences(preferences = {}) {
+  return {
+    showBadge: typeof preferences?.showBadge === 'boolean' ? preferences.showBadge : true,
+    desktopNotifications: preferences?.desktopNotifications === true,
+    notificationPreview: preferences?.notificationPreview === true,
+  };
+}
+
+export function imageContextHint(context, draftText) {
+  const text = String(draftText || '').trim();
+  return context?.kind === 'image' && typeof context.url === 'string' && context.url
+    && text.includes(context.url) && !text.startsWith('/')
+    ? 'Image analysis is ready for this URL.' : '';
+}
+
 /** Local typing must survive unrelated progress, capture and connection updates. */
 export class DraftBuffer {
   constructor() { this.value = ''; this.dirty = false; }
   edit(value) { this.value = String(value); this.dirty = true; }
+  mergeImage(context) { this.edit(mergeImageStageText(this.value, context)); }
   accept(value, force = false) {
     const remote = String(value || '');
     if (force || !this.dirty) { this.value = remote; this.dirty = false; }
@@ -60,17 +78,75 @@ export class DraftBuffer {
   }
 }
 
-export function messageBlocks(content) {
-  const text = String(content || '');
+function listMarker(line) {
+  const match = /^( {0,3})([-+*]|\d{1,9}[.)])([ \t]+)(.*)$/.exec(line);
+  if (!match) return null;
+  return {
+    indent: match[1].length,
+    ordered: /^\d/.test(match[2]),
+    start: Number.parseInt(match[2], 10),
+    contentIndent: match[1].length + match[2].length + match[3].length,
+    text: match[4],
+  };
+}
+
+/** A small Markdown subset; all text still goes through safe DOM construction. */
+export function messageBlocks(content, depth = 0) {
+  const lines = String(content || '').replace(/\r\n?/g, '\n').split('\n');
   const blocks = [];
-  const fence = /^```([^\n]*)\n([\s\S]*?)(?:^```[ \t]*(?:\n|$)|$)/gm;
-  let start = 0;
-  for (const match of text.matchAll(fence)) {
-    if (match.index > start) blocks.push({ type: 'text', text: text.slice(start, match.index) });
-    blocks.push({ type: 'code', language: match[1].trim().slice(0, 30), text: match[2].replace(/\n$/, '') });
-    start = match.index + match[0].length;
+  let paragraph = [];
+  const flushParagraph = () => {
+    if (paragraph.length) blocks.push({ type: 'text', text: paragraph.join('\n') });
+    paragraph = [];
+  };
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (!line.trim()) { flushParagraph(); index += 1; continue; }
+    const fence = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (fence) {
+      flushParagraph();
+      const closing = new RegExp(`^ {0,3}${fence[1][0]}{${fence[1].length},}[ \\t]*$`);
+      const code = [];
+      index += 1;
+      while (index < lines.length && !closing.test(lines[index])) code.push(lines[index++]);
+      if (index === lines.length && code.at(-1) === '') code.pop();
+      if (index < lines.length) index += 1;
+      blocks.push({ type: 'code', language: fence[2].trim().slice(0, 30), text: code.join('\n') });
+      continue;
+    }
+    const heading = /^ {0,3}(#{1,6})(?:[ \t]+(.*)|[ \t]*)$/.exec(line);
+    if (heading) {
+      flushParagraph();
+      blocks.push({ type: 'heading', level: heading[1].length, text: (heading[2] || '').replace(/[ \t]+#+[ \t]*$/, '').trimEnd() });
+      index += 1;
+      continue;
+    }
+    const marker = listMarker(line);
+    // Bound nesting so unusually deep provider output remains readable.
+    if (marker && depth < 16) {
+      flushParagraph();
+      const list = { type: 'list', ordered: marker.ordered, start: marker.ordered ? marker.start : 1, items: [] };
+      let item = marker;
+      while (item && item.indent === marker.indent && item.ordered === marker.ordered) {
+        const itemLines = [item.text];
+        index += 1;
+        while (index < lines.length) {
+          if (!lines[index].trim()) { itemLines.push(''); index += 1; continue; }
+          const indent = /^ */.exec(lines[index])[0].length;
+          if (indent < item.contentIndent) break;
+          itemLines.push(lines[index++].slice(item.contentIndent));
+        }
+        list.items.push(messageBlocks(itemLines.join('\n'), depth + 1));
+        item = listMarker(lines[index] || '');
+      }
+      blocks.push(list);
+      continue;
+    }
+    paragraph.push(line);
+    index += 1;
   }
-  if (start < text.length) blocks.push({ type: 'text', text: text.slice(start) });
+  flushParagraph();
   return blocks;
 }
 

@@ -3,6 +3,7 @@ export const MENU_IDS = Object.freeze({
   capture: 'jarvis-capture',
   selection: 'jarvis-selection',
   link: 'jarvis-link',
+  image: 'jarvis-image',
 });
 
 /** Call at background module startup so Firefox can wake these event listeners. */
@@ -22,6 +23,7 @@ export function setupMenus(browserApi, onAction) {
       menus.create({ id: MENU_IDS.capture, parentId: MENU_IDS.root, title: 'Capture page view', contexts: ['page', 'selection', 'link', 'image'] });
       menus.create({ id: MENU_IDS.selection, parentId: MENU_IDS.root, title: 'Ask about selected text', contexts: ['selection'] });
       menus.create({ id: MENU_IDS.link, parentId: MENU_IDS.root, title: 'Ask about this link', contexts: ['link'] });
+      menus.create({ id: MENU_IDS.image, parentId: MENU_IDS.root, title: 'Analyze this image', contexts: ['image'] });
     })().finally(() => { installing = null; });
     return installing;
   }
@@ -36,6 +38,9 @@ export function setupMenus(browserApi, onAction) {
     }
     if (info.menuItemId === MENU_IDS.link && info.linkUrl) {
       return onAction({ kind: 'link', ...common, linkUrl: info.linkUrl });
+    }
+    if (info.menuItemId === MENU_IDS.image && info.srcUrl) {
+      return onAction({ kind: 'image', ...common, imageUrl: info.srcUrl });
     }
   }
 

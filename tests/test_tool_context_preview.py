@@ -73,6 +73,70 @@ class ToolContextPreviewTests(unittest.TestCase):
         self.assertNotIn("transcript_excerpt", data)
         self.assertNotIn("RAW_SENTINEL", preview)
 
+    def test_image_analysis_keeps_detailed_report_for_answer_and_provider_continuation(self):
+        analysis = ("Header: JARVIS. Labels: Connected, Tools, Cloud. Dark purple sidebar.\n" * 62) + "FINAL LABEL: Save changes."
+        result = {
+            "ok": True,
+            "speech": "Analyzed the interface screenshot.",
+            "data": {
+                "analysis": analysis,
+                "source_count": 1,
+                "source": "url",
+                "sources": ["https://example.test/screenshot.jpg"],
+                "original_path": "https://example.test/screenshot.jpg",
+                "filename": "screenshot.jpg",
+                "mime_type": "image/jpeg",
+                "original_width": 1525,
+                "original_height": 921,
+                "resized_for_vision": False,
+                "stash_ref": "stash://image-test/image-file",
+            },
+        }
+        original = json.dumps(result)
+        preview, total, shown, truncated = self.orch._build_llm_result_context_preview("analyze_image", result)
+        self.assertGreater(total, 2500)
+        self.assertFalse(truncated)
+        self.assertEqual(shown, total)
+        self.assertEqual(json.loads(preview)["data"]["analysis"], analysis)
+
+        assembler = self.orch._get_context_assembler()
+        arguments = {"image": "https://example.test/screenshot.jpg", "question": "Read the labels and describe the layout and colors.", "stash_after": True}
+        # Choose a ceiling where the intact compact result fits, but pretty
+        # printing the provider envelope would unnecessarily drop its tail.
+        max_chars = total + 560
+        message, metadata = assembler.build_provider_tool_result_message(
+            tool_name="analyze_image", arguments=arguments, result=result, max_chars=max_chars,
+        )
+        self.assertLessEqual(len(message), max_chars)
+        self.assertFalse(metadata["result_truncated"])
+        provider_result = json.loads(message.split("\nResult:\n", 1)[1])
+        self.assertEqual(provider_result["result"]["data"]["analysis"], analysis)
+        self.assertEqual(json.dumps(result), original)
+
+    def test_large_image_report_keeps_substantial_analysis_and_source_ref(self):
+        for analysis in ("Visible label and color detail. " * 1000, "界面标签与颜色细节。" * 2000):
+            with self.subTest(non_ascii=not analysis.isascii()):
+                result = {"ok": True, "speech": "Analyzed image.", "data": {
+                    "analysis": analysis, "source_count": 1,
+                    "stash_ref": "stash://image-test/image-file", "mime_type": "image/png",
+                    "original_width": 1024, "resized_for_vision": False,
+                    "raw": "UNRELATED_PROVIDER_BULK" * 2000,
+                }}
+                original = json.dumps(result)
+                preview, _total, shown, truncated = self.orch._build_llm_result_context_preview("analyze_image", result)
+                data = json.loads(preview)["llm_context_preview"]["data_preview"]
+                self.assertTrue(truncated)
+                self.assertLessEqual(shown, 10000)
+                self.assertGreater(len(data["analysis"]), 1000)
+                self.assertLessEqual(len(data["analysis"]), 8000)
+                self.assertTrue(data["analysis"].endswith("... [truncated]"))
+                self.assertEqual(data["analysis_chars_total"], len(analysis))
+                self.assertTrue(data["analysis_truncated"])
+                self.assertEqual(data["stash_ref"], "stash://image-test/image-file")
+                self.assertFalse(data["resized_for_vision"])
+                self.assertNotIn("UNRELATED_PROVIDER_BULK", preview)
+                self.assertEqual(json.dumps(result), original)
+
     def test_serpapi_youtube_preview_keeps_transcript_text_not_raw_payload(self):
         transcript_text = "Full normalized transcript sentence. " * 320
         result = {
@@ -2016,6 +2080,57 @@ class ToolContextPreviewTests(unittest.TestCase):
 
         self.assertFalse(metadata["arguments_truncated"])
         self.assertIn("arguments_truncated=false", message)
+
+    def test_provider_result_header_matches_final_truncation_and_body_size(self):
+        assembler = self.orch._get_context_assembler()
+        result = {"ok": True, "speech": "Analyzed image.", "data": {
+            "analysis": ("Visible image detail. " * 350)[:7000],
+            "stash_ref": "stash://image-test/image-file",
+        }}
+        original = json.dumps(result)
+        message, metadata = assembler.build_provider_tool_result_message(
+            tool_name="analyze_image", arguments={"image": "stash://image-test/image-file"},
+            result=result, max_chars=6000,
+        )
+        body = message.split("\nResult:\n", 1)[1]
+
+        self.assertTrue(metadata["result_truncated"])
+        self.assertTrue(json.loads(body)["result_truncated"])
+        self.assertIn("Result Meta: result_truncated=True, ", message)
+        self.assertIn(f"result_chars_shown={len(body)}, ", message)
+        self.assertEqual(metadata["result_chars_shown"], len(body))
+        self.assertLessEqual(len(message), 6000)
+        self.assertEqual(json.dumps(result), original)
+
+    def test_provider_result_metadata_stays_consistent_at_budget_boundaries(self):
+        assembler = self.orch._get_context_assembler()
+        result = {"ok": True, "speech": "Analyzed image.", "data": {
+            "analysis": "Visible image detail. " * 45,
+            "stash_ref": "stash://image-test/image-file",
+        }}
+        original = json.dumps(result)
+        kwargs = {"tool_name": "analyze_image", "arguments": {"image": "stash://image-test/image-file"},
+                  "result": result, "tool_call_id": "call_image", "duration_ms": 1234}
+        complete, _ = assembler.build_provider_tool_result_message(**kwargs, max_chars=6000)
+        compact_body = json.dumps(json.loads(complete.split("\nResult:\n", 1)[1]), separators=(",", ":"))
+        compact_boundary = len(complete.split("\nResult:\n", 1)[0]) + len("\nResult:\n") + len(compact_body)
+        for boundary in (800, 999, 1000, compact_boundary, len(complete)):
+            for delta in (-1, 0, 1):
+                budget = max(800, boundary + delta)
+                with self.subTest(budget=budget):
+                    message, metadata = assembler.build_provider_tool_result_message(**kwargs, max_chars=budget)
+                    body = message.split("\nResult:\n", 1)[1]
+                    payload = json.loads(body)
+                    self.assertLessEqual(len(message), budget)
+                    self.assertEqual(payload["result_truncated"], metadata["result_truncated"])
+                    self.assertEqual(metadata["result_chars_shown"], len(body))
+                    expected_header = (f"Result Meta: result_truncated={metadata['result_truncated']}, "
+                                       f"result_chars_shown={len(body)}, "
+                                       f"result_chars_total={metadata['result_chars_total']}\n")
+                    self.assertIn(expected_header, message)
+                    if not metadata["result_truncated"]:
+                        self.assertEqual(payload["result"], result)
+        self.assertEqual(json.dumps(result), original)
 
 
 if __name__ == "__main__":

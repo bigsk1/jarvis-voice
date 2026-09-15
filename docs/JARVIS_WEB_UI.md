@@ -1119,9 +1119,12 @@ A dedicated tool for analyzing images from various sources:
 | **Stash reference** | `stash://space_xxx/file_id` | Loads from stash system |
 
 **Parameters:**
-- `image` (required): URL, file path, or stash reference
-- `question` (optional): Specific question about the image (default: "Describe this image")
-- `stash_after` (optional): Save to stash after analysis (default: true)
+- `image`: URL, file path, or stash reference; required unless `images` is supplied
+- `images`: Multiple sources to compare (up to 6 in cloud mode or 2 in local mode); overrides `image`
+- `question` (optional): Specific question about the image (default: "Describe this image in detail.")
+- `stash_after` (optional): Save URL-sourced images to stash after analysis (default: false)
+
+**Result context:** The answer model receives up to 10,000 characters of image-tool result context. Larger results use a dedicated preview that preserves up to 8,000 characters of analysis alongside source metadata and Stash references, with explicit truncation markers. JSON encoding overhead and provider-specific continuation limits can shorten that preview further. The full canonical tool result remains available locally; screenshot pixel limits are separate and unchanged.
 
 **Security:**
 - Uses `safe_download()` from stash_helper for URL downloads
@@ -1139,7 +1142,7 @@ A dedicated tool for analyzing images from various sources:
 
 **When to Use:**
 - Web UI image upload: Built-in vision (NOT this tool)
-- Analyze URL/file/stash via voice/CLI: Use this tool
+- Analyze URL/file/stash via chat, the Firefox companion, voice, or CLI: Use this tool
 
 ---
 

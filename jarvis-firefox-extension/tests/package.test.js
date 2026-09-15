@@ -13,7 +13,10 @@ test('standalone manifest declares consent and least required permissions with p
   assert.equal(manifest.browser_specific_settings.gecko.strict_min_version, '140.0');
   assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions.required,
     ['authenticationInfo', 'personalCommunications', 'websiteContent', 'browsingActivity']);
-  assert.deepEqual(manifest.permissions, ['storage', 'activeTab', 'menus']);
+  assert.deepEqual(manifest.permissions, ['storage', 'activeTab', 'menus', 'alarms']);
+  assert.deepEqual(manifest.optional_permissions, ['notifications']);
+  const icon = await readFile(new URL('../assets/jarvis-96.png', import.meta.url));
+  assert.equal(icon.subarray(1, 4).toString(), 'PNG');
   assert.equal(manifest.action.default_popup, undefined);
   assert.equal(manifest.content_scripts, undefined);
   assert.doesNotMatch(manifest.content_security_policy.extension_pages, /unsafe-eval|unsafe-inline/);

@@ -3,16 +3,23 @@ import {JarvisClient} from './core/client.js';
 import {captureSource} from './browser/capture.js';
 import {normalizeSource, resolveCurrentSource} from './browser/source.js';
 import {setupMenus} from './browser/menus.js';
+import {setupCompletionSignals} from './browser/completion.js';
+import {originPermission} from './core/connection.js';
 
 const views = new Set();
+const viewStatus = new Map();
+const stateWaiters = new Set();
+let completion = null;
 const panelUrl = browser.runtime.getURL('ui/panel.html');
 const client = new JarvisClient({
   storage: browser.storage, permissions: browser.permissions, ioFactory: globalThis.io,
   onState: state => {
     for (const port of views) {
       try { port.postMessage({type: 'state', state}); }
-      catch { views.delete(port); }
+      catch { views.delete(port); viewStatus.delete(port); }
     }
+    for (const check of stateWaiters) check(state);
+    completion?.observe(state).catch(() => {});
   },
 });
 let lastBrowserWindowId = null;
@@ -21,6 +28,56 @@ const ready = Promise.all([client.restore(), browser.storage.session.get('jarvis
 });
 let commands = Promise.resolve();
 let focusUpdates = Promise.resolve();
+
+completion = setupCompletionSignals(browser, {
+  getClient: async () => { await ready; return client; },
+  readConversation: (owner, id) => owner.readConversation(id),
+  findConversation: (owner, request) => owner.findSubmittedConversation(request),
+  isConversationVisible: id => Boolean(id) && [...viewStatus.values()].some(view =>
+    view.visible && view.conversationId === id),
+  openConversation: (id, mode, scope) => openNotifiedConversation(id, scope),
+});
+ready.then(() => completion.observe(client.state)).catch(() => {});
+
+function waitForState(predicate, scope) {
+  return new Promise((resolve, reject) => {
+    const finish = error => {
+      clearTimeout(timer);
+      stateWaiters.delete(check);
+      if (error) reject(error); else resolve();
+    };
+    const check = state => {
+      if (client.authScope !== scope) return finish(new Error('The Jarvis sign-in changed. Open the conversation from History.'));
+      if (['error', 'auth_required', 'unconfigured'].includes(state.connection.status)) {
+        return finish(new Error('Connect to Jarvis, then open the conversation from History.'));
+      }
+      if (predicate(state)) finish();
+    };
+    const timer = setTimeout(() => finish(new Error('The conversation is not ready yet. Reconnect and open it from History.')), 22000);
+    stateWaiters.add(check);
+    check(client.state);
+  });
+}
+
+async function openNotifiedConversation(id, expectedScope) {
+  const scope = expectedScope?.authScope ?? client.authScope;
+  const serverUrl = expectedScope?.serverUrl ?? client.state.settings.serverUrl;
+  await openPanel();
+  try {
+    await enqueue(async () => {
+      if (client.authScope !== scope || client.state.settings.serverUrl !== serverUrl) {
+        throw new Error('The Jarvis sign-in changed. Open the conversation from History.');
+      }
+      await client.connect();
+      await waitForState(state => state.connection.status === 'connected', scope);
+      if (client.state.conversationId === id) {
+        client.recover();
+        client.changed();
+      } else await client.loadConversation(id);
+      await waitForState(state => state.connection.status === 'connected' && state.conversationId === id, scope);
+    });
+  } catch (error) { report(error); throw error; }
+}
 
 async function rememberBrowserWindow(windowId) {
   lastBrowserWindowId = windowId;
@@ -85,10 +142,15 @@ browser.runtime.onConnect.addListener(port => {
   // open. An idle connected port alone does not. This never contacts Jarvis.
   port.onMessage.addListener(message => {
     if (message?.type === 'ping') {
-      try { port.postMessage({type: 'pong'}); } catch { views.delete(port); }
+      try { port.postMessage({type: 'pong'}); } catch { views.delete(port); viewStatus.delete(port); }
+    } else if (message?.type === 'viewStatus') {
+      const id = typeof message.conversationId === 'string' && /^[A-Za-z0-9_-]{1,150}$/.test(message.conversationId) ? message.conversationId : null;
+      const visible = message.visible === true;
+      viewStatus.set(port, {visible, conversationId: id});
+      if (visible && id && id === client.state.conversationId) completion.markRead(id).catch(() => {});
     }
   });
-  port.onDisconnect.addListener(() => views.delete(port));
+  port.onDisconnect.addListener(() => { views.delete(port); viewStatus.delete(port); });
   ready.then(() => {
     port.postMessage({type: 'state', state: client.state});
     return wakeConnection();
@@ -98,10 +160,16 @@ browser.runtime.onConnect.addListener(port => {
 const actions = {
   openPopout: () => openPanel(),
   configure: payload => client.configure(payload),
+  updatePreferences: async payload => {
+    if (payload.desktopNotifications === true && !await browser.permissions.contains({permissions: ['notifications']})) {
+      throw new Error('Allow Firefox notifications in Settings first.');
+    }
+    await client.updatePreferences(payload);
+  },
   connect: () => client.connect(),
   login: payload => client.login(payload.password),
   logout: () => client.logout(),
-  setDraft: payload => client.setDraft(payload.text),
+  setDraft: payload => client.setDraft(payload.text, Object.hasOwn(payload, 'imageStageId') ? {imageStageId: payload.imageStageId} : {}),
   send: payload => client.send(payload.text),
   cancel: () => client.cancel(),
   setMode: payload => client.setMode(payload.mode),
@@ -160,6 +228,8 @@ const menus = setupMenus(browser, async action => {
       if (action.kind === 'capture') {
         const attachment = await captureSource(browser, source);
         await client.stage({attachment, source});
+      } else if (action.kind === 'image') {
+        await client.stage({source, context: {kind: 'image', url: action.imageUrl, title: source.title, text: ''}});
       } else {
         let url = source.url;
         if (action.kind === 'link') {
@@ -176,10 +246,11 @@ const menus = setupMenus(browser, async action => {
 
 browser.runtime.onStartup.addListener(() => menus.ensureMenus().catch(report));
 browser.permissions.onRemoved.addListener(async removed => {
-  if (!(removed.origins || []).length) return;
   await ready;
-  if (client.state.settings.serverUrl) {
-    const {originPermission} = await import('./core/connection.js');
+  if (removed.permissions?.includes('notifications')) {
+    await enqueue(() => client.updatePreferences({desktopNotifications: false}));
+  }
+  if ((removed.origins || []).length && client.state.settings.serverUrl) {
     if (!await browser.permissions.contains({origins: [originPermission(client.state.settings.serverUrl)]})) {
       await client.logout();
       client.state.notice = 'Server access was removed in Firefox. Grant it again in Settings to reconnect.';

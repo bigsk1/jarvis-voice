@@ -35,6 +35,13 @@
         <div class="input-action"><input id="password" name="password" type="password" autocomplete="current-password" placeholder="Your Jarvis password"><button id="login-button" class="button button-primary" type="submit">Sign in</button></div>
       </form>
       <div class="settings-footer"><span id="settings-status" class="helper" role="status">Set a server address to get started.</span><div class="heading-actions"><button id="reconnect-button" class="text-button accent-text" type="button" hidden>Reconnect</button><button id="logout-button" class="text-button" type="button" hidden>Log out</button></div></div>
+      <fieldset class="notification-settings">
+        <legend>Notifications</legend>
+        <label class="checkbox-label"><input id="show-badge" type="checkbox" checked><span>Show unread reply count on the icon</span></label>
+        <label class="checkbox-label"><input id="desktop-notifications" type="checkbox"><span>Notify when a reply is ready</span></label>
+        <label class="checkbox-label"><input id="notification-preview" type="checkbox" disabled><span>Show reply previews in notifications</span></label>
+        <p class="helper notification-help" id="notification-help" role="status">Notifications use a generic message unless you enable previews. Previews may appear on your lock screen.</p>
+      </fieldset>
     </section>
 
     <section id="history-panel" class="drawer history-panel" aria-labelledby="history-heading" hidden>
@@ -63,7 +70,7 @@
         <div class="attachment-details"><span class="eyebrow">Screenshot ready</span><strong id="attachment-title">Browser view</strong><span id="attachment-meta" class="helper"></span><div class="attachment-actions"><button id="recapture-button" class="text-button" type="button">Capture again</button><button id="analyze-button" class="text-button accent-text" type="button">Analyze screenshot</button></div></div>
         <button id="remove-attachment" class="icon-button remove-button" type="button" title="Remove screenshot" aria-label="Remove screenshot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
       </section>
-      <section id="context-panel" class="context-panel" aria-label="Shared page context" hidden><span class="context-icon" aria-hidden="true">↳</span><div><strong id="context-title">Shared from Firefox</strong><p id="context-text"></p></div><button id="remove-context" class="icon-button" type="button" title="Remove shared context" aria-label="Remove shared context"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></section>
+      <section id="context-panel" class="context-panel" aria-label="Shared page context" hidden><span class="context-icon" aria-hidden="true">↳</span><div><strong id="context-title">Shared from Firefox</strong><p id="context-text"></p><p id="context-hint" class="context-hint" hidden></p></div><button id="remove-context" class="icon-button" type="button" title="Remove shared context" aria-label="Remove shared context"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></section>
       <form id="composer-form" class="composer">
         <label class="sr-only" for="message-input">Message Jarvis</label>
         <textarea id="message-input" rows="2" placeholder="Ask Jarvis anything…" spellcheck="true"></textarea>

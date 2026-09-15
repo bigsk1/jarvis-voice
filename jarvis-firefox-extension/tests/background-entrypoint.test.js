@@ -5,6 +5,8 @@ import vm from 'node:vm';
 import { captureSource as captureActual } from '../browser/capture.js';
 import { normalizeSource, resolveCurrentSource } from '../browser/source.js';
 import { setupMenus, MENU_IDS } from '../browser/menus.js';
+import { setupCompletionSignals, COMPLETION_ALARM } from '../browser/completion.js';
+import { originPermission } from '../core/connection.js';
 
 const PANEL = 'moz-extension://companion-test/ui/panel.html';
 const EXTENSION_ID = 'jarvis-companion@test';
@@ -22,17 +24,21 @@ function event() {
 }
 
 async function boot({ deferRestore = false, deferCapture = false } = {}) {
-  const calls = { captures: [], creates: [], updates: [], stages: [], checkpoints: 0, sends: 0, uploads: 0, connects: 0, closes: 0, network: 0 };
+  const calls = { captures: [], creates: [], updates: [], stages: [], badges: [], notifications: [], reads: [], checkpoints: 0, sends: 0, uploads: 0, connects: 0, closes: 0, network: 0 };
+  const session = {};
+  const alarms = new Map();
   const sourceTab = { id: 17, windowId: 4, active: true, url: 'https://example.test/dashboard', title: 'Source dashboard' };
   const normalTabs = new Map([[sourceTab.id, sourceTab]]);
   let releaseCapture;
   const captureGate = new Promise(resolve => { releaseCapture = resolve; });
   const browser = {
     runtime: { id: EXTENSION_ID, getURL: path => `moz-extension://companion-test/${path}`, onConnect: event(), onMessage: event(), onStartup: event(), onInstalled: event() },
-    action: { onClicked: event() },
+    action: { onClicked: event(), setBadgeText: async value => calls.badges.push(value.text), setBadgeBackgroundColor: async () => {}, setTitle: async () => {} },
+    alarms: {onAlarm: event(), get: async name => alarms.get(name), create: async (name, value) => alarms.set(name, value), clear: async name => alarms.delete(name)},
+    notifications: {onClicked: event(), create: async (id, value) => calls.notifications.push({id, ...value}), clear: async () => {}},
     sidebarAction: {open: async () => calls.creates.push({type: 'sidebar'})},
-    storage: {session: {get: async () => ({}), set: async () => {}}},
-    permissions: { onRemoved: event(), contains: async () => true },
+    storage: {session: {get: async () => structuredClone(session), set: async value => Object.assign(session, structuredClone(value))}},
+    permissions: { onRemoved: event(), onAdded: event(), contains: async () => true },
     menus: { onClicked: event(), removeAll: async () => {}, create: details => calls.creates.push(details) },
     windows: {
       onFocusChanged: event(),
@@ -57,6 +63,7 @@ async function boot({ deferRestore = false, deferCapture = false } = {}) {
       this.options = options;
       this.state = { settings: {}, connection: { status: 'connected' }, source: null, draft: { text: '', attachment: null, context: null }, messages: [], conversations: [], run: null };
       this.intent = true;
+      this.authScope = 'test-session';
       this.transport = { socket: { connected: true }, close: () => { calls.closes += 1; }, upload: () => { calls.uploads += 1; } };
     }
     restore() { return restoring; }
@@ -68,6 +75,11 @@ async function boot({ deferRestore = false, deferCapture = false } = {}) {
     async setDraft(text) { this.state.draft.text = text; this.publish(); }
     async configure(settings) { this.state.settings = settings; this.state.draft = {text: '', attachment: null, context: null}; }
     async connect() { calls.connects += 1; }
+    recover() { this.publish(); }
+    async updatePreferences(value) { this.state.settings.preferences = {...this.state.settings.preferences, ...value}; this.publish(); }
+    async readConversation(id) { calls.reads.push(id); return this.savedConversation; }
+    async findSubmittedConversation() { return null; }
+    async loadConversation(id) { this.requireIdle(); this.state.conversationId = id; this.publish(); }
     async send() { calls.sends += 1; }
     async logout() { calls.closes += 1; this.transport = null; }
   }
@@ -76,7 +88,7 @@ async function boot({ deferRestore = false, deferCapture = false } = {}) {
     createCanvas: () => ({ getContext: () => ({ fillRect() {}, drawImage() {} }), toDataURL: () => 'data:image/jpeg;base64,c291cmNl' }),
     now: () => '2026-09-14T00:00:00.000Z',
   });
-  const sandbox = { browser, JarvisClient: Client, captureSource, normalizeSource, resolveCurrentSource, setupMenus, URL, console, setTimeout, clearTimeout, fetch: () => { calls.network += 1; throw new Error('Unexpected network request'); } };
+  const sandbox = { browser, JarvisClient: Client, captureSource, normalizeSource, resolveCurrentSource, setupMenus, setupCompletionSignals, originPermission, URL, console, setTimeout, clearTimeout, fetch: () => { calls.network += 1; throw new Error('Unexpected network request'); } };
   const context = vm.createContext(sandbox);
   const vendor = await readFile(new URL('../vendor/socket.io.min.js', import.meta.url), 'utf8');
   // Execute the actual browser distribution with undefined top-level `this`,
@@ -101,7 +113,7 @@ function viewPort(sender = ownSender, name = 'jarvis-ui') {
 test('background starts with bundled Socket.IO and registers wake handlers before restoring state', async () => {
   const app = await boot({ deferRestore: true });
   assert.equal(typeof app.client.options.ioFactory, 'function');
-  for (const api of [app.browser.runtime.onMessage, app.browser.runtime.onConnect, app.browser.action.onClicked, app.browser.menus.onClicked, app.browser.runtime.onInstalled, app.browser.runtime.onStartup, app.browser.permissions.onRemoved, app.browser.windows.onFocusChanged]) assert.equal(api.listeners.length, 1);
+  for (const api of [app.browser.runtime.onMessage, app.browser.runtime.onConnect, app.browser.action.onClicked, app.browser.menus.onClicked, app.browser.runtime.onInstalled, app.browser.runtime.onStartup, app.browser.permissions.onRemoved, app.browser.windows.onFocusChanged, app.browser.alarms.onAlarm, app.browser.notifications.onClicked]) assert.equal(api.listeners.length, 1);
   const pending = app.browser.runtime.onMessage.fire({ type: 'jarvis:state' }, ownSender);
   app.restored();
   assert.equal((await pending).ok, true);
@@ -228,9 +240,86 @@ test('right-click handlers stage selection, exact clicked link and screenshot wi
   assert.equal(app.client.state.source.tabId, app.sourceTab.id);
   await app.browser.menus.onClicked.fire({ menuItemId: MENU_IDS.link, linkUrl: 'https://docs.example.test/error' }, app.sourceTab);
   assert.equal(app.client.state.draft.context.url, 'https://docs.example.test/error');
+  await app.browser.menus.onClicked.fire({ menuItemId: MENU_IDS.image, srcUrl: 'https://images.example.test/chart.png' }, app.sourceTab);
+  assert.equal(app.client.state.draft.context.kind, 'image');
+  assert.equal(app.client.state.draft.context.url, 'https://images.example.test/chart.png');
   await app.browser.menus.onClicked.fire({ menuItemId: MENU_IDS.capture }, app.sourceTab);
   assert.equal(app.calls.captures.length, 1);
   assert.equal(app.calls.sends, 0);
   assert.equal(app.calls.uploads, 0);
   assert.equal(app.calls.network, 0);
+});
+
+test('notification preferences enforce optional permission and update without reconnecting', async () => {
+  const app = await boot();
+  app.browser.permissions.contains = async () => false;
+  const command = {type: 'jarvis:command', action: 'updatePreferences', payload: {desktopNotifications: true}};
+  assert.equal((await app.browser.runtime.onMessage.fire(command, ownSender)).ok, false);
+  app.browser.permissions.contains = async () => true;
+  assert.equal((await app.browser.runtime.onMessage.fire(command, ownSender)).ok, true);
+  assert.equal(app.client.state.settings.preferences.desktopNotifications, true);
+  await app.browser.permissions.onRemoved.fire({permissions: ['notifications']});
+  assert.equal(app.client.state.settings.preferences.desktopNotifications, false);
+  assert.equal(app.calls.connects, 0);
+});
+
+test('alarm observes completion with all views closed and never connects or resends work', async () => {
+  const app = await boot();
+  app.client.state.settings = {serverUrl: 'https://jarvis.example.test', preferences: {desktopNotifications: true}};
+  app.client.state.submittedRequests = [{requestId: 'r1', conversationId: 'c1', mode: 'cloud', startedAt: Date.now()}];
+  app.client.state.run = {requestId: 'r1', conversationId: 'c1', status: 'running'};
+  app.client.savedConversation = {id: 'c1', messages: [{role: 'assistant', content: 'A result', data: {_web_message_id: 'r1', _run_status: 'completed'}}]};
+  app.client.changed(); await tick();
+  assert.equal(app.calls.badges.at(-1), '…');
+  app.client.transport = null;
+  await app.browser.alarms.onAlarm.fire({name: COMPLETION_ALARM});
+  assert.deepEqual(app.calls.reads, ['c1']);
+  assert.equal(app.calls.notifications.length, 1);
+  assert.equal(app.calls.badges.at(-1), '1');
+  assert.equal(app.calls.connects, 0);
+  assert.equal(app.calls.sends, 0);
+  await app.browser.alarms.onAlarm.fire({name: COMPLETION_ALARM});
+  assert.equal(app.calls.notifications.length, 1);
+});
+
+test('only a focused matching conversation suppresses its completion notification', async () => {
+  const app = await boot();
+  app.client.state.settings = {serverUrl: 'https://jarvis.example.test', preferences: {desktopNotifications: true}};
+  app.client.state.conversationId = 'c1';
+  app.client.state.submittedRequests = [{requestId: 'r1', conversationId: 'c1', startedAt: Date.now()}];
+  const port = viewPort(); await app.browser.runtime.onConnect.fire(port); await tick();
+  await port.onMessage.fire({type: 'viewStatus', visible: true, conversationId: 'c1'});
+  app.client.state.run = {requestId: 'r1', conversationId: 'c1', status: 'completed'};
+  app.client.changed(); await tick();
+  assert.equal(app.calls.notifications.length, 0);
+  assert.equal(app.calls.badges.at(-1), '');
+  port.disconnect();
+  app.client.state.submittedRequests.push({requestId: 'r2', conversationId: 'c1', startedAt: Date.now()});
+  app.client.state.run = {requestId: 'r2', conversationId: 'c1', status: 'completed'};
+  app.client.changed(); await tick();
+  assert.equal(app.calls.notifications.length, 1);
+  assert.equal(app.calls.badges.at(-1), '1');
+  await app.browser.notifications.onClicked.fire(app.calls.notifications[0].id);
+  assert.equal(app.calls.creates.at(-1).type, 'popup');
+  assert.equal(app.calls.badges.at(-1), '');
+  assert.equal(app.calls.sends, 0);
+});
+
+test('notification click cannot load an old conversation after a queued server switch', async () => {
+  const app = await boot();
+  app.client.state.settings = {serverUrl: 'https://first.example.test', preferences: {desktopNotifications: true}};
+  app.client.state.submittedRequests = [{requestId: 'r1', conversationId: 'c1', startedAt: Date.now()}];
+  app.client.state.run = {requestId: 'r1', conversationId: 'c1', status: 'completed'};
+  app.client.changed(); await tick();
+  assert.equal(app.calls.notifications.length, 1);
+  app.browser.windows.getAll = async () => {
+    app.client.authScope = 'new-session';
+    app.client.state.settings.serverUrl = 'https://second.example.test';
+    app.client.state.submittedRequests = [];
+    return [];
+  };
+  await app.browser.notifications.onClicked.fire(app.calls.notifications[0].id);
+  assert.equal(app.calls.connects, 0);
+  assert.equal(app.client.state.conversationId, undefined);
+  assert.match(app.client.state.notice, /sign-in changed/);
 });

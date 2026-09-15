@@ -1,5 +1,5 @@
 import {normalizeServerUrl, originPermission, assertCapabilities} from './connection.js';
-import {initialState, checkpointState, savedMessages, publicRun, ACTIVE_STATUSES} from './state.js';
+import {initialState, checkpointState, savedMessages, publicRun, ACTIVE_STATUSES, normalizePreferences, submittedRequests, mergeImageStageText} from './state.js';
 import {JarvisTransport} from './transport.js';
 
 const SESSION_KEY = 'jarvisSession';
@@ -23,6 +23,7 @@ export class JarvisClient {
     this.generation = 0;
     this.pendingDraft = null;
     this.modeTimer = null;
+    this.authScope = crypto.randomUUID();
   }
 
   async restore() {
@@ -38,7 +39,9 @@ export class JarvisClient {
       this.pendingRequestId = saved.pendingRequestId || null;
       this.pendingDraft = saved.pendingDraft || null;
       this.intent = saved.intent === true;
+      if (typeof saved.authScope === 'string' && saved.authScope.length <= 150) this.authScope = saved.authScope;
     }
+    this.state.submittedRequests = submittedRequests(this.state.submittedRequests);
     this.state.connection = {
       status: settings.serverUrl ? 'disconnected' : 'unconfigured',
       authRequired: this.state.connection.authRequired === true, error: null,
@@ -55,7 +58,7 @@ export class JarvisClient {
 
   async checkpoint() {
     const record = structuredClone({
-      serverUrl: this.state.settings.serverUrl, token: this.token,
+      serverUrl: this.state.settings.serverUrl, token: this.token, authScope: this.authScope,
       pendingRequestId: this.pendingRequestId, pendingDraft: this.pendingDraft, intent: this.intent,
       state: checkpointState(this.state),
     });
@@ -82,6 +85,7 @@ export class JarvisClient {
 
   async configure(settings) {
     this.requireIdle();
+    const preferences = this.state.settings.preferences;
     const serverUrl = normalizeServerUrl(settings.serverUrl, settings);
     const generation = ++this.generation;
     if (!await this.permissions.contains({origins: [originPermission(serverUrl)]})) {
@@ -95,12 +99,34 @@ export class JarvisClient {
       this.pendingDraft = null;
       this.intent = false;
       this.state = initialState();
+      this.rotateAuthScope();
     }
-    this.state.settings = {serverUrl, allowInsecureLocal: settings.allowInsecureLocal === true};
+    this.state.settings = {serverUrl, allowInsecureLocal: settings.allowInsecureLocal === true, preferences};
     await this.storage.local.set({[SETTINGS_KEY]: this.state.settings});
     if (this.state.connection.status === 'unconfigured') this.state.connection.status = 'disconnected';
     await this.checkpoint();
     this.publish();
+  }
+
+  async updatePreferences(preferences) {
+    const current = normalizePreferences(this.state.settings.preferences);
+    for (const key of Object.keys(current)) {
+      if (typeof preferences?.[key] === 'boolean') current[key] = preferences[key];
+    }
+    this.state.settings.preferences = current;
+    await this.storage.local.set({[SETTINGS_KEY]: this.state.settings});
+    await this.checkpoint();
+    this.publish();
+  }
+
+  rotateAuthScope() {
+    this.authScope = crypto.randomUUID();
+    this.state.submittedRequests = [];
+  }
+
+  updateSubmittedRequest(requestId, values) {
+    const request = this.state.submittedRequests.find(item => item.requestId === requestId);
+    if (request) Object.assign(request, values);
   }
 
   close() {
@@ -171,6 +197,7 @@ export class JarvisClient {
     const result = await transport.login(password);
     if (this.transport !== transport) return;
     if (typeof result.token !== 'string' || !result.token) throw new Error('The server did not return a login token.');
+    this.rotateAuthScope();
     this.token = result.token;
     this.intent = true;
     await this.checkpoint();
@@ -183,6 +210,7 @@ export class JarvisClient {
 
   async logout() {
     this.close();
+    this.rotateAuthScope();
     this.token = '';
     this.intent = false;
     // Server work may continue. Retain its identifiers for recovery after login.
@@ -195,6 +223,7 @@ export class JarvisClient {
 
   unauthorized() {
     this.close();
+    this.rotateAuthScope();
     this.token = '';
     this.state.connection = {status: 'auth_required', authRequired: true, error: 'Sign in again to continue.'};
     this.changed();
@@ -280,7 +309,10 @@ export class JarvisClient {
   onEvent(event, data) {
     if (event === 'connected') {
       this.state.connection = {...this.state.connection, status: 'connected', error: null};
-      if (!this.state.conversationId && !this.pendingRequestId && ['cloud', 'local'].includes(data.mode)) this.state.mode = data.mode;
+      if (!this.state.conversationId && !this.pendingRequestId && ['cloud', 'local'].includes(data.mode)) {
+        if (data.mode !== this.state.mode) this.clearImageHint();
+        this.state.mode = data.mode;
+      }
       this.recover();
       this.listConversations().catch(() => {});
     } else if (event === 'disconnect') {
@@ -297,6 +329,7 @@ export class JarvisClient {
       if (!this.pendingRequestId || this.state.conversationId) return;
       this.state.conversationId = data.conversation_id;
       if (this.state.run) this.state.run.conversationId = data.conversation_id;
+      this.updateSubmittedRequest(this.pendingRequestId, {conversationId: data.conversation_id});
     } else if (event === 'conversation:loaded') {
       const conversation = data.conversation;
       if (!conversation?.id || !this.pendingRequestId && !this.restoringConversation ||
@@ -307,9 +340,16 @@ export class JarvisClient {
       if (!confirmed) return;
       clearTimeout(this.recoveryTimer);
       this.restoringConversation = null;
+      const changedConversation = this.state.conversationId !== conversation.id;
       this.state.conversationId = conversation.id;
       this.state.messages = savedMessages(conversation.messages);
       this.state.run = publicRun(conversation.run);
+      for (const message of conversation.messages || []) {
+        this.updateSubmittedRequest(message.data?._request_id, {conversationId: conversation.id});
+      }
+      this.updateSubmittedRequest(conversation.run?.message_id, {conversationId: conversation.id,
+        status: conversation.run?.status});
+      const changedMode = ['cloud', 'local'].includes(conversation.run?.mode) && this.state.mode !== conversation.run.mode;
       if (['cloud', 'local'].includes(conversation.run?.mode)) this.state.mode = conversation.run.mode;
       // A snapshot is authoritative only if it contains the unacknowledged request.
       if (confirmed) {
@@ -321,6 +361,7 @@ export class JarvisClient {
         this.state.connection.status = 'error';
         this.state.notice = 'The previous request is not confirmed. Check recent conversations before sending it again.';
       }
+      if (changedConversation || changedMode) this.clearImageHint();
       this.state.progress = [];
     } else if (event === 'chat:resume_missing') {
       if (!this.pendingRequestId || this.state.connection.status !== 'recovering') return;
@@ -328,11 +369,15 @@ export class JarvisClient {
       this.state.connection.status = 'connected';
       this.state.notice = data.error || 'The previous request could not be confirmed. No work was resent. Check recent conversations.';
       this.state.run = null;
+      this.updateSubmittedRequest(this.pendingRequestId, {status: 'unconfirmed'});
       this.restorePendingDraft();
     } else if (event === 'mode:changed') {
       clearTimeout(this.modeTimer);
       this.state.pendingMode = null;
-      if (['cloud', 'local'].includes(data.mode)) this.state.mode = data.mode;
+      if (['cloud', 'local'].includes(data.mode)) {
+        if (data.mode !== this.state.mode) this.clearImageHint();
+        this.state.mode = data.mode;
+      }
     } else if (event === 'mode:rejected') {
       clearTimeout(this.modeTimer);
       this.state.pendingMode = null;
@@ -394,6 +439,12 @@ export class JarvisClient {
       } else if (event === 'cancel:ack' && this.state.run && data.status !== 'not_running') {
         this.state.run.status = 'stopping';
       }
+      if (this.state.run?.messageId === data.message_id) {
+        this.updateSubmittedRequest(data.message_id, {
+          status: event === 'chat:rejected' || event === 'chat:error' && data.admitted === false ? 'rejected' : this.state.run.status,
+          ...(data.conversation_id ? {conversationId: data.conversation_id} : {}),
+        });
+      }
     }
     this.state.messages = this.state.messages.slice(-100);
     this.changed();
@@ -408,6 +459,42 @@ export class JarvisClient {
       id: item.id, title: String(item.title || 'Untitled conversation'), updated_at: item.updated_at, pinned: item.pinned === true,
     }));
     this.changed();
+  }
+
+  async completionReader() {
+    const serverUrl = normalizeServerUrl(this.state.settings.serverUrl, this.state.settings);
+    const authScope = this.authScope;
+    const token = this.token;
+    const current = () => this.authScope === authScope && this.state.settings.serverUrl === serverUrl && this.intent;
+    if (!current() || this.state.connection.authRequired && !token) throw new Error('Sign in before checking completed work.');
+    if (!await this.permissions.contains({origins: [originPermission(serverUrl)]})) {
+      throw new Error('Firefox permission for this server was removed.');
+    }
+    if (!current()) throw new Error('The Jarvis connection changed while checking completed work.');
+    const transport = new JarvisTransport({serverUrl, token, fetchImpl: this.fetchImpl,
+      onUnauthorized: () => { if (current()) this.unauthorized(); }});
+    return async path => {
+      if (!current()) throw new Error('The Jarvis connection changed while checking completed work.');
+      const result = await transport.request(path);
+      if (!current()) throw new Error('The Jarvis connection changed while checking completed work.');
+      return result;
+    };
+  }
+
+  async readConversation(conversationId) {
+    if (!/^[A-Za-z0-9_-]{1,150}$/.test(conversationId || '')) throw new Error('Invalid conversation.');
+    const read = await this.completionReader();
+    return read(`/api/conversations/${encodeURIComponent(conversationId)}`);
+  }
+
+  async findSubmittedConversation(request) {
+    if (!request?.requestId || !this.state.submittedRequests.some(item => item.requestId === request.requestId)) return null;
+    const read = await this.completionReader();
+    const result = await read('/api/conversations?limit=100&include_archived=false');
+    const match = (result.conversations || []).find(item =>
+      item.first_request_id === request.requestId || item.last_request_id === request.requestId);
+    if (!match || !/^[A-Za-z0-9_-]{1,150}$/.test(match.id || '')) return null;
+    return read(`/api/conversations/${encodeURIComponent(match.id)}`);
   }
 
   async loadConversation(conversationId) {
@@ -455,14 +542,34 @@ export class JarvisClient {
     this.changed();
   }
 
-  async setDraft(text) {
-    this.state.draft.text = String(text || '').slice(0, 32000);
+  async setDraft(text, options = {}) {
+    const context = this.state.draft.context;
+    let draft = String(text || '').slice(0, 32000);
+    if (context?.kind === 'image' && context.stageId && Object.hasOwn(options, 'imageStageId') && options.imageStageId !== context.stageId) {
+      // A debounced edit from before staging must not erase the newly supplied
+      // image. Edits that observed this stage may still remove its URL normally.
+      draft = mergeImageStageText(draft, context);
+    }
+    this.state.draft.text = draft;
+    if (this.state.draft.context?.kind === 'image' && !this.state.draft.text.includes(this.state.draft.context.url)) {
+      this.clearImageHint();
+    }
     await this.checkpoint();
     this.publish();
   }
 
   async stage({attachment = null, context = null, source = this.state.source}) {
     this.requireIdle();
+    if (context?.kind === 'image') {
+      let url;
+      try { url = new URL(context.url); } catch {}
+      if (!url || !['https:', 'http:'].includes(url.protocol) || url.username || url.password) {
+        throw new Error('This image does not have a shareable HTTP or HTTPS URL. Use Capture page view instead.');
+      }
+      context = {kind: 'image', url: url.href, title: String(context.title || '').slice(0, 1000), text: '', stageId: crypto.randomUUID()};
+      const text = mergeImageStageText(this.state.draft.text, context);
+      this.state.draft.text = text;
+    }
     this.state.source = source;
     this.state.draft.attachment = attachment;
     this.state.draft.context = context;
@@ -473,6 +580,10 @@ export class JarvisClient {
 
   async removeAttachment() { return this.stage({}); }
 
+  clearImageHint() {
+    if (this.state.draft.context?.kind === 'image') this.state.draft.context = null;
+  }
+
   async send(text) {
     this.requireIdle();
     if (this.state.connection.status !== 'connected') throw new Error('Connect to Jarvis and finish recovery before sending.');
@@ -480,12 +591,13 @@ export class JarvisClient {
     const attachment = this.state.draft.attachment;
     const context = this.state.draft.context;
     const original = String(text ?? this.state.draft.text).trim().slice(0, 32000);
+    const toolHints = context?.kind === 'image' && original.includes(context.url) && !original.startsWith('/') ? ['analyze_image'] : [];
     let message = original || (attachment ? DEFAULT_PROMPT : context ? 'Explain this selected browser content.' : '');
     if (!message) throw new Error('Enter a message or capture a screenshot.');
     if (attachment?.source) {
       message += `\n\nScreenshot source: ${attachment.source.title}\n${attachment.source.url}\nCaptured: ${attachment.capturedAt}`;
     }
-    if (context) {
+    if (context && context.kind !== 'image') {
       message += `\n\nBrowser content supplied for reference:\nTitle: ${context.title || ''}\nURL: ${context.url || ''}\n${context.text || ''}`;
     }
     let image;
@@ -502,6 +614,9 @@ export class JarvisClient {
       this.pendingRequestId = requestId;
       this.pendingDraft = {...structuredClone(this.state.draft), text: original};
       this.state.run = {requestId, messageId: requestId, conversationId: this.state.conversationId, status: 'sending'};
+      this.state.submittedRequests.push({requestId, conversationId: this.state.conversationId,
+        mode: this.state.mode, startedAt: new Date().toISOString(), status: 'sending'});
+      this.state.submittedRequests = submittedRequests(this.state.submittedRequests);
       this.state.messages.push({id: `user-${requestId}`, role: 'user', content: message,
         createdAt: new Date().toISOString(), attachments: attachment ? [{previewUrl: attachment.previewUrl}] : []});
       this.state.progress = [];
@@ -512,7 +627,8 @@ export class JarvisClient {
       await this.checkpoint();
       this.state.draft = {text: '', attachment: null, context: null};
       transport.emit('chat:send', {message, mode: this.state.mode,
-        conversation_id: this.state.conversationId, request_id: requestId, ...(image ? {image} : {})});
+        conversation_id: this.state.conversationId, request_id: requestId, ...(image ? {image} : {}),
+        ...(toolHints.length ? {tool_hints: toolHints} : {})});
       if (this.pendingRequestId) this.armRecoveryTimeout();
       this.changed();
     } catch (error) {

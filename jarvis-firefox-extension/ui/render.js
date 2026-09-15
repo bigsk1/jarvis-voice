@@ -7,9 +7,9 @@ function element(document, tag, className, text) {
   return node;
 }
 
-export function renderMessageContent(document, content) {
+function renderBlocks(document, blocks) {
   const fragment = document.createDocumentFragment();
-  for (const block of messageBlocks(content)) {
+  for (const block of blocks) {
     if (block.type === 'code') {
       const wrapper = element(document, 'div', 'code-block');
       const heading = element(document, 'div', 'code-heading');
@@ -20,24 +20,37 @@ export function renderMessageContent(document, content) {
       fragment.append(wrapper);
       continue;
     }
-    for (const paragraph of block.text.split(/\n\s*\n/).filter(text => text.trim())) {
-      const p = element(document, 'p');
-      for (const part of inlineParts(paragraph)) {
-        if (part.type === 'text') p.append(document.createTextNode(part.text));
-        else {
-          const node = element(document, part.type === 'link' ? 'a' : part.type, '', part.text);
-          if (part.type === 'link') {
-            node.href = part.href;
-            node.target = '_blank';
-            node.rel = 'noopener noreferrer';
-          }
-          p.append(node);
-        }
+    if (block.type === 'list') {
+      const list = element(document, block.ordered ? 'ol' : 'ul');
+      if (block.ordered) list.start = block.start;
+      for (const blocks of block.items) {
+        const item = element(document, 'li');
+        item.append(renderBlocks(document, blocks));
+        list.append(item);
       }
-      fragment.append(p);
+      fragment.append(list);
+      continue;
     }
+    const container = element(document, block.type === 'heading' ? `h${block.level}` : 'p');
+    for (const part of inlineParts(block.text)) {
+      if (part.type === 'text') container.append(document.createTextNode(part.text));
+      else {
+        const node = element(document, part.type === 'link' ? 'a' : part.type, '', part.text);
+        if (part.type === 'link') {
+          node.href = part.href;
+          node.target = '_blank';
+          node.rel = 'noopener noreferrer';
+        }
+        container.append(node);
+      }
+    }
+    fragment.append(container);
   }
   return fragment;
+}
+
+export function renderMessageContent(document, content) {
+  return renderBlocks(document, messageBlocks(content));
 }
 
 export function renderMessage(document, message) {

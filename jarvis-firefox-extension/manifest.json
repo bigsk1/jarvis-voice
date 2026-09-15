@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Jarvis Companion",
-  "version": "0.1.2",
-  "description": "Chat with your Jarvis server and ask about screenshots, selected text, and links.",
+  "version": "0.1.3",
+  "description": "Chat with Jarvis about screenshots, images, text, and links, with optional completion notifications.",
   "browser_specific_settings": {
     "gecko": {
       "id": "jarvis-companion@bigsk1.com",
@@ -12,7 +12,8 @@
       }
     }
   },
-  "permissions": ["storage", "activeTab", "menus"],
+  "permissions": ["storage", "activeTab", "menus", "alarms"],
+  "optional_permissions": ["notifications"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "incognito": "not_allowed",
   "background": { "scripts": ["background.js"], "type": "module" },
