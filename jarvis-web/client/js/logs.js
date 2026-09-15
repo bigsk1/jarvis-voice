@@ -23,16 +23,12 @@ class LogPanelManager {
         
         // Default height
         this.panelHeight = 200;
-        this.isCollapsed = true;
+        this.isCollapsed = false;
         
         this._init();
     }
     
     _init() {
-        // Start collapsed
-        this.panel.classList.add('collapsed');
-        this.panel.style.height = '40px';
-        
         // Toggle collapse
         this.header.addEventListener('click', (e) => {
             // Don't toggle if clicking controls
@@ -77,13 +73,18 @@ class LogPanelManager {
         // Socket events
         this._setupSocketEvents();
         
-        // Load saved state
+        // Restore the user's preference, or open by default on first use.
         this._loadState();
+        this._applyCollapseState();
     }
     
     _toggleCollapse() {
         this.isCollapsed = !this.isCollapsed;
-        
+        this._applyCollapseState();
+        this._saveState();
+    }
+
+    _applyCollapseState() {
         if (this.isCollapsed) {
             this.panel.classList.add('collapsed');
             this.panel.style.height = '40px';
@@ -96,8 +97,6 @@ class LogPanelManager {
             document.body.style.setProperty('--log-panel-height', `${this.panelHeight}px`);
             this._subscribe();
         }
-        
-        this._saveState();
     }
     
     _setupResize() {
@@ -301,6 +300,7 @@ class LogPanelManager {
             if (saved) {
                 const state = JSON.parse(saved);
                 this.panelHeight = state.height || 200;
+                this.isCollapsed = state.collapsed === true;
                 this.autoScroll = state.autoScroll !== false;
                 
                 if (state.enabledSources) {
@@ -344,4 +344,3 @@ class LogPanelManager {
 
 // Export for use in app.js
 window.LogPanelManager = LogPanelManager;
-
