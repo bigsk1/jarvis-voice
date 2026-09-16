@@ -64,8 +64,11 @@ class Element {
 }
 const storage = {getItem: () => null, setItem() {}, removeItem() {}};
 const sandbox = {
-  console, URL, localStorage: storage,
-  document: {createElement: () => new Element(), addEventListener() {}, querySelectorAll: () => []},
+  console, URL, Event, localStorage: storage,
+  // Shipped scripts publish registry updates while their async startup settles.
+  document: Object.assign(new EventTarget(), {
+    createElement: () => new Element(), querySelectorAll: () => []
+  }),
   window: {sessionStorage: storage, location:{origin:'https://jarvis.test'}, addEventListener() {}},
   setTimeout: fn => {timers.push(fn); return timers.length;}, clearTimeout() {},
   fetch: async () => ({ok: true, json: async () => ({tools: [], prompts: {}, workflows: {}})})
@@ -119,6 +122,19 @@ def run_message_browser(body: str) -> None:
     script += "\n(async () => {\n" + body + "\n})().catch(error => {console.error(error); process.exit(1);});"
     result = subprocess.run(["node", "-e", script], cwd=ROOT, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_shipped_command_registry_load_dispatches_document_event():
+    run_message_browser(r"""
+const updates = [];
+sandbox.document.addEventListener('jarvis:commands-updated', event => updates.push(event));
+const commands = sandbox.window.commandSystem;
+await commands.refreshTools('local');
+assert.equal(commands.loaded, true);
+assert.equal(updates.length, 1);
+assert.ok(updates[0] instanceof Event);
+assert.equal(updates[0].target, sandbox.document);
+""")
 
 
 @pytest.mark.parametrize("live", [True, False])
