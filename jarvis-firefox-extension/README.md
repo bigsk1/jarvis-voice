@@ -7,6 +7,7 @@ This is an independently versioned development extension. It lives in `jarvis-fi
 ## What it does
 
 - Opens the Jarvis sidebar from the toolbar, with an **Open pop-out** button for a detached window.
+- **Talk** listens for a question, sends after a short silence, speaks the reply, and listens again in the same conversation.
 - **Include page** attaches the current page's title and link to the next message. YouTube video links prefer the existing transcript tool.
 - Stages a visible-tab screenshot with a preview, source title, URL, and capture time.
 - Stages the page's readable text as a durable Jarvis source (same 100KB text-upload path as Web notes). Follow-ups can refer to that captured page after reload.
@@ -17,7 +18,7 @@ This is an independently versioned development extension. It lives in `jarvis-fi
 - Shows a toolbar badge for pending work and unread results, with optional desktop notifications.
 - Uses the display name and profile image saved in Jarvis Web **Settings → Profile → Appearance** on your messages. Changes sync automatically while connected; the default avatar is the Jarvis HUD logo.
 
-Chat uses the tools enabled by the connected Jarvis server. Dedicated Intel, Stash, workflow, media, and voice screens are not part of this first version. Intermediate tool events missed during a disconnect cannot all be replayed; saved answers and current run status are recovered.
+Chat and Talk use the tools enabled by the connected Jarvis server. Dedicated Intel, Stash, workflow, and media screens are not included. Intermediate tool events missed during a disconnect cannot all be replayed; saved answers and current run status are recovered.
 
 Replies support headings, ordered/unordered lists with nesting, fenced code, bold text, inline code, and HTTP(S) links. This is a lightweight Markdown renderer; tables, blockquotes, and italics are not yet formatted. Raw HTML stays inert, and Markdown images are not fetched automatically.
 
@@ -57,6 +58,12 @@ npm run build
 
 The ZIP and a short installation note are written to `web-ext-artifacts/`. Firefox's temporary add-on loader also accepts the ZIP. Regular persistent installation requires Mozilla signing; an unlisted signed release can be distributed without a public AMO listing. Passing local checks does not guarantee Mozilla approval. See Mozilla's [temporary installation guide](https://extensionworkshop.com/documentation/develop/temporary-installation-in-firefox/) and [signing overview](https://extensionworkshop.com/documentation/publish/signing-and-distribution-overview/).
 
+### Version every update
+
+Every distributable update gets a new extension version, independently of Jarvis Voice. Use `npm run bump -- patch` for fixes, `npm run bump -- minor` for new features, or `npm run bump -- major` for breaking changes. This updates `manifest.json`, `package.json`, and both root version fields in `package-lock.json` together; it does not commit or tag anything. Update `CHANGELOG.md`, test, then build.
+
+`npm run build` checks that the versions match and **refuses to overwrite an existing ZIP**. Keep previous ZIPs in `web-ext-artifacts/` and preserve published releases in your distribution archive/AMO history. The artifact directory is ignored by Git, so copy release ZIPs to your release archive when publishing. Use temporary loading from `manifest.json` while iterating before producing the next versioned package. Version **0.2.0** introduces Talk; the earlier development package mistakenly reused 0.1.6 and is preserved unchanged.
+
 Current `web-ext` reports two warnings: the unmodified Socket.IO 4.7.2 bundle contains a `Function` fallback for environments without `self`/`window` (unused in Firefox, and blocked by this extension's CSP), and the desktop Firefox 140 minimum predates Android's built-in data consent support. This version targets desktop Firefox; Android support is untested. Neither warning is suppressed. Keep the pinned library source and lockfile available for review.
 
 ## Connect and capture
@@ -82,6 +89,30 @@ YouTube watch, short, live, and shared video links add a `youtube_transcript` pr
 Right-click an image and choose **Analyze this image** to append `Analyze this image:` and its URL to your editable draft. Review or change the question, then Send. While that staged URL remains in a normal chat draft, the extension includes an `analyze_image` tool hint through Jarvis's existing tool-selection path. The server still controls tool availability. Removing the image context or URL, changing mode/conversation, or using a slash workflow removes the hint. Removing context leaves editable draft text in place; delete the URL from the composer too if you do not want to send it.
 
 Image staging does not fetch the image, copy browser cookies, or upload image bytes. Jarvis must be able to fetch the URL itself; login-only images may be inaccessible. Browser-only `blob:`/`data:` URLs are rejected. Use a screenshot for images that cannot be shared by URL.
+
+## Hands-free Talk
+
+For sidebar Talk, first open **Settings → Microphone setup**, click **Allow microphone**, and approve Firefox's prompt. Keep that setup tab open. With an empty draft, click **Talk** below the composer, speak, and pause for about 1.2 seconds. Jarvis transcribes and sends your question, speaks its reply, then listens again. Speech is sent automatically. Your transcripts and answers remain in ordinary conversation history. Talk works in both the sidebar and pop-out; only one extension view can own a session at a time.
+
+- **Pause** stops playback and releases the microphone. Submitted work can finish silently. **Resume** continues without replaying that answer.
+- **Interrupt to speak** stops playback, requests cancellation of unfinished work, and waits for it to settle before listening.
+- **End Talk**, **Esc**, or the Talk button ends the session and requests cancellation of its unfinished task. Completed tool actions cannot be undone. The standalone phrases “end talk”, “stop listening”, and “goodbye” also end Talk.
+- Closing or hiding the owning view, changing connection/conversation, or disconnecting stops microphone capture and playback. Accepted tasks can finish and be recovered in chat. Reloading never starts the microphone automatically.
+- Another task in the conversation, including an automatic Completion Guard repair, pauses Talk. Resume after it finishes; its separate reply is not spoken by Talk.
+
+The microphone is disabled during transcription, tool/model work, and playback. Interruption uses the button, not speech over Jarvis. Background noise can trigger this audio-level detector. Recording is limited to 45 seconds and 10 MB per turn; 30 seconds without speech pauses Talk. Speech requests have bounded deadlines and failures pause the session.
+
+Talk requires `extension.features.talk` from the server and configured STT/TTS in the selected local/cloud mode. Update and restart Jarvis Web, then reconnect the extension if Talk is disabled. It uses the existing casual formatter and the mode's configured word limits (normal defaults when unset). It plays its own answers independently of the Web UI's speaker toggle, without changing your text formatting or audio settings. No new model or provider is required.
+
+### Firefox permissions
+
+Firefox manages add-on/data consent, access to your chosen server, and microphone access separately. The extension keeps server access scoped to your chosen host; it does not request all websites to remove a prompt. Existing grants are reused. Optional notifications and tab metadata remain requested only when you choose those features.
+
+**Microphone setup** is always available in Settings, and beside the Talk controls while preparing or paused. Click **Allow microphone** in that tab and accept Firefox's prompt with **Remember this decision** selected. The check immediately stops capture and sends no audio. Return to the sidebar and press Talk or Resume. If you previously blocked the microphone, clear that decision in Firefox first. Microphone permission cannot be bundled into `browser.permissions.request()` for server access.
+
+Keep the setup tab open for sidebar Talk. Firefox can leave a sidebar microphone request pending even with a remembered grant. The companion therefore opens the microphone in its normal extension tab and supplies the stream to the sidebar. Starting or resuming briefly selects the setup tab, then restores your previous tab unless you selected another one yourself. The helper stays in the background while you converse. Closing it pauses Talk and stops capture. Pop-outs and full-page extension views open their microphone directly.
+
+Microphone and audio startup have deadlines and actionable errors, so an unresolved browser request cannot leave Talk preparing indefinitely. A late permission grant after Pause/End is immediately released. No speech network request is expected until capture finishes; STT/TTS requests use the extension's background transport.
 
 ## Completion signals
 
@@ -122,6 +153,7 @@ The server address and preferences use `storage.local`. The login token and boun
 | `npm test` | Run the Node test suite. |
 | `npm run lint` | Check the extension package with `web-ext`. |
 | `npm run build` | Lint and produce the unsigned development ZIP. |
+| `npm run bump -- patch` | Increment all extension version fields; use `minor` for features or `major` for breaking changes. |
 
 The background event page owns the client and connection. While a sidebar or pop-out is open, a small ping/pong every ten seconds prevents Firefox's idle event-page suspension. These messages stay inside the extension and do not copy screenshots, write storage, or call Jarvis. Closing the view stops its timer. Firefox may then unload the background; a browser alarm wakes it for pending completion checks. Recovery and notification deduplication state live in `storage.session`, while actual run ownership stays on the server. Reopening recovers accepted work without sending it again.
 

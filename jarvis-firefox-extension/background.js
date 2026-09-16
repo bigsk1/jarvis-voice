@@ -6,15 +6,18 @@ import {normalizeSource, resolveCurrentSource} from './browser/source.js';
 import {setupMenus} from './browser/menus.js';
 import {setupCompletionSignals} from './browser/completion.js';
 import {originPermission} from './core/connection.js';
+import {TalkBridge} from './browser/talk.js';
 
 const views = new Set();
 const viewStatus = new Map();
 const stateWaiters = new Set();
 let completion = null;
+let talk = null;
 const panelUrl = browser.runtime.getURL('ui/panel.html');
 const client = new JarvisClient({
   storage: browser.storage, permissions: browser.permissions, ioFactory: globalThis.io,
   onState: state => {
+    talk?.observe(state);
     for (const port of views) {
       try { port.postMessage({type: 'state', state}); }
       catch { views.delete(port); viewStatus.delete(port); }
@@ -22,6 +25,10 @@ const client = new JarvisClient({
     for (const check of stateWaiters) check(state);
     completion?.observe(state).catch(() => {});
   },
+  onServerEvent: (event, data) => talk?.event(event, data),
+});
+talk = new TalkBridge(client, enqueue, message => {
+  for (const port of views) talk.post(port, message);
 });
 let lastBrowserWindowId = null;
 const ready = Promise.all([client.restore(), browser.storage.session.get('jarvisSourceWindowId')]).then(([, saved]) => {
@@ -66,6 +73,7 @@ async function openNotifiedConversation(id, expectedScope) {
   await openPanel();
   try {
     await enqueue(async () => {
+      talk.requireIdle();
       if (client.authScope !== scope || client.state.settings.serverUrl !== serverUrl) {
         throw new Error('The Jarvis sign-in changed. Open the conversation from History.');
       }
@@ -139,9 +147,11 @@ async function wakeConnection() {
 browser.runtime.onConnect.addListener(port => {
   if (port.name !== 'jarvis-ui' || !fromView(port.sender)) { port.disconnect(); return; }
   views.add(port);
+  talk.attach(port);
   // Actual message activity keeps Firefox's event page alive while a view is
   // open. An idle connected port alone does not. This never contacts Jarvis.
   port.onMessage.addListener(message => {
+    if (message?.type === 'talk:request') { talk.handle(port, message); return; }
     if (message?.type === 'ping') {
       try { port.postMessage({type: 'pong'}); } catch { views.delete(port); viewStatus.delete(port); }
     } else if (message?.type === 'viewStatus') {
@@ -151,7 +161,7 @@ browser.runtime.onConnect.addListener(port => {
       if (visible && id && id === client.state.conversationId) completion.markRead(id).catch(() => {});
     }
   });
-  port.onDisconnect.addListener(() => { views.delete(port); viewStatus.delete(port); });
+  port.onDisconnect.addListener(() => { views.delete(port); viewStatus.delete(port); talk.detach(port); });
   ready.then(() => {
     port.postMessage({type: 'state', state: client.state});
     return wakeConnection();
@@ -160,6 +170,16 @@ browser.runtime.onConnect.addListener(port => {
 
 const actions = {
   openPopout: () => openPanel(),
+  microphonePermission: async payload => {
+    const url = browser.runtime.getURL('ui/microphone.html');
+    const windowId = Number.isInteger(payload.windowId) ? payload.windowId : (await browser.windows.getLastFocused()).id;
+    const helper = browser.extension.getViews({type: 'tab', windowId}).find(view => view.location.href === url);
+    const tab = helper && await helper.browser.tabs.getCurrent();
+    if (tab) {
+      await browser.windows.update(tab.windowId, {focused: true});
+      await browser.tabs.update(tab.id, {active: true});
+    } else await browser.tabs.create({url, windowId});
+  },
   configure: payload => client.configure(payload),
   updatePreferences: async payload => {
     if (payload.desktopNotifications === true && !await browser.permissions.contains({permissions: ['notifications']})) {
@@ -224,6 +244,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
   // selected server or conversation. Socket events can still update run state.
   return enqueue(async () => {
     try {
+      if (!['openPopout', 'microphonePermission', 'updatePreferences', 'listConversations', 'connect'].includes(message.action)) talk.requireIdle();
       await actions[message.action](message.payload || {});
       return {ok: true, state: client.state};
     } catch (error) {
@@ -251,6 +272,7 @@ const menus = setupMenus(browser, async action => {
   try {
     await enqueue(async () => {
       const source = normalizeSource(action.tab);
+      talk.requireIdle();
       await rememberBrowserWindow(source.windowId);
       client.requireIdle();
       if (action.kind === 'capture') {

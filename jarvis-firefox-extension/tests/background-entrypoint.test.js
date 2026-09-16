@@ -9,6 +9,7 @@ import { setupMenus, MENU_IDS } from '../browser/menus.js';
 import { setupCompletionSignals, COMPLETION_ALARM } from '../browser/completion.js';
 import { originPermission } from '../core/connection.js';
 import { normalizePageLink } from '../core/page-link.js';
+import { TalkBridge } from '../browser/talk.js';
 
 const PANEL = 'moz-extension://companion-test/ui/panel.html';
 const EXTENSION_ID = 'jarvis-companion@test';
@@ -107,7 +108,7 @@ async function boot({ deferRestore = false, deferCapture = false } = {}) {
   const capturePageContent = (api, source) => capturePageActual(api, source, {
     now: () => '2026-09-14T00:00:00.000Z',
   });
-  const sandbox = { browser, JarvisClient: Client, captureSource, capturePageContent, normalizeSource, resolveCurrentSource, setupMenus, setupCompletionSignals, originPermission, URL, console, setTimeout, clearTimeout, fetch: () => { calls.network += 1; throw new Error('Unexpected network request'); } };
+  const sandbox = { browser, JarvisClient: Client, TalkBridge, captureSource, capturePageContent, normalizeSource, resolveCurrentSource, setupMenus, setupCompletionSignals, originPermission, URL, console, setTimeout, clearTimeout, fetch: () => { calls.network += 1; throw new Error('Unexpected network request'); } };
   const context = vm.createContext(sandbox);
   const vendor = await readFile(new URL('../vendor/socket.io.min.js', import.meta.url), 'utf8');
   // Execute the actual browser distribution with undefined top-level `this`,
@@ -170,7 +171,8 @@ test('closing the pop-out detaches its view while accepted background chat remai
   const port = viewPort();
   await app.browser.runtime.onConnect.fire(port);
   await tick();
-  assert.equal(port.messages.length, 1);
+  assert.equal(port.messages.filter(message => message.type === 'state').length, 1);
+  assert.deepEqual(port.messages.find(message => message.type === 'talk:owner'), {type: 'talk:owner', sessionId: null});
   port.disconnect();
   const before = port.messages.length;
   app.client.changed();

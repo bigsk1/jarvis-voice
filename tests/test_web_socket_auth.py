@@ -132,7 +132,7 @@ def test_server_status_advertises_the_companion_contract_without_auth(monkeypatc
     assert payload['extension'] == {
         'api': 1,
         'socket_auth': True,
-        'features': dict.fromkeys(('chat', 'images', 'conversations', 'recovery', 'cancel', 'text', 'profile'), True),
+        'features': dict.fromkeys(('chat', 'images', 'conversations', 'recovery', 'cancel', 'text', 'profile', 'talk'), True),
     }
 
 

@@ -18,13 +18,17 @@ When you choose **Send**, **Analyze page**, or **Analyze screenshot**, the exten
 - Source page titles, URLs, and capture time included with that content.
 - Conversation/request identifiers and the selected Jarvis cloud/local mode.
 
+**Talk sends speech automatically while listening.** After you start Talk and allow the microphone, a short silence submits the recorded clip to the configured Jarvis server's STT endpoint. The transcript goes through ordinary chat and the reply through the configured TTS provider. These providers can be local or remote, according to your server's selected mode and configuration. Raw clips and returned playback buffers are held only in memory by the extension; the Web STT route uses a temporary file and removes it after transcription. Transcripts and replies follow ordinary chat retention. The extension does not record audio outside an explicit Talk session, and it does not capture system/tab audio.
+
+Pause/End release the microphone and stop playback. Capture is disabled while transcribing, working, or speaking. Closing/hiding the owning view or disconnecting ends Talk; microphone capture never resumes automatically after reload. The microphone helper's permission check immediately stops its test stream and uploads nothing. During an explicit sidebar Talk session, the helper tab opens the microphone and shares its stream only with the sidebar from the same extension. It briefly selects its own tab for capture permission, then restores the previous tab unless you selected another one. It must stay open for sidebar Talk; closing it releases capture and pauses Talk. Merely leaving the helper open does not record audio. Aborting a request cannot undo processing already started by a speech provider.
+
 Connection recovery, opening history, and background completion checks can retrieve saved conversations without another Send action. While extension-submitted requests are pending, checks run about once a minute even with the sidebar/pop-out closed, provided Firefox is running and the session is available. They stop when requests settle, expire after seven days, or the session ends. They only check existing work and never resubmit it. Normal HTTP/socket communication also exposes network information such as your address to the server. The extension does not continuously capture tabs, read browsing history, inject a persistent page script, or upload a screenshot or page text merely because its preview is visible. Page-text reading uses a one-shot script after a capture gesture.
 
 Image URL staging does not fetch the image or copy the webpage's cookies. After Send, Jarvis's normal tool path can fetch that URL. An `analyze_image` tool hint accompanies an applicable staged image draft; server configuration determines which tools can run.
 
 **Include page** reads only the selected tab's title and URL after your click. It does not capture pixels, execute a page script, fetch the link, or send anything to Jarvis until Send. The staged link stays fixed across navigation and tab changes. A YouTube video link adds a `youtube_transcript` tool preference for normal chat; the server controls available tools and their providers. Ordinary chat does not automatically include a tab link.
 
-Firefox's declared data categories are `authenticationInfo`, `personalCommunications`, `websiteContent`, and `browsingActivity`. Transmission to a user-owned Jarvis server is still transmission. The extension does not declare or implement optional analytics collection.
+Firefox's declared data categories are `authenticationInfo`, `personalCommunications`, `websiteContent`, `browsingActivity`, and `personallyIdentifyingInfo` (which Mozilla's taxonomy includes for voice recordings). Transmission to a user-owned Jarvis server is still transmission. The extension does not declare or implement optional analytics collection.
 
 ## What stays in Firefox
 
@@ -49,6 +53,7 @@ The toolbar badge is enabled by default. Desktop notifications and answer previe
 - **Optional `notifications`:** requested only when you enable desktop completion notifications.
 - **Optional `tabs`:** requested by **Include page** so the sidebar can read tab titles and URLs without another toolbar click. Firefox grants access to tab metadata; this extension only stages the selected page when asked. This does not grant access to page contents or screenshots. Revoke it in Firefox's extension permissions; toolbar/context-menu temporary access remains available.
 - **Optional host access:** requested for the server you enter in settings. Firefox host match patterns cover the host rather than a single port; the extension still directs requests to the exact configured origin.
+- **Microphone:** Firefox's separate `getUserMedia` prompt, requested when starting or resuming Talk or explicitly checking permission. This is independent of server host access. Keep the remembered grant to avoid repeated prompts; revoke microphone access through Firefox when needed.
 
 The extension declares optional HTTP(S) host patterns so users can enter their own server. This is not a blanket grant at installation. It does not request access to every visited site. Private browsing is disabled, and capture also rejects private tabs and browser/extension pages.
 

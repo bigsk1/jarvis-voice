@@ -202,3 +202,13 @@ textarea:focus-visible { outline: none; }
   .attachment-panel { gap: 7px; padding: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+.talk-launch, .talk-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.talk-launch { margin-top: 8px; }
+.talk-panel { padding: 12px; margin-bottom: 10px; border: 1px solid var(--accent-primary); border-radius: 12px; background: var(--bg-secondary); }
+.talk-panel strong { display: block; font-size: 13px; }
+.talk-panel p { margin: 6px 0 10px; max-height: 4.5em; overflow: auto; overflow-wrap: anywhere; }
+.talk-panel[data-state="listening"] { border-color: var(--success); }
+.talk-panel[data-state="paused"] { border-color: var(--border-primary); }
+#talk-button[aria-pressed="true"] { border-color: var(--accent-tertiary); color: var(--text-primary); }
+.microphone-setup { max-width: 560px; margin: 48px auto; padding: 24px; }

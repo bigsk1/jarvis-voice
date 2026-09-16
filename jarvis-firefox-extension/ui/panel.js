@@ -2,6 +2,9 @@ import { normalizeServerUrl, originPermission } from '../core/connection.js';
 import { DEFAULT_PAGE_PROMPT, DEFAULT_SCREENSHOT_PROMPT, DEFAULT_TEXT_PROMPT, DraftBuffer, canSend, displayTime, imageContextHint, isBusy, isRunActive, noticeText, notificationPreferences, safePreviewUrl } from './view-model.js';
 import { renderMessage } from './render.js';
 import { pageLinkToolHints } from '../core/page-link.js';
+import { TalkController } from './talk.js';
+import { TalkPort } from './talk-port.js';
+import { requestMicrophone } from './microphone-client.js';
 
 const $ = id => document.getElementById(id);
 const draft = new DraftBuffer();
@@ -22,6 +25,37 @@ let closing = false;
 let preferencesBusy = false;
 let preferencesNotice = '';
 let lastViewStatusKey = '';
+let talkOwner = null;
+const talkPort = new TalkPort(() => port);
+const talk = new TalkController({
+  getState: () => state,
+  getMicrophone: requestMicrophone,
+  rpc: (...args) => talkPort.request(...args),
+  notify: message => { localError = message; renderNotice(); },
+  hasDraft: () => Boolean(draft.value.trim() || state?.draft?.text?.trim() ||
+    state?.draft?.attachment || state?.draft?.page || state?.draft?.context || state?.draft?.pageLink),
+  render: () => { renderTalk(); renderControls(); },
+});
+
+function renderTalk() {
+  const s = talk.session;
+  const labels = {preparing: 'Preparing microphone…', listening: 'Listening — speak, then pause',
+    transcribing: 'Transcribing — microphone off', waiting: 'Jarvis is working — microphone off',
+    speaking: 'Jarvis is speaking — microphone off', stopping: 'Stopping this task…',
+    settling: 'Finishing this turn…', paused: 'Talk paused — microphone off'};
+  $('talk-panel').hidden = !s;
+  $('talk-panel').dataset.state = s?.phase || 'ended';
+  $('talk-status').textContent = s?.message || labels[s?.phase] || '';
+  $('talk-transcript').textContent = s?.transcript ? `You said: ${s.transcript}` : 'Speech is sent automatically. Replies play aloud.';
+  $('talk-pause').textContent = s?.paused ? 'Resume' : 'Pause';
+  $('talk-pause').disabled = s?.phase === 'stopping';
+  $('talk-interrupt').hidden = !s || !['waiting', 'speaking', 'transcribing'].includes(s.phase);
+  $('talk-permission').hidden = !s || !['preparing', 'paused'].includes(s.phase);
+  $('talk-button').setAttribute('aria-pressed', String(Boolean(s)));
+  $('talk-button').textContent = s ? 'End Talk' : 'Talk';
+}
+
+function talkBusy() { return talk.active || Boolean(talkOwner); }
 
 const notificationHelp = 'Notifications use a generic message unless you enable previews. Previews may appear on your lock screen.';
 
@@ -81,6 +115,16 @@ function renderControls() {
   $('reconnect-button').disabled = configurationBusy || ['connecting', 'recovering'].includes(state?.connection?.status);
   $('refresh-history').disabled = state?.connection?.status !== 'connected' || Boolean(state?.pendingMode);
   $('message-input').placeholder = state?.draft?.page || state?.draft?.pageLink ? 'Ask about this page…' : state?.draft?.attachment ? 'Ask about this screenshot…' : state?.draft?.context?.kind === 'image' ? 'Ask about this image…' : state?.draft?.context ? 'Ask about this page or selection…' : 'Ask Jarvis anything…';
+  if (talkBusy()) {
+    for (const id of ['send-button', 'analyze-button', 'capture-button', 'recapture-button', 'empty-capture',
+      'include-page-button', 'remove-page-link', 'remove-attachment', 'remove-context', 'remove-page',
+      'mode-select', 'new-conversation', 'history-button', 'save-settings', 'login-button', 'logout-button', 'cancel-button']) $(id).disabled = true;
+  }
+  $('message-input').readOnly = talkBusy();
+  $('talk-button').disabled = !talk.active && (talkBusy() || busy || sending || busyCount > 0 || configurationBusy ||
+    state?.connection?.status !== 'connected' || state?.capabilities?.talk !== true);
+  $('talk-button').title = talk.active ? 'End hands-free Talk (Esc)' : talkOwner ? 'Talk is active in another Jarvis window' :
+    state?.capabilities?.talk !== true ? 'Update and restart Jarvis Web to enable Talk' : 'Start hands-free Talk — speech is sent automatically';
 }
 
 function renderPreferences() {
@@ -282,6 +326,7 @@ function renderState(next, forceDraft = false) {
   const previousStatus = state?.connection?.status;
   const previousImageStage = state?.draft?.context?.stageId;
   state = next;
+  talk.update(state);
   const context = state.draft?.context;
   const newImageStage = context?.kind === 'image' && context.stageId && context.stageId !== previousImageStage;
   let syncImageDraft = false;
@@ -359,7 +404,7 @@ function scheduleDraft() {
 }
 
 async function send(text) {
-  if (sending || busyCount || configurationBusy || !canSend(state, text)) return;
+  if (talkBusy() || sending || busyCount || configurationBusy || !canSend(state, text)) return;
   cancelDraftTimer();
   sending = true;
   draft.dirty = true;
@@ -374,6 +419,7 @@ async function send(text) {
 }
 
 async function capture() {
+  if (talkBusy()) return;
   busyCount += 1;
   renderControls();
   try {
@@ -388,7 +434,7 @@ async function capture() {
 }
 
 async function changeConversation(action, payload = {}) {
-  if (isBusy(state) || sending || busyCount) return;
+  if (talkBusy() || isBusy(state) || sending || busyCount) return;
   cancelDraftTimer();
   const result = await command(action, payload, { forceDraft: true });
   if (result.ok) { openDrawer('history', false); $('message-input').focus(); }
@@ -406,10 +452,22 @@ function subscribe() {
       try { connectedPort.postMessage({type: 'ping'}); }
       catch { connectedPort.disconnect(); }
     };
-    port.onMessage.addListener(message => { if (message?.type === 'state') renderState(message.state); });
+    port.onMessage.addListener(message => {
+      if (port !== connectedPort) return;
+      talkPort.receive(message);
+      if (message?.type === 'state') renderState(message.state);
+      else if (message?.type === 'talk:owner') { talkOwner = message.sessionId; renderControls(); }
+      else if (message?.sessionId === talk.session?.id) {
+        if (message.type === 'talk:event') talk.event(message.event, message.data);
+        else if (message.type === 'talk:ended') talk.end(message.reason, {cancel: false});
+      }
+    });
     port.onDisconnect.addListener(() => {
       if (closing || port !== connectedPort) return;
       clearInterval(keepAliveTimer);
+      talk.end('Talk ended on disconnect. Reconnect, then start Talk again.', {cancel: false});
+      talkPort.disconnect();
+      talkOwner = null;
       localError = 'Reconnecting to the extension…';
       // The last server snapshot is stale until the background bridge returns.
       if (state) renderState({...state, connection: {...state.connection, status: 'recovering'}});
@@ -433,6 +491,28 @@ function subscribe() {
 }
 
 $('settings-button').addEventListener('click', () => openDrawer('settings', $('settings-panel').hidden));
+$('talk-button').addEventListener('click', () => {
+  if (talk.active) talk.end();
+  else if (!talkBusy() && !sending && !busyCount && !configurationBusy) {
+    cancelDraftTimer(); localError = ''; renderNotice(); void talk.start();
+  }
+});
+$('talk-pause').addEventListener('click', () => talk.session?.paused ? talk.resume() : talk.pause());
+$('talk-interrupt').addEventListener('click', () => talk.interrupt());
+$('talk-end').addEventListener('click', () => talk.end());
+async function openMicrophoneSetup() {
+  const viewWindow = await browser.windows.getCurrent();
+  await command('microphonePermission', {windowId: viewWindow.id});
+}
+$('talk-permission').addEventListener('click', openMicrophoneSetup);
+$('microphone-settings').addEventListener('click', openMicrophoneSetup);
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && talk.active) { event.preventDefault(); talk.end(); }
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) talk.end('Talk ended because this view is hidden.', {cancel: false});
+});
+window.addEventListener('pagehide', () => { talk.end('', {cancel: false}); talkPort.disconnect(); });
 $('popout-button').addEventListener('click', () => command('openPopout'));
 $('settings-close').addEventListener('click', () => openDrawer('settings', false));
 $('history-button').addEventListener('click', async () => {
@@ -451,7 +531,7 @@ for (const [id, name] of [['show-badge', 'showBadge'], ['desktop-notifications',
 
 $('settings-form').addEventListener('submit', async event => {
   event.preventDefault();
-  if (configurationBusy || busyCount || isBusy(state)) return;
+  if (talkBusy() || configurationBusy || busyCount || isBusy(state)) return;
   configurationBusy = true;
   renderControls();
   try {
@@ -475,7 +555,7 @@ $('settings-form').addEventListener('submit', async event => {
 
 $('login-form').addEventListener('submit', async event => {
   event.preventDefault();
-  if (configurationBusy || busyCount) return;
+  if (talkBusy() || configurationBusy || busyCount) return;
   const password = $('password').value;
   if (!password) { $('password').focus(); return; }
   configurationBusy = true;
@@ -489,7 +569,7 @@ $('login-form').addEventListener('submit', async event => {
 $('logout-button').addEventListener('click', async () => { $('password').value = ''; await command('logout', {}, { forceDraft: true }); });
 $('reconnect-button').addEventListener('click', () => command('connect'));
 $('mode-select').addEventListener('change', async () => {
-  if (isBusy(state) || busyCount) return;
+  if (talkBusy() || isBusy(state) || busyCount) return;
   const requestedMode = $('mode-select').value;
   cancelDraftTimer();
   if (draft.dirty) await command('setDraft', { text: draft.value }, { quiet: true });
@@ -503,7 +583,7 @@ $('message-input').addEventListener('keydown', event => {
 $('composer-form').addEventListener('submit', event => { event.preventDefault(); void send(draft.value); });
 for (const id of ['capture-button', 'recapture-button', 'empty-capture']) $(id).addEventListener('click', capture);
 $('include-page-button').addEventListener('click', async () => {
-  if (sending || configurationBusy || busyCount || isBusy(state)) return;
+  if (talkBusy() || sending || configurationBusy || busyCount || isBusy(state)) return;
   const scope = draftScopeKey();
   const assertScope = () => {
     if (scope !== draftScopeKey() || isBusy(state)) throw new Error('The conversation changed. Include the page again when you are ready.');

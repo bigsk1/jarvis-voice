@@ -512,6 +512,7 @@ def get_status():
                 'cancel': True,
                 'text': True,
                 'profile': True,
+                'talk': True,
             },
         }
     })

@@ -34,6 +34,65 @@ export class JarvisTransport {
   login(password) { return this.request('/api/auth/login', {method: 'POST', body: {password}, authenticated: false}); }
   listConversations() { return this.request('/api/conversations?limit=100&include_archived=false'); }
 
+  async speech(path, {body, signal, audio = false} = {}) {
+    const url = new URL(path, this.serverUrl);
+    if (url.origin !== this.serverUrl || url.username || url.password || url.search || url.hash ||
+        !['/api/stt', '/api/tts'].includes(url.pathname) && !/^\/audio\/[A-Za-z0-9_./-]+$/.test(url.pathname)) {
+      throw new Error('The answer audio is not on this Jarvis server.');
+    }
+    const headers = this.token ? {Authorization: `Bearer ${this.token}`} : {};
+    if (body && !(body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+      body = JSON.stringify(body);
+    }
+    const response = await this.fetchImpl(url.href, {
+      method: body ? 'POST' : 'GET', headers, body, credentials: 'omit', redirect: 'error', cache: 'no-store',
+      signal: AbortSignal.any([AbortSignal.timeout(90000), ...(signal ? [signal] : [])]),
+    });
+    if (response.status === 401) this.onUnauthorized();
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `Speech service returned HTTP ${response.status}`);
+    }
+    if (!audio) return response.json();
+    if (!/^(audio\/|application\/octet-stream)/i.test(response.headers.get('Content-Type') || '')) {
+      throw new Error('Jarvis returned an unexpected audio format.');
+    }
+    // Bound decoded input before it crosses the extension message bridge.
+    const reader = response.body.getReader();
+    const chunks = [];
+    let size = 0;
+    try {
+      for (;;) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > 32 * 1024 * 1024) throw new Error('The answer audio is too large. Read the reply in chat.');
+        chunks.push(value);
+      }
+    } finally { await reader.cancel().catch(() => {}); }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    return bytes.buffer;
+  }
+
+  transcribe(bytes, mimeType, mode, signal) {
+    if (!(bytes instanceof ArrayBuffer) || !bytes.byteLength || bytes.byteLength > 10 * 1024 * 1024 ||
+        !/^audio\/(webm|ogg|mp4|wav)(;codecs=opus)?$/.test(mimeType)) {
+      throw new Error('The recording is invalid or too large. Resume and try a shorter question.');
+    }
+    const form = new FormData();
+    form.set('audio', new Blob([bytes], {type: mimeType}), `talk.${mimeType.split(/[\/;]/)[1]}`);
+    form.set('mode', mode);
+    return this.speech('/api/stt', {body: form, signal});
+  }
+
+  synthesize(text, mode, messageId, signal) {
+    if (typeof text !== 'string' || !text.trim() || text.length > 950) throw new Error('Invalid speech text.');
+    return this.speech('/api/tts', {body: {text, mode, purpose: 'final', message_id: messageId}, signal, audio: true});
+  }
+
   async upload(attachment, mode) {
     if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(attachment.previewUrl) ||
         attachment.previewUrl.length > 3000000 || attachment.width > 1024 || attachment.height > 1024) {

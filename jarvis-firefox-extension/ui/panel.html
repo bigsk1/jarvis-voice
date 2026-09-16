@@ -37,6 +37,11 @@
       </form>
       <div class="settings-footer"><span id="settings-status" class="helper" role="status">Set a server address to get started.</span><div class="heading-actions"><button id="reconnect-button" class="text-button accent-text" type="button" hidden>Reconnect</button><button id="logout-button" class="text-button" type="button" hidden>Log out</button></div></div>
       <fieldset class="notification-settings">
+        <legend>Talk microphone</legend>
+        <button id="microphone-settings" class="button button-secondary" type="button">Microphone setup</button>
+        <p class="helper">Allow the microphone in the setup tab and keep it open for sidebar Talk. Capture starts only when you use Talk.</p>
+      </fieldset>
+      <fieldset class="notification-settings">
         <legend>Notifications</legend>
         <label class="checkbox-label"><input id="show-badge" type="checkbox" checked><span>Show unread reply count on the icon</span></label>
         <label class="checkbox-label"><input id="desktop-notifications" type="checkbox"><span>Notify when a reply is ready</span></label>
@@ -64,6 +69,16 @@
     </main>
 
     <footer class="composer-area">
+      <section id="talk-panel" class="talk-panel" aria-label="Hands-free Talk" hidden>
+        <strong id="talk-status" role="status" aria-live="polite"></strong>
+        <p id="talk-transcript" class="helper"></p>
+        <div class="talk-actions">
+          <button id="talk-pause" class="button button-secondary" type="button">Pause</button>
+          <button id="talk-interrupt" class="button button-secondary" type="button" hidden>Interrupt to speak</button>
+          <button id="talk-end" class="button button-stop" type="button">End Talk</button>
+          <button id="talk-permission" class="text-button accent-text" type="button" hidden>Microphone setup</button>
+        </div>
+      </section>
       <div id="progress-area" class="progress-area" role="status" hidden><span class="activity-dot" aria-hidden="true"></span><span id="progress-text">Working…</span><button id="cancel-button" class="button button-stop" type="button">Stop</button></div>
       <section id="attachment-panel" class="attachment-panel" aria-label="Captured screenshot" hidden>
         <button id="preview-button" class="preview-button" type="button" title="Enlarge screenshot" aria-label="Enlarge screenshot"><img id="attachment-preview" alt="Screenshot ready to send"></button>
@@ -92,6 +107,7 @@
         <textarea id="message-input" rows="2" placeholder="Ask Jarvis anything…" spellcheck="true"></textarea>
         <div class="composer-controls"><div class="composer-left"><button id="capture-button" class="icon-button" type="button" title="Capture this page" aria-label="Capture this page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5h4m8 0h4v3m0 8v3h-4m-8 0H4v-3M8 9h8v6H8z"/></svg></button><button id="include-page-button" class="text-button include-page-button" type="button" title="Attach the current page title and link to your next message"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 13 4-4m-6 7-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2 2 1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0"/></svg>Include page</button><label class="mode-control" for="mode-select"><span class="sr-only">Jarvis mode</span><select id="mode-select"><option value="cloud">Cloud</option><option value="local">Local</option></select></label></div><button id="send-button" class="button button-send" type="submit" disabled>Send<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></div>
       </form>
+      <div class="talk-launch"><button id="talk-button" class="button button-secondary" type="button" aria-pressed="false" aria-controls="talk-panel" disabled>Talk</button><span class="helper">Hands-free conversation</span></div>
       <div class="composer-caption"><span id="source-caption">Capture adds a screenshot and the page’s readable text.</span><span class="keyboard-hint">Enter to send</span></div>
     </footer>
   </div>

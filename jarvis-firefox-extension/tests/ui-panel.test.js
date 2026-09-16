@@ -113,6 +113,9 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
     assert.equal($('notification-preview').disabled, true);
     await $('popout-button').fire('click');
     assert.equal(commands.at(-1).action, 'openPopout');
+    await $('microphone-settings').fire('click');
+    assert.equal(commands.at(-1).action, 'microphonePermission', 'Microphone setup is reachable before Talk starts');
+    assert.equal(commands.at(-1).payload.windowId, 4, 'Reuse the setup tab only in this sidebar window');
 
     $('server-url').value = 'https://jarvis.example.test';
     await $('server-url').fire('input');
@@ -123,6 +126,20 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
     await $('settings-form').fire('submit');
     assert.deepEqual(commands.slice(-2).map(command => command.action), ['configure', 'connect']);
     assert.equal($('connection-label').textContent, 'Connected');
+    assert.equal($('talk-button').disabled, true, 'Older servers keep normal chat but cannot start Talk');
+    state.capabilities = {...state.capabilities, talk: true};
+    pushState({type: 'state', state: structuredClone(state)});
+    assert.equal($('talk-button').disabled, false);
+    pushState({type: 'talk:owner', sessionId: 'another-view'});
+    for (const id of ['talk-button', 'send-button', 'capture-button', 'new-conversation', 'mode-select']) assert.equal($(id).disabled, true);
+    assert.equal($('message-input').readOnly, true);
+    const commandsBeforeTalk = commands.length;
+    await $('composer-form').fire('submit');
+    await $('capture-button').fire('click');
+    assert.equal(commands.length, commandsBeforeTalk, 'A second view cannot submit or stage during Talk');
+    pushState({type: 'talk:owner', sessionId: null});
+    assert.equal($('message-input').readOnly, false);
+    assert.equal($('talk-button').disabled, false);
 
     const configurationCommands = commands.filter(command => ['configure', 'connect'].includes(command.action)).length;
     $('desktop-notifications').checked = true;

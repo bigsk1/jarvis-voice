@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Jarvis microphone setup</title><link rel="stylesheet" href="panel.css"><script type="module" src="microphone.js"></script></head>
+<body><main class="microphone-setup">
+  <h1>Allow the microphone for Talk</h1>
+  <p>Click below and choose Allow in Firefox. Keep “Remember this decision” selected to avoid another prompt on each turn.</p>
+  <p><strong>Keep this tab open while using Talk in the sidebar.</strong> Firefox needs a regular extension tab to open the microphone reliably. The sidebar keeps your conversation and Talk controls.</p>
+  <p>Starting or resuming sidebar Talk briefly selects this tab to open the microphone, then returns to your previous tab. It stays in the background during your conversation.</p>
+  <p>This permission check stops capture immediately and sends no audio. Afterward, only an explicit Talk session uses the microphone. Pause or End in the sidebar stops it. Closing this tab pauses sidebar Talk.</p>
+  <button id="allow-microphone" class="button button-primary" type="button">Allow microphone</button>
+  <p id="microphone-status" role="status" aria-live="polite"></p>
+</main></body></html>

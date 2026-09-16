@@ -12,8 +12,8 @@ const DEFAULT_TEXT_PROMPT = 'Review the attached page text and answer from that 
 
 /** Browser-independent application client; background.js is its only owner. */
 export class JarvisClient {
-  constructor({storage, permissions, ioFactory, fetchImpl, onState = () => {}, uuid = () => crypto.randomUUID()}) {
-    Object.assign(this, {storage, permissions, ioFactory, fetchImpl, onState, uuid});
+  constructor({storage, permissions, ioFactory, fetchImpl, onState = () => {}, onServerEvent = () => {}, uuid = () => crypto.randomUUID()}) {
+    Object.assign(this, {storage, permissions, ioFactory, fetchImpl, onState, onServerEvent, uuid});
     this.state = initialState();
     this.token = '';
     this.pendingRequestId = null;
@@ -65,6 +65,7 @@ export class JarvisClient {
     this.state.capabilities = {
       text: this.state.capabilities?.text === true ? true : this.state.capabilities?.text === false ? false : null,
       profile: false,
+      talk: false,
     };
     this.state.profile = null;
     this.publish();
@@ -188,7 +189,8 @@ export class JarvisClient {
       const status = await transport.status();
       if (this.transport !== transport) return;
       assertCapabilities(status);
-      this.state.capabilities = {text: pageTextSupported(status), profile: status.extension?.features?.profile === true};
+      this.state.capabilities = {text: pageTextSupported(status), profile: status.extension?.features?.profile === true,
+        talk: status.extension?.features?.talk === true};
       this.state.connection.authRequired = status.features.auth;
       if (status.features.auth && !this.token) {
         this.state.connection.status = 'auth_required';
@@ -252,7 +254,7 @@ export class JarvisClient {
   openSocket(transport) {
     const handle = event => data => {
       if (this.transport !== transport) return;
-      try { this.onEvent(event, data || {}); }
+      try { this.onEvent(event, data || {}); this.onServerEvent(event, data || {}); }
       catch (error) { this.state.notice = error.message; this.changed(); }
     };
     const names = ['connected', 'disconnect', 'connect_error', 'auth:expired', 'auth:error', 'auth:required',
@@ -668,7 +670,7 @@ export class JarvisClient {
     this.publish();
   }
 
-  async send(text) {
+  async send(text, {inputMode, requestId: suppliedId, isCurrent = () => true} = {}) {
     this.requireIdle();
     if (this.state.connection.status !== 'connected') throw new Error('Connect to Jarvis and finish recovery before sending.');
     const transport = this.transport;
@@ -709,10 +711,11 @@ export class JarvisClient {
     this.publish();
     try {
       await this.checkpoint();
+      if (!isCurrent()) throw new Error('Talk ended before the message was sent.');
       if (attachment) image = {action: 'analyze', images: [await transport.upload(attachment, this.state.mode)]};
       if (page) textAttachment = await transport.uploadText(page, this.state.mode);
       if (transport !== this.transport || !transport.socket?.connected) throw new Error('Disconnected before sending. The draft is retained; reconnect first.');
-      const requestId = this.uuid();
+      const requestId = suppliedId || this.uuid();
       this.pendingRequestId = requestId;
       this.pendingDraft = {...structuredClone(this.state.draft), text: original};
       this.state.run = {requestId, messageId: requestId, conversationId: this.state.conversationId, status: 'sending'};
@@ -730,13 +733,24 @@ export class JarvisClient {
       // Crash before/after this write is safe: recovery only looks up this ID.
       // Never persist a payload that an automatic retry could execute again.
       await this.checkpoint();
+      if (!isCurrent()) {
+        this.state.messages = this.state.messages.filter(item => item.id !== `user-${requestId}`);
+        this.state.submittedRequests = this.state.submittedRequests.filter(item => item.requestId !== requestId);
+        this.pendingRequestId = null;
+        this.pendingDraft = null;
+        this.state.run = null;
+        this.changed();
+        throw new Error('Talk ended before the message was sent. The transcript is in your draft.');
+      }
       this.state.draft = {text: '', attachment: null, context: null, page: null, pageLink: null};
       transport.emit('chat:send', {message, mode: this.state.mode,
+        ...(inputMode === 'talk' ? {input_mode: 'talk'} : {}),
         conversation_id: this.state.conversationId, request_id: requestId, ...(image ? {image} : {}),
         ...(textAttachment ? {attachments: [textAttachment]} : {}),
         ...(toolHints.length ? {tool_hints: toolHints} : {})});
       if (this.pendingRequestId) this.armRecoveryTimeout();
       this.changed();
+      return requestId;
     } catch (error) {
       if (!this.pendingRequestId && this.transport === transport && transport.socket?.connected) this.state.connection.status = 'connected';
       if (this.pendingRequestId) {
