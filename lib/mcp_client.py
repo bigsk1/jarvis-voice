@@ -897,7 +897,7 @@ class MCPRemoteClient:
         
         # Consume the SSE response (initialization result)
         for line in response.iter_lines(decode_unicode=True):
-            if os.environ.get("MCP_DEBUG") and line:
+            if os.environ.get("MCP_DEBUG", "").lower() == "true" and line:
                 print(f"[MCP DEBUG] Init response: {line}", file=sys.stderr)
         
         self.request_id = 1  # We used ID 1 for initialize
