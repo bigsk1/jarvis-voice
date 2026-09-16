@@ -2,7 +2,7 @@
 
 A Firefox client for [Jarvis Voice](https://github.com/bigsk1/jarvis-voice): chat in a sidebar or detached window, capture a webpage's screenshot **and readable text**, and ask follow-up questions without saving screenshots or copying articles by hand.
 
-This is an independently versioned development extension. Its standalone source repository is [bigsk1/jarvis-firefox-extension](https://github.com/bigsk1/jarvis-firefox-extension). It requires your own Jarvis Web server; it does not include a hosted assistant service or a Mozilla-signed installer. See [REVIEW.md](REVIEW.md) for reproducible packaging, reviewer setup, and the remaining submission checks.
+This independently versioned extension targets **unlisted Mozilla signing and self-distribution**. Its standalone source repository is [bigsk1/jarvis-firefox-extension](https://github.com/bigsk1/jarvis-firefox-extension). It requires your own Jarvis Web server. See [REVIEW.md](REVIEW.md) for the signing upload steps, reproducible packaging, and submission notes. Building this source produces an unsigned ZIP; Mozilla returns the signed installer separately.
 
 ## What it does
 
@@ -35,7 +35,13 @@ The extension checks `/api/status` for the capability contract and rejects serve
 
 Profile appearance is also optional (`extension.features.profile`). On older servers, user messages show **You** with the packaged HUD icon. Restart an updated Web server to enable profile sync, then reload the companion. Appearance is shared by clients of that server across cloud/local mode; it does not change login credentials or the Intelligence Profile Card.
 
-## Load it temporarily
+## Install the signed extension
+
+Download the **Mozilla-signed `.xpi`** supplied by the maintainer. In desktop Firefox, open **Add-ons and themes → gear menu → Install Add-on From File**, select that file, and approve installation. It stays installed across restarts and does not use `about:debugging`. A public Firefox Add-ons store listing is not required. See [Mozilla's file installation instructions](https://extensionworkshop.com/documentation/publish/install-self-distributed/).
+
+The repository's source ZIPs and locally built packages are unsigned; renaming them to `.xpi` does not sign them. Maintainers should follow the [unlisted signing guide](REVIEW.md#submit-for-unlisted-signing) and distribute the returned signed file unchanged through GitHub Releases. Firefox checks the repository's [update manifest](https://raw.githubusercontent.com/bigsk1/jarvis-firefox-extension/main/updates.json) for higher signed versions. Uploading a release asset alone does not update that manifest; see the [release steps](REVIEW.md#publish-a-signed-update).
+
+## Temporary loading for development
 
 From this directory:
 
@@ -56,7 +62,7 @@ npm run lint
 npm run build
 ```
 
-The ZIP and a short installation note are written to `web-ext-artifacts/`. Firefox's temporary add-on loader also accepts the ZIP. Regular persistent installation requires Mozilla signing; an unlisted signed release can be distributed without a public AMO listing. Passing local checks does not guarantee Mozilla approval. See Mozilla's [temporary installation guide](https://extensionworkshop.com/documentation/develop/temporary-installation-in-firefox/) and [signing overview](https://extensionworkshop.com/documentation/publish/signing-and-distribution-overview/).
+The unsigned upload ZIP and versioned installation instructions are written to `web-ext-artifacts/`. Use the [unlisted signing guide](REVIEW.md#submit-for-unlisted-signing) for persistent installation. Temporary loading remains available while developing. Passing local checks does not guarantee signing or approval.
 
 ### Version every update
 
@@ -134,7 +140,7 @@ Screenshots are resized locally to a maximum **1,024 pixels on the longest edge*
 
 ## Connection and privacy
 
-HTTPS/WSS is the default. **Allow HTTP for a local development server** enables an explicit exception for localhost or a private IP, for example `http://192.168.1.20:5001`. HTTP does not encrypt passwords, tokens, messages, screenshots, or page text. Public HTTP endpoints are refused; an invalid HTTPS certificate is not bypassed.
+HTTPS/WSS is required for servers on another machine, including private LAN addresses. **Allow HTTP for localhost on this computer** enables an explicit exception for `localhost` and its subdomains, `127.0.0.0/8`, or `::1`, for example `http://127.0.0.1:5001`. HTTP is unencrypted. Private-LAN HTTP is refused even if the exception was saved by an older extension version; change that connection to HTTPS. Invalid HTTPS certificates are not bypassed.
 
 For private HTTPS without publishing your Jarvis server, follow the
 [Jarvis Tailscale HTTPS guide](https://github.com/bigsk1/jarvis-voice/blob/main/docs/TAILSCALE_HTTPS.md).

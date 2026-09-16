@@ -14,6 +14,9 @@ test('standalone manifest declares consent and least required permissions with p
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[''].version, pkg.version);
   assert.equal(manifest.manifest_version, 3);
+  assert.equal(manifest.browser_specific_settings.gecko.id, 'jarvis-companion@bigsk1.com');
+  assert.equal(manifest.browser_specific_settings.gecko.update_url,
+    'https://raw.githubusercontent.com/bigsk1/jarvis-firefox-extension/main/updates.json');
   assert.equal(manifest.incognito, 'not_allowed');
   assert.equal(manifest.browser_specific_settings.gecko.strict_min_version, '140.0');
   assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions.required,

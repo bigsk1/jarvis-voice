@@ -28,8 +28,8 @@
       <form id="settings-form">
         <label class="field-label" for="server-url">Server URL</label>
         <div class="input-action"><input id="server-url" name="server-url" type="url" placeholder="https://jarvis.example.com" autocomplete="url" spellcheck="false" required><button id="save-settings" class="button button-primary" type="submit">Connect</button></div>
-        <label class="checkbox-label"><input id="allow-insecure" type="checkbox"><span>Allow HTTP for a local development server</span></label>
-        <p id="insecure-warning" class="inline-warning" hidden>HTTP sends your password, messages, screenshots, and page text without encryption. Use this only on a trusted local network.</p>
+        <label class="checkbox-label"><input id="allow-insecure" type="checkbox"><span>Allow HTTP for localhost on this computer</span></label>
+        <p id="insecure-warning" class="inline-warning" hidden>HTTP is unencrypted and allowed only on this computer's loopback interface. Servers on another machine, including your private LAN, require HTTPS.</p>
       </form>
       <form id="login-form" class="login-form" hidden>
         <label class="field-label" for="password">Jarvis Web password</label>

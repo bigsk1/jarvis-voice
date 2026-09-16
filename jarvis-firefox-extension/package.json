@@ -1,12 +1,12 @@
 {
   "name": "jarvis-firefox-extension",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "description": "A Firefox companion for your Jarvis server",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "lint": "web-ext lint --source-dir . --ignore-files node_modules package.json package-lock.json tests scripts README.md REVIEW.md CHANGELOG.md .github assets/jarvis-firefox-extension.jpg web-ext-artifacts web-ext.config.mjs",
+    "lint": "web-ext lint --self-hosted --source-dir . --ignore-files node_modules package.json package-lock.json tests scripts README.md REVIEW.md CHANGELOG.md .github updates.json assets/jarvis-firefox-extension.jpg web-ext-artifacts web-ext.config.mjs",
     "build": "node scripts/package.mjs",
     "bump": "node scripts/version.mjs",
     "vendor": "node scripts/vendor.mjs"

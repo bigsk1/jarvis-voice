@@ -81,6 +81,22 @@ test('fresh profile initializes without a saved session', async () => {
   assert.equal(h.client.token, '');
 });
 
+test('an old private-LAN HTTP setting cannot reconnect or check completions after an update', async () => {
+  const storage = {local: area({jarvisSettings: {serverUrl: 'http://192.168.1.2:5001', allowInsecureLocal: true}}), session: area()};
+  const h = harness({storage});
+  await h.client.restore();
+  await assert.rejects(h.client.connect(), /HTTPS is required/);
+  await assert.rejects(h.client.completionReader(), /HTTPS is required/);
+  await assert.rejects(h.client.configure({serverUrl: 'http://10.0.0.2:5001', allowInsecureLocal: true}), /HTTPS is required/);
+  assert.equal(h.requests.length, 0, 'Reject before transmitting credentials or other data');
+  assert.equal(h.sockets.length, 0);
+  await h.client.configure({serverUrl: ORIGIN});
+  await h.client.connect();
+  assert.ok(h.requests.every(request => request.url.startsWith(ORIGIN + '/')));
+  assert.equal(h.sockets.length, 1, 'Changing to HTTPS restores the normal connection');
+  h.client.close();
+});
+
 test('the current tab is never added to an ordinary message without Include page', async () => {
   const h = harness(); await h.start();
   h.client.state.source = PAGE_LINK;

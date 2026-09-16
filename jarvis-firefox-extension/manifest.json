@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Jarvis Companion",
-  "version": "0.2.1",
-  "description": "Chat with Jarvis about the current page, screenshots, images, text, and links, with optional completion notifications.",
+  "version": "0.2.2",
+  "description": "Chat and talk with your Jarvis server in a sidebar. Share page text, screenshots, images, and links, with optional completion notifications.",
   "browser_specific_settings": {
     "gecko": {
       "id": "jarvis-companion@bigsk1.com",
+      "update_url": "https://raw.githubusercontent.com/bigsk1/jarvis-firefox-extension/main/updates.json",
       "strict_min_version": "140.0",
       "data_collection_permissions": {
         "required": [

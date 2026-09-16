@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {assertCapabilities, normalizeServerUrl, originPermission, pageTextSupported} from '../core/connection.js';
 
-test('server connections default to HTTPS with explicit local HTTP exception', () => {
+test('server connections default to HTTPS with an explicit loopback HTTP exception', () => {
   assert.equal(normalizeServerUrl('https://jarvis.example:5001/'), 'https://jarvis.example:5001');
-  for (const url of ['http://127.0.0.1:5001', 'http://192.168.1.2:5001', 'http://[::1]:5001']) {
+  for (const url of ['http://localhost:5001', 'http://dev.localhost:5001', 'http://127.0.0.1:5001', 'http://127.2.3.4:5001', 'http://[::1]:5001']) {
     assert.throws(() => normalizeServerUrl(url));
     assert.equal(normalizeServerUrl(url, {allowInsecureLocal: true}), url);
   }
@@ -13,6 +13,14 @@ test('server connections default to HTTPS with explicit local HTTP exception', (
     assert.throws(() => normalizeServerUrl(url, {allowInsecureLocal: true}));
   }
   assert.equal(originPermission('https://jarvis.example:5001'), 'https://jarvis.example/*');
+});
+
+test('private LAN and non-loopback addresses require HTTPS even with the saved HTTP opt-in', () => {
+  for (const host of ['192.168.1.2', '10.0.0.2', '172.16.0.2', '[fd00::2]', '[fc00::2]',
+    '[fe80::2]', '100.64.0.2', '0.0.0.0', '[::]', 'localhost.example.com', '127.0.0.1.example.com']) {
+    assert.throws(() => normalizeServerUrl(`http://${host}:5001`, {allowInsecureLocal: true}), /HTTPS is required/, host);
+    assert.equal(normalizeServerUrl(`https://${host}:5001`), `https://${host}:5001`);
+  }
 });
 
 test('companion contract requires chat recovery and authenticated sockets; page text is optional', () => {

@@ -1,14 +1,11 @@
 /** Connection policy shared by settings and the privileged background client. */
-export function isLocalHost(hostname) {
+export function isLoopbackHost(hostname) {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
   if (host === 'localhost' || host.endsWith('.localhost') || host === '::1') return true;
-  if (/^(fc|fd)[0-9a-f]{2}:/.test(host)) return true;
   if (!/^\d+\.\d+\.\d+\.\d+$/.test(host)) return false;
   const parts = host.split('.').map(Number);
   if (parts.some(part => part > 255)) return false;
-  return parts[0] === 127 || parts[0] === 10 ||
-    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
-    (parts[0] === 192 && parts[1] === 168);
+  return parts[0] === 127;
 }
 
 export function normalizeServerUrl(input, {allowInsecureLocal = false} = {}) {
@@ -19,8 +16,8 @@ export function normalizeServerUrl(input, {allowInsecureLocal = false} = {}) {
     throw new Error('Use an HTTP(S) server address without credentials, query parameters, or fragments.');
   }
   if (url.pathname !== '/') throw new Error('Use the Jarvis Web server origin, without a page or API path.');
-  if (url.protocol === 'http:' && (!allowInsecureLocal || !isLocalHost(url.hostname))) {
-    throw new Error('HTTPS is required. Unencrypted HTTP is available only for an explicitly enabled localhost or private-IP development connection.');
+  if (url.protocol === 'http:' && (!allowInsecureLocal || !isLoopbackHost(url.hostname))) {
+    throw new Error('HTTPS is required for servers on another machine, including private LAN addresses. HTTP is available only for an explicitly enabled localhost connection on this computer.');
   }
   return url.origin;
 }

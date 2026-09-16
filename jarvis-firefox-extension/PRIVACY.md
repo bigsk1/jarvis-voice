@@ -2,6 +2,8 @@
 
 Jarvis Companion is a client for the Jarvis Web server you configure. The extension does not operate its own cloud service, include analytics, or send telemetry to its author.
 
+Firefox's built-in add-on updater separately checks the public `updates.json` file on `raw.githubusercontent.com/bigsk1/jarvis-firefox-extension/main/` and downloads advertised signed XPI files from GitHub Releases. These requests expose ordinary network metadata to GitHub; the extension does not attach Jarvis credentials, speech, messages, or page content to them. Manage automatic extension updates through Firefox's Add-ons Manager.
+
 ## What is transmitted
 
 When you connect, the extension checks server status and capabilities. Signing in sends your Jarvis Web password to that server's login endpoint. Subsequent authenticated REST requests use a Bearer token; Socket.IO supplies the token in its authentication handshake, not in a URL.
@@ -59,7 +61,7 @@ The extension declares optional HTTP(S) host patterns so users can enter their o
 
 ## Transport and server retention
 
-Use HTTPS/WSS for encrypted transport. A clearly labeled local-development setting permits HTTP only for localhost/private-IP servers. That exception is unencrypted, including login credentials and page content. The extension does not bypass invalid TLS certificates.
+Use HTTPS/WSS for encrypted transport to every remote server, including private LAN addresses. A clearly labeled setting permits unencrypted HTTP only for loopback connections on the same computer (`localhost`, its subdomains, `127.0.0.0/8`, or `::1`). This exception does not permit private-LAN, link-local, or other remote IP addresses. The extension does not bypass invalid TLS certificates.
 
 After upload, content follows your Jarvis server's normal processing and retention rules. In the current Web implementation, uploaded screenshots are written to disk, page text is stored as a Web text attachment, image processing can copy screenshots into Stash and record memory references, and chat saves conversations and answers. Tools, logs, and configured model providers can retain additional records according to their own configuration and policies. A user-owned server can still send data onward to cloud model or tool providers; selecting local mode is not an extension-level guarantee that every enabled tool is local.
 

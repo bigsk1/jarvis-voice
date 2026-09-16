@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2
+
+- Prepare unlisted Mozilla signing and persistent installation from the signed XPI, with upload instructions and submission notes.
+- Configure a stable GitHub-hosted update manifest for signed XPI downloads from GitHub Releases.
+- Require HTTPS for every remote server, including private LAN addresses. The explicit HTTP opt-in now permits only loopback connections on the same computer. Existing LAN HTTP settings must be changed to HTTPS before reconnecting.
+- Include Talk in the extension description. Preserve the extension ID and existing versioned packages.
+
 ## 0.2.1
 
 - Prepare the standalone public source repository with automated test/build checks and Mozilla reviewer instructions.
