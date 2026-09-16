@@ -230,6 +230,11 @@ def _scoped_by_mode(method):
                 if model_env_key and modal_model:
                     scoped_overrides[model_env_key] = str(modal_model)
 
+        # Talk is a per-turn interaction mode, never a saved Web setting.
+        # Keep word limits from the normal mode/Web configuration precedence.
+        if (arguments.get('prompt_meta') or {}).get('input_mode') == 'talk':
+            scoped_overrides['JARVIS_RESPONSE_STYLE'] = 'casual'
+
         from config_loader import config_scope
         from embeddings import embedding_status_scope
 
@@ -2571,6 +2576,7 @@ Previous structured data:
             
             # Prompt metadata from @prompt system (workflows are handled by orchestrator)
             prompt_meta = {
+                'input_mode': 'talk' if data.get('input_mode') == 'talk' else 'text',
                 'system_instruction': data.get('system_instruction'),
                 'prompt_name': data.get('prompt_name'),
                 'tool_hints': self._sanitize_tool_hints(

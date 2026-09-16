@@ -3731,9 +3731,9 @@ body {
     flex-wrap: nowrap;
   }
   
-  /* Hide extra buttons on mobile - keep send, enhance, upload, convert, and stop (when active) */
+  /* Keep Talk reachable on mobile alongside the core composer actions. */
   /* Note: mic hidden on mobile since native keyboard has voice input */
-  .input-actions .icon-btn:not(.send-btn):not(.enhance-btn):not(.upload-btn):not(.convert-btn):not(.stop-btn):not(.speaker-btn) {
+  .input-actions .icon-btn:not(.send-btn):not(.enhance-btn):not(.upload-btn):not(.convert-btn):not(.stop-btn):not(.speaker-btn):not(.talk-btn) {
     display: none !important;
   }
   
@@ -3844,7 +3844,7 @@ body {
   
   /* Only show send, enhance, upload, and convert on tiny screens - stop shown when active */
   /* Note: mic hidden on mobile since native keyboard has voice input */
-  .input-actions .icon-btn:not(.send-btn):not(.enhance-btn):not(.upload-btn):not(.convert-btn):not(.stop-btn) {
+  .input-actions .icon-btn:not(.send-btn):not(.enhance-btn):not(.upload-btn):not(.convert-btn):not(.stop-btn):not(.talk-btn) {
     display: none !important;
   }
   
@@ -6571,4 +6571,30 @@ body.log-panel-open .main-content {
 /* Ensure app container is relative for log panel positioning */
 #app {
   position: relative;
+}
+
+/* Talk is an explicit, foreground microphone session. */
+.talk-btn { min-width: 3.2rem; font-size: .8rem; font-weight: 600; }
+.talk-btn.active { color: white; outline: 1px solid var(--accent-primary, #00d4ff); }
+.talk-panel {
+  position: fixed; z-index: 1100; right: 1.25rem; bottom: 6rem;
+  width: min(26rem, calc(100vw - 2rem)); padding: 1rem;
+  border: 1px solid var(--border-color, #365269); border-radius: 12px;
+  background: var(--bg-secondary, #141c28); color: var(--text-primary, #edf2f7);
+  box-shadow: 0 10px 32px #0006;
+}
+.talk-panel[hidden], .talk-actions button[hidden] { display: none; }
+.talk-state { display: flex; align-items: center; gap: .6rem; }
+.talk-indicator { width: .65rem; height: .65rem; flex: 0 0 auto; border-radius: 50%; background: #8191a3; }
+.talk-panel[data-state="listening"] .talk-indicator { background: #46d996; box-shadow: 0 0 0 4px #46d99622; }
+.talk-panel[data-state="speaking"] .talk-indicator { background: #5baaff; }
+.talk-explanation { font-size: .8rem; line-height: 1.5; color: var(--text-secondary, #a9b8cc); margin: .7rem 0; }
+.talk-transcript { max-height: 5rem; overflow: auto; overflow-wrap: anywhere; font-size: .85rem; line-height: 1.5; }
+.talk-transcript:empty { display: none; }
+.talk-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+.talk-actions button { min-height: 40px; }
+@media (max-width: 600px) {
+  .input-actions .talk-btn { min-width: 44px !important; font-size: .75rem !important; }
+  .talk-panel { right: 1rem; bottom: 8rem; padding: .85rem; }
+  .talk-actions button { flex: 1 1 auto; }
 }

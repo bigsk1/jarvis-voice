@@ -293,6 +293,7 @@ class JarvisSocket {
     
     // Include prompt metadata if provided (workflows are handled by orchestrator via /trigger)
     if (promptMeta) {
+      if (promptMeta.input_mode === 'talk') payload.input_mode = 'talk';
       if (promptMeta.system_instruction) {
         payload.system_instruction = promptMeta.system_instruction;
       }

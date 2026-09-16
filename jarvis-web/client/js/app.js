@@ -67,6 +67,7 @@ class JarvisApp {
    */
   _initialize() {
     this.profileAppearance = window.ProfileAppearance ? new window.ProfileAppearance() : null;
+    this.talk = window.TalkController ? new window.TalkController({ app: this, chat: this.chat, socket: this.socket }) : null;
     this._setupSocketListeners();
     this._setupHudLogo();
     this._setupUIListeners();
@@ -193,9 +194,10 @@ class JarvisApp {
       }
       this._cancelStatusTTS();
       // Play audio if enabled and available
-      if (this.audioEnabled && data.audio_url) {
+      const talkOwnsAudio = this.talk?.active || this.talk?.ownsResponse(data);
+      if (!talkOwnsAudio && this.audioEnabled && data.audio_url) {
         this._playAudio(data.audio_url, 'final');
-      } else if (this.audioEnabled && data.speech) {
+      } else if (!talkOwnsAudio && this.audioEnabled && data.speech) {
         // Generate TTS if no audio_url provided but audio enabled
         this._generateAndPlayTTS(data.speech, { kind: 'final' });
       }
@@ -974,6 +976,10 @@ class JarvisApp {
    * Play audio response with controls
    */
   _playAudio(url, kind = 'final') {
+    if (this.talk?.active) {
+      if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+      return;
+    }
     console.log('[App] Playing audio:', url);
 
     // A status phrase must never interrupt an answer that is already playing.
@@ -1169,6 +1175,8 @@ class JarvisApp {
   }
 
   async _generateAndPlayTTS(text, { kind = 'final', messageId = null } = {}) {
+    if (this.talk?.active) return;
+    const talkAudioEpoch = this._talkAudioEpoch || 0;
     if (!text || text.length > 1000) {
       // Skip very long text
       console.log('[App] Skipping TTS for text length:', text?.length);
@@ -1199,6 +1207,8 @@ class JarvisApp {
         signal: controller?.signal,
       });
 
+      if (talkAudioEpoch !== (this._talkAudioEpoch || 0)) return;
+
       if (
         kind === 'status'
         && (controller.signal.aborted
@@ -1210,6 +1220,7 @@ class JarvisApp {
         const contentType = response.headers.get('Content-Type');
         console.log('[App] TTS response Content-Type:', contentType);
         const blob = await response.blob();
+        if (talkAudioEpoch !== (this._talkAudioEpoch || 0)) return;
         console.log('[App] TTS blob size:', blob.size, 'type:', blob.type);
         if (blob.size > 0) {
           const audioUrl = URL.createObjectURL(blob);
@@ -3632,6 +3643,7 @@ class JarvisApp {
    * Start a new chat
    */
   _startNewChat() {
+    this.talk?.end('Talk ended. Start Talk again in the new conversation.');
     if (this.modeSelect) this.modeSelect.disabled = false;
     this.socket.clearPendingRequest?.();
     this._pendingConversationLoad = null;
@@ -4180,6 +4192,7 @@ class JarvisApp {
    * Load a specific conversation
    */
   loadConversation(convId, { reconcile = false } = {}) {
+    this.talk?.end('Talk ended because the conversation changed.', { cancel: false });
     console.log('[App] Loading conversation:', convId);
     if (!convId || !this.socket.connected) {
       Utils.toast('Connect to Jarvis before loading a conversation.', 'info');

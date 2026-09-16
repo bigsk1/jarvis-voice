@@ -1104,7 +1104,7 @@ class ChatUI {
    * Start voice recording with ready indicator
    */
   async _startRecording() {
-    if (this._voiceSession || this.isProcessing || this._conversationLoadPending
+    if (this._talkActive || this._voiceSession || this.isProcessing || this._conversationLoadPending
         || this.enhanceBtn?.classList.contains('enhancing')) return;
 
     // Own permission requests, recorder events and transcription as one operation.
@@ -2475,6 +2475,7 @@ class ChatUI {
   }
 
   _validateAttachmentSelection(files) {
+    if (this._talkActive) return 'End Talk before attaching files.';
     if (this._conversationLoadPending) return 'Wait for the conversation to finish loading.';
     if (this._attachmentSend || this._imageUpload || this.pendingImageBatch?.length) {
       return 'Finish or cancel the current attachment preparation first.';
@@ -3163,6 +3164,7 @@ class ChatUI {
    * Upload the entire selected source bundle before sending one chat request.
    */
   async sendMessage() {
+    if (this._talkActive) return;
     if (this._voiceSession) return;
     if (this._conversationLoadPending) {
       Utils.toast('Wait for the conversation to finish loading.', 'info');
@@ -3363,8 +3365,30 @@ class ChatUI {
   }
 
   /**
-   * Add user message to chat with optional source attachments and badge.
+   * Submit one transcribed Talk turn through ordinary chat admission/history.
    */
+  sendTalkMessage(text) {
+    const socket = window.jarvisSocket;
+    if (!this._talkActive || this.isProcessing || this._conversationLoadPending || !socket.connected) return null;
+    this._resetPendingToolState();
+    const sent = socket.sendMessage(text, null, {
+      input_mode: 'talk', tool_hints: [...this.selectedToolHints],
+      tool_policy: this.chatOnlyEnabled ? 'none' : 'auto'
+    }, this.feedbackEnabled);
+    if (!sent) return null;
+    this.currentMessageId = socket.lastRequestId;
+    this.isProcessing = true;
+    this._pendingSend = {
+      requestId: this.currentMessageId, text, documents: [], images: [],
+      toolHints: [...this.selectedToolHints], imageAction: 'analyze', imageSettings: {},
+      element: this.addUserMessage(text)
+    };
+    this.rememberRenderedMessage('user', this.currentMessageId);
+    this.updateSendButton();
+    return this.currentMessageId;
+  }
+
+  /** Add user message to chat with optional source attachments and badge. */
   addUserMessage(text, imageData = null, activeBadge = '', attachments = null) {
     const messageEl = document.createElement('div');
     messageEl.className = 'message user';
@@ -6503,7 +6527,7 @@ class ChatUI {
    */
   updateSendButton() {
     const dictating = Boolean(this._voiceSession);
-    const busy = Boolean(this.isProcessing || this._conversationLoadPending || window.jarvisSocket?.connected === false);
+    const busy = Boolean(this._talkActive || this.isProcessing || this._conversationLoadPending || window.jarvisSocket?.connected === false);
     this.sendBtn.disabled = !dictating && busy;
     this.sendBtn.textContent = dictating ? '×' : busy ? '⏳' : '➤';
     this.sendBtn.classList.toggle('cancel-dictation', dictating);

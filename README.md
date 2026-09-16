@@ -84,6 +84,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - **[Task recovery](docs/WEB_TASK_RECOVERY.md)**: Reload or reconnect to running work, restore Stop, and recover missed answers without replaying speech
   - Mode switching (cloud/local) with per-mode settings
   - **Audio playback controls**: Speaker button with pause/resume/stop
+  - **[Hands-free Talk](docs/WEB_TALK.md)**: Speak, pause to send, hear the answer, and continue in the same conversation; Pause, Interrupt, and End controls
   - **Music generation**: ElevenLabs music plays inline in chat
   - **Server Logs Panel**: Real-time LLM + Tool log streaming (simpler than Grafana!)
   - **`/logs` Log Viewer**: Read-only browser for `.jsonl`, `.log`, and `.md` logs with folder drill-down, search, lazy loading, and YAML-style JSONL rendering

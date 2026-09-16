@@ -310,6 +310,7 @@
               <button class="icon-btn feedback-btn" id="feedbackBtn" title="Feedback OFF - Click to enable LLM feedback analysis" onclick="window.chatUI && window.chatUI.toggleFeedback()">
                 📊
               </button>
+              <button class="icon-btn talk-btn" id="talkBtn" title="Start hands-free Talk — speech is sent automatically" aria-label="Start hands-free Talk" aria-pressed="false" aria-controls="talkPanel">Talk</button>
               <button class="icon-btn mic-btn" id="micBtn" title="Dictate a message" aria-label="Dictate a message" aria-pressed="false">
                 🎤
               </button>
@@ -322,6 +323,17 @@
       </div>
     </main>
     
+    <section id="talkPanel" class="talk-panel" aria-label="Hands-free Talk" hidden>
+      <div class="talk-state"><span class="talk-indicator" aria-hidden="true"></span><strong id="talkStatus" role="status" aria-live="polite">Talk ended</strong></div>
+      <p class="talk-explanation">Talk sends your speech automatically after a pause. Use Interrupt to speak again, or say “end talk” while listening.</p>
+      <p id="talkTranscript" class="talk-transcript"></p>
+      <div class="talk-actions">
+        <button type="button" class="btn btn-secondary" id="talkPause">Pause</button>
+        <button type="button" class="btn btn-secondary" id="talkInterrupt" hidden>Interrupt to speak</button>
+        <button type="button" class="btn btn-secondary" id="talkEnd">End Talk</button>
+      </div>
+    </section>
+
     <!-- Log Panel (Collapsible) -->
     <div class="log-panel" id="logPanel">
       <div class="log-panel-header" id="logPanelHeader">
@@ -1344,6 +1356,7 @@
   <script src="/js/proactive.js"></script>
   <script src="/js/logs.js"></script>
   <script src="/js/profile-appearance.js"></script>
+  <script src="/js/talk.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

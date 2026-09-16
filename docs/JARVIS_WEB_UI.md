@@ -69,6 +69,7 @@ UIs, optional navigation URLs, browser microphone checks, and troubleshooting.
 | Mode-aware TTS | ✅ | Cloud=ElevenLabs, Local=Kokoro or Qwen3-TTS via provider-specific URL settings |
 | Status TTS | ✅ | Cached, cancellable status speech when enabled; final audio has priority |
 | **Voice dictation** | ✅ | Click mic → speak → stop → review/edit transcript → Send |
+| **[Hands-free Talk](WEB_TALK.md)** | ✅ | Separate Talk button: speak → pause to send → hear answer → listen again; desktop and mobile |
 | **Mode-aware STT** | ✅ | Cloud=OpenAI, Local=faster-whisper; compatible endpoint opt-in in either mode |
 | **Audio playback controls** | ✅ | Speaker button with pause/resume/stop, progress animation  |
 | Wake word | ⏳ | Planned - browser-based VAD |
@@ -960,11 +961,22 @@ the browser request; server/provider processing may already be underway.
 
 On mobile, Jarvis's microphone button remains hidden to preserve composer space.
 Use the phone keyboard's dictation microphone to enter and review text instead.
+The separate **Talk** button remains visible on mobile for automatic spoken turns.
 
 Web microphone audio is temporary: the server removes the uploaded recording
 after transcription. Local faster-whisper also removes its converted WAV after
 use, including partial WAV output from failed or timed-out conversions. These
 microphone clips are not archived in Stash or conversation history.
+
+### Hands-free Talk
+
+Click **Talk** for a continuous conversation through the configured STT, chat, and
+TTS providers. Speech is sent automatically after a pause. Jarvis disables input
+capture while working or speaking, then listens for the next turn. Pause,
+Interrupt, and End controls are always available in the session panel. Talk uses
+short response formatting for its own turns and leaves saved settings unchanged.
+See [Web Talk](WEB_TALK.md) for controls, browser requirements, task cancellation,
+privacy behavior, and troubleshooting.
 
 ### Mixed-source attachments
 
