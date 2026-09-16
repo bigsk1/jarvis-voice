@@ -2745,6 +2745,16 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
     for key, value in data.items():
         if key in FOLLOWUP_DATA_SKIP_KEYS:
             continue
+        if key == 'source_library':
+            from source_library_context import project_library_result
+
+            runs = value if isinstance(value, list) else [value]
+            projected = [project_library_result(
+                run.get('data', run), text_budget=2000, max_chars=2500,
+            ) for run in runs[-3:] if isinstance(run, dict)]
+            if projected:
+                followup[key] = projected[0] if len(projected) == 1 else {'results': projected}
+            continue
         if key in DEEPWIKI_TOOL_NAMES:
             extracted = _extract_deepwiki_followup(data, key, value, max_candidates)
             if extracted:

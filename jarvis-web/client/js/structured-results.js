@@ -379,6 +379,23 @@ class StructuredResultsRenderer {
     this.register('weather', payload => this._adaptWeather(payload));
     this.register('external_network_intel', payload => this._adaptExternalNetworkIntel(payload));
     this.register('gpu_hot_status', payload => this._adaptGpuHotStatus(payload));
+    this.register('source_library', payload => {
+      const rows = Array.isArray(payload.passages) && payload.passages.length
+        ? payload.passages : (payload.sources || (payload.source ? [payload.source] : []));
+      return {
+        kind: 'generic', heading: 'Source library',
+        subtitle: payload.semantic_unavailable_reason || payload.index_error || payload.retrieval_mode || '',
+        items: rows.slice(0, 8).filter(row => /^[0-9a-f]{64}$/.test(row.source_id)
+          && ['cloud', 'local'].includes(row.mode)).map(row => ({
+          title: row.citation || row.title,
+          url: new URL(`/library?mode=${row.mode}&source=${row.source_id}`
+            + (Number.isInteger(row.number) ? `&passage=${row.number}` : ''), window.location.origin).href,
+          primary: row.index_status || (row.matched_by || []).join(' + '),
+          details: row.text ? [this._compactText(row.text, 500)] : [],
+          actionLabel: 'Open source',
+        })),
+      };
+    });
   }
 
   _bindScrollControls() {

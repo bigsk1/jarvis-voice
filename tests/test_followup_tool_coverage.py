@@ -29,6 +29,14 @@ def _case(payload, arguments=None):
 # One representative successful data payload per enabled local tool. Complex,
 # multi-action adapters have additional focused tests below.
 LOCAL_TOOL_SAMPLES = {
+    "source_library": _case({
+        "action": "search", "mode": "local", "retrieval_mode": "hybrid",
+        "passages": [{"source_id": "a" * 64, "source_ref": "library://local/" + "a" * 64,
+                      "number": 4, "title": "Field manual", "page": 3,
+                      "line_start": 1, "line_end": 2, "char_start": 0, "char_end": 18,
+                      "text": "Meet at east gate.", "mode": "local",
+                      "url": "/library?mode=local&source=" + "a" * 64 + "&passage=4"}],
+    }),
     "analyze_video": _case(
         {
             "source_stash_ref": "stash://clips/demo",

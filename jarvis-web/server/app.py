@@ -19,6 +19,7 @@ sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 from .config import load_web_config, get_web_setting, load_jarvis_config
 from .routes.api import api_bp
 from .routes.auth import auth_bp
+from .routes.library import library_bp  # noqa: E402
 from .sockets.chat import ChatHandler
 
 # Import auth utilities
@@ -64,6 +65,7 @@ socketio = AuthenticatedSocketIO(
 # Register blueprints
 app.register_blueprint(api_bp)
 app.register_blueprint(auth_bp)
+app.register_blueprint(library_bp)
 
 # Error logging → logs/web-ui/errors-YYYY-MM-DD.jsonl
 setup_error_logging(app, 'web-ui')
@@ -94,7 +96,7 @@ PUBLIC_EXTENSIONS = {'.css', '.js', '.ico', '.png', '.jpg', '.svg', '.woff', '.w
 @app.before_request
 def check_auth():
     """Check authentication before each request"""
-    from flask import request, redirect
+    from flask import request, redirect, url_for
     
     # Skip if auth not enabled
     if not is_auth_enabled():
@@ -119,7 +121,7 @@ def check_auth():
         return {'ok': False, 'error': 'Authentication required'}, 401
     else:
         # Page request - redirect to login
-        return redirect(f'/login?redirect={request.path}')
+        return redirect(url_for('serve_login', redirect=request.full_path.rstrip('?')))
 
 
 # =============================================================================
@@ -142,6 +144,12 @@ def serve_index():
 def serve_logs():
     """Serve the dedicated log viewer page"""
     return send_from_directory(CLIENT_PATH, 'logs.html')
+
+
+@app.route('/library')
+def serve_library():
+    """Browse retained originals and source-attributed passages."""
+    return send_from_directory(CLIENT_PATH, 'library.html')
 
 
 @app.route('/stash/view/<space_id>/<file_id>')

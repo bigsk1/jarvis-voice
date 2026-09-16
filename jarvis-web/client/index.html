@@ -106,6 +106,16 @@
         <div class="sidebar-footer">
           <div class="sidebar-footer-actions">
             <button class="footer-action-btn" id="clearChatBtn" title="Clear current chat">🧻</button>
+            <a
+              href="/library"
+              target="_blank"
+              rel="noopener"
+              class="footer-action-btn footer-action-btn-link"
+              id="libraryBtn"
+              title="Source library"
+              aria-label="Source library"
+              onclick="this.href='/library?mode=' + document.getElementById('modeSelect').value;"
+            >🗄️</a>
             <button class="footer-action-btn" id="importKnowledgeBtn" title="Import knowledge (txt/md)">📚</button>
             <button class="footer-action-btn" id="exportImportBtn" title="Export/Import">📤</button>
             <a

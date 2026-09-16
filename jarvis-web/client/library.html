@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Source library · Jarvis</title>
+  <link rel="stylesheet" href="/css/variables.css">
+  <link rel="stylesheet" href="/css/library.css">
+</head>
+<body>
+  <main>
+    <header><a href="/">← Jarvis</a><h1>Source library</h1>
+      <label>Library <select id="mode"><option value="cloud">Cloud</option><option value="local">Local</option></select></label>
+    </header>
+    <p>Keep original documents and find the passages you need, even after the chat is gone.</p>
+    <form id="upload-form">
+      <label>PDF or text source <input id="file" type="file" required accept=".pdf,.txt,.md,.markdown,.csv,.json,.srt,.vtt,.log"></label>
+      <label>Title (optional) <input id="title" maxlength="200"></label>
+      <button id="save" type="submit">Save source</button>
+    </form>
+    <p class="hint">Up to 25 MB and 1,000,000 text characters. PDF search uses extracted text; diagrams and scanned pages need OCR. Originals stay here until you remove them.</p>
+    <form id="search-form">
+      <label class="grow">Search saved sources <input id="query" type="search" maxlength="1000" placeholder="Ask a question or enter keywords"></label>
+      <label><input id="semantic" type="checkbox" checked> Search by meaning too</label>
+      <button type="submit">Search</button><button id="browse" type="button">Browse all</button>
+    </form>
+    <p id="status" role="status" aria-live="polite"></p>
+    <button id="stop-index" type="button" hidden>Pause indexing after this batch</button>
+    <section id="results" aria-label="Saved sources"></section>
+    <button id="more" type="button" hidden>More sources</button>
+    <section id="detail" aria-label="Source passages" hidden></section>
+  </main>
+  <script src="/js/utils.js"></script>
+  <script src="/js/library.js"></script>
+</body>
+</html>

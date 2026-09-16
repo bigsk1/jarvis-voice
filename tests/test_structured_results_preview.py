@@ -83,7 +83,8 @@ const expectedTools = [
   'serpapi_youtube_search',
   'weather',
   'external_network_intel',
-  'gpu_hot_status'
+  'gpu_hot_status',
+  'source_library'
 ];
 if (JSON.stringify(renderer.registeredTools()) !== JSON.stringify(expectedTools)) process.exit(2);
 

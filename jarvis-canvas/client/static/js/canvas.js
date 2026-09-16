@@ -277,7 +277,27 @@ function renderMarkdown(content) {
     resolved = unwrapStashViewerPathsFromInlineCode(resolved);
     resolved = linkifyBareStashViewerPaths(resolved);
     resolved = preserveSingleTildes(resolved);
-    return DOMPurify.sanitize(marked.parse(resolved));
+    return resolveLibraryLinks(DOMPurify.sanitize(marked.parse(resolved)));
+}
+
+/** Saved source citations belong to Web, including when copied into Canvas. */
+function resolveLibraryLinks(html) {
+    return html.replace(/(\bhref=["'])(\/library\?[^"']+)(["'])/g, (match, open, path, close) => {
+        const source = new URL(path.replace(/&amp;/g, '&'), window.location.origin);
+        const mode = source.searchParams.get('mode');
+        const id = source.searchParams.get('source');
+        const passage = source.searchParams.get('passage');
+        if (!['cloud', 'local'].includes(mode) || !/^[0-9a-f]{64}$/.test(id)
+            || (passage !== null && !/^[1-9][0-9]*$/.test(passage))) return match;
+        const fallback = new URL(window.location.href);
+        fallback.port = '5001';
+        const origin = window.JarvisUINavigation?.url('web', fallback.origin) || fallback.origin;
+        const target = new URL('/library', origin);
+        target.searchParams.set('mode', mode);
+        target.searchParams.set('source', id);
+        if (passage) target.searchParams.set('passage', passage);
+        return open + target.href.replace(/&/g, '&amp;') + close;
+    });
 }
 
 /**

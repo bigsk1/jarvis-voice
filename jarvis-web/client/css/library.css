@@ -1,0 +1,23 @@
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg-primary, #10111a); color: var(--text-primary, #eef0ff); font: 16px/1.55 system-ui, sans-serif; }
+main { max-width: 1100px; margin: auto; padding: 24px; }
+header, form, .actions { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+header { align-items: center; }
+h1 { flex: 1; font-size: 1.65rem; }
+h2, h3 { overflow-wrap: anywhere; }
+a { color: var(--accent-cyan, #70dcff); }
+form, article, #detail { padding: 18px; margin: 16px 0; border: 1px solid var(--border-color, #424455); border-radius: 10px; }
+label { display: grid; gap: 6px; }
+input, select, button { font: inherit; color: inherit; border: 1px solid #646579; border-radius: 6px; background: #202230; padding: 8px 12px; max-width: 100%; }
+button { cursor: pointer; }
+button:hover, a:hover { color: #b8edff; }
+button:disabled { opacity: .5; cursor: wait; }
+input[type=checkbox] { width: auto; }
+.grow { flex: 1; min-width: 180px; }
+.hint, .meta { color: var(--text-secondary, #b7bbcf); font-size: .9rem; }
+.passage { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: #171925; padding: 14px; border-radius: 6px; }
+.library-match { color: inherit; background: rgba(135, 125, 245, .2); border-radius: 2px; box-shadow: inset 0 -1px rgba(160, 150, 255, .3); }
+.detail-toolbar { display: flex; justify-content: flex-end; position: sticky; top: 0; z-index: 1; padding: 8px 0; background: var(--bg-primary, #10111a); }
+#status { min-height: 1.6em; }
+[hidden] { display: none !important; }
+@media(max-width: 600px) { main { padding: 14px; } form { align-items: stretch; } form label { width: 100%; } }

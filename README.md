@@ -12,6 +12,7 @@ The project includes several ways to use and inspect the system:
 
 - **Voice, CLI, Web UI, and TUI** entry points for talking to Jarvis, sending commands, and running workflows.
 - **Chat UI** with streaming tools, mode switching, prompt enhancement, file/image uploads, conversation search, exports, pinned-safe cleanup, and live logs.
+- **[Source library](docs/SOURCE_LIBRARY.md)** for retaining original documents and retrieving verifiable passages across conversations, with page/line citations and separate cloud/local collections.
 - **Video understanding** for clips and silent screen recordings, with sampled timestamps, optional speech transcription, and follow-up questions about specific intervals. See [Video analysis](docs/tools/video/ANALYSIS.md).
 - **Canvas plus Image, Audio, and Video Galleries** for saved notes, generated artifacts, media browsing, favorites, and visual reports.
 - **Memory Dashboard** for knowledge, conversations, scheduled tasks, reminders, and database maintenance.

@@ -7,6 +7,7 @@ A modern, feature-rich web interface for Jarvis with real-time streaming, voice 
 ## Features
 
 ### 💬 Chat & Conversations
+- **[Source library](../docs/SOURCE_LIBRARY.md)** - Keep originals, search complete documents by meaning or keywords, and inspect cited passages across conversations
 - **Real-time Streaming** - See responses and tool execution as they happen via WebSocket
 - **Conversation History** - Full CRUD with persistent storage
 - **[Task Recovery](../docs/WEB_TASK_RECOVERY.md)** - Reconnect to running work and Stop; recover missed answers without replaying speech

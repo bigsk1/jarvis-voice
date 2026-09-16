@@ -945,7 +945,8 @@ const Utils = {
       // If 401, redirect to login
       if (response.status === 401) {
         this.clearToken();
-        window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+        const destination = window.location.pathname + window.location.search + window.location.hash;
+        window.location.href = `/login?redirect=${encodeURIComponent(destination)}`;
         throw new Error('Authentication required');
       }
       

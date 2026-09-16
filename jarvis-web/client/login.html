@@ -272,6 +272,15 @@
     const passwordInput = document.getElementById('password');
     const loginBtn = document.getElementById('loginBtn');
     const errorMessage = document.getElementById('errorMessage');
+    // Preserve private source citations through sign-in and shared-cookie restoration.
+    let loginDestination = '/';
+    try {
+      const requested = new URLSearchParams(window.location.search).get('redirect') || '/';
+      const target = new URL(requested, window.location.origin);
+      if (target.origin === window.location.origin) {
+        loginDestination = target.pathname + target.search + target.hash;
+      }
+    } catch { /* Invalid destinations return to the main app. */ }
     
     // Check if already authenticated
     const existingToken = localStorage.getItem('jarvis_auth_token');
@@ -288,7 +297,7 @@
             ? Math.max(1, data.expires_at - Math.floor(Date.now() / 1000))
             : 30 * 86400;
           document.cookie = `jarvis_auth=${existingToken}; path=/; max-age=${remainingSeconds}; SameSite=Lax`;
-          window.location.href = '/';
+          window.location.href = loginDestination;
         } else {
           // Token invalid, clear both localStorage AND cookie
           localStorage.removeItem('jarvis_auth_token');
@@ -332,8 +341,7 @@
           document.cookie = `jarvis_auth=${data.token}; path=/; max-age=${expiryDays * 86400}; SameSite=Lax`;
           
           // Redirect to main app or original destination
-          const redirect = new URLSearchParams(window.location.search).get('redirect') || '/';
-          window.location.href = redirect;
+          window.location.href = loginDestination;
         } else {
           showError(data.error || 'Invalid password');
         }

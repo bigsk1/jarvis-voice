@@ -27,6 +27,15 @@ data/secrets/
 data/*.db
 data/*.db.*
 data/*.db-*
+# Retained originals and all source-library runtime files.
+data/source_library/
+# Mode stores and SQLite sidecars at custom SOURCE_LIBRARY_DIR paths too.
+**/cloud.db
+**/cloud.db-*
+**/cloud.db.*
+**/local.db
+**/local.db-*
+**/local.db.*
 data/backups/
 data/canvas/
 data/generated_images/
