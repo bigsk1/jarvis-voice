@@ -7,6 +7,7 @@ This is an independently versioned development extension. It lives in `jarvis-fi
 ## What it does
 
 - Opens the Jarvis sidebar from the toolbar, with an **Open pop-out** button for a detached window.
+- **Include page** attaches the current page's title and link to the next message. YouTube video links prefer the existing transcript tool.
 - Stages a visible-tab screenshot with a preview, source title, URL, and capture time.
 - Stages the page's readable text as a durable Jarvis source (same 100KB text-upload path as Web notes). Follow-ups can refer to that captured page after reload.
 - Sends your question or an **Analyze page** / **Analyze screenshot** prompt through your Jarvis Web server.
@@ -19,6 +20,8 @@ This is an independently versioned development extension. It lives in `jarvis-fi
 Chat uses the tools enabled by the connected Jarvis server. Dedicated Intel, Stash, workflow, media, and voice screens are not part of this first version. Intermediate tool events missed during a disconnect cannot all be replayed; saved answers and current run status are recovered.
 
 Replies support headings, ordered/unordered lists with nesting, fenced code, bold text, inline code, and HTTP(S) links. This is a lightweight Markdown renderer; tables, blockquotes, and italics are not yet formatted. Raw HTML stays inert, and Markdown images are not fetched automatically.
+
+![Jarvis Companion for Firefox](assets/jarvis-firefox-extension.jpg)
 
 ## Requirements
 
@@ -65,6 +68,16 @@ Current `web-ext` reports two warnings: the unmodified Socket.IO 4.7.2 bundle co
 5. After changing the webpage or switching tabs, use **Capture again** and ask “Check it now.” Each click selects the currently active tab in that sidebar's window. The pop-out selects the most recently used normal browser window. If Firefox requests tab access, click the Jarvis toolbar icon on that webpage and retry.
 
 Right-click selected text or a link to stage that content in the same composer. These actions do not fetch the page or send its contents until you choose **Send**. Screenshots are also kept locally until Send/Analyze; removing an unsent attachment prevents its upload.
+
+### Ask about the current page or video
+
+Click **Include page** beside the capture button, type your question, and **Send**. For example, on a YouTube video, ask “What's this video about?” The removable card shows the exact title and URL being shared. Including a link does not take a screenshot or read page text, and it preserves any other staged sources. Ordinary chat never attaches the active tab automatically.
+
+The button requests Firefox's optional **tabs** permission to read the active tab's title and URL directly from the sidebar. If you decline, an existing toolbar/context-menu `activeTab` grant may still work; otherwise click the Jarvis toolbar icon on that page and retry. You can also right-click the webpage and choose **Jarvis → Include page link**. This permission does not grant screenshot or page-text access: **Capture** still uses its existing temporary tab grant.
+
+The link stays fixed when you navigate or switch tabs. Click **Include page** again to replace it, or **×** to remove it. Send clears it from the composer; it remains in the saved conversation for follow-ups. New conversations clear it too. Links work on older Companion API 1 servers without page-text upload support and do not count against the two-source limit in local mode.
+
+YouTube watch, short, live, and shared video links add a `youtube_transcript` preference through the existing tool-hint path; slash commands keep their own routing. Jarvis still controls tool availability, and transcripts may be unavailable. Other URLs use normal tool selection. A link alone does not give the server access to a logged-in page: use **Capture** when Jarvis needs the text or image visible in your browser.
 
 Right-click an image and choose **Analyze this image** to append `Analyze this image:` and its URL to your editable draft. Review or change the question, then Send. While that staged URL remains in a normal chat draft, the extension includes an `analyze_image` tool hint through Jarvis's existing tool-selection path. The server still controls tool availability. Removing the image context or URL, changing mode/conversation, or using a slash workflow removes the hint. Removing context leaves editable draft text in place; delete the URL from the composer too if you do not want to send it.
 

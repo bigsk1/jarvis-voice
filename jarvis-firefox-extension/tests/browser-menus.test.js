@@ -33,9 +33,9 @@ test('registers wake listeners synchronously and installation is repeatable', as
   const [onInstalled] = f.browser.runtime.onInstalled.listeners;
   await Promise.all([onInstalled(), controller.ensureMenus()]);
   assert.equal(f.removals(), 1);
-  assert.equal(f.definitions.size, 5);
+  assert.equal(f.definitions.size, 6);
   await onInstalled();
-  assert.equal(f.definitions.size, 5);
+  assert.equal(f.definitions.size, 6);
   assert.deepEqual(f.definitions.get(MENU_IDS.root).documentUrlPatterns, ['http://*/*', 'https://*/*']);
   assert.deepEqual(f.definitions.get(MENU_IDS.image).contexts, ['image']);
   controller.dispose();
@@ -52,11 +52,13 @@ test('selection and link actions use supplied menu metadata without reading page
   onClicked({ menuItemId: MENU_IDS.selection, selectionText: 'Error: expected <value>', pageUrl: tab.url }, tab);
   onClicked({ menuItemId: MENU_IDS.link, linkUrl: 'https://example.org/doc?a=1&b=2' }, tab);
   onClicked({ menuItemId: MENU_IDS.capture }, tab);
+  onClicked({ menuItemId: MENU_IDS.page }, tab);
   onClicked({ menuItemId: MENU_IDS.image, srcUrl: 'https://images.example/diagram.png?size=large', linkUrl: 'https://example.org/not-the-image' }, tab);
   assert.deepEqual(actions, [
     { kind: 'selection', tab, pageUrl: tab.url, selectionText: 'Error: expected <value>' },
     { kind: 'link', tab, pageUrl: tab.url, linkUrl: 'https://example.org/doc?a=1&b=2' },
     { kind: 'capture', tab, pageUrl: tab.url },
+    { kind: 'pageLink', tab, pageUrl: tab.url },
     { kind: 'image', tab, pageUrl: tab.url, imageUrl: 'https://images.example/diagram.png?size=large' },
   ]);
 });

@@ -132,6 +132,12 @@ textarea:focus-visible { outline: none; }
 .composer-controls, .composer-left { display: flex; align-items: center; gap: 8px; }
 .composer-controls { justify-content: space-between; flex-wrap: wrap; margin-top: 8px; }
 .composer-left { gap: 4px; }
+.include-page-button { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 10px; padding: 5px 6px; border-radius: 6px; }
+.include-page-button svg, .page-link-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; flex-shrink: 0; }
+.include-page-button[data-included="true"] { color: var(--accent-tertiary); background: #22d3ee0c; }
+.page-link-panel { border-left-color: var(--accent-tertiary); }
+.page-link-icon { color: var(--accent-tertiary); margin-top: 2px; }
+.page-link-panel .helper { font-size: 9px; margin-top: 4px; color: var(--text-tertiary); }
 .mode-control select { color: var(--text-secondary); background: var(--bg-input); border: none; border-left: 1px solid var(--border-primary); padding: 3px 7px; font-size: 11px; }
 .button-send { padding: 7px 12px 7px 15px; border-radius: 8px; }
 .button-send svg { width: 16px; height: 16px; }

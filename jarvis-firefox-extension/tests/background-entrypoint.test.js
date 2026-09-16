@@ -8,6 +8,7 @@ import { normalizeSource, resolveCurrentSource } from '../browser/source.js';
 import { setupMenus, MENU_IDS } from '../browser/menus.js';
 import { setupCompletionSignals, COMPLETION_ALARM } from '../browser/completion.js';
 import { originPermission } from '../core/connection.js';
+import { normalizePageLink } from '../core/page-link.js';
 
 const PANEL = 'moz-extension://companion-test/ui/panel.html';
 const EXTENSION_ID = 'jarvis-companion@test';
@@ -86,6 +87,8 @@ async function boot({ deferRestore = false, deferCapture = false } = {}) {
     changed() { this.publish(); }
     async stage(value) { calls.stages.push(value); this.state.source = value.source; this.state.draft.attachment = value.attachment || null; this.state.draft.context = value.context || null; this.state.draft.page = value.page || null; this.publish(); }
     async setDraft(text) { this.state.draft.text = text; this.publish(); }
+    async includePage(source) { this.requireIdle(); this.state.draft.pageLink = normalizePageLink(source); this.publish(); }
+    async removePageLink() { this.requireIdle(); this.state.draft.pageLink = null; this.publish(); }
     async configure(settings) { this.state.settings = settings; this.state.draft = {text: '', attachment: null, context: null, page: null}; }
     async connect() { calls.connects += 1; }
     recover() { this.publish(); }
@@ -204,6 +207,47 @@ test('panel capture uses the current tab after a switch, not the previous toolba
   const result = await app.browser.runtime.onMessage.fire({type: 'jarvis:command', action: 'capture', payload: {windowId: 4}}, ownSender);
   assert.equal(result.ok, true);
   assert.equal(app.client.state.draft.attachment.source.tabId, 18);
+});
+
+test('include page resolves the current sidebar tab and stages only a fixed link', async () => {
+  const app = await boot();
+  await app.browser.action.onClicked.fire(app.sourceTab);
+  assert.equal(app.client.state.draft.pageLink, undefined, 'Opening the sidebar does not attach its page');
+  app.sourceTab.active = false;
+  const video = {...app.sourceTab, id: 18, active: true, title: 'Video', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'};
+  app.normalTabs.set(18, video);
+  const result = await app.browser.runtime.onMessage.fire({type: 'jarvis:command', action: 'includePage', payload: {windowId: 4}}, ownSender);
+  assert.equal(result.ok, true);
+  assert.deepEqual(app.client.state.draft.pageLink, {title: video.title, url: video.url});
+  video.url = 'https://example.test/another-page';
+  assert.match(app.client.state.draft.pageLink.url, /youtube/);
+  assert.equal(app.calls.captures.length, 0);
+  assert.equal(app.calls.scripts, undefined);
+  assert.equal(app.calls.network + app.calls.uploads + app.calls.sends, 0);
+  await app.browser.runtime.onMessage.fire({type: 'jarvis:command', action: 'removePageLink'}, ownSender);
+  assert.equal(app.client.state.draft.pageLink, null);
+});
+
+test('include page rejects inaccessible, private and browser pages without changing the draft', async () => {
+  for (const change of [{url: undefined}, {incognito: true}, {url: 'about:config'}, {pendingUrl: 'https://example.test/loading'}]) {
+    const app = await boot();
+    Object.assign(app.sourceTab, change);
+    const result = await app.browser.runtime.onMessage.fire({type: 'jarvis:command', action: 'includePage', payload: {windowId: 4}}, ownSender);
+    assert.equal(result.ok, false, JSON.stringify(change));
+    assert.equal(app.client.state.draft.pageLink, undefined);
+    assert.equal(app.calls.captures.length + app.calls.network, 0);
+  }
+});
+
+test('right-click Include page link preserves other staged content without capturing', async () => {
+  const app = await boot();
+  app.client.state.draft.text = 'What is this about?';
+  app.client.state.draft.context = {kind: 'selection', text: 'A quote'};
+  await app.browser.menus.onClicked.fire({menuItemId: MENU_IDS.page, pageUrl: app.sourceTab.url}, app.sourceTab);
+  assert.deepEqual(app.client.state.draft.pageLink, {title: app.sourceTab.title, url: app.sourceTab.url});
+  assert.equal(app.client.state.draft.text, 'What is this about?');
+  assert.equal(app.client.state.draft.context.text, 'A quote');
+  assert.equal(app.calls.captures.length + app.calls.sends + app.calls.network, 0);
 });
 
 test('menu capture completes on the command queue before a server switch', async () => {

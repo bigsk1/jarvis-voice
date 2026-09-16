@@ -180,6 +180,13 @@ const actions = {
   removeAttachment: () => client.removeAttachment(),
   removeContext: () => client.removeContext(),
   removePage: () => client.removePage(),
+  removePageLink: () => client.removePageLink(),
+  includePage: async payload => {
+    client.requireIdle();
+    await focusUpdates;
+    const source = await resolveCurrentSource(browser, payload.windowId ?? null, lastBrowserWindowId);
+    await client.includePage(source);
+  },
   capture: async payload => {
     client.requireIdle();
     await focusUpdates;
@@ -267,6 +274,8 @@ const menus = setupMenus(browser, async action => {
           client.state.notice = pageError.message;
           client.changed();
         }
+      } else if (action.kind === 'pageLink') {
+        await client.includePage(source);
       } else if (action.kind === 'image') {
         await client.stage({source, context: {kind: 'image', url: action.imageUrl, title: source.title, text: ''}});
       } else {

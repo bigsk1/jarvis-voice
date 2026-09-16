@@ -407,6 +407,12 @@ page-text uploads). Companions can connect without `text`; capturing page
 content as a durable source requires it. Restart Jarvis Web after adding that
 feature before expecting page-text uploads.
 
+The Firefox companion's **Include page** button attaches a reviewed title and
+URL to the next chat message without capturing the page. YouTube video links
+add a `youtube_transcript` tool hint through the existing chat path; the server
+still validates tool availability. This link-only action works without the
+optional `text` capability. See the [companion guide](../jarvis-firefox-extension/README.md#ask-about-the-current-page-or-video).
+
 #### Client → Server
 
 ```javascript

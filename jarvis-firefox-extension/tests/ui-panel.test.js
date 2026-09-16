@@ -49,12 +49,13 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
   let state = {
     settings: { serverUrl: '', allowInsecureLocal: false }, connection: { status: 'unconfigured', error: null },
     mode: 'cloud', messages: [], conversations: [], conversationId: null,
-    draft: { text: '', attachment: null, context: null, page: null }, progress: [], run: null,
+    draft: { text: '', attachment: null, context: null, page: null, pageLink: null }, progress: [], run: null,
   };
   const commands = [];
   const permissions = [];
   let granted = false;
   let notificationPermission = false;
+  let tabPermissionGate = null;
   let draftReplyGate = null;
   let pushState;
   let disconnect;
@@ -75,10 +76,12 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
         state.draft.page = { title: 'Error dashboard', url: 'https://example.test/error', markdown: '# Error dashboard\n\n## Page\nTraceback in worker\n', charCount: 48 };
       }
       if (message.action === 'setDraft') state.draft.text = message.payload.text;
+      if (message.action === 'includePage') state.draft.pageLink = {title: '<img src=x> Video title', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'};
+      if (message.action === 'removePageLink') state.draft.pageLink = null;
       if (message.action === 'setMode') state.pendingMode = message.payload.mode;
       if (message.action === 'send') {
         state.messages.push({ id: 'm1', role: 'user', content: message.payload.text });
-        state.draft = { text: '', attachment: null, context: null, page: null };
+        state.draft = { text: '', attachment: null, context: null, page: null, pageLink: null };
         state.run = { messageId: 'r1', conversationId: 'conversation-1', status: 'running' };
       }
       if (message.action === 'cancel') state.run.status = 'stopping';
@@ -95,6 +98,7 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
   globalThis.window = win;
   globalThis.browser = { runtime, windows: {getCurrent: async () => ({id: 4, type: 'normal'})}, permissions: { request: async permission => {
     permissions.push(permission);
+    if (permission.permissions?.includes('tabs')) return tabPermissionGate || false;
     return permission.permissions ? notificationPermission : granted;
   } } };
   try {
@@ -249,12 +253,52 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
     pushState({ type: 'state', state: structuredClone(state) });
     assert.equal($('capture-button').disabled, false);
 
+    $('message-input').value = "What's this video about?";
+    await $('message-input').fire('input');
+    let releaseTabPermission;
+    tabPermissionGate = new Promise(resolve => { releaseTabPermission = resolve; });
+    const includePage = $('include-page-button').fire('click');
+    assert.deepEqual(permissions.at(-1), {permissions: ['tabs']}, 'Tab permission starts inside the explicit click');
+    for (const id of ['send-button', 'include-page-button', 'new-conversation', 'save-settings', 'mode-select']) {
+      assert.equal($(id).disabled, true, `${id} waits for the permission decision`);
+    }
+    await $('message-input').fire('keydown', {key: 'Enter'});
+    assert.equal(commands.some(command => command.action === 'send'), false, 'Enter cannot send before staging finishes');
+    releaseTabPermission(true);
+    await includePage;
+    tabPermissionGate = null;
+    assert.deepEqual(commands.at(-1), {type: 'jarvis:command', action: 'includePage', payload: {windowId: 4}});
+    assert.equal($('message-input').value, "What's this video about?");
+    assert.equal($('page-link-panel').hidden, false);
+    assert.equal($('page-link-title').textContent, '<img src=x> Video title');
+    assert.equal($('page-link-title').children.length, 0, 'A page title stays plain text');
+    assert.match($('page-link-hint').textContent, /Transcript preferred/);
+    assert.equal($('include-page-button').dataset.included, 'true');
+    assert.equal($('attachment-panel').hidden, true, 'Including a page does not capture it');
+    await $('remove-page-link').fire('click');
+    assert.equal($('page-link-panel').hidden, true);
+    assert.equal($('message-input').value, "What's this video about?", 'Removal preserves the question');
+
+    tabPermissionGate = new Promise(resolve => { releaseTabPermission = resolve; });
+    const interruptedInclude = $('include-page-button').fire('click');
+    const includesBefore = commands.filter(command => command.action === 'includePage').length;
+    state.conversationId = 'changed-from-another-view';
+    pushState({type: 'state', state: structuredClone(state)});
+    releaseTabPermission(true);
+    await interruptedInclude;
+    assert.equal(commands.filter(command => command.action === 'includePage').length, includesBefore);
+    assert.match($('notice').textContent, /conversation changed/);
+    tabPermissionGate = null;
+    await $('include-page-button').fire('click');
+    assert.equal($('page-link-panel').hidden, false, 'Permission denial can still use an existing activeTab grant');
+
     await $('capture-button').fire('click');
     assert.equal(commands.at(-1).payload.windowId, 4, 'Sidebar capture identifies its browser window');
     assert.equal($('attachment-panel').hidden, false);
     assert.equal($('page-panel').hidden, false);
     assert.equal($('page-title').textContent, 'Error dashboard');
     assert.equal($('attachment-title').textContent, 'Error dashboard');
+    assert.equal($('page-link-panel').hidden, false, 'Capturing also keeps the explicitly included link');
     assert.equal($('send-button').disabled, false, 'A staged screenshot can be sent without typed text');
     assert.equal($('analyze-button').textContent, 'Analyze page');
     await $('page-preview-button').fire('click');
@@ -271,6 +315,7 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
     assert.equal($('message-input').value, '');
     assert.equal($('attachment-panel').hidden, true);
     assert.equal($('page-panel').hidden, true);
+    assert.equal($('page-link-panel').hidden, true, 'Send clears the link with the other submitted sources');
     assert.equal($('send-button').disabled, true);
     assert.equal($('cancel-button').disabled, false);
 

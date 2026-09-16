@@ -14,12 +14,15 @@ When you choose **Send**, **Analyze page**, or **Analyze screenshot**, the exten
 - The staged screenshot, resized to JPEG with a maximum edge of 1,024 pixels at quality 0.85.
 - The staged page text as a UTF-8 Markdown note, truncated to Jarvis Web's existing 100KB text-upload limit. Password fields, form inputs, contenteditable drafts, CSS-hidden nodes, scripts, and other tabs are not included. **Review full text** shows the exact Markdown before Send.
 - The selected text, link, or image URL you explicitly staged and left in the message.
+- The page title and URL shown in the removable **Include page** card, if present.
 - Source page titles, URLs, and capture time included with that content.
 - Conversation/request identifiers and the selected Jarvis cloud/local mode.
 
 Connection recovery, opening history, and background completion checks can retrieve saved conversations without another Send action. While extension-submitted requests are pending, checks run about once a minute even with the sidebar/pop-out closed, provided Firefox is running and the session is available. They stop when requests settle, expire after seven days, or the session ends. They only check existing work and never resubmit it. Normal HTTP/socket communication also exposes network information such as your address to the server. The extension does not continuously capture tabs, read browsing history, inject a persistent page script, or upload a screenshot or page text merely because its preview is visible. Page-text reading uses a one-shot script after a capture gesture.
 
 Image URL staging does not fetch the image or copy the webpage's cookies. After Send, Jarvis's normal tool path can fetch that URL. An `analyze_image` tool hint accompanies an applicable staged image draft; server configuration determines which tools can run.
+
+**Include page** reads only the selected tab's title and URL after your click. It does not capture pixels, execute a page script, fetch the link, or send anything to Jarvis until Send. The staged link stays fixed across navigation and tab changes. A YouTube video link adds a `youtube_transcript` tool preference for normal chat; the server controls available tools and their providers. Ordinary chat does not automatically include a tab link.
 
 Firefox's declared data categories are `authenticationInfo`, `personalCommunications`, `websiteContent`, and `browsingActivity`. Transmission to a user-owned Jarvis server is still transmission. The extension does not declare or implement optional analytics collection.
 
@@ -44,6 +47,7 @@ The toolbar badge is enabled by default. Desktop notifications and answer previe
 - **`storage`:** settings and session recovery.
 - **`alarms`:** wake the background for saved-request checks while extension-submitted work is pending.
 - **Optional `notifications`:** requested only when you enable desktop completion notifications.
+- **Optional `tabs`:** requested by **Include page** so the sidebar can read tab titles and URLs without another toolbar click. Firefox grants access to tab metadata; this extension only stages the selected page when asked. This does not grant access to page contents or screenshots. Revoke it in Firefox's extension permissions; toolbar/context-menu temporary access remains available.
 - **Optional host access:** requested for the server you enter in settings. Firefox host match patterns cover the host rather than a single port; the extension still directs requests to the exact configured origin.
 
 The extension declares optional HTTP(S) host patterns so users can enter their own server. This is not a blanket grant at installation. It does not request access to every visited site. Private browsing is disabled, and capture also rejects private tabs and browser/extension pages.

@@ -181,6 +181,7 @@ test('send is disabled during reconnect recovery and active work, including unkn
   assert.equal(canSend(state, '  '), false);
   assert.equal(canSend({ ...state, draft: { attachment: {} } }, ''), true);
   assert.equal(canSend({ ...state, draft: { page: { markdown: '# Page' } } }, ''), true);
+  assert.equal(canSend({ ...state, draft: { pageLink: { title: 'Page', url: 'https://example.test/' } } }, ''), true);
   assert.equal(canSend({ ...state, draft: { context: {} } }, ''), true);
   for (const status of ['running', 'sending', 'stopping', 'recovering', 'new-server-state']) {
     assert.equal(canSend({ ...state, run: { status } }, 'Hello'), false);

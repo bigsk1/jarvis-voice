@@ -10,7 +10,7 @@ export function normalizeSource(tab) {
   try {
     url = new URL(tab.url);
   } catch {
-    throw new Error('Firefox could not read this tab. Click the Jarvis toolbar icon on that webpage to grant access, then try Capture again.');
+    throw new Error('Firefox could not read this tab. Click the Jarvis toolbar icon on that webpage to grant access, then try again.');
   }
   if (!['http:', 'https:'].includes(url.protocol)) {
     throw new Error('Choose an HTTP or HTTPS webpage. Browser and extension pages cannot be captured.');

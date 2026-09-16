@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Jarvis Companion",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Chat with Jarvis about the current page, screenshots, images, text, and links, with optional completion notifications.",
   "browser_specific_settings": {
     "gecko": {
@@ -13,7 +13,7 @@
     }
   },
   "permissions": ["storage", "activeTab", "menus", "alarms", "scripting"],
-  "optional_permissions": ["notifications"],
+  "optional_permissions": ["notifications", "tabs"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "incognito": "not_allowed",
   "background": { "scripts": ["background.js"], "type": "module" },

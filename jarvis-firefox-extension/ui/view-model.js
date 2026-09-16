@@ -18,7 +18,7 @@ export function isBusy(state) {
 
 export function canSend(state, draftText) {
   return state?.connection?.status === 'connected' && !isBusy(state)
-    && Boolean(String(draftText || '').trim() || state?.draft?.attachment || state?.draft?.page || state?.draft?.context);
+    && Boolean(String(draftText || '').trim() || state?.draft?.attachment || state?.draft?.page || state?.draft?.context || state?.draft?.pageLink);
 }
 
 export function safeLinkUrl(value) {

@@ -2,6 +2,7 @@ import {normalizeServerUrl, originPermission, assertCapabilities, pageTextSuppor
 import {initialState, checkpointState, savedMessages, publicRun, ACTIVE_STATUSES, normalizePreferences, submittedRequests, mergeImageStageText} from './state.js';
 import {JarvisTransport} from './transport.js';
 import {normalizeProfile} from './profile.js';
+import {normalizePageLink, pageLinkToolHints, defaultPageLinkPrompt} from './page-link.js';
 
 const SESSION_KEY = 'jarvisSession';
 const SETTINGS_KEY = 'jarvisSettings';
@@ -47,8 +48,11 @@ export class JarvisClient {
     }
     this.state.submittedRequests = submittedRequests(this.state.submittedRequests);
     this.state.draft = {
-      text: '', attachment: null, context: null, page: null,
+      text: '', attachment: null, context: null, page: null, pageLink: null,
       ...(this.state.draft || {}),
+    };
+    if (this.pendingDraft) this.pendingDraft = {
+      text: '', attachment: null, context: null, page: null, pageLink: null, ...this.pendingDraft,
     };
     this.state.connection = {
       status: settings.serverUrl ? 'disconnected' : 'unconfigured',
@@ -311,7 +315,7 @@ export class JarvisClient {
   restorePendingDraft() {
     if (this.pendingDraft) {
       const draft = this.state.draft;
-      if ((!draft.text && !draft.attachment && !draft.context && !draft.page) || this.isSubmittedDraft()) {
+      if ((!draft.text && !draft.attachment && !draft.context && !draft.page && !draft.pageLink) || this.isSubmittedDraft()) {
         this.state.draft = this.pendingDraft;
         this.state.messages = this.state.messages.filter(message => message.id !== `user-${this.pendingRequestId}`);
       } else {
@@ -330,7 +334,7 @@ export class JarvisClient {
   }
 
   acceptPendingDraft() {
-    if (this.isSubmittedDraft()) this.state.draft = {text: '', attachment: null, context: null, page: null};
+    if (this.isSubmittedDraft()) this.state.draft = {text: '', attachment: null, context: null, page: null, pageLink: null};
     this.pendingDraft = null;
   }
 
@@ -547,7 +551,7 @@ export class JarvisClient {
     this.state.progress = [];
     this.state.run = null;
     this.state.notice = null;
-    this.state.draft = {text: '', attachment: null, context: null, page: null};
+    this.state.draft = {text: '', attachment: null, context: null, page: null, pageLink: null};
     // Reconnect to leave the previous conversation's delivery room.
     this.close();
     this.state.connection.status = 'disconnected';
@@ -648,6 +652,22 @@ export class JarvisClient {
     if (this.state.draft.context?.kind === 'image') this.state.draft.context = null;
   }
 
+  async includePage(source) {
+    this.requireIdle();
+    this.state.draft.pageLink = normalizePageLink(source);
+    this.state.source = source;
+    this.state.notice = null;
+    await this.checkpoint();
+    this.publish();
+  }
+
+  async removePageLink() {
+    this.requireIdle();
+    this.state.draft.pageLink = null;
+    await this.checkpoint();
+    this.publish();
+  }
+
   async send(text) {
     this.requireIdle();
     if (this.state.connection.status !== 'connected') throw new Error('Connect to Jarvis and finish recovery before sending.');
@@ -655,14 +675,17 @@ export class JarvisClient {
     const attachment = this.state.draft.attachment;
     const context = this.state.draft.context;
     const page = this.state.draft.page;
+    const pageLink = this.state.draft.pageLink ? normalizePageLink(this.state.draft.pageLink) : null;
     const original = String(text ?? this.state.draft.text).trim().slice(0, 32000);
     const toolHints = context?.kind === 'image' && original.includes(context.url) && !original.startsWith('/') ? ['analyze_image'] : [];
+    toolHints.push(...pageLinkToolHints(pageLink, original));
     let message = original;
     if (!message) {
       if (attachment && page) message = DEFAULT_PAGE_PROMPT;
       else if (attachment) message = DEFAULT_SCREENSHOT_PROMPT;
       else if (page) message = DEFAULT_TEXT_PROMPT;
       else if (context) message = 'Explain this selected browser content.';
+      else if (pageLink) message = defaultPageLinkPrompt(pageLink);
     }
     if (!message) throw new Error('Enter a message or capture a page.');
     if (page && this.state.capabilities?.text === false) {
@@ -673,6 +696,9 @@ export class JarvisClient {
     }
     if (context && context.kind !== 'image') {
       message += `\n\nBrowser content supplied for reference:\nTitle: ${context.title || ''}\nURL: ${context.url || ''}\n${context.text || ''}`;
+    }
+    if (pageLink) {
+      message += `\n\nPage link supplied for this question:\nTitle: ${pageLink.title}\nURL: ${pageLink.url}`;
     }
     let image;
     let textAttachment;
@@ -704,7 +730,7 @@ export class JarvisClient {
       // Crash before/after this write is safe: recovery only looks up this ID.
       // Never persist a payload that an automatic retry could execute again.
       await this.checkpoint();
-      this.state.draft = {text: '', attachment: null, context: null, page: null};
+      this.state.draft = {text: '', attachment: null, context: null, page: null, pageLink: null};
       transport.emit('chat:send', {message, mode: this.state.mode,
         conversation_id: this.state.conversationId, request_id: requestId, ...(image ? {image} : {}),
         ...(textAttachment ? {attachments: [textAttachment]} : {}),

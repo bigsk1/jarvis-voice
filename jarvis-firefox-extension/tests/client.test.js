@@ -14,6 +14,7 @@ const PAGE = {
   charCount: 72, truncated: false, capturedAt: '2026-09-15T12:00:00Z',
   filename: 'browser-page.md', uploadId: '9c892f85-b79a-44c3-9be1-6b66d2f73147',
 };
+const PAGE_LINK = {title: 'A YouTube video', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=120'};
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 function area(initial = {}) {
@@ -78,6 +79,106 @@ test('fresh profile initializes without a saved session', async () => {
   const h = harness(); await h.client.restore();
   assert.equal(h.client.state.connection.status, 'unconfigured');
   assert.equal(h.client.token, '');
+});
+
+test('the current tab is never added to an ordinary message without Include page', async () => {
+  const h = harness(); await h.start();
+  h.client.state.source = PAGE_LINK;
+  await h.client.send('Write a grocery list');
+  const sent = h.sockets[0].sent.at(-1).data;
+  assert.equal(sent.message, 'Write a grocery list');
+  assert.equal(sent.tool_hints, undefined);
+  h.client.close();
+});
+
+test('an included page is a durable local snapshot until Send, then clears with a transcript hint', async () => {
+  const h = harness(); await h.start();
+  const count = h.requests.length;
+  await h.client.setDraft("What's this video about?");
+  const source = {...PAGE_LINK};
+  await h.client.includePage(source);
+  source.url = 'https://example.test/switched-tab';
+  assert.equal(h.requests.length, count, 'Including a link never fetches the page or server');
+  const restored = harness({storage: h.storage}); await restored.client.restore();
+  assert.deepEqual(restored.client.state.draft.pageLink, PAGE_LINK);
+  await h.client.send();
+  const sent = h.sockets[0].sent.at(-1).data;
+  assert.ok(sent.message.startsWith("What's this video about?"));
+  assert.ok(sent.message.includes(PAGE_LINK.url));
+  assert.ok(!sent.message.includes(source.url));
+  assert.deepEqual(sent.tool_hints, ['youtube_transcript']);
+  assert.equal(sent.image, undefined);
+  assert.equal(sent.attachments, undefined);
+  assert.equal(h.requests.length, count);
+  assert.equal(h.client.state.draft.pageLink, null);
+  assert.deepEqual(h.client.pendingDraft.pageLink, PAGE_LINK);
+  h.client.close();
+});
+
+test('including and removing a link preserve the question, screenshot, page text and selection', async () => {
+  const h = harness(); await h.start();
+  await h.client.setDraft('My question');
+  await h.client.stage({page: PAGE, attachment: {previewUrl:'data:image/jpeg;base64,/9j/2Q==',width:10,height:10},
+    context:{title:'Selection',url:PAGE_LINK.url,text:'Selected words'}});
+  const before = structuredClone(h.client.state.draft);
+  await h.client.includePage(PAGE_LINK);
+  assert.deepEqual(h.client.state.draft, {...before, pageLink:PAGE_LINK});
+  await h.client.removePageLink();
+  assert.deepEqual(h.client.state.draft, before);
+  await h.client.includePage(PAGE_LINK);
+  h.client.state.mode = 'local';
+  await h.client.send();
+  const sent = h.sockets[0].sent.at(-1).data;
+  assert.ok(sent.image);
+  assert.equal(sent.attachments.length, 1, 'A page link does not consume a file-source slot');
+  assert.match(sent.message, /Selected words/);
+  assert.deepEqual(sent.tool_hints, ['youtube_transcript']);
+  h.client.close();
+});
+
+test('removed links, new conversations and ordinary pages do not carry a YouTube hint', async () => {
+  const h = harness(); await h.start();
+  await h.client.includePage(PAGE_LINK); await h.client.removePageLink();
+  await h.client.send('Unrelated question');
+  assert.equal(h.sockets[0].sent.at(-1).data.tool_hints, undefined);
+  assert.doesNotMatch(h.sockets[0].sent.at(-1).data.message, /youtube/);
+  h.client.close();
+  const fresh = harness(); await fresh.start();
+  await fresh.client.includePage(PAGE_LINK); await fresh.client.newConversation();
+  assert.equal(fresh.client.state.draft.pageLink, null);
+  fresh.client.close();
+  const ordinary = harness(); await ordinary.start();
+  await ordinary.client.includePage({url:'https://example.test/article',title:'Article'});
+  await ordinary.client.send('Summarize this');
+  assert.equal(ordinary.sockets[0].sent.at(-1).data.tool_hints, undefined);
+  ordinary.client.close();
+});
+
+test('rejected send restores the included link without overwriting a newer link-only draft', async () => {
+  for (const newer of [null, {title:'New page',url:'https://example.test/new'}]) {
+    const h = harness(); await h.start();
+    await h.client.includePage(PAGE_LINK); await h.client.send('Summarize');
+    if (newer) h.client.state.draft.pageLink = newer;
+    h.sockets[0].receive('chat:rejected', {message_id:ID,error:'Busy'});
+    assert.deepEqual(h.client.state.draft.pageLink, newer || PAGE_LINK);
+    h.client.close();
+  }
+});
+
+test('link-only requests work without text uploads and slash commands keep their own routing', async () => {
+  for (const text of ['', '/research this video']) {
+    const h = harness({capabilities: {...CAPABILITIES, extension: {...CAPABILITIES.extension,
+      features: {...CAPABILITIES.extension.features, text: false}}}});
+    await h.start();
+    await h.client.includePage(PAGE_LINK);
+    await h.client.send(text);
+    const sent = h.sockets[0].sent.at(-1).data;
+    assert.ok(sent.message.includes(PAGE_LINK.url));
+    assert.ok(sent.message.startsWith(text || 'Summarize this video using its transcript.'));
+    assert.deepEqual(sent.tool_hints, text ? undefined : ['youtube_transcript']);
+    assert.equal(h.requests.some(request => request.url.includes('/api/upload-')), false);
+    h.client.close();
+  }
 });
 
 const PROFILE_CAPABILITIES = {...CAPABILITIES, extension: {...CAPABILITIES.extension,
@@ -426,7 +527,7 @@ test('rejection preserves newly typed draft while marking the rejected content',
 test('accepted recovery clears only the unchanged submitted draft from a pre-send checkpoint', async () => {
   for (const changed of [false, true]) {
     const h = harness(); await h.start(); await h.client.send('Submitted question');
-    h.client.state.draft = changed ? {text: 'Newer question', attachment: null, context: null, page: null} : structuredClone(h.client.pendingDraft);
+    h.client.state.draft = changed ? {text: 'Newer question', attachment: null, context: null, page: null, pageLink: null} : structuredClone(h.client.pendingDraft);
     await h.client.checkpoint(); h.client.close();
     const restored = harness({storage: h.storage});
     await restored.client.restore(); await restored.client.connect(); const socket = restored.sockets[0];
@@ -458,7 +559,7 @@ test('image action stages an editable URL, preserves draft, and sends a separate
   assert.deepEqual(send.data.tool_hints, ['analyze_image']);
   assert.equal(send.data.image, undefined, 'remote URL does not use the screenshot upload contract');
   assert.equal(h.requests.some(item => item.url.includes('upload-image')), false);
-  assert.deepEqual(h.client.state.draft, {text: '', attachment: null, context: null, page: null});
+  assert.deepEqual(h.client.state.draft, {text: '', attachment: null, context: null, page: null, pageLink: null});
   h.client.close();
 });
 
@@ -576,7 +677,7 @@ test('rejected image send restores its draft and hint; accepted recovery clears 
   socket.receive('conversation:loaded', {conversation: {id: 'conversation-a', messages: [
     {role: 'user', content: draft.text, data: {_request_id: NEXT}},
   ], run: {message_id: NEXT, conversation_id: 'conversation-a', status: 'running'}}});
-  assert.deepEqual(restored.client.state.draft, {text: '', attachment: null, context: null, page: null});
+  assert.deepEqual(restored.client.state.draft, {text: '', attachment: null, context: null, page: null, pageLink: null});
   assert.equal(restored.client.state.submittedRequests[1].conversationId, 'conversation-a');
   assert.equal(restored.client.state.submittedRequests[1].status, 'running');
   restored.client.close();

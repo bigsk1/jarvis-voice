@@ -30,7 +30,7 @@ export function initialState(settings = {}) {
     settings: {serverUrl: '', allowInsecureLocal: false, ...settings, preferences: normalizePreferences(settings.preferences)},
     connection: {status: 'unconfigured', authRequired: false, error: null},
     source: null, conversationId: null, conversations: [], messages: [],
-    draft: {text: '', attachment: null, context: null, page: null}, run: null, progress: [],
+    draft: {text: '', attachment: null, context: null, page: null, pageLink: null}, run: null, progress: [],
     mode: 'cloud', notice: null, submittedRequests: [], capabilities: {text: null, profile: false}, profile: null,
   };
 }

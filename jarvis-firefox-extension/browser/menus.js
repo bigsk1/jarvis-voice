@@ -1,6 +1,7 @@
 export const MENU_IDS = Object.freeze({
   root: 'jarvis',
   capture: 'jarvis-capture',
+  page: 'jarvis-page-link',
   selection: 'jarvis-selection',
   link: 'jarvis-link',
   image: 'jarvis-image',
@@ -21,6 +22,7 @@ export function setupMenus(browserApi, onAction) {
         documentUrlPatterns: ['http://*/*', 'https://*/*'],
       });
       menus.create({ id: MENU_IDS.capture, parentId: MENU_IDS.root, title: 'Capture this page', contexts: ['page', 'selection', 'link', 'image'] });
+      menus.create({ id: MENU_IDS.page, parentId: MENU_IDS.root, title: 'Include page link', contexts: ['page', 'selection', 'link', 'image'] });
       menus.create({ id: MENU_IDS.selection, parentId: MENU_IDS.root, title: 'Ask about selected text', contexts: ['selection'] });
       menus.create({ id: MENU_IDS.link, parentId: MENU_IDS.root, title: 'Ask about this link', contexts: ['link'] });
       menus.create({ id: MENU_IDS.image, parentId: MENU_IDS.root, title: 'Analyze this image', contexts: ['image'] });
@@ -32,6 +34,9 @@ export function setupMenus(browserApi, onAction) {
     const common = { tab, pageUrl: info.pageUrl || tab?.url || '' };
     if (info.menuItemId === MENU_IDS.capture) {
       return onAction({ kind: 'capture', ...common });
+    }
+    if (info.menuItemId === MENU_IDS.page) {
+      return onAction({ kind: 'pageLink', ...common });
     }
     if (info.menuItemId === MENU_IDS.selection && info.selectionText) {
       return onAction({ kind: 'selection', ...common, selectionText: info.selectionText });
