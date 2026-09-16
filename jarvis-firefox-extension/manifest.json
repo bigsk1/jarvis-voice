@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Jarvis Companion",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Chat with Jarvis about the current page, screenshots, images, text, and links, with optional completion notifications.",
   "browser_specific_settings": {
     "gecko": {

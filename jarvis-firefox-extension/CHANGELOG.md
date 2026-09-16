@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+- Prepare the standalone public source repository with automated test/build checks and Mozilla reviewer instructions.
+- Exclude source-only documentation, CI files, and the README screenshot from the installable ZIP; retain runtime assets, privacy information, and licenses.
+- Point extension issue reporting at the standalone repository. Talk behavior is unchanged.
+
 ## 0.2.0
 
 - Add hands-free Talk to the sidebar and pop-out, using existing Jarvis STT/chat/TTS and configured word limits.

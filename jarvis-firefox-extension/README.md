@@ -2,7 +2,7 @@
 
 A Firefox client for [Jarvis Voice](https://github.com/bigsk1/jarvis-voice): chat in a sidebar or detached window, capture a webpage's screenshot **and readable text**, and ask follow-up questions without saving screenshots or copying articles by hand.
 
-This is an independently versioned development extension. It lives in `jarvis-firefox-extension/` for now and can be copied into its own repository without importing code from the parent checkout.
+This is an independently versioned development extension. Its standalone source repository is [bigsk1/jarvis-firefox-extension](https://github.com/bigsk1/jarvis-firefox-extension). It requires your own Jarvis Web server; it does not include a hosted assistant service or a Mozilla-signed installer. See [REVIEW.md](REVIEW.md) for reproducible packaging, reviewer setup, and the remaining submission checks.
 
 ## What it does
 
@@ -168,7 +168,7 @@ tests/          Browser, client, UI, and packaging checks
 scripts/        Vendor copying and package creation
 ```
 
-Keep new feature screens behind the client/capability contract. Do not import files from `../jarvis-web/` or load executable libraries from a CDN. Keep this directory as the authoritative source until a deliberate repository extraction; copying to another repository does not establish automatic synchronization.
+Keep new feature screens behind the client/capability contract. Do not import files from `../jarvis-web/` or load executable libraries from a CDN. Development currently happens in Jarvis Voice's `jarvis-firefox-extension/` directory. Reviewed, committed extension snapshots are exported into this standalone repository without the parent repository's history or runtime data. `.github/jarvis-source.json` identifies the source commit and exported file hashes. Changes proposed here must be carried back to that source before the next export; publishing checks for conflicting downstream edits. There is no nested Git repository or automatic push on a Jarvis commit.
 
 Page-text capture uses a one-shot `scripting.executeScript` after a toolbar, capture-button, or context-menu gesture. It does not register a persistent content script. The packaged `assets/jarvis.svg` uses the artwork from Jarvis Web's `client/assets/jarvis-hud-logo.svg`. The panel inlines this local asset and keeps its animation rules in `ui/panel.css` to support both logo instances under the extension's Content Security Policy. The ring rotates amber when connected and rests red when offline; reduced-motion preferences disable rotation. Toolbar and reply icons use the static SVG, and `assets/jarvis-96.png` is its 96-pixel export for desktop notifications. Keep these packaged copies together when updating the artwork.
 

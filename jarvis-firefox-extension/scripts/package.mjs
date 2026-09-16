@@ -12,7 +12,7 @@ try {
   process.exit(1);
 } catch (error) { if (error.code !== 'ENOENT') throw error; }
 const cli = path.join(root, 'node_modules/web-ext/bin/web-ext.js');
-const excludes = ['node_modules', 'package.json', 'package-lock.json', 'tests', 'scripts', 'README.md', 'web-ext-artifacts', 'web-ext.config.mjs'];
+const excludes = ['node_modules', 'package.json', 'package-lock.json', 'tests', 'scripts', 'README.md', 'REVIEW.md', 'CHANGELOG.md', '.github', 'assets/jarvis-firefox-extension.jpg', 'web-ext-artifacts', 'web-ext.config.mjs'];
 for (const action of ['lint', 'build']) {
   const args = [cli, action, '--source-dir', root, '--ignore-files', ...excludes];
   if (action === 'build') args.push('--artifacts-dir', path.join(root, 'web-ext-artifacts'), '--filename', filename);

@@ -69,4 +69,4 @@ There is no server-side ephemeral/private-chat mode in this extension. Removing 
 
 You choose the server, when to capture, what to stage, and when to send. **Stop** requests cancellation of current work; completed tool actions and existing saved records are not undone. Reconnection looks up existing requests and never automatically resends uncertain work.
 
-Change or revoke server access in Firefox's extension permissions. Report extension privacy issues through the [Jarvis Voice repository](https://github.com/bigsk1/jarvis-voice/issues). For data held by a configured server or provider, contact that server's operator or provider.
+Change or revoke server access in Firefox's extension permissions. Report extension issues through the [extension repository](https://github.com/bigsk1/jarvis-firefox-extension/issues); do not include passwords, tokens, private conversations, or other sensitive data in a public issue. For data held by a configured server or provider, contact that server's operator or provider.
