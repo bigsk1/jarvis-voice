@@ -26,6 +26,13 @@ Pause/End release the microphone and stop playback. Capture is disabled while tr
 
 Connection recovery, opening history, and background completion checks can retrieve saved conversations without another Send action. While extension-submitted requests are pending, checks run about once a minute even with the sidebar/pop-out closed, provided Firefox is running and the session is available. They stop when requests settle, expire after seven days, or the session ends. They only check existing work and never resubmit it. Normal HTTP/socket communication also exposes network information such as your address to the server. The extension does not continuously capture tabs, read browsing history, inject a persistent page script, or upload a screenshot or page text merely because its preview is visible. Page-text reading uses a one-shot script after a capture gesture.
 
+On compatible servers, an authenticated open conversation also subscribes to its
+background task status/results and late answers, including work started in Jarvis
+Web. These are read-only updates from the configured server; they do not grant
+background execution permission or automatically submit another tool call. Saved
+task details may be restored with conversation history. Such Web-started jobs do
+not add extension desktop notifications, closed-panel polling or Talk playback.
+
 Image URL staging does not fetch the image or copy the webpage's cookies. After Send, Jarvis's normal tool path can fetch that URL. An `analyze_image` tool hint accompanies an applicable staged image draft; server configuration determines which tools can run.
 
 **Include page** reads only the selected tab's title and URL after your click. It does not capture pixels, execute a page script, fetch the link, or send anything to Jarvis until Send. The staged link stays fixed across navigation and tab changes. A YouTube video link adds a `youtube_transcript` tool preference for normal chat; the server controls available tools and their providers. Ordinary chat does not automatically include a tab link.

@@ -14,6 +14,7 @@ This independently versioned extension targets **unlisted Mozilla signing and se
 - Sends your question or an **Analyze page** / **Analyze screenshot** prompt through your Jarvis Web server.
 - Provides right-click **Jarvis** actions for a page capture, selected text, a link, or an image URL.
 - Shows task and tool progress, completed answers, conversation history with pinned labels, and **Stop**.
+- Displays background task cards and late answers in the open conversation on compatible Jarvis Web servers, without interrupting the current chat turn or Talk.
 - Reconnects to accepted work by its request/conversation ID without automatically sending the question again.
 - Shows a toolbar badge for pending work and unread results, with optional desktop notifications.
 - Uses the display name and profile image saved in Jarvis Web **Settings → Profile → Appearance** on your messages. Changes sync automatically while connected; the default avatar is the Jarvis HUD logo.
@@ -121,6 +122,28 @@ Keep the setup tab open for sidebar Talk. Firefox can leave a sidebar microphone
 Microphone and audio startup have deadlines and actionable errors, so an unresolved browser request cannot leave Talk preparing indefinitely. A late permission grant after Pause/End is immediately released. No speech network request is expected until capture finishes; STT/TTS requests use the extension's background transport.
 
 ## Completion signals
+
+### Background tasks started in Jarvis Web
+
+With a server that supports background tasks (Jarvis Voice 2.55.8 or newer), open
+the same conversation in the companion to receive authenticated task updates and
+late answers. Task cards stay attached to their source answer; expand a card to
+inspect its text details. Reopening history restores saved cards and answers.
+Task output is rendered as text; the rich image/video/audio previews remain in
+Jarvis Web.
+
+Enable background execution and reviewed tools in **Jarvis Web → Settings → Tools**.
+Companion chat and Talk continue to run their own tool calls in the foreground;
+they do not inherit that saved background permission. A late answer does not stop
+another request, change its progress, or start Talk playback. **Stop** still targets
+the current foreground request; manage background work in Jarvis Web.
+
+Background jobs started in Web do not create extension completion notifications
+or closed-panel polling. Their live updates appear while the conversation is open,
+and saved results remain in history. Older Companion API 1 servers keep their
+existing behavior without task updates.
+
+### Extension request notifications
 
 Open the existing **Settings** drawer to change these preferences independently of the server connection:
 

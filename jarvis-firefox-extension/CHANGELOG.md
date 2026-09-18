@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Display background task cards and late answers for the open conversation on compatible Jarvis Web servers. Restore saved task details from history and subscribe to authenticated task updates.
+- Keep late results separate from the active chat request so they do not settle another turn, clear its progress, or interrupt Talk. Ignore duplicate answers and stale task revisions or conversation generations.
+- Render task details as text. Background execution remains controlled by Jarvis Web Settings; Firefox chat and Talk keep their foreground execution behavior. No new permissions are requested.
+
 ## 0.2.2
 
 - Prepare unlisted Mozilla signing and persistent installation from the signed XPI, with upload instructions and submission notes.
