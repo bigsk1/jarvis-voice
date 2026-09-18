@@ -2864,6 +2864,8 @@ class ChatUI {
     this._updateConvertOptions();
     this._resetConvertOptions();
     this.convertModal.classList.add('active');
+    window.jarvisApp?.backgroundTasks?.updateConvertHint();
+    void window.jarvisApp?.backgroundTasks?.refresh();
   }
   
   /**
@@ -2996,7 +2998,9 @@ class ChatUI {
       
       // Send the message (no attached image = no vision analysis)
       this.inputField.value = message;
-      this.sendMessage();
+      await this.sendMessage({tool: 'convert_file', arguments: {
+        source: stashRef, target_format: targetFormat, options
+      }});
       
     } catch (err) {
       console.error('[Chat] Conversion error:', err);
@@ -3163,7 +3167,7 @@ class ChatUI {
   /**
    * Upload the entire selected source bundle before sending one chat request.
    */
-  async sendMessage() {
+  async sendMessage(toolAction = null) {
     if (this._talkActive) return;
     if (this._voiceSession) return;
     if (this._conversationLoadPending) {
@@ -3327,6 +3331,7 @@ class ChatUI {
       system_instruction: parsed.instruction,
       prompt_name: parsed.prompt,
       tool_hints: toolHints,
+      tool_action: toolAction,
       tool_policy: effectiveChatOnly ? 'none' : 'auto'
     }, requestFeedback, null, attachments);
     if (!sent) {
@@ -3484,6 +3489,7 @@ class ChatUI {
    * Add assistant message to chat
    */
   addAssistantMessage(text, toolsUsed = [], data = {}, options = {}) {
+    const objectIsContinuation = text?._kind === 'continuation' || text?._continuation_id;
     // Safety: ensure text is a string
     if (typeof text === 'object' && text !== null) {
       // Handle case where object was passed instead of string
@@ -3493,9 +3499,11 @@ class ChatUI {
       data = obj.data || data || {};
     }
     text = text || '';
+    const late = options.late || objectIsContinuation || [data, data?.data].some(value =>
+      value && (value._kind === 'continuation' || value._continuation_id));
 
     // Keep one consolidated action rail on only the latest Jarvis response.
-    this._clearMessageResponseActions();
+    if (!late) this._clearMessageResponseActions();
     
     const messageEl = document.createElement('div');
     messageEl.className = 'message assistant new-message';
@@ -3513,14 +3521,24 @@ class ChatUI {
     setTimeout(() => {
       messageEl.classList.remove('new-message');
     }, 2500);
+
+    if (late) {
+      // Shared live/history boundary: late content cannot enter the legacy HTML
+      // widgets, consume pending tools, or replace foreground response actions.
+      window.continuationRenderer.append(messageEl, String(text), data.data || data);
+      this.messagesContainer.appendChild(messageEl);
+      window.jarvisApp?.backgroundTasks?.renderCards(messageEl, (data.data || data).background_jobs);
+      Utils.scrollToBottom(this.messagesContainer);
+      return;
+    }
     
     // Build tool cards HTML from pendingTools (supports duplicate tools with unique keys)
     let toolResultsData = data.data || data || {};
     toolResultsData = this._flattenWorkflowToolResults(toolResultsData);
     let toolCardEntries = [];
-    const toolTraceEntries = this._getToolTraceEntries(toolResultsData);
-    this._reconcilePendingToolsWithFinalList(toolsUsed, toolTraceEntries);
-    const pendingToolEntries = Object.entries(this.pendingTools);
+    const toolTraceEntries = this._getToolTraceEntries(toolResultsData).filter(entry => entry.result_kind !== 'background_admission');
+    if (!options.late) this._reconcilePendingToolsWithFinalList(toolsUsed, toolTraceEntries);
+    const pendingToolEntries = options.late ? [] : Object.entries(this.pendingTools);
     if (pendingToolEntries.length > 0) {
       toolCardEntries = this._getPendingToolCardEntries(toolResultsData, pendingToolEntries);
     } else if (toolTraceEntries.length > 0) {
@@ -3599,7 +3617,7 @@ class ChatUI {
     // Method 2: Extract from speech/text (fallback)
     // Check both toolsUsed array and pendingTools (which may have step-keyed entries like generate_image_step5)
     const hasImageTool = toolsUsed.includes('generate_image') || 
-      Object.keys(this.pendingTools).some(k => k.startsWith('generate_image'));
+      (!options.late && Object.keys(this.pendingTools).some(k => k.startsWith('generate_image')));
     if (!filename && hasImageTool) {
       const textToSearch = text + ' ' + JSON.stringify(data);
       const match = textToSearch.match(/generated_[\w\-]+\.(jpg|png|jpeg)/i);
@@ -3700,7 +3718,7 @@ class ChatUI {
     
     // Method 2: Search in tool results data
     const hasMusicTool = toolsUsed.includes('generate_music') || 
-      Object.keys(this.pendingTools).some(k => k.startsWith('generate_music'));
+      (!options.late && Object.keys(this.pendingTools).some(k => k.startsWith('generate_music')));
     if (!audioUrl && hasMusicTool) {
       const musicResult = toolResultsData['generate_music'];
       if (musicResult) {
@@ -3828,8 +3846,8 @@ class ChatUI {
     }
 
     // Method 2: Search in tool results data
-    const hasVideoTool = toolsUsed.includes('generate_video') || 
-      Object.keys(this.pendingTools).some(k => k.startsWith('generate_video'));
+    const hasVideoTool = toolsUsed.includes('generate_video') ||
+      (!options.late && Object.keys(this.pendingTools).some(k => k.startsWith('generate_video')));
     if (!videoUrl && hasVideoTool) {
       const videoResult = toolResultsData['generate_video'];
       if (videoResult) {
@@ -3891,7 +3909,7 @@ class ChatUI {
     
     // Converted-file display is separate from the composer's conversion flow.
     const hasConvertTool = toolsUsed.includes('convert_file') ||
-      Object.keys(this.pendingTools).some(k => k.startsWith('convert_file'));
+      (!options.late && Object.keys(this.pendingTools).some(k => k.startsWith('convert_file')));
     const convertedFileHtml = hasConvertTool
       ? window.assistantMessageRenderer.renderConvertedFile(toolResultsData['convert_file'] || data.convert_file)
       : '';
@@ -4043,13 +4061,14 @@ class ChatUI {
       });
     });
 
-    this._attachCompletionGuardCard(messageEl, data, toolsUsed);
+    if (!options.late && !toolResultsData.pending_jobs) this._attachCompletionGuardCard(messageEl, data, toolsUsed);
     this._attachMessageResponseActions(messageEl, text, data, {
       allowReaction: options.allowReaction !== false,
       allowCanvas: !toolsUsed.includes('canvas')
     });
     
     this.messagesContainer.appendChild(messageEl);
+    window.jarvisApp?.backgroundTasks?.renderCards(messageEl, toolResultsData.background_jobs);
     Utils.hydrateRichContent(messageEl);
     if (canvasPreview) {
       this._hydrateCanvasPreview(messageEl, canvasPreview);
@@ -4058,7 +4077,7 @@ class ChatUI {
     
     // Clear only this response's pending tool state. Late events from another
     // message remain isolated instead of contaminating the next response.
-    this._clearPendingToolsForMessage(liveMessageId);
+    if (!options.late) this._clearPendingToolsForMessage(liveMessageId);
   }
 
   _activatePendingToolsForMessage(messageId, reset = false) {

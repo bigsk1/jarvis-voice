@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from flask import Flask
+import pytest
 
 from server_package_utils import load_server_package
 
@@ -54,3 +55,25 @@ def test_web_stash_upload_writes_configured_stash_dir(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert payload["ok"] is True
     assert (tmp_path / payload["space_id"] / "uploaded.txt").read_bytes() == b"uploaded"
+
+
+@pytest.mark.parametrize('mode', ['cloud', 'local'])
+def test_background_media_stash_url_keeps_original_mode_and_supports_seeking(tmp_path, monkeypatch, mode):
+    import config_loader
+    from lib import config_loader as package_config
+
+    monkeypatch.delenv('JARVIS_OVERRIDE_STASH_DIR', raising=False)
+    roots = {name: tmp_path / name for name in ('cloud', 'local')}
+    for name, root in roots.items():
+        space = root / 'space_media'
+        space.mkdir(parents=True)
+        (space / 'clip.mp4').write_bytes((name * 8).encode())
+    for module in (config_loader, package_config):
+        monkeypatch.setattr(module, '_load_mode_config', lambda selected: {'STASH_DIR': str(roots[selected])})
+    with config_loader.config_scope('local' if mode == 'cloud' else 'cloud'):
+        response = _client().get('/api/stash/space_media/clip.mp4?mode=' + mode,
+                                 headers={'Range': 'bytes=0-3'})
+    assert response.status_code == 206
+    assert response.data == (mode * 8).encode()[:4]
+    assert response.mimetype == 'video/mp4'
+    assert response.headers['Content-Range'].startswith('bytes 0-3/')

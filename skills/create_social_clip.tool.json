@@ -77,5 +77,30 @@
   "availability": {
     "all_of_env": ["MONEYPRINTER_API_URL"],
     "setup_hint": "Set MONEYPRINTER_API_URL in the active mode env file to your MoneyPrinterTurbo server base URL."
+  },
+  "execution": {
+    "background": {
+      "supported": true,
+      "adapter": "remote_skill_v1",
+      "completion_scope": "remote_work",
+      "timeout_seconds": 2100,
+      "progress_label": "Creating social clip",
+      "limits": {
+        "memory_bytes": 4294967296,
+        "file_bytes": 536870912,
+        "input_bytes": 536870912,
+        "output_bytes": 2097152
+      },
+      "argument_constraints": {
+        "properties": {
+          "save": {"const": true},
+          "subject": {"minLength": 1, "maxLength": 20000},
+          "script": {"maxLength": 20000},
+          "paragraph_number": {"minimum": 1, "maximum": 10},
+          "clip_duration": {"minimum": 1},
+          "video_count": {"const": 1}
+        }
+      }
+    }
   }
 }

@@ -772,7 +772,7 @@ function getTrackTitle(item) {
 function formatAudioName(name) {
     return name
         .replace(/^music_/, '')
-        .replace(/_\d{8}_\d{6}\.[^.]+$/i, '')
+        .replace(/_\d{8}_\d{6}(?:_[0-9a-f]{32})?\.[^.]+$/i, '')
         .replace(/\.[^.]+$/, '')
         .replace(/_/g, ' ')
         .replace(/\b\w/g, letter => letter.toUpperCase());
@@ -918,7 +918,7 @@ async function openAudioShareDialog(filename) {
     document.querySelectorAll('.audio-player').forEach(player => player.pause());
     currentAudioShareFilename = filename;
     currentAudioSharePreview = null;
-    document.getElementById('audioShareFilename').textContent = filename;
+    document.getElementById('audioShareFilename').textContent = getTrackTitle(selectedAudio);
     document.getElementById('audioSharePreview').textContent = 'Checking the retained audio…';
     document.getElementById('audioShareConfirm').checked = false;
     document.getElementById('audioShareResult').hidden = true;

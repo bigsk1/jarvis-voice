@@ -17,6 +17,35 @@ const PAGE = {
 const PAGE_LINK = {title: 'A YouTube video', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=120'};
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test('late task events preserve an active turn, progress and draft, and deduplicate answers', async () => {
+  const h=harness();await h.start();
+  const socket=h.sockets[0];
+  h.client.restoringConversation=ID;
+  socket.receive('conversation:loaded',{conversation:{id:ID,generation:2,messages:[
+    {role:'assistant',content:'Queued',data:{_web_message_id:'first'}}
+  ],run:{message_id:'second',conversation_id:ID,status:'running',mode:'cloud',kind:'chat'}}});
+  socket.receive('tool:start',{conversation_id:ID,message_id:'second',tool:'get_time'});
+  await h.client.setDraft('Keep my unsent follow-up');
+  const before=structuredClone({run:h.client.state.run,progress:h.client.state.progress,draft:h.client.state.draft});
+  const job={schema_version:1,conversation_id:ID,generation:2,job_id:'job',source_message_id:'first',
+    tool:'fixture',state:'succeeded',revision:4,result:{summary:'<script>inert</script>'}};
+  socket.receive('task:updated',job);
+  socket.receive('task:updated',{...job,revision:2,state:'running'});
+  const late={schema_version:1,conversation_id:ID,generation:2,continuation_id:'late',message:{content:'Fixture finished'}};
+  socket.receive('chat:continuation',late);socket.receive('chat:continuation',late);
+  assert.deepEqual({run:h.client.state.run,progress:h.client.state.progress,draft:h.client.state.draft},before);
+  assert.equal(h.client.state.messages.filter(message=>message.id==='assistant-late').length,1);
+  assert.equal(h.client.state.messages[0].backgroundJobs[0].status,'succeeded');
+  socket.receive('chat:continuation',{...late,continuation_id:'stale',generation:1});
+  socket.receive('chat:continuation',{...late,continuation_id:'elsewhere',conversation_id:NEXT});
+  assert.equal(h.client.state.messages.length,2);
+  h.client.restoringConversation=ID;
+  socket.receive('conversation:loaded',{conversation:{id:ID,generation:1,messages:[]}});
+  assert.equal(h.client.state.conversationGeneration,2);
+  assert.equal(h.client.state.messages.length,2);
+  h.client.close();
+});
+
 function area(initial = {}) {
   const data = structuredClone(initial);
   return {data, get: async key => ({[key]: structuredClone(data[key])}),

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 # Add lib to path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import export_config_environment, get_int, load_config
 from http_client import PROXY_POLICY_ENV, STANDARD_PROXY_ENV_KEYS
@@ -34,7 +35,7 @@ except ImportError:
 class ToolExecutor:
     """Executes tools and skills with permission checking."""
     
-    def __init__(self, mode='cloud', registry=None):
+    def __init__(self, mode='cloud', registry=None, *, load_runtime_config=True):
         """
         Initialize executor.
         
@@ -43,7 +44,8 @@ class ToolExecutor:
             registry: Optional shared ToolRegistry (prevents duplicate MCP servers)
         """
         self.mode = mode
-        load_config(mode)
+        if load_runtime_config:
+            load_config(mode)
         self.project_root = Path(__file__).parent.parent.resolve()
         self.skills_dir = self.project_root / "skills"
         
@@ -103,8 +105,12 @@ class ToolExecutor:
         process: subprocess.Popen,
         *,
         grace_seconds: float = 3,
-    ) -> None:
+        verify: bool = False,
+    ):
         """Terminate a local tool and descendants, then escalate after a grace period."""
+        if verify:
+            from tool_process import terminate_verified
+            return terminate_verified(process, grace_seconds)
         if process.poll() is not None:
             return
 
@@ -304,7 +310,25 @@ class ToolExecutor:
         enriched["data"] = data
         return enriched
     
-    def execute(self, tool_name: str, args: dict[str, Any], skip_permission_check: bool = False) -> dict[str, Any]:
+    def execute(self, tool_name: str, args: dict[str, Any], skip_permission_check: bool = False,
+                *, background_context=None, invocation_id=None) -> dict[str, Any]:
+        from lib.background_tasks import TaskError
+        from lib.background_tasks.admission import WebTaskContext, reject_background_result
+
+        if background_context is not None:
+            if not isinstance(background_context, WebTaskContext):
+                return {'ok': False, 'error': 'Invalid Web background context'}
+            if tool_name in background_context.selected:
+                if tool_name in self.excluded_tools:
+                    return {'ok': False, 'error': 'Tool blocked for this request'}
+                try:
+                    return background_context.admit(tool_name, args, invocation_id,
+                                                    self.registry.get_tool(tool_name))
+                except TaskError as exc:
+                    return {'ok': False, 'error': str(exc), 'speech': str(exc)}
+        return reject_background_result(self._execute_foreground(tool_name, args, skip_permission_check))
+
+    def _execute_foreground(self, tool_name: str, args: dict[str, Any], skip_permission_check=False, *, supervision=None):
         """
         Execute a tool/skill with permission checking.
         
@@ -399,7 +423,7 @@ class ToolExecutor:
             # Determine command based on file extension
             if tool_script.suffix == '.py':
                 # Run Python scripts with python3, passing JSON as argument
-                cmd = ['python3', str(tool_script), input_json]
+                cmd = [sys.executable if supervision else 'python3', str(tool_script), input_json]
             else:
                 # Run bash scripts or other executables directly
                 cmd = [str(tool_script)]
@@ -416,7 +440,7 @@ class ToolExecutor:
             # stamp JARVIS_MODE explicitly so tools never infer mode from the
             # chat provider. Starts from the current environment, so per-request
             # JARVIS_OVERRIDE_* values and session context still propagate.
-            tool_env = export_config_environment(self.mode)
+            tool_env = dict(supervision.environment) if supervision else export_config_environment(self.mode)
             proxy_policy = getattr(tool_schema, "proxy_policy", "inherit")
             if proxy_policy != "inherit":
                 tool_env[PROXY_POLICY_ENV] = proxy_policy
@@ -437,97 +461,39 @@ class ToolExecutor:
             if self.web_conversation_id:
                 tool_env['JARVIS_WEB_CONVERSATION_ID'] = str(self.web_conversation_id)
             
-            process = subprocess.Popen(
-                cmd,
-                stdin=subprocess.PIPE if tool_script.suffix != '.py' else None,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=self.skills_dir,
-                env=tool_env,  # Pass environment so tools see LLM_PROVIDER
-                start_new_session=(os.name == "posix"),
+            if supervision:
+                supervision.checkpoint()
+                # A background job owns its time budget. Queue/preflight time
+                # counts against it; the foreground tool timeout does not.
+                deadline = supervision.claim.job['deadline']
+                timeout = max(0, deadline - supervision.store.clock())
+                tool_env['JARVIS_BACKGROUND_DEADLINE'] = str(deadline)
+                tool_env['JARVIS_OVERRIDE_JARVIS_BACKGROUND_DEADLINE'] = str(deadline)
+                from lib.background_tasks.local_contract import DEFAULT_LIMITS
+
+                local_settings = getattr(supervision, 'local_execution', {})
+                local_limits = {**DEFAULT_LIMITS, **local_settings.get('limits', {})}
+                cmd = [sys.executable, str(self.project_root / 'lib/background_tasks/child.py'),
+                       str(timeout), '--limits', json.dumps(local_limits), *cmd]
+            else:
+                # Worker-only budgets must not leak into foreground skills.
+                tool_env['JARVIS_BACKGROUND_DEADLINE'] = ''
+                tool_env['JARVIS_OVERRIDE_JARVIS_BACKGROUND_DEADLINE'] = ''
+                tool_env['JARVIS_BACKGROUND_MAX_INPUT_BYTES'] = ''
+                tool_env['JARVIS_OVERRIDE_JARVIS_BACKGROUND_MAX_INPUT_BYTES'] = ''
+            from tool_process import run_local_process
+            stdout, stderr, cancelled = run_local_process(
+                cmd, input_json, python_script=tool_script.suffix == '.py', cwd=self.skills_dir,
+                tool_env=tool_env, timeout=timeout, tool_name=tool_name,
+                consume_progress=lambda line: self._consume_progress_line(tool_name, line),
+                cancel_check=self.cancel_check, terminate=self._terminate_process_tree,
+                process_factory=subprocess.Popen,
+                checkpoint=supervision.checkpoint if supervision else None,
+                process_started=(lambda pid: supervision.record_process_start(
+                    pid, local_settings.get('progress_label', 'Running local skill'))) if supervision else None,
+                process_stopped=supervision.record_process_stop if supervision else None,
+                max_output_bytes=local_limits['output_bytes'] if supervision else None,
             )
-
-            if tool_script.suffix != '.py' and process.stdin:
-                process.stdin.write(input_json)
-                process.stdin.close()
-
-            deadline = start_time + timeout
-            cancelled = False
-            timed_out = False
-            stdout = ""
-            stderr = ""
-
-            # Drain both pipes concurrently while polling for cancellation/timeout.
-            # Structured stderr lines are forwarded immediately; ordinary stderr is
-            # retained for the existing final error fallback.
-            stdout_lines: list[str] = []
-            stderr_lines: list[str] = []
-
-            def read_stdout() -> None:
-                if not process.stdout:
-                    return
-                try:
-                    for line in iter(process.stdout.readline, ""):
-                        stdout_lines.append(line)
-                except (OSError, ValueError):
-                    pass
-
-            def read_stderr() -> None:
-                if not process.stderr:
-                    return
-                try:
-                    for line in iter(process.stderr.readline, ""):
-                        if not self._consume_progress_line(tool_name, line):
-                            stderr_lines.append(line)
-                except (OSError, ValueError):
-                    pass
-
-            stdout_thread = threading.Thread(
-                target=read_stdout,
-                daemon=True,
-                name=f"tool-stdout-{tool_name}",
-            )
-            stderr_thread = threading.Thread(
-                target=read_stderr,
-                daemon=True,
-                name=f"tool-stderr-{tool_name}",
-            )
-            stdout_thread.start()
-            stderr_thread.start()
-
-            while process.poll() is None:
-                if self.cancel_check:
-                    try:
-                        if self.cancel_check():
-                            cancelled = True
-                            self._terminate_process_tree(
-                                process,
-                                grace_seconds=6 if tool_name == "opencode" else 3,
-                            )
-                            break
-                    except Exception:
-                        pass
-
-                if time.time() >= deadline:
-                    timed_out = True
-                    self._terminate_process_tree(
-                        process,
-                        grace_seconds=6 if tool_name == "opencode" else 3,
-                    )
-                    break
-
-                time.sleep(0.25)
-
-            drain_timeout = 1 if (cancelled or timed_out) else 5
-            drain_deadline = time.monotonic() + drain_timeout
-            for drain_thread in (stdout_thread, stderr_thread):
-                drain_thread.join(timeout=max(0, drain_deadline - time.monotonic()))
-            stdout = "".join(stdout_lines)
-            stderr = "".join(stderr_lines)
-
-            if timed_out:
-                raise subprocess.TimeoutExpired(cmd, timeout)
 
             if cancelled:
                 duration_ms = (time.time() - start_time) * 1000
@@ -575,6 +541,8 @@ class ToolExecutor:
             return output
             
         except subprocess.TimeoutExpired:
+            if supervision:
+                raise
             duration_ms = (time.time() - start_time) * 1000
             output = {
                 "ok": False,
@@ -611,6 +579,8 @@ class ToolExecutor:
             )
             return output
         except Exception as e:
+            if supervision:
+                raise
             duration_ms = (time.time() - start_time) * 1000
             output = {
                 "ok": False,

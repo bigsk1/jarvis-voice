@@ -6,7 +6,7 @@
 # Usage:
 #   ./bin/start              # Start all services (API first, wait, then others)
 #   ./bin/start <service>    # Start one service by name
-#   ./bin/start --ui-only    # Start only UI services (web, canvas, memory, intelligence, docs)
+#   ./bin/start --ui-only    # Start UI services and their background task worker
 #   ./bin/start --local      # Start all services with config/local.env
 #   ./bin/start --no-api     # Start everything except API (skip sync)
 #   ./bin/start --list       # Show tmux session status
@@ -41,7 +41,7 @@ for arg in "$@"; do
             [ -z "$MODE_EXPLICIT" ] || { echo "Duplicate option: --local" >&2; exit 2; }
             MODE_EXPLICIT="local"
             ;;
-        --ui-only|--no-api|--list|-l|--stop|-s|--help|-h|api|services|web|canvas|memory|intelligence|docs)
+        --ui-only|--no-api|--list|-l|--stop|-s|--stop-task-worker|--help|-h|api|services|web|canvas|memory|intelligence|docs|task-worker)
             [ -z "$ACTION" ] || { echo "Multiple actions specified: $ACTION and $arg" >&2; exit 2; }
             ACTION="$arg"
             ;;
@@ -54,7 +54,7 @@ done
 
 require_arg=()
 case "$ACTION" in
-    --list|-l|--stop|-s|--help|-h) ;;
+    --list|-l|--stop|-s|--help|-h|--stop-task-worker|task-worker) ;;
     *) require_arg=(--require-config) ;;
 esac
 if [ -n "$MODE_EXPLICIT" ]; then
@@ -80,6 +80,7 @@ declare -A SESSIONS=(
     ["memory"]="jarvis-memory"
     ["intelligence"]="jarvis-intelligence"
     ["docs"]="jarvis-docs"
+    ["task-worker"]="jarvis-task-worker"
 )
 
 # Short-lived sessions created by the TUI while startup is in progress.
@@ -138,6 +139,37 @@ warn() {
 
 error() {
     echo -e "${RED}❌ $1${NC}"
+}
+
+run_task_worker() {
+    "$VENV_PATH/bin/python" "$PROJECT_ROOT/bin/jarvis-task-worker" "$1" --tmux
+}
+
+start_task_worker() {
+    local output
+    log "Starting jarvis-task-worker..."
+    if output=$(run_task_worker start 2>&1); then
+        case "$output" in
+            *'already ready'*) success "jarvis-task-worker already running" ;;
+            *'not ready'*) warn "jarvis-task-worker exists but is not ready; attach to inspect or restart it" ;;
+            *) success "jarvis-task-worker started" ;;
+        esac
+    else
+        warn "Task worker could not start; UI services remain available"
+    fi
+}
+
+stop_task_worker() {
+    local output status=0
+    output=$(run_task_worker stop 2>&1) || status=$?
+    case "$output" in
+        *Stopped*) success "Stopped jarvis-task-worker" ;;
+        *)
+            if [ "$status" -ne 0 ]; then
+                warn "Task worker could not stop"
+            fi
+            ;;
+    esac
 }
 
 log_api_startup_error() {
@@ -217,6 +249,10 @@ verify_running_mode() {
 
 start_service() {
     local name=$1
+    if [ "$name" = task-worker ]; then
+        start_task_worker
+        return
+    fi
     local session=${SESSIONS[$name]}
     local cmd=${COMMANDS[$name]}
     
@@ -284,8 +320,11 @@ stop_all() {
         "$PROJECT_ROOT/bin/jarvis-services" --stop 2>/dev/null || true
     fi
     
+    # Stop the worker while Web can still record the final task status.
+    stop_task_worker
     # Stop all tmux sessions
     for name in "${!SESSIONS[@]}"; do
+        [ "$name" = task-worker ] && continue  # Stopped by its own command above.
         local session=${SESSIONS[$name]}
         if is_session_running "$session"; then
             tmux kill-session -t "$session" 2>/dev/null && success "Stopped $session" || true
@@ -319,14 +358,27 @@ list_sessions() {
     echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
     echo ""
     
-    for name in api services web canvas memory intelligence docs; do
+    for name in api services task-worker web canvas memory intelligence docs; do
         local session=${SESSIONS[$name]}
         local port=${PORTS[$name]}
         local status=""
         local health=""
         
         # Special handling for services - check PID files, not tmux session
-        if [ "$name" == "services" ]; then
+        if [ "$name" = task-worker ]; then
+            if run_task_worker status >/dev/null 2>&1; then
+                status="${GREEN}RUNNING${NC}"
+                health="${GREEN}✓ worker ready${NC}"
+            elif is_session_running "$session"; then
+                status="${YELLOW}NOT READY${NC}"
+                health="${YELLOW}? inspect pane${NC}"
+            else
+                status="${RED}STOPPED${NC}"
+                health=""
+            fi
+            printf "  %-18s %b  %b\n" "$session" "$status" "$health"
+            continue
+        elif [ "$name" == "services" ]; then
             local running_daemons=$(check_services_pids)
             if [ "$running_daemons" -eq 4 ]; then
                 status="${GREEN}RUNNING${NC}"
@@ -379,6 +431,7 @@ start_ui_only() {
     echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
     echo ""
     
+    start_service "task-worker"
     start_service "web"
     start_service "canvas"
     start_service "memory"
@@ -404,6 +457,7 @@ start_no_api() {
     echo ""
     
     start_service "services"
+    start_service "task-worker"
     start_service "web"
     start_service "canvas"
     start_service "memory"
@@ -437,6 +491,7 @@ start_all() {
     start_service "services"
     
     # Start UI services (lightweight, no sync)
+    start_service "task-worker"
     start_service "web"
     start_service "canvas"
     start_service "memory"
@@ -468,10 +523,12 @@ show_help() {
     echo "Usage:"
     echo "  ./bin/start              Start all services (API first, wait for sync, then others)"
     echo "  ./bin/start [--local] [service]  Start all or one service in the selected startup mode"
-    echo "  ./bin/start --ui-only    Start only UI services (web, canvas, memory, intelligence, docs)"
+    echo "  ./bin/start --ui-only    Start UI services and their background task worker"
     echo "  ./bin/start --no-api     Start everything except API (skip sync wait)"
     echo "  ./bin/start --list       Show tmux session status"
     echo "  ./bin/start --stop       Stop all Jarvis sessions"
+    echo "  ./bin/start task-worker  Start the shared background task worker"
+    echo "  ./bin/start --stop-task-worker  Stop only the tmux task worker"
     echo "  ./bin/start --help       Show this help"
     echo "  --local may appear before or after an action; cloud remains the default"
     echo ""
@@ -483,6 +540,7 @@ show_help() {
     echo "  jarvis-memory       Memory Browser UI (port 5002)"
     echo "  jarvis-intelligence Intelligence Dashboard (port 5003)"
     echo "  jarvis-docs         Docs Reader (port 5004)"
+    echo "  jarvis-task-worker  Background tasks for Web, shared by cloud and local"
     echo ""
 }
 
@@ -506,10 +564,13 @@ case "$ACTION" in
     --stop|-s)
         stop_all
         ;;
+    --stop-task-worker)
+        stop_task_worker
+        ;;
     --help|-h)
         show_help
         ;;
-    api|services|web|canvas|memory|intelligence|docs)
+    api|services|web|canvas|memory|intelligence|docs|task-worker)
         start_service "$ACTION"
         ;;
     all)

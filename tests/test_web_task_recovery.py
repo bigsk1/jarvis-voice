@@ -394,7 +394,9 @@ def test_late_events_keep_conversation_identity_and_cannot_finish_new_run(journe
 
 
 def test_concurrent_store_instances_keep_every_message_and_metadata(tmp_path):
-    stores = [conversation_store.ConversationStore(tmp_path / 'chats') for _ in range(2)]
+    from lib.background_tasks import TaskStore
+    tasks = TaskStore(tmp_path / 'tasks.db')
+    stores = [conversation_store.ConversationStore(tmp_path / 'chats', background_tasks=tasks) for _ in range(2)]
     cid = stores[0].create_conversation()['id']
     barrier = threading.Barrier(2, timeout=5)
 
@@ -408,7 +410,7 @@ def test_concurrent_store_instances_keep_every_message_and_metadata(tmp_path):
         futures = [executor.submit(write, index) for index in range(2)]
         for future in futures:
             future.result(timeout=10)
-    restored = conversation_store.ConversationStore(tmp_path / 'chats')
+    restored = conversation_store.ConversationStore(tmp_path / 'chats', background_tasks=tasks)
     messages = restored.get_conversation(cid)['messages']
     assert len(messages) == 30
     assert len({item['content'] for item in messages}) == 30
@@ -797,7 +799,8 @@ def test_feedback_received_while_disconnected_is_in_the_reconnect_snapshot(journ
     assert event['conversation']['feedback']['data']['feedback_revision']
 
 
-def test_reaction_from_a_new_socket_uses_the_original_experience(journey, monkeypatch):
+@pytest.mark.parametrize('late_count', [0, 2])
+def test_reaction_from_a_new_socket_uses_the_original_experience(journey, monkeypatch, late_count):
     import intelligence_hooks
 
     journey.send()
@@ -806,6 +809,11 @@ def test_reaction_from_a_new_socket_uses_the_original_experience(journey, monkey
     journey.store.update_message_data_by_web_message_id(cid, run['message_id'], {
         '_human_reaction_eligible': True, 'experience_id': 42, '_intelligence_mode': 'cloud',
     })
+    for index in range(late_count):
+        journey.store.add_message(cid, 'assistant', 'An earlier background job finished.', data={
+            '_kind': 'continuation', '_continuation_id': f'late-{index}',
+            '_web_message_id': f'late-{index}',
+        })
     del journey.handler.sessions['client']
     updates = []
     def react(experience_id, reaction, **kwargs):
@@ -816,7 +824,34 @@ def test_reaction_from_a_new_socket_uses_the_original_experience(journey, monkey
     assert journey.socket.events[-1][1]['conversation']['reaction_message_id'] == run['message_id']
     call(journey, 'message_reaction:submit', {'conversation_id': cid, 'message_id': run['message_id'], 'reaction': 'up'}, sid='new')
     assert updates == [(42, 'up', 'cloud')]
-    assert journey.store.get_conversation(cid)['messages'][-1]['data']['_user_feedback']['reaction'] == 'up'
+    answer = next(m for m in journey.store.get_conversation(cid)['messages']
+                  if m.get('data', {}).get('_web_message_id') == run['message_id'])
+    assert answer['data']['_user_feedback']['reaction'] == 'up'
+
+
+def test_user_message_before_late_reply_still_invalidates_old_reactions(journey, monkeypatch):
+    import intelligence_hooks
+
+    journey.send()
+    cid, run = current(journey)
+    journey.process()
+    journey.store.update_message_data_by_web_message_id(cid, run['message_id'], {
+        '_human_reaction_eligible': True, 'experience_id': 42, '_intelligence_mode': 'cloud',
+    })
+    journey.store.add_message(cid, 'user', 'A later question')
+    journey.store.add_message(cid, 'assistant', 'An earlier background job finished.', data={
+        '_kind': 'continuation', '_continuation_id': 'late', '_web_message_id': 'late',
+    })
+    updates = []
+    monkeypatch.setattr(intelligence_hooks, 'update_experience_from_user_reaction',
+                        lambda *args, **kwargs: updates.append(args))
+    call(journey, 'conversation:load', {'conversation_id': cid}, sid='new')
+    assert not journey.socket.events[-1][1]['conversation'].get('reaction_message_id')
+    call(journey, 'message_reaction:submit', {
+        'conversation_id': cid, 'message_id': run['message_id'], 'reaction': 'up',
+    }, sid='new')
+    assert not updates
+    assert journey.socket.events[-1][1]['reason'] == 'not_latest_live_response'
 
 
 def test_real_socketio_reconnect_stops_a_real_bounded_worker(journey, monkeypatch):

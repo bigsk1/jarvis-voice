@@ -66,6 +66,8 @@ async def _query_jarvis_scoped(body: QueryRequest):
             transcript=body.query,
             conversation_history=conversation_history
         )
+        from lib.background_tasks.admission import reject_background_result
+        result = reject_background_result(result)
         
         return QueryResponse(
             ok=result.get('ok', True),

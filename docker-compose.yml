@@ -45,6 +45,32 @@ x-jarvis-common: &jarvis-common
     - "host.docker.internal:host-gateway"
 
 services:
+  jarvis-task-worker:
+    <<: *jarvis-common
+    command: ["task-worker"]
+    profiles: ["background-tasks"]
+    volumes:
+      - ./config:/app/config:ro
+      - ./skills/personal:/app/skills/personal
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./audio:/app/audio
+      - ./jarvis-intel:/app/jarvis-intel
+      - type: bind
+        source: ./jarvis-web/config/web_config.json
+        target: /app/jarvis-web/config/web_config.json
+        read_only: true
+        bind:
+          create_host_path: false
+    init: true
+    stop_grace_period: 20s
+    healthcheck:
+      test: ["CMD", "python", "/app/bin/jarvis-task-worker", "status"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
   jarvis-api:
     <<: *jarvis-common
     command: ["api"]

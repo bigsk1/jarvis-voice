@@ -42,6 +42,20 @@ class AuthenticatedSocketIO(SocketIO):
             if credentials and credentials.get('timer'):
                 credentials['timer'].cancel()
 
+    def background_authorized(self, sid, namespace='/', *, require_origin=True):
+        from .routes.background_tasks import allowed_origin
+        with self._credentials_lock:
+            credentials = self._credentials.get((namespace, sid), {})
+        return bool(is_auth_enabled() and credentials.get('explicit')
+                    and verify_token(credentials.get('token'))
+                    and (not require_origin or (request.headers.get('Origin') and allowed_origin())))
+
+    def emit_background(self, event, data, *, room):
+        """Recheck feature credentials at delivery, including password removal/revocation."""
+        for sid, _ in list(self.server.manager.get_participants('/', room)):
+            if self.background_authorized(sid, require_origin=False):
+                self.emit(event, data, to=sid)
+
     def _arm_expiry(self, key, credentials, expires_at):
         timer = threading.Timer(
             max(0.05, expires_at - time.time()), self._expire_connection,
@@ -94,7 +108,9 @@ class AuthenticatedSocketIO(SocketIO):
                         raise ConnectionRefusedError('Authentication required', {
                             'code': 'authentication_required',
                         })
-                    credentials = {'token': token, 'timer': None}
+                    auth = args[0] if args else None
+                    explicit = (isinstance(auth, dict) and isinstance(auth.get('token'), str)) or request.headers.get('Authorization', '').startswith('Bearer ')
+                    credentials = {'token': token, 'timer': None, 'explicit': explicit}
                     with self._credentials_lock:
                         self._credentials[key] = credentials
                     try:

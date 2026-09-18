@@ -473,3 +473,79 @@ def test_embedding_health_rejects_provider_fallbacks():
     assert "get_persistable_embedding" in script
     assert "provider_error" in script
     assert "Embedding provider unavailable" in script
+
+
+def _record_worker_commands(checkout, env):
+    log = checkout / 'worker.log'
+    env['WORKER_COMMAND_LOG'] = str(log)
+    _write_executable(checkout / 'venv/bin/python',
+                      '''#!/bin/sh
+printf "%s\\n" "$*" >> "$WORKER_COMMAND_LOG"
+[ "${WORKER_EXIT_CODE:-0}" -eq 0 ] || exit "$WORKER_EXIT_CODE"
+case "$*" in
+  *start*) printf '%s\\n' 'jarvis-task-worker started (background admission still follows Settings → Tools)' ;;
+  *stop*) printf '%s\\n' 'Stopped jarvis-task-worker' ;;
+esac
+exit 0
+''')
+    # A development environment cannot override the configured runtime.
+    _write_executable(checkout / '.venv/bin/python', '#!/bin/sh\nexit 99\n')
+    return log
+
+
+@pytest.mark.parametrize("args", [("--ui-only",), ("--no-api",), ()])
+def test_native_groups_delegate_one_worker_start_to_its_command(tmp_path, args):
+    checkout, env, log = _native_checkout(tmp_path)
+    worker_log = _record_worker_commands(checkout, env)
+    result = subprocess.run([str(checkout / "bin/start"), "--local", *args],
+                            env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert worker_log.read_text().splitlines() == [str(checkout / 'bin/jarvis-task-worker') + ' start --tmux']
+    assert '✅ jarvis-task-worker started' in result.stdout
+    launches = [line for line in log.read_text().splitlines() if 'new-session' in line]
+    assert all('jarvis-task-worker' not in line for line in launches)
+    assert any('-s jarvis-web ' in line for line in launches)
+
+
+@pytest.mark.parametrize('action,worker_action', [('task-worker', 'start'),
+    ('--stop-task-worker', 'stop'), ('--list', 'status')])
+def test_native_worker_actions_delegate_to_runtime_cli(tmp_path, action, worker_action):
+    checkout, env, _ = _native_checkout(tmp_path)
+    worker_log = _record_worker_commands(checkout, env)
+    result = subprocess.run([str(checkout / 'bin/start'), action, '--local'], env=env,
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert worker_log.read_text().splitlines() == [str(checkout / 'bin/jarvis-task-worker') + f' {worker_action} --tmux']
+    if action == 'task-worker':
+        assert '✅ jarvis-task-worker started' in result.stdout
+    elif action == '--stop-task-worker':
+        assert '✅ Stopped jarvis-task-worker' in result.stdout
+    else:
+        assert 'jarvis-task-worker' in result.stdout and 'RUNNING' in result.stdout
+
+
+@pytest.mark.parametrize('action', ['--stop', '--ui-only'])
+def test_worker_management_failure_does_not_prevent_other_services(tmp_path, action):
+    checkout, env, log = _native_checkout(tmp_path)
+    worker_log = _record_worker_commands(checkout, env)
+    env['WORKER_EXIT_CODE'] = '1'
+    env['TMUX_HAS_SESSION'] = '0' if action == '--stop' else '1'
+    result = subprocess.run([str(checkout / 'bin/start'), action, '--local'], env=env,
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert len(worker_log.read_text().splitlines()) == 1
+    assert 'kill-session -t jarvis-web' in log.read_text() if action == '--stop' else 'new-session -d -s jarvis-web' in log.read_text()
+    assert 'kill-session -t jarvis-task-worker' not in log.read_text()
+    if action == '--stop':
+        assert '✅ Stopped jarvis-task-worker' not in result.stdout
+        assert 'Task worker could not stop' in result.stdout
+    else:
+        assert '✅ jarvis-task-worker started' not in result.stdout
+        assert 'Task worker could not start' in result.stdout
+
+
+def test_dashboard_worker_controls_use_worker_entrypoint():
+    dashboard = (ROOT / 'bin/jarvis-dashboard').read_text()
+    for command in ('./bin/jarvis-task-worker start --tmux', './bin/jarvis-task-worker stop --tmux',
+                    './bin/jarvis-task-worker status', 'tmux capture-pane -t jarvis-task-worker'):
+        assert command in dashboard

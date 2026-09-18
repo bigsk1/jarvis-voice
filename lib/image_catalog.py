@@ -9,6 +9,13 @@ from pathlib import Path
 from typing import Any
 
 
+try:
+    from catalog_lock import catalog_lock
+except ImportError:
+    from lib.catalog_lock import catalog_lock
+
+
+
 def load_image_catalog(catalog_file: Path) -> dict[str, dict[str, Any]]:
     """Load an image catalog, treating missing or invalid JSON as empty."""
     if not catalog_file.exists():
@@ -25,24 +32,25 @@ def save_image_catalog(
     catalog: dict[str, dict[str, Any]],
 ) -> None:
     """Atomically persist an image catalog."""
-    catalog_file.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=catalog_file.parent,
-            prefix=f".{catalog_file.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
-            json.dump(catalog, handle, indent=2, sort_keys=True)
-            handle.write("\n")
-            temporary_path = Path(handle.name)
-        os.replace(temporary_path, catalog_file)
-    finally:
-        if temporary_path and temporary_path.exists():
-            temporary_path.unlink()
+    with catalog_lock(catalog_file):
+        catalog_file.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=catalog_file.parent,
+                prefix=f".{catalog_file.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                json.dump(catalog, handle, indent=2, sort_keys=True)
+                handle.write("\n")
+                temporary_path = Path(handle.name)
+            os.replace(temporary_path, catalog_file)
+        finally:
+            if temporary_path and temporary_path.exists():
+                temporary_path.unlink()
 
 
 def upsert_image_catalog_entry(
@@ -51,15 +59,16 @@ def upsert_image_catalog_entry(
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
     """Merge generated metadata while preserving user-managed favorite state."""
-    catalog = load_image_catalog(catalog_file)
-    existing = catalog.get(filename, {})
-    favorite = bool(existing.get("favorite", False))
-    favorited_at = existing.get("favorited_at")
+    with catalog_lock(catalog_file):
+        catalog = load_image_catalog(catalog_file)
+        existing = catalog.get(filename, {})
+        favorite = bool(existing.get("favorite", False))
+        favorited_at = existing.get("favorited_at")
 
-    updated = dict(existing)
-    updated.update({key: value for key, value in metadata.items() if value is not None})
-    updated["favorite"] = favorite
-    updated["favorited_at"] = favorited_at
-    catalog[filename] = updated
-    save_image_catalog(catalog_file, catalog)
-    return updated
+        updated = dict(existing)
+        updated.update({key: value for key, value in metadata.items() if value is not None})
+        updated["favorite"] = favorite
+        updated["favorited_at"] = favorited_at
+        catalog[filename] = updated
+        save_image_catalog(catalog_file, catalog)
+        return updated

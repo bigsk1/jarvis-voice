@@ -19,6 +19,7 @@ Configure with MUSIC_TOOL_PROVIDER and the selected provider's API key.
 
 import sys
 import json
+import uuid
 import base64
 import os
 import requests
@@ -30,6 +31,8 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / 'lib'))
 from audio_catalog import upsert_audio_catalog_entry
 from config_loader import load_config, get_config_value
+from remote_completion import (RemoteCompletionError, completion_for_error,
+                               gemini_interactions_options, submission_error, submit)
 from model_catalog import (
     get_media_catalog_providers,
     get_media_model_env_key,
@@ -216,7 +219,7 @@ def generate_music_elevenlabs(
             error_msg = error_data.get('detail', {}).get('message', response.text)
         except:
             pass
-        raise Exception(f"ElevenLabs Music API error ({response.status_code}): {error_msg}")
+        raise submission_error(response.status_code, f"ElevenLabs Music API error ({response.status_code}): {error_msg}")
     
     # Get song ID from headers if available
     song_id = response.headers.get('x-song-id')
@@ -313,22 +316,26 @@ def generate_music_gemini(
             f"{full_prompt} Target a duration of approximately "
             f"{duration_seconds} seconds, with a coherent musical ending."
         )
-    client = genai.Client(api_key=api_key)
-    interaction = client.interactions.create(
+    client = genai.Client(api_key=api_key, **(
+        {'http_options': gemini_interactions_options()}
+        if get_config_value('JARVIS_BACKGROUND_DEADLINE', '') else {}))
+    interaction = submit(client.interactions.create,
         model=model,
         input=full_prompt,
         timeout=300,
     )
 
-    status = getattr(interaction, "status", "completed")
+    status = getattr(interaction, "status", None)
     status_value = getattr(status, "value", status)
     if str(status_value).strip().lower() == "failed":
-        raise Exception("Gemini Lyria interaction failed")
+        raise RemoteCompletionError("Gemini Lyria interaction failed", "completed")
 
     audio = getattr(interaction, "output_audio", None)
     encoded_audio = getattr(audio, "data", None) if audio else None
     if not encoded_audio:
-        raise Exception("No audio generated - empty Gemini Lyria response")
+        raise (RemoteCompletionError("No audio generated - empty Gemini Lyria response", "completed")
+               if str(status_value).strip().lower() == "completed"
+               else RuntimeError("No audio generated - unconfirmed Gemini Lyria response"))
     try:
         audio_bytes = base64.b64decode(encoded_audio)
     except (TypeError, ValueError) as exc:
@@ -494,7 +501,7 @@ def generate_with_composition_plan(title: str, sections: list,
             error_msg = error_data.get('detail', {}).get('message', response.text)
         except:
             pass
-        raise Exception(f"ElevenLabs API error ({response.status_code}): {error_msg}")
+        raise submission_error(response.status_code, f"ElevenLabs API error ({response.status_code}): {error_msg}")
     
     audio_bytes = response.content
     song_id = response.headers.get('x-song-id')
@@ -529,7 +536,7 @@ def save_to_stash(music_data: dict, title: str) -> dict:
     safe_title = safe_title.replace(' ', '_').lower()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     ext = music_data.get('extension', 'mp3')
-    filename = f"music_{safe_title}_{timestamp}.{ext}"
+    filename = f"music_{safe_title}_{timestamp}_{uuid.uuid4().hex}.{ext}"
     
     # Also save to generated_music directory
     GENERATED_MUSIC_DIR.mkdir(parents=True, exist_ok=True)
@@ -620,6 +627,7 @@ def save_to_stash(music_data: dict, title: str) -> dict:
 
 
 def main():
+    provider_completed = False
     try:
         load_config()
         
@@ -669,6 +677,7 @@ def main():
                 provider=provider,
             )
         
+        provider_completed = True
         # Save to stash
         save_info = None
         if save:
@@ -764,6 +773,7 @@ def main():
     except Exception as e:
         print(json.dumps({
             "ok": False,
+            "completion": completion_for_error(e, provider_completed=provider_completed),
             "speech": f"Failed to generate music: {e}",
             "error": str(e)
         }))

@@ -95,9 +95,9 @@ function renderGallery() {
         
         return `
         <div class="image-card${favorite ? ' is-favorite' : ''}" data-index="${index}">
-            <div class="image-wrapper" onclick="openLightboxByIndex(${index})">
+            <div class="image-wrapper" title="${escapeHtml(img.name)}" onclick="openLightboxByIndex(${index})">
                 <img src="/api/gallery/images/${encodeURIComponent(img.name)}" 
-                     alt="${escapeHtml(img.name)}" 
+                     alt="${escapeHtml(formatImageName(img.name, false))}"
                      loading="lazy">
                 ${provider || model ? `
                     <div class="image-badges">
@@ -140,13 +140,14 @@ function detectProvider(name) {
     return null;
 }
 
-function formatImageName(name) {
-    // Clean up generated image names for display
-    return name
+function formatImageName(name, truncate = true) {
+    // Display only. Catalog/CDN keys and every file action keep the stored name.
+    const label = name
         .replace(/^generated_/, '')
-        .replace(/_\d{8}_\d{6}\.(jpg|jpeg|png|webp|gif)$/i, '')
-        .replace(/_/g, ' ')
-        .substring(0, 60) + (name.length > 60 ? '...' : '');
+        .replace(/_\d{8}_\d{6}(?:_[0-9a-f]{32})?(?:_(\d+))?\.(jpg|jpeg|png|webp|gif)$/i,
+            (_suffix, batch) => batch ? ` (${batch})` : '')
+        .replace(/_/g, ' ');
+    return truncate && label.length > 60 ? label.substring(0, 60) + '...' : label;
 }
 
 function formatDate(dateStr) {
@@ -391,7 +392,9 @@ function openLightbox(filename) {
     if (!filename || filename === 'null' || filename === 'undefined') return;
     currentImage = filename;
     document.getElementById('lightboxImage').src = `/api/gallery/images/${encodeURIComponent(filename)}`;
-    document.getElementById('lightboxFilename').textContent = filename;
+    const label = document.getElementById('lightboxFilename');
+    label.dataset.filename = filename;
+    label.textContent = formatImageName(filename, false);
     updateLightboxFavoriteButton(filename);
     document.getElementById('lightbox').classList.add('active');
     document.body.style.overflow = 'hidden';
@@ -479,7 +482,7 @@ async function deleteImage(filename) {
 }
 
 function deleteFromLightbox() {
-    const filename = currentImage || document.getElementById('lightboxFilename')?.textContent?.trim();
+    const filename = currentImage || document.getElementById('lightboxFilename')?.dataset.filename;
     if (filename && filename !== 'null') {
         closeLightbox();
         deleteImage(filename);
@@ -597,7 +600,7 @@ function sendImageToJarvisWebByIndex(index) {
 }
 
 function sendCurrentImageToJarvisWeb() {
-    const filename = currentImage || document.getElementById('lightboxFilename')?.textContent?.trim();
+    const filename = currentImage || document.getElementById('lightboxFilename')?.dataset.filename;
     if (!filename || filename === 'null' || filename === 'undefined') {
         showToast('Cannot send: no image selected', 'error');
         return;

@@ -145,5 +145,31 @@
       }
     },
     "setup_hint": "Set MUSIC_TOOL_PROVIDER and the matching ELEVENLABS_API_KEY or GEMINI_API_KEY in the active mode env file."
+  },
+  "execution": {
+    "background": {
+      "supported": true,
+      "adapter": "remote_skill_v1",
+      "completion_scope": "remote_work",
+      "timeout_seconds": 2100,
+      "progress_label": "Generating music",
+      "limits": {
+        "memory_bytes": 4294967296,
+        "file_bytes": 536870912,
+        "input_bytes": 536870912,
+        "output_bytes": 2097152
+      },
+      "argument_constraints": {
+        "properties": {
+          "save": {
+            "const": true
+          },
+          "prompt": {
+            "minLength": 1,
+            "maxLength": 20000
+          }
+        }
+      }
+    }
   }
 }

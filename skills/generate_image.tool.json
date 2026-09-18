@@ -125,5 +125,31 @@
       }
     },
     "setup_hint": "Configure at least one image provider API key (GEMINI_API_KEY, OPENAI_API_KEY, or XAI_API_KEY) in the active mode env file."
+  },
+  "execution": {
+    "background": {
+      "supported": true,
+      "adapter": "remote_skill_v1",
+      "completion_scope": "remote_work",
+      "timeout_seconds": 900,
+      "progress_label": "Generating image",
+      "limits": {
+        "memory_bytes": 4294967296,
+        "file_bytes": 536870912,
+        "input_bytes": 536870912,
+        "output_bytes": 2097152
+      },
+      "argument_constraints": {
+        "properties": {
+          "save": {
+            "const": true
+          },
+          "prompt": {
+            "minLength": 1,
+            "maxLength": 20000
+          }
+        }
+      }
+    }
   }
 }

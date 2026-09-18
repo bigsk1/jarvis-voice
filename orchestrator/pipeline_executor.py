@@ -20,6 +20,7 @@ from collections.abc import Callable
 from datetime import date, datetime, timedelta
 
 # Add lib to path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import (
     config_override_scope,
@@ -908,6 +909,8 @@ class PipelineExecutor:
         # Execute tool
         source_params = params.copy()
         result = self.executor.execute(tool_name, params)
+        from lib.background_tasks.admission import reject_background_result
+        result = reject_background_result(result)
         self._merge_component_usage(result, tool_name=tool_name)
         
         # Validate if needed
@@ -1123,6 +1126,8 @@ class PipelineExecutor:
             item_start_time = time.time()
             source_params = params.copy()
             result = self.executor.execute(tool_name, params)
+            from lib.background_tasks.admission import reject_background_result
+            result = reject_background_result(result)
             self._merge_component_usage(result, tool_name=tool_name)
             item_duration_ms = int((time.time() - item_start_time) * 1000)
             if isinstance(result, dict):

@@ -20,6 +20,13 @@ _STASH_FIELDS = {
 }
 
 
+try:
+    from catalog_lock import catalog_lock
+except ImportError:
+    from lib.catalog_lock import catalog_lock
+
+
+
 def load_video_catalog(catalog_file: Path) -> dict:
     """Load a catalog, treating a missing or unreadable file as empty."""
     if catalog_file.exists():
@@ -33,26 +40,27 @@ def load_video_catalog(catalog_file: Path) -> dict:
 
 def save_video_catalog(catalog_file: Path, catalog: dict) -> None:
     """Atomically persist a catalog without taking down the gallery."""
-    catalog_file.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path: Optional[Path] = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode='w',
-            encoding='utf-8',
-            dir=catalog_file.parent,
-            prefix=f'.{catalog_file.name}.',
-            suffix='.tmp',
-            delete=False,
-        ) as handle:
-            json.dump(catalog, handle, indent=2)
-            handle.write('\n')
-            temporary_path = Path(handle.name)
-        os.replace(temporary_path, catalog_file)
-    except Exception as exc:
-        print(f"⚠️  Failed to save video catalog: {exc}")
-    finally:
-        if temporary_path and temporary_path.exists():
-            temporary_path.unlink()
+    with catalog_lock(catalog_file):
+        catalog_file.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path: Optional[Path] = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode='w',
+                encoding='utf-8',
+                dir=catalog_file.parent,
+                prefix=f'.{catalog_file.name}.',
+                suffix='.tmp',
+                delete=False,
+            ) as handle:
+                json.dump(catalog, handle, indent=2)
+                handle.write('\n')
+                temporary_path = Path(handle.name)
+            os.replace(temporary_path, catalog_file)
+        except Exception as exc:
+            print(f"⚠️  Failed to save video catalog: {exc}")
+        finally:
+            if temporary_path and temporary_path.exists():
+                temporary_path.unlink()
 
 
 def upsert_video_catalog_entry(
@@ -61,12 +69,13 @@ def upsert_video_catalog_entry(
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
     """Merge durable generation metadata for a video."""
-    catalog = load_video_catalog(catalog_file)
-    updated = dict(catalog.get(filename) or {})
-    updated.update({key: value for key, value in metadata.items() if value is not None})
-    catalog[filename] = updated
-    save_video_catalog(catalog_file, catalog)
-    return updated
+    with catalog_lock(catalog_file):
+        catalog = load_video_catalog(catalog_file)
+        updated = dict(catalog.get(filename) or {})
+        updated.update({key: value for key, value in metadata.items() if value is not None})
+        catalog[filename] = updated
+        save_video_catalog(catalog_file, catalog)
+        return updated
 
 
 def _provider_from_tags(tags: list) -> Optional[str]:
@@ -178,37 +187,38 @@ def sync_video_catalog(
     now: Optional[datetime] = None,
 ) -> dict:
     """Reconcile files, canonical stash metadata, and time-sensitive fields."""
-    catalog = load_video_catalog(catalog_file)
-    changed = False
-    actual_files = {
-        path.name
-        for path in generated_videos_dir.iterdir()
-        if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
-    } if generated_videos_dir.exists() else set()
+    with catalog_lock(catalog_file):
+        catalog = load_video_catalog(catalog_file)
+        changed = False
+        actual_files = {
+            path.name
+            for path in generated_videos_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
+        } if generated_videos_dir.exists() else set()
 
-    for filename in [name for name in catalog if name not in actual_files]:
-        del catalog[filename]
-        changed = True
-
-    for filename in actual_files:
-        existing = catalog.get(filename)
-        updated = dict(existing or {})
-
-        # Retry absent or legacy partial entries so either service can repair the
-        # shared catalog after the stash metadata becomes available.
-        if existing is None or not _STASH_FIELDS.issubset(updated):
-            stash_metadata = lookup_stash_metadata(filename, stash_dir, now=now)
-            if stash_metadata:
-                updated.update(stash_metadata)
-
-        refreshed_status = _status_for_source_url(updated, now)
-        if updated.get('edit_url_status') != refreshed_status:
-            updated['edit_url_status'] = refreshed_status
-
-        if existing != updated:
-            catalog[filename] = updated
+        for filename in [name for name in catalog if name not in actual_files]:
+            del catalog[filename]
             changed = True
 
-    if changed:
-        save_video_catalog(catalog_file, catalog)
-    return catalog
+        for filename in actual_files:
+            existing = catalog.get(filename)
+            updated = dict(existing or {})
+
+            # Retry absent or legacy partial entries so either service can repair the
+            # shared catalog after the stash metadata becomes available.
+            if existing is None or not _STASH_FIELDS.issubset(updated):
+                stash_metadata = lookup_stash_metadata(filename, stash_dir, now=now)
+                if stash_metadata:
+                    updated.update(stash_metadata)
+
+            refreshed_status = _status_for_source_url(updated, now)
+            if updated.get('edit_url_status') != refreshed_status:
+                updated['edit_url_status'] = refreshed_status
+
+            if existing != updated:
+                catalog[filename] = updated
+                changed = True
+
+        if changed:
+            save_video_catalog(catalog_file, catalog)
+        return catalog

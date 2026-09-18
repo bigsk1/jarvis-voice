@@ -20,6 +20,16 @@ const document = {
 };
 function descendants(node) { return [node, ...node.children.flatMap(child => typeof child === 'object' ? descendants(child) : [])]; }
 
+test('background result cards stay in their source message and render provider content as text', () => {
+  const rendered=renderMessage(document,{role:'assistant',content:'Queued',backgroundJobs:[{
+    tool:'fixture',status:'succeeded',text:'<script>inert tool output</script>'
+  }]});
+  const nodes=descendants(rendered);
+  assert.equal(nodes.filter(node=>node.tagName==='details').length,1);
+  assert.equal(nodes.some(node=>node.tagName==='script'),false);
+  assert.match(nodes.find(node=>node.tagName==='pre').textContent,/<script>inert tool output<\/script>/);
+});
+
 test('user messages display the shared name and raster avatar while assistant identity stays Jarvis', () => {
   const profile = {display_name: 'Morgan <script>literal</script>', avatar: 'data:image/png;base64,iVBORw0KGgo='};
   const user = renderMessage(document, {role: 'user', content: 'Hello'}, profile);

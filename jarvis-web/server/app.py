@@ -13,13 +13,16 @@ WEB_ROOT = Path(__file__).parent.parent
 JARVIS_ROOT = WEB_ROOT.parent
 CLIENT_PATH = WEB_ROOT / 'client'
 
-# Add lib to path
+# Support both legacy top-level helpers and canonical lib.* packages before
+# importing routes. Script launches do not inherit pytest's repo-root path.
+sys.path.insert(0, str(JARVIS_ROOT))
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 
 from .config import load_web_config, get_web_setting, load_jarvis_config
 from .routes.api import api_bp
 from .routes.auth import auth_bp
 from .routes.library import library_bp  # noqa: E402
+from .routes.background_tasks import background_bp  # noqa: E402
 from .sockets.chat import ChatHandler
 
 # Import auth utilities
@@ -66,6 +69,7 @@ socketio = AuthenticatedSocketIO(
 app.register_blueprint(api_bp)
 app.register_blueprint(auth_bp)
 app.register_blueprint(library_bp)
+app.register_blueprint(background_bp)
 
 # Error logging → logs/web-ui/errors-YYYY-MM-DD.jsonl
 setup_error_logging(app, 'web-ui')
@@ -73,6 +77,7 @@ setup_error_logging(app, 'web-ui')
 # Initialize chat handler
 chat_handler = ChatHandler(socketio)
 app.extensions['jarvis_chat_runs'] = chat_handler.runs
+app.extensions['jarvis_background_tasks'] = chat_handler.background_tasks
 
 
 # =============================================================================
@@ -193,7 +198,7 @@ def create_app(mode: str = 'cloud'):
     # Load configs
     load_web_config()
     load_jarvis_config(mode)
-    
+    chat_handler.background_tasks.start()
     return app, socketio
 
 
@@ -210,6 +215,9 @@ def run_server(host: str = None, port: int = None, mode: str = 'cloud', debug: b
     
     # Load Jarvis config for the specified mode
     load_jarvis_config(mode)
+
+    # A second Web process sharing enabled task storage must not own a coordinator.
+    chat_handler.background_tasks.start()
     
     # Read version
     try:

@@ -46,6 +46,11 @@ class Socket:
 def journey(tmp_path, monkeypatch, request):
     import config_loader
     import orchestrator_v2
+    from lib.background_tasks import store as task_store
+
+    # All ConversationStore instances in this journey, including recovery
+    # instances, must use disposable task storage instead of the live install.
+    monkeypatch.setattr(task_store, 'default_store_path', lambda: tmp_path / 'tasks.db')
 
     monkeypatch.setenv('STASH_DIR', str(tmp_path / 'stash'))
     monkeypatch.delenv('JARVIS_OVERRIDE_STASH_DIR', raising=False)

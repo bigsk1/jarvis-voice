@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/css/variables.css">
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/glow-refinements.css">
+  <link rel="stylesheet" href="/css/background-tasks.css">
   
   <!-- Socket.IO (local vendor; CDN fallback if /vendor missing) -->
   <script src="/vendor/socket.io.min.js" onerror="this.removeAttribute('onerror');this.src='https://cdn.socket.io/4.7.2/socket.io.min.js'"></script>
@@ -105,6 +106,7 @@
         </div>
         <div class="sidebar-footer">
           <div class="sidebar-footer-actions">
+            <button class="footer-action-btn" id="backgroundTasksButton" title="Background tasks" aria-label="Background tasks" hidden>🧵</button>
             <button class="footer-action-btn" id="clearChatBtn" title="Clear current chat">🧻</button>
             <a
               href="/library"
@@ -807,6 +809,19 @@
           
           <!-- Tools Settings -->
           <div class="settings-panel" id="settings-tools">
+            <section id="backgroundSettings" class="background-settings" aria-labelledby="backgroundSettingsTitle">
+              <div class="background-settings-heading">
+                <div><h3 id="backgroundSettingsTitle">Background tasks</h3>
+                  <p class="setting-desc">Keep chatting while supported tools work. Results return to the same conversation.</p></div>
+                <button type="button" class="btn-secondary" id="backgroundManage">Manage tasks</button>
+              </div>
+              <label class="background-toggle"><span>Run enabled tools in the background</span>
+                <input type="checkbox" id="backgroundEnabled" role="switch"></label>
+              <p class="setting-desc">Applies to Web chat and tool dialogs in both modes. Changes save automatically.</p>
+              <fieldset id="backgroundChoices" aria-label="Tools enabled for background execution"></fieldset>
+              <p id="backgroundNote" class="background-settings-status" role="status">Loading background settings…</p>
+              <p class="setting-desc">Turning this off affects new work. Accepted tasks still finish.</p>
+            </section>
             <p class="setting-note">
               🚫 <strong>Blocked tools</strong> are hidden from the LLM in web mode only.<br>
               Terminal/TUI/Wake Word still have access to all tools.
@@ -1040,6 +1055,7 @@
             <label class="setting-label">Source File</label>
             <div id="convertFileName" style="font-size: var(--text-sm); color: var(--text-secondary); padding: var(--space-xs) 0;">No file selected</div>
           </div>
+          <p id="convertExecutionNote" class="convert-execution-note" role="status">Execution mode follows Settings → Tools.</p>
           <div class="setting-group">
             <label class="setting-label">Convert To</label>
             <select class="setting-input" id="convertTargetFormat">
@@ -1352,11 +1368,15 @@
   <script src="/js/structured-results.js"></script>
   <script src="/js/command-system.js"></script>
   <script src="/js/assistant-message-renderer.js"></script>
+  <script src="/js/media-result-renderer.js"></script>
+  <script src="/js/continuation-renderer.js"></script>
   <script src="/js/chat.js"></script>
   <script src="/js/proactive.js"></script>
   <script src="/js/logs.js"></script>
   <script src="/js/profile-appearance.js"></script>
   <script src="/js/talk.js"></script>
+  <script src="/js/task-manager.js"></script>
+  <script src="/js/background-tasks.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

@@ -125,6 +125,9 @@ class JarvisSocket {
     this.socket.on('chat:response', (data) => {
       this._emit('response', data);
     });
+    for (const [event, local] of [['task:updated', 'taskUpdated'], ['tasks:snapshot', 'tasksSnapshot'], ['tasks:overview', 'taskOverview'], ['chat:continuation', 'continuation']]) {
+      this.socket.on(event, data => this._emit(local, data));
+    }
 
     this.socket.on('chat:stream', (data) => {
       this._emit('stream', data);
@@ -293,6 +296,7 @@ class JarvisSocket {
     
     // Include prompt metadata if provided (workflows are handled by orchestrator via /trigger)
     if (promptMeta) {
+      if (promptMeta.tool_action) payload.tool_action = promptMeta.tool_action;
       if (promptMeta.input_mode === 'talk') payload.input_mode = 'talk';
       if (promptMeta.system_instruction) {
         payload.system_instruction = promptMeta.system_instruction;

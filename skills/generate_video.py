@@ -19,6 +19,7 @@ Configure via VIDEO_TOOL_PROVIDER in cloud.env (default: xai)
 
 import sys
 import json
+import uuid
 import time
 import base64
 import mimetypes
@@ -31,6 +32,8 @@ from datetime import datetime
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import load_config, get_config_value
+from remote_completion import (RemoteCompletionError, completion_for_error,
+                               gemini_interactions_options, submit)
 from model_catalog import get_media_model_env_key, get_media_model_metadata, resolve_media_model
 from paths import assert_not_restricted_read_path
 from video_catalog import upsert_video_catalog_entry
@@ -305,7 +308,9 @@ def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9
         from xai_sdk import Client
         
         # Create client with API key
-        client = Client(api_key=api_key)
+        background_deadline = get_config_value('JARVIS_BACKGROUND_DEADLINE', '')
+        client = Client(api_key=api_key, **({'channel_options': [('grpc.enable_retries', 0)]}
+                                          if background_deadline else {}))
         
         # Build kwargs for video generation
         kwargs = {
@@ -358,7 +363,31 @@ def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9
         
         # Generate video with automatic polling (SDK handles waiting)
         # This can take 30-120+ seconds
-        response = client.video.generate(**kwargs)
+        if background_deadline:
+            # Keep submission errors distinct from polling failures. Disable SDK
+            # resubmission: an unavailable reply may conceal accepted work.
+            from xai_sdk.proto import deferred_pb2
+            from xai_sdk.video import VideoResponse
+
+            started = submit(client.video.start, **kwargs)
+            end = min(float(background_deadline), time.time() + 600)
+            while time.time() < end:
+                observed = client.video.get(started.request_id)
+                if observed.status == deferred_pb2.DeferredStatus.DONE:
+                    if not observed.HasField('response'):
+                        raise RemoteCompletionError('Completed video has no response', 'completed')
+                    response = VideoResponse(observed.response)
+                    break
+                if observed.status == deferred_pb2.DeferredStatus.FAILED:
+                    raise RemoteCompletionError('Provider reported video generation failed', 'completed')
+                # EXPIRED is an observation expiry, not termination proof.
+                if observed.status == deferred_pb2.DeferredStatus.EXPIRED:
+                    raise RuntimeError('Video result observation expired')
+                time.sleep(min(1, max(0, end - time.time())))
+            else:
+                raise TimeoutError('Video generation observation timed out')
+        else:
+            response = client.video.generate(**kwargs)
         
         return {
             "video_url": response.url,
@@ -374,6 +403,8 @@ def generate_video_xai(prompt: str, duration: int = 5, aspect_ratio: str = "16:9
         
     except ImportError:
         raise ValueError("xai_sdk not installed. Run: pip install xai-sdk")
+    except RemoteCompletionError:
+        raise
     except Exception as e:
         raise Exception(f"xAI Video generation failed: {str(e)}")
 
@@ -446,7 +477,7 @@ def _generate_video_gemini_omni(client, model_name: str, prompt: str, duration: 
         ]
         task = "image_to_video"
 
-    interaction = client.interactions.create(
+    interaction = submit(client.interactions.create,
         model=model_name,
         input=interaction_input,
         response_format={
@@ -459,10 +490,12 @@ def _generate_video_gemini_omni(client, model_name: str, prompt: str, duration: 
     )
 
     if getattr(interaction, "status", "completed") == "failed":
-        raise Exception("Gemini Omni interaction failed")
+        raise RemoteCompletionError("Gemini Omni interaction failed", "completed")
     video_output = getattr(interaction, "output_video", None)
     if not video_output:
-        raise Exception("No video generated - empty Gemini Omni response")
+        if getattr(interaction, "status", None) == "completed":
+            raise RemoteCompletionError("No video generated - empty Gemini Omni response", "completed")
+        raise RuntimeError("No video generated - unconfirmed Gemini Omni response")
 
     return {
         "video_url": getattr(video_output, "uri", None),
@@ -510,13 +543,17 @@ def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "1
     except ImportError:
         raise ValueError("google-genai not installed. Run: pip install google-genai")
 
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(api_key=api_key, **(
+        {'http_options': gemini_interactions_options()}
+        if get_config_value('JARVIS_BACKGROUND_DEADLINE', '') else {}))
     model_metadata = get_media_model_metadata("video", "gemini", model_name) or {}
     if model_metadata.get("api") == "interactions":
         try:
             return _generate_video_gemini_omni(
                 client, model_name, prompt, duration, aspect_ratio, image_url, negative_prompt
             )
+        except RemoteCompletionError:
+            raise
         except Exception as e:
             raise Exception(f"Gemini Video generation failed: {str(e)}")
 
@@ -575,7 +612,7 @@ def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "1
             )
         
         # Start video generation (async operation)
-        operation = client.models.generate_videos(**gen_kwargs)
+        operation = submit(client.models.generate_videos, **gen_kwargs)
         
         # Poll for completion (Gemini videos can take 30-120+ seconds)
         poll_count = 0
@@ -591,7 +628,7 @@ def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "1
         
         # Get the generated video
         if not operation.response or not operation.response.generated_videos:
-            raise Exception("No video generated - empty response from Gemini")
+            raise RemoteCompletionError("No video generated - empty response from Gemini", "completed")
         
         generated_video = operation.response.generated_videos[0]
         
@@ -620,6 +657,8 @@ def generate_video_gemini(prompt: str, duration: int = 8, aspect_ratio: str = "1
             "has_audio": True  # Veo 3+ generates native audio
         }
         
+    except RemoteCompletionError:
+        raise
     except Exception as e:
         raise Exception(f"Gemini Video generation failed: {str(e)}")
 
@@ -845,6 +884,7 @@ def save_to_stash(video_path: Path, prompt: str, video_data: dict) -> dict:
 
 
 def main():
+    provider_completed = False
     try:
         load_config()
         
@@ -882,6 +922,7 @@ def main():
             model=model,
         )
         
+        provider_completed = True
         # Download and save video
         save_info = None
         if save and (result.get('video_url') or result.get('video_bytes')):
@@ -889,7 +930,7 @@ def main():
             safe_prompt = "".join(c if c.isalnum() or c in ' -_' else '' for c in prompt[:40])
             safe_prompt = safe_prompt.replace(' ', '_').lower()
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"video_{safe_prompt}_{timestamp}.mp4"
+            filename = f"video_{safe_prompt}_{timestamp}_{uuid.uuid4().hex}.mp4"
             
             # Download video (may have bytes directly from Gemini)
             video_path = download_video(
@@ -976,6 +1017,7 @@ def main():
     except Exception as e:
         print(json.dumps({
             "ok": False,
+            "completion": completion_for_error(e, provider_completed=provider_completed),
             "speech": f"Failed to generate video: {e}",
             "error": str(e)
         }))

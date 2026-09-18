@@ -19,6 +19,7 @@ from server_package_utils import load_server_package
 load_server_package("jarvis_web_test_server", PROJECT_ROOT / "jarvis-web" / "server")
 
 from jarvis_web_test_server.services.conversation_store import ConversationStore
+from lib.background_tasks import TaskStore
 
 
 def _set_conversation_state(
@@ -49,7 +50,8 @@ def _set_conversation_state(
 class ConversationStoreTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.store = ConversationStore(Path(self.temp_dir.name))
+        self.store = ConversationStore(Path(self.temp_dir.name),
+                                       background_tasks=TaskStore(Path(self.temp_dir.name) / 'tasks.db'))
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()

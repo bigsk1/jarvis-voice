@@ -1733,9 +1733,13 @@ def delete_conversation(conv_id):
     from ..services.conversation_store import get_conversation_store
     store = get_conversation_store()
     
+    from lib.background_tasks import AdmissionDenied
+
     from ..services.conversation_store import ConversationBusyError
     try:
         store.delete_conversation(conv_id)
+    except AdmissionDenied as exc:
+        return jsonify({'ok': False, 'error': str(exc), 'error_code': 'background_jobs_pending'}), 409
     except ConversationBusyError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 409
     
@@ -1830,15 +1834,20 @@ def clear_conversation(conv_id):
     from ..services.conversation_store import get_conversation_store
     store = get_conversation_store()
 
+    from lib.background_tasks import AdmissionDenied
+
     from ..services.conversation_store import ConversationBusyError
     try:
         cleared = store.clear_conversation(conv_id)
+    except AdmissionDenied as exc:
+        return jsonify({'ok': False, 'error': str(exc), 'error_code': 'background_jobs_pending'}), 409
     except ConversationBusyError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 409
     if cleared:
         return jsonify({
             'ok': True,
-            'message': 'Conversation cleared'
+            'message': 'Conversation cleared',
+            'generation': store.get_conversation(conv_id)['generation']
         })
     return jsonify({
         'ok': False,

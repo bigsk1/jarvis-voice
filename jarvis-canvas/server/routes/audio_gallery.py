@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from audio_catalog import AUDIO_EXTENSIONS, save_audio_catalog, sync_audio_catalog
+from catalog_lock import catalog_lock
 from flask import Blueprint, abort, jsonify, render_template, request, send_file
 
 from config import GENERATED_AUDIO_DIR
@@ -181,20 +182,21 @@ def download_gallery_audio(filename):
 )
 def set_gallery_audio_favorite(filename):
     """Set or clear the favorite flag for an audio item."""
-    _audio_path(filename)
-    payload = request.get_json(silent=True) or {}
-    favorite = payload.get("favorite")
-    if not isinstance(favorite, bool):
-        return jsonify({"error": "favorite must be true or false"}), 400
+    with catalog_lock(AUDIO_CATALOG_FILE):
+        _audio_path(filename)
+        payload = request.get_json(silent=True) or {}
+        favorite = payload.get("favorite")
+        if not isinstance(favorite, bool):
+            return jsonify({"error": "favorite must be true or false"}), 400
 
-    catalog = sync_audio_catalog(GENERATED_AUDIO_DIR, AUDIO_CATALOG_FILE)
-    entry = catalog.setdefault(filename, {})
-    entry["favorite"] = favorite
-    entry["favorited_at"] = datetime.now().isoformat() if favorite else None
-    save_audio_catalog(AUDIO_CATALOG_FILE, catalog)
-    return jsonify({
-        "ok": True,
-        "name": filename,
-        "favorite": favorite,
-        "favorited_at": entry["favorited_at"],
-    })
+        catalog = sync_audio_catalog(GENERATED_AUDIO_DIR, AUDIO_CATALOG_FILE)
+        entry = catalog.setdefault(filename, {})
+        entry["favorite"] = favorite
+        entry["favorited_at"] = datetime.now().isoformat() if favorite else None
+        save_audio_catalog(AUDIO_CATALOG_FILE, catalog)
+        return jsonify({
+            "ok": True,
+            "name": filename,
+            "favorite": favorite,
+            "favorited_at": entry["favorited_at"],
+        })

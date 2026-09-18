@@ -12,6 +12,7 @@ Configure via MONEYPRINTER_* settings in cloud.env / local.env
 """
 
 import json
+import uuid
 import sys
 import time
 from datetime import datetime
@@ -21,6 +22,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 from config_loader import get_config_value, load_config
+from remote_completion import RemoteCompletionError, completion_for_error, submission_error
 
 DEFAULT_VOICE = "en-CA-LiamNeural-Male"
 DEFAULT_LANGUAGE = "en-US"
@@ -89,7 +91,7 @@ def create_task(api_base: str, payload: dict) -> str:
                 print(f"[SOCIAL_CLIP] {last_error}, retry in {delay}s...", file=sys.stderr)
                 time.sleep(delay)
                 continue
-            raise RuntimeError(f"{last_error}. Try again later.")
+            raise RemoteCompletionError(f"{last_error}. Try again later.", "rejected")
 
         try:
             resp.raise_for_status()
@@ -99,7 +101,7 @@ def create_task(api_base: str, payload: dict) -> str:
                 body = resp.json()
             except Exception:
                 pass
-            raise RuntimeError(body.get("message") or str(e)) from e
+            raise submission_error(resp.status_code, body.get("message") or str(e)) from e
 
         body = resp.json()
         if body.get("status") != 200:
@@ -133,7 +135,7 @@ def poll_task(api_base: str, task_id: str) -> dict:
             return data
         if state == STATE_FAILED:
             print(f"[SOCIAL_CLIP] task {task_id} failed at progress={progress}%", file=sys.stderr)
-            raise RuntimeError(_task_failed_message(task_id, data))
+            raise RemoteCompletionError(_task_failed_message(task_id, data), "completed")
 
         time.sleep(POLL_INTERVAL_SEC)
 
@@ -225,6 +227,7 @@ def build_payload(args: dict) -> dict:
 
 
 def main():
+    provider_completed = False
     try:
         load_config()
 
@@ -247,6 +250,7 @@ def main():
         print(f"[SOCIAL_CLIP] Polling task {task_id}...", file=sys.stderr)
         result = poll_task(api_base, task_id)
 
+        provider_completed = True
         videos = result.get("videos") or []
         if not videos:
             raise RuntimeError("Task completed but no final video URL returned")
@@ -255,7 +259,7 @@ def main():
         safe_subject = "".join(c if c.isalnum() or c in " -_" else "" for c in subject[:40])
         safe_subject = safe_subject.replace(" ", "_").lower() or "clip"
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"social_{safe_subject}_{timestamp}.mp4"
+        filename = f"social_{safe_subject}_{timestamp}_{uuid.uuid4().hex}.mp4"
 
         save_info = None
         if save:
@@ -318,7 +322,7 @@ def main():
         print(json.dumps(response))
 
     except Exception as e:
-        print(json.dumps({"ok": False, "speech": f"Social clip failed: {e}", "error": str(e)}))
+        print(json.dumps({"ok": False, "completion": completion_for_error(e, provider_completed=provider_completed), "speech": f"Social clip failed: {e}", "error": str(e)}))
         sys.exit(1)
 
 

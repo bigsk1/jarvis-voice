@@ -138,7 +138,7 @@ function renderGallery() {
                 ${duration ? `<span class="video-duration">${duration}</span>` : ''}
             </div>
             <div class="video-info">
-                <div class="video-name" title="${escapeHtml(vid.name)}">${escapeHtml(formatVideoName(vid.name))}</div>
+                <div class="video-name" title="${escapeHtml(formatVideoName(vid.name, false))}">${escapeHtml(formatVideoName(vid.name))}</div>
                 <div class="video-meta">
                     <span>${formatDate(vid.modified)}</span>
                     <span>${formatSize(vid.size)}</span>
@@ -229,13 +229,13 @@ function detectProvider(name, tags = []) {
     return null;
 }
 
-function formatVideoName(name) {
-    // Clean up generated video names for display
-    return name
-        .replace(/^video_/, '')
-        .replace(/_\d{8}_\d{6}\.(mp4|webm|mov)$/i, '')
-        .replace(/_/g, ' ')
-        .substring(0, 60) + (name.length > 60 ? '...' : '');
+function formatVideoName(name, truncate = true) {
+    // Display only. Catalog keys and every file action keep the stored name.
+    const label = name
+        .replace(/^(video|social)_/, '')
+        .replace(/_\d{8}_\d{6}(?:_[0-9a-f]{32})?\.(mp4|webm|mov)$/i, '')
+        .replace(/_/g, ' ');
+    return truncate && label.length > 60 ? label.substring(0, 60) + '...' : label;
 }
 
 function formatDate(dateStr) {
@@ -299,7 +299,9 @@ function openLightbox(filename) {
     currentVideo = filename;
     const video = document.getElementById('lightboxVideo');
     video.src = `/api/gallery/videos/${encodeURIComponent(filename)}`;
-    document.getElementById('lightboxFilename').textContent = filename;
+    const label = document.getElementById('lightboxFilename');
+    label.dataset.filename = filename;
+    label.textContent = formatVideoName(filename, false);
     const selectedVideo = videos.find(vid => vid.name === filename);
     document.getElementById('lightboxShareBtn').hidden = !canShareVideo(selectedVideo);
     document.getElementById('videoLightbox').classList.add('active');
@@ -393,7 +395,7 @@ async function openVideoShareDialog(filename) {
 
     currentVideoShareFilename = filename;
     currentVideoSharePreview = null;
-    document.getElementById('videoShareFilename').textContent = filename;
+    document.getElementById('videoShareFilename').textContent = formatVideoName(filename, false);
     document.getElementById('videoSharePreview').textContent = 'Checking the retained MP4…';
     document.getElementById('videoShareConfirm').checked = false;
     document.getElementById('videoShareResult').hidden = true;
@@ -627,7 +629,7 @@ async function requestVideoDeletion(filename, revokePublicShares) {
 }
 
 function deleteFromLightbox() {
-    const filename = currentVideo || document.getElementById('lightboxFilename')?.textContent?.trim();
+    const filename = currentVideo || document.getElementById('lightboxFilename')?.dataset.filename;
     if (filename && filename !== 'null') {
         closeLightbox();
         deleteVideo(filename);

@@ -141,6 +141,14 @@ async function audio(){requests.at(-1).resolve({ok:true,arrayBuffer:async()=>new
     const pending=talk.resume();await flush();permissions.at(-1).resolve(stream());await pending;assert.equal(talk.session.phase,'listening');
   } else if(scenario==='saved_audio') {
     await start();await utterance();await transcribe();settle();await answer({audio_url:'/audio/tts/answer.mp3'});assert.equal(requests.at(-1).url,'https://jarvis.test/audio/tts/answer.mp3');await audio();contexts[0].sources[0].onended();await flush();finishTimers();assert.equal(talk.session.phase,'listening');
+  } else if(scenario==='background_result') {
+    await start();await utterance();await transcribe();
+    const before=talk.session.phase, requestCount=requests.length;
+    talk.event('task:updated',{conversation_id:'a',message_id:talk.session.messageId,state:'succeeded'});
+    talk.event('chat:continuation',{conversation_id:'a',message_id:talk.session.messageId,text:'Late result'});
+    await flush();assert.equal(talk.session.phase,before);assert.equal(requests.length,requestCount);
+    settle();await answer();await audio();contexts[0].sources[0].onended();await flush();finishTimers();
+    assert.equal(talk.session.phase,'listening');
   } else if(scenario==='duplicate') {
     await start();await utterance();await transcribe();await answer();await answer();assert.equal(requests.length,2);await audio();talk.end();assert.equal(contexts[0].sources[0].stopped,true);await answer();assert.equal(requests.length,2);
   } else if(scenario==='draft') {

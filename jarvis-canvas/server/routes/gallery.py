@@ -8,6 +8,7 @@ from urllib.parse import quote, urlsplit
 from flask import Blueprint, jsonify, request, send_file, abort, render_template, make_response
 
 from config import GENERATED_IMAGES_DIR
+from catalog_lock import catalog_lock
 from config_loader import get_config_value
 try:
     from stash_helper import get_stash_dir
@@ -91,19 +92,20 @@ def is_safe_image_filename(filename):
 
 def update_image_favorite(filename, favorite):
     """Persist favorite state in the image metadata catalog."""
-    if not is_safe_image_filename(filename):
-        return None
-    filepath = GENERATED_IMAGES_DIR / filename
-    if not filepath.exists():
-        return None
+    with catalog_lock(IMAGE_CATALOG_FILE):
+        if not is_safe_image_filename(filename):
+            return None
+        filepath = GENERATED_IMAGES_DIR / filename
+        if not filepath.exists():
+            return None
 
-    catalog = sync_image_catalog()
-    meta = dict(catalog.get(filename) or {})
-    meta['favorite'] = bool(favorite)
-    meta['favorited_at'] = datetime.now().isoformat() if favorite else None
-    catalog[filename] = meta
-    save_image_catalog(catalog)
-    return meta
+        catalog = sync_image_catalog()
+        meta = dict(catalog.get(filename) or {})
+        meta['favorite'] = bool(favorite)
+        meta['favorited_at'] = datetime.now().isoformat() if favorite else None
+        catalog[filename] = meta
+        save_image_catalog(catalog)
+        return meta
 
 
 def load_image_stash_metadata():
@@ -186,49 +188,50 @@ def sync_image_catalog():
     - Removes entries for deleted images
     - Returns the synced catalog
     """
-    catalog = load_image_catalog()
-    changed = False
+    with catalog_lock(IMAGE_CATALOG_FILE):
+        catalog = load_image_catalog()
+        changed = False
     
-    # Get actual image files
-    actual_files = set()
-    if GENERATED_IMAGES_DIR.exists():
-        for f in GENERATED_IMAGES_DIR.iterdir():
-            if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS:
-                actual_files.add(f.name)
+        # Get actual image files
+        actual_files = set()
+        if GENERATED_IMAGES_DIR.exists():
+            for f in GENERATED_IMAGES_DIR.iterdir():
+                if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS:
+                    actual_files.add(f.name)
     
-    # Remove entries for deleted images
-    deleted = [name for name in catalog if name not in actual_files]
-    for name in deleted:
-        del catalog[name]
-        changed = True
-    
-    # Add new images and repair incomplete existing entries. Build the stash
-    # index at most once so legacy rows do not cause one full scan per image.
-    stash_metadata = None
-    for filename in actual_files:
-        existing = catalog.get(filename)
-        if existing is not None and existing.get('model'):
-            continue
-
-        if stash_metadata is None:
-            stash_metadata = load_image_stash_metadata()
-        meta = stash_metadata.get(filename)
-        updated = dict(existing or {})
-        if meta:
-            for key, value in meta.items():
-                if value is not None and not updated.get(key):
-                    updated[key] = value
-
-        if existing != updated:
-            catalog[filename] = updated
+        # Remove entries for deleted images
+        deleted = [name for name in catalog if name not in actual_files]
+        for name in deleted:
+            del catalog[name]
             changed = True
-            if meta and meta.get('provider'):
-                print(f"📝 Image catalog: {filename} ({meta.get('provider')})")
     
-    if changed:
-        save_image_catalog(catalog)
+        # Add new images and repair incomplete existing entries. Build the stash
+        # index at most once so legacy rows do not cause one full scan per image.
+        stash_metadata = None
+        for filename in actual_files:
+            existing = catalog.get(filename)
+            if existing is not None and existing.get('model'):
+                continue
+
+            if stash_metadata is None:
+                stash_metadata = load_image_stash_metadata()
+            meta = stash_metadata.get(filename)
+            updated = dict(existing or {})
+            if meta:
+                for key, value in meta.items():
+                    if value is not None and not updated.get(key):
+                        updated[key] = value
+
+            if existing != updated:
+                catalog[filename] = updated
+                changed = True
+                if meta and meta.get('provider'):
+                    print(f"📝 Image catalog: {filename} ({meta.get('provider')})")
     
-    return catalog
+        if changed:
+            save_image_catalog(catalog)
+    
+        return catalog
 
 
 @gallery_bp.route('/gallery')
@@ -422,24 +425,25 @@ def set_gallery_image_favorite(filename):
 def delete_gallery_image(filename):
     """Delete an image from the gallery."""
     # Security: prevent path traversal
-    if not is_safe_image_filename(filename):
-        return jsonify({'error': 'Invalid filename'}), 400
+    with catalog_lock(IMAGE_CATALOG_FILE):
+        if not is_safe_image_filename(filename):
+            return jsonify({'error': 'Invalid filename'}), 400
     
-    filepath = GENERATED_IMAGES_DIR / filename
-    if not filepath.exists():
-        return jsonify({'error': 'Image not found'}), 404
+        filepath = GENERATED_IMAGES_DIR / filename
+        if not filepath.exists():
+            return jsonify({'error': 'Image not found'}), 404
     
-    try:
-        filepath.unlink()
-        # Remove from image catalog
-        img_catalog = load_image_catalog()
-        if filename in img_catalog:
-            del img_catalog[filename]
-            save_image_catalog(img_catalog)
-        print(f"🗑️  Deleted gallery image: {filename}")
-        return jsonify({'ok': True, 'deleted': filename})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        try:
+            filepath.unlink()
+            # Remove from image catalog
+            img_catalog = load_image_catalog()
+            if filename in img_catalog:
+                del img_catalog[filename]
+                save_image_catalog(img_catalog)
+            print(f"🗑️  Deleted gallery image: {filename}")
+            return jsonify({'ok': True, 'deleted': filename})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
 
 @gallery_bp.route('/api/gallery/images/<filename>/cdn-url')

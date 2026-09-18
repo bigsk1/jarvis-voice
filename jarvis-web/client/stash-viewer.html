@@ -312,7 +312,12 @@
         }
 
         const stashRef = `stash://${parsed.spaceId}/${parsed.fileId}`;
-        const rawUrl = `/api/stash/${encodeURIComponent(parsed.spaceId)}/${encodeURIComponent(parsed.fileId)}`;
+        const mode = new URLSearchParams(window.location.search).get('mode');
+        if (mode !== null && !['cloud', 'local'].includes(mode)) {
+          throw new Error('Invalid stash mode.');
+        }
+        const rawUrl = `/api/stash/${encodeURIComponent(parsed.spaceId)}/${encodeURIComponent(parsed.fileId)}`
+          + (mode ? `?mode=${mode}` : '');
         rawLink.href = rawUrl;
         downloadLink.href = rawUrl;
         refEl.textContent = stashRef;

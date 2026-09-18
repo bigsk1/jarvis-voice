@@ -43,7 +43,9 @@ def _transaction(method):
 class ConversationStore:
     """Manages conversation persistence"""
     
-    def __init__(self, conversations_dir: Path | None = None):
+    def __init__(self, conversations_dir: Path | None = None, *, background_tasks=None):
+        from lib.background_tasks import TaskStore
+        self.background_tasks = background_tasks if background_tasks is not None else TaskStore()
         self.conversations_dir = conversations_dir or CONVERSATIONS_DIR
         self.conversations_dir.mkdir(parents=True, exist_ok=True)
         self._index_file = self.conversations_dir / 'index.json'
@@ -66,11 +68,46 @@ class ConversationStore:
         self._conversation_path(conv_id)
         return FileLock(self.conversations_dir / f'.run-{conv_id}.lock', timeout=0, thread_local=False)
 
-    def _read_conversation(self, conv_id: str) -> dict | None:
+    def _read_background_fence(self, conv_id):
+        """Optional read recovery; admission/disposal/delivery remain fail-closed."""
+        try:
+            fence = self.background_tasks.conversation_fence(conv_id)
+            self._background_fence_error = None
+            return fence
+        except Exception as exc:
+            error_type = type(exc).__name__
+            if getattr(self, '_background_fence_error', None) != error_type:
+                logger.warning('Background fence lookup unavailable; reading chat without recovery error_type=%s',
+                               error_type)
+            self._background_fence_error = error_type
+            self.background_tasks.events.emit('fence_lookup_failed', component='web', level='ERROR',
+                                               error_type=error_type, throttle=True)
+            return None
+
+    def _read_conversation(self, conv_id: str, *, recover_fences=True) -> dict | None:
         path = self._conversation_path(conv_id)
+        fence = self._read_background_fence(conv_id)
+        if fence and fence['action'] == 'delete':
+            if recover_fences:
+                path.unlink(missing_ok=True)
+                previous = len(self._index['conversations'])
+                self._index['conversations'] = [c for c in self._index['conversations'] if c['id'] != conv_id]
+                if previous != len(self._index['conversations']):
+                    self._save_index()
+            return None
         if path.exists():
             with path.open() as stream:
-                return self._normalize_conversation_metadata(json.load(stream))
+                conversation = self._normalize_conversation_metadata(json.load(stream))
+            if fence and conversation['generation'] < fence['generation']:
+                conversation.update(generation=fence['generation'], messages=[],
+                                    title=f'Chat {datetime.now().strftime("%m/%d %H:%M")}',
+                                    updated_at=datetime.fromtimestamp(fence['created_at']).isoformat())
+                conversation.pop('run', None)
+                conversation.pop('continuation_runs', None)
+                if recover_fences:
+                    self._write_conversation(conversation)
+                    self._save_run_summary(conversation)
+            return conversation
         return None
 
     def _reconcile_run(self, conversation: dict, *, persist: bool = True) -> dict:
@@ -168,6 +205,7 @@ class ConversationStore:
     @staticmethod
     def _normalize_conversation_metadata(conversation: dict | None) -> dict:
         conversation = dict(conversation or {})
+        conversation.setdefault('generation', 0)
         conversation['pinned'] = bool(conversation.get('pinned', False))
         conversation['archived'] = bool(conversation.get('archived', False))
         conversation['pinned_at'] = conversation.get('pinned_at')
@@ -199,6 +237,9 @@ class ConversationStore:
         # A first-send receipt has a direct document address, including when the
         # index write failed. Fresh requests never need to search the archive.
         conv_id = self.request_conversation_id(request_id) if request_id else str(uuid.uuid4())[:8]
+        fence = self._read_background_fence(conv_id)
+        if fence and fence['action'] == 'delete':
+            raise ValueError('This request belonged to a deleted conversation; send a new request')
         if request_id:
             existing = self._read_conversation(conv_id)
             if existing:
@@ -211,6 +252,7 @@ class ConversationStore:
             'created_at': timestamp,
             'updated_at': timestamp,
             'messages': [],
+            'generation': fence['generation'] if fence else 0,
             'pinned': False,
             'archived': False,
             'pinned_at': None,
@@ -325,9 +367,13 @@ class ConversationStore:
         return convs[:limit]
     
     @_transaction
-    def delete_conversation(self, conv_id: str) -> bool:
+    def delete_conversation(self, conv_id: str, *, dispose_background=False) -> bool:
         """Delete a conversation"""
-        self._require_idle(self.get_conversation(conv_id))
+        conversation = self.get_conversation(conv_id)
+        self._require_idle(conversation)
+        if conversation:
+            self.background_tasks.fence_conversation(
+                conv_id, conversation['generation'], 'delete', dispose=dispose_background)
         conv_file = self._conversation_path(conv_id)
         if conv_file.exists():
             conv_file.unlink()
@@ -385,7 +431,15 @@ class ConversationStore:
                 continue
 
             conv_file = self._conversation_path(conv_id)
-            conversation = self._read_conversation(conv_id)
+            try:
+                if self.background_tasks.outstanding(conv_id):
+                    result['preserved_active'] += 1
+                    continue
+                conversation = self._read_conversation(conv_id, recover_fences=not dry_run)
+            except Exception as exc:
+                result['preserved_active'] += 1
+                result['errors'].append({'conversation_id': conv_id, 'error': str(exc)})
+                continue
             if conversation is None:
                 result['missing_files'] += 1
                 conversation = {}
@@ -439,12 +493,15 @@ class ConversationStore:
         return result
     
     @_transaction
-    def clear_conversation(self, conv_id: str) -> bool:
+    def clear_conversation(self, conv_id: str, *, dispose_background=False) -> bool:
         """Clear all messages from a conversation (keeps the conversation, resets to empty)"""
         conversation = self.get_conversation(conv_id)
         if conversation:
             self._require_idle(conversation)
+            conversation['generation'] = self.background_tasks.fence_conversation(
+                conv_id, conversation['generation'], 'clear', dispose=dispose_background)
             conversation.pop('run', None)
+            conversation.pop('continuation_runs', None)
             conversation['messages'] = []
             conversation['title'] = f'Chat {datetime.now().strftime("%m/%d %H:%M")}'
             conversation['updated_at'] = datetime.now().isoformat()
@@ -461,6 +518,91 @@ class ConversationStore:
             self._save_index()
             return True
         return False
+
+    @_transaction
+    def task_receipt_evidence(self, job):
+        """Read the source request, including after a successor became current."""
+        from lib.background_tasks import ReceiptEvidence
+        conversation = self.get_conversation(job['conversation_id'])
+        if not conversation or conversation['generation'] != job['generation']:
+            return None
+        request_id = job['admission']['request_id']
+        source = next((item for item in conversation['messages']
+                       if (item.get('data') or {}).get('_request_id') == request_id), None)
+        receipt = next((item for item in conversation['messages'] if item['role'] == 'assistant'
+                        and (item.get('data') or {}).get('_web_message_id') == request_id
+                        and any(p.get('job_id') == job['id']
+                                for p in (item.get('data') or {}).get('pending_jobs', []))), None)
+        run = (source or {}).get('data', {}).get('_run', {})
+        if not receipt or run.get('status') != 'completed':
+            return None
+        current = conversation.get('run') or {}
+        # A successor's lease is fine; the source's retained lease is not.
+        if current.get('message_id') == request_id:
+            lease = self.run_lease(conversation['id'])
+            try:
+                lease.acquire()
+            except Timeout:
+                return None
+            lease.release()
+        return ReceiptEvidence(conversation['id'], conversation['generation'], request_id,
+                               receipt['id'], 'completed', True)
+
+    @_transaction
+    def dispose_background(self, conversation_id, action, generation):
+        conversation = self.get_conversation(conversation_id)
+        if not conversation or conversation['generation'] != generation:
+            raise ValueError('Conversation generation changed; reload before disposing')
+        if action == 'clear':
+            return self.clear_conversation(conversation_id, dispose_background=True)
+        if action == 'delete':
+            return self.delete_conversation(conversation_id, dispose_background=True)
+        raise ValueError('Invalid disposition')
+
+    @_transaction
+    def project_task_card(self, job, card):
+        conversation = self.get_conversation(job['conversation_id'])
+        if not conversation or conversation['generation'] != job['generation']:
+            return False
+        for message in conversation['messages']:
+            data = message.get('data') or {}
+            if data.get('_web_message_id') != job['admission']['request_id']:
+                continue
+            cards = data.setdefault('background_jobs', {})
+            old = cards.get(job['id'], {})
+            if old.get('revision', 0) >= card['revision']:
+                return False
+            cards[job['id']] = card
+            message['data'] = data
+            self._write_conversation(conversation)
+            return True
+        return False
+
+    @_transaction
+    def project_continuation(self, job, claim):
+        conversation = self.get_conversation(job['conversation_id'])
+        if not conversation or conversation['generation'] != job['generation']:
+            raise ValueError('Continuation destination no longer exists')
+        with self.background_tasks.delivery_commit(claim) as output:
+            existing = next((m for m in conversation['messages']
+                             if (m.get('data') or {}).get('_continuation_id') == claim['id']), None)
+            if existing:
+                return existing
+            message = {
+                'id': claim['id'], 'role': 'assistant', 'content': output['text'],
+                'timestamp': datetime.now().isoformat(), 'tools_used': [],
+                'data': {**output.get('data', {}), '_web_message_id': claim['id'],
+                         '_continuation_id': claim['id'], '_kind': 'continuation',
+                         '_background_mode': job['mode'],
+                         '_run_status': 'completed', 'parent_job_id': job['id'],
+                         'parent_message_id': job['admission']['request_id'],
+                         'generation': job['generation']},
+            }
+            conversation['messages'].append(message)
+            conversation['updated_at'] = message['timestamp']
+            self._write_conversation(conversation)
+            self._save_run_summary(conversation)
+            return message
 
     @_transaction
     def update_title(self, conv_id: str, title: str) -> bool:
@@ -628,6 +770,8 @@ class ConversationStore:
             if len(conversation['messages']) == 1:
                 conversation['title'] = ' '.join(message.strip().split())[:4000] or conversation['title']
         conversation['run'] = dict(run)
+        if run.get('kind') == 'continuation':
+            conversation.setdefault('continuation_runs', {})[run['message_id']] = dict(run)
         if run.get('kind') == 'repair':
             for item in conversation['messages']:
                 if (item.get('data') or {}).get('_web_message_id') == run.get('parent_message_id'):
@@ -656,6 +800,8 @@ class ConversationStore:
             self._save_run_summary(conversation)
             return dict(run)
         run.update(patch)
+        if run.get('kind') == 'continuation':
+            conversation.setdefault('continuation_runs', {})[message_id] = dict(run)
         for item in conversation['messages']:
             if (item.get('data') or {}).get('_request_id') == message_id:
                 item['data']['_run'] = dict(run)
@@ -702,8 +848,15 @@ class ConversationStore:
     @_transaction
     def save_import(self, conversation: dict) -> None:
         """Save an imported chat without racing other conversations' index updates."""
-        self._require_idle(self.get_conversation(conversation['id']))
+        from lib.background_tasks import AdmissionDenied
+        current = self.get_conversation(conversation['id'])
+        self._require_idle(current)
+        fence = self.background_tasks.conversation_fence(conversation['id'])
+        if self.background_tasks.outstanding(conversation['id']) or (fence and fence['action'] == 'delete'):
+            raise AdmissionDenied('Import cannot overwrite a background destination or deleted conversation')
+        conversation['generation'] = (current or {}).get('generation', (fence or {}).get('generation', 0))
         conversation.pop('run', None)  # Exported work must never become executable.
+        conversation.pop('continuation_runs', None)
         for message in conversation.get('messages', []):
             data = message.get('data') or {}
             for key in ('_run', '_repair_run'):

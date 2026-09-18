@@ -10,6 +10,7 @@ from pathlib import Path
 from flask import Flask
 
 from server_package_utils import load_server_package
+from lib.background_tasks import TaskStore
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -27,7 +28,7 @@ from jarvis_web_workflow_roundtrip_test_server.services.conversation_store impor
 
 
 def _make_client(tmp_path: Path, monkeypatch):
-    store = ConversationStore(tmp_path / "conversations")
+    store = ConversationStore(tmp_path / "conversations", background_tasks=TaskStore(tmp_path / 'tasks.db'))
     monkeypatch.setattr(conversation_store, "_store", store)
     app = Flask(__name__)
     app.register_blueprint(api.api_bp)

@@ -26,6 +26,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / 'lib'))
 sys.path.insert(0, str(PROJECT_ROOT / 'skills'))
 
+from catalog_lock import catalog_lock
 from config_loader import export_config_environment, get_config_value, load_config
 from model_catalog import get_media_model_env_key, resolve_media_model
 from stash_helper import get_stash_dir
@@ -640,14 +641,15 @@ def delete_generated_video(
 
     try:
         # Delete the video file
-        filepath.unlink()
+        with catalog_lock(VIDEO_CATALOG_FILE):
+            filepath.unlink()
 
-        # Remove from catalog
-        catalog = load_video_catalog()
-        if filename in catalog:
-            del catalog[filename]
-            save_video_catalog(catalog)
+            # Remove from catalog
+            catalog = load_video_catalog()
+            if filename in catalog:
+                del catalog[filename]
+                save_video_catalog(catalog)
 
-        return DeleteResponse(ok=True, deleted=filename)
+            return DeleteResponse(ok=True, deleted=filename)
     except Exception as e:
         return DeleteResponse(ok=False, error=str(e))

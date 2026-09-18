@@ -89,6 +89,8 @@ logs/
 │   └── auth-YYYY-MM-DD.jsonl           # Login/session/token events
 ├── tools/
 │   └── tool-calls-YYYY-MM-DD.jsonl     # Tool execution args/result/timing
+├── background-tasks/
+│   └── background-tasks-YYYY-MM-DD.jsonl # Web/worker lifecycle, outcomes, delivery/errors (UTC)
 ├── tool-rag/
 │   └── tool-rag-YYYY-MM-DD.jsonl       # Tool retrieval traces
 ├── server-side-tools/
@@ -126,6 +128,14 @@ logs/
 ```
 
 Some services also write PID files under `logs/` while running.
+
+Background-task logs are visible in `/logs` after the first event. They record
+operational metadata across Web and worker, with job IDs for correlation, without
+copying prompts, tool arguments/results or credentials. Healthy heartbeats and
+idle polls are silent; recurring infrastructure errors are throttled. This folder
+uses the existing `bin/cleanup-logs` retention policy. See
+[background-task diagnostics](../background-tasks.md#persistent-diagnostics) for
+fields, example queries, isolated database paths, and future Grafana collection.
 
 ---
 

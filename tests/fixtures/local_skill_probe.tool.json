@@ -1,0 +1,37 @@
+{
+  "name": "local_skill_probe",
+  "enabled": true,
+  "description": "Report an isolated test process's settings without network access.",
+  "script": "local_skill_probe.py",
+  "execution": {
+    "background": {
+      "supported": true,
+      "adapter": "local_skill_v1",
+      "completion_scope": "process_group",
+      "timeout_seconds": 37,
+      "progress_label": "Checking local execution",
+      "limits": {
+        "memory_bytes": 268435456,
+        "file_bytes": 1048576,
+        "input_bytes": 4096,
+        "output_bytes": 2097152
+      }
+    }
+  },
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "label": {"type": "string", "pattern": "^[a-z0-9_]+$", "maxLength": 40},
+      "delay": {"type": "number", "minimum": 0, "maximum": 10},
+      "behavior": {"type": "string", "enum": ["success", "failure", "oversized_success"]}
+    },
+    "required": ["label"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "auto_approve": true,
+    "network": false,
+    "filesystem": true,
+    "bash": false
+  }
+}

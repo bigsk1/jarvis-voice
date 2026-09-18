@@ -90,7 +90,8 @@ def _run_query_task(mode: str, query: str) -> dict:
         from orchestrator_v2 import Orchestrator
 
         orch = Orchestrator(mode)
-        return orch.process(query)
+        from lib.background_tasks.admission import reject_background_result
+        return reject_background_result(orch.process(query))
 
 
 def _run_workflow_task(mode: str, workflow_id: str, query: str | None = None) -> dict:

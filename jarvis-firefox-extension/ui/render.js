@@ -88,6 +88,12 @@ export function renderMessage(document, message, profile = null) {
     article.append(attachments);
   }
   const body = element(document, 'div', 'message-body');
+  for (const job of message.backgroundJobs || []) {
+    const card = element(document, 'details', 'code-block');
+    card.append(element(document, 'summary', 'code-heading', `${job.tool} · ${job.status}`));
+    card.append(element(document, 'pre', '', job.text));
+    article.append(card);
+  }
   body.append(renderMessageContent(document, message.content));
   article.append(body);
   return article;

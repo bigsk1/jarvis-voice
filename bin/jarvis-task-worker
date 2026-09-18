@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""Worker execution and tmux/systemd management; Web imports start no worker."""
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path[:0] = [str(ROOT), str(ROOT / 'lib'), str(ROOT / 'orchestrator')]
+from lib.background_tasks.cli import main  # noqa: E402
+
+if __name__ == '__main__':
+    main()

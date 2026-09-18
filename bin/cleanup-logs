@@ -90,6 +90,7 @@ DIRS=(
     "$LOGS_DIR"
     "$LOGS_DIR/api"
     "$LOGS_DIR/services"
+    "$LOGS_DIR/background-tasks"
     "$LOGS_DIR/opencode"
     "$LOGS_DIR/tools"
     "$LOGS_DIR/thinking"

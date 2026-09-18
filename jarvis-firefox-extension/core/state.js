@@ -29,7 +29,7 @@ export function initialState(settings = {}) {
   return {
     settings: {serverUrl: '', allowInsecureLocal: false, ...settings, preferences: normalizePreferences(settings.preferences)},
     connection: {status: 'unconfigured', authRequired: false, error: null},
-    source: null, conversationId: null, conversations: [], messages: [],
+    source: null, conversationId: null, conversationGeneration: 0, backgroundJobs: [], conversations: [], messages: [],
     draft: {text: '', attachment: null, context: null, page: null, pageLink: null}, run: null, progress: [],
     mode: 'cloud', notice: null, submittedRequests: [], capabilities: {text: null, profile: false, talk: false}, profile: null,
   };
@@ -53,6 +53,7 @@ export function savedMessages(messages) {
     role: message.role === 'user' ? 'user' : 'assistant',
     content: String(message.content ?? message.text ?? '').slice(0, 80000),
     createdAt: message.timestamp || message.created_at || '',
+    backgroundJobs: Object.values(message.data?.background_jobs || {}).map(backgroundJob),
     attachments: [
       ...(message.data?.image_url || message.data?.image_urls?.length ? [{label: 'Screenshot / image'}] : []),
       ...((Array.isArray(message.data?.attachments) ? message.data.attachments : [])
@@ -61,6 +62,14 @@ export function savedMessages(messages) {
         .map(item => ({label: String(item.filename || 'Page text').slice(0, 80)}))),
     ],
   }));
+}
+
+export function backgroundJob(job) {
+  return {jobId: String(job.job_id || '').slice(0, 128), sourceMessageId: String(job.source_message_id || '').slice(0, 128),
+    tool: String(job.tool || 'Tool').slice(0, 100), status: String(job.state || 'queued').slice(0, 40),
+    revision: Number(job.revision) || 0, text: ((job.delivery_error ? `${job.delivery_error}\n` : '') +
+      String(job.result ? JSON.stringify(job.result) : job.attention_reason || job.progress?.phase ||
+        'Results will return here.')).slice(0, 2000)};
 }
 
 export function checkpointState(state) {
@@ -79,5 +88,6 @@ export function checkpointState(state) {
       })),
     })),
     progress: state.progress.slice(-20),
+    backgroundJobs: (state.backgroundJobs || []).slice(-100),
   };
 }

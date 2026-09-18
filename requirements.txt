@@ -11,6 +11,7 @@ google-genai>=2.10.0
 fastapi>=0.137.0
 uvicorn[standard]>=0.23.0
 pydantic>=2.0.0
+jsonschema>=4.23.0  # Reviewed local background skill arguments
 python-multipart>=0.0.22  # Required for form data uploads
 # Prometheus metrics
 prometheus-fastapi-instrumentator>=8.1.0

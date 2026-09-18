@@ -21,7 +21,14 @@ AUDIO_EXTENSIONS = {
     ".wav",
 }
 
-_TIMESTAMP_SUFFIX = re.compile(r"_\d{8}_\d{6}$")
+_TIMESTAMP_SUFFIX = re.compile(r"_\d{8}_\d{6}(?:_[0-9a-f]{32})?$")
+
+
+try:
+    from catalog_lock import catalog_lock
+except ImportError:
+    from lib.catalog_lock import catalog_lock
+
 
 
 def load_audio_catalog(catalog_file: Path) -> dict[str, dict[str, Any]]:
@@ -40,24 +47,25 @@ def save_audio_catalog(
     catalog: dict[str, dict[str, Any]],
 ) -> None:
     """Atomically persist an audio catalog."""
-    catalog_file.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=catalog_file.parent,
-            prefix=f".{catalog_file.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
-            json.dump(catalog, handle, indent=2, sort_keys=True)
-            handle.write("\n")
-            temporary_path = Path(handle.name)
-        os.replace(temporary_path, catalog_file)
-    finally:
-        if temporary_path and temporary_path.exists():
-            temporary_path.unlink()
+    with catalog_lock(catalog_file):
+        catalog_file.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=catalog_file.parent,
+                prefix=f".{catalog_file.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                json.dump(catalog, handle, indent=2, sort_keys=True)
+                handle.write("\n")
+                temporary_path = Path(handle.name)
+            os.replace(temporary_path, catalog_file)
+        finally:
+            if temporary_path and temporary_path.exists():
+                temporary_path.unlink()
 
 
 def display_title_from_filename(filename: str) -> str:
@@ -76,18 +84,19 @@ def upsert_audio_catalog_entry(
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
     """Merge durable metadata while preserving user-managed favorite state."""
-    catalog = load_audio_catalog(catalog_file)
-    existing = catalog.get(filename, {})
-    favorite = bool(existing.get("favorite", False))
-    favorited_at = existing.get("favorited_at")
+    with catalog_lock(catalog_file):
+        catalog = load_audio_catalog(catalog_file)
+        existing = catalog.get(filename, {})
+        favorite = bool(existing.get("favorite", False))
+        favorited_at = existing.get("favorited_at")
 
-    updated = dict(existing)
-    updated.update({key: value for key, value in metadata.items() if value is not None})
-    updated["favorite"] = favorite
-    updated["favorited_at"] = favorited_at
-    catalog[filename] = updated
-    save_audio_catalog(catalog_file, catalog)
-    return updated
+        updated = dict(existing)
+        updated.update({key: value for key, value in metadata.items() if value is not None})
+        updated["favorite"] = favorite
+        updated["favorited_at"] = favorited_at
+        catalog[filename] = updated
+        save_audio_catalog(catalog_file, catalog)
+        return updated
 
 
 def sync_audio_catalog(
@@ -95,37 +104,38 @@ def sync_audio_catalog(
     catalog_file: Path,
 ) -> dict[str, dict[str, Any]]:
     """Reconcile durable audio files with catalog entries."""
-    catalog = load_audio_catalog(catalog_file)
-    changed = False
-    actual_files = {
-        path.name: path
-        for path in generated_audio_dir.iterdir()
-        if (
-            path.is_file()
-            and not path.is_symlink()
-            and path.suffix.lower() in AUDIO_EXTENSIONS
-        )
-    } if generated_audio_dir.exists() else {}
+    with catalog_lock(catalog_file):
+        catalog = load_audio_catalog(catalog_file)
+        changed = False
+        actual_files = {
+            path.name: path
+            for path in generated_audio_dir.iterdir()
+            if (
+                path.is_file()
+                and not path.is_symlink()
+                and path.suffix.lower() in AUDIO_EXTENSIONS
+            )
+        } if generated_audio_dir.exists() else {}
 
-    for filename in [name for name in catalog if name not in actual_files]:
-        del catalog[filename]
-        changed = True
+        for filename in [name for name in catalog if name not in actual_files]:
+            del catalog[filename]
+            changed = True
 
-    for filename, path in actual_files.items():
-        if filename in catalog:
-            continue
-        stat = path.stat()
-        catalog[filename] = {
-            "title": display_title_from_filename(filename),
-            "provider": "ElevenLabs" if filename.startswith("music_") else None,
-            "format": path.suffix.lower().lstrip("."),
-            "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-            "favorite": False,
-            "favorited_at": None,
-            "tool_origin": "generate_music" if filename.startswith("music_") else None,
-        }
-        changed = True
+        for filename, path in actual_files.items():
+            if filename in catalog:
+                continue
+            stat = path.stat()
+            catalog[filename] = {
+                "title": display_title_from_filename(filename),
+                "provider": "ElevenLabs" if filename.startswith("music_") else None,
+                "format": path.suffix.lower().lstrip("."),
+                "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                "favorite": False,
+                "favorited_at": None,
+                "tool_origin": "generate_music" if filename.startswith("music_") else None,
+            }
+            changed = True
 
-    if changed:
-        save_audio_catalog(catalog_file, catalog)
-    return catalog
+        if changed:
+            save_audio_catalog(catalog_file, catalog)
+        return catalog

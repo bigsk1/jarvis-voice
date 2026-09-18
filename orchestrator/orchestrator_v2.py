@@ -13,7 +13,8 @@ from typing import Any
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-# Add lib to path
+# Support direct CLI launches from any working directory as well as Web imports.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import (
     load_config,
@@ -44,6 +45,7 @@ from workflow_availability import (
     workflow_unavailable_message,
 )
 from pipeline_executor import PipelineExecutor
+from lib.background_tasks.admission import carry_pending_jobs
 
 
 SINGLE_CALL_TOOLS = frozenset({
@@ -1159,6 +1161,8 @@ class Orchestrator:
         Uses FEEDBACK_RANDOM_ENABLED and FEEDBACK_RANDOM_CHANCE from config.
         """
         routing_provenance = result.get("routing_provenance") or {}
+        if getattr(getattr(self, 'background_context', None), 'receipts', None):
+            return result
         if (
             isinstance(routing_provenance, dict)
             and routing_provenance.get("tool_policy") == "none"
@@ -1287,6 +1291,7 @@ Mode: {self.mode}
         
         return result
     
+    @carry_pending_jobs
     def process(self, transcript: str, retry_count: int = 0, error_context: str = None,
                 conversation_history: list = None, excluded_tools: list = None,
                 tool_overrides: dict[str, dict] | None = None,
@@ -1358,7 +1363,8 @@ Mode: {self.mode}
         
         # Check for explicit workflow commands (e.g., /research, /note, /health)
         # These bypass normal LLM routing and execute a predefined pipeline
-        workflow_result = None if chat_only_mode else self._try_workflow(transcript)
+        workflow_query = extract_current_user_request(transcript) if getattr(self, 'background_context', None) else transcript
+        workflow_result = None if chat_only_mode else self._try_workflow(workflow_query)
         if workflow_result:
             return workflow_result
         
@@ -1483,7 +1489,9 @@ Mode: {self.mode}
         tools_used = retry_state.get("tools_used") or []
         accumulated_data = retry_state.get("accumulated_data") or {}
         tool_trace = retry_state.get("tool_trace") or []
-        seen_successful_tool_calls = retry_state.get("seen_successful_tool_calls") or set()
+        # Exact-duplicate tracking includes successful executions and accepted
+        # background calls. Admission is not evidence of completed tool work.
+        seen_tool_calls = retry_state.get("seen_tool_calls") or set()
         blocked_duplicate_calls = retry_state.get("blocked_duplicate_calls") or {}
         tool_call_counts = retry_state.get("tool_call_counts") or {}
         duplicate_recovery_attempts = retry_state.get("duplicate_recovery_attempts", 0)
@@ -1891,9 +1899,9 @@ Mode: {self.mode}
                     message=f"Using {tool_name}..." if turn_num == 0 else f"Turn {turn_num + 1}: using {tool_name}..."
                 )
                 
-                # Detect duplicate tool calls (same tool, similar/empty args)
+                # Detect exact repeats of successful or accepted calls in this request.
                 current_call = (tool_name, json.dumps(arguments, sort_keys=True))
-                is_exact_duplicate = current_call in seen_successful_tool_calls
+                is_exact_duplicate = current_call in seen_tool_calls
                 is_fresh_same_target_recall = self._is_fresh_same_target_recall(
                     transcript, tool_name, arguments, conversation_context
                 )
@@ -2086,7 +2094,8 @@ Mode: {self.mode}
                 tool_call_counts[tool_name] = call_index + 1
                 
                 # Emit progress: tool starting (with call_index for duplicate tracking)
-                self._emit_progress('tool_start', 
+                background_context = getattr(self, 'background_context', None)
+                self._emit_progress('tool_admitting' if background_context and tool_name in background_context.selected else 'tool_start',
                     tool=tool_name, 
                     turn=turn_num + 1, 
                     max_turns=max_turns,
@@ -2098,15 +2107,23 @@ Mode: {self.mode}
                 tool_start_time = time.time()
                 self._active_tool_call_index = call_index
                 try:
-                    result = self.executor.execute(tool_name, arguments)
+                    if background_context:
+                        result = self.executor.execute(
+                            tool_name, arguments, background_context=background_context,
+                            invocation_id=str(route.get('tool_call_id') or f'{tool_name}:{call_index}'))
+                    else:
+                        result = self.executor.execute(tool_name, arguments)
                 finally:
                     self._active_tool_call_index = None
                 tool_duration_ms = int((time.time() - tool_start_time) * 1000)
+                from lib.background_tasks.admission import is_admission
+                pending_admission = is_admission(result)
                 if tool_name == "workflow":
                     self._merge_workflow_usage(total_usage, result.get("usage"))
                 tool_trace.append({
                     "tool": tool_name,
-                    "ok": bool(result.get("ok")) if isinstance(result, dict) else False,
+                    "ok": None if pending_admission else bool(result.get("ok")) if isinstance(result, dict) else False,
+                    "result_kind": 'background_admission' if pending_admission else 'tool_result',
                     "arguments": self._sanitize_tool_trace_value(arguments),
                     "duration_ms": tool_duration_ms,
                     "error": str(result.get("error", ""))[:500] if isinstance(result, dict) and result.get("error") else None,
@@ -2125,7 +2142,7 @@ Mode: {self.mode}
                 
                 if result["ok"]:
                     # Emit progress: tool completed successfully
-                    self._emit_progress('tool_complete',
+                    self._emit_progress('tool_admitted' if pending_admission else 'tool_complete',
                         tool=tool_name,
                         duration_ms=tool_duration_ms,
                         success=True,
@@ -2133,16 +2150,18 @@ Mode: {self.mode}
                     )
                     
                     # Success - add to context and continue
-                    if sys.stdout.isatty():
+                    if sys.stdout.isatty() and not pending_admission:
                         print(f"✅ Tool succeeded ({tool_duration_ms}ms)")
                         print(f"📊 Tool result: {json.dumps(result.get('data', {}), indent=2)[:200]}...")
                     
-                    # Track tool execution
-                    tools_used.append(tool_name)
-                    seen_successful_tool_calls.add(current_call)
+                    # An accepted call must not be dispatched again, but only a
+                    # completed success counts toward tools_used and outcome learning.
+                    seen_tool_calls.add(current_call)
+                    if not pending_admission:
+                        tools_used.append(tool_name)
                     
                     # Aggregate data - handle multiple calls to same tool
-                    tool_data = result.get("data", {})
+                    tool_data = dict(result) if pending_admission else result.get("data", {})
                     if tool_name in accumulated_data:
                         # Convert to list if not already, then append
                         existing = accumulated_data[tool_name]
@@ -2245,7 +2264,7 @@ Mode: {self.mode}
                             tools_used,
                             accumulated_data,
                             conversation_context,
-                            seen_successful_tool_calls,
+                            seen_tool_calls,
                         )
                         # The derived summary was not part of the provider-native
                         # tool_result continuation. Force the next routing turn to
@@ -2369,7 +2388,7 @@ Mode: {self.mode}
                                 "conversation_context": conversation_context,
                                 "tools_used": tools_used,
                                 "accumulated_data": accumulated_data,
-                                "seen_successful_tool_calls": seen_successful_tool_calls,
+                                "seen_tool_calls": seen_tool_calls,
                                 "blocked_duplicate_calls": blocked_duplicate_calls,
                                 "tool_call_counts": tool_call_counts,
                                 "duplicate_recovery_attempts": duplicate_recovery_attempts,
@@ -3195,12 +3214,12 @@ Your synthesized response:"""
         tools_used: list,
         accumulated_data: dict,
         conversation_context: list,
-        seen_successful_tool_calls: set | None = None,
+        seen_tool_calls: set | None = None,
     ) -> None:
         """Record an automatic text_summarizer result like any other successful tool result."""
         tools_used.append("text_summarizer")
-        if seen_successful_tool_calls is not None:
-            seen_successful_tool_calls.add(("text_summarizer", json.dumps(summary_args, sort_keys=True)))
+        if seen_tool_calls is not None:
+            seen_tool_calls.add(("text_summarizer", json.dumps(summary_args, sort_keys=True)))
 
         tool_data = summary_result.get("data", {})
         if "text_summarizer" in accumulated_data:
@@ -3503,6 +3522,8 @@ Your synthesized response:"""
             workflow = self.workflow_loader.match(transcript)
             if not workflow:
                 return None
+            # Explicit workflows keep their foreground pipeline. Saved Web
+            # background preferences never flow into nested workflow steps.
 
             availability = check_workflow_registry_availability(
                 workflow,
@@ -4091,6 +4112,8 @@ Your synthesized response:"""
         Returns:
             Experience ID if recorded, -1 otherwise
         """
+        if getattr(getattr(self, 'background_context', None), 'receipts', None):
+            return -1
         if not self.learning_enabled:
             return -1
 
@@ -4178,6 +4201,9 @@ Your synthesized response:"""
                           execution_time_ms: float = None, token_info: dict = None,
                           experience_id: int | None = None):
         """Auto-log conversation to memory database with metadata."""
+        if getattr(getattr(self, 'background_context', None), 'receipts', None):
+            # The durable Web receipt is pending work, not a graded outcome.
+            return
         try:
             # Build metadata
             metadata = {
@@ -4359,6 +4385,8 @@ def main():
     
     orch = Orchestrator(mode)
     result = orch.process(transcript, excluded_tools=excluded_tools)
+    from lib.background_tasks.admission import reject_background_result
+    result = reject_background_result(result)
     
     # Collect feedback if requested
     if collect_feedback:

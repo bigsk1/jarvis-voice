@@ -6,6 +6,7 @@ Universal tool definition that works across all LLM providers.
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -264,6 +265,7 @@ class ToolSchema:
         deterministic_routing: dict[str, Any] | None = None,
         proxy_policy: str = "inherit",
         prerequisite_tools: list[str] | None = None,
+        execution: dict[str, Any] | None = None,
     ):
         """
         Initialize a tool schema.
@@ -299,6 +301,15 @@ class ToolSchema:
         }
         self.deterministic_routing = deterministic_routing or {}
         self.proxy_policy = normalize_proxy_policy(proxy_policy)
+        # Unknown/invalid execution metadata disables only background capability.
+        # It must never remove an otherwise available foreground tool.
+        background = execution.get('background') if isinstance(execution, dict) else None
+        self.background_execution = dict(background) if isinstance(background, dict) else {}
+        adapter = background.get('adapter') if isinstance(background, dict) else None
+        self.background_adapter = (
+            adapter if isinstance(adapter, str) and re.fullmatch(r'[A-Za-z0-9_.:-]{1,128}', adapter)
+            and background.get('supported') is True else None
+        )
         raw_prerequisites = prerequisite_tools if isinstance(prerequisite_tools, list) else []
         self.prerequisite_tools = list(dict.fromkeys(
             tool_name.strip()
@@ -412,6 +423,7 @@ Parameters:
             deterministic_routing=data.get("deterministic_routing", None),
             proxy_policy=data.get("proxy_policy", "inherit"),
             prerequisite_tools=data.get("prerequisite_tools", None),
+            execution=data.get('execution'),
         )
 
 

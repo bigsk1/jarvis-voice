@@ -31,6 +31,7 @@ from audio_catalog import (  # noqa: E402
     save_audio_catalog,
     sync_audio_catalog,
 )
+from catalog_lock import catalog_lock
 from config_loader import export_config_environment, get_config_value, load_config  # noqa: E402
 from generate_music import (  # noqa: E402
     DEFAULT_MUSIC_PROVIDER,
@@ -487,11 +488,12 @@ def delete_generated_music(
             _raise_audio_share_http_error(exc)
 
     try:
-        filepath.unlink()
-        catalog = load_audio_catalog(AUDIO_CATALOG_FILE)
-        if filename in catalog:
-            del catalog[filename]
-            save_audio_catalog(AUDIO_CATALOG_FILE, catalog)
+        with catalog_lock(AUDIO_CATALOG_FILE):
+            filepath.unlink()
+            catalog = load_audio_catalog(AUDIO_CATALOG_FILE)
+            if filename in catalog:
+                del catalog[filename]
+                save_audio_catalog(AUDIO_CATALOG_FILE, catalog)
     except OSError as exc:
         raise HTTPException(
             status_code=500,

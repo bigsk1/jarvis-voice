@@ -32,6 +32,8 @@ docs/n8n/workflows/*.json
 # ===== Stash (task artifacts) =====
 # Keep directory structure, ignore space contents
 data/stash/space_*/
+# Local skill scratch next to the task database; leftover after a killed child.
+data/task-workspaces/
 
 # ===== Audio Files =====
 audio/

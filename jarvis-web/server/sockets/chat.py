@@ -276,6 +276,8 @@ class ChatHandler:
     def __init__(self, socketio):
         self.socketio = socketio
         self.runs = ChatRuns(self._conversation_store, socketio.emit)
+        from ..services.background_tasks import WebBackgroundTasks
+        self.background_tasks = WebBackgroundTasks(self)
         self.sessions = {}  # session_id -> {mode, conversation_id, ...}
         self.pending_cancellations = {}  # message_id -> True (to signal orchestrator to stop)
         self._completion_records = OrderedDict()
@@ -295,6 +297,15 @@ class ChatHandler:
     def _emit_run_event(self, event, data, **kwargs):
         if hasattr(self, 'runs'):
             self.runs.event(event, data, **kwargs)
+            if event in ('chat:response', 'chat:error', 'chat:cancelled'):
+                background = getattr(self, 'background_tasks', None)
+                if background and background.ready():
+                    try:
+                        background.recover_receipts()
+                    except Exception as exc:
+                        # The foreground turn is already settled. The durable
+                        # drain retries release without sending another error.
+                        print(f'[BACKGROUND] Receipt recovery deferred: {type(exc).__name__}')
         else:
             self.socketio.emit(event, data, **kwargs)
 
@@ -329,6 +340,20 @@ class ChatHandler:
         )
         self.completion_guard_policy = policy
         return policy
+
+    def _background_review_blocked(self, record):
+        if (record.get('data') or {}).get('pending_jobs') or record.get('kind') == 'continuation':
+            return True
+        if not record.get('conversation_id') or not record.get('message_id'):
+            return False
+        try:
+            conversation = self._conversation_store().get_conversation(record['conversation_id'])
+            return any((m.get('data') or {}).get('_web_message_id') == record['message_id']
+                       and ((m.get('data') or {}).get('pending_jobs')
+                            or (m.get('data') or {}).get('_kind') == 'continuation')
+                       for m in (conversation or {}).get('messages', []))
+        except (OSError, ValueError):
+            return True
 
     @staticmethod
     def _parse_bool(value, default: bool = False) -> bool:
@@ -790,6 +815,8 @@ class ChatHandler:
     ) -> None:
         """Start deferred feedback once Completion Guard has reached a settled state."""
         if not record or not record.get('feedback_requested'):
+            return
+        if self._background_review_blocked(record):
             return
         if record.get('feedback_state') in ('running', 'complete'):
             return
@@ -1278,6 +1305,18 @@ Important:
             print(f"[REACTION] Failed to check experience {experience_id}: {e}")
             return False
 
+    @staticmethod
+    def _latest_foreground_message(conversation):
+        """Late job replies do not supersede the last user/foreground exchange."""
+        for message in reversed((conversation or {}).get('messages') or []):
+            data = message.get('data') or {}
+            if message.get('role') == 'assistant' and (
+                data.get('_kind') == 'continuation' or data.get('_continuation_id')
+            ):
+                continue
+            return message
+        return {}
+
     def _apply_message_reaction(self, session_id: str, data: dict) -> dict:
         """Validate and persist one live-response reaction without running Jarvis again."""
         message_id = str(data.get('message_id') or '').strip()
@@ -1321,8 +1360,7 @@ Important:
             print(f"[REACTION] Failed to load conversation {conversation_id}: {e}")
             return {**failure, 'reason': 'conversation_unavailable'}
 
-        messages = conversation.get('messages', []) if isinstance(conversation, dict) else []
-        latest_message = messages[-1] if messages else None
+        latest_message = self._latest_foreground_message(conversation)
         latest_data = (
             latest_message.get('data') or {}
             if isinstance(latest_message, dict)
@@ -1630,6 +1668,8 @@ Returned tool data:
     @_scoped_by_mode
     def _run_completion_guard_auto_eval(self, session_id: str, record: dict):
         """Evaluate a completed response and auto-trigger repair when the audit score is high enough."""
+        if self._background_review_blocked(record):
+            return
         message_id = record.get('message_id')
         conversation_id = record.get('conversation_id')
         config = record.get('completion_guard', {})
@@ -1760,6 +1800,8 @@ Returned tool data:
 
     def _run_completion_guard_repair(self, session_id: str, record: dict, note: str = '', *, background=False):
         """Persist repair admission before reporting repairing or starting a worker."""
+        if self._background_review_blocked(record):
+            return
         conversation_id = record.get('conversation_id')
         repair_message_id = str(uuid.uuid4())
         runs = getattr(self, 'runs', None)
@@ -2452,6 +2494,33 @@ Previous structured data:
     
     def _register_handlers(self):
         """Register all socket event handlers"""
+
+        @self.socketio.on('tasks:watch')
+        def handle_task_watch(data):
+            if not getattr(self.socketio, 'background_authorized', lambda sid: False)(request.sid):
+                emit('tasks:error', {'error': 'Authenticated Web operator access is required'})
+                return
+            join_room('tasks:installation')
+            emit('tasks:overview', self.background_tasks.store.counts())
+
+        @self.socketio.on('tasks:subscribe')
+        def handle_task_subscribe(data):
+            if not getattr(self.socketio, 'background_authorized', lambda *args, **kwargs: False)(request.sid, require_origin=False):
+                emit('tasks:error', {'error': 'Configured Web operator authentication is required'})
+                return
+            conversation_id = (data or {}).get('conversation_id')
+            try:
+                conversation = self._conversation_store().get_conversation(conversation_id)
+                if not conversation:
+                    raise ValueError('Conversation not found')
+                join_room(f'tasks:{conversation_id}')
+                emit('tasks:snapshot', {
+                    'conversation_id': conversation_id, 'generation': conversation['generation'],
+                    'jobs': [self.background_tasks.card(job) for job in
+                             self.background_tasks.store.conversation_jobs(conversation_id)],
+                })
+            except (OSError, ValueError) as exc:
+                emit('tasks:error', {'error': str(exc)})
         
         @self.socketio.on('connect')
         def handle_connect(auth=None):
@@ -2733,6 +2802,39 @@ Previous structured data:
                     user_msg_data['tool_rag_limit'] = prompt_meta['tool_rag_limit']
                 if prompt_meta.get('tool_policy') == 'none':
                     user_msg_data['tool_policy'] = 'none'
+                # Policy comes from saved operator settings, never the client/model.
+                selected_background = []
+                if (prompt_meta.get('tool_policy') != 'none'
+                        and prompt_meta.get('input_mode') != 'talk'
+                        and getattr(self.socketio, 'background_authorized', lambda sid: False)(session_id)):
+                    selected_background = self.background_tasks.preferences()
+                if selected_background:
+                    self.background_tasks.start()
+                    user_msg_data['background_tools'] = list(selected_background)
+                    prompt_meta['background_tools'] = list(selected_background)
+                # Explicit button intent is data, never a permission grant. It
+                # only bypasses routing for a saved, authenticated Web selection.
+                action = data.get('tool_action')
+                if (isinstance(action, dict) and action.get('tool') in selected_background
+                        and not image_data and not attachments and not file_context):
+                    from lib.background_tasks.models import MAX_ARGUMENT_BYTES, canonical_json
+                    try:
+                        action = {'tool': action['tool'], 'arguments': action['arguments']}
+                        canonical_json(action, MAX_ARGUMENT_BYTES)
+                        if not isinstance(action['arguments'], dict):
+                            raise ValueError('Tool arguments must be an object')
+                    except (KeyError, ValueError, TypeError) as exc:
+                        emit('chat:rejected', {'message_id': message_id, 'conversation_id': conversation_id,
+                                               'error': str(exc), 'retryable': False})
+                        return
+                    user_msg_data['tool_action'] = action
+                    prompt_meta['tool_action'] = action
+                previous = next((item for item in (store.get_conversation(conversation_id) or {}).get('messages', [])
+                                 if (item.get('data') or {}).get('_request_id') == message_id), None)
+                if previous and (previous.get('data') or {}).get('tool_action') != user_msg_data.get('tool_action'):
+                    emit('chat:rejected', {'message_id': message_id, 'conversation_id': conversation_id,
+                                           'error': 'Request identity already belongs to different work', 'retryable': False})
+                    return
                 try:
                     with self.runs.conversation_lock(conversation_id):
                         claimed = self.runs.claim(conversation_id, message_id, mode,
@@ -3048,7 +3150,7 @@ Previous structured data:
                         }
                     if guards:
                         conversation['completion_guards'] = guards
-                    latest = (conversation.get('messages') or [{}])[-1]
+                    latest = self._latest_foreground_message(conversation)
                     latest_data = latest.get('data') or {}
                     latest_id = latest_data.get('_web_message_id')
                     live_record = next((record for record in self._completion_records.values()
@@ -3676,6 +3778,10 @@ Previous structured data:
                 raise _AttachmentPreparationCancelled()
 
         prompt_meta = prompt_meta or {}
+        if prompt_meta.get('tool_action'):
+            self.background_tasks.submit_explicit(session_id, conversation_id, message_id, mode,
+                                                   message, prompt_meta['tool_action'])
+            return
         request_feedback = self._sanitize_feedback_request(
             request_feedback,
             prompt_meta.get('tool_policy', 'auto'),
@@ -4118,6 +4224,10 @@ Previous structured data:
             # Set web conversation ID for tracking in conversation metadata
             # This allows searching/filtering conversations by web chat session
             orchestrator.set_web_conversation_id(conversation_id)
+            if prompt_meta.get('background_tools'):
+                orchestrator.background_context = self.background_tasks.authorize(
+                    conversation_id, message_id, mode, prompt_meta['background_tools'],
+                    effective_provider, effective_model, original_user_message, orchestrator.registry)
             
             # Set up progress callback for real-time tool execution events
             # Check if progress events are enabled (default: True)
@@ -4231,6 +4341,17 @@ Previous structured data:
                         request_kind=prompt_meta.get('request_kind', ''),
                     )
                 )
+            if prompt_meta.get('background_tools'):
+                context_blocks.append(
+                    'Saved Web settings enable background execution for these tools when needed: '
+                    + ', '.join(prompt_meta['background_tools'])
+                    + '. This is permission, not evidence of any pending job. A new acceptance '
+                    'receipt confirms admission, not completion. Finish independent work; do not '
+                    'repeat an accepted call or depend on its unfinished result. Its result will '
+                    'arrive separately.')
+            task_context = self.background_tasks.conversation_context(conversation_id, mode)
+            if task_context:
+                context_blocks.append(task_context)
             if context_blocks:
                 enhanced_message = "\n\n".join(context_blocks) + f"\n\nUser's request: {message}"
             
@@ -4288,6 +4409,17 @@ Previous structured data:
                 result['data']['attachment_errors'] = attachment_errors
             
             was_cancelled = result.get('cancelled', False)
+            from lib.background_tasks.admission import WebTaskContext, reject_background_result
+            task_context = getattr(orchestrator, 'background_context', None)
+            if isinstance(task_context, WebTaskContext):
+                pending_jobs = list(task_context.receipts.values())
+                result['pending_jobs'] = pending_jobs
+            else:
+                result = reject_background_result(result)
+                pending_jobs = []
+            if pending_jobs:
+                request_feedback = False
+                result.pop('feedback', None)
             print(f"[CHAT] Got result: ok={result.get('ok')}, tools={result.get('tools_used', [])}, cancelled={was_cancelled}")
             
             duration_ms = int((time.time() - start_time) * 1000)
@@ -4397,6 +4529,7 @@ Previous structured data:
             )
             human_reaction_eligible = bool(
                 result.get('ok', True)
+                and not pending_jobs
                 and self._is_user_reaction_eligible(
                     result.get('experience_id'),
                     mode,
@@ -4413,6 +4546,12 @@ Previous structured data:
                 )
                 # Include raw_llm_response and vision_analysis in saved data for "expand details"
                 save_data = data.copy() if data else {}
+                if pending_jobs:
+                    save_data['pending_jobs'] = pending_jobs
+                    save_data['background_jobs'] = {
+                        receipt['job_id']: self.background_tasks.card(
+                            self.background_tasks.store.get(receipt['job_id']))
+                        for receipt in pending_jobs}
                 # Workflow results store tool output in data.results (array); client expects
                 # tool-name-keyed map when loading from history. Populate flat map for workflows.
                 if is_workflow:
@@ -4513,6 +4652,9 @@ Previous structured data:
             # Emit final response
             # Include raw_llm_response and vision_analysis in data for "expand details" feature
             response_data = data.copy() if data else {}
+            if pending_jobs:
+                response_data['pending_jobs'] = pending_jobs
+                response_data['background_jobs'] = save_data['background_jobs']
             raw_response = result.get('raw_llm_response', '')
             if raw_response:
                 response_data['raw_llm_response'] = raw_response
@@ -4533,14 +4675,14 @@ Previous structured data:
             if result.get('tool_trace'):
                 response_data['_tool_trace'] = result['tool_trace']
 
-            completion_guard_prompt = (not is_workflow) and self._should_prompt_completion_guard(completion_guard_config, tools_used)
+            completion_guard_prompt = (not pending_jobs) and (not is_workflow) and self._should_prompt_completion_guard(completion_guard_config, tools_used)
             completion_guard_expires_in_ms = (
                 int(completion_guard_config.get('manual_prompt_ttl_seconds', 0) * 1000)
                 if completion_guard_prompt and completion_guard_config.get('manual_prompt_ttl_seconds', 0) > 0
                 else None
             )
             completion_guard_auto_eval = (
-                (not is_workflow)
+                (not pending_jobs) and (not is_workflow)
                 and result.get('ok', True)
                 and self._should_auto_evaluate_completion_guard(completion_guard_config, tools_used)
             )
@@ -4709,6 +4851,11 @@ Previous structured data:
                                  model_override: str | None = None,
                                  completion_guard_context: dict | None = None):
         """Collect feedback asynchronously after main response is sent"""
+        from lib.background_tasks.admission import contains_admission
+        if contains_admission(result) or self._background_review_blocked({
+            'conversation_id': conversation_id, 'message_id': source_message_id,
+        }):
+            return
         import time as time_module
         start_time = time_module.time()
         delivery_room = self._delivery_room(session_id, conversation_id)

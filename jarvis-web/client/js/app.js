@@ -69,6 +69,7 @@ class JarvisApp {
     this.profileAppearance = window.ProfileAppearance ? new window.ProfileAppearance() : null;
     this.talk = window.TalkController ? new window.TalkController({ app: this, chat: this.chat, socket: this.socket }) : null;
     this._setupSocketListeners();
+    this.backgroundTasks = window.BackgroundTasks ? new window.BackgroundTasks(this) : null;
     this._setupHudLogo();
     this._setupUIListeners();
     this._restoreState();
@@ -396,6 +397,9 @@ class JarvisApp {
       this.settingsModal.classList.add('active');
       this.profileAppearance?.load();
       this._loadSettings();
+      if (document.getElementById('settings-tools')?.classList.contains('active')) {
+        void this.backgroundTasks?.refresh();
+      }
       if (document.getElementById('settings-profile')?.classList.contains('active')) {
         this._loadTailscaleStatus();
       }
@@ -434,6 +438,7 @@ class JarvisApp {
         // Load tools tab content
         if (tabName === 'tools') {
           this._loadBlockedTools();
+          void this.backgroundTasks?.refresh();
         }
         // SerpApi's Account API is called only when the System tab is opened.
         if (tabName === 'system') {
@@ -4134,7 +4139,12 @@ class JarvisApp {
       try {
         const response = await fetch(`/api/conversations/${convId}/clear`, { method: 'POST' });
         const data = await response.json();
+        if (data.error_code === 'background_jobs_pending') {
+          data.ok = await this.backgroundTasks?.dispose(convId, 'clear');
+          if (!data.ok) return;
+        }
         if (data.ok) {
+          if (Number.isInteger(data.generation)) this.backgroundTasks?.generations.set(convId, data.generation);
           this.chat.clearChat();
           this._loadConversationHistory();
           Utils.toast('Chat cleared', 'info');
@@ -4228,6 +4238,10 @@ class JarvisApp {
         method: 'DELETE'
       });
       const data = await response.json();
+      if (data.error_code === 'background_jobs_pending') {
+        data.ok = await this.backgroundTasks?.dispose(convId, 'delete');
+        if (!data.ok) return;
+      }
       
       if (data.ok) {
         // If we deleted the current conversation, clear the chat
@@ -4249,6 +4263,10 @@ class JarvisApp {
    */
   async _displayLoadedConversation(conversation, { reconcile = false } = {}) {
     if (!conversation) return;
+    if ((this.backgroundTasks?.generations.get(conversation.id) ?? -1) > (conversation.generation || 0)) {
+      this.chat.setConversationLoading(false);
+      return;
+    }
     if (this._requestedConversationId !== undefined && this._requestedConversationId !== conversation.id) {
       // Ignore an older load completed after another selection or New chat.
       this.socket.conversationId = this._displayedConversationId || null;
@@ -4319,6 +4337,14 @@ class JarvisApp {
     let tokenMode = null;
     let tokenBillingMode = null;
     
+    // Older continuations predate the saved execution mode. Their receipt card
+    // retains it, so reopening after a mode switch still loads the right stash.
+    const backgroundModes = new Map();
+    for (const message of conversation.messages || []) {
+      for (const job of Object.values(message.data?.background_jobs || {})) {
+        if (['cloud', 'local'].includes(job.mode)) backgroundModes.set(job.job_id, job.mode);
+      }
+    }
     // Add each message
     for (const msg of conversation.messages || []) {
       const identity = msg.data?._request_id || msg.data?._web_message_id || msg.id;
@@ -4353,12 +4379,19 @@ class JarvisApp {
         if (!exists) this.chat.addAssistantMessage(
           msg.content || '',
           msg.tools_used || [],
-          { ...(msg.data || {}), completion_guard: conversation.completion_guards?.[msg.data?._web_message_id] },
-          { allowReaction: identity === conversation.reaction_message_id }
+          { ...(msg.data || {}),
+            _background_mode: msg.data?._background_mode || backgroundModes.get(msg.data?.parent_job_id),
+            completion_guard: conversation.completion_guards?.[msg.data?._web_message_id] },
+          { allowReaction: identity === conversation.reaction_message_id, late: msg.data?._kind === 'continuation' }
         );
         if (exists && msg.data?._completion_guard?.status
             && !['none', 'pending', 'repair_response'].includes(msg.data._completion_guard.status)) {
           this.chat._updateCompletionGuardCard({ message_id: identity, ...msg.data._completion_guard });
+        }
+        if (exists && msg.data?.background_jobs) {
+          const element = Array.from(this.chat.messagesContainer.querySelectorAll('.message.assistant'))
+            .find(item => item.dataset.messageId === identity);
+          if (element) this.backgroundTasks?.renderCards(element, msg.data.background_jobs);
         }
         if (exists && msg.data?._user_feedback) {
           this.chat._updateMessageReactionActions({message_id: identity, ...msg.data._user_feedback, restored: true});

@@ -168,6 +168,10 @@ if [ "$JARVIS_MODE" = "local" ]; then
 fi
 
 case "${1:-web}" in
+  task-worker)
+    # Separately supervised; no Tool RAG sync or unrelated daemon startup.
+    exec ./bin/jarvis-task-worker run
+    ;;
   api)
     run_init
     exec ./bin/jarvis-api "${mode_args[@]}"

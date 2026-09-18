@@ -16,9 +16,11 @@ Supported conversions:
 import sys
 import os
 import json
+import math
 import subprocess
 import shutil
 import tempfile
+import time
 from pathlib import Path
 
 # Add lib to path
@@ -35,6 +37,17 @@ AUDIO_FORMATS = {'mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a', 'wma', 'opus'}
 
 # Tool availability cache
 _tool_cache = {}
+
+
+def conversion_timeout(foreground_seconds: float) -> float:
+    """Only the trusted background executor supplies this absolute deadline."""
+    deadline = os.environ.get('JARVIS_BACKGROUND_DEADLINE')
+    if not deadline:
+        return foreground_seconds
+    remaining = float(deadline) - time.time()
+    if not math.isfinite(remaining) or remaining <= 0:
+        raise TimeoutError('Background conversion deadline expired before subprocess launch')
+    return remaining
 
 
 def check_tool(tool_name: str) -> bool:
@@ -117,7 +130,7 @@ def convert_image_to_image(input_path: str, output_path: str, options: dict = No
     
     cmd.append(output_path)
     
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=conversion_timeout(120))
     if result.returncode != 0:
         raise RuntimeError(f"ImageMagick failed: {result.stderr}")
     
@@ -147,7 +160,7 @@ def convert_raster_to_svg(input_path: str, output_path: str, options: dict = Non
             '-threshold', threshold,
             tmp_pgm
         ]
-        result = subprocess.run(convert_cmd, capture_output=True, text=True, timeout=60)
+        result = subprocess.run(convert_cmd, capture_output=True, text=True, timeout=conversion_timeout(60))
         if result.returncode != 0:
             raise RuntimeError(f"Pre-processing failed: {result.stderr}")
         
@@ -162,7 +175,7 @@ def convert_raster_to_svg(input_path: str, output_path: str, options: dict = Non
         if 'opttolerance' in options:  # Curve optimization tolerance
             potrace_cmd.extend(['-O', str(options['opttolerance'])])
         
-        result = subprocess.run(potrace_cmd, capture_output=True, text=True, timeout=120)
+        result = subprocess.run(potrace_cmd, capture_output=True, text=True, timeout=conversion_timeout(120))
         if result.returncode != 0:
             raise RuntimeError(f"Potrace failed: {result.stderr}")
         
@@ -205,7 +218,7 @@ def convert_video(input_path: str, output_path: str, options: dict = None) -> di
     
     cmd.append(output_path)
     
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=conversion_timeout(600))
     if result.returncode != 0:
         raise RuntimeError(f"FFmpeg failed: {result.stderr}")
     
@@ -247,7 +260,7 @@ def convert_audio(input_path: str, output_path: str, options: dict = None) -> di
     
     cmd.append(output_path)
     
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=conversion_timeout(300))
     if result.returncode != 0:
         raise RuntimeError(f"FFmpeg failed: {result.stderr}")
     
@@ -277,7 +290,7 @@ def extract_audio_from_video(input_path: str, output_path: str, options: dict = 
     
     cmd.append(output_path)
     
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=conversion_timeout(300))
     if result.returncode != 0:
         raise RuntimeError(f"FFmpeg failed: {result.stderr}")
     
@@ -297,7 +310,7 @@ def get_media_info(input_path: str) -> dict:
     ]
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=conversion_timeout(30))
         if result.returncode == 0:
             return json.loads(result.stdout)
     except:
@@ -332,6 +345,9 @@ def main():
         
         # Resolve source to local file
         input_path, source_meta = resolve_source(source)
+        background_limit = os.environ.get('JARVIS_BACKGROUND_MAX_INPUT_BYTES')
+        if background_limit and os.path.getsize(input_path) > int(background_limit):
+            raise ValueError('Source exceeds the background conversion size limit')
         source_format = get_format(input_path)
         
         # Determine conversion type

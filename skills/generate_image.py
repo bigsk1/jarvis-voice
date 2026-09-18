@@ -22,6 +22,7 @@ Configure via IMAGE_TOOL_PROVIDER in cloud.env (default: gemini)
 import base64
 import io
 import json
+import uuid
 import math
 import mimetypes
 import sys
@@ -34,6 +35,7 @@ from PIL import Image
 # Add lib to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'lib'))
 from config_loader import get_config_value, load_config
+from remote_completion import RemoteCompletionError, completion_for_error, submission_error
 from image_catalog import upsert_image_catalog_entry
 from model_catalog import get_media_model_env_key, get_media_model_metadata, resolve_media_model
 from paths import assert_not_restricted_read_path
@@ -444,14 +446,14 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
             error_msg = error_data.get('error', {}).get('message', response.text)
         except (TypeError, ValueError):
             pass
-        raise Exception(f"xAI API error ({response.status_code}): {error_msg}")
+        raise submission_error(response.status_code, f"xAI API error ({response.status_code}): {error_msg}")
     
     result = response.json()
     
     # Extract images from response
     data = result.get('data', [])
     if not data:
-        raise Exception("No image generated - empty response from xAI")
+        raise RuntimeError("No image generated - unconfirmed response from xAI")
     
     # Handle both URL and base64 responses
     images = []
@@ -470,7 +472,9 @@ def generate_image_xai(prompt: str, aspect_ratio: str = "square", style: str = N
                 print(f"Warning: Failed to download image from URL: {e}", file=sys.stderr)
     
     if not images:
-        raise Exception("No image data in response")
+        if any(item.get('url') for item in data):
+            raise RemoteCompletionError("Generated image could not be downloaded", "completed")
+        raise RuntimeError("No image data in response")
 
     delivered = _inspect_generated_image(images[0])
     
@@ -569,11 +573,15 @@ def generate_image_gemini(prompt: str, aspect_ratio: str = "square", image_size:
                 config=types.GenerateContentConfig(**config_kwargs),
             )
     except errors.APIError as exc:
-        raise Exception(f"Gemini API error ({exc.code}): {exc.message or str(exc)}") from exc
+        raise submission_error(exc.code, f"Gemini API error ({exc.code}): {exc.message or str(exc)}") from exc
 
     candidates = response.candidates or []
     if not candidates:
-        raise Exception("No image generated - empty response from Gemini")
+        reason = getattr(getattr(response, 'prompt_feedback', None), 'block_reason', None)
+        reason = getattr(reason, 'value', reason)
+        if reason and reason != 'BLOCK_REASON_UNSPECIFIED':
+            raise RemoteCompletionError(f"Gemini blocked image generation: {reason}", "completed")
+        raise RuntimeError("No image generated - unconfirmed response from Gemini")
 
     candidate = candidates[0]
     response_parts = candidate.content.parts if candidate.content and candidate.content.parts else []
@@ -608,9 +616,12 @@ def generate_image_gemini(prompt: str, aspect_ratio: str = "square", image_size:
         }
 
     if not image_bytes:
-        if text_response:
-            raise Exception(f"No image generated. Gemini says: {text_response}")
-        raise Exception("No image data in response")
+        message = f"No image generated. Gemini says: {text_response}" if text_response else "No image data in response"
+        reason = getattr(candidate, 'finish_reason', None)
+        reason = getattr(reason, 'value', reason)
+        if reason and reason != 'FINISH_REASON_UNSPECIFIED':
+            raise RemoteCompletionError(message, "completed")
+        raise RuntimeError(message)
 
     return {
         "image_base64": base64.b64encode(image_bytes).decode("ascii"),
@@ -765,18 +776,18 @@ def generate_image_openai(prompt: str, aspect_ratio: str = "square", quality: st
             error_msg = error_data.get('error', {}).get('message', response.text)
         except (TypeError, ValueError):
             pass
-        raise Exception(f"OpenAI API error ({response.status_code}): {error_msg}")
+        raise submission_error(response.status_code, f"OpenAI API error ({response.status_code}): {error_msg}")
     
     result = response.json()
     
     # Extract image from response (same format for both endpoints)
     data = result.get('data', [])
     if not data:
-        raise Exception("No image generated - empty response from OpenAI")
+        raise RuntimeError("No image generated - unconfirmed response from OpenAI")
     
     image_b64 = data[0].get('b64_json')
     if not image_b64:
-        raise Exception("No image data in response")
+        raise RuntimeError("No image data in response")
     
     # Determine mime type
     mime_map = {"png": "image/png", "jpeg": "image/jpeg", "webp": "image/webp"}
@@ -897,7 +908,7 @@ def save_to_stash(image_data: dict, prompt: str) -> dict:
     # Determine extension from mime type
     mime = image_data.get('mime_type', 'image/png')
     ext = _extension_for_image_mime(mime)
-    filename = f"generated_{safe_prompt}_{timestamp}.{ext}"
+    filename = f"generated_{safe_prompt}_{timestamp}_{uuid.uuid4().hex}.{ext}"
     
     # Decode image
     image_bytes = base64.b64decode(image_data['image_base64'])
@@ -1026,7 +1037,7 @@ def save_additional_images(
         delivered = _inspect_generated_image(img_b64)
         mime = delivered["mime_type"]
         ext = _extension_for_image_mime(mime)
-        filename = f"generated_{safe_prompt}_{timestamp}_{i}.{ext}"
+        filename = f"generated_{safe_prompt}_{timestamp}_{uuid.uuid4().hex}_{i}.{ext}"
         image_bytes = base64.b64decode(img_b64)
         
         # Save to generated_images
@@ -1094,6 +1105,7 @@ def save_additional_images(
 
 
 def main():
+    provider_completed = False
     try:
         load_config()
         
@@ -1145,6 +1157,7 @@ def main():
             reference_image=reference_image
         )
         
+        provider_completed = True
         # Save to stash if requested
         save_info = None
         if save:
@@ -1255,6 +1268,7 @@ def main():
     except Exception as e:
         print(json.dumps({
             "ok": False,
+            "completion": completion_for_error(e, provider_completed=provider_completed),
             "speech": f"Failed to generate image: {e}",
             "error": str(e)
         }))

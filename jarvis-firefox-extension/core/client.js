@@ -1,5 +1,5 @@
 import {normalizeServerUrl, originPermission, assertCapabilities, pageTextSupported} from './connection.js';
-import {initialState, checkpointState, savedMessages, publicRun, ACTIVE_STATUSES, normalizePreferences, submittedRequests, mergeImageStageText} from './state.js';
+import {initialState, checkpointState, savedMessages, publicRun, ACTIVE_STATUSES, normalizePreferences, submittedRequests, mergeImageStageText, backgroundJob} from './state.js';
 import {JarvisTransport} from './transport.js';
 import {normalizeProfile} from './profile.js';
 import {normalizePageLink, pageLinkToolHints, defaultPageLinkPrompt} from './page-link.js';
@@ -260,7 +260,8 @@ export class JarvisClient {
     const names = ['connected', 'disconnect', 'connect_error', 'auth:expired', 'auth:error', 'auth:required',
       'conversation:created', 'conversation:loaded', 'chat:thinking', 'chat:run', 'chat:status',
       'chat:response', 'chat:error', 'chat:cancelled', 'chat:rejected', 'chat:resume_missing',
-      'tool:start', 'tool:progress', 'tool:complete', 'tool:error', 'cancel:ack', 'mode:changed', 'mode:rejected', 'profile:changed'];
+      'tool:start', 'tool:progress', 'tool:complete', 'tool:error', 'cancel:ack', 'mode:changed', 'mode:rejected', 'profile:changed',
+      'task:updated', 'tasks:snapshot', 'chat:continuation'];
     transport.open(Object.fromEntries(names.map(event => [event, handle(event)])));
   }
 
@@ -365,12 +366,17 @@ export class JarvisClient {
     } else if (event === 'conversation:created') {
       if (!this.pendingRequestId || this.state.conversationId) return;
       this.state.conversationId = data.conversation_id;
+      this.state.conversationGeneration = 0;
+      this.state.backgroundJobs = [];
+      if (this.token) this.transport?.emit('tasks:subscribe', {conversation_id: data.conversation_id});
       if (this.state.run) this.state.run.conversationId = data.conversation_id;
       this.updateSubmittedRequest(this.pendingRequestId, {conversationId: data.conversation_id});
     } else if (event === 'conversation:loaded') {
       const conversation = data.conversation;
       if (!conversation?.id || !this.pendingRequestId && !this.restoringConversation ||
           this.restoringConversation && this.restoringConversation !== conversation.id) return;
+      if (conversation.id === this.state.conversationId &&
+          (conversation.generation || 0) < (this.state.conversationGeneration || 0)) return;
       const confirmed = !this.pendingRequestId || (conversation.messages || []).some(message =>
         message.data?._request_id === this.pendingRequestId) || conversation.run?.message_id === this.pendingRequestId;
       // Unrelated snapshots must not replace the request we are recovering.
@@ -380,6 +386,9 @@ export class JarvisClient {
       const changedConversation = this.state.conversationId !== conversation.id;
       this.state.conversationId = conversation.id;
       this.state.messages = savedMessages(conversation.messages);
+      this.state.conversationGeneration = conversation.generation || 0;
+      this.state.backgroundJobs = this.state.messages.flatMap(message => message.backgroundJobs || []);
+      if (this.token) this.transport?.emit('tasks:subscribe', {conversation_id: conversation.id});
       this.state.run = publicRun(conversation.run);
       for (const message of conversation.messages || []) {
         this.updateSubmittedRequest(message.data?._request_id, {conversationId: conversation.id});
@@ -400,6 +409,26 @@ export class JarvisClient {
       }
       if (changedConversation || changedMode) this.clearImageHint();
       this.state.progress = [];
+    } else if (['task:updated', 'tasks:snapshot', 'chat:continuation'].includes(event)) {
+      if (data.conversation_id !== this.state.conversationId || data.generation !== (this.state.conversationGeneration || 0)) return;
+      if (event === 'chat:continuation') {
+        if (data.schema_version !== 1 || !data.continuation_id || !data.message) return;
+        const id = `assistant-${data.continuation_id}`;
+        if (!this.state.messages.some(message => message.id === id)) {
+          this.state.messages.push({id, role: 'assistant', content: String(data.message.content || '').slice(0, 80000),
+            createdAt: data.message.timestamp || new Date().toISOString()});
+        }
+      } else {
+        for (const raw of event === 'tasks:snapshot' ? data.jobs || [] : [data]) {
+          if (raw.schema_version !== 1) continue;
+          const job = backgroundJob(raw);
+          const known = this.state.backgroundJobs || [];
+          if (known.some(item => item.jobId === job.jobId && item.revision > job.revision)) continue;
+          this.state.backgroundJobs = [...known.filter(item => item.jobId !== job.jobId), job].slice(-100);
+          const message = this.state.messages.find(item => item.id === `assistant-${job.sourceMessageId}`);
+          if (message) message.backgroundJobs = [...(message.backgroundJobs || []).filter(item => item.jobId !== job.jobId), job];
+        }
+      }
     } else if (event === 'chat:resume_missing') {
       if (!this.pendingRequestId || this.state.connection.status !== 'recovering') return;
       clearTimeout(this.recoveryTimer);
@@ -453,6 +482,10 @@ export class JarvisClient {
         if (!this.state.messages.some(message => message.id === id || message.id === data.message_id && message.role === 'assistant')) {
           this.state.messages.push({id, role: 'assistant',
             content: String(data.text ?? data.response ?? data.raw_llm_response ?? data.speech ?? data.message ?? ''),
+            backgroundJobs: Object.values(data.data?.background_jobs || {}).map(raw => {
+              const cached = (this.state.backgroundJobs || []).find(item => item.jobId === raw.job_id);
+              return cached && cached.revision > raw.revision ? cached : backgroundJob(raw);
+            }),
             createdAt: new Date().toISOString()});
         }
         this.pendingRequestId = null;
