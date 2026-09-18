@@ -79,8 +79,8 @@ fi
 
 # 4. Update docs/README.md footer
 if [[ -f "$PROJECT_ROOT/docs/README.md" ]]; then
-    sed -i "s/(v[0-9][0-9.]*)/(v${NEW_VERSION})/" "$PROJECT_ROOT/docs/README.md"
-    sed -i "s/\*\*Last Updated:\*\* [0-9-]* (v[0-9][0-9.]*)/**Last Updated:** $DATE_STR (v${NEW_VERSION})/" "$PROJECT_ROOT/docs/README.md"
+    # Only this metadata line is current; version labels in the body are historical.
+    sed -i -E "s/^\*\*Last Updated:\*\* [0-9-]+( \(v[0-9.]+\))?$/**Last Updated:** $DATE_STR (v${NEW_VERSION})/" "$PROJECT_ROOT/docs/README.md"
     echo "  [OK] docs/README.md footer"
 fi
 

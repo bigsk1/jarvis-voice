@@ -134,7 +134,7 @@ operational metadata across Web and worker, with job IDs for correlation, withou
 copying prompts, tool arguments/results or credentials. Healthy heartbeats and
 idle polls are silent; recurring infrastructure errors are throttled. This folder
 uses the existing `bin/cleanup-logs` retention policy. See
-[background-task diagnostics](../background-tasks.md#persistent-diagnostics) for
+[background-task diagnostics](../BACKGROUND-TASKS.md#persistent-diagnostics) for
 fields, example queries, isolated database paths, and future Grafana collection.
 
 ---

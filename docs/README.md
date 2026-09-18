@@ -37,7 +37,7 @@
 - **[FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md)** - 📝 **LLM self-critique** (feedback grading, improvement suggestions, intelligence outcome updates)
 - **[COMPLETION_GUARD.md](COMPLETION_GUARD.md)** - 🛡️ **Completion Guard** (same-runtime repair loop, completion check, escalation tickets) 🆕
 - **[tools/scheduled-tasks/scheduled-tasks.md](tools/scheduled-tasks/scheduled-tasks.md)** - ⏱️ **Scheduled Tasks** (implemented foundation for recurring queries, workflows, parser, API, and runner) 🆕
-- **[background-tasks.md](background-tasks.md)** - Web background jobs, task management, supervised local conversion, native/Docker worker setup, and recovery; incoming callbacks remain a later phase
+- **[BACKGROUND-TASKS.md](BACKGROUND-TASKS.md)** - Web background jobs, reviewed local/media tools, task management, native/Docker worker setup, diagnostics, and recovery; incoming callbacks remain a later phase
 - **[DUAL_DATABASE_SYSTEM.md](DUAL_DATABASE_SYSTEM.md)** - Cloud/local DB architecture
 - **[SEMANTIC_THRESHOLD_TUNING.md](SEMANTIC_THRESHOLD_TUNING.md)** - Tune search sensitivity
 - **[WEBHOOK_SYSTEM.md](WEBHOOK_SYSTEM.md)** - Modular webhook system (email, n8n, external APIs with auth)
@@ -339,3 +339,7 @@ curl http://localhost:4096/health
 tail -f logs/tools/tool-calls-*.jsonl
 ./bin/opencode-logs --verbose
 ```
+
+---
+
+**Last Updated:** 2026-09-18 (v2.55.8)
