@@ -81,6 +81,7 @@ class JarvisApp {
     
     // Load conversation history
     this._loadConversationHistory();
+    this._startConversationClock();
     
     console.log('[App] Jarvis Web UI initialized');
   }
@@ -90,6 +91,7 @@ class JarvisApp {
    */
   _setupSocketListeners() {
     this.socket.on('profileChanged', () => this.profileAppearance?.load());
+    this.socket.on('conversationsChanged', () => this._scheduleConversationHistoryRefresh());
     this.socket.on('connectionChange', (data) => {
       this._updateConnectionStatus(data.connected);
       if (!data.connected) this._releaseConversationLoad();
@@ -125,6 +127,7 @@ class JarvisApp {
         this.socket.emit('chat:resume', { request_id: this.socket.pendingRequestId });
       }
       this._sessionReadyOnce = true;
+      this.socket.emit('conversations:subscribe', {});
       
       // Initialize proactive notifications
       if (!this.proactive && window.ProactiveManager) {
@@ -3715,6 +3718,59 @@ class JarvisApp {
    * Load conversation history
    */
   async _loadConversationHistory() {
+    clearTimeout(this._historyRefreshTimer);
+    this._historyRefreshTimer = null;
+    this._historyRefreshPending = true;
+    if (!this._historyRefreshPromise) {
+      this._historyRefreshPromise = (async () => {
+        try {
+          do {
+            this._historyRefreshPending = false;
+            await this._fetchConversationHistory();
+          } while (this._historyRefreshPending);
+        } finally {
+          this._historyRefreshPromise = null;
+        }
+      })();
+    }
+    return this._historyRefreshPromise;
+  }
+
+  _scheduleConversationHistoryRefresh() {
+    if (this._historyRefreshPromise) {
+      this._historyRefreshPending = true;
+    } else if (!this._historyRefreshTimer) {
+      // One short debounce, not a polling loop. Foreground responses, title
+      // changes and run settlement can all update the index in one burst.
+      this._historyRefreshTimer = setTimeout(() => {
+        this._historyRefreshTimer = null;
+        void this._loadConversationHistory();
+      }, 150);
+    }
+  }
+
+  _startConversationClock() {
+    if (this._conversationClockTimer) return;
+    const refresh = () => this._refreshConversationTimes();
+    // Browser-only clock: no fetch or sidebar rebuild. Catch up immediately
+    // when returning to a tab whose timers may have been throttled.
+    this._conversationClockTimer = setInterval(refresh, 60000);
+    document.addEventListener('visibilitychange', refresh);
+  }
+
+  _refreshConversationTimes() {
+    if (document.hidden) return;
+    const conversations = new Map((this._conversations || []).map(conv => [conv.id, conv]));
+    document.getElementById('historyList')?.querySelectorAll('.history-item').forEach(row => {
+      const conv = conversations.get(row.dataset.convId);
+      const label = row.querySelector('.history-date');
+      if (!conv || !label) return;
+      const text = `${this._formatRelativeDate(conv.updated_at)} · ${conv.message_count || 0} messages`;
+      if (label.textContent !== text) label.textContent = text;
+    });
+  }
+
+  async _fetchConversationHistory() {
     const container = document.getElementById('historyList');
     
     try {
@@ -3723,7 +3779,15 @@ class JarvisApp {
       
       if (data.ok && data.conversations) {
         const convs = data.conversations;
+        const previousActive = this._conversations?.find(conv => conv.id === this.socket.conversationId);
         this._conversations = convs;
+        const renderKey = JSON.stringify([convs, this.socket.conversationId, this._archivedExpanded]);
+        if (renderKey === this._historyRenderKey) {
+          this._refreshConversationTimes();
+          return;
+        }
+        const scrollTop = container.scrollTop;
+        const openMenuId = container.querySelector('.history-menu-dropdown.open')?.dataset.convId;
         
         if (convs.length === 0) {
           container.innerHTML = `
@@ -3733,11 +3797,14 @@ class JarvisApp {
               <div style="margin-top: var(--space-sm); font-size: var(--text-xs);">Start chatting to save history</div>
             </div>
           `;
+          this._historyRenderKey = renderKey;
+          this._historyActiveConversation = this.socket.conversationId;
           return;
         }
         if (this.socket.conversationId) {
           const activeConversation = convs.find(conv => conv.id === this.socket.conversationId);
-          if (activeConversation?.archived) {
+          if (activeConversation?.archived && (!previousActive?.archived ||
+              this._historyActiveConversation !== this.socket.conversationId)) {
             this._archivedExpanded = true;
           }
         }
@@ -3745,12 +3812,17 @@ class JarvisApp {
         container.innerHTML = this._renderConversationHistory(convs);
         this._setupHistoryTitleTooltips(container);
         this._bindConversationHistoryActions(container);
+        this._filterConversations(document.getElementById('conversationFilter')?.value || '');
+        if (openMenuId) this.toggleConversationMenu(openMenuId);
+        container.scrollTop = scrollTop;
+        this._historyRenderKey = JSON.stringify([convs, this.socket.conversationId, this._archivedExpanded]);
+        this._historyActiveConversation = this.socket.conversationId;
       } else {
-        container.innerHTML = '<div class="history-empty">Failed to load history</div>';
+        if (!this._historyRenderKey) container.innerHTML = '<div class="history-empty">Failed to load history</div>';
       }
     } catch (err) {
       console.error('[App] Failed to load history:', err);
-      container.innerHTML = `<div class="history-empty">Error: ${err.message}</div>`;
+      if (!this._historyRenderKey) container.textContent = 'Could not load conversation history';
     }
   }
 

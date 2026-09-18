@@ -2492,8 +2492,21 @@ Previous structured data:
                     'error'
                 )
     
+    def _notify_conversation_list(self):
+        # An invalidation only: never send chat content or select a conversation
+        # on another client. That client fetches through the existing HTTP API.
+        self.socketio.emit_authenticated('conversations:changed', {}, room='conversations:index')
+
     def _register_handlers(self):
         """Register all socket event handlers"""
+
+        @self.socketio.on('conversations:subscribe')
+        def handle_conversations_subscribe(data=None):
+            self._conversation_store().add_index_listener(self._notify_conversation_list)
+            join_room('conversations:index')
+            # Also reconcile updates missed while disconnected. Keep the store
+            # lazy so subscribing never changes service startup requirements.
+            emit('conversations:changed', {})
 
         @self.socketio.on('tasks:watch')
         def handle_task_watch(data):

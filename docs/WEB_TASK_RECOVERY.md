@@ -25,6 +25,14 @@ are not parsed again. A saved answer needs an explicit terminal outcome to recov
 success or failure; missing metadata means Interrupted. Retention protects live tasks; its dry run projects abandoned tasks
 without changing conversation or index JSON.
 
+Connected Web clients subscribe to `conversations:changed` invalidations over the
+existing authenticated socket. Successful index writes notify subscribers after
+the store locks are released; the client coalesces bursts and serializes list
+fetches. Subscribing again after reconnect also triggers a refresh. This updates
+only the sidebar, including chats started by Firefox or another device, and never
+broadcasts the initiating client's `conversation:created` navigation event. No new
+polling loop is added; the existing active-run lease recovery check remains.
+
 A **socket reconnect** preserves the displayed transcript, expanded tool cards,
 feedback, reaction controls, draft, and ongoing attachment preparation. It adds
 missed messages and reconciles task state. **F5** rebuilds from saved history and

@@ -56,6 +56,18 @@ class AuthenticatedSocketIO(SocketIO):
             if self.background_authorized(sid, require_origin=False):
                 self.emit(event, data, to=sid)
 
+    def emit_authenticated(self, event, data, *, room):
+        """Deliver ordinary Web updates under the same auth policy as requests."""
+        for sid, _ in list(self.server.manager.get_participants('/', room)):
+            with self._credentials_lock:
+                credentials = self._credentials.get(('/', sid))
+            if credentials is None:
+                continue
+            if is_auth_enabled() and not verify_token(credentials.get('token')):
+                self._reject_connection(('/', sid))
+                continue
+            self.emit(event, data, to=sid)
+
     def _arm_expiry(self, key, credentials, expires_at):
         timer = threading.Timer(
             max(0.05, expires_at - time.time()), self._expire_connection,

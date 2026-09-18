@@ -125,7 +125,17 @@ UIs, optional navigation URLs, browser microphone checks, and troubleshooting.
 | **Export JSON** | ✅ | Download conversation as JSON file |
 | **Export Markdown** | ✅ | Download conversation as formatted Markdown |
 | **Import JSON** | ✅ | Upload JSON to restore conversation |
+| **Live sidebar sync** | ✅ | Conversations created or updated through Firefox, mobile, or another Web tab appear automatically on connected Web clients |
 | **Pinned-safe cleanup** | ✅ | `cleanup-all` removes unpinned chats older than 90 days; pinned chats are preserved |
+
+Sidebar updates use the existing authenticated Socket.IO connection. A short
+debounce combines changes into a list refresh without adding a polling loop.
+The selected chat, draft, attachments, active tools, and Talk are unaffected;
+sidebar search, scroll position, and expanded archives are preserved. Reconnecting
+refreshes the list to catch changes missed while offline. This synchronizes clients
+using the same Jarvis Web server; it does not watch files edited by external processes.
+Relative timestamps refresh locally once a minute while the page is visible and
+when returning to the tab, without fetching conversations or rebuilding the list.
 
 ### Phase 7: Developer Tools - COMPLETE ✅
 

@@ -125,6 +125,7 @@ class JarvisSocket {
     this.socket.on('chat:response', (data) => {
       this._emit('response', data);
     });
+    this.socket.on('conversations:changed', () => this._emit('conversationsChanged'));
     for (const [event, local] of [['task:updated', 'taskUpdated'], ['tasks:snapshot', 'tasksSnapshot'], ['tasks:overview', 'taskOverview'], ['chat:continuation', 'continuation']]) {
       this.socket.on(event, data => this._emit(local, data));
     }

@@ -68,8 +68,9 @@ if (readyFirst) wire.onevent(ready);
 wire.onconnect('new-socket');
 if (!readyFirst) wire.onevent(ready);
 assert.equal(client.connected,true);
-assert.equal(packets.length,1);
+assert.equal(packets.length,2);
 assert.equal(packets[0].data[0],firstRequest?'chat:resume':'conversation:load');
+assert.equal(packets[1].data[0],'conversations:subscribe');
 assert.equal(ui._conversationLoadPending,true);
 if (!firstRequest) assert.equal(packets[0].data[1].reconnect_only,false);
 wire.onevent({nsp:'/',data:['conversation:loaded',{conversation:{id:'thread',messages:[

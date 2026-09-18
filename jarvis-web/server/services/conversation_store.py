@@ -31,12 +31,27 @@ def _transaction(method):
     """Serialize JSON read/modify/write across threads and store instances."""
     @wraps(method)
     def wrapped(self, *args, **kwargs):
-        with self._lock:
-            outermost = not self._file_lock.is_locked
-            with self._file_lock:
-                if outermost:
-                    self._index = self._load_index()
-                return method(self, *args, **kwargs)
+        listeners = ()
+        try:
+            with self._lock:
+                outermost = not self._file_lock.is_locked
+                with self._file_lock:
+                    if outermost:
+                        self._index = self._load_index()
+                        self._index_changed = False
+                    try:
+                        return method(self, *args, **kwargs)
+                    finally:
+                        if outermost and self._index_changed:
+                            listeners = tuple(self._index_listeners)
+        finally:
+            # Notify only after durable writes, outside both store locks. Nested
+            # transactions share one invalidation; delivery cannot fail a save.
+            for listener in listeners:
+                try:
+                    listener()
+                except Exception:
+                    logger.exception('Could not announce conversation index change')
     return wrapped
 
 
@@ -53,6 +68,13 @@ class ConversationStore:
         self._file_lock = FileLock(self.conversations_dir / '.store.lock', timeout=10)
         self._index = self._load_index()
         self._listed_documents = {}
+        self._index_changed = False
+        self._index_listeners = set()
+
+    def add_index_listener(self, listener):
+        """Subscribe to committed sidebar changes in this Web process."""
+        with self._lock:
+            self._index_listeners.add(listener)
 
     def _conversation_path(self, conv_id: str) -> Path:
         if not isinstance(conv_id, str) or not re.fullmatch(r'[a-zA-Z0-9_-]{1,64}', conv_id):
@@ -230,6 +252,7 @@ class ConversationStore:
     def _save_index(self):
         """Save conversation index"""
         self._write_json(self._index_file, self._index)
+        self._index_changed = True
     
     @_transaction
     def create_conversation(self, title: str = None, *, request_id: str | None = None) -> dict:
@@ -878,11 +901,16 @@ class ConversationStore:
 
 # Singleton instance
 _store: ConversationStore | None = None
+_store_lock = threading.Lock()
 
 
 def get_conversation_store() -> ConversationStore:
     """Get or create the conversation store singleton"""
     global _store
     if _store is None:
-        _store = ConversationStore()
+        # HTTP history fetches and socket subscriptions can arrive together on
+        # first page load. Both must use the instance carrying the listeners.
+        with _store_lock:
+            if _store is None:
+                _store = ConversationStore()
     return _store
