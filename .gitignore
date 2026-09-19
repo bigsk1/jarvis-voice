@@ -57,6 +57,8 @@ ENV/
 dist/
 build/
 jarvis-venv/
+# Private OpenClaw bridge prototype, including its package lock and local deps.
+services/openclaw-task-bridge/
 
 # ===== Logs & Runtime =====
 *.log

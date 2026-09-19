@@ -9,10 +9,14 @@ from lib.background_tasks import TaskError
 from lib.webhook_integrations.contracts import CallbackError
 from lib.webhook_integrations.service import IntegrationService
 
-router = APIRouter()
+router = APIRouter(tags=['task-callbacks'])
 
 
-@router.post('/api/task-callbacks/{source_id}/events')
+@router.post(
+    '/api/task-callbacks/{source_id}/events',
+    summary='Receive an authenticated background task event',
+    description='See `docs/TASK-CALLBACKS.md` for setup and the callback event contract.',
+)
 async def task_event(source_id: str, request: Request):
     service = getattr(request.app.state, 'task_integrations', None) or IntegrationService()
     try:

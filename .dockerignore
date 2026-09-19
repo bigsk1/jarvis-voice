@@ -164,6 +164,9 @@ build/
 node_modules/
 **/node_modules/
 
+# Private OpenClaw bridge prototype is never packaged in Jarvis images.
+services/openclaw-task-bridge/
+
 # ===== IDE & local tooling =====
 .vscode/
 .idea/
