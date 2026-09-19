@@ -11,6 +11,7 @@ from filelock import FileLock, Timeout
 
 from lib.background_tasks import AdmissionDenied, LostLease
 from lib.background_tasks.admission import BackgroundAdmissionService, WebTaskContext
+from lib.webhook_integrations.contracts import ADAPTER as CALLBACK_ADAPTER
 
 from .conversation_store import ConversationBusyError
 from .followup_extractor import _bounded_structured_followup_value
@@ -261,8 +262,11 @@ class WebBackgroundTasks:
             return None
 
         def build_authorization(name):
-            from lib.background_tasks.production import authorize_tools
-            from lib.webhook_integrations.browser import callback_sources, service_ready
+            from lib.background_tasks.production import (
+                authorize_tools,
+                callback_readiness,
+                callback_sources,
+            )
 
             from ..config import get_web_setting
 
@@ -272,7 +276,7 @@ class WebBackgroundTasks:
             service = BackgroundAdmissionService(
                 self.store, adapters=self.adapters, validate_source=self._source_current, ready=self.ready,
                 callback_sources=self.callback_sources or callback_sources(self.store),
-                callback_readiness={'browser_use': lambda: service_ready(self.store)},
+                callback_readiness=callback_readiness(self.store),
             )
             return service.authorize(
                 {
@@ -567,23 +571,25 @@ class WebBackgroundTasks:
                     self.ownership.release()
 
     def _synthesize(self, job, authorization, conversation):
-        from config_loader import config_scope
-        from llm_provider import create_configured_provider
-
-        if job['admission']['tool'] == 'browser_use':
+        if job['admission']['tool'] == 'browser_use' or job.get('adapter') == CALLBACK_ADAPTER:
             result = job.get('result') or {}
             text = result.get('speech')
             if not isinstance(text, str) or not text.strip():
-                raise ValueError('Empty Browser Use result')
+                raise ValueError('Empty callback result')
             display, speech = self.handler._prepare_web_response_text({'speech': text}, text)
+            tool = job['admission']['tool']
             return {
                 'text': display,
                 'data': {
-                    'speech': speech, 'browser_use': result,
+                    'speech': speech, tool: result,
+                    **({'_callback_tool': tool} if job.get('adapter') == CALLBACK_ADAPTER else {}),
                     '_llm_provider': authorization.get('provider'),
                     '_llm_model': authorization.get('model'),
                 },
             }
+        from config_loader import config_scope
+        from llm_provider import create_configured_provider
+
         if not authorization.get("provider") or not authorization.get("model"):
             raise ValueError("Original provider/model unavailable")
         evidence = self._task_evidence(job)

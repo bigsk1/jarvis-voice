@@ -180,11 +180,53 @@ window.continuationRenderer = (() => {
     actions.appendChild(copy); card.appendChild(actions); message.appendChild(card);
   }
 
+  function callbackReport(data) {
+    const tool = data?._callback_tool;
+    if (typeof tool !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(tool)
+        || !Object.prototype.hasOwnProperty.call(data, tool)) return null;
+    const result = data[tool];
+    return typeof result?.ok === 'boolean' && typeof result.speech === 'string'
+      ? {tool, result} : null;
+  }
+
+  function appendCallbackReport(message, {tool, result}, mode) {
+    const report = result.speech;
+    const label = tool.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+    const card = node('section');
+    card.className = `browser-research-card callback-report-card${result.ok ? '' : ' is-partial'}`;
+    const heading = node('header'); heading.className = 'browser-research-heading';
+    heading.appendChild(node('span', `${label} ${result.ok ? 'report' : 'failed'}`, 'browser-research-title'));
+    card.appendChild(heading);
+    const body = node('div'); body.className = 'browser-research-report';
+    try {
+      if (!window.marked?.lexer) throw new Error('Markdown unavailable');
+      tokens(body, window.marked.lexer(report, {gfm: true, breaks: true}), 0, mode);
+    } catch (_) { body.textContent = report; body.style.whiteSpace = 'pre-wrap'; }
+    card.appendChild(body);
+    const actions = node('div'); actions.className = 'browser-research-actions';
+    const copy = node('button', 'Copy report'); copy.type = 'button'; copy.className = 'btn-secondary';
+    copy.addEventListener('click', async () => {
+      try {
+        try {
+          if (!window.isSecureContext || !navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+          await navigator.clipboard.writeText(report);
+        } catch (_) { Utils.copyTextFallback(report); }
+        Utils.toast('Copied background report as Markdown', 'success', 1800);
+      } catch (_) { Utils.toast('Could not copy background report', 'error', 3000); }
+    });
+    actions.appendChild(copy); card.appendChild(actions); message.appendChild(card);
+  }
+
   function append(message, text, data) {
     const mode = ['cloud', 'local'].includes(data?._background_mode) ? data._background_mode : null;
     const research = browserResearch(data);
     if (research) {
       appendBrowserResearch(message, research, mode);
+      return;
+    }
+    const callback = callbackReport(data);
+    if (callback) {
+      appendCallbackReport(message, callback, mode);
       return;
     }
     const media = window.mediaResultRenderer.append(message, data);

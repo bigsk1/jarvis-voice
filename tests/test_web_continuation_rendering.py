@@ -308,6 +308,30 @@ assert.ok(visible(rendered).includes('ollama · model-1'));
 """)
 
 
+@pytest.mark.parametrize('form', ['live', 'saved'])
+def test_callback_report_card_shows_full_safe_markdown_instead_of_short_continuation(form):
+    run_message_browser(DOM + '\nconst form=' + json.dumps(form) + ';\n' + r"""
+const ui = chat(), copies = [];
+const report = '# Samantha report\n\n' + 'Verified evidence. '.repeat(420)
+  + '\n\n[Source](https://example.com/article) <img src=x onerror=alert(1)>';
+Utils.copyTextFallback = value => copies.push(value); Utils.toast = () => {};
+const payload = {_kind:'continuation', _web_message_id:'late', _callback_tool:'samantha_task',
+  samantha_task:{ok:true,speech:report,data:{}}};
+if (form === 'live') ui.addAssistantMessage('A short synthesized answer', [], payload, {late:true});
+else ui.addAssistantMessage({content:'A short synthesized answer',data:payload});
+const rendered = message(ui), all = descendants(rendered);
+assert.equal(rendered.querySelectorAll('.callback-report-card').length, 1);
+assert.ok(visible(rendered).includes('Verified evidence.'));
+assert.ok(visible(rendered).includes('onerror=alert(1)'));
+assert.ok(!visible(rendered).includes('short synthesized answer'));
+assert.ok(all.some(el => el.tag === 'h1'));
+assert.ok(all.some(el => el.href === 'https://example.com/article'));
+assert.ok(!all.some(el => el.tag === 'img'));
+await all.find(el => el.tag === 'button' && el.textContent === 'Copy report').events.click();
+assert.deepEqual(copies, [report]);
+""")
+
+
 def test_browser_research_card_links_use_readable_text_color():
     css = (Path(__file__).resolve().parents[1] / 'jarvis-web/client/css/background-tasks.css').read_text()
     assert '.browser-research-card a { color: var(--text-primary); }' in css

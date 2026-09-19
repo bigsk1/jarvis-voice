@@ -52,6 +52,10 @@ The manifest's `enabled` flag, active tool profile, availability requirements,
 permissions, and request/Web blocks work the same way as for shared tools. See
 [tool definition format](../README.md#tool-definition-format).
 
+A personal tool marked `execution.background.required` also needs a separate
+trusted callback binding and an enabled source. Its manifest cannot grant that
+authority by itself. See [private task callback bindings](../../docs/TASK-CALLBACKS.md#optional-private-tool-binding).
+
 ## Sync and use
 
 From the project root, sync the modes you use with the operator environment:

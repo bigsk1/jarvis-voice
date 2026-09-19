@@ -1,18 +1,22 @@
 # Task callbacks
 
-Phase 3a adds authenticated completion callbacks for explicitly bound local services.
+Phase 3a adds authenticated completion callbacks for explicitly bound services.
 Jarvis saves each accepted event to a durable inbox, the task worker applies it to
 the matching execution attempt, and Web delivers the existing task card and late
 answer. A service can respond after the submitting worker exits; no polling child
 or long-lived chat turn is required.
+The authenticated completion summary is the late answer itself. Web renders it
+as a safe Markdown report card without asking a second model to condense it;
+the callback result remains in conversation history for later inspection.
 
 **Incoming callbacks default off.** [Browser use](BROWSER-USE.md) is the first opt-in
 production binding; it requires explicit local service provisioning and runs only
 through authorized Web text chat background admission. It has no foreground mode.
 The existing conversion and media bindings keep their current runners. Adding a
 source in Settings does not authorize it to run tools or create conversations.
-The long-running Samantha callback binding, OpenCode, third-party signature
-formats, remote cancellation, and the public relay remain separate work.
+An optional owner-installed personal callback binding can use the same adapter;
+no remote tool or bridge is included in a public clone. OpenCode, third-party
+signature formats, remote cancellation, and the public relay remain separate work.
 `/api/alerts` and outgoing webhooks are unchanged.
 
 ## Setup and controls
@@ -49,6 +53,46 @@ The API and Web are different listeners: a Tailscale URL that serves only Web do
 not automatically expose `/api/task-callbacks/…`. Configure the route to the API
 deliberately, then verify it with the setup test. No public listener or tunnel is
 created by this feature.
+
+### Optional private tool binding
+
+An operator can install a Web-only callback tool under `skills/personal/` and
+register it in the ignored, owner-only
+`data/secrets/private-callback-bindings.json`. The separate file is required:
+the tool manifest alone cannot select a source, enable the callback adapter, or
+send to a remote host. It must be a regular `0600` file owned by the Jarvis
+process user. Each entry pins the personal manifest and script SHA-256, the
+source ID, exact HTTPS submit and receiver URLs, a same-host health URL, and the
+service's submit bearer token. The model never supplies those values. A changed
+file hash, disabled tool/profile, blocked prerequisite, changed source URL, or
+failed health check denies new work; the worker rechecks before submission.
+
+```json
+{
+  "version": 1,
+  "bindings": [{
+    "tool": "my_private_task",
+    "source_id": "32_lowercase_hex_characters_here",
+    "submit_url": "https://private-bridge.example/submit",
+    "callback_base": "https://private-api.example",
+    "health_url": "https://private-bridge.example/health",
+    "submit_token": "replace-with-a-long-private-bearer-token",
+    "manifest_sha256": "64_lowercase_hex_characters_for_the_reviewed_manifest_here",
+    "script_sha256": "64_lowercase_hex_characters_for_the_reviewed_script_here"
+  }]
+}
+```
+
+`requires_tool` may optionally name a companion tool whose profile or block
+setting should also disable this binding. The private tool must declare
+`execution.background.required: true`, adapter `http_callback_v1`, and a reviewed
+1–86400 second timeout. Its script should reject ordinary foreground execution.
+Provision and test the source through trusted deployment code before setting its
+ID here; the generic Integrations form intentionally cannot create a remote
+submit destination. After installation, sync Tool RAG in the modes used, restart
+Web and the task worker, then enable the tool in Settings → Tools. The callback
+receiver and source remain separate switches in Settings → Integrations. Public
+clones have no private binding file and gain no remote callback tools.
 
 Operator requests stay on the Web origin and reuse mandatory configured Web auth,
 explicit bearer tokens, and the allowed-Origin guard. Cookie-only, query-token and
@@ -235,7 +279,7 @@ short-lived, test-only credentials and revoke them immediately after the test.
 ## Isolated acceptance proof
 
 ```bash
-.venv/bin/python -m pytest tests/test_task_callbacks.py tests/test_task_callback_http.py tests/test_task_callback_journey.py tests/test_task_integration_controls.py tests/test_task_integration_ui.py -q
+.venv/bin/python -m pytest tests/test_task_callbacks.py tests/test_task_callback_http.py tests/test_task_callback_journey.py tests/test_task_integration_controls.py tests/test_task_integration_ui.py tests/test_private_callback_bindings.py -q
 ```
 
 All state, logs, credentials and conversations are temporary. The journey starts

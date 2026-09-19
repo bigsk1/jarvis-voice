@@ -119,9 +119,12 @@ def test_media_settings_admit_chat_then_late_artifact(web_tasks, monkeypatch, na
 
 def test_old_local_worker_does_not_claim_remote_readiness(web_tasks):
     h = web_tasks
-    h.background.adapters = production.bindings()
+    # This fixture only installs the shared manifests; an operator may also
+    # have ignored personal callback bindings in the live checkout.
+    public_bindings = dict(production.TRUSTED_BINDINGS)
+    h.background.adapters = public_bindings
     from tool_schema import ToolSchema
-    h.background.registry.list_tools = lambda: list(production.bindings())
+    h.background.registry.list_tools = lambda: list(public_bindings)
     h.background.registry.get_tool = lambda name: ToolSchema.from_json_file(
         str(ROOT / 'skills' / (name + '.tool.json')))
     h.tasks.touch_worker('old-local-worker', {ADAPTER})

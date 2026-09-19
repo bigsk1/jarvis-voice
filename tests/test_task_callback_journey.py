@@ -23,6 +23,7 @@ from lib.webhook_integrations.runner import LocalCallbackRunner
 @pytest.mark.parametrize('scheme', ['bearer', 'hmac-sha256'])
 def test_separate_http_service_completes_once_after_an_intervening_web_tool(web_tasks, monkeypatch, scheme):
     h = web_tasks
+    h.background.synthesize = h.background._synthesize
     h.worker.terminate()
     h.worker.communicate(timeout=6)
     service, source, credential, _ = configured(h.tmp, clock=time.time, scheme=scheme)
@@ -76,9 +77,10 @@ def test_separate_http_service_completes_once_after_an_intervening_web_tool(web_
         assert json.loads((control / 'callback-status.json').read_text()) == [202, 200]
         eventually(lambda: h.tasks.get(job['id'])['delivery_state'] == 'delivered')
         messages = h.store.get_conversation(conversation_id)['messages']
-        assert sum('background fixture completed' in message['content'] for message in messages) == 1
+        assert sum(message['content'] == 'The separate HTTP service finished.' for message in messages) == 1
         assert len((control / 'submissions.jsonl').read_text().splitlines()) == 1
-        assert len(h.summaries) == 1
+        assert not h.summaries
+        assert messages[-1]['data']['_callback_tool'] == 'fixture'
         assert h.tasks.get(job['id'])['result']['speech'] == 'The separate HTTP service finished.'
     finally:
         stop.set()

@@ -227,6 +227,11 @@ def status():
                     for name, adapter in tasks.adapters.items()}
     if 'browser_use' in tool_details:
         tool_details['browser_use']['browser_use'] = browser_details(tasks)
+    from lib.webhook_integrations.private_bindings import bindings as private_bindings, status as private_status
+
+    for name in private_bindings():
+        if name in tool_details:
+            tool_details[name]['private_callback'] = private_status(tasks.store, name, mode=mode)
     return jsonify(
         {
             "settings": tasks.store.settings(),

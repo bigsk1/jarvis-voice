@@ -95,7 +95,9 @@ class BackgroundTasks {
         const description = document.createElement('small');
         const details = status.tool_details?.[name];
         const browser = details?.browser_use;
+        const privateCallback = details?.private_callback;
         if (name === 'browser_use' && browser && !browser.operational && !input.checked) input.disabled = true;
+        if (privateCallback && (!privateCallback.policy_ready || !privateCallback.source_ready || !privateCallback.service_ready) && !input.checked) input.disabled = true;
         description.textContent = name === 'browser_use' && browser ? (browser.setup?.state === 'running'
           ? browser.setup.message || 'Setting up Browser Use…'
           : browser.setup?.state === 'failed' ? browser.setup.message
@@ -106,6 +108,15 @@ class BackgroundTasks {
           : !browser.service_ready ? 'Configured, but the Browser Use helper is stopped.'
           : !browser.worker_ready ? 'Helper is running; the task worker is loading its callback adapter.'
           : 'Setup needs attention. Use Finish setup to repair and verify it.')
+          : privateCallback ? (!available
+          ? 'Unavailable in this mode or blocked in Web. Saved preference retained if selected.'
+          : !privateCallback.policy_ready
+          ? 'Private tool policy changed or this mode blocks it. Review its binding and tool settings.'
+          : !privateCallback.source_ready
+          ? 'Callback source is unavailable. Check Settings → Integrations and test the receiver.'
+          : !privateCallback.service_ready ? 'The private task service is not responding.'
+          : !details.worker_ready ? 'The task worker must be restarted to load this private callback tool.'
+          : 'Ready for Web chat → private task service → late answer.')
           : !available ? (input.checked
           ? 'Unavailable in this mode or blocked in Web. Saved preference retained; uncheck to remove.'
           : 'Unavailable in this mode or blocked in Web.')

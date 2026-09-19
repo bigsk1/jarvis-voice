@@ -196,6 +196,33 @@ assert.equal(manager.choices.children[4].children[0].disabled,false);
 """)
 
 
+def test_private_callback_settings_report_policy_and_mode_readiness():
+    run_browser(BACKGROUND + r"""
+manager.control=new Element('section');
+manager.enabledInput=new Element('input');manager.choices=new Element('div');manager.note=new Element('p');
+const callback={policy_ready:false,source_ready:true,service_ready:true};
+const status={settings:{background_enabled:true,background_tools:[]},tools:['private_task'],
+  configured_tools:['private_task'],coordinator_ready:true,worker_ready:true,
+  tool_details:{private_task:{worker_ready:true,private_callback:callback}}};
+sandbox.Utils.auth={fetch:async()=>({ok:true,json:async()=>status})};
+await manager.refresh();
+let row=manager.choices.children[0];
+assert.equal(row.children[0].disabled,true);
+assert.match(row.children[1].children[0].textContent,/policy changed/);
+callback.policy_ready=true;
+await manager.refresh();
+row=manager.choices.children[0];
+assert.equal(row.children[0].disabled,false);
+assert.match(row.children[1].children[0].textContent,/Ready for Web chat/);
+status.tools=[];
+status.settings.background_tools=['private_task'];
+await manager.refresh();
+row=manager.choices.children[0];
+assert.equal(row.children[0].checked,true);
+assert.match(row.children[1].children[0].textContent,/Unavailable in this mode/);
+""")
+
+
 def test_browser_use_has_one_setup_action_and_cannot_be_selected_before_readiness():
     run_browser(BACKGROUND + r"""
 manager.control=new Element('section');

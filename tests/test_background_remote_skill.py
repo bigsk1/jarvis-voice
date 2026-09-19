@@ -57,8 +57,9 @@ def test_production_bindings_and_reviewed_manifest_policies(config_root, mode):
     from config_loader import config_scope
     from jsonschema import ValidationError
     from lib.background_tasks.local_skill import validate_arguments
-    assert production.bindings() == {'convert_file': ADAPTER, **dict.fromkeys(MEDIA, REMOTE_ADAPTER),
-                                     'browser_use': 'http_callback_v1'}
+    public = {'convert_file': ADAPTER, **dict.fromkeys(MEDIA, REMOTE_ADAPTER),
+              'browser_use': 'http_callback_v1'}
+    assert {name: production.bindings().get(name) for name in public} == public
     with config_scope(mode, {'JARVIS_TOOL_PROFILE': 'default',
                             'MONEYPRINTER_API_URL': 'https://moneyprinter.invalid'}):
         runner = production.runner()

@@ -25,7 +25,11 @@ TRUSTED_BINDINGS = {
 
 
 def bindings():
-    return dict(TRUSTED_BINDINGS) if sys.platform == 'linux' else {}
+    if sys.platform != 'linux':
+        return {}
+    from lib.webhook_integrations.private_bindings import bindings as private_bindings
+
+    return {**TRUSTED_BINDINGS, **private_bindings()}
 
 
 def runner():
@@ -37,7 +41,25 @@ def authorize_tools(selected):
     if 'browser_use' in selected and 'browser_use' in bindings():
         from lib.webhook_integrations.browser import policy
         result['browser_use'] = policy()[1]
+    from lib.webhook_integrations.private_bindings import bindings as private_bindings, policy as private_policy
+
+    for name in set(selected) & private_bindings().keys():
+        result[name] = private_policy(name)[1]
     return result
+
+
+def callback_sources(store):
+    from lib.webhook_integrations.browser import callback_sources as browser_sources
+    from lib.webhook_integrations.private_bindings import callback_sources as private_sources
+
+    return {**browser_sources(store), **private_sources(store)}
+
+
+def callback_readiness(store):
+    from lib.webhook_integrations.browser import service_ready as browser_ready
+    from lib.webhook_integrations.private_bindings import callback_readiness as private_readiness
+
+    return {'browser_use': lambda: browser_ready(store), **private_readiness(store)}
 
 
 def worker_adapters(store=None):
@@ -47,22 +69,33 @@ def worker_adapters(store=None):
     if adapters and store is not None:
         import json
 
-        from lib.webhook_integrations.browser import callback_sources as browser_sources, prepare as browser_prepare
+        from lib.webhook_integrations.browser import prepare as browser_prepare
+        from lib.webhook_integrations.private_bindings import parameters as private_parameters, prepare as private_prepare
         from lib.webhook_integrations.runner import LocalCallbackRunner
         from lib.webhook_integrations.service import IntegrationService
 
         def callback_bindings():
-            sources = browser_sources(store)
-            return {
-                name: (source, json.loads((ROOT / f'skills/{name}.tool.json').read_text())['parameters'])
-                for name, source in sources.items()
-            }
+            sources = callback_sources(store)
+            result = {}
+            if 'browser_use' in sources:
+                result['browser_use'] = (
+                    sources['browser_use'],
+                    json.loads((ROOT / 'skills/browser_use.tool.json').read_text())['parameters'],
+                )
+            for name, parameters in private_parameters(store).items():
+                result[name] = (sources[name], parameters)
+            return result
+
+        def prepare(context):
+            if context.claim.job['admission']['tool'] == 'browser_use':
+                return browser_prepare(context)
+            return private_prepare(context)
 
         # Advertise the reviewed runner even before an optional source exists.
         # Bindings are loaded at claim time, so guided setup does not require a
         # second worker restart; admission still requires a ready source.
         adapters['http_callback_v1'] = LocalCallbackRunner(
             IntegrationService(store), callback_bindings(), binding_loader=callback_bindings,
-            prepare={'browser_use': browser_prepare},
+            prepare=prepare,
         )
     return adapters

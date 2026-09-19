@@ -722,6 +722,22 @@ def test_browser_continuation_preserves_full_report_without_a_second_llm(web_tas
     assert output['data']['browser_use']['speech'] == report
 
 
+@pytest.mark.parametrize('ok', [True, False])
+def test_callback_continuation_preserves_full_report_without_a_second_llm(web_tasks, monkeypatch, ok):
+    import llm_provider
+
+    monkeypatch.setattr(llm_provider, 'create_configured_provider',
+                        lambda **_: pytest.fail('Callback report must not be resummarized'))
+    report = '# Full report\n\n' + ('Observed evidence. ' * 400).rstrip()
+    job = {'adapter': 'http_callback_v1', 'admission': {'tool': 'private_probe'},
+           'result': {'ok': ok, 'speech': report, 'data': {}}}
+    output = web_tasks.background._synthesize(job, {'provider': 'ollama', 'model': 'selected'},
+                                                {'messages': []})
+    assert output['text'] == report
+    assert output['data']['_callback_tool'] == 'private_probe'
+    assert output['data']['private_probe'] == job['result']
+
+
 def test_restart_drains_saved_result_without_reexecuting_tool(web_tasks):
     from jarvis_bundle_chat_test.services.background_tasks import WebBackgroundTasks
 

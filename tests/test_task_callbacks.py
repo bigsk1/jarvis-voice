@@ -106,7 +106,7 @@ def test_callback_worker_finds_a_reviewed_source_added_after_startup(tmp_path, m
     sources = {}
     monkeypatch.setattr(browser, 'callback_sources', lambda _: dict(sources))
     runner = worker_adapters(store)[ADAPTER]
-    assert runner.binding_loader() == {}
+    assert 'browser_use' not in runner.binding_loader()
     sources['browser_use'] = 'f' * 32
     assert runner.binding_loader()['browser_use'][0] == 'f' * 32
 
