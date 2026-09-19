@@ -1,12 +1,25 @@
-"""Explicit Web-only admission. Readiness never participates in tool discovery."""
+"""Web admission and request exclusions for tools requiring background execution.
+
+Ordinary foreground tools remain discoverable independently of task readiness.
+"""
 
 import functools
+import logging
 import sqlite3
 import threading
 import uuid
 from dataclasses import dataclass, field
 
-from .models import MAX_ARGUMENT_BYTES, Admission, AdmissionDenied, Conflict, TaskError, canonical_json
+from .models import (
+    MAX_ARGUMENT_BYTES,
+    Admission,
+    AdmissionDenied,
+    Conflict,
+    TaskError,
+    canonical_json,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def is_admission(value):
@@ -43,6 +56,60 @@ def reject_background_result(value):
     return value
 
 
+def background_only_result(tool):
+    return {
+        'ok': False,
+        'error_code': 'background_execution_required',
+        'error': 'This tool requires authorized Web background execution',
+        'speech': f'{tool} runs only as a background task in Jarvis Web text chat. '
+                  'Enable it in Settings → Tools → Background tasks and start its worker/service. '
+                  'No work was started.',
+    }
+
+
+def background_only_exclusions(registry, context=None):
+    """One readiness snapshot per Web turn; admission still rechecks live policy."""
+    if isinstance(context, WebTaskContext):
+        with context.lock:
+            if context.discovery_exclusions is not None:
+                return set(context.discovery_exclusions)
+            excluded = _compute_background_only_exclusions(registry, context)
+            context.discovery_exclusions = frozenset(excluded)
+            return excluded
+    return _compute_background_only_exclusions(registry, context)
+
+
+def _compute_background_only_exclusions(registry, context):
+    """Request-time discovery gate; never edits the registry or Tool RAG index."""
+    excluded = set()
+    names = registry.list_tools() if hasattr(registry, 'list_tools') else getattr(registry, 'tools', {})
+    for name in names:
+        schema = registry.get_tool(name)
+        if not getattr(schema, 'background_required', False):
+            continue
+        try:
+            if not isinstance(context, WebTaskContext) or name not in context.selected:
+                raise AdmissionDenied('Background-only tool has no Web permission')
+            if context.discovery_check is not None:
+                context.discovery_check(name, schema)
+            elif context.service is not None:
+                context.service.check_ready(context, name, schema)
+            else:
+                raise AdmissionDenied('Background-only readiness is unavailable')
+        except AdmissionDenied as exc:
+            if isinstance(context, WebTaskContext) and name in context.selected:
+                logger.warning('Background-only tool hidden for this turn tool=%s reason=%s',
+                               name, str(exc)[:300])
+            excluded.add(name)
+        except Exception as exc:
+            # Optional task storage/config failures must not abort ordinary chat.
+            if isinstance(context, WebTaskContext) and name in context.selected:
+                logger.warning('Background-only tool hidden for this turn tool=%s error_type=%s',
+                               name, type(exc).__name__)
+            excluded.add(name)
+    return excluded
+
+
 def carry_pending_jobs(method):
     @functools.wraps(method)
     def wrapped(self, *args, **kwargs):
@@ -71,6 +138,8 @@ class WebTaskContext:
     authorization: dict | None = field(default=None, repr=False)
     authorize_tool: object = field(default=None, repr=False)
     tool_contexts: dict = field(default_factory=dict, repr=False)
+    discovery_check: object = field(default=None, repr=False)
+    discovery_exclusions: frozenset[str] | None = field(default=None, repr=False)
 
     def admit(self, tool, args, invocation_id, schema):
         try:
@@ -93,13 +162,16 @@ class WebTaskContext:
 
 
 class BackgroundAdmissionService:
-    def __init__(self, store, *, adapters=None, validate_source=None, ready=None):
+    def __init__(self, store, *, adapters=None, validate_source=None, ready=None,
+                 callback_sources=None, callback_readiness=None):
         self.store = store
         # Bindings are supplied by trusted code. Tests inject an inert fixture;
         # strings from a manifest can never cause dynamic code imports.
         self.adapters = dict(adapters or {})
         self.validate_source = validate_source
         self.ready = ready or (lambda: False)
+        self.callback_sources = dict(callback_sources or {})
+        self.callback_readiness = dict(callback_readiness or {})
 
     def supported(self, registry, blocked=()):
         return [
@@ -134,8 +206,11 @@ class BackgroundAdmissionService:
                 raise AdmissionDenied("No healthy worker supports the selected background tools")
         if not self.validate_source or not self.validate_source(payload):
             raise AdmissionDenied("The originating Web run is not current and authorized")
-        return WebTaskContext(self, uuid.uuid4().hex, tuple(selected),
-                              authorization={key: value for key, value in payload.items() if key != 'query'})
+        authorization = {key: value for key, value in payload.items() if key not in {'query', 'callback_sources'}}
+        sources = {name: self.callback_sources[name] for name in selected if name in self.callback_sources}
+        if sources:
+            authorization['callback_sources'] = sources
+        return WebTaskContext(self, uuid.uuid4().hex, tuple(selected), authorization=authorization)
 
     def admit(self, context, tool, args, invocation_id, schema):
         if not isinstance(context, WebTaskContext):
@@ -148,15 +223,18 @@ class BackgroundAdmissionService:
                                        tool=tool, error_type=type(exc).__name__)
                 raise
 
-    def _admit(self, context, tool, args, invocation_id, schema):
+    def check_ready(self, context, tool, schema):
+        """Read-only eligibility, shared by discovery and admission revalidation."""
         if (
             not isinstance(context, WebTaskContext)
             or context.service is not self
-            or not invocation_id
             or tool not in context.selected
         ):
             raise AdmissionDenied("Missing explicit top-level Web invocation context")
         payload = context.authorization or self.store.authorization(context.authorization_id)
+        settings = self.store.settings()
+        if not settings['background_enabled'] or tool not in settings['background_tools']:
+            raise AdmissionDenied('This tool is not enabled in the saved background preferences')
         if (
             not payload
             or tool not in payload["selected"]
@@ -168,7 +246,26 @@ class BackgroundAdmissionService:
             raise AdmissionDenied("Background tasks are unavailable. Check Settings → Tools before retrying.")
         healthy = {name for worker in self.store.healthy_workers() for name in worker["adapters"]}
         if self.adapters[tool] not in healthy:
+            if getattr(schema, 'background_required', False):
+                raise AdmissionDenied('The background worker is offline or has no adapter for this tool. '
+                                      'Start its worker/service before retrying in Jarvis Web; this tool has no foreground mode.')
             raise AdmissionDenied("The background worker is offline. Start it or turn off background execution in Settings → Tools.")
+        from lib.webhook_integrations.contracts import ADAPTER as CALLBACK_ADAPTER
+        if self.adapters[tool] == CALLBACK_ADAPTER:
+            from lib.webhook_integrations.service import IntegrationService
+            source_id = self.callback_sources.get(tool)
+            if not source_id or payload.get('callback_sources', {}).get(tool) != source_id:
+                raise AdmissionDenied('Tool has no current trusted callback source binding')
+            IntegrationService(self.store).check_source_ready(source_id)
+            readiness = self.callback_readiness.get(tool)
+            if readiness is not None and not readiness():
+                raise AdmissionDenied('The callback service is stopped. Start it in Settings → Tools before retrying.')
+        return payload
+
+    def _admit(self, context, tool, args, invocation_id, schema):
+        if not invocation_id:
+            raise AdmissionDenied('Missing explicit top-level Web invocation context')
+        payload = self.check_ready(context, tool, schema)
         work = canonical_json([tool, args], MAX_ARGUMENT_BYTES)
         prior = context.calls.get(invocation_id)
         if prior is not None and prior != work:
@@ -178,6 +275,11 @@ class BackgroundAdmissionService:
         from .local_contract import SKILL_ADAPTERS
 
         timeout = 900
+        from lib.webhook_integrations.contracts import ADAPTER as CALLBACK_ADAPTER
+        if self.adapters[tool] == CALLBACK_ADAPTER:
+            from .local_skill import argument_validators
+            for validator in argument_validators(schema.parameters, None):
+                validator.validate(args)
         if self.adapters[tool] in SKILL_ADAPTERS:
             # ToolRegistry can cache a schema across a manifest edit. Use the
             # current policy snapshot saved by the Web authorization service.

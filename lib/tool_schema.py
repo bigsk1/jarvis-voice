@@ -301,10 +301,11 @@ class ToolSchema:
         }
         self.deterministic_routing = deterministic_routing or {}
         self.proxy_policy = normalize_proxy_policy(proxy_policy)
-        # Unknown/invalid execution metadata disables only background capability.
-        # It must never remove an otherwise available foreground tool.
+        # Unknown/invalid metadata disables background capability. An explicit
+        # required flag also forbids foreground fallback, even if no adapter loads.
         background = execution.get('background') if isinstance(execution, dict) else None
         self.background_execution = dict(background) if isinstance(background, dict) else {}
+        self.background_required = self.background_execution.get('required') is True
         adapter = background.get('adapter') if isinstance(background, dict) else None
         self.background_adapter = (
             adapter if isinstance(adapter, str) and re.fullmatch(r'[A-Za-z0-9_.:-]{1,128}', adapter)

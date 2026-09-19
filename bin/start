@@ -20,6 +20,7 @@
 #   jarvis-memory       - Memory Browser UI (port 5002)
 #   jarvis-intelligence - Intelligence Dashboard (port 5003)
 #   jarvis-docs         - Docs Reader (port 5004)
+#   jarvis-browser-use  - Optional Browser Use callback helper
 #
 # Notes:
 #   - API and Services both perform sync operations on startup
@@ -41,7 +42,7 @@ for arg in "$@"; do
             [ -z "$MODE_EXPLICIT" ] || { echo "Duplicate option: --local" >&2; exit 2; }
             MODE_EXPLICIT="local"
             ;;
-        --ui-only|--no-api|--list|-l|--stop|-s|--stop-task-worker|--help|-h|api|services|web|canvas|memory|intelligence|docs|task-worker)
+        --ui-only|--no-api|--list|-l|--stop|-s|--stop-task-worker|--stop-browser-use|--help|-h|api|services|web|canvas|memory|intelligence|docs|task-worker|browser-use)
             [ -z "$ACTION" ] || { echo "Multiple actions specified: $ACTION and $arg" >&2; exit 2; }
             ACTION="$arg"
             ;;
@@ -54,7 +55,7 @@ done
 
 require_arg=()
 case "$ACTION" in
-    --list|-l|--stop|-s|--help|-h|--stop-task-worker|task-worker) ;;
+    --list|-l|--stop|-s|--help|-h|--stop-task-worker|--stop-browser-use|task-worker|browser-use) ;;
     *) require_arg=(--require-config) ;;
 esac
 if [ -n "$MODE_EXPLICIT" ]; then
@@ -81,6 +82,7 @@ declare -A SESSIONS=(
     ["intelligence"]="jarvis-intelligence"
     ["docs"]="jarvis-docs"
     ["task-worker"]="jarvis-task-worker"
+    ["browser-use"]="jarvis-browser-use"
 )
 
 # Short-lived sessions created by the TUI while startup is in progress.
@@ -172,6 +174,30 @@ stop_task_worker() {
     esac
 }
 
+run_browser_use() {
+    "$VENV_PATH/bin/python" "$PROJECT_ROOT/bin/jarvis-browser-use" "$1" --tmux
+}
+
+start_browser_use() {
+    local output status=0
+    output=$(run_browser_use start 2>&1) || status=$?
+    case "$output" in
+        *'not configured'*) ;;
+        *'already ready'*) success "jarvis-browser-use already running" ;;
+        *'started'*) success "jarvis-browser-use started" ;;
+        *) [ "$status" -eq 0 ] || warn "Browser Use helper could not start; other services remain available" ;;
+    esac
+}
+
+stop_browser_use() {
+    local output status=0
+    output=$(run_browser_use stop 2>&1) || status=$?
+    case "$output" in
+        *Stopped*) success "Stopped jarvis-browser-use" ;;
+        *) [ "$status" -eq 0 ] || warn "Browser Use helper could not stop" ;;
+    esac
+}
+
 log_api_startup_error() {
     local service_name=$1
     local timeout_seconds=$2
@@ -253,6 +279,10 @@ start_service() {
         start_task_worker
         return
     fi
+    if [ "$name" = browser-use ]; then
+        start_browser_use
+        return
+    fi
     local session=${SESSIONS[$name]}
     local cmd=${COMMANDS[$name]}
     
@@ -320,11 +350,12 @@ stop_all() {
         "$PROJECT_ROOT/bin/jarvis-services" --stop 2>/dev/null || true
     fi
     
-    # Stop the worker while Web can still record the final task status.
+    # Stop optional callback work and the worker while Web can still record status.
+    stop_browser_use
     stop_task_worker
     # Stop all tmux sessions
     for name in "${!SESSIONS[@]}"; do
-        [ "$name" = task-worker ] && continue  # Stopped by its own command above.
+        [[ "$name" = task-worker || "$name" = browser-use ]] && continue
         local session=${SESSIONS[$name]}
         if is_session_running "$session"; then
             tmux kill-session -t "$session" 2>/dev/null && success "Stopped $session" || true
@@ -358,7 +389,7 @@ list_sessions() {
     echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
     echo ""
     
-    for name in api services task-worker web canvas memory intelligence docs; do
+    for name in api services task-worker browser-use web canvas memory intelligence docs; do
         local session=${SESSIONS[$name]}
         local port=${PORTS[$name]}
         local status=""
@@ -369,6 +400,19 @@ list_sessions() {
             if run_task_worker status >/dev/null 2>&1; then
                 status="${GREEN}RUNNING${NC}"
                 health="${GREEN}✓ worker ready${NC}"
+            elif is_session_running "$session"; then
+                status="${YELLOW}NOT READY${NC}"
+                health="${YELLOW}? inspect pane${NC}"
+            else
+                status="${RED}STOPPED${NC}"
+                health=""
+            fi
+            printf "  %-18s %b  %b\n" "$session" "$status" "$health"
+            continue
+        elif [ "$name" = browser-use ]; then
+            if run_browser_use status >/dev/null 2>&1; then
+                status="${GREEN}RUNNING${NC}"
+                health="${GREEN}✓ callback helper ready${NC}"
             elif is_session_running "$session"; then
                 status="${YELLOW}NOT READY${NC}"
                 health="${YELLOW}? inspect pane${NC}"
@@ -432,6 +476,7 @@ start_ui_only() {
     echo ""
     
     start_service "task-worker"
+    start_service "browser-use"
     start_service "web"
     start_service "canvas"
     start_service "memory"
@@ -458,6 +503,7 @@ start_no_api() {
     
     start_service "services"
     start_service "task-worker"
+    start_service "browser-use"
     start_service "web"
     start_service "canvas"
     start_service "memory"
@@ -492,6 +538,7 @@ start_all() {
     
     # Start UI services (lightweight, no sync)
     start_service "task-worker"
+    start_service "browser-use"
     start_service "web"
     start_service "canvas"
     start_service "memory"
@@ -529,6 +576,8 @@ show_help() {
     echo "  ./bin/start --stop       Stop all Jarvis sessions"
     echo "  ./bin/start task-worker  Start the shared background task worker"
     echo "  ./bin/start --stop-task-worker  Stop only the tmux task worker"
+    echo "  ./bin/start browser-use  Start Browser Use when it has been configured"
+    echo "  ./bin/start --stop-browser-use  Stop only the managed Browser Use helper"
     echo "  ./bin/start --help       Show this help"
     echo "  --local may appear before or after an action; cloud remains the default"
     echo ""
@@ -541,6 +590,7 @@ show_help() {
     echo "  jarvis-intelligence Intelligence Dashboard (port 5003)"
     echo "  jarvis-docs         Docs Reader (port 5004)"
     echo "  jarvis-task-worker  Background tasks for Web, shared by cloud and local"
+    echo "  jarvis-browser-use  Optional Browser Use callback helper"
     echo ""
 }
 
@@ -567,10 +617,13 @@ case "$ACTION" in
     --stop-task-worker)
         stop_task_worker
         ;;
+    --stop-browser-use)
+        stop_browser_use
+        ;;
     --help|-h)
         show_help
         ;;
-    api|services|web|canvas|memory|intelligence|docs|task-worker)
+    api|services|web|canvas|memory|intelligence|docs|task-worker|browser-use)
         start_service "$ACTION"
         ;;
     all)

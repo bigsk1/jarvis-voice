@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""Run or provision the optional local browser callback service."""
+import argparse
+import json
+import logging
+import os
+import shlex
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path[:0] = [str(ROOT), str(ROOT / 'lib'), str(ROOT / 'orchestrator')]
+
+from filelock import FileLock  # noqa: E402
+
+from lib.background_tasks import TaskStore  # noqa: E402
+from lib.webhook_integrations.browser import provision, read_config, service_ready  # noqa: E402
+
+TMUX_SESSION = 'jarvis-browser-use'
+
+
+def tmux(*arguments, check=False):
+    return subprocess.run(['tmux', *arguments], capture_output=True, text=True,
+                          check=check, timeout=10)
+
+
+def tmux_exists():
+    return tmux('has-session', '-t', TMUX_SESSION).returncode == 0
+
+
+def browser_work_active(store):
+    """Do not interrupt a helper that may own a live callback attempt."""
+    return any(store.list_jobs(tool='browser_use', state=state, limit=1)['total']
+               for state in ('starting', 'running'))
+
+
+def stop_tmux(store):
+    tmux('send-keys', '-t', TMUX_SESSION, 'C-c', check=True)
+    # A running browser child has 12 seconds to save its partial result and
+    # Docker cleanup may take another 15. Do not kill the helper mid-callback.
+    for _ in range(180):
+        if not tmux_exists():
+            break
+        time.sleep(.25)
+    else:
+        if browser_work_active(store):
+            print(f'{TMUX_SESSION} still owns active research; leaving its session intact for recovery')
+            return False
+        print(f'{TMUX_SESSION} did not stop within 45s; ending its idle session')
+        tmux('kill-session', '-t', TMUX_SESSION, check=True)
+    print(f'Stopped {TMUX_SESSION}')
+    return True
+
+
+def manage_tmux(action, store):
+    managed, ready = tmux_exists(), service_ready(store)
+    if action == 'status':
+        state = 'RUNNING' if ready else 'NOT READY' if managed else 'STOPPED'
+        detail = 'browser callback helper' if ready else ''
+        if ready and not managed:
+            detail += ' (managed outside tmux)'
+        print(f'  {TMUX_SESSION:<18} {state}  {detail}')
+        return 0 if ready else 1
+    if action == 'stop' and managed:
+        if not stop_tmux(store):
+            return 1
+    if action == 'stop':
+        return 0
+    if ready:
+        if action == 'restart' and managed:
+            if browser_work_active(store):
+                print('Browser Use research is active; wait for it to finish before restarting')
+                return 1
+            if not stop_tmux(store):
+                return 1
+            ready = False
+        else:
+            # A healthy externally managed helper cannot be replaced safely.
+            # A normal start is intentionally idempotent.
+            print(f'{TMUX_SESSION} already ready')
+            return 0
+    elif managed:
+        if browser_work_active(store):
+            print('Browser Use research is active; wait for it to finish before replacing its helper')
+            return 1
+        # Heal a dead/stale managed session during ordinary setup or Start All.
+        if not stop_tmux(store):
+            return 1
+    try:
+        read_config(store)
+    except FileNotFoundError:
+        print('Browser Use is not configured; set it up in Settings → Tools when needed')
+        return 0
+    root = Path(__file__).resolve().parents[1]
+    venv = Path(os.environ.get('JARVIS_VENV') or Path.home() / 'jarvis-venv')
+    command = (f'source {shlex.quote(str(venv / "bin/activate"))} '
+               f'&& cd {shlex.quote(str(root))} && exec '
+               + shlex.join([str(venv / 'bin/python'), str(root / 'bin/jarvis-browser-use'),
+                             'run', '--db', str(store.path)]))
+    tmux('new-session', '-d', '-s', TMUX_SESSION, '-n', 'browser-use', command, check=True)
+    for _ in range(60):
+        if service_ready(store):
+            print(f'{TMUX_SESSION} started')
+            return 0
+        if not tmux_exists():
+            break
+        time.sleep(.25)
+    print(f'{TMUX_SESSION} did not become ready; attach to inspect its startup error')
+    return 1
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=('setup', 'run', 'check', 'start', 'stop', 'restart', 'status',
+                                           'retry-delivery'))
+    parser.add_argument('--db', type=Path)
+    parser.add_argument('--callback-base', default='http://127.0.0.1:8880')
+    parser.add_argument('--submit-url', default='http://127.0.0.1:8790/submit')
+    parser.add_argument('--tmux', action='store_true')
+    parser.add_argument('--attempt-id')
+    args = parser.parse_args()
+    os.umask(0o077)
+    from browser_agent import check_runtime
+    store = TaskStore(args.db)
+    if args.action in {'start', 'stop', 'restart', 'status'}:
+        if not args.tmux:
+            parser.error('Browser Use lifecycle is currently managed through tmux; add --tmux')
+        try:
+            raise SystemExit(manage_tmux(args.action, store))
+        except (OSError, subprocess.SubprocessError) as exc:
+            parser.exit(1, f'Browser Use tmux command failed: {exc}\n')
+    if args.action == 'check':
+        check_runtime()
+        print('✅ Browser Use image and Docker Engine are available')
+        return
+    if args.action == 'setup':
+        print(json.dumps(provision(store, args.callback_base, args.submit_url), indent=2))
+        return
+    from lib.webhook_integrations.browser_service import BrowserService
+
+    config = read_config(store)
+    path = store.path.parent / 'browser-use.db'
+    if args.action == 'retry-delivery':
+        if not args.attempt_id:
+            parser.error('retry-delivery requires --attempt-id from the helper audit log')
+        count = BrowserService.retry_rejected(path, args.attempt_id)
+        print(f'Requeued {count} rejected callback(s) for attempt {args.attempt_id}; no browser work restarted')
+        return
+    check_runtime()
+    with FileLock(str(path) + '.lock', timeout=0):
+        overrides = {key: os.environ['JARVIS_OVERRIDE_' + key]
+                     for key in ('STASH_DIR', 'JARVIS_TOOL_PROFILE', 'BROWSER_USE_ALLOWED_HOSTS')
+                     if 'JARVIS_OVERRIDE_' + key in os.environ}
+        service = BrowserService(path, config, deployment_overrides=overrides, task_store=store)
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            signal.signal(sig, lambda *_: service.stop.set())
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+        service.run()
+
+
+if __name__ == '__main__':
+    main()

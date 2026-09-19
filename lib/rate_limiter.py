@@ -200,6 +200,11 @@ class APIRateLimitMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
+        from lib.webhook_integrations.http import callback_path
+        if callback_path(request.url.path):
+            # Mandatory outer/source callback limits have no loopback exemption
+            # and must not consume the independent alerts/general API buckets.
+            return await call_next(request)
         if request.method == "OPTIONS":
             return await call_next(request)
         if not _api_rate_limit_enabled():

@@ -1,6 +1,7 @@
 """Late live/history content stays DOM text and cannot consume foreground actions."""
 
 import json
+from pathlib import Path
 
 import pytest
 from test_web_assistant_message_rendering import run_message_browser
@@ -284,4 +285,55 @@ await app._displayLoadedConversation({id:'thread',generation:0,messages});
 assert.equal(descendants(message(ui)).find(el=>el.tag==='video').src,
   '/api/stash/space/f_clip?mode=cloud');
 assert.equal(messages[1].data._background_mode,undefined); // No mutation/migration.
+""")
+
+
+def test_browser_research_uses_dedicated_card_with_full_report_and_sources():
+    run_message_browser(DOM + r"""
+const ui = chat();
+const report = 'Saved research: stash://space_one/f_report\n\n# Findings\n\n1. Full verified item\n2. Second item';
+ui.addAssistantMessage('A clipped synthesis that must not be shown', [], {_kind:'continuation',
+  _background_mode:'cloud', browser_use:{ok:true,speech:report,data:{browser_research:{
+    kind:'browser_research',stash_ref:'stash://space_one/f_report',provider:'ollama',model:'model-1',
+    sources:['https://example.com/a?x=1','javascript:alert(1)']
+  }}}});
+const rendered=message(ui), all=descendants(rendered);
+assert.equal(rendered.querySelectorAll('.browser-research-card').length,1);
+assert.ok(visible(rendered).includes('Full verified item'));
+assert.ok(!visible(rendered).includes('clipped synthesis'));
+assert.ok(all.some(el=>el.href==='/stash/view/space_one/f_report?mode=cloud'));
+assert.ok(all.some(el=>el.href==='https://example.com/a?x=1'));
+assert.ok(!all.some(el=>String(el.href||'').startsWith('javascript:')));
+assert.ok(visible(rendered).includes('ollama · model-1'));
+""")
+
+
+def test_browser_research_card_links_use_readable_text_color():
+    css = (Path(__file__).resolve().parents[1] / 'jarvis-web/client/css/background-tasks.css').read_text()
+    assert '.browser-research-card a { color: var(--text-primary); }' in css
+    assert '.browser-research-card a:hover { color: #fff; }' in css
+
+
+@pytest.mark.parametrize('structured', [True, False], ids=['new-callback', 'saved-legacy-result'])
+def test_failed_browser_report_uses_partial_research_card(structured):
+    run_message_browser(DOM + '\nconst structured=' + json.dumps(structured) + ';\n' + r"""
+const ui = chat();
+const report = 'Saved research: stash://space_partial/f_report\n\n## Evidence\n\n- One useful fact\n- One missing fact';
+const data = structured ? {browser_research:{
+  kind:'browser_research',stash_ref:'stash://space_partial/f_report',provider:'ollama',model:'model-1',
+  sources:['https://example.com/evidence']
+}} : {};
+ui.addAssistantMessage(report, [], {_kind:'continuation', _background_mode:'cloud',
+  browser_use:{ok:false,speech:report,data}});
+const rendered=message(ui), all=descendants(rendered);
+assert.equal(rendered.querySelectorAll('.browser-research-card').length,1);
+assert.ok(rendered.querySelectorAll('.browser-research-card')[0].classList.contains('is-partial'));
+assert.ok(visible(rendered).includes('Partial browser research'));
+assert.ok(visible(rendered).includes('One useful fact'));
+assert.ok(all.some(el=>el.tag==='h2'&&visible(el)==='Evidence'));
+assert.ok(all.some(el=>el.href==='/stash/view/space_partial/f_report?mode=cloud'));
+if (structured) {
+  assert.ok(visible(rendered).includes('ollama · model-1'));
+  assert.ok(all.some(el=>el.href==='https://example.com/evidence'));
+}
 """)

@@ -52,7 +52,9 @@ cp docker.env.example .env
 printf "JARVIS_DOCKER_UID=%s\nJARVIS_DOCKER_GID=%s\n" "$(id -u)" "$(id -g)" >> .env
 ```
 
-`docker-compose.yml` defines seven services. Four start with the default command; three more need the **`extras`** profile.
+`docker-compose.yml` defines eight services. Four start with the default command;
+three more need the **`extras`** profile, and the separate task worker needs the
+**`background-tasks`** profile.
 
 | Service | Default `up` | `--profile extras` | Role |
 |---------|:------------:|:------------------:|------|
@@ -63,6 +65,7 @@ printf "JARVIS_DOCKER_UID=%s\nJARVIS_DOCKER_GID=%s\n" "$(id -u)" "$(id -g)" >> .
 | `jarvis-memory` | — | yes | Memory browser UI (`:5002`) |
 | `jarvis-intelligence` | — | yes | Intelligence dashboard (`:5003`) |
 | `jarvis-docs` | — | yes | Docs reader (`:5004`) |
+| `jarvis-task-worker` | — | — | Long-running Web tool jobs; opt in with `--profile background-tasks` |
 
 ```bash
 # Edit config/cloud.env (or local.env) with provider credentials, and edit .env with mode, tool profile, and UID/GID, then build
@@ -116,9 +119,59 @@ docker compose build
 docker compose up -d --force-recreate
 ```
 
+### Background tasks and task callbacks
+
+`jarvis-services` runs reminders, follow-ups and scheduled tasks; it is not the
+long-running tool worker. To use reviewed background tools with the Docker Web UI,
+start the core stack first, then start the optional worker:
+
+```bash
+docker compose --profile background-tasks up -d --build jarvis-task-worker
+docker compose logs --tail=50 jarvis-task-worker
+```
+
+The worker shares `./data`, `./config`, `./logs`, the container UID and the Docker
+tool profile with Web. It also needs the existing
+`jarvis-web/config/web_config.json` bind mount, so create that file before starting
+it. Background admission and tool choices still default off; enable reviewed tools
+in Web **Settings → Tools** after the worker reports ready. Conversion and remote
+media use their existing skill runners, subject to the selected container profile,
+dependencies and provider/network configuration. Compose rendering and worker
+isolation have focused tests; a complete live Docker conversion/media journey has
+not been claimed.
+
+The FastAPI container includes the Phase 3a authenticated task-callback receiver.
+Web, API and worker share the task database and credential keyring through `./data`.
+The receiver defaults off, and the API's published host port is bound to
+`127.0.0.1`; a third-party callback needs an intentionally configured HTTPS route.
+The current local-service submission adapter accepts only a literal loopback IP.
+Inside the worker container, `127.0.0.1` is the worker itself, not `jarvis-api` or
+another Compose service. Stock Compose therefore supplies the callback inbox but
+no working cross-container callback producer.
+
+**Browser Use is native-host only in the current integration.** Its pinned
+`docker-compose.browser.yml` image is a separate, per-job browser container, not
+part of the ordinary Jarvis image build. The managed **Set up and enable** action
+expects host Docker and tmux control; the default Web image has neither the Docker
+CLI/socket nor tmux. Its managed submit and callback URLs are loopback-only and
+cannot cross the Web/worker/API container namespaces. The MCP Compose override
+gives a Docker socket only to Web for MCP tools; it does not supply a Browser Use
+helper, fix those URLs, or make Browser Use work in this stack. Leave Browser Use
+unconfigured in a stock Docker deployment. Request-time discovery hides it while
+its service requirements are unmet, and a forced call fails without starting work.
+Supporting it in Docker needs a separately reviewed helper lifecycle and
+cross-container submission/callback transport; mounting a socket alone is not that
+integration. See [Browser Use](../BROWSER-USE.md) and
+[Task callbacks](../TASK-CALLBACKS.md) for the supported native path and protocol.
+The Docker profile does not explicitly block the Browser Use manifest, so its
+Settings row can appear; **Set up and enable** will report a setup failure in the
+stock Web container. That row is not evidence of Docker support.
+
 ### Pulling updates from Git
 
 The image contains the app code (`COPY . /app` in `Dockerfile`). Bind mounts provide live config, personal tools, and runtime state: `config/`, `skills/personal/`, `data/`, `logs/`, `audio/`, Web UI settings, and uploads.
+
+`.dockerignore` keeps host ENV files, runtime databases and secrets, task scratch space, logs, generated artifacts, personal data, and the standalone Firefox extension out of the image build. These rules only control what is baked into the image; the Compose bind mounts above still provide runtime files to the containers.
 
 After changing only bind-mounted config or runtime files, recreate containers without rebuilding:
 

@@ -1129,6 +1129,7 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
         previous_response_id: str | None = None,
         tool_rag_limit: int | None = None,
         tool_policy: str = "auto",
+        background_context=None,
     ) -> dict[str, Any]:
         """
         Use LLM to determine intent and route appropriately.
@@ -1148,8 +1149,11 @@ If this appears to be the start of a genuinely fresh conversation, you may add o
                 "confidence": float
             }
         """
-        self._excluded_tools = excluded_tools or []
+        from lib.background_tasks.admission import background_only_exclusions
         chat_only = tool_policy == "none"
+        required_exclusions = set() if chat_only else background_only_exclusions(self.registry, background_context)
+        excluded_tools = sorted(set(excluded_tools or []) | required_exclusions)
+        self._excluded_tools = excluded_tools
         disable_server_side_tools = disable_server_side_tools or chat_only
         if isinstance(transcript, ProviderRouteInput):
             route_input = transcript

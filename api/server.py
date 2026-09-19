@@ -20,6 +20,8 @@ from api.routes import alerts_router, reminders_router, health_router, voice_rou
 from api.routes.intelligence import router as intelligence_router
 from lib.rate_limiter import APIRateLimitMiddleware
 from lib.config_loader import get_config_value, get_active_config_mode
+from lib.webhook_integrations.http import CallbackBoundary, callback_namespace, callback_path
+from api.routes.task_callbacks import router as task_callbacks_router
 
 
 # ============================================================================
@@ -66,6 +68,9 @@ class APIAuthMiddleware(BaseHTTPMiddleware):
             print("🔓 API authentication disabled (set JARVIS_API_AUTH=true to enable)")
     
     async def dispatch(self, request: Request, call_next):
+        if request.method == 'POST' and callback_path(request.url.path):
+            # Only this ingestion route delegates to mandatory source auth.
+            return await call_next(request)
         # If auth is disabled, pass through
         if not self.auth_enabled:
             return await call_next(request)
@@ -151,6 +156,10 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             print(f"⚠️  Failed to write {log_type} log: {e}")
     
     async def dispatch(self, request: Request, call_next):
+        if callback_namespace(request.url.path):
+            # Receiver diagnostics contain allowlisted metadata only, including
+            # rejected credentials. Never buffer/log signed bodies or queries.
+            return await call_next(request)
         start_time = time.time()
         
         # Get request info
@@ -414,6 +423,10 @@ app.include_router(generated_music_router)
 app.include_router(generated_videos_router)
 app.include_router(docs_router)
 app.include_router(scheduled_tasks_router)
+app.include_router(task_callbacks_router)
+
+# Last registered middleware is outermost, before logging/auth/metrics can buffer.
+app.add_middleware(CallbackBoundary)
 
 # Add /metrics endpoint LAST
 if PROMETHEUS_AVAILABLE:

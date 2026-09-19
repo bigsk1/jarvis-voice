@@ -35,6 +35,7 @@ dependencies = [
     "faster-whisper==1.2.0",
     "fast-flights==3.0.2",
     "filelock==3.19.1",
+    "cryptography==49.0.0",
     "flatbuffers==25.2.10",
     "fsspec==2025.9.0",
     "hf-xet==1.1.10",

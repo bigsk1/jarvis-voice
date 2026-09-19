@@ -108,7 +108,7 @@ def test_background_preferences_migration_preserves_accepted_jobs_without_auto_e
         before = legacy.get(job['id'])
     legacy.initialize()
     assert legacy.settings()['background_tools'] == []
-    assert legacy.get(job['id']) == before
+    assert legacy.get(job['id']) == {**before, 'callback_waiting': 0}
     assert legacy.claim('worker', {'local_fixture'}).job_id == job['id']
 
 
@@ -685,3 +685,26 @@ def test_idle_worker_reports_preferences_once_and_again_only_when_changed(store,
     assert caplog.text.count('New background tasks: enabled; saved tools=fixture') == 1
     assert caplog.text.count('Task worker stopped') == 1
     assert len(caplog.records) == 6  # No polling/heartbeat messages during idle cycles.
+
+
+def test_worker_adds_newly_provisioned_adapters_without_dropping_live_bindings(store):
+    added = {'enabled': False}
+
+    def initial(context):
+        return {'ok': True}
+
+    def callback(context):
+        return {'ok': True}
+
+    def load():
+        return {'local_fixture': initial, **({'http_callback_v1': callback} if added['enabled'] else {})}
+
+    worker = TaskWorker(store, {'local_fixture': initial}, adapter_loader=load)
+    assert not worker.run_once()
+    assert set(store.healthy_workers()[0]['adapters']) == {'local_fixture'}
+    added['enabled'] = True
+    assert not worker.run_once()
+    assert set(store.healthy_workers()[0]['adapters']) == {'local_fixture', 'http_callback_v1'}
+    added['enabled'] = False
+    assert not worker.run_once()
+    assert set(store.healthy_workers()[0]['adapters']) == {'local_fixture', 'http_callback_v1'}

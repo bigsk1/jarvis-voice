@@ -1,7 +1,7 @@
 """Operator control preserves execution ownership and delivery fences."""
 
 import pytest
-from test_background_tasks import admission, receipt, ready
+from test_background_tasks import admission, ready, receipt
 from test_background_tasks import store as store
 
 from lib.background_tasks import Conflict, LostLease, TaskError
@@ -142,14 +142,27 @@ def test_heartbeat_preserves_cancel_token_but_progress_changes_it(store):
 def test_revision_migration_preserves_live_attempt_and_meaningful_changes(tmp_path, monkeypatch):
     from lib.background_tasks import TaskStore
     from lib.background_tasks import store as store_module
+    from lib.background_tasks.models import Claim
     task_store = TaskStore(tmp_path / 'old-schema.db')
     with monkeypatch.context() as patch:
-        patch.setattr(store_module, 'MIGRATIONS', store_module.MIGRATIONS[:-1])
+        patch.setattr(store_module, 'MIGRATIONS', store_module.MIGRATIONS[:6])
+        # Emulate the pre-callback binary. This fresh fixture has no expired
+        # work; the current recovery SQL requires the later callback column.
+        patch.setattr(task_store, '_recover', lambda conn, now: None)
         task_store.initialize()
         task_store.configure(background_enabled=True, background_tools=['fixture'])
         job = ready(task_store)
-        claim = task_store.claim('old-worker', {'local_fixture'})
-        task_store.running(claim)
+        # Seed the active attempt as the old binary did. The current claim()
+        # intentionally requires callback_waiting from the later migration.
+        now = task_store.clock()
+        with task_store._connection(write=True) as conn:
+            conn.execute('''UPDATE jobs SET state='running',owner='old-worker',attempt_id='old-attempt',
+                fence=fence+1,lease_expires_at=?,heartbeat_at=?,updated_at=? WHERE id=?''',
+                (now + 30, now, now, job['id']))
+            fence = conn.execute('SELECT fence FROM jobs WHERE id=?', (job['id'],)).fetchone()[0]
+            conn.execute('INSERT INTO attempts(id,job_id,owner,fence,started_at) VALUES(?,?,?,?,?)',
+                         ('old-attempt', job['id'], 'old-worker', fence, now))
+        claim = Claim(job['id'], 'old-attempt', 'old-worker', fence, task_store.get(job['id']))
     task_store.initialize()
     before = task_store.get(job['id'])
     task_store.renew(claim)

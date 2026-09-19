@@ -12,6 +12,7 @@
 #   - logs/services/      - Daemon logs (reminder, follow-up, self-healing)
 #   - logs/               - LLM calls, workflows, tools, etc.
 #   - logs/opencode/      - OpenCode session logs
+#   - logs/browser-use/   - Browser Use audit logs
 #   - logs/server-side-tools/ - xAI/Anthropic native tool usage logs
 #
 # NOT cleaned (preserved):
@@ -91,6 +92,7 @@ DIRS=(
     "$LOGS_DIR/api"
     "$LOGS_DIR/services"
     "$LOGS_DIR/background-tasks"
+    "$LOGS_DIR/browser-use"
     "$LOGS_DIR/opencode"
     "$LOGS_DIR/tools"
     "$LOGS_DIR/thinking"

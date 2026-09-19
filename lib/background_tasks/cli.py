@@ -124,7 +124,7 @@ def main():
         # systemd owns restart policy independently of the regular Jarvis daemon
         # registry. An explicit stop stays stopped, including when admission is off.
         raise SystemExit(subprocess.call(['systemctl', '--user', args.action, 'jarvis-task-worker.service']))
-    if not worker_adapters():
+    if not worker_adapters(store):
         parser.error('This worker requires Linux and a trusted local skill binding; foreground tools remain available')
     os.umask(0o077)
     store.path.parent.mkdir(parents=True, exist_ok=True)
@@ -146,7 +146,8 @@ def main():
         overrides = {key: os.environ['JARVIS_OVERRIDE_' + key]
                      for key in ('STASH_DIR', 'JARVIS_TOOL_PROFILE')
                      if 'JARVIS_OVERRIDE_' + key in os.environ}
-        TaskWorker(store, worker_adapters(), deployment_overrides=overrides).run_forever(stop)
+        TaskWorker(store, worker_adapters(store), deployment_overrides=overrides,
+                   adapter_loader=lambda: worker_adapters(store)).run_forever(stop)
     except Exception as exc:
         store.events.emit('worker_run_failed', component='worker', level='ERROR', error_type=type(exc).__name__)
         raise

@@ -14,6 +14,8 @@ class BackgroundTasks {
     this.unread = new Set();
     this.enabled = false;
     this.refreshId = 0;
+    this.browserSetupTimer = null;
+    this.browserSetupPending = false;
     this.view = window.TaskManager ? new window.TaskManager(this) : null;
     this.socket.on('taskOverview', data => this.view?.counts(data));
     this.socket.on('sessionReady', () => { void this.refresh(); this.subscribe(); });
@@ -54,6 +56,21 @@ class BackgroundTasks {
       if (requestId !== this.refreshId) return;
       this.enabled = status.settings.background_enabled;
       this.status = status;
+      const setup = status.tool_details?.browser_use?.browser_use?.setup;
+      if (setup?.state === 'running') {
+        this.browserSetupPending = true;
+        if (!this.browserSetupTimer) this.browserSetupTimer = setTimeout(() => {
+          this.browserSetupTimer = null; void this.refresh();
+        }, 1500);
+      } else {
+        if (this.browserSetupTimer) clearTimeout(this.browserSetupTimer);
+        this.browserSetupTimer = null;
+        if (this.browserSetupPending && setup) {
+          this.browserSetupPending = false;
+          if (setup.state === 'ready') Utils.toast('Browser Use is configured and enabled.', 'success');
+          else if (setup.state === 'failed') Utils.toast(setup.message || 'Browser Use setup failed.', 'warning');
+        }
+      }
       this.view?.availability(status);
       this.updateConvertHint();
       if (!this.control) return;
@@ -77,7 +94,19 @@ class BackgroundTasks {
         text.textContent = name.replaceAll('_', ' ').replace(/^./, ch => ch.toUpperCase());
         const description = document.createElement('small');
         const details = status.tool_details?.[name];
-        description.textContent = !available ? (input.checked
+        const browser = details?.browser_use;
+        if (name === 'browser_use' && browser && !browser.operational && !input.checked) input.disabled = true;
+        description.textContent = name === 'browser_use' && browser ? (browser.setup?.state === 'running'
+          ? browser.setup.message || 'Setting up Browser Use…'
+          : browser.setup?.state === 'failed' ? browser.setup.message
+          : !browser.configured
+          ? 'Set up once here; Jarvis will configure callbacks and own the helper service.'
+          : browser.ready ? 'Ready for Web chat → background task → callback.'
+          : browser.operational ? 'Setup is ready. Enable the background switch and Browser Use to make it available in Web chat.'
+          : !browser.service_ready ? 'Configured, but the Browser Use helper is stopped.'
+          : !browser.worker_ready ? 'Helper is running; the task worker is loading its callback adapter.'
+          : 'Setup needs attention. Use Finish setup to repair and verify it.')
+          : !available ? (input.checked
           ? 'Unavailable in this mode or blocked in Web. Saved preference retained; uncheck to remove.'
           : 'Unavailable in this mode or blocked in Web.')
           : details?.worker_ready === false ? 'A compatible worker must be started or restarted before this tool can queue.'
@@ -85,9 +114,11 @@ class BackgroundTasks {
           : 'Use background execution when enabled above.';
         text.append(description);
         label.append(input, text);
+        if (name === 'browser_use' && browser) label.append(this.browserActions(browser));
         this.choices.append(label);
       }
-      this.note.textContent = status.coordinator_unavailable_reason
+      this.note.textContent = setup?.state === 'running' ? 'Browser Use setup is running. You can keep chatting while the pinned image downloads.'
+        : status.coordinator_unavailable_reason
         || (!this.choices.children.length ? 'No supported background tools are installed.'
         : !status.worker_ready ? 'Worker offline. Preferences are saved, but enabled tools cannot queue until it starts. Open Manage tasks for setup.'
         : this.enabled && saved.size ? 'Ready. Enabled tools run in the background from chat and tool dialogs.'
@@ -99,6 +130,50 @@ class BackgroundTasks {
       this.choices?.querySelectorAll('input').forEach(input => { input.disabled = true; });
       this.updateConvertHint();
     }
+  }
+
+  browserActions(browser) {
+    const actions = document.createElement('div');
+    actions.className = 'background-tool-actions';
+    const button = (text, action) => {
+      const control = document.createElement('button');
+      control.type = 'button'; control.className = 'btn-secondary'; control.textContent = text;
+      control.addEventListener('click', async event => {
+        event.preventDefault(); event.stopPropagation(); control.disabled = true;
+        const original = control.textContent;
+        control.textContent = action === 'setup' ? 'Setting up…' : 'Working…';
+        try {
+          const response = await Utils.auth.fetch('/api/background-tasks/tools/browser_use/actions', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action})
+          });
+          const value = await response.json();
+          if (!response.ok) throw new Error(value.error || 'Browser Use setup failed');
+          if (action === 'setup' && response.status === 202) this.browserSetupPending = true;
+          Utils.toast(action === 'setup' && response.status === 202 ? 'Browser Use setup started. Progress will appear here.'
+            : action === 'setup' ? 'Browser Use is configured and enabled.'
+            : action === 'test' ? 'Browser Use callback verified.'
+            : `Browser Use service ${action} complete.`, 'success');
+        } catch (error) { Utils.toast(error.message, 'warning'); }
+        control.textContent = original;
+        await this.refresh();
+      });
+      return control;
+    };
+    if (browser.setup?.state === 'running') {
+      const progress = button('Setting up…', 'setup'); progress.disabled = true; actions.append(progress);
+    }
+    else if (!browser.configured) actions.append(button(browser.setup?.state === 'failed' ? 'Retry setup' : 'Set up and enable', 'setup'));
+    else if (!browser.operational) {
+      actions.append(button('Finish setup', 'setup'));
+      if (!browser.service_ready) actions.append(button('Start service', 'start'));
+    } else {
+      actions.append(button('Test connection', 'test'));
+      if (browser.managed_by_tmux) {
+        actions.append(button('Restart service', 'restart'), button('Stop service', 'stop'));
+      }
+    }
+    return actions;
   }
 
   async savePreferences() {
@@ -172,7 +247,38 @@ class BackgroundTasks {
       body.textContent = (job.delivery_error ? `${job.delivery_error}\n\n` : '') + (job.archived_at ? 'Result payload archived. Saved conversation answers and artifacts remain available.'
         : job.result ? JSON.stringify(job.result, null, 2).slice(0, 12000)
         : job.attention_reason || job.progress?.phase || 'Results will return to this conversation.');
-      card.replaceChildren(title, body);
+      const children = [title, body];
+      const researchRef = job.tool === 'browser_use' ? job.result?.data?.browser_research?.stash_ref : null;
+      const researchUrl = window.mediaResultRenderer?.stashUrl(researchRef)?.replace('/api/stash/', '/stash/view/');
+      if (researchUrl) {
+        const link = document.createElement('a');
+        link.className = 'btn-secondary background-job-research';
+        link.textContent = 'Open saved research';
+        link.href = researchUrl + (['cloud', 'local'].includes(job.mode) ? `?mode=${job.mode}` : '');
+        link.target = '_blank'; link.rel = 'noopener noreferrer';
+        children.push(link);
+      }
+      if (job.can_cancel) {
+        const cancel = document.createElement('button');
+        cancel.type = 'button'; cancel.className = 'btn-secondary background-job-cancel';
+        cancel.textContent = 'Request cancellation';
+        cancel.addEventListener('click', async event => {
+          event.preventDefault(); event.stopPropagation(); cancel.disabled = true;
+          try {
+            const response = await Utils.auth.fetch(`/api/background-jobs/${encodeURIComponent(job.job_id)}/actions`, {
+              method: 'POST', headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({action: 'cancel', revision: job.revision})
+            });
+            const value = await response.json();
+            if (!response.ok) throw new Error(value.error || 'Cancellation could not be requested');
+            Utils.toast('Cancellation requested. Jarvis will confirm when this browser job has stopped.', 'info');
+          } catch (error) {
+            Utils.toast(error.message, 'warning'); cancel.disabled = false;
+          }
+        });
+        children.push(cancel);
+      }
+      card.replaceChildren(...children);
       card.open = wasOpen;
     }
   }

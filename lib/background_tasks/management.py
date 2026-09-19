@@ -126,6 +126,19 @@ class ManagementStore:
                 raise Conflict("Execution has already settled or needs reconciliation")
         return self.get(job_id)
 
+    def callback_attempt_status(self, job_id, attempt_id):
+        """Read-only stop signal for the exact bound callback attempt."""
+        identifier(job_id, "job ID")
+        identifier(attempt_id, "attempt ID")
+        with self._connection() as conn:
+            row = conn.execute('''SELECT attempt_id,state,cancel_requested,callback_waiting,deadline
+                                  FROM jobs WHERE id=?''', (job_id,)).fetchone()
+        if (not row or row['attempt_id'] != attempt_id
+                or row['state'] not in {'starting', 'running'} or not row['callback_waiting']
+                or row['deadline'] <= self._time()):
+            return 'closed'
+        return 'cancel_requested' if row['cancel_requested'] else 'active'
+
     def acknowledge_cancel(self, claim, evidence):
         with self._connection(write=True) as conn:
             row = self._active(conn, claim)

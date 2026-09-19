@@ -307,6 +307,7 @@ FOLLOWUP_DATA_SKIP_KEYS = frozenset({
 
 # @TOOL_CONFIG: follow-up data extraction — fields extracted from tool results for LLM context
 FOLLOWUP_FIELDS: dict[str, list[str]] = {
+    'browser_use': ['kind', 'provider', 'model'],
     'weather': [
         'requested_location', 'location', 'resolved_location',
         'location_region', 'location_country', 'location_country_code',
@@ -2890,6 +2891,10 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             continue
 
         payload = value.get('data') if isinstance(value.get('data'), dict) else value
+        if key == 'browser_use' and isinstance(payload.get('browser_research'), dict):
+            # Callback results keep the reviewed presentation under data. Carry
+            # its archive handle into later turns without copying the full report.
+            payload = payload['browser_research']
         # Auto-stashed web uploads are also stored under top-level "stash".
         # Keep skipping those lightweight upload refs here, but preserve actual
         # stash tool outputs so later follow-up turns can reference them.

@@ -9,3 +9,4 @@ simple-websocket>=1.0.0
 requests==2.32.5
 PyYAML==6.0.2
 jsonschema>=4.23.0
+cryptography==49.0.0

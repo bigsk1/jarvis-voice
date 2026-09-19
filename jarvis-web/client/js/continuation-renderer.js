@@ -1,8 +1,9 @@
 /** Late output stays DOM data; completed local artifacts may use media controls. */
 window.continuationRenderer = (() => {
-  const node = (tag, text) => {
+  const node = (tag, text, className) => {
     const el = document.createElement(tag);
     if (text !== undefined) el.textContent = text;
+    if (className) el.className = className;
     return el;
   };
 
@@ -115,8 +116,77 @@ window.continuationRenderer = (() => {
     if (list.children.length) parent.appendChild(list);
   }
 
+  function browserResearch(data) {
+    const entries = Array.isArray(data?.browser_use) ? data.browser_use : [data?.browser_use];
+    return entries.find(result => typeof result?.ok === 'boolean'
+      && typeof result.speech === 'string'
+      && (result.data?.browser_research?.kind === 'browser_research'
+        || /^Saved research:\s*stash:\/\/[^\r\n]+/i.test(result.speech))) || null;
+  }
+
+  function appendBrowserResearch(message, result, mode) {
+    const metadata = result.data?.browser_research || {};
+    const partial = result.ok !== true;
+    const card = node('section'); card.className = `browser-research-card${partial ? ' is-partial' : ''}`;
+    const heading = node('header'); heading.className = 'browser-research-heading';
+    const title = node('div');
+    title.appendChild(node('span', partial ? 'Partial browser research' : 'Browser research', 'browser-research-title'));
+    const provenance = [metadata.provider, metadata.model].filter(value => typeof value === 'string');
+    const subtitle = [partial ? 'The requested result could not be fully verified' : '', ...provenance].filter(Boolean);
+    if (subtitle.length) title.appendChild(node('small', subtitle.join(' · ')));
+    heading.appendChild(title);
+    const saved = result.speech.match(/^Saved research:\s*(stash:\/\/[^\r\n]+)/i);
+    const archive = stashUrl(metadata.stash_ref || saved?.[1], mode);
+    if (archive) {
+      const open = node('a', 'Open full research');
+      open.className = 'btn-secondary browser-research-open';
+      open.href = archive; open.target = '_blank'; open.rel = 'noopener noreferrer';
+      heading.appendChild(open);
+    }
+    card.appendChild(heading);
+
+    let report = String(result.speech || '');
+    if (/^Saved research:\s*stash:\/\/[^\r\n]+\r?\n/i.test(report)) {
+      report = report.replace(/^Saved research:\s*stash:\/\/[^\r\n]+\r?\n+/i, '');
+    }
+    const body = node('div'); body.className = 'browser-research-report';
+    try {
+      if (!window.marked?.lexer) throw new Error('Markdown unavailable');
+      tokens(body, window.marked.lexer(report, {gfm: true, breaks: true}), 0, mode);
+    } catch (_) { body.textContent = report; body.style.whiteSpace = 'pre-wrap'; }
+    card.appendChild(body);
+
+    const sources = (metadata.sources || []).filter(value => linkUrl(value, mode)).slice(0, 60);
+    if (sources.length) {
+      const details = node('details'); details.className = 'browser-research-sources';
+      details.appendChild(node('summary', `Sources visited (${sources.length})`));
+      const list = node('ol');
+      for (const source of sources) {
+        const item = node('li'); link(item, source, source, mode); list.appendChild(item);
+      }
+      details.appendChild(list); card.appendChild(details);
+    }
+    const actions = node('div'); actions.className = 'browser-research-actions';
+    const copy = node('button', 'Copy report'); copy.type = 'button'; copy.className = 'btn-secondary';
+    copy.addEventListener('click', async () => {
+      try {
+        try {
+          if (!window.isSecureContext || !navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+          await navigator.clipboard.writeText(report);
+        } catch (_) { Utils.copyTextFallback(report); }
+        Utils.toast('Copied browser research as Markdown', 'success', 1800);
+      } catch (_) { Utils.toast('Could not copy browser research', 'error', 3000); }
+    });
+    actions.appendChild(copy); card.appendChild(actions); message.appendChild(card);
+  }
+
   function append(message, text, data) {
     const mode = ['cloud', 'local'].includes(data?._background_mode) ? data._background_mode : null;
+    const research = browserResearch(data);
+    if (research) {
+      appendBrowserResearch(message, research, mode);
+      return;
+    }
     const media = window.mediaResultRenderer.append(message, data);
     const bubble = node('div'); bubble.className = 'message-bubble';
     try {

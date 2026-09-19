@@ -1,0 +1,27 @@
+# Optional per-task agent. Pull once; the skill uses `compose run --rm`.
+services:
+  browser:
+    image: browseruse/browseruse:0.13.10@sha256:689123c4998749972d320d6560f81f13595135ee5caea4093fbbc99b8bd039eb
+    init: true
+    user: browseruse
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:./docker/browser-use/seccomp_profile.json
+    environment:
+      HOME: /tmp
+      ANONYMIZED_TELEMETRY: "false"
+      BROWSER_USE_CLOUD_SYNC: "false"
+      BROWSER_USE_LOGGING_LEVEL: error
+    entrypoint: [/app/.venv/bin/python, -u, /opt/jarvis/agent.py]
+    volumes:
+      - ./docker/browser-use/agent.py:/opt/jarvis/agent.py:ro
+    tmpfs:
+      - /tmp:rw,nosuid,size=1073741824,mode=1777
+      - /data:rw,nosuid,size=67108864,mode=1777
+    shm_size: 1gb
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 256

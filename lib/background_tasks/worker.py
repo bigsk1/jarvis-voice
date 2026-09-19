@@ -79,6 +79,10 @@ class UncertainOutcome(TaskError):
     """Trusted adapter explanation; never use raw provider exception text here."""
 
 
+class AwaitingCallback:
+    """A prebound durable callback owns completion; never interpret as success."""
+
+
 @dataclass
 class ExecutionContext:
     claim: Claim
@@ -132,6 +136,7 @@ class TaskWorker:
         heartbeat_seconds: float = 5,
         poll_seconds: float = 1,
         deployment_overrides: dict | None = None,
+        adapter_loader=None,
     ):
         store._ttl(lease_seconds)
         if not 0 < heartbeat_seconds < lease_seconds / 2 or not 0 < poll_seconds <= 60:
@@ -145,10 +150,31 @@ class TaskWorker:
         self.heartbeat_seconds = heartbeat_seconds
         self.poll_seconds = poll_seconds
         self.deployment_overrides = dict(deployment_overrides or {})
+        self.adapter_loader = adapter_loader
+        self._adapter_lock = threading.RLock()
+
+    def _refresh_adapters(self):
+        """Add newly provisioned trusted adapters without restarting the worker."""
+        if self.adapter_loader is None:
+            return
+        with self._adapter_lock:
+            loaded = dict(self.adapter_loader())
+            if any(not callable(adapter) for adapter in loaded.values()):
+                raise TaskError("Adapters must be trusted callables")
+            added = sorted(set(loaded) - set(self.adapters))
+            if added:
+                # Never remove a live adapter: an accepted job may still depend on it.
+                # Revoked/disabled policy is rechecked inside the adapter before submit.
+                self.adapters.update(loaded)
+                logger.info('Task worker loaded newly provisioned adapters=%s', ', '.join(added))
+                self.store.events.emit('worker_adapters_added', component='worker', owner=self.owner,
+                                       adapters=added)
 
     def _presence(self, *, draining=False):
+        with self._adapter_lock:
+            adapters = set(self.adapters)
         self.store.touch_worker(
-            self.owner, set(self.adapters), lease_seconds=self.lease_seconds, draining=draining
+            self.owner, adapters, lease_seconds=self.lease_seconds, draining=draining
         )
 
     def _heartbeat(self, claim, done, lost, stop):
@@ -190,8 +216,11 @@ class TaskWorker:
         stop = stop if stop is not None else threading.Event()
         if stop.is_set():
             return False
+        self._refresh_adapters()
         self._presence()
-        claim = self.store.claim(self.owner, set(self.adapters), lease_seconds=self.lease_seconds)
+        with self._adapter_lock:
+            adapters = dict(self.adapters)
+        claim = self.store.claim(self.owner, set(adapters), lease_seconds=self.lease_seconds)
         if claim is None:
             return False
         started_at = time.monotonic()
@@ -221,11 +250,14 @@ class TaskWorker:
                 logger.info('Task started job=%s tool=%s mode=%s',
                             claim.job_id, claim.job['admission']['tool'], claim.job['mode'])
                 adapter_started = True
-                result = self.adapters[claim.job["adapter"]](context)
+                result = adapters[claim.job["adapter"]](context)
                 # A completed adapter result remains useful if shutdown raced its
                 # return. finish() still checks the execution lease and deadline.
-                self.store.finish(claim, result)
-                logger.info('Task succeeded job=%s; result saved for Web delivery', claim.job_id)
+                if isinstance(result, AwaitingCallback):
+                    logger.info('Task submitted job=%s; awaiting authenticated callback', claim.job_id)
+                else:
+                    self.store.finish(claim, result)
+                    logger.info('Task succeeded job=%s; result saved for Web delivery', claim.job_id)
         except KnownStopped:
             try:
                 self.store.record_local_stop(claim)
@@ -306,7 +338,14 @@ class TaskWorker:
                 active = set()
                 try:
                     while not stop.is_set():
+                        self._refresh_adapters()
                         self._presence()
+                        try:
+                            from lib.webhook_integrations.service import IntegrationService
+                            IntegrationService(self.store).drain()
+                        except Exception as exc:
+                            self.store.events.emit('callback_drain_failed', component='worker', level='ERROR',
+                                                   error_type=type(exc).__name__, throttle=True)
                         finished = {future for future in active if future.done()}
                         for future in finished:
                             future.result()

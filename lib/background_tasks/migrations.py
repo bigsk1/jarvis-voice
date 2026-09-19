@@ -1,5 +1,7 @@
 """Ordered migrations; execute statements individually inside BEGIN IMMEDIATE."""
 
+from lib.webhook_integrations.schema import MIGRATION as CALLBACK_MIGRATION
+
 MIGRATIONS = (
     (
         """CREATE TABLE settings (
@@ -136,4 +138,5 @@ MIGRATIONS = (
                 UPDATE jobs SET revision=OLD.revision+1 WHERE id=NEW.id;
             END""",
     ),
+    CALLBACK_MIGRATION,
 )

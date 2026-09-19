@@ -13,12 +13,15 @@
 .background-tool-option { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--border-primary); border-radius: var(--radius-md); background: var(--bg-tertiary); cursor: pointer; font-size: var(--text-sm); }
 .background-tool-option input { accent-color: var(--accent-primary); width: 16px; height: 16px; flex-shrink: 0; }
 .background-tool-option small { display: block; margin-top: 2px; color: var(--text-secondary); font-size: var(--text-xs); }
+.background-tool-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-left: auto; }
+.background-tool-actions button { min-height: 34px; white-space: nowrap; }
 .background-settings-status { color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: 8px; }
 .background-settings input:disabled { opacity: .5; cursor: default; }
 .convert-execution-note { margin: 0 0 20px; padding: 12px; border-radius: var(--radius-md); background: var(--bg-tertiary); color: var(--text-secondary); font-size: var(--text-xs); line-height: 1.6; }
 .background-job { margin-bottom: 8px; max-width: 100%; }
 .background-job summary { cursor: pointer; padding: 10px 12px; }
 .background-job pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; max-height: 240px; overflow: auto; }
+.background-job-cancel, .background-job-research { display: inline-block; margin: 0 12px 12px; }
 .background-settings :focus-visible, .background-job summary:focus-visible, .task-manager :focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 3px; }
 /* The global reset removes dialog's native auto margin; center explicitly. */
 .task-manager { position: fixed; inset: 0; margin: auto; padding: 0; width: min(820px, calc(100vw - 40px)); max-width: none; max-height: min(860px, calc(100dvh - 64px)); overflow: hidden; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: var(--radius-xl); box-shadow: 0 24px 80px rgb(0 0 0 / 45%); font: inherit; font-size: var(--text-sm); }
@@ -85,7 +88,8 @@
   .task-stat { padding: 12px; }
   .task-stat strong { font-size: 22px; }
   .task-stat span { font-size: 11px; }
-  .task-setup, .background-settings-heading { flex-direction: column; align-items: stretch; gap: 12px; }
+  .task-setup, .background-settings-heading, .background-tool-option { flex-direction: column; align-items: stretch; gap: 12px; }
+  .background-tool-actions { justify-content: flex-start; margin-left: 28px; }
   .task-filters, .task-limits { grid-template-columns: 1fr; }
   .task-manager button { min-height: 44px; }
   .task-paging { padding: 12px; flex-wrap: wrap; }
@@ -96,3 +100,37 @@
 .continuation-media-actions { flex-wrap: wrap; }
 .continuation-media .convert-info { min-width: 0; overflow-wrap: anywhere; color: var(--text-secondary); }
 .continuation-media-note { color: var(--text-secondary); font-size: var(--text-xs); overflow-wrap: anywhere; margin: 6px 0; }
+.browser-research-card { width: min(100%, 860px); border: 1px solid var(--border-primary); border-radius: var(--radius-lg); background: var(--bg-secondary); overflow: hidden; }
+.browser-research-card.is-partial { border-color: color-mix(in srgb, var(--warning) 45%, var(--border-primary)); }
+.browser-research-card.is-partial .browser-research-title { color: var(--warning); }
+.browser-research-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; border-bottom: 1px solid var(--border-primary); background: var(--bg-tertiary); }
+.browser-research-heading > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.browser-research-title { font-size: var(--text-base); font-weight: 600; }
+.browser-research-heading small { color: var(--text-secondary); overflow-wrap: anywhere; }
+.browser-research-open { flex-shrink: 0; text-decoration: none; }
+.browser-research-report { padding: 18px; line-height: 1.65; overflow-wrap: anywhere; }
+.browser-research-card a { color: var(--text-primary); }
+.browser-research-card a:hover { color: #fff; }
+.browser-research-report p { margin: 0 0 14px; }
+.browser-research-report h1, .browser-research-report h2, .browser-research-report h3, .browser-research-report h4 { line-height: 1.3; margin: 22px 0 10px; }
+.browser-research-report h1 { font-size: var(--text-xl); }
+.browser-research-report h2 { font-size: var(--text-lg); color: var(--accent-tertiary); }
+.browser-research-report h3, .browser-research-report h4 { font-size: var(--text-base); }
+.browser-research-report ul, .browser-research-report ol { margin: 8px 0 16px 22px; padding: 0; }
+.browser-research-report li { margin: 6px 0; padding-left: 3px; }
+.browser-research-report blockquote { margin: 14px 0; padding: 10px 14px; border-left: 3px solid var(--accent-primary); background: var(--bg-tertiary); color: var(--text-secondary); }
+.browser-research-report pre { max-width: 100%; overflow-x: auto; padding: 12px; border-radius: var(--radius-md); background: var(--bg-primary); }
+.browser-research-report code { font-family: var(--font-mono); font-size: .9em; }
+.browser-research-report table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 12px 0 18px; }
+.browser-research-report th, .browser-research-report td { padding: 8px 10px; border: 1px solid var(--border-primary); text-align: left; }
+.browser-research-report > :first-child { margin-top: 0; }
+.browser-research-report > :last-child { margin-bottom: 0; }
+.browser-research-sources { margin: 0 18px 14px; padding: 10px 0; border-top: 1px solid var(--border-primary); border-bottom: 1px solid var(--border-primary); }
+.browser-research-sources summary { cursor: pointer; color: var(--text-secondary); }
+.browser-research-sources ol { margin: 10px 0 0 22px; }
+.browser-research-sources li { padding: 3px 0; overflow-wrap: anywhere; }
+.browser-research-actions { display: flex; gap: 8px; padding: 0 18px 18px; }
+@media (max-width: 600px) {
+  .browser-research-heading { align-items: stretch; flex-direction: column; }
+  .browser-research-open { text-align: center; }
+}

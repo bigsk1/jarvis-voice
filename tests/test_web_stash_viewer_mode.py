@@ -34,3 +34,34 @@ setImmediate(()=>{
                              ',mode=' + json.dumps(mode) + ';\n' + script],
                             capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stderr
+
+
+def test_browser_research_viewer_renders_captured_dom_as_literal_evidence():
+    script = r'''
+const fs=require('node:fs'), vm=require('node:vm'), assert=require('node:assert/strict');
+const html=fs.readFileSync(ROOT+'/jarvis-web/client/stash-viewer.html','utf8');
+const source=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)[1];
+const elements={};
+const artifact='# Browser research\n\nTask <img src=x>\n\n## Report\n\nPartial report\n\n'
+  +'## Source 1: News <script>alert(1)</script>\n\nhttps://example.com/news?a=1&b=2\n\n'
+  +'[1]<div onclick="alert(2)">headline</div>';
+const escapeHtml=value=>String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+  .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;');
+const sandbox={URL,URLSearchParams,document:{getElementById:id=>elements[id]??=({})},
+  window:{location:{pathname:'/stash/view/space/file',search:''}},
+  Utils:{escapeHtml,parseMarkdown:value=>value,auth:{fetch:async()=>({ok:true,
+    headers:{get:key=>key==='content-type'?'text/markdown':
+      key==='x-stash-filename'?'browser-research.md':''},text:async()=>artifact})}}};
+vm.runInNewContext(source,sandbox);
+setImmediate(()=>{
+  const rendered=elements.stashContent.innerHTML;
+  assert.equal(elements.stashContent.className,'markdown-viewer browser-research-viewer');
+  assert.ok(rendered.includes('browser-research-evidence'));
+  assert.ok(rendered.includes('&lt;div onclick=&quot;alert(2)&quot;&gt;headline&lt;/div&gt;'));
+  assert.ok(!rendered.includes('<script>') && !rendered.includes('<div onclick='));
+  assert.ok(rendered.includes('href="https://example.com/news?a=1&amp;b=2"'));
+});
+'''
+    result = subprocess.run(['node', '-e', 'const ROOT=' + json.dumps(str(ROOT)) + ';\n' + script],
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr

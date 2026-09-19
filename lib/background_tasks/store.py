@@ -222,6 +222,12 @@ class TaskStore(DeliveryStore, ManagementStore):
                 raise AdmissionDenied("Background task admission is disabled")
             if admission.tool not in settings["background_tools"]:
                 raise AdmissionDenied("This tool is no longer enabled for background execution")
+            if admission.adapter == 'http_callback_v1':
+                from lib.webhook_integrations.service import IntegrationService
+                source_id = (authorization or {}).get('callback_sources', {}).get(admission.tool)
+                if not source_id:
+                    raise AdmissionDenied('Missing trusted callback source authorization')
+                IntegrationService(self)._ready_source(conn, source_id)
             outstanding = conn.execute(
                 """SELECT COUNT(*) FROM jobs j WHERE conversation_id=? AND generation=? AND
                 (state NOT IN ('succeeded','failed') OR EXISTS (
@@ -310,7 +316,7 @@ class TaskStore(DeliveryStore, ManagementStore):
     def _recover(conn, now):
         expired = conn.execute(
             """SELECT id, attempt_id FROM jobs
-            WHERE state IN ('starting','running') AND (lease_expires_at<=? OR deadline<=?)""",
+            WHERE state IN ('starting','running') AND ((callback_waiting=0 AND lease_expires_at<=?) OR deadline<=?)""",
             (now, now),
         ).fetchall()
         for row in expired:
@@ -354,7 +360,7 @@ class TaskStore(DeliveryStore, ManagementStore):
             self._recover(conn, now)
             # Unknown executions reserve capacity until explicit reconciliation.
             active = conn.execute("""SELECT COUNT(*) FROM jobs WHERE
-                state IN ('starting','running') OR
+                (state IN ('starting','running') AND callback_waiting=0) OR
                 (state='needs_attention' AND attempt_id IS NOT NULL)""").fetchone()[0]
             if active >= self._settings(conn)["max_running"]:
                 return None
@@ -364,7 +370,7 @@ class TaskStore(DeliveryStore, ManagementStore):
                 AND dispatch_state='ready' AND receipt_json IS NOT NULL AND adapter IN ({slots})
                 AND (SELECT COUNT(*) FROM jobs active WHERE
                     active.adapter = jobs.adapter
-                    AND (active.state IN ('starting','running') OR
+                    AND ((active.state IN ('starting','running') AND active.callback_waiting=0) OR
                         (active.state='needs_attention' AND active.attempt_id IS NOT NULL))) < ?
                 ORDER BY created_at, id LIMIT 1""",
                 [*names, self._settings(conn)["max_per_adapter"]],
@@ -458,7 +464,7 @@ class TaskStore(DeliveryStore, ManagementStore):
             now = self._time()
             delivery_id = uuid.uuid4().hex
             conn.execute(
-                """UPDATE jobs SET state=?, result_json=?, result_digest=?,
+                """UPDATE jobs SET state=?, callback_waiting=0, result_json=?, result_digest=?,
                 updated_at=?, progress_json=NULL WHERE id=?""",
                 (state, payload, fingerprint, now, claim.job_id),
             )

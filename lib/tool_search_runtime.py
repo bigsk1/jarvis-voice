@@ -150,6 +150,7 @@ def search_tools_runtime(
     excluded_tools: list[str] | set[str] | None = None,
     tool_names: list[str] | None = None,
     include_schema: bool = False,
+    background_context=None,
 ) -> dict[str, Any]:
     """
     Search live available tools without inventing a parallel metadata layer.
@@ -161,8 +162,11 @@ def search_tools_runtime(
         excluded_tools: Request-specific tools that must remain hidden.
         tool_names: Optional exact names to inspect directly.
         include_schema: Include full parameter schema for exact/detail lookups.
+        background_context: Server-created Web context for background-only tools.
     """
     excluded = {str(name).strip() for name in (excluded_tools or []) if str(name).strip()}
+    from lib.background_tasks.admission import background_only_exclusions
+    excluded.update(background_only_exclusions(registry, background_context))
     excluded.add("tool_search")
     limit = _coerce_limit(limit)
     ghost_tools = _ghost_tool_names(registry)

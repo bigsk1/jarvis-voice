@@ -155,7 +155,7 @@ def run_local_process(cmd, input_json, *, python_script, cwd, tool_env, timeout,
                         cancelled = True
                         terminate(
                             process,
-                            grace_seconds=6 if tool_name == "opencode" else 3,
+                            grace_seconds=12 if tool_name == "browser_use" else 6 if tool_name == "opencode" else 3,
                         )
                         break
                 except Exception:
@@ -165,7 +165,7 @@ def run_local_process(cmd, input_json, *, python_script, cwd, tool_env, timeout,
                 timed_out = True
                 terminate(
                     process,
-                    grace_seconds=6 if tool_name == "opencode" else 3,
+                    grace_seconds=12 if tool_name == "browser_use" else 6 if tool_name == "opencode" else 3,
                 )
                 break
 

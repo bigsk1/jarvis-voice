@@ -103,6 +103,22 @@ LOCAL_TOOL_SAMPLES = {
             },
         }
     ),
+    "browser_use": _case(
+        {
+            "ok": True,
+            "speech": "Saved research: stash://research/report\n\nThe report summarizes the visited sources.",
+            "data": {
+                "browser_research": {
+                    "kind": "browser_research",
+                    "stash_ref": "stash://research/report",
+                    "sources": ["https://example.test/article"],
+                    "provider": "xai",
+                    "model": "test-model",
+                }
+            },
+        },
+        {"task": "Research the topic", "url": "https://example.test/article"},
+    ),
     "calculator": _case({"expression": "2+2", "result": 4.0, "type": "expression"}),
     "canvas": _case(
         {
@@ -2616,6 +2632,7 @@ def test_generate_video_followup_drops_retired_provider_video_id():
 def test_artifact_and_entity_tools_preserve_their_followup_handles():
     expected_handles = {
         "analyze_image": {"stash_ref"},
+        "browser_use": {"stash_ref", "provider", "model"},
         "canvas": {"page_id"},
         "convert_file": {"stash_ref"},
         "create_alert": {"alert_id"},

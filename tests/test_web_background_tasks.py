@@ -4,6 +4,7 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,7 +15,7 @@ from flask import Flask
 from test_web_attachment_bundle_chat import chat, web_config
 from test_web_attachment_bundle_chat import journey as journey
 
-from lib.background_tasks import AdmissionDenied, TaskStore
+from lib.background_tasks import AdmissionDenied, TaskError, TaskStore
 
 
 def eventually(predicate, timeout=6):
@@ -307,6 +308,52 @@ def test_saved_background_policy_is_authenticated_persistent_and_not_a_client_ov
     assert h.instances[-1].background_context.selected == ('fixture',)
     assert not h.tasks.conversation_jobs()
     assert not h.instances[-1].background_context.receipts
+
+
+def test_browser_setup_operator_action_owns_the_full_normal_flow(web_tasks, monkeypatch):
+    import browser_agent
+    from jarvis_bundle_chat_test.routes import background_tasks as routes
+
+    from lib.webhook_integrations import browser
+
+    h = web_tasks
+    steps = []
+    monkeypatch.setattr(browser_agent, 'install_runtime', lambda: steps.append('runtime'))
+    monkeypatch.setattr(browser, 'activate', lambda *args: steps.append('activate'))
+    monkeypatch.setattr(routes, 'ensure_task_worker', lambda tasks: steps.append('worker'))
+    monkeypatch.setattr(routes, 'browser_command', lambda action, tasks: steps.append(action))
+    monkeypatch.setattr(routes, 'browser_details', lambda tasks: {'ready': True, 'operational': True})
+    response = h.app.test_client().post(
+        '/api/background-tasks/tools/browser_use/actions', json={'action': 'setup'},
+        headers={'Authorization': 'Bearer operator-test', 'Origin': 'http://localhost'},
+    )
+    assert response.status_code == 202
+    eventually(lambda: len(steps) == 4)
+    assert steps == ['runtime', 'activate', 'worker', 'start']
+    eventually(lambda: routes._browser_setup_status(h.background)['state'] == 'ready')
+
+
+def test_browser_setup_restarts_an_idle_worker_that_cannot_run_callbacks(web_tasks, monkeypatch):
+    from jarvis_bundle_chat_test.routes import background_tasks as routes
+
+    h = web_tasks
+    actions = []
+    monkeypatch.setattr(h.tasks, 'healthy_workers', lambda: [{'adapters': ['local_skill_v1']}])
+    monkeypatch.setattr(h.tasks, 'counts', lambda: {'running': 0, 'reserved': 0})
+    monkeypatch.setattr(routes, 'task_worker_command', lambda action, tasks: actions.append(action))
+    routes.ensure_task_worker(h.background)
+    assert actions == ['restart']
+
+
+def test_browser_setup_will_not_restart_a_worker_with_reserved_work(web_tasks, monkeypatch):
+    from jarvis_bundle_chat_test.routes import background_tasks as routes
+
+    h = web_tasks
+    monkeypatch.setattr(h.tasks, 'healthy_workers', lambda: [{'adapters': ['local_skill_v1']}])
+    monkeypatch.setattr(h.tasks, 'counts', lambda: {'running': 0, 'reserved': 1})
+    monkeypatch.setattr(routes, 'task_worker_command', lambda *_: pytest.fail('must not restart active worker'))
+    with pytest.raises(TaskError, match='must be upgraded'):
+        routes.ensure_task_worker(h.background)
 
 
 def test_saved_policy_survives_multiple_messages_without_client_selection(web_tasks):
@@ -629,6 +676,7 @@ def test_disable_stops_new_admission_but_accepted_job_still_delivers(web_tasks):
 @pytest.mark.parametrize("mode", ["cloud", "local"])
 def test_continuation_uses_original_provider_with_all_tools_disabled(web_tasks, monkeypatch, mode):
     import json
+
     import config_loader
     import llm_provider
 
@@ -658,6 +706,20 @@ def test_continuation_uses_original_provider_with_all_tools_disabled(web_tasks, 
     assert captured[1][0] == mode
     assert json.loads(captured[1][1])['original_request'] == 'Run the inert fixture in the background.'
     assert output["text"] == "Fixture result summary"
+
+
+def test_browser_continuation_preserves_full_report_without_a_second_llm(web_tasks, monkeypatch):
+    import llm_provider
+
+    h = web_tasks
+    monkeypatch.setattr(llm_provider, 'create_configured_provider',
+                        lambda **_: pytest.fail('Browser report must not be resummarized'))
+    report = 'Saved research: stash://space/report\n\n' + ('Complete evidence. ' * 400)
+    job = {'admission': {'tool': 'browser_use'}, 'result': {'ok': True, 'speech': report,
+           'data': {'browser_research': {'kind': 'browser_research'}}}}
+    output = h.background._synthesize(job, {'provider': 'ollama', 'model': 'selected'}, {'messages': []})
+    assert output['text'] == report.rstrip()
+    assert output['data']['browser_use']['speech'] == report
 
 
 def test_restart_drains_saved_result_without_reexecuting_tool(web_tasks):
@@ -735,8 +797,8 @@ def test_reverse_proxy_origin_requires_explicit_deployment_allowlist(web_tasks, 
 
 @pytest.mark.parametrize('original,current', [('cloud','local'), ('local','cloud')])
 def test_same_conversation_mode_switch_preserves_pending_job_and_recovery(web_tasks, monkeypatch, original, current):
-    from jarvis_bundle_chat_test.services import settings_manager
     import tool_schema
+    from jarvis_bundle_chat_test.services import settings_manager
     h = web_tasks
     selected = []
     monkeypatch.setattr(settings_manager, 'get_settings_manager',
@@ -796,6 +858,97 @@ def test_management_requires_operator_auth_and_exposes_durable_actions(web_tasks
     read = http.post(path+'/actions', json={'action':'read'}, headers=headers)
     assert read.status_code == 200
     assert http.get('/api/background-jobs', headers=headers).get_json()['counts']['unread'] == 0
+
+
+def test_browser_setup_returns_202_and_second_click_joins_the_same_pull(web_tasks, monkeypatch):
+    import browser_agent
+    from jarvis_bundle_chat_test.routes import background_tasks as routes
+
+    from lib.webhook_integrations import browser
+
+    h = web_tasks
+    h.background.adapters['browser_use'] = 'http_callback_v1'
+    headers = {'Authorization': 'Bearer operator-test', 'Origin': 'http://localhost'}
+    started, release = threading.Event(), threading.Event()
+    calls = []
+
+    def install():
+        calls.append('pull')
+        started.set()
+        assert release.wait(5)
+
+    monkeypatch.setattr(browser_agent, 'install_runtime', install)
+    monkeypatch.setattr(browser, 'activate', lambda *_args, **_kwargs: calls.append('activate'))
+    monkeypatch.setattr(routes, 'ensure_task_worker', lambda _tasks: calls.append('worker'))
+    monkeypatch.setattr(routes, 'browser_command', lambda _action, _tasks: calls.append('helper'))
+    http = h.app.test_client()
+    path = '/api/background-tasks/tools/browser_use/actions'
+    try:
+        first = http.post(path, json={'action': 'setup'}, headers=headers)
+        assert first.status_code == 202
+        assert started.wait(2)
+        second = http.post(path, json={'action': 'setup'}, headers=headers)
+        assert second.status_code == 202
+        assert calls == ['pull']
+        state = http.get('/api/background-tasks?mode=cloud', headers=headers).get_json()
+        assert state['tool_details']['browser_use']['browser_use']['setup']['state'] == 'running'
+    finally:
+        release.set()
+    eventually(lambda: routes._browser_setup_status(h.background)['state'] == 'ready')
+    assert calls == ['pull', 'activate', 'worker', 'helper']
+    assert oct(routes._browser_setup_paths(h.background)[0].stat().st_mode & 0o777) == '0o600'
+
+
+def test_interrupted_browser_setup_is_retryable_without_a_second_puller(web_tasks, monkeypatch):
+    import browser_agent
+    from jarvis_bundle_chat_test.routes import background_tasks as routes
+
+    h = web_tasks
+    state_path, _ = routes._browser_setup_paths(h.background)
+    routes._write_browser_setup_state(h.background, 'running', 'Pulling image')
+    assert routes._browser_setup_status(h.background)['state'] == 'failed'
+    monkeypatch.setattr(browser_agent, 'install_runtime', lambda: (_ for _ in ()).throw(
+        browser_agent.BrowserPreflightError('Docker image unavailable')))
+    http = h.app.test_client()
+    headers = {'Authorization': 'Bearer operator-test', 'Origin': 'http://localhost'}
+    response = http.post('/api/background-tasks/tools/browser_use/actions',
+                         json={'action': 'setup'}, headers=headers)
+    assert response.status_code == 202
+    eventually(lambda: routes._browser_setup_status(h.background)['state'] == 'failed'
+               and 'Docker image unavailable' in routes._browser_setup_status(h.background)['message'])
+    assert state_path.is_file()
+
+
+def test_web_operator_cancel_is_available_only_for_the_bound_browser_callback(tmp_path, monkeypatch):
+    import webui_auth
+    from jarvis_bundle_chat_test.routes.background_tasks import background_bp
+    from jarvis_bundle_chat_test.services.background_tasks import WebBackgroundTasks
+    from test_browser_review_gates import cancel_bound_browser
+    from test_task_callbacks import bound
+
+    integration, source, _, claim, _, _ = cancel_bound_browser(tmp_path)
+    tasks = integration.store
+    tasks.configure(background_tools=['browser_use', 'callback_probe'])
+    other, _ = bound(integration, source, invocation='other-callback')
+    app = Flask(__name__)
+    app.extensions['jarvis_background_tasks'] = SimpleNamespace(
+        store=tasks, card=WebBackgroundTasks.card,
+        handler=SimpleNamespace(runs=SimpleNamespace(conversation_lock=lambda _id: nullcontext())))
+    app.register_blueprint(background_bp)
+    monkeypatch.setattr(webui_auth, 'is_auth_enabled', lambda: True)
+    monkeypatch.setattr(webui_auth, 'verify_token', lambda token: bool(token == 'operator-test'))
+    http = app.test_client()
+    headers = {'Authorization': 'Bearer operator-test', 'Origin': 'http://localhost'}
+    page = http.get('/api/background-jobs', headers=headers).get_json()['jobs']
+    cards = {item['job_id']: item for item in page}
+    assert cards[claim.job_id]['can_cancel'] is True
+    assert cards[other.job_id]['can_cancel'] is False
+    for job_id, expected in ((claim.job_id, 200), (other.job_id, 409)):
+        response = http.post(f'/api/background-jobs/{job_id}/actions', headers=headers,
+            json={'action': 'cancel', 'revision': cards[job_id]['revision']})
+        assert response.status_code == expected
+    assert tasks.get(claim.job_id)['state'] == 'cancel_requested'
+    assert tasks.get(other.job_id)['state'] == 'running'
 
 
 @pytest.mark.parametrize('adapter', ['local_skill_v1', 'remote_fixture'])

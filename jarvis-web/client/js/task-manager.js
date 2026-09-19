@@ -222,7 +222,10 @@ window.TaskManager = class TaskManager {
     this.details.append(output);
     // Resolve artifacts in the job's mode, independent of the current chat.
     window.continuationRenderer.append(this.details, '', {
-      ...job.result, _background_mode: job.mode
+      ...job.result,
+      ...(job.tool === 'browser_use' && job.result?.data?.browser_research
+        ? {browser_use: job.result} : {}),
+      _background_mode: job.mode
     });
     if (job.state === 'needs_attention') {
       this.details.append(this.node('p', 'Reconciliation releases reserved capacity. Verify that the original operation has stopped, including at the provider for remote work. Stopping a local process is not proof of provider cancellation. This does not authorize another execution.'));

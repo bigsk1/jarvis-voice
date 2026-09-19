@@ -8,20 +8,27 @@
 .gitattributes
 
 # ===== Secrets & live config (mount at runtime) =====
+# Cover root and nested service env files, not only config/*.env.
+*.env
+**/*.env
 config/*.env
 config/contacts.json
 config/webhook_registry.json
+config/webhook_registry.json.template
 config/elevenlabs_voices.json
 config/ssh.json
 config/ui_urls.json
 config/ui_urls.json.bak
 # Legacy pre-data location; never bake private thresholds into an image.
 config/price-alerts.yaml
+config/mcp-servers.json.backup
 jarvis-monitor/.env
 jarvis-web/config/web_config.json
 data/secrets/
 *.key
+**/*.key
 *.pem
+**/*.pem
 
 # ===== Runtime data (bind-mount from host — never bake into image) =====
 data/*.db
@@ -29,6 +36,7 @@ data/*.db.*
 data/*.db-*
 # Retained originals and all source-library runtime files.
 data/source_library/
+data/task-workspaces/
 # Mode stores and SQLite sidecars at custom SOURCE_LIBRARY_DIR paths too.
 **/cloud.db
 **/cloud.db-*
@@ -37,6 +45,8 @@ data/source_library/
 **/local.db-*
 **/local.db.*
 data/backups/
+data/cache/
+data/release-watch/
 data/canvas/
 data/generated_images/
 data/generated_videos/
@@ -44,6 +54,10 @@ data/generated_music/
 data/web_conversations/
 data/stash/
 data/.spotify_cache
+data/.trakt_oauth.json
+data/.trakt_oauth.json.lock
+data/..trakt_oauth.json.*
+data/.tool_sync_status_*.json
 data/.phone_call_lock
 data/.phone_call_in_progress
 data/.webui_secret
@@ -51,18 +65,46 @@ data/.email_rate_limit
 data/.webhook_rate_limit
 data/.scheduled_task_notification_rate_limit
 data/.docker_tool_profile_synced
+data/web_profile_appearance.json
+data/.web-profile-*.tmp
 data/bookmarks.html
 # Runtime file is mounted; data/price-alerts.yaml.example stays in the build context.
 data/price-alerts.yaml
 data/.price-alerts-*.tmp
 jarvis-web/data/uploads/
+jarvis-web/data/prompts/personal/
+data/workflows/personal/
 stash/
 logs/
 audio/
 *.wav
+**/*.wav
 *.mp3
+**/*.mp3
 *.ogg
+**/*.ogg
 *.flac
+**/*.flac
+*.log
+**/*.log
+*.tmp
+**/*.tmp
+*.bak
+**/*.bak
+*.orig
+**/*.orig
+*.backup
+**/*.backup
+*.backup-*
+**/*.backup-*
+*.sqlite
+**/*.sqlite
+*.sqlite.*
+**/*.sqlite.*
+*.sqlite-*
+**/*.sqlite-*
+tmp/
+tests/integration/logs/
 
 # ===== User / machine-specific (mount if needed) =====
 jarvis-intel/*
@@ -77,26 +119,50 @@ characters/
 opencodetmp/
 .opencode/
 logs/opencode/
+# The standalone extension and monitoring configs are used from the checkout,
+# never by the Jarvis application image. This also excludes signed XPI artifacts.
+jarvis-firefox-extension/
+monitoring/
 
 # ===== Python / Node caches =====
+# Docker needs the **/ forms to exclude the same names below nested packages.
 __pycache__/
+**/__pycache__/
 *.py[cod]
+**/*.py[cod]
+*.so
+**/*.so
 *$py.class
+**/*$py.class
 .Python
 venv/
+**/venv/
 .venv/
+**/.venv/
 env/
+**/env/
 ENV/
+**/ENV/
 jarvis-venv/
+**/jarvis-venv/
 *.egg-info/
+**/*.egg-info/
 .eggs/
+**/.eggs/
 dist/
+**/dist/
 build/
+**/build/
 .cache/
+**/.cache/
 .pytest_cache/
+**/.pytest_cache/
 .ruff_cache/
+**/.ruff_cache/
 .mypy_cache/
+**/.mypy_cache/
 node_modules/
+**/node_modules/
 
 # ===== IDE & local tooling =====
 .vscode/
@@ -111,12 +177,13 @@ node_modules/
 cursor_*.md
 *.cursor.*
 AGENTS.md
+**/AGENTS.md
 .cursorignore
+**/.dockerignore
 # ===== Docs & assets not needed at runtime (optional slimming) =====
 # Keep docs/ in image if log viewer / search_docs needs them; uncomment to shrink:
 # docs/
 # tests/
-# monitoring/
 
 # ===== Misc large or personal paths =====
 docs/Agent-Skills-for-Context-Engineering-main/

@@ -480,6 +480,16 @@ def _record_worker_commands(checkout, env):
     env['WORKER_COMMAND_LOG'] = str(log)
     _write_executable(checkout / 'venv/bin/python',
                       '''#!/bin/sh
+case "$1" in
+  *jarvis-browser-use)
+    [ -z "${BROWSER_COMMAND_LOG:-}" ] || printf "%s\\n" "$*" >> "$BROWSER_COMMAND_LOG"
+    case "$*" in
+      *status*) exit "${BROWSER_STATUS_EXIT_CODE:-1}" ;;
+      *start*) printf '%s\\n' 'Browser Use is not configured; set it up in Settings → Tools when needed' ;;
+    esac
+    exit 0
+    ;;
+esac
 printf "%s\\n" "$*" >> "$WORKER_COMMAND_LOG"
 [ "${WORKER_EXIT_CODE:-0}" -eq 0 ] || exit "$WORKER_EXIT_CODE"
 case "$*" in
@@ -505,6 +515,19 @@ def test_native_groups_delegate_one_worker_start_to_its_command(tmp_path, args):
     launches = [line for line in log.read_text().splitlines() if 'new-session' in line]
     assert all('jarvis-task-worker' not in line for line in launches)
     assert any('-s jarvis-web ' in line for line in launches)
+
+
+@pytest.mark.parametrize('args', [('--ui-only',), ('--no-api',), ()])
+def test_native_groups_also_delegate_optional_browser_helper(tmp_path, args):
+    checkout, env, _ = _native_checkout(tmp_path)
+    _record_worker_commands(checkout, env)
+    browser_log = checkout / 'browser.log'
+    env['BROWSER_COMMAND_LOG'] = str(browser_log)
+    result = subprocess.run([str(checkout / 'bin/start'), '--local', *args], env=env,
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert browser_log.read_text().splitlines() == [
+        str(checkout / 'bin/jarvis-browser-use') + ' start --tmux']
 
 
 @pytest.mark.parametrize('action,worker_action', [('task-worker', 'start'),
@@ -548,4 +571,8 @@ def test_dashboard_worker_controls_use_worker_entrypoint():
     dashboard = (ROOT / 'bin/jarvis-dashboard').read_text()
     for command in ('./bin/jarvis-task-worker start --tmux', './bin/jarvis-task-worker stop --tmux',
                     './bin/jarvis-task-worker status', 'tmux capture-pane -t jarvis-task-worker'):
+        assert command in dashboard
+    for command in ('./bin/start browser-use', './bin/start --stop-browser-use',
+                    './bin/jarvis-browser-use status --tmux',
+                    'tmux capture-pane -t jarvis-browser-use'):
         assert command in dashboard

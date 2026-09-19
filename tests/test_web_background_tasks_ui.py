@@ -89,6 +89,29 @@ assert.equal(card.children[1].innerHTML,'');
     )
 
 
+def test_browser_task_card_requests_cancellation_for_its_revision():
+    run_browser(BACKGROUND + r"""
+const message=new Element();
+message.querySelectorAll=selector=>selector==='[data-background-job]'?message.children:[];
+const requests=[];
+sandbox.Utils.auth={fetch:async(url,options)=>{
+  requests.push({url,options});return {ok:true,json:async()=>({job:{state:'cancel_requested'}})};
+}};
+manager.renderCards(message,{'job-1':{...receipt,tool:'browser_use',state:'running',can_cancel:true,revision:7}});
+const cancel=message.children[0].children[2];
+assert.equal(cancel.textContent,'Request cancellation');
+await cancel.click({preventDefault(){},stopPropagation(){}});
+assert.equal(requests[0].url,'/api/background-jobs/job-1/actions');
+assert.deepEqual(JSON.parse(requests[0].options.body),{action:'cancel',revision:7});
+manager.renderCards(message,{'job-1':{...receipt,tool:'browser_use',state:'cancel_requested',can_cancel:false,revision:8}});
+assert.equal(message.children[0].children.length,2);
+manager.renderCards(message,{'job-1':{...receipt,tool:'browser_use',mode:'cloud',state:'cancelled',can_cancel:false,revision:9,
+  result:{ok:false,speech:'Partial research',data:{browser_research:{stash_ref:'stash://space/report'}}}}});
+assert.equal(message.children[0].children[2].textContent,'Open saved research');
+assert.equal(message.children[0].children[2].href,'/stash/view/space/report?mode=cloud');
+""")
+
+
 def test_actual_assistant_renderer_does_not_reconcile_or_clear_a_foreground_tool():
     run_browser(
         BACKGROUND
@@ -170,6 +193,38 @@ assert.match(manager.choices.children[4].children[1].children[0].textContent,/Sa
 status.tools.push('create_social_clip');
 await manager.refresh();
 assert.equal(manager.choices.children[4].children[0].disabled,false);
+""")
+
+
+def test_browser_use_has_one_setup_action_and_cannot_be_selected_before_readiness():
+    run_browser(BACKGROUND + r"""
+manager.control=new Element('section');
+manager.enabledInput=new Element('input');manager.choices=new Element('div');manager.note=new Element('p');
+const status={settings:{background_enabled:false,background_tools:[]},tools:['browser_use'],
+  configured_tools:['browser_use'],coordinator_ready:true,worker_ready:false,
+  tool_details:{browser_use:{remote_work:false,worker_ready:false,browser_use:{configured:false,
+    receiver_enabled:false,source_enabled:false,source_validated:false,credential_ready:false,
+    service_ready:false,worker_ready:false,selected:false,managed_by_tmux:false,operational:false,ready:false}}}};
+const calls=[];
+sandbox.Utils.auth={fetch:async(url,options={})=>{
+  calls.push({url,options});
+  if(options.method==='POST') status.tool_details.browser_use.browser_use.setup={state:'running',message:'Downloading pinned image…'};
+  return {ok:true,status:options.method==='POST'?202:200,
+    json:async()=>options.method==='POST'?{browser_use:status.tool_details.browser_use.browser_use}:status};
+}};
+await manager.refresh();
+const row=manager.choices.children[0];
+assert.equal(row.children[0].disabled,true);
+assert.equal(row.children[2].children[0].textContent,'Set up and enable');
+await row.children[2].children[0].click({preventDefault(){},stopPropagation(){}});
+const action=calls.find(item=>item.options.method==='POST');
+assert.equal(action.url,'/api/background-tasks/tools/browser_use/actions');
+assert.deepEqual(JSON.parse(action.options.body),{action:'setup'});
+assert(notices.some(item=>String(item[0]).includes('setup started')));
+assert.equal(manager.choices.children[0].children[2].children[0].disabled,true);
+status.tool_details.browser_use.browser_use.setup={state:'ready',message:'Browser Use is configured and enabled.'};
+await manager.refresh();
+assert(notices.some(item=>String(item[0]).includes('configured and enabled')));
 """)
 
 

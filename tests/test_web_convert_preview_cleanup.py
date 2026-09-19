@@ -28,6 +28,7 @@ global.URL = {
   revokeObjectURL: (url) => revoked.push(url)
 };
 global.Utils = {toast: () => {}};
+global.window = {};
 global.document = {
   createElement: () => ({style: {}, controls: false, src: ''}),
   getElementById: () => null

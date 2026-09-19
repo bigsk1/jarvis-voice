@@ -182,6 +182,7 @@
     "api_call": "_family_developer_ops",
     "bookmark_search": "_family_search",
     "brave_llm_context": "_family_search",
+    "browser_use": "_family_search",
     "check_opencode_sessions": "opencode",
     "check_tool_logs": "_family_developer_ops",
     "convert_file": "_family_files",

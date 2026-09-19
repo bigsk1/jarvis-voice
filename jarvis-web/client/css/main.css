@@ -5081,6 +5081,21 @@ body {
   overflow-y: auto;
 }
 
+.task-integration-card, .task-integration-secret {
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  margin: var(--space-md) 0;
+  overflow-wrap: anywhere;
+}
+.task-integration-actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin: var(--space-sm) 0; }
+.task-integration-event { display: inline-flex; gap: var(--space-xs); margin: var(--space-sm); }
+.task-integration-credential, .task-integration-delivery { border-top: 1px solid var(--border-primary); padding: var(--space-sm) 0; }
+.task-integration-card details { margin-top: var(--space-md); }
+.task-integration-card summary { cursor: pointer; }
+.task-integration-card .setting-group { display: block; margin-top: var(--space-sm); }
+.task-integration-secret textarea { min-height: 5rem; overflow-wrap: anywhere; }
+
 .history-loading {
   display: flex;
   align-items: center;

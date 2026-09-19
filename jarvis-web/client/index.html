@@ -459,6 +459,7 @@
             <button class="settings-tab active" data-settings-tab="general">General</button>
             <button class="settings-tab" data-settings-tab="ai">AI Config</button>
             <button class="settings-tab" data-settings-tab="tools">Tools</button>
+            <button class="settings-tab" data-settings-tab="integrations">Integrations</button>
             <button class="settings-tab" data-settings-tab="system">System</button>
             <button class="settings-tab" data-settings-tab="api">API Keys</button>
             <button class="settings-tab" data-settings-tab="profile">👤 Profile</button>
@@ -850,6 +851,13 @@
             </p>
           </div>
           
+          <!-- Task callback integrations (saved independently) -->
+          <div class="settings-panel" id="settings-integrations">
+            <h3>Task callbacks</h3>
+            <p class="setting-desc">Receive completion updates from configured services. Background tasks can run with this feature off.</p>
+            <div id="taskIntegrations"></div>
+          </div>
+
           <!-- System Config (Read-Only) -->
           <div class="settings-panel" id="settings-system">
             <p class="setting-note">
@@ -1377,6 +1385,7 @@
   <script src="/js/talk.js"></script>
   <script src="/js/task-manager.js"></script>
   <script src="/js/background-tasks.js"></script>
+  <script src="/js/webhook-integrations.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

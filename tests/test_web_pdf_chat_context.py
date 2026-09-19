@@ -103,7 +103,7 @@ def test_browser_pdf_contract_is_stash_only_and_retryable():
 
     assert ".pdf" in index_html
     assert "application/pdf" in index_html
-    assert "async sendMessage()" in chat_js
+    assert "async sendMessage(" in chat_js
     # Executed retry/cancellation coverage lives in test_web_attachment_bundle_ui.
     assert "fetch(`/api/upload-${item.kind}`" in chat_js
     assert "formData.append('upload_id', item.uploadId)" in chat_js

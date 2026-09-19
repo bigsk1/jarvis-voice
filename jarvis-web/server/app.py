@@ -23,6 +23,7 @@ from .routes.api import api_bp
 from .routes.auth import auth_bp
 from .routes.library import library_bp  # noqa: E402
 from .routes.background_tasks import background_bp  # noqa: E402
+from .routes.task_integrations import integrations_bp  # noqa: E402
 from .sockets.chat import ChatHandler
 
 # Import auth utilities
@@ -70,6 +71,7 @@ app.register_blueprint(api_bp)
 app.register_blueprint(auth_bp)
 app.register_blueprint(library_bp)
 app.register_blueprint(background_bp)
+app.register_blueprint(integrations_bp)
 
 # Error logging → logs/web-ui/errors-YYYY-MM-DD.jsonl
 setup_error_logging(app, 'web-ui')

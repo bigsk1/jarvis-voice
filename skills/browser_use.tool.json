@@ -1,0 +1,22 @@
+{
+  "enabled": true,
+  "name": "browser_use",
+  "proxy_policy": "inherit",
+  "description": "Web-only background AI browser research. Requires the saved background-task allowlist and callback service; never runs in the foreground, voice, Talk, Firefox Companion, CLI, or workflows. Use for multi-page research or JavaScript-rendered sites when the user asks you to browse. Reads pages and follows links; cannot log in, submit forms, purchase, upload, or change accounts. Supply the complete goal and a starting URL. Uses this conversation's selected LLM provider and model. Returns a receipt immediately and a sourced report later through a callback.",
+  "script": "browser_use.py",
+  "availability": {"all_of_commands": ["docker"], "setup_hint": "Pull the Browser Use image with docker compose -f docker-compose.browser.yml pull. See docs/BROWSER-USE.md."},
+  "parameters": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "task": {"type": "string", "minLength": 1, "maxLength": 8000, "description": "Research goal and information to report. Include all relevant context."},
+      "url": {"type": "string", "minLength": 8, "maxLength": 2048, "description": "Public HTTP(S) page to begin browsing. Prefer a direct publisher or topic page over Google Search or Google News, which commonly returns an automation challenge."},
+      "max_steps": {"type": "integer", "minimum": 1, "maximum": 30, "default": 15, "description": "Maximum browser reasoning steps."}
+    },
+    "required": ["task", "url"]
+  },
+  "permissions": {"dangerous": false, "bash": false, "network": true, "filesystem": true, "auto_approve": true},
+  "execution": {"background": {"supported": true, "required": true, "adapter": "http_callback_v1", "timeout_seconds": 900}},
+  "test_input": {"task": "Read the page and report its title and purpose.", "url": "https://example.com", "max_steps": 3},
+  "expected_output_contains": ["ok", "speech"]
+}

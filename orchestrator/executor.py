@@ -385,6 +385,10 @@ class ToolExecutor:
                 "error": "Tool not found"
             }
 
+        if getattr(tool_schema, 'background_required', False):
+            from lib.background_tasks.admission import background_only_result
+            return background_only_result(tool_name)
+
         if tool_name == "tool_search":
             return self._execute_tool_search(tool_name, args)
         if tool_name == "workflow":
@@ -604,6 +608,7 @@ class ToolExecutor:
             query=args.get("query", ""),
             limit=args.get("limit", 6),
             excluded_tools=self.excluded_tools,
+            background_context=getattr(self, 'background_context', None),
             tool_names=args.get("tool_names"),
             include_schema=bool(args.get("include_schema")),
         )

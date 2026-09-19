@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 _TOKEN = re.compile(r'[A-Za-z0-9_.:-]{1,128}\Z')
 _TOKENS = frozenset({'job_id', 'attempt_id', 'conversation_id', 'request_id', 'tool',
                      'adapter', 'mode', 'state', 'delivery_state', 'delivery_id', 'owner',
-                     'error_type', 'action'})
+                     'error_type', 'action', 'source_id', 'event_id', 'reason'})
 _NUMBERS = frozenset({'duration_ms', 'queue_ms', 'count', 'generation', 'max_running',
                       'max_outstanding', 'max_queued', 'max_per_adapter', 'result_retention_days'})
 
@@ -42,7 +42,7 @@ class TaskEventLog:
         normal polling and heartbeat renewals must not call this method.
         """
         try:
-            if not _TOKEN.fullmatch(event) or component not in {'store', 'web', 'worker', 'operator'}:
+            if not _TOKEN.fullmatch(event) or component not in {'store', 'web', 'worker', 'operator', 'callback'}:
                 return
             if level not in {'INFO', 'WARNING', 'ERROR'}:
                 return

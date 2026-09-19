@@ -27,13 +27,14 @@ _RESULT_REFERENCE_GUIDANCE = (
 
 
 class WebBackgroundTasks:
-    def __init__(self, handler, *, adapters=None, registry=None, synthesize=None):
+    def __init__(self, handler, *, adapters=None, registry=None, synthesize=None, callback_sources=None):
         self.handler = handler
         self.owner = uuid.uuid4().hex
         if adapters is None:
             from lib.background_tasks.production import bindings
             adapters = bindings()
         self.adapters = dict(adapters)
+        self.callback_sources = dict(callback_sources or {})
         self.registry = registry
         self.synthesize = synthesize or self._synthesize
         self.stop = threading.Event()
@@ -167,7 +168,7 @@ class WebBackgroundTasks:
         )
 
     def preferences(self):
-        """Saved operator intent; readiness is checked only when a tool is admitted."""
+        """Saved intent; required tools also check readiness during request discovery."""
         try:
             settings = self.store.settings()
         except Exception as exc:
@@ -253,14 +254,16 @@ class WebBackgroundTasks:
     def authorize(
         self, conversation_id, request_id, mode, selected, provider, model, query, registry,
     ):
-        # Creating a turn context is inert. Only an actual selected tool call
-        # validates its policy and persists authorization together with its job.
+        # Creating a turn context is inert. Background-only discovery checks are
+        # read-only; only an actual selected call persists authorization and a job.
         # Keep selected calls intercepted even if capability changed meanwhile.
         if not selected:
             return None
 
         def build_authorization(name):
             from lib.background_tasks.production import authorize_tools
+            from lib.webhook_integrations.browser import callback_sources, service_ready
+
             from ..config import get_web_setting
 
             conversation = self.conversations.get_conversation(conversation_id)
@@ -268,6 +271,8 @@ class WebBackgroundTasks:
                 raise AdmissionDenied("Conversation not found")
             service = BackgroundAdmissionService(
                 self.store, adapters=self.adapters, validate_source=self._source_current, ready=self.ready,
+                callback_sources=self.callback_sources or callback_sources(self.store),
+                callback_readiness={'browser_use': lambda: service_ready(self.store)},
             )
             return service.authorize(
                 {
@@ -289,7 +294,12 @@ class WebBackgroundTasks:
                     mode=mode, error_type=type(exc).__name__)
                 raise
 
-        return WebTaskContext(None, '', tuple(selected), authorize_tool=authorize_tool)
+        def discovery_check(name, schema):
+            context = build_authorization(name)
+            context.service.check_ready(context, name, schema)
+
+        return WebTaskContext(None, '', tuple(selected), authorize_tool=authorize_tool,
+                              discovery_check=discovery_check)
 
     def recover_receipts(self):
         for job in self.store.held_jobs():
@@ -369,7 +379,9 @@ class WebBackgroundTasks:
             "updated_at": job['updated_at'],
             "unread": state in {'succeeded', 'failed', 'cancelled', 'expired', 'needs_attention'}
                 and (job.get('read_at') is None or job['read_at'] < job['updated_at']),
-            "can_cancel": state == 'queued' or (state in {'starting', 'running'} and job['adapter'] in LOCAL_ADAPTERS),
+            "can_cancel": state == 'queued' or (state in {'starting', 'running'} and
+                (job['adapter'] in LOCAL_ADAPTERS or
+                 (job['admission']['tool'] == 'browser_use' and job['adapter'] == 'http_callback_v1'))),
             "can_reconcile": state == 'needs_attention',
             "can_retry_delivery": job.get('archived_at') is None and delivery in {'pending', 'ready', 'suppressed'},
             "can_suppress_delivery": delivery in {'pending', 'generating', 'ready'},
@@ -558,6 +570,20 @@ class WebBackgroundTasks:
         from config_loader import config_scope
         from llm_provider import create_configured_provider
 
+        if job['admission']['tool'] == 'browser_use':
+            result = job.get('result') or {}
+            text = result.get('speech')
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError('Empty Browser Use result')
+            display, speech = self.handler._prepare_web_response_text({'speech': text}, text)
+            return {
+                'text': display,
+                'data': {
+                    'speech': speech, 'browser_use': result,
+                    '_llm_provider': authorization.get('provider'),
+                    '_llm_model': authorization.get('model'),
+                },
+            }
         if not authorization.get("provider") or not authorization.get("model"):
             raise ValueError("Original provider/model unavailable")
         evidence = self._task_evidence(job)

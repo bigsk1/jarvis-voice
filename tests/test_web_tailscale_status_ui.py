@@ -64,7 +64,11 @@ const sandbox = {
     return {ok: true, json: async () => ({version: 'test', features: {auth: true}})};
   },
   setTimeout() { throw new Error('Tailscale status must not poll in the background'); },
-  setInterval() { throw new Error('Tailscale status must not poll in the background'); }
+  setInterval(callback, milliseconds) {
+    assert.equal(milliseconds, 60000, 'Only the sidebar relative-time clock may run');
+    assert.match(String(callback), /_refreshConversationTimes/);
+    return 1;
+  }
 };
 vm.createContext(sandbox);
 const source = fs.readFileSync(ROOT + '/jarvis-web/client/js/app.js', 'utf8');

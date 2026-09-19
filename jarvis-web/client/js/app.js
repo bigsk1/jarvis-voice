@@ -70,6 +70,7 @@ class JarvisApp {
     this.talk = window.TalkController ? new window.TalkController({ app: this, chat: this.chat, socket: this.socket }) : null;
     this._setupSocketListeners();
     this.backgroundTasks = window.BackgroundTasks ? new window.BackgroundTasks(this) : null;
+    this.webhookIntegrations = window.WebhookIntegrations ? new window.WebhookIntegrations(this) : null;
     this._setupHudLogo();
     this._setupUIListeners();
     this._restoreState();
@@ -428,7 +429,7 @@ class JarvisApp {
       tab.addEventListener('click', () => {
         const tabName = tab.dataset.settingsTab;
         const saveSettingsButton = document.getElementById('saveSettingsBtn');
-        if (saveSettingsButton) saveSettingsButton.hidden = tabName === 'profile';
+        if (saveSettingsButton) saveSettingsButton.hidden = ['profile', 'integrations'].includes(tabName);
         
         // Update active tab
         document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));

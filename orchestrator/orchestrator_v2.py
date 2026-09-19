@@ -58,6 +58,7 @@ SINGLE_CALL_TOOLS = frozenset({
     "generate_music",
     "send_email",
     "opencode",
+    "browser_use",
 })
 
 def _workflow_run_is_capped(arguments: dict[str, Any], tool_trace: list[dict[str, Any]]) -> bool:
@@ -1356,7 +1357,13 @@ Mode: {self.mode}
         
         # Store tool overrides for this request
         self._tool_overrides = tool_overrides or {}
-        self.executor.set_excluded_tools(excluded_tools or [])
+        from lib.background_tasks.admission import background_only_exclusions
+        background_context = getattr(self, 'background_context', None)
+        required_exclusions = set() if chat_only_mode else background_only_exclusions(
+            getattr(self, 'registry', None), background_context)
+        excluded_tools = sorted(set(excluded_tools or []) | required_exclusions)
+        self.executor.background_context = background_context
+        self.executor.set_excluded_tools(excluded_tools)
         
         # Reset status updater for new task
         self.status_updater.reset()
@@ -1721,6 +1728,7 @@ Mode: {self.mode}
             route = self.router.route(
                 route_payload,
                 excluded_tools=excluded_tools,
+                background_context=background_context,
                 typo_hint_source=transcript,
                 disable_server_side_tools=disable_server_side_tools,
                 routing_provenance=routing_provenance,
@@ -1752,6 +1760,7 @@ Mode: {self.mode}
                 route = self.router.route(
                     turn_input,
                     excluded_tools=excluded_tools,
+                    background_context=background_context,
                     typo_hint_source=transcript,
                     disable_server_side_tools=disable_server_side_tools,
                     routing_provenance=routing_provenance,
@@ -1781,6 +1790,7 @@ Mode: {self.mode}
                 route = self.router.route(
                     turn_input,
                     excluded_tools=excluded_tools,
+                    background_context=background_context,
                     typo_hint_source=transcript,
                     disable_server_side_tools=disable_server_side_tools,
                     routing_provenance=routing_provenance,

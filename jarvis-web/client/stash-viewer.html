@@ -137,6 +137,42 @@
       overflow-wrap: anywhere;
     }
 
+    .browser-research-viewer,
+    .browser-research-viewer p,
+    .browser-research-viewer li,
+    .browser-research-viewer a {
+      color: var(--text-primary);
+    }
+
+    .browser-research-source {
+      margin-top: var(--space-xl);
+      padding-top: var(--space-lg);
+      border-top: 1px solid var(--border-primary);
+    }
+
+    .browser-research-source h2 {
+      margin-top: 0;
+    }
+
+    .browser-research-source-meta {
+      color: var(--text-secondary);
+      overflow-wrap: anywhere;
+    }
+
+    .browser-research-evidence {
+      max-height: 520px;
+      margin: var(--space-md) 0 0;
+      padding: var(--space-md);
+      overflow: auto;
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-md);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      font: var(--text-sm)/1.55 var(--font-mono);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
     .markdown-viewer table {
       width: 100%;
       min-width: 560px;
@@ -305,6 +341,50 @@
         );
       }
 
+      function renderBrowserResearch(text) {
+        const escapeMarkdownHtml = value => String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const decodeArchiveText = value => String(value)
+          .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+          .replace(/&#x27;/g, "'").replace(/&amp;/g, '&');
+        const marker = /^## Source (\d+)(?::\s*(.*))?$/gm;
+        const matches = [...text.matchAll(marker)];
+        if (!matches.length) {
+          return Utils.parseMarkdown(escapeMarkdownHtml(text));
+        }
+        let html = Utils.parseMarkdown(escapeMarkdownHtml(text.slice(0, matches[0].index)));
+        for (let index = 0; index < matches.length; index += 1) {
+          const match = matches[index];
+          const end = index + 1 < matches.length ? matches[index + 1].index : text.length;
+          const block = text.slice(match.index + match[0].length, end).trim();
+          const lines = block.split(/\r?\n/);
+          const urlIndex = lines.findIndex(line => /^https?:\/\/\S+$/i.test(line.trim())
+            || /^\*\*URL:\*\*\s+https?:\/\/\S+$/i.test(line.trim()));
+          const rawUrl = decodeArchiveText(urlIndex >= 0
+            ? lines[urlIndex].trim().replace(/^\*\*URL:\*\*\s+/i, '') : '');
+          let sourceUrl = '';
+          try {
+            const parsed = new URL(rawUrl);
+            if (['http:', 'https:'].includes(parsed.protocol)) sourceUrl = parsed.href;
+          } catch (_) { /* Leave an invalid archived URL as plain evidence. */ }
+          const title = decodeArchiveText(match[2]?.trim()
+            || lines.find(line => /^\*\*Page:\*\*/i.test(line.trim()))?.replace(/^\*\*Page:\*\*\s*/i, '')
+            || '');
+          const evidenceStart = urlIndex >= 0 ? urlIndex + 1 : 0;
+          let evidence = lines.slice(evidenceStart).join('\n').trim();
+          const fenced = evidence.match(/^`{3,}text\s*\n([\s\S]*?)\n`{3,}\s*$/i);
+          if (fenced) evidence = fenced[1];
+          html += `<section class="browser-research-source"><h2>Source ${Utils.escapeHtml(match[1])}</h2>`;
+          if (title) html += `<p class="browser-research-source-meta"><strong>Page:</strong> ${Utils.escapeHtml(title)}</p>`;
+          if (sourceUrl) {
+            const safeUrl = Utils.escapeHtml(sourceUrl);
+            html += `<p class="browser-research-source-meta"><strong>URL:</strong> <a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${safeUrl}</a></p>`;
+          }
+          if (evidence) html += `<pre class="browser-research-evidence">${Utils.escapeHtml(evidence)}</pre>`;
+          html += '</section>';
+        }
+        return html;
+      }
+
       async function loadArtifact() {
         const parsed = parsePath();
         if (!parsed) {
@@ -349,8 +429,9 @@
         contentEl.hidden = false;
 
         if (isMarkdown(contentType, filename)) {
-          contentEl.className = 'markdown-viewer';
-          contentEl.innerHTML = Utils.parseMarkdown(text);
+          const browserResearch = filename.toLowerCase() === 'browser-research.md';
+          contentEl.className = `markdown-viewer${browserResearch ? ' browser-research-viewer' : ''}`;
+          contentEl.innerHTML = browserResearch ? renderBrowserResearch(text) : Utils.parseMarkdown(text);
         } else {
           contentEl.className = 'text-viewer';
           if (/json/i.test(contentType) || /\.json$/i.test(filename)) {

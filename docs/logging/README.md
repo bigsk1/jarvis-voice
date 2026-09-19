@@ -91,6 +91,8 @@ logs/
 │   └── tool-calls-YYYY-MM-DD.jsonl     # Tool execution args/result/timing
 ├── background-tasks/
 │   └── background-tasks-YYYY-MM-DD.jsonl # Web/worker lifecycle, outcomes, delivery/errors (UTC)
+├── browser-use/
+│   └── browser-use-YYYY-MM-DD.jsonl    # Browser service lifecycle and sanitized request audit (UTC)
 ├── tool-rag/
 │   └── tool-rag-YYYY-MM-DD.jsonl       # Tool retrieval traces
 ├── server-side-tools/
@@ -136,6 +138,10 @@ idle polls are silent; recurring infrastructure errors are throttled. This folde
 uses the existing `bin/cleanup-logs` retention policy. See
 [background-task diagnostics](../BACKGROUND-TASKS.md#persistent-diagnostics) for
 fields, example queries, isolated database paths, and future Grafana collection.
+Browser Use writes a separate privacy-bounded audit in `logs/browser-use/`; the
+same cleanup command includes its dated JSONL files. See the
+[Browser Use audit guide](../BROWSER-USE.md#audit-trail) for the recorded fields
+and isolated `--db` retention boundary.
 
 ---
 
