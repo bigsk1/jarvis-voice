@@ -34,7 +34,10 @@ class WebhookIntegrations {
     button.type = 'button'; button.disabled = disabled;
     button.addEventListener('click', async () => {
       button.disabled = true;
-      try { await action(); } catch (error) { this.notice.textContent = error.message; }
+      try { await action(); } catch (error) {
+        this.notice.textContent = error.message;
+        Utils.toast?.(error.message, 'warning');
+      }
       finally { button.disabled = disabled; }
     });
     return button;
@@ -137,13 +140,22 @@ class WebhookIntegrations {
     const actions = this.node('div', '', 'task-integration-actions');
     const patch = changes => this.request('/' + source.id, 'PATCH', {revision: source.revision, ...changes}).then(() => this.refresh());
     actions.append(this.button('Copy URL', () => navigator.clipboard.writeText(source.endpoint)),
-      this.button(source.enabled ? 'Pause source' : 'Enable source', () => patch({enabled: !source.enabled}), source.revoked),
-      this.button('Test receiver', async () => { const result = await this.request('/' + source.id + '/test', 'POST', {}); await this.refresh(); this.notice.textContent = result.message; }, !source.enabled || source.revoked),
+      this.button(source.enabled ? 'Pause source' : 'Enable source', () => patch({enabled: !source.enabled}), source.revoked));
+    actions.append(this.button('Test receiver', async () => {
+      const result = await this.request('/' + source.id + '/test', 'POST', {});
+      await this.refresh();
+      this.notice.textContent = result.message;
+      Utils.toast?.(result.message, 'success');
+    }, !source.enabled || source.revoked));
+    actions.append(
       this.button('Revoke source', async () => {
         if (window.confirm(`Permanently revoke ${source.name}? ${source.outstanding} jobs may still be waiting. Pending evidence will be held.`)) await patch({revoke: true});
       }, source.revoked));
     card.append(actions);
-    if (!source.revoked) card.append(this.sourceForm(source), this.credentialForm(source, keyReady));
+    if (!source.revoked) {
+      card.append(this.sourceForm(source));
+      card.append(this.credentialForm(source, keyReady));
+    }
     const list = this.node('div');
     for (const credential of source.credentials.filter(item => !item.probe)) {
       const expired = credential.expires_at * 1000 <= Date.now();
@@ -164,8 +176,10 @@ class WebhookIntegrations {
   }
 
   credentialForm(source, keyReady) {
+    const details = document.createElement('details');
+    details.append(this.node('summary', 'New credential'));
     const form = document.createElement('form');
-    const label = this.node('label', 'New credential', 'setting-group');
+    const label = this.node('label', 'Credential type', 'setting-group');
     const scheme = document.createElement('select'); scheme.className = 'setting-input';
     for (const [value, text] of [['bearer', 'Bearer token'], ['hmac-sha256', 'Jarvis HMAC-SHA256 (self-hosted)']]) {
       const option = this.node('option', text); option.value = value; scheme.append(option);
@@ -180,7 +194,8 @@ class WebhookIntegrations {
       catch (error) { this.notice.textContent = error.message; }
       finally { create.disabled = !keyReady; }
     });
-    return form;
+    details.append(form);
+    return details;
   }
 
   async createCredential(source, values) {

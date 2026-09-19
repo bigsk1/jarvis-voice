@@ -120,6 +120,18 @@ def test_receiver_toggle_updates_discovery_without_sync_and_is_rechecked_at_admi
     assert not background_only_exclusions(h.registry, h.context)
 
 
+def test_reviewed_callback_timeout_is_persisted_at_admission(discovery):
+    h = discovery
+    h.context.authorization.update({
+        'conversation_id': 'conversation', 'generation': 0, 'request_id': 'request', 'mode': 'cloud',
+        'tool_policies': {'callback_probe': {'timeout_seconds': 7200}},
+    })
+    receipt = h.context.admit('callback_probe', {}, 'long-callback', h.registry.get_tool('callback_probe'))
+    job = h.store.get(receipt['job_id'])
+    assert job['admission']['timeout_seconds'] == 7200
+    assert job['deadline'] - job['created_at'] == 7200
+
+
 def test_browser_readiness_is_computed_once_for_route_and_tool_search(discovery, monkeypatch):
     from tool_search_runtime import search_tools_runtime
 

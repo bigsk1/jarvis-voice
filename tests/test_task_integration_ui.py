@@ -115,3 +115,17 @@ await new Promise(resolve=>setTimeout(resolve,0));
 assert.equal(requests[0],'/api/task-integrations/browser-source/deliveries?offset=0&limit=25');
 assert.equal(output.children[0].textContent,'No deliveries on this page.');
 """)
+
+
+def test_generic_receiver_test_reports_a_visible_toast():
+    run_browser(SETUP + r"""
+const source={id:'local-source',name:'Local service',endpoint:'http://127.0.0.1/events',
+  events:['task.completed'],credentials:[],revoked:false,enabled:true,validated:true,outstanding:0};
+const card=controls.sourceCard(source,true);
+assert.equal(card.children[5].tag,'details');
+assert.equal(card.children[5].children[0].textContent,'New credential');
+sandbox.Utils.auth.fetch=async()=>({ok:true,json:async()=>({message:'Authenticated callback saved.'})});
+await card.children[3].children[2].click();
+assert.equal(notices.at(-1)[0],'Authenticated callback saved.');
+assert.equal(notices.at(-1)[1],'success');
+""")

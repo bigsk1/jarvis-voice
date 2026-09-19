@@ -11,8 +11,9 @@ production binding; it requires explicit local service provisioning and runs onl
 through authorized Web text chat background admission. It has no foreground mode.
 The existing conversion and media bindings keep their current runners. Adding a
 source in Settings does not authorize it to run tools or create conversations.
-Samantha, OpenCode, third-party signature formats, remote cancellation, and the
-public relay remain separate work. `/api/alerts` and outgoing webhooks are unchanged.
+The long-running Samantha callback binding, OpenCode, third-party signature
+formats, remote cancellation, and the public relay remain separate work.
+`/api/alerts` and outgoing webhooks are unchanged.
 
 ## Setup and controls
 
@@ -27,8 +28,10 @@ In **Settings → Integrations → Task callbacks**:
 1. Initialize credential storage explicitly. Nothing generates a key at import or
    ordinary service startup.
 2. Add a named source with its Jarvis **API** receiver base URL and local service
-   submission URL. The submission adapter currently requires a literal loopback
-   IP. It does not support remote hosts or another Docker container's service name.
+   submission URL. The generic Integrations form requires a literal loopback
+   submit IP; it does not accept remote hosts or another Docker container's
+   service name. Trusted deployment code can separately pin one exact HTTPS
+   submit URL for a reviewed remote binding. No remote tool binding ships here.
 3. Create a bearer or Jarvis HMAC credential. Copy the one-time secret into the
    sending service's private configuration. It never belongs in a prompt or tool
    argument. Subsequent reads show metadata only.
@@ -78,8 +81,9 @@ evidence that remote work has stopped. Receiver/source controls never prove that
 binding maps a reviewed tool to a source ID and argument schema. Web stamps that
 mapping into the job's authorization; incoming JSON and manifest metadata cannot
 choose the mapping. The runner validates arguments, prebinds job/attempt/fence and
-a random callback capability, then sends exactly one POST to the configured local
-submission URL:
+a random callback capability, then sends exactly one POST to the configured
+submission URL. Ordinary sources use loopback; a reviewed deployment binding
+may use an exact HTTPS URL that the runner checks again before sending:
 
 ```json
 {

@@ -47,14 +47,22 @@ def worker_adapters(store=None):
     if adapters and store is not None:
         import json
 
-        from lib.webhook_integrations.browser import callback_sources, prepare
+        from lib.webhook_integrations.browser import callback_sources as browser_sources, prepare as browser_prepare
         from lib.webhook_integrations.runner import LocalCallbackRunner
         from lib.webhook_integrations.service import IntegrationService
 
-        sources = callback_sources(store)
-        if sources:
-            parameters = json.loads((ROOT / 'skills/browser_use.tool.json').read_text())['parameters']
-            adapters['http_callback_v1'] = LocalCallbackRunner(
-                IntegrationService(store), {'browser_use': (sources['browser_use'], parameters)}, prepare=prepare,
-            )
+        def callback_bindings():
+            sources = browser_sources(store)
+            return {
+                name: (source, json.loads((ROOT / f'skills/{name}.tool.json').read_text())['parameters'])
+                for name, source in sources.items()
+            }
+
+        # Advertise the reviewed runner even before an optional source exists.
+        # Bindings are loaded at claim time, so guided setup does not require a
+        # second worker restart; admission still requires a ready source.
+        adapters['http_callback_v1'] = LocalCallbackRunner(
+            IntegrationService(store), callback_bindings(), binding_loader=callback_bindings,
+            prepare={'browser_use': browser_prepare},
+        )
     return adapters

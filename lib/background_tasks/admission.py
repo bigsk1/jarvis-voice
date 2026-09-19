@@ -280,12 +280,15 @@ class BackgroundAdmissionService:
             from .local_skill import argument_validators
             for validator in argument_validators(schema.parameters, None):
                 validator.validate(args)
-        if self.adapters[tool] in SKILL_ADAPTERS:
+        if self.adapters[tool] in SKILL_ADAPTERS or (
+            self.adapters[tool] == CALLBACK_ADAPTER
+            and tool in payload.get('tool_policies', {})
+        ):
             # ToolRegistry can cache a schema across a manifest edit. Use the
             # current policy snapshot saved by the Web authorization service.
             timeout = payload.get('tool_policies', {}).get(tool, {}).get('timeout_seconds')
             if type(timeout) is not int or not 1 <= timeout <= 86400:
-                raise AdmissionDenied('Missing reviewed local skill timeout')
+                raise AdmissionDenied('Missing reviewed background task timeout')
         job = self.store.admit(
             Admission(
                 conversation_id=payload["conversation_id"],

@@ -2,6 +2,7 @@
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
 import pytest
 
@@ -39,6 +40,75 @@ def configured(tmp_path, *, scheme='bearer', clock=None):
     raw = json.dumps({'schema_version': 1, 'event_id': 'setup', 'type': 'integration.test'}).encode()
     service.accept(source['id'], raw, headers(service, source, probe, raw))
     return service, source, credential, now
+
+
+@pytest.mark.parametrize('changed_url', [
+    'https://other.private.ts.net/submit',
+    'http://127.0.0.1:9002/submit?bad=1',
+])
+def test_reviewed_remote_submit_is_exact_and_cannot_be_set_by_generic_source_controls(
+    tmp_path, monkeypatch, changed_url,
+):
+    from lib.background_tasks.worker import AwaitingCallback, KnownFailure
+    from lib.webhook_integrations import runner as callback_runner
+    from lib.webhook_integrations.runner import LocalCallbackRunner
+
+    service, source, _, _ = configured(tmp_path)
+    reviewed = 'https://bridge.private.ts.net/submit'
+    with pytest.raises(TaskError):
+        service.create_source(name='Unreviewed remote', callback_base='http://127.0.0.1:8880',
+                              submit_url=reviewed)
+    source = service.update_source(source['id'], source['revision'], submit_url=reviewed,
+                                   _reviewed_submit_url=reviewed)
+    with pytest.raises(TaskError, match='reviewed binding'):
+        service.update_source(source['id'], source['revision'],
+                              submit_url='https://other.private.ts.net/submit',
+                              _reviewed_submit_url=reviewed)
+    with service.store._connection(write=True) as conn:
+        conn.execute('UPDATE task_integrations SET validated_revision=revision WHERE id=?', (source['id'],))
+
+    def claim(invocation):
+        authorization = {'source': 'web', 'conversation_id': 'conversation', 'generation': 0,
+                         'request_id': invocation, 'mode': 'cloud', 'selected': ['callback_probe'],
+                         'callback_sources': {'callback_probe': source['id']}}
+        job = service.store.admit(Admission('conversation', 0, invocation, invocation,
+            'callback_probe', ADAPTER, 'cloud', {}, 'authorization-' + invocation, 'web'),
+            authorization=authorization)
+        service.store.release(job['id'], ReceiptEvidence('conversation', 0, invocation,
+                                                         'receipt-' + invocation, 'completed', True))
+        claimed = service.store.claim('test-worker', {ADAPTER})
+        service.store.running(claimed)
+        return claimed
+
+    sent = []
+    monkeypatch.setattr(callback_runner, 'post_json', lambda url, body, **kwargs:
+                        (sent.append(url) or {'remote_id': 'remote-1'}))
+    adapter = LocalCallbackRunner(service, {'callback_probe': (source['id'],
+        {'type': 'object', 'properties': {}, 'additionalProperties': False})},
+        prepare=lambda _: ({}, {}, reviewed))
+    assert isinstance(adapter(SimpleNamespace(claim=claim('first'), checkpoint=lambda: None)), AwaitingCallback)
+    assert sent == [reviewed]
+
+    with service.store._connection(write=True) as conn:
+        conn.execute('UPDATE task_integrations SET submit_url=? WHERE id=?',
+                     (changed_url, source['id']))
+    with pytest.raises(KnownFailure):
+        adapter(SimpleNamespace(claim=claim('second'), checkpoint=lambda: None))
+    assert sent == [reviewed]
+
+
+def test_callback_worker_finds_a_reviewed_source_added_after_startup(tmp_path, monkeypatch):
+    from lib.background_tasks.production import worker_adapters
+    from lib.webhook_integrations import browser
+
+    store = TaskStore(tmp_path / 'new-source.db')
+    store.initialize()
+    sources = {}
+    monkeypatch.setattr(browser, 'callback_sources', lambda _: dict(sources))
+    runner = worker_adapters(store)[ADAPTER]
+    assert runner.binding_loader() == {}
+    sources['browser_use'] = 'f' * 32
+    assert runner.binding_loader()['browser_use'][0] == 'f' * 32
 
 
 def bound(service, source, *, invocation='call'):

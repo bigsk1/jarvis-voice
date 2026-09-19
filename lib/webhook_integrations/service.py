@@ -68,10 +68,17 @@ class IntegrationService(CredentialStore, CallbackInbox):
             sources = [self._source_info(conn, row) for row in conn.execute('SELECT * FROM task_integrations ORDER BY created_at')]
             return {'enabled': self.store._settings(conn)['webhooks_enabled'], 'key_ready': key_ready, 'sources': sources}
 
-    def create_source(self, *, name, callback_base, submit_url, events=None, rate_limit=60):
+    def create_source(self, *, name, callback_base, submit_url, events=None, rate_limit=60,
+                      _reviewed_submit_url=None):
         if not isinstance(name, str) or not 1 <= len(name.strip()) <= 100:
             raise TaskError('Use a source name of 1–100 characters')
-        callback_base, submit_url = endpoint(callback_base), endpoint(submit_url, local_only=True)
+        callback_base = endpoint(callback_base)
+        if _reviewed_submit_url is None:
+            submit_url = endpoint(submit_url, local_only=True)
+        else:
+            submit_url = endpoint(submit_url)
+            if submit_url != _reviewed_submit_url or not submit_url.startswith('https://'):
+                raise TaskError('Remote submit URL does not match its reviewed binding')
         events = sorted(EVENTS if events is None else self._events(events))
         if type(rate_limit) is not int or not 1 <= rate_limit <= 600:
             raise TaskError('Source rate limit must be between 1 and 600 requests per minute')
@@ -91,7 +98,7 @@ class IntegrationService(CredentialStore, CallbackInbox):
             raise TaskError('Select supported task events')
         return events
 
-    def update_source(self, source_id, revision, **changes):
+    def update_source(self, source_id, revision, *, _reviewed_submit_url=None, **changes):
         if not changes or set(changes) - {'name', 'enabled', 'events', 'callback_base', 'submit_url', 'rate_limit', 'revoke'}:
             raise TaskError('Unsupported task integration setting')
         with self.store._connection(write=True) as conn:
@@ -113,7 +120,11 @@ class IntegrationService(CredentialStore, CallbackInbox):
                 elif name == 'events':
                     values['events_json'] = json.dumps(sorted(self._events(value)))
                 elif name in {'callback_base', 'submit_url'}:
-                    values[name] = endpoint(value, local_only=name == 'submit_url')
+                    values[name] = endpoint(value, local_only=name == 'submit_url' and _reviewed_submit_url is None)
+                    if name == 'submit_url' and _reviewed_submit_url is not None and (
+                        values[name] != _reviewed_submit_url or not values[name].startswith('https://')
+                    ):
+                        raise TaskError('Remote submit URL does not match its reviewed binding')
                 elif name == 'rate_limit':
                     if type(value) is not int or not 1 <= value <= 600:
                         raise TaskError('Invalid source rate limit')
