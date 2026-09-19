@@ -1,0 +1,59 @@
+{
+  "enabled": true,
+  "name": "openclaw",
+  "description": "Contact a remote OpenClaw agent through its OpenAI-compatible gateway. ONLY use when the user EXPLICITLY asks to 'ask OpenClaw', 'have OpenClaw do', 'tell OpenClaw', or 'check with OpenClaw'. This is not the local OpenCode coding agent. The remote agent has its own tools and context and may have Jarvis API access if that deployment grants it. Include the task context in the message; it cannot see this chat automatically. Never auto-delegate tasks — the user must specifically request OpenClaw.",
+  "script": "openclaw.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "message": {
+        "type": "string",
+        "description": "Task for the remote OpenClaw agent. Include all context it needs - it cannot see your conversation history. Be specific about what response you want back."
+      },
+      "session": {
+        "type": "string",
+        "description": "Session ID for conversation context. Use 'jarvis' (default) to continue previous conversations. Use a unique ID like 'jarvis-research-jan26' for isolated one-off tasks that should not affect main conversation history.",
+        "default": "jarvis"
+      },
+      "priority": {
+        "type": "string",
+        "enum": [
+          "urgent",
+          "normal",
+          "background"
+        ],
+        "description": "Task priority. 'urgent' = needs immediate attention, 'normal' = standard (default), 'background' = can wait/lower priority.",
+        "default": "normal"
+      },
+      "timeout": {
+        "type": "integer",
+        "description": "Timeout in seconds. Quick tasks: 30-60s. Complex research: 120s (default). Very long tasks: up to 300s.",
+        "default": 240
+      }
+    },
+    "required": [
+      "message"
+    ]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": false,
+    "auto_approve": true
+  },
+  "test_input": {
+    "message": "Hello, this is a test from Jarvis. Please respond briefly.",
+    "timeout": 30
+  },
+  "expected_output_contains": [
+    "ok",
+    "response"
+  ],
+  "availability": {
+    "any_of_env": [
+      "OPENCLAW_GATEWAY_TOKEN"
+    ],
+    "setup_hint": "Set OPENCLAW_GATEWAY_TOKEN in the active mode env file."
+  }
+}

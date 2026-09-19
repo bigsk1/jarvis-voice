@@ -619,7 +619,7 @@ LOCAL_TOOL_SAMPLES = {
     "remember": _case(
         {"memory_id": 77, "key": "payload_audit", "category": "technical"}
     ),
-    "samantha": _case(
+    "openclaw": _case(
         {},
         {
             "message": "Review the payload audit.",
@@ -2053,7 +2053,7 @@ def test_every_current_tool_payload_produces_bounded_followup_context(tool_name,
     assert tool_name in result
     compact = result[tool_name]
     assert compact
-    if tool_name not in {"recall", "samantha"}:
+    if tool_name not in {"recall", "openclaw"}:
         assert set(compact) - {"request"}
     encoded = json.dumps(
         compact,
@@ -2758,10 +2758,10 @@ def test_tmdb_tv_followup_preserves_series_identity_artwork_and_seasons():
 def test_request_context_is_bounded_and_drops_secret_or_bulky_arguments():
     result = followup.extract_followup_data(
         {
-            "samantha": {},
+            "openclaw": {},
             "_tool_trace": [
                 {
-                    "tool": "samantha",
+                    "tool": "openclaw",
                     "ok": True,
                     "arguments": {
                         "message": "Review the adapter.",
@@ -2775,7 +2775,7 @@ def test_request_context_is_bounded_and_drops_secret_or_bulky_arguments():
         }
     )
 
-    request = result["samantha"]["request"]
+    request = result["openclaw"]["request"]
     assert request["message"] == "Review the adapter."
     assert request["session"] == "jarvis"
     assert "SECRET_SENTINEL" not in json.dumps(request)

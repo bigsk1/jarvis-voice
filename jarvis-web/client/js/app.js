@@ -1607,7 +1607,7 @@ class JarvisApp {
       tool_search: '🧰',
       check_tool_logs: '📋',
       query_service_logs: '📋',
-      samantha: '🤖',
+      openclaw: '🤖',
       status_recap: '📋',
     };
 

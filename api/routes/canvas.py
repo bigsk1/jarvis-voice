@@ -315,7 +315,7 @@ async def create_page(data: CanvasCreate):
         "title": "Notes/2026-01-27/My Research",
         "content": "# Research Notes\\n\\nFindings...",
         "tags": ["research", "notes"],
-        "source_tool": "samantha"
+        "source_tool": "openclaw"
     }
     ```
     

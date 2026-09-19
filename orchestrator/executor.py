@@ -260,8 +260,8 @@ class ToolExecutor:
             return 180  # May call configured LLM over long stash/transcript artifacts
         if tool_name == "convert_file":
             return 180  # 3 minutes - convert files various formats, audio, video, image, ect.
-        if tool_name == "samantha":
-            return 180  # 3 minutes - Samantha is a remote assistant, so we need to increase the timeout
+        if tool_name == "openclaw":
+            return 180  # 3 minutes - OpenClaw is a remote assistant, so we need to increase the timeout
         if tool_name == "youtube_video":
             return 900  # 15 minutes - YouTube video download can be slow if downloading 2hr video
         if tool_name == "phone_call":

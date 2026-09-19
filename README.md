@@ -216,13 +216,13 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - Custom webhook endpoints
   - OAuth2 handling and token refresh
   - See [`docs/n8n/docs/`](docs/n8n/docs/)
-- **Samantha Multi-Agent Integration**: Secondary AI assistant on remote VPS (openclaw)
-  - Real-time chat via `samantha` tool (OpenAI-compatible API)
+- **OpenClaw Multi-Agent Integration**: Secondary AI assistant on a remote OpenClaw gateway
+  - Real-time chat via `openclaw` tool (OpenAI-compatible API)
   - Fire-and-forget webhooks for Discord/Telegram posting
-  - Samantha can POST back to Jarvis API (intel, canvas, alerts, voice)
-  - **Multi-agent voice**: Samantha speaks with her own voice through Jarvis's speakers
+  - The remote agent can POST back to Jarvis API (intel, canvas, alerts, voice)
+  - **Multi-agent voice**: a remote agent can speak with its own cloned voice through Jarvis's speakers
   - Priority levels (urgent/normal/background) and configurable timeouts
-  - Division of labor: Jarvis = local/home, Samantha = web/social
+  - Division of labor: Jarvis = local/home, OpenClaw = web/social
 - **Cloudflare Images CDN**: Permanent image hosting for multi-agent workflows
   - Upload from file, URL, base64, or stash reference
   - Organized paths: `{uploader}/{date}/{category}/{filename}`
@@ -816,7 +816,7 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `workflow` - **Deterministic workflow discovery**: search/describe eligible shared or personal recipes and synchronously run one in the current orchestration turn
 - [`generate_music`](docs/tools/generate-music-tool/README.md) - **AI Music**: provider-ready music generation with genres, moods, tempo, stash integration
 - `generate_password` - **Password generation**: Secure passwords with length, complexity, memorable options
-- `samantha` - **Multi-agent**: Chat with Samantha (OpenClaw), delegate tasks, fire-and-forget webhooks
+- `openclaw` - **Multi-agent**: Chat with a remote OpenClaw agent, delegate tasks, fire-and-forget webhooks
 - `deep_memory_search` - **Comprehensive search**: Multi-source search across memory, conversations, intel, canvas, stash
 - `search_docs` - **Internal knowledge Q&A**: Semantic search over Jarvis docs (capabilities, parameters, features)
 - `ssh_remote` - **Remote execution**: SSH into remote hosts, run commands, apt management, multi-command sequences
@@ -1739,16 +1739,16 @@ cat logs/opencode/opencode-$(date +%Y-%m-%d).jsonl
 - ✅ **Cloudflare Images API** - Permanent CDN hosting for images
   - Upload from file, URL, base64, or stash reference
   - Organized paths with metadata tracking
-  - Multi-agent support for Samantha image sharing
+  - Multi-agent support for remote OpenClaw image sharing
   - See: [`docs/api/IMAGES.md`](docs/api/IMAGES.md)
-- ✅ **Samantha Multi-Agent Integration** - Secondary AI assistant on VPS
-  - `samantha` tool for real-time chat via OpenAI-compatible API
+- ✅ **OpenClaw Multi-Agent Integration** - Secondary AI assistant on a remote gateway
+  - `openclaw` tool for real-time chat via OpenAI-compatible API
   - Fire-and-forget webhooks for Discord/Telegram posting
-  - Samantha can POST back to Jarvis API (intel, canvas, alerts, voice)
+  - The remote agent can POST back to Jarvis API (intel, canvas, alerts, voice)
   - Priority levels (urgent/normal/background) and configurable timeouts
 - ✅ **Voice API Multi-Agent Support** - Per-request TTS provider/voice override
   - `/api/voice/speak` accepts `tts_provider` and `voice` parameters
-  - Jarvis uses ElevenLabs, Samantha uses Qwen3-TTS "Samantha" voice
+  - Jarvis uses ElevenLabs; a remote agent can use the Qwen3-TTS "Samantha" voice
   - See: [`docs/api/VOICES.md`](docs/api/VOICES.md)
 - ✅ **Qwen3-TTS Integration** - Local network TTS with 28 cloned voices
   - OpenAI-compatible API (free, fast, high quality)

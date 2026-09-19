@@ -10,7 +10,7 @@
     "generate_video": false,
     "memory_deduper": false,
     "phone_call": false,
-    "samantha": false,
+    "openclaw": false,
     "screenshot_url": false,
     "serpapi_ebay_product": false,
     "serpapi_ebay_search": false,

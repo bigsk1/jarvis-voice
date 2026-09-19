@@ -37,7 +37,7 @@ class ImageUploadRequest(BaseModel):
     """Request to upload an image to Cloudflare CDN."""
     source: str = Field(..., description="Image source: file path, URL, base64 data, or stash://reference")
     source_type: str = Field("auto", description="Source type: auto, file, url, base64, stash")
-    uploader: str = Field("api", description="Who is uploading (jarvis, samantha, api) - for path organization")
+    uploader: str = Field("api", description="Who is uploading (e.g. jarvis, openclaw, api) - for path organization")
     category: str | None = Field(None, description="Category (status, generated, stash) - auto-detected if not provided")
     prompt: str | None = Field(None, description="Prompt used to generate the image (stored as metadata)")
     tags: list[str] | None = Field(None, description="Tags for the image (stored as metadata)")
@@ -151,7 +151,7 @@ async def upload_base64_image(data: dict):
     {
       "image": "data:image/png;base64,iVBORw0KGgo...",
       "filename": "my_image.png",  // optional
-      "uploader": "samantha",      // optional, default: api
+      "uploader": "openclaw",      // optional, default: api
       "category": "generated",     // optional, auto-detected
       "prompt": "A cute robot",    // optional, stored as metadata
       "tags": ["ai", "robot"],     // optional, stored as metadata

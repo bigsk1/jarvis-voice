@@ -138,11 +138,11 @@ assert.equal(updates[0].target, sandbox.document);
 
 
 @pytest.mark.parametrize('live', [True, False])
-def test_foreground_samantha_result_is_visible_in_live_and_saved_tool_cards(live):
+def test_foreground_openclaw_result_is_visible_in_live_and_saved_tool_cards(live):
     run_message_browser(f'const live = {json.dumps(live)};\n' + r"""
 const ui = chat();
-const payload = {samantha: {response: 'Sources: <A>', model: 'openclaw/main', session: 'jarvis-review'}};
-const html = render(ui, 'Samantha replied.', ['samantha'], payload, live);
+const payload = {openclaw: {response: 'Sources: <A>', model: 'openclaw/main', session: 'jarvis-review'}};
+const html = render(ui, 'OpenClaw replied.', ['openclaw'], payload, live);
 assert.match(html, /Sources: &lt;A&gt;/);
 assert.match(html, /jarvis-review/);
 assert.ok(!html.includes('<pre class="tool-card-body">{}</pre>'));

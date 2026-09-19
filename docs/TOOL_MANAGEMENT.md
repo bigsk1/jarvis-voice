@@ -425,7 +425,7 @@ Automatically disable unused tools after 7 days:
 | **Intelligence** | manage_intel, ingest_intel | 2 |
 | **Reminders/Alerts** | create_reminder, list_reminders, acknowledge_reminders, list_alerts, acknowledge_alerts, price_alert | 6 |
 | **Development** | opencode, check_opencode_sessions, execute_bash, check_tool_logs, query_service_logs | 5 |
-| **Communication** | send_email, send_webhook, phone_call, samantha | 4 |
+| **Communication** | send_email, send_webhook, phone_call, openclaw | 4 |
 | **External APIs** | api_call, crypto_price, stock_price, weather, get_time | 5 |
 | **Media & Content** | spotify, generate_music, youtube_transcript, crawl_url, screenshot_url | 5 |
 | **Image & Vision** | generate_image, analyze_image, upload_cloudflare | 3 |
@@ -624,7 +624,7 @@ entries = [{'title': e.title, 'link': e.link} for e in feed.entries[:10]]
 | **Memory & Context** | ⭐⭐⭐⭐⭐ | 7 tools + deep_memory_search | Excellent - FTS5, semantic, cross-source |
 | **Development/Coding** | ⭐⭐⭐⭐⭐ | opencode, execute_bash, ssh_remote, docker_control | OpenCode is powerful, SSH for remote |
 | **Web Search & Scraping** | ⭐⭐⭐⭐⭐ | brave_search, crawl_url, screenshot_url, fetch | Stealth scraping, vision analysis |
-| **Communication** | ⭐⭐⭐⭐ | send_email, phone_call, send_webhook, samantha | Missing: Slack, Discord |
+| **Communication** | ⭐⭐⭐⭐ | send_email, phone_call, send_webhook, openclaw | Missing: Slack, Discord |
 | **Productivity** | ⭐⭐⭐⭐ | calendar (n8n), reminders, alerts, canvas, stash | Missing: Todoist, Notion |
 | **Media** | ⭐⭐⭐⭐⭐ | spotify, generate_music, youtube_transcript | Full Spotify control, AI music |
 | **Finance** | ⭐⭐⭐⭐⭐ | crypto_price, stock_price, price_alert | Crypto, stocks, futures, forex, alerts |

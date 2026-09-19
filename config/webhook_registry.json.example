@@ -1,0 +1,15 @@
+{
+  "_description": "Optional named destinations for the send_webhook tool. Copy to webhook_registry.json and edit the copy.",
+  "webhooks": {
+    "example_notification": {
+      "url": "https://example.invalid/webhook",
+      "description": "Example notification destination; replace with your own service URL.",
+      "headers": {
+        "Authorization": "Bearer ${EXAMPLE_WEBHOOK_TOKEN}"
+      },
+      "required_fields": ["message"],
+      "rate_limit_seconds": 10,
+      "enabled": false
+    }
+  }
+}

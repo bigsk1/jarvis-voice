@@ -103,13 +103,13 @@ def test_private_binding_rejects_open_file_symlink_and_unreviewed_host(private_t
 def test_blocking_companion_tool_hides_private_long_task(private_tool):
     from config_loader import config_scope
 
-    shared = private_tool.root / 'skills/samantha.tool.json'
-    shared.write_text(json.dumps({'name': 'samantha', 'enabled': True, 'script': 'samantha.py'}))
-    private_tool.row['requires_tool'] = 'samantha'
+    shared = private_tool.root / 'skills/openclaw.tool.json'
+    shared.write_text(json.dumps({'name': 'openclaw', 'enabled': True, 'script': 'openclaw.py'}))
+    private_tool.row['requires_tool'] = 'openclaw'
     private_tool.write()
     with config_scope('cloud', {'BLOCKED_TOOLS': ''}):
         assert private.policy('callback_probe')[1]['timeout_seconds'] == 7200
-    with config_scope('cloud', {'BLOCKED_TOOLS': 'samantha'}):
+    with config_scope('cloud', {'BLOCKED_TOOLS': 'openclaw'}):
         with pytest.raises(AdmissionDenied, match='disabled'):
             private.policy('callback_probe')
 

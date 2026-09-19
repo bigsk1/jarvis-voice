@@ -88,7 +88,7 @@ The Voice API supports per-request TTS overrides, enabling different AI agents t
 
 ### Example: Samantha's Voice
 
-Samantha (secondary AI on VPS2) can speak through Jarvis's speakers with her own cloned voice:
+A remote agent can speak through Jarvis's speakers using a configured cloned voice such as Samantha:
 
 ```bash
 curl -X POST http://localhost:8880/api/voice/speak \

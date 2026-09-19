@@ -69,7 +69,7 @@ cat logs/api/access-$TODAY.jsonl | jq -r '.status' | sort | uniq -c | sort -rn
 ### Filter by Source
 
 ```bash
-# Samantha requests (Tailscale 100.x.x.x)
+# Remote agent requests (Tailscale 100.x.x.x)
 cat logs/api/access-$TODAY.jsonl | jq 'select(.client_ip | startswith("100."))'
 
 # External requests only (non-Tailscale)

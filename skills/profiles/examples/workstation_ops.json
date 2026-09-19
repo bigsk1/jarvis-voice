@@ -19,7 +19,7 @@
     "mcp_playwright_browser_navigate": false,
     "mcp_playwright_browser_snapshot": false,
     "phone_call": false,
-    "samantha": false,
+    "openclaw": false,
     "screenshot_url": false,
     "send_email": false,
     "send_webhook": false,

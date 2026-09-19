@@ -74,7 +74,7 @@ def generate_custom_id(uploader: str, filename: str, category: str = None) -> st
     Example: jarvis/2026-01-27/status_visual_abc123
     
     Args:
-        uploader: Who uploaded (jarvis, samantha, api, etc.)
+        uploader: Who uploaded (e.g. jarvis, openclaw, api)
         filename: Original filename
         category: Optional category (status, generated, stash, etc.)
         
@@ -120,7 +120,7 @@ def upload_to_cloudflare(file_path: str, custom_id: str = None, uploader: str = 
     Args:
         file_path: Path to local image file
         custom_id: Optional custom ID/path for the image
-        uploader: Who is uploading (jarvis, samantha, api) - used for auto-generated paths
+        uploader: Who is uploading (e.g. jarvis, openclaw, api) - used for auto-generated paths
         category: Optional category (status, generated, stash) - used for auto-generated paths
         metadata: Optional metadata dict to store with the image (not exposed to end users)
         
@@ -429,7 +429,7 @@ def upload_image(source: str, source_type: str = "auto", uploader: str = "jarvis
     Args:
         source: File path, URL, base64 data, or stash reference
         source_type: "file", "url", "base64", "stash", or "auto" (detect)
-        uploader: Who is uploading - "jarvis", "samantha", "api" (for path organization)
+        uploader: Who is uploading - e.g. "jarvis", "openclaw", "api" (for path organization)
         category: Optional category - "status", "generated", "stash", etc.
         custom_id: Optional full custom ID/path (overrides auto-generation)
         metadata: Optional metadata dict (prompt, tags, provider, etc.)
@@ -559,7 +559,7 @@ def main():
             "parameters": {
                 "source": "Image source (required)",
                 "source_type": "auto|file|url|base64|stash",
-                "uploader": "jarvis|samantha|api (default: jarvis)",
+                "uploader": "Uploader label, e.g. jarvis or openclaw (default: jarvis)",
                 "category": "status|generated|stash|etc (auto-detected)",
                 "custom_id": "Full custom path (optional, overrides auto)"
             }

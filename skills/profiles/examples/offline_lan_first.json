@@ -25,7 +25,7 @@
     "network_tools": false,
     "opencode": false,
     "phone_call": false,
-    "samantha": false,
+    "openclaw": false,
     "screenshot_url": false,
     "send_email": false,
     "send_webhook": false,

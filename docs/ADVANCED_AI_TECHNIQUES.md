@@ -70,10 +70,10 @@ Learned insight injection already receives the current `available_tools` list, s
 
 Example:
 
-- `samantha` tool is disabled.
+- `openclaw` tool is disabled.
 - A user says they are working on Jarvis.
-- Auto-memory finds `intel/samantha.md` or old Samantha integration notes because the text is semantically related and intel sources get a boost.
-- The memory is true, but it can still make the assistant act like Samantha is currently operational.
+- Auto-memory finds old OpenClaw integration notes because the text is semantically related and intel sources get a boost.
+- The memory is true, but it can still make the assistant act like OpenClaw is currently operational.
 
 The important distinction:
 
@@ -112,7 +112,7 @@ Auto-memory should eventually classify each candidate memory into one of these b
 | `requires_disabled_tool` | Would cause the model to use, recommend, or assume a disabled tool works | Suppress unless user explicitly asks about that disabled tool |
 | `disabled_tool_warning` | Explains why not to use a disabled/broken tool | Allow, and possibly boost |
 
-This avoids a blunt text filter. A memory that says “Samantha integration existed” is not the same as “Use Samantha for this task.”
+This avoids a blunt text filter. A memory that says “OpenClaw integration existed” is not the same as “Use OpenClaw for this task.”
 
 ### Runtime Inputs
 
@@ -138,8 +138,8 @@ Long-term, memories and intel-derived rows should support lightweight metadata:
 
 ```json
 {
-  "related_tools": ["samantha"],
-  "requires_enabled_tools": ["samantha"],
+  "related_tools": ["openclaw"],
+  "requires_enabled_tools": ["openclaw"],
   "context_role": "history|instruction|warning|capability|preference",
   "runtime_scope": "always|when_tool_available|when_explicitly_asked"
 }
@@ -158,7 +158,7 @@ Suggested meanings:
 Not all old memories have metadata. A fallback can still help, but should be conservative:
 
 - Match exact known tool names only, not broad English words.
-- Use source paths as hints, e.g. `intel/samantha.md`.
+- Use source paths as hints, e.g. `intel/<tool>.md`.
 - Treat `source=intel/<tool>.md` as `about_disabled_tool`, not automatically `requires_disabled_tool`.
 - Do not filter resolved active response preferences through tool matching.
 - Prefer demotion/annotation over deletion.
@@ -179,10 +179,10 @@ if candidate mentions disabled tool:
 
 If the user explicitly asks about a disabled tool, related memories should be allowed because they are the topic:
 
-- “Why is Samantha disabled?”
-- “What did Samantha used to do?”
-- “Help me migrate Samantha notes.”
-- “What broke with the Samantha heartbeat?”
+- “Why is OpenClaw disabled?”
+- “What did OpenClaw used to do?”
+- “Help me migrate OpenClaw notes.”
+- “What broke with the OpenClaw heartbeat?”
 
 In that case, the prompt should annotate the memory block:
 
@@ -207,14 +207,14 @@ Suggested starting behavior:
 - `disabled_tool_warning`: no demotion, maybe small boost
 - explicit user mention of tool: no demotion, add unavailable-tool annotation
 
-This keeps `intel/samantha.md` from appearing in ordinary Jarvis-app chat while still allowing it in Samantha-specific troubleshooting.
+This keeps notes about a disabled OpenClaw integration from appearing in ordinary Jarvis-app chat while still allowing them in OpenClaw-specific troubleshooting.
 
 ### Prompt Annotation Option
 
 A softer alternative is to keep the memory but label it:
 
 ```text
-- Samantha integration note ... (related_tool=samantha, tool_status=disabled, use_as=historical_context)
+- OpenClaw integration note ... (related_tool=openclaw, tool_status=disabled, use_as=historical_context)
 ```
 
 This is safer than silent injection, but it still spends context tokens and relies on the model obeying the label. It is best for explicit disabled-tool discussions, not general chat.
@@ -246,8 +246,8 @@ Start with one real flag (`AUTO_MEMORY_FILTER_DISABLED_TOOLS=true`) and keep the
 ```json
 {
   "event": "auto_memory_filtered",
-  "memory_key": "What Samantha Can Do note",
-  "related_tool": "samantha",
+  "memory_key": "What OpenClaw Can Do note",
+  "related_tool": "openclaw",
   "classification": "about_disabled_tool",
   "action": "demoted",
   "active_profile": "offline"

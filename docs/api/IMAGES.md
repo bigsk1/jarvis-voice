@@ -6,13 +6,13 @@ This API is for hosting/sharing images. It does **not** run LLM vision analysis.
 
 ## Overview
 
-The Images API allows Jarvis and external agents (like Samantha) to upload images to Cloudflare's global CDN. This solves the base64 size limitation problem when sharing images across systems.
+The Images API allows Jarvis and external agents (like a remote OpenClaw agent) to upload images to Cloudflare's global CDN. This solves the base64 size limitation problem when sharing images across systems.
 
 **Use Cases:**
 - Upload AI-generated images for permanent hosting
 - Share status visuals across systems
 - Store canvas images externally for faster loading
-- Enable multi-agent image sharing (Samantha → Jarvis)
+- Enable multi-agent image sharing (OpenClaw → Jarvis)
 
 **Not for:** "What is in this image?" style analysis. Use `analyze_image` instead.
 
@@ -60,7 +60,7 @@ Upload an image from various sources.
 |-------|------|----------|-------------|
 | `source` | string | Yes | Image source (see below) |
 | `source_type` | string | No | `auto`, `file`, `url`, `base64`, `stash` (default: auto) |
-| `uploader` | string | No | Who uploaded: `jarvis`, `samantha`, `api` (default: api) |
+| `uploader` | string | No | Free-form uploader label, e.g. `jarvis`, `openclaw`, `api` (default: api) |
 | `category` | string | No | Category: `status`, `generated`, `stash`, etc. (auto-detected) |
 | `prompt` | string | No | Generation prompt (stored as metadata) |
 | `tags` | array | No | Tags for the image (stored as metadata) |
@@ -99,7 +99,7 @@ Simplified endpoint for base64 uploads.
 {
   "image": "data:image/png;base64,iVBORw0KGgo...",
   "filename": "my_image.png",
-  "uploader": "samantha",
+  "uploader": "openclaw",
   "category": "generated",
   "prompt": "A cute robot dog",
   "tags": ["ai", "robot"],
@@ -138,7 +138,7 @@ Images are stored with organized custom paths:
 | Uploader | Category | Result Path |
 |----------|----------|-------------|
 | jarvis | status | `jarvis/2026-01-27/status/daily_visual_a1b2c3d4` |
-| samantha | research | `samantha/2026-01-27/research/ai_news_e5f6g7h8` |
+| openclaw | research | `openclaw/2026-01-27/research/ai_news_e5f6g7h8` |
 | api | generated | `api/2026-01-27/generated/robot_dog_i9j0k1l2` |
 
 This makes it easy to:
@@ -152,7 +152,7 @@ This makes it easy to:
 Cloudflare stores metadata with each image (not exposed to end users):
 
 **Automatic metadata:**
-- `uploader` - Who uploaded (jarvis, samantha, api)
+- `uploader` - Who uploaded (free-form label; e.g. jarvis, openclaw, api)
 - `uploaded_at` - ISO timestamp
 - `original_filename` - Original file name
 - `category` - Status, generated, stash, etc.
@@ -202,7 +202,7 @@ curl -X POST http://localhost:8880/api/images/base64 \
   -H "Content-Type: application/json" \
   -d '{
     "image": "data:image/png;base64,iVBORw0KGgo...",
-    "uploader": "samantha",
+    "uploader": "openclaw",
     "prompt": "AI-generated artwork",
     "tags": ["art", "generated"]
   }'

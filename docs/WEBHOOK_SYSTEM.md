@@ -43,7 +43,8 @@ Jarvis uses a **modular webhook registry** for triggering external services and 
 
 | File | Purpose | Git Status |
 |------|---------|------------|
-| `config/webhook_registry.json` | Active webhook definitions (URLs, auth, rate limits); create from the schema/examples below | ❌ Gitignored (your data) |
+| `config/webhook_registry.json` | Active webhook definitions (URLs, auth, rate limits) | ❌ Gitignored (your data) |
+| `config/webhook_registry.json.example` | Disabled, credential-free starter for a named webhook | ✅ Committed |
 | `config/contacts.json` | Email contact list (name → email mapping) | ❌ Gitignored (your data) |
 | `config/contacts.json.example` | Template with examples | ✅ Committed |
 
@@ -55,6 +56,20 @@ Jarvis uses a **modular webhook registry** for triggering external services and 
 | `data/.webhook_rate_limit` | Webhook rate limiting cache (timestamps) |
 
 Both are gitignored and auto-created on first use.
+
+To configure a named destination, copy the example, replace its URL and name,
+set `EXAMPLE_WEBHOOK_TOKEN` in the active mode ENV (or remove the Authorization
+header if the destination needs no token), then set `enabled` to `true`:
+
+```bash
+cp -n config/webhook_registry.json.example config/webhook_registry.json
+```
+
+If a registry already exists, keep it and add or edit entries there. The copied
+file stays local. The destination name is your choice: a private
+`samantha` webhook can name one agent, while the separate public `openclaw`
+tool talks to an OpenClaw gateway through its chat API. Renaming a registry
+entry changes the name callers pass to `send_webhook`.
 
 ---
 

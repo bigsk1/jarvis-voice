@@ -49,7 +49,7 @@
     "- list_alerts: List alerts from the proactive API system. ALWAYS use this tool for ANY alert-related query, including: 'any alerts?', 'what alerts do I have?', 'show",
     "- manage_intel: SAVE TO INTEL FOLDER: Create, read, update, append, delete, or list files in jarvis-intel/ directory. This is the ONLY tool that can write to jarvis-i",
     "- acknowledge_reminders: Mark reminders as acknowledged/completed/cancelled. Use when user says 'cancel reminder', 'delete reminder', 'clear reminder', 'remove reminder', 'mar",
-    "- samantha: Contact Samantha, a separate AI assistant on remote cloud VPS. ONLY use when user EXPLICITLY asks to 'ask Samantha', 'have Samantha do', 'tell Samanth",
+    "- openclaw: Contact a remote OpenClaw agent through its OpenAI-compatible gateway. ONLY use when the user EXPLICITLY asks to 'ask OpenClaw', 'have OpenClaw do', 't",
     "- price_alert: View and modify price alert THRESHOLDS in data/price-alerts.yaml. This manages the CONDITIONS that n8n monitors - NOT the triggered alerts (use list",
     "- screenshot_url: Take a screenshot of any webpage using Crawl4AI and optionally analyze it with vision AI.\n\nUse this when:\n- You need to SEE what a webpage looks like ",
     "- list_reminders: List reminders by status. ALWAYS use this tool for ANY reminder-related query, including: 'when is my next reminder?', 'what reminders do I have?', 'c",
