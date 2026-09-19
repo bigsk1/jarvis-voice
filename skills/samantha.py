@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-Samantha Tool - Talk to Samantha AI assistant on remote VPS2
+Samantha Tool - Talk to a separately hosted AI assistant
 
-Samantha is a SEPARATE AI assistant running on a cloud VPS (vps2).
-She is NOT part of Jarvis's local network and has NO access to:
-- Jarvis's tools (prices, weather, memory, local TTS, etc.)
-- Home automation or local network devices
-- Fred or any local systems
+Samantha is a separate AI assistant running on a remote host. Her access to
+Jarvis APIs and other systems depends on credentials and tools configured on
+that host; do not treat her as an isolated security boundary.
 
 Think of her as a remote colleague you can ask for help.
-She does have access to Jarvis API and can send POST requests as needed.
+This installation may give her Jarvis API access for assigned work.
 Only use when the user EXPLICITLY requests Samantha by name.
 
 Endpoint: SAMANTHA_URL env var
@@ -28,8 +26,8 @@ SAMANTHA_MODEL = os.environ.get("SAMANTHA_MODEL", "openclaw/main")
 DEFAULT_TIMEOUT = 120  # Default timeout, can be overridden per-call (30-300s)
 
 # For reference - Samantha's capabilities (she has different tools than Jarvis)
-# Discord/Telegram posting, browser automation, cron scheduling, file ops on VPS2
-# She does NOT have: local TTS, price APIs, memory DB, home automation, local network
+# The remote deployment may have messaging, browser, scheduling, or file tools.
+# Her Jarvis API access depends on the remote deployment configuration.
 
 
 def call_samantha(message: str, session: str = "jarvis", priority: str = "normal", timeout: int = 120) -> dict:
@@ -120,7 +118,14 @@ def call_samantha(message: str, session: str = "jarvis", priority: str = "normal
                     "session": session,
                     "priority": priority,
                     "usage": data.get("usage", {}),  # Token usage if available
-                    "note": "Response from remote VPS2 - Samantha has no access to Jarvis's local tools"
+                    "data": {
+                        "response": content,
+                        "model": data.get("model", "unknown"),
+                        "session": session,
+                        "priority": priority,
+                        "usage": data.get("usage", {}),
+                    },
+                    "note": "Response from a separate remote assistant; its Jarvis API access depends on deployment credentials"
                 }
             else:
                 return {
@@ -139,9 +144,9 @@ def call_samantha(message: str, session: str = "jarvis", priority: str = "normal
         elif response.status_code == 502 or response.status_code == 503:
             return {
                 "ok": False,
-                "error": "Samantha is not available - Clawdbot may be stopped or Tailscale serve not running",
+                "error": "Samantha is not available - the remote service or private route may be down",
                 "status_code": response.status_code,
-                "hint": "Try: SSH to vps2 and check tailscale serve status"
+                "hint": "Check the configured remote service and private HTTPS route"
             }
         
         else:
@@ -162,9 +167,9 @@ def call_samantha(message: str, session: str = "jarvis", priority: str = "normal
     except requests.exceptions.ConnectionError as e:
         return {
             "ok": False,
-            "error": "Cannot connect to Samantha - VPS2 may be down or Tailscale not connected",
+            "error": "Cannot connect to Samantha - the remote host or route may be down",
             "details": str(e)[:200],
-            "hint": "Check if VPS2 is reachable via Tailscale"
+            "hint": "Check that the configured remote host is reachable"
         }
     
     except Exception as e:
