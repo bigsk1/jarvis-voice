@@ -109,5 +109,25 @@ if (!bodyEl.textContent.includes('phase 2') || !bodyEl.textContent.includes('pha
 if (!linkRow || !linkRow.child || !linkRow.child.href.includes('/Lw/session/ses_runtime')) {
   throw new Error('live OpenCode session link was not rendered');
 }
+
+global.window.location = {protocol: 'https:', hostname: 'jarvis.example.test'};
+const directUrl = cardChat._getOpenCodeSessionUrl('ses_runtime');
+if (directUrl !== 'http://jarvis.example.test:4096/Lw/session/ses_runtime') {
+  throw new Error(`HTTPS Web page changed OpenCode's HTTP scheme: ${directUrl}`);
+}
+cardChat.systemConfig.OPENCODE_BASE_URL = 'http://192.0.2.5:4096';
+const configuredUrl = cardChat._getOpenCodeSessionUrl('ses_runtime');
+if (configuredUrl !== 'http://192.0.2.5:4096/Lw/session/ses_runtime') {
+  throw new Error(`Configured OpenCode host was replaced: ${configuredUrl}`);
+}
+cardChat.systemConfig.OPENCODE_BASE_URL = 'http://localhost:4096';
+global.window.JarvisUINavigation = {
+  url: (service, fallback) => service === 'opencode'
+    ? 'https://jarvis.example.test:8448' : fallback
+};
+const servedUrl = cardChat._getOpenCodeSessionUrl('ses_runtime');
+if (servedUrl !== 'https://jarvis.example.test:8448/Lw/session/ses_runtime') {
+  throw new Error(`OpenCode Serve origin was not used: ${servedUrl}`);
+}
 """
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)

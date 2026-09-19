@@ -1,6 +1,20 @@
 # Background tasks
 
-Web task management uses a supervised skill runner with two reviewed policies: `local_skill_v1` for `convert_file`, and `remote_skill_v1` for `generate_image`, `generate_video`, `generate_music`, and `create_social_clip`. The separate `http_callback_v1` adapter submits `browser_use` to its local service and accepts completion through an authenticated callback. Operator-installed [private callback bindings](TASK-CALLBACKS.md#optional-private-tool-binding) can use that same adapter without adding a public tool. Tools enabled in **Settings → Tools → Background tasks** return an acceptance receipt, release the chat turn, run outside chat, and deliver a saved card and follow-up answer to the same conversation. You can send another message and call another tool while the job runs.
+Web chat can accept a reviewed long-running tool as a background job. Jarvis saves a receipt, frees the chat so you can send another message or call another tool, then updates the original card and adds an answer in the same conversation when the work finishes. The operator chooses which tools may do this in **Settings → Tools → Background tasks**.
+
+## How background work finishes
+
+Every background tool uses the same admission, saved job, card, late-answer, allowlist, and recovery machinery. Its adapter answers one question: **who observes the work until there is a result?**
+
+| Adapter | Who observes completion? | Current examples |
+| --- | --- | --- |
+| `local_skill_v1` | The task worker starts a reviewed local skill and supervises its process group until it exits. | `convert_file` |
+| `remote_skill_v1` | The worker runs the same kind of skill, but that skill calls an external API and waits or polls for a result. The worker is still the observer; stopping its process does not prove the provider stopped. | `generate_image`, `generate_video`, `generate_music`, `create_social_clip` |
+| `http_callback_v1` | The worker submits once and stops waiting. A separate service keeps the job identity and later POSTs an authenticated progress or final event to Jarvis. | Local Browser Use; optionally, an owner-installed remote agent over HTTPS |
+
+This is a choice about completion ownership, not three chat systems. A compatible local or remote skill needs reviewed manifest settings and a trusted binding to the shared runner. A callback tool also needs a real submit/receipt service, a configured source and credential, and a reviewed binding; adding a manifest flag or a URL alone cannot make a tool runnable. [Task callbacks](TASK-CALLBACKS.md) documents that protocol.
+
+Progress is separate from completion. The callback protocol accepts `task.progress`, but a service must actually send it; the expanded Web task card shows the latest short phase, not a full activity stream. Browser Use sends phase updates, while a service that only sends a final callback will appear idle until it finishes. OpenCode keeps its existing foreground tool card with richer live status; moving it to a background adapter is not planned.
 
 **Browser Use is Web-only and background-only.** It requires the saved allowlist, worker and callback service. Unmet requirements hide it from model selection; stale or forced calls fail without starting browser work. Voice, Talk, Firefox Companion, query API, CLI and workflows cannot run it; there is no foreground fallback.
 
@@ -8,7 +22,7 @@ For tools declaring `execution.background.required`, runtime discovery adds unme
 
 **Background admission and incoming webhooks default off; the saved tool list starts empty.** Execution requires a running Linux worker and saved Web preferences. The native start-all and UI groups start that worker; admission remains opt-in. Importing the package creates no storage or service. Missing workers affect background readiness only. An enabled background call reports unavailability rather than silently running foreground; unrelated chat and foreground tools keep working.
 
-Local conversion needs no Tailscale network, VPS, or public endpoint. [Task callbacks](TASK-CALLBACKS.md) add an optional authenticated inbox and **Settings → Integrations** controls, proven with a separate local HTTP service. The opt-in [Browser Use](BROWSER-USE.md) tool is the first public callback binding. A private long-task integration may be installed separately; it is absent from public clones. The existing short foreground `samantha` tool is separate. The standalone relay, OpenCode, and `/api/alerts` remain outside this work. Firefox source compatibility is tested in-tree; packaging and AMO release remain separate steps.
+Local conversion needs no Tailscale network, VPS, or public endpoint. [Task callbacks](TASK-CALLBACKS.md) add an optional authenticated inbox and **Settings → Integrations** controls, proven with a separate local HTTP service. The opt-in [Browser Use](BROWSER-USE.md) tool is the first public callback binding. A private long-task integration may be installed separately; it is absent from public clones. The existing short foreground `samantha` tool is separate. The standalone relay and `/api/alerts` remain outside this work. Firefox source compatibility is tested in-tree; packaging and AMO release remain separate steps.
 
 ## Run the isolated proof
 
@@ -299,7 +313,7 @@ The timeout is required, is an integer from 1 to 86400 seconds, and is stored in
 
 Arguments are validated against the manifest's JSON Schema using Draft 2020-12 with external retrieval disabled. Top-level undeclared arguments are rejected unless `additionalProperties` explicitly permits them. Optional `argument_constraints` adds runtime-only JSON Schema restrictions without changing provider parameters or descriptions. Conversion's source/format constraints live there. No Tool RAG resync is required for these metadata changes.
 
-The local policy requires `dangerous: false`, `auto_approve: true`, and `network: false`, plus the reviewed `completion_scope: "process_group"` declaration. Review child processes, daemonization, side effects, timeout/resource needs, and cancellation evidence before adding a binding. A local process ending cannot prove that a submitted remote operation stopped; the remote policy below handles this uncertainty. OpenCode and long-running Samantha tasks remain deferred. The separate `http_callback_v1` adapter serves the opt-in [Browser Use](BROWSER-USE.md) binding and does not change this process policy. Resource limits and permission metadata are not an OS network or filesystem sandbox.
+The local policy requires `dangerous: false`, `auto_approve: true`, and `network: false`, plus the reviewed `completion_scope: "process_group"` declaration. Review child processes, daemonization, side effects, timeout/resource needs, and cancellation evidence before adding a binding. A local process ending cannot prove that a submitted remote operation stopped; the remote policy below handles this uncertainty. The separate `http_callback_v1` adapter serves the opt-in [Browser Use](BROWSER-USE.md) binding and does not change this process policy. Resource limits and permission metadata are not an OS network or filesystem sandbox.
 
 Workers advertise supervision capability even if a particular conversion backend is missing; the requested skill then reports its backend failure. Restart both Web and any running worker after updating, so new admissions and worker capability use the same adapter identity. Ensure the selected runtime environment has the updated requirements. Native tmux runs use `JARVIS_VENV` (default `~/jarvis-venv`); the repository `.venv` is a development/test environment and is not required by the launcher.
 

@@ -29,11 +29,12 @@ def test_absent_or_malformed_config_keeps_existing_navigation(tmp_path, contents
 def test_only_the_matching_host_and_known_services_are_exposed(tmp_path):
     path = tmp_path / "ui_urls.json"
     write_config(path, {
-        "JARVIS.EXAMPLE.TEST.": {"web": "https://jarvis.example.test/", "canvas": "https://jarvis.example.test:8443", "unknown": "https://unrelated.test"},
+        "JARVIS.EXAMPLE.TEST.": {"web": "https://jarvis.example.test/", "canvas": "https://jarvis.example.test:8443", "opencode": "https://jarvis.example.test:8448", "unknown": "https://unrelated.test"},
         "other.example.test": {"web": "https://other.example.test"},
     })
     assert ui_navigation.navigation_for_host("jarvis.example.test", path) == {
         "web": "https://jarvis.example.test", "canvas": "https://jarvis.example.test:8443",
+        "opencode": "https://jarvis.example.test:8448",
     }
     assert ui_navigation.navigation_for_host("192.0.2.5", path) == {}
     assert ui_navigation.navigation_for_host("localhost", path) == {}
@@ -124,9 +125,10 @@ function boot(hostname, configuration) {
   assert.equal(window.__jarvisUINavigationConfig, undefined);
   return window.JarvisUINavigation;
 }
-const config = {hostname:'jarvis.example.test', urls:{web:'https://jarvis.example.test', canvas:'https://jarvis.example.test:8443'}};
+const config = {hostname:'jarvis.example.test', urls:{web:'https://jarvis.example.test', canvas:'https://jarvis.example.test:8443', opencode:'https://jarvis.example.test:8448'}};
 const helper = boot('JARVIS.EXAMPLE.TEST.', config);
 assert.equal(helper.url('canvas', 'http://jarvis.example.test:8890'), 'https://jarvis.example.test:8443');
+assert.equal(helper.url('opencode', 'http://jarvis.example.test:4096'), 'https://jarvis.example.test:8448');
 assert.equal(helper.url('memory', 'http://jarvis.example.test:5003'), 'http://jarvis.example.test:5003');
 assert.equal(helper.url('constructor', 'original'), 'original');
 assert.equal(Object.isFrozen(helper), true);

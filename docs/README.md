@@ -37,7 +37,7 @@
 - **[FEEDBACK_SYSTEM.md](FEEDBACK_SYSTEM.md)** - 📝 **LLM self-critique** (feedback grading, improvement suggestions, intelligence outcome updates)
 - **[COMPLETION_GUARD.md](COMPLETION_GUARD.md)** - 🛡️ **Completion Guard** (same-runtime repair loop, completion check, escalation tickets) 🆕
 - **[tools/scheduled-tasks/scheduled-tasks.md](tools/scheduled-tasks/scheduled-tasks.md)** - ⏱️ **Scheduled Tasks** (implemented foundation for recurring queries, workflows, parser, API, and runner) 🆕
-- **[BACKGROUND-TASKS.md](BACKGROUND-TASKS.md)** - Web background jobs, reviewed local/media tools, task management, native/Docker worker setup, diagnostics, and recovery
+- **[BACKGROUND-TASKS.md](BACKGROUND-TASKS.md)** - Plain-English overview of local, remote-wait, and callback jobs; Web task management, worker setup, diagnostics, and recovery
 - **[TASK-CALLBACKS.md](TASK-CALLBACKS.md)** - Optional authenticated task callbacks, integration controls, credential/key lifecycle, and the isolated local HTTP proof
 - **[BROWSER-USE.md](BROWSER-USE.md)** - Opt-in browser research, Docker Chromium isolation, saved Stash evidence, and the first local callback tool binding
 - **[DUAL_DATABASE_SYSTEM.md](DUAL_DATABASE_SYSTEM.md)** - Cloud/local DB architecture

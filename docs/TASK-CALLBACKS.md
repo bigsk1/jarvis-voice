@@ -1,5 +1,8 @@
 # Task callbacks
 
+For the plain-English overview of all three ways a background job can finish,
+see [How background work finishes](BACKGROUND-TASKS.md#how-background-work-finishes).
+
 Phase 3a adds authenticated completion callbacks for explicitly bound services.
 Jarvis saves each accepted event to a durable inbox, the task worker applies it to
 the matching execution attempt, and Web delivers the existing task card and late
@@ -15,8 +18,8 @@ through authorized Web text chat background admission. It has no foreground mode
 The existing conversion and media bindings keep their current runners. Adding a
 source in Settings does not authorize it to run tools or create conversations.
 An optional owner-installed personal callback binding can use the same adapter;
-no remote tool or bridge is included in a public clone. OpenCode, third-party
-signature formats, remote cancellation, and the public relay remain separate work.
+no remote tool or bridge is included in a public clone. Third-party signature
+formats, remote cancellation, and the public relay remain separate work.
 `/api/alerts` and outgoing webhooks are unchanged.
 
 ## Setup and controls

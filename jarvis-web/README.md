@@ -429,7 +429,8 @@ For HTTPS proxies or different public ports, copy
 Only browsers using a configured hostname receive those navigation URLs; other
 hosts retain the existing links. The shared `/ui-navigation.js` helper also keeps
 Canvas page previews, the Memory profile shortcut, and gallery handoffs on the
-configured origins. It does not change listeners, authentication, or proxy setup.
+configured origins. An optional `opencode` origin also controls OpenCode session
+links in Web tool cards. It does not change listeners, authentication, or proxy setup.
 Restart each UI once when installing this helper; subsequent URL edits apply on
 page reload. Configure origins only (no path prefixes, credentials, queries, or
 fragments). The live configuration is excluded from Git and Docker images; Docker

@@ -63,7 +63,8 @@ layout. Web alone is enough to get started.
    running `tailscale cert` or copying certificate files into Jarvis.
 3. Ensure your access rules allow the intended devices/users to reach the Jarvis
    host on TCP `443`, plus `8443`–`8446` if using the other UIs. Being in the same
-   tailnet does not override restrictive rules. See
+   tailnet does not override restrictive rules. An optional OpenCode Serve route
+   also needs its own port, such as `8448`. See
    [Tailscale access control](https://tailscale.com/docs/features/access-control).
 4. Configure Jarvis's optional `WEBUI_PASSWORD` in the ignored
    `config/cloud.env` or `config/local.env` used by your deployment. Use consistent
@@ -219,6 +220,40 @@ must preserve the browser's hostname. Tailscale Serve was verified to do so.
 `config/ui_urls.json` and its `.bak` backup are excluded from Git and Docker
 images. The generic `.example.json` is safe to track. You can confirm with
 `git check-ignore -v config/ui_urls.json`.
+
+## Optional OpenCode session links
+
+OpenCode normally serves plain HTTP on port `4096`. From an HTTPS Web page, a
+link to `https://jarvis.example.ts.net:4096` fails because that port does not
+speak TLS. Binding OpenCode to `0.0.0.0` makes its HTTP listener reachable on
+more interfaces; it does not add HTTPS. The Web tool card uses OpenCode's actual
+HTTP scheme and the current browser hostname by default, so a direct tailnet
+link is `http://jarvis.example.ts.net:4096/Lw/session/<session_id>` when that
+port is allowed. Keep `OPENCODE_BASE_URL` pointed at Jarvis's internal OpenCode
+API address; it is not the browser-facing HTTPS setting.
+
+For an HTTPS session link, give OpenCode its own unused Serve port while keeping
+the existing Web and other UI routes intact:
+
+```bash
+sudo tailscale serve --bg --https=8448 4096
+tailscale serve status
+```
+
+Then add this optional origin to the existing host entry in the ignored
+`config/ui_urls.json`, preserving its other service entries:
+
+```text
+"opencode": "https://jarvis.example.ts.net:8448"
+```
+
+Replace the placeholder hostname. Reload Web; no Web or OpenCode restart is
+needed for a URL-file edit. Verify the Serve status says `(tailnet only)`, open
+the HTTPS URL from another allowed device, and confirm an OpenCode session card
+opens its UI. OpenCode's own authentication still applies. If the port is not
+allowed by your tailnet policy, add a narrowly scoped rule for that port.
+`JARVIS_WEB_BACKGROUND_ALLOWED_ORIGINS` is only an authorization list for Web
+background-task requests; it does not configure session links or Serve routes.
 
 ## Docker notes
 

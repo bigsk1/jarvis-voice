@@ -274,22 +274,21 @@ grep "$SID" logs/opencode/opencode-$(date +%F).jsonl | jq .
 
 If the OpenCode web UI is reachable on your network, you can often jump straight to a session by ID.
 
-Current working pattern:
+The session link in Jarvis Web uses OpenCode's configured HTTP(S) scheme and a
+browser-reachable host. A typical direct HTTP pattern is:
 
 ```text
-http://192.168.70.228:4096/Lw/session/<session_id>
-```
-
-Example:
-
-```text
-http://192.168.70.228:4096/Lw/session/ses_2a79a23d0ffe6BZWR6GBT7gamY
+http://<jarvis-host>:4096/Lw/session/<session_id>
 ```
 
 Notes:
 
 - Replace the host if your OpenCode server is running elsewhere
 - The current UI route uses the raw `session_id`
+- For an HTTPS Web deployment, an optional `opencode` origin in
+  `config/ui_urls.json` can point the card to a separate HTTPS Tailscale Serve
+  port without changing Jarvis's internal `OPENCODE_BASE_URL`. See
+  [Optional OpenCode session links](../TAILSCALE_HTTPS.md#optional-opencode-session-links).
 - This is handy when the OpenCode UI no longer shows the full session list by default
 - If the UI changes again, `./bin/opencode-session <session_id>` is still the reliable fallback
 

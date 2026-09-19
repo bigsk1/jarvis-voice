@@ -411,18 +411,24 @@ class ChatUI {
 
     const configuredBase = this.systemConfig?.OPENCODE_BASE_URL || 'http://localhost:4096';
 
+    let base;
     try {
-      const base = new URL(configuredBase);
-      const pageProtocol = window.location.protocol || base.protocol;
-      const pageHost = window.location.hostname || base.hostname;
-      const needsBrowserHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(base.hostname);
-      const finalHost = needsBrowserHost ? pageHost : base.hostname;
-      const port = base.port || '4096';
-      return `${pageProtocol}//${finalHost}:${port}/Lw/session/${encodeURIComponent(sessionId)}`;
+      base = new URL(configuredBase);
     } catch {
-      const pageProtocol = window.location.protocol || 'http:';
-      const pageHost = window.location.hostname || 'localhost';
-      return `${pageProtocol}//${pageHost}:4096/Lw/session/${encodeURIComponent(sessionId)}`;
+      base = new URL('http://localhost:4096');
+    }
+
+    try {
+      if (!['http:', 'https:'].includes(base.protocol)) return null;
+      const browserBase = new URL(base.origin);
+      const needsBrowserHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(base.hostname);
+      if (needsBrowserHost && window.location.hostname) {
+        browserBase.hostname = window.location.hostname;
+      }
+      const origin = window.JarvisUINavigation?.url('opencode', browserBase.origin) || browserBase.origin;
+      return `${origin}/Lw/session/${encodeURIComponent(sessionId)}`;
+    } catch {
+      return null;
     }
   }
 
