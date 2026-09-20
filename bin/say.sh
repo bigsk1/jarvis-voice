@@ -71,7 +71,7 @@ elif [ "$TTS_PROVIDER" = "kokoro" ]; then
     # Kokoro (OpenAI-compatible HTTP — same payload as jarvis-web / say-local URL mode)
     # ============================================================================
     KOKORO_URL="${KOKORO_TTS_URL:-}"
-    KOKORO_VOICE="${KOKORO_TTS_VOICE:-af_nicole}"
+    KOKORO_VOICE="${KOKORO_TTS_VOICE_OVERRIDE:-${KOKORO_TTS_VOICE:-af_nicole}}"
     KOKORO_SPEED="${KOKORO_TTS_SPEED:-1.0}"
 
     if [ -z "$KOKORO_URL" ]; then
