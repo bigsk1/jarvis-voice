@@ -2,7 +2,7 @@
 
 **Status**: Active / Phase 1.5 Complete + 2026 operational bridges
 **Created**: 2025-11-27
-**Updated**: 2026-08-11 (request-scoped insight applicability and Chat-only reflection)
+**Updated**: 2026-09-19 (background-task reflection boundary)
 **Location**: `lib/intelligence.py`, `lib/intelligence_hooks.py`, `jarvis-intelligence/` (dashboard)
 
 ## Overview
@@ -794,12 +794,20 @@ This ensures:
 ## What Gets Learned
 
 ### Experience Recording
-Every interaction records:
+An eligible completed foreground turn records:
 - Query (as embedding)
 - Tools used (in order)
 - Turns taken
 - Success/failure
 - User satisfaction signals
+
+This includes ordinary chat with no tool call when Intelligence is enabled. A Web
+turn that admits a [background task](BACKGROUND-TASKS.md) does **not** record an
+experience, even if it also called another tool: its receipt only means the job
+was accepted, not that it succeeded. The late task result updates the conversation
+but currently does not create a separate experience or pending reflection. This
+also applies in Docker. A later ordinary chat turn can record its own experience,
+but it does not retroactively grade the background job.
 
 ### Insights Generated
 After reflection, insights capture:
@@ -990,12 +998,13 @@ print(f'Processed {processed} reflections')
 
 ### Reflection queue (operational detail)
 
-Reflection is **queued, not automatic**. By default, every interaction writes an
-experience and enqueues `reflection_queue` (`processed=0`). Nothing calls the
-reflection LLM until you trigger it.
+Reflection is **queued, not automatic**. By default, an eligible completed
+foreground turn writes an experience and enqueues `reflection_queue`
+(`processed=0`). Background admissions and their late results do not enqueue one.
+Nothing calls the reflection LLM until you trigger it.
 
 ```
-Every interaction:
+Eligible completed foreground turn:
   User query → route → tools → response
   → experiences row inserted
   → reflection_queue row (processed=0)
