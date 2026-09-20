@@ -459,11 +459,6 @@
         "progress": ["I'M IN. THE MACHINE IS MINE NOW", "REMOTE DOMINATION COMPLETE"]
       },
   
-      "docker_control": {
-        "start": ["WRANGLING THESE CONTAINER BEASTS", "SUMMONING DOCKER DEMONS FROM THE DEPTHS"],
-        "progress": ["THE CONTAINERS BOW TO MY WILL"]
-      },
-  
       "stock_price": {
         "start": ["CHECKING IF WE'RE RICH OR HOMELESS", "GAZING INTO THE FINANCIAL CRYSTAL BALL"],
         "progress": ["STOCKS: SOMEHOW ALWAYS DISAPPOINTING"]

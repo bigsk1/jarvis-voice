@@ -1,5 +1,5 @@
 {
-  "description": "Copy to skills/profiles/local_terminal_ops.json — Headless box on LAN: ssh_remote, docker_control, system_monitor, network_tools, query_service_logs, check_tool_logs, opencode (optional heavy). Strips broad web research (SerpAPI, Brave context, crawl, supa), consumer media, and phone so operator workflows win the 5 retrieval slots.",
+  "description": "Copy to skills/profiles/local_terminal_ops.json — Headless box on LAN: ssh_remote, system_monitor, network_tools, query_service_logs, check_tool_logs, opencode (optional heavy). Strips broad web research (SerpAPI, Brave context, crawl, supa), consumer media, and phone so operator workflows win the 5 retrieval slots.",
   "overrides": {
     "brave_llm_context": false,
     "crawl_url": false,

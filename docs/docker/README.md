@@ -409,7 +409,7 @@ docker compose -f docker-compose.yml -f docker-compose.mcp.yml \
   exec -T jarvis-web ./bin/test-mcp --discover
 ```
 
-The override selects the tracked `docker-mcp` profile. It enables configured MCP tools while keeping `docker_control`, host shell, SSH, Spotify, printer, phone, and OpenCode disabled. The base Compose file already mounts the full `config/` directory read-only, so server configuration changes do not require rebuilding the image; recreate `jarvis-web` after changing `config/mcp-servers.json`.
+The override selects the tracked `docker-mcp` profile. It enables configured MCP tools while keeping host shell, SSH, Spotify, printer, phone, and OpenCode disabled. The base Compose file already mounts the full `config/` directory read-only, so server configuration changes do not require rebuilding the image; recreate `jarvis-web` after changing `config/mcp-servers.json`.
 
 Remote MCP servers configured with `"type": "http"` or `"type": "sse"` do not need Docker socket access. Use a Compose service URL such as `http://my-mcp:PORT/mcp` for a server on `jarvis-net`, or `http://host.docker.internal:PORT/mcp` for a server running directly on the Docker host.
 

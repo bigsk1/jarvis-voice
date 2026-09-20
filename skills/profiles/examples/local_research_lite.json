@@ -2,7 +2,6 @@
   "description": "Copy to skills/profiles/local_research_lite.json — Local model that still gathers/crawls/summarizes through mcp_fetch, crawl_url, brave_llm_context, text_summarizer, and PDF/stash/canvas paths. Disables SerpApi shopping, Search Index, and verticals plus supa crawl, Playwright, OpenCode, media generation, and ops noise so retrieval stays focused.",
   "overrides": {
     "check_opencode_sessions": false,
-    "docker_control": false,
     "flight_search": false,
     "generate_image": false,
     "generate_music": false,

@@ -5,7 +5,6 @@
     "brave_llm_context": false,
     "check_opencode_sessions": false,
     "crawl_url": false,
-    "docker_control": false,
     "document_ocr": false,
     "external_network_intel": false,
     "flight_search": false,

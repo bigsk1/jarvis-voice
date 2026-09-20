@@ -2,7 +2,6 @@
   "description": "Template for skills/profiles/docker.json — Docker deployment profile. The tracked copy lives at skills/profiles/docker.json.",
   "overrides": {
     "check_opencode_sessions": false,
-    "docker_control": false,
     "mcp_brave_search_brave_local_search": false,
     "mcp_brave_search_brave_news_search": false,
     "mcp_brave_search_brave_web_search": false,

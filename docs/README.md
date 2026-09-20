@@ -67,7 +67,6 @@
 
 ### Remote & Infrastructure
 - **[tools/ssh/README.md](tools/ssh/README.md)** - 🔐 **SSH Remote Tool** (execute commands on remote hosts, apt management, multi-command)
-- **[tools/docker-tool/README.md](tools/docker-tool/README.md)** - 🐳 **Docker Control** (containers, compose, images, networks, volumes, exec, prune)
 - **[DEEP_MEMORY_SEARCH.md](DEEP_MEMORY_SEARCH.md)** - 🔍 **Deep Memory Search** (unified search across all data sources)
 - **[qmd/README.md](qmd/README.md)** - 📚 **Internal Knowledge Search** (Q&A about Jarvis capabilities via QMD semantic search)
 

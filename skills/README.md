@@ -294,7 +294,6 @@ JSON object printed to stdout:
 | Tool | Description |
 |------|-------------|
 | `ssh_remote` | SSH into remote hosts |
-| `docker_control` | Docker/compose management |
 | `network_tools` | Ping, DNS, port checks, traceroute |
 | `system_monitor` | CPU, RAM, disk, processes |
 | `gpu_hot_status` | Remote GPU Hot GPU, process, and host metrics |
@@ -371,7 +370,6 @@ The `auto-tools/` directory contains tools created by the Dynamic Tool Builder:
 
 | Tool | Description |
 |------|-------------|
-| `docker_control` | Docker container and compose management |
 | `network_tools` | Network diagnostics suite |
 | `system_monitor` | System resource monitoring |
 | `text_summarizer` | Text processing and analysis |

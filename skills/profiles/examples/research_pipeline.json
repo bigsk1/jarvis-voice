@@ -5,7 +5,6 @@
     "create_reminder": false,
     "crypto_chart": false,
     "crypto_price": false,
-    "docker_control": false,
     "flight_search": false,
     "generate_image": false,
     "generate_music": false,

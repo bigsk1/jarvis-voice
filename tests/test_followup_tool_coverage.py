@@ -249,20 +249,6 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
-    "docker_control": _case(
-        {
-            "count": 1,
-            "containers": [
-                {
-                    "id": "abc123",
-                    "name": "jarvis-web",
-                    "status": "running",
-                    "image": "jarvis-web:latest",
-                }
-            ],
-        },
-        {"action": "list"},
-    ),
     "external_network_intel": _case(
         {
             "action": "lookup",

@@ -599,7 +599,6 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'price_basis', 'booking_url',
     ],
     'spotify': ['name', 'artist'],
-    'docker_control': ['container', 'status'],
     'ssh_remote': ['host'],
     'status_recap': ['stash_ref', 'canvas_id'],
     'brave_llm_context': ['query'],
@@ -2481,10 +2480,6 @@ def _extract_bounded_content_followup(
             ('stderr', 'stderr_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
             ('output', 'output_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
             ('upgrade_output', 'upgrade_output_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
-        ),
-        'docker_control': (
-            ('logs', 'logs_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
-            ('output', 'output_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
         ),
         'phone_call': (
             ('summary', 'summary', 1200),

@@ -431,7 +431,7 @@ Automatically disable unused tools after 7 days:
 | **Image & Vision** | generate_image, analyze_image, upload_cloudflare | 3 |
 | **Artifacts** | stash, canvas, pdf_create, pdf_read, printer | 5 |
 | **System** | speaker_volume, ssh_remote | 2 |
-| **Auto-Tools** | docker_control, network_tools, system_monitor, text_summarizer, status_recap, generate_password | 6 |
+| **Auto-Tools** | network_tools, system_monitor, text_summarizer, status_recap, generate_password | 5 |
 | **Utility** | calculator | 1 |
 
 **Recount live manifests (do not trust a stale hard-coded total):**
@@ -622,7 +622,7 @@ entries = [{'title': e.title, 'link': e.link} for e in feed.entries[:10]]
 | Category | Rating | Tools | Notes |
 |----------|--------|-------|-------|
 | **Memory & Context** | ⭐⭐⭐⭐⭐ | 7 tools + deep_memory_search | Excellent - FTS5, semantic, cross-source |
-| **Development/Coding** | ⭐⭐⭐⭐⭐ | opencode, ssh_remote, docker_control | OpenCode handles coding, SSH handles configured remote hosts |
+| **Development/Coding** | ⭐⭐⭐⭐⭐ | opencode, ssh_remote | OpenCode handles coding, SSH handles configured remote hosts |
 | **Web Search & Scraping** | ⭐⭐⭐⭐⭐ | brave_search, crawl_url, screenshot_url, fetch | Stealth scraping, vision analysis |
 | **Communication** | ⭐⭐⭐⭐ | send_email, phone_call, send_webhook, openclaw | Missing: Slack, Discord |
 | **Productivity** | ⭐⭐⭐⭐ | calendar (n8n), reminders, alerts, canvas, stash | Missing: Todoist, Notion |

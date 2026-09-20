@@ -34,7 +34,7 @@ Currently tools with `auto_approve: false` execute with a console warning. The p
 
 ```
 You: "Delete all my files"
-Jarvis: "Prepared docker_control call targeting a specific container. Approve this exact call?"
+Jarvis: "Prepared a specific tool call with its target and arguments. Approve this exact call?"
 You: "Yes, I approve"
 Jarvis: "Executing the approved call without regenerating arguments."
 ```

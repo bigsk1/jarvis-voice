@@ -15,11 +15,6 @@ import pdf_read
 import screenshot_url
 import upload_cloudflare
 
-AUTO_TOOLS = PROJECT_ROOT / "skills" / "auto-tools"
-sys.path.insert(0, str(AUTO_TOOLS))
-import docker_control
-
-
 class RestrictedFileToolTests(unittest.TestCase):
     def test_safe_resolve_rechecks_final_stash_path(self):
         restricted = PROJECT_ROOT / "config" / "cloud.env"
@@ -35,13 +30,6 @@ class RestrictedFileToolTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "restricted location"):
                 upload_cloudflare.upload_image(str(restricted), source_type="file")
         upload.assert_not_called()
-
-    def test_docker_compose_rejects_restricted_compose_file(self):
-        restricted = PROJECT_ROOT / "config" / "docker-compose.yml"
-        with patch.object(docker_control, "run_command") as run:
-            with self.assertRaisesRegex(ValueError, "restricted location"):
-                docker_control.compose_action("config", compose_file=str(restricted))
-        run.assert_not_called()
 
     def test_pdf_merge_resolves_direct_paths_through_pdf_policy(self):
         with patch.object(pdf_read, "resolve_pdf_path", side_effect=ValueError("blocked")) as resolve:

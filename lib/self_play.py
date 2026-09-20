@@ -28,7 +28,6 @@ DEFAULT_EXCLUDED_TOOLS = [
     "acknowledge_reminders",
     "api_call",
     "opencode",
-    "docker_control",
     "ssh_remote",
     "phone_call",
     "send_email",

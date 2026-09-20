@@ -6,7 +6,6 @@
     "check_opencode_sessions": false,
     "crawl_url": false,
     "crypto_chart": false,
-    "docker_control": false,
     "document_ocr": false,
     "external_network_intel": false,
     "flight_search": false,

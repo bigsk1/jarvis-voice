@@ -1,8 +1,7 @@
 {
-  "description": "Docker deployment profile — disables host-integrated tools (OpenCode, SSH, Docker socket control, MCP sidecars, phone, Spotify OAuth, printer, shell on host). Tune for your setup; re-enable MCP or docker_control only if you mount docker.sock. Applied automatically via JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE in docker-compose.yml.",
+  "description": "Docker deployment profile — disables host-integrated tools (OpenCode, SSH, MCP sidecars, phone, Spotify OAuth, printer, shell on host). Tune for your setup; re-enable MCP only if you mount docker.sock. Applied automatically via JARVIS_OVERRIDE_JARVIS_TOOL_PROFILE in docker-compose.yml.",
   "overrides": {
     "check_opencode_sessions": false,
-    "docker_control": false,
     "mcp_brave_search_brave_local_search": false,
     "mcp_brave_search_brave_news_search": false,
     "mcp_brave_search_brave_web_search": false,

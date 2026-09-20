@@ -498,11 +498,6 @@
       "progress": ["Connected, running command", "Remote execution complete"]
     },
     
-    "docker_control": {
-      "start": ["Managing Docker", "Working with containers"],
-      "progress": ["Docker command executed"]
-    },
-    
     "stock_price": {
       "start": ["Checking stock prices", "Looking up the market"],
       "progress": ["Got the latest quotes"]

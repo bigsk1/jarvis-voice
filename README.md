@@ -522,7 +522,7 @@ jarvis-voice/
 │   ├── profiles/             # Tool profile overlays (JARVIS_TOOL_PROFILE)
 │   │   ├── default.json
 │   │   └── examples/         # Tracked templates (copy to profiles/<name>.json)
-│   ├── auto-tools/           # Tool-builder outputs (docker_control, text_summarizer, …)
+│   ├── auto-tools/           # Tool-builder outputs (network_tools, text_summarizer, …)
 │   ├── personal/             # Private scripts/manifests (only README tracked)
 │   ├── tool_search.py        # Summary-first discovery
 │   ├── workflow.py           # Compact deterministic-workflow meta-tool
@@ -819,7 +819,6 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `deep_memory_search` - **Comprehensive search**: Multi-source search across memory, conversations, intel, canvas, stash
 - `search_docs` - **Internal knowledge Q&A**: Semantic search over Jarvis docs (capabilities, parameters, features)
 - `ssh_remote` - **Remote execution**: SSH into remote hosts, run commands, apt management, multi-command sequences
-- `docker_control` - **Docker management**: containers, compose, images, networks, volumes, exec, prune
 - `youtube_transcript` - **YouTube transcripts**: Download video transcripts as .srt/.md files
 - `youtube_video` - **YouTube download**: Download videos or audio-only via yt-dlp, save to stash
 - `bookmark_search` - **Firefox bookmarks**: Search bookmark export (HTML) by keyword, tags, folders, domains (`*` in Web UI)

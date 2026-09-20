@@ -351,7 +351,7 @@
 
 ### 14. Docker Management Tool
 **Name**: `docker_manager.py`  
-**Status**: Implemented as `docker_control`; there is no general local shell tool
+**Status**: Not implemented as a Jarvis tool; use an operator terminal for local Docker management
 **Priority**: ⭐⭐⭐  
 **Difficulty**: Medium  
 

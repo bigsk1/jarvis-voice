@@ -602,7 +602,6 @@ skills/
 ├── *.py                      # Human-created tools
 ├── *.tool.json              
 ├── auto-tools/               # Auto-generated tools
-│   ├── docker_control.py     # Docker management
 │   ├── network_tools.py      # Ping, DNS, port scan
 │   ├── status_recap.py       # Comprehensive status briefing
 │   ├── system_monitor.py     # CPU, RAM, disk stats
@@ -623,7 +622,6 @@ logs/tool-builder/
 
 | Tool | Purpose | Key Features |
 |------|---------|--------------|
-| `docker_control` | Manage Docker containers | List, start, stop, logs, exec |
 | `network_tools` | Network diagnostics | Ping, DNS lookup, port scan, traceroute |
 | `status_recap` | Comprehensive briefing | Weather, crypto, stocks, alerts, system |
 | `system_monitor` | System metrics | CPU, RAM, disk, network, processes |

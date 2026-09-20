@@ -457,7 +457,6 @@ Potential additions to the status recap:
 | **Calendar events** | `calendar` | Today's appointments |
 | **Home automation** | `home_assistant` | Smart home status |
 | **Server health** | `ssh_remote` | Remote server checks |
-| **Docker status** | `docker_control` | Container health |
 | **Spotify** | `spotify` | Currently playing, recent tracks |
 
 ---
