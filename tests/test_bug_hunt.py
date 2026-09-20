@@ -380,14 +380,14 @@ def test_default_ollama_model_is_pinned_independently_of_cloud_env(
     ):
         provider = engine._create_provider()
 
-    assert DEFAULT_MODEL == "glm-5.3:cloud"
+    assert DEFAULT_MODEL == "glm-5.2:cloud"
     assert provider is created
-    resolve_model.assert_called_once_with("cloud", model_override="glm-5.3:cloud")
+    resolve_model.assert_called_once_with("cloud", model_override="glm-5.2:cloud")
     get_config.assert_called_once_with("OLLAMA_BASE_URL", "http://localhost:11434")
     create_provider.assert_called_once_with(
         "ollama",
         base_url="http://ollama.test",
-        model="glm-5.3:cloud",
+        model="glm-5.2:cloud",
     )
 
 
