@@ -20,6 +20,8 @@
 .convert-execution-note { margin: 0 0 20px; padding: 12px; border-radius: var(--radius-md); background: var(--bg-tertiary); color: var(--text-secondary); font-size: var(--text-xs); line-height: 1.6; }
 .background-job { margin-bottom: 8px; max-width: 100%; }
 .background-job summary { cursor: pointer; padding: 10px 12px; }
+.background-job-live { display: inline-block; margin-left: 12px; color: var(--text-primary); text-decoration: underline; text-underline-offset: 2px; font-weight: 600; }
+.background-job-live:hover { color: var(--accent-primary); }
 .background-job pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; max-height: 240px; overflow: auto; }
 .background-job-cancel, .background-job-research { display: inline-block; margin: 0 12px 12px; }
 .background-settings :focus-visible, .background-job summary:focus-visible, .task-manager :focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 3px; }

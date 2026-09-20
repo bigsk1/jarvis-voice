@@ -108,7 +108,31 @@ assert.equal(message.children[0].children.length,2);
 manager.renderCards(message,{'job-1':{...receipt,tool:'browser_use',mode:'cloud',state:'cancelled',can_cancel:false,revision:9,
   result:{ok:false,speech:'Partial research',data:{browser_research:{stash_ref:'stash://space/report'}}}}});
 assert.equal(message.children[0].children[2].textContent,'Open saved research');
-assert.equal(message.children[0].children[2].href,'/stash/view/space/report?mode=cloud');
+    assert.equal(message.children[0].children[2].href,'/stash/view/space/report?mode=cloud');
+""")
+
+
+def test_cloud_browser_card_shows_only_verified_live_viewer_while_running():
+    run_browser(BACKGROUND + r"""
+const message=new Element();
+message.querySelectorAll=selector=>selector==='[data-background-job]'?message.children:[];
+const job={...receipt,tool:'browser_use_cloud',state:'running',progress:{
+  phase:'Browser live; researching',live_view_url:'https://live.browser-use.com/session/fixture?token=private'}};
+manager.renderCards(message,{'job-1':job});
+const card=message.children[0];
+let link=card.children[0].children[0];
+assert.equal(link.textContent,'Watch browser live ↗');
+assert.equal(link.href,job.progress.live_view_url);
+assert.equal(link.target,'_blank');
+assert.equal(link.rel,'noopener noreferrer');
+assert.equal(card.children[1].textContent,'Browser live; researching');
+manager.renderCards(message,{'job-1':{...job,revision:2,progress:{
+  live_view_url:'https://live.browser-use.com.evil.invalid/session/fixture'}}});
+assert.equal(card.children[0].children.length,0);
+manager.renderCards(message,{'job-1':{...job,revision:3,state:'succeeded',
+  result:{ok:true,data:{browser_research:{stash_ref:'stash://space/report'}}}}});
+assert.equal(card.children[0].children.length,0);
+assert.equal(card.children[2].textContent,'Open saved research');
 """)
 
 
@@ -220,6 +244,26 @@ await manager.refresh();
 row=manager.choices.children[0];
 assert.equal(row.children[0].checked,true);
 assert.match(row.children[1].children[0].textContent,/Unavailable in this mode/);
+""")
+
+
+def test_cloud_browser_settings_explain_key_and_live_viewer():
+    run_browser(BACKGROUND + r"""
+manager.control=new Element('section');
+manager.enabledInput=new Element('input');manager.choices=new Element('div');manager.note=new Element('p');
+const status={settings:{background_enabled:true,background_tools:[]},tools:[],
+  configured_tools:['browser_use_cloud'],coordinator_ready:true,worker_ready:true,
+  tool_details:{browser_use_cloud:{worker_ready:true,remote_work:true}}};
+sandbox.Utils.auth={fetch:async()=>({ok:true,json:async()=>status})};
+await manager.refresh();
+let row=manager.choices.children[0];
+assert.equal(row.children[0].disabled,true);
+assert.match(row.children[1].children[0].textContent,/BROWSER_USE_API_KEY/);
+status.tools=['browser_use_cloud'];
+await manager.refresh();
+row=manager.choices.children[0];
+assert.equal(row.children[0].disabled,false);
+assert.match(row.children[1].children[0].textContent,/Watch it live/);
 """)
 
 

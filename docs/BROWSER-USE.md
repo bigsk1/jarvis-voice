@@ -1,5 +1,9 @@
 # Browser Use
 
+This page covers the **local** Docker/Chromium integration. The separate
+[Browser Use Cloud](BROWSER-USE-CLOUD.md) tool uses Browser Use's hosted V4 API
+and does not need Docker or Jarvis task callbacks.
+
 `browser_use` is an opt-in AI research tool using the upstream
 [Browser Use](https://github.com/browser-use/browser-use) agent and headless
 Chromium in Docker. It follows the originating Jarvis conversation's selected

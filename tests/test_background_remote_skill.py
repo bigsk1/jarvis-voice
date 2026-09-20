@@ -98,6 +98,15 @@ def test_remote_skill_uses_shared_runner_and_never_replays(remote, mode):
     assert len(list(p.output.glob('*.started'))) == 1
 
 
+def test_background_required_remote_skill_runs_under_reviewed_worker(remote):
+    manifest = json.loads(remote.manifest.read_text())
+    manifest['execution']['background']['required'] = True
+    remote.manifest.write_text(json.dumps(manifest))
+    job = remote.admit()
+    assert TaskWorker(remote.store, {REMOTE_ADAPTER: remote.runner}).run_once()
+    assert remote.store.get(job['id'])['state'] == 'succeeded'
+
+
 @pytest.mark.parametrize('behavior', ['failure', 'oversized_success'])
 def test_ambiguous_remote_result_reserves_attention_without_replay(remote, behavior):
     p = remote

@@ -119,6 +119,20 @@ LOCAL_TOOL_SAMPLES = {
         },
         {"task": "Research the topic", "url": "https://example.test/article"},
     ),
+    "browser_use_cloud": _case(
+        {
+            "ok": True,
+            "speech": "Saved research: stash://cloud/report\n\n# Verified findings",
+            "data": {"browser_research": {
+                "kind": "browser_research",
+                "stash_ref": "stash://cloud/report",
+                "provider": "Browser Use Cloud",
+                "model": "hosted-model",
+                "sources": [],
+            }},
+        },
+        {"task": "Research the topic"},
+    ),
     "calculator": _case({"expression": "2+2", "result": 4.0, "type": "expression"}),
     "canvas": _case(
         {
@@ -2614,6 +2628,14 @@ def test_workflow_discovery_and_text_non_summary_actions_reach_fallbacks():
     assert result["text_summarizer"]["statistics"]["words"] == 20
 
 
+def test_background_card_live_view_capability_never_enters_followup_context():
+    result = followup.extract_followup_data({
+        'background_jobs': {'job': {'progress': {
+            'live_view_url': 'https://live.browser-use.com/session/private'}}},
+    })
+    assert not result
+
+
 def test_generate_video_followup_drops_retired_provider_video_id():
     compact = followup.extract_followup_data({
         "generate_video": {
@@ -2633,6 +2655,7 @@ def test_artifact_and_entity_tools_preserve_their_followup_handles():
     expected_handles = {
         "analyze_image": {"stash_ref"},
         "browser_use": {"stash_ref", "provider", "model"},
+        "browser_use_cloud": {"stash_ref", "provider", "model"},
         "canvas": {"page_id"},
         "convert_file": {"stash_ref"},
         "create_alert": {"alert_id"},

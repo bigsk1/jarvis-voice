@@ -20,7 +20,23 @@ TRUSTED_BINDINGS = {
     'generate_video': REMOTE_ADAPTER,
     'generate_music': REMOTE_ADAPTER,
     'create_social_clip': REMOTE_ADAPTER,
+    'browser_use_cloud': REMOTE_ADAPTER,
     'browser_use': 'http_callback_v1',
+}
+
+# This provider observer is an external Python process. Give it only its own
+# credential and the runtime paths needed for Stash/HTTPS, not the entire mode
+# file (which can contain unrelated provider and Jarvis API credentials).
+CHILD_ENVIRONMENT_POLICIES = {
+    'browser_use_cloud': {
+        'always': frozenset({
+            'PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ',
+            'JARVIS_MODE', 'BROWSER_USE_API_KEY',
+            'STASH_DIR', 'JARVIS_OVERRIDE_STASH_DIR',
+            'SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE',
+        }),
+        'if_true': {'use_profile': 'BROWSER_USE_CLOUD_PROFILE_ID'},
+    },
 }
 
 
@@ -33,7 +49,11 @@ def bindings():
 
 
 def runner():
-    return LocalSkillRunner(ROOT, {name: adapter for name, adapter in bindings().items() if adapter in SKILL_ADAPTERS})
+    return LocalSkillRunner(
+        ROOT,
+        {name: adapter for name, adapter in bindings().items() if adapter in SKILL_ADAPTERS},
+        child_environment_policies=CHILD_ENVIRONMENT_POLICIES,
+    )
 
 
 def authorize_tools(selected):

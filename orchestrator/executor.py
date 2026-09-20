@@ -386,8 +386,16 @@ class ToolExecutor:
             }
 
         if getattr(tool_schema, 'background_required', False):
-            from lib.background_tasks.admission import background_only_result
-            return background_only_result(tool_name)
+            from lib.background_tasks.local_contract import SKILL_ADAPTERS
+            from lib.background_tasks.worker import ExecutionContext
+
+            reviewed_skill_job = (isinstance(supervision, ExecutionContext)
+                and tool_schema.background_adapter in SKILL_ADAPTERS
+                and supervision.claim.job['adapter'] == tool_schema.background_adapter
+                and supervision.claim.job['admission']['tool'] == tool_name)
+            if not reviewed_skill_job:
+                from lib.background_tasks.admission import background_only_result
+                return background_only_result(tool_name)
 
         if tool_name == "tool_search":
             return self._execute_tool_search(tool_name, args)

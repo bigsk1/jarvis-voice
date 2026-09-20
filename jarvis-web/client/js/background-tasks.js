@@ -122,10 +122,14 @@ class BackgroundTasks {
           : !privateCallback.service_ready ? 'The private task service is not responding.'
           : !details.worker_ready ? 'The task worker must be restarted to load this private callback tool.'
           : 'Ready for Web chat → private task service → late answer.')
+          : name === 'browser_use_cloud' && !available ? (input.checked
+          ? 'Unavailable in this mode: check the Browser Use Cloud API key and Web/profile blocks. Saved preference retained.'
+          : 'Requires BROWSER_USE_API_KEY in this mode and an allowed Web tool profile.')
           : !available ? (input.checked
           ? 'Unavailable in this mode or blocked in Web. Saved preference retained; uncheck to remove.'
           : 'Unavailable in this mode or blocked in Web.')
           : details?.worker_ready === false ? 'A compatible worker must be started or restarted before this tool can queue.'
+          : name === 'browser_use_cloud' ? 'Hosted browser research. Watch it live from the task card; the run has a $3 cap, and Jarvis checks browser shutdown at completion.'
           : details?.remote_work ? 'Runs with a remote provider. Interrupted jobs require review; stopping Jarvis does not cancel provider work.'
           : 'Use background execution when enabled above.';
         text.append(description);
@@ -259,13 +263,31 @@ class BackgroundTasks {
       const state = job.state === 'succeeded' ? 'Completed' : String(job.state || 'queued').replaceAll('_', ' ');
       const delivery = job.delivery_error ? ' · reply delayed'
         : job.delivery_state && !['delivered', 'suppressed'].includes(job.delivery_state) ? ' · reply pending' : '';
-      title.textContent = `${job.tool} · ${state}${delivery}`;
+      title.textContent = `${job.tool === 'browser_use_cloud' ? 'Browser Use Cloud' : job.tool} · ${state}${delivery}`;
+      const live = job.tool === 'browser_use_cloud' && !['succeeded', 'failed', 'cancelled', 'expired'].includes(job.state)
+        ? job.progress?.live_view_url : null;
+      let liveUrl = null;
+      try {
+        const parsed = new URL(live);
+        if (parsed.protocol === 'https:' && parsed.hostname === 'live.browser-use.com'
+            && !parsed.username && !parsed.password && (!parsed.port || parsed.port === '443')) liveUrl = parsed.href;
+      } catch (_) { /* No verified live viewer yet. */ }
+      if (liveUrl) {
+        const watch = document.createElement('a');
+        watch.className = 'background-job-live';
+        watch.textContent = 'Watch browser live ↗';
+        watch.href = liveUrl;
+        watch.target = '_blank'; watch.rel = 'noopener noreferrer';
+        watch.addEventListener('click', event => event.stopPropagation());
+        title.append(watch);
+      }
       const body = document.createElement('pre');
       body.textContent = (job.delivery_error ? `${job.delivery_error}\n\n` : '') + (job.archived_at ? 'Result payload archived. Saved conversation answers and artifacts remain available.'
         : job.result ? JSON.stringify(job.result, null, 2).slice(0, 12000)
         : job.attention_reason || job.progress?.phase || 'Results will return to this conversation.');
       const children = [title, body];
-      const researchRef = job.tool === 'browser_use' ? job.result?.data?.browser_research?.stash_ref : null;
+      const researchRef = ['browser_use', 'browser_use_cloud'].includes(job.tool)
+        ? job.result?.data?.browser_research?.stash_ref : null;
       const researchUrl = window.mediaResultRenderer?.stashUrl(researchRef)?.replace('/api/stash/', '/stash/view/');
       if (researchUrl) {
         const link = document.createElement('a');

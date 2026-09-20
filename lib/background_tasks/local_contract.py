@@ -16,10 +16,11 @@ DEFAULT_LIMITS = {
 
 def execution_settings(background):
     """Fail only background policy; never participate in foreground discovery."""
-    allowed = {'supported', 'adapter', 'timeout_seconds', 'completion_scope',
+    allowed = {'supported', 'required', 'adapter', 'timeout_seconds', 'completion_scope',
                'progress_label', 'limits', 'argument_constraints'}
     scopes = {ADAPTER: 'process_group', REMOTE_ADAPTER: 'remote_work'}
     if (not isinstance(background, dict) or set(background) - allowed
+            or ('required' in background and type(background['required']) is not bool)
             or background.get('supported') is not True or background.get('adapter') not in scopes
             or background.get('completion_scope') != scopes[background['adapter']]):
         raise AdmissionDenied('Unsupported local background execution policy')

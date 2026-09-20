@@ -210,7 +210,8 @@ def test_progress_and_uncertainty_are_bounded_current_evidence(journey, store):
     claim = store.claim('worker', {'local_fixture'})
     store.running(claim)
     store.progress(claim, {'phase': 'Inspecting page 4 of 10', 'completed': 3,
-                           'total': 10, 'notes': 'x' * 3000, 'api_key': 'private-progress'})
+                           'total': 10, 'notes': 'x' * 3000, 'api_key': 'private-progress',
+                           'live_view_url': 'https://live.browser-use.com/session/private-viewer'})
     prompt = h.handler.background_tasks.conversation_context(cid, 'cloud')
     job = snapshot_from_prompt(prompt)['jobs'][0]
     assert job['mode'] == 'local' and job['state'] == 'running'
@@ -218,6 +219,7 @@ def test_progress_and_uncertainty_are_bounded_current_evidence(journey, store):
     assert job['progress']['completed'] == 3
     assert len(json.dumps(job['progress'])) <= 1500
     assert 'private-progress' not in prompt
+    assert 'private-viewer' not in prompt
     assert job['attention_reason'] is None
     assert job['updated_at'] == store.get(claim.job_id)['updated_at']
     reason = 'Worker ownership lost during page inspection; outcome is unconfirmed.'

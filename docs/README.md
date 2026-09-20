@@ -38,6 +38,7 @@
 - **[COMPLETION_GUARD.md](COMPLETION_GUARD.md)** - 🛡️ **Completion Guard** (same-runtime repair loop, completion check, escalation tickets) 🆕
 - **[tools/scheduled-tasks/scheduled-tasks.md](tools/scheduled-tasks/scheduled-tasks.md)** - ⏱️ **Scheduled Tasks** (implemented foundation for recurring queries, workflows, parser, API, and runner) 🆕
 - **[BACKGROUND-TASKS.md](BACKGROUND-TASKS.md)** - Plain-English overview of local, remote-wait, and callback jobs; Web task management, worker setup, diagnostics, and recovery
+- **[BROWSER-USE-CLOUD.md](BROWSER-USE-CLOUD.md)** - Optional hosted Browser Use V4 research, live viewer, cost cap, and background result delivery
 - **[TASK-CALLBACKS.md](TASK-CALLBACKS.md)** - Optional authenticated task callbacks, integration controls, credential/key lifecycle, and the isolated local HTTP proof
 - **[BROWSER-USE.md](BROWSER-USE.md)** - Opt-in browser research, Docker Chromium isolation, saved Stash evidence, and the first local callback tool binding
 - **[DUAL_DATABASE_SYSTEM.md](DUAL_DATABASE_SYSTEM.md)** - Cloud/local DB architecture

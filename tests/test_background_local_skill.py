@@ -117,6 +117,102 @@ def test_second_skill_admits_held_then_uses_shared_runner_and_manifest_budgets(p
     assert NAME not in production.bindings()
 
 
+def test_trusted_child_env_policy_reaches_subprocess_without_other_credentials(
+        probe, config_root, monkeypatch):
+    import tool_process
+
+    cloud_config = config_root / 'config/cloud.env'
+    with cloud_config.open('a') as config_file:
+        config_file.write('BROWSER_USE_API_KEY=browser-only\n'
+                          'BROWSER_USE_CLOUD_PROFILE_ID=unused-profile\n'
+                          'GEMINI_API_KEY=unrelated-provider\n')
+    monkeypatch.setenv('PARENT_SECRET', 'not-for-the-child')
+    policy = production.CHILD_ENVIRONMENT_POLICIES['browser_use_cloud']
+    probe.runner = LocalSkillRunner(probe.root, {NAME: ADAPTER},
+        child_environment_policies={NAME: {
+            'always': policy['always'] | {'FIXTURE_OUTPUT_ROOT'},
+            'if_true': policy['if_true'],
+        }})
+    captured = []
+    original = tool_process.run_local_process
+
+    def capture(cmd, *args, **kwargs):
+        captured.append(kwargs['tool_env'].copy())
+        return original(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(tool_process, 'run_local_process', capture)
+    job = probe.admit({'label': 'restricted_env'})
+    probe.store.release(job['id'], receipt(job))
+    assert TaskWorker(probe.store, {ADAPTER: probe.runner}).run_once()
+    assert probe.store.get(job['id'])['state'] == 'succeeded'
+    env = captured[0]
+    assert env['BROWSER_USE_API_KEY'] == 'browser-only'
+    assert env['JARVIS_MODE'] == 'cloud'
+    assert env['HOME'] == env['TMPDIR']
+    assert env['JARVIS_WEB_CONVERSATION_ID'] == 'conversation-1'
+    assert 'BROWSER_USE_CLOUD_PROFILE_ID' not in env
+    assert 'GEMINI_API_KEY' not in env
+    assert 'PARENT_SECRET' not in env
+
+
+def test_profile_id_enters_narrow_child_env_only_for_true_argument():
+    from lib.background_tasks.local_skill import restrict_child_environment
+
+    policy = production.CHILD_ENVIRONMENT_POLICIES['browser_use_cloud']
+    source = {'BROWSER_USE_API_KEY': 'browser-key',
+              'BROWSER_USE_CLOUD_PROFILE_ID': 'saved-profile',
+              'JARVIS_API_KEY': 'unrelated-credential',
+              'JARVIS_OVERRIDE_GEMINI_API_KEY': 'unrelated-override'}
+    anonymous = restrict_child_environment(source, policy, {'use_profile': False}, '/tmp/scratch')
+    signed_in = restrict_child_environment(source, policy, {'use_profile': True}, '/tmp/scratch')
+    assert anonymous == {'BROWSER_USE_API_KEY': 'browser-key', 'HOME': '/tmp/scratch'}
+    assert signed_in == {**anonymous, 'BROWSER_USE_CLOUD_PROFILE_ID': 'saved-profile'}
+
+
+def test_supervised_skill_progress_reaches_task_store(probe, monkeypatch):
+    observed = []
+    original = probe.store.progress
+
+    def record(claim, value):
+        observed.append(value)
+        return original(claim, value)
+
+    monkeypatch.setattr(probe.store, 'progress', record)
+    job = probe.admit({'label': 'live_progress', 'emit_progress': True})
+    probe.store.release(job['id'], receipt(job))
+    assert TaskWorker(probe.store, {ADAPTER: probe.runner}).run_once()
+    assert probe.store.get(job['id'])['state'] == 'succeeded'
+    assert any(value.get('live_view_url') == 'https://live.browser-use.com/session/fixture'
+               and value.get('event_type') == 'tool_progress' for value in observed)
+
+
+def test_background_required_local_skill_runs_only_under_worker_supervision(probe):
+    from executor import ToolExecutor
+
+    manifest = json.loads(probe.manifest.read_text())
+    manifest['execution']['background']['required'] = True
+    probe.manifest.write_text(json.dumps(manifest))
+    runner = LocalSkillRunner(probe.root, {NAME: ADAPTER})
+    schema, policy = runner.policy(NAME)
+    registry = SimpleNamespace(list_tools=lambda: [NAME], get_tool=lambda name: schema)
+    foreground = ToolExecutor('cloud', registry, load_runtime_config=False)
+    assert foreground._execute_foreground(NAME, {'label': 'forbidden'})['ok'] is False
+    assert not probe.output.exists()
+
+    service = BackgroundAdmissionService(probe.store, adapters={NAME: ADAPTER},
+                                         validate_source=lambda _: True, ready=lambda: True)
+    context = service.authorize({'operator': 'installation', 'source': 'web',
+        'conversation_id': 'conversation-1', 'generation': 1, 'request_id': 'required-request',
+        'mode': 'cloud', 'selected': [NAME], 'tool_policy': 'auto',
+        'tool_policies': {NAME: policy}}, registry)
+    accepted = context.admit(NAME, {'label': 'supervised'}, 'required-call', schema)
+    job = probe.store.get(accepted['job_id'])
+    probe.store.release(job['id'], receipt(job))
+    assert TaskWorker(probe.store, {ADAPTER: runner}).run_once()
+    assert probe.store.get(job['id'])['state'] == 'succeeded'
+    assert (probe.output / 'supervised.started').exists()
+
+
 def test_generic_identity_is_preserved_at_admission(probe):
     p = probe
     context = p.authorize()

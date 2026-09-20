@@ -117,7 +117,8 @@ window.continuationRenderer = (() => {
   }
 
   function browserResearch(data) {
-    const entries = Array.isArray(data?.browser_use) ? data.browser_use : [data?.browser_use];
+    const entries = [data?.browser_use, data?.browser_use_cloud]
+      .flatMap(value => Array.isArray(value) ? value : [value]);
     return entries.find(result => typeof result?.ok === 'boolean'
       && typeof result.speech === 'string'
       && (result.data?.browser_research?.kind === 'browser_research'
@@ -126,19 +127,31 @@ window.continuationRenderer = (() => {
 
   function appendBrowserResearch(message, result, mode) {
     const metadata = result.data?.browser_research || {};
+    const legacyCloudOutput = metadata.provider === 'Browser Use Cloud'
+      && metadata.full_report_imported == null
+      && /^Full report:\s*`outputs\/[^`\r\n]+`\s*$/im.test(result.speech);
+    const savedSummary = metadata.full_report_imported === false || legacyCloudOutput;
     const partial = result.ok !== true;
     const card = node('section'); card.className = `browser-research-card${partial ? ' is-partial' : ''}`;
     const heading = node('header'); heading.className = 'browser-research-heading';
     const title = node('div');
     title.appendChild(node('span', partial ? 'Partial browser research' : 'Browser research', 'browser-research-title'));
     const provenance = [metadata.provider, metadata.model].filter(value => typeof value === 'string');
+    if (metadata.profile_used === true) provenance.push('Saved profile');
+    const totalCost = metadata.cost_usd?.total;
+    if (typeof totalCost === 'string' && /^\d+(?:\.\d+)?$/.test(totalCost)) {
+      const amount = Number(totalCost);
+      if (Number.isFinite(amount) && amount >= 0 && amount < 1000000) {
+        provenance.push(`$${amount.toFixed(2)} total`);
+      }
+    }
     const subtitle = [partial ? 'The requested result could not be fully verified' : '', ...provenance].filter(Boolean);
     if (subtitle.length) title.appendChild(node('small', subtitle.join(' · ')));
     heading.appendChild(title);
     const saved = result.speech.match(/^Saved research:\s*(stash:\/\/[^\r\n]+)/i);
     const archive = stashUrl(metadata.stash_ref || saved?.[1], mode);
     if (archive) {
-      const open = node('a', 'Open full research');
+      const open = node('a', savedSummary ? 'Open saved summary' : 'Open full research');
       open.className = 'btn-secondary browser-research-open';
       open.href = archive; open.target = '_blank'; open.rel = 'noopener noreferrer';
       heading.appendChild(open);
@@ -148,6 +161,10 @@ window.continuationRenderer = (() => {
     let report = String(result.speech || '');
     if (/^Saved research:\s*stash:\/\/[^\r\n]+\r?\n/i.test(report)) {
       report = report.replace(/^Saved research:\s*stash:\/\/[^\r\n]+\r?\n+/i, '');
+    }
+    if (legacyCloudOutput) {
+      report = report.replace(/^Full report:\s*`outputs\/[^`\r\n]+`\s*$/im,
+        'The provider workspace file was not imported with this saved answer.');
     }
     const body = node('div'); body.className = 'browser-research-report';
     try {

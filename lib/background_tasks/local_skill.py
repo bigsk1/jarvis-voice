@@ -69,10 +69,25 @@ def validate_arguments(schema, args):
         validator.validate(args)
 
 
+def restrict_child_environment(environment, policy, args, scratch):
+    """Apply a trusted per-tool child env policy after worker mode resolution."""
+    allowed = set(policy['always'])
+    allowed.update(env_key for arg_name, env_key in policy['if_true'].items()
+                   if args.get(arg_name) is True)
+    narrowed = {key: value for key, value in environment.items() if key in allowed}
+    # Prevent requests and other libraries from finding the worker user's
+    # .netrc or other home-scoped credentials automatically.
+    narrowed['HOME'] = str(scratch)
+    return narrowed
+
+
 class LocalSkillRunner:
-    def __init__(self, root, bindings):
+    def __init__(self, root, bindings, *, child_environment_policies=None):
         self.root = Path(root).resolve()
         self.bindings = dict(bindings)
+        # Trusted production bindings may restrict what a skill subprocess
+        # inherits. Manifest JSON cannot widen this environment.
+        self.child_environment_policies = dict(child_environment_policies or {})
 
     def policy(self, name):
         from tool_availability import check_tool_availability
@@ -166,13 +181,18 @@ class LocalSkillRunner:
                                            is_mcp_tool=lambda requested: False)
                 executor = ToolExecutor(job['mode'], registry, load_runtime_config=False)
                 executor.set_session_context(web_conversation_id=job['conversation_id'])
-                executor.set_progress_callback(lambda **progress: context.progress(progress))
+                executor.set_progress_callback(
+                    lambda event_type, **progress: context.progress({'event_type': event_type, **progress}))
                 workspace = context.store.path.parent / 'task-workspaces'
                 workspace.mkdir(mode=0o700, parents=True, exist_ok=True)
                 with tempfile.TemporaryDirectory(prefix=job['id'] + '-', dir=workspace) as scratch:
                     executor.skills_dir = Path(scratch)
                     limit = str(settings['limits']['input_bytes'])
-                    context.environment = dict(context.environment, TMPDIR=scratch,
+                    environment = context.environment
+                    child_policy = self.child_environment_policies.get(name)
+                    if child_policy is not None:
+                        environment = restrict_child_environment(environment, child_policy, args, scratch)
+                    context.environment = dict(environment, TMPDIR=scratch,
                         JARVIS_BACKGROUND_MAX_INPUT_BYTES=limit,
                         JARVIS_OVERRIDE_JARVIS_BACKGROUND_MAX_INPUT_BYTES=limit,
                         OPENBLAS_NUM_THREADS='1', OMP_NUM_THREADS='1')

@@ -1,0 +1,56 @@
+{
+  "enabled": true,
+  "name": "browser_use_cloud",
+  "description": "Run an opt-in hosted Browser Use Cloud V4 browser agent. Web text chat only; requires BROWSER_USE_API_KEY, the background worker, and selection in Settings → Tools → Background tasks. Returns a receipt immediately, a live browser link while working, and a saved research report later. The hosted browser uses Browser Use's own model and network, not Jarvis's selected LLM or local Browser Use container. Runs anonymously for public research. Set use_profile true when the user requests their saved profile OR an action that requires their signed-in account, such as sending an email; do not require the user to say 'profile'. The profile may have existing login sessions, but neither Jarvis nor a recipient address establishes which account is signed in. Do not buy anything or change an account unless the user directly requests that action.",
+  "script": "browser_use_cloud.py",
+  "availability": {
+    "all_of_env": ["BROWSER_USE_API_KEY"],
+    "setup_hint": "Add BROWSER_USE_API_KEY to the active cloud.env or local.env, then enable Browser Use Cloud in Web Settings → Tools → Background tasks."
+  },
+  "parameters": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "task": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 8000,
+        "description": "Browser goal, including what to verify and report. For a saved-profile action, tell the agent to use the existing signed-in session if available and report a login challenge if not. Never assert a sender/account identity inferred from a recipient or destination. For email, put the requested address only in the To field unless the user separately named a required sender; specify subject/body, send only when requested, and verify the result."
+      },
+      "use_profile": {
+        "type": "boolean",
+        "default": false,
+        "description": "Use the server-configured saved Browser Use Cloud login profile for this run. Set true when the user requests their profile or an action requiring their signed-in account, such as sending an email, even if they do not say 'profile'. Omit or set false for anonymous public browsing. Existing cookies may provide a login; the agent must inspect the site rather than assume which account is active. The profile ID is never supplied by the model."
+      }
+    },
+    "required": ["task"]
+  },
+  "permissions": {
+    "dangerous": false,
+    "bash": false,
+    "network": true,
+    "filesystem": true,
+    "auto_approve": true
+  },
+  "execution": {
+    "background": {
+      "supported": true,
+      "required": true,
+      "adapter": "remote_skill_v1",
+      "completion_scope": "remote_work",
+      "timeout_seconds": 1800,
+      "progress_label": "Researching in Browser Use Cloud",
+      "limits": {
+        "memory_bytes": 2147483648,
+        "file_bytes": 536870912,
+        "input_bytes": 65536,
+        "output_bytes": 524288
+      },
+      "argument_constraints": {
+        "properties": {
+          "task": {"minLength": 1, "maxLength": 8000}
+        }
+      }
+    }
+  }
+}

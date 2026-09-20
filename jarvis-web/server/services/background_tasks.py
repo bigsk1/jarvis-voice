@@ -186,6 +186,11 @@ class WebBackgroundTasks:
     @staticmethod
     def _task_evidence(job):
         """Shared input/outcome vocabulary for foreground context and late answers."""
+        progress = job.get("progress")
+        if isinstance(progress, dict):
+            # The hosted live viewer is a bearer capability for the Web card,
+            # never task context sent to the next LLM turn.
+            progress = {key: value for key, value in progress.items() if key != 'live_view_url'}
         return {
             "job_id": job["id"],
             "tool": job["admission"]["tool"],
@@ -193,7 +198,7 @@ class WebBackgroundTasks:
             "state": job["state"],
             "delivery_state": job.get("delivery_state"),
             "updated_at": job.get("updated_at"),
-            "progress": _bounded_structured_followup_value(job.get("progress"), max_chars=1500),
+            "progress": _bounded_structured_followup_value(progress, max_chars=1500),
             "attention_reason": _bounded_structured_followup_value(
                 job.get("attention_reason"), max_chars=1000
             ),
@@ -571,7 +576,7 @@ class WebBackgroundTasks:
                     self.ownership.release()
 
     def _synthesize(self, job, authorization, conversation):
-        if job['admission']['tool'] == 'browser_use' or job.get('adapter') == CALLBACK_ADAPTER:
+        if job['admission']['tool'] in {'browser_use', 'browser_use_cloud'} or job.get('adapter') == CALLBACK_ADAPTER:
             result = job.get('result') or {}
             text = result.get('speech')
             if not isinstance(text, str) or not text.strip():

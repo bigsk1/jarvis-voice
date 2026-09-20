@@ -12,6 +12,11 @@ root = Path(os.environ['FIXTURE_OUTPUT_ROOT'])
 root.mkdir(parents=True, exist_ok=True)
 with (root / (args['label'] + '.started')).open('x') as started:
     started.write(str(os.getpgrp()))
+if args.get('emit_progress'):
+    print('__JARVIS_TOOL_PROGRESS__:' + json.dumps({
+        'phase': 'Browser live; researching',
+        'live_view_url': 'https://live.browser-use.com/session/fixture',
+    }), file=sys.stderr, flush=True)
 time.sleep(args.get('delay', 0))
 behavior = args.get('behavior', 'success')
 if behavior == 'failure':

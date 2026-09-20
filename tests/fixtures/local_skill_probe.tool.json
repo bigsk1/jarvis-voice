@@ -22,6 +22,7 @@
     "type": "object",
     "properties": {
       "label": {"type": "string", "pattern": "^[a-z0-9_]+$", "maxLength": 40},
+      "emit_progress": {"type": "boolean"},
       "delay": {"type": "number", "minimum": 0, "maximum": 10},
       "behavior": {"type": "string", "enum": ["success", "failure", "oversized_success"]}
     },

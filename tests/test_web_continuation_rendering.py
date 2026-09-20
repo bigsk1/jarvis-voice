@@ -308,6 +308,55 @@ assert.ok(visible(rendered).includes('ollama · model-1'));
 """)
 
 
+def test_cloud_browser_research_reuses_the_safe_markdown_card():
+    run_message_browser(DOM + r"""
+const ui = chat();
+const report = 'Saved research: stash://cloud_space/f_report\n\n# Cloud findings\n\n'
+  + '[Source](https://example.com/story) <img src=x onerror=alert(1)>';
+ui.addAssistantMessage('Short fallback', [], {_kind:'continuation',_background_mode:'cloud',
+  browser_use_cloud:{ok:true,speech:report,data:{browser_research:{
+    kind:'browser_research',stash_ref:'stash://cloud_space/f_report',
+    provider:'Browser Use Cloud',model:'hosted-model',profile_used:true,sources:[],
+    cost_usd:{run:'0.153',browser:'0.001',proxy:'0.096',total:'0.250'}}}}});
+const rendered=message(ui),all=descendants(rendered);
+assert.equal(rendered.querySelectorAll('.browser-research-card').length,1);
+assert.ok(visible(rendered).includes('Cloud findings'));
+assert.ok(!visible(rendered).includes('Short fallback'));
+assert.ok(visible(rendered).includes('Browser Use Cloud · hosted-model · Saved profile · $0.25 total'));
+assert.ok(all.some(el=>el.href==='/stash/view/cloud_space/f_report?mode=cloud'));
+assert.ok(all.some(el=>el.href==='https://example.com/story'));
+assert.ok(!all.some(el=>el.tag==='img'));
+""")
+
+
+def test_cloud_workspace_import_failure_labels_saved_summary_honestly():
+    run_message_browser(DOM + r"""
+const ui = chat();
+ui.addAssistantMessage('fallback', [], {_kind:'continuation',_background_mode:'cloud',
+  browser_use_cloud:{ok:true,speech:'Saved research: stash://space/summary\n\nShort answer',
+    data:{browser_research:{kind:'browser_research',stash_ref:'stash://space/summary',
+      provider:'Browser Use Cloud',model:'hosted-model',full_report_imported:false}}}});
+const rendered=message(ui);
+assert.ok(visible(rendered).includes('Open saved summary'));
+assert.ok(!visible(rendered).includes('Open full research'));
+""")
+
+
+def test_older_cloud_report_does_not_present_remote_workspace_path_as_jarvis_file():
+    run_message_browser(DOM + r"""
+const ui = chat();
+ui.addAssistantMessage('fallback', [], {_kind:'continuation',_background_mode:'cloud',
+  browser_use_cloud:{ok:true,
+    speech:'Saved research: stash://space/summary\n\nShort answer.\n\nFull report: `outputs/report.md`',
+    data:{browser_research:{kind:'browser_research',stash_ref:'stash://space/summary',
+      provider:'Browser Use Cloud',model:'hosted-model'}}}});
+const rendered=message(ui), content=visible(rendered);
+assert.ok(content.includes('Open saved summary'));
+assert.ok(content.includes('provider workspace file was not imported'));
+assert.ok(!content.includes('outputs/report.md'));
+""")
+
+
 @pytest.mark.parametrize('form', ['live', 'saved'])
 def test_callback_report_card_shows_full_safe_markdown_instead_of_short_continuation(form):
     run_message_browser(DOM + '\nconst form=' + json.dumps(form) + ';\n' + r"""

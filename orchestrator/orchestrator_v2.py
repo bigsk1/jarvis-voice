@@ -59,6 +59,7 @@ SINGLE_CALL_TOOLS = frozenset({
     "send_email",
     "opencode",
     "browser_use",
+    "browser_use_cloud",
 })
 
 def _workflow_run_is_capped(arguments: dict[str, Any], tool_trace: list[dict[str, Any]]) -> bool:
