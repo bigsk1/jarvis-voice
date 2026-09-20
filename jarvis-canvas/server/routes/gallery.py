@@ -477,7 +477,8 @@ def get_cdn_url(filename):
     
     # Not in catalog - call Jarvis API to upload
     try:
-        api_url = f"{get_internal_api_base_url()}/api/generated-images/{filename}/cdn-url"
+        encoded_filename = quote(filename, safe='')
+        api_url = f"{get_internal_api_base_url()}/api/generated-images/{encoded_filename}/cdn-url"
         response = requests.get(api_url, headers=get_internal_api_headers(), timeout=60)
         data = response.json()
         return jsonify(data)

@@ -6,8 +6,10 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from urllib.parse import quote
 from unittest.mock import Mock, patch
 
+import pytest
 from flask import Flask
 
 
@@ -163,6 +165,31 @@ def test_canvas_cdn_delete_proxies_to_internal_fastapi(monkeypatch):
         "http://jarvis-api:8880/api/generated-images/cdn-catalog/generated%20example.png",
         headers={"Authorization": "Bearer internal-key"},
         timeout=40,
+    )
+
+
+@pytest.mark.parametrize("filename", ("draft#1.png", "draft?1.png", "draft%20one.png"))
+def test_canvas_cdn_upload_quotes_filename_for_internal_api(tmp_path, monkeypatch, filename):
+    gallery = _load_gallery_module()
+    (tmp_path / filename).write_bytes(b"local-image")
+    monkeypatch.setattr(gallery, "GENERATED_IMAGES_DIR", tmp_path)
+    monkeypatch.setattr(gallery, "CDN_CATALOG_FILE", tmp_path / "missing-cdn-catalog.json")
+    monkeypatch.setattr(gallery, "get_internal_api_base_url", lambda: "http://jarvis-api:8880")
+    monkeypatch.setattr(gallery, "get_internal_api_headers", lambda: {})
+    api_response = Mock()
+    api_response.json.return_value = {"ok": True, "url": "https://cdn.example/image"}
+
+    with patch("requests.get", return_value=api_response) as get:
+        response = _client(gallery).get(
+            f"/api/gallery/images/{quote(filename, safe='')}/cdn-url"
+        )
+
+    assert response.status_code == 200
+    assert response.get_json()["ok"] is True
+    get.assert_called_once_with(
+        f"http://jarvis-api:8880/api/generated-images/{quote(filename, safe='')}/cdn-url",
+        headers={},
+        timeout=60,
     )
 
 
