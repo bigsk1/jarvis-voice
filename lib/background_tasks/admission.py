@@ -266,6 +266,11 @@ class BackgroundAdmissionService:
         if not invocation_id:
             raise AdmissionDenied('Missing explicit top-level Web invocation context')
         payload = self.check_ready(context, tool, schema)
+        if tool in {'browser_use', 'browser_use_cloud'}:
+            from .browser_followup import prior_browser_job
+            previous_job = prior_browser_job(self.store, {**payload, 'tool': tool}, args)
+            if previous_job is not None and tool == 'browser_use_cloud':
+                args = {**args, 'use_profile': previous_job['admission']['arguments'].get('use_profile', False)}
         work = canonical_json([tool, args], MAX_ARGUMENT_BYTES)
         prior = context.calls.get(invocation_id)
         if prior is not None and prior != work:

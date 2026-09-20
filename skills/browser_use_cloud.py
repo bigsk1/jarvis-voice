@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import time
@@ -21,13 +22,17 @@ from tool_progress import emit_tool_progress
 
 API_BASE = 'https://api.browser-use.com/api/v4/runs'
 BROWSERS_BASE = 'https://api.browser-use.com/api/v4/browsers'
+SESSIONS_BASE = 'https://api.browser-use.com/api/v4/sessions'
 POLL_SECONDS = 3
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 MAX_REPORT_CHARS = 28000
 MAX_ARTIFACT_BYTES = 2 * 1024 * 1024
 MAX_COST_USD = 3.0
 TERMINAL = frozenset({'completed', 'failed', 'cancelled'})
-FULL_REPORT = re.compile(r'^Full report:\s*`([^`\r\n]+)`\s*$', re.IGNORECASE | re.MULTILINE)
+FULL_REPORT = re.compile(
+    r'^Full report(?:[ \t]+with[^`\r\n]{0,220})?:[ \t]*`([^`\r\n]+)`[ \t]*$',
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 def _live_url(value):
@@ -226,6 +231,17 @@ def run(args, *, session=None, sleep=time.sleep, progress=emit_tool_progress, no
     use_profile = args.get('use_profile', False)
     if type(use_profile) is not bool:
         return {'ok': False, 'completion': 'rejected', 'speech': 'use_profile must be a boolean.'}
+    followup_job_id = args.get('continue_job_id')
+    prior_run_id = os.environ.get('JARVIS_BROWSER_CONTINUE_RUN_ID')
+    if (followup_job_id is None) != (prior_run_id is None):
+        return {'ok': False, 'completion': 'rejected',
+                'speech': 'Cloud follow-up identity is missing or unexpected.'}
+    if followup_job_id is not None:
+        try:
+            prior_run_id = str(UUID(prior_run_id))
+        except (TypeError, ValueError):
+            return {'ok': False, 'completion': 'rejected',
+                    'speech': 'Prior Cloud run ID is invalid.'}
     profile_id = None
     if use_profile:
         configured_id = get_config_value('BROWSER_USE_CLOUD_PROFILE_ID', '')
@@ -234,6 +250,14 @@ def run(args, *, session=None, sleep=time.sleep, progress=emit_tool_progress, no
         except (AttributeError, ValueError):
             return {'ok': False, 'completion': 'rejected',
                     'speech': 'Browser Use Cloud saved profile is not configured or is invalid.'}
+    workspace_id = None
+    configured_workspace = get_config_value('BROWSER_USE_CLOUD_WORKSPACE_ID', '')
+    if isinstance(configured_workspace, str) and configured_workspace.strip():
+        try:
+            workspace_id = str(UUID(configured_workspace.strip()))
+        except ValueError:
+            return {'ok': False, 'completion': 'rejected',
+                    'speech': 'Browser Use Cloud workspace ID is invalid.'}
     key = get_config_value('BROWSER_USE_API_KEY', '').strip()
     if not key:
         return {'ok': False, 'completion': 'rejected', 'speech': 'Browser Use Cloud API key is not configured.'}
@@ -252,8 +276,14 @@ def run(args, *, session=None, sleep=time.sleep, progress=emit_tool_progress, no
     live_url = None
     terminal_status = None
     cleanup_warning = None
+    continuity_warning = False
 
     def delivered(result):
+        if continuity_warning:
+            result['ok'] = False
+            result['completion'] = 'completed'
+            result['speech'] = ('Browser Use Cloud returned a different session for this follow-up. '
+                                'The result below may lack the earlier context.\n\n' + result['speech'])
         if cleanup_warning:
             result['speech'] += ('\n\nBrowser cleanup needs attention: Jarvis could not verify that the '
                                  f'hosted browser stopped. Check run {run_id} in Browser Use Cloud '
@@ -262,8 +292,31 @@ def run(args, *, session=None, sleep=time.sleep, progress=emit_tool_progress, no
         return result
 
     try:
+        prior_session_id = None
+        if prior_run_id:
+            try:
+                previous = _request(session, 'GET', f'{API_BASE}/{prior_run_id}', timeout=10)
+                if previous.get('id') != prior_run_id or previous.get('status') not in TERMINAL:
+                    raise ValueError('Prior Cloud run is not finished')
+                prior_session_id = str(UUID(previous['sessionId']))
+                prior_workspace_id = previous.get('workspaceId')
+                if workspace_id and prior_workspace_id != workspace_id:
+                    raise ValueError('Prior Cloud session uses a different workspace')
+                current_session = _request(session, 'GET',
+                    f'{SESSIONS_BASE}/{prior_session_id}', timeout=10)
+                if (current_session.get('sessionId') != prior_session_id
+                        or current_session.get('latestRunId') != prior_run_id
+                        or current_session.get('status') not in TERMINAL):
+                    raise ValueError('Prior Cloud session has newer or unfinished work')
+            except (requests.RequestException, RuntimeError, ValueError, KeyError, TypeError):
+                return {'ok': False, 'completion': 'rejected',
+                        'speech': 'The prior Cloud session could not be verified for a follow-up.'}
         # One POST only. A lost response is ambiguous and must never start a second run.
         payload = {'task': task.strip(), 'maxCostUsd': MAX_COST_USD}
+        if prior_session_id:
+            payload['sessionId'] = prior_session_id
+        elif workspace_id:
+            payload['workspaceId'] = workspace_id
         if profile_id:
             payload['browserSettings'] = {'profileId': profile_id}
         response = session.request('POST', API_BASE, json=payload,
@@ -271,6 +324,9 @@ def run(args, *, session=None, sleep=time.sleep, progress=emit_tool_progress, no
         if not 200 <= response.status_code < 300:
             if response.status_code == 402:
                 raise RemoteCompletionError('Browser Use Cloud has insufficient credits (HTTP 402)', 'rejected')
+            if response.status_code == 409 and prior_session_id:
+                return {'ok': False, 'completion': 'rejected',
+                        'speech': 'Browser Use Cloud session is busy; no follow-up run started.'}
             raise submission_error(response.status_code, f'Browser Use Cloud rejected the run (HTTP {response.status_code})')
         created = _json(response)
         run_id = created.get('id')
@@ -282,6 +338,8 @@ def run(args, *, session=None, sleep=time.sleep, progress=emit_tool_progress, no
             raise ValueError('Browser Use Cloud did not return a valid run ID')
         try:
             agent_session_id = str(UUID(created['sessionId']))
+            if prior_session_id and agent_session_id != prior_session_id:
+                continuity_warning = True
         except (KeyError, TypeError, ValueError):
             # Keep observing the accepted run, but make the missing cleanup
             # identity visible with its final result.
@@ -332,6 +390,12 @@ def run(args, *, session=None, sleep=time.sleep, progress=emit_tool_progress, no
                     terminal_status = status
                     if agent_session_id:
                         try:
+                            if prior_session_id:
+                                current_session = _request(session, 'GET',
+                                    f'{SESSIONS_BASE}/{agent_session_id}', timeout=4)
+                                if (current_session.get('sessionId') != agent_session_id
+                                        or current_session.get('latestRunId') != run_id):
+                                    raise ValueError('Cloud session now belongs to another run')
                             _stop_owned_browsers(session, agent_session_id)
                             progress({'phase': 'Hosted browser stopped', 'run_id': run_id})
                         except (requests.RequestException, RuntimeError, ValueError):
@@ -346,7 +410,10 @@ def run(args, *, session=None, sleep=time.sleep, progress=emit_tool_progress, no
                 if result.get('id') != run_id or result.get('status') != status:
                     raise ValueError('Browser Use Cloud terminal result did not match its run')
                 costs = None
-                if agent_session_id and not cleanup_warning and result.get('totalCostUsd') is not None:
+                # Browser/proxy totals are session-wide. A follow-up session can
+                # include charges from older runs, so never label them as this run's cost.
+                if (agent_session_id and not prior_session_id and not cleanup_warning
+                        and result.get('totalCostUsd') is not None):
                     try:
                         costs = _costs(session, agent_session_id, result['totalCostUsd'])
                     except (requests.RequestException, RuntimeError, ValueError):
@@ -396,6 +463,7 @@ def run(args, *, session=None, sleep=time.sleep, progress=emit_tool_progress, no
                             'kind': 'browser_research', 'stash_ref': stash_ref,
                             'provider': 'Browser Use Cloud', 'model': result.get('model') or 'default',
                             'profile_used': use_profile,
+                            'workspace_used': bool(workspace_id),
                             'sources': [],
                             **({'full_report_imported': bool(full_report and stash_ref)} if marker else {}),
                             **({'cost_usd': costs} if costs else {}),

@@ -33,7 +33,7 @@ signed-in account in that run; Jarvis does not provide a read-only viewer.
 
 The observer polls V4 events for the live link and the lightweight status route
 for completion. After a terminal status, it lists active browsers belonging to
-the newly created agent session and stops those exact browsers before reading
+that run's agent session and stops those exact browsers before reading
 the final report. If Browser Use does not confirm the stop, the late answer
 includes a cleanup warning and the run ID so an operator can check the Cloud
 dashboard. A lost create receipt, worker interruption, or lost observation may
@@ -48,15 +48,18 @@ provider failure produces a failed/partial answer. A lost submit receipt or
 lost post-submit observation is uncertain and requires operator review; Jarvis
 does not start a second run automatically. An interrupted worker also cannot
 prove the hosted run stopped. Running cloud jobs therefore have no Cancel action.
-If the provider's text names one `outputs/*.md` full report, Jarvis checks that
-file in the run's V4 workspace and imports a bounded Markdown copy into Stash.
+If the provider's text identifies one `outputs/*.md` path on a full-report
+line, Jarvis checks that file in the run's V4 workspace and imports a bounded
+Markdown copy into Stash.
 The chat card keeps the concise provider summary and opens the imported report.
 If the file is missing, too large, or cannot be downloaded, the card says
 **Open saved summary** instead; an `outputs/` path is never presented as a
 local Jarvis path or a durable download link.
 When the provider returns complete billing metadata, the final card shows its
 reported total of run, browser-hosting, and proxy charges. This appears after
-the run, not as a live spending meter.
+the run, not as a live spending meter. A follow-up omits that total because the
+browser/proxy endpoint reports session-wide charges that can include earlier
+runs; Jarvis does not label those accumulated charges as the follow-up's cost.
 
 By default each run submits only `task` and `maxCostUsd: 3.0` and starts an
 anonymous browser. Optionally, put `BROWSER_USE_CLOUD_PROFILE_ID` in the active
@@ -78,16 +81,52 @@ only in destination fields, and report a login challenge if the session is
 unavailable. If the user specifies a required sender account, the agent must
 verify it before sending.
 
-The Cloud observer is a supervised Python child process. Its reviewed child
-environment contains the Browser Use API key, the profile ID only for a
-profile-requested run, and the minimum runtime settings needed for Stash,
-HTTPS, mode and process supervision. It does not inherit the whole cloud/local
-ENV or unrelated provider/Jarvis API credentials. This narrows environment
-exposure; it is not a filesystem sandbox against files readable by the worker's
-OS user. Do not put credentials into the task prompt or the live-view URL.
+## Follow up on a finished run
 
-This integration does not attach files, pass Jarvis credentials, or select a
-custom proxy. The run cap does not replace browser shutdown; a run may stop before
+Reply in the same Jarvis Web conversation with the clarification or next
+instruction. Jarvis can pass the earlier background job ID as
+`continue_job_id` to `browser_use_cloud`; it resolves that conversation-owned
+job to the provider's V4 session and creates a capped follow-up run there.
+The earlier profile choice carries forward. The V4 session retains the agent
+conversation, and the workspace retains files. Jarvis stops the hosted browser
+after each finished run, so a later reply may need to reopen the page; the
+configured profile ID is sent again so the new browser can restore login state.
+A new background job and its own $3 run cap
+apply to each follow-up. Jobs in another Jarvis conversation or generation
+cannot be used as a follow-up. The prior job result must still be retained in
+Jarvis's background task store. Each Cloud job can have one accepted follow-up;
+continue the latest finished follow-up for the next reply. A definite rejection
+before a run starts permits retrying the same prior job. Jarvis checks that the
+provider session still points to the prior run and has finished before submitting.
+
+Wait for the earlier task card to finish before replying with a continuation.
+The V4 session queue can accept a message while a run is busy, but its message
+request has no per-run `maxCostUsd` field, so Jarvis does not use it here.
+
+Optionally, put `BROWSER_USE_CLOUD_WORKSPACE_ID` in the same env file. When set
+to a V4 workspace UUID from the same Browser Use project, each new session run
+includes `workspaceId` so uploads and generated files persist across jobs and
+sessions. A follow-up run inherits the earlier session's workspace.
+Leave it empty to let Browser Use create a fresh workspace per run. An invalid
+configured ID rejects the request before a run is created. The ID is not a
+model-visible tool argument. A workspace is file storage, not login state;
+`use_profile` is unchanged. Browser Use does not treat a shared workspace as a
+live filesystem between simultaneous runs: finish one writer before starting
+another job that needs its files. A V3 workspace ID is not a V4 workspace ID.
+
+The Cloud observer is a supervised Python child process. Its reviewed child
+environment contains the Browser Use API key, the workspace ID when configured,
+the profile ID only for a profile-requested run, and the minimum runtime
+settings needed for Stash, HTTPS, mode and process supervision. It does not
+inherit the whole cloud/local ENV or unrelated provider/Jarvis API credentials.
+This narrows environment exposure; it is not a filesystem sandbox against files
+readable by the worker's OS user. Do not put credentials into the task prompt
+or the live-view URL.
+
+This integration does not upload Jarvis files, attach staged Cloud file IDs,
+pass Jarvis credentials, or select a custom proxy. A configured V4 workspace
+only reuses that Cloud workspace; previous uploads there are restored by
+Browser Use. The run cap does not replace browser shutdown; a run may stop before
 the research goal is complete. The reviewed Jarvis deadline is 30 minutes including
 queue time. The script never retries the create POST, but safe status/result GETs
 may retry until that deadline. Browser Use Cloud can interact with websites,
@@ -98,8 +137,11 @@ Jarvis does not select a Cloud model in this version; the API chooses its defaul
 and the result card shows the model actually used.
 
 Official API references: [V4 quickstart](https://docs.browser-use.com/cloud/quickstart),
+[sessions](https://docs.browser-use.com/cloud/agent/sessions),
 [run creation](https://docs.browser-use.com/cloud/api-v4/runs/create-run),
+[run detail](https://docs.browser-use.com/cloud/api-v4/runs/get-run),
 [run status](https://docs.browser-use.com/cloud/api-v4/runs/get-run-status),
+[workspaces](https://docs.browser-use.com/cloud/agent/workspaces),
 [workspace files](https://docs.browser-use.com/cloud/api-v4/workspaces/list-workspace-files),
 [browser list](https://docs.browser-use.com/cloud/api-v4/browsers/list-browser-sessions),
 [browser stop](https://docs.browser-use.com/cloud/api-v4/browsers/update-browser-session),

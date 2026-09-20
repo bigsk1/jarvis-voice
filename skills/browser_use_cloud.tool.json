@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "browser_use_cloud",
-  "description": "Run an opt-in hosted Browser Use Cloud V4 browser agent. Web text chat only; requires BROWSER_USE_API_KEY, the background worker, and selection in Settings → Tools → Background tasks. Returns a receipt immediately, a live browser link while working, and a saved research report later. The hosted browser uses Browser Use's own model and network, not Jarvis's selected LLM or local Browser Use container. Runs anonymously for public research. Set use_profile true when the user requests their saved profile OR an action that requires their signed-in account, such as sending an email; do not require the user to say 'profile'. The profile may have existing login sessions, but neither Jarvis nor a recipient address establishes which account is signed in. Do not buy anything or change an account unless the user directly requests that action.",
+  "description": "Hosted Browser Use Cloud agent, not local browser_use. Use for requests such as 'use Browser Use Cloud', 'run this on Browser Use Cloud', 'use my Browser Use Cloud profile', 'send this email from Gmail', or 'do this while signed into my saved profile'. For a reply or follow-up to a finished Cloud browser job in this conversation, pass its Jarvis job ID as continue_job_id to reuse the agent session. Do not use for 'browse this URL' or local Browser Use; that tool needs a starting URL and cannot log in. Cloud uses Browser Use's own model and network and needs no URL. Returns a receipt immediately, a Cloud live-view link while working, and a saved report later. Default is anonymous. Set use_profile true for saved-profile or signed-in actions even if they do not say 'profile'. Do not infer the signed-in account from a recipient. Do not buy anything or change an account unless the user directly requests that.",
   "script": "browser_use_cloud.py",
   "availability": {
     "all_of_env": ["BROWSER_USE_API_KEY"],
@@ -21,6 +21,11 @@
         "type": "boolean",
         "default": false,
         "description": "Use the server-configured saved Browser Use Cloud login profile for this run. Set true when the user requests their profile or an action requiring their signed-in account, such as sending an email, even if they do not say 'profile'. Omit or set false for anonymous public browsing. Existing cookies may provide a login; the agent must inspect the site rather than assume which account is active. The profile ID is never supplied by the model."
+      },
+      "continue_job_id": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{32}$",
+        "description": "Earlier Browser Use Cloud background job ID in this conversation. Use for a follow-up or an answer to that job's question. Jarvis looks up the provider session; never supply a raw provider session ID. Match the earlier use_profile setting."
       }
     },
     "required": ["task"]

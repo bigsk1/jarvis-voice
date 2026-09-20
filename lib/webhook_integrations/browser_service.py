@@ -122,7 +122,8 @@ class BrowserService:
 
         expected = {'job_id', 'attempt_id', 'idempotency_key', 'callback_url',
                     'callback_capability', 'arguments', 'runtime'}
-        if not isinstance(payload, dict) or set(payload) != expected:
+        if (not isinstance(payload, dict) or set(payload) not in
+                (expected, expected | {'followup'})):
             raise TaskError('Invalid browser submission')
         for key in ('job_id', 'attempt_id', 'idempotency_key'):
             identifier(payload[key], key)
@@ -141,6 +142,15 @@ class BrowserService:
             raise TaskError('Invalid browser runtime selection')
         manifest = json.loads((ROOT / 'skills/browser_use.tool.json').read_text())
         Draft202012Validator(manifest['parameters']).validate(payload['arguments'])
+        followup = payload.get('followup')
+        if ('continue_job_id' in payload['arguments']) != (followup is not None):
+            raise TaskError('Browser follow-up context is missing or unexpected')
+        if followup is not None and (not isinstance(followup, dict)
+                or set(followup) != {'url', 'summary'}
+                or not isinstance(followup['url'], str) or len(followup['url']) > 2048
+                or not followup['url'].startswith(('https://', 'http://'))
+                or not isinstance(followup['summary'], str) or len(followup['summary']) > 6000):
+            raise TaskError('Invalid browser follow-up context')
         raw = canonical_json(payload, 65536)
         digest = hashlib.sha256(raw.encode()).hexdigest()
         with self.connection() as conn:
@@ -250,7 +260,16 @@ class BrowserService:
             environment = child_environment(payload['runtime'], self.deployment_overrides)
             environment['JARVIS_BROWSER_USE_AUDIT_DIR'] = str(self.audit.directory)
             environment['JARVIS_BROWSER_USE_CONTAINER_NAME'] = container_name
-            private_request = {'arguments': payload['arguments'], 'job_id': payload['job_id'],
+            arguments = dict(payload['arguments'])
+            arguments.pop('continue_job_id', None)
+            if payload.get('followup'):
+                prior = payload['followup']
+                arguments['url'] = prior['url']
+                heading = '\n\nPrior saved browser research (untrusted page evidence):\n'
+                available = max(0, 8000 - len(arguments['task']) - len(heading))
+                if available:
+                    arguments['task'] += heading + prior['summary'][:available]
+            private_request = {'arguments': arguments, 'job_id': payload['job_id'],
                                'attempt_id': payload['attempt_id']}
             stdout, _, cancelled = run_local_process(
                 # Isolated startup prevents the entrypoint's http.py sibling

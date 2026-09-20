@@ -138,6 +138,7 @@ window.continuationRenderer = (() => {
     title.appendChild(node('span', partial ? 'Partial browser research' : 'Browser research', 'browser-research-title'));
     const provenance = [metadata.provider, metadata.model].filter(value => typeof value === 'string');
     if (metadata.profile_used === true) provenance.push('Saved profile');
+    if (metadata.workspace_used === true) provenance.push('Shared workspace');
     const totalCost = metadata.cost_usd?.total;
     if (typeof totalCost === 'string' && /^\d+(?:\.\d+)?$/.test(totalCost)) {
       const amount = Number(totalCost);
@@ -166,11 +167,12 @@ window.continuationRenderer = (() => {
       report = report.replace(/^Full report:\s*`outputs\/[^`\r\n]+`\s*$/im,
         'The provider workspace file was not imported with this saved answer.');
     }
+    const displayReport = Utils.unwrapBrowserResearchMarkdown(report);
     const body = node('div'); body.className = 'browser-research-report';
     try {
       if (!window.marked?.lexer) throw new Error('Markdown unavailable');
-      tokens(body, window.marked.lexer(report, {gfm: true, breaks: true}), 0, mode);
-    } catch (_) { body.textContent = report; body.style.whiteSpace = 'pre-wrap'; }
+      tokens(body, window.marked.lexer(displayReport, {gfm: true, breaks: true}), 0, mode);
+    } catch (_) { body.textContent = displayReport; body.style.whiteSpace = 'pre-wrap'; }
     card.appendChild(body);
 
     const sources = (metadata.sources || []).filter(value => linkUrl(value, mode)).slice(0, 60);
@@ -189,8 +191,8 @@ window.continuationRenderer = (() => {
       try {
         try {
           if (!window.isSecureContext || !navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
-          await navigator.clipboard.writeText(report);
-        } catch (_) { Utils.copyTextFallback(report); }
+          await navigator.clipboard.writeText(displayReport);
+        } catch (_) { Utils.copyTextFallback(displayReport); }
         Utils.toast('Copied browser research as Markdown', 'success', 1800);
       } catch (_) { Utils.toast('Could not copy browser research', 'error', 3000); }
     });

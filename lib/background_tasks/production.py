@@ -31,7 +31,7 @@ CHILD_ENVIRONMENT_POLICIES = {
     'browser_use_cloud': {
         'always': frozenset({
             'PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ',
-            'JARVIS_MODE', 'BROWSER_USE_API_KEY',
+            'JARVIS_MODE', 'BROWSER_USE_API_KEY', 'BROWSER_USE_CLOUD_WORKSPACE_ID',
             'STASH_DIR', 'JARVIS_OVERRIDE_STASH_DIR',
             'SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE',
         }),

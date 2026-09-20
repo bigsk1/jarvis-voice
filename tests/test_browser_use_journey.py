@@ -128,14 +128,18 @@ def test_browser_callback_after_intervening_web_tool(web_tasks, monkeypatch, liv
         provider_name = 'ollama'
     arguments = {'task': 'Read this page and report its title and what these domains are for. Cite the URL.',
                  'url': 'https://example.com/', 'max_steps': 3}
+    force_followup = [False]
     factory = orchestrator_v2.Orchestrator
     def browser_factory(*args, **kwargs):
         instance = factory(*args, **kwargs)
         route = instance.router.route
         def choose(*a, **kw):
             decision = route(*a, **kw)
-            if decision.get('tool_name') == 'fixture':
-                decision.update(tool_name='browser_use', arguments=arguments)
+            if force_followup[0]:
+                force_followup[0] = False
+                decision.update(intent='tool', tool_name='browser_use', arguments=arguments)
+            elif decision.get('tool_name') == 'fixture':
+                decision.update(intent='tool', tool_name='browser_use', arguments=arguments)
             return decision
         instance.router.route = choose
         return instance
@@ -212,6 +216,27 @@ def test_browser_callback_after_intervening_web_tool(web_tasks, monkeypatch, liv
         with service.connection() as conn:
             assert conn.execute('SELECT count(*) FROM browser_jobs').fetchone()[0] == 1
             assert conn.execute('SELECT state FROM browser_jobs').fetchone()[0] == 'finished'
+        if not live:
+            arguments = {'task': 'Check the earlier answer again and report any correction.',
+                         'continue_job_id': job['id']}
+            force_followup[0] = True
+            h.client.emit('chat:send', {
+                'message': 'Continue the earlier Browser Use research.', 'mode': 'cloud',
+                'conversation_id': cid,
+            })
+            second = eventually(lambda: next((item for item in h.tasks.conversation_jobs(cid)
+                                              if item['id'] != job['id']), None))
+            try:
+                eventually(lambda: h.tasks.get(second['id'])['delivery_state'] == 'delivered', timeout=20)
+            except AssertionError:
+                pytest.fail(f'Follow-up did not deliver: {h.tasks.get(second["id"])}')
+            with service.connection() as conn:
+                payloads = [json.loads(row[0]) for row in conn.execute('SELECT payload FROM browser_jobs')]
+            assert len(payloads) == 2
+            followup = next(item for item in payloads if 'followup' in item)
+            assert followup['followup']['url'] == 'https://example.com/'
+            assert 'Example Domain is for documentation' in followup['followup']['summary']
+            assert followup['arguments']['continue_job_id'] == job['id']
         if live:
             assert list((h.tmp / 'stash').rglob('browser-research.md'))
     finally:

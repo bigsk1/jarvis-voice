@@ -222,6 +222,24 @@ class TaskStore(DeliveryStore, ManagementStore):
                 raise AdmissionDenied("Background task admission is disabled")
             if admission.tool not in settings["background_tools"]:
                 raise AdmissionDenied("This tool is no longer enabled for background execution")
+            if admission.tool == 'browser_use_cloud' and admission.arguments.get('continue_job_id'):
+                # BEGIN IMMEDIATE makes this check and the new admission one
+                # transaction, so competing replies cannot fork one V4 session.
+                siblings = conn.execute(
+                    """SELECT state, result_json FROM jobs WHERE conversation_id=? AND generation=?
+                    AND json_extract(admission_json, '$.tool')='browser_use_cloud'
+                    AND json_extract(admission_json, '$.arguments.continue_job_id')=?""",
+                    (admission.conversation_id, admission.generation,
+                     admission.arguments['continue_job_id']),
+                ).fetchall()
+                for sibling in siblings:
+                    result = json.loads(sibling['result_json']) if sibling['result_json'] else {}
+                    if not isinstance(result, dict):
+                        result = {}
+                    data = result.get('data')
+                    if (sibling['state'] != 'failed' or result.get('completion') != 'rejected'
+                            or (isinstance(data, dict) and data.get('run_id'))):
+                        raise AdmissionDenied('This Cloud browser job already has a follow-up')
             if admission.adapter == 'http_callback_v1':
                 from lib.webhook_integrations.service import IntegrationService
                 source_id = (authorization or {}).get('callback_sources', {}).get(admission.tool)

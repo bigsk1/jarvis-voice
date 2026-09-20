@@ -298,6 +298,19 @@ at API. Rotate through Settings, update the private service credential and resta
 the browser service and worker. Never delete the task database to rotate keys or
 recover work.
 
+## Follow up on saved research
+
+After a local Browser Use job finishes, reply in the same Jarvis Web
+conversation. Jarvis can send its background job ID as `continue_job_id`
+instead of another starting URL. The worker checks conversation ownership,
+then uses the prior report and last available source URL (or original starting
+URL) to start a new isolated browser
+job. This carries research context across runs, but the earlier Docker
+container, live tab, cookies, and page interaction state have already been
+destroyed. Local Browser Use remains read-only and cannot continue a signed-in
+Gmail action. Wait for the earlier job to finish before submitting a follow-up.
+The prior job result must still be retained in the background task store.
+
 ## Verification
 
 ```bash

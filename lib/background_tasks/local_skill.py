@@ -175,6 +175,12 @@ class LocalSkillRunner:
                         and job['admission']['timeout_seconds'] != settings['timeout_seconds']):
                     raise AdmissionDenied('Admitted deadline does not match the reviewed local skill policy')
                 validate_arguments(schema, args)
+                prior_run_id = None
+                if name == 'browser_use_cloud':
+                    from .browser_followup import prior_browser_job, prior_cloud_run_id
+                    prior = prior_browser_job(context.store, {**job, 'tool': name}, args)
+                    if prior is not None:
+                        prior_run_id = prior_cloud_run_id(prior)
                 context.checkpoint()
                 context.local_execution = settings
                 registry = SimpleNamespace(get_tool=lambda requested: schema if requested == name else None,
@@ -192,6 +198,8 @@ class LocalSkillRunner:
                     child_policy = self.child_environment_policies.get(name)
                     if child_policy is not None:
                         environment = restrict_child_environment(environment, child_policy, args, scratch)
+                    if prior_run_id is not None:
+                        environment['JARVIS_BROWSER_CONTINUE_RUN_ID'] = prior_run_id
                     context.environment = dict(environment, TMPDIR=scratch,
                         JARVIS_BACKGROUND_MAX_INPUT_BYTES=limit,
                         JARVIS_OVERRIDE_JARVIS_BACKGROUND_MAX_INPUT_BYTES=limit,

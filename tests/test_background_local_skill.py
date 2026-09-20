@@ -125,6 +125,7 @@ def test_trusted_child_env_policy_reaches_subprocess_without_other_credentials(
     with cloud_config.open('a') as config_file:
         config_file.write('BROWSER_USE_API_KEY=browser-only\n'
                           'BROWSER_USE_CLOUD_PROFILE_ID=unused-profile\n'
+                          'BROWSER_USE_CLOUD_WORKSPACE_ID=saved-workspace\n'
                           'GEMINI_API_KEY=unrelated-provider\n')
     monkeypatch.setenv('PARENT_SECRET', 'not-for-the-child')
     policy = production.CHILD_ENVIRONMENT_POLICIES['browser_use_cloud']
@@ -147,6 +148,7 @@ def test_trusted_child_env_policy_reaches_subprocess_without_other_credentials(
     assert probe.store.get(job['id'])['state'] == 'succeeded'
     env = captured[0]
     assert env['BROWSER_USE_API_KEY'] == 'browser-only'
+    assert env['BROWSER_USE_CLOUD_WORKSPACE_ID'] == 'saved-workspace'
     assert env['JARVIS_MODE'] == 'cloud'
     assert env['HOME'] == env['TMPDIR']
     assert env['JARVIS_WEB_CONVERSATION_ID'] == 'conversation-1'
@@ -161,12 +163,73 @@ def test_profile_id_enters_narrow_child_env_only_for_true_argument():
     policy = production.CHILD_ENVIRONMENT_POLICIES['browser_use_cloud']
     source = {'BROWSER_USE_API_KEY': 'browser-key',
               'BROWSER_USE_CLOUD_PROFILE_ID': 'saved-profile',
+              'BROWSER_USE_CLOUD_WORKSPACE_ID': 'saved-workspace',
               'JARVIS_API_KEY': 'unrelated-credential',
               'JARVIS_OVERRIDE_GEMINI_API_KEY': 'unrelated-override'}
     anonymous = restrict_child_environment(source, policy, {'use_profile': False}, '/tmp/scratch')
     signed_in = restrict_child_environment(source, policy, {'use_profile': True}, '/tmp/scratch')
-    assert anonymous == {'BROWSER_USE_API_KEY': 'browser-key', 'HOME': '/tmp/scratch'}
+    assert anonymous == {'BROWSER_USE_API_KEY': 'browser-key',
+                         'BROWSER_USE_CLOUD_WORKSPACE_ID': 'saved-workspace',
+                         'HOME': '/tmp/scratch'}
     assert signed_in == {**anonymous, 'BROWSER_USE_CLOUD_PROFILE_ID': 'saved-profile'}
+
+
+def test_cloud_followup_run_id_reaches_only_the_reviewed_child_environment(
+        tmp_path, monkeypatch):
+    from contextlib import nullcontext
+
+    import config_loader
+    import executor
+
+    from lib.background_tasks.local_contract import REMOTE_ADAPTER
+
+    manifest = json.loads((ROOT / 'skills/browser_use_cloud.tool.json').read_text())
+    schema = SimpleNamespace(background_execution=manifest['execution']['background'])
+    policy_evidence = {'adapter': REMOTE_ADAPTER}
+    runner = LocalSkillRunner(tmp_path, {'browser_use_cloud': REMOTE_ADAPTER},
+        child_environment_policies=production.CHILD_ENVIRONMENT_POLICIES)
+    monkeypatch.setattr(runner, 'policy', lambda _: (schema, policy_evidence))
+    monkeypatch.setattr('lib.background_tasks.local_skill.validate_arguments', lambda *_: None)
+    monkeypatch.setattr(config_loader, 'config_scope', lambda *_args, **_kwargs: nullcontext())
+    name = 'browser_use_cloud'
+    prior_id, current_id = 'a' * 32, 'b' * 32
+    run_id = '3c90c3cc-0d44-4b50-8888-8dd25736052a'
+    arguments = {'task': 'Proceed', 'continue_job_id': prior_id, 'use_profile': True}
+    job = {'id': current_id, 'adapter': REMOTE_ADAPTER, 'mode': 'cloud',
+           'conversation_id': 'conversation-1', 'generation': 1,
+           'admission': {'tool': name, 'arguments': arguments, 'authorization_id': 'auth-2',
+                         'conversation_id': 'conversation-1', 'generation': 1,
+                         'request_id': 'request-2', 'mode': 'cloud', 'timeout_seconds': 1800}}
+    previous = {'id': prior_id, 'adapter': REMOTE_ADAPTER, 'mode': 'cloud',
+                'conversation_id': 'conversation-1', 'generation': 1, 'state': 'succeeded',
+                'admission': {'tool': name, 'arguments': {'task': 'Original', 'use_profile': True}},
+                'result': {'data': {'run_id': run_id}}}
+    auth = {'operator': 'installation', 'source': 'web', 'selected': [name],
+            'tool_policy': 'auto', 'tool_policies': {name: policy_evidence},
+            'conversation_id': 'conversation-1', 'generation': 1,
+            'request_id': 'request-2', 'mode': 'cloud'}
+    store = SimpleNamespace(path=tmp_path / 'tasks.db', authorization=lambda _: auth,
+                            get=lambda reference: previous if reference == prior_id else None)
+    context = SimpleNamespace(claim=SimpleNamespace(job=job), store=store, config_values={},
+        environment={'BROWSER_USE_API_KEY': 'browser-key',
+                     'BROWSER_USE_CLOUD_PROFILE_ID': 'profile',
+                     'UNRELATED_SECRET': 'private'},
+        checkpoint=lambda: None, progress=lambda *_args: None)
+    captured = []
+
+    class FakeExecutor:
+        def __init__(self, *_args, **_kwargs): pass
+        def set_session_context(self, **_kwargs): pass
+        def set_progress_callback(self, *_args): pass
+        def _execute_foreground(self, _name, _args, *, supervision):
+            captured.append(supervision.environment.copy())
+            return {'ok': True, 'speech': 'Done'}
+
+    monkeypatch.setattr(executor, 'ToolExecutor', FakeExecutor)
+    assert runner(context)['ok'] is True
+    assert captured[0]['JARVIS_BROWSER_CONTINUE_RUN_ID'] == run_id
+    assert captured[0]['BROWSER_USE_CLOUD_PROFILE_ID'] == 'profile'
+    assert 'UNRELATED_SECRET' not in captured[0]
 
 
 def test_supervised_skill_progress_reaches_task_store(probe, monkeypatch):

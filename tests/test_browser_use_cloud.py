@@ -127,6 +127,182 @@ def test_explicit_profile_uses_only_the_configured_id(config, monkeypatch):
         'browserSettings': {'profileId': profile_id},
     }
     assert profile_id not in json.dumps(result)
+    assert result['data']['browser_research']['workspace_used'] is False
+
+
+def test_configured_workspace_is_sent_on_every_run(config, monkeypatch):
+    workspace_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    config['BROWSER_USE_CLOUD_WORKSPACE_ID'] = workspace_id
+    monkeypatch.setattr(cloud, '_archive', lambda *_: 'stash://space/report')
+    session = Session([
+        ('POST', '/runs', created()),
+        ('GET', '/events', Response({'events': []})),
+        ('GET', '/status', Response({'status': 'completed'})),
+        no_active_browsers(),
+        ('GET', f'/runs/{RUN_ID}', Response({'id': RUN_ID, 'status': 'completed', 'result': 'Done'})),
+    ])
+    result = cloud.run({'task': 'Reuse files'}, session=session, progress=lambda _: None)
+    assert result['ok'] is True
+    assert session.calls[0][2]['json'] == {
+        'task': 'Reuse files', 'maxCostUsd': 3.0, 'workspaceId': workspace_id,
+    }
+    assert result['data']['browser_research']['workspace_used'] is True
+    assert workspace_id not in json.dumps(result)
+
+
+@pytest.mark.parametrize('use_profile', [False, True])
+def test_followup_uses_previous_session_with_run_cost_cap(config, monkeypatch, use_profile):
+    config['BROWSER_USE_CLOUD_WORKSPACE_ID'] = WORKSPACE_ID
+    if use_profile:
+        config['BROWSER_USE_CLOUD_PROFILE_ID'] = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    monkeypatch.setenv('JARVIS_BROWSER_CONTINUE_RUN_ID', RUN_ID)
+    monkeypatch.setattr(cloud, '_archive', lambda *_: 'stash://space/followup')
+    next_run = '8bfbc4db-c6b4-44b8-852c-457841b9ef8e'
+    session = Session([
+        ('GET', f'/runs/{RUN_ID}', Response({'id': RUN_ID, 'status': 'completed',
+                                            'sessionId': SESSION_ID, 'workspaceId': WORKSPACE_ID})),
+        ('GET', f'/sessions/{SESSION_ID}', Response({'sessionId': SESSION_ID,
+                                                    'latestRunId': RUN_ID, 'status': 'completed'})),
+        ('POST', '/runs', Response({'id': next_run, 'sessionId': SESSION_ID, 'status': 'queued'})),
+        ('GET', '/events', Response({'events': []})),
+        ('GET', '/status', Response({'status': 'completed'})),
+        ('GET', f'/sessions/{SESSION_ID}', Response({'sessionId': SESSION_ID,
+                                                    'latestRunId': next_run})),
+        no_active_browsers(),
+        ('GET', f'/runs/{next_run}', Response({'id': next_run, 'status': 'completed',
+                                              'result': 'Follow-up done',
+                                              'totalCostUsd': '0.25'})),
+    ])
+    result = cloud.run({'task': 'Use the address I supplied', 'continue_job_id': 'a' * 32,
+                        'use_profile': use_profile},
+                       session=session, progress=lambda _: None)
+    assert result['ok'] is True
+    expected = {
+        'task': 'Use the address I supplied', 'maxCostUsd': 3.0, 'sessionId': SESSION_ID,
+    }
+    if use_profile:
+        expected['browserSettings'] = {'profileId': config['BROWSER_USE_CLOUD_PROFILE_ID']}
+    assert session.calls[2][2]['json'] == expected
+    assert result['data']['run_id'] == next_run
+    assert 'cost_usd' not in result['data']['browser_research']
+    assert SESSION_ID not in json.dumps(result)
+
+
+def test_followup_never_stops_a_newer_run_on_the_same_session(config, monkeypatch):
+    monkeypatch.setenv('JARVIS_BROWSER_CONTINUE_RUN_ID', RUN_ID)
+    monkeypatch.setattr(cloud, '_archive', lambda *_: 'stash://space/followup')
+    next_run = '8bfbc4db-c6b4-44b8-852c-457841b9ef8e'
+    newer_run = '9c315e2f-1b47-4ae5-9dda-95d8e80b56e7'
+    session = Session([
+        ('GET', f'/runs/{RUN_ID}', Response({'id': RUN_ID, 'status': 'completed',
+                                            'sessionId': SESSION_ID})),
+        ('GET', f'/sessions/{SESSION_ID}', Response({'sessionId': SESSION_ID,
+                                                    'latestRunId': RUN_ID, 'status': 'completed'})),
+        ('POST', '/runs', Response({'id': next_run, 'sessionId': SESSION_ID, 'status': 'queued'})),
+        ('GET', '/events', Response({'events': []})),
+        ('GET', '/status', Response({'status': 'completed'})),
+        ('GET', f'/sessions/{SESSION_ID}', Response({'sessionId': SESSION_ID,
+                                                    'latestRunId': newer_run})),
+        ('GET', f'/runs/{next_run}', Response({'id': next_run, 'status': 'completed',
+                                              'result': 'Done'})),
+    ])
+    result = cloud.run({'task': 'Continue', 'continue_job_id': 'a' * 32},
+                       session=session, progress=lambda _: None)
+    assert result['data']['browser_stop_verified'] is False
+    assert all('/browsers' not in call[1] for call in session.calls)
+
+
+def test_followup_rejects_unverifiable_prior_run_without_submitting(monkeypatch):
+    monkeypatch.setenv('JARVIS_BROWSER_CONTINUE_RUN_ID', RUN_ID)
+    session = Session([
+        ('GET', f'/runs/{RUN_ID}', Response({'id': RUN_ID, 'status': 'running',
+                                            'sessionId': SESSION_ID})),
+    ])
+    result = cloud.run({'task': 'Answer the question', 'continue_job_id': 'a' * 32},
+                       session=session)
+    assert result['completion'] == 'rejected'
+    assert [call[0] for call in session.calls] == ['GET']
+
+
+@pytest.mark.parametrize('session_state', [
+    {'latestRunId': RUN_ID, 'status': 'running'},
+    {'latestRunId': '8bfbc4db-c6b4-44b8-852c-457841b9ef8e', 'status': 'completed'},
+])
+def test_followup_rejects_busy_or_advanced_session_without_submitting(monkeypatch, session_state):
+    monkeypatch.setenv('JARVIS_BROWSER_CONTINUE_RUN_ID', RUN_ID)
+    session = Session([
+        ('GET', f'/runs/{RUN_ID}', Response({'id': RUN_ID, 'status': 'completed',
+                                            'sessionId': SESSION_ID})),
+        ('GET', f'/sessions/{SESSION_ID}', Response({'sessionId': SESSION_ID,
+                                                    **session_state})),
+    ])
+    result = cloud.run({'task': 'Continue', 'continue_job_id': 'a' * 32}, session=session)
+    assert result['completion'] == 'rejected'
+    assert [call[0] for call in session.calls] == ['GET', 'GET']
+
+
+def test_followup_busy_create_is_a_known_rejection(monkeypatch):
+    monkeypatch.setenv('JARVIS_BROWSER_CONTINUE_RUN_ID', RUN_ID)
+    session = Session([
+        ('GET', f'/runs/{RUN_ID}', Response({'id': RUN_ID, 'status': 'completed',
+                                            'sessionId': SESSION_ID})),
+        ('GET', f'/sessions/{SESSION_ID}', Response({'sessionId': SESSION_ID,
+                                                    'latestRunId': RUN_ID, 'status': 'completed'})),
+        ('POST', '/runs', Response({'detail': 'Session is busy'}, status=409)),
+    ])
+    result = cloud.run({'task': 'Continue', 'continue_job_id': 'a' * 32}, session=session)
+    assert result['completion'] == 'rejected'
+    assert 'busy' in result['speech']
+    assert [call[0] for call in session.calls] == ['GET', 'GET', 'POST']
+
+
+def test_profile_and_workspace_can_be_used_together(config, monkeypatch):
+    profile_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    workspace_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    config['BROWSER_USE_CLOUD_PROFILE_ID'] = profile_id
+    config['BROWSER_USE_CLOUD_WORKSPACE_ID'] = workspace_id
+    monkeypatch.setattr(cloud, '_archive', lambda *_: 'stash://space/report')
+    session = Session([
+        ('POST', '/runs', created()),
+        ('GET', '/events', Response({'events': []})),
+        ('GET', '/status', Response({'status': 'completed'})),
+        no_active_browsers(),
+        ('GET', f'/runs/{RUN_ID}', Response({'id': RUN_ID, 'status': 'completed', 'result': 'Done'})),
+    ])
+    result = cloud.run({'task': 'Read my account', 'use_profile': True}, session=session,
+                       progress=lambda _: None)
+    assert result['ok'] is True
+    assert session.calls[0][2]['json'] == {
+        'task': 'Read my account', 'maxCostUsd': 3.0,
+        'workspaceId': workspace_id,
+        'browserSettings': {'profileId': profile_id},
+    }
+
+
+@pytest.mark.parametrize('value', [None, '', '  '])
+def test_blank_workspace_id_is_omitted(config, value, monkeypatch):
+    if value is not None:
+        config['BROWSER_USE_CLOUD_WORKSPACE_ID'] = value
+    monkeypatch.setattr(cloud, '_archive', lambda *_: 'stash://space/report')
+    session = Session([
+        ('POST', '/runs', created()),
+        ('GET', '/events', Response({'events': []})),
+        ('GET', '/status', Response({'status': 'completed'})),
+        no_active_browsers(),
+        ('GET', f'/runs/{RUN_ID}', Response({'id': RUN_ID, 'status': 'completed', 'result': 'Done'})),
+    ])
+    result = cloud.run({'task': 'Research'}, session=session, progress=lambda _: None)
+    assert result['ok'] is True
+    assert session.calls[0][2]['json'] == {'task': 'Research', 'maxCostUsd': 3.0}
+    assert result['data']['browser_research']['workspace_used'] is False
+
+
+def test_invalid_workspace_id_rejects_before_submit(config):
+    config['BROWSER_USE_CLOUD_WORKSPACE_ID'] = 'not-a-uuid'
+    session = Session([])
+    result = cloud.run({'task': 'Research'}, session=session)
+    assert result['ok'] is False and result['completion'] == 'rejected'
+    assert session.calls == []
 
 
 @pytest.mark.parametrize('value', [None, '', 'not-a-uuid'])
@@ -316,8 +492,13 @@ def test_costs_reject_browser_from_another_agent_session():
         cloud._costs(session, SESSION_ID, '0.10')
 
 
-def test_provider_workspace_report_is_imported_and_linked_from_stash(monkeypatch):
-    summary = 'Five stories summarized.\n\nFull report: `outputs/ai_news.md`'
+@pytest.mark.parametrize('summary', [
+    'Five stories summarized.\n\nFull report: `outputs/ai_news.md`',
+    'Five stories summarized.\n\nFull report with 13 daily and 21 weekly repositories, '
+    'descriptions, languages, stars, momentum, URLs, project notes, and licenses: '
+    '`outputs/ai_news.md`',
+])
+def test_provider_workspace_report_is_imported_and_linked_from_stash(monkeypatch, summary):
     full = '# Full report\n\nMore verified detail.'
     saved = []
     monkeypatch.setattr(cloud, '_fetch_full_report',

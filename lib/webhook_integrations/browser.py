@@ -187,6 +187,8 @@ def policy():
 
 def prepare(context):
     job, store = context.claim.job, context.store
+    from lib.background_tasks.browser_followup import prior_browser_job
+    prior = prior_browser_job(store, {**job, 'tool': 'browser_use'}, job['admission']['arguments'])
     config = read_config(store)
     manifest, evidence = policy()
     auth = store.authorization(job['admission']['authorization_id'])
@@ -215,7 +217,19 @@ def prepare(context):
                          timeout=(1, 2), allow_redirects=False, stream=True) as response:
             if response.status_code != 200:
                 raise AdmissionDenied('Browser callback service is unavailable; start bin/jarvis-browser-use run')
-    return {'runtime': {'mode': job['mode'], 'provider': auth.get('provider'),
+    followup = {}
+    if prior is not None:
+        previous_result = prior.get('result') or {}
+        research = previous_result.get('data', {}).get('browser_research') or {}
+        sources = research.get('sources') or []
+        last_url = next((url for url in reversed(sources)
+                         if isinstance(url, str) and url.startswith(('https://', 'http://'))
+                         and len(url) <= 2048), None)
+        followup = {'followup': {
+            'url': last_url or prior['admission']['arguments']['url'],
+            'summary': str(previous_result.get('speech') or '')[:6000],
+        }}
+    return {**followup, 'runtime': {'mode': job['mode'], 'provider': auth.get('provider'),
                         'model': auth.get('model'), 'deadline': job['deadline'],
                         'proxy_policy': manifest.get('proxy_policy', 'inherit')}}, {
         'Authorization': config['credential']['authorization'],

@@ -2,7 +2,7 @@
   "enabled": true,
   "name": "browser_use",
   "proxy_policy": "inherit",
-  "description": "Web-only background AI browser research. Requires the saved background-task allowlist and callback service; never runs in the foreground, voice, Talk, Firefox Companion, CLI, or workflows. Use for multi-page research or JavaScript-rendered sites when the user asks you to browse. Reads pages and follows links; cannot log in, submit forms, purchase, upload, or change accounts. Supply the complete goal and a starting URL. Uses this conversation's selected LLM provider and model. Returns a receipt immediately and a sourced report later through a callback.",
+  "description": "Local Browser Use on this machine's Chromium, not Browser Use Cloud. Use for requests such as 'browse this URL', 'read this page and follow the links', 'research this JavaScript site starting at https://example.com', or 'use local Browser Use on this page'. For a follow-up to a finished local browser job in this conversation, pass its job ID as continue_job_id instead of url; Jarvis reopens saved research in a fresh isolated browser. Requires this conversation's selected LLM. Reads pages and follows links; cannot log in, submit forms, send email, purchase, or change accounts. For a hosted Cloud browser, a saved Cloud profile, or a signed-in account action, use browser_use_cloud. Returns a receipt immediately and a sourced report later.",
   "script": "browser_use.py",
   "availability": {"all_of_commands": ["docker"], "setup_hint": "Pull the Browser Use image with docker compose -f docker-compose.browser.yml pull. See docs/BROWSER-USE.md."},
   "parameters": {
@@ -11,9 +11,11 @@
     "properties": {
       "task": {"type": "string", "minLength": 1, "maxLength": 8000, "description": "Research goal and information to report. Include all relevant context."},
       "url": {"type": "string", "minLength": 8, "maxLength": 2048, "description": "Public HTTP(S) page to begin browsing. Prefer a direct publisher or topic page over Google Search or Google News, which commonly returns an automation challenge."},
+      "continue_job_id": {"type": "string", "pattern": "^[0-9a-f]{32}$", "description": "For a follow-up, the earlier local Browser Use background job ID from this conversation. Jarvis restores its saved report and last source URL into a new isolated browser."},
       "max_steps": {"type": "integer", "minimum": 1, "maximum": 30, "default": 15, "description": "Maximum browser reasoning steps."}
     },
-    "required": ["task", "url"]
+    "required": ["task"],
+    "oneOf": [{"required": ["url"]}, {"required": ["continue_job_id"]}]
   },
   "permissions": {"dangerous": false, "bash": false, "network": true, "filesystem": true, "auto_approve": true},
   "execution": {"background": {"supported": true, "required": true, "adapter": "http_callback_v1", "timeout_seconds": 900}},

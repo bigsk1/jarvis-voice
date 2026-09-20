@@ -269,6 +269,39 @@ def browser_host(tmp_path):
     return service, payload, store
 
 
+def test_local_followup_reopens_saved_source_and_supplies_prior_report(browser_host, monkeypatch):
+    import tool_process
+
+    host, original, _ = browser_host
+    payload = {**original,
+               'arguments': {'task': 'Check the answer again', 'continue_job_id': 'a' * 32},
+               'followup': {'url': 'https://example.com/last-page',
+                            'summary': 'Prior research found a useful fact.'}}
+    monkeypatch.setattr('lib.webhook_integrations.browser_service.child_environment', lambda *_: {})
+    observed = []
+
+    def child(command, *_args, **_kwargs):
+        request = json.loads(command[3])
+        observed.append(request['arguments'])
+        return json.dumps({'ok': True, 'speech': 'Follow-up complete',
+                           'stash_ref': 'stash://test/report', 'sources': [payload['followup']['url']],
+                           'provider': 'ollama', 'model': 'test:cloud'}), '', False
+
+    monkeypatch.setattr(tool_process, 'run_local_process', child)
+    assert host.accept(payload)[1] == 202
+    assert host.execute_one()
+    assert observed[0]['url'] == 'https://example.com/last-page'
+    assert 'Prior research found a useful fact.' in observed[0]['task']
+    assert 'continue_job_id' not in observed[0]
+
+
+def test_local_followup_requires_trusted_saved_context(browser_host):
+    host, original, _ = browser_host
+    payload = {**original, 'arguments': {'task': 'Continue', 'continue_job_id': 'a' * 32}}
+    with pytest.raises(Exception, match='follow-up context'):
+        host.accept(payload)
+
+
 def test_real_callback_child_boot_and_missing_docker_return_known_failure(browser_host, monkeypatch, tmp_path):
     host, payload, _ = browser_host
     config = tmp_path / 'config-root' / 'config'

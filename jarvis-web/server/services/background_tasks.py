@@ -252,6 +252,11 @@ class WebBackgroundTasks:
             "retry. expired means the admission deadline passed before execution; the job was "
             "never dispatched. result_archived means retained result evidence was removed. Do not "
             "automatically repeat accepted work or depend on unfinished results. "
+            "When the user asks to continue a finished browser_use or browser_use_cloud job, "
+            "use that job's job_id as continue_job_id with the same browser tool. "
+            "Local follow-ups omit url. Cloud follow-ups reuse the V4 session and its workspace "
+            "files, and reapply the earlier profile setting. Briefly acknowledge an accepted "
+            "follow-up; its result arrives separately. "
             + _RESULT_REFERENCE_GUIDANCE
             + "\n" + json.dumps(evidence, ensure_ascii=False)
             + "\n[END BACKGROUND TASK CONTEXT]"

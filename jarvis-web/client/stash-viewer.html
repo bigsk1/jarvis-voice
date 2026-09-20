@@ -431,7 +431,8 @@
         if (isMarkdown(contentType, filename)) {
           const browserResearch = filename.toLowerCase() === 'browser-research.md';
           contentEl.className = `markdown-viewer${browserResearch ? ' browser-research-viewer' : ''}`;
-          contentEl.innerHTML = browserResearch ? renderBrowserResearch(text) : Utils.parseMarkdown(text);
+          contentEl.innerHTML = browserResearch
+            ? renderBrowserResearch(Utils.unwrapBrowserResearchMarkdown(text)) : Utils.parseMarkdown(text);
         } else {
           contentEl.className = 'text-viewer';
           if (/json/i.test(contentType) || /\.json$/i.test(filename)) {

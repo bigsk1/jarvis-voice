@@ -34,6 +34,14 @@ const Utils = {
     return s.replace(/[ \t]{2,}/g, ' ');
   },
 
+  /** Show a returned Markdown file as a document when Cloud fenced the whole file. */
+  unwrapBrowserResearchMarkdown(value) {
+    const text = String(value ?? '');
+    const wrapped = /(^|\r?\n)Retrieved successfully\. Complete file contents:[ \t]*\r?\n\r?\n(`{3,})markdown[ \t]*\r?\n([\s\S]*?)\r?\n\2[ \t]*(?:\r?\n)?$/i.exec(text);
+    if (!wrapped) return text;
+    return text.slice(0, wrapped.index) + wrapped[1] + wrapped[3];
+  },
+
   /**
    * Sanitize http(s) URLs for HTML attributes (src/href).
    * Do not run generic escapeHtml() on whole URLs — it can break valid image links.

@@ -316,16 +316,40 @@ const report = 'Saved research: stash://cloud_space/f_report\n\n# Cloud findings
 ui.addAssistantMessage('Short fallback', [], {_kind:'continuation',_background_mode:'cloud',
   browser_use_cloud:{ok:true,speech:report,data:{browser_research:{
     kind:'browser_research',stash_ref:'stash://cloud_space/f_report',
-    provider:'Browser Use Cloud',model:'hosted-model',profile_used:true,sources:[],
+    provider:'Browser Use Cloud',model:'hosted-model',profile_used:true,workspace_used:true,sources:[],
     cost_usd:{run:'0.153',browser:'0.001',proxy:'0.096',total:'0.250'}}}}});
 const rendered=message(ui),all=descendants(rendered);
 assert.equal(rendered.querySelectorAll('.browser-research-card').length,1);
 assert.ok(visible(rendered).includes('Cloud findings'));
 assert.ok(!visible(rendered).includes('Short fallback'));
-assert.ok(visible(rendered).includes('Browser Use Cloud · hosted-model · Saved profile · $0.25 total'));
+assert.ok(visible(rendered).includes('Browser Use Cloud · hosted-model · Saved profile · Shared workspace · $0.25 total'));
 assert.ok(all.some(el=>el.href==='/stash/view/cloud_space/f_report?mode=cloud'));
 assert.ok(all.some(el=>el.href==='https://example.com/story'));
 assert.ok(!all.some(el=>el.tag==='img'));
+""")
+
+
+def test_cloud_returned_markdown_file_is_rendered_as_a_document():
+    run_message_browser(DOM + r"""
+const ui=chat();
+const raw='Retrieved successfully. Complete file contents:\n\n````markdown\n'
+  +'# GitHub Trending Report\n\n| Rank | Repo |\n| --- | --- |\n'
+  +'| 1 | [Example](https://example.com/repo) |\n\n'
+  +'<img src=x onerror=alert(1)>\n````';
+ui.addAssistantMessage('fallback',[],{_kind:'continuation',_background_mode:'cloud',
+  browser_use_cloud:{ok:true,speech:'Saved research: stash://space/report\n\n'+raw,
+    data:{browser_research:{kind:'browser_research',provider:'Browser Use Cloud',
+      stash_ref:'stash://space/report'}}}});
+const rendered=message(ui),body=rendered.querySelector('.browser-research-report');
+const all=descendants(body);
+assert.ok(all.some(el=>el.tag==='h1'&&visible(el)==='GitHub Trending Report'));
+assert.ok(all.some(el=>el.tag==='table'));
+assert.ok(all.some(el=>el.tag==='a'&&el.href==='https://example.com/repo'));
+assert.ok(!all.some(el=>el.tag==='pre'||el.tag==='img'));
+assert.ok(visible(body).includes('<img src=x onerror=alert(1)>'));
+assert.ok(!visible(body).includes('Retrieved successfully'));
+assert.equal(Utils.unwrapBrowserResearchMarkdown('```markdown\n# Literal sample\n```'),
+  '```markdown\n# Literal sample\n```');
 """)
 
 
