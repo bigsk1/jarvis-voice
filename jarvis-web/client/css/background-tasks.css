@@ -1,4 +1,30 @@
 /* Saved execution preferences live with the Tools settings. */
+#backgroundTasksButton { position: relative; }
+#backgroundTasksButton[data-outstanding]::before {
+  content: attr(data-outstanding);
+  position: absolute;
+  top: -3px;
+  right: -2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 2px;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  color: white;
+  font: 700 10px/14px var(--font-sans);
+  text-align: center;
+}
+#backgroundTasksButton[data-unread]::after {
+  content: '';
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-tertiary);
+  box-shadow: 0 0 0 1px var(--bg-secondary);
+}
 .background-settings { margin-bottom: 28px; padding-bottom: 24px; border-bottom: 1px solid var(--border-primary); }
 .background-settings-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
 .background-settings-heading h3 { font-size: var(--text-base); margin-bottom: 4px; }

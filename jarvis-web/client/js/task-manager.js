@@ -98,8 +98,15 @@ window.TaskManager = class TaskManager {
   }
   counts(counts = {}) {
     if (this.launch) {
-      this.launch.textContent = `🧵${counts.outstanding ? ' ' + counts.outstanding : ''}${counts.unread ? ' •' : ''}`;
-      this.launch.title = `Background tasks: ${counts.outstanding || 0} outstanding, ${counts.unread || 0} unread`;
+      const outstanding = Number(counts.outstanding) || 0;
+      const running = Number(counts.running) || 0;
+      const unread = Number(counts.unread) || 0;
+      this.launch.textContent = '🧵';
+      if (outstanding) this.launch.dataset.outstanding = outstanding > 99 ? '99+' : String(outstanding);
+      else delete this.launch.dataset.outstanding;
+      if (unread) this.launch.dataset.unread = '';
+      else delete this.launch.dataset.unread;
+      this.launch.title = `Background tasks: ${outstanding} outstanding, ${running} running, ${unread} unread`;
       this.launch.setAttribute('aria-label', this.launch.title);
     }
   }
