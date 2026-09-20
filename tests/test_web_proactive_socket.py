@@ -123,6 +123,91 @@ assert.strictEqual(mutedDocker.spoken.length, 0, 'The Jarvis Web TTS toggle must
             check=True,
         )
 
+    def test_browser_notification_permission_waits_for_explicit_click(self) -> None:
+        script = r"""
+const fs = require('fs');
+const vm = require('vm');
+const assert = require('assert');
+
+const nodes = {};
+for (const selector of ['.notification-permission', '.notification-permission-btn',
+  '.notification-permission-status', '.close-panel-btn', '.refresh-btn', '.ack-all-btn']) {
+  nodes[selector] = {hidden: false, listeners: {}, addEventListener(event, action) {
+    this.listeners[event] = action;
+  }};
+}
+const panel = {style: {}, querySelector: selector => nodes[selector]};
+const settingsButton = {};
+const header = {
+  inserted: null,
+  querySelector: selector => selector === '#settingsBtn' ? settingsButton : null,
+  insertBefore(node, before) { this.inserted = {node, before}; }
+};
+const bellButton = {listeners: {}, addEventListener(event, action) {
+  this.listeners[event] = action;
+}};
+const badgeContainer = {querySelector: selector => selector === '.notification-badge-btn'
+  ? bellButton : {style: {}}};
+let created = 0;
+const document = {
+  body: {appendChild() {}},
+  createElement: () => ++created === 1 ? badgeContainer : panel,
+  querySelector: selector => selector === '.header-right' ? header : null,
+  addEventListener() {}
+};
+let requests = 0;
+let inClick = false;
+const Notification = {
+  permission: 'default',
+  requestPermission() {
+    requests++;
+    assert(inClick, 'permission must be requested synchronously in the click handler');
+    this.permission = 'granted';
+    return Promise.resolve('granted');
+  }
+};
+const sandbox = {
+  window: {Notification, isSecureContext: true}, Notification, document, console,
+  setInterval: () => 1, clearInterval() {}
+};
+vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), sandbox);
+const manager = new sandbox.window.ProactiveManager({on() {}, emit() {}}, {});
+assert.strictEqual(requests, 0, 'startup must not ask the browser for permission');
+assert.strictEqual(header.inserted?.node, badgeContainer, 'the bell must mount in the visible header');
+assert.strictEqual(header.inserted?.before, settingsButton, 'the bell should sit before Settings');
+assert.match(badgeContainer.innerHTML, /class="icon-btn notification-badge-btn"/);
+bellButton.listeners.click();
+assert.strictEqual(panel.style.display, 'flex', 'the bell must open the notification panel');
+assert.strictEqual(nodes['.notification-permission-btn'].hidden, false);
+
+(async () => {
+  inClick = true;
+  nodes['.notification-permission-btn'].listeners.click();
+  inClick = false;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.strictEqual(requests, 1);
+  assert.strictEqual(manager.notificationPermission, 'granted');
+  assert.strictEqual(nodes['.notification-permission'].hidden, true);
+
+  Notification.permission = 'denied';
+  manager._syncNotificationPermission();
+  assert.strictEqual(nodes['.notification-permission-btn'].hidden, true);
+  assert.match(nodes['.notification-permission-status'].textContent, /blocked/);
+
+  Notification.permission = 'default';
+  sandbox.window.isSecureContext = false;
+  manager._syncNotificationPermission();
+  assert.strictEqual(nodes['.notification-permission-btn'].hidden, true);
+  assert.match(nodes['.notification-permission-status'].textContent, /secure connection/);
+})().catch(error => { console.error(error); process.exit(1); });
+"""
+        subprocess.run(
+            ["node", "-e", script, str(PROACTIVE_JS)],
+            cwd=PROJECT_ROOT,
+            check=True,
+        )
+
     def test_session_handshake_sets_deployment_before_proactive_manager(self) -> None:
         app_source = APP_JS.read_text(encoding="utf-8")
         chat_source = CHAT_SOCKET_PY.read_text(encoding="utf-8")

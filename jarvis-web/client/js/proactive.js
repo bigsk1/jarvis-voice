@@ -12,6 +12,9 @@ class ProactiveManager {
     this.counts = { alerts: 0, reminders: 0 };
     this.pollInterval = null;
     this.notificationPermission = 'default';
+    this.permissionPrompt = null;
+    this.permissionButton = null;
+    this.permissionStatus = null;
     
     // UI Elements
     this.badge = null;
@@ -21,9 +24,6 @@ class ProactiveManager {
   }
   
   _init() {
-    // Request notification permission
-    this._requestNotificationPermission();
-    
     // Setup socket listeners
     this._setupSocketListeners();
     
@@ -37,21 +37,39 @@ class ProactiveManager {
     this.socket.emit('proactive:subscribe', {});
   }
   
+  _syncNotificationPermission() {
+    const supported = 'Notification' in window;
+    this.notificationPermission = supported ? Notification.permission : 'unsupported';
+    if (!this.permissionPrompt) return;
+
+    const secure = window.isSecureContext !== false;
+    const canRequest = supported && typeof Notification.requestPermission === 'function';
+    this.permissionPrompt.hidden = this.notificationPermission === 'granted'
+      || this.notificationPermission === 'unsupported';
+    this.permissionButton.hidden = this.notificationPermission !== 'default' || !secure || !canRequest;
+    this.permissionStatus.textContent = !secure ? 'Browser alerts require a secure connection.'
+      : !canRequest ? 'Browser alerts are unavailable in this browser.'
+      : this.notificationPermission === 'denied'
+      ? 'Browser alerts are blocked. Change this site’s permission in your browser.'
+      : 'Get system notifications for new alerts and reminders.';
+  }
+
   async _requestNotificationPermission() {
-    if (!('Notification' in window)) {
-      console.log('[Proactive] Browser does not support notifications');
+    // Called only by the Enable button's click handler while user activation is live.
+    if (!('Notification' in window) || typeof Notification.requestPermission !== 'function'
+        || Notification.permission !== 'default'
+        || window.isSecureContext === false) {
+      this._syncNotificationPermission();
       return;
     }
-    
-    if (Notification.permission === 'granted') {
-      this.notificationPermission = 'granted';
-    } else if (Notification.permission !== 'denied') {
-      try {
-        const permission = await Notification.requestPermission();
-        this.notificationPermission = permission;
-      } catch (e) {
-        console.log('[Proactive] Notification permission request failed:', e);
-      }
+    this.permissionButton.disabled = true;
+    try {
+      this.notificationPermission = await Notification.requestPermission();
+    } catch (e) {
+      console.log('[Proactive] Notification permission request failed:', e);
+    } finally {
+      this.permissionButton.disabled = false;
+      this._syncNotificationPermission();
     }
   }
   
@@ -91,19 +109,19 @@ class ProactiveManager {
   
   _createUI() {
     // Create notification badge in header
-    const header = document.querySelector('.header-actions');
+    const header = document.querySelector('.header-right');
     if (header) {
       const badgeContainer = document.createElement('div');
       badgeContainer.className = 'notification-badge-container';
       badgeContainer.innerHTML = `
-        <button class="notification-badge-btn" title="Alerts & Reminders">
+        <button type="button" class="icon-btn notification-badge-btn" title="Alerts & Reminders" aria-label="Alerts & Reminders">
           <span class="notification-icon">🔔</span>
           <span class="notification-count" style="display: none;">0</span>
         </button>
       `;
       
       // Insert before settings button
-      const settingsBtn = header.querySelector('.settings-btn');
+      const settingsBtn = header.querySelector('#settingsBtn');
       if (settingsBtn) {
         header.insertBefore(badgeContainer, settingsBtn);
       } else {
@@ -131,6 +149,10 @@ class ProactiveManager {
         <h3>Notifications</h3>
         <button class="close-panel-btn">&times;</button>
       </div>
+      <div class="notification-permission" hidden>
+        <span class="notification-permission-status"></span>
+        <button type="button" class="notification-permission-btn">Enable browser alerts</button>
+      </div>
       <div class="notification-panel-content">
         <div class="notification-section alerts-section">
           <h4>🚨 Alerts</h4>
@@ -149,8 +171,15 @@ class ProactiveManager {
     
     document.body.appendChild(panel);
     this.panel = panel;
+    this.permissionPrompt = panel.querySelector('.notification-permission');
+    this.permissionButton = panel.querySelector('.notification-permission-btn');
+    this.permissionStatus = panel.querySelector('.notification-permission-status');
+    this._syncNotificationPermission();
     
     // Event listeners
+    this.permissionButton.addEventListener('click', () => {
+      void this._requestNotificationPermission();
+    });
     panel.querySelector('.close-panel-btn').addEventListener('click', () => {
       this._hidePanel();
     });
@@ -250,6 +279,7 @@ class ProactiveManager {
   }
   
   _showBrowserNotification(title, body, severity = 'medium') {
+    this._syncNotificationPermission();
     if (this.notificationPermission !== 'granted') {
       return;
     }
@@ -359,6 +389,7 @@ class ProactiveManager {
   }
   
   _showPanel() {
+    this._syncNotificationPermission();
     this.panel.style.display = 'flex';
     this._checkNow(); // Refresh when opening
   }

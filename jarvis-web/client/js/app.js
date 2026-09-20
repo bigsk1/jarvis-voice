@@ -317,6 +317,11 @@ class JarvisApp {
     const hamburgerBtn = document.getElementById('hamburgerBtn');
     const sidebar = document.getElementById('sidebar');
     const sidebarOverlay = document.getElementById('sidebarOverlay');
+    document.getElementById('toolsList')?.addEventListener('click', event => {
+      void this._onToolItemClick(event).catch(() => {
+        Utils.toast('Could not add that tool hint', 'warning');
+      });
+    });
     
     if (hamburgerBtn && sidebar) {
       hamburgerBtn.addEventListener('click', () => {
@@ -1251,6 +1256,31 @@ class JarvisApp {
     }
   }
 
+  /** Add a sidebar tool through the same composer hint path as # autocomplete. */
+  async _onToolItemClick(event) {
+    const item = event.target.closest('button.tool-item[data-tool-name]');
+    if (!item) return;
+
+    const name = item.dataset.toolName;
+    const commands = window.commandSystem;
+    let tool = commands?.getTool(name);
+    if (!tool || tool.available === false) {
+      await commands?.refreshTools?.(this.modeSelect?.value || this.socket?.mode);
+      tool = commands?.getTool(name);
+    }
+    if (!tool || tool.available === false) {
+      Utils.toast('This tool is unavailable in the selected mode', 'info');
+      return;
+    }
+    if (!this.chat?._addToolHint(name, { focus: false })) return;
+
+    if (window.matchMedia('(max-width: 820px)').matches) {
+      document.getElementById('sidebar')?.classList.remove('mobile-open');
+      document.body.classList.remove('sidebar-open');
+    }
+    this.chat.inputField?.focus();
+  }
+
   /**
    * Load and display tools list
    */
@@ -1478,6 +1508,7 @@ class JarvisApp {
     const isBlocked = tool.blocked;
     const isMcp = tool.source === 'mcp';
     const needsConfig = tool.available === false;
+    const selectable = !isBlocked && !needsConfig && tool.enabled !== false;
     
     const classes = ['tool-item'];
     if (isBlocked) classes.push('tool-blocked');
@@ -1495,13 +1526,21 @@ class JarvisApp {
         `${tool.setup_hint || ''} ${desc}`.trim();
     }
     const tooltipDesc = Utils.escapeHtml(Utils.truncate(tooltipText || tool.name, 2000));
+    const safeName = Utils.escapeHtml(tool.name);
+    const escapeAttr = value => Utils.escapeHtml(value).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const safeNameAttr = escapeAttr(tool.name);
+    const tag = selectable ? 'button' : 'div';
+    const childTag = selectable ? 'span' : 'div';
+    const actionAttrs = selectable
+      ? ` type="button" data-tool-name="${safeNameAttr}" aria-label="Add #${safeNameAttr} tool hint"`
+      : '';
     
     return `
-      <div class="${classes.join(' ')}" title="${Utils.escapeHtml(tooltipText || tool.name)}">
-        <div class="tool-item-name">${emoji} ${Utils.escapeHtml(tool.name)} ${badge}</div>
-        <div class="tool-item-desc">${Utils.escapeHtml(Utils.truncate(desc, 500))}</div>
-        <div class="tool-item-tooltip" aria-hidden="true">${tooltipDesc}</div>
-      </div>
+      <${tag} class="${classes.join(' ')}"${actionAttrs} title="${escapeAttr(tooltipText || tool.name)}">
+        <${childTag} class="tool-item-name">${emoji} ${safeName} ${badge}${selectable ? '<span class="tool-item-add" aria-hidden="true">+</span>' : ''}</${childTag}>
+        <${childTag} class="tool-item-desc">${Utils.escapeHtml(Utils.truncate(desc, 500))}</${childTag}>
+        <${childTag} class="tool-item-tooltip" aria-hidden="true">${tooltipDesc}</${childTag}>
+      </${tag}>
     `;
   }
   

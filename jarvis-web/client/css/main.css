@@ -290,12 +290,39 @@ body {
   background: var(--bg-hover);
 }
 
+button.tool-item {
+  appearance: none;
+  display: block;
+  width: calc(100% - 2 * var(--space-xs));
+  color: inherit;
+  font-family: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.tool-item:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
 .tool-item-name {
   font-weight: 500;
   color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: var(--space-xs);
+}
+
+.tool-item-add {
+  margin-left: auto;
+  color: var(--accent-tertiary);
+  font-size: var(--text-sm);
+  flex-shrink: 0;
+}
+
+.tool-badge + .tool-item-add {
+  margin-left: var(--space-xs);
 }
 
 .tool-item-desc {
@@ -5457,24 +5484,10 @@ body {
 /* Notification Badge in Header */
 .notification-badge-container {
   position: relative;
-  margin-right: var(--space-sm);
 }
 
 .notification-badge-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: var(--space-xs);
-  border-radius: var(--radius-md);
-  transition: background 0.2s;
   font-size: 1.25rem;
-}
-
-.notification-badge-btn:hover {
-  background: var(--bg-hover);
 }
 
 .notification-count {
@@ -5518,7 +5531,7 @@ body {
 /* Notification Panel */
 .notification-panel {
   position: fixed;
-  top: 60px;
+  top: 68px;
   right: 20px;
   width: 380px;
   max-height: 500px;
@@ -5545,6 +5558,38 @@ body {
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.notification-permission {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.notification-permission[hidden],
+.notification-permission-btn[hidden] {
+  display: none;
+}
+
+.notification-permission-btn {
+  flex-shrink: 0;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.notification-permission-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
 .close-panel-btn {
@@ -5661,8 +5706,8 @@ body {
 }
 
 .notification-item-meta span {
-  font-size: 10px;
-  color: var(--text-muted);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
   background: var(--bg-tertiary);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
