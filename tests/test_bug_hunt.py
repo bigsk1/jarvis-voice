@@ -19,6 +19,7 @@ from bug_hunt import (  # noqa: E402
     DEFAULT_MODEL,
     DISMISSALS_RELATIVE_PATH,
     MAX_FINDING_JSON_CHARS,
+    MAX_LEDGER_CONTEXT_CHARS,
     MAX_MODE_MEMORY_CHARS,
     MEMORY_RELATIVE_PATH,
     RESULTS_RELATIVE_PATH,
@@ -304,6 +305,7 @@ def test_engine_records_only_independently_confirmed_candidates(tmp_path):
         provider=provider,
         tracked_files={"lib/example.py"},
     )
+    assert engine._ledger_text() == "Known fixed bugs\n"
 
     outcome = engine.run_iteration(1)
 
@@ -323,6 +325,51 @@ def test_engine_records_only_independently_confirmed_candidates(tmp_path):
     assert "Repo tool calls: 0 (investigator 0, verifier 0)" in memory
     assert "Duration seconds:" in memory
     assert outcome.finding_id in memory
+
+
+def test_large_ledger_keeps_full_history_index_and_relevant_entries(tmp_path):
+    _write(tmp_path, "lib/example.py", "state = current\nstate = fallback\nreturn state\n")
+    entries = [
+        f"- [FIXED 2026-01-01 | abc1234] Historical issue {i}: "
+        + "A boundary silently lost state after a provider handoff. " * 4
+        for i in range(130)
+    ]
+    entries[1] = (
+        "- [FIXED 2026-01-01 | abc1234] Example state fallback drops current "
+        "state before return; the old repair preserved the original value."
+    )
+    entries[-1] = (
+        "- [FIXED 2026-09-20 | def5678] Most recent Canvas gallery filename "
+        "fix remains visible to the hunter."
+    )
+    ledger = "# Fixed bugs\n" + "\n".join(entries) + "\n"
+    assert len(ledger) > MAX_LEDGER_CONTEXT_CHARS
+    _write(tmp_path, "docs/personal/live-usage-bug-ledger.txt", ledger)
+    provider = _FakeProvider([json.dumps(_candidate_payload()), json.dumps(_verifier_payload())])
+    engine = BugHuntEngine(tmp_path, provider=provider, tracked_files={"lib/example.py"})
+
+    outcome = engine.run_iteration(1)
+
+    assert outcome.action == "confirmed"
+    investigator = provider.calls[0]["messages"][0]["content"]
+    verifier = provider.calls[1]["messages"][0]["content"]
+    for prompt in (investigator, verifier):
+        context = prompt.split("Fixed-bug ledger: ", 1)[1].split(
+            "\n\nHUMAN TRIAGE DISMISSALS", 1
+        )[0]
+        assert len("Fixed-bug ledger: " + context) <= MAX_LEDGER_CONTEXT_CHARS
+        index = context.split("INDEX (leading description):\n", 1)[1].split(
+            "\n\nRECENT FULL ENTRIES", 1
+        )[0]
+        assert len(index.splitlines()) == len(entries)
+        assert "L2 2026-01-01:" in context
+        assert "L66 2026-01-01:" in context
+        assert "L131 2026-09-20:" in context
+        assert "L131: " + entries[-1] in context
+        assert "search/read_lines" in context
+    assert "L3: " + entries[1] in verifier
+    assert "L3: " + entries[1] not in investigator
+    assert (tmp_path / "docs/personal/live-usage-bug-ledger.txt").read_text() == ledger
 
 
 def test_engine_can_create_xai_oauth_provider(tmp_path):
