@@ -53,8 +53,8 @@ printf "JARVIS_DOCKER_UID=%s\nJARVIS_DOCKER_GID=%s\n" "$(id -u)" "$(id -g)" >> .
 ```
 
 `docker-compose.yml` defines eight services. Four start with the default command;
-three more need the **`extras`** profile, and the separate task worker needs the
-**`background-tasks`** profile.
+the other four, including the task worker, start with the **`extras`** profile.
+The worker also retains its **`background-tasks`** profile for core-only deployments.
 
 | Service | Default `up` | `--profile extras` | Role |
 |---------|:------------:|:------------------:|------|
@@ -65,7 +65,7 @@ three more need the **`extras`** profile, and the separate task worker needs the
 | `jarvis-memory` | — | yes | Memory browser UI (`:5002`) |
 | `jarvis-intelligence` | — | yes | Intelligence dashboard (`:5003`) |
 | `jarvis-docs` | — | yes | Docs reader (`:5004`) |
-| `jarvis-task-worker` | — | — | Long-running Web tool jobs; opt in with `--profile background-tasks` |
+| `jarvis-task-worker` | — | yes | Long-running Web tool jobs; also available by itself with `--profile background-tasks` |
 
 ```bash
 # Edit config/cloud.env (or local.env) with provider credentials, and edit .env with mode, tool profile, and UID/GID, then build
@@ -76,7 +76,7 @@ docker compose up -d
 ```
 
 ```bash
-# Optional but recommended: also start Memory, Intelligence, and Docs UIs
+# Optional but recommended: also start Memory, Intelligence, Docs, and the task worker
 # (re-run after the core stack is already up — no rebuild needed)
 docker compose --profile extras up -d
 ```
@@ -122,8 +122,8 @@ docker compose up -d --force-recreate
 ### Background tasks and task callbacks
 
 `jarvis-services` runs reminders, follow-ups and scheduled tasks; it is not the
-long-running tool worker. To use reviewed background tools with the Docker Web UI,
-start the core stack first, then start the optional worker:
+long-running tool worker. `docker compose --profile extras up -d` starts the task
+worker with the other extras. For a core-only deployment, start just the worker:
 
 ```bash
 docker compose --profile background-tasks up -d --build jarvis-task-worker
@@ -137,19 +137,26 @@ it. Background admission and tool choices still default off; enable reviewed too
 in Web **Settings → Tools** after the worker reports ready. Conversion and remote
 media use their existing skill runners, subject to the selected container profile,
 dependencies and provider/network configuration. Compose rendering and worker
-isolation have focused tests; a complete live Docker conversion/media journey has
-not been claimed.
+isolation have focused tests. A live Windows Docker `generate_image` background
+journey has also been exercised; other tool journeys are not claimed here.
 
 The FastAPI container includes the Phase 3a authenticated task-callback receiver.
 Web, API and worker share the task database and credential keyring through `./data`.
 The receiver defaults off, and the API's published host port is bound to
 `127.0.0.1`; a third-party callback needs an intentionally configured HTTPS route.
-The current local-service submission adapter accepts only a literal loopback IP.
+The generic local-service submission form accepts only a literal loopback IP;
+reviewed private HTTPS bindings are a separate path.
 Inside the worker container, `127.0.0.1` is the worker itself, not `jarvis-api` or
 another Compose service. Stock Compose therefore supplies the callback inbox but
-no working cross-container callback producer.
+no working cross-container callback producer. The existing
+`JARVIS_OVERRIDE_JARVIS_API_INTERNAL_URL=http://jarvis-api:8880` configures ordinary
+internal API calls, not the Browser Use callback URL. A value in the root `.env`
+also does not reach a container unless Compose passes it through. Managed Browser
+Use requires literal loopback for both submit and callback URLs, and Compose does
+not start its helper service; replacing only the API hostname cannot complete that path.
 
-**Browser Use is native-host only in the current integration.** Its pinned
+**Browser Use is native-host only in the current integration.** Settings → Tools
+marks it unavailable in Docker and does not offer managed setup actions. Its pinned
 `docker-compose.browser.yml` image is a separate, per-job browser container, not
 part of the ordinary Jarvis image build. The managed **Set up and enable** action
 expects host Docker and tmux control; the default Web image has neither the Docker
@@ -164,8 +171,8 @@ cross-container submission/callback transport; mounting a socket alone is not th
 integration. See [Browser Use](../BROWSER-USE.md) and
 [Task callbacks](../TASK-CALLBACKS.md) for the supported native path and protocol.
 The Docker profile does not explicitly block the Browser Use manifest, so its
-Settings row can appear; **Set up and enable** will report a setup failure in the
-stock Web container. That row is not evidence of Docker support.
+Settings row can still appear with the native-only explanation. It cannot be
+selected for new work or started from the stock Web container.
 
 ### Pulling updates from Git
 
@@ -392,7 +399,7 @@ docker compose -f docker-compose.yml -f docker-compose.mcp.yml build
 docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile extras up -d \
   jarvis-api jarvis-web jarvis-canvas jarvis-memory jarvis-intelligence jarvis-docs
 
-# Full stack including jarvis-services (reminders, scheduled tasks, self-healing)
+# Full stack including jarvis-services (reminders, scheduled tasks, self-healing) and jarvis-task-worker
 docker compose -f docker-compose.yml -f docker-compose.mcp.yml --profile extras up -d
 
 # Confirm Docker access and MCP discovery from jarvis-web
@@ -496,6 +503,7 @@ All services use `restart: unless-stopped`. If Docker is running, you intend the
 | `jarvis-memory` | Memory browser (extras) |
 | `jarvis-intelligence` | Intelligence dashboard (extras) |
 | `jarvis-docs` | Docs reader (extras) |
+| `jarvis-task-worker` | Long-running Web tool jobs (extras or background-tasks profile) |
 
 Background daemons run inside the `jarvis-services` container. Self-healing **does not** use host-style PID restart loops in Docker (`JARVIS_DEPLOYMENT=docker` disables that). Container restart policy handles crashes.
 

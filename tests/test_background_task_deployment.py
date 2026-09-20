@@ -128,11 +128,11 @@ def test_parallel_modes_and_per_adapter_capacity(store, config_root):
     assert not thread.is_alive()
 
 
-def test_compose_worker_is_opt_in_shared_storage_and_separate_from_init():
+def test_compose_worker_joins_extras_with_standalone_profile_and_shared_storage():
     compose = yaml.safe_load((ROOT / 'docker-compose.yml').read_text())
     services = compose['services']
     worker = services['jarvis-task-worker']
-    assert worker['profiles'] == ['background-tasks']
+    assert worker['profiles'] == ['extras', 'background-tasks']
     assert worker['command'] == ['task-worker']
     assert worker['init'] and worker['restart'] == 'unless-stopped'
     assert './data:/app/data' in worker['volumes']

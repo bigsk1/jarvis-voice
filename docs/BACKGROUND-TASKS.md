@@ -120,7 +120,7 @@ Ordinary clear/delete refuses outstanding work. Explicit disposition fences the 
 
 **Settings → Tools → Background tasks** contains the master switch and saved list of tools allowed to run in the background. Changes save immediately and apply to Web text chat and tool dialogs in both modes, across messages, tabs, reloads, and restarts. The composer has no background checkboxes. Preferences can be saved while the worker is offline; readiness is shown separately.
 
-**Browser Use has one normal setup action in this same panel.** Click **Set up and enable** once. Jarvis checks Docker, downloads the pinned optional image when needed, provisions and verifies its private callback source, enables the receiver and saved tool permission, and starts the managed tmux helper. Setup returns immediately while Settings polls progress; a second click joins the same attempt, and interrupted setup can be retried. The Integrations tab keeps advanced callback and delivery controls; it is not part of the normal Browser Use setup. Afterward the usual Start All groups manage the helper automatically.
+**Browser Use has one normal setup action in this same panel on native installs.** Click **Set up and enable** once. Jarvis checks Docker, downloads the pinned optional image when needed, provisions and verifies its private callback source, enables the receiver and saved tool permission, and starts the managed tmux helper. Setup returns immediately while Settings polls progress; a second click joins the same attempt, and interrupted setup can be retried. Docker deployments show a native-only explanation instead of setup controls. The Integrations tab keeps advanced callback and delivery controls; it is not part of the normal Browser Use setup. Afterward the usual Start All groups manage the helper automatically.
 
 To use conversion in the background, enable the master switch and **Convert file** once. The **Convert File** dialog uploads, submits its known tool arguments, and receives a short durable queue receipt without a model routing or receipt-writing call; a short note shows whether it will run in the current turn, run in the background, or cannot queue because the worker is unavailable. Typed conversion requests follow the same server policy through ordinary model routing. With background execution off, Convert retains its foreground chat path. Explicit submissions use the reviewed local skill manifest and shared runner; the client cannot grant permissions or name an arbitrary script. Turning the master switch off retains the saved tool choices.
 
@@ -261,7 +261,8 @@ The service restarts after failure, has a 20-second stop budget, and stops its c
 
 ## Optional Docker worker
 
-The ordinary Compose services are unchanged when the profile is absent:
+The `extras` profile starts the worker alongside the other optional UIs. Core-only
+deployments can start it separately with the retained `background-tasks` profile:
 
 ```bash
 docker compose --profile background-tasks up -d --build jarvis-task-worker

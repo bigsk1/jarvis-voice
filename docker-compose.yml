@@ -48,7 +48,7 @@ services:
   jarvis-task-worker:
     <<: *jarvis-common
     command: ["task-worker"]
-    profiles: ["background-tasks"]
+    profiles: ["extras", "background-tasks"]
     volumes:
       - ./config:/app/config:ro
       - ./skills/personal:/app/skills/personal

@@ -98,7 +98,8 @@ also be running. Each admitted callback job starts its own disposable container 
 `docker compose run --rm`; there is no always-on browser or exposed CDP port.
 This first deployment requires the native Jarvis host to have Docker access;
 mounting a Docker socket into a containerized Jarvis is not supplied or required.
-The ordinary Jarvis Docker Compose stack does not run this managed helper; Web,
+The ordinary Jarvis Docker Compose stack does not run this managed helper.
+Settings → Tools marks Browser Use native-only there and disables setup. Web,
 worker and API containers have separate loopback namespaces. The optional MCP
 socket overlay does not make Browser Use operational there. See the
 [Docker deployment boundary](docker/README.md#background-tasks-and-task-callbacks).

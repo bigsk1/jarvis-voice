@@ -22,6 +22,10 @@ from ..services.conversation_store import ConversationBusyError
 
 background_bp = Blueprint("background_tasks", __name__)
 logger = logging.getLogger(__name__)
+BROWSER_DOCKER_UNAVAILABLE = (
+    'Browser Use is available only in native Jarvis installations; '
+    'the Docker stack cannot run its managed browser helper.'
+)
 
 
 def _browser_setup_paths(tasks):
@@ -136,14 +140,19 @@ def service():
 
 
 def browser_details(tasks):
-    from lib.webhook_integrations.browser import managed_status
+    from lib.webhook_integrations.browser import managed_runtime_available, managed_status
 
     details = managed_status(tasks.store)
+    details['deployment_supported'] = managed_runtime_available()
+    settings = tasks.store.settings()
+    details['selected'] = settings['background_enabled'] and 'browser_use' in settings['background_tools']
+    if not details['deployment_supported']:
+        details.update(setup={'state': 'unsupported', 'message': BROWSER_DOCKER_UNAVAILABLE},
+                       worker_ready=False, managed_by_tmux=False, operational=False, ready=False)
+        return details
     details['setup'] = _browser_setup_status(tasks)
     healthy = {name for worker in tasks.store.healthy_workers() for name in worker['adapters']}
     details['worker_ready'] = 'http_callback_v1' in healthy
-    settings = tasks.store.settings()
-    details['selected'] = settings['background_enabled'] and 'browser_use' in settings['background_tools']
     try:
         managed = subprocess.run(['tmux', 'has-session', '-t', 'jarvis-browser-use'],
                                  capture_output=True, timeout=2).returncode == 0
@@ -251,6 +260,10 @@ def status():
 @background_bp.post('/api/background-tasks/tools/browser_use/actions')
 @operator_required
 def browser_action():
+    from lib.webhook_integrations.browser import managed_runtime_available
+
+    if not managed_runtime_available():
+        raise TaskError(BROWSER_DOCKER_UNAVAILABLE)
     tasks = service()
     body = request.get_json(silent=True)
     action = body.get('action') if isinstance(body, dict) and set(body) == {'action'} else None

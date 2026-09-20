@@ -647,7 +647,7 @@ docker compose build
 docker compose --profile extras up -d
 ```
 
-The safe Docker tool profile is enabled by default. Hybrid users can select the full `default` profile and block container-incompatible tools only in Web UI Settings. See the **[Docker Guide](docs/docker/README.md)** for setup, LAN access, authentication, shell/CLI examples, and native/Docker coexistence.
+The `extras` profile also starts the background task worker; individual background tools still require enabling in Web Settings. The safe Docker tool profile is enabled by default. Hybrid users can select the full `default` profile and block container-incompatible tools only in Web UI Settings. See the **[Docker Guide](docs/docker/README.md)** for setup, LAN access, authentication, shell/CLI examples, and native/Docker coexistence.
 
 ### 4. Run Wake Word or CLI
 

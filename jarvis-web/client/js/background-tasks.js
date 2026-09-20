@@ -78,6 +78,8 @@ class BackgroundTasks {
       this.enabledInput.checked = this.enabled;
       this.enabledInput.disabled = this.saving === true || Boolean(status.coordinator_unavailable_reason);
       const saved = new Set(status.settings.background_tools || []);
+      const availableSaved = [...saved].some(name => status.tools.includes(name)
+        && status.tool_details?.[name]?.browser_use?.deployment_supported !== false);
       this.choices.replaceChildren();
       for (const name of new Set([...(status.configured_tools || status.tools), ...saved])) {
         const label = document.createElement('label');
@@ -96,9 +98,12 @@ class BackgroundTasks {
         const details = status.tool_details?.[name];
         const browser = details?.browser_use;
         const privateCallback = details?.private_callback;
-        if (name === 'browser_use' && browser && !browser.operational && !input.checked) input.disabled = true;
+        if (name === 'browser_use' && browser && (!browser.operational || browser.deployment_supported === false)
+            && !input.checked) input.disabled = true;
         if (privateCallback && (!privateCallback.policy_ready || !privateCallback.source_ready || !privateCallback.service_ready) && !input.checked) input.disabled = true;
-        description.textContent = name === 'browser_use' && browser ? (browser.setup?.state === 'running'
+        description.textContent = name === 'browser_use' && browser ? (browser.deployment_supported === false
+          ? 'Native install only. Browser Use is unavailable when Jarvis runs in Docker.'
+          : browser.setup?.state === 'running'
           ? browser.setup.message || 'Setting up Browser Use…'
           : browser.setup?.state === 'failed' ? browser.setup.message
           : !browser.configured
@@ -125,13 +130,14 @@ class BackgroundTasks {
           : 'Use background execution when enabled above.';
         text.append(description);
         label.append(input, text);
-        if (name === 'browser_use' && browser) label.append(this.browserActions(browser));
+        if (name === 'browser_use' && browser && browser.deployment_supported !== false) label.append(this.browserActions(browser));
         this.choices.append(label);
       }
       this.note.textContent = setup?.state === 'running' ? 'Browser Use setup is running. You can keep chatting while the pinned image downloads.'
         : status.coordinator_unavailable_reason
         || (!this.choices.children.length ? 'No supported background tools are installed.'
         : !status.worker_ready ? 'Worker offline. Preferences are saved, but enabled tools cannot queue until it starts. Open Manage tasks for setup.'
+        : this.enabled && saved.size && !availableSaved ? 'Selected background tools are unavailable in this deployment.'
         : this.enabled && saved.size ? 'Ready. Enabled tools run in the background from chat and tool dialogs.'
         : this.enabled ? 'Choose a tool below to use background execution.' : 'Off. Tools run in the current chat turn.');
     } catch (error) {

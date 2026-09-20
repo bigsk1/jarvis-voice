@@ -17,6 +17,11 @@ from .contracts import ADAPTER, endpoint
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def managed_runtime_available():
+    """The managed helper currently requires native host Docker and tmux."""
+    return os.environ.get('JARVIS_DEPLOYMENT', '').strip().lower() != 'docker'
+
+
 def config_path(store):
     return store.path.parent / 'secrets/browser-use.json'
 
@@ -36,6 +41,8 @@ def read_config(store):
 
 
 def callback_sources(store):
+    if not managed_runtime_available():
+        return {}
     try:
         return {'browser_use': read_config(store)['source_id']}
     except (OSError, ValueError, KeyError, TypeError):
@@ -44,6 +51,8 @@ def callback_sources(store):
 
 def service_ready(store, *, timeout=.35):
     """Check the private loopback helper without exposing its bearer credential."""
+    if not managed_runtime_available():
+        return False
     try:
         import requests
 
@@ -65,6 +74,8 @@ def managed_status(store):
     result = {'configured': False, 'receiver_enabled': False, 'source_enabled': False,
               'source_validated': False, 'credential_ready': False,
               'service_ready': False, 'source_id': None}
+    if not managed_runtime_available():
+        return result
     try:
         config = read_config(store)
         result['configured'], result['source_id'] = True, config['source_id']

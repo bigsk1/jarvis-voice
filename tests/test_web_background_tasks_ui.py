@@ -255,6 +255,33 @@ assert(notices.some(item=>String(item[0]).includes('configured and enabled')));
 """)
 
 
+def test_browser_use_docker_row_explains_native_only_without_setup_action():
+    run_browser(BACKGROUND + r"""
+manager.control=new Element('section');
+manager.enabledInput=new Element('input');manager.choices=new Element('div');manager.note=new Element('p');
+const status={settings:{background_enabled:false,background_tools:[]},tools:['browser_use'],
+  configured_tools:['browser_use'],coordinator_ready:true,worker_ready:true,
+  tool_details:{browser_use:{worker_ready:false,browser_use:{deployment_supported:false,
+    configured:false,operational:false,ready:false,setup:{state:'unsupported',message:'Native only'}}}}};
+const calls=[];
+sandbox.Utils.auth={fetch:async(url,options={})=>{
+  calls.push({url,options});return {ok:true,status:200,json:async()=>status};
+}};
+await manager.refresh();
+const row=manager.choices.children[0];
+assert.equal(row.children[0].disabled,true);
+assert.match(row.children[1].children[0].textContent,/Native install only.*unavailable.*Docker/);
+assert.equal(row.children.length,2);
+assert.equal(calls.length,1);
+status.settings.background_enabled=true;
+status.settings.background_tools=['browser_use'];
+await manager.refresh();
+assert.equal(manager.choices.children[0].children[0].checked,true);
+assert.equal(manager.choices.children[0].children[0].disabled,false);
+assert.match(manager.note.textContent,/Selected background tools are unavailable/);
+""")
+
+
 def test_background_composer_does_not_send_a_duplicate_policy_override():
     run_browser(BACKGROUND + r"""
 assert.equal(fs.readFileSync(ROOT+'/jarvis-web/client/index.html','utf8').includes('backgroundRepeats'),false);

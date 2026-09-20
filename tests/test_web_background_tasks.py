@@ -915,6 +915,34 @@ def test_browser_setup_returns_202_and_second_click_joins_the_same_pull(web_task
     assert oct(routes._browser_setup_paths(h.background)[0].stat().st_mode & 0o777) == '0o600'
 
 
+def test_docker_browser_setup_is_explained_and_rejected_before_pull(web_tasks, monkeypatch):
+    import browser_agent
+    from jarvis_bundle_chat_test.routes import background_tasks as routes
+    from lib.webhook_integrations import browser
+
+    h = web_tasks
+    h.background.adapters['browser_use'] = 'http_callback_v1'
+    monkeypatch.setenv('JARVIS_DEPLOYMENT', 'docker')
+    monkeypatch.setattr(browser_agent, 'install_runtime', lambda: pytest.fail('Docker image pull must not start'))
+    monkeypatch.setattr(browser, 'read_config', lambda _store: pytest.fail('Native browser config must not load'))
+    assert browser.callback_sources(h.tasks) == {}
+    assert browser.service_ready(h.tasks) is False
+    headers = {'Authorization': 'Bearer operator-test', 'Origin': 'http://localhost'}
+    http = h.app.test_client()
+
+    details = http.get('/api/background-tasks?mode=cloud', headers=headers).get_json()[
+        'tool_details']['browser_use']['browser_use']
+    assert details['deployment_supported'] is False
+    assert details['setup']['state'] == 'unsupported'
+    assert 'native Jarvis' in details['setup']['message']
+    assert details['operational'] is False
+    response = http.post('/api/background-tasks/tools/browser_use/actions',
+                         json={'action': 'setup'}, headers=headers)
+    assert response.status_code == 409
+    assert 'native Jarvis' in response.get_json()['error']
+    assert not routes._browser_setup_paths(h.background)[0].exists()
+
+
 def test_interrupted_browser_setup_is_retryable_without_a_second_puller(web_tasks, monkeypatch):
     import browser_agent
     from jarvis_bundle_chat_test.routes import background_tasks as routes
