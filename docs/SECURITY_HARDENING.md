@@ -1,6 +1,6 @@
 # Security Hardening Guide
 
-**Last Updated:** April 4, 2026  
+**Last Updated:** September 19, 2026
 **Status:** In Progress
 
 ## Overview
@@ -15,7 +15,7 @@ This document tracks security vulnerabilities and hardening efforts for Jarvis V
 |---|-----------|------|-------|--------|
 | 1 | `api_call.py` | 🔴 CRITICAL | No SSRF protection - can access internal IPs, cloud metadata | ✅ DONE |
 | 2 | `crawl_url.py` | 🔴 CRITICAL | `js_code` param allows arbitrary JavaScript execution | ✅ DONE |
-| 3 | `execute_bash.py` | 🔴 CRITICAL | Blocklist easily bypassed, uses `shell=True` | ✅ DONE |
+| 3 | General local shell | 🔴 CRITICAL | Blocklist could not safely constrain `shell=True` | ✅ REMOVED |
 | 4 | Memory system | 🟠 HIGH | Content stored/recalled without sanitization | ✅ DONE |
 | 5 | Orchestrator | 🟠 HIGH | No input validation before LLM routing | ✅ DONE |
 | 6 | `screenshot_url.py` | 🟠 HIGH | No SSRF protection on URLs | ✅ DONE |
@@ -121,51 +121,12 @@ else:
 
 ---
 
-### Fix 3: Harden execute_bash.py ✅ IMPLEMENTED
+### Fix 3: Remove the general local shell ✅ IMPLEMENTED
 
-**File:** `skills/execute_bash.py`
-
-**Changes Implemented:**
-1. Expanded blocklist from 7 to 30+ patterns
-2. Added regex-based detection for sophisticated attacks
-3. Detects command substitution, interpreter escapes, piped exfiltration
-4. Logs all blocked commands for audit
-
-**Now Blocks:**
-```python
-BLOCKED_PATTERNS = [
-    # Filesystem destruction
-    'rm -rf /', 'rm -r -f /', 'rm -fr /', 'mkfs', 'dd if=', 'shred',
-    # Fork bombs
-    ':(){:|:&};:', 
-    # Network exfiltration
-    '| nc ', '| netcat ', '| curl ', '| wget ',
-    # Reverse shells
-    '/dev/tcp/', '/dev/udp/', 'bash -i', 'sh -i',
-    # Persistence
-    'crontab -', '/etc/cron',
-    # Shutdown
-    'shutdown', 'reboot', 'poweroff',
-]
-
-BLOCKED_REGEX_PATTERNS = [
-    r'curl\s+.*\|\s*(ba)?sh',     # Download and execute
-    r'python[23]?\s+-c\s+.*os\.system',  # Python injection
-    r'base64\s+-d.*\|\s*(ba)?sh', # Base64 decode and execute
-    r';\s*rm\s',                   # Command chaining with rm
-]
-
-# PROTECTED PATHS — built at runtime from ``lib/paths.py`` (``get_protected_paths()`` /
-# ``get_allowed_write_paths()``): repo root, ``~/.ssh``, ``~/.gnupg``, ``~/.config``, system
-# prefixes, with writes allowed under ``<repo>/data``, ``logs``, ``stash``, ``/tmp``, etc.
-```
-
-`execute_bash` also applies best-effort checks for reads under the restricted Jarvis
-`config/`, `data/secrets/`, and `data/backups/` trees. These checks are designed to
-prevent common accidental LLM-generated commands from exposing sensitive files.
-They are heuristic command inspection, not a filesystem sandbox or a security
-boundary against deliberately obfuscated shell commands. Use OS-level isolation
-when commands must run against untrusted input.
+The `execute_bash` skill and its heuristic command blocklist were removed.
+Jarvis now uses dedicated tools for host status, network diagnostics, logs,
+Docker, and configured remote hosts. Shared path guards in `lib/paths.py`
+and `lib/security_utils.py` remain for other tools.
 
 ---
 

@@ -146,7 +146,7 @@ Your response:"""
                 "mcp_brave_search", "mcp_fetch",
             ]
             simple_tools = ["get_time", "crypto_price", "weather"]
-            complex_tools = ["opencode", "execute_bash", "send_webhook", "api_call"]
+            complex_tools = ["opencode", "send_webhook", "api_call"]
 
             if any(search in tool_name.lower() for search in search_tools):
                 return self.format_single_turn_casual(user_query, raw_response)

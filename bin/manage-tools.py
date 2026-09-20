@@ -359,11 +359,11 @@ def main():
     
     # Enable command
     enable_parser = subparsers.add_parser('enable', help='Enable a tool')
-    enable_parser.add_argument('tool_name', help='Tool name (e.g., execute_bash)')
+    enable_parser.add_argument('tool_name', help='Tool name (e.g., network_tools)')
     
     # Disable command
     disable_parser = subparsers.add_parser('disable', help='Disable a tool')
-    disable_parser.add_argument('tool_name', help='Tool name (e.g., execute_bash)')
+    disable_parser.add_argument('tool_name', help='Tool name (e.g., network_tools)')
     
     # Enable all command
     subparsers.add_parser('enable-all', help='Enable all tools')

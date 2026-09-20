@@ -58,7 +58,6 @@ jarvis
 | **workflow** | "Find and run my existing research workflow" | ✅ Auto-approved |
 | **send_webhook** | "Send webhook to URL with data X" | ⚠️ Network |
 | **api_call** | "Call the API at github.com/users/X" | ⚠️ Network |
-| **execute_bash** | "Run the command uptime" | 🚨 Dangerous |
 
 `tool_search` is a summary-first discovery tool. In semantic and browse mode it focuses on non-ghost tools, because ghost tools are already considered by Tool RAG. Exact lookup can still inspect a ghost tool by name when needed.
 
@@ -317,10 +316,10 @@ Control which tools are loaded to reduce token count and improve performance:
 ./bin/manage-tools.py list -v
 
 # Disable a tool (reduces token count)
-./bin/manage-tools.py disable execute_bash
+./bin/manage-tools.py disable network_tools
 
 # Enable a tool
-./bin/manage-tools.py enable execute_bash
+./bin/manage-tools.py enable network_tools
 
 # Enable all tools
 ./bin/manage-tools.py enable-all

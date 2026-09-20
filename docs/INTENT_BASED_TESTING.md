@@ -304,30 +304,12 @@ crypto_tests = {
 
 ---
 
-### Category 6: Bash Commands (Dangerous)
+### Category 6: System Checks
 
-**Intent**: User wants to execute system command
-
-```python
-bash_tests = {
-    "expected_tool": "execute_bash",
-    "queries": [
-        # Direct commands
-        "Run ls -la",
-        "Execute uptime",
-        
-        # Natural variations
-        "Check disk space",                   # → Should infer "df -h"
-        "Show running processes",             # → Should infer "ps aux"
-        "What's the system uptime?",          # → Should infer "uptime"
-        
-        # Ambiguous (may need clarification)
-        "Restart the server",                 # ⚠️ Dangerous - needs confirmation
-        "Kill that process",                  # ⚠️ Needs PID or name
-    ],
-    "requires_confirmation": True,
-}
-```
+**Intent**: User wants to inspect host status without a general local shell.
+Use `system_monitor` for CPU, memory, disk, and process information;
+`network_tools` for connectivity; and `query_service_logs` for logs.
+Arbitrary local commands have no Jarvis tool.
 
 ---
 
@@ -1017,4 +999,3 @@ class TestNewToolIntent:
 - **Ongoing**: Continuous improvement
 
 **This is how we build a robust, human-friendly AI assistant.** 🎯
-

@@ -756,17 +756,11 @@ class ToolSearchRuntimeTests(unittest.TestCase):
                     "role": "assistant",
                     "content": "The checks completed.",
                     "tools_used": [
-                        "execute_bash",
                         "network_tools",
                         "speaker_volume",
                         "system_monitor",
                     ],
                     "tool_results": {
-                        "execute_bash": {
-                            "exit_code": 0,
-                            "stdout_excerpt": "ok \"quoted\"\nnext line",
-                            "stderr_excerpt": "",
-                        },
                         "network_tools": {
                             "packet_loss_percent": 0.0,
                             "legacy_nan": float("nan"),
@@ -790,11 +784,6 @@ class ToolSearchRuntimeTests(unittest.TestCase):
             tool_label, payload = line.removeprefix("  └─ ").split(" data: ", 1)
             serialized_tools[tool_label] = json.loads(payload)
 
-        self.assertEqual(serialized_tools["execute_bash"]["exit_code"], 0)
-        self.assertEqual(
-            serialized_tools["execute_bash"]["stdout_excerpt"],
-            "ok \"quoted\"\nnext line",
-        )
         self.assertEqual(
             serialized_tools["network_tools"]["packet_loss_percent"],
             0.0,
@@ -806,7 +795,6 @@ class ToolSearchRuntimeTests(unittest.TestCase):
         self.assertEqual(serialized_tools["speaker_volume"]["volume"], 0)
         self.assertIs(serialized_tools["speaker_volume"]["muted"], False)
         self.assertEqual(serialized_tools["system_monitor"]["issue_count"], 0)
-        self.assertNotIn("stderr_excerpt", serialized_tools["execute_bash"])
         self.assertNotIn("issues", serialized_tools["system_monitor"])
         self.assertNotIn("details", serialized_tools["system_monitor"])
         self.assertNotIn("note", serialized_tools["system_monitor"])

@@ -219,7 +219,7 @@ Important:
 
 ### Example C: Single complex tool, long reply in `auto`
 
-Example: `opencode`, `execute_bash`, `api_call`
+Example: `opencode`, `send_webhook`, `api_call`
 
 ```text
 User asks for complex task
@@ -378,7 +378,7 @@ SIMPLE_TOOLS = ["get_time", "crypto_price", "weather"]
 Keep raw response if `> 75` words, otherwise condense.
 
 ```python
-COMPLEX_TOOLS = ["opencode", "execute_bash", "send_webhook", "api_call"]
+COMPLEX_TOOLS = ["opencode", "send_webhook", "api_call"]
 ```
 
 ---

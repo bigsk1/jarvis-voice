@@ -2476,10 +2476,6 @@ def _extract_bounded_content_followup(
             ('transcript', 'transcript_excerpt', 6000),
             ('transcript_excerpt', 'transcript_excerpt', 6000),
         ),
-        'execute_bash': (
-            ('stdout', 'stdout_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
-            ('stderr', 'stderr_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
-        ),
         'ssh_remote': (
             ('stdout', 'stdout_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),
             ('stderr', 'stderr_excerpt', FOLLOWUP_CONTENT_EXCERPT_MAX_CHARS),

@@ -371,7 +371,7 @@ Examples:
 # Multi-turn: Recall + Action
 "What's my server IP? Then SSH into it"
 → Turn 1: recall (gets IP from memory)
-→ Turn 2: execute_bash (SSH command with IP)
+→ Turn 2: ssh_remote (configured host)
 ```
 
 See [MULTI_TURN_ORCHESTRATION.md](MULTI_TURN_ORCHESTRATION.md) for details.

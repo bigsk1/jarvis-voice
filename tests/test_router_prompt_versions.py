@@ -26,17 +26,17 @@ from router_v2 import LLMRouter  # noqa: E402
 from tts_normalizer import XAI_INLINE_SPEECH_TAGS, XAI_WRAPPING_SPEECH_TAGS  # noqa: E402
 
 
-V1_SHA256 = "6c2ecbb0c032af7f7ffc70b6d093d11e918230e31ef4ddb7bfffadf9f4b4efc1"
-V2_SHA256 = "da6a79e6caacdbb15629079aa3cad095d650093b0a865aeb4eff2e386926a36b"
-V3_SHA256 = "d4471025efaf49af999c2104c841b5b208fda6494d7b95a7928ff61b810dcf2d"
-V4_SHA256 = "783672bb395ea6a92279454f5a99713f96029875d6bef0b288613b9bc2dace66"
+V1_SHA256 = "7e6aba1b93b5765ba409d3bf520b67ab8af9bef288d4926a2faae7821d6b6671"
+V2_SHA256 = "a3ef882708880d0372ad3dc0636e1e01890a79ca611e8c5e582ceca6e459128d"
+V3_SHA256 = "323ede1603570e646f61eb907ff60a14f64bd9c35af67b9c82d29e8ad8d24ecf"
+V4_SHA256 = "a077bf959ed6f0772129dc9fda6e43f6fe4521a207a45446acb4dd6edb13ced2"
 
 
-def test_v1_is_exact_established_router_prompt_baseline():
+def test_v1_is_pinned_recovery_router_prompt():
     version, prompt = get_router_system_prompt("v1")
 
     assert version == "v1"
-    assert len(prompt) == 31_491
+    assert len(prompt) == 31_826
     assert len(prompt.splitlines()) == 417
     assert hashlib.sha256(prompt.encode()).hexdigest() == V1_SHA256
 
@@ -50,9 +50,9 @@ def test_v2_is_compact_standalone_prompt_with_its_own_hash():
     version, v2 = get_router_system_prompt("v2")
 
     assert version == "v2"
-    assert len(v2) == 13_771
+    assert len(v2) == 14_006
     assert len(v2.splitlines()) == 89
-    assert len(v2.split()) == 1_944
+    assert len(v2.split()) == 1_986
     assert v2.isascii()
     assert hashlib.sha256(v2.encode()).hexdigest() == V2_SHA256
 
@@ -61,9 +61,9 @@ def test_v3_is_caveman_hybrid_with_normal_output_guard_and_own_hash():
     version, v3 = get_router_system_prompt("v3")
 
     assert version == "v3"
-    assert len(v3) == 9_814
+    assert len(v3) == 10_022
     assert len(v3.splitlines()) == 92
-    assert len(v3.split()) == 1_282
+    assert len(v3.split()) == 1_316
     assert v3.isascii()
     assert "NEVER imitate caveman grammar in user-facing answer" in v3
     assert "Speak normal fluent language" in v3
@@ -74,9 +74,9 @@ def test_v4_is_caveman_light_with_normal_output_guard_and_own_hash():
     version, v4 = get_router_system_prompt("v4")
 
     assert version == "v4"
-    assert len(v4) == 10_284
+    assert len(v4) == 10_508
     assert len(v4.splitlines()) == 46
-    assert len(v4.split()) == 1_356
+    assert len(v4.split()) == 1_393
     assert "NEVER use caveman grammar in user answers" in v4
     assert "Speak normal fluent English" in v4
     assert hashlib.sha256(v4.encode()).hexdigest() == V4_SHA256

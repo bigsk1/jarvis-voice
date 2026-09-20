@@ -19,10 +19,10 @@ Jarvis now supports enabling/disabling tools dynamically, similar to MCP servers
 ./bin/manage-tools.py list -v
 
 # Disable a tool
-./bin/manage-tools.py disable execute_bash
+./bin/manage-tools.py disable network_tools
 
 # Enable a tool
-./bin/manage-tools.py enable execute_bash
+./bin/manage-tools.py enable network_tools
 
 # Enable all tools
 ./bin/manage-tools.py enable-all
@@ -144,7 +144,7 @@ Ollama models have limited context windows. Disable unnecessary tools:
 # Keep only essential tools for conversation
 ./bin/manage-tools.py disable send_webhook
 ./bin/manage-tools.py disable api_call
-./bin/manage-tools.py disable execute_bash
+./bin/manage-tools.py disable network_tools
 ./bin/manage-tools.py disable opencode
 
 # Result: ~6k tokens → ~3k tokens (50% reduction!)
@@ -156,14 +156,14 @@ Ollama models have limited context windows. Disable unnecessary tools:
 ```bash
 ./bin/manage-tools.py disable crypto_price
 ./bin/manage-tools.py disable send_webhook
-# Keep: opencode, execute_bash, memory tools
+# Keep: opencode and memory tools
 ```
 
 **Home Automation Profile**:
 ```bash
 ./bin/manage-tools.py disable opencode
 ./bin/manage-tools.py disable crypto_price
-# Keep: api_call, send_webhook, execute_bash
+# Keep: api_call and send_webhook
 ```
 
 ### 3. Testing & Development
@@ -182,7 +182,7 @@ Ollama models have limited context windows. Disable unnecessary tools:
 
 ```bash
 # Disable dangerous tools in production
-./bin/manage-tools.py disable execute_bash
+./bin/manage-tools.py disable ssh_remote
 ./bin/manage-tools.py disable opencode
 ```
 
@@ -353,7 +353,7 @@ cat logs/baseline-tokens-local.json
 
 # Disable heavy tools
 ./bin/manage-tools.py disable opencode     # -500 tokens
-./bin/manage-tools.py disable execute_bash # -200 tokens
+./bin/manage-tools.py disable network_tools # token savings depend on active schema
 ./bin/manage-tools.py disable api_call     # -300 tokens
 ```
 
@@ -424,7 +424,7 @@ Automatically disable unused tools after 7 days:
 | **Conversations** | get_recent_conversations, search_conversations | 2 |
 | **Intelligence** | manage_intel, ingest_intel | 2 |
 | **Reminders/Alerts** | create_reminder, list_reminders, acknowledge_reminders, list_alerts, acknowledge_alerts, price_alert | 6 |
-| **Development** | opencode, check_opencode_sessions, execute_bash, check_tool_logs, query_service_logs | 5 |
+| **Development** | opencode, check_opencode_sessions, check_tool_logs, query_service_logs | 4 |
 | **Communication** | send_email, send_webhook, phone_call, openclaw | 4 |
 | **External APIs** | api_call, crypto_price, stock_price, weather, get_time | 5 |
 | **Media & Content** | spotify, generate_music, youtube_transcript, crawl_url, screenshot_url | 5 |
@@ -622,7 +622,7 @@ entries = [{'title': e.title, 'link': e.link} for e in feed.entries[:10]]
 | Category | Rating | Tools | Notes |
 |----------|--------|-------|-------|
 | **Memory & Context** | ⭐⭐⭐⭐⭐ | 7 tools + deep_memory_search | Excellent - FTS5, semantic, cross-source |
-| **Development/Coding** | ⭐⭐⭐⭐⭐ | opencode, execute_bash, ssh_remote, docker_control | OpenCode is powerful, SSH for remote |
+| **Development/Coding** | ⭐⭐⭐⭐⭐ | opencode, ssh_remote, docker_control | OpenCode handles coding, SSH handles configured remote hosts |
 | **Web Search & Scraping** | ⭐⭐⭐⭐⭐ | brave_search, crawl_url, screenshot_url, fetch | Stealth scraping, vision analysis |
 | **Communication** | ⭐⭐⭐⭐ | send_email, phone_call, send_webhook, openclaw | Missing: Slack, Discord |
 | **Productivity** | ⭐⭐⭐⭐ | calendar (n8n), reminders, alerts, canvas, stash | Missing: Todoist, Notion |

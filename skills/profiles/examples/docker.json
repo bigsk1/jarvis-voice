@@ -3,7 +3,6 @@
   "overrides": {
     "check_opencode_sessions": false,
     "docker_control": false,
-    "execute_bash": false,
     "mcp_brave_search_brave_local_search": false,
     "mcp_brave_search_brave_news_search": false,
     "mcp_brave_search_brave_web_search": false,

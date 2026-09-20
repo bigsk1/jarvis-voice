@@ -417,11 +417,11 @@ The reflection LLM now receives **complete context** about each interaction:
 **Outcome Status**: SUCCESS
 
 **AVAILABLE TOOLS** (what the LLM could choose from):
-search_memory, recall, semantic_recall, remember, mcp_fetch_fetch, execute_bash...
+search_memory, recall, semantic_recall, remember, mcp_fetch_fetch, network_tools...
 
 **TOOL CATEGORIES**:
 MEMORY TOOLS (check FIRST per memory-first rule): search_memory, recall, semantic_recall
-ACTION TOOLS (use after memory): mcp_fetch_fetch, execute_bash, api_call, send_webhook
+ACTION TOOLS (use after memory): mcp_fetch_fetch, network_tools, api_call, send_webhook
 
 **Tool Results** (what the tools returned):
 {"mcp_fetch_fetch": {"status": 200, "body": "Ollama is running..."}}
@@ -1416,7 +1416,7 @@ Query: "curl localhost to check ollama"
     [Find matches: "server health check queries"]
          │
          ▼
-    [Apply preferred_tools bias: execute_bash +0.9]  ← Uses preferred_tools (not embedded)
+    [Apply preferred_tools bias: network_tools +0.9]  ← Uses preferred_tools (not embedded)
 ```
 
 ### Re-embedding After Manual Edits
@@ -1461,8 +1461,8 @@ completion state match the current contract.
 # 1. Edit in SQLite (or SQLite Pro)
 sqlite3 data/jarvis_intelligence.db "
 UPDATE insights SET
-    description = 'Use execute_bash for private network checks (192.168.x, localhost)',
-    preferred_tools = '{\"execute_bash\": 0.9}'
+    description = 'Use network_tools for private network checks (192.168.x, localhost)',
+    preferred_tools = '{\"network_tools\": 0.9}'
 WHERE id = 42;
 "
 
@@ -2127,7 +2127,7 @@ Jarvis knows: User wants verbose mode because:
    - "morning routine" → weather + reminders + calendar
 
    ## Tool Preferences
-   - Server checks: prefer execute_bash with curl
+   - Server checks: prefer network_tools for HTTP or port checks
    - Prices: always use crypto_price tool
    - Never: search_memory for real-time data
    ```

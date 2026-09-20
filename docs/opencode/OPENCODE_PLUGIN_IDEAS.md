@@ -620,18 +620,18 @@ plugin/
 - Makes decisions that should be Jarvis's responsibility
 - Tightly couples OpenCode to Jarvis internals
 
-### The "Bash Execute" Alternative
+### OpenCode's Internal Shell
 
-You mentioned Jarvis's `execute_bash` can run multiple commands:
+OpenCode can run multiple commands within its own task:
 ```bash
 cd ~/jarvis-workspace/project && tree -L 3 && ls -la && git status
 ```
 
-**When to use plugins vs bash**:
-- **Bash**: One-off inspection, simple tasks, direct system commands
+**When to use plugins vs OpenCode's shell**:
+- **OpenCode's shell**: Inspection and commands inside an authorized coding task
 - **Plugins**: Reusable logic, safety enforcement, complex multi-step operations
 
-Both are valid! Plugins are for repeated workflows and safety, bash is for flexibility.
+Jarvis no longer offers a general local shell tool.
 
 ---
 
@@ -646,4 +646,3 @@ Both are valid! Plugins are for repeated workflows and safety, bash is for flexi
 4. **Iterate based on real usage**
 
 Ready to implement any of these! Which plugins excite you most? 🎯
-

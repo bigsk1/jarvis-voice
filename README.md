@@ -793,7 +793,6 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 - `search_conversations` - Search past interactions
 
 **Action Tools:**
-- `execute_bash` - Run shell commands
 - `send_email` - Send emails with contact lookup and HTML templates
 - `send_webhook` - Trigger named webhooks (Slack, n8n, APIs) with auth
 - `api_call` - Generic HTTP API calls

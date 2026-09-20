@@ -343,7 +343,7 @@ The tool is marked with these permissions:
 |----------|------|---------|
 | Local container management | `docker_control` | List, restart, logs, inspect |
 | Local compose operations | `docker_control` | Up, down, pull, build |
-| Local arbitrary `docker run` | `execute_bash` | `docker run nginx` |
+| Local arbitrary `docker run` | Operator terminal | `docker run nginx` |
 | Remote any docker command | `ssh_remote` | `docker ps`, `docker run` |
 | Remote compose operations | `ssh_remote` | Full flexibility |
 

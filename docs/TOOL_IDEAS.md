@@ -248,7 +248,7 @@
 
 ### 10. Network Diagnostics Tool
 **Name**: `network_tools.py`  
-**Gap**: execute_bash works but no structured network utilities  
+**Status**: Implemented as `network_tools`; there is no general local shell tool
 **Priority**: ⭐⭐⭐  
 **Difficulty**: Easy  
 
@@ -351,7 +351,7 @@
 
 ### 14. Docker Management Tool
 **Name**: `docker_manager.py`  
-**Gap**: execute_bash works but no structured Docker control  
+**Status**: Implemented as `docker_control`; there is no general local shell tool
 **Priority**: ⭐⭐⭐  
 **Difficulty**: Medium  
 
@@ -673,4 +673,3 @@ When adding a new tool idea to this document:
 ```bash
 ./bin/build-tool --mode cloud build "Build [tool_name] that does X, Y, Z"
 ```
-

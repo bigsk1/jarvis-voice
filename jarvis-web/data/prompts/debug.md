@@ -66,7 +66,7 @@ Once found:
 - Document for future reference
 
 ## Tools to Use
-- `execute_bash` for checking logs, running tests
+- `query_service_logs` and `check_tool_logs` for checking logs; use OpenCode for requested development work
 - `remember` to save the solution for future reference
 
 ## Output

@@ -71,7 +71,7 @@ $ ./orchestrator_v2.py cloud "use opencode to build tetris, then check if files 
 🔧 Executing tool: opencode
 ✅ Tool succeeded (built: ~/jarvis-workspace/tetris/)
 
-🔧 Executing tool: execute_bash (turn 2)
+🔧 Executing tool: network_tools (turn 2)
 ✅ Tool succeeded (ls shows: tetris.py, README.md)
 
 💬 Task complete after 2 tool(s):

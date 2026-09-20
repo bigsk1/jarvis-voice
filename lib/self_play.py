@@ -29,7 +29,6 @@ DEFAULT_EXCLUDED_TOOLS = [
     "api_call",
     "opencode",
     "docker_control",
-    "execute_bash",
     "ssh_remote",
     "phone_call",
     "send_email",

@@ -105,7 +105,7 @@ Last 2 conversation(s) in past 10 minutes
 [Previous Exchange 1]
 User: Install Redis
 Assistant: Installation failed with permission denied
-Tools used: execute_bash
+Tools used: network_tools
 Status: FAILED - Task did not complete successfully
 Consider using check_tool_logs to understand why
 Model: claude-sonnet-4-5-20250929, Tools called: 1
@@ -113,7 +113,7 @@ Model: claude-sonnet-4-5-20250929, Tools called: 1
 [Previous Exchange 2]
 User: Try again
 Assistant: Redis installed successfully
-Tools used: check_tool_logs, execute_bash
+Tools used: check_tool_logs, network_tools
 Status: Success
 Model: claude-sonnet-4-5-20250929, Tools called: 2
 

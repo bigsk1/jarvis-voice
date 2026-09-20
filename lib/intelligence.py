@@ -1518,7 +1518,7 @@ CRITICAL EVALUATION:
 
 TOOL CATEGORIES (for understanding what tools do):
 - **MEMORY TOOLS** (check stored knowledge): search_memory, recall, semantic_recall, get_recent_conversations, search_conversations
-- **ACTION TOOLS** (do something live): mcp_fetch_fetch, execute_bash, api_call, send_webhook, send_email
+- **ACTION TOOLS** (do something live): mcp_fetch_fetch, network_tools, api_call, send_webhook, send_email
 - **STORAGE TOOLS** (save info): remember, update_memory, forget
 - **UTILITY TOOLS** (simple tasks): get_time, crypto_price, list_reminders, list_alerts
 - **SEARCH TOOLS** (web search): mcp_brave_search_*, mcp_duckduckgo_*

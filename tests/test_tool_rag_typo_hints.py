@@ -288,14 +288,14 @@ class TestExpandToolRagQuery(unittest.TestCase):
         noisy_blob = "\n".join(
             [
                 "=== LEARNED STRATEGIES ===",
-                "Always convert files with convert_file and use execute_bash for shells.",
+                "Always convert files with convert_file and use network_tools for checks.",
                 "",
                 "check my bookmakrs for anything",
             ]
         )
         q, hints = expand_tool_rag_query_for_typo_hints(
             noisy_blob,
-            ["bookmark_search", "execute_bash", "convert_file", "weather"],
+            ["bookmark_search", "network_tools", "convert_file", "weather"],
             hint_source="check my bookmakrs for anything",
             enabled=True,
             max_distance=2,

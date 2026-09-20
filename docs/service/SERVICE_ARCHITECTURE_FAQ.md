@@ -313,7 +313,7 @@ echo '{"service": "all", "show_stats": true}' | python3 skills/query_service_log
 ✓ Registered tool: check_opencode_sessions
 ✓ Registered tool: check_tool_logs
 ✓ Registered tool: crypto_price
-✓ Registered tool: execute_bash
+✓ Registered tool: network_tools
 ✓ Registered tool: forget
 ✓ Registered tool: get_recent_conversations
 ✓ Registered tool: get_time
@@ -440,4 +440,3 @@ removed, and the watchdog does nothing. Log: `logs/watchdog.log`
 5. **Trust the limits**: MAX_FOLLOW_UPS prevents runaways
 
 Services are **designed to be left running** - that's their purpose! 🚀
-

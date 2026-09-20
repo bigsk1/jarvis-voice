@@ -70,7 +70,7 @@ Located: `skills/*.tool.json` + MCP servers
 
 **Contains**: JSON schemas for 20 tools:
 - **Local Tools (20)**:
-  - Core: `get_time`, `execute_bash`, `api_call`
+  - Core: `get_time`, `network_tools`, `api_call`
   - Memory: `remember`, `recall`, `search_memory`, `semantic_recall`, `update_memory`, `forget`
   - OpenCode: `opencode`, `check_opencode_sessions`
   - Conversations: `get_recent_conversations`, `search_conversations`

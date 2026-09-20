@@ -199,18 +199,17 @@ Jarvis: [Sees context: "Built Flask API on port 8091"]
 
 ```
 Cycle 1:
-User: "Install Redis"
-Jarvis: [Calls execute_bash: apt install redis]
-        [FAILS - permission denied]
-        "Installation failed"
+User: "Check my local service"
+Jarvis: [Calls network_tools: HTTP check]
+        [FAILS - connection refused]
+        "The local service is unreachable"
 
 Cycle 2 (30 seconds later):
 User: "Try again"
 Jarvis: [Sees context: "Previous attempt failed"]
         [Calls check_tool_logs to understand error]
-        [Discovers needs sudo]
-        [Calls execute_bash: sudo apt install redis]
-        "Redis installed successfully"
+        [Discovers the service is not listening]
+        "The check failed because nothing is listening on that port"
 ```
 
 ### 4. Avoiding Redundancy

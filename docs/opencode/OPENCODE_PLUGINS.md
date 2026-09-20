@@ -53,7 +53,7 @@ User: "Jarvis, use OpenCode to build a Flask API"
 ❌ **Plugins NOT Active**:
 ```
 User: "Jarvis, create a Flask API"
-      └─> Jarvis uses execute_bash/other tools directly
+      └─> Jarvis uses another dedicated tool directly
           └─> OpenCode not involved, plugins don't run
 ```
 

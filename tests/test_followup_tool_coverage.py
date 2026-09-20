@@ -263,15 +263,6 @@ LOCAL_TOOL_SAMPLES = {
         },
         {"action": "list"},
     ),
-    "execute_bash": _case(
-        {
-            "command": "printf smoke",
-            "exit_code": 0,
-            "stdout": "smoke ok",
-            "stderr": "",
-        },
-        {"command": "printf smoke"},
-    ),
     "external_network_intel": _case(
         {
             "action": "lookup",
@@ -2450,11 +2441,6 @@ def test_content_adapters_keep_handles_and_bound_large_bodies():
                 "page_count": 3,
                 "text": huge,
             },
-            "execute_bash": {
-                "exit_code": 0,
-                "stdout": huge,
-                "stderr": "",
-            },
             "phone_call": {
                 "call_id": "call_7",
                 "canvas_location": "page_calls",
@@ -2480,11 +2466,6 @@ def test_content_adapters_keep_handles_and_bound_large_bodies():
     assert (
         "content truncated for follow-up context"
         in result["pdf_read"]["text_excerpt"]
-    )
-    assert len(result["execute_bash"]["stdout_excerpt"]) <= 2000
-    assert (
-        "content truncated for follow-up context"
-        in result["execute_bash"]["stdout_excerpt"]
     )
     assert result["phone_call"]["canvas_location"] == "page_calls"
     assert len(result["phone_call"]["transcript_excerpt"]) <= 2000

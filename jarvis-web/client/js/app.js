@@ -1591,7 +1591,6 @@ class JarvisApp {
       external_network_intel: '🛰️',
       docker_control: '🐳',
       ssh_remote: '🔐',
-      execute_bash: '⌨️',
       speaker_volume: '🔊',
       calculator: '🔢',
       get_time: '🕐',

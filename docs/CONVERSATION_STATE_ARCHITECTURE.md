@@ -369,8 +369,8 @@ Cycle 2 (hours later):
 You: "Hey Jarvis, start the tetris server"
 Jarvis: [Calls search_memory with "tetris"]
         [Finds: "Built at ~/jarvis-workspace/projects/tetris on port 8091"]
-        [Calls execute_bash to start server]
-        "Tetris server started on port 8091"
+        [No local shell tool is available; gives the saved run command to the user]
+        "I found the run command for the Tetris server"
 ```
 
 **Key:** Memory tool made the information persistent across cycles.

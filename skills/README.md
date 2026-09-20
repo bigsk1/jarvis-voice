@@ -293,7 +293,6 @@ JSON object printed to stdout:
 ### System & Network
 | Tool | Description |
 |------|-------------|
-| `execute_bash` | Run shell commands |
 | `ssh_remote` | SSH into remote hosts |
 | `docker_control` | Docker/compose management |
 | `network_tools` | Ping, DNS, port checks, traceroute |

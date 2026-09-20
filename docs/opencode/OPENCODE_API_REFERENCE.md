@@ -299,7 +299,7 @@ tool state as a polling fallback; it does not replace the final POST response.
 **Potential Use:**
 - "Jarvis, show me the tetris server code"
 - Quick file inspection
-- Code review without execute_bash
+- Code review through OpenCode's file API
 
 ---
 
@@ -505,7 +505,7 @@ Every response includes usage stats:
 
 5. **Code Review**
    - "Show me the Flask server code"
-   - `GET /files/{path}` → read without execute_bash
+   - `GET /files/{path}` → inspect project files through the API
 
 6. **Chat Mode**
    - "Ask OpenCode about Flask best practices"
@@ -527,7 +527,7 @@ Every response includes usage stats:
 - Response parsing
 
 **Doesn't use:**
-- File operations (uses `execute_bash` instead)
+- File operations (not exposed as a separate Jarvis tool)
 - Session management (uses Jarvis's own logs)
 - Chat interface (always builds, doesn't consult)
 
@@ -598,7 +598,7 @@ http://localhost:4096/openapi
    - Or is TUI/Web UI sufficient?
 
 2. **File Operations:**
-   - Faster to use API than execute_bash?
+   - Faster to use API than an OpenCode task?
    - Trade-off: Simplicity vs efficiency
 
 3. **Chat Mode:**

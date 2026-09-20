@@ -15,7 +15,7 @@
     "schema": "Tool arguments must satisfy the tracked tool schema and may not invent argument keys."
   },
   "router_prompt_version": "v4",
-  "router_base_sha256": "783672bb395ea6a92279454f5a99713f96029875d6bef0b288613b9bc2dace66",
+  "router_base_sha256": "a077bf959ed6f0772129dc9fda6e43f6fe4521a207a45446acb4dd6edb13ced2",
   "safety": {
     "synthetic_queries_only": true,
     "live_user_text_copied": false,
@@ -40,7 +40,6 @@
           "serpapi_google_images_light",
           "serpapi_ebay_product",
           "serpapi_google_trending_now",
-          "execute_bash",
           "serpapi_google_news_light"
         ],
         "recorded_schema_chars": 14947,
