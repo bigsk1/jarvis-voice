@@ -243,6 +243,13 @@ body {
   margin-bottom: var(--space-sm);
 }
 
+@media (min-width: 821px) {
+  .sidebar-footer-actions {
+    justify-content: center;
+    gap: var(--space-sm);
+  }
+}
+
 .footer-action-btn {
   padding: var(--space-xs) var(--space-sm);
   border: 1px solid var(--border);
