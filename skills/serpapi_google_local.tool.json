@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_google_local",
-  "description": "Find Google Local business listings through SerpApi. Use for phrases such as 'near me', 'nearby restaurants', 'local coffee shops', 'businesses around here', 'find a plumber near me', or Google local results for a supplied topic. Returns ratings, reviews, prices, hours, addresses, business types, descriptions, service options, action links, coordinates, sponsored listings, related place searches, and pagination. When location is omitted, it uses JARVIS_DEFAULT_LOCATION and then JARVIS_DEFAULT_POSTAL_CODE from the active mode env; it never silently inherits proxy geography. Use serpapi_maps_search instead for map-centered coordinate/radius exploration and serpapi_yelp_search when Yelp-specific ratings, filters, or reviews are requested.",
+  "description": "Find Google Local business listings. Use for phrases such as 'near me', 'nearby restaurants', 'local coffee shops', 'businesses around here', 'find a plumber near me', or Google local results for a supplied topic. Returns ratings, reviews, prices, hours, addresses, business types, descriptions, service options, action links, coordinates, sponsored listings, related place searches, and pagination. When location is omitted, use the configured default location or postal code; do not infer geography from a proxy. Use serpapi_maps_search instead for map-centered coordinate/radius exploration and serpapi_yelp_search when Yelp-specific ratings, filters, or reviews are requested.",
   "complementary_tools": [
     "serpapi_maps_search",
     "serpapi_yelp_search",
@@ -23,7 +23,7 @@
       "location": {
         "type": "string",
         "maxLength": 200,
-        "description": "Optional city-level search origin such as Austin, Texas, United States. When omitted, the active mode's JARVIS_DEFAULT_LOCATION is used, followed by JARVIS_DEFAULT_POSTAL_CODE. Cannot be combined with uule."
+        "description": "Optional city-level search origin such as Austin, Texas, United States. When omitted, uses the configured default location or postal code. Cannot be combined with uule."
       },
       "uule": {
         "type": "string",

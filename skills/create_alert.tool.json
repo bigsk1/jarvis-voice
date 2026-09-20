@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "create_alert",
-  "description": "Create a proactive alert in Jarvis. Use when the user wants a notification or warning to be created, especially for system issues, weather risks, workflow-generated warnings, or anything that should appear in alerts and optionally speak immediately. This uses the same backend alert manager as the FastAPI webhook endpoint. Required: title, source. Optional: description, severity, metadata, auto_resolve_url. If metadata includes dedupe_key, pending alerts from the same source with that exact dedupe key are suppressed as duplicates. High and critical alerts can speak immediately.",
+  "description": "Create a Jarvis alert or warning. Use for 'create an alert', 'warn me about this', or workflow-generated notifications that should appear in alerts and optionally speak immediately. Required: title, source. Optional: description, severity, metadata, auto_resolve_url. If metadata includes dedupe_key, pending alerts from the same source with that exact key are suppressed as duplicates. High and critical alerts can speak immediately. For listing existing alerts, use list_alerts.",
   "script": "create_alert.py",
   "parameters": {
     "type": "object",

@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "document_ocr",
-  "description": "OCR and structured extraction for existing scanned documents and images through an optional self-hosted OVIS FastAPI service. Use action=ocr to recover page-attributed Markdown from scanned PDFs, PNG, JPEG, WebP, BMP, or TIFF files; action=extract to turn OCR text into instructed text, Markdown, or schema-validated JSON using the generation backend configured on the OVIS host; action=archive to save the service ZIP with OCR outputs and crops; or action=status to check health, readiness, GPU/model state, and capabilities. Accepts Jarvis Stash references or policy-approved local files and saves full outputs back to Stash by default so later Web UI turns can continue from bounded excerpts and artifact refs. Prefer pdf_read for born-digital PDF text, metadata, search, merge, split, and page rendering. Use document_ocr when the PDF is scanned/image-only, when an image contains substantial text, or when exact structured extraction is requested. The OCR stage remains local to OVIS; action=extract uses whatever text backend the OVIS administrator configured, such as local Ollama. It does not generate images and Jarvis never supplies that backend's credentials.",
+  "description": "OCR and structured extraction for scanned documents and images. Use for 'read this scanned PDF', 'OCR this image', 'extract structured data from this scan', or 'what's on this scanned document'. Use action=ocr for page-attributed Markdown from scanned PDFs, PNG, JPEG, WebP, BMP, or TIFF; action=extract to turn that OCR text into instructed text, Markdown, or schema-validated JSON; action=archive to save OCR outputs and crops; or action=status to check service health. Accepts Stash references or policy-approved local files and saves full outputs to Stash by default. Prefer pdf_read for born-digital PDF text, metadata, search, merge, split, and page rendering. Prefer analyze_image for a photo question that is not OCR. It does not generate images.",
   "complementary_tools": [
     "pdf_read",
     "analyze_image",
@@ -46,16 +46,16 @@
       },
       "keep_region_tags": {
         "type": "boolean",
-        "description": "Keep OVIS layout/region tags in OCR Markdown. Default true."
+        "description": "Keep layout/region tags in OCR Markdown. Default true."
       },
       "include_region_data": {
         "type": "boolean",
-        "description": "Ask OVIS to embed figure crops as Base64 data URLs in the full OCR JSON. Default false. Use only with a narrow page range; prefer action=archive for complete crop collections because Jarvis bounds JSON responses to 25 MB."
+        "description": "Embed figure crops as Base64 data URLs in the full OCR JSON. Default false. Use only with a narrow page range; prefer action=archive for complete crop collections because JSON responses are bounded to 25 MB."
       },
       "prompt": {
         "type": "string",
         "maxLength": 8000,
-        "description": "Required for action=extract. Instruction applied to the fixed OVIS OCR text by the generation backend configured on the OVIS host."
+        "description": "Required for action=extract. Instruction applied to the OCR text."
       },
       "scope": {
         "type": "string",
@@ -69,7 +69,7 @@
       },
       "json_schema": {
         "type": "object",
-        "description": "Optional JSON Schema object for action=extract with response_format=json. Remote schema references are rejected by OVIS."
+        "description": "Optional JSON Schema object for action=extract with response_format=json. Remote schema references are rejected."
       },
       "max_new_tokens": {
         "type": "integer",

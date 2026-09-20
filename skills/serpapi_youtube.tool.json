@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_youtube",
-  "description": "Fetch YouTube video details through SerpApi using a YouTube URL or video_id, with optional transcript lookup through SerpApi's YouTube transcript engine. Full fetched transcripts are saved as Markdown in stash for same-turn and follow-up summarization. Useful fallback when yt-dlp is blocked by cookies, auth, or missing transcript issues.",
+  "description": "Get YouTube video details from a YouTube URL or video_id, with optional transcript. Use for 'details for this YouTube video', 'transcript for this YouTube URL', or when a specific video URL is already known. Full transcripts save as Markdown in stash. For keyword search, use serpapi_youtube_search. To download the video file, use youtube_video. To download captions as files, use youtube_transcript.",
   "complementary_tools": [
     "canvas",
     "stash"

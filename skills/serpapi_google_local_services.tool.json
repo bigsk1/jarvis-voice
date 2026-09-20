@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_google_local_services",
-  "description": "Find screened professional service providers in Google Local Services Ads through SerpApi. Use for natural service phrases such as 'yard maintenance', 'lawn mowing', 'landscape design', 'AC repair', 'dryer repair', 'Google Guaranteed plumber', 'screened electrician', 'car repair shop', 'house cleaner', 'local service professional', or verified home-service businesses. Common profession synonyms map to SerpApi categories, and recognized specific tasks can infer the documented job type. Returns ratings, reviews, phone numbers, Google badges, service areas, years in business, availability, booking activity, provider IDs, public profiles, and focused provider details. This engine supports US locations only. An explicit data_cid uses one SerpApi search; New York, Austin, and Portland aliases also use one search; other supplied or mode-default locations use one Google Maps CID-resolution search plus one Local Services search. Use serpapi_google_local for ordinary nearby businesses such as restaurants or stores, and serpapi_maps_search for map-centered exploration.",
+  "description": "Find screened professional service providers in Google Local Services Ads. Use for natural service phrases such as 'yard maintenance', 'lawn mowing', 'landscape design', 'AC repair', 'dryer repair', 'Google Guaranteed plumber', 'screened electrician', 'car repair shop', 'house cleaner', 'local service professional', or verified home-service businesses. Common profession synonyms map to categories, and recognized specific tasks can infer the job type. Returns ratings, reviews, phone numbers, Google badges, service areas, years in business, availability, booking activity, provider IDs, public profiles, and focused provider details. This engine supports US locations only. Use serpapi_google_local for ordinary nearby businesses such as restaurants or stores, and serpapi_maps_search for map-centered exploration.",
   "complementary_tools": [
     "serpapi_google_local",
     "serpapi_maps_search",
@@ -28,7 +28,7 @@
       "location": {
         "type": "string",
         "maxLength": 200,
-        "description": "Optional US city/district or ZIP used only when data_cid is omitted. New York, Austin, Portland, and their built-in ZIP aliases resolve locally; other locations consume an additional Google Maps SerpApi search. When omitted, Jarvis uses JARVIS_DEFAULT_LOCATION and then JARVIS_DEFAULT_POSTAL_CODE."
+        "description": "Optional US city/district or ZIP used only when data_cid is omitted. New York, Austin, Portland, and their built-in ZIP aliases resolve locally; other locations consume an additional Google Maps search. When omitted, uses the configured default location or postal code."
       },
       "language": {
         "type": "string",

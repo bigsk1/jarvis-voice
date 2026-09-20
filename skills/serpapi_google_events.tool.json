@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_google_events",
-  "description": "Find upcoming in-person or virtual events through SerpApi Google Events. Use for concerts, festivals, comedy, markets, family activities, conferences, nightlife, things happening today or this week, or general 'events near me' requests. Returns event dates and times, venues, addresses, descriptions, prices, ticket links, public event links, map links, and images. Keep event keywords in query and put the city in location; the tool adds a qualified location to Google's event query. When location is omitted, it uses JARVIS_DEFAULT_LOCATION and then JARVIS_DEFAULT_POSTAL_CODE from the active mode env, never proxy geography. Qualify ambiguous cities such as Portland as 'Portland, Oregon' or 'Portland, Maine'. Use serpapi_google_local for nearby businesses, serpapi_tripadvisor for destination attractions, and weather when conditions matter.",
+  "description": "Find upcoming in-person or virtual events. Use for concerts, festivals, comedy, markets, family activities, conferences, nightlife, things happening today or this week, or general 'events near me' requests. Returns event dates and times, venues, addresses, descriptions, prices, ticket links, public event links, map links, and images. Keep event keywords in query and put the city in location. When location is omitted, use the configured default location or postal code; do not infer geography from a proxy. Qualify ambiguous cities such as Portland as 'Portland, Oregon' or 'Portland, Maine'. Use serpapi_google_local for nearby businesses, serpapi_tripadvisor for destination attractions, and weather when conditions matter.",
   "complementary_tools": [
     "serpapi_google_local",
     "serpapi_tripadvisor",
@@ -24,7 +24,7 @@
       "location": {
         "type": "string",
         "maxLength": 200,
-        "description": "Optional city-level location. Include state, region, or country when ambiguous, for example Portland, Oregon or Portland, Maine. When omitted, the active mode's JARVIS_DEFAULT_LOCATION is used, followed by JARVIS_DEFAULT_POSTAL_CODE. Cannot be combined with uule."
+        "description": "Optional city-level location. Include state, region, or country when ambiguous, for example Portland, Oregon or Portland, Maine. When omitted, uses the configured default location or postal code. Cannot be combined with uule."
       },
       "uule": {
         "type": "string",

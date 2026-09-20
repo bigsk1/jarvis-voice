@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "crawl_url",
-  "description": "Crawl and extract content from any webpage using Crawl4AI.\n\nUse this when:\n- User wants to read or summarize a specific webpage\n- You need content from JavaScript-heavy or dynamic sites\n- Basic fetch fails or returns incomplete content\n- Site has anti-bot protection (use stealth mode)\n- You need structured data extraction (prices, facts, entities)\n\nExtraction strategies:\n- None (default): Returns clean markdown\n- 'llm': LLM extracts structured data with instruction/schema\n- 'cosine': Filters content by semantic relevance to topic\n- 'regex': Fast pattern extraction (email, phone, price, etc.)\n\nWait strategies:\n- 'fast': DOM ready only - fastest\n- 'normal' (DEFAULT): All resources loaded\n- 'full': Network idle - AVOID for live data sites!\n\nFor deep research, use extraction_type='cosine' with semantic_filter to focus on relevant content.",
+  "description": "Extract and summarize content from a specific webpage as markdown. Use for 'summarize this URL', 'extract the text from this page', 'scrape this article', or 'read the content at this link'. For JavaScript-heavy or incomplete fetches, use stealth mode. For structured facts, prices, or entities, use extraction_type llm, cosine, or regex. Default wait is normal (all resources loaded); use fast for DOM-ready only and avoid full/network-idle on live data sites. For deep research, use extraction_type='cosine' with semantic_filter. This tool reads one page; it does not click, log in, or follow a browsing trail. For that, use browser_use or browser_use_cloud. For a picture of the page, use screenshot_url.",
   "complementary_tools": [
     "stash",
     "canvas"

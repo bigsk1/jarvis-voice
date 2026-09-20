@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_youtube_search",
-  "description": "Search YouTube videos through SerpApi using keyword queries, with normalized video-first results including title, URL, channel, published date, views, duration, thumbnail, and pagination token. Use this to find YouTube videos when you do not already have a specific URL.",
+  "description": "Search YouTube by keyword. Use for 'find YouTube videos about...', 'search YouTube for...', or when no specific video URL is known. Returns title, URL, channel, published date, views, duration, thumbnail, and pagination token. For a known URL's details or transcript, use serpapi_youtube. To download a video file, use youtube_video.",
   "complementary_tools": [
     "canvas",
     "stash"

@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "release_watch",
-  "description": "Detect newly published stable releases from PyPI or GitHub without scraping HTML. The first check establishes a silent baseline. Later checks return changed=true until the caller acknowledges the release, allowing a workflow to create Canvas and alert artifacts before advancing state.",
+  "description": "Detect newly published stable releases from PyPI or GitHub. Use for 'did this package get a new release?', 'check GitHub for a new version', or scheduled release watches. The first check establishes a silent baseline. Later checks return changed=true until the caller acknowledges the release, so a workflow can create Canvas and alert artifacts before advancing state. Does not scrape HTML.",
   "script": "release_watch.py",
   "parameters": {
     "type": "object",

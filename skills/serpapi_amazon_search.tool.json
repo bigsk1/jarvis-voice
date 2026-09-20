@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_amazon_search",
-  "description": "Search Amazon listings or retrieve one Amazon product page through SerpApi. Use for Amazon product discovery, ASIN lookup, bestseller/listing checks, prices, ratings, reviews, Prime eligibility, delivery and stock signals, product comparisons, and purchase research. Amazon searches default delivery_zip from JARVIS_DEFAULT_POSTAL_CODE when omitted. Recommended pattern: use engine=amazon first to gather and compare candidates, then use engine=amazon_product with a chosen ASIN for richer details, a direct link, and an image. If saving a focused product to Canvas, preserve its thumbnail by passing it as image_url.",
+  "description": "Search Amazon listings or retrieve one Amazon product page. Use for Amazon product discovery, ASIN lookup, bestseller/listing checks, prices, ratings, reviews, Prime eligibility, delivery and stock signals, product comparisons, and purchase research. Amazon searches default delivery_zip from the configured postal code when omitted. Recommended pattern: use engine=amazon first to gather and compare candidates, then use engine=amazon_product with a chosen ASIN for richer details, a direct link, and an image. If saving a focused product to Canvas, preserve its thumbnail by passing it as image_url.",
   "complementary_tools": [
     "canvas",
     "stash"
@@ -66,7 +66,7 @@
       },
       "delivery_zip": {
         "type": "string",
-        "description": "ZIP/postal code used to localize Amazon delivery results. For amazon and amazon_product engines, defaults to JARVIS_DEFAULT_POSTAL_CODE when omitted."
+        "description": "ZIP/postal code used to localize Amazon delivery results. For amazon and amazon_product engines, defaults to the configured postal code when omitted."
       },
       "shipping_location": {
         "type": "string",

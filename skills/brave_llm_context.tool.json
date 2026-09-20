@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "brave_llm_context",
-  "description": "Retrieve Brave LLM Context: pre-extracted, relevance-scored web content for grounding AI answers. Use for current facts, research, technical questions, and RAG-style web grounding when snippets/source chunks are more useful than plain search links. This is not Brave Answers and does not generate the final answer itself.",
+  "description": "Retrieve pre-extracted, relevance-scored web snippets for grounding an answer. Use for 'get Brave context on...', 'ground this with current web sources', or research questions where source chunks beat a list of links. This is not a final answer generator and not a live page crawl; use crawl_url to read one URL.",
   "complementary_tools": [
     "canvas",
     "stash"

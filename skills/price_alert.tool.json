@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "price_alert",
-  "description": "View and modify price alert THRESHOLDS in data/price-alerts.yaml. This manages the CONDITIONS that n8n monitors - NOT the triggered alerts (use list_alerts for those). Actions: 'list' shows monitoring thresholds, 'update' changes a threshold value (e.g., 'change my BTC alert to 110k'), 'add'/'remove' modify thresholds. NOTE: Adding NEW assets requires manual n8n workflow changes; this tool only updates existing thresholds. For 'what triggered alerts do I have?', use list_alerts instead.",
+  "description": "View and change price-alert thresholds (the conditions that fire later), not the alerts that already triggered. Use for 'change my BTC alert to 110k', 'list my price alert thresholds', 'raise the Tesla price alert', or 'add a SOL price alert'. Actions: list, update, add, remove. add can save a new symbol, but that alert will not fire until the price-monitor workflow has a fetch path for the asset. For 'what triggered alerts do I have?', use list_alerts.",
   "script": "price_alert.py",
   "parameters": {
     "type": "object",

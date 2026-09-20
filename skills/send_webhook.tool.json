@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "send_webhook",
-  "description": "Send webhook to trigger n8n workflows or external services. Supports named webhooks from config/webhook_registry.json (e.g., 'notify_slack', 'home_assistant') OR direct URLs. Rate limited to prevent duplicates. Use 'list' to see available webhooks.",
+  "description": "Send a named webhook or a direct webhook URL to trigger an external automation. Use for 'trigger the slack webhook', 'send the home assistant webhook', or 'list my webhooks'. Rate limited to prevent duplicates. Use webhook='list' to see named webhooks. Not for sending email; use send_email.",
   "script": "send_webhook.py",
   "parameters": {
     "type": "object",
@@ -20,7 +20,7 @@
       },
       "headers": {
         "type": "object",
-        "description": "Optional literal HTTP headers to include in the request. Environment placeholders such as ${API_KEY} are rejected; configure credential headers in config/webhook_registry.json."
+        "description": "Optional literal HTTP headers to include in the request. Environment placeholders such as ${API_KEY} are rejected; use a named registry webhook for credential headers."
       }
     },
     "required": ["data"]

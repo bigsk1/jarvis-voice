@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "ingest_intel",
-  "description": "Ingest knowledge from files in jarvis-intel/ folder into Jarvis's memory. Processes .txt and .md files containing network configs, IPs, project details, and technical information. Automatically deduplicates and won't re-ingest the same files.",
+  "description": "Load files from the intel knowledge folder into memory. Use for 'ingest my intel', 'load intel files into memory', or after manage_intel writes. Processes .txt and .md; skips files already ingested. Does not create or edit intel files; use manage_intel for that.",
   "complementary_tools": [
     "manage_intel"
   ],

@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "openclaw",
-  "description": "Contact a remote OpenClaw agent through its OpenAI-compatible gateway. ONLY use when the user EXPLICITLY asks to 'ask OpenClaw', 'have OpenClaw do', 'tell OpenClaw', or 'check with OpenClaw'. This is not the local OpenCode coding agent. The remote agent has its own tools and context and may have Jarvis API access if that deployment grants it. Include the task context in the message; it cannot see this chat automatically. Never auto-delegate tasks — the user must specifically request OpenClaw.",
+  "description": "Contact a remote OpenClaw agent. ONLY use when the user explicitly asks to 'ask OpenClaw', 'have OpenClaw do', 'tell OpenClaw', or 'check with OpenClaw'. This is not the local OpenCode coding agent and not Samantha. Include the task context in the message; it cannot see this chat automatically. Never auto-delegate.",
   "script": "openclaw.py",
   "parameters": {
     "type": "object",

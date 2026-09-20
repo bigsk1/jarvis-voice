@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_ebay_product",
-  "description": "Fetch one eBay product page via SerpApi (engine ebay_product) by numeric product_id from listing URLs (/itm/{id}). Returns product_summary (title, prices buy/bid, shipping to/from, quantity, images, variation counts), seller_summary, and related_products. Full JSON is optional via include_raw. Prefer no_cache=false unless you truly need bypassing SerpApi cache. Docs: https://serpapi.com/ebay-product-api",
+  "description": "Fetch one eBay product page by numeric product_id from listing URLs (/itm/{id}). Use for 'show this eBay listing', 'eBay product details for this item', or after serpapi_ebay_search when a product_id is known. Returns title, buy/bid prices, shipping, quantity, images, variations, seller, and related products. Prefer no_cache=false unless a live scrape is needed. Do not search by product name here; search first.",
   "complementary_tools": [
     "canvas",
     "stash",

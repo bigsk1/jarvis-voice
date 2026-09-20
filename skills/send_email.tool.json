@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "send_email",
-  "description": "Send an email to a contact, optionally with file attachments from stash. Use when user says 'email', 'send email to', 'email me that image', 'send email', etc. Contacts looked up by name (e.g., 'Andrew', 'Mom', 'Boss') from contacts.json. SUPPORTS ATTACHMENTS: Use 'attachment' parameter with stash ref (stash://space_xxx/file) or file path to attach images, PDFs, etc. Gracefully handles expired stash (7-day TTL) with fallback to generated_images/. IMPORTANT: Always compose email body with context - who is sending and why.",
+  "description": "Send an email from Jarvis to a named contact, optionally with stash attachments. Use for 'send an email to Andrew', 'email me that image', or 'send this PDF by email'. Do not use for 'check my email', 'what's in my inbox', or 'draft an email'. For sending from a signed-in Gmail account, use browser_use_cloud. Contacts are looked up by name (e.g., 'Andrew', 'Mom', 'Boss'). Use the attachment parameter with a stash ref or file path. If stash has expired, say so rather than inventing an attachment. Always compose the email body with context: who is sending and why.",
   "script": "send_email.py",
   "parameters": {
     "type": "object",

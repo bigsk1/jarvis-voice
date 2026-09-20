@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "generate_music",
-  "description": "\ud83c\udfb5 Generate AI music with ElevenLabs or Google Gemini Lyria. Create songs, instrumentals, jingles, beats, and soundtracks. Describe musical characteristics instead of naming artists, bands, copyrighted songs or lyrics, or requesting voice imitation; those requests can be rejected by provider safety filters. ElevenLabs supports 3-second to 10-minute tracks and structured composition plans. Gemini defaults to Lyria 3 Clip (one 30-second MP3); the optional Lyria 3 Pro model creates full songs with prompt-controlled duration and complex structure. Gemini outputs include SynthID. Output saves to the audio gallery and stash for playback.",
+  "description": "\ud83c\udfb5 Generate original AI music: songs, instrumentals, jingles, beats, and soundtracks. Use for 'make a song', 'create a jingle', 'generate background music', or 'compose an instrumental'. Describe musical characteristics instead of naming artists, bands, copyrighted songs or lyrics, or requesting voice imitation; those requests can be rejected. ElevenLabs supports 3-second to 10-minute tracks and structured composition plans. Gemini defaults to a 30-second clip; the optional Pro model creates full songs with prompt-controlled duration. Output saves to the audio gallery and stash for playback. Not for downloading an existing track; use stash or youtube_video for that.",
   "script": "generate_music.py",
   "parameters": {
     "type": "object",
@@ -68,7 +68,7 @@
           "elevenlabs",
           "gemini"
         ],
-        "description": "Music provider override. Supports elevenlabs and gemini; defaults to MUSIC_TOOL_PROVIDER."
+        "description": "Music provider override. Supports elevenlabs and gemini; omit to use the configured default."
       },
       "composition_plan": {
         "type": "object",

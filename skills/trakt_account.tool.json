@@ -2,7 +2,7 @@
   "enabled": true,
   "proxy_policy": "prefer",
   "name": "trakt_account",
-  "description": "Read authenticated Trakt account context without changing the account. Use for personalized Trakt movie or TV recommendations, watchlist, viewing history, ratings, favorites, personal lists, smart lists, up-next progress, or to add optional account-aware context to movie-night and TV-night requests. This tool is strictly read-only: it cannot add, remove, rate, mark watched, create lists, or mutate Trakt. It requires a Trakt Client Secret and a local OAuth cache created with ./bin/trakt-auth; users with only TRAKT_API_KEY should use trakt_movies or trakt_tv_shows instead. OAuth access and Trakt VIP capability are separate: most reads only require an authorized account, while Trakt may return explicit VIP-only or VIP Enhanced responses for restricted endpoints or limits.",
+  "description": "Read the signed-in Trakt account without changing it. Use for 'what's on my Trakt watchlist', 'what have I watched on Trakt', 'my Trakt recommendations', 'what's up next on Trakt', or to add account-aware context to movie-night and TV-night requests. Strictly read-only: it cannot add, remove, rate, mark watched, create lists, or mutate Trakt. For public discovery without an account, use trakt_movies or trakt_tv_shows. Some list or progress reads may be VIP-only; report that limit instead of guessing.",
   "complementary_tools": [
     "trakt_movies",
     "trakt_tv_shows",

@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "serpapi_maps_search",
-  "description": "Search places and local business results through SerpApi Google Maps with normalized place fields like address, rating, hours, phone, and website.",
+  "description": "Search Google Maps for places around coordinates, a map pin, or a map radius. Use for 'search Google Maps for coffee near this pin', 'what's around these coordinates', or 'places on the map near this lat/lng'. Returns address, rating, hours, phone, and website. Use serpapi_google_local for 'near me' or nearby businesses without a map center. Use serpapi_yelp_search for Yelp ratings and filters.",
   "complementary_tools": [
     "canvas",
     "stash"
