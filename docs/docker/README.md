@@ -52,7 +52,7 @@ cp docker.env.example .env
 printf "JARVIS_DOCKER_UID=%s\nJARVIS_DOCKER_GID=%s\n" "$(id -u)" "$(id -g)" >> .env
 ```
 
-`docker-compose.yml` defines eight services. Four start with the default command;
+`docker-compose.yml` defines nine services. Five start with the default command;
 the other four, including the task worker, start with the **`extras`** profile.
 The worker also retains its **`background-tasks`** profile for core-only deployments.
 
@@ -60,6 +60,7 @@ The worker also retains its **`background-tasks`** profile for core-only deploym
 |---------|:------------:|:------------------:|------|
 | `jarvis-api` | yes | yes | FastAPI, webhooks, workflows (`:8880`, localhost bind) |
 | `jarvis-web` | yes | yes | Main chat UI (`:5001`) |
+| `jarvis-library-worker` | yes | yes | Separate Source Library import/index loop; no Web startup dependency |
 | `jarvis-canvas` | yes | yes | Canvas viewer (`:8890`) |
 | `jarvis-services` | yes | yes | Background daemons — reminders, follow-up, scheduled tasks, self-healing |
 | `jarvis-memory` | — | yes | Memory browser UI (`:5002`) |
@@ -71,7 +72,7 @@ The worker also retains its **`background-tasks`** profile for core-only deploym
 # Edit config/cloud.env (or local.env) with provider credentials, and edit .env with mode, tool profile, and UID/GID, then build
 docker compose build
 
-# Core stack: API, Web UI, Canvas, background daemons
+# Core stack: API, Web UI, Canvas, library worker, background daemons
 docker compose up -d
 ```
 
@@ -177,6 +178,49 @@ selected for new work or started from the stock Web container.
 ### Pulling updates from Git
 
 The image contains the app code (`COPY . /app` in `Dockerfile`). Bind mounts provide live config, personal tools, and runtime state: `config/`, `skills/personal/`, `data/`, `logs/`, `audio/`, Web UI settings, and uploads.
+
+The Source Library keeps both mode databases and the large-import inbox in the
+existing `./data:/app/data` mount. Drop offline documents into
+`./data/source_library/inbox/local/` or `.../cloud/`, then use **Check inbox** and
+**Queue inbox import** in Jarvis Web. The separate `jarvis-library-worker`
+creates both private mode inboxes when it starts, so an updated deployment
+needs that service recreated before the folders appear on the host. It
+continues after the tab closes or Web restarts, and resumes after its own
+container recreation. It does not delete inbox files. Back up both databases
+using the verified CLI in
+[Source Library](../SOURCE_LIBRARY.md); a custom `SOURCE_LIBRARY_DIR` must have
+its own persistent bind mount, owned by the configured Web UID; the library
+directory is made private (`0700`) on POSIX. The Source Library page warns if
+its mode's worker is not running, and Compose reports the worker as unhealthy
+if either mode's process lock is absent. This is a liveness check, not proof
+that queued jobs are progressing; inspect library job states and
+`docker compose logs jarvis-library-worker` when jobs are stuck. Web has no
+startup dependency on this worker. Interactive PDF uploads/rendering and other
+library requests still run inside Web, so a native crash or process OOM there
+can still interrupt the UI. Docker Local mode alone is not an air gap:
+review the complete Ollama host/fallback chain and perform a network-isolated
+container exercise before claiming offline readiness.
+
+Both Web and the worker use the configured numeric `JARVIS_DOCKER_UID`/`GID`.
+If a host-created `data/source_library` or custom library mount appears under
+a different UID *inside the container*, library requests return 503 and the
+worker cannot claim that mode. Check `docker compose exec jarvis-web id` and
+`docker compose exec jarvis-web ls -ldn /app/data/source_library` before
+changing ownership; on Docker Desktop, the host's displayed owner may differ
+from the container's numeric owner. A fresh clone needs no extra permission
+step: the worker creates the directory as its own UID with mode `0700`.
+
+With the optional MCP Compose overlay, Web uses the `jarvis-voice:mcp` image
+while the library worker still uses `jarvis-voice:local`. After changing app
+code, rebuild/recreate **both** services, not just Web:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mcp.yml up -d --build --force-recreate jarvis-web jarvis-library-worker
+```
+
+For the base Compose stack, omit both `-f` options. Review the uncommitted
+launcher before packaging it; `bin/jarvis-library-worker` must retain Git's
+executable mode (`100755`) so the image can execute it.
 
 `.dockerignore` keeps host ENV files, runtime databases and secrets, task scratch space, logs, generated artifacts, personal data, and the standalone Firefox extension out of the image build. These rules only control what is baked into the image; the Compose bind mounts above still provide runtime files to the containers.
 

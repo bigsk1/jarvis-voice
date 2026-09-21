@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""Run the durable Source Library import/index loop outside Jarvis Web."""
+
+import logging
+import signal
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path[:0] = [str(ROOT), str(ROOT / "lib")]
+
+from config_loader import config_scope  # noqa: E402
+from source_library import SourceLibrary  # noqa: E402
+from source_library_jobs import LibraryIndexWorker  # noqa: E402
+
+
+def main():
+    logging.basicConfig(level=logging.INFO)
+    if len(sys.argv) > 1:
+        if sys.argv[1:] != ["status"]:
+            raise SystemExit("Usage: jarvis-library-worker [status]")
+        try:
+            running = []
+            for mode in ("local", "cloud"):
+                with config_scope(mode):
+                    running.append(SourceLibrary(mode).worker_running())
+        except Exception:
+            raise SystemExit(1) from None
+        raise SystemExit(0 if all(running) else 1)
+
+    worker = LibraryIndexWorker()
+
+    def stop(_signum, _frame):
+        worker.stop_event.set()
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    worker.run_forever(external=True)
+
+
+if __name__ == "__main__":
+    main()

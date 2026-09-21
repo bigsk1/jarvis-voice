@@ -2,10 +2,11 @@
 Jarvis Web UI - Main Application
 Flask + SocketIO server for the web chat interface
 """
+import logging
 import sys
 from pathlib import Path
 
-from flask import Flask, send_from_directory
+from flask import Blueprint, Flask, jsonify, send_from_directory
 from flask_cors import CORS
 
 # Setup paths
@@ -18,20 +19,39 @@ CLIENT_PATH = WEB_ROOT / 'client'
 sys.path.insert(0, str(JARVIS_ROOT))
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
 
-from .config import load_web_config, get_web_setting, load_jarvis_config
-from .routes.api import api_bp
-from .routes.auth import auth_bp
-from .routes.library import library_bp  # noqa: E402
+from .config import get_web_setting, load_jarvis_config, load_web_config  # noqa: E402
+from .routes.api import api_bp  # noqa: E402
+from .routes.auth import auth_bp  # noqa: E402
 from .routes.background_tasks import background_bp  # noqa: E402
 from .routes.task_integrations import integrations_bp  # noqa: E402
-from .sockets.chat import ChatHandler
+from .sockets.chat import ChatHandler  # noqa: E402
+
+logger = logging.getLogger(__name__)
+try:
+    from .routes.library import library_bp  # noqa: E402
+    library_routes_available = True
+except Exception:
+    logger.exception("Source Library routes failed to load; other Web features remain available")
+    library_routes_available = False
+    library_bp = Blueprint("library_unavailable", __name__, url_prefix="/api/library")
+
+    @library_bp.route("", defaults={"path": ""}, methods=["GET", "POST", "PATCH", "DELETE"])
+    @library_bp.route("/<path:path>", methods=["GET", "POST", "PATCH", "DELETE"])
+    def unavailable_library(path):
+        return jsonify(ok=False, error="The source library is unavailable. Check Web logs and retry."), 503
 
 # Import auth utilities
 sys.path.insert(0, str(JARVIS_ROOT / 'lib'))
-from webui_auth import is_auth_enabled, get_token_from_request, verify_token
-from flask_error_logger import setup_error_logging
-from ui_navigation import register_ui_navigation
-from .socket_auth import AuthenticatedSocketIO
+from flask_error_logger import setup_error_logging  # noqa: E402
+try:
+    from source_library_jobs import LibraryIndexWorker  # noqa: E402
+except Exception:
+    logger.exception("Source Library worker failed to load; Web will continue without indexing")
+    LibraryIndexWorker = None
+from ui_navigation import register_ui_navigation  # noqa: E402
+from webui_auth import get_token_from_request, is_auth_enabled, verify_token  # noqa: E402
+
+from .socket_auth import AuthenticatedSocketIO  # noqa: E402
 
 # Global to track startup mode (set in run_server)
 _startup_mode = 'cloud'
@@ -80,6 +100,13 @@ setup_error_logging(app, 'web-ui')
 chat_handler = ChatHandler(socketio)
 app.extensions['jarvis_chat_runs'] = chat_handler.runs
 app.extensions['jarvis_background_tasks'] = chat_handler.background_tasks
+try:
+    library_index_worker = LibraryIndexWorker() if LibraryIndexWorker else None
+except Exception:
+    logger.exception("Source Library worker failed to initialize; Web will continue without indexing")
+    library_index_worker = None
+app.extensions['jarvis_library_index_worker'] = library_index_worker
+app.extensions['jarvis_library_routes_available'] = library_routes_available
 
 
 # =============================================================================
@@ -103,7 +130,7 @@ PUBLIC_EXTENSIONS = {'.css', '.js', '.ico', '.png', '.jpg', '.svg', '.woff', '.w
 @app.before_request
 def check_auth():
     """Check authentication before each request"""
-    from flask import request, redirect, url_for
+    from flask import redirect, request, url_for
     
     # Skip if auth not enabled
     if not is_auth_enabled():
@@ -206,6 +233,8 @@ def create_app(mode: str = 'cloud'):
 
 def run_server(host: str = None, port: int = None, mode: str = 'cloud', debug: bool = False):
     """Run the web server"""
+    from os import environ
+
     global _startup_mode
     _startup_mode = mode  # Store for session defaults
     
@@ -220,6 +249,12 @@ def run_server(host: str = None, port: int = None, mode: str = 'cloud', debug: b
 
     # A second Web process sharing enabled task storage must not own a coordinator.
     chat_handler.background_tasks.start()
+    library_worker = app.extensions.get('jarvis_library_index_worker')
+    if library_worker is not None and environ.get('JARVIS_LIBRARY_WORKER_EXTERNAL') != '1':
+        try:
+            library_worker.start()
+        except Exception:
+            logger.exception("Source Library worker failed to start; Web will continue without indexing")
     
     # Read version
     try:

@@ -172,6 +172,10 @@ case "${1:-web}" in
     # Separately supervised; no Tool RAG sync or unrelated daemon startup.
     exec ./bin/jarvis-task-worker run
     ;;
+  library-worker)
+    # Isolate document import and indexing from the Web listener.
+    exec ./bin/jarvis-library-worker
+    ;;
   api)
     run_init
     exec ./bin/jarvis-api "${mode_args[@]}"

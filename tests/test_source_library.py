@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import sqlite3
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -30,10 +31,21 @@ def vector(index=0):
 
 def test_reads_do_not_create_a_store(library):
     assert library.list()["sources"] == []
+    assert library.statuses(["a" * 64])["sources"] == []
     assert library.search("something")["retrieval_mode"] == "empty"
     with pytest.raises(LibraryError):
         library.read("a" * 64)
     assert not library.path.exists()
+
+
+def test_bounded_status_lookup_keeps_requested_order(library):
+    first = library.save(b"First source", "first.txt")
+    second = library.save(b"Second source", "second.txt")
+    statuses = library.statuses([second["source_id"], first["source_id"]])["sources"]
+    assert [source["source_id"] for source in statuses] == [second["source_id"], first["source_id"]]
+    assert all(source["index_job_status"] == "pending" for source in statuses)
+    with pytest.raises(LibraryError, match="at most 100"):
+        library.statuses(["a" * 64] * 101)
 
 
 def test_complete_text_is_retained_deduplicated_and_read_after_restart(library):
@@ -52,7 +64,7 @@ def test_complete_text_is_retained_deduplicated_and_read_after_restart(library):
     assert passage["text"] == text[passage["char_start"] : passage["char_end"]]
     assert "lines" in passage["citation"] and "mode=local" in passage["url"]
     assert reopened.read(sid, passage=passage["number"])["passages"][0] == {
-        k: v for k, v in passage.items() if k != "matched_by"
+        k: v for k, v in passage.items() if k not in {"matched_by", "match_reasons"}
     }
     assert reopened.save(original + b"Changed", "manual.txt")["source_id"] != sid
     assert reopened.list()["total"] == 2
@@ -97,6 +109,39 @@ def test_pdf_page_provenance_original_and_empty_page_warning(library):
     assert result["page"] == 3
     assert "page 3" in result["citation"]
     assert library.download(saved["source_id"])[0] == original
+    assert library.read(saved["source_id"])["source"]["page_count"] == 3
+    assert library.rendered_pdf_page(saved["source_id"], 3).startswith(b"\x89PNG\r\n\x1a\n")
+    with pytest.raises(LibraryError, match="outside"):
+        library.rendered_pdf_page(saved["source_id"], 4)
+
+
+def test_raw_and_rendered_markdown_do_not_fetch_remote_assets_or_run_html(library):
+    original = (
+        "# Private notes\n\n![remote](https://example.test/pixel.png)\n\n"
+        "<script>alert(1)</script> [safe](https://example.test/page)\n"
+    )
+    sid = library.save(original.encode(), "notes.md")["source_id"]
+    assert library.original_text(sid) == (original, "notes.md")
+    rendered = library.rendered_markdown(sid)
+    assert "<h1>Private notes</h1>" in rendered
+    assert "[Image: remote]" in rendered and "<img" not in rendered
+    assert "<script>" not in rendered and "&lt;script&gt;" in rendered
+    assert "javascript:" not in rendered
+    assert 'rel="noopener noreferrer"' in rendered
+    with pytest.raises(LibraryError, match="PDFs only"):
+        library.rendered_pdf_page(sid, 1)
+
+
+def test_editing_a_note_saves_new_original_and_keeps_old_citations(library):
+    original = library.save(b"First journal entry", "journal.md", title="Journal")
+    edited = library.save_edited_copy(original["source_id"], "Second journal entry")
+    assert edited["source_id"] != original["source_id"]
+    assert edited["origin"] == f"Edited from library://local/{original['source_id']}"
+    assert library.download(original["source_id"])[0] == b"First journal entry"
+    assert library.download(edited["source_id"])[0] == b"Second journal entry"
+    assert library.search("First", semantic=False)["passages"][0]["source_id"] == original["source_id"]
+    with pytest.raises(LibraryError, match="UTF-8 text"):
+        library.save_edited_copy(original["source_id"], None)
 
 
 @pytest.mark.parametrize(
@@ -188,6 +233,46 @@ def test_semantic_only_match_and_keyword_match_both_reach_hybrid(library, monkey
     assert result["passages"][0]["source_id"] == second["source_id"]
     assert result["passages"][0]["matched_by"] == ["keyword", "semantic"]
     assert result["passages"][1]["matched_by"] == ["semantic"]
+    assert result["passages"][0]["match_reasons"] == ["text", "semantic"]
+    assert result["passages"][1]["match_reasons"] == ["semantic"]
+
+
+def test_legacy_json_vectors_remain_searchable_after_packed_vector_upgrade(library, monkeypatch):
+    monkeypatch.setattr(module, "get_embeddings_batch", lambda texts, **_: [vector()] * len(texts))
+    monkeypatch.setattr(module, "get_embedding", lambda *_args, **_kwargs: vector())
+    sid = library.save(b"An automobile in the garage", "legacy.txt")["source_id"]
+    library.index(sid)
+    with sqlite3.connect(library.path) as conn:
+        row = conn.execute("SELECT id,embedding FROM passages WHERE source_id=?", (sid,)).fetchone()
+        assert isinstance(row[1], bytes)
+        conn.execute("UPDATE passages SET embedding=? WHERE id=?", (json.dumps(vector()), row[0]))
+    result = library.search("vehicle")
+    assert result["passages"][0]["source_id"] == sid
+    assert result["passages"][0]["match_reasons"] == ["semantic"]
+
+
+def test_match_reasons_distinguish_title_from_passage_text(library):
+    title = library.save(b"Unrelated passage", "title.txt", title="Orchid handbook")
+    text = library.save(b"Orchid appears in this passage", "text.txt", title="Botany note")
+    result = library.search("orchid", semantic=False)
+    reasons = {p["source_id"]: p["match_reasons"] for p in result["passages"]}
+    assert reasons[title["source_id"]] == ["title"]
+    assert reasons[text["source_id"]] == ["text"]
+
+
+def test_rename_preserves_identity_and_rebuilds_title_dependent_indexes(library, monkeypatch):
+    monkeypatch.setattr(module, "get_embeddings_batch", lambda texts, **_: [vector()] * len(texts))
+    sid = library.save(b"Only passage body", "note.txt", title="Old orchid")["source_id"]
+    assert library.index(sid)["remaining"] == 0
+    renamed = library.rename(sid, "New cedar")
+    assert renamed["source_id"] == sid
+    assert renamed["index_status"] == "keyword_only"
+    assert library.download(sid)[0] == b"Only passage body"
+    assert library.search("orchid", semantic=False)["passages"] == []
+    assert library.search("cedar", semantic=False)["passages"][0]["match_reasons"] == ["title"]
+    assert library.index(sid)["source"]["index_status"] == "ready"
+    with pytest.raises(LibraryError, match="titles"):
+        library.rename(sid, " ")
 
 
 def test_embedding_outage_preserves_original_and_reports_keyword_only(library, monkeypatch):
@@ -321,3 +406,73 @@ def test_replaced_title_during_indexing_does_not_receive_stale_vectors(library, 
         library.index(sid)
     source = library.read(sid)["source"]
     assert source["title"] == "New title" and source["indexed_passages"] == 0
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows symlinks need special privileges")
+def test_library_store_rejects_a_symlink_database(library, tmp_path):
+    victim = tmp_path / "private.env"
+    victim.write_text("SECRET=1")
+    library.path.parent.mkdir(parents=True, exist_ok=True)
+    library.path.symlink_to(victim)
+    with pytest.raises(LibraryError, match="regular"):
+        library.save(b"A note", "note.txt")
+    assert victim.read_text() == "SECRET=1"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link identity checks")
+def test_library_store_rejects_a_hardlinked_database(library, tmp_path):
+    victim = tmp_path / "private.env"
+    victim.write_text("SECRET=1")
+    original_mode = victim.stat().st_mode
+    library.path.parent.mkdir(parents=True, exist_ok=True)
+    os.link(victim, library.path)
+    with pytest.raises(LibraryError, match="singly linked"):
+        library.save(b"A note", "note.txt")
+    assert victim.read_text() == "SECRET=1"
+    assert victim.stat().st_mode == original_mode
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX no-follow directory handles")
+def test_library_store_rejects_a_symlinked_directory(library, tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    library.path.parent.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(LibraryError, match="directory"):
+        library.save(b"A note", "note.txt")
+    assert not (outside / "local.db").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX directory permissions")
+def test_existing_library_directory_is_made_private(library):
+    library.path.parent.mkdir(mode=0o775)
+    library.path.parent.chmod(0o775)
+    saved = library.save(b"A private note", "note.txt")
+    assert library.read(saved["source_id"])["source"]["source_id"] == saved["source_id"]
+    assert library.path.parent.stat().st_mode & 0o777 == 0o700
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux pinned directory path")
+def test_library_store_stays_in_pinned_directory_after_name_swap(library, tmp_path, monkeypatch):
+    import source_library as source_module
+
+    root = library.path.parent
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    original_connect = source_module.sqlite3.connect
+    swapped = False
+
+    def swap_before_sqlite_connect(*args, **kwargs):
+        nonlocal swapped
+        if not swapped:
+            root.rename(tmp_path / "original-library")
+            root.symlink_to(outside, target_is_directory=True)
+            swapped = True
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(source_module.sqlite3, "connect", swap_before_sqlite_connect)
+    with library._connect(write=True) as conn:
+        assert conn.execute("SELECT count(*) FROM sources").fetchone()[0] == 0
+    assert swapped
+    assert (tmp_path / "original-library" / "local.db").exists()
+    assert not (outside / "local.db").exists()

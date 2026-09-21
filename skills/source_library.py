@@ -8,6 +8,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
+from filelock import Timeout
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
 from config_loader import load_config
@@ -50,7 +52,7 @@ def execute(args):
         data = {"source": saved, "duplicate": saved["duplicate"], "remaining": remaining}
         speech = f"{'Already saved' if saved['duplicate'] else 'Saved'} {saved['title']} in your {library.mode} source library."
         if remaining:
-            speech += " Keyword search is ready. Use index separately to enable search by meaning."
+            speech += " Keyword search is ready; meaning indexing is queued for the Web library worker."
     elif action == "search":
         data = library.search(
             args.get("query"),
@@ -66,7 +68,12 @@ def execute(args):
         data = library.list(offset=args.get("offset", 0), limit=args.get("limit", 8))
         speech = f"Your {library.mode} source library contains {data['total']} sources."
     elif action == "index":
-        data = library.index(source_id)
+        library.read(source_id, limit=1)
+        try:
+            with library.locked_index():
+                data = library.index(source_id)
+        except Timeout as exc:
+            raise LibraryError("This library is already indexing. Try again shortly.") from exc
         speech = (
             "Semantic indexing is complete."
             if not data["remaining"]
@@ -75,8 +82,12 @@ def execute(args):
     elif action == "remove":
         data = library.remove(source_id)
         speech = "Removed that source and its passages from this library."
+    elif action == "rename":
+        source = library.rename(source_id, args.get("title"))
+        data = {"source": source}
+        speech = f"Renamed the saved source to {source['title']}. Its original and citations are unchanged."
     else:
-        raise LibraryError("Choose save, search, read, list, index, or remove.")
+        raise LibraryError("Choose save, search, read, list, index, rename, or remove.")
     return {"ok": True, "speech": speech, "data": {"action": action, **data}}
 
 

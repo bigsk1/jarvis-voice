@@ -12,7 +12,7 @@ PRIVATE_PATHS = [
     for directory in ("data/source_library", "private-documents", "custom/nested/archive", ".")
     for mode in ("cloud", "local")
     for suffix in ("", "-journal", "-wal", "-shm", ".backup")
-] + ["data/source_library/original.pdf"]
+] + ["data/source_library/original.pdf", "data/source_library/inbox/local/private.md"]
 PUBLIC_PATHS = ["lib/source_library.py", "docs/SOURCE_LIBRARY.md", "config/local.env.example"]
 
 

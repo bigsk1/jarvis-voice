@@ -29,6 +29,7 @@ PASSAGE_FIELDS = (
     "char_start",
     "char_end",
     "matched_by",
+    "match_reasons",
 )
 
 

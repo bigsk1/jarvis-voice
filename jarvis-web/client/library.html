@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Source library · Jarvis</title>
+  <link rel="stylesheet" href="/css/fonts.css">
   <link rel="stylesheet" href="/css/variables.css">
   <link rel="stylesheet" href="/css/library.css">
 </head>
@@ -12,20 +13,35 @@
     <header><a href="/">← Jarvis</a><h1>Source library</h1>
       <label>Library <select id="mode"><option value="cloud">Cloud</option><option value="local">Local</option></select></label>
     </header>
-    <p>Keep original documents and find the passages you need, even after the chat is gone.</p>
-    <form id="upload-form">
-      <label>PDF or text source <input id="file" type="file" required accept=".pdf,.txt,.md,.markdown,.csv,.json,.srt,.vtt,.log"></label>
-      <label>Title (optional) <input id="title" maxlength="200"></label>
-      <button id="save" type="submit">Save source</button>
-    </form>
-    <p class="hint">Up to 25 MB and 1,000,000 text characters. PDF search uses extracted text; diagrams and scanned pages need OCR. Originals stay here until you remove them.</p>
+    <p>Keep original documents and find cited pages.</p>
+    <section id="worker-health" class="worker-health-warning" role="alert" hidden></section>
+    <details id="import-panel">
+      <summary>Add files to library <span id="selection-count" class="selection-count" hidden></span><span class="hint">PDF, Markdown, text · multiple files or server inbox</span></summary>
+      <form id="upload-form">
+        <label class="file-picker">Choose files <input id="file" type="file" multiple accept=".pdf,.txt,.md,.markdown,.csv,.json,.srt,.vtt,.log"></label>
+        <label>Title for one file (optional) <input id="title" maxlength="200" disabled></label>
+        <section id="selected-files" aria-label="Files chosen for the library" aria-live="polite" hidden></section>
+        <button id="save" type="submit" disabled>Add to library</button>
+        <button id="clear-files" type="button" hidden>Clear list</button>
+      </form>
+      <p class="hint">Choosing files only puts them on this list. Click Add to library to save the originals and index their text in the library database for retrieval. This does not copy files into the server inbox. Each file: up to 25 MB and 1,000,000 extracted characters. You can search its text once added. Scanned pages need separate OCR; originals remain until deleted.</p>
+      <section id="import-progress" aria-label="Import progress" hidden></section>
+      <section id="inbox-section" aria-label="Server inbox import">
+        <h2>Large offline import</h2>
+        <p class="hint">Place files in the mode-specific library inbox on the server or Docker data mount, then queue them here. Import and meaning indexing continue if this tab closes. Files remain in the inbox after import.</p>
+        <button id="check-inbox" type="button">Check inbox</button>
+        <button id="queue-inbox" type="button">Queue inbox import</button>
+        <p id="inbox-status" role="status"></p>
+      </section>
+    </details>
     <form id="search-form">
       <label class="grow">Search saved sources <input id="query" type="search" maxlength="1000" placeholder="Ask a question or enter keywords"></label>
-      <label><input id="semantic" type="checkbox" checked> Search by meaning too</label>
-      <button type="submit">Search</button><button id="browse" type="button">Browse all</button>
+      <label class="semantic-toggle"><input id="semantic" type="checkbox" checked> Search by meaning too</label>
+      <button type="submit">Search</button><button id="clear-search" type="button" hidden>Clear search</button><button id="browse" type="button">Browse all</button>
     </form>
+    <div id="search-context" class="search-context" hidden></div>
     <p id="status" role="status" aria-live="polite"></p>
-    <button id="stop-index" type="button" hidden>Pause indexing after this batch</button>
+    <button id="refresh" type="button">Refresh library status</button>
     <section id="results" aria-label="Saved sources"></section>
     <button id="more" type="button" hidden>More sources</button>
     <section id="detail" aria-label="Source passages" hidden></section>
