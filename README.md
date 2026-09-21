@@ -150,7 +150,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - Effective order: manifest → profile override → mode/config availability → live registry → Web/request blocks → Tool RAG shortlist
   - See [`docs/TOOL_RAG_STRATEGY.md`](docs/TOOL_RAG_STRATEGY.md)
 - **Versioned Router Prompts**: selectable `v1`-`v4` system prompts for routing
-  - `v1` is the immutable full-context baseline; `v2`, `v3`, and `v4` reduce router prompt size while preserving production routing contracts
+  - `v1` is the current checkout's pinned full-context recovery baseline; `v2`, `v3`, and `v4` reduce router prompt size while preserving production routing contracts
   - `v4` is the local-mode default in `config/local.env.example`; cloud examples stay on `v1` unless changed in env or Web Settings
   - See [`orchestrator/router_prompts/README.md`](orchestrator/router_prompts/README.md)
 - **Advanced Tool Calling**: LLM-powered routing with 100+ tools

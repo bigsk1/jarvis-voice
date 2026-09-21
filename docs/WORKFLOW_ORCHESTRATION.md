@@ -176,7 +176,7 @@ their own wording style. When `workflow` is actually available and a recipe
 fully matches the user's task, Jarvis searches with the underlying intent and
 desired output, confirms an exact currently runnable ID, and starts at most one
 run. It may still use a direct tool for a simple action where no recipe adds
-needed work. v1 remains the immutable comparison baseline.
+needed work. v1 remains the current checkout's pinned comparison baseline.
 
 Search reads both shared and personal folders, respects personal same-id
 overrides, omits recipes with `"allow_workflow_tool": false`, and returns

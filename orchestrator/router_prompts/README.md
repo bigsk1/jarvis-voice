@@ -35,9 +35,10 @@ Successful assistant messages store `router_prompt_version` in their persisted
 usage metadata. This makes the selected version visible in conversation JSON,
 export/import data, and Markdown exports without duplicating the full routing
 provenance payload. Every version is hash-validated when selected, and v1 is
-also validated at startup. Because experimental v2-v4 may evolve in place, the
-version identifies the current checkout's pinned contents; use the Git revision
-or contemporaneous prompt hash/size when distinguishing older experiment runs.
+also validated at startup. Prompt contents can change through reviewed
+maintenance, so the version identifies the current checkout's pinned contents;
+use the Git revision or contemporaneous prompt hash/size when distinguishing
+older experiment runs.
 
 ## Comparing prompt versions
 
@@ -72,7 +73,7 @@ env JARVIS_OVERRIDE_JARVIS_ROUTER_PROMPT_VERSION=v4 \
     ./orchestrator/orchestrator_v2.py cloud "$QUERY" --json
 ```
 
-Both commands append real provider calls to the normal daily LLM log. Inspect
+Each command appends real provider calls to the normal daily LLM log. Inspect
 recent routing samples with:
 
 ```bash
@@ -87,7 +88,7 @@ tail -n 100 "logs/llm-calls-$(date +%F).jsonl" | jq -c '
    tool: .response.tool_name}'
 ```
 
-`system_prompt_chars` includes v1/v2 plus unchanged runtime context, provider
+`system_prompt_chars` includes the selected version plus runtime context, provider
 capability notes, model overrides, and profile data. Structural continuation
 may correctly show `system_prompt_sent=false`; that call inherits the version
 established by the first provider call in the request. Sum all routing calls in
@@ -102,24 +103,25 @@ surface than a fixed CLI/env run.
 
 | Version | UI label | Purpose | Status |
 | --- | --- | --- | --- |
-| `v1` | `v1 - Full context system prompt` | Exact established Jarvis router prompt accumulated through production use and provider/model testing | Immutable baseline |
+| `v1` | `v1 - Full context system prompt` | Full-context recovery and comparison prompt pinned to the current checkout | Pinned baseline |
 | `v2` | `v2 - Compact full-context prompt` | Consolidated production prompt preserving v1 behavioral contracts | Experimental candidate |
 | `v3` | `v3 - Caveman hybrid prompt` | Telegraphic v1/v2 hybrid with normal user-facing speech | Experimental |
 | `v4` | `v4 - Caveman-light hybrid prompt` | Natural compact wording at nearly v3 size | Experimental |
 
 ## Measured size comparison
 
-These measurements cover the static `BASE_SYSTEM_PROMPT` strings only. Runtime
+These measurements cover the static `BASE_SYSTEM_PROMPT` strings only. Rough
+token estimates use characters divided by four; provider tokenizers differ. Runtime
 date/time, provider capability notes, model-specific overrides, profile cards,
 Tool RAG schemas, and conversation context are added separately at request
 time.
 
 | Version | Characters | Words | Rough Token Estimate | Character Delta |
 | --- | ---: | ---: | ---: | --- |
-| `v1` | `31,491` | `4,821` | `7,873-8,179` | Baseline |
-| `v2` | `13,524` | `1,904` | `~3,381` | `57.1%` fewer than v1 |
-| `v3` | `9,567` | `1,242` | `~2,392` | `69.6%` fewer than v1; `29.3%` fewer than v2 |
-| `v4` | `10,039` | `1,317` | `~2,510` | `68.1%` fewer than v1; `25.8%` fewer than v2; `4.9%` more than v3 |
+| `v1` | `31,826` | `4,877` | `~7,957` | Baseline |
+| `v2` | `14,006` | `1,986` | `~3,502` | `56.0%` fewer than v1 |
+| `v3` | `10,022` | `1,316` | `~2,506` | `68.5%` fewer than v1; `28.4%` fewer than v2 |
+| `v4` | `10,508` | `1,393` | `~2,627` | `67.0%` fewer than v1; `25.0%` fewer than v2; `4.8%` more than v3 |
 
 The important live metric is full routing payload size. A compact prompt can
 still be dominated by retrieved tool schemas, profile/context overlays, or
@@ -130,34 +132,37 @@ provider continuation behavior. Use `logs/llm-calls-YYYY-MM-DD.jsonl` and
 
 File: `v1.py`
 
-`v1` is the exact router system prompt that existed before prompt versioning.
-It is the control arm for all future experiments. Tool RAG, ghost tools, and
-tool schemas are independent of this version.
+`v1` is the full-context recovery prompt and comparison baseline in the current
+checkout. It originated before prompt versioning but has received intentional
+maintenance since then. Tool RAG, ghost tools, and tool schemas are independent
+of this version.
 
 Baseline measurements:
 
-- Characters: `31,491`
+- Characters: `31,826`
 - Physical lines: `417` (`340` nonblank)
-- Space-separated words: `4,821`
-- Rough token estimate: `7,800-8,200`, depending on provider tokenizer
-- Prompt SHA-256: `6c2ecbb0c032af7f7ffc70b6d093d11e918230e31ef4ddb7bfffadf9f4b4efc1`
+- Space-separated words: `4,877`
+- Rough token estimate: approximately `7,957` by characters divided by four; provider tokenizers differ
+- Prompt SHA-256: `7e6aba1b93b5765ba409d3bf520b67ab8af9bef288d4926a2faae7821d6b6671`
 
-### Do not edit v1
+### v1 integrity and maintenance
 
-Do not modify `BASE_SYSTEM_PROMPT` in `v1.py`. The module carries its expected
-prompt SHA-256, and `router_prompts/__init__.py` validates it whenever the
-router is imported. If the prompt bytes change without matching the pinned
-checksum, Jarvis fails closed instead of silently running a modified v1.
+The module carries its expected prompt SHA-256, and
+`router_prompts/__init__.py` validates it whenever the router is imported. If
+the prompt bytes change without matching the pinned checksum, Jarvis fails
+closed instead of silently running a modified v1.
 
 Comments and documentation outside `BASE_SYSTEM_PROMPT` do not affect the
-prompt checksum. Treat the checksum constant as immutable too. If prompt
-behavior needs to change, copy v1 into a new version instead of updating v1 or
-its checksum.
+prompt checksum. Keep v1 stable for comparisons and put prompt experiments in a
+new version. Necessary security or compatibility maintenance may revise v1 in a
+reviewed change that updates its checksum, size assertions, and documentation
+together. The hash helper deliberately refuses `v1 --write` so this review
+cannot be replaced by an automatic checksum rewrite.
 
 Live tool schemas and implementation guards remain authoritative when a
-historic v1 example names a parameter that a tool no longer accepts. Do not
-patch v1 to follow those runtime changes; update maintained prompt versions and
-keep safety-critical validation at the tool boundary.
+v1 example names a parameter that a tool no longer accepts. Remove obsolete
+or unsafe v1 guidance when necessary, and keep safety-critical validation at
+the tool boundary.
 
 Jarvis always validates v1 because it is the recovery baseline. Other versions
 are validated when selected. A stale hash in an unused experimental version
@@ -178,17 +183,17 @@ into one authoritative section.
 
 Measurements:
 
-- Characters: `13,524` (`57.1%` fewer than v1)
-- Physical lines: `88` (`75` nonblank)
-- Space-separated words: `1,904`
-- Rough token estimate: approximately `3,381`, depending on provider tokenizer
-- Prompt SHA-256: `3725ea9dadaf1b62bc9e13d3c1f5c6304ed5cd5e82c9203eb460c71107cc7712`
+- Characters: `14,006` (`56.0%` fewer than v1)
+- Physical lines: `89` (`76` nonblank)
+- Space-separated words: `1,986`
+- Rough token estimate: approximately `3,502` by characters divided by four; provider tokenizers differ
+- Prompt SHA-256: `a3ef882708880d0372ad3dc0636e1e01890a79ca611e8c5e582ceca6e459128d`
 
 Tool RAG, schemas, runtime date/time, provider capability notes, response-style
 overlays, model overrides, and profile cards remain unchanged. Treat live tests
 as an A/B experiment against v1. v2 is an experimental baseline and may evolve
 in place when its hash, exact-size tests, documentation, and validation samples
-are updated together. v1 remains the immutable control.
+are updated together. v1 remains the pinned control for the current checkout.
 
 ## v3: Caveman hybrid prompt
 
@@ -207,11 +212,11 @@ the injected time without a tool call.
 
 Measurements:
 
-- Characters: `9,567` (`69.6%` fewer than v1; `29.3%` fewer than v2)
-- Physical lines: `91` (`76` nonblank)
-- Space-separated words: `1,242`
-- Rough token estimate: approximately `2,392`, depending on provider tokenizer
-- Prompt SHA-256: `d10d61134f21dd096ab1dfff93223d5ee3dc19fb70deddaeca95e6fc6c774e37`
+- Characters: `10,022` (`68.5%` fewer than v1; `28.4%` fewer than v2)
+- Physical lines: `92` (`77` nonblank)
+- Space-separated words: `1,316`
+- Rough token estimate: approximately `2,506` by characters divided by four; provider tokenizers differ
+- Prompt SHA-256: `323ede1603570e646f61eb907ff60a14f64bd9c35af67b9c82d29e8ad8d24ecf`
 
 The main experimental risk is instruction adherence on weaker/local models:
 telegraphic grammar removes explanatory redundancy that may help some models.
@@ -229,11 +234,11 @@ improves adherence for providers/models that struggle with v3 shorthand.
 
 Measurements:
 
-- Characters: `10,039` (`68.1%` fewer than v1; `25.8%` fewer than v2; `4.9%` more than v3)
+- Characters: `10,508` (`67.0%` fewer than v1; `25.0%` fewer than v2; `4.8%` more than v3)
 - Physical lines: `46` (`31` nonblank)
-- Space-separated words: `1,317`
-- Rough token estimate: approximately `2,510`, depending on provider tokenizer
-- Prompt SHA-256: `558ad32d86156901b2117621b998340b2c35f94ab20f70aec8776b78c2409d96`
+- Space-separated words: `1,393`
+- Rough token estimate: approximately `2,627` by characters divided by four; provider tokenizers differ
+- Prompt SHA-256: `a077bf959ed6f0772129dc9fda6e43f6fe4521a207a45446acb4dd6edb13ced2`
 
 V4 intentionally preserves the supplied Unicode comparison arrows and symbols;
 provider tokenization may therefore differ slightly from the character-based
@@ -261,6 +266,9 @@ source file. It is shared across modes; cloud and local independently select
 the resulting versions through their env or Web overrides.
 
 ```bash
+# Inspect the current v1 pin without changing it.
+bin/router-prompt-hash v1
+
 # Inspect one version and print a ready-to-paste constant on mismatch.
 bin/router-prompt-hash v2
 
@@ -271,8 +279,10 @@ bin/router-prompt-hash v2 --write
 bin/router-prompt-hash --check-all
 ```
 
-The helper refuses to rewrite v1. Its checksum is a source-controlled integrity
-guard against accidental drift, not a secret or a security signature.
+The helper refuses to rewrite v1 automatically. Its checksum is a
+source-controlled integrity guard against accidental drift, not a secret or a
+security signature. Intentional v1 maintenance requires a reviewed manual hash
+update and corresponding test/documentation changes.
 
 Experimental v2-v4 may be intentionally revised in place. Update their prompt,
 checksum, measurements, behavioral tests, and experiment notes as one change.
@@ -297,39 +307,19 @@ Implementation checklist:
 
 ## Restoring v1
 
-Prefer Git because it restores the exact version tracked by the chosen branch,
-tag, or commit. Back up any intentional local work first.
+To discard an accidental local edit, restore the version tracked by the
+current checkout. Back up any intentional local work first.
 
 ```bash
-V1_REF=587e2ba1b7d3436b3af494b486fc503040765da8
-git restore --source="$V1_REF" -- orchestrator/router_prompts/v1.py
+git diff -- orchestrator/router_prompts/v1.py
+git restore --source=HEAD -- orchestrator/router_prompts/v1.py
+.venv/bin/python bin/router-prompt-hash --check-all
 ```
 
-That commit introduced the immutable v1 baseline. A commit-pinned restore is
-safer than relying on a moving branch; `origin/main` remains an option when the
-latest upstream copy is intentionally desired.
-
-If Git restoration is unavailable, download the raw file to a temporary path,
-inspect it, and then install it. `REF` may be `main`, a tag, or preferably a
-known-good commit SHA:
-
-```bash
-REF=587e2ba1b7d3436b3af494b486fc503040765da8
-curl --fail --location --proto '=https' --tlsv1.2 \
-  "https://raw.githubusercontent.com/bigsk1/jarvis-voice/${REF}/orchestrator/router_prompts/v1.py" \
-  --output /tmp/jarvis-router-prompt-v1.py
-
-cp /tmp/jarvis-router-prompt-v1.py orchestrator/router_prompts/v1.py
-PYTHONPATH=lib:orchestrator python3 -c \
-  "from router_prompts import get_router_system_prompt; print(get_router_system_prompt('v1')[0])"
-```
-
-The final command imports the prompt registry and therefore runs automatic
-integrity validation. It prints `v1` on success and raises an integrity error
-if the restored prompt does not match its pinned checksum.
-
-The raw GitHub fallback becomes available only after this prompt-versioning
-work has been committed and pushed to the selected ref.
+For an older release, first inspect and select a reviewed tag or commit whose
+prompt behavior is appropriate for that release. The original prompt-versioning
+commit is not the current recovery baseline. The integrity check above confirms
+the restored file matches its own pinned checksum.
 
 ## Cache behavior
 
