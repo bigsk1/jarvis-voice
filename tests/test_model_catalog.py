@@ -200,7 +200,7 @@ class ModelCatalogTests(unittest.TestCase):
 
     def test_provider_options_distinguish_catalog_defaults(self):
         for provider, model_id in (
-            ("xai", "grok-4.6"),
+            ("xai", "grok-4.7"),
             ("anthropic", "claude-sonnet-5"),
             ("openai", "gpt-5.6-luna"),
         ):
@@ -241,8 +241,9 @@ class ModelCatalogTests(unittest.TestCase):
     def test_xai_options_match_current_catalog(self):
         models = [entry["id"] for entry in get_provider_model_options("xai")]
         self.assertEqual(
-            models[:6],
+            models[:7],
             [
+                "grok-4.7",
                 "grok-4.6",
                 "grok-4.5",
                 "grok-4.3",
@@ -256,6 +257,25 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertNotIn("grok-4-1-fast-non-reasoning-latest", models)
         self.assertEqual(get_model_context_label("xai", "grok-4.20-reasoning"), "1M")
         self.assertEqual(get_model_context_window("xai", "grok-4.20-reasoning"), 1_000_000)
+
+    def test_grok_4_7_resolves_with_pricing_and_reasoning_effort(self):
+        self.assertEqual(get_model_context_window("xai", "grok-4.7"), 500_000)
+        self.assertEqual(get_model_context_label("xai", "grok-4.7"), "500K")
+        self.assertTrue(get_model_supports_xai_reasoning("xai", "grok-4.7"))
+        self.assertTrue(get_model_supports_xai_reasoning_effort("xai", "grok-4.7"))
+        self.assertEqual(
+            get_model_xai_reasoning_effort_values("xai", "grok-4.7"),
+            ["low", "medium", "high", "xhigh"],
+        )
+        pricing = get_model_pricing("xai", "grok-4.7")
+        self.assertIsNotNone(pricing)
+        self.assertEqual(pricing["input"], 2.00)
+        self.assertEqual(pricing["cached"], 0.50)
+        self.assertEqual(pricing["output"], 6.00)
+        self.assertEqual(pricing["long_context"]["threshold"], 200_000)
+        self.assertEqual(pricing["long_context"]["input"], 4.00)
+        self.assertEqual(pricing["long_context"]["cached"], 1.00)
+        self.assertEqual(pricing["long_context"]["output"], 12.00)
 
     def test_grok_4_6_resolves_with_pricing_and_reasoning_effort(self):
         self.assertEqual(get_model_context_window("xai", "grok-4.6"), 500_000)
@@ -334,6 +354,10 @@ class ModelCatalogTests(unittest.TestCase):
 
         # API-key Grok Build accepts images; OAuth transport capabilities are
         # advertised separately from the developer API catalog.
+        self.assertTrue(xai["grok-4.7"]["vision"])
+        self.assertIn("vision", xai["grok-4.7"]["capabilities"])
+        self.assertIn("thinking", xai["grok-4.7"]["capabilities"])
+        self.assertIn("tools", xai["grok-4.7"]["capabilities"])
         self.assertTrue(xai["grok-4.6"]["vision"])
         self.assertIn("vision", xai["grok-4.6"]["capabilities"])
         self.assertIn("thinking", xai["grok-4.6"]["capabilities"])
@@ -353,6 +377,7 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertIn("vision", openai["gpt-5.4-nano"]["capabilities"])
 
     def test_xai_reasoning_effort_flag_from_catalog(self):
+        self.assertTrue(get_model_supports_xai_reasoning_effort("xai", "grok-4.7"))
         self.assertTrue(get_model_supports_xai_reasoning_effort("xai", "grok-4.6"))
         self.assertTrue(get_model_supports_xai_reasoning_effort("xai", "grok-4.5"))
         self.assertTrue(get_model_supports_xai_reasoning_effort("xai", "grok-4.5-latest"))
@@ -378,6 +403,7 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(get_model_xai_reasoning_effort_values("xai", "grok-build-0.1"), [])
 
     def test_xai_reasoning_flag_from_catalog(self):
+        self.assertTrue(get_model_supports_xai_reasoning("xai", "grok-4.7"))
         self.assertTrue(get_model_supports_xai_reasoning("xai", "grok-4.6"))
         self.assertTrue(get_model_supports_xai_reasoning("xai", "grok-4.5"))
         self.assertTrue(get_model_supports_xai_reasoning("xai", "grok-4.5-latest"))
@@ -493,7 +519,7 @@ class ModelCatalogTests(unittest.TestCase):
 
     def test_catalog_defaults_are_explicit(self):
         self.assertEqual(get_default_model_id("openai"), "gpt-5.6-luna")
-        self.assertEqual(get_default_model_id("xai"), "grok-4.6")
+        self.assertEqual(get_default_model_id("xai"), "grok-4.7")
         self.assertEqual(get_default_model_id("anthropic"), "claude-sonnet-5")
 
     def test_legacy_claude_4_5_alias_resolves_to_sonnet(self):

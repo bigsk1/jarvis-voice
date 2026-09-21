@@ -345,7 +345,7 @@ class XAIPromptCacheAffinityTests(unittest.TestCase):
              patch("config_loader.get_config_value", return_value="false"):
             provider = XAIProvider(api_key="xai-test-key", auth_mode="api_key")
 
-        self.assertEqual(provider.model, "grok-4.6")
+        self.assertEqual(provider.model, "grok-4.7")
 
     def test_xai_sdk_client_init_receives_grok_conv_id_metadata(self):
         calls = []

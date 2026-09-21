@@ -113,7 +113,7 @@ def test_generic_effort_is_not_guessed_for_unprofiled_model(monkeypatch, caplog)
 
 
 def test_xai_profile_uses_catalog_default_and_safe_minimum_for_required_reasoning():
-    profile = get_catalog_thinking_profile("xai", "grok-4.6")
+    profile = get_catalog_thinking_profile("xai", "grok-4.7")
 
     assert profile is not None
     assert profile.disable_supported is False

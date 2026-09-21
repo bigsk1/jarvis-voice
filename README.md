@@ -268,7 +268,7 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
 - **Tool Management**: Enable/disable tools per mode to optimize context window
 
 ### Dual Mode Operation
-- **Cloud Mode**: OpenAI (shipped default), xAI Grok (`grok-4.6` recommended for xAI), Anthropic Claude, or Ollama Cloud (`*:cloud` / `*-cloud` models through a signed-in Ollama daemon)
+- **Cloud Mode**: OpenAI (shipped default), xAI Grok (`grok-4.7` recommended for xAI), Anthropic Claude, or Ollama Cloud (`*:cloud` / `*-cloud` models through a signed-in Ollama daemon)
   - OpenAI can use Chat Completions by default or opt into Responses API routing for tool-capable turns with `OPENAI_API_MODE=responses` + `OPENAI_RESPONSES_TOOLS=true`
 - **Local Mode**: Ollama (`gemma4` default) + faster-whisper + Kokoro/Qwen3-TTS (free, offline)
 - **Optional Helper LLM**: Native and Docker installs can use the versioned MiniCPM5-1B helper through an external Ollama daemon for zero-API-cost status phrases and Stash metadata summaries, using CPU or automatic GPU acceleration without changing the primary chat provider. Roles are opt-in and retain their existing fallbacks; see the [setup and benchmark guide](docs/ollama/README.md#optional-helper-model).
@@ -605,7 +605,7 @@ nano config/cloud.env
 # LLM_PROVIDER="xai"
 # XAI_AUTH_MODE="auto"   # API key when set; otherwise a current `grok login`
 # XAI_API_KEY="xai-..."  # Optional for chat/OAuth vision; required for xAI generation/TTS/search APIs
-# XAI_MODEL="grok-4.6"
+# XAI_MODEL="grok-4.7"
 # XAI_OAUTH_MODEL="grok-4.6"
 
 # Ollama Cloud alternative (signed-in daemon path):

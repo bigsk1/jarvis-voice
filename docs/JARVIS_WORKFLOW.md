@@ -792,14 +792,14 @@ graph LR
 - **Cloud**: Ollama Jarvis Embedding (768 dimensions) + FTS5 full-text search
 - **Local**: the same fingerprinted Jarvis Embedding contract + FTS5 full-text search
 - **Search**: Hybrid (FTS5 for keywords, embeddings for concepts)
-- **Models**: xAI Grok 4.5 / grok-4.3 / grok-build-0.1 ⭐, Claude Sonnet 5, GPT-4o (cloud) | gemma4 ⭐, qwen3.5:latest, qwen3-coder (local)
+- **Models**: xAI grok-4.7 / grok-4.3 / grok-build-0.1 ⭐, Claude Sonnet 5, GPT-4o (cloud) | gemma4 ⭐, qwen3.5:latest, qwen3-coder (local)
 
 ### Key Configuration Variables
 
 | Variable | Impact | Example Values |
 |----------|--------|----------------|
 | `LLM_PROVIDER` | Which LLM to use | `xai`, `anthropic`, `openai`, `ollama` |
-| `XAI_MODEL` | xAI Grok model | `grok-4.6` ⭐ (default); `grok-4.3` for 1M context or `reasoning_effort=none`; `grok-build-0.1` for coding-heavy |
+| `XAI_MODEL` | xAI Grok model | `grok-4.7` ⭐ (API-key default); `grok-4.3` for 1M context or `reasoning_effort=none`; `grok-build-0.1` for coding-heavy |
 | `ANTHROPIC_MODEL` | Cloud model selection | `claude-sonnet-5` |
 | `OLLAMA_MODEL` | Ollama model used in local mode | `gemma4` ⭐, `qwen3.5:latest`, `qwen3-coder`, `deepseek-r1` |
 | `OLLAMA_CLOUD_MODEL` | Cloud-tagged Ollama model used in cloud mode | `minimax-m3:cloud`, `gpt-oss:120b-cloud` |
@@ -1110,7 +1110,7 @@ a financial advisor for personalized guidance.
 
 **Model Selection:**
 - `LLM_PROVIDER` - Main LLM (`xai`, `anthropic`, `openai`, `ollama`)
-- `XAI_MODEL` - xAI API-key Grok model (`grok-4.6` recommended; see `XAI_PROVIDER.md` for OAuth/API-key boundaries and alternatives)
+- `XAI_MODEL` - xAI API-key Grok model (`grok-4.7` recommended; see `XAI_PROVIDER.md` for OAuth/API-key boundaries and alternatives)
 - `ANTHROPIC_MODEL` - Claude model
 - `OLLAMA_MODEL` - Local-mode Ollama model (`gemma4` in `local.env.example`; alternatives include `qwen3.5:latest`)
 - `OLLAMA_CLOUD_MODEL` - Cloud-mode Ollama model; signed-daemon mode requires a cloud tag, while direct API mode accepts canonical ollama.com IDs
