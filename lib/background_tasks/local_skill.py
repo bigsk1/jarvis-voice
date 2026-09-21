@@ -91,6 +91,7 @@ class LocalSkillRunner:
 
     def policy(self, name):
         from tool_availability import check_tool_availability
+        from tool_child_environment import parse_child_environment_policy
         from tool_profiles import effective_enabled, load_active_profile_overrides
         from tool_schema import ToolSchema
 
@@ -122,6 +123,12 @@ class LocalSkillRunner:
             settings = execution_settings(manifest.get('execution', {}).get('background'))
             if settings['adapter'] != adapter:
                 raise AdmissionDenied('Manifest adapter does not match the trusted binding')
+            if manifest.get('child_environment') is not None:
+                parse_child_environment_policy(
+                    manifest['child_environment'], manifest.get('availability'))
+                if self.child_environment_policies.get(name) is None:
+                    raise AdmissionDenied(
+                        'Restricted tool needs a trusted background child environment policy')
             argument_validators(manifest['parameters'], settings.get('argument_constraints'))
             schema = ToolSchema(name, manifest['description'], manifest['parameters'], str(script),
                                 permissions=permissions, execution=manifest['execution'],

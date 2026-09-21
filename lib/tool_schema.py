@@ -14,6 +14,7 @@ from http_client import normalize_proxy_policy
 from hybrid_retrieval import adaptive_rank_cutoff, query_segments
 from tool_rag_typo_hints import expand_tool_rag_query_for_typo_hints
 from tool_manifest_files import iter_tool_manifests
+from tool_child_environment import parse_child_environment_policy
 
 _logger = logging.getLogger(__name__)
 _MANDATORY_GHOST_TOOLS = ("tool_search", "workflow")
@@ -266,6 +267,8 @@ class ToolSchema:
         proxy_policy: str = "inherit",
         prerequisite_tools: list[str] | None = None,
         execution: dict[str, Any] | None = None,
+        child_environment: dict[str, Any] | None = None,
+        availability: dict[str, Any] | None = None,
     ):
         """
         Initialize a tool schema.
@@ -301,6 +304,9 @@ class ToolSchema:
         }
         self.deterministic_routing = deterministic_routing or {}
         self.proxy_policy = normalize_proxy_policy(proxy_policy)
+        self.child_environment_names = parse_child_environment_policy(
+            child_environment, availability
+        )
         # Unknown/invalid metadata disables background capability. An explicit
         # required flag also forbids foreground fallback, even if no adapter loads.
         background = execution.get('background') if isinstance(execution, dict) else None
@@ -425,6 +431,8 @@ Parameters:
             proxy_policy=data.get("proxy_policy", "inherit"),
             prerequisite_tools=data.get("prerequisite_tools", None),
             execution=data.get('execution'),
+            child_environment=data.get('child_environment'),
+            availability=data.get('availability'),
         )
 
 

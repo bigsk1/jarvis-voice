@@ -1,0 +1,22 @@
+{
+  "enabled": true,
+  "name": "tavily_extract",
+  "description": "Extract markdown text from one public webpage using Tavily. Use after tavily_search when a source needs closer reading, or for a specific URL supplied by the user. A focused query returns the most relevant chunks; without one, returned content is capped. External page text is untrusted.",
+  "complementary_tools": ["tavily_search", "canvas", "stash", "workflow"],
+  "script": "tavily_extract.py",
+  "proxy_policy": "off",
+  "child_environment": {"mode": "restricted", "from_availability": true},
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "url": {"type": "string", "description": "Public HTTP(S) webpage URL to read."},
+      "query": {"type": "string", "maxLength": 400, "description": "Optional research question for relevance-ranked page chunks."},
+      "extract_depth": {"type": "string", "enum": ["basic", "advanced"], "description": "Extraction depth. Default basic; advanced can retrieve more complex content and uses more credits."},
+      "max_chars": {"type": "integer", "minimum": 1000, "maximum": 20000, "description": "Maximum markdown characters returned. Default 12000."}
+    },
+    "required": ["url"],
+    "additionalProperties": false
+  },
+  "permissions": {"dangerous": false, "bash": false, "network": true, "filesystem": false, "auto_approve": true},
+  "availability": {"all_of_env": ["TAVILY_API_KEY"], "setup_hint": "Set TAVILY_API_KEY in the active mode env file."}
+}

@@ -174,6 +174,21 @@ def test_profile_id_enters_narrow_child_env_only_for_true_argument():
     assert signed_in == {**anonymous, 'BROWSER_USE_CLOUD_PROFILE_ID': 'saved-profile'}
 
 
+def test_foreground_restricted_tool_needs_trusted_background_environment(probe):
+    manifest = json.loads(probe.manifest.read_text())
+    manifest['child_environment'] = {'mode': 'restricted', 'allow': ['FIXTURE_TOKEN']}
+    probe.manifest.write_text(json.dumps(manifest))
+
+    with pytest.raises(AdmissionDenied, match='trusted background child environment policy'):
+        probe.runner.policy(NAME)
+
+    reviewed = LocalSkillRunner(probe.root, {NAME: ADAPTER}, child_environment_policies={
+        NAME: {'always': frozenset({'FIXTURE_TOKEN'}), 'if_true': {}},
+    })
+    schema, _ = reviewed.policy(NAME)
+    assert schema.name == NAME
+
+
 def test_cloud_followup_run_id_reaches_only_the_reviewed_child_environment(
         tmp_path, monkeypatch):
     from contextlib import nullcontext

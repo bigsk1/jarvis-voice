@@ -321,7 +321,12 @@ Output:
 }
 ```
 
-**Same pattern, consistent experience!**
+Both appear in Jarvis's tool list, but they launch differently. A local MCP
+server receives the variables explicitly named in `config/mcp-servers.json`
+(plus configured proxy settings). A local Python tool receives the selected
+mode's full environment unless its manifest opts into a restricted child
+environment. Background skills use a separate trusted policy. See
+[the local tool environment guide](../skills/README.md#local-tool-child-environment).
 
 ## Troubleshooting
 

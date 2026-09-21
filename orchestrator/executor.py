@@ -10,9 +10,11 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import nullcontext
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 # Add lib to path
@@ -25,6 +27,7 @@ from security_utils import redact_sensitive_text
 from tool_logger import get_logger
 from tool_progress import parse_tool_progress
 from tool_search_runtime import search_tools_runtime
+from tool_child_environment import restrict_child_environment
 
 try:
     from .workflow_tool_runtime import execute_workflow_tool
@@ -220,6 +223,10 @@ class ToolExecutor:
             return 200  # Direct SerpApi only; up to two sequential 90s HTTP calls if include_product_details
         if tool_name == "serpapi_search_index":
             return 120  # One Search Index request; deep recall may use the full 90s HTTP allowance
+        if tool_name == "tavily_search":
+            return 60  # One bounded Tavily search request plus process cleanup
+        if tool_name == "tavily_extract":
+            return 90  # Advanced extraction can use a 60-second provider deadline
         if tool_name == "serpapi_google_trends":
             return 120  # One Google Trends request with a 90s HTTP allowance
         if tool_name == "serpapi_google_trending_now":
@@ -493,19 +500,30 @@ class ToolExecutor:
                 tool_env['JARVIS_OVERRIDE_JARVIS_BACKGROUND_DEADLINE'] = ''
                 tool_env['JARVIS_BACKGROUND_MAX_INPUT_BYTES'] = ''
                 tool_env['JARVIS_OVERRIDE_JARVIS_BACKGROUND_MAX_INPUT_BYTES'] = ''
-            from tool_process import run_local_process
-            stdout, stderr, cancelled = run_local_process(
-                cmd, input_json, python_script=tool_script.suffix == '.py', cwd=self.skills_dir,
-                tool_env=tool_env, timeout=timeout, tool_name=tool_name,
-                consume_progress=lambda line: self._consume_progress_line(tool_name, line),
-                cancel_check=self.cancel_check, terminate=self._terminate_process_tree,
-                process_factory=subprocess.Popen,
-                checkpoint=supervision.checkpoint if supervision else None,
-                process_started=(lambda pid: supervision.record_process_start(
-                    pid, local_settings.get('progress_label', 'Running local skill'))) if supervision else None,
-                process_stopped=supervision.record_process_stop if supervision else None,
-                max_output_bytes=local_limits['output_bytes'] if supervision else None,
+            child_names = getattr(tool_schema, "child_environment_names", None)
+            home_context = (
+                TemporaryDirectory(prefix="jarvis-tool-home-")
+                if child_names is not None else nullcontext(None)
             )
+            with home_context as child_home:
+                if child_names is not None:
+                    tool_env = restrict_child_environment(
+                        tool_env, child_names, home=child_home,
+                        proxy_policy=proxy_policy,
+                    )
+                from tool_process import run_local_process
+                stdout, stderr, cancelled = run_local_process(
+                    cmd, input_json, python_script=tool_script.suffix == '.py', cwd=self.skills_dir,
+                    tool_env=tool_env, timeout=timeout, tool_name=tool_name,
+                    consume_progress=lambda line: self._consume_progress_line(tool_name, line),
+                    cancel_check=self.cancel_check, terminate=self._terminate_process_tree,
+                    process_factory=subprocess.Popen,
+                    checkpoint=supervision.checkpoint if supervision else None,
+                    process_started=(lambda pid: supervision.record_process_start(
+                        pid, local_settings.get('progress_label', 'Running local skill'))) if supervision else None,
+                    process_stopped=supervision.record_process_stop if supervision else None,
+                    max_output_bytes=local_limits['output_bytes'] if supervision else None,
+                )
 
             if cancelled:
                 duration_ms = (time.time() - start_time) * 1000

@@ -319,6 +319,48 @@ TTS remains independent and uncached by this path.
 errors provide a bounded redacted context, and `near_complete` maps to the
 Status LLM completion event rather than generic progress.
 
+### 8) Restricted Local Tool Child Environments
+**Priority:** Medium security / isolation hygiene
+**Status:** Framework shipped (opt-in). Existing tools keep the full selected-mode environment until a reviewed manifest opts in.
+
+Ordinary local tools launched by `ToolExecutor` inherit the selected mode's full environment. That is convenient, and it is also how unrelated API keys, proxy URLs, and other mode settings can leak into a tool process or one of its libraries. Python can pass a replacement environment to the child; Jarvis now does that when a manifest declares `child_environment`.
+
+**What already shipped**
+- Shared policy: `lib/tool_child_environment.py`, applied in `orchestrator/executor.py`
+- Restricted children get declared credentials plus central runtime, TLS, mode, session, and proxy settings, a temporary empty `HOME`, and `load_config()` that does not reread the mode file
+- Only `tavily_search` and `tavily_extract` opt in today
+- Background `local_skill_v1` still uses trusted allowlists in `lib/background_tasks/production.py`. A tool with `child_environment` cannot be admitted as a background skill without one of those allowlists
+- This is not a sandbox. The child still runs as the Jarvis user and can read files that user can read, including local env files. Stronger isolation would need a separate identity or container
+
+See `skills/README.md` (Local tool child environment) and `docs/tools/tavily/README.md`.
+
+**Why go back through existing tools**
+Do not flip this on for the whole catalog. Availability lists hard requirements; optional settings, stash paths, GPU URLs, and helper binaries do not show up there. A wrong allowlist breaks the tool in one mode or silently drops a feature.
+
+The local code is the trust question. A reviewed Jarvis script calling a familiar HTTP API is usually lower concern than a tool that shells out, loads an unfamiliar package, or takes a URL/command from the model. Start with the second group.
+
+**Suggested review order**
+1. Tools that run other programs or user-shaped commands: `ssh_remote`, `opencode`, `api_call`, `send_webhook`, `network_tools`
+2. Tools that wrap local helpers or downloaders: `crawl_url`, `screenshot_url`, `youtube_video`, `youtube_transcript`, `convert_file`, `document_ocr`
+3. Network tools that only need their own key, after a config-read pass: SerpApi, Brave, Tavily-class search (Tavily is the template)
+4. Leave simple local utilities (`calculator`, `get_time`, memory tools) on the full environment unless a review finds a real inheritance risk
+
+**Per-tool checklist (both modes)**
+- Read the script and its imports for `get_config_value`, `os.environ`, helper CLIs, and fallback paths
+- Put required optional keys in `allow` (`STASH_DIR`, data dirs, GPU settings, Crawl4AI auth)
+- Keep `from_availability` for hard env requirements; list `provider_requirements` names explicitly in `allow`
+- Do not add `child_environment` to a background-bound tool unless `production.py` also gets a reviewed allowlist
+- Prove the child still works with `proxy_policy` off/inherit as declared, and that unrelated keys such as `OPENAI_API_KEY` are absent from the child env
+- MCP servers stay on `config/mcp-servers.json`; this policy does not replace that path
+
+**Not in this work**
+- Making restricted the default for every tool
+- Inferring allowlists from availability alone
+- Treating this as filesystem or identity isolation
+- A credential store (it would not stop a same-user process from reading the mode files)
+
+**Tests to extend when migrating a tool:** child env contains the selected-mode key, excludes unrelated secrets, `load_config()` does not rehydrate the mode file, and a legacy tool without the block is unchanged.
+
 ---
 
 ## ⭐ State-of-the-Art Assistant Upgrades (Worth Doing Early)
@@ -817,6 +859,7 @@ direct-cloud paths.
   "Process up to 20" option
 - Per-provider media model pickers in Web AI config (Gemini Veo/Omni, Grok Imagine variants, etc.)
 - Credential-aware tool/provider availability + manual Tool Doctor diagnostics
+- Restricted child environments for higher-risk local tools (opt-in; Tavily is the template)
 
 **Low Priority (Future):**
 - Smart home integration (optional)
@@ -1306,8 +1349,10 @@ Optional: Phase 3B tool recall filter only if search_memory noise returns
 - **[WORKFLOW_ORCHESTRATION.md](WORKFLOW_ORCHESTRATION.md)** - Multi-tool workflow system (recipes, pipelines, tool chains)
 - **[ADVANCED_AI_TECHNIQUES.md](ADVANCED_AI_TECHNIQUES.md)** - Tool building, self-play, and advanced agent concepts
 - **[INTELLIGENCE_LAYER.md](INTELLIGENCE_LAYER.md)** - Learning from interactions
+- **[skills/README.md](../skills/README.md#local-tool-child-environment)** - Opt-in restricted local tool child environment
+- **[tools/tavily/README.md](tools/tavily/README.md)** - First tools on the restricted child environment
 
 ---
 
-**Last Updated:** August 19, 2026
-**Version:** 2.10 (Added conditional proactive-state mirroring roadmap)
+**Last Updated:** September 20, 2026
+**Version:** 2.10 (Added restricted local tool child-environment migration)

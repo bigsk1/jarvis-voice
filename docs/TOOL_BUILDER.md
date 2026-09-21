@@ -1,7 +1,7 @@
 # Jarvis Tool Builder - LLM-Assisted Tool Creation
 
 > **Version:** 2.1  
-> **Updated:** January 21, 2026  
+> **Updated:** September 20, 2026
 > **Purpose**: Build candidate tools for operator-selected capability gaps. Feedback and Intelligence can provide evidence; creation is explicitly invoked and remains subject to safety checks and review.
 
 ---
@@ -22,19 +22,44 @@
 
 ## Overview
 
-The Tool Builder creates a candidate tool when an operator invokes it through the CLI with a concrete capability gap. Feedback and Intelligence can help identify and justify that gap, but they do not launch tool creation automatically.
+Tool Builder is an optional terminal command for drafting a simple local tool.
+It is not available from Jarvis Web. An operator invokes it with a concrete
+capability gap; Feedback and Intelligence can help identify that gap but do not
+start builds automatically. The result is a starting script and manifest for
+review and IDE work, not a complete Jarvis integration.
+
+After a useful draft, add the parts the tool actually needs: runtime timeout,
+Tool RAG wording, follow-up extraction, Web or Canvas display, documentation,
+and focused tests. The Builder does not create those integrations for you.
 
 ### Key Features
 
 - **Uses existing LLM providers** - No external dependencies (works with xAI, Anthropic, OpenAI, Ollama)
 - **Local mode compatible** - Same tool builder works for cloud and local
-- **Verification** - Syntax, import, and runtime tests before deployment
+- **Basic verification** - Syntax, import, and one sample runtime test
 - **Dependency gating** - New packages require human approval
 - **Full traceability** - Report card links to feedback IDs
 - **MCP overlap check** - Skips if existing MCP tool does the job
 - **Network/Proxy Auto-Fix** - Detects connection errors and auto-injects proxy instructions
 - **Inter-tool Calling** - Guides LLM to call other Jarvis tools correctly
 - **Stash Integration** - Built-in patterns for artifact storage
+
+### Environment access during a build
+
+Tool Builder creates **local Python tools**, not MCP servers. It does not add
+`child_environment` to generated manifests automatically. Its live verification
+runs the generated script with the builder's current environment. Approval of a
+pending tool also runs a live test with the selected mode's full environment.
+The local tool environment setting applies when `ToolExecutor` later launches
+the installed tool; it does not protect these Builder test runs.
+
+Builder runs newly generated code before you can inspect the finished script.
+For code or dependencies you do not trust yet, run Builder under a separate
+user or container. After reviewing a local tool, add `child_environment` if
+you want to limit ordinary foreground runs, and list every optional setting
+it needs. A background binding also needs a trusted policy in
+`lib/background_tasks/production.py`. See
+[Which settings a tool receives](../skills/README.md#local-tool-child-environment).
 
 ---
 

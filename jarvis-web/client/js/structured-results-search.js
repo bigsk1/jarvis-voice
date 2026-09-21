@@ -11,6 +11,37 @@ window.createSearchResultAdapters = function createSearchResultAdapters({
   compactText,
   formatDateTime,
 }) {
+  function adaptTavilySearch(payload) {
+    const items = getRows(payload).map(row => ({
+      title: row.title || 'Web source',
+      url: row.url,
+      chips: row.published_date ? [String(row.published_date)] : [],
+      details: row.snippet ? [compactText(row.snippet, 280)] : [],
+      actionLabel: 'Open source',
+    }));
+    return {
+      kind: 'generic', layout: 'rail', eyebrow: 'Tavily Search',
+      heading: payload.query || 'Web sources',
+      subtitle: `${payload.results_count ?? items.length} source${items.length === 1 ? '' : 's'} shown`,
+      items,
+    };
+  }
+
+  function adaptTavilyExtract(payload) {
+    if (!payload.url) return {kind: 'generic', heading: 'Tavily Extract', items: []};
+    return {
+      kind: 'generic', eyebrow: 'Tavily Extract',
+      heading: 'Extracted webpage',
+      subtitle: payload.content_truncated ? 'Excerpt shown' : 'Page content',
+      items: [{
+        title: payload.url,
+        url: payload.url,
+        details: payload.content ? [compactText(payload.content, 400)] : [],
+        actionLabel: 'Open source',
+      }],
+    };
+  }
+
   function adaptSearchIndex(payload) {
     const items = getRows(payload).map(row => {
       const chips = [];
@@ -383,6 +414,8 @@ window.createSearchResultAdapters = function createSearchResultAdapters({
   }
 
   return {
+    adaptTavilySearch,
+    adaptTavilyExtract,
     adaptSearchIndex,
     adaptGoogleNewsLight,
     adaptGoogleImagesLight,

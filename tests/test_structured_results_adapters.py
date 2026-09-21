@@ -67,6 +67,24 @@ assert.equal(first.render({serpapi_search: payload}), saved);
 """)
 
 
+def test_tavily_sources_render_as_clickable_cards():
+    _run_renderer_assertions("""
+const search = renderer.render({tavily_search: {data: {
+  query: 'release notes', results_count: 1,
+  results: [{title: 'Official notes', url: 'https://example.org/notes',
+    snippet: 'Specific change', published_date: '2026-09-20'}],
+}}});
+assert.ok(search.includes('Tavily Search'));
+assert.ok(search.includes('Official notes'));
+assert.ok(search.includes('https://example.org/notes'));
+const extract = renderer.render({tavily_extract: {data: {
+  url: 'https://example.org/notes', content: 'Detailed page content',
+}}});
+assert.ok(extract.includes('Tavily Extract'));
+assert.ok(extract.includes('Detailed page content'));
+""")
+
+
 def test_shopping_detail_fallbacks_preserve_bid_images_and_document_formats():
     _run_renderer_assertions("""
 const homeDepot = renderer.render({serpapi_home_depot: {

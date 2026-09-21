@@ -8,6 +8,42 @@ Shared truncation and bounding policy remains in the public facade.
 from collections.abc import Callable
 
 
+def extend_tavily_search(
+    payload: dict,
+    extracted: dict,
+    max_candidates: int,
+    *,
+    truncate_text: Callable[[str, int], str],
+) -> None:
+    """Keep source links and enough evidence for a later question."""
+    results = payload.get('results') or []
+    candidates = []
+    if isinstance(results, list):
+        for item in results[:max_candidates]:
+            if not isinstance(item, dict) or not item.get('url'):
+                continue
+            candidate = {
+                field: item[field] for field in ('title', 'url', 'published_date')
+                if item.get(field) not in (None, '')
+            }
+            if item.get('snippet'):
+                candidate['snippet'] = truncate_text(str(item['snippet']), 700)
+            candidates.append(candidate)
+    if candidates:
+        extracted['candidates'] = candidates
+
+
+def extend_tavily_extract(
+    payload: dict,
+    extracted: dict,
+    *,
+    truncate_text: Callable[[str, int], str],
+) -> None:
+    """Keep the URL and a bounded page excerpt for follow-up turns."""
+    if payload.get('content'):
+        extracted['content_excerpt'] = truncate_text(str(payload['content']), 2000)
+
+
 def extend_youtube_search(
     value: dict,
     extracted: dict,

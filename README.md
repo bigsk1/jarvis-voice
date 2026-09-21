@@ -1431,7 +1431,7 @@ Install the managed Bash/Zsh command set with `./update-aliases.sh`. Useful oper
 
 ### Tool Builder
 
-- [Tool Builder](docs/TOOL_BUILDER.md) - Build reviewed tools from an operator-selected capability gap
+- [Tool Builder](docs/TOOL_BUILDER.md) - Optional terminal command to draft a basic tool; finish its Jarvis integration in an IDE
 
 
 ```bash

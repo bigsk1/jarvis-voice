@@ -246,7 +246,7 @@
 | **Memory Browser** | Web UI for memories/intel/conversations - `./bin/jarvis-memory` (localhost:5002)  |
 | **Canvas Viewer** | Visual knowledge display - `./bin/jarvis-canvas` (localhost:8890)  |
 | **Feedback System** | LLM self-critique - `./bin/jarvis-feedback` or `--feedback` flag  |
-| **Tool Builder** | Dynamic tool creation - `./bin/build-tool --mode cloud build "..."`  |
+| **Tool Builder** | Optional terminal starter for a basic tool; finish the integration in an IDE - `./bin/build-tool --mode cloud build "..."` |
 | **[Prompt Validator](SYSTEM_PROMPT_VALIDATOR.md)** | Debug unexpected behavior - `./bin/validate-system-prompt --issue "..."`  |
 
 **Intelligence Features (Phase 1.5):**

@@ -62,6 +62,8 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_yelp_search',
     'serpapi_open_table_reviews',
     'serpapi_search_index',
+    'tavily_search',
+    'tavily_extract',
     'serpapi_google_events',
     'serpapi_google_local',
     'serpapi_google_local_services',
@@ -396,6 +398,14 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'engine', 'query', 'mode', 'safe', 'start', 'num_results',
         'results_count', 'provider_results_count', 'total_results', 'top_url',
         'search_id', 'has_more', 'next_start', 'serpapi_searches_used', 'source',
+    ],
+    'tavily_search': [
+        'provider', 'query', 'search_depth', 'topic', 'time_range',
+        'results_count', 'request_id', 'external_content_trust',
+    ],
+    'tavily_extract': [
+        'provider', 'url', 'query', 'extract_depth', 'content_chars',
+        'content_truncated', 'request_id', 'external_content_trust',
     ],
     'serpapi_google_events': [
         'engine', 'query', 'effective_query', 'query_location_embedded',
@@ -3056,6 +3066,18 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
         if key == 'serpapi_search_index':
             _search_followup.extend_search_index(
                 payload, extracted, max_candidates,
+                truncate_text=_truncate_followup_text,
+            )
+
+        if key == 'tavily_search':
+            _search_followup.extend_tavily_search(
+                payload, extracted, max_candidates,
+                truncate_text=_truncate_followup_text,
+            )
+
+        if key == 'tavily_extract':
+            _search_followup.extend_tavily_extract(
+                payload, extracted,
                 truncate_text=_truncate_followup_text,
             )
 

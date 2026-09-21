@@ -34,6 +34,7 @@ def cmd_build(args):
     print(f"\n🔧 Tool Builder ({args.mode} mode)")
     print("=" * 60)
     print(f"Gap: {args.gap}")
+    print("Environment: live verification, when run, uses Jarvis's current environment.")
     print()
     
     builder = ToolBuilder(mode=args.mode)
@@ -70,6 +71,7 @@ def cmd_build(args):
                 print(f"   Capabilities: {', '.join(result.report_card.get('capabilities', []))}")
                 print(f"   Verification: {'✅ Passed' if result.report_card.get('verification_passed') else '❌ Failed'}")
             print()
+            print("Runtime environment: full Jarvis process environment until a reviewed child_environment policy is added.")
             print("🔄 Run sync to enable:")
             print(f"   ./bin/sync-tools.py {args.mode}")
         
@@ -164,6 +166,7 @@ def cmd_approve(args):
         print(f"  3. Reject: ./bin/build-tool reject {tool_name}")
         return
     
+    print(f"Environment: approval's live test, if reached, uses the full {build_mode} mode environment.")
     ok, message = approve_pending_tool(tool_name, install_packages=args.install_packages)
     if ok:
         print(f"✅ {message}")

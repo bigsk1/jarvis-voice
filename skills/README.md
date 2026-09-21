@@ -188,6 +188,65 @@ Rules:
 - Availability runs AFTER profile resolution: a profile cannot force-enable a
   tool whose hard requirement is missing.
 
+### Local tool child environment
+
+The code running on your machine is the main trust question. A reviewed Jarvis
+script calling a familiar API is usually lower concern than an unfamiliar
+GitHub script or package, regardless of which API it calls. Use the smaller
+environment for local code that deserves extra care.
+
+| How it runs | Environment variables passed to the child |
+| --- | --- |
+| Normal local tool | Jarvis's process environment with the selected mode's settings. |
+| Local tool with `child_environment` | Only its declared settings and common runtime settings. |
+| Background `local_skill_v1` | A trusted production allowlist when configured; otherwise the worker environment. A tool with `child_environment` needs a production allowlist before background admission. |
+| Local MCP server | Only variables named in `config/mcp-servers.json`, plus proxy settings when configured. Remote MCP servers do not launch a local server process. |
+
+The `child_environment` setting affects local tools launched by
+`ToolExecutor`. It does not change MCP servers. MCP command arguments and
+remote HTTP headers can also carry explicitly configured values; review those
+separately. A reviewed local tool can opt in with its manifest:
+
+```json
+{
+  "availability": {"all_of_env": ["SERVICE_API_KEY"]},
+  "child_environment": {
+    "mode": "restricted",
+    "from_availability": true,
+    "allow": ["SERVICE_OPTIONAL_SETTING"]
+  }
+}
+```
+
+`from_availability` includes names in `all_of_env` and `any_of_env`; all
+declared alternatives are passed when present. `allow` adds optional settings
+that availability cannot describe. A tool with provider-specific requirements
+must list its child environment names explicitly in `allow`. Jarvis centrally
+supplies Python runtime, TLS certificate, mode, session, and applicable proxy
+settings, applies selected-mode overrides, and gives the child a temporary
+empty home directory. Scripts can keep calling `load_config()`; it returns the
+restricted process environment instead of rereading the mode file.
+
+Before enabling this for an existing tool, review its direct and indirect
+config reads, optional features, external programs, and fallback paths in both
+modes. Put required optional paths and settings such as `STASH_DIR`, data
+directories, or GPU settings in `allow` after that review. Availability records
+hard prerequisites, not every setting a tool may use. An absent
+`child_environment` block keeps the existing launch behavior.
+This policy reduces accidental secret exposure through environment inheritance;
+it is not a sandbox. A process running as the Jarvis user can still read files
+that user can access, including local env files. MCP servers have their own
+launch path.
+
+Background `local_skill_v1` uses the trusted allowlists in
+`lib/background_tasks/production.py`, including argument-dependent keys such
+as `use_profile`. It does not use the manifest's `child_environment` at launch.
+A tool declaring `child_environment` cannot be admitted as a background skill
+without a trusted background policy. Review any additions to `allow` as access
+changes; do not assume a foreground policy also protects a background adapter.
+See [Tool Builder](../docs/TOOL_BUILDER.md) before applying this to generated
+code; its verification run has a separate environment path.
+
 ### Schema Rules For Reliable Tool Calling
 
 For best cross-provider compatibility, keep the top-level `parameters` schema simple:
@@ -366,7 +425,9 @@ excluded from that mode's callable registry and Tool RAG sync when it is absent.
 
 ## Auto-Tools (Tool Builder)
 
-The `auto-tools/` directory contains tools created by the Dynamic Tool Builder:
+The `auto-tools/` directory contains tools created by the terminal Tool Builder.
+It is an optional way to sketch a simple tool. It does not complete the wider
+Jarvis integration for you:
 
 | Tool | Description |
 |------|-------------|
@@ -408,12 +469,24 @@ Each auto-tool includes a `.report.json` with build audit information.
 
 ## Creating New Tools
 
-### 1. Use Tool Builder (Recommended)
+For a complete Jarvis tool, work through the script and manifest in the IDE.
+Depending on the tool, also wire its runtime timeout, Tool RAG description,
+follow-up context, Web or Canvas result display, documentation, and focused
+tests. A short script and a passing sample input alone do not cover those
+surfaces.
+
+### Optional: generate a starter with Tool Builder
+
+Tool Builder runs in the terminal; there is no Jarvis Web creation flow. Use it
+to get a basic script and manifest, then review and extend them in the IDE.
+See the [Tool Builder guide](../docs/TOOL_BUILDER.md) for its verification and
+environment behavior.
+
 ```bash
 ./bin/build-tool --mode cloud build "Check if a URL is accessible"
 ```
 
-### 2. Manual Creation
+### Create the script and manifest directly
 
 **Create the script (`skills/mytool.py`):**
 ```python

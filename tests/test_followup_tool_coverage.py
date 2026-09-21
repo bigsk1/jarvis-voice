@@ -966,6 +966,15 @@ LOCAL_TOOL_SAMPLES = {
             ],
         }
     ),
+    "tavily_search": _case({
+        "provider": "tavily", "query": "payload adapters", "results_count": 1,
+        "results": [{"title": "Tavily result", "url": "https://example.test/tavily",
+                     "snippet": "A cited source."}],
+    }),
+    "tavily_extract": _case({
+        "provider": "tavily", "url": "https://example.test/tavily",
+        "content": "An extracted passage.", "content_chars": 21,
+    }),
     "serpapi_google_images_light": _case(
         {
             "engine": "google_images_light",

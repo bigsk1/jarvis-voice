@@ -186,10 +186,16 @@ MCP servers only receive **explicitly configured** environment variables:
 }
 ```
 
-- ✅ Only `BRAVE_API_KEY` is passed
-- ❌ `SSH_AUTH_SOCK`, `AWS_SECRET_KEY`, etc. are **never exposed**
+- ✅ Only `BRAVE_API_KEY` is passed in this example
+- ✅ Unlisted variables such as `SSH_AUTH_SOCK` and `AWS_SECRET_KEY` are not
+  inherited by the MCP server process
 - ✅ `proxy_policy=prefer|require` adds only conventional proxy names derived
   from `LOCAL_PROXY` / `LOCAL_PROXY2`; it does not copy the host environment
+
+This is separate from the [local Python tool environment policy](../../skills/README.md#local-tool-child-environment).
+An MCP process running as the Jarvis user can still read files that user can
+access. Docker isolation also depends on the image, mounts, user, and network
+settings in its server configuration.
 
 ### Auditing New Servers
 

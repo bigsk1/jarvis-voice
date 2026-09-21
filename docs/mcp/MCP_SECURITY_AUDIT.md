@@ -249,7 +249,7 @@ Keep `"enabled": true` after audit passes.
 
 ## Environment Variable Security
 
-### ✅ Explicit Variables (Secure)
+### ✅ Explicit Variables (Limited Inheritance)
 
 ```json
 "env": {
@@ -257,13 +257,14 @@ Keep `"enabled": true` after audit passes.
 }
 ```
 
-**Why Safe:** Server only gets what it needs, not your entire environment.
+The server receives the named variables instead of Jarvis's entire process
+environment. This limits accidental exposure; it is not a filesystem sandbox.
 
 For Docker servers, remember that `docker run -e NAME` copies `NAME` from the
 subprocess environment into the container. Keep the matching key explicit in
 the server's Jarvis `env` object; do not use broad host-environment passthrough.
 
-### ✅ Args Expansion (Secure)
+### ⚠️ Args Expansion (Visible as Process Arguments)
 
 ```json
 "args": [
@@ -272,7 +273,10 @@ the server's Jarvis `env` object; do not use broad host-environment passthrough.
 ]
 ```
 
-**Why Safe:** Values become command-line arguments, not container environment. The MCP server cannot enumerate other env vars - it only sees the final value in the arg string.
+Values become command-line arguments, not container environment variables.
+Avoid putting credentials in arguments because command lines can be visible to
+other local processes or diagnostics. Prefer the explicit `env` mapping for
+server credentials.
 
 **Jarvis proxy note:** Chromium accepts one `--proxy-server` URL. For MCP
 servers whose HTTP clients honor conventional proxy variables, prefer

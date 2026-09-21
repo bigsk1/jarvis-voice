@@ -10,8 +10,10 @@ from typing import Mapping
 
 try:
     from jarvis_mode import resolve_jarvis_mode
+    from tool_child_environment import RESTRICTED_ENV_MARKER
 except ImportError:  # imported as a package (e.g. ``lib.config_loader``)
     from lib.jarvis_mode import resolve_jarvis_mode
+    from lib.tool_child_environment import RESTRICTED_ENV_MARKER
 
 DEFAULT_JARVIS_QA_WORD_LIMIT = 75
 DEFAULT_JARVIS_MULTI_TURN_WORD_LIMIT = 75
@@ -266,6 +268,11 @@ def load_config(mode=None):
     scoped = get_scoped_config()
     if scoped is not None:
         return scoped
+
+    # A restricted tool child receives an explicit environment from its
+    # launcher. Re-reading the mode file here would undo that restriction.
+    if os.environ.get(RESTRICTED_ENV_MARKER) == "1":
+        return dict(os.environ)
 
     resolved = get_active_config_mode(mode)
     expanded_vars = _load_mode_config(resolved)

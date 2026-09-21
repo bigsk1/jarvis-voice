@@ -1591,6 +1591,8 @@ class JarvisApp {
       serpapi_open_table_reviews: '🍽️',
       serpapi_yelp_search: '⭐',
       serpapi_search_index: '🌐',
+      tavily_search: '🌐',
+      tavily_extract: '📄',
       serpapi_google_images_light: '🖼️',
       serpapi_google_news_light: '📰',
       serpapi_google_immersive_product: '🛍️',
