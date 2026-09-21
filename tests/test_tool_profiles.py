@@ -13,6 +13,18 @@ sys.path.insert(0, str(ROOT / "lib"))
 
 
 class TestToolProfiles(unittest.TestCase):
+    def test_offline_templates_disable_searxng_search(self):
+        examples_dir = ROOT / "skills" / "profiles" / "examples"
+        for profile_name in ("offline.json", "offline_lan_first.json"):
+            overrides = json.loads(
+                (examples_dir / profile_name).read_text(encoding="utf-8")
+            )["overrides"]
+            self.assertIs(
+                overrides.get("searxng_search"),
+                False,
+                f"{profile_name} must not expose configured web search in offline mode",
+            )
+
     def test_profiles_gate_external_network_intel_by_online_lookup_scope(self):
         examples_dir = ROOT / "skills" / "profiles" / "examples"
         disabled_examples = {

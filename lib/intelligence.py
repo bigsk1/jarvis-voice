@@ -80,6 +80,7 @@ _EXTERNAL_SEARCH_TOOL_PREFIXES = (
     'mcp_brave_search_',
     'mcp_duckduckgo_',
     'serpapi_',
+    'searxng_search',
     'tavily_search',
 )
 

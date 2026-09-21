@@ -364,6 +364,7 @@ JSON object printed to stdout:
 | `weather` | Weather forecasts (OpenWeatherMap) |
 | `crypto_price` | Cryptocurrency prices |
 | `stock_price` | Stock/futures/forex prices |
+| `searxng_search` | Search a configured SearXNG JSON instance for current sources with optional reverse-proxy auth |
 | `serpapi_amazon_search` | Amazon listing discovery and focused ASIN/product details through SerpApi |
 | `serpapi_search_index` | Structured indexed-web source discovery with standard/deep recall, snippets, exact URLs, and workflow-ready pagination |
 | `serpapi_google_images_light` | Existing web-image discovery with full-size URLs, thumbnails, source pages, dimensions, filters, follow-up references, and optional strict top-result Stash download |

@@ -356,6 +356,7 @@ class StructuredResultsRenderer {
     this.register('serpapi_yelp_search', localTravel.adaptYelp);
     this.register('serpapi_open_table_reviews', localTravel.adaptOpenTableReviews);
     this.register('serpapi_search_index', search.adaptSearchIndex);
+    this.register('searxng_search', search.adaptSearxngSearch);
     this.register('tavily_search', search.adaptTavilySearch);
     this.register('tavily_extract', search.adaptTavilyExtract);
     this.register('serpapi_google_images_light', search.adaptGoogleImagesLight);

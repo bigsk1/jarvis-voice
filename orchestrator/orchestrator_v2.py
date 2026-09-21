@@ -234,6 +234,7 @@ def _has_client_side_search_tool_hint(text: str) -> bool:
         "brave_llm_context",
         "mcp_brave_search_",
         "serpapi_",
+        "searxng_search",
         "tavily_search",
         "crawl_url",
     )

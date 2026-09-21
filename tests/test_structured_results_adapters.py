@@ -85,6 +85,22 @@ assert.ok(extract.includes('Detailed page content'));
 """)
 
 
+def test_searxng_sources_render_with_engine_attribution():
+    _run_renderer_assertions("""
+const rendered = renderer.render({searxng_search: {data: {
+  query: 'release notes', results_count: 1, provider_results_count: 42,
+  results_truncated: true,
+  results: [{title: 'Official notes', url: 'https://example.org/notes',
+    snippet: 'Specific change', engine: 'brave', category: 'general'}],
+}}});
+assert.ok(rendered.includes('SearXNG Search'));
+assert.ok(rendered.includes('Official notes'));
+assert.ok(rendered.includes('https://example.org/notes'));
+assert.ok(rendered.includes('brave'));
+assert.ok(rendered.includes('1 of 42 sources shown'));
+""")
+
+
 def test_shopping_detail_fallbacks_preserve_bid_images_and_document_formats():
     _run_renderer_assertions("""
 const homeDepot = renderer.render({serpapi_home_depot: {

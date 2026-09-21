@@ -11,6 +11,35 @@ window.createSearchResultAdapters = function createSearchResultAdapters({
   compactText,
   formatDateTime,
 }) {
+  function adaptSearxngSearch(payload) {
+    const items = getRows(payload).map(row => ({
+      title: row.title || 'Web source',
+      url: row.url,
+      image: row.thumbnail,
+      primary: [row.engine, row.category].filter(Boolean).join(' · '),
+      chips: row.published_date ? [String(row.published_date)] : [],
+      details: row.snippet ? [compactText(row.snippet, 280)] : [],
+      actionLabel: 'Open source',
+    }));
+    const answer = Array.isArray(payload.answers) && payload.answers.length
+      ? compactText(payload.answers[0], 140) : '';
+    const count = payload.results_count ?? items.length;
+    const countText = payload.results_truncated && payload.provider_results_count != null
+      ? String(count) + ' of ' + String(payload.provider_results_count) + ' sources shown'
+      : String(count) + ' source' + (count === 1 ? '' : 's') + ' shown';
+    const subtitle = [
+      countText,
+      answer ? 'Answer: ' + answer : '',
+      payload.unresponsive_engine_count ? 'Some engines did not respond' : '',
+    ].filter(Boolean).join(' · ');
+    return {
+      kind: 'generic', layout: 'rail', eyebrow: 'SearXNG Search',
+      heading: payload.query || 'Web sources',
+      subtitle,
+      items,
+    };
+  }
+
   function adaptTavilySearch(payload) {
     const items = getRows(payload).map(row => ({
       title: row.title || 'Web source',
@@ -414,6 +443,7 @@ window.createSearchResultAdapters = function createSearchResultAdapters({
   }
 
   return {
+    adaptSearxngSearch,
     adaptTavilySearch,
     adaptTavilyExtract,
     adaptSearchIndex,

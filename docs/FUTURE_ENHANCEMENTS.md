@@ -328,11 +328,12 @@ Ordinary local tools launched by `ToolExecutor` inherit the selected mode's full
 **What already shipped**
 - Shared policy: `lib/tool_child_environment.py`, applied in `orchestrator/executor.py`
 - Restricted children get declared credentials plus central runtime, TLS, mode, session, and proxy settings, a temporary empty `HOME`, and `load_config()` that does not reread the mode file
-- Only `tavily_search` and `tavily_extract` opt in today
+- `tavily_search`, `tavily_extract`, and `searxng_search` opt in today
 - Background `local_skill_v1` still uses trusted allowlists in `lib/background_tasks/production.py`. A tool with `child_environment` cannot be admitted as a background skill without one of those allowlists
 - This is not a sandbox. The child still runs as the Jarvis user and can read files that user can read, including local env files. Stronger isolation would need a separate identity or container
 
-See `skills/README.md` (Local tool child environment) and `docs/tools/tavily/README.md`.
+See `skills/README.md` (Local tool child environment),
+`docs/tools/tavily/README.md`, and `docs/tools/searxng/README.md`.
 
 **Why go back through existing tools**
 Do not flip this on for the whole catalog. Availability lists hard requirements; optional settings, stash paths, GPU URLs, and helper binaries do not show up there. A wrong allowlist breaks the tool in one mode or silently drops a feature.
@@ -342,7 +343,7 @@ The local code is the trust question. A reviewed Jarvis script calling a familia
 **Suggested review order**
 1. Tools that run other programs or user-shaped commands: `ssh_remote`, `opencode`, `api_call`, `send_webhook`, `network_tools`
 2. Tools that wrap local helpers or downloaders: `crawl_url`, `screenshot_url`, `youtube_video`, `youtube_transcript`, `convert_file`, `document_ocr`
-3. Network tools that only need their own key, after a config-read pass: SerpApi, Brave, Tavily-class search (Tavily is the template)
+3. Network tools that need a small set of connection settings, after a config-read pass: SerpApi, Brave, and similar search tools (Tavily and SearXNG are templates)
 4. Leave simple local utilities (`calculator`, `get_time`, memory tools) on the full environment unless a review finds a real inheritance risk
 
 **Per-tool checklist (both modes)**
@@ -859,7 +860,7 @@ direct-cloud paths.
   "Process up to 20" option
 - Per-provider media model pickers in Web AI config (Gemini Veo/Omni, Grok Imagine variants, etc.)
 - Credential-aware tool/provider availability + manual Tool Doctor diagnostics
-- Restricted child environments for higher-risk local tools (opt-in; Tavily is the template)
+- Restricted child environments for higher-risk local tools (opt-in; Tavily and SearXNG are templates)
 
 **Low Priority (Future):**
 - Smart home integration (optional)

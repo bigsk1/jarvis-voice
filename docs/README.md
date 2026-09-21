@@ -167,6 +167,7 @@
 | **[../skills/README.md](../skills/README.md)** (section *Tool profiles*) | Optional overlay JSON per profile; `JARVIS_TOOL_PROFILE`; `bin/manage-tools.py profile`; re-sync tools DB after changes |
 | **[tools/external-network-intel-tool/README.md](tools/external-network-intel-tool/README.md)** | Passive public IP/domain ownership, routing, DNS, and reputation lookup |
 | **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** | SerpApi search tool guide (setup, params, examples, troubleshooting) |
+| **[tools/searxng/README.md](tools/searxng/README.md)** | Configurable local or remote SearXNG JSON search, optional proxy auth, and readiness probe |
 | **[tools/travel-explore-tool/README.md](tools/travel-explore-tool/README.md)** | Flexible destination discovery and flight/hotel handoff guide |
 | **[tools/flight-search-tool/README.md](tools/flight-search-tool/README.md)** | Flight options and prices via SerpApi Google Flights or keyless fallback |
 | **MULTI_TURN_ORCHESTRATION.md** | Multi-turn tool chaining |

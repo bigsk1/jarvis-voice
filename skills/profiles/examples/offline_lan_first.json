@@ -39,6 +39,7 @@
     "serpapi_google_local_services": false,
     "serpapi_amazon_search": false,
     "serpapi_search_index": false,
+    "searxng_search": false,
     "serpapi_google_images_light": false,
     "serpapi_google_news_light": false,
     "serpapi_google_immersive_product": false,

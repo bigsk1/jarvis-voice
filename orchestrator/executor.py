@@ -225,6 +225,8 @@ class ToolExecutor:
             return 120  # One Search Index request; deep recall may use the full 90s HTTP allowance
         if tool_name == "tavily_search":
             return 60  # One bounded Tavily search request plus process cleanup
+        if tool_name == "searxng_search":
+            return 60  # One configured-instance search plus process cleanup
         if tool_name == "tavily_extract":
             return 90  # Advanced extraction can use a 60-second provider deadline
         if tool_name == "serpapi_google_trends":

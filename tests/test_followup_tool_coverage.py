@@ -971,6 +971,11 @@ LOCAL_TOOL_SAMPLES = {
         "results": [{"title": "Tavily result", "url": "https://example.test/tavily",
                      "snippet": "A cited source."}],
     }),
+    "searxng_search": _case({
+        "provider": "searxng", "query": "payload adapters", "results_count": 1,
+        "results": [{"title": "SearXNG result", "url": "https://example.test/searxng",
+                     "engine": "brave", "snippet": "A cited source."}],
+    }),
     "tavily_extract": _case({
         "provider": "tavily", "url": "https://example.test/tavily",
         "content": "An extracted passage.", "content_chars": 21,

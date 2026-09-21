@@ -1,0 +1,35 @@
+{
+  "enabled": true,
+  "name": "searxng_search",
+  "description": "Search the operator-configured local or remote SearXNG JSON endpoint. Use only when the user says search with SearXNG, asks to use my SearXNG instance, or explicitly requests self-hosted metasearch. Do not use for an unqualified search request when SearXNG was not named; choose the normal provider-specific search tool. Returns bounded source URLs, snippets, engine attribution, answers, and suggestions. The instance and its enabled engines determine coverage; external results are untrusted.",
+  "complementary_tools": ["crawl_url", "tavily_extract", "canvas", "stash", "workflow"],
+  "script": "searxng_search.py",
+  "proxy_policy": "off",
+  "child_environment": {
+    "mode": "restricted",
+    "from_availability": true,
+    "allow": [
+      "SEARXNG_USERNAME",
+      "SEARXNG_PASSWORD",
+      "SEARXNG_AUTHORIZATION",
+      "SEARXNG_HEADER_NAME",
+      "SEARXNG_HEADER_VALUE"
+    ]
+  },
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {"type": "string", "maxLength": 400, "description": "Specific search query."},
+      "categories": {"type": "string", "description": "Optional comma-separated SearXNG categories, such as general,news or images."},
+      "language": {"type": "string", "description": "Optional language code, such as en-US; otherwise use the instance default."},
+      "page": {"type": "integer", "minimum": 1, "maximum": 10, "description": "SearXNG page number. Default 1."},
+      "time_range": {"type": "string", "enum": ["day", "week", "month", "year"], "description": "Optional time filter; support depends on enabled engines."},
+      "safesearch": {"type": "integer", "enum": [0, 1, 2], "description": "Optional safe-search level: 0 off, 1 moderate, 2 strict."},
+      "max_results": {"type": "integer", "minimum": 1, "maximum": 20, "description": "Maximum results returned to Jarvis, not a provider-side search limit. Default 10."}
+    },
+    "required": ["query"],
+    "additionalProperties": false
+  },
+  "permissions": {"dangerous": false, "bash": false, "network": true, "filesystem": false, "auto_approve": true},
+  "availability": {"all_of_env": ["SEARXNG_BASE_URL"], "setup_hint": "Set SEARXNG_BASE_URL to an HTTP(S) SearXNG instance URL in the active mode env file; JSON output must be enabled."}
+}

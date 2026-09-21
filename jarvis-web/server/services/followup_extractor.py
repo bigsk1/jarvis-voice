@@ -62,6 +62,7 @@ _DEDICATED_FOLLOWUP_BRANCHES = (
     'serpapi_yelp_search',
     'serpapi_open_table_reviews',
     'serpapi_search_index',
+    'searxng_search',
     'tavily_search',
     'tavily_extract',
     'serpapi_google_events',
@@ -398,6 +399,12 @@ FOLLOWUP_FIELDS: dict[str, list[str]] = {
         'engine', 'query', 'mode', 'safe', 'start', 'num_results',
         'results_count', 'provider_results_count', 'total_results', 'top_url',
         'search_id', 'has_more', 'next_start', 'serpapi_searches_used', 'source',
+    ],
+    'searxng_search': [
+        'provider', 'query', 'page', 'categories', 'language', 'time_range',
+        'safesearch', 'results_count', 'provider_results_count',
+        'results_truncated', 'answers', 'suggestions',
+        'unresponsive_engine_count', 'external_content_trust',
     ],
     'tavily_search': [
         'provider', 'query', 'search_depth', 'topic', 'time_range',
@@ -3065,6 +3072,12 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
 
         if key == 'serpapi_search_index':
             _search_followup.extend_search_index(
+                payload, extracted, max_candidates,
+                truncate_text=_truncate_followup_text,
+            )
+
+        if key == 'searxng_search':
+            _search_followup.extend_searxng_search(
                 payload, extracted, max_candidates,
                 truncate_text=_truncate_followup_text,
             )
