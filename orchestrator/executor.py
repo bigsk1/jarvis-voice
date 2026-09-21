@@ -205,6 +205,8 @@ class ToolExecutor:
             return 630  # The reader owns a 600-second deadline plus cleanup.
         if tool_name == "source_library":
             return 180  # One bounded embedding batch; original saves are atomic.
+        if tool_name == "project_nomad":
+            return 180  # Nomad may perform KB query rewriting plus local model inference.
         if tool_name == "create_social_clip":
             return 1200  # 20 minutes — MoneyPrinterTurbo script + stock + TTS + render + download
         if tool_name == "weather":

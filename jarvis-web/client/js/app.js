@@ -1648,6 +1648,7 @@ class JarvisApp {
       check_tool_logs: '📋',
       query_service_logs: '📋',
       openclaw: '🤖',
+      project_nomad: '🗿',
       status_recap: '📋',
     };
 

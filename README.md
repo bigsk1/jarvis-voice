@@ -842,6 +842,10 @@ See the [Jarvis Monitor repo](https://github.com/bigsk1/jarvis-monitor) for conf
 
 - `searxng_search` - Search a configured local or remote SearXNG JSON endpoint for web, news, image, or video sources; no SearXNG API key is needed. Reverse-proxy authentication is optional.
 
+**Optional [Project NOMAD tool](docs/tools/project-nomad/README.md) (`PROJECT_NOMAD_BASE_URL`):**
+
+- `project_nomad` - Ask a configured NOMAD knowledge base, list its stored files and installed ZIMs, and read supported uploaded text. NOMAD remains a separate server and archive; the tool does not administer it.
+
 **Optional [SerpApi tool suite](docs/tools/serp-api-tool/README.md) (`SERP_API_KEY`):**
 
 - `serpapi_amazon_search` - **SerpApi Amazon Search**: Amazon listing discovery and focused ASIN/product details with price, rating, Prime, delivery, stock, images, and links

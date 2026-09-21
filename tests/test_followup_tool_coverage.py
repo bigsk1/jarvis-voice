@@ -29,6 +29,11 @@ def _case(payload, arguments=None):
 # One representative successful data payload per enabled local tool. Complex,
 # multi-action adapters have additional focused tests below.
 LOCAL_TOOL_SAMPLES = {
+    "project_nomad": _case({
+        "action": "files", "total": 2, "offset": 0, "limit": 10, "has_more": False,
+        "files": [{"source": "notes/field-guide.md", "file_name": "field-guide.md",
+                   "state": "completed", "collection": "Field"}],
+    }),
     "source_library": _case({
         "action": "search", "mode": "local", "retrieval_mode": "hybrid",
         "passages": [{"source_id": "a" * 64, "source_ref": "library://local/" + "a" * 64,

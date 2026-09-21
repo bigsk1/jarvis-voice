@@ -32,6 +32,7 @@
     "serpapi_amazon_search": false,
     "serpapi_search_index": false,
     "searxng_search": false,
+    "project_nomad": false,
     "tavily_search": false,
     "tavily_extract": false,
     "serpapi_google_images_light": false,

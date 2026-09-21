@@ -2766,6 +2766,16 @@ def extract_followup_data(data: dict, max_candidates: int | None = None) -> dict
             if projected:
                 followup[key] = projected[0] if len(projected) == 1 else {'results': projected}
             continue
+        if key == 'project_nomad':
+            from project_nomad_context import project_nomad_data
+
+            runs = value if isinstance(value, list) else [value]
+            projected = [project_nomad_data(
+                run.get('data', run), text_budget=1200, row_limit=3,
+            ) for run in runs[-3:] if isinstance(run, dict)]
+            if projected:
+                followup[key] = projected[0] if len(projected) == 1 else {'results': projected}
+            continue
         if key in DEEPWIKI_TOOL_NAMES:
             extracted = _extract_deepwiki_followup(data, key, value, max_candidates)
             if extracted:

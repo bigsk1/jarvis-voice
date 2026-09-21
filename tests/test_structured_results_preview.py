@@ -87,7 +87,8 @@ const expectedTools = [
   'weather',
   'external_network_intel',
   'gpu_hot_status',
-  'source_library'
+  'source_library',
+  'project_nomad'
 ];
 if (JSON.stringify(renderer.registeredTools()) !== JSON.stringify(expectedTools)) process.exit(2);
 

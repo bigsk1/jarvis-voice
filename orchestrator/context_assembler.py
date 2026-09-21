@@ -850,6 +850,8 @@ class ContextAssembler:
         lowered = (tool_name or "").lower()
         if lowered == "source_library":
             return 16000  # Several exact passages plus source citations.
+        if lowered == "project_nomad":
+            return 12000  # One bounded Nomad answer or extracted-file excerpt.
         if lowered in DEEPWIKI_TOOL_NAMES:
             # Repository answers are the research evidence, not short status
             # messages. The projection keeps one answer plus complete sources.
@@ -3291,6 +3293,14 @@ class ContextAssembler:
             return serialized, result_chars_total, len(serialized), bool(data.get("passages_omitted")) or any(
                 item.get("text_omitted") for item in data.get("passages", [])
             )
+
+        if (tool_name or "").lower() == "project_nomad":
+            from project_nomad_context import project_nomad_data
+
+            data = project_nomad_data(result.get("data"))
+            serialized = json.dumps({"ok": result.get("ok"), "error": result.get("error"), "data": data})
+            truncated = any(key.endswith(("_context_truncated", "_context_omitted")) for key in data)
+            return serialized, result_chars_total, len(serialized), truncated
 
         if (tool_name or "").lower() in DEEPWIKI_TOOL_NAMES:
             # Always project, including small results, so legacy MCP raw/text

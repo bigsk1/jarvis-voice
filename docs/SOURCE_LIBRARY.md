@@ -4,6 +4,8 @@ Keep original documents in a private Cloud or Local library and retrieve
 verifiable passages in Web chat, voice, and Canvas. The library is separate from
 Docs, Memory, Stash, and QMD. QMD and ripgrep search repository documentation;
 the Source Library searches saved originals in its own SQLite FTS5 store.
+The optional [Project NOMAD tool](tools/project-nomad/README.md) connects to a
+separate server and archive; its files and ZIMs are not added to this library.
 
 ## Use the Web library
 

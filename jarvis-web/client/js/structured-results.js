@@ -8,6 +8,8 @@ class StructuredResultsRenderer {
   constructor() {
     this.adapters = new Map();
     this._scrollControlsBound = false;
+    this._readerDialog = null;
+    this._readerOpener = null;
     this._registerDefaultAdapters();
     this._bindScrollControls();
   }
@@ -399,6 +401,70 @@ class StructuredResultsRenderer {
         })),
       };
     });
+    this.register('project_nomad', payload => {
+      const action = String(payload.action || 'status');
+      const hasLongText = action === 'ask' || action === 'read_file';
+      const rows = action === 'files' ? payload.files
+        : action === 'zims' ? payload.zims
+        : action === 'models' ? payload.models
+        : action === 'collections' ? payload.collections : [];
+      const items = action === 'ask' ? [{
+        title: 'Nomad answer',
+        primary: payload.model || '',
+        details: [this._compactText(payload.answer, 280)].filter(Boolean),
+        expandText: payload.answer,
+        expandNote: payload.evidence_note,
+        expandLabel: 'Read full answer',
+      }] : action === 'read_file' ? [{
+        title: payload.source || 'Indexed file',
+        primary: payload.next_start_char == null ? 'End of text' : `Continue at character ${payload.next_start_char}`,
+        details: [this._compactText(payload.text, 280)].filter(Boolean),
+        expandText: payload.text,
+        expandNote: payload.evidence_note,
+        expandLabel: 'Read file text',
+      }] : action === 'status' ? [{
+        title: `Nomad server: ${payload.status || 'status unknown'}`,
+        primary: payload.rag_online ? 'RAG service online' : 'RAG service offline',
+      }] : (Array.isArray(rows) ? rows : []).slice(0, 8).map(row => {
+        if (action === 'collections') return {title: String(row)};
+        if (!row || typeof row !== 'object') return null;
+        if (action === 'files') return {
+          title: row.file_name || row.source || 'Indexed file',
+          primary: row.state || '',
+          details: [row.collection, row.source, row.chunks_embedded != null
+            ? `${row.chunks_embedded} embedded chunks` : ''].filter(Boolean),
+        };
+        if (action === 'zims') return {
+          title: row.title || row.key || 'ZIM archive',
+          primary: row.type || '',
+          details: [row.summary, row.key].filter(Boolean),
+        };
+        return {title: row.name || 'Model', primary: row.cloud ? 'Cloud model' : 'Installed model'};
+      }).filter(Boolean);
+      if (!items.length) items.push({title: action === 'collections' && payload.total === 0
+        ? 'No named collections; indexed files may still exist'
+        : action === 'files' && payload.query ? 'No file names match this search'
+        : payload.total === 0 ? 'Nothing here yet' : 'No items at this offset'});
+      const inventory = payload.inventory;
+      const inventorySummary = action === 'files' && inventory
+        ? `${inventory.total_files} stored · ${inventory.files_with_chunks} report embedded chunks`
+          + ` · ${inventory.states?.pending_decision || 0} pending`
+          + ` · ${inventory.states?.failed || 0} failed`
+          + (payload.query ? ` · ${payload.total} name matches` : '')
+          + (payload.has_more ? ' · more available' : '')
+        : '';
+      return {
+        kind: 'generic', layout: hasLongText || action === 'status' ? 'list' : 'rail',
+        eyebrow: action === 'ask' ? '🗿 Project NOMAD · Unverified answer' : '🗿 Project NOMAD',
+        heading: action === 'ask' ? 'Project NOMAD · answer'
+          : action === 'status' ? 'Project NOMAD · connection'
+          : `Project NOMAD · ${action.replace(/_/g, ' ')}`,
+        subtitle: action === 'ask' ? this._compactText(payload.question, 240)
+          : inventorySummary || payload.note || (payload.total != null
+          ? `${payload.total} total${payload.has_more ? ' · more available' : ''}` : ''),
+        items,
+      };
+    });
   }
 
   _bindScrollControls() {
@@ -410,6 +476,11 @@ class StructuredResultsRenderer {
 
     this._scrollControlsBound = true;
     document.addEventListener('click', event => {
+      const expandableCard = event.target?.closest?.('.structured-result-card-expandable');
+      if (expandableCard && !event.target?.closest?.('a')) {
+        this._openExpandedResult(expandableCard);
+        return;
+      }
       const button = event.target?.closest?.('.structured-results-scroll-button');
       if (!button || button.disabled) return;
       const section = button.closest('.structured-results-preview');
@@ -426,6 +497,75 @@ class StructuredResultsRenderer {
       }
     }, true);
     window.addEventListener?.('resize', () => this._refreshAllScrollControls());
+  }
+
+  _ensureReaderDialog() {
+    if (this._readerDialog?.isConnected) return this._readerDialog;
+    if (typeof document === 'undefined' || !document.body) return null;
+    const dialog = document.createElement('dialog');
+    dialog.className = 'structured-result-reader';
+    dialog.setAttribute('aria-labelledby', 'structuredResultReaderTitle');
+
+    const header = document.createElement('div');
+    header.className = 'structured-result-reader-header';
+    const heading = document.createElement('div');
+    const title = document.createElement('h2');
+    title.id = 'structuredResultReaderTitle';
+    title.className = 'structured-result-reader-title';
+    title.dataset.readerTitle = '';
+    const meta = document.createElement('div');
+    meta.className = 'structured-result-reader-meta';
+    meta.dataset.readerMeta = '';
+    heading.append(title, meta);
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'structured-result-reader-close';
+    close.setAttribute('aria-label', 'Close expanded result');
+    close.textContent = '✕';
+    close.addEventListener('click', () => dialog.close());
+    header.append(heading, close);
+
+    const body = document.createElement('div');
+    body.className = 'structured-result-reader-body';
+    const text = document.createElement('div');
+    text.className = 'structured-result-reader-text';
+    text.dataset.readerText = '';
+    const note = document.createElement('p');
+    note.className = 'structured-result-reader-note';
+    note.dataset.readerNote = '';
+    body.append(text, note);
+    dialog.append(header, body);
+    dialog.addEventListener('click', event => {
+      if (event.target === dialog) dialog.close();
+    });
+    dialog.addEventListener('keydown', event => {
+      if (event.key === 'Escape') event.stopPropagation();
+    });
+    dialog.addEventListener('close', () => {
+      if (this._readerOpener?.isConnected) this._readerOpener.focus();
+      this._readerOpener = null;
+    });
+    document.body.appendChild(dialog);
+    this._readerDialog = dialog;
+    return dialog;
+  }
+
+  _openExpandedResult(card) {
+    const fullText = card?.querySelector?.('.structured-result-full-text')?.textContent;
+    if (!fullText) return;
+    const dialog = this._ensureReaderDialog();
+    if (!dialog || typeof dialog.showModal !== 'function') return;
+    dialog.querySelector('[data-reader-title]').textContent =
+      card.querySelector('.structured-result-title')?.textContent || 'Full result';
+    dialog.querySelector('[data-reader-meta]').textContent =
+      [card.querySelector('.structured-result-primary')?.textContent, 'Plain text']
+        .filter(Boolean).join(' · ');
+    dialog.querySelector('[data-reader-text]').textContent = fullText;
+    const note = dialog.querySelector('[data-reader-note]');
+    note.textContent = card.querySelector('.structured-result-full-note')?.textContent || '';
+    note.hidden = !note.textContent;
+    this._readerOpener = card.querySelector('.structured-result-expand-button');
+    if (!dialog.open) dialog.showModal();
   }
 
   _scheduleScrollControlsRefresh() {
@@ -1139,18 +1279,25 @@ class StructuredResultsRenderer {
       const action = url
         ? `<a class="structured-result-link" href="${url}" target="_blank" rel="noopener noreferrer">${this._escape(item.actionLabel || 'Open')}</a>`
         : '';
+      const expandable = typeof item.expandText === 'string' && item.expandText.trim();
+      const expand = expandable ? `
+        <button class="structured-result-expand-button" type="button" aria-haspopup="dialog">${this._escape(item.expandLabel || 'Read full result')}</button>
+        <div class="structured-result-full-text" hidden>${this._escape(item.expandText)}</div>
+        <div class="structured-result-full-note" hidden>${this._escape(item.expandNote || '')}</div>
+      ` : '';
       const imageVariant = ['poster', 'backdrop', 'logo'].includes(item.imageVariant)
         ? ` structured-result-image-${item.imageVariant}`
         : '';
       const featured = item.featured === true ? ' structured-result-card-featured' : '';
       return `
-        <article class="structured-result-card structured-result-card-${kind}${imageVariant}${featured}">
+        <article class="structured-result-card structured-result-card-${kind}${imageVariant}${featured}${expandable ? ' structured-result-card-expandable' : ''}">
           ${image ? `<a class="structured-result-image" href="${imageUrl || url || image}" target="_blank" rel="noopener noreferrer"><img src="${image}" alt="${title}" loading="lazy" referrerpolicy="no-referrer"></a>` : ''}
           <div class="structured-result-body">
             ${titleHtml}
             ${item.primary ? `<div class="structured-result-primary">${this._escape(item.primary)}</div>` : ''}
             ${chips ? `<div class="structured-result-chips">${chips}</div>` : ''}
             ${details ? `<div class="structured-result-details">${details}</div>` : ''}
+            ${expand}
             ${action}
           </div>
         </article>

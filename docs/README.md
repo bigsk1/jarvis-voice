@@ -168,6 +168,7 @@
 | **[tools/external-network-intel-tool/README.md](tools/external-network-intel-tool/README.md)** | Passive public IP/domain ownership, routing, DNS, and reputation lookup |
 | **[tools/serp-api-tool/README.md](tools/serp-api-tool/README.md)** | SerpApi search tool guide (setup, params, examples, troubleshooting) |
 | **[tools/searxng/README.md](tools/searxng/README.md)** | Configurable local or remote SearXNG JSON search, optional proxy auth, and readiness probe |
+| **[tools/project-nomad/README.md](tools/project-nomad/README.md)** | Opt-in Project NOMAD knowledge chat and read-only archive inventory |
 | **[tools/travel-explore-tool/README.md](tools/travel-explore-tool/README.md)** | Flexible destination discovery and flight/hotel handoff guide |
 | **[tools/flight-search-tool/README.md](tools/flight-search-tool/README.md)** | Flight options and prices via SerpApi Google Flights or keyless fallback |
 | **MULTI_TURN_ORCHESTRATION.md** | Multi-turn tool chaining |

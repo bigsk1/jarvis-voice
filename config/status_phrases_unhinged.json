@@ -187,6 +187,7 @@
       "convert_file": "_family_files",
       "transcribe_audio": "_family_files",
       "source_library": "_family_files",
+      "project_nomad": "_family_files",
       "create_alert": "_family_alerts",
       "create_reminder": "_family_reminders",
       "create_social_clip": "_family_video",
