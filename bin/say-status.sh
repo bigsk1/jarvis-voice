@@ -32,6 +32,7 @@ fi
 
 # Determine TTS provider (default to openai for backward compatibility)
 TTS_PROVIDER="${TTS_PROVIDER:-openai}"
+KOKORO_VOICE="${KOKORO_TTS_VOICE_OVERRIDE:-${KOKORO_TTS_VOICE:-af_nicole}}"
 
 # ============================================================================
 # CACHING SYSTEM
@@ -67,7 +68,7 @@ generate_cache_key() {
         # Include xAI TTS settings in hash
         echo -n "${text}|xai|${XAI_TTS_VOICE:-eve}|${XAI_TTS_LANGUAGE:-en}|${XAI_TTS_CODEC:-mp3}|${XAI_TTS_SAMPLE_RATE:-24000}|${XAI_TTS_BIT_RATE:-128000}|${XAI_TTS_MAX_CHARS:-5000}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     elif [ "$TTS_PROVIDER" = "kokoro" ]; then
-        echo -n "${text}|kokoro|${KOKORO_TTS_VOICE:-af_nicole}|${KOKORO_TTS_SPEED:-1.0}|${KOKORO_TTS_URL:-}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+        echo -n "${text}|kokoro|${KOKORO_VOICE}|${KOKORO_TTS_SPEED:-1.0}|${KOKORO_TTS_URL:-}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     else
         # Include OpenAI settings in hash
         echo -n "${text}|openai|${VOICE}|${TTS_MODEL}|${TTS_INSTRUCTIONS:-}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
@@ -254,7 +255,6 @@ else
         rm -f "$TEMP_AUDIO"
     elif [ "$TTS_PROVIDER" = "kokoro" ]; then
         KOKORO_URL="${KOKORO_TTS_URL:-}"
-        KOKORO_VOICE="${KOKORO_TTS_VOICE:-af_nicole}"
         KOKORO_SPEED="${KOKORO_TTS_SPEED:-1.0}"
 
         if [ -z "$KOKORO_URL" ]; then

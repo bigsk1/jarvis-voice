@@ -32,6 +32,7 @@ fi
 
 # Determine TTS provider (default to kokoro for backward compatibility)
 TTS_PROVIDER="${TTS_PROVIDER:-kokoro}"
+KOKORO_VOICE="${KOKORO_TTS_VOICE_OVERRIDE:-${KOKORO_TTS_VOICE:-af_nicole}}"
 
 # ============================================================================
 # CACHING SYSTEM
@@ -55,9 +56,8 @@ generate_cache_key() {
         echo -n "${text}|qwen3-tts|${QWEN3_TTS_VOICE:-Jarvis}|${QWEN3_TTS_SPEED:-1.0}|${QWEN3_TTS_FORMAT:-mp3}|${QWEN3_TTS_URL:-http://localhost:8881/v1/audio/speech}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     else
         # Kokoro
-        local voice="${KOKORO_TTS_VOICE:-af_nicole}"
         local speed="${KOKORO_TTS_SPEED:-1.0}"
-        echo -n "${text}|kokoro|${voice}|${speed}|${KOKORO_TTS_URL:-}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
+        echo -n "${text}|kokoro|${KOKORO_VOICE}|${speed}|${KOKORO_TTS_URL:-}|${SILENCE_PAD_MS}" | md5sum | cut -d' ' -f1
     fi
 }
 
@@ -127,7 +127,6 @@ else
         # KOKORO TTS (default)
         # ============================================================================
         KOKORO_URL="${KOKORO_TTS_URL:-}"
-        KOKORO_VOICE="${KOKORO_TTS_VOICE:-af_nicole}"
         KOKORO_SPEED="${KOKORO_TTS_SPEED:-1.0}"
         
         if [ -z "$KOKORO_URL" ]; then

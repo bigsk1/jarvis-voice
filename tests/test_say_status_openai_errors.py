@@ -224,3 +224,36 @@ def test_openai_status_tts_decodes_successful_response(tmp_path):
     assert response_path
     assert not Path(response_path).exists()
     assert ffmpeg_log.read_text(encoding="utf-8") == "called\n"
+
+
+def test_cloud_kokoro_voice_override_changes_request_and_cache_key(tmp_path):
+    script, env, curl_args, _, _ = _isolated_status_script(tmp_path, "kokoro")
+    config = script.parent.parent / "config" / "cloud.env"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(
+            "STATUS_CACHE_ENABLED=false", "STATUS_CACHE_ENABLED=true"
+        ),
+        encoding="utf-8",
+    )
+    env.pop("KOKORO_TTS_VOICE_OVERRIDE", None)
+    env["FAKE_CURL_MODE"] = "success"
+
+    first = subprocess.run(
+        [str(script), "status check", "true"],
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+    assert first.returncode == 0, first.stderr
+    cache_dir = Path(env["HOME"]) / ".cache" / "jarvis" / "status-tts"
+    assert len(list(cache_dir.glob("*.wav"))) == 1
+
+    second = subprocess.run(
+        [str(script), "status check", "true"],
+        env={**env, "KOKORO_TTS_VOICE_OVERRIDE": "af_heart"},
+        text=True,
+        capture_output=True,
+    )
+    assert second.returncode == 0, second.stderr
+    assert '"voice": "af_heart"' in curl_args.read_text(encoding="utf-8")
+    assert len(list(cache_dir.glob("*.wav"))) == 2
