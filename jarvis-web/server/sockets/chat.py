@@ -3686,7 +3686,7 @@ Previous structured data:
             if item.get('price'):
                 detail_bits.append(f"**Price**: {item['price']}")
             if detail_bits:
-                lines.append(f"   - " + " | ".join(detail_bits))
+                lines.append("   - " + " | ".join(detail_bits))
 
             snippet = item.get('snippet')
             if snippet and not from_effective_evidence:
@@ -3782,6 +3782,425 @@ Previous structured data:
         inherited['derived_from_prior'] = True
         return inherited
     
+    def _prepare_uploaded_images(
+        self, *, image_data, message, mode, message_id, conversation_id,
+        delivery_room, original_user_message, attachments, check_preparation_cancelled,
+    ):
+        """Return prepared image state, or None after emitting a fatal error."""
+        from orchestrator_v2 import (
+            WEB_UPLOAD_MULTI_IMAGE_VISION_ANALYSIS_PREFIX,
+            WEB_UPLOAD_VISION_ANALYSIS_PREFIX,
+        )
+
+        vision_result = None
+        stash_info = None
+        tool_overrides = {}
+        attachment_errors = []
+        if image_data and image_data.get('images'):
+            image_action = image_data.get('action', 'analyze')
+            image_settings = image_data.get('settings', {})
+            image_items = image_data.get('images', [])
+            primary_image = image_items[0]
+            primary_payload = {
+                'base64': primary_image.get('base64'),
+                'url': primary_image.get('url'),
+                'filename': primary_image.get('filename'),
+                'action': image_action,
+                'settings': image_settings,
+            }
+            print(f"[CHAT] Image action: {image_action}, count: {len(image_items)}, settings: {image_settings}")
+
+            if image_action == 'video':
+                # IMAGE TO VIDEO: Skip vision, stash image, force params via overrides
+                print("[CHAT] Image-to-video mode - skipping vision analysis")
+                user_video_prompt = message.strip()
+                self._emit_run_event('chat:status', {
+                    'message_id': message_id,
+                    'conversation_id': conversation_id,
+                    'status': 'Preparing image for video generation...',
+                    'timestamp': time.time()
+                }, room=delivery_room)
+
+                stash_info = self._auto_stash_image(primary_payload, '', mode)
+                stash_ref = stash_info.get('stash_ref', '') if stash_info else ''
+
+                if not stash_ref:
+                    self._emit_run_event('chat:error', {
+                        'message_id': message_id,
+                        'conversation_id': conversation_id,
+                        'error': (
+                            'Could not prepare the uploaded image for video generation. '
+                            'No video generation was attempted. Please retry.'
+                        ),
+                        'error_code': 'image_video_stash_failed',
+                        'retryable': True,
+                        'timestamp': time.time(),
+                    }, room=delivery_room)
+                    return
+
+                print(f"[CHAT] Auto-stashed image for video: {stash_ref}")
+
+                # @TOOL_CONFIG: web UI forced overrides — params enforced from user's modal selections
+                # The LLM generates the creative prompt, but technical params are overridden.
+                aspect_ratio = image_settings.get('aspect_ratio', '16:9')
+                duration = image_settings.get('duration', 5)
+                resolution = image_settings.get('resolution', '720p')
+                video_provider = image_settings.get('provider', 'xai')
+                video_model = image_settings.get('model')
+
+                tool_overrides['generate_video'] = {
+                    # No vision analysis runs in this branch, so the routing LLM
+                    # has no evidence for expanding the scene. Preserve the user's
+                    # instruction exactly and let the video model see it with the image.
+                    'prompt': user_video_prompt,
+                    'image_url': stash_ref,
+                    'aspect_ratio': aspect_ratio,
+                    'duration': int(duration),
+                    'resolution': resolution,
+                    'provider': video_provider,
+                }
+                if video_model:
+                    tool_overrides['generate_video']['model'] = video_model
+
+                message = (
+                    f"[User uploaded an image for VIDEO generation (image-to-video).\n"
+                    f"Image stashed at: {stash_ref}\n"
+                    f"Use generate_video tool. IMPORTANT: The user has pre-selected these video "
+                    f"settings via the UI and they will be applied automatically as overrides:\n"
+                    f"  aspect_ratio={aspect_ratio}, duration={duration}s, resolution={resolution}, "
+                    f"provider={video_provider}, model={video_model or '(effective default)'}\n"
+                    f"These parameters are USER-CONTROLLED and will override whatever you pass. "
+                    f"Do NOT worry if the tool result shows different values than what you sent - "
+                    f"that is expected and correct. The user's chosen settings take priority.\n"
+                    f"The exact user instruction is applied automatically as the prompt override. "
+                    f"Do not expand it or invent subjects, identities, counts, or scene details. "
+                    f"Your only job is to route one generate_video tool call. "
+                    f"Do NOT retry if the result looks successful.]\n\n"
+                    f"User's video instructions: {user_video_prompt}"
+                )
+                print(
+                    f"[CHAT] Image-to-video - forced overrides: {aspect_ratio}, {duration}s, "
+                    f"{resolution}, provider={video_provider}, model={video_model or '(effective default)'}"
+                )
+
+            elif image_action == 'image':
+                # IMAGE TO IMAGE: Skip vision, stash image, force params via overrides
+                print("[CHAT] Image-to-image mode - skipping vision analysis")
+                self._emit_run_event('chat:status', {
+                    'message_id': message_id,
+                    'conversation_id': conversation_id,
+                    'status': 'Preparing image for editing...',
+                    'timestamp': time.time()
+                }, room=delivery_room)
+
+                stash_info = self._auto_stash_image(primary_payload, '', mode)
+                stash_ref = stash_info.get('stash_ref', '') if stash_info else ''
+
+                if not stash_ref:
+                    self._emit_run_event('chat:error', {
+                        'message_id': message_id,
+                        'conversation_id': conversation_id,
+                        'error': (
+                            'Could not prepare the uploaded image for editing. '
+                            'No image generation was attempted. Please retry the edit.'
+                        ),
+                        'error_code': 'image_edit_stash_failed',
+                        'retryable': True,
+                        'timestamp': time.time(),
+                    }, room=delivery_room)
+                    return
+
+                print(f"[CHAT] Auto-stashed image for editing: {stash_ref}")
+
+                # Build forced overrides for generate_image. Keep the model
+                # assignment explicit so the modal remains the final,
+                # request-scoped choice even if the generic settings copy
+                # changes later.
+                image_model = image_settings.get('model')
+                img_overrides = {}
+                for key, val in image_settings.items():
+                    if key == 'model':
+                        continue
+                    if val is not None and val != '' and val is not False:
+                        img_overrides[key] = val
+                if image_model:
+                    img_overrides['model'] = image_model
+
+                # Pass the reference image so the tool actually edits it
+                img_overrides['reference_image'] = stash_ref
+
+                tool_overrides['generate_image'] = img_overrides
+
+                # Build context message for LLM (params are hints, overrides enforce)
+                param_lines = []
+                for key, val in img_overrides.items():
+                    if key == 'reference_image':
+                        continue  # Don't clutter the LLM message with the stash ref
+                    param_lines.append(f"- {key}: \"{val}\"" if isinstance(val, str) else f"- {key}: {val}")
+                params_str = '\n'.join(param_lines) if param_lines else '(use defaults)'
+
+                message = (
+                    f"[User uploaded a reference image for IMAGE EDITING (image-to-image).\n"
+                    f"Image stashed at: {stash_ref}\n"
+                    f"Use generate_image tool. The reference_image parameter is set automatically "
+                    f"via overrides - you do NOT need to pass it. The tool will edit the uploaded "
+                    f"image based on your prompt.\n"
+                    f"IMPORTANT: The user has pre-selected these image settings via the UI and "
+                    f"they will be applied automatically as overrides:\n"
+                    f"{params_str}\n"
+                    f"These parameters are USER-CONTROLLED and will override whatever you pass. "
+                    f"Do NOT worry if the tool result shows different values than what you sent - "
+                    f"that is expected and correct. The user's chosen settings take priority.\n"
+                    f"Your job: pass the user's edit instructions as the prompt. "
+                    f"KEEP THE PROMPT SHORT AND DIRECT - image editing models work best with "
+                    f"simple instructions like 'change X to Y' rather than over-detailed prompts. "
+                    f"Do NOT add extra details about keeping textures, lighting, colors etc. "
+                    f"The model already knows to preserve the rest of the image. "
+                    f"Do NOT retry if the result looks successful. Do NOT run vision analysis.]\n\n"
+                    f"User's image instructions: {message}"
+                )
+                print(f"[CHAT] Image-to-image editing - forced overrides: {img_overrides}")
+
+            else:
+                # ANALYZE (default): Vision analysis flow (supports multiple images)
+                image_count = len(image_items)
+                status_label = f'Analyzing {image_count} images...' if image_count > 1 else 'Analyzing image...'
+                print(f"[CHAT] Processing {image_count} image(s) with vision model...")
+                self._emit_run_event('chat:status', {
+                    'message_id': message_id,
+                    'conversation_id': conversation_id,
+                    'status': status_label,
+                    'timestamp': time.time()
+                }, room=delivery_room)
+
+                images_base64 = [img['base64'] for img in image_items if img.get('base64')]
+                try:
+                    vision_result = self._process_vision(
+                        images_base64,
+                        original_user_message + '\n\n' + '\n'.join(
+                            f"Image {index}: {str(img.get('filename') or 'uploaded image')}"
+                            for index, img in enumerate(image_items, 1)
+                        ),
+                        mode
+                    )
+                except Exception as exc:
+                    from vision_provider import VisionCapabilityError
+
+                    print(f"[VISION] Explicit image analysis stopped: {exc}")
+                    if isinstance(exc, VisionCapabilityError):
+                        error_message = (
+                            f"{exc} The uploaded image is ready to retry without uploading it again."
+                        )
+                        error_code = 'vision_model_unsupported'
+                    else:
+                        error_message = (
+                            "The selected vision provider could not analyze the uploaded image. "
+                            "Try again or select another vision-capable provider. The uploaded "
+                            "image is ready to retry without uploading it again."
+                        )
+                        error_code = 'vision_analysis_failed'
+                    check_preparation_cancelled()
+                    if not attachments:
+                        self._emit_run_event('chat:error', {
+                            'message_id': message_id,
+                            'conversation_id': conversation_id,
+                            'error': error_message,
+                            'error_code': error_code,
+                            'retryable': True,
+                            'timestamp': time.time(),
+                        }, room=delivery_room)
+                        return
+                    attachment_errors = [
+                        {'kind': 'image', 'filename': img.get('filename') or f'Image {index}',
+                         'error_code': error_code, 'status': 'unavailable'}
+                        for index, img in enumerate(image_items, 1)
+                    ]
+                    message += (
+                        '\n\n[UNAVAILABLE IMAGE SOURCES] Image analysis failed for: '
+                        + ', '.join(item['filename'] for item in attachment_errors)
+                        + '. No visual evidence is available. Continue with the other attached '
+                        'sources, explain the missing evidence, and do not claim to have reviewed '
+                        'the images. [END UNAVAILABLE IMAGE SOURCES]'
+                    )
+                    self._emit_run_event('chat:status', {
+                        'message_id': message_id,
+                        'conversation_id': conversation_id,
+                        'status': 'Image analysis unavailable; continuing with the other sources.',
+                        'timestamp': time.time(),
+                    }, room=delivery_room)
+                check_preparation_cancelled()
+
+                if vision_result or attachments:
+                    stash_refs = []
+                    uploaded_images = []
+                    batch_total = len(image_items)
+                    batch_id = None
+                    if batch_total > 1:
+                        batch_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+                    for index, img in enumerate(image_items, start=1):
+                        check_preparation_cancelled()
+                        stash_payload = {
+                            'base64': img.get('base64'),
+                            'url': img.get('url'),
+                            'filename': img.get('filename'),
+                            'action': image_action,
+                            'settings': image_settings,
+                            'uploaded_sha256': img.get('uploaded_sha256'),
+                        }
+                        if batch_id:
+                            stash_payload.update({
+                                'batch_id': batch_id,
+                                'batch_index': index,
+                                'batch_total': batch_total,
+                                'vision_analysis_scope': 'batch',
+                            })
+                        stashed = self._auto_stash_image(
+                            stash_payload,
+                            vision_result or '',
+                            mode
+                        )
+                        if attachments and not (stashed and stashed.get('stash_ref')):
+                            self._emit_run_event('chat:error', {
+                                'message_id': message_id,
+                                'conversation_id': conversation_id,
+                                'error': (
+                                    'Could not save an image source for follow-up questions. '
+                                    'Please retry the attached image.'
+                                ),
+                                'error_code': 'image_bundle_stash_failed',
+                                'retryable': True,
+                                'timestamp': time.time(),
+                            }, room=delivery_room)
+                            return
+                        if stashed and stashed.get('stash_ref'):
+                            stashed_image = dict(stashed)
+                            stashed_image['ordinal'] = index
+                            if img.get('filename'):
+                                stashed_image['source_filename'] = img.get('filename')
+                            uploaded_images.append(stashed_image)
+                            stash_refs.append(stashed_image.get('stash_ref'))
+                            print(f"[CHAT] Auto-stashed image: {stashed.get('stash_ref')}")
+                    if uploaded_images:
+                        stash_info = dict(uploaded_images[0])
+                        stash_info['uploaded_images'] = uploaded_images
+                        if len(stash_refs) > 1:
+                            stash_info['stash_refs'] = stash_refs
+
+                    stash_note = ""
+                    if stash_refs:
+                        if len(stash_refs) == 1:
+                            stash_note = f" Image stashed at: {stash_refs[0]}"
+                        else:
+                            joined = ', '.join(stash_refs)
+                            stash_note = f" Images stashed at: {joined}"
+
+                    vision_prefix = WEB_UPLOAD_VISION_ANALYSIS_PREFIX
+                    if image_count > 1:
+                        vision_prefix = f"{WEB_UPLOAD_MULTI_IMAGE_VISION_ANALYSIS_PREFIX} ({image_count}). Vision analysis:"
+                    image_inventory = '\n'.join(
+                        f"Image {item['ordinal']}: {item.get('source_filename') or 'uploaded image'} "
+                        f"— Stash reference: {item['stash_ref']}"
+                        for item in uploaded_images
+                    )
+                    if image_inventory:
+                        message += f'\n\n[IMAGE SOURCES]\n{image_inventory}\n[END IMAGE SOURCES]'
+                    if vision_result:
+                        # Explicit workflow triggers must remain at the start.
+                        # The vision markers still identify the evidence to routing.
+                        message += f"\n\n{vision_prefix} {vision_result}]{stash_note}"
+                        print("[CHAT] Image analyzed - passing to orchestrator with vision context")
+
+        return message, vision_result, stash_info, tool_overrides, attachment_errors
+
+    def _emit_completed_tool_events(
+        self, *, is_workflow, workflow_data, data, tools_used, progress_enabled,
+        duration_ms, message_id, delivery_room,
+    ):
+        """Emit completion events after a workflow or ordinary tool turn."""
+        if is_workflow:
+            # Workflow results have step-by-step data in data.results
+            step_results = (workflow_data or data).get('results', [])
+            for step_data in step_results:
+                if step_data.get('skip_kind') == 'optional_tool_unavailable':
+                    continue
+                tool = step_data.get('tool', 'unknown')
+                step_ok = step_data.get('ok', True)
+                step_skipped = step_data.get('skipped') is True
+                step_num = step_data.get('step')
+
+                # Check for for_each outputs (multiple iterations of same tool)
+                outputs = step_data.get('outputs', [])
+                if outputs:
+                    # Emit separate event for each for_each iteration
+                    for idx, output in enumerate(outputs):
+                        output_ok = output.get('ok', True) if isinstance(output, dict) else True
+                        output_data = output.get('data', output) if isinstance(output, dict) else output
+                        output_duration = output.get('duration_ms') if isinstance(output, dict) else None
+                        step_duration = step_data.get('duration_ms')
+                        event_duration = output_duration if output_duration is not None else (step_duration or 0)
+                        self._emit_run_event('tool:complete', {
+                            'tool': tool,
+                            'result': output_data,
+                            'duration_ms': event_duration,
+                            'success': output_ok,
+                            'message_id': message_id,
+                            'workflow_step': f"{step_num}_{idx}"  # Unique per iteration
+                        }, room=delivery_room)
+                else:
+                    # Single execution step
+                    step_result_payload = step_data.get('data', {})
+                    if (not step_ok) and not step_result_payload:
+                        # Preserve failure context for optional workflow steps
+                        step_result_payload = {
+                            'error': step_data.get('error') or step_data.get('speech') or 'Step failed'
+                        }
+                    step_duration = step_data.get('duration_ms') or 0
+                    completion_payload = {
+                        'tool': tool,
+                        'result': step_result_payload,
+                        'duration_ms': step_duration,
+                        'success': step_ok,
+                        'message_id': message_id,
+                        'workflow_step': step_num
+                    }
+                    if step_skipped:
+                        completion_payload.update({
+                            'skipped': True,
+                            'reason': step_data.get('reason') or 'Condition evaluated to false',
+                        })
+                    self._emit_run_event(
+                        'tool:complete', completion_payload, room=delivery_room
+                    )
+        else:
+            # Normal orchestrator results - tools_used may have duplicates
+            # Skip emitting tool:complete if progress_events is enabled - we handle this in real-time
+            # via the progress callback (prevents duplicate tool cards)
+            if not progress_enabled:
+                # Track how many times each tool has been seen to create unique IDs
+                tool_counts = {}
+                for idx, tool in enumerate(tools_used):
+                    # Get result - accumulated_data may be a list for repeated tools
+                    tool_result = data.get(tool, {})
+
+                    # If result is a list, get the specific iteration
+                    tool_idx = tool_counts.get(tool, 0)
+                    if isinstance(tool_result, list):
+                        if tool_idx < len(tool_result):
+                            tool_result = tool_result[tool_idx]
+                        else:
+                            tool_result = tool_result[-1] if tool_result else {}
+
+                    tool_counts[tool] = tool_idx + 1
+
+                    self._emit_run_event('tool:complete', {
+                        'tool': tool,
+                        'result': tool_result,
+                        'duration_ms': duration_ms // max(len(tools_used), 1),
+                        'success': True,
+                        'message_id': message_id,
+                        'workflow_step': idx  # Use overall index for unique ID
+                    }, room=delivery_room)
+
     @_scoped_by_mode
     def _process_message(self, session_id: str, message: str, mode: str,
                          message_id: str, conversation_id: str, image_data: dict = None,
@@ -3796,7 +4215,6 @@ Previous structured data:
         pdf_attachments = pdf_attachments or []
         audio_attachments = audio_attachments or []
         attachments = attachments if attachments is not None else pdf_attachments + audio_attachments
-        attachment_errors = []
 
         def check_preparation_cancelled():
             if self.pending_cancellations.get(message_id, False):
@@ -3835,11 +4253,7 @@ Previous structured data:
                     print(f"[CHAT] First image base64 length: {len(image_list[0].get('base64', ''))}")
             # Import and create orchestrator
             print("[CHAT] Importing orchestrator...")
-            from orchestrator_v2 import (
-                Orchestrator,
-                WEB_UPLOAD_MULTI_IMAGE_VISION_ANALYSIS_PREFIX,
-                WEB_UPLOAD_VISION_ANALYSIS_PREFIX,
-            )
+            from orchestrator_v2 import Orchestrator
             
             # Get LLM overrides from web config (per-mode)
             from ..config import get_web_setting, load_web_config
@@ -3904,323 +4318,20 @@ Previous structured data:
             check_preparation_cancelled()
 
             # Handle image if provided - route based on action
-            vision_result = None
-            stash_info = None
-            tool_overrides = {}  # Forced param overrides that bypass LLM decisions
-            
-            if image_data and image_data.get('images'):
-                image_action = image_data.get('action', 'analyze')
-                image_settings = image_data.get('settings', {})
-                image_items = image_data.get('images', [])
-                primary_image = image_items[0]
-                primary_payload = {
-                    'base64': primary_image.get('base64'),
-                    'url': primary_image.get('url'),
-                    'filename': primary_image.get('filename'),
-                    'action': image_action,
-                    'settings': image_settings,
-                }
-                print(f"[CHAT] Image action: {image_action}, count: {len(image_items)}, settings: {image_settings}")
-                
-                if image_action == 'video':
-                    # IMAGE TO VIDEO: Skip vision, stash image, force params via overrides
-                    print(f"[CHAT] Image-to-video mode - skipping vision analysis")
-                    user_video_prompt = message.strip()
-                    self._emit_run_event('chat:status', {
-                        'message_id': message_id,
-                        'conversation_id': conversation_id,
-                        'status': 'Preparing image for video generation...',
-                        'timestamp': time.time()
-                    }, room=delivery_room)
-                    
-                    stash_info = self._auto_stash_image(primary_payload, '', mode)
-                    stash_ref = stash_info.get('stash_ref', '') if stash_info else ''
-
-                    if not stash_ref:
-                        self._emit_run_event('chat:error', {
-                            'message_id': message_id,
-                            'conversation_id': conversation_id,
-                            'error': (
-                                'Could not prepare the uploaded image for video generation. '
-                                'No video generation was attempted. Please retry.'
-                            ),
-                            'error_code': 'image_video_stash_failed',
-                            'retryable': True,
-                            'timestamp': time.time(),
-                        }, room=delivery_room)
-                        return
-
-                    print(f"[CHAT] Auto-stashed image for video: {stash_ref}")
-                    
-                    # @TOOL_CONFIG: web UI forced overrides — params enforced from user's modal selections
-                    # The LLM generates the creative prompt, but technical params are overridden.
-                    aspect_ratio = image_settings.get('aspect_ratio', '16:9')
-                    duration = image_settings.get('duration', 5)
-                    resolution = image_settings.get('resolution', '720p')
-                    video_provider = image_settings.get('provider', 'xai')
-                    video_model = image_settings.get('model')
-                    
-                    tool_overrides['generate_video'] = {
-                        # No vision analysis runs in this branch, so the routing LLM
-                        # has no evidence for expanding the scene. Preserve the user's
-                        # instruction exactly and let the video model see it with the image.
-                        'prompt': user_video_prompt,
-                        'image_url': stash_ref,
-                        'aspect_ratio': aspect_ratio,
-                        'duration': int(duration),
-                        'resolution': resolution,
-                        'provider': video_provider,
-                    }
-                    if video_model:
-                        tool_overrides['generate_video']['model'] = video_model
-                    
-                    message = (
-                        f"[User uploaded an image for VIDEO generation (image-to-video).\n"
-                        f"Image stashed at: {stash_ref}\n"
-                        f"Use generate_video tool. IMPORTANT: The user has pre-selected these video "
-                        f"settings via the UI and they will be applied automatically as overrides:\n"
-                        f"  aspect_ratio={aspect_ratio}, duration={duration}s, resolution={resolution}, "
-                        f"provider={video_provider}, model={video_model or '(effective default)'}\n"
-                        f"These parameters are USER-CONTROLLED and will override whatever you pass. "
-                        f"Do NOT worry if the tool result shows different values than what you sent - "
-                        f"that is expected and correct. The user's chosen settings take priority.\n"
-                        f"The exact user instruction is applied automatically as the prompt override. "
-                        f"Do not expand it or invent subjects, identities, counts, or scene details. "
-                        f"Your only job is to route one generate_video tool call. "
-                        f"Do NOT retry if the result looks successful.]\n\n"
-                        f"User's video instructions: {user_video_prompt}"
-                    )
-                    print(
-                        f"[CHAT] Image-to-video - forced overrides: {aspect_ratio}, {duration}s, "
-                        f"{resolution}, provider={video_provider}, model={video_model or '(effective default)'}"
-                    )
-                    
-                elif image_action == 'image':
-                    # IMAGE TO IMAGE: Skip vision, stash image, force params via overrides
-                    print(f"[CHAT] Image-to-image mode - skipping vision analysis")
-                    self._emit_run_event('chat:status', {
-                        'message_id': message_id,
-                        'conversation_id': conversation_id,
-                        'status': 'Preparing image for editing...',
-                        'timestamp': time.time()
-                    }, room=delivery_room)
-                    
-                    stash_info = self._auto_stash_image(primary_payload, '', mode)
-                    stash_ref = stash_info.get('stash_ref', '') if stash_info else ''
-
-                    if not stash_ref:
-                        self._emit_run_event('chat:error', {
-                            'message_id': message_id,
-                            'conversation_id': conversation_id,
-                            'error': (
-                                'Could not prepare the uploaded image for editing. '
-                                'No image generation was attempted. Please retry the edit.'
-                            ),
-                            'error_code': 'image_edit_stash_failed',
-                            'retryable': True,
-                            'timestamp': time.time(),
-                        }, room=delivery_room)
-                        return
-                    
-                    print(f"[CHAT] Auto-stashed image for editing: {stash_ref}")
-                    
-                    # Build forced overrides for generate_image. Keep the model
-                    # assignment explicit so the modal remains the final,
-                    # request-scoped choice even if the generic settings copy
-                    # changes later.
-                    image_model = image_settings.get('model')
-                    img_overrides = {}
-                    for key, val in image_settings.items():
-                        if key == 'model':
-                            continue
-                        if val is not None and val != '' and val is not False:
-                            img_overrides[key] = val
-                    if image_model:
-                        img_overrides['model'] = image_model
-                    
-                    # Pass the reference image so the tool actually edits it
-                    img_overrides['reference_image'] = stash_ref
-                    
-                    tool_overrides['generate_image'] = img_overrides
-                    
-                    # Build context message for LLM (params are hints, overrides enforce)
-                    param_lines = []
-                    for key, val in img_overrides.items():
-                        if key == 'reference_image':
-                            continue  # Don't clutter the LLM message with the stash ref
-                        param_lines.append(f"- {key}: \"{val}\"" if isinstance(val, str) else f"- {key}: {val}")
-                    params_str = '\n'.join(param_lines) if param_lines else '(use defaults)'
-                    
-                    message = (
-                        f"[User uploaded a reference image for IMAGE EDITING (image-to-image).\n"
-                        f"Image stashed at: {stash_ref}\n"
-                        f"Use generate_image tool. The reference_image parameter is set automatically "
-                        f"via overrides - you do NOT need to pass it. The tool will edit the uploaded "
-                        f"image based on your prompt.\n"
-                        f"IMPORTANT: The user has pre-selected these image settings via the UI and "
-                        f"they will be applied automatically as overrides:\n"
-                        f"{params_str}\n"
-                        f"These parameters are USER-CONTROLLED and will override whatever you pass. "
-                        f"Do NOT worry if the tool result shows different values than what you sent - "
-                        f"that is expected and correct. The user's chosen settings take priority.\n"
-                        f"Your job: pass the user's edit instructions as the prompt. "
-                        f"KEEP THE PROMPT SHORT AND DIRECT - image editing models work best with "
-                        f"simple instructions like 'change X to Y' rather than over-detailed prompts. "
-                        f"Do NOT add extra details about keeping textures, lighting, colors etc. "
-                        f"The model already knows to preserve the rest of the image. "
-                        f"Do NOT retry if the result looks successful. Do NOT run vision analysis.]\n\n"
-                        f"User's image instructions: {message}"
-                    )
-                    print(f"[CHAT] Image-to-image editing - forced overrides: {img_overrides}")
-                    
-                else:
-                    # ANALYZE (default): Vision analysis flow (supports multiple images)
-                    image_count = len(image_items)
-                    status_label = f'Analyzing {image_count} images...' if image_count > 1 else 'Analyzing image...'
-                    print(f"[CHAT] Processing {image_count} image(s) with vision model...")
-                    self._emit_run_event('chat:status', {
-                        'message_id': message_id,
-                        'conversation_id': conversation_id,
-                        'status': status_label,
-                        'timestamp': time.time()
-                    }, room=delivery_room)
-                    
-                    images_base64 = [img['base64'] for img in image_items if img.get('base64')]
-                    try:
-                        vision_result = self._process_vision(
-                            images_base64,
-                            original_user_message + '\n\n' + '\n'.join(
-                                f"Image {index}: {str(img.get('filename') or 'uploaded image')}"
-                                for index, img in enumerate(image_items, 1)
-                            ),
-                            mode
-                        )
-                    except Exception as exc:
-                        from vision_provider import VisionCapabilityError
-
-                        print(f"[VISION] Explicit image analysis stopped: {exc}")
-                        if isinstance(exc, VisionCapabilityError):
-                            error_message = (
-                                f"{exc} The uploaded image is ready to retry without uploading it again."
-                            )
-                            error_code = 'vision_model_unsupported'
-                        else:
-                            error_message = (
-                                "The selected vision provider could not analyze the uploaded image. "
-                                "Try again or select another vision-capable provider. The uploaded "
-                                "image is ready to retry without uploading it again."
-                            )
-                            error_code = 'vision_analysis_failed'
-                        check_preparation_cancelled()
-                        if not attachments:
-                            self._emit_run_event('chat:error', {
-                                'message_id': message_id,
-                                'conversation_id': conversation_id,
-                                'error': error_message,
-                                'error_code': error_code,
-                                'retryable': True,
-                                'timestamp': time.time(),
-                            }, room=delivery_room)
-                            return
-                        attachment_errors = [
-                            {'kind': 'image', 'filename': img.get('filename') or f'Image {index}',
-                             'error_code': error_code, 'status': 'unavailable'}
-                            for index, img in enumerate(image_items, 1)
-                        ]
-                        message += (
-                            '\n\n[UNAVAILABLE IMAGE SOURCES] Image analysis failed for: '
-                            + ', '.join(item['filename'] for item in attachment_errors)
-                            + '. No visual evidence is available. Continue with the other attached '
-                            'sources, explain the missing evidence, and do not claim to have reviewed '
-                            'the images. [END UNAVAILABLE IMAGE SOURCES]'
-                        )
-                        self._emit_run_event('chat:status', {
-                            'message_id': message_id,
-                            'conversation_id': conversation_id,
-                            'status': 'Image analysis unavailable; continuing with the other sources.',
-                            'timestamp': time.time(),
-                        }, room=delivery_room)
-                    check_preparation_cancelled()
-
-                    if vision_result or attachments:
-                        stash_refs = []
-                        uploaded_images = []
-                        batch_total = len(image_items)
-                        batch_id = None
-                        if batch_total > 1:
-                            batch_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
-                        for index, img in enumerate(image_items, start=1):
-                            check_preparation_cancelled()
-                            stash_payload = {
-                                'base64': img.get('base64'),
-                                'url': img.get('url'),
-                                'filename': img.get('filename'),
-                                'action': image_action,
-                                'settings': image_settings,
-                                'uploaded_sha256': img.get('uploaded_sha256'),
-                            }
-                            if batch_id:
-                                stash_payload.update({
-                                    'batch_id': batch_id,
-                                    'batch_index': index,
-                                    'batch_total': batch_total,
-                                    'vision_analysis_scope': 'batch',
-                                })
-                            stashed = self._auto_stash_image(
-                                stash_payload,
-                                vision_result or '',
-                                mode
-                            )
-                            if attachments and not (stashed and stashed.get('stash_ref')):
-                                self._emit_run_event('chat:error', {
-                                    'message_id': message_id,
-                                    'conversation_id': conversation_id,
-                                    'error': (
-                                        'Could not save an image source for follow-up questions. '
-                                        'Please retry the attached image.'
-                                    ),
-                                    'error_code': 'image_bundle_stash_failed',
-                                    'retryable': True,
-                                    'timestamp': time.time(),
-                                }, room=delivery_room)
-                                return
-                            if stashed and stashed.get('stash_ref'):
-                                stashed_image = dict(stashed)
-                                stashed_image['ordinal'] = index
-                                if img.get('filename'):
-                                    stashed_image['source_filename'] = img.get('filename')
-                                uploaded_images.append(stashed_image)
-                                stash_refs.append(stashed_image.get('stash_ref'))
-                                print(f"[CHAT] Auto-stashed image: {stashed.get('stash_ref')}")
-                        if uploaded_images:
-                            stash_info = dict(uploaded_images[0])
-                            stash_info['uploaded_images'] = uploaded_images
-                            if len(stash_refs) > 1:
-                                stash_info['stash_refs'] = stash_refs
-                        
-                        stash_note = ""
-                        if stash_refs:
-                            if len(stash_refs) == 1:
-                                stash_note = f" Image stashed at: {stash_refs[0]}"
-                            else:
-                                joined = ', '.join(stash_refs)
-                                stash_note = f" Images stashed at: {joined}"
-                        
-                        vision_prefix = WEB_UPLOAD_VISION_ANALYSIS_PREFIX
-                        if image_count > 1:
-                            vision_prefix = f"{WEB_UPLOAD_MULTI_IMAGE_VISION_ANALYSIS_PREFIX} ({image_count}). Vision analysis:"
-                        image_inventory = '\n'.join(
-                            f"Image {item['ordinal']}: {item.get('source_filename') or 'uploaded image'} "
-                            f"— Stash reference: {item['stash_ref']}"
-                            for item in uploaded_images
-                        )
-                        if image_inventory:
-                            message += f'\n\n[IMAGE SOURCES]\n{image_inventory}\n[END IMAGE SOURCES]'
-                        if vision_result:
-                            # Explicit workflow triggers must remain at the start.
-                            # The vision markers still identify the evidence to routing.
-                            message += f"\n\n{vision_prefix} {vision_result}]{stash_note}"
-                            print(f"[CHAT] Image analyzed - passing to orchestrator with vision context")
+            prepared_images = self._prepare_uploaded_images(
+                image_data=image_data,
+                message=message,
+                mode=mode,
+                message_id=message_id,
+                conversation_id=conversation_id,
+                delivery_room=delivery_room,
+                original_user_message=original_user_message,
+                attachments=attachments,
+                check_preparation_cancelled=check_preparation_cancelled,
+            )
+            if prepared_images is None:
+                return
+            message, vision_result, stash_info, tool_overrides, attachment_errors = prepared_images
             
             check_preparation_cancelled()
             # Create orchestrator instance with overrides
@@ -4256,7 +4367,6 @@ Previous structured data:
             
             # Set up progress callback for real-time tool execution events
             # Check if progress events are enabled (default: True)
-            from ..config import get_web_setting
             progress_enabled = get_web_setting('ui.progress_events', True)
             orchestrator.set_reflection_queue_enabled(self._intelligence_reflections_enabled())
             
@@ -4343,7 +4453,6 @@ Previous structured data:
             conversation_history = self._get_conversation_context(conversation_id)
             
             # Get blocked tools for web mode
-            from ..config import get_web_setting
             blocked_tools = list(get_web_setting('tools.blocked', []))
             
             # Build enhanced message with @prompt instructions and #tool hints if present
@@ -4459,92 +4568,16 @@ Previous structured data:
             workflow_data = workflow_result_payload(data)
             is_workflow = bool(result.get('workflow_executed') or workflow_data)
 
-            if is_workflow:
-                # Workflow results have step-by-step data in data.results
-                step_results = (workflow_data or data).get('results', [])
-                emit_index = 0
-                for step_data in step_results:
-                    if step_data.get('skip_kind') == 'optional_tool_unavailable':
-                        continue
-                    tool = step_data.get('tool', 'unknown')
-                    step_ok = step_data.get('ok', True)
-                    step_skipped = step_data.get('skipped') is True
-                    step_num = step_data.get('step')
-                    
-                    # Check for for_each outputs (multiple iterations of same tool)
-                    outputs = step_data.get('outputs', [])
-                    if outputs:
-                        # Emit separate event for each for_each iteration
-                        for idx, output in enumerate(outputs):
-                            output_ok = output.get('ok', True) if isinstance(output, dict) else True
-                            output_data = output.get('data', output) if isinstance(output, dict) else output
-                            output_duration = output.get('duration_ms') if isinstance(output, dict) else None
-                            step_duration = step_data.get('duration_ms')
-                            event_duration = output_duration if output_duration is not None else (step_duration or 0)
-                            self._emit_run_event('tool:complete', {
-                                'tool': tool,
-                                'result': output_data,
-                                'duration_ms': event_duration,
-                                'success': output_ok,
-                                'message_id': message_id,
-                                'workflow_step': f"{step_num}_{idx}"  # Unique per iteration
-                            }, room=delivery_room)
-                            emit_index += 1
-                    else:
-                        # Single execution step
-                        step_result_payload = step_data.get('data', {})
-                        if (not step_ok) and not step_result_payload:
-                            # Preserve failure context for optional workflow steps
-                            step_result_payload = {
-                                'error': step_data.get('error') or step_data.get('speech') or 'Step failed'
-                            }
-                        step_duration = step_data.get('duration_ms') or 0
-                        completion_payload = {
-                            'tool': tool,
-                            'result': step_result_payload,
-                            'duration_ms': step_duration,
-                            'success': step_ok,
-                            'message_id': message_id,
-                            'workflow_step': step_num
-                        }
-                        if step_skipped:
-                            completion_payload.update({
-                                'skipped': True,
-                                'reason': step_data.get('reason') or 'Condition evaluated to false',
-                            })
-                        self._emit_run_event(
-                            'tool:complete', completion_payload, room=delivery_room
-                        )
-                        emit_index += 1
-            else:
-                # Normal orchestrator results - tools_used may have duplicates
-                # Skip emitting tool:complete if progress_events is enabled - we handle this in real-time
-                # via the progress callback (prevents duplicate tool cards)
-                if not progress_enabled:
-                    # Track how many times each tool has been seen to create unique IDs
-                    tool_counts = {}
-                    for idx, tool in enumerate(tools_used):
-                        # Get result - accumulated_data may be a list for repeated tools
-                        tool_result = data.get(tool, {})
-                        
-                        # If result is a list, get the specific iteration
-                        tool_idx = tool_counts.get(tool, 0)
-                        if isinstance(tool_result, list):
-                            if tool_idx < len(tool_result):
-                                tool_result = tool_result[tool_idx]
-                            else:
-                                tool_result = tool_result[-1] if tool_result else {}
-                        
-                        tool_counts[tool] = tool_idx + 1
-                        
-                        self._emit_run_event('tool:complete', {
-                            'tool': tool,
-                            'result': tool_result,
-                            'duration_ms': duration_ms // max(len(tools_used), 1),
-                            'success': True,
-                            'message_id': message_id,
-                            'workflow_step': idx  # Use overall index for unique ID
-                        }, room=delivery_room)
+            self._emit_completed_tool_events(
+                is_workflow=is_workflow,
+                workflow_data=workflow_data,
+                data=data,
+                tools_used=tools_used,
+                progress_enabled=progress_enabled,
+                duration_ms=duration_ms,
+                message_id=message_id,
+                delivery_room=delivery_room,
+            )
             
             # Save assistant response to conversation
             response_usage = enrich_usage_metadata(
@@ -4656,7 +4689,6 @@ Previous structured data:
             # Generate TTS if enabled
             audio_url = None
             try:
-                from ..config import get_web_setting
                 if get_web_setting('audio.tts_enabled', False):
                     speech_text = prepared_speech
                     if speech_text:
@@ -4812,7 +4844,7 @@ Previous structured data:
                 )
             elif already_has_feedback:
                 # Orchestrator already collected feedback (for example random trigger), emit that result
-                print(f"[CHAT] Using orchestrator's feedback (pre-collected)")
+                print("[CHAT] Using orchestrator's feedback (pre-collected)")
                 feedback = result.get('feedback', {})
                 self._emit_run_event('feedback:start', {
                     'message_id': message_id,
@@ -5394,7 +5426,7 @@ Mode: {mode}
             if has_vision:
                 space_labels.append('vision_analyzed')
             space_labels.extend(batch_tags)
-            space, is_new = open_space(
+            space, _ = open_space(
                 labels=space_labels,
                 scope='session',
                 ttl_days=7
