@@ -1085,11 +1085,21 @@ When the user asks for weather or location-based info WITHOUT specifying a place
 Do NOT use this when the user specifies a different location (e.g. "weather in Seattle" → use Seattle).
 Use the postal/ZIP code only for tools or APIs that explicitly need a structured postal code; do not replace the readable location with it.
 Time and timezone use JARVIS_TIMEZONE - this is separate."""
-        # Light personal touch for fresh conversations using the runtime context.
+        # Optional personal touch for fresh conversations using the runtime context.
         greeting_hint = """
 
-PERSONAL TOUCH (new conversations only):
-If this appears to be the start of a genuinely fresh conversation, you may add one short natural opener before the main response when it adds warmth/humor/facts. You may lightly draw from the current time, date, season, holiday, observance, or general vibe if it comes naturally from what you already know. Keep it original and brief, and skip it for urgent, transactional, or continuing conversations."""
+PERSONAL TOUCH (fresh conversations only):
+If this looks like the start of a new conversation, not a follow-up or mid-thread question, you may add one short opener before the real answer when it adds warmth, humor, or useful context.
+
+Draw naturally from the time of day, date, season, a widely known holiday or observance, the request's vibe, or relevant user context you already have. A brief mention of a well-known historical event on this month and day is fine if you are confident it is accurate; do not force a reference or guess.
+
+Optional: If this is a follow up from a conversation that has more than 6 hours from last reply you can acknowledge it if it fits - Welcome back, let's get back to work, Good to see you again, ect.
+
+Rules:
+- Use one sentence, at most two. Be original; avoid stock lines such as "Hope you're having a great day!"
+- Skip the opener for urgent, transactional, troubleshooting, coding, or "just do the thing" requests, and when the user jumps straight into a task.
+- If the user greeted you, answer the greeting naturally instead of adding a separate opener. A greeting-only message can still get a personal reply.
+- Never let the opener delay, dilute, or outshine the actual answer."""
         base_prompt = "\n\n".join(
             part.strip()
             for part in (
