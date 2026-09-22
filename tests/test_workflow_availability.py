@@ -242,3 +242,28 @@ def test_explicit_slash_workflow_returns_unavailable_instead_of_falling_through(
     assert result["ok"] is False
     assert result["workflow_executed"] == "research_report"
     assert result["data"]["availability"]["blocked_tools"] == ["search_docs"]
+
+
+def test_explicit_slash_workflow_preserves_abort_error():
+    workflow = _workflow()
+    orchestrator = object.__new__(Orchestrator)
+    orchestrator.workflow_loader = SimpleNamespace(match=lambda _query: workflow)
+    orchestrator.registry = FakeRegistry({"search_docs", "send_email"})
+    orchestrator.executor = SimpleNamespace(excluded_tools=set())
+    orchestrator.status_updater = SimpleNamespace(update=lambda **_kwargs: None)
+    orchestrator.pipeline_executor = SimpleNamespace(
+        execute=lambda *_args, **_kwargs: {
+            "ok": False,
+            "speech": "Research stopped.",
+            "error": "1 of 2 processed items succeeded; below required success count",
+            "data": {"results": [{"step": 1, "ok": False}]},
+            "tools_used": ["search_docs"],
+        }
+    )
+
+    result = orchestrator._try_workflow("/research_report AI agents")
+
+    assert result["ok"] is False
+    assert result["speech"] == "Research stopped."
+    assert result["error"] == "1 of 2 processed items succeeded; below required success count"
+    assert result["data"]["results"] == [{"step": 1, "ok": False}]

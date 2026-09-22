@@ -777,9 +777,34 @@ class PipelineExecutor:
                     )
                 
                 if step_result.get("abort"):
-                    # Workflow abort requested
-                    return self._build_abort_response(workflow, step, results, variables,
-                                                      start_time=start_time, query=query)
+                    outputs = step_result.get("outputs", [])
+                    processed = step_result.get("items_processed", 0)
+                    succeeded = step_result.get("items_succeeded", 0)
+                    step_error = (
+                        f"{succeeded} of {processed} processed items succeeded; "
+                        "below required success count"
+                    )
+                    for output in outputs:
+                        if not isinstance(output, dict) or output.get("ok"):
+                            continue
+                        detail = output.get("error") or output.get("speech")
+                        if detail:
+                            step_error += f": {str(detail).strip()[:500]}"
+                            break
+                    results.append({
+                        "step": step_num,
+                        "tool": tool_name,
+                        "ok": False,
+                        "items_processed": processed,
+                        "items_succeeded": succeeded,
+                        "outputs": outputs,
+                        "error": step_error,
+                        "duration_ms": step_duration_ms,
+                    })
+                    return self._build_abort_response(
+                        workflow, step, results, variables,
+                        start_time=start_time, query=query, step_error=step_error,
+                    )
                 
                 total_retries += step_result.get("retries", 0)
                 variables[step.get("output_var", f"step{step_num}_results")] = step_result.get("outputs", [])

@@ -3579,6 +3579,8 @@ Your synthesized response:"""
                 "tools_used": result.get("tools_used", []),
                 "workflow_executed": workflow.get("id")
             }
+            if result.get("error") is not None:
+                response["error"] = result["error"]
             
             # Include usage tracking if available (from LLM calls in workflow)
             if result.get("usage"):

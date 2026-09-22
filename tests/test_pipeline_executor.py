@@ -1356,6 +1356,53 @@ MIME type: application/pdf
         self.assertFalse(result["ok"])
         self.assertEqual(result["speech"], "Workflow aborted")
         self.assertEqual(calls, ["always_fail", "always_fail"])
+        self.assertIn("0 of 2", result["error"])
+        self.assertIn("probe failure", result["error"])
+        self.assertEqual(result["tools_used"], ["always_fail"])
+        failed_step = result["data"]["results"][0]
+        self.assertEqual(failed_step["step"], 1)
+        self.assertFalse(failed_step["ok"])
+        self.assertEqual(failed_step["items_processed"], 2)
+        self.assertEqual(failed_step["items_succeeded"], 0)
+        self.assertEqual([output["error"] for output in failed_step["outputs"]], ["probe failure"] * 2)
+        self.assertEqual(failed_step["error"], result["error"])
+        self.assertIn("probe failure", result["data"]["reason"])
+
+    def test_for_each_partial_failure_reports_attempts_before_abort(self):
+        responses = iter([
+            {"ok": True, "data": {"url": "https://one.test"}},
+            {"ok": False, "error": "second source unavailable"},
+        ])
+        executor = PipelineExecutor(
+            mode="cloud",
+            executor=SimpleNamespace(execute=lambda *_args: next(responses)),
+            provider=None,
+        )
+        workflow = {
+            "id": "for_each_partial_failure_probe",
+            "name": "for_each partial failure probe",
+            "steps": [{
+                "step": 1,
+                "tool": "crawl_url",
+                "for_each": "${items}",
+                "required_success_count": 2,
+            }],
+        }
+
+        with patch.object(
+            executor,
+            "_extract_workflow_variables",
+            return_value={"items": ["https://one.test", "https://two.test"]},
+        ):
+            result = executor.execute(workflow, "probe")
+
+        self.assertFalse(result["ok"])
+        self.assertIn("1 of 2", result["error"])
+        self.assertIn("second source unavailable", result["error"])
+        failed_step = result["data"]["results"][0]
+        self.assertEqual(failed_step["items_processed"], 2)
+        self.assertEqual(failed_step["items_succeeded"], 1)
+        self.assertEqual([output["ok"] for output in failed_step["outputs"]], [True, False])
 
     def test_for_each_failure_honors_required_and_continue_overrides(self):
         executor = PipelineExecutor(
