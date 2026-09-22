@@ -48,7 +48,10 @@ class Session:
 
 def _setup(monkeypatch, responses, config=None):
     values = {"PROJECT_NOMAD_BASE_URL": "http://nomad.example.test:8080/api/",
-              "PROJECT_NOMAD_MODEL": "gemma4:12b"}
+              "PROJECT_NOMAD_MODEL": "gemma4:12b",
+              "PROJECT_NOMAD_QDRANT_URL": "http://qdrant.example.test:6333",
+              "PROJECT_NOMAD_EMBEDDING_URL": "http://ollama.example.test:11434",
+              "PROJECT_NOMAD_EMBEDDING_MODEL": "nomic-embed-text-v2-moe:latest"}
     values.update(config or {})
     monkeypatch.setattr(project_nomad, "get_config_value", lambda name, default="": values.get(name, default))
     session = Session(responses)
@@ -91,6 +94,133 @@ def test_ask_requires_a_real_named_collection_when_scoped(monkeypatch):
     result = project_nomad.run({"action": "ask", "question": "Water?", "collection": "Field Notes"})
     assert result["data"]["collection"] == "Field Notes"
     assert session.calls[1][2]["params"] == {"collection": "Field Notes"}
+
+
+def test_passages_returns_indexed_text_with_provenance_without_chat(monkeypatch):
+    vector = [0.01] * 768
+    session = _setup(monkeypatch, [
+        Response({"embeddings": [vector]}),
+        Response({"status": "ok", "result": [
+            {"score": 0.72, "payload": {
+                "text": "Mix flour and water. Feed daily.",
+                "full_title": "Cookbook:Sourdough Starter", "archive_title": "Wikibooks",
+                "article_path": "A/Cookbook:Sourdough_Starter", "source": "/zim/wikibooks.zim",
+                "chunk_index": 2,
+            }},
+        ]}),
+    ])
+    result = project_nomad.run({"action": "passages", "question": "How to make sourdough starter?"})
+    data = result["data"]
+    assert data["grounding_status"] == "retrieved_passages"
+    assert data["external_content_trust"] == "untrusted"
+    assert data["total"] == 1
+    assert data["passages"][0] == {
+        "text": "Mix flour and water. Feed daily.", "text_truncated": False,
+        "full_title": "Cookbook:Sourdough Starter", "archive_title": "Wikibooks",
+        "article_path": "A/Cookbook:Sourdough_Starter", "source": "/zim/wikibooks.zim",
+        "chunk_index": 2, "score": 0.72,
+    }
+    assert [call[:2] for call in session.calls] == [
+        ("POST", "http://ollama.example.test:11434/api/embed"),
+        ("POST", "http://qdrant.example.test:6333/collections/nomad_knowledge_base/points/search"),
+    ]
+    embed = session.calls[0][2]
+    assert embed["json"] == {
+        "model": "nomic-embed-text-v2-moe:latest",
+        "input": ["search_query: How to make sourdough starter?"],
+        "truncate": True, "options": {"num_ctx": 8192},
+    }
+    search = session.calls[1][2]
+    assert search["json"] == {
+        "vector": vector, "limit": 5, "with_payload": True, "score_threshold": 0.3,
+    }
+    assert all(call[2]["allow_redirects"] is False for call in session.calls)
+    assert all(call[2]["stream"] is True for call in session.calls)
+    assert session.trust_env is False
+
+
+def test_passages_empty_is_not_a_corpus_wide_absence(monkeypatch):
+    _setup(monkeypatch, [
+        Response({"embeddings": [[0.01] * 768]}),
+        Response({"status": "ok", "result": []}),
+    ])
+    result = project_nomad.run({"action": "passages", "question": "Unknown topic"})
+    assert result["data"]["grounding_status"] == "no_match"
+    assert result["data"]["passages"] == []
+    assert "does not prove" in result["speech"]
+
+
+def test_passages_validates_collection_and_bounded_model_response(monkeypatch):
+    session = _setup(monkeypatch, [
+        Response({"collections": [{"name": "Field Notes"}]}),
+        Response({"embeddings": [[0.01] * 768]}),
+        Response({"status": "ok", "result": []}),
+    ])
+    project_nomad.run({"action": "passages", "question": "Water?", "collection": "Field Notes", "limit": 2})
+    assert session.calls[2][2]["json"]["filter"] == {
+        "must": [{"key": "collection", "match": {"value": "Field Notes"}}],
+    }
+    assert session.calls[2][2]["json"]["limit"] == 2
+
+    session = _setup(monkeypatch, [Response({"embeddings": [[0.1] * 3]})])
+    with pytest.raises(project_nomad.NomadError, match="768-dimensional"):
+        project_nomad.run({"action": "passages", "question": "Water?"})
+    assert len(session.calls) == 1
+
+
+def test_passages_requires_explicit_operator_settings_and_rejects_bad_limits(monkeypatch):
+    session = _setup(monkeypatch, [], {"PROJECT_NOMAD_EMBEDDING_MODEL": ""})
+    with pytest.raises(project_nomad.NomadError, match="PROJECT_NOMAD_EMBEDDING_MODEL"):
+        project_nomad.run({"action": "passages", "question": "Water?"})
+    assert session.calls == []
+    session = _setup(monkeypatch, [], {"PROJECT_NOMAD_QDRANT_URL": "http://user:secret@qdrant.test"})
+    with pytest.raises(project_nomad.NomadError) as exc:
+        project_nomad.run({"action": "passages", "question": "Water?"})
+    assert "secret" not in str(exc.value)
+    assert session.calls == []
+    for invalid in (True, 0, 11):
+        with pytest.raises(ValueError, match="'limit'"):
+            project_nomad.run({"action": "passages", "question": "Water?", "limit": invalid})
+
+
+def test_passages_direct_endpoints_fail_closed_on_redirect_and_large_response(monkeypatch):
+    session = _setup(monkeypatch, [Response({"secret": "DO_NOT_ECHO"}, status=302)])
+    with pytest.raises(project_nomad.NomadError, match="HTTP 302") as exc:
+        project_nomad.run({"action": "passages", "question": "Water?"})
+    assert "DO_NOT_ECHO" not in str(exc.value)
+    assert len(session.calls) == 1
+    assert session.calls[0][2]["allow_redirects"] is False
+
+    session = _setup(monkeypatch, [
+        Response({"embeddings": [[0.01] * 768]}),
+        Response({"secret": "DO_NOT_ECHO"}, headers={
+            "Content-Length": str(project_nomad.MAX_RETRIEVAL_RESPONSE_BYTES + 1),
+        }),
+    ])
+    with pytest.raises(project_nomad.NomadError, match="too large") as exc:
+        project_nomad.run({"action": "passages", "question": "Water?"})
+    assert "DO_NOT_ECHO" not in str(exc.value)
+    assert len(session.calls) == 2
+
+
+def test_passages_skips_missing_text_and_rejects_unexpected_qdrant_shape(monkeypatch):
+    _setup(monkeypatch, [
+        Response({"embeddings": [[0.01] * 768]}),
+        Response({"status": "ok", "result": [
+            {"score": 0.9, "payload": {"full_title": "Title only"}},
+            {"score": 0.2, "payload": {"text": "Below threshold"}},
+        ]}),
+    ])
+    result = project_nomad.run({"action": "passages", "question": "Water?"})
+    assert result["data"]["passages"] == []
+    assert result["data"]["grounding_status"] == "no_match"
+
+    _setup(monkeypatch, [
+        Response({"embeddings": [[0.01] * 768]}),
+        Response({"status": "ok", "result": {"unexpected": "shape"}}),
+    ])
+    with pytest.raises(project_nomad.NomadError, match="unexpected search response"):
+        project_nomad.run({"action": "passages", "question": "Water?"})
 
 
 def test_file_inventory_is_bounded_and_reports_full_count(monkeypatch):
@@ -221,16 +351,25 @@ def test_manifest_is_opt_in_and_restricts_child_environment():
     manifest = json.loads(manifest_path.read_text())
     schema = ToolSchema.from_json_file(str(manifest_path))
     assert manifest["availability"]["all_of_env"] == ["PROJECT_NOMAD_BASE_URL"]
-    assert schema.child_environment_names == frozenset({"PROJECT_NOMAD_BASE_URL", "PROJECT_NOMAD_MODEL"})
+    assert schema.child_environment_names == frozenset({
+        "PROJECT_NOMAD_BASE_URL", "PROJECT_NOMAD_MODEL", "PROJECT_NOMAD_QDRANT_URL",
+        "PROJECT_NOMAD_EMBEDDING_URL", "PROJECT_NOMAD_EMBEDDING_MODEL",
+    })
     assert manifest["parameters"]["additionalProperties"] is False
-    assert "ask my Project NOMAD knowledge base" in manifest["description"]
+    assert "search my NOMAD cookbook archive" in manifest["description"]
+    assert "passages" in manifest["parameters"]["properties"]["action"]["enum"]
     child = restrict_child_environment({
         "PATH": "/usr/bin", "JARVIS_MODE": "local",
         "PROJECT_NOMAD_BASE_URL": "http://nomad.test",
         "PROJECT_NOMAD_MODEL": "gemma4:12b", "OPENAI_API_KEY": "SECRET",
+        "PROJECT_NOMAD_QDRANT_URL": "http://qdrant.test:6333",
+        "PROJECT_NOMAD_EMBEDDING_URL": "http://ollama.test:11434",
+        "PROJECT_NOMAD_EMBEDDING_MODEL": "nomic-embed-text-v2-moe:latest",
         "LOCAL_PROXY": "http://proxy.test",
     }, schema.child_environment_names, home="/tmp/empty-home", proxy_policy="off")
     assert child["PROJECT_NOMAD_MODEL"] == "gemma4:12b"
+    assert child["PROJECT_NOMAD_EMBEDDING_MODEL"] == "nomic-embed-text-v2-moe:latest"
+    assert child["PROJECT_NOMAD_QDRANT_URL"] == "http://qdrant.test:6333"
     assert "OPENAI_API_KEY" not in child and "LOCAL_PROXY" not in child
 
 
@@ -265,6 +404,71 @@ def test_followup_preserves_pagination_and_exact_source_without_full_text():
     assert data["inventory"]["files_with_chunks"] == 20
     assert len(data["files"]) == 3
     assert project_nomad_data({"action": "ask", "answer": "A" * 2000}, text_budget=100)["answer_context_truncated"]
+
+
+def test_passage_context_keeps_evidence_and_bounds_followup_text():
+    data = project_nomad_data({
+        "action": "passages", "question": "Sourdough?", "total": 2,
+        "grounding_status": "retrieved_passages", "passages": [
+            {"full_title": "Starter", "archive_title": "Wikibooks", "score": 0.72,
+             "article_path": "A/Starter", "source": "/zim/books.zim", "text": "A" * 100},
+            {"full_title": "Bread", "archive_title": "Cookbook", "score": 0.61,
+             "text": "B" * 100},
+        ],
+    }, text_budget=80, row_limit=2)
+    assert len(data["passages"]) == 2
+    assert data["passages"][0]["text"] == "A" * 40
+    assert data["passages"][1]["text"] == "B" * 40
+    assert data["passages"][0]["full_title"] == "Starter"
+    assert data["passages_context_truncated"] is True
+
+
+def test_retrieved_passage_text_reaches_jarvis_answer_context():
+    path = ROOT / "orchestrator/context_assembler.py"
+    spec = importlib.util.spec_from_file_location("nomad_passage_context", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assembler = module.ContextAssembler.__new__(module.ContextAssembler)
+    result = {"ok": True, "data": {
+        "action": "passages", "question": "How do I start sourdough?", "total": 1,
+        "grounding_status": "retrieved_passages", "passages": [{
+            "text": "Mix equal parts flour and water; feed daily.",
+            "full_title": "Cookbook:Sourdough Starter", "archive_title": "Wikibooks",
+            "article_path": "A/Cookbook:Sourdough_Starter", "source": "/zim/wikibooks.zim",
+            "score": 0.72,
+        }],
+    }}
+    preview, _total, shown, truncated = assembler.build_llm_result_context_preview("project_nomad", result)
+    projected = json.loads(preview)["data"]
+    assert shown == len(preview) <= 12000
+    assert projected["passages"][0]["text"] == "Mix equal parts flour and water; feed daily."
+    assert projected["passages"][0]["full_title"] == "Cookbook:Sourdough Starter"
+    assert truncated is False
+
+
+def test_web_passage_card_escapes_text_and_opens_saved_passage():
+    from test_structured_results_adapters import _run_renderer_assertions
+
+    _run_renderer_assertions(r"""
+const payload={action:'passages',question:'Sourdough?',total:1,passages:[{
+  full_title:'<img src=x onerror=alert(1)>',archive_title:'Wikibooks',
+  article_path:'A/Starter',source:'/zim/books.zim',score:0.72,
+  text:'Mix flour and water. <script>alert(1)</script>',
+}],evidence_note:'Indexed text, not an original page.'};
+const html=renderer.render({project_nomad:{data:payload}});
+assert.ok(html.includes('Project NOMAD · passages'));
+assert.ok(html.includes('Indexed passages'));
+assert.ok(html.includes('72% similarity'));
+assert.ok(html.includes('Read passage'));
+assert.ok(html.includes('&lt;img'));
+assert.ok(html.includes('&lt;script&gt;'));
+assert.ok(!html.includes('<img src=x'));
+assert.ok(!html.includes('<script>alert(1)'));
+const empty=renderer.render({project_nomad:{data:{
+  action:'passages',question:'unknown',total:0,passages:[],grounding_status:'no_match',
+}}});
+assert.ok(empty.includes('No indexed passage met the similarity threshold'));
+""")
 
 
 def test_web_card_escapes_nomad_text_and_shows_total():

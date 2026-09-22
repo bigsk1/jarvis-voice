@@ -403,11 +403,12 @@ class StructuredResultsRenderer {
     });
     this.register('project_nomad', payload => {
       const action = String(payload.action || 'status');
-      const hasLongText = action === 'ask' || action === 'read_file';
+      const hasLongText = action === 'ask' || action === 'read_file' || action === 'passages';
       const rows = action === 'files' ? payload.files
         : action === 'zims' ? payload.zims
         : action === 'models' ? payload.models
-        : action === 'collections' ? payload.collections : [];
+        : action === 'collections' ? payload.collections
+        : action === 'passages' ? payload.passages : [];
       const items = action === 'ask' ? [{
         title: 'Nomad answer',
         primary: payload.model || '',
@@ -428,6 +429,18 @@ class StructuredResultsRenderer {
       }] : (Array.isArray(rows) ? rows : []).slice(0, 8).map(row => {
         if (action === 'collections') return {title: String(row)};
         if (!row || typeof row !== 'object') return null;
+        if (action === 'passages') {
+          const score = Number(row.score);
+          return {
+            title: row.full_title || row.article_path || 'Indexed passage',
+            primary: [row.archive_title, Number.isFinite(score)
+              ? `${Math.round(score * 100)}% similarity` : ''].filter(Boolean).join(' · '),
+            details: [this._compactText(row.text, 360)].filter(Boolean),
+            expandText: row.text,
+            expandNote: [payload.evidence_note, row.article_path, row.source].filter(Boolean).join(' · '),
+            expandLabel: 'Read passage',
+          };
+        }
         if (action === 'files') return {
           title: row.file_name || row.source || 'Indexed file',
           primary: row.state || '',
@@ -441,7 +454,9 @@ class StructuredResultsRenderer {
         };
         return {title: row.name || 'Model', primary: row.cloud ? 'Cloud model' : 'Installed model'};
       }).filter(Boolean);
-      if (!items.length) items.push({title: action === 'collections' && payload.total === 0
+      if (!items.length) items.push({title: action === 'passages'
+        ? 'No indexed passage met the similarity threshold'
+        : action === 'collections' && payload.total === 0
         ? 'No named collections; indexed files may still exist'
         : action === 'files' && payload.query ? 'No file names match this search'
         : payload.total === 0 ? 'Nothing here yet' : 'No items at this offset'});
@@ -455,11 +470,14 @@ class StructuredResultsRenderer {
         : '';
       return {
         kind: 'generic', layout: hasLongText || action === 'status' ? 'list' : 'rail',
-        eyebrow: action === 'ask' ? '🗿 Project NOMAD · Unverified answer' : '🗿 Project NOMAD',
+        eyebrow: action === 'ask' ? '🗿 Project NOMAD · Unverified answer'
+          : action === 'passages' ? '🗿 Project NOMAD · Indexed passages' : '🗿 Project NOMAD',
         heading: action === 'ask' ? 'Project NOMAD · answer'
           : action === 'status' ? 'Project NOMAD · connection'
           : `Project NOMAD · ${action.replace(/_/g, ' ')}`,
-        subtitle: action === 'ask' ? this._compactText(payload.question, 240)
+        subtitle: action === 'ask' || action === 'passages'
+          ? [this._compactText(payload.question, 240), action === 'passages'
+            ? `${payload.total || 0} passage(s) above similarity threshold` : ''].filter(Boolean).join(' · ')
           : inventorySummary || payload.note || (payload.total != null
           ? `${payload.total} total${payload.has_more ? ' · more available' : ''}` : ''),
         items,

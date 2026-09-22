@@ -14,12 +14,20 @@ In the active mode's ignored `config/local.env` or `config/cloud.env`, set:
 ```dotenv
 PROJECT_NOMAD_BASE_URL=http://your-nomad-host:8080
 PROJECT_NOMAD_MODEL=your-installed-model-name
+# Optional direct evidence search (all three required for `passages`):
+PROJECT_NOMAD_QDRANT_URL=http://your-nomad-host:6333
+PROJECT_NOMAD_EMBEDDING_URL=http://your-ollama-host:11434
+PROJECT_NOMAD_EMBEDDING_MODEL=exact-model-used-to-build-the-nomad-index
 ```
 
 The URL is the Nomad server root, not `/reference` or `/api/openapi.json`.
 `PROJECT_NOMAD_BASE_URL` is the opt-in switch: without it, the tool is unavailable
 to Jarvis and Tool RAG. `PROJECT_NOMAD_MODEL` is needed only for `ask`; use the
 tool's `models` action to see exact installed IDs, or supply `model` on one call.
+The three retrieval settings are needed only for `passages`; Jarvis will not
+guess them from its own embedding configuration. Match the model that built
+NOMAD's index, including its tag. Equal vector dimensions do **not** establish
+model compatibility. These URLs are operator settings, never model arguments.
 The tracked `openai_only` tool profile also disables this non-OpenAI integration;
 use `default` or a custom profile that explicitly enables `project_nomad`.
 Choose a genuinely local model if offline operation matters; a `:cloud` model
@@ -33,14 +41,15 @@ provider. The tool launches as a bounded child process, not inside Jarvis Web,
 and does not start another Flask server. If Jarvis itself runs in Docker, the
 configured URL must be reachable **from its container**, not just the host.
 
-Project NOMAD currently documents no built-in authentication. Keep its API on
-a trusted LAN or behind your own authenticated gateway; never expose an
-unprotected instance to the public internet. Jarvis does not follow Nomad API
-redirects and does not use ambient HTTP proxies for this tool. A reverse proxy
+Project NOMAD currently documents no built-in authentication. Keep its API,
+Qdrant, and Ollama on a trusted LAN or behind your own authenticated gateway;
+never expose these unprotected services to the public internet. Jarvis does
+not follow redirects or use ambient HTTP proxies for this tool. A reverse proxy
 requiring credentials is not supported by this first cut.
 
 Tool results enter the active Jarvis conversation. If that conversation uses a
-cloud LLM, Nomad answers and selected file excerpts may be sent to that LLM.
+cloud LLM, Nomad answers, retrieved passages, and selected file excerpts may
+be sent to that LLM.
 Use a local Jarvis provider and a local Nomad model when that data must stay
 on your LAN; verify the Ollama host configured inside Nomad as well.
 
@@ -48,6 +57,7 @@ on your LAN; verify the Ollama host configured inside Nomad as well.
 
 | Action | Nomad endpoint | Meaning |
 | --- | --- | --- |
+| `passages` | Ollama `POST /api/embed` + Qdrant `POST /collections/nomad_knowledge_base/points/search` | Retrieve up to ten indexed chunks (five by default) with text, archive/article titles, source/path, and similarity score. The query uses NOMAD's `search_query: ` prefix and a fixed 0.3 score threshold. No second LLM call. Requires the three retrieval settings above. |
 | `ask` | `POST /api/ollama/chat` | Ask Nomad's AI assistant. Its configured system prompt and knowledge-base retrieval are handled by Nomad. Optional `collection` is sent as the query filter. No Nomad chat `sessionId` is sent, so these tool calls are not saved as a Nomad chat session. |
 | `files` | `GET /api/rag/files` | List stored-file metadata with complete inventory state counts, optional `query` substring filter on filename/source, pagination, and a `viewable_text` flag. This does not search file contents. A stored file may still be awaiting embeddings. |
 | `read_file` | `GET /api/rag/files/content` | Read a `viewable_text=true` uploaded text file in 12,000-character pages. Nomad does not serve PDFs, EPUBs, ZIMs, or non-uploaded files through this endpoint. |
@@ -57,19 +67,19 @@ on your LAN; verify the Ollama host configured inside Nomad as well.
 | `status` | `GET /api/health`, `GET /api/rag/health` | Check the server and KB reachability. This is not an indexing-job progress check. |
 
 The current Nomad catalog has **no separate `/api/rag/search` endpoint**.
-For questions about what stored content says, use `ask` **without** a
+For questions about what stored content says, use `passages` **without** a
 `collection` filter unless an exact named collection exists. A topic or
 filename such as "cookbook" is not automatically a collection. Jarvis rejects
-unknown collection names rather than silently widening the query. Nomad may
-rewrite the question and select Qdrant chunks, but its chat response currently
-contains no verifiable source passages. A confident model answer, even one
-claiming it was pulled from a specific archive, is not proof of retrieval.
-Jarvis marks such answers as unverified. For direct evidence from uploaded
-text files, use `files` and `read_file`. The content endpoint does not serve
-ZIM articles or PDF/EPUB originals; use Nomad's interface for those. Nomad can
-separately embed ZIM articles into Qdrant, but an installed ZIM title alone
-does not prove that happened. Nomad's archive and Jarvis Source Library are
-separate stores.
+unknown collection names rather than silently widening the query. Retrieved
+text is indexed evidence, not an original-layout page or a guarantee that the
+passage answers the question. No match does not prove the entire archive lacks
+the answer. Direct search is semantic-only: it does not reproduce Nomad's chat
+question rewrite or RAG reranking, and it does not search ZIMs that have not
+been embedded. `ask` remains available for Nomad's own AI voice, but its chat
+response hides the passages it used, so Jarvis marks that answer unverified.
+For uploaded text files, `files` and `read_file` can retrieve exact file text;
+the content endpoint does not serve ZIM articles or PDF/EPUB originals. Nomad's
+archive and Jarvis Source Library are separate stores.
 
 All inventory actions return at most 20 rows per call. `total`, `offset`, and
 `has_more` make a growing archive navigable without flooding a chat response.
@@ -79,9 +89,10 @@ pagination. `read_file` likewise has an 8 MiB response cap and returns an
 excerpt. Larger files should be opened in Nomad's own UI. Responses from
 Nomad are external content, not instructions for Jarvis.
 
-In Jarvis Web, `ask` and `read_file` show a short, full-width preview. Click
-the card or its **Read full answer** / **Read file text** button for a larger
-plain-text reader. It uses the saved tool result and does not call Nomad again.
+In Jarvis Web, `passages`, `ask`, and `read_file` show short, full-width previews.
+Click a passage card or its **Read passage** button for the saved full text;
+`ask` and `read_file` have their own plain-text reader buttons. The reader
+does not call Nomad again.
 Press Escape or use the close button to return to the conversation.
 
 The tool intentionally excludes upload, download, deletion, indexing,
@@ -90,10 +101,11 @@ other administration. Manage those in Nomad's standalone UI.
 
 ## Examples
 
-- “Ask my Project NOMAD knowledge base what it knows about water purification.”
+- “Ask NOMAD's own assistant for its take on water purification.”
+- “Search my NOMAD archives for passages on making a sourdough starter, and cite the article titles.”
 - “How many NOMAD files report embedded chunks, and how many are still pending? Show the first ten.”
 - “Find NOMAD files with `cooking` in the filename.”
-- “Ask my Project NOMAD knowledge base about cooking techniques, with no collection filter.”
+- “Search indexed NOMAD passages about cooking techniques, with no collection filter.”
 - “List the installed ZIM archives in NOMAD.”
 - “Read the NOMAD file with source value from the previous list, starting at its next character offset.”
 
@@ -110,3 +122,8 @@ Qdrant data. Keep the query embedding model aligned with the one that built
 the index; do not switch it during active indexing. NOMAD's
 `/api/ollama/installed-models` endpoint hides model names containing `embed`,
 so use the Ollama host's model inventory when diagnosing that specific issue.
+For example, a host with both `nomic-embed-text-v2-moe:latest` and
+`nomic-embed-text:latest` must not pick a query model merely because both
+produce 768-dimensional vectors. Confirm which one indexed the stored points;
+if that changed partway through indexing, rebuild in NOMAD before trusting
+retrieval. Jarvis does not mutate the Qdrant collection.
