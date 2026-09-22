@@ -25,6 +25,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lib'))
 from config_loader import load_config
 from memory_db import get_memory_db
+from stash_helper import get_stash_dir
 from time_utils import (
     ensure_local,
     get_app_timezone,
@@ -445,7 +446,7 @@ def search_canvas_pages(query: str, limit: int, date_filter: datetime = None) ->
 def search_stash_spaces(query: str, limit: int, date_filter: datetime = None) -> list[dict]:
     """Search stash space metadata AND file contents."""
     results = []
-    stash_dir = PROJECT_ROOT / 'data' / 'stash'
+    stash_dir = get_stash_dir()
     
     if not stash_dir.exists():
         return results
@@ -470,7 +471,7 @@ def search_stash_spaces(query: str, limit: int, date_filter: datetime = None) ->
         seen_spaces.add(space_dir)
         
         # Get meta.json for this space
-        meta_path = PROJECT_ROOT / 'data' / 'stash' / space_dir / 'meta.json'
+        meta_path = stash_dir / space_dir / 'meta.json'
         try:
             with open(meta_path, 'r') as f:
                 meta = json.load(f)

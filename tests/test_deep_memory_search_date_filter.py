@@ -143,6 +143,8 @@ def test_file_sources_apply_one_aware_cutoff_to_mixed_timestamp_formats(
         os.utime(path, (timestamp.timestamp(), timestamp.timestamp()))
 
     monkeypatch.setattr(deep_memory_search, "PROJECT_ROOT", tmp_path)
+    monkeypatch.delenv("JARVIS_OVERRIDE_STASH_DIR", raising=False)
+    monkeypatch.setenv("STASH_DIR", str(stash_dir))
 
     web_results = search_web_conversations(token, 10, CUTOFF)
     canvas_results = search_canvas_pages(token, 10, CUTOFF)
