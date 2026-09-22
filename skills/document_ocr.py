@@ -866,20 +866,22 @@ def execute(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
+    args: dict[str, Any] = {}
     try:
         if len(sys.argv) > 1:
-            args = json.loads(sys.argv[1])
+            parsed_args = json.loads(sys.argv[1])
         else:
-            args = json.load(sys.stdin)
-        if not isinstance(args, dict):
+            parsed_args = json.load(sys.stdin)
+        if not isinstance(parsed_args, dict):
             raise ValueError("Tool input must be a JSON object.")
+        args = parsed_args
         load_config()
         result = execute(args)
         print(json.dumps(result, ensure_ascii=False))
         return 0
     except OvisToolError as exc:
         error_data = {
-            "action": str(locals().get("args", {}).get("action", "ocr")),
+            "action": str(args.get("action", "ocr")),
             "error_code": exc.code,
             "retryable": exc.retryable,
         }
@@ -904,7 +906,7 @@ def main() -> int:
                     "ok": False,
                     "speech": f"Document OCR request failed: {exc}",
                     "error": str(exc),
-                    "data": {"action": str(locals().get("args", {}).get("action", "ocr"))},
+                    "data": {"action": str(args.get("action", "ocr"))},
                 },
                 ensure_ascii=False,
             )
@@ -917,7 +919,7 @@ def main() -> int:
                     "ok": False,
                     "speech": "Document OCR failed because of an unexpected local error.",
                     "error": "Unexpected document OCR error",
-                    "data": {"action": str(locals().get("args", {}).get("action", "ocr"))},
+                    "data": {"action": str(args.get("action", "ocr"))},
                 },
                 ensure_ascii=False,
             )

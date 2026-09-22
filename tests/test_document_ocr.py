@@ -77,6 +77,19 @@ def test_manifest_is_optional_network_file_tool():
     assert manifest["parameters"]["additionalProperties"] is False
 
 
+@pytest.mark.parametrize("raw_input", ("[1, 2, 3]", '"hello"', "42", "null"))
+def test_main_rejects_non_object_json_with_structured_error(monkeypatch, capsys, raw_input):
+    monkeypatch.setattr(sys, "argv", ["document_ocr.py", raw_input])
+
+    assert document_ocr.main() == 1
+    output = capsys.readouterr()
+    result = json.loads(output.out)
+    assert result["ok"] is False
+    assert result["error"] == "Tool input must be a JSON object."
+    assert result["data"]["action"] == "ocr"
+    assert output.err == ""
+
+
 @pytest.mark.parametrize(
     "value",
     (
