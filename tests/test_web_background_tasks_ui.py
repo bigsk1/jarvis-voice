@@ -23,6 +23,53 @@ const late={schema_version:1,conversation_id:'thread',generation:0,job_id:'job-1
 )
 
 
+def test_private_callback_hash_mismatch_explains_review_before_repinning():
+    run_browser(BACKGROUND + r"""
+manager.control=new Element();
+manager.enabledInput=new Element('input');
+manager.choices=new Element('fieldset');
+manager.note=new Element('p');
+const callback={policy_ready:false,policy_issue:'review_required',source_ready:true,service_ready:false};
+const status={settings:{background_enabled:true,background_tools:[]},tools:['samantha_task'],
+  configured_tools:['samantha_task'],tool_details:{samantha_task:{private_callback:callback,worker_ready:true}},
+  coordinator_unavailable_reason:null,worker_ready:true};
+sandbox.Utils.auth={fetch:async()=>({ok:true,json:async()=>status})};
+await manager.refresh();
+let option=manager.choices.children[0];
+assert.equal(option.children[0].disabled,true);
+assert.match(option.children[1].children[0].textContent,/Review.*manifest.*script.*SHA-256/);
+assert.match(option.children[1].children[0].textContent,/private-callback-bindings\.json/);
+status.settings.background_tools=['samantha_task','convert_file'];
+status.tools.push('convert_file');
+status.tool_details.convert_file={worker_ready:true};
+await manager.refresh();
+option=manager.choices.children[0];
+assert.equal(option.children[0].checked,true);
+assert.equal(option.children[0].disabled,false);
+assert.match(manager.note.textContent,/Review required/);
+assert.doesNotMatch(manager.note.textContent,/^Ready/);
+status.worker_ready=false;
+await manager.refresh();
+assert.match(manager.note.textContent,/Review required/);
+assert.match(manager.note.textContent,/Worker offline/);
+assert.doesNotMatch(manager.note.textContent,/^Ready/);
+status.worker_ready=true;
+callback.policy_issue='unavailable';
+await manager.refresh();
+option=manager.choices.children[0];
+assert.doesNotMatch(option.children[1].children[0].textContent,/SHA-256/);
+status.worker_ready=false;
+await manager.refresh();
+assert.match(manager.note.textContent,/^Worker offline/);
+assert.doesNotMatch(manager.note.textContent,/Review required/);
+status.worker_ready=true;
+callback.policy_ready=true;callback.policy_issue=null;callback.source_ready=false;
+await manager.refresh();
+option=manager.choices.children[0];
+assert.match(option.children[1].children[0].textContent,/Settings → Integrations/);
+""")
+
+
 def test_late_events_leave_foreground_tool_draft_attachments_and_audio_untouched():
     run_browser(
         BACKGROUND
@@ -232,7 +279,7 @@ sandbox.Utils.auth={fetch:async()=>({ok:true,json:async()=>status})};
 await manager.refresh();
 let row=manager.choices.children[0];
 assert.equal(row.children[0].disabled,true);
-assert.match(row.children[1].children[0].textContent,/policy changed/);
+assert.match(row.children[1].children[0].textContent,/policy is unavailable/);
 callback.policy_ready=true;
 await manager.refresh();
 row=manager.choices.children[0];

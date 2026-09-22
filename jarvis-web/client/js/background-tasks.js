@@ -78,8 +78,18 @@ class BackgroundTasks {
       this.enabledInput.checked = this.enabled;
       this.enabledInput.disabled = this.saving === true || Boolean(status.coordinator_unavailable_reason);
       const saved = new Set(status.settings.background_tools || []);
-      const availableSaved = [...saved].some(name => status.tools.includes(name)
-        && status.tool_details?.[name]?.browser_use?.deployment_supported !== false);
+      // Saved intent can outlive a changed private binding or a stopped worker.
+      const reviewRequiredSaved = [...saved].some(name =>
+        status.tool_details?.[name]?.private_callback?.policy_issue === 'review_required');
+      const readySaved = [...saved].filter(name => {
+        const details = status.tool_details?.[name];
+        const browser = details?.browser_use;
+        const callback = details?.private_callback;
+        return status.tools.includes(name) && details?.worker_ready !== false
+          && browser?.deployment_supported !== false
+          && (name !== 'browser_use' || browser?.operational !== false)
+          && (!callback || (callback.policy_ready && callback.source_ready && callback.service_ready));
+      }).length;
       this.choices.replaceChildren();
       for (const name of new Set([...(status.configured_tools || status.tools), ...saved])) {
         const label = document.createElement('label');
@@ -113,10 +123,12 @@ class BackgroundTasks {
           : !browser.service_ready ? 'Configured, but the Browser Use helper is stopped.'
           : !browser.worker_ready ? 'Helper is running; the task worker is loading its callback adapter.'
           : 'Setup needs attention. Use Finish setup to repair and verify it.')
-          : privateCallback ? (!available
+          : privateCallback ? (privateCallback.policy_issue === 'review_required'
+          ? 'Private tool files changed since approval. Review the manifest and script, then update their pinned SHA-256 hashes in data/secrets/private-callback-bindings.json.'
+          : !available
           ? 'Unavailable in this mode or blocked in Web. Saved preference retained if selected.'
           : !privateCallback.policy_ready
-          ? 'Private tool policy changed or this mode blocks it. Review its binding and tool settings.'
+          ? 'Private tool policy is unavailable. Check its binding, tool profile, and Web blocks.'
           : !privateCallback.source_ready
           ? 'Callback source is unavailable. Check Settings → Integrations and test the receiver.'
           : !privateCallback.service_ready ? 'The private task service is not responding.'
@@ -137,11 +149,15 @@ class BackgroundTasks {
         if (name === 'browser_use' && browser && browser.deployment_supported !== false) label.append(this.browserActions(browser));
         this.choices.append(label);
       }
+      const reviewRequiredNote = 'Review required: selected private tool files changed. Check the tool message above before retrying.';
+      const workerOfflineNote = 'Worker offline. Preferences are saved, but enabled tools cannot queue until it starts. Open Manage tasks for setup.';
       this.note.textContent = setup?.state === 'running' ? 'Browser Use setup is running. You can keep chatting while the pinned image downloads.'
         : status.coordinator_unavailable_reason
         || (!this.choices.children.length ? 'No supported background tools are installed.'
-        : !status.worker_ready ? 'Worker offline. Preferences are saved, but enabled tools cannot queue until it starts. Open Manage tasks for setup.'
-        : this.enabled && saved.size && !availableSaved ? 'Selected background tools are unavailable in this deployment.'
+        : this.enabled && reviewRequiredSaved ? `${reviewRequiredNote}${status.worker_ready ? '' : ` ${workerOfflineNote}`}`
+        : !status.worker_ready ? workerOfflineNote
+        : this.enabled && saved.size && !readySaved ? 'Selected background tools are unavailable in this deployment.'
+        : this.enabled && readySaved < saved.size ? 'Some selected background tools need attention. Check their messages above before retrying.'
         : this.enabled && saved.size ? 'Ready. Enabled tools run in the background from chat and tool dialogs.'
         : this.enabled ? 'Choose a tool below to use background execution.' : 'Off. Tools run in the current chat turn.');
     } catch (error) {

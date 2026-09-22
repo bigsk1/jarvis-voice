@@ -86,6 +86,24 @@ failed health check denies new work; the worker rechecks before submission.
 }
 ```
 
+For a changed private tool, review the manifest or script first. Replace
+`my_private_task` below with the installed tool name. Copy the resulting hashes
+into only the matching entry's `manifest_sha256` and `script_sha256` fields;
+do not change the source, URLs, or token. Run the checks after saving:
+
+```bash
+sha256sum skills/personal/my_private_task.tool.json skills/personal/my_private_task.py
+nano data/secrets/private-callback-bindings.json
+.venv/bin/python -m json.tool data/secrets/private-callback-bindings.json > /dev/null
+stat -c '%a %U %n' data/secrets/private-callback-bindings.json
+```
+
+The JSON check must pass and the binding must remain owned by the Jarvis user
+with mode `600`. Tool RAG sync and Settings switches do not update the stored
+hashes. Refresh Settings → Tools and confirm that the file-review warning is
+gone before retrying a private task. JSON validation alone cannot confirm that
+the file hashes match.
+
 `requires_tool` may optionally name a companion tool whose profile or block
 setting should also disable this binding. The private tool must declare
 `execution.background.required: true`, adapter `http_callback_v1`, and a reviewed

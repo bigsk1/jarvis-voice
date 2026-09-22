@@ -79,6 +79,12 @@ class LocalCallbackRunner:
             context.checkpoint()
             submission = self.service.prepare_submission(context.claim, source_id)
         except Exception as exc:
+            from .private_bindings import review_required
+
+            if review_required(tool):
+                raise KnownFailure({'ok': False, 'speech':
+                    'Private background tool files changed since review. Review the manifest and script, '
+                    'then update their pinned hashes. Nothing was submitted.'}) from exc
             raise KnownFailure({'ok': False, 'speech': 'Callback setup or authorization is unavailable; nothing was submitted.'}) from exc
         try:
             stored_url = submission.pop('submit_url')

@@ -11,14 +11,14 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'lib'), str(ROOT / 'orchestrator')]
 
+from test_task_callbacks import configured  # noqa: E402
+
 from lib.background_tasks import Admission, ReceiptEvidence  # noqa: E402
 from lib.background_tasks.models import AdmissionDenied  # noqa: E402
 from lib.background_tasks.production import bindings, worker_adapters  # noqa: E402
 from lib.background_tasks.worker import AwaitingCallback, KnownFailure  # noqa: E402
 from lib.webhook_integrations import private_bindings as private  # noqa: E402
 from lib.webhook_integrations import runner as callback_runner  # noqa: E402
-from lib.webhook_integrations.service import IntegrationService  # noqa: E402
-from test_task_callbacks import configured  # noqa: E402
 
 
 @pytest.fixture
@@ -75,13 +75,18 @@ def test_personal_manifest_alone_cannot_register_callback(private_tool):
         private.policy('callback_probe')
 
 
-def test_private_settings_status_does_not_claim_changed_files_are_ready(private_tool, tmp_path):
+@pytest.mark.parametrize('changed_file', ('manifest', 'script'))
+def test_private_settings_status_does_not_claim_changed_files_are_ready(private_tool, tmp_path, changed_file):
     private_tool.write()
     service, _, _, _ = configured(tmp_path)
-    assert private.status(service.store, 'callback_probe', mode='cloud')['policy_ready'] is True
-    private_tool.script.write_text('raise SystemExit("changed")\n')
+    ready = private.status(service.store, 'callback_probe', mode='cloud')
+    assert ready['policy_ready'] is True
+    assert ready['policy_issue'] is None
+    changed = getattr(private_tool, changed_file)
+    changed.write_text(changed.read_text() + '\n')
     status = private.status(service.store, 'callback_probe', mode='cloud')
     assert status['policy_ready'] is False
+    assert status['policy_issue'] == 'review_required'
     assert status['service_ready'] is False
 
 
@@ -100,18 +105,21 @@ def test_private_binding_rejects_open_file_symlink_and_unreviewed_host(private_t
     assert private.bindings() == {}
 
 
-def test_blocking_companion_tool_hides_private_long_task(private_tool):
+def test_blocking_companion_tool_hides_private_long_task(private_tool, tmp_path, monkeypatch):
     from config_loader import config_scope
 
     shared = private_tool.root / 'skills/openclaw.tool.json'
     shared.write_text(json.dumps({'name': 'openclaw', 'enabled': True, 'script': 'openclaw.py'}))
     private_tool.row['requires_tool'] = 'openclaw'
     private_tool.write()
+    service, _, _, _ = configured(tmp_path)
     with config_scope('cloud', {'BLOCKED_TOOLS': ''}):
         assert private.policy('callback_probe')[1]['timeout_seconds'] == 7200
     with config_scope('cloud', {'BLOCKED_TOOLS': 'openclaw'}):
         with pytest.raises(AdmissionDenied, match='disabled'):
             private.policy('callback_probe')
+    monkeypatch.setattr(private, '_blocked', lambda *_: True)
+    assert private.status(service.store, 'callback_probe', mode='cloud')['policy_issue'] == 'unavailable'
 
 
 def test_private_callback_submits_once_to_exact_reviewed_url(private_tool, tmp_path, monkeypatch):
@@ -158,3 +166,41 @@ def test_private_callback_submits_once_to_exact_reviewed_url(private_tool, tmp_p
     with pytest.raises(KnownFailure):
         adapter(claim('second'))
     assert len(sent) == 1
+
+
+@pytest.mark.parametrize('changed_file', ('manifest', 'script'))
+def test_queued_private_callback_names_review_required_before_submission(
+    private_tool, tmp_path, monkeypatch, changed_file
+):
+    service, source, _, _ = configured(tmp_path)
+    row = private_tool.row
+    source = service.update_source(source['id'], source['revision'],
+        callback_base=row['callback_base'], submit_url=row['submit_url'],
+        _reviewed_submit_url=row['submit_url'])
+    with service.store._connection(write=True) as conn:
+        conn.execute('UPDATE task_integrations SET validated_revision=revision WHERE id=?', (source['id'],))
+    private_tool.write(source['id'])
+    authorization = {
+        'source': 'web', 'conversation_id': 'conversation', 'generation': 0,
+        'request_id': 'review', 'mode': 'cloud', 'selected': ['callback_probe'],
+        'tool_policy': 'auto', 'callback_sources': {'callback_probe': source['id']},
+        'tool_policies': {'callback_probe': private.policy('callback_probe')[1]},
+    }
+    job = service.store.admit(Admission('conversation', 0, 'review', 'review',
+        'callback_probe', 'http_callback_v1', 'cloud', {'message': 'Research briefly.'},
+        'auth-review', 'web', timeout_seconds=7200), authorization=authorization)
+    service.store.release(job['id'], ReceiptEvidence('conversation', 0, 'review',
+        'receipt-review', 'completed', True))
+    claimed = service.store.claim('test-worker', {'http_callback_v1'})
+    service.store.running(claimed)
+    adapter = worker_adapters(service.store)['http_callback_v1']
+    sent = []
+    monkeypatch.setattr(callback_runner, 'post_json', lambda *args, **kwargs: sent.append(args))
+    changed = getattr(private_tool, changed_file)
+    changed.write_text(changed.read_text() + '\n')
+
+    with pytest.raises(KnownFailure) as failure:
+        adapter(SimpleNamespace(claim=claimed, store=service.store, checkpoint=lambda: None))
+    assert 'review' in failure.value.result['speech'].lower()
+    assert 'nothing was submitted' in failure.value.result['speech'].lower()
+    assert not sent

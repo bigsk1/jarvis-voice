@@ -27,6 +27,10 @@ _ID = re.compile(r'[0-9a-f]{32}\Z')
 logger = logging.getLogger(__name__)
 
 
+class PrivateToolReviewRequired(AdmissionDenied):
+    """A personal tool changed since its owner-only binding was reviewed."""
+
+
 def _unique(pairs):
     value = {}
     for key, item in pairs:
@@ -139,7 +143,7 @@ def _blocked(name, dependency):
 def _reviewed_manifest(name, row):
     path, manifest = _manifest(name)
     script = path.with_name(f'{name}.py')
-    if path.parent != ROOT / 'skills/personal' or manifest.get('script') != script.name:
+    if path.parent != ROOT / 'skills/personal':
         raise AdmissionDenied('Private callback tool must live in skills/personal')
     try:
         manifest_bytes, script_bytes = path.read_bytes(), script.read_bytes()
@@ -148,7 +152,9 @@ def _reviewed_manifest(name, row):
     background = manifest.get('execution', {}).get('background', {})
     timeout = background.get('timeout_seconds')
     if (hashlib.sha256(manifest_bytes).hexdigest() != row['manifest_sha256']
-            or hashlib.sha256(script_bytes).hexdigest() != row['script_sha256']
+            or hashlib.sha256(script_bytes).hexdigest() != row['script_sha256']):
+        raise PrivateToolReviewRequired('Private callback tool no longer matches its reviewed policy')
+    if (manifest.get('script') != script.name
             or background.get('supported') is not True or background.get('required') is not True
             or background.get('adapter') != ADAPTER or type(timeout) is not int
             or not 1 <= timeout <= 86400):
@@ -171,6 +177,17 @@ def policy(name):
     return manifest, evidence
 
 
+def review_required(name):
+    """Safe failure detail for a private callback job rejected before submission."""
+    try:
+        policy(name)
+    except PrivateToolReviewRequired:
+        return True
+    except Exception:
+        pass
+    return False
+
+
 def service_ready(name, *, timeout=.35):
     try:
         import requests
@@ -191,24 +208,32 @@ def callback_readiness(store):
 
 def status(store, name, *, mode='cloud'):
     """Safe Settings projection; no endpoints, ids, or credentials leave Web."""
-    from .service import IntegrationService
     from config_loader import config_scope
+
+    from .service import IntegrationService
 
     row = _available_entries().get(name)
     if not row:
-        return {'policy_ready': False, 'source_ready': False, 'service_ready': False}
+        return {'policy_ready': False, 'policy_issue': 'unavailable',
+                'source_ready': False, 'service_ready': False}
+    policy_issue = None
     try:
         with config_scope(mode):
             policy(name)
         policy_ready = True
+    except PrivateToolReviewRequired:
+        policy_ready = False
+        policy_issue = 'review_required'
     except Exception:
         policy_ready = False
+        policy_issue = 'unavailable'
     try:
         IntegrationService(store).check_source_ready(row['source_id'])
         source_ready = True
     except Exception:
         source_ready = False
-    return {'policy_ready': policy_ready, 'source_ready': source_ready,
+    return {'policy_ready': policy_ready, 'policy_issue': policy_issue,
+            'source_ready': source_ready,
             'service_ready': service_ready(name) if policy_ready and source_ready else False}
 
 
