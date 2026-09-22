@@ -87,6 +87,7 @@ echo "🔍 Files older than $RETENTION_DAYS days:"
 
 TOTAL_DELETED=0
 TOTAL_BYTES=0
+PREVIEW_SHOWN=0
 
 # Find and process old audio files
 while IFS= read -r file; do
@@ -99,6 +100,7 @@ while IFS= read -r file; do
         if $DRY_RUN; then
             if [[ $((TOTAL_DELETED % 50)) -eq 1 ]] || [[ $TOTAL_DELETED -le 10 ]]; then
                 echo "   Would delete: $file ($(numfmt --to=iec $size 2>/dev/null || echo "${size}B"))"
+                PREVIEW_SHOWN=$((PREVIEW_SHOWN + 1))
             fi
         else
             # Show every 100th file when actually deleting
@@ -143,8 +145,11 @@ if [[ $TOTAL_DELETED -eq 0 ]]; then
 else
     SIZE_HUMAN=$(numfmt --to=iec $TOTAL_BYTES 2>/dev/null || echo "${TOTAL_BYTES}B")
     if $DRY_RUN; then
-        echo "   ... and $((TOTAL_DELETED - 10)) more files"
-        echo ""
+        UNLISTED=$((TOTAL_DELETED - PREVIEW_SHOWN))
+        if [[ $UNLISTED -gt 0 ]]; then
+            echo "   ... $UNLISTED files not shown individually"
+            echo ""
+        fi
         echo "📋 Would delete $TOTAL_DELETED files ($SIZE_HUMAN)"
         echo ""
         echo "Run without --dry-run to actually delete."
