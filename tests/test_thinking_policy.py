@@ -124,6 +124,8 @@ def test_xai_profile_uses_catalog_default_and_safe_minimum_for_required_reasonin
 
 def test_openai_catalog_profiles_match_audited_model_effort_sets():
     cases = {
+        "gpt-6-sol": (("none", "low", "medium", "high", "xhigh", "max"), "medium"),
+        "gpt-6-luna": (("none", "low", "medium", "high", "xhigh", "max"), "medium"),
         "gpt-5.6": (("none", "low", "medium", "high", "xhigh", "max"), "medium"),
         "gpt-5.5": (("none", "low", "medium", "high", "xhigh"), "medium"),
         "gpt-5.4-mini": (("none", "low", "medium", "high", "xhigh"), "none"),

@@ -186,8 +186,10 @@ class ModelCatalogTests(unittest.TestCase):
     def test_openai_options_are_newest_first(self):
         models = [entry["id"] for entry in get_provider_model_options("openai")]
         self.assertEqual(
-            models[:7],
+            models[:9],
             [
+                "gpt-6-sol",
+                "gpt-6-luna",
                 "gpt-5.6-sol",
                 "gpt-5.6-terra",
                 "gpt-5.6-luna",
@@ -197,6 +199,38 @@ class ModelCatalogTests(unittest.TestCase):
                 "gpt-5.4-nano",
             ],
         )
+
+    def test_gpt_6_models_resolve_with_pricing_and_context(self):
+        for model in ("gpt-6-sol", "gpt-6-luna"):
+            self.assertEqual(get_model_context_window("openai", model), 1_050_000)
+            self.assertEqual(get_model_context_label("openai", model), "1.05M")
+            metadata = get_model_metadata("openai", model)
+            self.assertIsNotNone(metadata)
+            self.assertEqual(metadata["max_output_tokens"], 128_000)
+            self.assertFalse(metadata.get("default", False))
+            self.assertEqual(
+                metadata["reasoning_effort_values"],
+                ["none", "low", "medium", "high", "xhigh", "max"],
+            )
+            self.assertEqual(metadata["reasoning_effort_default"], "medium")
+
+        sol_pricing = get_model_pricing("openai", "gpt-6-sol")
+        self.assertEqual(sol_pricing["input"], 2.00)
+        self.assertEqual(sol_pricing["cached"], 0.20)
+        self.assertEqual(sol_pricing["output"], 10.00)
+        self.assertEqual(sol_pricing["long_context"]["threshold"], 272_000)
+        self.assertEqual(sol_pricing["long_context"]["input"], 4.00)
+        self.assertEqual(sol_pricing["long_context"]["cached"], 0.40)
+        self.assertEqual(sol_pricing["long_context"]["output"], 15.00)
+
+        luna_pricing = get_model_pricing("openai", "gpt-6-luna")
+        self.assertEqual(luna_pricing["input"], 0.10)
+        self.assertEqual(luna_pricing["cached"], 0.01)
+        self.assertEqual(luna_pricing["output"], 0.50)
+        self.assertEqual(luna_pricing["long_context"]["threshold"], 272_000)
+        self.assertEqual(luna_pricing["long_context"]["input"], 0.20)
+        self.assertEqual(luna_pricing["long_context"]["cached"], 0.02)
+        self.assertEqual(luna_pricing["long_context"]["output"], 0.75)
 
     def test_provider_options_distinguish_catalog_defaults(self):
         for provider, model_id in (
@@ -499,6 +533,19 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(pricing["output"], 25.00)
         self.assertEqual(pricing["cached"], 0.50)
 
+    def test_anthropic_opus_5_5_resolves_with_pricing_and_context(self):
+        self.assertEqual(get_model_context_window("anthropic", "claude-opus-5-5"), 1_000_000)
+        self.assertEqual(get_model_context_label("anthropic", "claude-opus-5-5"), "1M")
+        metadata = get_model_metadata("anthropic", "opus-5.5")
+        self.assertIsNotNone(metadata)
+        self.assertEqual(metadata["id"], "claude-opus-5-5")
+        self.assertEqual(metadata["max_output_tokens"], 128_000)
+        self.assertFalse(metadata.get("default", False))
+        pricing = get_model_pricing("anthropic", "claude-opus-5-5")
+        self.assertEqual(pricing["input"], 4.00)
+        self.assertEqual(pricing["output"], 20.00)
+        self.assertEqual(pricing["cached"], 0.20)
+
     def test_anthropic_opus_4_8_resolves_with_pricing_and_context(self):
         self.assertEqual(get_model_context_window("anthropic", "claude-opus-4-8"), 1_000_000)
         self.assertEqual(get_model_context_label("anthropic", "claude-opus-4-8"), "1M")
@@ -510,9 +557,11 @@ class ModelCatalogTests(unittest.TestCase):
         self.assertEqual(pricing["output"], 25.00)
         self.assertEqual(pricing["cached"], 0.50)
 
-    def test_anthropic_options_include_opus_5_first_among_opus(self):
+    def test_anthropic_options_include_opus_5_5_first_among_opus(self):
         models = [entry["id"] for entry in get_provider_model_options("anthropic")]
+        opus_5_5_index = models.index("claude-opus-5-5")
         opus_index = models.index("claude-opus-5")
+        self.assertLess(opus_5_5_index, opus_index)
         self.assertLess(opus_index, models.index("claude-opus-4-8"))
         self.assertLess(opus_index, models.index("claude-opus-4-7"))
         self.assertLess(opus_index, models.index("claude-opus-4-6"))

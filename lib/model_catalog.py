@@ -34,7 +34,7 @@ XAI_MODEL_AUDIT_IGNORES = {
 
 ANTHROPIC_MODELS_SOURCE = "https://platform.claude.com/docs/en/api/models/list"
 ANTHROPIC_PRICING_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing"
-ANTHROPIC_PRICING_VERIFIED = "2026-07-24"
+ANTHROPIC_PRICING_VERIFIED = "2026-09-22"
 ANTHROPIC_CACHE_WRITE_5M_MULTIPLIER = 1.25
 ANTHROPIC_CACHE_WRITE_1H_MULTIPLIER = 2.0
 ANTHROPIC_MODEL_AUDIT_IGNORES = {
@@ -125,6 +125,12 @@ _OPENAI_TEXT_IMAGE_MODALITIES = {
 # Audited against the per-model Reasoning.effort declarations in the official
 # OpenAI model catalog. Keep these profiles exact: the Web UI and provider
 # adapter use them as an allowlist, not as approximate family-wide guidance.
+_OPENAI_REASONING_6 = {
+    "reasoning": True,
+    "reasoning_effort": True,
+    "reasoning_effort_values": ["none", "low", "medium", "high", "xhigh", "max"],
+    "reasoning_effort_default": "medium",
+}
 _OPENAI_REASONING_5_6 = {
     "reasoning": True,
     "reasoning_effort": True,
@@ -344,7 +350,6 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "default": True,
             "pricing": {"input": 2.00, "output": 10.00, "cached": 0.20},
             "pricing_verified": ANTHROPIC_PRICING_VERIFIED,
-            "pricing_valid_until": "2026-08-31",
             "pricing_source": ANTHROPIC_PRICING_SOURCE,
             "aliases": ["sonnet-5"],
         },
@@ -391,6 +396,17 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
             "pricing_verified": ANTHROPIC_PRICING_VERIFIED,
             "pricing_source": ANTHROPIC_PRICING_SOURCE,
             "aliases": ["claude-haiku-4-5", "haiku-4.5"],
+        },
+        {
+            "id": "claude-opus-5-5",
+            "name": "Claude Opus 5.5",
+            "context_tokens": 1_000_000,
+            "max_output_tokens": 128_000,
+            "capabilities": _ANTHROPIC_CAPABILITIES_ADAPTIVE_XHIGH,
+            "pricing": {"input": 4.00, "output": 20.00, "cached": 0.20},
+            "pricing_verified": ANTHROPIC_PRICING_VERIFIED,
+            "pricing_source": ANTHROPIC_PRICING_SOURCE,
+            "aliases": ["opus-5.5"],
         },
         {
             "id": "claude-opus-5",
@@ -449,6 +465,44 @@ CLOUD_MODEL_CATALOG: dict[str, list[dict[str, Any]]] = {
         },
     ],
     "openai": [
+        {
+            "id": "gpt-6-sol",
+            "name": "GPT-6 Sol",
+            "context_tokens": 1_050_000,
+            "max_output_tokens": 128_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
+            **_OPENAI_REASONING_6,
+            "pricing": {
+                "input": 2.00,
+                "output": 10.00,
+                "cached": 0.20,
+                "long_context": {
+                    "threshold": 272_000,
+                    "input": 4.00,
+                    "output": 15.00,
+                    "cached": 0.40,
+                },
+            },
+        },
+        {
+            "id": "gpt-6-luna",
+            "name": "GPT-6 Luna",
+            "context_tokens": 1_050_000,
+            "max_output_tokens": 128_000,
+            **_OPENAI_TEXT_IMAGE_MODALITIES,
+            **_OPENAI_REASONING_6,
+            "pricing": {
+                "input": 0.10,
+                "output": 0.50,
+                "cached": 0.01,
+                "long_context": {
+                    "threshold": 272_000,
+                    "input": 0.20,
+                    "output": 0.75,
+                    "cached": 0.02,
+                },
+            },
+        },
         {
             "id": "gpt-5.6-sol",
             "name": "GPT-5.6 Sol",
