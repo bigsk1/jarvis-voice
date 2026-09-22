@@ -57,11 +57,11 @@
         "tool_search": "9c49a315e65bc2829e167bd7cc9f59348d500c7e02b9ad5593129de3904f452e",
         "workflow": "dc86c83a50ce992b092510cad4006283fc1d8488f008164a6ad8eae2c9dfd6a0",
         "qr_code_generator": "77bea1365c2d10af77a2bdbaab96bb19895d5a027e9cb26e77d5dcfb03f0f25d",
-        "serpapi_google_local_services": "608f40467d3f4bb38dea5c45d6a405e8f0e369ce5b57c714a00a33cd7c995773",
-        "serpapi_google_local": "b005e06289ec12b6eb8323951b9812aaa63ef1ca66a4a4e5f150264fa4b03926",
-        "serpapi_home_depot": "b36f5440f3b3e158197b19558e7e0a7506c139f471fa71bf7e581d83fb0e0adf"
+        "serpapi_google_local_services": "fc0e4d946cff80f701e3cd67cc9b963004922d19323dc15b43ed16da1427e901",
+        "serpapi_google_local": "a8c7ccd7e49c1c6cde4bcc2a1398024e5c7cbf93b9763372b1dbbcb1d48f3617",
+        "serpapi_home_depot": "aa4608521e3509014605058256b72ed953e3127296b0828e563609ad1a2a77fb"
       },
-      "schema_snapshot_sha256": "4ff7d77cf1daf1a7e2e90de1a2dff627b1426f73634e43183fcfe6e45ee172c5",
+      "schema_snapshot_sha256": "de1c7e03cc723b423b935e62824a42f82945daac0164ab4469f83721a9f96ff9",
       "cases": [
         {
           "case_id": "replay_shopping_home_depot",
@@ -152,10 +152,10 @@
         "workflow": "dc86c83a50ce992b092510cad4006283fc1d8488f008164a6ad8eae2c9dfd6a0",
         "query_service_logs": "59c365ff6836463fe13a9af38f57cec167c7782db3925b3deae7866b254df13c",
         "list_reminders": "69d924ca5babc8ada14215511910237485ec4fd1f3ff3c3c4ca0a444d81d8b7e",
-        "release_watch": "c56b5afbb2fba384d0d73f3463538a58fee0021044d5184040e0314945ec0238",
+        "release_watch": "fc15ce5171f5ea802523f93a0f55fc3b1d4afb90d60e51905051d019ddf1c3cc",
         "get_time": "0ebab8f4422403f7d078021e9ad7352764ccb15fb1867f0068fd4d63fc7a3b91"
       },
-      "schema_snapshot_sha256": "7ca03ec8ae9709e139633c2d6b92c7f15ded6459a8dae6c413e6401613519350",
+      "schema_snapshot_sha256": "6b3148aefe1a51037299d78626ce50394e0c86e5887ef3589dd7332919658c78",
       "cases": [
         {
           "case_id": "replay_current_reminders",

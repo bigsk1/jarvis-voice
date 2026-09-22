@@ -8,11 +8,10 @@ import os
 import signal
 import subprocess
 import sys
-import threading
 import time
-from contextlib import nullcontext
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
+from contextlib import nullcontext
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -22,12 +21,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import export_config_environment, get_int, load_config
 from http_client import PROXY_POLICY_ENV, STANDARD_PROXY_ENV_KEYS
-from serpapi_client import diagnose_serpapi_tool_failure
 from security_utils import redact_sensitive_text
+from serpapi_client import diagnose_serpapi_tool_failure
+from tool_child_environment import restrict_child_environment
 from tool_logger import get_logger
 from tool_progress import parse_tool_progress
 from tool_search_runtime import search_tools_runtime
-from tool_child_environment import restrict_child_environment
 
 try:
     from .workflow_tool_runtime import execute_workflow_tool
