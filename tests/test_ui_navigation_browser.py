@@ -68,7 +68,7 @@ function browser(state, path = '/') {
     ("jarvis-memory/client/index.html", ["intelligence", "web"]),
     ("jarvis-intelligence/client/index.html", ["memory", "web"]),
     ("jarvis-docs/client/index.html", []),
-    ("canvas.html", ["web", "memory"]),
+    ("canvas.html", ["memory", "web"]),
     ("gallery.html", ["web"]),
     ("video-gallery.html", ["web"]),
     ("audio-gallery.html", ["web"]),

@@ -1462,3 +1462,14 @@
         padding: 3px 8px;
     }
 }
+
+@media (max-width: 420px) {
+    .header {
+        padding: 0 12px;
+        gap: 8px;
+    }
+
+    .header-link {
+        padding: 6px;
+    }
+}

@@ -406,6 +406,10 @@ img.logo-icon {
         gap: 8px;
     }
 
+    .media-gallery-header .header-links {
+        margin-left: auto;
+    }
+
     .header-link {
         padding: 6px 8px;
         font-size: 0.8rem;
@@ -425,5 +429,17 @@ img.logo-icon {
     .btn {
         padding: 6px 10px;
         font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 420px) {
+    .image-gallery-header .logo-icon,
+    .video-gallery-header .logo-icon {
+        display: none;
+    }
+
+    .image-gallery-header .header-link,
+    .video-gallery-header .header-link {
+        padding: 6px;
     }
 }
