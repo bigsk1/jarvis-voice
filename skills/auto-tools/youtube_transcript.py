@@ -252,7 +252,9 @@ def main():
         
         # Save both files to stash (reuse same space)
         srt_saved, space, srt_ref = save_to_stash(srt_filename, srt_content)
-        md_saved, _, md_ref = save_to_stash(md_filename, markdown_content, space)
+        md_saved, md_space, md_ref = save_to_stash(md_filename, markdown_content, space)
+        if md_space is not None:
+            space = md_space
         
         # Save stash artifacts to memory for follow-up queries
         if md_saved and md_ref and space:
@@ -289,10 +291,17 @@ def main():
             speech = f"Partially saved transcript for {video_title}. Check stash for available files."
         else:
             speech = f"Downloaded transcript for {video_title}, but failed to save to stash."
+
+        # Workflows read the markdown artifact; an SRT alone cannot satisfy them.
+        markdown_available = bool(md_saved and md_ref and space)
+        error_details = {}
+        if not markdown_available:
+            error_details["error"] = "Failed to save markdown transcript to stash"
         
         print(json.dumps({
-            "ok": True,
+            "ok": markdown_available,
             "speech": speech,
+            **error_details,
             "data": {
                 "video_title": video_title,
                 "srt_filename": srt_filename,
