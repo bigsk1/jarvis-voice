@@ -351,6 +351,30 @@ assert.deepEqual(played,[]);
 """)
 
 
+def test_reconnect_does_not_resurrect_auto_accepted_completion_guard():
+    run_browser(SETUP + r"""
+ui.rememberRenderedMessage('assistant','answer');
+let created=0, removed=0;
+ui._ensureCompletionGuardCard=()=>{created++; return null;};
+ui.messagesContainer.querySelector=()=>null;
+const snapshot={id:'thread',messages:[
+  {role:'assistant',content:'Saved answer',data:{
+    _web_message_id:'answer',_completion_guard:{status:'auto_accepted'}
+  }}
+]};
+await app._displayLoadedConversation(snapshot,{reconcile:true});
+assert.equal(created,0);
+assert.deepEqual(rendered,[]);
+
+// A stale card left by an earlier client should also disappear on reconnect.
+const stale={remove:()=>removed++};
+ui.messagesContainer.querySelector=selector=>selector.includes('completion-guard-card')?stale:null;
+await app._displayLoadedConversation(snapshot,{reconcile:true});
+assert.equal(created,0);
+assert.equal(removed,1);
+""")
+
+
 def test_reconnect_recovers_missed_feedback_and_latest_reaction_eligibility():
     run_browser(SETUP + r"""
 const feedback=[], reactions=[];

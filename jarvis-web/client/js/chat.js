@@ -5294,6 +5294,13 @@ class ChatUI {
     const messageId = data?.message_id;
     if (!messageId) return;
 
+    // Auto mode settled without a user-facing repair. Reconnect may replay this
+    // persisted status for an already rendered message; it must not create a card.
+    if (data.status === 'auto_accepted') {
+      this.messagesContainer.querySelector(`.completion-guard-card[data-message-id="${messageId}"]`)?.remove();
+      return;
+    }
+
     const card = this.messagesContainer.querySelector(`.completion-guard-card[data-message-id="${messageId}"]`)
       || this._ensureCompletionGuardCard(messageId, data?.conversation_id);
     if (!card) return;
