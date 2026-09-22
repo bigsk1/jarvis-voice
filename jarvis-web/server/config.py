@@ -33,7 +33,8 @@ DEFAULT_CONFIG = {
         "show_tool_details": True,
         "auto_scroll": True,
         "sound_effects": True,
-        "progress_events": True
+        "progress_events": True,
+        "intelligence_reflections": True
     },
     "audio": {
         "tts_enabled": False,

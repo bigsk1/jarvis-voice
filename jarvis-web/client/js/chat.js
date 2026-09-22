@@ -5465,6 +5465,12 @@ class ChatUI {
     });
   }
 
+  clearIntelligenceReactions() {
+    this.messagesContainer?.querySelectorAll(
+      '.message-response-actions [data-reaction], .message-response-actions .message-reaction-status'
+    ).forEach((item) => item.remove());
+  }
+
   _attachMessageResponseActions(messageEl, responseText, data = {}, options = {}) {
     const innerData = data.data || data || {};
     const eligible = options.allowReaction !== false && (

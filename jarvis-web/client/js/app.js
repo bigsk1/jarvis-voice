@@ -1798,6 +1798,7 @@ class JarvisApp {
         document.getElementById('setting-mode').value = s.mode || 'cloud';
         document.getElementById('setting-tts').checked = s.audio?.tts_enabled || false;
         document.getElementById('setting-progress-events').checked = s.ui?.progress_events !== false;  // Default true
+        document.getElementById('setting-intelligence-reflections').checked = s.ui?.intelligence_reflections !== false;  // Default true
         document.getElementById('setting-glow-intensity').value = this.glowIntensity;
         
         // Sync audio toggle button with server TTS setting
@@ -4687,6 +4688,7 @@ class JarvisApp {
         mode: selectedMode,
         tts_enabled: ttsCheckbox.checked,
         progress_events: document.getElementById('setting-progress-events').checked,
+        intelligence_reflections: document.getElementById('setting-intelligence-reflections').checked,
         llm_provider: document.getElementById('setting-llm-provider').value || null,
         llm_model: document.getElementById('setting-llm-model').value || null,
         thinking_effort: document.getElementById('setting-thinking-effort').value || null,
@@ -4768,6 +4770,10 @@ class JarvisApp {
       const result = await response.json();
       
       if (result.ok) {
+        if (!settings.intelligence_reflections) {
+          window.chatUI?.clearIntelligenceReactions();
+        }
+
         // Update mode if changed
         const newMode = selectedMode;
         if (newMode !== this.socket.mode) {

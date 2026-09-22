@@ -1001,6 +1001,12 @@ print(f'Processed {processed} reflections')
 Reflection is **queued, not automatic**. By default, an eligible completed
 foreground turn writes an experience and enqueues `reflection_queue`
 (`processed=0`). Background admissions and their late results do not enqueue one.
+The Web UI setting **Intelligence Reflections** (Settings → General, default on)
+skips only that queue insert for web chat and tool calls. The experience row,
+routing insights, voice, CLI, and scheduled tasks stay unchanged. While that
+setting is off, web chat hides thumbs and rejects them, including for
+reflections already waiting in the queue.
+
 Nothing calls the reflection LLM until you trigger it.
 
 ```

@@ -534,6 +534,19 @@ class CompletionGuardServerSideToolsTests(unittest.TestCase):
             "The answer missed a requirement.",
         )
 
+    def test_reaction_eligibility_closes_while_reflections_are_off(self):
+        with patch(
+            "jarvis_web_test_server.config.get_web_setting",
+            return_value=False,
+        ), patch(
+            "intelligence_hooks.is_experience_pending_user_reaction",
+            return_value=True,
+        ) as pending:
+            eligible = ChatHandler._is_user_reaction_eligible(42, "cloud")
+
+        self.assertFalse(eligible)
+        pending.assert_not_called()
+
     def test_latest_pending_message_reaction_updates_intelligence_and_conversation(self):
         handler = ChatHandler.__new__(ChatHandler)
         handler.socketio = _FakeSocketIO()

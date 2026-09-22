@@ -873,7 +873,8 @@ def update_web_settings():
         'completion_guard_ticket_on_fail', 'completion_guard_show_ui_prompt',
         'completion_guard_include_qa', 'completion_guard_include_tool_tasks',
         'completion_guard_auto_threshold', 'completion_guard_eval_provider', 'completion_guard_eval_model',
-        'tts_provider', 'tool_similarity', 'memory_similarity', 'tts_enabled'
+        'tts_provider', 'tool_similarity', 'memory_similarity', 'tts_enabled',
+        'intelligence_reflections'
     ])
 
     if structured:

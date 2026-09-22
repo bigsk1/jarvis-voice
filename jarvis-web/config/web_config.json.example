@@ -9,7 +9,8 @@
     "show_tool_details": true,
     "auto_scroll": true,
     "sound_effects": true,
-    "progress_events": true
+    "progress_events": true,
+    "intelligence_reflections": true
   },
   "audio": {
     "tts_enabled": false,

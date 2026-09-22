@@ -1285,6 +1285,12 @@ Important:
             return False
 
     @staticmethod
+    def _intelligence_reflections_enabled() -> bool:
+        """Web Settings → General. A missing value stays on."""
+        from ..config import get_web_setting
+        return get_web_setting('ui.intelligence_reflections', True) is not False
+
+    @staticmethod
     def _is_user_reaction_eligible(
         experience_id: int | None,
         mode: str,
@@ -1292,7 +1298,9 @@ Important:
         feedback_requested: bool = False,
         cancelled: bool = False,
     ) -> bool:
-        """Expose reactions only while the linked experience awaits reflection."""
+        """Expose reactions only while reflections are on and the experience awaits one."""
+        if not ChatHandler._intelligence_reflections_enabled():
+            return False
         if not experience_id or feedback_requested or cancelled:
             return False
         try:
@@ -1333,6 +1341,8 @@ Important:
             return {**failure, 'reason': 'missing_message_context'}
         if reaction not in {'up', 'down'}:
             return {**failure, 'reason': 'invalid_reaction'}
+        if not self._intelligence_reflections_enabled():
+            return {**failure, 'reason': 'reflections_disabled'}
 
         records = {**getattr(self, '_completion_records', {}),
                    **self.sessions.get(session_id, {}).get('completion_guard_records', {})}
@@ -3169,7 +3179,9 @@ Previous structured data:
                     live_record = next((record for record in self._completion_records.values()
                                         if record.get('conversation_id') == conv_id
                                         and latest_id in (record.get('message_id'), record.get('repair_message_id'))), None)
-                    if (latest.get('role') == 'assistant' and latest_data.get('_human_reaction_eligible')
+                    if (self._intelligence_reflections_enabled()
+                            and latest.get('role') == 'assistant'
+                            and latest_data.get('_human_reaction_eligible')
                             and live_record and not live_record.get('feedback_requested')):
                         conversation['reaction_message_id'] = latest_id
                     emit('conversation:loaded', {'conversation': conversation,
@@ -4246,6 +4258,7 @@ Previous structured data:
             # Check if progress events are enabled (default: True)
             from ..config import get_web_setting
             progress_enabled = get_web_setting('ui.progress_events', True)
+            orchestrator.set_reflection_queue_enabled(self._intelligence_reflections_enabled())
             
             if progress_enabled:
                 def progress_callback(event_type: str, **kwargs):

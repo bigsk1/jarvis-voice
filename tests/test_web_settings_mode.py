@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Regression coverage for Web settings mode/session consistency."""
 
+import ast
 import json
 import sys
 import unittest
@@ -245,6 +246,26 @@ class WebSettingsModeTests(unittest.TestCase):
         settings.validate_web_overrides.assert_called_once_with({"router_prompt_version": "v1"})
         settings.save_web_overrides.assert_called_once_with({"router_prompt_version": "v1"})
 
+    def test_save_routes_intelligence_reflections_through_structured_overrides(self):
+        settings = MagicMock()
+        settings.save_web_overrides.return_value = True
+
+        with (
+            self.app.test_request_context(
+                "/api/settings/web",
+                method="PUT",
+                json={"intelligence_reflections": False},
+            ),
+            patch.object(self.api, "get_settings_manager", return_value=settings),
+            patch.object(self.api, "reload_web_config"),
+        ):
+            response = self.api.update_web_settings()
+
+        self.assertEqual(response.status_code, 200)
+        settings.validate_web_overrides.assert_called_once_with({"intelligence_reflections": False})
+        settings.save_web_overrides.assert_called_once_with({"intelligence_reflections": False})
+        settings.update_web_setting.assert_not_called()
+
     def test_save_routes_thinking_effort_through_structured_overrides(self):
         settings = MagicMock()
         settings.set_mode.return_value = True
@@ -395,6 +416,26 @@ class WebSettingsModeTests(unittest.TestCase):
         self.assertEqual(status, 500)
         self.assertIn("web_config.json", response.get_json()["error"])
         settings.save_web_overrides.assert_not_called()
+
+    def test_web_config_example_matches_core_runtime_defaults(self):
+        example_path = ROOT / "jarvis-web" / "config" / "web_config.json.example"
+        example = json.loads(example_path.read_text())
+        config_path = ROOT / "jarvis-web" / "server" / "config.py"
+        config_tree = ast.parse(config_path.read_text())
+        default_node = next(
+            node.value
+            for node in config_tree.body
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "DEFAULT_CONFIG"
+                for target in node.targets
+            )
+        )
+        defaults = ast.literal_eval(default_node)
+
+        for section, section_defaults in defaults.items():
+            with self.subTest(section=section):
+                self.assertEqual(example[section], section_defaults)
 
     def test_web_config_example_mode_keys_match_reset_defaults(self):
         from server.services import settings_manager as settings_module
@@ -656,6 +697,30 @@ class WebSettingsModeTests(unittest.TestCase):
 
         self.assertTrue(success)
         self.assertIsNone(web_config["local"]["llm_model"])
+
+    def test_save_intelligence_reflections_toggle(self):
+        from server.services import settings_manager as settings_module
+        from server.services.settings_manager import SettingsManager
+
+        web_config = {"cloud": {}, "ui": {"progress_events": True}}
+        settings = SettingsManager("cloud")
+        with (
+            patch.object(settings, "validate_web_overrides"),
+            patch.object(settings_module, "load_web_config", return_value=web_config),
+            patch.object(settings_module, "save_web_config", return_value=True) as save_config,
+            patch.object(settings, "_get_env_numeric_defaults", return_value={
+                "tool_rag_limit": 15,
+                "qa_word_limit": 200,
+                "multi_turn_word_limit": 250,
+                "completion_guard_auto_threshold": 0.7,
+            }),
+        ):
+            success = settings.save_web_overrides({"intelligence_reflections": False})
+
+        self.assertTrue(success)
+        self.assertFalse(web_config["ui"]["intelligence_reflections"])
+        self.assertTrue(web_config["ui"]["progress_events"])
+        save_config.assert_called_once_with(web_config)
 
     def test_save_allows_local_cloud_model_when_opted_in(self):
         from server.services import settings_manager as settings_module

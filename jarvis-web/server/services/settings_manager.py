@@ -1224,7 +1224,8 @@ class SettingsManager:
             
             # UI settings (web-only)
             'ui': {
-                'progress_events': web_config.get('ui', {}).get('progress_events', True)
+                'progress_events': web_config.get('ui', {}).get('progress_events', True),
+                'intelligence_reflections': web_config.get('ui', {}).get('intelligence_reflections', True)
             },
             
             # Conversation settings (web-only)
@@ -1959,6 +1960,11 @@ class SettingsManager:
             if 'ui' not in config:
                 config['ui'] = {}
             config['ui']['progress_events'] = overrides['progress_events']
+
+        if 'intelligence_reflections' in overrides:
+            if 'ui' not in config:
+                config['ui'] = {}
+            config['ui']['intelligence_reflections'] = bool(overrides['intelligence_reflections'])
         
         # Handle conversation overrides (global)
         if 'history_limit' in overrides:

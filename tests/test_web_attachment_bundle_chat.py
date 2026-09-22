@@ -86,6 +86,7 @@ def journey(tmp_path, monkeypatch, request):
         def set_status_callback(self, fn): pass
         def set_progress_callback(self, fn): pass
         def set_web_conversation_id(self, value): pass
+        def set_reflection_queue_enabled(self, enabled): pass
         def set_cancel_check(self, fn): self.cancel_check = fn
 
         def process(self, prompt, **kwargs):

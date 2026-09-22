@@ -129,7 +129,8 @@ def record_interaction(
     query: str,
     tools_used: list[str],
     result: dict[str, Any],
-    conversation_context: list[dict] | None = None
+    conversation_context: list[dict] | None = None,
+    queue_reflection: bool = True,
 ) -> int:
     """
     Record an interaction as an experience for learning.
@@ -141,6 +142,7 @@ def record_interaction(
         tools_used: List of tools invoked
         result: The final result dict from orchestrator (contains speech, data, ok, etc.)
         conversation_context: Optional list of conversation turns
+        queue_reflection: When false, store the experience without a reflection_queue row
     
     Returns:
         Experience ID if recorded successfully, -1 otherwise
@@ -248,7 +250,8 @@ def record_interaction(
                 tools_used=tools_used,
                 outcome=outcome,
                 context=context,
-                user_signals=user_signals
+                user_signals=user_signals,
+                queue_reflection=queue_reflection,
             )
         )
         

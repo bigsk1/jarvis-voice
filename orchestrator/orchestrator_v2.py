@@ -510,6 +510,8 @@ class Orchestrator:
         self._previous_experience_id_for_correction = None
         # Internal repair/meta passes can disable learning to avoid polluting experiences.
         self.learning_enabled = True
+        # Web chat can skip reflection_queue inserts without stopping experience recording.
+        self.reflection_queue_enabled = True
     
     def set_status_callback(self, callback):
         """Set callback for status updates (for web UI to emit via WebSocket)."""
@@ -548,6 +550,10 @@ class Orchestrator:
     def set_learning_enabled(self, enabled: bool):
         """Enable or disable intelligence experience recording for this orchestrator run."""
         self.learning_enabled = bool(enabled)
+
+    def set_reflection_queue_enabled(self, enabled: bool):
+        """Queue a reflection after this run. Experience recording stays under learning_enabled."""
+        self.reflection_queue_enabled = bool(enabled)
     
     def _is_cancelled(self) -> bool:
         """Check if processing has been cancelled."""
@@ -4147,7 +4153,8 @@ Your synthesized response:"""
                 query=transcript,
                 tools_used=tools_used,
                 result=learning_result,
-                conversation_context=conversation_context
+                conversation_context=conversation_context,
+                queue_reflection=self.reflection_queue_enabled,
             )
 
             previous_experience_id = getattr(self, "_previous_experience_id_for_correction", None)

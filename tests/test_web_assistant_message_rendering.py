@@ -355,3 +355,58 @@ await app._displayLoadedConversation(conversation,{reconcile:true});
 assert.equal(ui.messagesContainer.children.length,1);
 assert.ok(app._completedResponseIds.has('answer'));
 """)
+
+
+def test_saving_reflections_off_clears_visible_thumbs():
+    run_message_browser(r"""
+const removed = [];
+ChatUI.prototype.clearIntelligenceReactions.call({
+  messagesContainer: {
+    querySelectorAll(selector) {
+      assert.equal(
+        selector,
+        '.message-response-actions [data-reaction], .message-response-actions .message-reaction-status'
+      );
+      return [
+        {remove() { removed.push('up'); }},
+        {remove() { removed.push('down'); }},
+        {remove() { removed.push('status'); }}
+      ];
+    }
+  }
+});
+assert.deepEqual(removed, ['up', 'down', 'status']);
+
+const cleared = [];
+const chatUi = chat();
+chatUi.clearIntelligenceReactions = () => cleared.push('cleared');
+chatUi.refreshContextWindow = async () => {};
+sandbox.window.chatUI = chatUi;
+let reflectionsOn = false;
+sandbox.document.getElementById = (id) => ({
+  value: id === 'setting-mode' ? 'cloud'
+    : (id === 'setting-history-limit' ? '20'
+    : (id === 'setting-glow-intensity' ? 'low' : '')),
+  checked: id === 'setting-intelligence-reflections' ? reflectionsOn : false,
+  classList: {remove() {}, add() {}}
+});
+sandbox.fetch = async () => ({ok: true, status: 200, json: async () => ({ok: true})});
+Utils.toast = () => {};
+Utils.storage.set = () => {};
+const app = Object.create(JarvisApp.prototype);
+Object.assign(app, {
+  socket: {mode: 'cloud', setMode() {}},
+  settingsModal: {classList: {remove() {}}},
+  _settingsData: {mode: 'cloud', response: {style: {default: 'auto'}}},
+  audioEnabled: false,
+  glowIntensity: 'low',
+  _loadSettings: async () => {},
+  _updateAudioButton() {},
+  _applyGlowIntensity() {}
+});
+await app._saveSettings();
+assert.deepEqual(cleared, ['cleared']);
+reflectionsOn = true;
+await app._saveSettings();
+assert.deepEqual(cleared, ['cleared']);
+""")

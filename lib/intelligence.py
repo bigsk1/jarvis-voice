@@ -1038,7 +1038,8 @@ class IntelligenceLayer:
         tools_used: list[str],
         outcome: dict[str, Any],
         context: dict[str, Any] | None = None,
-        user_signals: dict[str, Any] | None = None
+        user_signals: dict[str, Any] | None = None,
+        queue_reflection: bool = True,
     ) -> int:
         """
         Record a complete experience for later reflection.
@@ -1049,6 +1050,7 @@ class IntelligenceLayer:
             outcome: Dict with keys like 'success', 'turns', 'error', etc.
             context: Optional context about the conversation state
             user_signals: Optional signals like 'thanked', 'clarified', 'retried'
+            queue_reflection: When false, keep the experience and skip reflection_queue
 
         Returns:
             Experience ID
@@ -1135,16 +1137,22 @@ class IntelligenceLayer:
                 (json.dumps(raw_data, default=str), experience_id)
             )
 
-        # Queue for reflection with priority based on learning value
-        priority = self._calculate_learning_priority(outcome, user_signals, tools_used)
-        cursor.execute("""
-            INSERT INTO reflection_queue (experience_id, priority)
-            VALUES (?, ?)
-        """, (experience_id, priority))
+        # Queue for reflection with priority based on learning value.
+        # Web chat can skip this insert while still keeping the experience.
+        priority = None
+        if queue_reflection:
+            priority = self._calculate_learning_priority(outcome, user_signals, tools_used)
+            cursor.execute("""
+                INSERT INTO reflection_queue (experience_id, priority)
+                VALUES (?, ?)
+            """, (experience_id, priority))
 
         self.conn.commit()
 
-        logger.info(f"Recorded experience {experience_id} with priority {priority:.2f}")
+        if priority is None:
+            logger.info(f"Recorded experience {experience_id} without queuing a reflection")
+        else:
+            logger.info(f"Recorded experience {experience_id} with priority {priority:.2f}")
 
         # Log to intelligence log
         get_intel_logger().log_experience_recorded(

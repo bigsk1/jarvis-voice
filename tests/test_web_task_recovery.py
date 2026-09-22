@@ -829,6 +829,35 @@ def test_reaction_from_a_new_socket_uses_the_original_experience(journey, monkey
     assert answer['data']['_user_feedback']['reaction'] == 'up'
 
 
+def test_disabled_reflections_hide_and_reject_pending_reactions(journey, monkeypatch):
+    import intelligence_hooks
+    from jarvis_bundle_chat_test import config as web_config
+
+    journey.send()
+    cid, run = current(journey)
+    journey.process()
+    journey.store.update_message_data_by_web_message_id(cid, run['message_id'], {
+        '_human_reaction_eligible': True, 'experience_id': 42, '_intelligence_mode': 'cloud',
+    })
+    del journey.handler.sessions['client']
+    monkeypatch.setattr(web_config, 'get_web_setting', lambda key, default=None: (
+        False if key == 'ui.intelligence_reflections' else default
+    ))
+    updates = []
+    monkeypatch.setattr(
+        intelligence_hooks,
+        'update_experience_from_user_reaction',
+        lambda *args, **kwargs: updates.append(args) or {'updated': True},
+    )
+    call(journey, 'conversation:load', {'conversation_id': cid}, sid='new')
+    assert not journey.socket.events[-1][1]['conversation'].get('reaction_message_id')
+    call(journey, 'message_reaction:submit', {
+        'conversation_id': cid, 'message_id': run['message_id'], 'reaction': 'up',
+    }, sid='new')
+    assert not updates
+    assert journey.socket.events[-1][1]['reason'] == 'reflections_disabled'
+
+
 def test_user_message_before_late_reply_still_invalidates_old_reactions(journey, monkeypatch):
     import intelligence_hooks
 
