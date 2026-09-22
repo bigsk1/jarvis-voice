@@ -253,17 +253,20 @@ def remove_alert(config: dict, symbol: str, condition_type: str = None, value: f
     
     return f"No conditions found for {symbol}"
 
-def update_alert(config: dict, symbol: str, condition_type: str, new_value: float, old_value: float = None) -> str:
-    """Update an existing alert value.
-    
-    If old_value is provided, matches exactly.
-    If old_value is None, updates the first matching condition_type.
-    """
+def _update_alert_with_details(
+    config: dict,
+    symbol: str,
+    condition_type: str,
+    new_value: float,
+    old_value: float = None,
+    severity: str = None,
+) -> tuple[str, dict | None]:
+    """Update a condition and return its speech and saved values, if matched."""
     symbol = normalize_symbol(symbol)
     asset_type, idx, existing = find_asset(config, symbol)
     
     if not existing:
-        return f"No alerts found for {symbol}"
+        return f"No alerts found for {symbol}", None
     
     for cond in existing.get("conditions", []):
         # Match by condition_type, and optionally by old_value if provided
@@ -273,17 +276,39 @@ def update_alert(config: dict, symbol: str, condition_type: str, new_value: floa
             
             old_val = cond["value"]
             cond["value"] = new_value
+            if severity is not None:
+                cond["severity"] = severity
             cond["message"] = _default_condition_message(symbol, condition_type, new_value)
             
             config["watchlist"][asset_type][idx] = existing
             save_config_file(config)
-            return (
+            speech = (
                 f"Updated {symbol} {condition_type} alert: "
                 f"{_format_condition_value(condition_type, old_val)} → "
                 f"{_format_condition_value(condition_type, new_value)}"
             )
+            return speech, {
+                "old_value": old_val,
+                "new_value": new_value,
+                "severity": cond.get("severity", "medium"),
+            }
     
-    return f"No {condition_type} alert found for {symbol}"
+    return f"No {condition_type} alert found for {symbol}", None
+
+
+def update_alert(
+    config: dict,
+    symbol: str,
+    condition_type: str,
+    new_value: float,
+    old_value: float = None,
+    severity: str = None,
+) -> str:
+    """Update an alert; an optional old value selects a specific condition."""
+    speech, _details = _update_alert_with_details(
+        config, symbol, condition_type, new_value, old_value, severity
+    )
+    return speech
 
 def main():
     try:
@@ -411,8 +436,16 @@ def main():
                 raise ValueError("New value is required")
             
             # old_value is now optional - if not provided, updates first matching condition
-            result = update_alert(config, symbol, condition_type, float(value), 
-                                  float(old_value) if old_value is not None else None)
+            result, details = _update_alert_with_details(
+                config,
+                symbol,
+                condition_type,
+                float(value),
+                float(old_value) if old_value is not None else None,
+                args.get('severity'),
+            )
+            if details is None:
+                raise ValueError(result)
             
             print(json.dumps({
                 "ok": True,
@@ -420,8 +453,7 @@ def main():
                 "data": {
                     "symbol": normalize_symbol(symbol),
                     "condition": condition_type,
-                    "old_value": old_value,
-                    "new_value": value,
+                    **details,
                     "action": "updated"
                 }
             }))

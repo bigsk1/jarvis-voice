@@ -299,6 +299,59 @@ def test_percent_change_update_refreshes_message_and_uses_percent_format(monkeyp
     assert condition["message"] == "BTC moved 10.5%"
 
 
+def test_tool_update_reports_saved_previous_value_and_severity(monkeypatch, tmp_path, capsys):
+    _set_paths(monkeypatch, tmp_path)
+    config = _valid_config()
+    config["watchlist"]["crypto"][0]["conditions"][0].update(
+        value=84_000, severity="medium"
+    )
+    price_alert_config.save_price_alert_config(config)
+    monkeypatch.setattr(sys, "argv", [
+        "price_alert.py",
+        json.dumps({
+            "action": "update", "symbol": "Bitcoin", "value": 89_000,
+            "severity": "high",
+        }),
+    ])
+
+    with patch.object(price_alert, "load_config"):
+        price_alert.main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["speech"] == "Updated BTC above alert: $84,000 → $89,000"
+    assert payload["data"] == {
+        "symbol": "BTC", "condition": "above", "old_value": 84_000,
+        "new_value": 89_000.0, "severity": "high", "action": "updated",
+    }
+    saved = price_alert_config.load_price_alert_config()
+    condition = saved["watchlist"]["crypto"][0]["conditions"][0]
+    assert condition["value"] == 89_000
+    assert condition["severity"] == "high"
+
+
+def test_tool_update_missing_condition_is_not_reported_as_success(monkeypatch, tmp_path, capsys):
+    _set_paths(monkeypatch, tmp_path)
+    price_alert_config.save_price_alert_config(_valid_config())
+    monkeypatch.setattr(sys, "argv", [
+        "price_alert.py",
+        json.dumps({
+            "action": "update", "symbol": "BTC", "condition": "below",
+            "value": 89_000,
+        }),
+    ])
+
+    with patch.object(price_alert, "load_config"), pytest.raises(SystemExit) as raised:
+        price_alert.main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert raised.value.code == 1
+    assert payload["ok"] is False
+    assert "No below alert found for BTC" in payload["error"]
+    saved = price_alert_config.load_price_alert_config()
+    assert saved["watchlist"]["crypto"][0]["conditions"][0]["value"] == 100_000
+
+
 def test_percent_change_add_uses_percent_message_and_speech(monkeypatch, tmp_path):
     _set_paths(monkeypatch, tmp_path)
     price_alert_config.save_price_alert_config({"watchlist": {}})

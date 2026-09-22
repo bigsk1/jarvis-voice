@@ -31,7 +31,7 @@
       "severity": {
         "type": "string",
         "enum": ["low", "medium", "high", "critical"],
-        "description": "Alert severity level. Default: high (required for TTS to speak alerts)"
+        "description": "Alert severity. Add defaults to high (required for TTS to speak alerts); update changes severity only when supplied."
       },
       "message": {
         "type": "string",
