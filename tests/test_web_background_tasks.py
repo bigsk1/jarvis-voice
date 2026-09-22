@@ -148,8 +148,10 @@ print(json.dumps({"ok": True, "speech": "The foreground clock returned.", "data"
         instance._format_auto_mode = lambda transcript, tools, data, text, turn: text
         # Keep the real routing loop/executor. Only the LLM's decision is deterministic.
         decisions = []
+        instance.route_inputs = []
 
         def route(*args, **kwargs):
+            instance.route_inputs.append(args[0])
             if not decisions:
                 from router_v2 import extract_current_user_request
                 query = extract_current_user_request(args[0])
@@ -240,6 +242,35 @@ print(json.dumps({"ok": True, "speech": "The foreground clock returned.", "data"
         worker.communicate(timeout=6)
         for lease in list(handler.runs.leases.values()):
             lease.release()
+
+
+def test_background_receipt_hint_only_when_active_profile_has_selected_tool(web_tasks):
+    h = web_tasks
+    (h.root / 'foreground_finish').touch()
+
+    def send_foreground(expected_count):
+        h.client.emit('chat:send', {'message': 'What time is it?', 'mode': 'cloud'})
+        eventually(lambda: len(h.instances) == expected_count)
+        eventually(lambda: not h.handler.runs.active)
+        return str(h.instances[-1].route_inputs[0])
+
+    enabled_prompt = send_foreground(1)
+    assert 'A background acceptance receipt confirms admission, not completion.' in enabled_prompt
+    assert 'Saved Web settings enable background execution for these tools' not in enabled_prompt
+
+    # Saved permission alone is not enough if the active profile omits its tool.
+    registry = h.background.registry
+    original_get_tool = registry.get_tool
+    registry.get_tool = lambda name: None if name == 'fixture' else original_get_tool(name)
+    unavailable_prompt = send_foreground(2)
+    assert 'background acceptance receipt' not in unavailable_prompt
+    assert getattr(h.instances[-1], 'background_context', None) is None
+
+    registry.get_tool = original_get_tool
+    h.tasks.configure(background_enabled=False)
+    disabled_prompt = send_foreground(3)
+    assert 'background acceptance receipt' not in disabled_prompt
+    assert getattr(h.instances[-1], 'background_context', None) is None
 
 
 def test_web_duplicate_admission_still_allows_independent_foreground_work(web_tasks, monkeypatch):

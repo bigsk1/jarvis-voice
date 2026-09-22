@@ -4360,9 +4360,16 @@ Previous structured data:
             # Set web conversation ID for tracking in conversation metadata
             # This allows searching/filtering conversations by web chat session
             orchestrator.set_web_conversation_id(conversation_id)
-            if prompt_meta.get('background_tools'):
+            blocked_tools = list(get_web_setting('tools.blocked', []))
+            background_tools = [
+                name for name in prompt_meta.get('background_tools', [])
+                if name not in blocked_tools
+                and (schema := orchestrator.registry.get_tool(name)) is not None
+                and schema.background_adapter == self.background_tasks.adapters.get(name)
+            ]
+            if background_tools:
                 orchestrator.background_context = self.background_tasks.authorize(
-                    conversation_id, message_id, mode, prompt_meta['background_tools'],
+                    conversation_id, message_id, mode, background_tools,
                     effective_provider, effective_model, original_user_message, orchestrator.registry)
             
             # Set up progress callback for real-time tool execution events
@@ -4452,9 +4459,6 @@ Previous structured data:
             # Get conversation history for context
             conversation_history = self._get_conversation_context(conversation_id)
             
-            # Get blocked tools for web mode
-            blocked_tools = list(get_web_setting('tools.blocked', []))
-            
             # Build enhanced message with @prompt instructions and #tool hints if present
             enhanced_message = message
             system_instruction = prompt_meta.get('system_instruction')
@@ -4476,14 +4480,11 @@ Previous structured data:
                         request_kind=prompt_meta.get('request_kind', ''),
                     )
                 )
-            if prompt_meta.get('background_tools'):
+            if background_tools:
                 context_blocks.append(
-                    'Saved Web settings enable background execution for these tools when needed: '
-                    + ', '.join(prompt_meta['background_tools'])
-                    + '. This is permission, not evidence of any pending job. A new acceptance '
-                    'receipt confirms admission, not completion. Finish independent work; do not '
-                    'repeat an accepted call or depend on its unfinished result. Its result will '
-                    'arrive separately.')
+                    'A background acceptance receipt confirms admission, not completion. '
+                    'Continue independent work; do not repeat the accepted call or rely on its '
+                    'result until it arrives separately.')
             task_context = self.background_tasks.conversation_context(conversation_id, mode)
             if task_context:
                 context_blocks.append(task_context)
