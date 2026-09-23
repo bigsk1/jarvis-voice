@@ -20,6 +20,13 @@ When you choose **Send**, **Analyze page**, or **Analyze screenshot**, the exten
 - Source page titles, URLs, and capture time included with that content.
 - Conversation/request identifiers and the selected Jarvis cloud/local mode.
 
+Choosing **Save to Library** sends the reviewed captured page Markdown, title,
+page URL, capture time, and selected Cloud or Local mode to the authenticated
+Jarvis Web Source Library. It does not send the screenshot or a chat message.
+The server stores the snapshot as a Library source and can index it using its
+configured embedding provider. Capture alone keeps the preview in Firefox and
+does not make this Library request.
+
 **Talk sends speech automatically while listening.** After you start Talk and allow the microphone, a short silence submits the recorded clip to the configured Jarvis server's STT endpoint. The transcript goes through ordinary chat and the reply through the configured TTS provider. These providers can be local or remote, according to your server's selected mode and configuration. Raw clips and returned playback buffers are held only in memory by the extension; the Web STT route uses a temporary file and removes it after transcription. Transcripts and replies follow ordinary chat retention. The extension does not record audio outside an explicit Talk session, and it does not capture system/tab audio.
 
 Pause/End release the microphone and stop playback. Capture is disabled while transcribing, working, or speaking. Closing/hiding the owning view or disconnecting ends Talk; microphone capture never resumes automatically after reload. The microphone helper's permission check immediately stops its test stream and uploads nothing. During an explicit sidebar Talk session, the helper tab opens the microphone and shares its stream only with the sidebar from the same extension. It briefly selects its own tab for capture permission, then restores the previous tab unless you selected another one. It must stay open for sidebar Talk; closing it releases capture and pauses Talk. Merely leaving the helper open does not record audio. Aborting a request cannot undo processing already started by a speech provider.
@@ -70,7 +77,7 @@ The extension declares optional HTTP(S) host patterns so users can enter their o
 
 Use HTTPS/WSS for encrypted transport to every remote server, including private LAN addresses. A clearly labeled setting permits unencrypted HTTP only for loopback connections on the same computer (`localhost`, its subdomains, `127.0.0.0/8`, or `::1`). This exception does not permit private-LAN, link-local, or other remote IP addresses. The extension does not bypass invalid TLS certificates.
 
-After upload, content follows your Jarvis server's normal processing and retention rules. In the current Web implementation, uploaded screenshots are written to disk, page text is stored as a Web text attachment, image processing can copy screenshots into Stash and record memory references, and chat saves conversations and answers. Tools, logs, and configured model providers can retain additional records according to their own configuration and policies. A user-owned server can still send data onward to cloud model or tool providers; selecting local mode is not an extension-level guarantee that every enabled tool is local.
+After upload, content follows your Jarvis server's normal processing and retention rules. In the current Web implementation, uploaded screenshots are written to disk, page text sent with chat is stored as a Web text attachment, and **Save to Library** stores the reviewed page text as a separate Library source. Image processing can copy screenshots into Stash and record memory references, and chat saves conversations and answers. Tools, logs, and configured model providers can retain additional records according to their own configuration and policies. A user-owned server can still send data onward to cloud model or tool providers; selecting local mode is not an extension-level guarantee that every enabled tool is local.
 
 There is no server-side ephemeral/private-chat mode in this extension. Removing an unsent preview prevents its upload. Removing a sent preview, clearing local extension state, logging out, or uninstalling does not remove content already held by Jarvis or its providers. Use the server's conversation, Stash, memory, and retention controls for those records; consult the server operator when you do not control that deployment.
 

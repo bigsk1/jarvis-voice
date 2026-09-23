@@ -11,6 +11,7 @@ This independently versioned extension targets **unlisted Mozilla signing and se
 - **Include page** attaches the current page's title and link to the next message. YouTube video links prefer the existing transcript tool.
 - Stages a visible-tab screenshot with a preview, source title, URL, and capture time.
 - Stages the page's readable text as a durable Jarvis source (same 100KB text-upload path as Web notes). Follow-ups can refer to that captured page after reload.
+- Saves reviewed page text directly to the Cloud or Local Source Library with its URL and capture date, without sending a chat message or screenshot.
 - Sends your question or an **Analyze page** / **Analyze screenshot** prompt through your Jarvis Web server.
 - Provides right-click **Jarvis** actions for a page capture, selected text, a link, or an image URL.
 - Shows task and tool progress, completed answers, conversation history with pinned labels, and **Stop**.
@@ -178,7 +179,7 @@ Use the resulting Web HTTPS origin in the extension's connection settings.
 
 The server address and preferences use `storage.local`. The login token and bounded recovery/draft state use in-memory `storage.session`; the extension does not persist the password, save the token to disk storage, or synchronize it. Expect to sign in after Firefox restarts. Logout clears the extension credential but does not revoke the server's existing stateless token or cancel already accepted work.
 
-**Jarvis stores submitted content.** Image upload writes to the server, page-text upload writes a bounded note through the existing Web text-attachment path, and the normal chat path can preserve screenshots in Stash and memory as well as save conversation history. Your server may forward content to its configured model and tool providers. Removing an attachment after sending, logging out, or uninstalling the extension does not delete those server records. Read [PRIVACY.md](PRIVACY.md) before connecting to a server you do not operate.
+**Jarvis stores submitted content.** Image upload writes to the server, page-text upload with chat writes a bounded note through the existing Web text-attachment path, and **Save to Library** stores the reviewed text as a separate Library source. The normal chat path can preserve screenshots in Stash and memory as well as save conversation history. Your server may forward content to its configured model and tool providers. Removing an attachment after sending, logging out, or uninstalling the extension does not delete those server records. Read [PRIVACY.md](PRIVACY.md) before connecting to a server you do not operate.
 
 ## Development
 
