@@ -3940,13 +3940,15 @@ class ChatUI {
       ? window.structuredResultsRenderer.render(toolResultsData, data, toolsUsed)
       : '';
 
-    let chartHtml = '';
-    const cryptoChartResult = toolResultsData.crypto_chart;
-    const cryptoChartData = cryptoChartResult?.data?.series?.prices
-      ? cryptoChartResult.data
-      : (cryptoChartResult?.series?.prices ? cryptoChartResult : null);
+    const cryptoChartResults = Array.isArray(toolResultsData.crypto_chart)
+      ? toolResultsData.crypto_chart
+      : [toolResultsData.crypto_chart];
+    const chartHtml = cryptoChartResults.map(result => {
+      const cryptoChartData = result?.data?.series?.prices
+        ? result.data
+        : (result?.series?.prices ? result : null);
+      if (!cryptoChartData?.series?.prices?.length) return '';
 
-    if (cryptoChartData?.series?.prices?.length) {
       const chartConfig = {
         title: `${cryptoChartData.coin || 'Crypto'} ${cryptoChartData.range_label || 'chart'}`,
         coin: cryptoChartData.coin,
@@ -3959,12 +3961,12 @@ class ChatUI {
         points_returned: cryptoChartData.points_returned,
         series: cryptoChartData.series
       };
-      chartHtml = `
+      return `
         <div class="crypto-chart-embed" data-crypto-chart="${encodeURIComponent(JSON.stringify(chartConfig))}">
           <div class="crypto-chart-loading">Loading chart…</div>
         </div>
       `;
-    }
+    }).join('');
 
     // Prefer the richer raw response for chat display when it is the same answer with
     // better visual structure. This keeps TTS concise while avoiding paragraph blobs.

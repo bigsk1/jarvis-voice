@@ -239,6 +239,46 @@ for (const [metadata, expected] of [
 
 
 @pytest.mark.parametrize("live", [True, False])
+def test_repeated_crypto_chart_results_render_each_chart(live):
+    run_message_browser(f"const live = {json.dumps(live)};\n" + r"""
+const chart = (coin, id, price) => ({
+  coin, coin_id:id, vs_currency:'usd', days:'7', range_label:'7-day',
+  current_price:price, change_percent:1.25, points_returned:2,
+  series:{prices:[{iso:'2026-09-21T00:00:00Z',value:price - 1},
+                  {iso:'2026-09-22T00:00:00Z',value:price}]}
+});
+const payload = {crypto_chart:[chart('Solana', 'solana', 118.46),
+                               chart('Bitcoin', 'bitcoin', 86169)]};
+const before = JSON.stringify(payload);
+const html = render(chat(), 'Both charts are loaded above.',
+  ['crypto_chart', 'crypto_chart'], payload, live);
+const configs = [...html.matchAll(/data-crypto-chart="([^"]+)"/g)]
+  .map(match => JSON.parse(decodeURIComponent(match[1])));
+assert.equal(configs.length, 2);
+assert.deepEqual(configs.map(config => config.coin), ['Solana', 'Bitcoin']);
+assert.deepEqual(configs.map(config => config.series.prices.length), [2, 2]);
+assert.equal(JSON.stringify(payload), before);
+""")
+
+
+def test_single_crypto_chart_result_still_renders():
+    run_message_browser(r"""
+const payload = {crypto_chart:{data:{
+  coin:'Solana', coin_id:'solana', vs_currency:'usd', days:'7', range_label:'7-day',
+  current_price:118.46, change_percent:1.25, points_returned:2,
+  series:{prices:[{iso:'2026-09-21T00:00:00Z',value:117.46},
+                  {iso:'2026-09-22T00:00:00Z',value:118.46}]}
+}}};
+const html = render(chat(), 'The chart is loaded above.', ['crypto_chart'], payload);
+const matches = [...html.matchAll(/data-crypto-chart="([^"]+)"/g)];
+assert.equal(matches.length, 1);
+const config = JSON.parse(decodeURIComponent(matches[0][1]));
+assert.equal(config.coin, 'Solana');
+assert.equal(config.series.prices.length, 2);
+""")
+
+
+@pytest.mark.parametrize("live", [True, False])
 def test_converted_image_lightbox_uses_bound_url_data_for_live_and_saved_messages(live):
     run_message_browser(f"const live = {json.dumps(live)};\n" + r"""
 const ui = chat(), opened = [];
