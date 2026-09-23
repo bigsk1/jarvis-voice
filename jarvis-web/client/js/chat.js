@@ -3347,6 +3347,10 @@ class ChatUI {
       return;
     }
 
+    if (window.jarvisApp?.audioEnabled) {
+      void window.jarvisApp._warmTTS?.(window.jarvisSocket.mode);
+    }
+
     this.currentMessageId = window.jarvisSocket.lastRequestId;
     this._pendingSend = {
       requestId: this.currentMessageId, text: draftText,

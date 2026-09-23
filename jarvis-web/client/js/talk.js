@@ -138,6 +138,7 @@ class TalkController {
     this.chat.inputField.readOnly = true;
     if (this.transcript) this.transcript.textContent = '';
     this._render();
+    void this.app._warmTTS?.(s.mode);
     await this._openMedia(s);
   }
 
@@ -394,6 +395,7 @@ class TalkController {
     }
     s.paused = false; s.phase = 'preparing';
     this._render();
+    void this.app._warmTTS?.(s.mode);
     await this._openMedia(s);
   }
 

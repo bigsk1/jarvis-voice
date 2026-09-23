@@ -1201,6 +1201,26 @@ class JarvisApp {
     }
   }
 
+  async _warmTTS(mode = null) {
+    const selectedMode = mode === 'local' ? 'local' : 'cloud';
+    try {
+      const response = await Utils.auth.fetch('/api/tts/warmup', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mode: selectedMode})
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        console.warn('[TTS] Warm-up unavailable:', data.error || response.status);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.warn('[TTS] Warm-up request failed:', error);
+      return false;
+    }
+  }
+
   async _generateAndPlayTTS(text, { kind = 'final', messageId = null } = {}) {
     if (this.talk?.active) return;
     const talkAudioEpoch = this._talkAudioEpoch || 0;

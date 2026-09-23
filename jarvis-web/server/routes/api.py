@@ -7,8 +7,10 @@ import json
 import functools
 import hashlib
 import tempfile
+import threading
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from flask import Blueprint, current_app, jsonify, request, send_file, send_from_directory, abort
 from ..services.conversation_store import ConversationBusyError
@@ -115,6 +117,75 @@ def _apply_tts_provider_override(mode: str) -> str | None:
     if tts_provider not in (None, *allowed):
         tts_provider = None
     return tts_provider
+
+
+_qwen3_tts_warmups: set[str] = set()
+_qwen3_tts_warmup_lock = threading.Lock()
+
+
+def _qwen3_tts_reload_url(tts_url: str) -> str | None:
+    """Derive the Qwen3-TTS reload endpoint from its configured speech URL."""
+    try:
+        parsed = urlsplit(str(tts_url or '').strip())
+    except (TypeError, ValueError):
+        return None
+
+    speech_suffix = '/v1/audio/speech'
+    path = parsed.path.rstrip('/')
+    if (
+        parsed.scheme not in {'http', 'https'}
+        or not parsed.netloc
+        or not path.endswith(speech_suffix)
+    ):
+        return None
+
+    reload_path = f"{path[:-len(speech_suffix)]}/admin/reload"
+    return urlunsplit((parsed.scheme, parsed.netloc, reload_path, '', ''))
+
+
+def _run_qwen3_tts_warmup(reload_url: str, mode: str) -> None:
+    """Reload Qwen3-TTS without delaying the browser request."""
+    try:
+        import requests
+
+        response = requests.post(reload_url, timeout=(3.05, 90))
+        response.raise_for_status()
+        payload = response.json()
+        status = payload.get('status') if isinstance(payload, dict) else None
+        if status not in {'success', 'already_loaded'}:
+            raise RuntimeError(f"unexpected reload status: {status or 'missing'}")
+        print(f"[TTS WARMUP] Qwen3-TTS {status} for {mode} mode", flush=True)
+    except Exception as exc:
+        print(
+            f"[TTS WARMUP] Qwen3-TTS wake-up failed for {mode} mode: "
+            f"{type(exc).__name__}",
+            flush=True,
+        )
+    finally:
+        with _qwen3_tts_warmup_lock:
+            _qwen3_tts_warmups.discard(reload_url)
+
+
+def _start_qwen3_tts_warmup(reload_url: str, mode: str) -> bool:
+    """Start one daemon reload per upstream Qwen3-TTS server."""
+    with _qwen3_tts_warmup_lock:
+        if reload_url in _qwen3_tts_warmups:
+            return False
+        _qwen3_tts_warmups.add(reload_url)
+
+    try:
+        worker = threading.Thread(
+            target=_run_qwen3_tts_warmup,
+            args=(reload_url, mode),
+            daemon=True,
+            name=f'qwen3-tts-warmup-{mode}',
+        )
+        worker.start()
+    except Exception:
+        with _qwen3_tts_warmup_lock:
+            _qwen3_tts_warmups.discard(reload_url)
+        raise
+    return True
 
 
 def _apply_router_prompt_override(mode: str) -> str | None:
@@ -2559,6 +2630,40 @@ def _convert_to_wav(input_path: str) -> str:
         # Successful output is removed by _transcribe_faster_whisper after use.
         if not conversion_succeeded:
             Path(wav_path).unlink(missing_ok=True)
+
+
+@api_bp.route('/tts/warmup', methods=['POST'])
+@_scoped_request_config
+def warm_text_to_speech():
+    """Begin a non-blocking Qwen3-TTS reload for an imminent spoken reply."""
+    from config_loader import get_active_config_mode
+    from ..config import get_jarvis_setting
+
+    mode = get_active_config_mode()
+    provider = get_jarvis_setting(
+        'TTS_PROVIDER',
+        'qwen3-tts' if mode == 'local' else 'elevenlabs',
+    )
+    if provider != 'qwen3-tts':
+        return jsonify({'ok': True, 'status': 'skipped', 'provider': provider})
+
+    reload_url = _qwen3_tts_reload_url(get_jarvis_setting('QWEN3_TTS_URL', ''))
+    if not reload_url:
+        return jsonify({
+            'ok': False,
+            'error': 'QWEN3_TTS_URL must end with /v1/audio/speech for warm-up',
+        }), 503
+
+    try:
+        started = _start_qwen3_tts_warmup(reload_url, mode)
+    except Exception:
+        return jsonify({'ok': False, 'error': 'Qwen3-TTS warm-up could not start'}), 500
+
+    return jsonify({
+        'ok': True,
+        'status': 'warming' if started else 'already_warming',
+        'provider': provider,
+    }), 202
 
 
 @api_bp.route('/tts', methods=['POST'])

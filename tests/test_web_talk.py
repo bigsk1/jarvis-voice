@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.parametrize('scenario', [
-    'loop', 'silence', 'noise', 'max_recording', 'late_permission', 'late_stt',
+    'warmup', 'loop', 'silence', 'noise', 'max_recording', 'late_permission', 'late_stt',
     'switch', 'disconnect', 'hidden', 'denied', 'no_speech', 'voice_end',
     'tts_failure', 'stt_timeout', 'interrupt_work', 'interrupt_tts',
     'pause_pending', 'saved_audio', 'duplicate', 'draft', 'device_loss', 'new_conversation',
@@ -89,6 +89,24 @@ assert.equal(played.length,1);
 socketHandlers.response({message_id:'text-b',speech:'Normal answer'});
 assert.equal(generated.length,1);
 assert.equal(app.audioEnabled,true);
+""")
+
+
+def test_app_tts_warmup_is_authenticated_mode_scoped_and_nonfatal():
+    from test_web_voice_dictation import run_browser
+
+    run_browser(r"""
+const source = fs.readFileSync(ROOT + '/jarvis-web/client/js/app.js','utf8');
+const App = vm.runInContext(source + '\nJarvisApp;',sandbox);
+const app = Object.create(App.prototype);
+const calls=[];
+sandbox.Utils.auth.fetch=async(url,options)=>{calls.push([url,options]);return {ok:true};};
+assert.equal(await app._warmTTS('local'),true);
+assert.equal(calls[0][0],'/api/tts/warmup');
+assert.equal(calls[0][1].method,'POST');
+assert.deepEqual(JSON.parse(calls[0][1].body),{mode:'local'});
+sandbox.Utils.auth.fetch=async()=>{throw Error('offline');};
+assert.equal(await app._warmTTS('cloud'),false);
 """)
 
 

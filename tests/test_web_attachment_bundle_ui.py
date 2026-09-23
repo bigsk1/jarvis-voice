@@ -110,6 +110,27 @@ assert.match(ui.messagesContainer.children[0].innerHTML,/Source 2: notes.txt/);
 """)
 
 
+def test_normal_send_warms_tts_only_when_audio_is_enabled_and_send_succeeds():
+    run_browser(r"""
+const warmups=[];
+sandbox.window.jarvisApp={audioEnabled:true,_warmTTS:mode=>warmups.push(mode)};
+const enabled=chat();
+await enabled.sendMessage();
+assert.deepEqual(warmups,['cloud']);
+
+sandbox.window.jarvisApp.audioEnabled=false;
+const disabled=chat();
+await disabled.sendMessage();
+assert.deepEqual(warmups,['cloud']);
+
+sandbox.window.jarvisApp.audioEnabled=true;
+socket.connected=false;
+const rejected=chat();
+await rejected.sendMessage();
+assert.deepEqual(warmups,['cloud']);
+""")
+
+
 def test_failed_upload_sends_nothing_and_retry_reuses_successes_and_ids():
     run_browser(r"""
 const ui = chat();

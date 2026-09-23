@@ -13,7 +13,7 @@ class Element {
 }
 const elements = Object.fromEntries(['talkBtn','talkPanel','talkStatus','talkTranscript','talkPause','talkInterrupt','talkEnd','convertBtn'].map(name => [name, new Element()]));
 const docEvents = {}, windowEvents = {}, socketEvents = {};
-const requests = [], permissions = [], recorders = [], contexts = [], tracks = [], notices = [], sent = [], cancelled = [];
+const requests = [], permissions = [], recorders = [], contexts = [], tracks = [], notices = [], sent = [], cancelled = [], warmups = [];
 const intervals = new Map(), timers = new Map();
 let clock = 0, sequence = 0, amplitude = 0;
 const document = {hidden:false, getElementById: name => elements[name], addEventListener:(event,fn) => docEvents[event]=fn};
@@ -44,7 +44,7 @@ const chat = {
   attachedDocuments:[],attachedImages:[],isProcessing:false,updateSendButton(){},
   sendTalkMessage(text){sent.push(text);chat.isProcessing=true;return `r${sent.length}`;}
 };
-const app = {_cancelStatusTTS(){},stopAudioPlayback(){}};
+const app = {_cancelStatusTTS(){},stopAudioPlayback(){},_warmTTS(mode){warmups.push(mode);}};
 const sandbox = {
   console, Blob, FormData, AbortController, DOMException, URL, Float32Array, MediaRecorder:Recorder,
   navigator:{mediaDevices:{getUserMedia(){const p=deferred();permissions.push(p);return p.promise;}}},
@@ -66,7 +66,11 @@ function settle(status='completed', id='r1'){chat.isProcessing=false;emit('runSt
 async function answer(data={}){emit('response',{message_id:'r1',conversation_id:'a',ok:true,speech:'It is noon.',...data});await flush();}
 async function audio(){requests.at(-1).resolve({ok:true,arrayBuffer:async()=>new Uint8Array([1,2]).buffer});await flush();}
 (async()=>{
-  if(scenario==='loop') {
+  if(scenario==='warmup') {
+    await start();assert.deepEqual(warmups,['local']);talk.pause();
+    const pending=talk.resume();await flush();assert.deepEqual(warmups,['local','local']);
+    permissions.at(-1).resolve(stream());await pending;assert.equal(talk.session.phase,'listening');
+  } else if(scenario==='loop') {
     await start();await utterance();assert.equal(tracks[0].enabled,false);await transcribe();
     assert.equal(sent.length,1);await answer();assert.equal(requests.at(-1).url,'/api/tts');await audio();
     contexts[0].sources[0].onended();await flush();assert.equal(talk.session.phase,'speaking'); // task not settled
