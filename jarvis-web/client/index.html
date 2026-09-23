@@ -860,12 +860,14 @@
             </p>
           </div>
 
-          <!-- Saved Prompt Library (saved independently) -->
+          <!-- Saved Prompt Guidance Library (saved independently) -->
           <div class="settings-panel" id="settings-prompts">
             <div class="prompt-library-toolbar">
               <div>
-                <h3>Saved prompts</h3>
-                <p class="setting-desc" id="prompt-context-label">Availability preview</p>
+                <h3>Saved prompt guidance</h3>
+                <p class="setting-desc" id="prompt-context-label">
+                  Availability preview. Preview only — prompts are shared across modes.
+                </p>
               </div>
               <div class="prompt-library-toolbar-actions">
                 <label class="sr-only" for="prompt-preview-mode">Availability preview mode</label>
@@ -877,16 +879,19 @@
               </div>
             </div>
             <p class="setting-note">
-              Prompts are flexible guidance for the current request. <code>#tools</code>,
-              <code>/workflows</code>, and <code>*bookmarks</code> keep their existing behavior.
-              Built-ins are read-only; saving an edit creates a private personal override.
+              A saved <code>@prompt</code> is guidance placed before the task you type.
+              The chat box is still the task and cannot be empty. Use prompt guidance to
+              shape a video look, music style, review method, or writing format.
+              <code>#tools</code>, <code>/workflows</code>, and <code>*bookmarks</code> keep
+              their existing behavior. Built-ins are read-only; saving an edit creates a
+              private personal override.
             </p>
             <label class="sr-only" for="promptSearch">Search prompts</label>
             <input class="setting-input prompt-search" id="promptSearch" type="search" placeholder="Search name, title, description, or tool hint">
             <div class="prompt-library-status" id="promptLibraryStatus" role="status" aria-live="polite"></div>
 
             <div class="prompt-library-layout">
-              <div class="prompt-list" id="promptList" aria-label="Saved prompts"></div>
+              <div class="prompt-list" id="promptList" aria-label="Saved prompt guidance"></div>
               <section class="prompt-editor-shell" aria-label="Prompt editor">
                 <div class="prompt-editor-empty" id="promptEditorEmpty">
                   Select a prompt to view or edit it, or create a new personal prompt.

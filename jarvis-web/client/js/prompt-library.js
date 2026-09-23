@@ -33,6 +33,7 @@ class PromptLibrary {
     this.cleanSnapshot = null;
     this.loading = false;
     this._requestId = 0;
+    this._previewRequestId = 0;
 
     if (this.panel) this._bind();
   }
@@ -52,10 +53,7 @@ class PromptLibrary {
       const button = event.target.closest('[data-prompt-name]');
       if (button) this.select(button.dataset.promptName);
     });
-    this.modeSelect?.addEventListener('change', () => {
-      const draft = this.isDirty() ? this.captureDraft() : null;
-      void this.load(this.modeSelect.value, { preserveDraft: draft });
-    });
+    this.modeSelect?.addEventListener('change', () => void this.changePreviewMode());
   }
 
   activeMode() {
@@ -71,6 +69,32 @@ class PromptLibrary {
     if (wasActive && this.isDirty()) return;
     if (this.modeSelect && !this.isDirty()) this.modeSelect.value = this.activeMode();
     await this.load(this.modeSelect?.value || this.activeMode());
+  }
+
+  async changePreviewMode() {
+    const selectedMode = this.modeSelect?.value === 'local' ? 'local' : 'cloud';
+    const previewRequestId = ++this._previewRequestId;
+    const modeLabel = selectedMode === 'local' ? 'Local' : 'Cloud';
+    this.setStatus(`Refreshing ${modeLabel} availability…`);
+
+    try {
+      const response = await fetch(
+        `/api/tools/refresh?mode=${encodeURIComponent(selectedMode)}`,
+        {method: 'POST'}
+      );
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || `Unable to refresh ${modeLabel} tools`);
+      }
+      if (previewRequestId !== this._previewRequestId) return;
+
+      const draft = this.isDirty() ? this.captureDraft() : null;
+      await this.load(selectedMode, {preserveDraft: draft});
+    } catch (error) {
+      if (previewRequestId !== this._previewRequestId) return;
+      if (this.modeSelect && this.context?.mode) this.modeSelect.value = this.context.mode;
+      this.setStatus(error.message || `Unable to refresh ${modeLabel} tools`, true);
+    }
   }
 
   isDirty() {
@@ -131,7 +155,10 @@ class PromptLibrary {
   renderContext() {
     if (!this.contextLabel || !this.context) return;
     const mode = this.context.mode === 'local' ? 'Local' : 'Cloud';
-    this.contextLabel.textContent = `Availability preview: ${mode} · ${this.context.tool_profile || 'default'} profile`;
+    this.contextLabel.textContent = (
+      `Availability preview: ${mode} · ${this.context.tool_profile || 'default'} profile. `
+      + 'Preview only — prompts are shared across modes.'
+    );
   }
 
   setStatus(message, error = false) {

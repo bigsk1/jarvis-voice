@@ -1349,7 +1349,13 @@ The web UI polls `jarvis-api` (port 8880) for pending alerts and triggered remin
 
 ### @Prompts
 
-Type `@` in the chat input to see available prompts. Prompts inject methodology/guidelines for how to approach a task.
+**A saved `@prompt` is guidance placed before whatever task you type. The chat
+box is still the task, and an empty task is rejected.** Prompt guidance can shape
+a video look, music style, review method, or writing format. Select
+`@code_review` and paste the code or diff into the same chat input. The saved
+text should describe how Jarvis handles the request, not be the whole job. Manage `@prompts` in **Settings → Prompts**, or add Markdown files directly to `jarvis-web/data/prompts/personal/`. If looking for fixed single or multi-step sequences, use `/workflows`.
+
+Type `@` in the chat input to see available prompt guidance.
 
 | Prompt | Description |
 |--------|-------------|

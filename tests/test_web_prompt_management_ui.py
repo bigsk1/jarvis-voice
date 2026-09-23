@@ -16,8 +16,15 @@ def test_prompt_settings_markup_and_script_order_are_present():
     assert html.index('data-settings-tab="tools"') < html.index('data-settings-tab="prompts"')
     assert 'id="settings-prompts"' in html
     assert 'id="prompt-preview-mode"' in html
+    assert '<h3>Saved prompt guidance</h3>' in html
+    assert 'The chat box is still the task and cannot be empty.' in html
+    assert 'aria-label="Saved prompt guidance"' in html
+    assert 'Preview only — prompts are shared across modes.' in html
     assert 'id="promptContent"' in html
     assert html.index('/js/prompt-library.js') < html.index('/js/app.js')
+
+    source = (ROOT / "jarvis-web/client/js/prompt-library.js").read_text()
+    assert "Preview only — prompts are shared across modes." in source
 
 
 def test_settings_lifecycle_hides_global_save_and_guards_dirty_prompt_drafts():
@@ -101,14 +108,74 @@ eval(source + '\nglobal.PromptLibrary = PromptLibrary;');
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
-def test_prompt_mode_preview_preserves_dirty_draft_without_discard_gate():
-    source = (ROOT / "jarvis-web/client/js/prompt-library.js").read_text()
-    listener = source[source.index("this.modeSelect?.addEventListener('change'") :]
-    listener = listener[: listener.index("  }")]
+def test_prompt_mode_preview_refreshes_selected_mode_and_preserves_dirty_draft():
+    script = r"""
+const assert = require('node:assert/strict');
+const fs = require('fs');
+global.window = {};
+const source = fs.readFileSync('jarvis-web/client/js/prompt-library.js', 'utf8');
+eval(source + '\nglobal.PromptLibrary = PromptLibrary;');
 
-    assert "captureDraft()" in listener
-    assert "preserveDraft: draft" in listener
-    assert "confirmDiscard" not in listener
+(async () => {
+  const requests = [];
+  global.fetch = async (url, options) => {
+    requests.push({url, options});
+    return {ok: true, json: async () => ({ok: true})};
+  };
+  const activeMode = {value: 'cloud'};
+  const previewMode = {value: 'local'};
+  let loaded = null;
+  const draft = {name: 'draft', content: '# Unsaved'};
+  const editor = Object.create(global.PromptLibrary.prototype);
+  Object.assign(editor, {
+    app: {modeSelect: activeMode}, modeSelect: previewMode,
+    context: {mode: 'cloud'}, _previewRequestId: 0,
+    isDirty: () => true, captureDraft: () => draft,
+    setStatus() {},
+    load: async (mode, options) => { loaded = {mode, options}; }
+  });
+
+  await editor.changePreviewMode();
+  assert.deepEqual(requests, [{
+    url: '/api/tools/refresh?mode=local', options: {method: 'POST'}
+  }]);
+  assert.deepEqual(loaded, {mode: 'local', options: {preserveDraft: draft}});
+  assert.equal(activeMode.value, 'cloud');
+  assert.equal(previewMode.value, 'local');
+})().catch(error => { console.error(error); process.exit(1); });
+"""
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_prompt_mode_preview_failure_keeps_loaded_context_and_draft():
+    script = r"""
+const assert = require('node:assert/strict');
+const fs = require('fs');
+global.window = {};
+const source = fs.readFileSync('jarvis-web/client/js/prompt-library.js', 'utf8');
+eval(source + '\nglobal.PromptLibrary = PromptLibrary;');
+
+(async () => {
+  global.fetch = async () => ({
+    ok: false, json: async () => ({ok: false, error: 'Local tools unavailable'})
+  });
+  const previewMode = {value: 'local'};
+  let loadCalled = false;
+  let status = null;
+  const editor = Object.create(global.PromptLibrary.prototype);
+  Object.assign(editor, {
+    modeSelect: previewMode, context: {mode: 'cloud'}, _previewRequestId: 0,
+    load: async () => { loadCalled = true; },
+    setStatus: (message, error) => { status = {message, error}; }
+  });
+
+  await editor.changePreviewMode();
+  assert.equal(loadCalled, false);
+  assert.equal(previewMode.value, 'cloud');
+  assert.deepEqual(status, {message: 'Local tools unavailable', error: true});
+})().catch(error => { console.error(error); process.exit(1); });
+"""
+    subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
 
 def test_duplicate_copies_dirty_draft_without_discarding_and_stays_dirty():

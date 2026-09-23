@@ -4,6 +4,11 @@ Put machine-specific or private Jarvis Web `@prompts` in this directory. Persona
 prompt files are ignored by Git and override shared prompts with the same filename.
 This README is documentation only and does not appear in the Web UI prompt menu.
 
+A saved `@prompt` is guidance placed before whatever task you type. The chat box
+is still the task, and an empty task is rejected. Use the saved text to describe
+how Jarvis should handle a request; supply the actual request after the `@prompt`.
+For example, select `@code_review` and then paste the code or diff to review.
+
 ## Create a prompt
 
 Create a Markdown file whose filename is the command you want to type. For example,

@@ -368,6 +368,12 @@ Minimal shape (abbreviated):
 
 ### Prompts System
 
+**A saved `@prompt` is guidance placed before whatever task you type. The chat
+box is still the task, and an empty task is rejected.** Prompt guidance can shape
+a video look, music style, review method, or writing format. For example, select
+`@code_review` and then paste the code or diff to review. The saved text should
+describe how Jarvis handles the task, not be the whole job.
+
 Manage `@prompts` in **Settings → Prompts**, or add Markdown files directly to
 `jarvis-web/data/prompts/personal/`. Settings shows built-ins, private overrides,
 current mode/profile availability, and repairable parsing errors. Built-in files

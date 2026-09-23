@@ -94,8 +94,8 @@ Native `./install.sh` also sets up wake word and host TTS playback — that path
   - **Workflow commands**: `/archive`, `/research`, `/note`, `/health` - deterministic multi-tool pipelines
   - **Workflow hover tooltips**: Hover over `/` suggestions to see steps and descriptions
   - **Prompt hover tooltips**: Hover over `@` suggestions to see key points
-  - **@prompts**: `@research`, `@quick`, `@compare`, `@generate_music`, `@email`, `@daily`
-  - **Context-first injection**: Prompts inject BEFORE user message for better LLM context
+  - **@prompt guidance**: `@research`, `@quick`, `@compare`, `@generate_music`, `@email`, `@daily`
+  - **Context-first guidance**: Saved prompt instructions are placed before the required task you type; an empty chat box is rejected
   - **Tool Hints**: Start typing to get tool suggestions as you type or use #tool_name to add a tool to the request
   - **Chat only**: Use `#chat_only` to keep a sticky no-tools conversation mode that skips Tool RAG schemas and provider-hosted tools until its mode chip is removed
   - **✨ Enhance with AI**: Magic button transforms input into optimal prompts
