@@ -30,5 +30,5 @@
     "required": ["action"],
     "additionalProperties": false
   },
-  "permissions": {"dangerous": false, "bash": false, "network": true, "filesystem": false, "auto_approve": false}
+  "permissions": {"dangerous": false, "bash": false, "network": true, "filesystem": false, "auto_approve": true}
 }

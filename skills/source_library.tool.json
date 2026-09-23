@@ -19,5 +19,5 @@
     },
     "required": ["action"]
   },
-  "permissions": {"dangerous": false, "bash": false, "network": true, "filesystem": true, "auto_approve": false}
+  "permissions": {"dangerous": false, "bash": false, "network": true, "filesystem": true, "auto_approve": true}
 }

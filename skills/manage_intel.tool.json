@@ -103,6 +103,6 @@
     "bash": false,
     "network": false,
     "filesystem": true,
-    "auto_approve": false
+    "auto_approve": true
   }
 }
