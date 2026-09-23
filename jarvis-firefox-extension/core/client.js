@@ -64,6 +64,7 @@ export class JarvisClient {
     }
     this.state.capabilities = {
       text: this.state.capabilities?.text === true ? true : this.state.capabilities?.text === false ? false : null,
+      libraryCapture: false,
       profile: false,
       talk: false,
     };
@@ -189,7 +190,8 @@ export class JarvisClient {
       const status = await transport.status();
       if (this.transport !== transport) return;
       assertCapabilities(status);
-      this.state.capabilities = {text: pageTextSupported(status), profile: status.extension?.features?.profile === true,
+      this.state.capabilities = {text: pageTextSupported(status), libraryCapture: status.extension?.features?.library_capture === true,
+        profile: status.extension?.features?.profile === true,
         talk: status.extension?.features?.talk === true};
       this.state.connection.authRequired = status.features.auth;
       if (status.features.auth && !this.token) {
@@ -654,6 +656,7 @@ export class JarvisClient {
         filename: page.filename || 'browser-page.md',
         uploadId: page.uploadId,
         source: page.source || source,
+        librarySource: /^[0-9a-f]{64}$/.test(page.librarySource?.sourceId || '') ? page.librarySource : null,
       };
     }
     this.state.source = source;
@@ -681,6 +684,39 @@ export class JarvisClient {
     return this.stage({
       attachment: this.state.draft.attachment, context: this.state.draft.context, page: null, source: this.state.source,
     });
+  }
+
+  async savePageToLibrary() {
+    this.requireIdle();
+    if (this.state.connection.status !== 'connected' || !this.transport?.socket?.connected) {
+      throw new Error('Connect to Jarvis before saving the page.');
+    }
+    if (this.state.capabilities?.libraryCapture !== true) {
+      throw new Error('Update and restart Jarvis Web to save page captures to Library.');
+    }
+    const page = this.state.draft.page;
+    if (!page?.markdown?.trim()) throw new Error('Capture readable page text first.');
+    const transport = this.transport;
+    const mode = this.state.mode;
+    const authScope = this.authScope;
+    this.uploading = true;
+    this.state.notice = 'Saving reviewed page text to Library…';
+    this.publish();
+    try {
+      const source = await transport.savePageToLibrary(page, mode);
+      if (this.transport !== transport || this.authScope !== authScope ||
+          this.state.draft.page !== page || this.state.mode !== mode) {
+        throw new Error('The page or connection changed while saving. Check Library before trying again.');
+      }
+      page.librarySource = {sourceId: source.source_id, mode};
+      this.state.notice = source.duplicate ? 'This snapshot is already in Library.' : 'Page snapshot saved to Library.';
+      this.changed();
+      return source;
+    } catch (error) {
+      this.state.notice = null;
+      this.changed();
+      throw error;
+    } finally { this.uploading = false; }
   }
 
   clearImageHint() {

@@ -33,7 +33,7 @@ const document={getElementById:id=>elements[id],createElement:tag=>new Element(t
 document.querySelectorAll=selector=>Object.values(elements).flatMap(element=>flatten(element))
   .filter(element=>selector==='[data-library-index-action]' ? element.dataset.libraryIndexAction : element.dataset.libraryIndex);
 const sid='a'.repeat(64);
-const source={source_id:sid,mode:'local',title:'<img src=x onerror=alert(1)>',filename:'note.md',passage_count:20,indexed_passages:0,empty_pages:[],index_status:'keyword_only'};
+const source={source_id:sid,mode:'local',title:'<img src=x onerror=alert(1)>',filename:'note.md',origin:'Firefox page capture at 2026-09-23T10:00:00Z; client-reported URL: https://example.test',passage_count:20,indexed_passages:0,empty_pages:[],index_status:'keyword_only'};
 const passage={...source,number:3,text:'Deep passage evidence <script>malicious()</script>',citation:'Note, page 2, lines 9–10',page:2,match_reasons:['text']};
 const calls=[];
 let pendingSearch=null, pendingRead=null, delaySearch=false, delayRead=false, queueCalls=0, failSecondUpload=true, workerHealthy=true;
@@ -81,6 +81,7 @@ const preview=root=>flatten(root).find(x=>x.tag==='pre');
   await tick();
   assert.ok(history.every(url=>url.includes('source='+sid)), 'Initial loading must preserve the citation URL');
   assert.ok(elements.results.textContent.includes(source.title));
+  assert.ok(elements.results.textContent.includes('Captured 2026-09-23'));
   assert.ok(elements.status.textContent.includes('1 saved sources'));
   assert.equal(elements['worker-health'].hidden,true);
   workerHealthy=false;

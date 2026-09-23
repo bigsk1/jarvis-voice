@@ -14,6 +14,22 @@ Open **Source library** in the Web sidebar. Choose Cloud or Local, click
 library**. Choosing files alone does not upload them. Each file
 gets its own result row and a retry button if its upload fails. A saved source
 can be deleted from its reader or **Manage source** menu after confirmation.
+In Web chat, a PDF or text source attached to a message also has **Save to
+Library**. This promotes the validated original upload into its recorded Cloud
+or Local mode without downloading and uploading it again. Older chat messages
+without a recorded attachment mode use the currently selected mode. Attachments that have
+expired from Stash must be attached again; sources larger than the library's
+25 MB limit cannot be promoted.
+
+In Firefox Companion, **Capture this page** reads readable text from the live
+page DOM. Review the full text, then click **Save to Library** on the page-text
+card to save that exact Markdown snapshot without sending a chat message. The
+snapshot contains the page URL and capture time; the Library also records its
+save time. Capture and save again after the page changes to create a separate
+source while keeping the earlier one. Image- or canvas-only pages with no
+readable text cannot be saved through this text path. Captures are bounded to
+100 KB and may be marked truncated. The page URL and time are reported by the
+Firefox client; saving does not fetch or independently verify the live page.
 Keyword search is ready as soon as a file is saved. Optional semantic
 indexing is queued in the library database and runs in a durable worker, even if
 the library tab closes. Native Web starts that worker in its process; Docker

@@ -200,6 +200,7 @@ const actions = {
   removeAttachment: () => client.removeAttachment(),
   removeContext: () => client.removeContext(),
   removePage: () => client.removePage(),
+  savePage: () => client.savePageToLibrary(),
   removePageLink: () => client.removePageLink(),
   includePage: async payload => {
     client.requireIdle();

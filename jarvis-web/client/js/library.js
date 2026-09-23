@@ -58,8 +58,10 @@
   function sourceMeta(source) {
     const size = source.size_bytes == null ? '' : ` · ${source.size_bytes < 1024 * 1024
       ? `${Math.ceil(source.size_bytes / 1024)} KB` : `${(source.size_bytes / (1024 * 1024)).toFixed(1)} MB`}`;
+    const captureDate = /^Firefox page capture at (\d{4}-\d{2}-\d{2})T/.exec(source.origin || '');
+    const captured = captureDate ? ` · Captured ${captureDate[1]}` : '';
     const date = source.created_at ? ` · Saved ${source.created_at.slice(0, 10)}` : '';
-    return `${source.filename || 'Source'}${size}${date} · ${indexLabel(source)}`;
+    return `${source.filename || 'Source'}${size}${captured}${date} · ${indexLabel(source)}`;
   }
   function sourceMetaNode(source) {
     const meta = node('p', sourceMeta(source), 'meta');

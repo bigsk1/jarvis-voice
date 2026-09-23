@@ -78,8 +78,15 @@ Current `web-ext` reports two warnings: the unmodified Socket.IO 4.7.2 bundle co
 1. Open the webpage you want to discuss and click the Jarvis toolbar icon. This grants temporary tab access and opens the sidebar. Its **Open pop-out** button keeps the detached window available.
 2. In **Connection settings**, enter the full Web server origin, such as `https://jarvis.example.com`, including a port when needed. Omit `/api` and other paths.
 3. Click **Connect** and grant Firefox access to that server. If Jarvis authentication is enabled, enter the existing **Jarvis Web password** and sign in. Servers with authentication disabled do not require a password.
-4. Click **Capture this page**. Review the screenshot and page-text cards, open **Review full text** to inspect the exact Markdown that will be uploaded, then **Send**. **Analyze page** sends the displayed capture with its default question. Remove either card if you only want the screenshot or only the text. A staged selection or link stays in the composer and is included with the request.
+4. Click **Capture this page**. Review the screenshot and page-text cards, open **Review full text** to inspect the exact Markdown that will be uploaded, then **Send**. **Analyze page** sends the displayed capture with its default question. **Save to Library** on the page-text card saves that reviewed text without sending a chat message; **Open saved snapshot** opens the stored source. Remove either card if you only want the screenshot or only the text. A staged selection or link stays in the composer and is included with the request.
 5. After changing the webpage or switching tabs, use **Capture again** and ask “Check it now.” Each click selects the currently active tab in that sidebar's window. The pop-out selects the most recently used normal browser window. If Firefox requests tab access, click the Jarvis toolbar icon on that webpage and retry.
+
+The page text comes from the live page DOM, not screenshot OCR. The saved
+Markdown includes the source URL and capture time. A changed page needs another
+capture and save; the old Library snapshot stays available. Image- or
+canvas-only pages without readable text cannot be saved as page text. The URL
+and time come from Firefox's capture and are not independently checked against
+the site by the server.
 
 Right-click selected text or a link to stage that content in the same composer. These actions do not fetch the page or send its contents until you choose **Send**. Screenshots are also kept locally until Send/Analyze; removing an unsent attachment prevents its upload.
 

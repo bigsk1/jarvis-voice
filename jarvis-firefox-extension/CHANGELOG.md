@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+
+- Save reviewed page text directly to the Cloud or Local Source Library without sending a chat message. The snapshot keeps the page URL and capture date and opens from the Firefox card.
+- Capture again to preserve a later page version as a separate source. Image-only pages still need another text source; no screenshot OCR or automatic page refresh is performed.
+
 ## 0.3.0
 
 - Display background task cards and late answers for the open conversation on compatible Jarvis Web servers. Restore saved task details from history and subscribe to authenticated task updates.

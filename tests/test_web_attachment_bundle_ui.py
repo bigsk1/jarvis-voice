@@ -92,6 +92,38 @@ assert.equal(ui.filePreviewContainer.children[3].children[0].children[0].textCon
 """)
 
 
+def test_chat_source_save_promotes_exact_reference_in_original_mode():
+    run_browser(r"""
+const ui = chat();
+const sourceId = 'a'.repeat(64);
+const saved = [];
+const status = new Element();
+const button = new Element('button');
+button.dataset.sourceIndex = '0';
+button.parentElement = {querySelector: () => status};
+const originalCreate = sandbox.document.createElement;
+sandbox.document.createElement = tag => {
+  const element = originalCreate(tag);
+  if (tag === 'div') element.querySelectorAll = selector => selector === '.save-source-button' ? [button] : [];
+  return element;
+};
+sandbox.Utils.auth = {fetch: async (url, options) => {
+  saved.push({url, options});
+  return {ok:true,json:async()=>({ok:true,source:{source_id:sourceId,mode:'local',duplicate:false}})};
+}};
+const attachment = {kind:'text',filename:'evidence.md',mode:'local',size_bytes:36,
+  stash_ref:'stash://space_web_text_'+'1'.repeat(32)+'/f_'+'2'.repeat(12)};
+const message = ui.addUserMessage('Review this', null, '', [attachment]);
+assert.match(message.innerHTML, /Save to Library/);
+await button.click();
+assert.equal(saved.length,1);
+assert.equal(saved[0].url,'/api/library/from-attachment?mode=local');
+assert.deepEqual(JSON.parse(saved[0].options.body),{attachment});
+assert.equal(status.children[0].href,`/library?mode=local&source=${sourceId}`);
+assert.equal(button.disabled,true);
+""")
+
+
 def test_send_uploads_every_source_once_and_persists_document_order():
     run_browser(r"""
 const ui = chat();

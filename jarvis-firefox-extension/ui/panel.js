@@ -104,6 +104,8 @@ function renderControls() {
   $('analyze-button').disabled = sending || configurationBusy || busyCount > 0 || !canSend(state, analyzePrompt) || !(state?.draft?.attachment || state?.draft?.page);
   $('analyze-button').textContent = state?.draft?.page && state?.draft?.attachment ? 'Analyze page' : state?.draft?.page ? 'Analyze page text' : 'Analyze screenshot';
   for (const id of ['capture-button', 'recapture-button', 'empty-capture', 'remove-attachment', 'remove-context', 'remove-page', 'page-preview-button', 'include-page-button', 'remove-page-link']) $(id).disabled = busyCount > 0 || configurationBusy || sending || busy;
+  $('page-save-button').disabled = !state?.draft?.page || state?.capabilities?.libraryCapture !== true ||
+    state?.connection?.status !== 'connected' || busyCount > 0 || configurationBusy || sending || busy;
   $('mode-select').disabled = busy || configurationBusy || sending || busyCount > 0;
   $('new-conversation').disabled = busy || sending || busyCount > 0;
   $('history-button').disabled = Boolean(state?.pendingMode);
@@ -117,7 +119,7 @@ function renderControls() {
   $('message-input').placeholder = state?.draft?.page || state?.draft?.pageLink ? 'Ask about this page…' : state?.draft?.attachment ? 'Ask about this screenshot…' : state?.draft?.context?.kind === 'image' ? 'Ask about this image…' : state?.draft?.context ? 'Ask about this page or selection…' : 'Ask Jarvis anything…';
   if (talkBusy()) {
     for (const id of ['send-button', 'analyze-button', 'capture-button', 'recapture-button', 'empty-capture',
-      'include-page-button', 'remove-page-link', 'remove-attachment', 'remove-context', 'remove-page',
+      'include-page-button', 'remove-page-link', 'remove-attachment', 'remove-context', 'remove-page', 'page-save-button',
       'mode-select', 'new-conversation', 'history-button', 'save-settings', 'login-button', 'logout-button', 'cancel-button']) $(id).disabled = true;
   }
   $('message-input').readOnly = talkBusy();
@@ -298,8 +300,16 @@ function renderAttachments() {
   const pageBody = String(page?.markdown || '').split('## Page').at(-1) || page?.markdown || '';
   $('page-excerpt').textContent = pageBody.replace(/^[\s#-]*/, '').slice(0, 220);
   const size = page ? `${Math.max(1, Math.round((page.charCount || page.markdown.length) / 1000))} KB` : '';
-  $('page-meta').textContent = [page?.truncated ? 'Truncated' : '', size, page?.url].filter(Boolean).join(' · ');
+  $('page-meta').textContent = [page?.capturedAt ? `Captured ${page.capturedAt}` : '',
+    page?.truncated ? 'Truncated' : '', size, page?.url].filter(Boolean).join(' · ');
   $('page-preview-button').disabled = !page || busyCount > 0 || sending || isBusy(state);
+  const saved = page?.librarySource;
+  const savedUrl = /^[0-9a-f]{64}$/.test(saved?.sourceId || '') && ['cloud', 'local'].includes(saved?.mode)
+    ? `${state.settings.serverUrl}/library?mode=${saved.mode}&source=${saved.sourceId}` : '';
+  $('page-library-link').hidden = !savedUrl;
+  if (savedUrl) $('page-library-link').href = savedUrl;
+  else $('page-library-link').removeAttribute('href');
+  $('page-save-button').hidden = state?.capabilities?.libraryCapture !== true;
   const canStorePage = state?.capabilities?.text !== false;
   $('source-caption').textContent = !canStorePage && state?.connection?.status === 'connected'
     ? 'This server cannot store page text. Capture still takes a screenshot.'
@@ -621,6 +631,13 @@ $('page-preview-button').addEventListener('click', () => {
   if (typeof markdown !== 'string' || !markdown) return;
   $('page-preview-text').textContent = markdown;
   $('page-preview-dialog').showModal();
+});
+$('page-save-button').addEventListener('click', async () => {
+  if (busyCount || sending || configurationBusy || isBusy(state)) return;
+  busyCount++;
+  renderControls();
+  try { await command('savePage'); }
+  finally { busyCount--; renderControls(); }
 });
 $('close-page-preview').addEventListener('click', () => $('page-preview-dialog').close());
 $('page-preview-dialog').addEventListener('close', () => { $('page-preview-text').textContent = ''; });

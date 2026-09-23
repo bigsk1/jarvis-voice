@@ -1,23 +1,28 @@
 """Authenticated source library endpoints using the normal Web request scope."""
 
+import hashlib
 import io
 import json
 import os
 import sqlite3
+from datetime import datetime
 from functools import wraps
+from urllib.parse import urlsplit
 
 from filelock import Timeout
 from flask import Blueprint, current_app, jsonify, request, send_file
 from source_library import MAX_SOURCE_BYTES, LibraryError, LibraryUnavailableError, SourceLibrary
+from stash_helper import get_stash_dir
 from webui_auth import require_auth
 
+from ..services.attachment_bundle import AttachmentBundleError, validate_attachments
 from .api import _scoped_request_config
 
 library_bp = Blueprint("library", __name__, url_prefix="/api/library")
 
 
 @library_bp.before_request
-def limit_edited_copy():
+def limit_source_write_bodies():
     # The shared mode-scope decorator parses JSON before calling the handler.
     if request.endpoint == "library.save_edited_copy":
         denied = require_auth(lambda: None)()
@@ -25,6 +30,14 @@ def limit_edited_copy():
             return denied
         if request.content_length is None or request.content_length > MAX_SOURCE_BYTES + 4096:
             return jsonify(ok=False, error="Edited text is too large or has no Content-Length."), 413
+    if request.endpoint in {"library.save_capture", "library.save_attachment"}:
+        denied = require_auth(lambda: None)()
+        if denied is not None:
+            return denied
+        # JSON escaping can make a 100KB DOM snapshot larger on the wire.
+        limit = 256 * 1024 if request.endpoint == "library.save_capture" else 4096
+        if request.content_length is None or request.content_length > limit:
+            return jsonify(ok=False, error="Save request is too large or has no Content-Length."), 413
 
 
 def library_request(handler):
@@ -40,6 +53,8 @@ def library_request(handler):
             ), 503
         except LibraryError as exc:
             return jsonify(ok=False, error=str(exc)), 400
+        except AttachmentBundleError as exc:
+            return jsonify(ok=False, error=str(exc)), exc.status_code
         except (sqlite3.OperationalError, OSError):
             return jsonify(
                 ok=False, error="The source library is busy or unavailable. Please retry."
@@ -84,6 +99,75 @@ def save(library):
     source = library.save(
         payload, upload.filename, title=request.form.get("title"), origin="Web upload"
     )
+    return jsonify(ok=True, source=source)
+
+
+@library_bp.post("/capture")
+@library_request
+def save_capture(library):
+    """Save exactly the Firefox DOM-text snapshot the user reviewed."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        raise LibraryError("Provide a captured page snapshot.")
+    markdown = data.get("markdown")
+    title = data.get("title")
+    url = data.get("url")
+    captured_at = data.get("captured_at")
+    if not isinstance(markdown, str) or not markdown.strip():
+        raise LibraryError("Capture readable page text before saving.")
+    try:
+        payload = markdown.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise LibraryError("Captured page text must be valid UTF-8.") from exc
+    if len(payload) > 100 * 1024:
+        raise LibraryError("Captured page text is too large (max 100KB).")
+    if not isinstance(title, str) or not title.strip() or len(title) > 200:
+        raise LibraryError("Captured page title must contain 1 to 200 characters.")
+    if not isinstance(url, str) or len(url) > 2000 or any(ord(char) < 32 for char in url):
+        raise LibraryError("Captured page URL is invalid.")
+    try:
+        parsed = urlsplit(url)
+    except ValueError as exc:
+        raise LibraryError("Captured page URL is invalid.") from exc
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        raise LibraryError("Captured page URL must be HTTP or HTTPS.")
+    if not isinstance(captured_at, str) or len(captured_at) > 40:
+        raise LibraryError("Captured page date is invalid.")
+    try:
+        captured_date = datetime.fromisoformat(captured_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise LibraryError("Captured page date is invalid.") from exc
+    if captured_date.tzinfo is None:
+        raise LibraryError("Captured page date needs a timezone.")
+    if f"- URL: {url}" not in markdown or f"- Captured: {captured_at}\n" not in markdown:
+        raise LibraryError("The captured URL and date must match the reviewed page text.")
+    origin = f"Firefox page capture at {captured_at}; client-reported URL: {url}"
+    source = library.save(payload, "browser-page.md", title=title, origin=origin[:1000])
+    return jsonify(ok=True, source=source)
+
+
+@library_bp.post("/from-attachment")
+@library_request
+def save_attachment(library):
+    """Promote a validated Web Stash PDF or text upload without client file bytes."""
+    data = request.get_json(silent=True)
+    item = data.get("attachment") if isinstance(data, dict) else None
+    if not isinstance(item, dict) or item.get("kind") not in {"pdf", "text"}:
+        raise LibraryError("Choose a PDF or text attachment to save.")
+    if item.get("mode") not in (None, library.mode):
+        raise LibraryError("Save the attachment in its original mode.")
+    attachment = validate_attachments([item], library.mode)[0]
+    if attachment["size_bytes"] > MAX_SOURCE_BYTES:
+        raise LibraryError("Source is too large for the library (max 25MB).")
+    path = get_stash_dir() / attachment["space_id"] / attachment["filename"]
+    if path.is_symlink() or not path.is_file():
+        raise LibraryError("The stored attachment is unavailable. Attach it again.")
+    with path.open("rb") as stream:
+        payload = stream.read(MAX_SOURCE_BYTES + 1)
+    if (len(payload) != attachment["size_bytes"]
+            or hashlib.sha256(payload).hexdigest() != attachment["sha256"]):
+        raise LibraryError("The stored attachment changed. Attach it again.")
+    source = library.save(payload, attachment["filename"], origin="Web chat attachment")
     return jsonify(ok=True, source=source)
 
 

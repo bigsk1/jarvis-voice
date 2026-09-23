@@ -2878,7 +2878,7 @@ Previous structured data:
                 if file_context:
                     user_msg_data['attached_file'] = file_context.get('name')
                 if attachments:
-                    user_msg_data['attachments'] = attachments
+                    user_msg_data['attachments'] = [{**item, 'mode': mode} for item in attachments]
                     user_msg_data['attached_file'] = attachments[0]['filename']
                 if prompt_meta.get('prompt_name'):
                     user_msg_data['prompt'] = prompt_meta['prompt_name']

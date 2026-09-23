@@ -31,7 +31,7 @@ export function initialState(settings = {}) {
     connection: {status: 'unconfigured', authRequired: false, error: null},
     source: null, conversationId: null, conversationGeneration: 0, backgroundJobs: [], conversations: [], messages: [],
     draft: {text: '', attachment: null, context: null, page: null, pageLink: null}, run: null, progress: [],
-    mode: 'cloud', notice: null, submittedRequests: [], capabilities: {text: null, profile: false, talk: false}, profile: null,
+    mode: 'cloud', notice: null, submittedRequests: [], capabilities: {text: null, libraryCapture: false, profile: false, talk: false}, profile: null,
   };
 }
 

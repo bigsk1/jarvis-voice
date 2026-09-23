@@ -6477,6 +6477,30 @@ button.tool-item:focus-visible {
   border-color: rgba(255, 255, 255, 0.65);
 }
 
+.message.user .message-source-list .save-source-button {
+  min-height: 32px;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.16);
+  color: #fff;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.message.user .message-source-list .save-source-button:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.message.user .message-source-list .save-source-button:disabled { opacity: .65; cursor: default; }
+.message.user .message-source-list .save-source-status { font-size: var(--text-xs); }
+.message.user .message-source-list .save-source-button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
 .message.user .message-source-list a:focus-visible {
   outline: 2px solid #fff;
   outline-offset: 3px;

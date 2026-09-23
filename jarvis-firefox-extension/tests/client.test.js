@@ -6,7 +6,7 @@ const ORIGIN = 'https://jarvis.example';
 const ID = '9c892f85-b79a-44c3-9be1-6b66d2f73145';
 const NEXT = '9c892f85-b79a-44c3-9be1-6b66d2f73146';
 const CAPABILITIES = {features: {auth: false}, extension: {api: 1, socket_auth: true,
-  features: {chat: true, images: true, conversations: true, recovery: true, cancel: true, text: true}}};
+  features: {chat: true, images: true, conversations: true, recovery: true, cancel: true, text: true, library_capture: true}}};
 const TEXT_REF = 'stash://space_web_text_0123456789abcdef0123456789abcdef/f_0123456789ab';
 const PAGE = {
   title: 'Install guide', url: 'https://page.example/install',
@@ -75,6 +75,10 @@ function harness(options = {}) {
       body = {ok: true, attachment: {kind: 'text', stash_ref: TEXT_REF, filename: 'browser-page.md',
         upload_id: PAGE.uploadId}};
     }
+    if (url.includes('/api/library/capture?')) {
+      if (options.libraryFailure) return {ok: false, status: 400, json: async () => ({ok: false, error: 'Library unavailable'})};
+      body = {ok: true, source: {source_id: 'a'.repeat(64), mode: 'cloud', duplicate: false}};
+    }
     return {ok: true, status: 200, json: async () => body};
   };
   const ioFactory = (url, config) => {
@@ -108,6 +112,39 @@ test('fresh profile initializes without a saved session', async () => {
   const h = harness(); await h.client.restore();
   assert.equal(h.client.state.connection.status, 'unconfigured');
   assert.equal(h.client.token, '');
+});
+
+test('saving a reviewed page uses exact staged DOM text and keeps the draft', async () => {
+  const h = harness(); await h.start();
+  await h.client.stage({page: PAGE});
+  const before = h.sockets[0].sent.length;
+  const source = await h.client.savePageToLibrary();
+  const request = h.requests.find(item => item.url.includes('/api/library/capture?'));
+  assert.equal(request.url, `${ORIGIN}/api/library/capture?mode=cloud`);
+  assert.deepEqual(JSON.parse(request.init.body), {
+    markdown: PAGE.markdown, title: PAGE.title, url: PAGE.url, captured_at: PAGE.capturedAt,
+  });
+  assert.equal(source.source_id, 'a'.repeat(64));
+  assert.equal(h.client.state.draft.page.markdown, PAGE.markdown);
+  assert.equal(h.client.state.draft.page.librarySource.sourceId, source.source_id);
+  assert.equal(h.sockets[0].sent.length, before, 'Saving a source does not send chat');
+  await h.client.removePage();
+  assert.equal(h.client.state.draft.page, null);
+  h.client.close();
+});
+
+test('old servers cannot save a page capture and failures keep the snapshot', async () => {
+  const old = harness({capabilities: {...CAPABILITIES, extension: {...CAPABILITIES.extension,
+    features: {...CAPABILITIES.extension.features, library_capture: false}}}});
+  await old.start(); await old.client.stage({page: PAGE});
+  await assert.rejects(old.client.savePageToLibrary(), /Update and restart/);
+  assert.equal(old.requests.some(item => item.url.includes('/api/library/capture?')), false);
+  old.client.close();
+  const failed = harness({libraryFailure: true}); await failed.start();
+  await failed.client.stage({page: PAGE});
+  await assert.rejects(failed.client.savePageToLibrary(), /Library unavailable/);
+  assert.equal(failed.client.state.draft.page.markdown, PAGE.markdown);
+  failed.client.close();
 });
 
 test('an old private-LAN HTTP setting cannot reconnect or check completions after an update', async () => {

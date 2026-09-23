@@ -3323,6 +3323,8 @@ class ChatUI {
     this.isProcessing = true;
     this.updateSendButton();
 
+    attachments.forEach(item => { item.mode = context.mode; });
+
     this._resetPendingToolState();
     this.pendingVisionRetryPayload = ['analyze', 'image', 'video'].includes(imagePayload?.action)
       ? {
@@ -3451,7 +3453,9 @@ class ChatUI {
             : null;
           if (!sourceUrl) return `<li>${label}</li>`;
           const url = Utils.escapeHtml(sourceUrl);
-          return `<li><a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a> <a href="${url}" download="${filename}" aria-label="Download ${filename}">Download</a></li>`;
+          const save = item.size_bytes > 25 * 1024 * 1024 ? ''
+            : ` <button type="button" class="save-source-button" data-source-index="${index}">Save to Library</button>`;
+          return `<li><a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a> <a href="${url}" download="${filename}" aria-label="Download ${filename}">Download</a>${save} <span class="save-source-status" aria-live="polite"></span></li>`;
         }).join('')}</ul>`
       : '';
     const defaultPromptText = sources.length + images.length > 1
@@ -3477,6 +3481,36 @@ class ChatUI {
       </div>
       ${mediaHtml}
     `;
+    messageEl.querySelectorAll('.save-source-button').forEach(button => {
+      button.addEventListener('click', async () => {
+        const item = sources[Number(button.dataset.sourceIndex)];
+        const mode = ['cloud', 'local'].includes(item?.mode) ? item.mode : window.jarvisSocket?.mode;
+        const status = button.parentElement.querySelector('.save-source-status');
+        if (!['cloud', 'local'].includes(mode)) {
+          status.textContent = 'Select Cloud or Local mode first.';
+          return;
+        }
+        button.disabled = true;
+        status.textContent = 'Saving…';
+        try {
+          const response = await Utils.auth.fetch(`/api/library/from-attachment?mode=${mode}`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({attachment: item}),
+          });
+          const result = await response.json();
+          if (!response.ok || !result.ok) throw new Error(result.error || 'Could not save the source.');
+          const sourceId = result.source?.source_id;
+          if (!/^[0-9a-f]{64}$/.test(sourceId || '')) throw new Error('Jarvis returned invalid source metadata.');
+          const link = document.createElement('a');
+          link.href = `/library?mode=${mode}&source=${sourceId}`;
+          link.textContent = result.source.duplicate ? 'Open in Library' : 'Saved · Open in Library';
+          status.replaceChildren(link);
+        } catch (error) {
+          status.textContent = error.message || 'Could not save the source.';
+          button.disabled = false;
+        }
+      });
+    });
     
     this.messagesContainer.appendChild(messageEl);
     Utils.scrollToBottom(this.messagesContainer);

@@ -16,7 +16,7 @@ export class JarvisTransport {
     try {
       response = await this.fetchImpl(`${this.serverUrl}${path}`, {
         method, headers, body, credentials: 'omit', redirect: 'error', cache: 'no-store',
-        signal: AbortSignal.timeout(path === '/api/upload-image' || path === '/api/upload-text' ? 60000 : 15000),
+        signal: AbortSignal.timeout(path === '/api/upload-image' || path === '/api/upload-text' || path.startsWith('/api/library/capture?') ? 60000 : 15000),
       });
     } catch {
       throw new Error('Could not reach Jarvis. Check the address, certificate, server, and Firefox permission.');
@@ -136,6 +136,22 @@ export class JarvisTransport {
       filename: attachment.filename,
       upload_id: attachment.upload_id,
     };
+  }
+
+  async savePageToLibrary(page, mode) {
+    const markdown = String(page?.markdown || '');
+    if (!markdown.trim() || new TextEncoder().encode(markdown).length > 100 * 1024 ||
+        !['cloud', 'local'].includes(mode)) {
+      throw new Error('The staged page text is invalid. Capture the page again.');
+    }
+    const result = await this.request(`/api/library/capture?mode=${mode}`, {method: 'POST', body: {
+      markdown, title: String(page.title || 'Captured page').slice(0, 200),
+      url: page.url, captured_at: page.capturedAt,
+    }});
+    if (!/^[0-9a-f]{64}$/.test(result.source?.source_id || '') || result.source.mode !== mode) {
+      throw new Error('Jarvis returned invalid Library source metadata.');
+    }
+    return result.source;
   }
 
   open(handlers) {

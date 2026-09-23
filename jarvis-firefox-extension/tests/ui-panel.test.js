@@ -73,8 +73,9 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
       if (message.action === 'connect') state.connection = { status: 'connected', authRequired: false };
       if (message.action === 'capture') {
         state.draft.attachment = { previewUrl: 'data:image/png;base64,aGVsbG8=', width: 1920, height: 1080, source: { title: 'Error dashboard' } };
-        state.draft.page = { title: 'Error dashboard', url: 'https://example.test/error', markdown: '# Error dashboard\n\n## Page\nTraceback in worker\n', charCount: 48 };
+        state.draft.page = { title: 'Error dashboard', url: 'https://example.test/error', markdown: '# Error dashboard\n\n## Page\nTraceback in worker\n', charCount: 48, capturedAt: '2026-09-23T10:00:00Z' };
       }
+      if (message.action === 'savePage') state.draft.page.librarySource = {sourceId: 'a'.repeat(64), mode: 'cloud'};
       if (message.action === 'setDraft') state.draft.text = message.payload.text;
       if (message.action === 'includePage') state.draft.pageLink = {title: '<img src=x> Video title', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'};
       if (message.action === 'removePageLink') state.draft.pageLink = null;
@@ -309,6 +310,8 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
     await $('include-page-button').fire('click');
     assert.equal($('page-link-panel').hidden, false, 'Permission denial can still use an existing activeTab grant');
 
+    state.capabilities = {...state.capabilities, libraryCapture: true};
+    pushState({type: 'state', state: structuredClone(state)});
     await $('capture-button').fire('click');
     assert.equal(commands.at(-1).payload.windowId, 4, 'Sidebar capture identifies its browser window');
     assert.equal($('attachment-panel').hidden, false);
@@ -321,6 +324,12 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
     await $('page-preview-button').fire('click');
     assert.equal($('page-preview-dialog').open, true);
     assert.equal($('page-preview-text').textContent, state.draft.page.markdown);
+    assert.match($('page-meta').textContent, /2026-09-23T10:00:00Z/);
+    await $('page-save-button').fire('click');
+    assert.equal(commands.at(-1).action, 'savePage');
+    assert.equal($('page-library-link').hidden, false);
+    assert.equal($('page-library-link').href,
+      `https://jarvis.example.test/library?mode=cloud&source=${'a'.repeat(64)}`);
 
     $('message-input').value = 'Why did this fail?';
     await $('message-input').fire('input');

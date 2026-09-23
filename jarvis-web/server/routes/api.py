@@ -658,6 +658,7 @@ def get_status():
                 'recovery': True,
                 'cancel': True,
                 'text': True,
+                'library_capture': current_app.extensions.get('jarvis_library_routes_available', False),
                 'profile': True,
                 'talk': True,
             },

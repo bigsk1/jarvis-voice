@@ -2,6 +2,7 @@
 
 import io
 import sys
+import uuid
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -14,6 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lib"))
 load_server_package("jarvis_library_test", ROOT / "jarvis-web/server")
 from jarvis_library_test.routes.library import library_bp  # noqa: E402
+from jarvis_library_test.services.pdf_upload import save_pdf_upload  # noqa: E402
+from jarvis_library_test.services.text_upload import save_text_upload  # noqa: E402
+from werkzeug.datastructures import FileStorage  # noqa: E402
 
 
 @pytest.fixture
@@ -46,6 +50,64 @@ def test_upload_search_read_download_delete_and_mode_isolation(client):
     assert "attachment" in download.headers["Content-Disposition"]
     assert client.delete(f"/api/library/{sid}?mode=local").json["removed"]
     assert client.get(f"/api/library/{sid}?mode=local").status_code == 400
+
+
+def test_firefox_capture_saves_reviewed_dated_snapshot_and_new_page_version(client):
+    first = "# Example\n\n- URL: https://example.test/article\n- Captured: 2026-09-23T10:00:00Z\n\n## Page\nOriginal facts.\n"
+    data = {"markdown": first, "title": "Example", "url": "https://example.test/article",
+            "captured_at": "2026-09-23T10:00:00Z"}
+    saved = client.post("/api/library/capture?mode=local", json=data)
+    assert saved.status_code == 200
+    source = saved.json["source"]
+    assert source["mode"] == "local"
+    assert "2026-09-23T10:00:00Z" in source["origin"]
+    assert client.get(f"/api/library/{source['source_id']}/download?mode=local").data == first.encode()
+    assert client.post("/api/library/capture?mode=local", json=data).json["source"]["duplicate"] is True
+    later = {**data, "captured_at": "2026-09-24T10:00:00Z",
+             "markdown": first.replace("2026-09-23T10:00:00Z", "2026-09-24T10:00:00Z").replace("Original facts", "Updated facts")}
+    next_source = client.post("/api/library/capture?mode=local", json=later).json["source"]
+    assert next_source["source_id"] != source["source_id"]
+    assert client.get(f"/api/library/{source['source_id']}/download?mode=local").data == first.encode()
+    assert client.get("/api/library?mode=cloud").json["sources"] == []
+    assert client.post("/api/library/capture?mode=local", json={**data, "markdown": ""}).status_code == 400
+    assert client.post("/api/library/capture?mode=local", json={**data, "captured_at": "unknown"}).status_code == 400
+    assert client.post("/api/library/capture?mode=local", json={**data, "url": "https://other.test"}).status_code == 400
+    long_url = "https://example.test/article?" + "a" * 2100
+    assert client.post("/api/library/capture?mode=local", json={**data,
+        "url": long_url[:2000], "markdown": first.replace(data["url"], long_url)}).status_code == 200
+
+
+def test_promote_validated_web_text_attachment_without_client_bytes(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("JARVIS_OVERRIDE_STASH_DIR", str(tmp_path / "stash"))
+    original = b"# Exact web attachment\n\nChecked content.\n"
+    attachment, _ = save_text_upload(
+        FileStorage(stream=io.BytesIO(original), filename="notes.md", content_type="text/markdown"),
+        str(uuid.uuid4()),
+    )
+    url = "/api/library/from-attachment?mode=local"
+    result = client.post(url, json={"attachment": {"kind": "text", "stash_ref": attachment["stash_ref"]}})
+    assert result.status_code == 200, result.json
+    source = result.json["source"]
+    assert client.get(f"/api/library/{source['source_id']}/download?mode=local").data == original
+    assert client.post(url, json={"attachment": {**attachment, "mode": "cloud"}}).status_code == 400
+    assert client.post(url, json={"attachment": {"kind": "text", "stash_ref": "stash://bad"}}).status_code == 400
+
+
+def test_promote_validated_pdf_attachment_keeps_exact_pdf(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("JARVIS_OVERRIDE_STASH_DIR", str(tmp_path / "stash"))
+    with fitz.open() as pdf:
+        pdf.new_page().insert_text((72, 72), "A sourced PDF passage")
+        original = pdf.tobytes()
+    attachment, _ = save_pdf_upload(
+        FileStorage(stream=io.BytesIO(original), filename="report.pdf", content_type="application/pdf"),
+        str(uuid.uuid4()),
+    )
+    result = client.post("/api/library/from-attachment?mode=cloud", json={"attachment": attachment})
+    assert result.status_code == 200, result.json
+    source = result.json["source"]
+    assert source["mode"] == "cloud"
+    assert client.get(f"/api/library/{source['source_id']}/download?mode=cloud").data == original
+    assert client.get("/api/library?mode=local").json["sources"] == []
 
 
 def test_rename_route_updates_title_without_changing_source_id(client):
@@ -185,6 +247,8 @@ def test_routes_require_auth_when_enabled(client, monkeypatch):
     for method, path in [
         ("get", ""),
         ("post", ""),
+        ("post", "/capture"),
+        ("post", "/from-attachment"),
         ("get", "/a"),
         ("delete", "/a"),
         ("patch", "/a"),
