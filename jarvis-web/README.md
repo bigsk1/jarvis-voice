@@ -238,6 +238,10 @@ server compatibility before opening a conversation.
 | `/api/workflows/:id` | GET | Get specific workflow |
 | `/api/prompts` | GET | List all @prompts |
 | `/api/prompts/:name` | GET | Get specific prompt |
+| `/api/prompts/manage` | GET | List every prompt with Settings diagnostics |
+| `/api/prompts/personal` | POST | Create a personal prompt or override |
+| `/api/prompts/personal/:name` | PUT | Update a personal prompt |
+| `/api/prompts/personal/:name` | DELETE | Delete a personal prompt or restore its built-in |
 | `/api/enhance-prompt` | POST | AI-enhanced prompt generation |
 
 ### Logs Explorer
@@ -364,7 +368,11 @@ Minimal shape (abbreviated):
 
 ### Prompts System
 
-Create `@prompts` by adding Markdown files to `data/prompts/`:
+Manage `@prompts` in **Settings → Prompts**, or add Markdown files directly to
+`jarvis-web/data/prompts/personal/`. Settings shows built-ins, private overrides,
+current mode/profile availability, and repairable parsing errors. Built-in files
+remain read-only; personal changes refresh the current page's command registry
+immediately.
 
 ```markdown
 # Code Review

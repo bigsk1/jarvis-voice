@@ -393,6 +393,10 @@ Repo root (shared with core Jarvis — outside jarvis-web/):
 | GET | `/api/commands/<name>` | Get specific command |
 | GET | `/api/prompts` | List all @prompts |
 | GET | `/api/prompts/<name>` | Get specific prompt |
+| GET | `/api/prompts/manage` | List every prompt with source and availability diagnostics |
+| POST | `/api/prompts/personal` | Create a personal prompt or explicit built-in override |
+| PUT | `/api/prompts/personal/<name>` | Update an existing personal prompt |
+| DELETE | `/api/prompts/personal/<name>` | Delete a personal prompt and reveal any built-in |
 | POST | `/api/enhance-prompt` | ✨ AI-powered prompt enhancement |
 | GET | `/api/conversations/search?q=` | Search message content across all conversations |
 | GET | `/api/conversations/<id>/export?format=` | Export conversation (json/markdown, includes Completion Guard metadata when available) |
@@ -1357,21 +1361,26 @@ Type `@` in the chat input to see available prompts. Prompts inject methodology/
 | `@summary` | Summarization guidelines (key points, brevity) |
 | `@explain` | ELI5-style explanations |
 | `@step_by_step` | Step-by-step instruction format |
-| `@debug` | Debugging methodology |
+| `@debug` | Evidence-first diagnosis without implied authorization to fix |
 | `@generate_music` | ElevenLabs music generation best practices  |
-| `@email` | Professional email composition with send_email tool format  |
-| `@daily` | Daily briefing (time, weather, reminders, crypto prices)  |
+| `@email` | Email drafting; sends only when explicitly requested |
+| `/status` | Deterministic daily briefing workflow (replaces the former `@daily`) |
+| `/research` | Deterministic deep-research workflow (replaces the former `@deep_research`) |
+
+The former shared `@ssh` prompt is operator-specific. Use `#ssh_remote` directly
+or keep host-specific SSH guidance in a private personal prompt.
 
 **Context-First Injection (v2.0):**
-Prompts are injected **BEFORE** the user's message to provide context first:
+Prompts are injected **BEFORE** the user's message as saved guidance:
 ```
-[System instruction from @prompt]
----
-[User's actual message/task]
-```
-This ensures the LLM understands the methodology before seeing the task.
+[CONTEXT - Saved prompt @prompt_name]
+[Reusable prompt guidance]
+[END SAVED PROMPT]
 
-This: Uses research methodology → Gathers comprehensive info → Saves to Canvas
+User's request: [actual message/task]
+```
+The user's explicit request, current capabilities, tool schemas, and returned data
+remain authoritative. Use `/workflows` when a fixed multi-step sequence is required.
 
 #### Shared and personal prompt files
 
@@ -1380,6 +1389,9 @@ This: Uses research methodology → Gathers comprehensive info → Saves to Canv
 - A personal prompt overrides a shared prompt with the same filename.
 - `jarvis-web/data/prompts/personal/README.md` is tracked documentation and is never loaded as `@readme`.
 - The Markdown filename is the command name: `personal/social_clip.md` is invoked as `@social_clip your topic`.
+- Settings → Prompts lists built-ins, personal prompts, overrides, malformed files,
+  and current mode/profile availability. Built-ins remain read-only; saving an
+  edit creates a personal override.
 
 A basic personal prompt is just Markdown:
 
@@ -1404,9 +1416,20 @@ Create the requested social clip and call `create_social_clip`.
 
 When `tool_hints` contains exactly one tool, that tool is treated as a prerequisite for listing the prompt. If the tool is absent, disabled by the active profile, unavailable because required configuration is missing, or blocked in Jarvis Web, the prompt does not appear in `@` autocomplete or the prompt API. The hint itself remains a strong routing preference rather than a forced tool call.
 
+When two or more hints are present, the prompt remains visible under the existing
+group rule and inactive individual hints are filtered by the normal send path.
+Settings labels this as reduced or inactive hints; those diagnostics do not change
+runtime behavior.
+
 Leave `tool_hints` out of general prompts and prompts that can use several tools or native provider capabilities. This prevents an optional tool from unnecessarily hiding a useful prompt.
 
 Prompt and tool badges are saved as message metadata (`prompt` and `tool_hints`) and reconstructed when conversation history reloads. The badge shows the selectors while the user-message bubble shows only the clean task text.
+
+Prompt changes saved in Settings refresh the current page's `@` registry without a
+restart or hard refresh. Personal files are written atomically with private file
+permissions where supported. In Docker, Compose bind-mounts only
+`jarvis-web/data/prompts/personal/`, so private prompts stay out of the image and
+survive container recreation.
 
 See `jarvis-web/data/prompts/personal/README.md` for the short authoring guide.
 

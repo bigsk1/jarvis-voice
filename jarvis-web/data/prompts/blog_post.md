@@ -43,11 +43,10 @@ Create an engaging, well-structured blog post following these guidelines:
 - Write a compelling meta description (150-160 chars)
 
 ## Output
-Save to Canvas with:
+If the user explicitly asks to save the result, save it to Canvas.
 - Title: "Blog: [Topic Title]"
 - Tags: blog, [topic], [category]
 
 Include at the end:
 - Suggested meta description
 - Recommended featured image concept
-

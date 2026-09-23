@@ -459,6 +459,7 @@
             <button class="settings-tab active" data-settings-tab="general">General</button>
             <button class="settings-tab" data-settings-tab="ai">AI Config</button>
             <button class="settings-tab" data-settings-tab="tools">Tools</button>
+            <button class="settings-tab" data-settings-tab="prompts">Prompts</button>
             <button class="settings-tab" data-settings-tab="integrations">Integrations</button>
             <button class="settings-tab" data-settings-tab="system">System</button>
             <button class="settings-tab" data-settings-tab="api">API Keys</button>
@@ -857,6 +858,76 @@
               💡 Some tools like <code>get_recent_conversations</code> are blocked because 
               the web app has its own conversation system.
             </p>
+          </div>
+
+          <!-- Saved Prompt Library (saved independently) -->
+          <div class="settings-panel" id="settings-prompts">
+            <div class="prompt-library-toolbar">
+              <div>
+                <h3>Saved prompts</h3>
+                <p class="setting-desc" id="prompt-context-label">Availability preview</p>
+              </div>
+              <div class="prompt-library-toolbar-actions">
+                <label class="sr-only" for="prompt-preview-mode">Availability preview mode</label>
+                <select class="setting-input" id="prompt-preview-mode">
+                  <option value="cloud">Cloud</option>
+                  <option value="local">Local</option>
+                </select>
+                <button type="button" class="btn-primary" id="newPromptBtn">New prompt</button>
+              </div>
+            </div>
+            <p class="setting-note">
+              Prompts are flexible guidance for the current request. <code>#tools</code>,
+              <code>/workflows</code>, and <code>*bookmarks</code> keep their existing behavior.
+              Built-ins are read-only; saving an edit creates a private personal override.
+            </p>
+            <label class="sr-only" for="promptSearch">Search prompts</label>
+            <input class="setting-input prompt-search" id="promptSearch" type="search" placeholder="Search name, title, description, or tool hint">
+            <div class="prompt-library-status" id="promptLibraryStatus" role="status" aria-live="polite"></div>
+
+            <div class="prompt-library-layout">
+              <div class="prompt-list" id="promptList" aria-label="Saved prompts"></div>
+              <section class="prompt-editor-shell" aria-label="Prompt editor">
+                <div class="prompt-editor-empty" id="promptEditorEmpty">
+                  Select a prompt to view or edit it, or create a new personal prompt.
+                </div>
+                <div class="prompt-editor" id="promptEditor" hidden>
+                  <label class="setting-label" for="promptName">Prompt command</label>
+                  <div class="prompt-name-field">
+                    <span aria-hidden="true">@</span>
+                    <input class="setting-input" id="promptName" type="text" maxlength="64" autocomplete="off" spellcheck="false">
+                  </div>
+                  <p class="setting-desc">Lowercase letters, numbers, and single underscores.</p>
+
+                  <label class="setting-label" for="promptContent">Markdown and optional YAML frontmatter</label>
+                  <textarea class="setting-input" id="promptContent" rows="18" spellcheck="true"></textarea>
+
+                  <div class="prompt-tool-picker">
+                    <label class="setting-label" for="promptToolSelect">Insert exact tool hint</label>
+                    <div>
+                      <select class="setting-input" id="promptToolSelect"></select>
+                      <button type="button" class="btn-secondary" id="addPromptToolBtn">Add hint</button>
+                    </div>
+                  </div>
+                  <p class="setting-note">
+                    One hint uses the current availability gate. Multiple hints preserve the
+                    current group visibility rule. Inactive hints are removed by the normal
+                    send path; hints remain preferences, not required calls.
+                  </p>
+
+                  <div class="prompt-parsed-preview" id="promptParsedPreview" aria-label="Parsed prompt preview"></div>
+                  <div class="prompt-validation" id="promptValidation" role="alert"></div>
+
+                  <div class="prompt-editor-actions">
+                    <button type="button" class="btn-primary" id="savePromptBtn">Save personal prompt</button>
+                    <button type="button" class="btn-secondary" id="duplicatePromptBtn">Duplicate</button>
+                    <button type="button" class="btn-secondary" id="cancelPromptBtn">Cancel</button>
+                    <button type="button" class="btn-secondary prompt-danger" id="restorePromptBtn" hidden>Restore built-in</button>
+                    <button type="button" class="btn-secondary prompt-danger" id="deletePromptBtn" hidden>Delete personal prompt</button>
+                  </div>
+                </div>
+              </section>
+            </div>
           </div>
           
           <!-- Task callback integrations (saved independently) -->
@@ -1394,6 +1465,7 @@
   <script src="/js/task-manager.js"></script>
   <script src="/js/background-tasks.js"></script>
   <script src="/js/webhook-integrations.js"></script>
+  <script src="/js/prompt-library.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

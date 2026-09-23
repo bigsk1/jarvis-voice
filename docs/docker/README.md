@@ -31,6 +31,9 @@ Host-only tools (Spotify, phone, printer, OpenCode, etc.) are disabled by the tr
 - Git clone of this repo with `config/cloud.env` and/or `config/local.env` configured (same as native install)
 - Existing `./data` databases are reused via bind mounts — nothing is wiped on container recreate
 - `./jarvis-intel` is shared across API, Web, Memory, and Intelligence containers, so Web profile edits and ingestion operate on the same files
+- `./jarvis-web/data/prompts/personal` is mounted read-write only into Jarvis Web,
+  so Settings-created private prompts stay on the host and survive container
+  recreation; ensure the container user can create, replace, and delete files there
 - Web status-only TTS audio is cached under `./data/cache/status-tts-web/`, so repeated phrases can be reused after a container rebuild or recreation
 
 ---

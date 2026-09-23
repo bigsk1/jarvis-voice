@@ -4,9 +4,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from server_package_utils import load_server_package
-
 
 ROOT = Path(__file__).resolve().parents[1]
 load_server_package("jarvis_web_test_server", ROOT / "jarvis-web" / "server")
@@ -121,3 +119,33 @@ if (sanitized !== '#safe_tool 🛠️') {
 }
 """
     subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
+
+
+def test_shared_prompt_cleanup_uses_workflows_and_operator_owned_ssh_guidance():
+    prompts = ROOT / "jarvis-web" / "data" / "prompts"
+
+    assert not (prompts / "daily.md").exists()
+    assert not (prompts / "deep_research.md").exists()
+    assert not (prompts / "ssh.md").exists()
+    assert (ROOT / "data/workflows/daily_status.json").is_file()
+    assert (ROOT / "data/workflows/deep_research.json").is_file()
+
+    code_review = (prompts / "code_review.md").read_text()
+    assert "tool_hints:" not in code_review
+    assert "pasted, attached" in code_review
+
+    email = (prompts / "email.md").read_text()
+    assert "only when the user explicitly asks to send" in email
+    assert "tool_hints:" not in email
+
+
+def test_every_shared_prompt_still_parses_for_the_runtime_registry():
+    prompts = ROOT / "jarvis-web" / "data" / "prompts"
+
+    records = [
+        api._load_prompt_record(path.stem, path)
+        for path in sorted(prompts.glob("*.md"))
+    ]
+
+    assert records
+    assert all(record["content"].strip() for record in records)

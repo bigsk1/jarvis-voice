@@ -10,7 +10,6 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-import yaml
 from flask import Blueprint, current_app, jsonify, request, send_file, send_from_directory, abort
 from ..services.conversation_store import ConversationBusyError
 from werkzeug.datastructures import FileStorage
@@ -40,6 +39,18 @@ from ..services.text_upload import (
     save_text_upload,
 )
 from ..services.tool_discovery import get_tool_service
+from ..services.prompt_library import (
+    PromptLibraryError,
+    delete_personal_prompt,
+    iter_effective_prompt_files,
+    iter_prompt_sources,
+    parse_prompt_frontmatter,
+    prompt_advisories,
+    prompt_metadata,
+    resolve_prompt_file,
+    validate_prompt_draft,
+    write_personal_prompt,
+)
 from ..services.usage_metadata import format_usage_markdown
 from ..services.user_profile_service import (
     UserProfileServiceError,
@@ -340,111 +351,21 @@ def _resolve_workflow(loader, workflow_id: str) -> dict | None:
 
 def _parse_prompt_frontmatter(content: str) -> tuple[str, list[str]]:
     """Return prompt body and optional tool_hints from YAML frontmatter."""
-    text = content or ''
-    stripped = text.lstrip()
-    lines = stripped.splitlines(keepends=True)
-    if not lines or lines[0].strip() != '---':
-        return text, []
-
-    closing_index = next(
-        (index for index, line in enumerate(lines[1:], start=1) if line.strip() == '---'),
-        None,
-    )
-    if closing_index is None:
-        return text, []
-
-    frontmatter_text = ''.join(lines[1:closing_index])
-    try:
-        frontmatter = yaml.safe_load(frontmatter_text) or {}
-    except yaml.YAMLError as exc:
-        raise ValueError(f'Invalid prompt YAML frontmatter: {exc}') from exc
-    if not isinstance(frontmatter, dict):
-        raise ValueError('Prompt YAML frontmatter must be a mapping')
-
-    raw_tool_hints = frontmatter.get('tool_hints', [])
-    if raw_tool_hints is None:
-        raw_tool_hints = []
-    if not isinstance(raw_tool_hints, list):
-        raise ValueError('Prompt frontmatter tool_hints must be a list of tool names')
-
-    tool_hints = []
-    for hint in raw_tool_hints:
-        if not isinstance(hint, str) or not hint.strip():
-            raise ValueError('Prompt frontmatter tool_hints must contain non-empty strings')
-        name = hint.strip()
-        if name not in tool_hints:
-            tool_hints.append(name)
-
-    body = ''.join(lines[closing_index + 1:]).lstrip('\r\n')
-    return body, tool_hints
+    return parse_prompt_frontmatter(content)
 
 
 def _resolve_prompt_file(name: str) -> Path | None:
     """Personal prompts override shared prompts with the same stem."""
-    if name.casefold() == 'readme':
-        return None
-    personal_file = PROMPTS_PATH / 'personal' / f'{name}.md'
-    if personal_file.exists():
-        return personal_file
-    shared_file = PROMPTS_PATH / f'{name}.md'
-    if shared_file.exists():
-        return shared_file
-    return None
+    return resolve_prompt_file(PROMPTS_PATH, name)
 
 
 def _iter_prompt_files():
     """Yield (stem, path) for shared and personal prompt files."""
-    prompts: dict[str, Path] = {}
-    if PROMPTS_PATH.exists():
-        for prompt_file in PROMPTS_PATH.glob('*.md'):
-            prompts[prompt_file.stem] = prompt_file
-        personal_dir = PROMPTS_PATH / 'personal'
-        if personal_dir.exists():
-            for prompt_file in personal_dir.glob('*.md'):
-                if prompt_file.name.casefold() == 'readme.md':
-                    continue
-                prompts[prompt_file.stem] = prompt_file
-    for stem in sorted(prompts):
-        yield stem, prompts[stem]
+    yield from iter_effective_prompt_files(PROMPTS_PATH)
 
 
 def _load_prompt_record(name: str, prompt_file: Path) -> dict:
-    content = prompt_file.read_text()
-    body, tool_hints = _parse_prompt_frontmatter(content)
-    lines = body.strip().split('\n')
-    description = ''
-    if lines and lines[0].startswith('#'):
-        description = lines[0].lstrip('#').strip()
-
-    key_points = []
-    for line in lines[1:]:
-        line = line.strip()
-        if not line:
-            continue
-        if line.startswith(('-', '*', '•')) or (len(line) > 2 and line[0].isdigit() and line[1] in '.):'):
-            point = line.lstrip('-*•0123456789.) ').strip()
-            if point and len(point) > 3:
-                key_points.append(point[:80])
-        elif line.startswith('##'):
-            key_points.append(line.lstrip('#').strip())
-        if len(key_points) >= 5:
-            break
-
-    if not key_points:
-        for line in lines[1:6]:
-            line = line.strip()
-            if line and not line.startswith('#'):
-                key_points.append(line[:80])
-
-    record = {
-        'name': name,
-        'description': description,
-        'content': body,
-        'key_points': key_points[:5],
-    }
-    if tool_hints:
-        record['tool_hints'] = tool_hints
-    return record
+    return prompt_metadata(name, prompt_file.read_text(encoding='utf-8'))
 
 
 def _prompt_is_available(record: dict, tools_by_name: dict[str, dict]) -> bool:
@@ -468,6 +389,161 @@ def _prompt_tools_by_name() -> dict[str, dict]:
         tool['name']: tool
         for tool in get_tool_service().get_tools(include_blocked=True)
         if tool.get('name')
+    }
+
+
+def _prompt_hint_is_active(tool: dict | None) -> bool:
+    """Mirror the existing client/chat hint-retention predicate exactly."""
+    return bool(
+        tool
+        and tool.get('enabled', True)
+        and not tool.get('blocked', False)
+    )
+
+
+def _prompt_unavailable_reason(
+    tool_name: str,
+    tools_by_name: dict[str, dict],
+    *,
+    mode: str,
+    tool_profile: str,
+) -> str:
+    """Explain an existing visibility result without participating in it."""
+    tool = tools_by_name.get(tool_name)
+    if not tool:
+        return f'#{tool_name} is not in the current tool registry'
+    if tool.get('blocked', False):
+        return f'#{tool_name} is blocked in Jarvis Web'
+    if tool.get('available', True) is False:
+        missing = [str(item) for item in tool.get('missing', []) if str(item).strip()]
+        suffix = f": {', '.join(missing)}" if missing else ''
+        return f'#{tool_name} is missing configuration{suffix}'
+    if tool.get('enabled', True) is False:
+        return f'#{tool_name} is disabled by {mode.title()} · {tool_profile}'
+    return f'#{tool_name} is not in the current tool registry'
+
+
+def _prompt_management_record(
+    source_record: dict,
+    tools_by_name: dict[str, dict],
+    *,
+    mode: str,
+    tool_profile: str,
+) -> dict:
+    """Return one editable Settings record without exposing filesystem paths."""
+    name = source_record['name']
+    base = {
+        'name': name,
+        'source': source_record['source'],
+        'overrides_shared': source_record['overrides_shared'],
+        'editable': source_record['source'] == 'personal',
+        'runtime_visible': False,
+        'availability_status': 'needs_repair',
+        'unavailable_reason': None,
+        'content': '',
+        'tool_hints': [],
+        'active_tool_hints': [],
+        'inactive_tool_hints': [],
+        'description': '',
+        'key_points': [],
+        'parse_error': None,
+        'warnings': [],
+    }
+
+    try:
+        raw_content = source_record['path'].read_text(encoding='utf-8')
+        base['content'] = raw_content
+        runtime_record = prompt_metadata(name, raw_content)
+    except OSError:
+        base['parse_error'] = 'Unable to read prompt file'
+        return base
+    except UnicodeError:
+        base['parse_error'] = 'Prompt file is not valid UTF-8 text'
+        return base
+    except ValueError as exc:
+        base['parse_error'] = str(exc)
+        return base
+
+    tool_hints = runtime_record.get('tool_hints') or []
+    active_hints = [
+        hint for hint in tool_hints
+        if _prompt_hint_is_active(tools_by_name.get(hint))
+    ]
+    inactive_hints = [hint for hint in tool_hints if hint not in active_hints]
+    runtime_visible = _prompt_is_available(runtime_record, tools_by_name)
+    warnings = prompt_advisories(
+        raw_content,
+        runtime_record.get('content', ''),
+        tool_hints,
+        tools_by_name,
+    )
+    try:
+        validate_prompt_draft(name, raw_content, tools_by_name)
+    except PromptLibraryError as exc:
+        warnings.append({
+            'code': 'save_validation',
+            'message': f'Clean up before re-saving: {exc}',
+        })
+
+    status = 'available'
+    reason = None
+    if not runtime_visible:
+        status = 'not_in_menu'
+        if len(tool_hints) == 1:
+            reason = _prompt_unavailable_reason(
+                tool_hints[0], tools_by_name, mode=mode, tool_profile=tool_profile
+            )
+    elif len(tool_hints) > 1 and not active_hints:
+        status = 'available_without_active_hints'
+    elif len(tool_hints) > 1 and len(active_hints) < len(tool_hints):
+        status = 'available_with_reduced_hints'
+
+    base.update({
+        'runtime_visible': runtime_visible,
+        'availability_status': status,
+        'unavailable_reason': reason,
+        'tool_hints': tool_hints,
+        'active_tool_hints': active_hints,
+        'inactive_tool_hints': inactive_hints,
+        'description': runtime_record.get('description', ''),
+        'key_points': runtime_record.get('key_points', []),
+        'warnings': warnings,
+    })
+    return base
+
+
+def _prompt_management_payload() -> dict:
+    from config_loader import get_active_config_mode
+    from tool_profiles import get_active_profile_name
+
+    mode = get_active_config_mode()
+    tool_profile = get_active_profile_name()
+    tools_by_name = _prompt_tools_by_name()
+    prompts = [
+        _prompt_management_record(
+            source,
+            tools_by_name,
+            mode=mode,
+            tool_profile=tool_profile,
+        )
+        for source in iter_prompt_sources(PROMPTS_PATH)
+    ]
+    tools = [
+        {
+            key: tool.get(key)
+            for key in (
+                'name', 'description', 'source', 'enabled', 'blocked',
+                'available', 'missing', 'setup_hint',
+            )
+        }
+        for tool in sorted(tools_by_name.values(), key=lambda item: item.get('name', ''))
+    ]
+    return {
+        'ok': True,
+        'context': {'mode': mode, 'tool_profile': tool_profile},
+        'count': len(prompts),
+        'prompts': prompts,
+        'tools': tools,
     }
 
 
@@ -3739,6 +3815,112 @@ def list_prompts():
         'ok': True,
         'count': len(prompts),
         'prompts': prompts
+    })
+
+
+@api_bp.route('/prompts/manage', methods=['GET'])
+@_scoped_request_config
+def manage_prompts():
+    """List every effective prompt, including unavailable and malformed files."""
+    return jsonify(_prompt_management_payload())
+
+
+@api_bp.route('/prompts/personal', methods=['POST'])
+@_scoped_request_config
+def create_personal_prompt():
+    """Create a personal prompt or an explicit override of a built-in."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'ok': False, 'error': 'Expected a JSON object'}), 400
+
+    try:
+        validated = validate_prompt_draft(
+            data.get('name'), data.get('content'), _prompt_tools_by_name()
+        )
+        name = validated['name']
+        shared_file = PROMPTS_PATH / f'{name}.md'
+        shared_exists = shared_file.is_file() and not shared_file.is_symlink()
+        personal_exists = (PROMPTS_PATH / 'personal' / f'{name}.md').is_file()
+        if personal_exists:
+            return jsonify({
+                'ok': False,
+                'error': f'Personal prompt already exists: @{name}',
+            }), 409
+        if shared_exists and data.get('override_shared') is not True:
+            return jsonify({
+                'ok': False,
+                'error': f'@{name} is built-in; confirm creation of a personal override',
+            }), 409
+        write_personal_prompt(
+            PROMPTS_PATH, name, validated['content'], must_exist=False
+        )
+    except PromptLibraryError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    except OSError as exc:
+        current_app.logger.error('Unable to create personal prompt: %s', exc)
+        return jsonify({'ok': False, 'error': 'Unable to save the personal prompt'}), 500
+
+    payload = _prompt_management_payload()
+    record = next(item for item in payload['prompts'] if item['name'] == name)
+    return jsonify({
+        'ok': True,
+        'message': f'Saved @{name}',
+        'prompt': record,
+        'warnings': validated['warnings'],
+    }), 201
+
+
+@api_bp.route('/prompts/personal/<name>', methods=['PUT'])
+@_scoped_request_config
+def update_personal_prompt(name):
+    """Update an existing personal prompt without permitting a rename."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'ok': False, 'error': 'Expected a JSON object'}), 400
+    if data.get('name') not in (None, name):
+        return jsonify({'ok': False, 'error': 'Renaming prompts is not supported'}), 400
+
+    try:
+        validated = validate_prompt_draft(name, data.get('content'), _prompt_tools_by_name())
+        write_personal_prompt(
+            PROMPTS_PATH, validated['name'], validated['content'], must_exist=True
+        )
+    except FileNotFoundError:
+        return jsonify({'ok': False, 'error': f'Personal prompt not found: @{name}'}), 404
+    except PromptLibraryError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    except OSError as exc:
+        current_app.logger.error('Unable to update personal prompt: %s', exc)
+        return jsonify({'ok': False, 'error': 'Unable to save the personal prompt'}), 500
+
+    payload = _prompt_management_payload()
+    record = next(item for item in payload['prompts'] if item['name'] == name)
+    return jsonify({
+        'ok': True,
+        'message': f'Saved @{name}',
+        'prompt': record,
+        'warnings': validated['warnings'],
+    })
+
+
+@api_bp.route('/prompts/personal/<name>', methods=['DELETE'])
+@_scoped_request_config
+def remove_personal_prompt(name):
+    """Delete only a personal prompt and reveal any built-in it overrode."""
+    try:
+        restored_builtin = delete_personal_prompt(PROMPTS_PATH, name)
+    except FileNotFoundError:
+        return jsonify({'ok': False, 'error': f'Personal prompt not found: @{name}'}), 404
+    except PromptLibraryError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    except OSError as exc:
+        current_app.logger.error('Unable to delete personal prompt: %s', exc)
+        return jsonify({'ok': False, 'error': 'Unable to delete the personal prompt'}), 500
+
+    return jsonify({
+        'ok': True,
+        'message': f'Restored built-in @{name}' if restored_builtin else f'Deleted @{name}',
+        'restored_builtin': restored_builtin,
     })
 
 

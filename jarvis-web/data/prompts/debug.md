@@ -1,76 +1,25 @@
-# Debugging Methodology
+# Evidence-First Debugging
 
-You are helping debug an issue. Follow this systematic approach:
+Apply this guidance to the user's issue.
 
-## 1. Understand the Problem
-- What is the expected behavior?
-- What is the actual behavior?
-- When did this start happening?
-- What changed recently?
-- Can you reproduce it consistently?
+## Behavior
 
-## 2. Gather Information
-Ask for or analyze:
-- Error messages (exact text)
-- Stack traces
-- Relevant logs
-- Environment details (OS, versions, etc.)
-- Steps to reproduce
-
-## 3. Isolate the Problem
-- Is it environment-specific?
-- Does it happen with minimal code?
-- Can you identify the failing component?
-- What's the smallest reproducible case?
-
-## 4. Form Hypotheses
-Based on symptoms, list potential causes:
-1. Most likely: [hypothesis]
-2. Possible: [hypothesis]
-3. Less likely: [hypothesis]
-
-## 5. Test Hypotheses
-For each hypothesis:
-- How to verify/disprove it
-- What to check first
-- Quick tests to run
-
-## 6. Common Debugging Steps
-
-### For Code Issues:
-- Add logging/print statements
-- Check variable values at key points
-- Verify input data
-- Check for null/undefined
-- Review recent changes (git diff)
-
-### For System Issues:
-- Check service status
-- Review system logs
-- Verify network connectivity
-- Check resource usage (CPU, memory, disk)
-- Verify permissions
-
-### For API Issues:
-- Test endpoint directly (curl/Postman)
-- Check request/response headers
-- Verify authentication
-- Check rate limits
-- Review API logs
-
-## 7. Resolution
-Once found:
-- Explain the root cause
-- Provide the fix
-- Suggest prevention measures
-- Document for future reference
-
-## Tools to Use
-- `query_service_logs` and `check_tool_logs` for checking logs; use OpenCode for requested development work
-- `remember` to save the solution for future reference
+- Preserve the user's stated scope and constraints.
+- Diagnose and explain unless the user explicitly asks for a fix.
+- Start with the expected behavior, actual behavior, exact error, reproduction
+  steps, environment, and recent changes that are genuinely available.
+- Use only logs, files, code, services, and tools available in the current turn.
+- Treat current tool schemas and returned data as authoritative.
+- Separate verified evidence from hypotheses and rank likely causes.
+- Do not edit, restart, install, remember, publish, or change external state
+  unless the user asks for that action.
+- If essential evidence is missing, ask one focused question or propose the
+  smallest safe diagnostic check.
 
 ## Output
-- Be methodical and explain reasoning
-- Show diagnostic commands to run
-- Provide copy-paste ready fixes
+
+1. Most likely cause
+2. Supporting evidence
+3. Confidence and remaining uncertainty
+4. Smallest useful next diagnostic or requested fix
 

@@ -68,6 +68,7 @@ class JarvisApp {
   _initialize() {
     this.profileAppearance = window.ProfileAppearance ? new window.ProfileAppearance() : null;
     this.talk = window.TalkController ? new window.TalkController({ app: this, chat: this.chat, socket: this.socket }) : null;
+    this.promptLibrary = window.PromptLibrary ? new window.PromptLibrary(this) : null;
     this._setupSocketListeners();
     this.backgroundTasks = window.BackgroundTasks ? new window.BackgroundTasks(this) : null;
     this.webhookIntegrations = window.WebhookIntegrations ? new window.WebhookIntegrations(this) : null;
@@ -85,6 +86,14 @@ class JarvisApp {
     this._startConversationClock();
     
     console.log('[App] Jarvis Web UI initialized');
+  }
+
+  _closeSettingsModal() {
+    if (this.promptLibrary && !this.promptLibrary.confirmDiscard()) return false;
+    this.settingsModal.classList.remove('active');
+    void this.promptLibrary?.setActive(false);
+    this.profileAppearance?.reset();
+    return true;
   }
 
   /**
@@ -412,16 +421,17 @@ class JarvisApp {
       if (document.getElementById('settings-profile')?.classList.contains('active')) {
         this._loadTailscaleStatus();
       }
+      if (document.getElementById('settings-prompts')?.classList.contains('active')) {
+        void this.promptLibrary?.setActive(true);
+      }
     });
     
     this.closeSettings.addEventListener('click', () => {
-      this.settingsModal.classList.remove('active');
-      this.profileAppearance?.reset();
+      this._closeSettingsModal();
     });
     
     this.closeSettingsBtn.addEventListener('click', () => {
-      this.settingsModal.classList.remove('active');
-      this.profileAppearance?.reset();
+      this._closeSettingsModal();
     });
     
     // Save settings button
@@ -433,8 +443,12 @@ class JarvisApp {
     document.querySelectorAll('.settings-tab').forEach(tab => {
       tab.addEventListener('click', () => {
         const tabName = tab.dataset.settingsTab;
+        const activeTab = [...document.querySelectorAll('.settings-tab')]
+          .find(candidate => candidate.classList.contains('active'))?.dataset.settingsTab;
+        if (activeTab === 'prompts' && tabName !== 'prompts'
+            && this.promptLibrary && !this.promptLibrary.confirmDiscard()) return;
         const saveSettingsButton = document.getElementById('saveSettingsBtn');
-        if (saveSettingsButton) saveSettingsButton.hidden = ['profile', 'integrations'].includes(tabName);
+        if (saveSettingsButton) saveSettingsButton.hidden = ['profile', 'integrations', 'prompts'].includes(tabName);
         
         // Update active tab
         document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
@@ -443,6 +457,7 @@ class JarvisApp {
         // Update active panel
         document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
         document.getElementById(`settings-${tabName}`)?.classList.add('active');
+        void this.promptLibrary?.setActive(tabName === 'prompts');
         
         // Load tools tab content
         if (tabName === 'tools') {
@@ -588,8 +603,7 @@ class JarvisApp {
     // Close modal on outside click
     this.settingsModal.addEventListener('click', (e) => {
       if (e.target === this.settingsModal) {
-        this.settingsModal.classList.remove('active');
-        this.profileAppearance?.reset();
+        this._closeSettingsModal();
       }
     });
     
@@ -818,8 +832,7 @@ class JarvisApp {
         if (document.getElementById('userProfileModal')?.classList.contains('active')) {
           this._closeUserProfileModal();
         } else if (this.settingsModal.classList.contains('active')) {
-          this.settingsModal.classList.remove('active');
-          this.profileAppearance?.reset();
+          this._closeSettingsModal();
         } else if (this.currentAudio && this.isPlaying) {
           // Stop audio on Escape if playing
           this.stopAudioPlayback();

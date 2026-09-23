@@ -420,6 +420,29 @@ class ChatHandler:
         return bool(raw_request) and tool_policy != 'none'
 
     @staticmethod
+    def _format_saved_prompt_context(
+        system_instruction: str,
+        prompt_name: object = None,
+    ) -> str:
+        """Wrap saved guidance without adding branches to the main request handler."""
+        safe_prompt_name = (
+            prompt_name
+            if isinstance(prompt_name, str)
+            and re.fullmatch(r'[a-z0-9]+(?:_[a-z0-9]+)*', prompt_name)
+            else 'selected_prompt'
+        )
+        return (
+            f"[CONTEXT - Saved prompt @{safe_prompt_name}]\n\n"
+            "These are reusable guidelines for the user's request, not a separate task.\n"
+            "Apply them where relevant. The user's explicit request and constraints take\n"
+            "precedence over defaults in this saved prompt. Use only capabilities available\n"
+            "in the current turn, and treat current tool schemas and returned data as\n"
+            "authoritative.\n\n"
+            f"{system_instruction}\n\n"
+            "[END SAVED PROMPT]"
+        )
+
+    @staticmethod
     def _format_tool_hint_context(tool_hints: list[str], request_kind: str = '') -> str:
         names = ', '.join(tool_hints)
         if request_kind == 'canvas_export' and tool_hints == ['canvas']:
@@ -448,6 +471,48 @@ class ChatHandler:
             "Ignore a hinted tool only if it clearly does not fit or fails, then use another appropriate tool or answer from gathered results.\n\n"
             "[END CONTEXT]"
         )
+
+    def _build_enhanced_message(
+        self,
+        message: str,
+        prompt_meta: dict,
+        background_tools: list[str],
+        conversation_id: str,
+        mode: str,
+    ) -> str:
+        """Combine per-request guidance before handing the message to the orchestrator."""
+        context_blocks = []
+        system_instruction = prompt_meta.get('system_instruction')
+        tool_hints = prompt_meta.get('tool_hints') or []
+
+        if system_instruction:
+            print(f"[CHAT] Prepending prompt instruction ({len(system_instruction)} chars)")
+            context_blocks.append(
+                self._format_saved_prompt_context(
+                    system_instruction,
+                    prompt_meta.get('prompt_name'),
+                )
+            )
+        if tool_hints:
+            print(f"[CHAT] Prepending tool hints: {tool_hints}")
+            context_blocks.append(
+                self._format_tool_hint_context(
+                    tool_hints,
+                    request_kind=prompt_meta.get('request_kind', ''),
+                )
+            )
+        if background_tools:
+            context_blocks.append(
+                'A background acceptance receipt confirms admission, not completion. '
+                'Continue independent work; do not repeat the accepted call or rely on its '
+                'result until it arrives separately.'
+            )
+        task_context = self.background_tasks.conversation_context(conversation_id, mode)
+        if task_context:
+            context_blocks.append(task_context)
+        if not context_blocks:
+            return message
+        return "\n\n".join(context_blocks) + f"\n\nUser's request: {message}"
 
     @staticmethod
     def _format_pdf_attachment_context(attachment: dict) -> str:
@@ -4460,36 +4525,13 @@ Previous structured data:
             conversation_history = self._get_conversation_context(conversation_id)
             
             # Build enhanced message with @prompt instructions and #tool hints if present
-            enhanced_message = message
-            system_instruction = prompt_meta.get('system_instruction')
-            tool_hints = prompt_meta.get('tool_hints') or []
-            context_blocks = []
-            
-            if system_instruction:
-                print(f"[CHAT] Prepending prompt instruction ({len(system_instruction)} chars)")
-                context_blocks.append(
-                    f"[CONTEXT - Use these guidelines for the request below]\n\n"
-                    f"{system_instruction}\n\n"
-                    f"[END CONTEXT]"
-                )
-            if tool_hints:
-                print(f"[CHAT] Prepending tool hints: {tool_hints}")
-                context_blocks.append(
-                    self._format_tool_hint_context(
-                        tool_hints,
-                        request_kind=prompt_meta.get('request_kind', ''),
-                    )
-                )
-            if background_tools:
-                context_blocks.append(
-                    'A background acceptance receipt confirms admission, not completion. '
-                    'Continue independent work; do not repeat the accepted call or rely on its '
-                    'result until it arrives separately.')
-            task_context = self.background_tasks.conversation_context(conversation_id, mode)
-            if task_context:
-                context_blocks.append(task_context)
-            if context_blocks:
-                enhanced_message = "\n\n".join(context_blocks) + f"\n\nUser's request: {message}"
+            enhanced_message = self._build_enhanced_message(
+                message,
+                prompt_meta,
+                background_tools,
+                conversation_id,
+                mode,
+            )
             
             # Process the query with conversation context, excluded tools, and forced overrides
             override_info = f", tool_overrides={list(tool_overrides.keys())}" if tool_overrides else ""

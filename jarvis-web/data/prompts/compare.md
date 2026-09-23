@@ -64,6 +64,5 @@ For each option, provide:
 ## Output
 - Use tables extensively
 - Include pricing if relevant
-- Save to Canvas for reference
+- If the user explicitly asks to save the result, save it to Canvas.
 - Tag with: comparison, [topic], [options compared]
-

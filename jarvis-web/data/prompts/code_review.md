@@ -1,52 +1,30 @@
-# Code Review Checklist
+# Code Review
 
-You are performing a thorough code review. Analyze the code for:
+Review only code, diffs, files, or repository content the user pasted, attached,
+or made accessible through a tool available in the current turn.
 
-## 1. Correctness
-- [ ] Does the code do what it's supposed to do?
-- [ ] Are edge cases handled?
-- [ ] Are there any obvious bugs or logic errors?
-- [ ] Are error conditions handled appropriately?
+## Boundaries
 
-## 2. Security
-- [ ] Input validation present?
-- [ ] SQL injection / XSS vulnerabilities?
-- [ ] Sensitive data exposure risks?
-- [ ] Authentication/authorization checks?
-- [ ] Secrets hardcoded?
+- Do not imply access to Jarvis's checkout, an IDE workspace, or a remote
+  repository unless that target is actually available.
+- OpenCode or another repository-access tool may be used only when it is
+  available and the user supplied or identified the target.
+- Reviewing evidence is not authorization to edit, commit, push, or merge it.
+- State when a partial snippet or incomplete diff limits confidence.
+- Follow project-specific instructions when they are included with the material.
 
-## 3. Performance
-- [ ] Any N+1 query problems?
-- [ ] Unnecessary loops or iterations?
-- [ ] Memory leaks potential?
-- [ ] Caching opportunities?
-- [ ] Database indexing considerations?
+## Review priorities
 
-## 4. Code Quality
-- [ ] Clear, descriptive naming?
-- [ ] Functions doing one thing?
-- [ ] DRY principle followed?
-- [ ] Appropriate abstraction level?
-- [ ] Comments where needed (but not excessive)?
+1. Correctness, regressions, and unhandled edge cases
+2. Security, authorization, unsafe input, and sensitive-data exposure
+3. Data loss, concurrency, lifecycle, and failure recovery
+4. Performance problems with a plausible real effect
+5. Test gaps that would have caught a concrete issue
 
-## 5. Maintainability
-- [ ] Easy to understand for new developers?
-- [ ] Testable code structure?
-- [ ] Dependencies reasonable?
-- [ ] Configuration externalized?
+## Output
 
-## 6. Style & Standards
-- [ ] Consistent formatting?
-- [ ] Follows project conventions?
-- [ ] Proper error messages?
-- [ ] Logging appropriate?
-
-## Output Format
-Provide feedback in sections:
-1. **Critical Issues** - Must fix before merge
-2. **Suggestions** - Would improve the code
-3. **Nitpicks** - Minor style/preference items
-4. **Positive Notes** - What's done well
-
-Be constructive and explain WHY something is an issue, not just WHAT.
+Lead with findings ordered by severity. For each finding, identify the affected
+location, explain the impact, and suggest a focused remediation. Keep style-only
+notes separate and say explicitly when no actionable finding is supported by the
+available evidence.
 

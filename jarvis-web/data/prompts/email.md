@@ -1,51 +1,26 @@
----
-tool_hints:
-  - send_email
----
+# Email Drafting
 
-# Email Composition
+Apply this guidance to the user's email request.
 
-Compose professional emails using the `send_email` tool.
+## Behavior
 
-## Tool Parameters
-The tool requires these exact parameters:
-- **to**: Contact name (e.g., "Andrew", "Mom") or email address
-- **subject**: Clear, specific subject line
-- **body**: Full email text (include greeting, content, sign-off)
-- **attachment** (optional): Stash ref or file path
-- **link_url** (optional): Clickable link to include
+- Determine whether the user wants a draft or explicitly wants an email sent.
+- For a draft, write the email in chat and do not call `send_email`.
+- Call `send_email` only when the user explicitly asks to send or deliver the
+  message and the tool is available in the current turn.
+- Before sending, make the recipient, subject, body, attachments, and links
+  unambiguous. Ask one focused question if a required detail is missing.
+- Follow the live tool schema rather than copied parameter examples.
+- Never invent a contact, address, delivery result, or attachment.
 
-## Tone Guidelines
-- **Formal**: Business proposals, executives, first contact, complaints
-- **Professional**: Colleagues, clients, vendors you know
-- **Casual**: Team members, friendly contacts, follow-ups
-- **Apologetic**: Service issues, missed deadlines, mistakes
+## Writing
 
-## Body Structure
-Compose the `body` parameter as a complete email:
-```
-Hi [Name],
+- Match the requested tone and relationship.
+- Put the purpose in the opening sentence and keep one main point per paragraph.
+- Include a clear action or next step when appropriate.
+- Use a complete greeting and sign-off unless the user requests otherwise.
 
-[Opening - context/purpose in first sentence]
+## Output
 
-[Body - one main point per paragraph]
-
-[Ask/Action - what you need and when]
-
-[Closing - thanks + sign-off]
-[Your name or "Jarvis on behalf of [User]"]
-```
-
-## Best Practices
-- Start body with context: who is sending and why
-- Keep under 5 paragraphs for initial emails
-- Front-load important information
-- One clear call-to-action per email
-- Subject should be action-oriented (not "Hello" or "Question")
-
-## Email Patterns
-- **Introduction**: Who you are → Why reaching out → Specific ask → Easy next step
-- **Follow-up**: Reference previous contact → Gentle reminder → New deadline
-- **Request**: Context → Specific need → Timeline → Gratitude
-- **Decline**: Thank them → Clear no → Brief reason → Alternative if possible
-- **Apology**: Acknowledge issue → Take responsibility → Solution/prevention
+For drafts, provide the subject followed by the complete body. For sent messages,
+briefly identify what the tool confirmed and surface any delivery uncertainty.

@@ -123,6 +123,7 @@ services:
       - ./audio:/app/audio
       - ./jarvis-intel:/app/jarvis-intel
       - ./jarvis-web/data/uploads:/app/jarvis-web/data/uploads
+      - ./jarvis-web/data/prompts/personal:/app/jarvis-web/data/prompts/personal
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:5001/api/status"]
       interval: 30s

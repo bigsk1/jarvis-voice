@@ -45,6 +45,10 @@ tool schema. When a prompt declares exactly one tool hint, Jarvis treats that to
 as required: the prompt is hidden unless the tool is enabled, available in the
 active mode/profile, and allowed by Jarvis Web.
 
+With two or more hints, the prompt keeps the existing group visibility behavior.
+Unavailable individual hints are removed by the normal send path. The Settings
+preview shows active and inactive hints without changing either rule.
+
 Leave `tool_hints` out of general prompts and prompts that can use several tools or
 native provider capabilities. This keeps those prompts available when any one
 optional tool is disabled.
@@ -60,5 +64,19 @@ list of non-empty strings.
 - Keep reusable instructions in the prompt; keep the tool's real argument and
   capability limits in its tool schema.
 
-After adding or editing a prompt, restart Jarvis Web if the server code changed and
-hard-refresh the browser so its prompt registry reloads.
+## Manage prompts in Jarvis Web
+
+Open **Settings → Prompts** to view every shared and personal prompt, including a
+prompt that is not currently in the live `@` menu. The active mode/profile preview
+explains current availability. You can create, duplicate, edit, and delete personal
+prompts there. Editing a built-in creates a personal override; **Restore built-in**
+deletes only that override.
+
+Saving validates the snake-case-compatible filename, YAML, content size, and hint
+shape. Environment-specific or unknown tool hints are warnings because the prompt
+may be intended for another profile or machine. Changes made through Settings
+refresh the current page's command registry immediately.
+
+Native and Docker Web use this same personal directory. Docker Compose bind-mounts
+only this private subdirectory read-write, so personal prompts remain outside the
+image and survive container recreation.
