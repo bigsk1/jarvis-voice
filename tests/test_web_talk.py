@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
     'switch', 'disconnect', 'hidden', 'denied', 'no_speech', 'voice_end',
     'tts_failure', 'stt_timeout', 'interrupt_work', 'interrupt_tts',
     'pause_pending', 'saved_audio', 'duplicate', 'draft', 'device_loss', 'new_conversation',
-    'other_task', 'composer_restore',
+    'other_task', 'approval', 'approval_timeout', 'approval_stop', 'composer_restore',
     'resume_permission_pending', 'resume_work_pending',
 ])
 def test_talk_lifecycle(scenario):

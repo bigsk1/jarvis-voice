@@ -34,12 +34,18 @@ class TalkController {
     this.pauseButton = document.getElementById('talkPause');
     this.interruptButton = document.getElementById('talkInterrupt');
     this.endButton = document.getElementById('talkEnd');
+    this.approvalPanel = document.getElementById('talkApproval');
+    this.approvalDetails = document.getElementById('talkApprovalDetails');
+    this.approvalAllow = document.getElementById('talkApprovalAllow');
+    this.approvalDeny = document.getElementById('talkApprovalDeny');
     this.ownedRequests = new Set();
     this.session = null;
     this.button?.addEventListener('click', () => this.active ? this.end() : this.start());
     this.pauseButton?.addEventListener('click', () => this.session?.paused ? this.resume() : this.pause());
     this.interruptButton?.addEventListener('click', () => this.interrupt());
     this.endButton?.addEventListener('click', () => this.end());
+    this.approvalAllow?.addEventListener('click', () => this._decideApproval(true));
+    this.approvalDeny?.addEventListener('click', () => this._decideApproval(false));
     document.addEventListener('keydown', event => {
       if (event.code === 'Escape' && this.active) { event.preventDefault(); this.end(); }
     });
@@ -59,6 +65,25 @@ class TalkController {
     });
     socket.on('response', data => { void this._response(data); });
     socket.on('runState', data => this._runState(data));
+    socket.on('toolApprovalRequired', data => {
+      if (this.session?.turn?.id === data.message_id) {
+        const pending = this.session.approval?.approval_id === data.approval_id && this.session.approval.decisionPending;
+        this.session.approval = {...data, decisionPending: pending};
+        this._render();
+      }
+    });
+    socket.on('toolApprovalResolved', data => {
+      if (this.session?.approval?.approval_id === data.approval_id) {
+        this.session.approval = null;
+        this._render();
+      }
+    });
+    socket.on('toolApprovalRejected', data => {
+      if (this.session?.approval?.approval_id === data.approval_id) {
+        this.session.approval.decisionPending = false;
+        this._render(data.error || 'That approval is no longer pending. Reload the conversation.');
+      }
+    });
     for (const event of ['error', 'rejected', 'cancelled']) {
       socket.on(event, data => {
         const s = this.session;
@@ -92,7 +117,15 @@ class TalkController {
       paused: 'Talk paused — microphone off', settling: 'Finishing this turn…'
     };
     if (this.panel) this.panel.hidden = !s;
-    if (this.status) this.status.textContent = message || (s ? labels[s.phase] : 'Talk ended');
+    if (this.status) this.status.textContent = message || (s?.approval ? 'Approval needed — microphone off' : s ? labels[s.phase] : 'Talk ended');
+    if (this.approvalPanel) this.approvalPanel.hidden = !s?.approval;
+    if (this.approvalDetails && s?.approval) {
+      this.approvalDetails.textContent = [s.approval.summary || `Run ${s.approval.tool.replaceAll('_', ' ')}?`,
+        ...(s.approval.detail || []), s.approval.warning].filter(Boolean).join('\n');
+    }
+    const approvalExpired = Boolean(s?.approval?.expires_at && Date.now() / 1000 >= s.approval.expires_at);
+    if (this.approvalAllow) this.approvalAllow.disabled = !this.socket.connected || Boolean(s?.approval?.decisionPending) || approvalExpired;
+    if (this.approvalDeny) this.approvalDeny.disabled = !this.socket.connected || Boolean(s?.approval?.decisionPending) || approvalExpired;
     if (this.button) {
       this.button.setAttribute('aria-pressed', String(Boolean(s)));
       this.button.classList.toggle('active', Boolean(s));
@@ -274,22 +307,44 @@ class TalkController {
       this.pause('Another task started in this conversation. Wait for it to finish, then Resume.');
     }
     if (!s?.turn || data.message_id !== s.turn.id || data.conversation_id !== s.conversationId) return;
+    const pending = s.approval?.approval_id === data.approval?.approval_id && s.approval?.decisionPending;
+    s.approval = data.status === 'running' && data.approval ? {...data.approval, decisionPending: pending} : null;
+    this._render();
     if (['running', 'stopping'].includes(data.status)) return;
     s.turn.settled = true;
-    if (data.status !== 'completed') {
+    if (data.status !== 'completed' && !['denied', 'expired'].includes(s.turn.approvalOutcome)) {
       s.turn.answerFinished = true;
       if (!s.interrupting) this.pause(data.error || 'The task did not complete. Resume when ready.');
     }
     this._advance(s);
   }
 
+  _decideApproval(approved) {
+    const approval = this.session?.approval;
+    if (!approval || !this.socket.connected || approval.expires_at && Date.now() / 1000 >= approval.expires_at) return;
+    if (approval.decisionPending) return;
+    approval.decisionPending = true;
+    this.approvalAllow.disabled = true;
+    this.approvalDeny.disabled = true;
+    this.socket.emit('tool:approval_decide', {
+      approval_id: approval.approval_id,
+      conversation_id: approval.conversation_id,
+      message_id: approval.message_id,
+      approved,
+    });
+  }
+
   async _response(data) {
     const s = this.session;
     if (!s?.turn || data.message_id !== s.turn.id || s.turn.responseReceived) return;
+    s.approval = null;
+    this._render();
     s.turn.responseReceived = true;
-    if (s.paused || s.interrupting || s.turn.silent || data.cancelled || data.ok === false) {
+    s.turn.approvalOutcome = data.approval_outcome?.decision;
+    const approvalReply = ['denied', 'expired'].includes(s.turn.approvalOutcome);
+    if (s.paused || s.interrupting || s.turn.silent || (data.cancelled && !approvalReply) || data.ok === false) {
       s.turn.answerFinished = true;
-      if (!s.paused && !s.interrupting && !s.turn.silent) this.pause('The task did not complete. Check the reply, then Resume.');
+      if (!s.paused && !s.interrupting && !s.turn.silent) this.pause('The task stopped. Check the reply, then Resume.');
       this._advance(s); return;
     }
     const generation = s.generation;

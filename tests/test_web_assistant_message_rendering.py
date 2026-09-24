@@ -53,14 +53,19 @@ class Element {
   get innerHTML() { return this._html; }
   querySelector(selector) { return this.parts?.[selector] || null; }
   querySelectorAll(selector) {
+    if (selector === 'button') return this.children;
     if (selector === '.tool-card-header') return this.headers || [];
     if (selector === '.message-image.converted-file[data-converted-image-url]') return this.convertedImages || [];
     return [];
   }
   closest() { return this.parentElement; }
   addEventListener(name, handler) { this.events[name] = handler; }
-  appendChild(child) { this.children.push(child); child.parentElement = this; effects.push('append'); }
-  remove() {}
+  appendChild(child) { this.children.push(child); child.parentElement = this; child.isConnected = true; effects.push('append'); }
+  append(...children) { children.forEach(child => this.appendChild(child)); }
+  get nextSibling() { const siblings = this.parentElement?.children || []; return siblings[siblings.indexOf(this) + 1] || null; }
+  insertBefore(child, before) { const index = before ? this.children.indexOf(before) : -1; if (index < 0) this.children.push(child); else this.children.splice(index, 0, child); child.parentElement = this; child.isConnected = true; }
+  setAttribute(name, value) { this[name] = value; }
+  remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(child => child !== this); this.isConnected = false; }
 }
 const storage = {getItem: () => null, setItem() {}, removeItem() {}};
 const sandbox = {
@@ -71,6 +76,7 @@ const sandbox = {
   }),
   window: {sessionStorage: storage, location:{origin:'https://jarvis.test'}, addEventListener() {}},
   setTimeout: fn => {timers.push(fn); return timers.length;}, clearTimeout() {},
+  setInterval: () => 1, clearInterval() {},
   fetch: async () => ({ok: true, json: async () => ({tools: [], prompts: {}, workflows: {}})})
 };
 vm.createContext(sandbox);
@@ -134,6 +140,52 @@ assert.equal(commands.loaded, true);
 assert.equal(updates.length, 1);
 assert.ok(updates[0] instanceof Event);
 assert.equal(updates[0].target, sandbox.document);
+""")
+
+
+def test_web_approval_card_shows_prepared_call_and_sends_one_denial():
+    run_message_browser(r"""
+const ui = chat();
+const sent = [];
+sandbox.window.jarvisSocket = {connected: true, conversationId: 'thread', emit: (...args) => sent.push(args)};
+ui.currentMessageId = 'turn';
+const owner = sandbox.document.createElement('div'); owner.className = 'message user'; owner.dataset.requestId = 'turn';
+const next = sandbox.document.createElement('div'); next.className = 'message user'; next.dataset.requestId = 'other';
+ui.messagesContainer.append(owner, next);
+const approval = {approval_id: 'once', conversation_id: 'thread', message_id: 'turn',
+  tool: 'api_call', summary: 'Send a GET request to <img src=x onerror=alert(1)>?',
+  detail: ['Content: safe text'], warning: 'This call may connect to the network.',
+  expires_at: Date.now()/1000 + 60, permissions: {network: true, auto_approve: false}};
+ui._showToolApproval({...approval, approval_id:'wrong', conversation_id:'other'});
+ui._showToolApproval({...approval, approval_id:'wrong', message_id:'other'});
+assert.equal(ui.messagesContainer.children.length, 2);
+ui._showToolApproval(approval);
+const card = ui.messagesContainer.children[1];
+assert.equal(ui.messagesContainer.children[2], next);
+assert.equal(card.children[0].textContent, approval.summary);
+assert.ok(card.children[0].innerHTML.includes('&lt;img'));
+assert.equal(card.children[1].textContent, approval.detail[0]);
+assert.equal(card.children[2].textContent, approval.warning);
+assert.match(card.children[3].textContent, /left to decide/);
+assert.ok(!card.children.map(item => item.textContent).join(' ').includes('auto approve'));
+card.children[4].children[1].events.click();
+assert.equal(JSON.stringify(sent), JSON.stringify([['tool:approval_decide', {approval_id:'once', conversation_id:'thread',
+  message_id:'turn', approved:false}]]));
+assert.equal(card.children[4].children[0].disabled, true);
+ui.pendingToolApproval.decisionPending = false;
+sandbox.window.jarvisSocket.connected = false;
+ui._approvalUpdateRemaining();
+assert.equal(card.children[4].children[0].disabled, true);
+sandbox.window.jarvisSocket.connected = true;
+ui._approvalUpdateRemaining();
+assert.equal(card.children[4].children[0].disabled, false);
+ui._clearToolApproval();
+assert.equal(ui.messagesContainer.children.length, 2);
+ui._showToolApproval({...approval, approval_id:'expired', expires_at: Date.now()/1000 - 1});
+const expired = ui.messagesContainer.children[1];
+assert.equal(expired.children[4].children[0].disabled, true);
+expired.children[4].children[0].events.click();
+assert.equal(sent.length, 1);
 """)
 
 

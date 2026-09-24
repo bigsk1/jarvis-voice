@@ -4,6 +4,7 @@
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -175,6 +176,71 @@ class ToolTurnBudgetTests(unittest.TestCase):
         self.assertEqual(orchestrator.executor.calls, 3)
         self.assertEqual([entry["ok"] for entry in result["tool_trace"]], [True, True, False])
 
+    def test_web_denial_preserves_completed_call_and_stops_before_next_execution(self):
+        orchestrator = self._build_orchestrator(fail_on_calls=set())
+        orchestrator.router.tool_name = 'safe_read'
+        original_route = orchestrator.router.route
+
+        def route(*args, **kwargs):
+            result = original_route(*args, **kwargs)
+            if orchestrator.router.calls == 2:
+                result['tool_name'] = 'api_call'
+                result['arguments'] = {'url': 'https://example.test', 'method': 'GET'}
+            return result
+
+        orchestrator.router.route = route
+        orchestrator.registry = SimpleNamespace(get_tool=lambda name: SimpleNamespace(
+            permissions={'auto_approve': name != 'api_call', 'network': name == 'api_call'}))
+        decisions = []
+        events = []
+        orchestrator.set_progress_callback(lambda event, **fields: events.append((event, fields)))
+        orchestrator.set_tool_approval_callback(lambda tool, args, permissions, index: (
+            decisions.append((tool, args, permissions, index)) or 'denied'))
+
+        result = self._run_with_max_turns(orchestrator, 4)
+
+        self.assertEqual(orchestrator.executor.calls, 1)
+        self.assertEqual(orchestrator.router.calls, 2)
+        self.assertEqual(result['tools_used'], ['safe_read'])
+        self.assertEqual(result['data']['safe_read']['call'], 1)
+        self.assertEqual(result['approval_outcome'], {'tool': 'api_call', 'decision': 'denied'})
+        self.assertTrue(result['cancelled'])
+        self.assertIn('safe_read', result['speech'])
+        self.assertEqual(len(decisions), 1)
+        self.assertFalse(any(event == 'tool_start' and fields.get('tool') == 'api_call'
+                             for event, fields in events))
+
+    def test_web_approval_executes_the_same_prepared_call_once(self):
+        orchestrator = self._build_orchestrator(fail_on_calls=set(), tool_name='api_call')
+        orchestrator.registry = SimpleNamespace(get_tool=lambda _name: SimpleNamespace(
+            permissions={'auto_approve': False, 'network': True}))
+        prepared = []
+        orchestrator.set_tool_approval_callback(lambda tool, args, _permissions, _index: (
+            prepared.append((tool, dict(args))) or 'approved'))
+
+        result = self._run_with_max_turns(orchestrator, 1)
+
+        self.assertEqual(prepared, [('api_call', {'find_desc': 'arcade games kids 1'})])
+        self.assertEqual(orchestrator.executor.calls, 1)
+        self.assertEqual(result['tools_used'], ['api_call'])
+
+    def test_approval_precedes_running_status(self):
+        orchestrator = self._build_orchestrator(fail_on_calls=set(), tool_name='ssh_remote')
+        orchestrator.registry = SimpleNamespace(get_tool=lambda _name: SimpleNamespace(
+            permissions={'auto_approve': False, 'network': True}))
+        order = []
+        orchestrator.status_updater.update = lambda **_kwargs: order.append('running')
+        orchestrator.set_tool_approval_callback(lambda *_args: order.append('approval') or 'denied')
+
+        self._run_with_max_turns(orchestrator, 1)
+        self.assertEqual(order, ['approval'])
+
+        order.clear()
+        orchestrator.router.calls = 0
+        orchestrator.set_tool_approval_callback(lambda *_args: order.append('approval') or 'approved')
+        self._run_with_max_turns(orchestrator, 1)
+        self.assertEqual(order, ['approval', 'running'])
+
     def test_late_terminal_failure_preserves_progress_summary(self):
         orchestrator = self._build_orchestrator(fail_on_calls={3})
 
@@ -219,3 +285,83 @@ class ToolTurnBudgetTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_ordinary_stop_keeps_original_results_summary_without_web_approval_copy():
+    orchestrator = ToolTurnBudgetTests()._build_orchestrator(fail_on_calls=set())
+    result = orchestrator._stopped_tool_result(
+        tool_name='send_email', decision='cancelled', tools_used=['weather'],
+        accumulated_data={'weather': {'temperature': 72}}, tool_trace=[],
+        total_usage={}, first_thinking=None,
+        conversation_context=[{'summary': 'It is 72 degrees.'}],
+    )
+    assert result['speech'] == 'Stopped before send_email. Results so far:\n\nIt is 72 degrees.'
+    assert result['approval_outcome'] is None
+    assert result['data']['weather']['temperature'] == 72
+
+
+def test_stop_before_routing_keeps_original_turn_summary():
+    tests = ToolTurnBudgetTests()
+    orchestrator = tests._build_orchestrator(fail_on_calls=set())
+    orchestrator.cancel_check = lambda: True
+    result = tests._run_with_max_turns(orchestrator, 2)
+    assert result['speech'] == 'Processing stopped after 0 turn(s). Results so far:\n\nNo results yet.'
+    assert result['cancelled'] is True
+    assert 'approval_outcome' not in result
+
+
+def test_denied_then_approved_prepared_call_reaches_real_tool_subprocess(tmp_path, monkeypatch):
+    """The approval boundary controls the ordinary local tool executor."""
+    import os
+    from executor import ToolExecutor
+    from tool_schema import ToolSchema
+
+    script = tmp_path / 'approval_probe.py'
+    script.write_text(
+        'import json, sys\n'
+        'from pathlib import Path\n'
+        'args = json.loads(sys.argv[1])\n'
+        'Path(args["marker"]).write_text(args["nonce"])\n'
+        'print(json.dumps({"ok": True, "speech": "Probe completed.", "data": {"nonce": args["nonce"]}}))\n'
+    )
+    marker = tmp_path / 'executed.txt'
+    schema = ToolSchema(
+        name='approval_probe', description='Disposable approval test tool',
+        parameters={'type': 'object', 'properties': {'marker': {'type': 'string'}, 'nonce': {'type': 'string'}}},
+        script_path=str(script),
+        permissions={'dangerous': False, 'bash': False, 'network': False,
+                     'filesystem': True, 'auto_approve': False},
+    )
+    registry = SimpleNamespace(get_tool=lambda name: schema if name == 'approval_probe' else None,
+                               is_mcp_tool=lambda _name: False)
+    monkeypatch.setattr('executor.export_config_environment',
+                        lambda _mode: {'PATH': os.environ.get('PATH', '')})
+
+    def run(decision):
+        orchestrator = ToolTurnBudgetTests()._build_orchestrator(
+            fail_on_calls=set(), tool_name='approval_probe')
+        orchestrator.registry = registry
+        orchestrator.executor = ToolExecutor(mode='cloud', registry=registry, load_runtime_config=False)
+        orchestrator.executor.skills_dir = tmp_path
+        original_route = orchestrator.router.route
+
+        def route(*args, **kwargs):
+            prepared = original_route(*args, **kwargs)
+            prepared['arguments'] = {'marker': str(marker), 'nonce': 'same-exact-call'}
+            return prepared
+
+        orchestrator.router.route = route
+        if decision is not None:
+            orchestrator.set_tool_approval_callback(lambda *_args: decision)
+        return ToolTurnBudgetTests()._run_with_max_turns(orchestrator, 1)
+
+    denied = run('denied')
+    assert denied['approval_outcome']['decision'] == 'denied'
+    assert not marker.exists()
+    approved = run('approved')
+    assert approved['tools_used'] == ['approval_probe']
+    assert marker.read_text() == 'same-exact-call'
+    marker.unlink()
+    ordinary_entry_point = run(None)
+    assert ordinary_entry_point['tools_used'] == ['approval_probe']
+    assert marker.read_text() == 'same-exact-call'

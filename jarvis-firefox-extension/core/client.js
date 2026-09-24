@@ -1,5 +1,5 @@
 import {normalizeServerUrl, originPermission, assertCapabilities, pageTextSupported} from './connection.js';
-import {initialState, checkpointState, savedMessages, publicRun, ACTIVE_STATUSES, normalizePreferences, submittedRequests, mergeImageStageText, backgroundJob} from './state.js';
+import {initialState, checkpointState, savedMessages, publicRun, publicApproval, ACTIVE_STATUSES, normalizePreferences, submittedRequests, mergeImageStageText, backgroundJob} from './state.js';
 import {JarvisTransport} from './transport.js';
 import {normalizeProfile} from './profile.js';
 import {normalizePageLink, pageLinkToolHints, defaultPageLinkPrompt} from './page-link.js';
@@ -67,6 +67,7 @@ export class JarvisClient {
       libraryCapture: false,
       profile: false,
       talk: false,
+      toolApproval: false,
     };
     this.state.profile = null;
     this.publish();
@@ -192,7 +193,8 @@ export class JarvisClient {
       assertCapabilities(status);
       this.state.capabilities = {text: pageTextSupported(status), libraryCapture: status.extension?.features?.library_capture === true,
         profile: status.extension?.features?.profile === true,
-        talk: status.extension?.features?.talk === true};
+        talk: status.extension?.features?.talk === true,
+        toolApproval: status.extension?.features?.tool_approval === true};
       this.state.connection.authRequired = status.features.auth;
       if (status.features.auth && !this.token) {
         this.state.connection.status = 'auth_required';
@@ -263,6 +265,7 @@ export class JarvisClient {
       'conversation:created', 'conversation:loaded', 'chat:thinking', 'chat:run', 'chat:status',
       'chat:response', 'chat:error', 'chat:cancelled', 'chat:rejected', 'chat:resume_missing',
       'tool:start', 'tool:progress', 'tool:complete', 'tool:error', 'cancel:ack', 'mode:changed', 'mode:rejected', 'profile:changed',
+      'tool:approval_required', 'tool:approval_resolved', 'tool:approval_rejected',
       'task:updated', 'tasks:snapshot', 'chat:continuation'];
     transport.open(Object.fromEntries(names.map(event => [event, handle(event)])));
   }
@@ -464,7 +467,9 @@ export class JarvisClient {
         this.state.run = publicRun({...data, status: 'running'});
         this.state.conversationId = data.conversation_id || this.state.conversationId;
       } else if (event === 'chat:run') {
+        const pendingApprovalId = this.state.run?.approvalPending && this.state.run.approval?.approvalId;
         this.state.run = publicRun(data);
+        if (this.state.run?.approval?.approvalId === pendingApprovalId) this.state.run.approvalPending = true;
         if (data.message_id === this.pendingRequestId) {
           this.pendingRequestId = null;
           this.acceptPendingDraft();
@@ -472,6 +477,19 @@ export class JarvisClient {
         }
       } else if (event === 'chat:status') {
         if (this.isActive()) this.state.run.text = String(data.status || '').slice(0, 1000);
+      } else if (event === 'tool:approval_required') {
+        if (this.state.run?.status === 'running' && this.state.run?.messageId === data.message_id) {
+          this.state.run.approval = publicApproval(data);
+          this.state.run.approvalPending = false;
+        }
+      } else if (event === 'tool:approval_resolved') {
+        if (this.state.run?.approval?.approvalId === data.approval_id) {
+          this.state.run.approval = null;
+          this.state.run.approvalPending = false;
+        }
+      } else if (event === 'tool:approval_rejected') {
+        if (this.state.run?.approval?.approvalId === data.approval_id) this.state.run.approvalPending = false;
+        this.state.notice = data.error || 'That approval is no longer pending. Check the current request.';
       } else if (event.startsWith('tool:')) {
         const id = `${data.message_id || ''}-${data.tool || 'tool'}-${data.call_index ?? ''}`;
         const item = {id, tool: String(data.tool || 'Tool').slice(0, 100), status: event.split(':')[1],
@@ -493,7 +511,7 @@ export class JarvisClient {
         this.pendingRequestId = null;
         this.acceptPendingDraft();
         clearTimeout(this.recoveryTimer);
-        this.state.run = publicRun({...data, status: data.cancelled ? 'cancelled' : data.run_status || (data.ok === false ? 'failed' : 'completed')});
+        this.state.run = publicRun({...data, status: data.run_status || (data.cancelled ? 'cancelled' : data.ok === false ? 'failed' : 'completed')});
         this.listConversations().catch(() => {});
       } else if (['chat:error', 'chat:cancelled', 'chat:rejected'].includes(event)) {
         if (event === 'chat:rejected' || data.admitted === false) this.restorePendingDraft();
@@ -842,6 +860,21 @@ export class JarvisClient {
     }
     this.transport.emit('chat:cancel', {conversation_id: run.conversationId, message_id: run.messageId});
     this.state.run.status = 'stopping';
+    this.changed();
+  }
+
+  async decideApproval(approved) {
+    if (typeof approved !== 'boolean') throw new Error('Choose Allow once or Don’t run.');
+    const run = this.state.run;
+    const approval = run?.approval;
+    if (!this.isActive() || !approval || run.messageId !== approval.messageId ||
+        run.conversationId !== approval.conversationId || this.state.connection.status !== 'connected' ||
+        !this.transport?.socket?.connected) throw new Error('This approval is no longer available. Reconnect to check the request.');
+    if (approval.expiresAt && Date.now() / 1000 >= approval.expiresAt) throw new Error('This approval expired. Check the request.');
+    if (run.approvalPending) return;
+    this.transport.emit('tool:approval_decide', {approval_id: approval.approvalId,
+      conversation_id: approval.conversationId, message_id: approval.messageId, approved});
+    run.approvalPending = true;
     this.changed();
   }
 }

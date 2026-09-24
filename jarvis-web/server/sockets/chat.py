@@ -276,6 +276,8 @@ class ChatHandler:
     def __init__(self, socketio):
         self.socketio = socketio
         self.runs = ChatRuns(self._conversation_store, socketio.emit)
+        from ..services.tool_approvals import ToolApprovals
+        self.tool_approvals = ToolApprovals(self)
         from ..services.background_tasks import WebBackgroundTasks
         self.background_tasks = WebBackgroundTasks(self)
         self.sessions = {}  # session_id -> {mode, conversation_id, ...}
@@ -326,6 +328,17 @@ class ChatHandler:
                 if settled:
                     self.socketio.emit('chat:run', settled, room=self._delivery_room(session_id, conversation_id))
             self.pending_cancellations.pop(message_id, None)
+
+    def _install_tool_approval(self, orchestrator, conversation_id: str, message_id: str):
+        """Only Web foreground routing gets an interactive approval callback."""
+        setter = getattr(orchestrator, 'set_tool_approval_callback', None)
+        if callable(setter):
+            setter(lambda tool, arguments, permissions, call_index: self.tool_approvals.request(
+                conversation_id=conversation_id, message_id=message_id,
+                tool=tool, arguments=arguments, permissions=permissions,
+                call_index=call_index,
+                cancel_check=lambda: self.pending_cancellations.get(message_id, False),
+            ))
 
     def _get_completion_guard_policy(self) -> CompletionGuardPolicy:
         """Lazily build the Completion Guard policy helper for tests using __new__."""
@@ -2056,6 +2069,7 @@ Returned tool data:
 
             orchestrator.set_status_callback(status_callback)
             orchestrator.set_progress_callback(progress_callback)
+            self._install_tool_approval(orchestrator, conversation_id, repair_message_id)
             repair_strategy = self._classify_completion_guard_strategy(record, note)
             record['repair_strategy'] = repair_strategy
             if repair_tool_policy == 'none':
@@ -3261,6 +3275,27 @@ Previous structured data:
         def handle_chat_cancel(data):
             handle_cancel(data)
 
+        @self.socketio.on('tool:approval_decide')
+        def handle_tool_approval_decide(data):
+            data = data if isinstance(data, dict) else {}
+            session = self.sessions.get(request.sid, {})
+            conversation_id = data.get('conversation_id')
+            message_id = data.get('message_id')
+            if (not isinstance(conversation_id, str)
+                    or session.get('conversation_id') != conversation_id
+                    or not isinstance(message_id, str)
+                    or not isinstance(data.get('approval_id'), str)
+                    or not self.tool_approvals.decide(
+                        approval_id=data['approval_id'],
+                        conversation_id=conversation_id,
+                        message_id=message_id,
+                        approved=data.get('approved'))):
+                emit('tool:approval_rejected', {
+                    'conversation_id': conversation_id, 'message_id': message_id,
+                    'approval_id': data.get('approval_id'),
+                    'error': 'This approval is no longer pending. Reload the conversation.',
+                })
+
         @self.socketio.on('mode:set')
         def handle_mode_set(data):
             """Set the mode for this session and reload settings"""
@@ -4425,6 +4460,7 @@ Previous structured data:
             # Set web conversation ID for tracking in conversation metadata
             # This allows searching/filtering conversations by web chat session
             orchestrator.set_web_conversation_id(conversation_id)
+            self._install_tool_approval(orchestrator, conversation_id, message_id)
             blocked_tools = list(get_web_setting('tools.blocked', []))
             background_tools = [
                 name for name in prompt_meta.get('background_tools', [])
@@ -4587,6 +4623,12 @@ Previous structured data:
                 result['data']['attachment_errors'] = attachment_errors
             
             was_cancelled = result.get('cancelled', False)
+            approval_reply = (was_cancelled and isinstance(result.get('approval_outcome'), dict)
+                              and result['approval_outcome'].get('decision') in ('denied', 'expired'))
+            run_status = ('completed' if approval_reply else 'cancelled' if was_cancelled
+                          else 'completed' if result.get('ok', True) else 'failed')
+            if was_cancelled:
+                request_feedback = False
             from lib.background_tasks.admission import WebTaskContext, reject_background_result
             task_context = getattr(orchestrator, 'background_context', None)
             if isinstance(task_context, WebTaskContext):
@@ -4672,7 +4714,7 @@ Previous structured data:
                     save_data['_web_upload_stash'] = stash_info
                     save_data.setdefault('stash', stash_info)
                 save_data['_web_message_id'] = message_id
-                save_data['_run_status'] = 'cancelled' if was_cancelled else ('completed' if result.get('ok', True) else 'failed')
+                save_data['_run_status'] = run_status
                 save_data['cancelled'] = was_cancelled
                 save_data['_llm_provider'] = effective_provider
                 save_data['_llm_model'] = effective_model
@@ -4685,6 +4727,8 @@ Previous structured data:
                     save_data['usage'] = response_usage
                 if result.get('tool_trace'):
                     save_data['_tool_trace'] = result['tool_trace']
+                if isinstance(result.get('approval_outcome'), dict):
+                    save_data['_approval_outcome'] = result['approval_outcome']
                 # Include error details for failed tool calls (enables follow-up debugging)
                 # Without this, errors only exist in the speech text and can't be analyzed
                 if not result.get('ok') and result.get('error'):
@@ -4775,15 +4819,17 @@ Previous structured data:
             response_data['_human_reaction_eligible'] = human_reaction_eligible
             if result.get('tool_trace'):
                 response_data['_tool_trace'] = result['tool_trace']
+            if isinstance(result.get('approval_outcome'), dict):
+                response_data['_approval_outcome'] = result['approval_outcome']
 
-            completion_guard_prompt = (not pending_jobs) and (not is_workflow) and self._should_prompt_completion_guard(completion_guard_config, tools_used)
+            completion_guard_prompt = (not was_cancelled) and (not pending_jobs) and (not is_workflow) and self._should_prompt_completion_guard(completion_guard_config, tools_used)
             completion_guard_expires_in_ms = (
                 int(completion_guard_config.get('manual_prompt_ttl_seconds', 0) * 1000)
                 if completion_guard_prompt and completion_guard_config.get('manual_prompt_ttl_seconds', 0) > 0
                 else None
             )
             completion_guard_auto_eval = (
-                (not pending_jobs) and (not is_workflow)
+                (not was_cancelled) and (not pending_jobs) and (not is_workflow)
                 and result.get('ok', True)
                 and self._should_auto_evaluate_completion_guard(completion_guard_config, tools_used)
             )
@@ -4829,6 +4875,8 @@ Previous structured data:
                 'tools_used': tools_used,
                 'ok': result.get('ok', True),
                 'cancelled': was_cancelled,  # True if user stopped processing
+                'run_status': run_status,
+                'approval_outcome': result.get('approval_outcome'),
                 'duration_ms': duration_ms,
                 'usage': response_usage or {},
                 'audio_url': audio_url,

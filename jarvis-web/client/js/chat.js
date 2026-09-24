@@ -52,6 +52,7 @@ class ChatUI {
     this._workingLabelTimer = null;
     this._workingLabelVisible = false;
     this.isProcessing = false;
+    this.pendingToolApproval = null;
     
     // Feedback toggle state
     this.feedbackEnabled = false;
@@ -1379,6 +1380,7 @@ class ChatUI {
     const socket = window.jarvisSocket;
     
     socket.on('thinking', (data) => {
+      this._clearToolApproval();
       if (this._pendingSend?.requestId === data.message_id) this._pendingSend = null;
       this.currentMessageId = data.message_id;
       this._activatePendingToolsForMessage(data.message_id, true);
@@ -1441,6 +1443,17 @@ class ChatUI {
       const cardId = data.call_index > 0 ? `${data.tool}_${data.call_index}` : data.tool;
       this.updateToolCard(cardId, data.tool, 'error', { error: data.error });
     });
+    socket.on('toolApprovalRequired', (data) => this._showToolApproval(data));
+    socket.on('toolApprovalResolved', (data) => {
+      if (this.pendingToolApproval?.approval_id === data.approval_id) this._clearToolApproval();
+    });
+    socket.on('toolApprovalRejected', (data) => {
+      if (this.pendingToolApproval?.approval_id === data.approval_id) {
+        this.pendingToolApproval.decisionPending = false;
+        this._approvalUpdateRemaining?.();
+        Utils.toast(data.error || 'That approval is no longer pending.', 'warning', 5000);
+      }
+    });
 
     socket.on('modeChanged', (data) => {
       this._cancelRecording({ silent: true });
@@ -1468,6 +1481,8 @@ class ChatUI {
     });
     
     socket.on('response', (data) => {
+      if (this.pendingToolApproval?.message_id === data.message_id) this._clearToolApproval();
+      if (this._serverRunState?.message_id === data.message_id) this._serverRunState.approval = null;
       if (this._pendingSend?.requestId === data.message_id) this._pendingSend = null;
       this._activatePendingToolsForMessage(data.message_id);
       this.hideThinking();
@@ -1509,6 +1524,7 @@ class ChatUI {
     });
     
     socket.on('error', (data) => {
+      this._clearToolApproval();
       this.hideThinking();
       this.clearStatus();
       this.addErrorMessage(data.error);
@@ -1541,6 +1557,7 @@ class ChatUI {
     });
 
     socket.on('cancelled', (data) => {
+      this._clearToolApproval();
       this._resetProcessingUi();
       this._clearPendingToolsForMessage(data?.message_id);
 
@@ -1592,6 +1609,10 @@ class ChatUI {
     });
     socket.on('connectionChange', (data) => {
       this.updateSendButton();
+      if (this.pendingToolApproval) {
+        if (data.connected) this.pendingToolApproval.decisionPending = false;
+        this._approvalUpdateRemaining?.();
+      }
       if (!data.connected && this.isProcessing) {
         this.showProgressStatus('Connection lost. Reconnecting to the task…');
         this.stopBtn.disabled = true;
@@ -3367,7 +3388,8 @@ class ChatUI {
       displayMessage,
       imagePayload,
       activeBadge,
-      attachments
+      attachments,
+      this.currentMessageId
     );
     this.rememberRenderedMessage('user', this.currentMessageId);
     this.inputField.value = '';
@@ -3398,7 +3420,7 @@ class ChatUI {
     this._pendingSend = {
       requestId: this.currentMessageId, text, documents: [], images: [],
       toolHints: [...this.selectedToolHints], imageAction: 'analyze', imageSettings: {},
-      element: this.addUserMessage(text)
+      element: this.addUserMessage(text, null, '', null, this.currentMessageId)
     };
     this.rememberRenderedMessage('user', this.currentMessageId);
     this.updateSendButton();
@@ -3406,9 +3428,10 @@ class ChatUI {
   }
 
   /** Add user message to chat with optional source attachments and badge. */
-  addUserMessage(text, imageData = null, activeBadge = '', attachments = null) {
+  addUserMessage(text, imageData = null, activeBadge = '', attachments = null, requestId = null) {
     const messageEl = document.createElement('div');
     messageEl.className = 'message user';
+    if (requestId) messageEl.dataset.requestId = requestId;
     
     const images = this._normalizeMessageImages(imageData);
     let imageHtml = '';
@@ -5873,6 +5896,91 @@ class ChatUI {
     }
   }
 
+  _clearToolApproval() {
+    if (this._approvalTimer) clearInterval(this._approvalTimer);
+    this._approvalTimer = null;
+    this._approvalUpdateRemaining = null;
+    this._approvalCard?.remove();
+    this._approvalCard = null;
+    this.pendingToolApproval = null;
+  }
+
+  _showToolApproval(approval) {
+    if (!approval?.approval_id || !approval?.message_id || !approval?.tool) return;
+    if (approval.conversation_id !== window.jarvisSocket?.conversationId
+        || approval.message_id !== this.currentMessageId) return;
+    if (this.pendingToolApproval?.approval_id === approval.approval_id && this._approvalCard?.isConnected) {
+      this._approvalUpdateRemaining?.();
+      return;
+    }
+    this._clearToolApproval();
+    this.pendingToolApproval = approval;
+    const expiresAt = Number(approval.expires_at) || Date.now() / 1000 + 180;
+
+    const card = document.createElement('section');
+    card.className = 'message tool-approval-card';
+    card.setAttribute('role', 'group');
+    card.setAttribute('aria-label', 'Tool approval required');
+    const heading = document.createElement('strong');
+    heading.textContent = approval.summary || `Run ${approval.tool.replaceAll('_', ' ')}?`;
+    card.appendChild(heading);
+    for (const line of approval.detail || []) {
+      const detail = document.createElement('p');
+      detail.className = 'tool-approval-detail';
+      detail.textContent = String(line);
+      card.appendChild(detail);
+    }
+    if (approval.warning) {
+      const warning = document.createElement('p');
+      warning.className = 'tool-approval-warning';
+      warning.textContent = approval.warning;
+      card.appendChild(warning);
+    }
+    const remaining = document.createElement('p');
+    remaining.className = 'tool-approval-remaining';
+    remaining.setAttribute('role', 'status');
+    card.appendChild(remaining);
+    const actions = document.createElement('div');
+    actions.className = 'tool-approval-actions';
+    for (const [label, approved] of [['Allow once', true], ["Don't run", false]]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = approved ? 'btn btn-primary' : 'btn btn-secondary';
+      button.textContent = label;
+      button.addEventListener('click', () => {
+        if (!window.jarvisSocket?.connected || this.pendingToolApproval?.approval_id !== approval.approval_id
+            || approval.conversation_id !== window.jarvisSocket.conversationId
+            || approval.message_id !== this.currentMessageId
+            || Date.now() / 1000 >= expiresAt) return;
+        this.pendingToolApproval.decisionPending = true;
+        this._approvalUpdateRemaining?.();
+        window.jarvisSocket.emit('tool:approval_decide', {
+          approval_id: approval.approval_id,
+          conversation_id: approval.conversation_id,
+          message_id: approval.message_id,
+          approved,
+        });
+      });
+      actions.appendChild(button);
+    }
+    card.appendChild(actions);
+    this._approvalCard = card;
+    const owner = [...this.messagesContainer.children].find(element =>
+      element.classList?.contains('user') && element.dataset.requestId === approval.message_id);
+    if (!owner) { this._clearToolApproval(); return; }
+    this.messagesContainer.insertBefore(card, owner.nextSibling);
+    const updateRemaining = () => {
+      const seconds = Math.max(0, Math.ceil(expiresAt - Date.now() / 1000));
+      remaining.textContent = seconds ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} left to decide` : 'Approval time expired';
+      const disabled = !seconds || !window.jarvisSocket?.connected || this.pendingToolApproval?.decisionPending;
+      actions.querySelectorAll('button').forEach(button => { button.disabled = Boolean(disabled); });
+    };
+    this._approvalUpdateRemaining = updateRemaining;
+    updateRemaining();
+    this._approvalTimer = setInterval(updateRemaining, 1000);
+    Utils.scrollToBottom(this.messagesContainer);
+  }
+
   restoreRunState(run, { fromSnapshot = false, responseSaved = false, preservePreparation = false } = {}) {
     const active = run && ['running', 'stopping'].includes(run.status);
     if (!fromSnapshot && !active && run?.message_id && this.currentMessageId
@@ -5880,12 +5988,14 @@ class ChatUI {
     if (!fromSnapshot && run?.started_at < this._serverRunState?.started_at) return;
     this._serverRunState = run || null;
     if (preservePreparation && (this._attachmentSend || this._imageUpload)) {
+      this._clearToolApproval();
       this.stopBtn.disabled = !window.jarvisSocket.connected;
       this.stopBtn.style.opacity = this.stopBtn.disabled ? '0.5' : '1';
       this.showProgressStatus('Preparing attached sources…');
       return;
     }
     if (!fromSnapshot && active && this.currentMessageId !== run.message_id) {
+      this._clearToolApproval();
       // Another tab started a task. Load its user turn as well as its state.
       window.jarvisApp?.loadConversation(run.conversation_id);
       return;
@@ -5893,6 +6003,8 @@ class ChatUI {
     if (active) {
       const alreadyVisible = this.isProcessing && this.currentMessageId === run.message_id;
       this.currentMessageId = run.message_id;
+      if (run.approval && run.status === 'running') this._showToolApproval(run.approval);
+      else this._clearToolApproval();
       this.isProcessing = true;
       this.updateSendButton();
       if (!alreadyVisible) this.showThinking();
@@ -5900,6 +6012,7 @@ class ChatUI {
       this.stopBtn.disabled = run.status === 'stopping' || !window.jarvisSocket.connected;
       this.stopBtn.style.opacity = this.stopBtn.disabled ? '0.5' : '1';
     } else {
+      this._clearToolApproval();
       this._resetProcessingUi();
       this.currentMessageId = null;
       if (fromSnapshot && !responseSaved && run && ['failed', 'interrupted'].includes(run.status)) {
@@ -6978,6 +7091,7 @@ class ChatUI {
    */
   clearChat({ preserveAttachments = false, preservePreparation = false } = {}) {
     this._cancelRecording({ silent: true });
+    this._clearToolApproval();
     this._renderedMessageIds = new Set();
     const clearedSources = !preserveAttachments && Boolean(
       this.attachedDocuments.length || this.attachedImages.length

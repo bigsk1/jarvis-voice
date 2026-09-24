@@ -4,7 +4,7 @@ Execute commands on remote hosts via SSH with secure credential management and a
 
 ## Overview
 
-The `ssh_remote` tool allows Jarvis to connect to remote servers, execute commands, manage packages, and perform administrative tasks—all without leaving orphaned SSH sessions.
+The `ssh_remote` tool allows Jarvis to connect to remote servers, execute commands, manage packages, and perform administrative tasks. It closes its local SSH connection after each call; a remote command's state can be uncertain if the connection is interrupted.
 
 **Runtime gate:** the tool registers only when `config/ssh.json` exists and is
 non-empty (copy from `config/ssh.json.example`). SSH key paths inside the file
@@ -15,7 +15,7 @@ unavailable.
 ## Features
 
 - **Secure credential storage**: SSH keys in filesystem, sudo passwords in `.env` files
-- **Stateless connections**: Opens, executes, closes—no orphaned sessions
+- **Stateless connections**: Opens, executes, and closes each local SSH connection
 - **Output truncation**: Prevents context overflow (configurable limit)
 - **Multi-command support**: Execute sequences in a single session
 - **Apt management**: Built-in update/upgrade with package detection
@@ -46,7 +46,7 @@ unavailable.
   },
   "defaults": {
     "output_limit": 150,
-    "timeout": 60,
+    "timeout": 180,
     "connect_timeout": 10
   }
 }
@@ -126,6 +126,8 @@ Connects, runs hostname/uname, reports connection time.
 - Runs `apt update`
 - Lists upgradable packages
 - Optionally runs `apt upgrade -y` (if `upgrade: true`)
+- The update, package check, and upgrade steps have separate limits of 180, 30,
+  and 600 seconds. The outer Jarvis tool limit includes those steps and setup time.
 
 **Check only (no upgrade):**
 ```json
@@ -205,6 +207,9 @@ python3 skills/ssh_remote.py '{"action": "multi", "host": "staging", "commands":
 2. **Sudo passwords**: Stored in `.env`, referenced by env var name
 3. **No credentials in git**: Both `ssh.json` and `.env` files are gitignored
 
+The SSH tool sends the sudo password to `sudo -S` over the SSH channel's stdin;
+it does not place the password in the remote command string.
+
 ### Session Lifecycle
 
 ```
@@ -214,8 +219,10 @@ Tool Call → Connect → Execute → Close
 ```
 
 - No persistent connections
-- No orphaned sessions
 - Each tool call is independent
+- Stopping or timing out disconnects the local SSH client. It does not prove a
+  remote command stopped. During an upgrade, check the remote package manager
+  state before retrying; it may still be running or have unfinished packages.
 
 ### Output Handling
 
@@ -275,15 +282,17 @@ ssh -i ~/.ssh/staging/id_ed25519 user@host
 grep "STAGING_SUDO_PASS" config/cloud.env
 
 # Test sudo manually on remote
-ssh user@host "echo 'password' | sudo -S whoami"
+ssh -t user@host 'sudo -v'
 ```
 
 ### Command Timeout
 
-Increase timeout in `ssh.json`:
+Normal `run` and `multi` commands have a 180-second per-command limit by
+default. Change that in `ssh.json` if a host needs more time; the outer tool
+limit follows the selected host's setting:
 ```json
 "defaults": {
-  "timeout": 120
+  "timeout": 180
 }
 ```
 

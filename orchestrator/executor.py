@@ -23,6 +23,10 @@ from config_loader import export_config_environment, get_int, load_config
 from http_client import PROXY_POLICY_ENV, STANDARD_PROXY_ENV_KEYS
 from security_utils import redact_sensitive_text
 from serpapi_client import diagnose_serpapi_tool_failure
+from ssh_remote_commands import (
+    SSH_COMMAND_TIMEOUT_SECONDS, SSH_APT_UPDATE_TIMEOUT_SECONDS,
+    SSH_APT_CHECK_TIMEOUT_SECONDS, SSH_APT_UPGRADE_TIMEOUT_SECONDS,
+)
 from tool_child_environment import restrict_child_environment
 from tool_logger import get_logger
 from tool_progress import parse_tool_progress
@@ -177,8 +181,37 @@ class ToolExecutor:
         self.pipeline_executor = pipeline_executor
         self.workflow_status_callback = status_callback
 
-    def _get_subprocess_timeout(self, tool_name: str) -> int:
+    def _get_subprocess_timeout(self, tool_name: str, args: dict[str, Any] | None = None) -> int:
         """Return the subprocess timeout for a local tool."""
+        if tool_name == "ssh_remote":
+            args = args or {}
+            # The SSH script has per-command deadlines. Keep the outer guard
+            # beyond their sum so normal stage timeouts report from the script.
+            try:
+                with (self.project_root / "config" / "ssh.json").open() as config_file:
+                    config = json.load(config_file)
+                host = config.get("hosts", {}).get(args.get("host"), {})
+                defaults = config.get("defaults", {})
+                command_timeout = int(host.get("timeout", defaults.get("timeout", SSH_COMMAND_TIMEOUT_SECONDS)))
+                connect_timeout = int(host.get("connect_timeout", defaults.get("connect_timeout", 10)))
+                if command_timeout <= 0 or connect_timeout <= 0:
+                    raise ValueError("SSH timeout must be positive")
+            except (OSError, ValueError, TypeError, AttributeError):
+                command_timeout, connect_timeout = SSH_COMMAND_TIMEOUT_SECONDS, 10
+            action = args.get("action", "run")
+            setup_margin = connect_timeout + 60
+            if action == "apt_update":
+                stages = SSH_APT_UPDATE_TIMEOUT_SECONDS + SSH_APT_CHECK_TIMEOUT_SECONDS
+                if args.get("upgrade", True) is not False:
+                    stages += SSH_APT_UPGRADE_TIMEOUT_SECONDS
+                return stages + setup_margin
+            if action == "multi":
+                commands = args.get("commands")
+                count = len(commands) if isinstance(commands, list) else 1
+                return max(1, count) * command_timeout + setup_margin
+            if action == "run":
+                return command_timeout + setup_margin
+            return 60
         if tool_name == "opencode":
             # Let the skill report/abort its own configured HTTP deadline, then
             # retain a short process-cleanup window for the executor.
@@ -456,7 +489,7 @@ class ToolExecutor:
             # Ingest intel needs time for embedding generation (especially large profiles)
             # phone_call: Vapi max call length + poll loop + canvas save (see skills/phone_call.py)
             # Subprocess timeout settings see tool.json for HTTP timeouts
-            timeout = self._get_subprocess_timeout(tool_name)
+            timeout = self._get_subprocess_timeout(tool_name, args)
             
             # Materialize the request's deployment mode into the child env and
             # stamp JARVIS_MODE explicitly so tools never infer mode from the

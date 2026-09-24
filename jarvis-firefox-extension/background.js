@@ -193,6 +193,7 @@ const actions = {
   setDraft: payload => client.setDraft(payload.text, Object.hasOwn(payload, 'imageStageId') ? {imageStageId: payload.imageStageId} : {}),
   send: payload => client.send(payload.text),
   cancel: () => client.cancel(),
+  decideApproval: payload => client.decideApproval(payload.approved),
   setMode: payload => client.setMode(payload.mode),
   listConversations: () => client.listConversations(),
   loadConversation: payload => client.loadConversation(payload.conversationId),
@@ -245,7 +246,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
   // selected server or conversation. Socket events can still update run state.
   return enqueue(async () => {
     try {
-      if (!['openPopout', 'microphonePermission', 'updatePreferences', 'listConversations', 'connect'].includes(message.action)) talk.requireIdle();
+      if (!['openPopout', 'microphonePermission', 'updatePreferences', 'listConversations', 'connect', 'decideApproval'].includes(message.action)) talk.requireIdle();
       await actions[message.action](message.payload || {});
       return {ok: true, state: client.state};
     } catch (error) {

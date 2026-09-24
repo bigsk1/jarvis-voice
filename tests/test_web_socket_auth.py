@@ -132,7 +132,7 @@ def test_server_status_advertises_the_companion_contract_without_auth(monkeypatc
     assert payload['extension'] == {
         'api': 1,
         'socket_auth': True,
-        'features': dict.fromkeys(('chat', 'images', 'conversations', 'recovery', 'cancel', 'text', 'library_capture', 'profile', 'talk'), True),
+        'features': dict.fromkeys(('chat', 'images', 'conversations', 'recovery', 'cancel', 'text', 'library_capture', 'profile', 'talk', 'tool_approval'), True),
     }
 
 
@@ -184,6 +184,124 @@ def test_auth_expiry_keeps_a_real_admitted_run_recoverable(monkeypatch, journey)
 
 # Reuse the established temporary conversation/config/provider isolation fixture.
 from test_web_attachment_bundle_chat import journey  # noqa: E402, F401
+
+
+def test_live_web_socket_approval_survives_reconnect_and_new_turn(journey, monkeypatch):
+    """Exercise real authenticated socket events and worker threads without a provider."""
+    import flask_socketio
+    import orchestrator_v2
+    import test_web_attachment_bundle_chat as helpers
+    from jarvis_bundle_chat_test.services import tool_discovery
+
+    monkeypatch.setenv('WEBUI_PASSWORD', 'disposable-test-password')
+    monkeypatch.setenv('WEBUI_SECRET', 'disposable-test-secret')
+    monkeypatch.setattr(webui_auth, '_log_auth_event', lambda *a, **k: None)
+    monkeypatch.setitem(sys.modules, 'jarvis_bundle_chat_test.app',
+                        SimpleNamespace(get_startup_mode=lambda: 'cloud'))
+    monkeypatch.setattr(tool_discovery, 'get_tool_service',
+                        lambda mode: SimpleNamespace(get_tool_count=lambda: 0))
+    monkeypatch.setattr(helpers.chat, 'emit', flask_socketio.emit)
+
+    fake_orchestrator = orchestrator_v2.Orchestrator
+    monkeypatch.setattr(fake_orchestrator, 'set_tool_approval_callback',
+                        lambda self, callback: setattr(self, 'approval_callback', callback), raising=False)
+    executed = []
+
+    def process(self, _prompt, **_kwargs):
+        decision = self.approval_callback('api_call',
+            {'url': 'https://example.test/ping', 'method': 'GET'},
+            {'network': True, 'auto_approve': False}, 0)
+        if decision == 'approved':
+            executed.append('api_call')
+            return {'ok': True, 'speech': 'The approved call completed.',
+                    'data': {'api_call': {'status': 'ok'}}, 'tools_used': ['api_call']}
+        return {'ok': True, 'speech': 'You declined api_call. No calls completed.',
+                'data': {}, 'tools_used': [], 'cancelled': True,
+                'approval_outcome': {'tool': 'api_call', 'decision': decision}}
+
+    monkeypatch.setattr(fake_orchestrator, 'process', process)
+    app = Flask(__name__)
+    socket = socket_auth.AuthenticatedSocketIO(app, async_mode='threading')
+    handler = helpers.chat.ChatHandler(socket)
+    monkeypatch.setattr(handler, '_get_completion_guard_config', lambda mode: {'enabled': False})
+    monkeypatch.setattr(handler, '_compute_effective_evidence', lambda *args: None)
+    monkeypatch.setattr(handler, '_is_user_reaction_eligible', lambda *args, **kwargs: False)
+    monkeypatch.setattr(handler, '_hydrate_uploaded_image_payload', lambda payload, **kwargs: None)
+    first = socket.test_client(app, auth={'token': webui_auth.create_token()})
+    second = None
+
+    def receive_until(client, event_name, message_id=None):
+        seen = []
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            seen.extend(client.get_received())
+            for item in seen:
+                if (item['name'] == event_name and
+                        (message_id is None or item['args'][0].get('message_id') == message_id)):
+                    return item['args'][0], seen
+            time.sleep(0.01)
+        pytest.fail(f'{event_name} did not arrive; received {[item["name"] for item in seen]}')
+
+    try:
+        first.emit('chat:send', {'message': 'Call a harmless endpoint', 'mode': 'cloud'})
+        pending, first_events = receive_until(first, 'tool:approval_required')
+        conversation_id = pending['conversation_id']
+        assert any(item['name'] == 'conversation:created' for item in first_events)
+        assert not executed
+        first.disconnect()
+
+        second = socket.test_client(app, auth={'token': webui_auth.create_token()})
+        second.emit('tool:approval_decide', {
+            'approval_id': pending['approval_id'], 'conversation_id': conversation_id,
+            'message_id': pending['message_id'], 'approved': True,
+        })
+        rejected, _ = receive_until(second, 'tool:approval_rejected')
+        assert rejected['approval_id'] == pending['approval_id']
+        assert not executed
+        second.emit('conversation:load', {'conversation_id': conversation_id, 'reconnect_only': True})
+        restored, _ = receive_until(second, 'conversation:loaded')
+        assert restored['conversation']['run']['approval']['approval_id'] == pending['approval_id']
+        second.emit('tool:approval_decide', {
+            'approval_id': pending['approval_id'], 'conversation_id': conversation_id,
+            'message_id': pending['message_id'], 'approved': False,
+        })
+        denied, denied_events = receive_until(second, 'chat:response', pending['message_id'])
+        assert denied['cancelled'] is True
+        assert denied['run_status'] == 'completed'
+        assert any(item['name'] == 'chat:run' and item['args'][0].get('status') == 'completed'
+                   for item in denied_events)
+        assert denied['approval_outcome']['decision'] == 'denied'
+        assert not executed
+
+        second.emit('chat:send', {'message': 'Try the call again', 'mode': 'cloud',
+                                  'conversation_id': conversation_id})
+        retry, _ = receive_until(second, 'tool:approval_required')
+        assert retry['approval_id'] != pending['approval_id']
+        second.emit('tool:approval_decide', {
+            'approval_id': retry['approval_id'], 'conversation_id': conversation_id,
+            'message_id': retry['message_id'], 'approved': True,
+        })
+        completed, _ = receive_until(second, 'chat:response', retry['message_id'])
+        assert completed['cancelled'] is False
+        assert completed['tools_used'] == ['api_call']
+        assert executed == ['api_call']
+
+        second.emit('chat:send', {'message': 'Stop at the approval', 'mode': 'cloud',
+                                  'conversation_id': conversation_id})
+        stopped_call, _ = receive_until(second, 'tool:approval_required')
+        second.emit('chat:cancel', {'conversation_id': conversation_id,
+                                    'message_id': stopped_call['message_id']})
+        stopped, _ = receive_until(second, 'chat:response', stopped_call['message_id'])
+        assert stopped['cancelled'] is True
+        assert stopped['run_status'] == 'cancelled'
+        assert stopped['approval_outcome']['decision'] == 'cancelled'
+        assert executed == ['api_call']
+    finally:
+        for client in (first, second):
+            if client and client.is_connected():
+                client.disconnect()
+        for lease in handler.runs.leases.values():
+            lease.release()
 
 
 def test_existing_browser_refreshes_auth_and_preserves_recovery_on_login():

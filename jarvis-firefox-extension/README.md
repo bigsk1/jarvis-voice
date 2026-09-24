@@ -15,6 +15,7 @@ This independently versioned extension targets **unlisted Mozilla signing and se
 - Sends your question or an **Analyze page** / **Analyze screenshot** prompt through your Jarvis Web server.
 - Provides right-click **Jarvis** actions for a page capture, selected text, a link, or an image URL.
 - Shows task and tool progress, completed answers, conversation history with pinned labels, and **Stop**.
+- Shows **Allow once** and **Don't run** for a pending Web tool call that requires approval, including during Talk. Denial stops that sequence and keeps earlier results in the conversation.
 - Displays background task cards and late answers in the open conversation on compatible Jarvis Web servers, without interrupting the current chat turn or Talk.
 - Reconnects to accepted work by its request/conversation ID without automatically sending the question again.
 - Shows a toolbar badge for pending work and unread results, with optional desktop notifications.
@@ -36,6 +37,8 @@ Replies support headings, ordered/unordered lists with nesting, fenced code, bol
 The extension checks `/api/status` for the capability contract and rejects servers that lack Companion API 1 before sending chat content. Missing `features.text` does not block that connection; Capture then takes a screenshot only. The contract is independent of the extension and Jarvis release numbers.
 
 Profile appearance is also optional (`extension.features.profile`). On older servers, user messages show **You** with the packaged HUD icon. Restart an updated Web server to enable profile sync, then reload the companion. Appearance is shared by clients of that server across cloud/local mode; it does not change login credentials or the Intelligence Profile Card.
+
+Tool approval requires `extension.features.tool_approval` on the Web server. The decision buttons work in chat and Talk and only approve the displayed pending call. If an older Companion is connected while Jarvis waits for approval, open the conversation in Jarvis Web to respond. A declined call ends the current turn with any prior results saved; a later request can ask for the task again and approve a new call.
 
 ## Install the signed extension
 

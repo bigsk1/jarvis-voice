@@ -154,6 +154,64 @@ def test_two_pdfs_and_text_are_saved_routed_and_restored_in_order(journey):
     assert 'Budget is 120' in history[0]['attachment_context']
 
 
+def test_denied_web_tool_saves_partial_result_for_followup(journey, monkeypatch):
+    """A real Web run pauses, stops its sequence, and persists prior data."""
+    import threading
+    import time
+    import orchestrator_v2
+
+    orchestrator = orchestrator_v2.Orchestrator
+    histories = []
+    monkeypatch.setattr(journey.handler, '_should_prompt_completion_guard', lambda *_: True)
+    monkeypatch.setattr(journey.handler, '_should_auto_evaluate_completion_guard', lambda *_: True)
+    monkeypatch.setattr(orchestrator, 'set_tool_approval_callback',
+                        lambda self, callback: setattr(self, 'approval_callback', callback), raising=False)
+
+    def process(self, _prompt, **kwargs):
+        histories.append(kwargs['conversation_history'])
+        if len(histories) == 1:
+            decision = self.approval_callback(
+                'api_call', {'url': 'https://example.test/path?token=private', 'method': 'GET'},
+                {'network': True, 'auto_approve': False}, 0)
+            assert decision == 'denied'
+            return {'ok': True, 'speech': 'Stopped before running api_call. Earlier lookup is saved.',
+                    'raw_llm_response': 'Stopped before running api_call. Earlier lookup is saved.',
+                    'data': {'safe_read': {'title': 'Earlier result', 'url': 'https://example.test/source'}},
+                    'tools_used': ['safe_read'], 'cancelled': True,
+                    'approval_outcome': {'tool': 'api_call', 'decision': decision}}
+        return {'ok': True, 'speech': 'The earlier result is available.', 'data': {}, 'tools_used': []}
+
+    monkeypatch.setattr(orchestrator, 'process', process)
+    journey.send(message='Read, then call the API')
+    conversation_id = journey.handler.sessions['client']['conversation_id']
+    worker = threading.Thread(target=journey.process, daemon=True)
+    worker.start()
+    deadline = time.monotonic() + 2
+    while not journey.handler.runs.active[conversation_id].get('approval') and time.monotonic() < deadline:
+        time.sleep(0.01)
+    pending = journey.handler.runs.active[conversation_id]['approval']
+    assert pending['preview']['url'] == 'https://example.test/path'
+    with Flask(__name__).test_request_context('/') as context:
+        context.request.sid = 'client'
+        journey.socket.handlers['tool:approval_decide']({
+            'approval_id': pending['approval_id'], 'conversation_id': conversation_id,
+            'message_id': pending['message_id'], 'approved': False,
+        })
+    worker.join(3)
+    assert not worker.is_alive()
+    saved = journey.store.get_conversation(conversation_id)
+    assert saved['messages'][-1]['data']['safe_read']['title'] == 'Earlier result'
+    assert saved['messages'][-1]['data']['_approval_outcome']['decision'] == 'denied'
+    assert saved['messages'][-1]['data']['cancelled'] is True
+    response = next(payload for event, payload, _ in journey.socket.events
+                    if event == 'chat:response' and payload['message_id'] == pending['message_id'])
+    assert response['completion_guard']['prompt_user'] is False
+    assert not journey.pending
+    journey.send(message='Tell me about the earlier result', conversation_id=conversation_id)
+    journey.process()
+    assert histories[1][-1]['tool_results']['safe_read']['title'] == 'Earlier result'
+
+
 def test_legacy_text_payload_is_durable_and_chat_only_compatible(journey):
     journey.send(message='Explain the note.', file_context={'name': 'note.md', 'content': 'The exact project name is Elm.'}, tool_policy='none')
     journey.process()

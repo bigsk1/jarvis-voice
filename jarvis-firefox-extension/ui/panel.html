@@ -80,6 +80,16 @@
         </div>
       </section>
       <div id="progress-area" class="progress-area" role="status" hidden><span class="activity-dot" aria-hidden="true"></span><span id="progress-text">Working…</span><button id="cancel-button" class="button button-stop" type="button">Stop</button></div>
+      <section id="tool-approval" class="tool-approval" aria-label="Tool approval" hidden>
+        <strong id="tool-approval-title"></strong>
+        <p id="tool-approval-description">Jarvis is waiting. The microphone is off while you decide.</p>
+        <div id="tool-approval-details"></div>
+        <p id="tool-approval-warning" class="helper"></p>
+        <div class="talk-actions">
+          <button id="tool-approval-allow" class="button button-primary" type="button">Allow once</button>
+          <button id="tool-approval-deny" class="button button-stop" type="button">Don't run</button>
+        </div>
+      </section>
       <section id="attachment-panel" class="attachment-panel" aria-label="Captured screenshot" hidden>
         <button id="preview-button" class="preview-button" type="button" title="Enlarge screenshot" aria-label="Enlarge screenshot"><img id="attachment-preview" alt="Screenshot ready to send"></button>
         <div class="attachment-details"><span class="eyebrow">Screenshot ready</span><strong id="attachment-title">Browser view</strong><span id="attachment-meta" class="helper"></span><div class="attachment-actions"><button id="recapture-button" class="text-button" type="button">Capture again</button><button id="analyze-button" class="text-button accent-text" type="button">Analyze screenshot</button></div></div>

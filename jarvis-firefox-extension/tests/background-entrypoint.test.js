@@ -98,6 +98,7 @@ async function boot({ deferRestore = false, deferCapture = false } = {}) {
     async findSubmittedConversation() { return null; }
     async loadConversation(id) { this.requireIdle(); this.state.conversationId = id; this.publish(); }
     async send() { calls.sends += 1; }
+    async decideApproval(approved) { calls.approvals = [...(calls.approvals || []), approved]; }
     async logout() { calls.closes += 1; this.transport = null; }
   }
   const captureSource = (api, source) => captureActual(api, source, {
@@ -138,6 +139,18 @@ test('background starts with bundled Socket.IO and registers wake handlers befor
   app.restored();
   assert.equal((await pending).ok, true);
   assert.equal(app.calls.network, 0);
+});
+
+test('approval decision remains available while Talk owns the active turn', async () => {
+  const app = await boot();
+  const bridge = vm.runInContext('talk', app.context);
+  bridge.owner = {id: 'talk-turn'};
+  app.client.state.run = {status: 'running', messageId: 'r1'};
+  const reply = await app.browser.runtime.onMessage.fire({type: 'jarvis:command',
+    action: 'decideApproval', payload: {approved: false}}, ownSender);
+  assert.equal(reply.ok, true);
+  assert.deepEqual(app.calls.approvals, [false]);
+  bridge.owner = null;
 });
 
 test('only this extension panel can fetch state, issue commands or hold a UI port', async () => {

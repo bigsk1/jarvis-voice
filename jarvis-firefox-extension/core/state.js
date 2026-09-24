@@ -31,7 +31,7 @@ export function initialState(settings = {}) {
     connection: {status: 'unconfigured', authRequired: false, error: null},
     source: null, conversationId: null, conversationGeneration: 0, backgroundJobs: [], conversations: [], messages: [],
     draft: {text: '', attachment: null, context: null, page: null, pageLink: null}, run: null, progress: [],
-    mode: 'cloud', notice: null, submittedRequests: [], capabilities: {text: null, libraryCapture: false, profile: false, talk: false}, profile: null,
+    mode: 'cloud', notice: null, submittedRequests: [], capabilities: {text: null, libraryCapture: false, profile: false, talk: false, toolApproval: false}, profile: null,
   };
 }
 
@@ -43,6 +43,23 @@ export function publicRun(run) {
     conversationId: run.conversation_id || run.conversationId,
     status: run.status,
     text: run.status_text || run.error || '',
+    approval: publicApproval(run.approval),
+  };
+}
+
+export function publicApproval(raw) {
+  if (!raw || typeof raw.approval_id !== 'string' || typeof raw.message_id !== 'string' ||
+      typeof raw.conversation_id !== 'string' || typeof raw.tool !== 'string') return null;
+  return {
+    approvalId: raw.approval_id.slice(0, 150), messageId: raw.message_id.slice(0, 150),
+    conversationId: raw.conversation_id.slice(0, 150), tool: raw.tool.slice(0, 100),
+    summary: typeof raw.summary === 'string' ? raw.summary.slice(0, 650) : '',
+    detail: Array.isArray(raw.detail) ? raw.detail.filter(item => typeof item === 'string').slice(0, 12).map(item => item.slice(0, 650)) : [],
+    warning: typeof raw.warning === 'string' ? raw.warning.slice(0, 300) : '',
+    preview: Object.fromEntries(Object.entries(raw.preview || {}).filter(([key, value]) =>
+      typeof key === 'string' && typeof value === 'string').slice(0, 24).map(([key, value]) => [key.slice(0, 50), value.slice(0, 525)])),
+    permissions: Object.fromEntries(Object.entries(raw.permissions || {}).filter(([, value]) => typeof value === 'boolean').slice(0, 12)),
+    expiresAt: Number(raw.expires_at) || 0,
   };
 }
 
@@ -88,6 +105,7 @@ export function checkpointState(state) {
       })),
     })),
     progress: state.progress.slice(-20),
+    run: state.run ? {...state.run, approval: null} : null,
     backgroundJobs: (state.backgroundJobs || []).slice(-100),
   };
 }

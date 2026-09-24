@@ -304,6 +304,7 @@ FOLLOWUP_DATA_SKIP_KEYS = frozenset({
     'server_side_tools',
     'experience_id',
     '_tool_trace',
+    '_approval_outcome',
     'background_jobs',  # Web cards can contain live-view bearer URLs; task evidence is projected separately.
     'provider_continuation',
     '_provider_continuation',

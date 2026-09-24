@@ -341,7 +341,7 @@ Control which tools are loaded to reduce token count and improve performance:
 
 ## Permission System
 
-Tool permissions are defined in each tool schema. The current implementation is warning-only: it classifies a call and prints a permission warning, but it does not pause, ask the user, or wait for approval. After the warning, the prepared call executes immediately.
+Tool permissions are defined in each tool schema. Foreground Jarvis Web chat pauses before an in-flight tool call whose manifest explicitly sets `auto_approve: false`. The same pending call appears in Web chat, Web Talk, and a compatible Firefox Companion. All other tool calls and non-Web entry points keep their existing execution behavior.
 
 ```json
 {
@@ -350,31 +350,19 @@ Tool permissions are defined in each tool schema. The current implementation is 
     "bash": false,         // Executes shell commands
     "network": true,       // Makes HTTP requests
     "filesystem": false,   // Reads/writes files
-    "auto_approve": false  // Show the current warning; future policy hook
+    "auto_approve": false  // Require one-time approval in foreground Web chat
   }
 }
 ```
 
 **Current behavior:**
-- ✅ **Auto-approved** (`auto_approve: true`) — skips the permission warning.
-- ⚠️ **Announced** (`auto_approve: false` plus network/filesystem/bash/dangerous metadata) — prints a warning and proceeds without delay.
-- There is currently no interactive approval state and no distinction between read-only and mutating actions within one tool.
+- `auto_approve: true` or a missing permission entry runs normally.
+- An explicit `auto_approve: false` in foreground Web chat waits up to three minutes for **Allow once** or **Don't run**. The prompt describes the action using a bounded redacted preview of material arguments and gives a short warning for relevant network, command, file, or high-impact access. Approval applies to one prepared call and is bound to its argument hash; it never authorizes regenerated arguments or later calls.
+- **Don't run**, Stop, and timeout prevent that call and every later call in the turn. Jarvis saves a partial answer with earlier completed tool results and a stopped explanation. The conversation accepts follow-ups. Asking again starts a new turn with a new approval request if the tool is selected again.
+- Web Talk uses the buttons in its existing panel while the microphone is off. Firefox Companion shows the same decision controls for chat and Talk when connected to a compatible Web server. A disconnected client can recover the pending prompt from the Web run snapshot; an older Companion can open Jarvis Web to respond.
+- Workflows, scheduled runs, the separate FastAPI surface, native voice, and CLI do not install the Web approval callback. Their calls still follow the existing executor behavior and warning. Permission flags such as `dangerous`, `network`, `filesystem`, and `bash` remain metadata and may also be used by other policies; they do not independently trigger this approval.
 
-The metadata still has value even without prompts: it documents side effects, supports audits and policy checks, and leaves a common integration point for Web UI, CLI, and wake-word entry paths. Keep `auto_approve: false` on tools with meaningful external or destructive actions unless silently bypassing a future policy is intentional.
-
-### If Interactive Approval Is Added
-
-Approval must bind to an already prepared, exact call—not a general description that allows the model to regenerate different arguments afterward. A valid approval record should include:
-
-- Tool name and normalized arguments
-- Concrete target or recipient
-- Hash/signature of the approved call
-- One-shot use and short expiration
-- Execution of the same call without another model-generated argument pass
-
-The orchestrator should own this boundary. Surface-specific adapters can then present it appropriately: a Web UI Yes/No button, a CLI prompt, or wake-word voice confirmation. This avoids three independent permission systems with different safety behavior.
-
-Interactive approval is most useful for a narrow group of irreversible or external actions such as phone calls, email/webhook sending, SSH mutations, destructive Docker/system commands, and bulk deletion. It is probably unnecessary for ordinary reads, searches, calculations, or well-guarded local edits.
+The pause is in the top-level Web orchestrator after argument preparation and before `tool_start` and executor dispatch. The Web server owns the exact arguments and a short-lived, one-shot decision ID; clients cannot submit changed arguments with an approval. Tool-specific validation remains in force after approval.
 
 ### Prefer Deterministic Preflight When Possible
 
@@ -586,9 +574,9 @@ def extract_pdf_text(file_path: str) -> str:
 
 1. **Add your tools** - Home automation, webhooks, API integrations
 2. **Test voice commands** - Start jarvis and try different commands
-3. **Keep permission metadata accurate** - Document side effects even while enforcement remains warning-only
+3. **Keep permission metadata accurate** - Document side effects and Web approval behavior
 4. **Build workflows** - Chain multiple tools together
-5. **Consider narrow approval adapters** - Only for exact, prepared high-risk calls
+5. **Review action-level permission needs** - A coarse manifest flag can require approval for read-only actions of the same tool
 
 ## Support
 

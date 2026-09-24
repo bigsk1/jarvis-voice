@@ -252,7 +252,7 @@ export class TalkController {
     if (!s?.turn || data.message_id !== s.turn.id || data.conversation_id !== s.conversationId) return;
     if (['running', 'stopping'].includes(data.status)) return;
     s.turn.settled = true;
-    if (data.status !== 'completed') {
+    if (data.status !== 'completed' && !['denied', 'expired'].includes(s.turn.approvalOutcome)) {
       s.turn.answerFinished = true;
       if (!s.interrupting) this.pause(data.error || 'The task did not complete. Resume when ready.');
     }
@@ -263,9 +263,11 @@ export class TalkController {
     const s = this.session;
     if (!s?.turn || data.message_id !== s.turn.id || s.turn.responseReceived) return;
     s.turn.responseReceived = true;
-    if (s.paused || s.interrupting || s.turn.silent || data.cancelled || data.ok === false) {
+    s.turn.approvalOutcome = data.approval_outcome?.decision;
+    const approvalReply = ['denied', 'expired'].includes(s.turn.approvalOutcome);
+    if (s.paused || s.interrupting || s.turn.silent || (data.cancelled && !approvalReply) || data.ok === false) {
       s.turn.answerFinished = true;
-      if (!s.paused && !s.interrupting && !s.turn.silent) this.pause('The task did not complete. Check the reply, then Resume.');
+      if (!s.paused && !s.interrupting && !s.turn.silent) this.pause('The task stopped. Check the reply, then Resume.');
       this._advance(s); return;
     }
     const generation = s.generation;

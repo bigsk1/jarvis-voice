@@ -25,6 +25,15 @@ speaking, or paused. The microphone track is disabled while transcribing,
 working, and speaking. Use Interrupt to cut in; speaking over playback does not
 trigger another request.
 
+When a Web tool requires approval, Talk pauses with the microphone off and shows
+**Allow once** and **Don't run** in the Talk panel. Choose one there or in the
+chat approval card. **Don't run** stops that tool sequence and leaves completed
+results in chat for follow-up; **Allow once** runs only the pending call. Ending
+Talk or pressing Stop while approval is pending cancels the turn. A new request
+can propose the tool again and asks for a new approval.
+Talk speaks the declined or expired approval reply, then resumes listening. Stop
+pauses Talk as before.
+
 Changing conversations, hiding the page, or losing the connection ends capture
 and playback. Already submitted work may finish in chat and can be recovered
 through [task recovery](WEB_TASK_RECOVERY.md). Starting a new chat or changing

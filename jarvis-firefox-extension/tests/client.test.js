@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JarvisClient} from '../core/client.js';
+import {publicApproval} from '../core/state.js';
 
 const ORIGIN = 'https://jarvis.example';
 const ID = '9c892f85-b79a-44c3-9be1-6b66d2f73145';
@@ -16,6 +17,14 @@ const PAGE = {
 };
 const PAGE_LINK = {title: 'A YouTube video', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=120'};
 const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test('approval normalization retains the bounded SSH command list and omission note', () => {
+  const detail = Array.from({length: 10}, (_, index) => `Command ${index + 1}: echo ${index + 1}`);
+  detail.push('1 additional commands are not shown.', 'Runs with sudo; credentials stay on the server.');
+  const approval = publicApproval({approval_id: 'once', conversation_id: ID,
+    message_id: 'turn', tool: 'ssh_remote', detail});
+  assert.deepEqual(approval.detail, detail);
+});
 
 test('late task events preserve an active turn, progress and draft, and deduplicate answers', async () => {
   const h=harness();await h.start();
@@ -43,6 +52,40 @@ test('late task events preserve an active turn, progress and draft, and deduplic
   socket.receive('conversation:loaded',{conversation:{id:ID,generation:1,messages:[]}});
   assert.equal(h.client.state.conversationGeneration,2);
   assert.equal(h.client.state.messages.length,2);
+  h.client.close();
+});
+
+test('prepared tool approval is scoped to the active turn and recovered snapshot', async () => {
+  const h = harness({capabilities: {...CAPABILITIES, extension: {...CAPABILITIES.extension,
+    features: {...CAPABILITIES.extension.features, tool_approval: true}}}});
+  await h.start();
+  const socket = h.sockets[0];
+  const approval = {approval_id: 'once', conversation_id: ID, message_id: 'turn', tool: 'api_call',
+    summary: 'Send a GET request to https://example.test/path?', detail: [],
+    warning: 'This call may connect to the network.',
+    preview: {url: 'https://example.test/path'}, permissions: {network: true, auto_approve: false},
+    expires_at: Date.now() / 1000 + 60};
+  h.client.restoringConversation = ID;
+  socket.receive('conversation:loaded', {conversation: {id: ID, generation: 0, messages: [],
+    run: {conversation_id: ID, message_id: 'turn', status: 'running', approval}}});
+  assert.equal(h.client.state.capabilities.toolApproval, true);
+  assert.equal(h.client.state.run.approval.approvalId, 'once');
+  assert.equal(h.client.state.run.approval.summary, approval.summary);
+  await h.client.checkpoint();
+  assert.equal(h.storage.session.data.jarvisSession.state.run.approval, null,
+    'A stale approval is never restored from extension storage');
+  await h.client.decideApproval(false);
+  assert.deepEqual(socket.sent.at(-1), {name: 'tool:approval_decide', data: {
+    approval_id: 'once', conversation_id: ID, message_id: 'turn', approved: false}});
+  socket.receive('chat:run', {conversation_id: ID, message_id: 'turn', status: 'running', approval});
+  assert.equal(h.client.state.run.approvalPending, true);
+  await h.client.decideApproval(true);
+  assert.equal(socket.sent.filter(item => item.name === 'tool:approval_decide').length, 1);
+  socket.receive('tool:approval_rejected', {conversation_id: ID, message_id: 'turn', approval_id: 'once'});
+  assert.equal(h.client.state.run.approvalPending, false);
+  socket.receive('tool:approval_resolved', {conversation_id: ID, message_id: 'turn', approval_id: 'once'});
+  assert.equal(h.client.state.run.approval, null);
+  await assert.rejects(h.client.decideApproval(true), /no longer available/);
   h.client.close();
 });
 

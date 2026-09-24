@@ -7132,6 +7132,15 @@ body.log-panel-open .main-content {
 .talk-explanation { font-size: .8rem; line-height: 1.5; color: var(--text-secondary, #a9b8cc); margin: .7rem 0; }
 .talk-transcript { max-height: 5rem; overflow: auto; overflow-wrap: anywhere; font-size: .85rem; line-height: 1.5; }
 .talk-transcript:empty { display: none; }
+.talk-approval, .tool-approval-card { border: 1px solid var(--border-color, #365269); border-radius: 10px; padding: .8rem; background: var(--bg-secondary, #141c28); }
+.talk-approval[hidden] { display: none; }
+.talk-approval p { margin: .5rem 0 0; overflow-wrap: anywhere; }
+#talkApprovalDetails { max-height: 20vh; overflow-y: auto; white-space: pre-wrap; }
+.tool-approval-card { margin: .75rem 0; }
+.tool-approval-detail { margin: .5rem 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.tool-approval-warning, .tool-approval-remaining { margin: .5rem 0; color: var(--text-secondary, #a9b8cc); font-size: .82rem; }
+.tool-approval-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.tool-approval-actions button { min-height: 40px; }
 .talk-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
 .talk-actions button { min-height: 40px; }
 @media (max-width: 600px) {

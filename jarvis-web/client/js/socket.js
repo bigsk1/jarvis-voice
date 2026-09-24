@@ -121,6 +121,9 @@ class JarvisSocket {
     this.socket.on('tool:error', (data) => {
       this._emit('toolError', data);
     });
+    this.socket.on('tool:approval_required', (data) => this._emit('toolApprovalRequired', data));
+    this.socket.on('tool:approval_resolved', (data) => this._emit('toolApprovalResolved', data));
+    this.socket.on('tool:approval_rejected', (data) => this._emit('toolApprovalRejected', data));
 
     this.socket.on('chat:response', (data) => {
       this._emit('response', data);
@@ -402,7 +405,8 @@ class JarvisSocket {
       return;
     }
     const scoped = new Set([
-      'thinking', 'toolStart', 'toolProgress', 'toolComplete', 'toolError', 'response',
+      'thinking', 'toolStart', 'toolProgress', 'toolComplete', 'toolError',
+      'toolApprovalRequired', 'toolApprovalResolved', 'toolApprovalRejected', 'response',
       'stream', 'error', 'cancelled', 'cancelAck', 'status', 'runState', 'rejected',
       'feedbackStart', 'feedbackComplete', 'completionGuardUpdated',
       'completionGuardTicketCreated', 'completionGuardError'

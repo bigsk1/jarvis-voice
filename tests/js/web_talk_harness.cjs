@@ -11,7 +11,7 @@ class Element {
   setAttribute(name, value) { this.attributes[name] = value; }
   focus() {}
 }
-const elements = Object.fromEntries(['talkBtn','talkPanel','talkStatus','talkTranscript','talkPause','talkInterrupt','talkEnd','convertBtn'].map(name => [name, new Element()]));
+const elements = Object.fromEntries(['talkBtn','talkPanel','talkStatus','talkTranscript','talkPause','talkInterrupt','talkEnd','talkApproval','talkApprovalDetails','talkApprovalAllow','talkApprovalDeny','convertBtn'].map(name => [name, new Element()]));
 const docEvents = {}, windowEvents = {}, socketEvents = {};
 const requests = [], permissions = [], recorders = [], contexts = [], tracks = [], notices = [], sent = [], cancelled = [], warmups = [];
 const intervals = new Map(), timers = new Map();
@@ -20,6 +20,7 @@ const document = {hidden:false, getElementById: name => elements[name], addEvent
 const socket = {
   connected:true, mode:'local', conversationId:'a',
   on(event,fn){(socketEvents[event] ||= []).push(fn);},
+  emit(event,data){sent.push([event,data]);},
   cancel(cid,id){cancelled.push([cid,id]);return true;}
 };
 function emit(event, data) { for (const fn of socketEvents[event] || []) fn(data); }
@@ -137,6 +138,37 @@ async function audio(){requests.at(-1).resolve({ok:true,arrayBuffer:async()=>new
     await start();chat.isProcessing=true;emit('runState',{conversation_id:'a',message_id:'other',status:'running'});
     assert.equal(talk.session.phase,'paused');await talk.resume();assert.equal(permissions.length,1);
     chat.isProcessing=false;const pending=talk.resume();await flush();permissions.at(-1).resolve(stream());await pending;assert.equal(talk.session.phase,'listening');
+  } else if(scenario==='approval') {
+    await start();await utterance();await transcribe();
+    const approval={approval_id:'once',conversation_id:'a',message_id:'r1',tool:'api_call',
+      preview:{url:'https://example.test/path'},permissions:{network:true,auto_approve:false}};
+    emit('runState',{conversation_id:'a',message_id:'r1',status:'running',approval});
+    assert.equal(elements.talkApproval.hidden,false);
+    assert.equal(elements.talkStatus.textContent,'Approval needed — microphone off');
+    assert.equal(tracks[0].enabled,false);
+    elements.talkApprovalDeny.events.click[0]();
+    assert.equal(JSON.stringify(sent.at(-1)),JSON.stringify(['tool:approval_decide',{approval_id:'once',conversation_id:'a',message_id:'r1',approved:false}]));
+    emit('runState',{conversation_id:'a',message_id:'r1',status:'running',approval});
+    assert.equal(elements.talkApprovalDeny.disabled,true);
+    emit('runState',{conversation_id:'a',message_id:'r1',status:'running'});
+    assert.equal(elements.talkApproval.hidden,true);
+    settle('completed');
+    assert.equal(talk.session.phase,'waiting');
+    await answer({cancelled:true,approval_outcome:{tool:'api_call',decision:'denied'},speech:'You declined api_call. Earlier results are saved.'});
+    assert.equal(talk.session.phase,'speaking');
+    assert.equal(requests.at(-1).url,'/api/tts');
+    await audio();contexts[0].sources[0].onended();await flush();
+    finishTimers();assert.equal(talk.session.phase,'listening');
+  } else if(scenario==='approval_timeout') {
+    await start();await utterance();await transcribe();
+    settle('completed');assert.equal(talk.session.phase,'waiting');
+    await answer({cancelled:true,approval_outcome:{tool:'api_call',decision:'expired'},speech:'Approval for api_call expired.'});
+    assert.equal(talk.session.phase,'speaking');await audio();contexts[0].sources[0].onended();await flush();
+    finishTimers();assert.equal(talk.session.phase,'listening');
+  } else if(scenario==='approval_stop') {
+    await start();await utterance();await transcribe();
+    await answer({cancelled:true,approval_outcome:{tool:'api_call',decision:'cancelled'},speech:'Stopped before api_call.'});
+    settle('cancelled');assert.equal(talk.session.phase,'paused');
   } else if(scenario==='composer_restore') {
     chat.uploadBtn.disabled=true;await start();assert.equal(chat.inputField.readOnly,true);talk.end();
     assert.equal(chat.uploadBtn.disabled,true);assert.equal(chat.micBtn.disabled,false);

@@ -490,6 +490,7 @@ class Orchestrator:
         # Status updates for voice progress feedback
         self.status_updater = StatusUpdater(mode)
         self._active_tool_call_index = None
+        self.tool_approval_callback = None
         self.executor.set_progress_callback(self._handle_executor_progress)
         self.executor.set_workflow_runtime(
             workflow_loader=self.workflow_loader,
@@ -526,6 +527,43 @@ class Orchestrator:
         - routing(message)
         """
         self.progress_callback = callback
+
+    def set_tool_approval_callback(self, callback):
+        """Opt in a foreground surface to exact-call approval before execution."""
+        self.tool_approval_callback = callback
+
+    def _stopped_tool_result(self, *, tool_name, decision, tools_used,
+                             accumulated_data, tool_trace, total_usage, first_thinking,
+                             conversation_context=None, approval_decision=False):
+        if decision == 'cancelled' and tool_name:
+            previous = (conversation_context[-1].get('summary', 'No results yet.')
+                        if conversation_context else 'No results yet.')
+            speech = f"Stopped before {tool_name}. Results so far:\n\n{previous}"
+        elif tool_name:
+            if decision == 'denied':
+                action = f"You declined {tool_name}. That call and the remaining steps were not run."
+            elif decision == 'expired':
+                action = f"Approval for {tool_name} expired. That call and the remaining steps were not run."
+            else:
+                action = f"Stopped before running {tool_name}. That call and the remaining steps were not run."
+            if tools_used:
+                completed = ', '.join(dict.fromkeys(tools_used))
+                progress = f"Completed before stopping: {completed}. Results are saved below for follow-up."
+            else:
+                progress = "No tools completed."
+            speech = f"{action} {progress}"
+        else:
+            speech = "Stopped the task."
+        self.status_updater.mark_complete()
+        return {
+            'ok': True, 'speech': speech, 'raw_llm_response': speech,
+            'tools_used': list(tools_used), 'data': accumulated_data,
+            'tool_trace': tool_trace, 'cancelled': True,
+            'approval_outcome': ({'tool': tool_name, 'decision': decision}
+                                 if approval_decision and tool_name else None),
+            'usage': total_usage if self._has_usage_data(total_usage) else None,
+            'thinking': first_thinking,
+        }
     
     def set_web_conversation_id(self, conversation_id: str):
         """Set web UI conversation ID for tracking in metadata.
@@ -1596,7 +1634,7 @@ Mode: {self.mode}
                 self._emit_progress('routing', message='Processing cancelled')
                 return {
                     "ok": True,
-                    "speech": f"Processing stopped after {turn_num} turn(s). Results so far:\n\n" + 
+                    "speech": f"Processing stopped after {turn_num} turn(s). Results so far:\n\n" +
                                (conversation_context[-1].get('summary', 'No results yet.') if conversation_context else 'No results yet.'),
                     "tools_used": tools_used,
                     "data": accumulated_data,
@@ -2042,6 +2080,43 @@ Mode: {self.mode}
                         "server_side_tools": total_usage.get("server_side_tools", {})
                     }
                 
+                # Check for cancellation before executing tool
+                if self._is_cancelled():
+                    self._emit_progress('routing', message='Processing cancelled')
+                    return self._stopped_tool_result(
+                        tool_name=tool_name, decision='cancelled', tools_used=tools_used,
+                        accumulated_data=accumulated_data, tool_trace=tool_trace,
+                        total_usage=total_usage, first_thinking=first_thinking,
+                        conversation_context=conversation_context)
+
+                # Track this tool call for unique IDs in progress events
+                call_index = tool_call_counts.get(tool_name, 0)
+                tool_call_counts[tool_name] = call_index + 1
+
+                # The Web surface may pause this exact prepared call. Other
+                # surfaces, direct API calls, and workflow pipeline steps do not
+                # install this callback and retain their existing behavior.
+                approval_callback = getattr(self, 'tool_approval_callback', None)
+                tool_schema = self.registry.get_tool(tool_name) if approval_callback else None
+                if (approval_callback is not None and tool_schema is not None
+                        and (getattr(tool_schema, 'permissions', None) or {}).get('auto_approve') is False):
+                    decision = approval_callback(
+                        tool_name, arguments, tool_schema.permissions, call_index)
+                    if decision != 'approved':
+                        return self._stopped_tool_result(
+                            tool_name=tool_name, decision=decision,
+                            tools_used=tools_used, accumulated_data=accumulated_data,
+                            tool_trace=tool_trace, total_usage=total_usage,
+                            first_thinking=first_thinking,
+                            conversation_context=conversation_context, approval_decision=True)
+                    if self._is_cancelled():
+                        return self._stopped_tool_result(
+                            tool_name=tool_name, decision='cancelled',
+                            tools_used=tools_used, accumulated_data=accumulated_data,
+                            tool_trace=tool_trace, total_usage=total_usage,
+                            first_thinking=first_thinking,
+                            conversation_context=conversation_context, approval_decision=True)
+
                 # Only print if in interactive mode
                 if sys.stdout.isatty():
                     turn_marker = f" (turn {turn_num + 1})" if turn_num > 0 else ""
@@ -2093,24 +2168,6 @@ Mode: {self.mode}
                     # Default: acknowledge any other tool at first turn
                     if turn_num == 0:
                         self.status_updater.update(category='task_start', tool_name=tool_name, context=status_context)
-                
-                # Check for cancellation before executing tool
-                if self._is_cancelled():
-                    self._emit_progress('routing', message='Processing cancelled')
-                    return {
-                        "ok": True,
-                        "speech": f"Stopped before {tool_name}. Results so far:\n\n" + 
-                                   (conversation_context[-1].get('summary', 'No results yet.') if conversation_context else 'No results yet.'),
-                        "tools_used": tools_used,
-                        "data": accumulated_data,
-                        "usage": total_usage if any(total_usage.values()) else None,
-                        "thinking": first_thinking,
-                        "cancelled": True
-                    }
-                
-                # Track this tool call for unique IDs in progress events
-                call_index = tool_call_counts.get(tool_name, 0)
-                tool_call_counts[tool_name] = call_index + 1
                 
                 # Emit progress: tool starting (with call_index for duplicate tracking)
                 background_context = getattr(self, 'background_context', None)

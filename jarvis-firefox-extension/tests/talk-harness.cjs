@@ -149,6 +149,18 @@ async function audio(){requests.at(-1).resolve({ok:true,arrayBuffer:async()=>new
     await flush();assert.equal(talk.session.phase,before);assert.equal(requests.length,requestCount);
     settle();await answer();await audio();contexts[0].sources[0].onended();await flush();finishTimers();
     assert.equal(talk.session.phase,'listening');
+  } else if(scenario==='approval_denied' || scenario==='approval_timeout') {
+    await start();await utterance();await transcribe();
+    const decision = scenario === 'approval_denied' ? 'denied' : 'expired';
+    settle('completed');assert.equal(talk.session.phase,'waiting');
+    await answer({cancelled:true,approval_outcome:{tool:'api_call',decision},speech:decision === 'denied' ? 'You declined the call.' : 'The approval wait expired.'});
+    assert.equal(talk.session.phase,'speaking');
+    await audio();contexts[0].sources[0].onended();await flush();
+    finishTimers();assert.equal(talk.session.phase,'listening');
+  } else if(scenario==='approval_stop') {
+    await start();await utterance();await transcribe();
+    await answer({cancelled:true,approval_outcome:{tool:'api_call',decision:'cancelled'},speech:'Stopped before the call.'});
+    settle('cancelled');assert.equal(talk.session.phase,'paused');
   } else if(scenario==='duplicate') {
     await start();await utterance();await transcribe();await answer();await answer();assert.equal(requests.length,2);await audio();talk.end();assert.equal(contexts[0].sources[0].stopped,true);await answer();assert.equal(requests.length,2);
   } else if(scenario==='draft') {

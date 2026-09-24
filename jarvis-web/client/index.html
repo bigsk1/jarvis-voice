@@ -329,6 +329,14 @@
       <div class="talk-state"><span class="talk-indicator" aria-hidden="true"></span><strong id="talkStatus" role="status" aria-live="polite">Talk ended</strong></div>
       <p class="talk-explanation">Talk sends your speech automatically after a pause. Use Interrupt to speak again, or say “end talk” while listening.</p>
       <p id="talkTranscript" class="talk-transcript"></p>
+      <div id="talkApproval" class="talk-approval" hidden>
+        <strong>Tool approval required</strong>
+        <p id="talkApprovalDetails"></p>
+        <div class="talk-actions">
+          <button type="button" class="btn btn-primary" id="talkApprovalAllow">Allow once</button>
+          <button type="button" class="btn btn-secondary" id="talkApprovalDeny">Don't run</button>
+        </div>
+      </div>
       <div class="talk-actions">
         <button type="button" class="btn btn-secondary" id="talkPause">Pause</button>
         <button type="button" class="btn btn-secondary" id="talkInterrupt" hidden>Interrupt to speak</button>

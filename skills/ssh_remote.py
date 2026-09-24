@@ -13,12 +13,19 @@ Security:
 import sys
 import os
 import json
+import shlex
 import time
 from typing import Any
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
 from config_loader import load_config, get_config_value
+from ssh_remote_commands import (
+    SSH_TEST_COMMAND, SSH_APT_UPDATE_COMMAND, SSH_APT_CHECK_COMMAND,
+    SSH_APT_UPGRADE_COMMAND,
+    SSH_COMMAND_TIMEOUT_SECONDS, SSH_APT_UPDATE_TIMEOUT_SECONDS,
+    SSH_APT_CHECK_TIMEOUT_SECONDS, SSH_APT_UPGRADE_TIMEOUT_SECONDS,
+)
 
 # Import paramiko
 try:
@@ -64,7 +71,7 @@ def get_host_config(host_alias: str) -> dict[str, Any]:
         "sudo_env": host_config.get("sudo_env"),
         "description": host_config.get("description", ""),
         "output_limit": host_config.get("output_limit", defaults.get("output_limit", 150)),
-        "timeout": host_config.get("timeout", defaults.get("timeout", 60)),
+        "timeout": host_config.get("timeout", defaults.get("timeout", SSH_COMMAND_TIMEOUT_SECONDS)),
         "connect_timeout": host_config.get("connect_timeout", defaults.get("connect_timeout", 10)),
     }
 
@@ -115,7 +122,7 @@ def truncate_output(output: str, limit: int, label: str = "output") -> tuple[str
 def run_command(
     client: paramiko.SSHClient,
     command: str,
-    timeout: int = 60,
+    timeout: int = SSH_COMMAND_TIMEOUT_SECONDS,
     output_limit: int = 150,
     sudo: bool = False,
     sudo_password: str | None = None
@@ -123,20 +130,41 @@ def run_command(
     """Execute a command on the remote host."""
     
     if sudo:
-        if sudo_password:
-            # Use -S to read password from stdin, with proper escaping
-            command = f"echo '{sudo_password}' | sudo -S bash -c '{command}'"
-        else:
-            # Try passwordless sudo
-            command = f"sudo -n {command}"
+        # Keep the password out of the remote command and quote the complete
+        # shell expression, including any quotes supplied in the command.
+        command = f"sudo {'-S' if sudo_password else '-n'} bash -c {shlex.quote(command)}"
     
+    deadline = time.monotonic() + timeout
     stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
-    
-    # Wait for command to complete
-    exit_code = stdout.channel.recv_exit_status()
-    
-    stdout_text = stdout.read().decode('utf-8', errors='replace')
-    stderr_text = stderr.read().decode('utf-8', errors='replace')
+    channel = stdout.channel
+    stdout_chunks: list[bytes] = []
+    stderr_chunks: list[bytes] = []
+    try:
+        if sudo and sudo_password:
+            stdin.write(sudo_password + '\n')
+            stdin.close()
+        # Drain both streams before waiting for exit status. A full SSH channel
+        # window can otherwise prevent the remote process from exiting.
+        while True:
+            received = False
+            if channel.recv_ready():
+                stdout_chunks.append(channel.recv(65536))
+                received = True
+            if channel.recv_stderr_ready():
+                stderr_chunks.append(channel.recv_stderr(65536))
+                received = True
+            if channel.exit_status_ready() and not channel.recv_ready() and not channel.recv_stderr_ready():
+                exit_code = channel.recv_exit_status()
+                break
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"Remote command exceeded {timeout} seconds")
+            if not received:
+                time.sleep(0.05)
+    finally:
+        channel.close()
+
+    stdout_text = b''.join(stdout_chunks).decode('utf-8', errors='replace')
+    stderr_text = b''.join(stderr_chunks).decode('utf-8', errors='replace')
     
     # Clean up sudo password prompt from stderr if present
     if sudo and sudo_password:
@@ -188,7 +216,7 @@ def test_connection(host_alias: str) -> dict[str, Any]:
         connect_time = time.time() - start
         
         # Run simple test command
-        result = run_command(client, "echo 'SSH connection successful' && hostname && uname -a", 
+        result = run_command(client, SSH_TEST_COMMAND,
                            timeout=10, output_limit=10)
         
         return {
@@ -278,6 +306,7 @@ def apt_update(host_alias: str, upgrade: bool = True) -> dict[str, Any]:
     """Run apt update (and optionally upgrade) on remote host."""
     host_config = get_host_config(host_alias)
     client = None
+    stage = "connect"
     
     # Get sudo password
     sudo_password = None
@@ -294,10 +323,11 @@ def apt_update(host_alias: str, upgrade: bool = True) -> dict[str, Any]:
         client = connect_ssh(host_config)
         
         # Run apt update
+        stage = "update"
         update_result = run_command(
             client,
-            "apt update",
-            timeout=120,
+            SSH_APT_UPDATE_COMMAND,
+            timeout=SSH_APT_UPDATE_TIMEOUT_SECONDS,
             output_limit=50,
             sudo=True,
             sudo_password=sudo_password
@@ -316,10 +346,11 @@ def apt_update(host_alias: str, upgrade: bool = True) -> dict[str, Any]:
             }
         
         # Check for upgradable packages
+        stage = "check"
         check_result = run_command(
             client,
-            "apt list --upgradable 2>/dev/null | grep -v 'Listing'",
-            timeout=30,
+            SSH_APT_CHECK_COMMAND,
+            timeout=SSH_APT_CHECK_TIMEOUT_SECONDS,
             output_limit=50,
             sudo=False
         )
@@ -330,10 +361,11 @@ def apt_update(host_alias: str, upgrade: bool = True) -> dict[str, Any]:
         upgrade_result = None
         if upgrade and upgradable_count > 0:
             # Run apt upgrade with -y flag
+            stage = "upgrade"
             upgrade_result = run_command(
                 client,
-                "DEBIAN_FRONTEND=noninteractive apt upgrade -y",
-                timeout=600,  # 10 min for upgrades
+                SSH_APT_UPGRADE_COMMAND,
+                timeout=SSH_APT_UPGRADE_TIMEOUT_SECONDS,
                 output_limit=100,
                 sudo=True,
                 sudo_password=sudo_password
@@ -361,6 +393,14 @@ def apt_update(host_alias: str, upgrade: bool = True) -> dict[str, Any]:
                 "upgrade_success": upgrade_result["success"] if upgrade_result else None,
                 "upgrade_output": upgrade_result["stdout"][-500:] if upgrade_result else None
             }
+        }
+    except TimeoutError as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "speech": (f"SSH timed out during package {stage} on {host_alias}. "
+                       "The remote operation may still be running; check its state before retrying."),
+            "data": {"host": host_alias, "stage": stage},
         }
     except Exception as e:
         return {

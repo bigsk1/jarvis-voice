@@ -345,6 +345,22 @@ test('panel boots and supports permission-gated setup, staging, safe send and st
     assert.equal($('send-button').disabled, true);
     assert.equal($('cancel-button').disabled, false);
 
+    state.run.approval = {approvalId: 'once', conversationId: 'conversation-1', messageId: 'r1',
+      tool: 'api_call', summary: 'Send a GET request to <img src=x onerror=alert(1)>?',
+      detail: ['Content: safe text'], warning: 'This call may connect to the network.',
+      preview: {url: '<img src=x onerror=alert(1)>'},
+      permissions: {network: true, auto_approve: false}, expiresAt: Date.now() / 1000 + 60};
+    pushState({type: 'state', state: structuredClone(state)});
+    assert.equal($('tool-approval').hidden, false);
+    assert.match($('tool-approval-title').textContent, /<img src=x onerror=alert\(1\)>/);
+    assert.equal($('tool-approval-details').textContent, 'Content: safe text');
+    assert.equal($('tool-approval-warning').textContent, state.run.approval.warning);
+    await $('tool-approval-deny').fire('click');
+    assert.deepEqual(commands.at(-1), {type: 'jarvis:command', action: 'decideApproval', payload: {approved: false}});
+    state.run.approval = null;
+    pushState({type: 'state', state: structuredClone(state)});
+    assert.equal($('tool-approval').hidden, true);
+
     state.profile = {display_name: 'Morgan', avatar: 'data:image/png;base64,aGVsbG8='};
     pushState({type: 'state', state: structuredClone(state)});
     const profileMessage = $('messages').children[0];

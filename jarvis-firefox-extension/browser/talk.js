@@ -71,6 +71,8 @@ export class TalkBridge {
     this.post(owner.port, {type: 'talk:event', sessionId: owner.id, event,
       data: {message_id: data.message_id, conversation_id: data.conversation_id, status: data.status,
         ok: data.ok, cancelled: data.cancelled, error: data.error, admitted: data.admitted,
+        run_status: data.run_status,
+        approval_outcome: data.approval_outcome,
         ...(event === 'chat:response' && data.message_id === owner.turn ? owner.answer : {})}});
   }
 

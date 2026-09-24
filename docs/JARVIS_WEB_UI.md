@@ -1,7 +1,7 @@
 # Jarvis Web UI
 
 > **Status**: Implemented and actively maintained
-> **Last Updated**: August 11, 2026
+> **Last Updated**: September 23, 2026
 
 ---
 
@@ -43,6 +43,7 @@ UIs, optional navigation URLs, browser microphone checks, and troubleshooting.
 | Basic chat UI | ✅ | Send messages, receive responses |
 | WebSocket events | ✅ | `chat:send`, `chat:response`, `chat:status`, `tool:*` |
 | Tool execution streaming | ✅ | Tool cards show progress and results |
+| Tool approval | ✅ | Foreground Web calls for tools with explicit `auto_approve: false` pause before execution; Allow once or Don't run in chat, Talk, or Firefox Companion |
 | Mode selection | ✅ | Cloud/Local toggle in header |
 | Tool discovery | ✅ | Auto-loads from `skills/*.tool.json` |
 | Dark theme | ✅ | CSS variables, modern styling |
@@ -191,6 +192,12 @@ when returning to the tab, without fetching conversations or rebuilding the list
 
 ### Tool Cards, Status, and Reload Behavior
 
+- A pending approval sits beside the active turn and describes its prepared action
+  with a short risk warning and remaining time. **Don't run** stops the sequence before that call; the final reply keeps
+  completed tool results for follow-up. A later request can ask again and gets a
+  new one-time approval. Stop and approval expiry also end the pending sequence.
+- Reloading or reconnecting to the same conversation restores its pending
+  approval while the Web run is active.
 - `tool:start`, `tool:complete`, and `tool:error` drive the live tool cards shown during a request.
 - Real tool failures show a red tool card because the tool actually executed and returned an error.
 - Duplicate-guard blocks are different: the repeated tool call is stopped before execution, so the UI shows a red status/progress message instead of a failed tool card.

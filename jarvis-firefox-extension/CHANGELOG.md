@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.2
+
+- Preserve line breaks in SSH commands shown for approval, so the displayed shell command matches its prepared form when no redaction or truncation is needed.
+
+## 0.5.1
+
+- Show every command line from the server's bounded SSH approval preview, including any omitted-command notice, in Companion. Keep long lists scrollable so the decision buttons remain reachable.
+
+## 0.5.0
+
+- Show one-time tool approval in Companion chat and Talk when Jarvis Web pauses on a prepared call. The panel describes the action and shows a short risk warning with **Allow once** and **Don't run** buttons.
+- Recover a pending decision from the Web run after reconnect. Denial keeps earlier completed results in the conversation for follow-up; it does not run the declined call or later steps.
+
 ## 0.4.0
 
 - Save reviewed page text directly to the Cloud or Local Source Library without sending a chat message. The snapshot keeps the page URL and capture date and opens from the Firefox card.

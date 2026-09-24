@@ -6,6 +6,7 @@ Run:
     python3 tests/test_tool_executor_cancel.py
 """
 
+import json
 import os
 import signal
 import sys
@@ -182,6 +183,27 @@ class ToolExecutorCancelTests(unittest.TestCase):
     def test_amazon_timeout_allows_product_detail_enrichment(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
         self.assertEqual(executor._get_subprocess_timeout("serpapi_amazon_search"), 90)
+
+    def test_ssh_timeout_covers_each_remote_step_and_host_override(self):
+        executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "config").mkdir()
+            (root / "config" / "ssh.json").write_text(json.dumps({
+                "defaults": {"timeout": 180, "connect_timeout": 10},
+                "hosts": {"slow": {"timeout": 300}},
+            }))
+            executor.project_root = root
+            self.assertEqual(executor._get_subprocess_timeout("ssh_remote", {
+                "action": "run", "host": "vps2"}), 250)
+            self.assertEqual(executor._get_subprocess_timeout("ssh_remote", {
+                "action": "multi", "host": "vps2", "commands": ["a", "b", "c"]}), 610)
+            self.assertEqual(executor._get_subprocess_timeout("ssh_remote", {
+                "action": "run", "host": "slow"}), 370)
+            self.assertEqual(executor._get_subprocess_timeout("ssh_remote", {
+                "action": "apt_update", "host": "vps2", "upgrade": False}), 280)
+            self.assertEqual(executor._get_subprocess_timeout("ssh_remote", {
+                "action": "apt_update", "host": "vps2", "upgrade": True}), 880)
 
     def test_home_depot_timeout_allows_two_sequential_http_calls(self):
         executor = ToolExecutor(mode="cloud", registry=FakeRegistry("/tmp/fake.py"))

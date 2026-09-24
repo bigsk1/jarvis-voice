@@ -210,5 +210,10 @@ textarea:focus-visible { outline: none; }
 .talk-panel p { margin: 6px 0 10px; max-height: 4.5em; overflow: auto; overflow-wrap: anywhere; }
 .talk-panel[data-state="listening"] { border-color: var(--success); }
 .talk-panel[data-state="paused"] { border-color: var(--border-primary); }
+.tool-approval { padding: 12px; margin-bottom: 10px; border: 1px solid var(--warning); border-radius: 12px; background: var(--bg-secondary); overflow-wrap: anywhere; }
+.tool-approval strong { display: block; font-size: 13px; }
+.tool-approval p { margin: 7px 0; font-size: 11px; line-height: 1.5; }
+.tool-approval #tool-approval-details { max-height: 24dvh; overflow-y: auto; overflow-wrap: anywhere; }
+.tool-approval #tool-approval-details p { white-space: pre-wrap; }
 #talk-button[aria-pressed="true"] { border-color: var(--accent-tertiary); color: var(--text-primary); }
 .microphone-setup { max-width: 560px; margin: 48px auto; padding: 24px; }

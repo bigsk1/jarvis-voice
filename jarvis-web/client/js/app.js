@@ -4509,7 +4509,8 @@ class JarvisApp {
           msg.content,
           imageData,
           activeBadge,
-          attachments
+          attachments,
+          msg.data?._request_id || null
         );
         const run = msg.data?._run;
         if (run && ['failed', 'interrupted', 'cancelled'].includes(run.status)) {

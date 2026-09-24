@@ -661,6 +661,7 @@ def get_status():
                 'library_capture': current_app.extensions.get('jarvis_library_routes_available', False),
                 'profile': True,
                 'talk': True,
+                'tool_approval': True,
             },
         }
     })

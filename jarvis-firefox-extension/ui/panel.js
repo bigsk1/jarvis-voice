@@ -45,7 +45,8 @@ function renderTalk() {
     settling: 'Finishing this turn…', paused: 'Talk paused — microphone off'};
   $('talk-panel').hidden = !s;
   $('talk-panel').dataset.state = s?.phase || 'ended';
-  $('talk-status').textContent = s?.message || labels[s?.phase] || '';
+  $('talk-status').textContent = state?.run?.status === 'running' && state.run.approval && s?.turn?.id === state.run.messageId
+    ? 'Approval needed — microphone off' : s?.message || labels[s?.phase] || '';
   $('talk-transcript').textContent = s?.transcript ? `You said: ${s.transcript}` : 'Speech is sent automatically. Replies play aloud.';
   $('talk-pause').textContent = s?.paused ? 'Resume' : 'Pause';
   $('talk-pause').disabled = s?.phase === 'stopping';
@@ -331,12 +332,36 @@ function renderProgress() {
   $('progress-text').title = $('progress-text').textContent;
 }
 
+function renderToolApproval() {
+  const approval = state?.run?.approval;
+  const visible = Boolean(approval && state?.run?.status === 'running');
+  $('tool-approval').hidden = !visible;
+  if (!visible) return;
+  $('tool-approval-title').textContent = approval.summary || `Run ${approval.tool.replaceAll('_', ' ')}?`;
+  $('tool-approval-description').textContent = talk.active
+    ? 'Jarvis paused before this call. The microphone is off while you decide.'
+    : 'Jarvis paused before this call. Review it, then choose once.';
+  const details = $('tool-approval-details');
+  details.replaceChildren();
+  for (const line of approval.detail || []) {
+    const detail = document.createElement('p');
+    detail.textContent = line;
+    details.append(detail);
+  }
+  $('tool-approval-warning').textContent = approval.warning || '';
+  const disabled = state.connection?.status !== 'connected' || state.run.approvalPending ||
+    approval.expiresAt && Date.now() / 1000 >= approval.expiresAt;
+  $('tool-approval-allow').disabled = Boolean(disabled);
+  $('tool-approval-deny').disabled = Boolean(disabled);
+}
+
 function renderState(next, forceDraft = false) {
   if (!next) return;
   const previousStatus = state?.connection?.status;
   const previousImageStage = state?.draft?.context?.stageId;
   state = next;
   talk.update(state);
+  renderTalk();
   const context = state.draft?.context;
   const newImageStage = context?.kind === 'image' && context.stageId && context.stageId !== previousImageStage;
   let syncImageDraft = false;
@@ -357,6 +382,7 @@ function renderState(next, forceDraft = false) {
   renderHistory();
   renderAttachments();
   renderProgress();
+  renderToolApproval();
   renderControls();
   renderNotice();
   if ((!initialized && ['unconfigured', 'auth_required'].includes(state.connection?.status))
@@ -618,6 +644,8 @@ $('remove-context').addEventListener('click', () => command('removeContext'));
 $('remove-page').addEventListener('click', () => command('removePage'));
 $('remove-page-link').addEventListener('click', () => command('removePageLink'));
 $('cancel-button').addEventListener('click', () => command('cancel'));
+$('tool-approval-allow').addEventListener('click', () => command('decideApproval', {approved: true}));
+$('tool-approval-deny').addEventListener('click', () => command('decideApproval', {approved: false}));
 $('preview-button').addEventListener('click', () => {
   const preview = safePreviewUrl(state?.draft?.attachment?.previewUrl);
   if (!preview) return;

@@ -20,7 +20,7 @@
   },
   "defaults": {
     "output_limit": 150,
-    "timeout": 60,
+    "timeout": 180,
     "connect_timeout": 10
   }
 }
