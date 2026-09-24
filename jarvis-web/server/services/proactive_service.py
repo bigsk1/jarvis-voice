@@ -3,11 +3,11 @@ Proactive Notification Service
 Polls jarvis-api for alerts and reminders, broadcasts to connected web clients.
 """
 
-import requests
 import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+import requests
 from internal_api import get_internal_api_base_url, get_internal_api_headers
 
 # Polling interval in seconds
@@ -128,10 +128,10 @@ class ProactiveService:
             print(f"[Proactive] Error acknowledging reminder {reminder_id}: {e}")
         return False
     
-    def get_pending_counts(self) -> dict:
-        """Get counts of pending alerts/reminders"""
-        alerts_count = 0
-        reminders_count = 0
+    def get_pending_snapshot(self) -> dict:
+        """Get the current items for the Web panel independently of notification history."""
+        alerts = []
+        reminders = []
         
         try:
             # Alerts
@@ -142,8 +142,9 @@ class ProactiveService:
                 timeout=3
             )
             if response.status_code == 200:
-                alerts_count = len(response.json().get('alerts', []))
-        except:
+                items = response.json().get('alerts', [])
+                alerts = items if isinstance(items, list) else []
+        except Exception:
             pass
         
         try:
@@ -155,14 +156,20 @@ class ProactiveService:
                 timeout=3
             )
             if response.status_code == 200:
-                reminders_count = len(response.json().get('reminders', []))
-        except:
+                items = response.json().get('reminders', [])
+                reminders = items if isinstance(items, list) else []
+        except Exception:
             pass
         
         return {
-            'alerts': alerts_count,
-            'reminders': reminders_count
+            'alerts': alerts,
+            'reminders': reminders,
+            'counts': {'alerts': len(alerts), 'reminders': len(reminders)}
         }
+
+    def get_pending_counts(self) -> dict:
+        """Get counts of pending alerts/reminders."""
+        return self.get_pending_snapshot()['counts']
     
     def poll_and_notify(self) -> dict:
         """
@@ -172,7 +179,8 @@ class ProactiveService:
         result = {
             'new_alerts': [],
             'new_reminders': [],
-            'counts': {'alerts': 0, 'reminders': 0}
+            'counts': {'alerts': 0, 'reminders': 0},
+            'snapshot': {'alerts': [], 'reminders': []},
         }
         
         # Check alerts
@@ -187,8 +195,11 @@ class ProactiveService:
             result['new_reminders'] = new_reminders
             print(f"[Proactive] Found {len(new_reminders)} new reminder(s)")
         
-        # Get current counts
-        result['counts'] = self.get_pending_counts()
+        # Restore pending items in Web, including items already notified
+        # to a previous page load. Only new_* items trigger OS notifications.
+        snapshot = self.get_pending_snapshot()
+        result['snapshot'] = snapshot
+        result['counts'] = snapshot['counts']
         
         # Broadcast if we have new items and callback is set
         if self.broadcast_callback and (new_alerts or new_reminders):

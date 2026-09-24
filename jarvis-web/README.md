@@ -292,7 +292,8 @@ Event names below are what the **server** emits / the **client** sends (see `cli
 | `message_reaction:updated` / `message_reaction:error` | Latest-response human reaction result |
 | `log:entry` | Real-time log stream line |
 | `logs:*` | Subscribe/sources ack helpers |
-| `proactive:counts` / `proactive:alert` / `proactive:reminder` | Proactive notifications |
+| `proactive:snapshot` / `proactive:counts` | Current pending alerts and triggered reminders, including previously notified items |
+| `proactive:alert` / `proactive:reminder` | Newly triggered items for browser notifications and speech |
 | `feedback:start` / `feedback:complete` | Optional post-turn feedback trigger |
 
 ## Configuration

@@ -143,6 +143,8 @@ class JarvisApp {
       if (!this.proactive && window.ProactiveManager) {
         this.proactive = new ProactiveManager(this.socket, this);
         console.log('[App] Proactive notifications enabled');
+      } else if (this.proactive) {
+        this.socket.emit('proactive:subscribe', {});
       }
       
       // Initialize log panel

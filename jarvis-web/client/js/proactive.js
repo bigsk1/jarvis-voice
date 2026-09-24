@@ -80,6 +80,10 @@ class ProactiveManager {
       this.counts = data;
       this._updateBadge();
     });
+
+    this.socket.on('proactive:snapshot', (data) => {
+      this._applySnapshot(data);
+    });
     
     // New alert
     this.socket.on('proactive:alert', (data) => {
@@ -216,8 +220,28 @@ class ProactiveManager {
       }
     }
   }
+
+  _applySnapshot(data) {
+    const alerts = Array.isArray(data?.alerts) ? data.alerts : [];
+    const reminders = Array.isArray(data?.reminders) ? data.reminders : [];
+    const changed = JSON.stringify(this.alerts) !== JSON.stringify(alerts)
+      || JSON.stringify(this.reminders) !== JSON.stringify(reminders);
+    this.alerts = alerts;
+    this.reminders = reminders;
+
+    if (changed && this.panel) {
+      this.panel.querySelector('.alerts-list').replaceChildren();
+      this.panel.querySelector('.reminders-list').replaceChildren();
+      alerts.forEach(alert => this._addToPanel('alert', alert));
+      reminders.forEach(reminder => this._addToPanel('reminder', reminder));
+    }
+
+    this.counts = data?.counts || { alerts: alerts.length, reminders: reminders.length };
+    this._updateBadge();
+  }
   
   _handleNewAlert(alert) {
+    if (this.alerts.some(existing => String(existing.id) === String(alert.id))) return;
     // Add to local list
     this.alerts.push(alert);
     
@@ -239,7 +263,7 @@ class ProactiveManager {
     }
     
     // Update counts
-    this.counts.alerts = (this.counts.alerts || 0) + 1;
+    this.counts.alerts = Math.max(Number(this.counts.alerts) || 0, this.alerts.length);
     this._updateBadge();
     
     // Flash the badge
@@ -247,6 +271,7 @@ class ProactiveManager {
   }
   
   _handleNewReminder(reminder) {
+    if (this.reminders.some(existing => String(existing.id) === String(reminder.id))) return;
     // Add to local list
     this.reminders.push(reminder);
     
@@ -267,7 +292,7 @@ class ProactiveManager {
     }
     
     // Update counts
-    this.counts.reminders = (this.counts.reminders || 0) + 1;
+    this.counts.reminders = Math.max(Number(this.counts.reminders) || 0, this.reminders.length);
     this._updateBadge();
     
     // Flash the badge
@@ -318,15 +343,17 @@ class ProactiveManager {
     itemEl.className = `notification-item ${type}-item`;
     itemEl.dataset.id = item.id;
     
-    const severityClass = item.severity ? `severity-${item.severity}` : '';
+    const severity = ['low', 'medium', 'high', 'critical'].includes(item.severity)
+      ? item.severity : '';
+    const severityClass = severity ? `severity-${severity}` : '';
     
     itemEl.innerHTML = `
       <div class="notification-item-content ${severityClass}">
         <div class="notification-item-title">${Utils.escapeHtml(item.title)}</div>
         ${item.description ? `<div class="notification-item-desc">${Utils.escapeHtml(item.description)}</div>` : ''}
         <div class="notification-item-meta">
-          ${item.source ? `<span class="source">${item.source}</span>` : ''}
-          ${item.severity ? `<span class="severity ${item.severity}">${item.severity}</span>` : ''}
+          ${item.source ? `<span class="source">${Utils.escapeHtml(String(item.source))}</span>` : ''}
+          ${severity ? `<span class="severity ${severity}">${severity}</span>` : ''}
           ${item.trigger_time ? `<span class="time">${new Date(item.trigger_time).toLocaleString()}</span>` : ''}
         </div>
       </div>

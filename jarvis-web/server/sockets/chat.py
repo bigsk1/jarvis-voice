@@ -3370,12 +3370,14 @@ Previous structured data:
             session_id = request.sid
             print(f"[Proactive] Client {session_id[:8]} subscribed to notifications")
             
-            # Get current counts immediately
+            # Restore the panel from persisted pending items. The notified-ID
+            # cache only controls new-event delivery, not what this client sees.
             from ..services.proactive_service import get_proactive_service
             service = get_proactive_service()
-            counts = service.get_pending_counts()
+            snapshot = service.get_pending_snapshot()
             
-            emit('proactive:counts', counts)
+            emit('proactive:snapshot', snapshot)
+            emit('proactive:counts', snapshot['counts'])
         
         @self.socketio.on('proactive:check')
         def handle_proactive_check(data=None):
@@ -3403,6 +3405,8 @@ Previous structured data:
                     'reminder': reminder,
                     'timestamp': time.time()
                 })
+
+            emit('proactive:snapshot', result['snapshot'])
         
         @self.socketio.on('proactive:ack_alert')
         def handle_ack_alert(data):

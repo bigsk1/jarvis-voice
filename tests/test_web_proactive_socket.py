@@ -50,6 +50,7 @@ vm.runInContext(source, sandbox);
 const socket = sandbox.window.jarvisSocket;
 const events = [
   'proactive:counts',
+  'proactive:snapshot',
   'proactive:alert',
   'proactive:reminder',
   'proactive:ack_success',
@@ -116,6 +117,76 @@ const mutedDocker = createManager('docker');
 mutedDocker.manager.app.audioEnabled = false;
 mutedDocker.manager._handleNewReminder({ id: 5, title: 'Muted', description: '' });
 assert.strictEqual(mutedDocker.spoken.length, 0, 'The Jarvis Web TTS toggle must still be respected');
+"""
+        subprocess.run(
+            ["node", "-e", script, str(PROACTIVE_JS)],
+            cwd=PROJECT_ROOT,
+            check=True,
+        )
+
+    def test_pending_snapshot_restores_panel_without_repeating_new_alert_actions(self) -> None:
+        script = r"""
+const fs = require('fs');
+const vm = require('vm');
+const assert = require('assert');
+const sandbox = { window: {}, console };
+vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), sandbox);
+const manager = Object.create(sandbox.window.ProactiveManager.prototype);
+const lists = {
+  '.alerts-list': { items: [], replaceChildren() { this.items = []; } },
+  '.reminders-list': { items: [], replaceChildren() { this.items = []; } }
+};
+const notifications = [];
+manager.panel = { querySelector: selector => lists[selector] };
+manager.alerts = [];
+manager.reminders = [];
+manager.counts = { alerts: 0, reminders: 0 };
+manager._addToPanel = (type, item) => {
+  lists[type === 'alert' ? '.alerts-list' : '.reminders-list'].items.push(item);
+};
+manager._updateBadge = () => {};
+manager._showBrowserNotification = (...args) => notifications.push(args);
+manager._shouldPlayBrowserTTS = () => false;
+manager._flashBadge = () => {};
+const alert = { id: 41, title: 'Weather watch' };
+const reminder = { id: 73, title: 'Review backup' };
+
+manager._applySnapshot({
+  alerts: [alert], reminders: [reminder], counts: { alerts: 1, reminders: 1 }
+});
+assert.strictEqual(lists['.alerts-list'].items.length, 1);
+assert.strictEqual(lists['.reminders-list'].items.length, 1);
+assert.strictEqual(manager.counts.alerts, 1);
+assert.strictEqual(notifications.length, 0, 'restored items must not fire OS notifications');
+
+manager._handleNewAlert(alert);
+assert.strictEqual(lists['.alerts-list'].items.length, 1);
+assert.strictEqual(notifications.length, 0, 'a repeated event must not notify twice');
+
+manager._handleNewAlert({ id: 42, title: 'New alert' });
+assert.strictEqual(lists['.alerts-list'].items.length, 2);
+assert.strictEqual(manager.counts.alerts, 2);
+assert.strictEqual(notifications.length, 1);
+
+manager._applySnapshot({
+  alerts: [alert], reminders: [], counts: { alerts: 1, reminders: 0 }
+});
+assert.strictEqual(lists['.alerts-list'].items.length, 1, 'refresh must reconcile removed items');
+assert.strictEqual(lists['.reminders-list'].items.length, 0);
+
+let rendered;
+sandbox.document = { createElement: () => ({
+  dataset: {}, querySelector: () => ({ addEventListener() {} })
+}) };
+sandbox.Utils = { escapeHtml: value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;') };
+const safePanel = { querySelector: () => ({ appendChild: item => { rendered = item.innerHTML; } }) };
+sandbox.window.ProactiveManager.prototype._addToPanel.call(
+  { panel: safePanel, _acknowledge() {} }, 'alert',
+  { id: 44, title: 'Weather', source: '<img src=x>', severity: '<script>' }
+);
+assert(rendered.includes('&lt;img src=x>'), 'stored alert source must be escaped');
+assert(!rendered.includes('severity-<script>'), 'invalid severity must not enter a CSS class');
 """
         subprocess.run(
             ["node", "-e", script, str(PROACTIVE_JS)],

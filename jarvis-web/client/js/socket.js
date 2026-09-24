@@ -209,6 +209,7 @@ class JarvisSocket {
     // the browser notification, reminder TTS, badge, or acknowledgment UI.
     [
       'proactive:counts',
+      'proactive:snapshot',
       'proactive:alert',
       'proactive:reminder',
       'proactive:ack_success',
