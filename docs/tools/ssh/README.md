@@ -20,6 +20,14 @@ unavailable.
 - **Multi-command support**: Execute sequences in a single session
 - **Apt management**: Built-in update/upgrade with package detection
 
+The local SSH tool process uses the restricted child environment. It receives
+the selected host's configured sudo variable only for calls that use sudo,
+plus the SSH agent socket when present. Unrelated provider keys and private
+mode values are not inherited. Its temporary `HOME` is separate from the user's
+home; an explicit `~/.ssh/...` key path still resolves against the original
+home. This limits environment inheritance, not filesystem access: the tool
+still runs as the Jarvis user and can read its SSH config and key file.
+
 ## Configuration
 
 ### 1. SSH Host Configuration (`config/ssh.json`)
@@ -53,6 +61,8 @@ unavailable.
 ```
 
 > **Note**: `config/ssh.json` is gitignored. Copy from `config/ssh.json.example`.
+Use a dedicated variable name for each `sudo_env`; runtime, proxy, and SSH
+agent variable names are reserved.
 
 ### 2. Sudo Passwords (`config/cloud.env` or `config/local.env`)
 

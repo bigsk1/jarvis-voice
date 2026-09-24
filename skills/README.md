@@ -192,8 +192,9 @@ Rules:
 
 The code running on your machine is the main trust question. A reviewed Jarvis
 script calling a familiar API is usually lower concern than an unfamiliar
-GitHub script or package, regardless of which API it calls. Use the smaller
-environment for local code that deserves extra care.
+GitHub script or package, regardless of which API it calls. New local tools and
+materially refactored local tools should use a restricted child environment
+after reviewing the settings and paths they need.
 
 | How it runs | Environment variables passed to the child |
 | --- | --- |

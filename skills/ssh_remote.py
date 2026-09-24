@@ -10,22 +10,27 @@ Security:
 - Connections are always closed after use (finally block)
 - Output truncated by default to prevent context overflow
 """
-import sys
-import os
 import json
+import os
 import shlex
+import sys
 import time
-from typing import Any
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
-from config_loader import load_config, get_config_value
+from config_loader import get_config_value, load_config
 from ssh_remote_commands import (
-    SSH_TEST_COMMAND, SSH_APT_UPDATE_COMMAND, SSH_APT_CHECK_COMMAND,
+    SSH_APT_CHECK_COMMAND,
+    SSH_APT_CHECK_TIMEOUT_SECONDS,
+    SSH_APT_UPDATE_COMMAND,
+    SSH_APT_UPDATE_TIMEOUT_SECONDS,
     SSH_APT_UPGRADE_COMMAND,
-    SSH_COMMAND_TIMEOUT_SECONDS, SSH_APT_UPDATE_TIMEOUT_SECONDS,
-    SSH_APT_CHECK_TIMEOUT_SECONDS, SSH_APT_UPGRADE_TIMEOUT_SECONDS,
+    SSH_APT_UPGRADE_TIMEOUT_SECONDS,
+    SSH_COMMAND_TIMEOUT_SECONDS,
+    SSH_TEST_COMMAND,
 )
+from tool_child_environment import RESTRICTED_ENV_MARKER
 
 # Import paramiko
 try:
@@ -41,6 +46,17 @@ except ImportError:
 # Config paths
 CONFIG_DIR = Path(__file__).parent.parent / "config"
 SSH_CONFIG_PATH = CONFIG_DIR / "ssh.json"
+
+
+def expand_key_path(path: str) -> str:
+    """Resolve explicit ~/ key paths against the original home, not scratch HOME."""
+    if os.environ.get(RESTRICTED_ENV_MARKER) == "1":
+        key_home = os.environ.get("JARVIS_SSH_KEY_HOME")
+        if key_home and path == "~":
+            return key_home
+        if key_home and path.startswith("~/"):
+            return os.path.join(key_home, path[2:])
+    return os.path.expanduser(path)
 
 def load_ssh_config() -> dict[str, Any]:
     """Load SSH host configuration."""
@@ -67,7 +83,7 @@ def get_host_config(host_alias: str) -> dict[str, Any]:
         "host": host_config["host"],
         "user": host_config.get("user", "root"),
         "port": host_config.get("port", 22),
-        "key_path": os.path.expanduser(host_config.get("key_path", "~/.ssh/id_rsa")),
+        "key_path": expand_key_path(host_config.get("key_path", "~/.ssh/id_rsa")),
         "sudo_env": host_config.get("sudo_env"),
         "description": host_config.get("description", ""),
         "output_limit": host_config.get("output_limit", defaults.get("output_limit", 150)),
@@ -90,7 +106,7 @@ def connect_ssh(host_config: dict[str, Any]) -> paramiko.SSHClient:
     except paramiko.ssh_exception.SSHException:
         try:
             private_key = paramiko.Ed25519Key.from_private_key_file(key_path)
-        except:
+        except (paramiko.ssh_exception.SSHException, ValueError):
             # Try as generic key
             private_key = None
     

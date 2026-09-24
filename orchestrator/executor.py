@@ -24,8 +24,10 @@ from http_client import PROXY_POLICY_ENV, STANDARD_PROXY_ENV_KEYS
 from security_utils import redact_sensitive_text
 from serpapi_client import diagnose_serpapi_tool_failure
 from ssh_remote_commands import (
-    SSH_COMMAND_TIMEOUT_SECONDS, SSH_APT_UPDATE_TIMEOUT_SECONDS,
-    SSH_APT_CHECK_TIMEOUT_SECONDS, SSH_APT_UPGRADE_TIMEOUT_SECONDS,
+    SSH_APT_CHECK_TIMEOUT_SECONDS,
+    SSH_APT_UPDATE_TIMEOUT_SECONDS,
+    SSH_APT_UPGRADE_TIMEOUT_SECONDS,
+    SSH_COMMAND_TIMEOUT_SECONDS,
 )
 from tool_child_environment import restrict_child_environment
 from tool_logger import get_logger
@@ -537,6 +539,15 @@ class ToolExecutor:
                 tool_env['JARVIS_BACKGROUND_MAX_INPUT_BYTES'] = ''
                 tool_env['JARVIS_OVERRIDE_JARVIS_BACKGROUND_MAX_INPUT_BYTES'] = ''
             child_names = getattr(tool_schema, "child_environment_names", None)
+            if tool_name == "ssh_remote" and child_names is not None:
+                from ssh_remote_environment import selected_sudo_environment_names
+
+                child_names |= selected_sudo_environment_names(
+                    self.project_root / "config" / "ssh.json", args)
+                # The restricted child uses an empty HOME. Preserve only the
+                # original path base needed for explicit ~/.ssh key paths.
+                tool_env["JARVIS_SSH_KEY_HOME"] = tool_env.get("HOME") or str(Path.home())
+                tool_env.pop("JARVIS_OVERRIDE_JARVIS_SSH_KEY_HOME", None)
             home_context = (
                 TemporaryDirectory(prefix="jarvis-tool-home-")
                 if child_names is not None else nullcontext(None)

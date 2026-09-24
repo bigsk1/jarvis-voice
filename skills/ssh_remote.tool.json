@@ -3,6 +3,8 @@
   "name": "ssh_remote",
   "description": "Run commands on a named remote host over SSH. Use for 'ssh into vps2 and check disk space', 'update apt packages on vps2', 'run docker ps on vps2', or 'test ssh connection to vps2'. Actions: list_hosts, test, run, apt_update, multi.",
   "script": "ssh_remote.py",
+  "proxy_policy": "off",
+  "child_environment": {"mode": "restricted", "allow": ["JARVIS_SSH_KEY_HOME", "SSH_AUTH_SOCK"]},
   "parameters": {
     "type": "object",
     "properties": {
